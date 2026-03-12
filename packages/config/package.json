@@ -1,0 +1,19 @@
+{
+  "name": "@iwana/config",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    "./tsconfig/base": "./tsconfig.base.json",
+    "./tsconfig/nestjs": "./tsconfig.nestjs.json",
+    "./tsconfig/nextjs": "./tsconfig.nextjs.json",
+    "./eslint/base": "./.eslintrc.base.js",
+    "./prettier": "./prettier.config.js"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^9.0.0",
+    "typescript": "^5.9.0"
+  }
+}

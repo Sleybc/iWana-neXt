@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "paths": {
+      "@iwana/shared": ["../../packages/shared/src/index.ts"],
+      "@iwana/db": ["../../packages/database/src/index.ts"],
+      "@iwana/config": ["../../packages/config/index.ts"]
+    }
+  }
+}

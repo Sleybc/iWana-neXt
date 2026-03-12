@@ -1,0 +1,129 @@
+# docker-compose.dev.yml — Stack de desarrollo local iWana neXt
+# Servicios: PostgreSQL 16, Redis 8, pgBouncer, MinIO, Nginx, Adminer
+# Uso: docker compose -f docker-compose.dev.yml up -d
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 16 — Base de datos principal
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: iwana_postgres_dev
+    environment:
+      POSTGRES_USER: iwana
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: iwana_next
+    ports:
+      - '5432:5432'
+    volumes:
+      - iwana_postgres_data_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U iwana -d iwana_next']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Redis 8 — Cache y colas BullMQ
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:8-alpine
+    container_name: iwana_redis_dev
+    command: redis-server --save 60 1 --loglevel warning
+    ports:
+      - '6379:6379'
+    volumes:
+      - iwana_redis_data_dev:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # pgBouncer — Connection pooling para PostgreSQL
+  # ---------------------------------------------------------------------------
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: iwana_pgbouncer_dev
+    environment:
+      DB_USER: iwana
+      DB_PASSWORD: changeme
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: iwana_next
+      LISTEN_PORT: 6432
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 200
+      DEFAULT_POOL_SIZE: 20
+    ports:
+      - '6432:6432'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # MinIO — Almacenamiento de objetos (S3-compatible)
+  # ---------------------------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: iwana_minio_dev
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - '9000:9000' # API S3
+      - '9001:9001' # Consola web
+    volumes:
+      - iwana_minio_data_dev:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Nginx — Proxy inverso de desarrollo
+  # ---------------------------------------------------------------------------
+  nginx:
+    image: nginx:alpine
+    container_name: iwana_nginx_dev
+    ports:
+      - '80:80'
+    volumes:
+      - ./nginx/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Adminer — GUI para PostgreSQL (solo desarrollo)
+  # ---------------------------------------------------------------------------
+  adminer:
+    image: adminer:latest
+    container_name: iwana_adminer_dev
+    ports:
+      - '8080:8080'
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+# ---------------------------------------------------------------------------
+# Volúmenes nombrados
+# ---------------------------------------------------------------------------
+volumes:
+  iwana_postgres_data_dev:
+    name: iwana_postgres_data_dev
+  iwana_redis_data_dev:
+    name: iwana_redis_data_dev
+  iwana_minio_data_dev:
+    name: iwana_minio_data_dev

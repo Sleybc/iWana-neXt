@@ -1,0 +1,24 @@
+-- tenant_template.sql
+-- Plantilla SQL para el schema aislado por tenant.
+--
+-- ATENCION: Este archivo es un placeholder de Sprint 0.
+-- La implementacion real se ejecuta en Sprint 1 Semana 1
+-- como parte de TenantProvisioningService.
+--
+-- Referencias:
+--   - HLD-MOD01-ARQUITECTURA-v1.0 Seccion 3 (Aislamiento por schema)
+--   - ADR-017: Multi-tenant schema-per-tenant isolation
+--   - Sprint 1 Semana 1: TenantProvisioningWorker (BullMQ)
+--
+-- El TenantProvisioningService ejecutara este template
+-- reemplazando :tenant_schema con el slug del tenant.
+--
+-- Ejemplo de uso:
+--   SET search_path TO :tenant_schema;
+--   CREATE TABLE IF NOT EXISTS subscribers ( ... );
+--   CREATE TABLE IF NOT EXISTS services ( ... );
+--   CREATE TABLE IF NOT EXISTS invoices ( ... );
+--   -- Ver HLD Seccion 3 para el DDL completo
+
+-- Placeholder: implementar en Sprint 1
+SELECT 'tenant_template_placeholder' AS status;

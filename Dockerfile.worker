@@ -1,0 +1,60 @@
+# Dockerfile.worker — iWana neXt Worker (NestJS + BullMQ)
+# Build multi-stage: deps → builder → runner
+# Node 24 Alpine, usuario no-root (uid 1001)
+# Sin puerto HTTP — proceso de consumo de colas BullMQ
+
+# =============================================================================
+# Stage 1: Dependencias
+# =============================================================================
+FROM node:24-alpine AS deps
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@latest-10 --activate
+
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY packages/config/package.json ./packages/config/
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/database/package.json ./packages/database/
+COPY apps/worker/package.json ./apps/worker/
+
+RUN pnpm install --frozen-lockfile --filter @iwana/worker...
+
+# =============================================================================
+# Stage 2: Build
+# =============================================================================
+FROM node:24-alpine AS builder
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@latest-10 --activate
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/packages/config/node_modules ./packages/config/node_modules
+COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
+COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
+COPY --from=deps /app/apps/worker/node_modules ./apps/worker/node_modules
+
+COPY . .
+
+RUN pnpm --filter @iwana/shared build && \
+    pnpm --filter @iwana/db build && \
+    pnpm --filter @iwana/worker build
+
+# =============================================================================
+# Stage 3: Runner
+# =============================================================================
+FROM node:24-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 worker
+
+COPY --from=builder --chown=worker:nodejs /app/apps/worker/dist ./dist
+COPY --from=builder --chown=worker:nodejs /app/apps/worker/node_modules ./node_modules
+COPY --from=builder --chown=worker:nodejs /app/node_modules/.pnpm ./node_modules/.pnpm
+
+USER worker
+
+# Sin EXPOSE — worker no escucha puerto HTTP
+CMD ["node", "dist/main"]

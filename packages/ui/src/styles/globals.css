@@ -1,0 +1,69 @@
+/* globals.css — Sistema de diseno iWana neXt */
+/* Tailwind 4 CSS-first: sin tailwind.config.js */
+
+/* Tipografia: Exo 2 (display/UI) + JetBrains Mono (codigo) */
+@import url('https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* Tailwind 4 — activacion CSS-first */
+@import "tailwindcss";
+
+/* ================================================================
+   Design Tokens iWana neXt — @theme Tailwind 4
+   NOTA ACCESIBILIDAD: --color-iwana-secondary (#A5C330) NO pasa
+   WCAG AA sobre blanco. Para texto usar --color-iwana-secondary-700
+   (#6A7A1C) con contraste 6.2:1.
+   ================================================================ */
+@theme {
+  /* Tipografia */
+  --font-sans: 'Exo 2', 'Inter', 'SF Pro Display', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Color primario — Azul Noche iWana */
+  --color-iwana-primary:     #17163A;
+  --color-iwana-primary-50:  #EEEEFA;
+  --color-iwana-primary-100: #D4D3F5;
+  --color-iwana-primary-200: #A9A7EA;
+  --color-iwana-primary-300: #7E7BDF;
+  --color-iwana-primary-400: #534FD4;
+  --color-iwana-primary-500: #2D2A9E;
+  --color-iwana-primary-600: #232180;
+  --color-iwana-primary-700: #1A1960;
+  --color-iwana-primary-800: #111040;
+  --color-iwana-primary-950: #0B0B1E;
+
+  /* Color secundario — Lima iWana */
+  /* SOLO decorativo — ver nota accesibilidad arriba */
+  --color-iwana-secondary:     #A5C330;
+  --color-iwana-secondary-50:  #F5FAE6;
+  --color-iwana-secondary-100: #EAF5CC;
+  --color-iwana-secondary-200: #D5EB99;
+  --color-iwana-secondary-300: #C0E166;
+  --color-iwana-secondary-400: #ABD733;
+  --color-iwana-secondary-500: #A5C330;
+  --color-iwana-secondary-600: #84A226;
+  /* Texto accesible sobre blanco — contraste 6.2:1 (WCAG AA) */
+  --color-iwana-secondary-700: #6A7A1C;
+
+  /* Colores semanticos */
+  --color-iwana-success: #22C55E;
+  --color-iwana-warning: #F59E0B;
+  --color-iwana-error:   #EF4444;
+  --color-iwana-info:    #3B82F6;
+
+  /* Radio de bordes */
+  --radius-sm:   0.375rem;
+  --radius-md:   0.5rem;
+  --radius-lg:   0.75rem;
+  --radius-xl:   1rem;
+  --radius-2xl:  1.5rem;
+  --radius-full: 9999px;
+}
+
+/* ================================================================
+   Estilos base
+   ================================================================ */
+body {
+  font-family: var(--font-sans);
+  color: var(--color-iwana-primary);
+  background-color: #FFFFFF;
+}
