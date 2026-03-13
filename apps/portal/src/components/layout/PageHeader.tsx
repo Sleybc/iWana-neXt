@@ -13,7 +13,7 @@ interface PageHeaderProps {
  */
 export function PageHeader({ title, subtitle, actions }: PageHeaderProps) {
   return (
-    <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-gray-200 dark:bg-gray-900 dark:border-gray-800">
+    <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-gray-200 dark:bg-dark-surface-2 dark:border-dark-border">
       <div>
         <h1 className="text-xl font-semibold text-iwana-primary dark:text-white">{title}</h1>
         {subtitle && <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">{subtitle}</p>}
