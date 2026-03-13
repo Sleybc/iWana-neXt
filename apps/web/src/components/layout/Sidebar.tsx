@@ -62,7 +62,7 @@ export const Sidebar = ({
       aria-label="Navegación principal"
       className={cn(
         // Base
-        'fixed left-0 top-0 z-[9999] flex h-screen flex-col overflow-y-hidden bg-iwana-primary dark:bg-dark-surface text-white duration-300 ease-linear',
+        'fixed left-0 top-0 z-[9999] flex h-screen flex-col overflow-y-hidden bg-iwana-primary dark:bg-dark-surface-2 text-white duration-300 ease-linear',
         // Desktop: estático, ancho variable según colapso
         'lg:static lg:translate-x-0',
         desktopCollapsed ? 'lg:w-[72px]' : 'lg:w-64',

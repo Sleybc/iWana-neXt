@@ -61,7 +61,7 @@ export const Sidebar = ({
       ref={sidebar}
       aria-label="Navegación principal"
       className={cn(
-        'fixed left-0 top-0 z-[9999] flex h-screen flex-col overflow-y-hidden bg-iwana-primary dark:bg-dark-surface text-white duration-300 ease-linear',
+        'fixed left-0 top-0 z-[9999] flex h-screen flex-col overflow-y-hidden bg-iwana-primary dark:bg-dark-surface-2 text-white duration-300 ease-linear',
         'lg:static lg:translate-x-0',
         desktopCollapsed ? 'lg:w-[72px]' : 'lg:w-64',
         mobileOpen ? 'translate-x-0 w-64' : '-translate-x-full w-64 lg:translate-x-0',
