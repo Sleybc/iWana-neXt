@@ -67,3 +67,22 @@ body {
   color: var(--color-iwana-primary);
   background-color: #FFFFFF;
 }
+
+/* ================================================================
+   Utilidades shell — necesarias para el layout del dashboard
+   ================================================================ */
+
+/* Ocultar scrollbar manteniendo funcionalidad */
+.no-scrollbar {
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ================================================================
+   Tailwind 4 — Variante dark mode por clase en <html>
+   Activa estilos oscuros cuando el elemento html tiene clase 'dark'
+   ================================================================ */
+@variant dark (&:where(.dark, .dark *));
+

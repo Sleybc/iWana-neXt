@@ -86,13 +86,13 @@ export function MfaVerifyForm() {
               backgroundColor: isUrgent ? '#EF4444' : secondsLeft <= 10 ? '#F59E0B' : '#A5C330',
             }}
             role="progressbar"
-            aria-valuenow={secondsLeft}
+            aria-valuenow={Number(secondsLeft)}
             aria-valuemin={0}
-            aria-valuemax={TOTP_INTERVAL}
+            aria-valuemax={Number(TOTP_INTERVAL)}
             aria-label="Tiempo restante del código"
           />
         </div>
-        <p className="text-xs text-center" style={{ color: isUrgent ? '#EF4444' : '#6B7280' }}>
+        <p className={`text-xs text-center ${isUrgent ? 'text-red-500' : 'text-gray-500'}`}>
           {isUrgent
             ? `⚠ El código expira en ${secondsLeft}s`
             : `El código expira en ${secondsLeft}s`}

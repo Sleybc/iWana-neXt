@@ -22,3 +22,6 @@ export * from './components/Input';
 export * from './components/Card';
 export * from './components/Badge';
 export * from './components/OtpInput';
+
+// Providers
+export * from './components/ThemeProvider';

@@ -10,43 +10,36 @@ export const metadata: Metadata = {
 
 /**
  * Página de login del portal administrativo.
- * Layout split-screen: panel de marca (izq, solo desktop) + formulario (der).
+ * Layout split-screen adaptado del prototipo de identidad visual.
  */
 export default function LoginPage() {
   return (
-    <main className="min-h-screen flex" aria-label="Página de inicio de sesión">
+    <main className="relative min-h-screen w-full flex flex-col lg:flex-row overflow-hidden group/login bg-[#181818]" aria-label="Página de inicio de sesión">
       <LoginBrandPanel />
 
       {/* Panel derecho — formulario */}
-      <div className="flex-1 flex items-center justify-center px-6 py-12 bg-white">
-        <div className="w-full max-w-sm">
-          {/* Badge de contexto */}
-          <div className="mb-8 flex flex-col items-center gap-3">
-            {/* Logo mobile */}
-            <div className="flex lg:hidden items-center gap-2 mb-2">
-              <div className="w-8 h-8 rounded-lg bg-[#17163A] flex items-center justify-center">
+      <div className="w-full lg:w-1/2 bg-[#181818] flex items-center justify-center p-6 lg:p-12 relative">
+        {/* Patrón de puntos */}
+        <div 
+          className="absolute inset-0 opacity-5" 
+          style={{ backgroundImage: 'radial-gradient(#A5C330 1px, transparent 1px)', backgroundSize: '32px 32px' }}
+        />
+
+        <div className="w-full max-w-[480px] bg-white rounded-2xl p-8 lg:p-12 shadow-2xl relative z-10">
+          <div className="mb-10">
+            {/* Title / welcome message */}
+            <div className="flex lg:hidden items-center gap-2 mb-6">
+              <div className="w-8 h-8 rounded-lg bg-[#A5C330] flex items-center justify-center">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M12 2L2 7l10 5 10-5-10-5z" fill="#A5C330" />
-                  <path
-                    d="M2 17l10 5 10-5"
-                    stroke="#A5C330"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" fill="#181818" />
+                  <path d="M2 17l10 5 10-5" stroke="#181818" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
-              <span className="font-bold text-[#17163A]">iWana neXt</span>
+              <span className="font-bold text-[#181818]">iWana neXt</span>
             </div>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#EEEEFA] px-3 py-1 text-xs font-medium text-[#17163A]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#A5C330]" aria-hidden="true" />
-              Administración de Plataforma
-            </span>
-          </div>
 
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-[#17163A]">Bienvenido de nuevo</h2>
-            <p className="mt-1 text-sm text-[#6B7280]">Ingresa tus credenciales para continuar</p>
+            <h2 className="text-3xl font-bold text-[#181818] mb-2">Bienvenido</h2>
+            <p className="text-slate-500 text-base">Ingresa tus credenciales para acceder al portal</p>
           </div>
 
           <LoginForm />

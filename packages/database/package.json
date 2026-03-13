@@ -8,15 +8,21 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "migration:run": "typeorm migration:run -d dist/data-source.js",
+    "migration:revert": "typeorm migration:revert -d dist/data-source.js",
+    "migration:show": "typeorm migration:show -d dist/data-source.js"
   },
   "dependencies": {
-    "typeorm": "0.3.28",
-    "reflect-metadata": "^0.2.0"
+    "pg": "^8.16.0",
+    "reflect-metadata": "^0.2.0",
+    "typeorm": "0.3.28"
   },
   "devDependencies": {
     "@iwana/config": "workspace:*",
     "@iwana/shared": "workspace:*",
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.11.0",
     "typescript": "^5.9.0"
   }
 }

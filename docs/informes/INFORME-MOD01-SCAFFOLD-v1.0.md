@@ -184,6 +184,61 @@ TypeScript strict en todos los workspaces — 0 errores ✓
 
 ---
 
+---
+
+## 8. Verificacion de ejecucion en runtime (2026-03-12 — sesion post-cierre)
+
+**Objetivo:** Confirmar que el proyecto arranca correctamente en modo desarrollo y todos los servicios operan de extremo a extremo.
+
+### 8.1 Problemas detectados y corregidos
+
+| ID | Componente | Problema | Correccion aplicada |
+|----|-----------|---------|-------------------|
+| FIX-01 | `nginx/nginx.dev.conf` | `host not found in upstream "api:3000"` — API corre en host, no en Docker | Cambiado a `server host.docker.internal:3000` |
+| FIX-02 | `apps/api/.env` | Archivo no existia — API no arrancaba por variables faltantes | Creado con todos los valores de dev (DB, Redis, JWT, MFA, CORS) |
+| FIX-03 | `apps/api/src/app.module.ts` | Schema Joi usaba `DATABASE_*` pero el codigo usa `DB_*` | Corregidas las claves: `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_PORT` |
+| FIX-04 | `apps/api/src/modules/auth/auth.module.ts` | JWT PEM keys como variable de entorno de una sola linea perdian los saltos de linea | Agregado `.replace(/\\n/g, '\n')` a `JWT_PRIVATE_KEY` y `JWT_PUBLIC_KEY` |
+| FIX-05 | `apps/api/src/app.module.ts` | TypeORM `useFactory: () => ({...dataSourceOptions})` leia `process.env` en tiempo de importacion (antes de que ConfigModule cargara `.env`) — contrasena vacia | Reemplazado con `useFactory: (config: ConfigService): TypeOrmModuleOptions => ({...})` con valores de ConfigService |
+| FIX-06 | 5 entidades en `@iwana/db` | `DataTypeNotSupportedError: Data type "Object"` — columnas `string \| null` sin `type` explicito; `reflect-metadata` reporta `Object` en TypeScript union types | Agregado `type: 'varchar'` (12 columnas) y `type: 'uuid'` (2 columnas) en los decoradores `@Column` de los 5 archivos de entidades |
+| FIX-07 | `apps/api/src/app.module.ts` | Warnings `Unsupported route path` en NestJS 11 — `path-to-regexp` ya no acepta `(.*)` ni `*` sin nombre | Cambiado a `tenants/*path` y `{ path: '*path', method: RequestMethod.ALL }` |
+| FIX-08 | `.env` raiz y `.env.example` | Faltaba el archivo requerido por `docker-compose.yml` para produccion; la plantilla ademas apuntaba a `.env.local`, lo que mezclaba flujo de desarrollo con despliegue | Creado `.env` raiz con placeholders seguros y corregida `.env.example` para distinguir raiz/produccion de `apps/api/.env` |
+| FIX-09 | `apps/api/.env` y `docker-compose.dev.yml` | Desarrollo local quedaba desalineado respecto a la nueva configuracion objetivo `dbiw` / `Iwana102+` | Actualizados API dev, PostgreSQL dev y pgBouncer dev para usar la misma base y credenciales; requiere recrear el volumen local si ya existia con el esquema anterior |
+| FIX-10 | `apps/api/src/modules/auth/strategies/jwt.strategy.ts` | La verificacion RS256 fallaba con PEM cargado desde variable de entorno porque `JWT_PUBLIC_KEY` no normalizaba `\\n` | Agregado `.replace(/\\n/g, '\n')` en `secretOrKey` para que los Bearer tokens validos sean aceptados |
+| FIX-11 | `apps/worker/src/processors/tenant-provisioning.processor.ts` | El worker resolvia `tenant_template.sql` hacia `apps/packages/...` y el provisioning fallaba con `ENOENT` | Corregida la ruta relativa a `../../../../packages/database/src/templates/tenant_template.sql`; provisioning validado con tenant `demoisp2` en estado `ACTIVE` |
+| FIX-12 | `apps/api/src/modules/auth/*` | No existia un flujo formal de login de plataforma ni bootstrap del primer SYSTEM_ADMIN, lo que obligaba a firmar tokens manualmente para operar `/tenants` | Agregado `POST /api/v1/auth/platform/login` y bootstrap opcional del superusuario de plataforma desde variables locales de entorno |
+
+### 8.2 Migraciones ejecutadas
+
+- Migracion `CreatePublicSchema1741766400000` ejecutada exitosamente.
+- Tablas creadas en `public`: `typeorm_migrations`, `tenants`, `platform_users`, `platform_audit_logs`.
+- Tablas tenant-scoped (`users`, `audit_logs`, `refresh_tokens`) se crean dinamicamente en el schema del tenant durante el provisioning.
+
+### 8.3 Evidencia de verificacion final
+
+```
+# Docker — todos los servicios operativos
+NAME                  STATUS
+iwana_adminer_dev     Up
+iwana_minio_dev       Up (healthy)
+iwana_nginx_dev       Up
+iwana_pgbouncer_dev   Up
+iwana_postgres_dev    Up (healthy)
+iwana_redis_dev       Up (healthy)
+
+# Tests
+Tests: 121 passed, 121 total — 10 suites
+Time: ~16s
+
+# API
+GET http://localhost:3000/api/v1/docs → 200 OK (Swagger UI)
+Nest application successfully started — sin errores ni warnings de tipo
+
+# Typecheck
+pnpm --filter @iwana/api exec tsc --noEmit → 0 errors
+```
+
+---
+
 ## Notas adicionales
 
 ### Desviaciones respecto al plan original

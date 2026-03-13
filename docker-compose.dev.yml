@@ -11,14 +11,14 @@ services:
     container_name: iwana_postgres_dev
     environment:
       POSTGRES_USER: iwana
-      POSTGRES_PASSWORD: changeme
-      POSTGRES_DB: iwana_next
+      POSTGRES_PASSWORD: Iwana102+
+      POSTGRES_DB: dbiw
     ports:
       - '5432:5432'
     volumes:
       - iwana_postgres_data_dev:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U iwana -d iwana_next']
+      test: ['CMD-SHELL', 'pg_isready -U iwana -d dbiw']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -52,10 +52,10 @@ services:
     container_name: iwana_pgbouncer_dev
     environment:
       DB_USER: iwana
-      DB_PASSWORD: changeme
+      DB_PASSWORD: Iwana102+
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_NAME: iwana_next
+      DB_NAME: dbiw
       LISTEN_PORT: 6432
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 200

@@ -27,8 +27,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, body.code ?? 'UNKNOWN', body.message ?? 'Error del servidor');
+    const body = (await res.json().catch(() => ({}))) as Record<string, string>;
+    throw new ApiError(res.status, body['code'] ?? 'UNKNOWN', body['message'] ?? 'Error del servidor');
   }
 
   return res.json() as Promise<T>;

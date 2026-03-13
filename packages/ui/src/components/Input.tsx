@@ -11,7 +11,7 @@ import { cn } from '../lib/utils';
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   helperText?: string;
-  error?: string;
+  error?: string | undefined;
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
@@ -45,7 +45,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
               isPassword && 'pr-10',
               className,
             )}
-            aria-invalid={!!error}
+            aria-invalid={error ? 'true' : 'false'}
             aria-describedby={
               error ? `${inputId}-error` : helperText ? `${inputId}-helper` : undefined
             }

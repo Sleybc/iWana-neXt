@@ -184,7 +184,7 @@
 ## 8. Criterio de Stop/Go
 
 - **Detenerse inmediatamente si:** Docker Desktop no está disponible o no funciona en la máquina de desarrollo.
-- **Documentar causa en:** `docs/quality/DECISION-BLOQUEO-SCAFFOLD.md` (usar template de bloqueo técnico).
+- **Documentar causa en:** `docs/quality/TEMPLATE-DECISION-BLOQUEO-TECNICO.md` (usar template de bloqueo técnico).
 - **Escalar a:** CTO.
 - **Recomendación:** No continuar con Sprint 1 hasta resolver el bloqueo. La infraestructura Docker es prerequisito bloqueante para el Sprint 1 (no se puede correr PostgreSQL ni Redis sin contenedores o equivalente local).
 

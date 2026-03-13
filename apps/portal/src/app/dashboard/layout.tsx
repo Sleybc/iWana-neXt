@@ -1,50 +1,58 @@
 // apps/portal/src/app/dashboard/layout.tsx
-import type { ReactNode } from 'react';
+'use client';
+import { useState, type ReactNode } from 'react';
+import { Sidebar } from '@/components/layout/Sidebar';
+import { TopHeader } from '@/components/layout/TopHeader';
 
-export default function PortalLayout({ children }: { children: ReactNode }) {
+/**
+ * Layout Base del Portal Suscriptor.
+ *
+ * Estado de sidebar separado segun HLD-TRANSVERSAL-ADOPCION-TAILADMIN:
+ * - sidebarDesktopCollapsed: colapso del sidebar en desktop (persiste en localStorage via Sidebar)
+ * - sidebarMobileOpen: drawer overlay en mobile (transitorio, no persiste)
+ */
+export default function PortalDashboardLayout({ children }: { children: ReactNode }) {
+  // Estado desktop: el sidebar arranca expandido
+  const [sidebarDesktopCollapsed, setSidebarDesktopCollapsed] = useState(false);
+  // Estado mobile: el drawer arranca cerrado
+  const [sidebarMobileOpen, setSidebarMobileOpen] = useState(false);
+
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
-      <aside
-        className="hidden lg:flex w-[240px] flex-col flex-shrink-0 h-screen sticky top-0"
-        style={{ backgroundColor: '#17163A' }}
-      >
+    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-gray-950">
+      {/* OVERLAY para mobile — cierra el drawer al hacer click externo */}
+      {sidebarMobileOpen && (
         <div
-          className="flex items-center gap-3 px-5 py-4 border-b"
-          style={{ borderColor: 'rgba(255,255,255,0.08)' }}
-        >
-          <div
-            className="w-7 h-7 rounded-lg flex items-center justify-center"
-            style={{ background: 'rgba(165,195,48,0.2)' }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M12 2L2 7l10 5 10-5-10-5z" fill="#A5C330" />
-            </svg>
+          className="fixed inset-0 z-[9998] bg-black/50 lg:hidden"
+          onClick={() => setSidebarMobileOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* COMPONENTE SIDEBAR */}
+      <Sidebar
+        desktopCollapsed={sidebarDesktopCollapsed}
+        setDesktopCollapsed={setSidebarDesktopCollapsed}
+        mobileOpen={sidebarMobileOpen}
+        setMobileOpen={setSidebarMobileOpen}
+      />
+
+      {/* ÁREA DE CONTENIDO PRINCIPAL */}
+      <div className="relative flex flex-1 flex-col overflow-y-auto overflow-x-hidden">
+        {/* HEADER */}
+        <TopHeader
+          desktopCollapsed={sidebarDesktopCollapsed}
+          setDesktopCollapsed={setSidebarDesktopCollapsed}
+          mobileOpen={sidebarMobileOpen}
+          setMobileOpen={setSidebarMobileOpen}
+        />
+
+        {/* CONTENIDO DE LA PÁGINA */}
+        <main>
+          <div className="mx-auto max-w-screen-2xl p-4 md:p-6 2xl:p-10">
+            {children}
           </div>
-          <span className="text-white font-bold text-sm">iWana neXt</span>
-        </div>
-        <nav className="flex-1 px-3 py-4">
-          <ul className="space-y-1">
-            {[
-              { href: '/dashboard', label: 'Inicio' },
-              { href: '/services', label: 'Servicios' },
-              { href: '/billing', label: 'Facturación' },
-              { href: '/support', label: 'Soporte' },
-              { href: '/profile', label: 'Mi perfil' },
-            ].map((item) => (
-              <li key={item.href}>
-                <a
-                  href={item.href}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors"
-                  style={{ color: 'rgba(255,255,255,0.7)' }}
-                >
-                  {item.label}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      </aside>
-      <div className="flex-1 flex flex-col overflow-auto">{children}</div>
+        </main>
+      </div>
     </div>
   );
 }

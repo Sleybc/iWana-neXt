@@ -1,22 +1,169 @@
-import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
+import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
+import * as Joi from 'joi';
+import { dataSourceOptions } from '@iwana/db';
+import { AuthModule } from './modules/auth/auth.module';
+import { UsersModule } from './modules/users/users.module';
+import { AuditInterceptor } from './modules/audit/audit.interceptor';
+import { AuditModule } from './modules/audit/audit.module';
+import { RedisModule } from './modules/redis/redis.module';
+import { TenantModule } from './modules/tenant/tenant.module';
+import { TenantMiddleware } from './modules/tenant/tenant.middleware';
 
 /**
- * Modulo raiz de la aplicacion iWana neXt API.
+ * Modulo raiz de la aplicacion iWana neXt API — Sprint 1 Semana 2.
  *
- * Sprint 0 — Scaffold vacio.
- * Los modulos de negocio se integran en Sprint 1:
- * - AuthModule (JWT RS256, MFA TOTP)
- * - TenantModule (multi-tenant lifecycle)
- * - AuditModule (audit trail inmutable)
- * - UsersModule (gestion de usuarios)
+ * Configuracion completada en Sprint 1:
+ * - ConfigModule: variables de entorno con validacion
+ * - TypeOrmModule: DataSource multi-tenant (schema publico por defecto)
+ * - RedisModule: cliente ioredis para JTI blacklist y cache de tenant
+ * - BullMQModule: configuracion global de BullMQ con Redis
+ * - TenantModule: CRUD de tenants + middleware de resolucion de contexto
+ * - AuthModule: JWT RS256, MFA TOTP, refresh token rotation, guards RBAC/ABAC
+ * - AuditModule: interceptor global CUD + AuditService para eventos de dominio
+ *
+ * Completado en Sprint 1 (continuacion):
+ * - UsersModule: CRUD de usuarios por tenant, RBAC, idempotencia, audit trail
+ *
+ * Pendiente (Sprint 2+):
+ * - ValidationPipe global configurado en main.ts
  *
  * Referencias:
  * - HLD-MOD01-ARQUITECTURA-v1.0 Seccion 2 (NestJS Modulith)
  * - ADR-019 (NestJS Modulith pattern)
  */
 @Module({
-  imports: [],
+  imports: [
+    // Variables de entorno disponibles globalmente con validacion fail-fast en produccion
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: process.env['NODE_ENV'] === 'test' ? '.env.test' : '.env',
+      // Validacion Joi omitida en modo test para no requerir todas las vars en CI
+      ...(process.env['NODE_ENV'] !== 'test' && {
+        validationSchema: Joi.object({
+          NODE_ENV: Joi.string()
+            .valid('development', 'staging', 'production')
+            .default('development'),
+          PORT: Joi.number().default(3000),
+          // Base de datos (variables usadas por @iwana/db dataSourceOptions)
+          DB_HOST: Joi.string().default('localhost'),
+          DB_PORT: Joi.number().default(5432),
+          DB_NAME: Joi.string().required(),
+          DB_USER: Joi.string().required(),
+          DB_PASSWORD: Joi.string().allow('').required(),
+          // Redis
+          REDIS_HOST: Joi.string().default('localhost'),
+          REDIS_PORT: Joi.number().default(6379),
+          REDIS_PASSWORD: Joi.string().allow('').optional(),
+          REDIS_DB: Joi.number().default(0),
+          // Claves JWT RS256 (contenido PEM; usar \\n para saltos en .env)
+          JWT_PRIVATE_KEY: Joi.string().required(),
+          JWT_PUBLIC_KEY: Joi.string().required(),
+          // Clave AES-256-GCM: 64 caracteres hexadecimales (256 bits)
+          MFA_ENCRYPTION_KEY: Joi.string().length(64).required(),
+          // CORS: URI del frontend; en dev admite localhost
+          CORS_ORIGIN: Joi.string().default('http://localhost:3001,http://localhost:3002'),
+          APP_NAME: Joi.string().default('iWana neXt'),
+        }),
+        validationOptions: { abortEarly: false },
+      }),
+    }),
+
+    // TypeORM con DataSource multi-tenant — sin synchronize, solo migraciones
+    // El dataSourceOptions de @iwana/db lee process.env en tiempo de import (antes
+    // que ConfigModule cargue el .env). Por eso se construye el objeto explicitamente
+    // usando ConfigService, que ya tiene los valores del .env cargados.
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService): TypeOrmModuleOptions => ({
+        type: 'postgres',
+        host: config.get<string>('DB_HOST', 'localhost'),
+        port: config.get<number>('DB_PORT', 5432),
+        username: config.get<string>('DB_USER', 'iwana'),
+        password: config.get<string>('DB_PASSWORD', ''),
+        database: config.get<string>('DB_NAME', 'iwana_next'),
+        entities: dataSourceOptions.entities ?? [],
+        migrations: dataSourceOptions.migrations ?? [],
+        migrationsTableName: dataSourceOptions.migrationsTableName ?? 'typeorm_migrations',
+        migrationsRun: false,
+        synchronize: false,
+        ssl: false,
+        logging:
+          config.get<string>('NODE_ENV') !== 'production' ? ['error', 'migration'] : ['error'],
+        extra: dataSourceOptions.extra,
+        // autoLoadEntities permite que TypeOrmModule.forFeature() registre entidades
+        autoLoadEntities: true,
+      }),
+    }),
+
+    // Redis global (JTI blacklist, cache de tenant, MFA pending secrets)
+    RedisModule,
+
+    // Rate limiting: global 100 req/min, endpoints de auth con limite mas bajo
+    ThrottlerModule.forRoot([
+      {
+        name: 'global',
+        ttl: 60000, // 1 minuto en ms
+        limit: 100,
+      },
+    ]),
+
+    // BullMQ global configurado con Redis
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        connection: {
+          host: config.get<string>('REDIS_HOST', 'localhost'),
+          port: config.get<number>('REDIS_PORT', 6379),
+          password: config.get<string>('REDIS_PASSWORD') || undefined,
+          db: config.get<number>('REDIS_DB', 0),
+        },
+      }),
+    }),
+
+    // Modulo de auditoria: audit trail append-only + interceptor global CUD
+    AuditModule,
+
+    // Modulo de tenants: CRUD + provisioning BullMQ
+    TenantModule,
+
+    // Modulo de autenticacion: JWT RS256 + MFA TOTP + guards
+    AuthModule,
+
+    // Modulo de usuarios: CRUD de usuarios por tenant con RBAC y audit trail
+    UsersModule,
+  ],
   controllers: [],
-  providers: [],
+  providers: [
+    // AuditInterceptor registrado globalmente: intercepta todas las operaciones CUD
+    // que tengan TenantContext activo (rutas de plataforma se omiten automaticamente)
+    { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
+  ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  /**
+   * Aplica TenantMiddleware a las rutas que requieren contexto de tenant.
+   *
+   * EXCLUYE:
+   * - /tenants/** (administracion de plataforma — schema publico)
+   *
+   * Auth y futuros modulos tenant-scoped SI pasan por este middleware:
+   * - rutas protegidas: el tenant se resuelve desde claims verificados del JWT
+   * - rutas publicas de auth: fallback transitorio a X-Tenant-Slug
+   */
+  configure(consumer: MiddlewareConsumer): void {
+    consumer
+      .apply(TenantMiddleware)
+      .exclude(
+        { path: 'tenants', method: RequestMethod.ALL },
+        { path: 'tenants/*path', method: RequestMethod.ALL },
+      )
+      .forRoutes({ path: '*path', method: RequestMethod.ALL });
+  }
+}

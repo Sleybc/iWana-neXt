@@ -144,7 +144,7 @@
 | D4  | pgBouncer configuración para multi-schema (pool por tenant, max_client_conn, pool_size)                      | ADR-002       | Sin errores de pool exhaustion en 50 requests concurrentes     |
 | D5  | Verificar queries de audit log con `EXPLAIN ANALYZE` — índices usados correctamente                          | RF-AUD-05     | Query de 10k registros con filtro tenantId+fechas < 300ms      |
 | D6  | Script `migrate-tenant.ts`: aplica migrations pendientes a un schema de tenant específico                    | ADR-017       | Funcional para cuando hay cambios de schema en módulos futuros |
-| D7  | Documentar queries más costosas en `docs/database/query-analysis-mod01.md`                                   | DoD docs      | Documento con EXPLAIN ANALYZE de las 5 queries principales     |
+| D7  | Documentar queries más costosas en `docs/database/` con nombre normalizado del módulo                        | DoD docs      | Documento con EXPLAIN ANALYZE de las 5 queries principales     |
 
 ---
 
@@ -163,7 +163,7 @@
 | Q9  | Test de logs: grep en logs de test → ningún campo sensible en texto plano                                           | CA-M01-062       | Script automatizable                             |
 | Q10 | E2E (Playwright): flujo completo de primer login ADMIN (email → password temporal → cambio → MFA setup → dashboard) | PRD §3.2 UC-02   | E2E pasa en headless mode                        |
 | Q11 | Reporte de cobertura final con screenshot del Jest coverage report                                                  | DoD calidad      | Coverage ≥ 85% documentado                       |
-| Q12 | OWASP ASVS L2 checklist completado y firmado                                                                        | DoD seguridad    | Checklist en `docs/security/owasp-asvs-mod01.md` |
+| Q12 | OWASP ASVS L2 checklist completado y firmado                                                                        | DoD seguridad    | Checklist en `docs/security/` con nombre normalizado del módulo |
 
 ---
 

@@ -2,9 +2,9 @@
 
 # INFORME-SISTEMA-NORMALIZACION-DOCUMENTAL-v1.0.md
 
-**Version:** 1.1
+**Version:** 1.3
 **Fecha:** 2026-03-08
-**Fecha de última actualización:** 2026-03-08
+**Fecha de última actualización:** 2026-03-12
 **Plantilla base:** docs/informes/TEMPLATE-INFORME-FASE-v1.0.md
 **Convención documental:** {TIPO}-{MODULO}-{FASE}-v{VERSION}.md
 **Política de ejecución:** ADR-022
@@ -137,6 +137,58 @@
 **Incidente de fix durante corrección:** Al reemplazar el contenido de Task 6 en el plan, el bloque anterior (Tailwind 3) quedó duplicado por colisión de coincidencia de texto. Se identificó el rango exacto de líneas duplicadas (845-1062) mediante `grep -n` y se eliminó con script Node.js (`node -e "const lines=..."`). Python no disponible en el entorno Windows.
 
 **Responsable de la corrección:** AI-EM-ARCH, por instrucción directa del CTO.
+
+---
+
+### Corrección 2 — Depuración de duplicados y referencias rotas (2026-03-12)
+
+**Motivo:** Durante la revisión integral de `docs/` se detectaron dos duplicados exactos en `docs/sprints/` y varias referencias hacia documentos no materializados o nombres legacy ya eliminados. La corrección buscó dejar una sola fuente canónica por plan y eliminar referencias rotas dentro del árbol documental.
+
+**Artefactos corregidos:**
+
+| Artefacto | Cambios realizados |
+| --- | --- |
+| `PLAN-ARRANQUE-iWana-neXt.md` | Eliminado por duplicidad exacta con el plan canónico de arranque del sistema. |
+| `PLAN-SPRINT-01.md` | Eliminado por duplicidad exacta con el plan canónico de Sprint 1 de MOD01. |
+| `docs/prompts/PROMPT-MOD01-SCAFFOLD-v1.0.md` | Referencia de stop/go corregida para usar `docs/quality/TEMPLATE-DECISION-BLOQUEO-TECNICO.md`. |
+| `docs/security/README.md` | Se eliminó referencia a un informe QA inexistente y se dejó el artefacto OWASP como pendiente de materialización en `docs/security/`. |
+| `docs/sprints/PLAN-MOD01-SPRINT-01-v1.0.md` | Se reemplazaron rutas a documentos aún no creados por destinos de carpeta con convención normalizada. |
+| `docs/plans/2026-03-08-hld-prompt-informes-implementation.md` | Se actualizaron referencias rotas a templates legacy eliminados y al template vigente de bloqueo técnico. |
+
+**Resultado observado:**
+
+- `docs/sprints/` queda con una sola fuente vigente para arranque del sistema y una sola fuente vigente para Sprint 1 de MOD01.
+- Las referencias documentales activas dentro de `docs/` ya no apuntan a los dos duplicados eliminados.
+- Las rutas rotas detectadas en `prompts/`, `security/` y `sprints/` quedaron corregidas sin abrir placeholders vacíos.
+
+**Hallazgos abiertos tras la depuración:**
+
+- Sigue faltando materializar el prompt de ejecución de Sprint 1 de MOD01 en `docs/prompts/`, pero ya no existe una referencia rota activa porque ese artefacto aún no es citado por otros documentos.
+- Siguen pendientes los artefactos operativos futuros de Sprint 1 en `docs/database/` y `docs/security/`; el plan ya no los referencia con una ruta inexistente específica sino con destino normalizado por carpeta.
+
+---
+
+### Corrección 3 — Materialización del prompt de Sprint 1 y handoff inicial (2026-03-12)
+
+**Motivo:** Tras la depuración documental, seguía faltando el artefacto mínimo de ejecución requerido por ADR-022 para iniciar formalmente Sprint 1 de MOD01. Se materializó el prompt canónico de la fase y se acotó el primer corte técnico a `DB + Tenant base` para evitar mezclar Auth, Audit y frontend productivo antes de cerrar la fundación multi-tenant.
+
+**Artefactos creados o actualizados:**
+
+| Artefacto | Cambios realizados |
+| --- | --- |
+| `docs/prompts/PROMPT-MOD01-SPRINT-01-v1.0.md` | Creado desde la plantilla oficial. Define alcance, restricciones, riesgos obligatorios, criterios de aceptación y handoff técnico inicial para el corte `DB + Tenant base`. |
+| `docs/informes/INFORME-SISTEMA-NORMALIZACION-DOCUMENTAL-v1.0.md` | Actualizado como documento vivo para dejar trazabilidad de la materialización del prompt faltante. |
+
+**Resultado observado:**
+
+- `docs/prompts/` ya contiene el artefacto faltante de ejecución para Sprint 1 de MOD01.
+- El arranque formal del módulo queda alineado con ADR-022: HLD aprobado, sprint plan vigente, prompt de ejecución materializado y alcance acotado al primer corte técnico real.
+- El handoff inicial queda consolidado dentro del mismo prompt, evitando abrir un documento paralelo innecesario.
+
+**Hallazgos abiertos tras esta corrección:**
+
+- Sigue pendiente materializar `docs/informes/INFORME-MOD01-SPRINT-01-v1.0.md` cuando inicie la ejecución real.
+- El siguiente paso operativo ya no es documental sino técnico: entities, migración pública, template tenant, DataSource, `TenantMiddleware` y `TenantModule`.
 
 ---
 

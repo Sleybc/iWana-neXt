@@ -498,7 +498,7 @@ Dia 3: Seguridad y CI
 **Seccion 8 — Criterio de stop/go:**
 
 - Detenerse si: Docker Desktop no disponible en maquina de desarrollo
-- Documentar causa en: docs/quality/DECISION-BLOQUEO-SCAFFOLD.md
+- Documentar causa en: docs/quality/TEMPLATE-DECISION-BLOQUEO-TECNICO.md
 - Escalar a: CTO
 - Recomendacion: No continuar con Sprint 1 hasta resolver
 
@@ -512,16 +512,16 @@ Dia 3: Seguridad y CI
 
 ---
 
-## Task 3: Renombrar TEMPLATE-INFORME-FASE-MODULO.md
+## Task 3: Normalizar template de informe de fase
 
 **Files:**
 
-- Delete: `docs/informes/TEMPLATE-INFORME-FASE-MODULO.md`
+- Legacy eliminado durante la normalizacion: template de fase anterior
 - Create: `docs/informes/TEMPLATE-INFORME-FASE-v1.0.md`
 
 **Step 1: Crear el archivo con nombre nuevo**
 
-Mismo contenido que TEMPLATE-INFORME-FASE-MODULO.md pero con header actualizado:
+Mismo contenido que el template legacy de fase pero con header actualizado:
 
 ```markdown
 # TEMPLATE — Informe de Fase de Modulo
@@ -543,20 +543,20 @@ El resto del contenido se mantiene identico al template actual (secciones 1-7).
 
 **Step 2: Eliminar el archivo antiguo**
 
-Eliminar `docs/informes/TEMPLATE-INFORME-FASE-MODULO.md`
+Eliminar el archivo legacy de template de fase
 
 ---
 
-## Task 4: Renombrar TEMPLATE-INFORME-CIERRE-MODULO.md
+## Task 4: Normalizar template de informe de cierre
 
 **Files:**
 
-- Delete: `docs/informes/TEMPLATE-INFORME-CIERRE-MODULO.md`
+- Legacy eliminado durante la normalizacion: template de cierre anterior
 - Create: `docs/informes/TEMPLATE-INFORME-CIERRE-v1.0.md`
 
 **Step 1: Crear el archivo con nombre nuevo**
 
-Mismo contenido que TEMPLATE-INFORME-CIERRE-MODULO.md pero con header actualizado:
+Mismo contenido que el template legacy de cierre pero con header actualizado:
 
 ```markdown
 # TEMPLATE — Informe de Cierre de Modulo
@@ -578,7 +578,7 @@ El resto del contenido se mantiene identico al template actual (secciones 1-6).
 
 **Step 2: Eliminar el archivo antiguo**
 
-Eliminar `docs/informes/TEMPLATE-INFORME-CIERRE-MODULO.md`
+Eliminar el archivo legacy de template de cierre
 
 ---
 

@@ -8,4 +8,4 @@ Carpeta destinada a documentos de seguridad del proyecto iWana neXt:
 - Política de rotación de secretos y claves JWT
 - Procedimientos de respuesta a incidentes
 
-> **Sprint actual:** La evaluación OWASP del Módulo 01 está en el informe de QA: `docs/informes/INFORME_SPRINT01_QA_TESTING.md`.
+> **MOD01 — Sprint 1 cerrado:** Evaluación OWASP ASVS L2 completada en [`OWASP-ASVS-MOD01-v1.0.md`](./OWASP-ASVS-MOD01-v1.0.md). 44 controles evaluados, 0 hallazgos críticos, módulo apto para producción. Ver también [ADR-016](../adrs/ADR-016-Cierre-MOD01-Produccion.md) para cierre formal.
