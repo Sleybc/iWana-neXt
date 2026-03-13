@@ -57,6 +57,21 @@
   --radius-xl:   1rem;
   --radius-2xl:  1.5rem;
   --radius-full: 9999px;
+
+  /* ================================================================
+     Tokens dark mode — Superficie iWana neXt
+     Escala neutra desde #181818 (base) hasta #333333 (hover).
+     NORMA: En dark mode usar SIEMPRE estos tokens.
+     PROHIBIDO usar dark:bg-gray-{700,800,900,950} en codigo nuevo.
+     Ver: docs/adrs/ADR-026 y AGENTS.md reglas de diseno.
+     ================================================================ */
+  --color-dark-surface:   #181818;   /* fondo base: layout, page wrapper */
+  --color-dark-surface-2: #222222;   /* elevacion 1: cards, panels, topheader */
+  --color-dark-surface-3: #2A2A2A;   /* elevacion 2: inputs, botones, dropdowns */
+  --color-dark-surface-4: #333333;   /* elevacion 3: hover states, avatar */
+
+  --color-dark-border:    #2E2E2E;   /* border principal (reemplaza gray-800) */
+  --color-dark-border-2:  #383838;   /* border secundario (reemplaza gray-700) */
 }
 
 /* ================================================================

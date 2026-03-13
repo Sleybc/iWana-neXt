@@ -18,7 +18,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [sidebarMobileOpen, setSidebarMobileOpen] = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-gray-950">
+    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-dark-surface">
       {/* OVERLAY para mobile — cierra el drawer al hacer click externo */}
       {sidebarMobileOpen && (
         <div
@@ -48,9 +48,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
         {/* CONTENIDO DE LA PÁGINA */}
         <main>
-          <div className="mx-auto max-w-screen-2xl p-4 md:p-6 2xl:p-10">
-            {children}
-          </div>
+          <div className="mx-auto max-w-screen-2xl p-4 md:p-6 2xl:p-10">{children}</div>
         </main>
       </div>
     </div>

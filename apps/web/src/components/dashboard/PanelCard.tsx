@@ -37,7 +37,7 @@ export function PanelCard({
   return (
     <div
       className={cn(
-        'rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900',
+        'rounded-2xl border border-gray-200 bg-white p-5 dark:border-dark-border dark:bg-dark-surface-2',
         className,
       )}
     >
@@ -48,9 +48,9 @@ export function PanelCard({
       <div className="mt-4">
         {/* Encabezados de columna opcionales */}
         {columnHeaders && (
-          <div className="flex items-center justify-between border-b border-gray-100 pb-3 dark:border-gray-800">
-            <span className="text-xs text-gray-400 dark:text-gray-500">{columnHeaders.label}</span>
-            <span className="text-right text-xs text-gray-400 dark:text-gray-500">
+          <div className="flex items-center justify-between border-b border-gray-100 pb-3 dark:border-dark-border">
+            <span className="text-xs text-gray-600 dark:text-gray-400">{columnHeaders.label}</span>
+            <span className="text-right text-xs text-gray-600 dark:text-gray-400">
               {columnHeaders.value}
             </span>
           </div>
@@ -60,7 +60,7 @@ export function PanelCard({
         {rows.map((row, idx) => (
           <div
             key={idx}
-            className="flex items-center justify-between border-b border-gray-100 py-3 last:border-0 dark:border-gray-800"
+            className="flex items-center justify-between border-b border-gray-100 py-3 last:border-0 dark:border-dark-border"
           >
             <span className="text-sm text-gray-600 dark:text-gray-400">{row.label}</span>
             <span
@@ -81,7 +81,7 @@ export function PanelCard({
           {footerHref ? (
             <a
               href={footerHref}
-              className="flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/5"
+              className="flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-white/5"
             >
               {footerLabel}
             </a>
@@ -89,7 +89,7 @@ export function PanelCard({
             <button
               type="button"
               onClick={onFooterClick}
-              className="w-full flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/5"
+              className="w-full flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-white/5"
             >
               {footerLabel}
             </button>

@@ -34,7 +34,7 @@ const statusStyles: Record<StatusLevel, { dot: string; text: string; bg: string 
   unknown: {
     dot: 'bg-gray-400',
     text: 'text-gray-600 dark:text-gray-400',
-    bg: 'bg-gray-50 dark:bg-gray-800',
+    bg: 'bg-gray-50 dark:bg-dark-surface-3',
   },
 };
 
@@ -53,7 +53,7 @@ export function SystemStatusPanel({ indicators, className }: SystemStatusPanelPr
   return (
     <div
       className={cn(
-        'rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900',
+        'rounded-2xl border border-gray-200 bg-white p-5 dark:border-dark-border dark:bg-dark-surface-2',
         className,
       )}
     >
@@ -80,7 +80,7 @@ export function SystemStatusPanel({ indicators, className }: SystemStatusPanelPr
                 {ind.label}
               </p>
               {ind.detail && (
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 truncate">
                   {ind.detail}
                 </p>
               )}

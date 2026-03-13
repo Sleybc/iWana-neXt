@@ -1,6 +1,6 @@
 // apps/web/src/components/dashboard/TenantsTable.tsx
 'use client';
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Badge, Button } from '@iwana/ui';
 import { Card, CardHeader, CardTitle, CardContent } from '@iwana/ui';
 import { Search, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
@@ -17,6 +17,14 @@ interface Tenant {
   createdAt: string;
 }
 
+interface TenantsTableProps {
+  tenants: Tenant[];
+  isLoading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
+  searchQuery?: string;
+}
+
 const statusConfig: Record<
   TenantStatus,
   { label: string; variant: 'success' | 'warning' | 'error' | 'neutral' }
@@ -29,38 +37,6 @@ const statusConfig: Record<
 };
 
 const ALL_STATUSES = 'TODAS' as const;
-
-const mockTenants: Tenant[] = [
-  {
-    id: '1',
-    name: 'Primera Empresa ISP',
-    slug: 'primeraempresa',
-    status: 'ACTIVE',
-    createdAt: '2026-03-10',
-  },
-  {
-    id: '2',
-    name: 'Demo ISP',
-    slug: 'demoisp',
-    status: 'PROVISIONING_FAILED',
-    createdAt: '2026-03-11',
-  },
-  {
-    id: '3',
-    name: 'Redes del Sur',
-    slug: 'redesdelsur',
-    status: 'PROVISIONING',
-    createdAt: '2026-03-12',
-  },
-  {
-    id: '4',
-    name: 'Fibernet Colombia',
-    slug: 'fibernetcol',
-    status: 'ACTIVE',
-    createdAt: '2026-03-09',
-  },
-  { id: '5', name: 'CiberNet', slug: 'cibernet', status: 'SUSPENDED', createdAt: '2026-03-08' },
-];
 
 /** Icono de ordenamiento para cabecera de columna. */
 function SortIcon({
@@ -90,15 +66,24 @@ function SortIcon({
 /**
  * Tabla de tenants para el dashboard administrativo.
  * Soporta búsqueda por nombre/slug, filtro por estado y ordenamiento por columna.
- * Sprint 2+: reemplazar mockTenants con datos reales del API.
  */
-export function TenantsTable() {
+export function TenantsTable({
+  tenants,
+  isLoading = false,
+  error = null,
+  onRetry,
+  searchQuery = '',
+}: TenantsTableProps) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<TenantStatus | typeof ALL_STATUSES>(
     ALL_STATUSES,
   );
   const [sortField, setSortField] = useState<SortField>('createdAt');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+
+  useEffect(() => {
+    setSearch(searchQuery);
+  }, [searchQuery]);
 
   /** Alterna ordenamiento: si es el mismo campo, invierte dirección. Si es distinto, inicia asc. */
   const handleSort = (field: SortField) => {
@@ -112,7 +97,7 @@ export function TenantsTable() {
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return mockTenants
+    return tenants
       .filter((t) => {
         const matchSearch = t.name.toLowerCase().includes(q) || t.slug.toLowerCase().includes(q);
         const matchStatus = statusFilter === ALL_STATUSES || t.status === statusFilter;
@@ -125,7 +110,7 @@ export function TenantsTable() {
         else cmp = a.createdAt.localeCompare(b.createdAt);
         return sortDir === 'asc' ? cmp : -cmp;
       });
-  }, [search, statusFilter, sortField, sortDir]);
+  }, [search, statusFilter, sortField, sortDir, tenants]);
 
   return (
     <Card>
@@ -146,7 +131,7 @@ export function TenantsTable() {
               placeholder="Buscar por nombre o slug..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-9 w-full sm:w-56 rounded-lg border border-gray-200 bg-gray-50 pl-9 pr-3 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:border-iwana-primary focus:ring-2 focus:ring-iwana-primary/20 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:placeholder:text-gray-500"
+              className="h-9 w-full sm:w-56 rounded-lg border border-gray-200 bg-gray-50 pl-9 pr-3 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:border-iwana-primary focus:ring-2 focus:ring-iwana-primary/20 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-200 dark:placeholder:text-gray-500"
             />
           </div>
 
@@ -155,7 +140,7 @@ export function TenantsTable() {
             aria-label="Filtrar por estado"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as TenantStatus | typeof ALL_STATUSES)}
-            className="h-9 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-700 focus:outline-none focus:border-iwana-primary focus:ring-2 focus:ring-iwana-primary/20 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+            className="h-9 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-700 focus:outline-none focus:border-iwana-primary focus:ring-2 focus:ring-iwana-primary/20 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-200"
           >
             <option value={ALL_STATUSES}>Todos los estados</option>
             {Object.entries(statusConfig).map(([key, { label }]) => (
@@ -171,7 +156,7 @@ export function TenantsTable() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm" aria-label="Lista de tenants">
             <thead>
-              <tr className="border-b border-gray-100 dark:border-gray-800">
+              <tr className="border-b border-gray-100 dark:border-dark-border">
                 <th className="px-6 py-3 text-left">
                   <button
                     type="button"
@@ -207,8 +192,35 @@ export function TenantsTable() {
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
-              {filtered.length === 0 ? (
+            <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
+              {isLoading ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="px-6 py-10 text-center text-sm text-gray-400 dark:text-gray-500"
+                  >
+                    Cargando tenants...
+                  </td>
+                </tr>
+              ) : error ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="px-6 py-10 text-center text-sm text-red-500 dark:text-red-400"
+                  >
+                    <p>{error}</p>
+                    {onRetry && (
+                      <button
+                        type="button"
+                        onClick={onRetry}
+                        className="mt-2 text-xs text-iwana-primary underline dark:text-iwana-secondary"
+                      >
+                        Reintentar
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
                 <tr>
                   <td
                     colSpan={5}
@@ -223,7 +235,7 @@ export function TenantsTable() {
                   return (
                     <tr
                       key={tenant.id}
-                      className="hover:bg-gray-50 transition-colors dark:hover:bg-gray-800/50"
+                      className="hover:bg-gray-50 transition-colors dark:hover:bg-dark-surface-3/50"
                     >
                       <td className="px-6 py-4 font-medium text-iwana-primary dark:text-white">
                         {tenant.name}
@@ -262,9 +274,9 @@ export function TenantsTable() {
 
         {/* Contador de resultados */}
         {filtered.length > 0 && (
-          <div className="px-6 py-3 border-t border-gray-100 dark:border-gray-800">
-            <p className="text-xs text-gray-400 dark:text-gray-500">
-              Mostrando {filtered.length} de {mockTenants.length} tenants
+          <div className="px-6 py-3 border-t border-gray-100 dark:border-dark-border">
+            <p className="text-xs text-gray-600 dark:text-gray-400">
+              Mostrando {filtered.length} de {tenants.length} tenants
             </p>
           </div>
         )}
