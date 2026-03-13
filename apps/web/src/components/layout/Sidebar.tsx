@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@iwana/ui';
 
 /**
@@ -121,6 +121,13 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const handleLogout = () => {
+    // Limpia token y redirige al login
+    localStorage.removeItem('accessToken');
+    router.push('/auth/login');
+  };
 
   return (
     <aside
@@ -214,6 +221,7 @@ export function Sidebar() {
           </div>
           <button
             type="button"
+            onClick={handleLogout}
             className="text-white/40 hover:text-white/80 transition-colors"
             aria-label="Cerrar sesión"
             title="Cerrar sesión"
