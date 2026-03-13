@@ -12,3 +12,6 @@
 
 // Design tokens
 export * from './tokens';
+
+// Utilidades
+export * from './lib/utils';
