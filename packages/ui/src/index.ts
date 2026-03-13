@@ -15,3 +15,6 @@ export * from './tokens';
 
 // Utilidades
 export * from './lib/utils';
+
+// Componentes
+export * from './components/Button';
