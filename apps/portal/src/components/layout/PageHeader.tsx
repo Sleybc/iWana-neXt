@@ -1,0 +1,24 @@
+// apps/portal/src/components/layout/PageHeader.tsx
+import type { ReactNode } from 'react';
+
+interface PageHeaderProps {
+  title: string;
+  subtitle?: string;
+  actions?: ReactNode;
+}
+
+/**
+ * Cabecera de página del portal suscriptor.
+ * Compatible con dark mode.
+ */
+export function PageHeader({ title, subtitle, actions }: PageHeaderProps) {
+  return (
+    <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-gray-200 dark:bg-gray-900 dark:border-gray-800">
+      <div>
+        <h1 className="text-xl font-semibold text-iwana-primary dark:text-white">{title}</h1>
+        {subtitle && <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">{subtitle}</p>}
+      </div>
+      {actions && <div className="flex items-center gap-2">{actions}</div>}
+    </div>
+  );
+}

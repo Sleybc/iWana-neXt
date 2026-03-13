@@ -1,7 +1,7 @@
 # INFORME — Adopcion Transversal de TailAdmin
 
 **Version:** 1.0
-**Estado:** FASE-01 Ejecutada
+**Estado:** FASE-02 Ejecutada
 **Fecha creacion:** 2026-03-13
 **Fecha ultima actualizacion:** 2026-03-13
 **Modo activo:** Mixto
@@ -82,6 +82,10 @@ En este corte se aplico una correccion incremental de accesibilidad y calidad so
 | CA-TA-005: menu usuario abre, cierra con Escape y click externo | CUMPLIDO |
 | CA-TA-006: typecheck pasa en ambas apps sin errores nuevos | CUMPLIDO |
 | CA-TA-007: issues criticos de accesibilidad reportados en header/dropdown quedan corregidos | CUMPLIDO |
+| CA-TA-008: dashboard admin tiene layout asimetrico 2 columnas en desktop | CUMPLIDO |
+| CA-TA-009: tabla de tenants tiene busqueda, filtro y ordenamiento | CUMPLIDO |
+| CA-TA-010: columna derecha muestra estado del sistema y actividad reciente | CUMPLIDO |
+| CA-TA-011: portal suscriptor tiene PageHeader y dark mode correcto | CUMPLIDO |
 
 ---
 
@@ -96,9 +100,23 @@ En este corte se aplico una correccion incremental de accesibilidad y calidad so
 
 ---
 
+## 3b. Artefactos generados — Fase 02 (implementacion)
+
+| Artefacto | Archivo | Cambio |
+| --- | --- | --- |
+| PanelCard | `apps/web/src/components/dashboard/PanelCard.tsx` | Nuevo — panel de datos tabulados con filas, encabezados opcionales y pie de accion |
+| SystemStatusPanel | `apps/web/src/components/dashboard/SystemStatusPanel.tsx` | Nuevo — grilla 2x2 de indicadores de salud con dot + detalle |
+| PageHeader web | `apps/web/src/components/layout/PageHeader.tsx` | Nuevo — reemplaza Header inline, compatible con dark mode |
+| PageHeader portal | `apps/portal/src/components/layout/PageHeader.tsx` | Nuevo — misma estructura para portal suscriptor |
+| TenantsTable web | `apps/web/src/components/dashboard/TenantsTable.tsx` | Refactorizado — busqueda por nombre/slug, filtro por estado, ordenamiento por columna, estado vacio, contador de resultados |
+| Dashboard Page web | `apps/web/src/app/dashboard/page.tsx` | Refactorizado — layout asimetrico 12-col (8+4), iconos lucide, PanelCard de actividad y distribucion |
+| Dashboard Page portal | `apps/portal/src/app/dashboard/page.tsx` | Refactorizado — PageHeader, dark mode correcto, iconos lucide en accesos rapidos |
+
+---
+
 ## 7. Proxima accion recomendada
 
-Ejecutar FASE-02: adaptar dashboard admin de `apps/web` con metric cards, paneles y tabla principal.
+FASE-02 ejecutada. Proxima accion: FASE-03 (integracion backend — conectar endpoints reales, AuthProvider en DropdownUser, notificaciones reales).
 
 ---
 
