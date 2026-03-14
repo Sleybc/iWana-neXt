@@ -3,6 +3,33 @@ name: core-components
 description: Sistema de componentes y patrones visuales para iWana neXt. Use cuando se construya UI web, se apliquen tokens de diseno o se definan primitivas reutilizables del frontend del proyecto.
 ---
 
+## Estado actual de @iwana/ui (Sprint 1)
+
+> Importante: solo usar los componentes realmente implementados. El resto son objetivos de roadmap.
+
+### Componentes disponibles hoy
+
+| Componente | Import | Estado |
+|---|---|---|
+| `Button` | `@iwana/ui` | ✅ Implementado |
+| `Input` | `@iwana/ui` | ✅ Implementado |
+| `Card` | `@iwana/ui` | ✅ Implementado |
+| `Badge` | `@iwana/ui` | ✅ Implementado |
+| `OtpInput` | `@iwana/ui` | ✅ Implementado |
+| `ThemeProvider` | `@iwana/ui` | ✅ Implementado |
+| `ThemeToggle` | `@iwana/ui` | ✅ Implementado |
+
+### Base del sistema de diseño
+
+- **shadcn/ui + Radix Primitives** — ADR-026: base de composición de componentes
+- **CVA (class-variance-authority)** — para variantes de componentes
+- **Tailwind 4 CSS-first** — tokens en `@theme {}` de `globals.css`, sin `tailwind.config.js`
+- **Exportaciones** en `packages/ui/src/index.ts`
+
+### Componentes pendientes (roadmap Sprint 2+)
+
+Checkbox, Select, Modal, Toast, Table, Sidebar, PageHeader, MetricCard. No importar estos hasta que estén en `packages/ui/src/index.ts`.
+
 # Core Components
 
 ## Proposito
