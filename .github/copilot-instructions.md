@@ -22,6 +22,43 @@ Versiones: consultar `docs/prds/Stack_Tecnologico.md` — no asumir.
 
 Jest + Supertest (backend) + Playwright (E2E). Cobertura >= 80% core.
 
+## Skills
+
+Skills activas en `.agents/skills/{nombre}/SKILL.md`. Leerlas con `Read` antes de actuar.
+
+### Backend
+- Módulo/servicio/controller → `nestjs-expert`
+- Auth, JWT, MFA, guards → `auth-implementation-patterns`
+- Queries, TypeORM → `postgresql`
+- Migraciones zero-downtime → `database-migration`
+- BullMQ, workers → `bullmq-specialist`
+- OpenAPI, contratos → `openapi-spec-generation`
+- Logs, métricas → `observability-engineer`
+- Seguridad backend → `backend-security-coder`
+- Tipos complejos TS → `typescript-pro`
+
+### Frontend
+- Páginas, layouts, RSC → `nextjs-app-router-patterns`
+- Componentes UI, tokens → `core-components`
+- Tailwind 4, CSS-first → `tailwind-patterns`
+- Formularios, Zod → `frontend-dev-guidelines`
+- Accesibilidad WCAG → `wcag-audit-patterns`
+- i18n, es-CO → `i18n-localization`
+- Seguridad cliente → `frontend-security-coder`
+
+### Arquitectura, Testing y Seguridad
+- Inicio de módulo, HLD → `monorepo-architect`
+- Turborepo, caché CI → `turborepo-caching`
+- ADR → `architecture-decision-records`
+- Review técnico → `architect-review`
+- Docs, informes → `docs-architect` + `mermaid-expert`
+- Docker → `docker-expert`
+- Unit/integration tests → `testing-patterns`
+- TDD → `test-driven-development`
+- E2E Playwright → `playwright-skill` + `e2e-testing-patterns`
+- Auditoría seguridad → `security-auditor`
+- Auditoría deps → `codebase-cleanup-deps-audit`
+
 ## Codigo e Informes
 
 - Todo codigo generado debe quedar comentado en espanol cuando la logica no sea trivial.

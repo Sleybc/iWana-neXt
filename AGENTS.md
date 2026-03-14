@@ -110,6 +110,70 @@ Las versiones se validan contra `docs/prds/Stack_Tecnologico.md` y el baseline d
 - `modulith-architecture` — validacion de boundaries y patrones Modulith
 - `colombian-regulatory-compliance` — CRC, DIAN, Ley 1581, MinTIC, SG-SST
 
+## Despacho de Skills
+
+Ruta: `.agents/skills/{nombre}/SKILL.md`. Leer con `Read` antes de actuar.
+
+### Orden de resolución
+
+1. Skills de proceso (`brainstorming`, `writing-plans`, `systematic-debugging`) si la tarea implica diseño o bug.
+2. Skills de dominio (primera línea) según área técnica.
+3. Skills de segunda línea para profundizar.
+4. Skills especializadas solo cuando el problema sea específico.
+
+### Backend
+
+| Condición | Skill principal | Complemento |
+|---|---|---|
+| Módulo, servicio, controller NestJS | `nestjs-expert` | `typescript-expert` |
+| Auth, JWT, MFA, guards | `auth-implementation-patterns` | `nestjs-expert` |
+| Queries, entidades, TypeORM | `postgresql` | `nestjs-expert` |
+| Migraciones, zero-downtime | `database-migration` | `postgresql` |
+| BullMQ, workers, colas | `bullmq-specialist` | `nestjs-expert` |
+| OpenAPI, DTOs, contratos | `openapi-spec-generation` | `nestjs-expert` |
+| Logs, métricas, trazas | `observability-engineer` | `nestjs-expert` |
+| Seguridad backend | `backend-security-coder` | `security-auditor` |
+| Tipos complejos TS | `typescript-pro` | `typescript-expert` |
+
+### Frontend
+
+| Condición | Skill principal | Complemento |
+|---|---|---|
+| Páginas, layouts, RSC | `nextjs-app-router-patterns` | `frontend-dev-guidelines` |
+| Componentes UI, tokens | `core-components` | `tailwind-patterns` |
+| Tailwind 4, CSS-first | `tailwind-patterns` | `core-components` |
+| Formularios, Zod | `frontend-dev-guidelines` | `nextjs-app-router-patterns` |
+| Accesibilidad WCAG | `wcag-audit-patterns` | `core-components` |
+| i18n, es-CO | `i18n-localization` | `frontend-dev-guidelines` |
+| Seguridad cliente | `frontend-security-coder` | `security-auditor` |
+
+### Arquitectura, Testing y Seguridad
+
+| Condición | Skill principal | Complemento |
+|---|---|---|
+| Inicio de módulo, HLD | `monorepo-architect` | `architect-review` |
+| Turborepo, caché CI | `turborepo-caching` | `monorepo-architect` |
+| ADR | `architecture-decision-records` | `architect-review` |
+| Docs, informes | `docs-architect` | `mermaid-expert` |
+| Docker, infra | `docker-expert` | — |
+| Unit/integration tests | `testing-patterns` | skill del dominio |
+| TDD | `test-driven-development` | `testing-patterns` |
+| E2E Playwright | `playwright-skill` | `e2e-testing-patterns` |
+| E2E avanzado, flaky | `e2e-testing-patterns` | `playwright-skill` |
+| Auditoría seguridad | `security-auditor` | skill de capa |
+| Auditoría deps, CVEs | `codebase-cleanup-deps-audit` | `security-auditor` |
+
+### Combinaciones frecuentes
+
+- Nuevo endpoint → `nestjs-expert` → `openapi-spec-generation` → `testing-patterns`
+- Nueva página + form → `nextjs-app-router-patterns` → `frontend-dev-guidelines` → `core-components`
+- Inicio de módulo → `monorepo-architect` → `architect-review` → `architecture-decision-records`
+- Bug seguridad → `security-auditor` → skill capa → `testing-patterns`
+- Auth multi-tenant → `auth-implementation-patterns` → `nestjs-expert` → `backend-security-coder`
+- Migración schema → `database-migration` → `postgresql` → `testing-patterns`
+- Optimización CI → `turborepo-caching` → `monorepo-architect`
+- Auditoría deps → `codebase-cleanup-deps-audit` → `security-auditor`
+
 ## Cumplimiento Regulatorio
 
 | Dominio         | Regulacion aplicable                                  |
