@@ -3,6 +3,54 @@ name: bullmq-specialist
 description: Patrones BullMQ para iWana neXt con Redis, jobs idempotentes, payloads seguros, trazabilidad por tenant y procesamiento asincrono confiable.
 ---
 
+## Arquitectura de colas en iWana neXt
+
+El monorepo separa la producción y el consumo de jobs BullMQ en dos apps distintas:
+
+```
+apps/api/     @iwana/api    — ENCOLA jobs (Queue.add, no procesa)
+apps/worker/  @iwana/worker — PROCESA jobs (@Processor, @Process)
+```
+
+Esta separación permite escalar los workers independientemente de la API y evita que el procesamiento bloquee el ciclo de vida de la API.
+
+### Encolar desde `@iwana/api`
+
+```typescript
+// En un servicio de @iwana/api:
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+
+@Injectable()
+export class TenantService {
+  constructor(@InjectQueue('tenant-provisioning') private queue: Queue) {}
+
+  async provisionTenant(tenantId: string): Promise<void> {
+    await this.queue.add(
+      'provision',
+      { tenantId },  // Payload mínimo — sin PII, sin objetos grandes
+      { jobId: `provision-${tenantId}`, attempts: 3, backoff: { type: 'exponential', delay: 1000 } }
+    );
+  }
+}
+```
+
+### Procesar en `@iwana/worker`
+
+```typescript
+// En @iwana/worker — NUNCA en @iwana/api:
+import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Job } from 'bullmq';
+
+@Processor('tenant-provisioning')
+export class TenantProvisioningProcessor extends WorkerHost {
+  async process(job: Job<{ tenantId: string }>): Promise<void> {
+    const { tenantId } = job.data;
+    // Lógica de provisioning...
+  }
+}
+```
+
 # BullMQ Specialist
 
 ## Proposito
