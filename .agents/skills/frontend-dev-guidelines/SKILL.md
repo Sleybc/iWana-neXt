@@ -182,3 +182,56 @@ components/
 - `testing-patterns` para pruebas unitarias, integracion y E2E
 - `wcag-audit-patterns` para validacion de accesibilidad
 - `i18n-localization` para internacionalizacion y localizacion
+
+## Formularios — Estándar del repo
+
+El stack canónico de formularios es `react-hook-form` + `zod` + `@hookform/resolvers`. No usar alternativas ad hoc.
+
+```typescript
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+
+const loginSchema = z.object({
+  email: z.string().email('Correo inválido'),
+  password: z.string().min(8, 'Mínimo 8 caracteres'),
+});
+
+type LoginForm = z.infer<typeof loginSchema>;
+
+export function LoginForm() {
+  const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>({
+    resolver: zodResolver(loginSchema),
+  });
+
+  const onSubmit = (data: LoginForm) => { /* llamar api-client */ };
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)}>
+      <input {...register('email')} />
+      {errors.email && <span>{errors.email.message}</span>}
+    </form>
+  );
+}
+```
+
+## Autenticación frontend — Patrón híbrido (ADR-023)
+
+El modelo de auth es híbrido:
+
+1. **Proxy cookie check (servidor)** — Next.js middleware o layout verifica la cookie httpOnly antes de renderizar.
+2. **AuthProvider (cliente)** — Contexto React que expone `{ user, isLoading, logout }` via `useAuth()`.
+
+```typescript
+// Usar useAuth() en Client Components para acceder al usuario actual
+'use client';
+import { useAuth } from '@/components/auth/AuthProvider';
+
+export function UserMenu() {
+  const { user, logout } = useAuth();
+  if (!user) return null;
+  return <button onClick={logout}>{user.email}</button>;
+}
+```
+
+No reimplementar lógica de sesión fuera del `AuthProvider` — toda la gestión de tokens y refresh está encapsulada en `src/lib/api-client.ts`.
