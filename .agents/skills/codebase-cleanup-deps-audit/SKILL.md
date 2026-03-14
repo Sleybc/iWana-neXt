@@ -3,51 +3,159 @@ name: codebase-cleanup-deps-audit
 description: Auditoría de dependencias pnpm para iWana neXt — vulnerabilidades CVE, licencias, paquetes desactualizados, supply chain. Usar antes de releases o cuando pnpm audit reporte issues.
 ---
 
-# Dependency Audit and Security Analysis
+# Codebase & Dependency Audit — iWana neXt
 
-You are a dependency security expert specializing in vulnerability scanning, license compliance, and supply chain security. Analyze project dependencies for known vulnerabilities, licensing issues, outdated packages, and provide actionable remediation strategies.
+## Propósito
 
-## Use this skill when
+Governa la auditoría de dependencias del monorepo iWana neXt con pnpm.
+Cubre vulnerabilidades CVE, licencias, paquetes desactualizados y supply chain.
 
-- Auditing dependencies for vulnerabilities
-- Checking license compliance or supply-chain risks
-- Identifying outdated packages and upgrade paths
-- Preparing security reports or remediation plans
+## Usar este skill cuando
 
-## Do not use this skill when
+- Se prepare un release y se quiera verificar el estado de seguridad de las dependencias.
+- `pnpm audit` reporte vulnerabilidades en el pipeline de CI.
+- Se sospeche de una dependencia desactualizada o con CVE conocido.
+- Se revise el lockfile antes de un merge a main.
 
-- The project has no dependency manifests
-- You cannot change or update dependencies
-- The task is unrelated to dependency management
+## No usar este skill cuando
 
-## Context
+- La tarea sea de seguridad de código fuente (usar `security-auditor`).
+- La tarea sea de configuración de infraestructura (usar `docker-expert`).
 
-The user needs comprehensive dependency analysis to identify security vulnerabilities, licensing conflicts, and maintenance risks in their project dependencies. Focus on actionable insights with automated fixes where possible.
+## Reglas del monorepo pnpm
 
-## Requirements
+- **Siempre usar `pnpm audit`** — nunca `npm audit` ni `yarn audit`.
+- El lockfile es `pnpm-lock.yaml` — nunca `package-lock.json` ni `yarn.lock`.
+- Los workspaces se filtran con `pnpm --filter`.
+- TruffleHog está activo en CI para detección de secretos — no hardcodear credenciales.
 
-$ARGUMENTS
+## Comandos de auditoría
 
-## Instructions
+```bash
+# Auditoría de todo el monorepo
+pnpm audit
 
-- Inventory direct and transitive dependencies.
-- Run vulnerability and license scans.
-- Prioritize fixes by severity and exposure.
-- Propose upgrades with compatibility notes.
-- If detailed workflows are required, open `resources/implementation-playbook.md`.
+# Auditoría solo de dependencias de producción
+pnpm audit --prod
 
-## Safety
+# Auditoría de un workspace específico
+pnpm --filter @iwana/api audit
+pnpm --filter @iwana/web audit
 
-- Do not publish sensitive vulnerability details to public channels.
-- Verify upgrades in staging before production rollout.
+# Ver paquetes desactualizados
+pnpm outdated
 
-## Output Format
+# Ver paquetes desactualizados en un workspace
+pnpm --filter @iwana/api outdated
 
-- Dependency summary and risk overview
-- Vulnerabilities and license issues
-- Recommended upgrades and mitigations
-- Assumptions and follow-up tasks
+# Actualizar un paquete (con precaución — verificar breaking changes)
+pnpm update nombre-paquete --filter @iwana/api
 
-## Resources
+# Verificar integridad del lockfile
+pnpm install --frozen-lockfile
+```
 
-- `resources/implementation-playbook.md` for detailed tooling and templates.
+## Workflow de auditoría pre-release
+
+### Paso 1: Auditoría de vulnerabilidades
+
+```bash
+pnpm audit --prod
+```
+
+Interpretar resultados:
+
+| Severidad | Acción |
+|---|---|
+| `critical` | Bloquea release. Corregir en el sprint actual |
+| `high` | Corregir antes del release o documentar excepción con CTO |
+| `moderate` | Evaluar impacto. Corregir si hay fix disponible |
+| `low` | Documentar en backlog. No bloquea release |
+
+### Paso 2: Paquetes desactualizados
+
+```bash
+pnpm outdated
+```
+
+Priorizar actualizaciones de:
+- Paquetes con CVEs conocidos (ver paso 1)
+- Paquetes en `dependencies` (producción) antes que `devDependencies`
+- Paquetes del stack core: `next`, `@nestjs/*`, `typeorm`, `bullmq`
+
+### Paso 3: Verificar lockfile
+
+```bash
+# Verificar que el lockfile está sincronizado
+pnpm install --frozen-lockfile
+
+# Si falla, regenerar:
+pnpm install
+git add pnpm-lock.yaml
+```
+
+### Paso 4: Verificar secretos (TruffleHog)
+
+TruffleHog corre automáticamente en CI. Para ejecutar localmente:
+
+```bash
+# Si TruffleHog está instalado:
+trufflehog filesystem . --exclude-paths=.gitignore
+```
+
+## Remediación de vulnerabilidades
+
+### Actualización directa (recomendado)
+
+```bash
+# Ver si hay una versión que corrija el CVE
+pnpm audit --json | jq '.advisories | to_entries[] | {package: .value.module_name, severity: .value.severity, fix: .value.patched_versions}'
+
+# Actualizar el paquete vulnerable
+pnpm update nombre-paquete@version-segura --filter workspace-afectado
+```
+
+### Override forzado (solo si no hay actualización directa)
+
+En `package.json` raíz, sección `pnpm.overrides`:
+
+```json
+{
+  "pnpm": {
+    "overrides": {
+      "paquete-vulnerable": ">=version-segura"
+    }
+  }
+}
+```
+
+> **Nota:** El repo ya tiene un override activo: `"ioredis": "5.10.0"`. Documentar cualquier nuevo override con el CVE que lo justifica.
+
+## Revisión de licencias
+
+Para dependencias de producción, verificar que la licencia es compatible:
+
+- ✅ MIT, Apache 2.0, BSD, ISC — compatibles
+- ⚠️ GPL, AGPL — revisar con CTO antes de incluir
+- ❌ Licencias comerciales sin contrato — no incluir sin aprobación
+
+```bash
+# Ver licencias de dependencias directas
+pnpm licenses list
+```
+
+## Checklist pre-release
+
+- [ ] `pnpm audit --prod` sin vulnerabilidades `critical` ni `high` sin excepción documentada
+- [ ] `pnpm outdated` revisado — paquetes core actualizados o decisión documentada
+- [ ] `pnpm install --frozen-lockfile` sin errores
+- [ ] Sin secretos detectados por TruffleHog en CI
+- [ ] Overrides documentados en `package.json` con justificación
+
+## Anti-patrones
+
+- `npm audit fix --force` — sobrescribe el lockfile pnpm y rompe el monorepo
+- Ignorar `critical` sin excepción documentada — bloquea merge según gates de AGENTS.md
+- Hardcodear credenciales en cualquier archivo — TruffleHog lo detecta en CI
+- Actualizar paquetes sin revisar breaking changes — especialmente en `@nestjs/*` y `next`
+- Eliminar overrides sin verificar que el CVE fue corregido upstream
