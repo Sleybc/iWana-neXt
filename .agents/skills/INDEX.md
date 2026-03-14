@@ -48,6 +48,7 @@ Estados admitidos:
 - openapi-spec-generation
 - security-auditor
 - typescript-expert
+- typescript-pro
 
 #### Especializadas por necesidad
 
@@ -60,6 +61,10 @@ Estados admitidos:
 - tailwind-patterns
 - test-driven-development
 - wcag-audit-patterns
+- turborepo-caching
+- database-migration
+- e2e-testing-patterns
+- codebase-cleanup-deps-audit
 
 ### Arquitectura y gobierno
 
@@ -68,12 +73,14 @@ Estados admitidos:
 - docs-architect
 - mermaid-expert
 - monorepo-architect
+- turborepo-caching
 
 ### Backend y plataforma
 
 - auth-implementation-patterns
 - backend-security-coder
 - bullmq-specialist
+- database-migration
 - docker-expert
 - nestjs-expert
 - openapi-spec-generation
@@ -81,6 +88,7 @@ Estados admitidos:
 - postgresql
 - security-auditor
 - typescript-expert
+- typescript-pro
 
 ### Frontend y accesibilidad
 
@@ -94,9 +102,14 @@ Estados admitidos:
 
 ### Testing
 
+- e2e-testing-patterns
 - playwright-skill
 - test-driven-development
 - testing-patterns
+
+### Mantenimiento y dependencias
+
+- codebase-cleanup-deps-audit
 
 ## Skills restaurables priorizadas
 
