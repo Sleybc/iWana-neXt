@@ -142,3 +142,49 @@ pnpm exec playwright test
 - `nestjs-expert` para pruebas de modulos y controladores
 - `frontend-dev-guidelines` para componentes y pantallas web
 - `playwright-skill` para automatizacion y validacion de flujos reales
+
+## Umbrales de cobertura del proyecto
+
+```json
+// Configuración Jest esperada en jest.config.ts de cada app/package:
+{
+  "coverageThreshold": {
+    "global": {
+      "lines": 85,
+      "functions": 85,
+      "branches": 80,
+      "statements": 85
+    }
+  }
+}
+```
+
+La cobertura mínima del 80% (branches) y 85% (lines/functions) aplica a todos los módulos core. Los tests deben ejecutarse con `--coverage` en CI.
+
+## Tests de integración con contexto multi-tenant
+
+En los tests de integración NestJS que requieran contexto de tenant:
+
+```typescript
+import { INestApplication } from '@nestjs/common';
+import * as request from 'supertest';
+
+describe('UsersController (integración)', () => {
+  let app: INestApplication;
+
+  beforeAll(async () => {
+    // Setup con TestingModule — ver nestjs-expert para configuración completa
+  });
+
+  it('debe retornar usuarios del tenant autenticado', async () => {
+    return request(app.getHttpServer())
+      .get('/api/v1/users')
+      .set('Authorization', `Bearer ${tenantUserToken}`)
+      .set('X-Tenant-Slug', 'tenant-test')  // Para rutas públicas sin JWT de tenant
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data).toBeInstanceOf(Array);
+      });
+  });
+});
+```
