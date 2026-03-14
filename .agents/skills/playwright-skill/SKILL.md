@@ -136,3 +136,44 @@ Evita:
 - Mezclar demasiados objetivos en un solo test largo.
 - Automatizar flujos que no tienen datos o estado controlado.
 - Reproducir validaciones internas del backend en vez de verificar el resultado visible para el usuario.
+
+## Autenticación eficiente con storageState
+
+Para evitar el login en cada test, usar storageState para reutilizar la sesión:
+
+```typescript
+// e2e/fixtures/auth.ts
+import { test as base } from '@playwright/test';
+import type { Page } from '@playwright/test';
+
+export const test = base.extend<{ authenticatedPage: Page }>({
+  authenticatedPage: async ({ page }, use) => {
+    // Login programático via API — no via UI para ahorrar tiempo de suite
+    const response = await page.request.post(
+      `${process.env.API_BASE_URL ?? 'http://localhost:3000'}/api/v1/auth/platform/login`,
+      { data: { email: process.env.E2E_ADMIN_EMAIL, password: process.env.E2E_ADMIN_PASSWORD } }
+    );
+    const { data } = await response.json();
+
+    await page.goto(process.env.WEB_BASE_URL ?? 'http://localhost:3001');
+    await page.evaluate(
+      (token) => localStorage.setItem('iwana.web.access-token', token),
+      data.accessToken
+    );
+    await use(page);
+  },
+});
+```
+
+## Verificación de contexto de tenant en UI
+
+```typescript
+test('el usuario autenticado ve su tenant activo', async ({ authenticatedPage }) => {
+  await authenticatedPage.goto('http://localhost:3001/dashboard');
+
+  // Verificar que el nombre/slug del tenant aparece en la UI
+  const tenantIndicator = authenticatedPage.getByTestId('tenant-name');
+  await expect(tenantIndicator).toBeVisible();
+  await expect(tenantIndicator).not.toBeEmpty();
+});
+```
