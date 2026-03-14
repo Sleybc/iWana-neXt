@@ -3,6 +3,74 @@ name: tailwind-patterns
 description: Patrones Tailwind para iWana neXt con tokens semanticos, composicion mantenible y frontend web coherente con el sistema visual del repo.
 ---
 
+## Tailwind 4 CSS-first en iWana neXt
+
+> **Crítico:** Este proyecto usa **Tailwind 4** con configuración CSS-first.
+> **No existe `tailwind.config.js`** — intentar crearlo o editarlo es incorrecto.
+
+### Cómo funciona Tailwind 4 en este repo
+
+Los tokens se definen en `packages/ui/src/styles/globals.css` con `@theme {}`:
+
+```css
+/* globals.css */
+@import "tailwindcss";   /* Activa Tailwind 4 */
+
+@theme {
+  --color-iwana-primary: #17163A;
+  --color-iwana-secondary: #A5C330;
+  --color-iwana-secondary-700: #6A7A1C; /* Usar para texto — contraste 6.2:1 */
+  --font-sans: 'Exo 2', system-ui, sans-serif;
+  /* ... más tokens ... */
+}
+```
+
+El CSS global se importa en el layout raíz:
+```typescript
+import '@iwana/ui/styles/globals.css';
+```
+
+### Regla de contraste obligatoria
+
+| Token | Valor | Contraste sobre blanco | Usar para |
+|---|---|---|---|
+| `iwana-secondary` | `#A5C330` | 2.3:1 ❌ FAIL WCAG AA | Solo decorativo (fondos, bordes) |
+| `iwana-secondary-700` | `#6A7A1C` | 6.2:1 ✅ PASS WCAG AA | Texto sobre fondo blanco |
+
+### Dark mode
+
+Los tokens de superficie dark están en `@theme`:
+- `dark-surface`: color de fondo principal en modo oscuro
+- `dark-surface-2`: fondo de cards y elementos elevados
+
+Aplicar con `dark:` prefix de Tailwind:
+```html
+<div class="bg-white dark:bg-dark-surface">...</div>
+```
+
+### CVA para variantes de componentes
+
+```typescript
+import { cva } from 'class-variance-authority';
+
+const button = cva(
+  'inline-flex items-center rounded-md font-medium transition-colors',
+  {
+    variants: {
+      variant: {
+        primary: 'bg-iwana-primary text-white hover:bg-iwana-primary-700',
+        secondary: 'bg-iwana-secondary-700 text-white hover:bg-iwana-secondary-700/90',
+      },
+      size: {
+        sm: 'px-3 py-1.5 text-sm',
+        md: 'px-4 py-2 text-base',
+      },
+    },
+    defaultVariants: { variant: 'primary', size: 'md' },
+  }
+);
+```
+
 # Tailwind Patterns
 
 ## Proposito
