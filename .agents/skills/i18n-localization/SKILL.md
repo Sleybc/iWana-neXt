@@ -3,6 +3,40 @@ name: i18n-localization
 description: Internacionalizacion y localizacion para iWana neXt con Next.js App Router, textos externos, formatos locales y control de hardcodes en UI.
 ---
 
+## Contexto de localización en iWana neXt
+
+### Locale primario
+
+- **Idioma:** Español Colombia (`es-CO`)
+- **Moneda:** Peso colombiano (`COP`)
+- **Zona horaria:** `America/Bogota` (UTC-5, sin horario de verano)
+- **Formato de fecha:** `dd/MM/yyyy` (Colombia)
+- **Separadores numéricos:** punto para miles, coma para decimales (ej: `1.234,56`)
+
+### Estado de la librería i18n
+
+> La librería de i18n no está decidida aún (ADR pendiente). Hasta que se apruebe el ADR:
+> - Los mensajes de error de Zod deben definirse en archivos `messages/es-CO.ts` por módulo.
+> - Los textos de UI deben centralizarse en constantes, no hardcodeados en JSX.
+> - Referencia de estructura de mensajes: `docs/hlds/HLD-MOD01-Frontend-Auth-Zod-Schemas-Spec.md`
+
+### Ejemplos de formateo para Colombia
+
+```typescript
+// Moneda COP
+const formatCOP = (amount: number) =>
+  new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(amount);
+// → "$ 1.234.567"
+
+// Fecha en Colombia
+const formatDate = (date: Date) =>
+  new Intl.DateTimeFormat('es-CO', { timeZone: 'America/Bogota' }).format(date);
+
+// Zona horaria explícita para timestamps almacenados
+const toBogotaTime = (utcDate: Date) =>
+  new Date(utcDate.toLocaleString('en-US', { timeZone: 'America/Bogota' }));
+```
+
 # i18n & Localization
 
 ## Proposito
