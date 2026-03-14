@@ -1,94 +1,71 @@
 ---
 name: turborepo-caching
-description: Optimización de pipelines Turborepo con caché local y remoto para iWana neXt. Usar cuando se configuren pipelines de build, se optimice CI/CD o se depuren cache misses en el monorepo.
+description: Optimización de pipelines Turborepo 2.x con caché local y remoto para iWana neXt. Usar cuando se configuren pipelines de build, se optimice CI/CD o se depuren cache misses en el monorepo pnpm.
 ---
 
-# Turborepo Caching
+# Turborepo Caching — iWana neXt
 
-Production patterns for Turborepo build optimization.
+## Propósito
 
-## Do not use this skill when
+Gobierna la configuración y optimización del pipeline de Turborepo 2.x en el monorepo iWana neXt.
+El proyecto usa pnpm@10.32.1 como gestor de paquetes y Turborepo 2.x con sintaxis `"tasks"`.
 
-- The task is unrelated to turborepo caching
-- You need a different domain or tool outside this scope
+## Usar este skill cuando
 
-## Instructions
+- Se configure o modifique `turbo.json` (pipeline de tasks, inputs, outputs, cache).
+- Se depuren cache misses en CI o en desarrollo local.
+- Se optimice el tiempo de build en CI/CD.
+- Se evalúe la configuración de remote caching on-prem.
+- Se agreguen nuevas apps o packages al monorepo y necesiten tareas en el pipeline.
 
-- Clarify goals, constraints, and required inputs.
-- Apply relevant best practices and validate outcomes.
-- Provide actionable steps and verification.
-- If detailed examples are required, open `resources/implementation-playbook.md`.
+## No usar este skill cuando
 
-## Use this skill when
+- La tarea sea de arquitectura general del monorepo (usar `monorepo-architect`).
+- La tarea sea de configuración de CI/CD sin relación con caché (usar `docker-expert`).
 
-- Setting up new Turborepo projects
-- Configuring build pipelines
-- Implementing remote caching
-- Optimizing CI/CD performance
-- Migrating from other monorepo tools
-- Debugging cache misses
+## Regla crítica: Turborepo 2.x usa `"tasks"`, no `"pipeline"`
 
-## Core Concepts
+```json
+// ✅ Correcto — Turborepo 2.x
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": { ... }
+  }
+}
 
-### 1. Turborepo Architecture
-
-```
-Workspace Root/
-├── apps/
-│   ├── web/
-│   │   └── package.json
-│   └── docs/
-│       └── package.json
-├── packages/
-│   ├── ui/
-│   │   └── package.json
-│   └── config/
-│       └── package.json
-├── turbo.json
-└── package.json
+// ❌ Incorrecto — Turborepo v1 (no usar en este repo)
+{
+  "pipeline": {
+    "build": { ... }
+  }
+}
 ```
 
-### 2. Pipeline Concepts
-
-| Concept        | Description                      |
-| -------------- | -------------------------------- |
-| **dependsOn**  | Tasks that must complete first   |
-| **cache**      | Whether to cache outputs         |
-| **outputs**    | Files to cache                   |
-| **inputs**     | Files that affect cache key      |
-| **persistent** | Long-running tasks (dev servers) |
-
-## Templates
-
-### Template 1: turbo.json Configuration
+## Estructura del turbo.json del repo
 
 ```json
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalDependencies": [".env", ".env.local"],
-  "globalEnv": ["NODE_ENV", "VERCEL_URL"],
-  "pipeline": {
+  "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
-      "env": ["API_URL", "NEXT_PUBLIC_*"]
-    },
-    "test": {
-      "dependsOn": ["build"],
-      "outputs": ["coverage/**"],
-      "inputs": ["src/**/*.tsx", "src/**/*.ts", "test/**/*.ts"]
-    },
-    "lint": {
-      "outputs": [],
-      "cache": true
-    },
-    "typecheck": {
-      "dependsOn": ["^build"],
-      "outputs": []
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
     },
     "dev": {
       "cache": false,
       "persistent": true
+    },
+    "lint": {
+      "dependsOn": ["^lint"]
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"],
+      "inputs": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "**/*.spec.ts"]
+    },
+    "typecheck": {
+      "dependsOn": ["^typecheck"]
     },
     "clean": {
       "cache": false
@@ -97,292 +74,119 @@ Workspace Root/
 }
 ```
 
-### Template 2: Package-Specific Pipeline
+## Comandos pnpm en este monorepo
+
+```bash
+# Correr una tarea en todos los workspaces
+pnpm build          # turbo build
+pnpm test           # turbo test
+pnpm lint           # turbo lint
+pnpm typecheck      # turbo typecheck
+
+# Correr en un workspace específico
+pnpm --filter @iwana/api build
+pnpm --filter @iwana/web dev
+pnpm --filter @iwana/db test
+
+# Ver qué se cachea y qué no
+pnpm turbo run build --dry-run
+pnpm turbo run build --verbosity=2
+
+# Limpiar caché local
+pnpm turbo daemon stop
+rm -rf .turbo
+```
+
+## Depuración de cache misses
+
+Un cache miss ocurre cuando Turborepo no puede reutilizar un resultado previo.
+
+### Causas comunes y soluciones
+
+**1. Inputs mal definidos — se incluyen archivos que cambian siempre**
 
 ```json
-// apps/web/turbo.json
-{
-  "$schema": "https://turbo.build/schema.json",
-  "extends": ["//"],
-  "pipeline": {
-    "build": {
-      "outputs": [".next/**", "!.next/cache/**"],
-      "env": ["NEXT_PUBLIC_API_URL", "NEXT_PUBLIC_ANALYTICS_ID"]
-    },
-    "test": {
-      "outputs": ["coverage/**"],
-      "inputs": ["src/**", "tests/**", "jest.config.js"]
-    }
-  }
+// ❌ Demasiado amplio — cualquier cambio en el repo invalida el caché
+"test": {
+  "inputs": ["**/*"]
+}
+
+// ✅ Solo los archivos relevantes para los tests
+"test": {
+  "inputs": ["src/**/*.ts", "src/**/*.tsx", "**/*.spec.ts", "**/*.test.ts"]
 }
 ```
 
-### Template 3: Remote Caching with Vercel
-
-```bash
-# Login to Vercel
-npx turbo login
-
-# Link to Vercel project
-npx turbo link
-
-# Run with remote cache
-turbo build --remote-only
-
-# CI environment variables
-TURBO_TOKEN=your-token
-TURBO_TEAM=your-team
-```
-
-```yaml
-# .github/workflows/ci.yml
-name: CI
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-
-env:
-  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npx turbo build --filter='...[origin/main]'
-
-      - name: Test
-        run: npx turbo test --filter='...[origin/main]'
-```
-
-### Template 4: Self-Hosted Remote Cache
-
-```typescript
-// Custom remote cache server (Express)
-import express from "express";
-import { createReadStream, createWriteStream } from "fs";
-import { mkdir } from "fs/promises";
-import { join } from "path";
-
-const app = express();
-const CACHE_DIR = "./cache";
-
-// Get artifact
-app.get("/v8/artifacts/:hash", async (req, res) => {
-  const { hash } = req.params;
-  const team = req.query.teamId || "default";
-  const filePath = join(CACHE_DIR, team, hash);
-
-  try {
-    const stream = createReadStream(filePath);
-    stream.pipe(res);
-  } catch {
-    res.status(404).send("Not found");
-  }
-});
-
-// Put artifact
-app.put("/v8/artifacts/:hash", async (req, res) => {
-  const { hash } = req.params;
-  const team = req.query.teamId || "default";
-  const dir = join(CACHE_DIR, team);
-  const filePath = join(dir, hash);
-
-  await mkdir(dir, { recursive: true });
-
-  const stream = createWriteStream(filePath);
-  req.pipe(stream);
-
-  stream.on("finish", () => {
-    res.json({
-      urls: [`${req.protocol}://${req.get("host")}/v8/artifacts/${hash}`],
-    });
-  });
-});
-
-// Check artifact exists
-app.head("/v8/artifacts/:hash", async (req, res) => {
-  const { hash } = req.params;
-  const team = req.query.teamId || "default";
-  const filePath = join(CACHE_DIR, team, hash);
-
-  try {
-    await fs.access(filePath);
-    res.status(200).end();
-  } catch {
-    res.status(404).end();
-  }
-});
-
-app.listen(3000);
-```
+**2. Variables de entorno no declaradas**
 
 ```json
-// turbo.json for self-hosted cache
+// Declarar variables de entorno que afectan el output
+"build": {
+  "dependsOn": ["^build"],
+  "env": ["NODE_ENV", "NEXT_PUBLIC_API_URL"],
+  "outputs": [".next/**", "!.next/cache/**"]
+}
+```
+
+**3. Outputs no definidos — Turborepo no sabe qué guardar en caché**
+
+```json
+"build": {
+  "dependsOn": ["^build"],
+  "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+}
+```
+
+## Remote caching on-prem
+
+El proyecto es on-premise. Las opciones compatibles sin Vercel son:
+
+### Opción 1: turbo-remote-cache (self-hosted, recomendado para MVP)
+
+```bash
+# Instalar el servidor de caché remoto
+npx turbo-remote-cache
+```
+
+Configuración en `turbo.json`:
+```json
 {
   "remoteCache": {
-    "signature": false
+    "enabled": true
   }
 }
 ```
 
+Variables de entorno en CI:
 ```bash
-# Use self-hosted cache
-turbo build --api="http://localhost:3000" --token="my-token" --team="my-team"
+TURBO_TOKEN=<token-generado>
+TURBO_TEAM=iwana-next
+TURBO_API=http://<tu-servidor>:3000
 ```
 
-### Template 5: Filtering and Scoping
+### Opción 2: Caché local compartido via volumen Docker (CI simple)
 
-```bash
-# Build specific package
-turbo build --filter=@myorg/web
+Para un CI on-prem sin servidor de caché, montar `.turbo` como volumen persistente entre runs:
 
-# Build package and its dependencies
-turbo build --filter=@myorg/web...
-
-# Build package and its dependents
-turbo build --filter=...@myorg/ui
-
-# Build changed packages since main
-turbo build --filter='...[origin/main]'
-
-# Build packages in directory
-turbo build --filter='./apps/*'
-
-# Combine filters
-turbo build --filter=@myorg/web --filter=@myorg/docs
-
-# Exclude package
-turbo build --filter='!@myorg/docs'
-
-# Include dependencies of changed
-turbo build --filter='...[HEAD^1]...'
+```yaml
+# En el CI runner — montar el directorio de caché
+volumes:
+  - turbo-cache:/app/.turbo
 ```
 
-### Template 6: Advanced Pipeline Configuration
+## Checklist de configuración
 
-```json
-{
-  "$schema": "https://turbo.build/schema.json",
-  "pipeline": {
-    "build": {
-      "dependsOn": ["^build"],
-      "outputs": ["dist/**"],
-      "inputs": ["$TURBO_DEFAULT$", "!**/*.md", "!**/*.test.*"]
-    },
-    "test": {
-      "dependsOn": ["^build"],
-      "outputs": ["coverage/**"],
-      "inputs": ["src/**", "tests/**", "*.config.*"],
-      "env": ["CI", "NODE_ENV"]
-    },
-    "test:e2e": {
-      "dependsOn": ["build"],
-      "outputs": [],
-      "cache": false
-    },
-    "deploy": {
-      "dependsOn": ["build", "test", "lint"],
-      "outputs": [],
-      "cache": false
-    },
-    "db:generate": {
-      "cache": false
-    },
-    "db:push": {
-      "cache": false,
-      "dependsOn": ["db:generate"]
-    },
-    "@myorg/web#build": {
-      "dependsOn": ["^build", "@myorg/db#db:generate"],
-      "outputs": [".next/**"],
-      "env": ["NEXT_PUBLIC_*"]
-    }
-  }
-}
-```
+- [ ] `turbo.json` usa `"tasks"` (no `"pipeline"`)
+- [ ] Cada task tiene `outputs` definidos si produce artefactos
+- [ ] `env` declaradas para variables que afectan el build
+- [ ] `inputs` acotados — no usar `**/*` salvo en tasks sin caché
+- [ ] `dev` y `clean` tienen `"cache": false`
+- [ ] `packageManager` en `package.json` raíz: `"pnpm@10.32.1"` (requisito Turborepo 2.x)
 
-### Template 7: Root package.json Setup
+## Anti-patrones
 
-```json
-{
-  "name": "my-turborepo",
-  "private": true,
-  "workspaces": ["apps/*", "packages/*"],
-  "scripts": {
-    "build": "turbo build",
-    "dev": "turbo dev",
-    "lint": "turbo lint",
-    "test": "turbo test",
-    "clean": "turbo clean && rm -rf node_modules",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "changeset": "changeset",
-    "version-packages": "changeset version",
-    "release": "turbo build --filter=./packages/* && changeset publish"
-  },
-  "devDependencies": {
-    "turbo": "^1.10.0",
-    "prettier": "^3.0.0",
-    "@changesets/cli": "^2.26.0"
-  },
-  "packageManager": "npm@10.0.0"
-}
-```
-
-## Debugging Cache
-
-```bash
-# Dry run to see what would run
-turbo build --dry-run
-
-# Verbose output with hashes
-turbo build --verbosity=2
-
-# Show task graph
-turbo build --graph
-
-# Force no cache
-turbo build --force
-
-# Show cache status
-turbo build --summarize
-
-# Debug specific task
-TURBO_LOG_VERBOSITY=debug turbo build --filter=@myorg/web
-```
-
-## Best Practices
-
-### Do's
-
-- **Define explicit inputs** - Avoid cache invalidation
-- **Use workspace protocol** - `"@myorg/ui": "workspace:*"`
-- **Enable remote caching** - Share across CI and local
-- **Filter in CI** - Build only affected packages
-- **Cache build outputs** - Not source files
-
-### Don'ts
-
-- **Don't cache dev servers** - Use `persistent: true`
-- **Don't include secrets in env** - Use runtime env vars
-- **Don't ignore dependsOn** - Causes race conditions
-- **Don't over-filter** - May miss dependencies
-
-## Resources
-
-- [Turborepo Documentation](https://turbo.build/repo/docs)
-- [Caching Guide](https://turbo.build/repo/docs/core-concepts/caching)
-- [Remote Caching](https://turbo.build/repo/docs/core-concepts/remote-caching)
+- Usar `"pipeline"` en lugar de `"tasks"` — sintaxis v1, Turborepo 2.x la ignora silenciosamente
+- `inputs: ["**/*"]` — invalida el caché con cualquier cambio
+- Variables de entorno no declaradas en `env` — cache inconsistente entre entornos
+- Asumir remote caching Vercel — el proyecto es on-prem
+- Usar `npm` o `yarn` en scripts — el monorepo usa pnpm exclusivamente
