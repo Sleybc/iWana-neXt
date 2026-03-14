@@ -458,3 +458,30 @@ Se revisaron las nueve skills activas que aun no habian pasado por una potencial
 - El catalogo activo mantiene 25 skills y las 25 ya quedaron potencializadas u homogeneizadas.
 - No quedan skills con decision vigente de restauracion inmediata en el archivo.
 - El archivo conserva 6 skills revisadas y mantener archivadas, 3 en hold, 4 archivos legacy y 670 directorios historicos en raiz.
+
+## Actualización 2026-03-14 — Integración de despacho de skills
+
+**Modo:** Mixto (EM + Architect)
+
+### Skills restauradas al catálogo activo (25 → 30)
+
+| Skill | Dominio | Commits |
+|---|---|---|
+| `turborepo-caching` | Arquitectura/Monorepo | 49f57f6 |
+| `database-migration` | Backend | 554d2d9 |
+| `e2e-testing-patterns` | Testing | ba1dc64 |
+| `typescript-pro` | Backend/Frontend (Opus) | 1d644fb |
+| `codebase-cleanup-deps-audit` | Seguridad/Mantenimiento | 5e28df2 |
+
+### Archivos actualizados
+
+- `.agents/skills/INDEX.md` — 30 skills, nuevas secciones por área (d253d24)
+- `.agents/skills/README.md` + `MANIFEST.json` — conteos y mapas actualizados (9349d39)
+- `CLAUDE.md` — sección `## Despacho de Skills` con tablas completas por dominio (4e196dc)
+- `AGENTS.md` — sección `## Despacho de Skills` compacta (4e196dc)
+- `.github/copilot-instructions.md` — sección `## Skills` de listado rápido (4e196dc)
+
+### Documento de diseño
+
+`docs/plans/2026-03-14-skills-dispatch-design.md`
+`docs/plans/2026-03-14-skills-dispatch-integration.md`
