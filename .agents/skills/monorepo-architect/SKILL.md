@@ -30,22 +30,33 @@ Este skill aterriza la arquitectura del monorepo de iWana neXt sobre Turborepo y
 4. Cada package debe tener responsabilidad clara y API publica minima.
 5. Los pipelines deben ser cacheables, reproducibles y acotados.
 
-## Estructura objetivo
+## Estructura real del monorepo iWana neXt
 
-```text
-apps/
-	api/
-	web/
-
-packages/
-	shared/
-	ui/
-	config/
-	testing/
-
-turbo.json
-pnpm-workspace.yaml
 ```
+iwana-next/
+├── apps/
+│   ├── api/          @iwana/api      — NestJS Modulith (puerto 3000)
+│   ├── web/          @iwana/web      — Next.js Admin (puerto 3001)
+│   ├── portal/       @iwana/portal   — Next.js Portal Cliente (puerto 3002)
+│   └── worker/       @iwana/worker   — BullMQ consumers (sin puerto HTTP)
+├── packages/
+│   ├── database/     @iwana/db       — TypeORM entities, DataSource, migrations
+│   ├── shared/       @iwana/shared   — DTOs, enums, interfaces compartidas
+│   ├── ui/           @iwana/ui       — Design system: tokens, componentes
+│   └── config/       @iwana/config   — tsconfig/eslint/prettier base
+├── e2e/                              — Tests Playwright (web + portal)
+├── docs/                             — ADRs, HLDs, PRDs, informes, plans
+├── .agents/skills/                   — Catálogo de skills del proyecto
+├── turbo.json
+├── pnpm-workspace.yaml
+└── package.json  ← debe tener "packageManager": "pnpm@10.32.1"
+```
+
+### Requisitos del gestor de paquetes
+
+- **pnpm@10.32.1** — instalar con `npm install -g pnpm` (Corepack bloqueado por NTFS en Win11)
+- El campo `"packageManager": "pnpm@10.32.1"` en `package.json` raíz es **obligatorio** para Turborepo 2.x
+- `pnpm.onlyBuiltDependencies` requerido para: `@nestjs/core`, `msgpackr-extract`, `sharp`
 
 ## Reglas de boundary
 
