@@ -4,12 +4,12 @@ Este directorio mantiene solo el set core de skills necesarias para el proyecto 
 
 ## Estado actual
 
-- Skills activas: 25
+- Skills activas: 30
 - Skills archivadas fuera del catalogo activo: 683 entradas no activas
 - Desglose del archivo: 679 directorios y 4 archivos legacy
 - Ruta de archivo: .agents/skills-archive/
 - Criterio rector: AGENTS.md prevalece sobre cualquier skill individual
-- Skills core ya potencializadas contra el stack real: 25
+- Skills core ya potencializadas contra el stack real: 30
 
 ## Objetivo de esta reduccion
 
@@ -68,12 +68,14 @@ Activarlas cuando el problema sea especifico del dominio o de una capa puntual:
 - docs-architect
 - mermaid-expert
 - monorepo-architect
+- turborepo-caching
 
 ### Backend y plataforma
 
 - auth-implementation-patterns
 - backend-security-coder
 - bullmq-specialist
+- database-migration
 - docker-expert
 - nestjs-expert
 - openapi-spec-generation
@@ -81,6 +83,7 @@ Activarlas cuando el problema sea especifico del dominio o de una capa puntual:
 - postgresql
 - security-auditor
 - typescript-expert
+- typescript-pro
 
 ### Frontend y accesibilidad
 
@@ -94,9 +97,14 @@ Activarlas cuando el problema sea especifico del dominio o de una capa puntual:
 
 ### Testing
 
+- e2e-testing-patterns
 - playwright-skill
 - test-driven-development
 - testing-patterns
+
+### Mantenimiento y dependencias
+
+- codebase-cleanup-deps-audit
 
 ## Mapa rapido de combinacion
 
@@ -104,6 +112,11 @@ Activarlas cuando el problema sea especifico del dominio o de una capa puntual:
 - Si la tarea es de frontend Next.js, comenzar por nextjs-app-router-patterns y complementar con frontend-dev-guidelines, core-components, tailwind-patterns, wcag-audit-patterns e i18n-localization.
 - Si la tarea es transversal de seguridad, usar security-auditor y los skills de seguridad por capa.
 - Si la tarea es de pruebas, usar testing-patterns, test-driven-development y playwright-skill.
+- Si la tarea es de migraciones TypeORM o schema multi-tenant, usar database-migration y complementar con postgresql.
+- Si la tarea es de optimización de pipelines Turborepo o caché CI, usar turborepo-caching y complementar con monorepo-architect.
+- Si la tarea requiere tipos TypeScript complejos (generics, decoradores, inferencia avanzada), usar typescript-pro y complementar con typescript-expert.
+- Si la tarea es de auditoría de dependencias o preparación de release, usar codebase-cleanup-deps-audit y complementar con security-auditor.
+- Si la tarea es de E2E avanzado (tests flaky, trazas Playwright, CI paralelo), usar e2e-testing-patterns y complementar con playwright-skill.
 
 ## Estado de homogeneizacion
 

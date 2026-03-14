@@ -14,14 +14,14 @@
     "archiveDirectory": ".agents/skills-archive"
   },
   "summary": {
-    "coreCount": 25,
+    "coreCount": 30,
     "archivedItemCount": 683,
     "archivedDirectoryCount": 679,
     "archivedLegacyFileCount": 4,
     "candidateCount": 0,
     "reviewedArchivedCount": 6,
     "holdCount": 3,
-    "potentializedCoreCount": 25,
+    "potentializedCoreCount": 30,
     "potentializationPhase": 8
   },
   "usagePriority": {
@@ -43,7 +43,8 @@
       "frontend-security-coder",
       "openapi-spec-generation",
       "security-auditor",
-      "typescript-expert"
+      "typescript-expert",
+      "typescript-pro"
     ],
     "specializedOnDemand": [
       "bullmq-specialist",
@@ -54,7 +55,11 @@
       "playwright-skill",
       "tailwind-patterns",
       "test-driven-development",
-      "wcag-audit-patterns"
+      "wcag-audit-patterns",
+      "turborepo-caching",
+      "database-migration",
+      "e2e-testing-patterns",
+      "codebase-cleanup-deps-audit"
     ]
   },
   "core": {
@@ -63,19 +68,22 @@
       "architecture-decision-records",
       "docs-architect",
       "mermaid-expert",
-      "monorepo-architect"
+      "monorepo-architect",
+      "turborepo-caching"
     ],
     "backend": [
       "auth-implementation-patterns",
       "backend-security-coder",
       "bullmq-specialist",
+      "database-migration",
       "docker-expert",
       "nestjs-expert",
       "openapi-spec-generation",
       "observability-engineer",
       "postgresql",
       "security-auditor",
-      "typescript-expert"
+      "typescript-expert",
+      "typescript-pro"
     ],
     "frontend": [
       "core-components",
@@ -86,7 +94,13 @@
       "tailwind-patterns",
       "wcag-audit-patterns"
     ],
-    "testing": ["playwright-skill", "test-driven-development", "testing-patterns"]
+    "testing": [
+      "e2e-testing-patterns",
+      "playwright-skill",
+      "test-driven-development",
+      "testing-patterns"
+    ],
+    "maintenance": ["codebase-cleanup-deps-audit"]
   },
   "candidates": {
     "highPriority": []
@@ -162,6 +176,11 @@
     "tailwind-patterns",
     "test-driven-development",
     "docs-architect",
-    "observability-engineer"
+    "observability-engineer",
+    "turborepo-caching",
+    "database-migration",
+    "e2e-testing-patterns",
+    "typescript-pro",
+    "codebase-cleanup-deps-audit"
   ]
 }
