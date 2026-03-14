@@ -115,3 +115,32 @@ describe("GET /customers", () => {
 - `postgresql` para decisiones de schema y rendimiento
 - `openapi-spec-generation` para contrato HTTP
 - `testing-patterns` para estrategia de pruebas
+
+## JWT RS256 asimétrico en este repo
+
+El proyecto usa **RS256 asimétrico** (par de claves pública/privada), NO HMAC simétrico (HS256).
+
+- Clave privada: `secrets/jwt-private.pem` (git-ignored, generada por `scripts/generate-secrets.sh`)
+- Clave pública: `secrets/jwt-public.pem`
+- Las claves se cargan vía `ConfigService` desde las variables `JWT_PRIVATE_KEY` y `JWT_PUBLIC_KEY`
+- Los valores PEM en `.env` usan `\n` literal que debe normalizarse: `.replace(/\\n/g, '\n')`
+
+```typescript
+// Configuración correcta en JwtModule.registerAsync:
+privateKey: config.getOrThrow<string>('JWT_PRIVATE_KEY').replace(/\\n/g, '\n'),
+publicKey: config.getOrThrow<string>('JWT_PUBLIC_KEY').replace(/\\n/g, '\n'),
+signOptions: { algorithm: 'RS256' },
+verifyOptions: { algorithms: ['RS256'] },
+```
+
+## Separación api / worker
+
+El repo separa producción y consumo de colas BullMQ en dos apps:
+
+| App | Rol | Package |
+|---|---|---|
+| `apps/api` (`@iwana/api`) | **Productora** — encola jobs con `Queue.add()` | `@nestjs/bullmq` |
+| `apps/worker` (`@iwana/worker`) | **Consumidora** — procesa jobs con `@Processor` | `@nestjs/bullmq` |
+
+Nunca procesar jobs directamente en `apps/api` — siempre delegar a `apps/worker`.
+Para la implementación detallada de colas, usar `bullmq-specialist`.
