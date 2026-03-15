@@ -29,7 +29,13 @@ import { AuthService } from './auth.service';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { AuditService } from '../audit/audit.service';
 import { MailerService } from '../mailer/mailer.service';
-import { LoginDto, MfaVerifyDto, MfaDisableDto } from './dto/auth.dto';
+import {
+  EmailVerifyDto,
+  LoginDto,
+  MfaVerifyDto,
+  MfaDisableDto,
+  ResendVerificationDto,
+} from './dto/auth.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 
 // ---------------------------------------------------------------------------
@@ -654,6 +660,114 @@ describe('AuthService', () => {
       expect(result.temporaryPassword).toBe('IwN!a9-cachedpass');
       expect(mockRunInTenantSchema).not.toHaveBeenCalled();
       expect(bcrypt.hash).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // VERIFICACION DE EMAIL
+  // ---------------------------------------------------------------------------
+
+  describe('verifyEmail()', () => {
+    it('activa el usuario cuando el token de verificacion es valido', async () => {
+      // Usuario con estado PENDING_VERIFICATION y token pendiente
+      const user = buildUser({
+        status: UserStatus.PENDING_VERIFICATION,
+        emailVerified: false,
+        emailVerificationToken: 'raw-valid-token-hex',
+      } as Partial<User>);
+
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        save: jest.fn().mockResolvedValue({}),
+      });
+
+      const dto: EmailVerifyDto = { token: 'raw-valid-token-hex' };
+      await service.verifyEmail(dto, 'tenant_test');
+
+      // Verificar que se guardo el usuario con el estado correcto
+      const [, savedUser] = (manager.save as jest.Mock).mock.calls[0] as [unknown, User];
+      expect(savedUser.emailVerified).toBe(true);
+      expect(savedUser.emailVerificationToken).toBeNull();
+      expect(savedUser.status).toBe(UserStatus.ACTIVE);
+    });
+
+    it('no cambia el status si el usuario ya estaba ACTIVE', async () => {
+      // Usuario activo que de alguna forma aun no verifico el email
+      const user = buildUser({
+        status: UserStatus.ACTIVE,
+        emailVerified: false,
+        emailVerificationToken: 'another-valid-token',
+      } as Partial<User>);
+
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        save: jest.fn().mockResolvedValue({}),
+      });
+
+      const dto: EmailVerifyDto = { token: 'another-valid-token' };
+      await service.verifyEmail(dto, 'tenant_test');
+
+      const [, savedUser] = (manager.save as jest.Mock).mock.calls[0] as [unknown, User];
+      expect(savedUser.emailVerified).toBe(true);
+      expect(savedUser.status).toBe(UserStatus.ACTIVE); // No cambia si ya era ACTIVE
+    });
+
+    it('lanza UnauthorizedException cuando el token de verificacion no existe en DB', async () => {
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(null),
+      });
+
+      const dto: EmailVerifyDto = { token: 'token-inexistente' };
+      await expect(service.verifyEmail(dto, 'tenant_test')).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('resendVerificationEmail()', () => {
+    it('retorna void sin lanzar error aunque el email no exista (OWASP — no revelar existencia)', async () => {
+      // No existe ningun usuario con ese email hash
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(null),
+        save: jest.fn(),
+      });
+
+      const dto: ResendVerificationDto = { email: 'noexiste@example.com' };
+      await expect(service.resendVerificationEmail(dto, 'tenant_test')).resolves.toBeUndefined();
+
+      // No debe haber persistido ni enviado nada
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it('genera un nuevo token y envia el email cuando el usuario existe y no esta verificado', async () => {
+      const user = buildUser({
+        emailVerified: false,
+        emailVerificationToken: 'token-anterior',
+      } as Partial<User>);
+
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        save: jest.fn().mockResolvedValue({}),
+      });
+
+      // Acceder al MailerService mockeado desde el modulo de testing
+      const mailerService = (service as unknown as { mailerService: { sendMail: jest.Mock } })
+        .mailerService;
+
+      const dto: ResendVerificationDto = { email: 'usuario@example.com' };
+      await service.resendVerificationEmail(dto, 'tenant_test');
+
+      // Debe haber guardado el usuario con un nuevo token
+      const [, savedUser] = (manager.save as jest.Mock).mock.calls[0] as [unknown, User];
+      expect(typeof savedUser.emailVerificationToken).toBe('string');
+      expect(savedUser.emailVerificationToken).not.toBe('token-anterior');
+      expect(savedUser.emailVerificationToken!.length).toBeGreaterThan(10);
+
+      // Debe haber enviado el correo de verificacion
+      expect(mailerService.sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'usuario@example.com',
+          subject: expect.stringContaining('Verifica'),
+        }),
+      );
     });
   });
 });

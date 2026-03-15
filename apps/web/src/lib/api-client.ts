@@ -39,6 +39,8 @@ export interface JwtProfile {
   schemaName: string | null;
   jti: string;
   type: 'platform' | 'tenant';
+  /** Indica si el usuario debe cambiar su contrasena en el siguiente ingreso */
+  passwordResetRequired?: boolean;
   iat?: number;
   exp?: number;
 }
@@ -212,6 +214,32 @@ export const authApi = {
       clearPendingPlatformMfaLogin();
     }
   },
+
+  /**
+   * Verifica el email del usuario con el token recibido por correo.
+   * Requiere header X-Tenant-Slug para identificar el tenant.
+   */
+  verifyEmail: (token: string, tenantSlug: string) =>
+    request<{ message: string }>('/auth/email/verify', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+      skipAuth: true,
+      skipRefreshRetry: true,
+      headers: { 'X-Tenant-Slug': tenantSlug },
+    }),
+
+  /**
+   * Reenvía el correo de verificacion de email.
+   * Requiere header X-Tenant-Slug para identificar el tenant.
+   */
+  resendVerification: (email: string, tenantSlug: string) =>
+    request<{ message: string }>('/auth/email/resend-verification', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+      skipAuth: true,
+      skipRefreshRetry: true,
+      headers: { 'X-Tenant-Slug': tenantSlug },
+    }),
 };
 
 export interface PlatformUserProfile {

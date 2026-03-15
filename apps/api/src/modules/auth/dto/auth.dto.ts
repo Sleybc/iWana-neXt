@@ -1,4 +1,12 @@
-import { IsEmail, IsOptional, IsString, Length, MaxLength, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Length,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 /**
  * DTO de login.
@@ -105,4 +113,23 @@ export class ChangePasswordDto {
   @MinLength(10)
   @MaxLength(128)
   newPassword: string;
+}
+
+/**
+ * DTO de verificacion de email (POST /api/v1/auth/email/verify).
+ * El token fue enviado al email del usuario durante el registro.
+ */
+export class EmailVerifyDto {
+  @IsString()
+  @IsNotEmpty()
+  token: string;
+}
+
+/**
+ * DTO de reenvio de verificacion de email (POST /api/v1/auth/email/resend-verification).
+ * Responde siempre 200 sin revelar si el email existe (OWASP).
+ */
+export class ResendVerificationDto {
+  @IsEmail()
+  email: string;
 }

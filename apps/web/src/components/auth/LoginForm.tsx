@@ -41,7 +41,15 @@ export function LoginForm() {
     setServerError(null);
     try {
       const result = await login(data.email, data.password);
-      router.push(result === 'mfa_required' ? '/auth/mfa/verify' : '/dashboard');
+
+      if (result === 'mfa_required') {
+        router.push('/auth/mfa/verify');
+      } else if (result === 'password_reset_required') {
+        // El usuario debe cambiar su contrasena antes de continuar (credenciales temporales)
+        router.push('/auth/change-password');
+      } else {
+        router.push('/dashboard');
+      }
     } catch (err) {
       if (err instanceof ApiError) {
         setServerError(

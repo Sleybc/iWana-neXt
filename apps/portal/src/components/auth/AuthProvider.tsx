@@ -21,11 +21,14 @@ interface AuthUser {
   subtitle: string;
 }
 
+/** Resultados posibles del metodo login en el portal de tenant */
+export type LoginResult = 'authenticated' | 'password_reset_required';
+
 interface AuthContextValue {
   user: AuthUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string, tenantSlug?: string) => Promise<void>;
+  login: (email: string, password: string, tenantSlug?: string) => Promise<LoginResult>;
   logout: (tenantSlug?: string) => Promise<void>;
   refreshProfile: (tenantSlug?: string) => Promise<void>;
 }
@@ -96,11 +99,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = useCallback(async (email: string, password: string, tenantSlug?: string) => {
-    await authApi.tenantLogin(email, password, tenantSlug);
-    const profile = await authApi.me(tenantSlug);
-    setUser(toAuthUser(profile));
-  }, []);
+  const login = useCallback(
+    async (email: string, password: string, tenantSlug?: string): Promise<LoginResult> => {
+      await authApi.tenantLogin(email, password, tenantSlug);
+      const profile = await authApi.me(tenantSlug);
+      setUser(toAuthUser(profile));
+
+      // Si el backend indica que se debe cambiar la contrasena, informar al formulario
+      if (profile.passwordResetRequired) {
+        return 'password_reset_required';
+      }
+
+      return 'authenticated';
+    },
+    [],
+  );
 
   const logout = useCallback(async (tenantSlug?: string) => {
     await authApi.logout(tenantSlug);

@@ -22,14 +22,17 @@ import { DataSource } from 'typeorm';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { AuditService } from '../audit/audit.service';
 import { MailerService } from '../mailer/mailer.service';
+import { emailVerificationTemplate } from '../mailer/templates/email-verification.template';
 import { forgotPasswordTemplate } from '../mailer/templates/forgot-password.template';
 import { passwordResetConfirmTemplate } from '../mailer/templates/password-reset-confirm.template';
 import {
   ChangePasswordDto,
+  EmailVerifyDto,
   ForgotPasswordDto,
   LoginDto,
   MfaDisableDto,
   MfaVerifyDto,
+  ResendVerificationDto,
   ResetPasswordDto,
 } from './dto/auth.dto';
 import { AuthResponse, MfaSetupResponse } from './interfaces/auth-response.interface';
@@ -671,6 +674,88 @@ export class AuthService {
         entityId: userId,
         userId,
       });
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // VERIFICACION DE EMAIL
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Verifica el email del usuario usando el token enviado durante el registro.
+   *
+   * Si el token es valido, marca el usuario como verificado y activa la cuenta
+   * si estaba en estado PENDING_VERIFICATION.
+   *
+   * @throws UnauthorizedException si el token no existe o ya fue usado.
+   */
+  async verifyEmail(dto: EmailVerifyDto, schemaName: string): Promise<void> {
+    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      // El token de verificacion se almacena en texto plano (igual que passwordResetToken)
+      const user = await qr.manager.findOne(User, {
+        where: { emailVerificationToken: dto.token },
+      });
+
+      if (!user) {
+        throw new UnauthorizedException('Token de verificacion invalido o expirado.');
+      }
+
+      // Marcar como verificado y limpiar el token
+      user.emailVerified = true;
+      user.emailVerificationToken = null;
+
+      // Activar la cuenta si estaba pendiente de verificacion
+      if (user.status === UserStatus.PENDING_VERIFICATION) {
+        user.status = UserStatus.ACTIVE;
+      }
+
+      await qr.manager.save(User, user);
+
+      // Registrar verificacion de email en audit trail
+      void this.auditService.log({
+        action: AuditAction.UPDATE,
+        entityType: 'User',
+        entityId: user.id,
+        userId: user.id,
+        newValue: { emailVerified: true },
+      });
+    });
+  }
+
+  /**
+   * Reenvía el correo de verificacion de email al usuario.
+   *
+   * OWASP: SIEMPRE retorna void sin revelar si el email existe o si ya esta verificado.
+   * Genera un nuevo token de verificacion y lo envia por correo si el usuario existe
+   * y aun no ha verificado su email.
+   */
+  async resendVerificationEmail(dto: ResendVerificationDto, schemaName: string): Promise<void> {
+    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      // Buscar por hash del email (nunca por email plano — PII protegida)
+      const emailHash = this.hashEmail(dto.email);
+      const user = await qr.manager.findOne(User, {
+        where: { emailHash, emailVerified: false },
+      });
+
+      // Silencio intencional — no revelar si el email existe o ya esta verificado
+      if (!user) {
+        return;
+      }
+
+      // Generar nuevo token de verificacion de 32 bytes (64 chars hex)
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      user.emailVerificationToken = rawToken;
+      await qr.manager.save(User, user);
+
+      // Descifrar el email para el envio — solo en memoria, nunca se persiste ni loguea
+      const plainEmail = dto.email.toLowerCase().trim();
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:3001');
+      const template = emailVerificationTemplate({
+        verifyLink: `${frontendUrl}/auth/verify-email?token=${rawToken}`,
+      });
+
+      // Enviar correo de verificacion (fire-and-forget — no bloquea la respuesta al cliente)
+      void this.mailerService.sendMail({ to: plainEmail, ...template });
     });
   }
 

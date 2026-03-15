@@ -35,8 +35,14 @@ export function LoginForm() {
   const onSubmit = async (data: LoginFormValues) => {
     setServerError(null);
     try {
-      await login(data.email, data.password, tenantSlug);
-      router.push('/dashboard');
+      const result = await login(data.email, data.password, tenantSlug);
+
+      if (result === 'password_reset_required') {
+        // El usuario debe cambiar su contrasena temporal antes de continuar
+        router.push('/auth/change-password');
+      } else {
+        router.push('/dashboard');
+      }
     } catch (err) {
       if (err instanceof ApiError) {
         setServerError(errorMessages[err.status] ?? 'Error inesperado. Intenta de nuevo.');

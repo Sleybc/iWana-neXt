@@ -116,6 +116,7 @@ export const DropdownUser = () => {
             <Link
               href="/profile"
               role="menuitem"
+              onClick={() => setDropdownOpen(false)}
               className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-dark-surface-4 dark:hover:text-white"
             >
               <UserIcon className="w-4 h-4" aria-hidden="true" />
@@ -126,6 +127,7 @@ export const DropdownUser = () => {
             <Link
               href="/settings"
               role="menuitem"
+              onClick={() => setDropdownOpen(false)}
               className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-dark-surface-4 dark:hover:text-white"
             >
               <Settings className="w-4 h-4" aria-hidden="true" />
@@ -136,6 +138,7 @@ export const DropdownUser = () => {
             <Link
               href="/support"
               role="menuitem"
+              onClick={() => setDropdownOpen(false)}
               className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-dark-surface-4 dark:hover:text-white"
             >
               <Headphones className="w-4 h-4" aria-hidden="true" />

@@ -30,11 +30,14 @@ interface AuthUser {
   subtitle: string;
 }
 
+/** Resultados posibles del metodo login */
+export type LoginResult = 'authenticated' | 'mfa_required' | 'password_reset_required';
+
 interface AuthContextValue {
   user: AuthUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<'authenticated' | 'mfa_required'>;
+  login: (email: string, password: string) => Promise<LoginResult>;
   completeMfaLogin: (code: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -138,18 +141,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string): Promise<LoginResult> => {
     const result = await authApi.platformLogin(email, password);
     if (result.mfaRequired) {
       setPendingPlatformMfaLogin({ email, password });
-      return 'mfa_required' as const;
+      return 'mfa_required';
     }
 
     const profile = await authApi.me();
     const platformProfile = await fetchPlatformProfileSafely();
     setUser(toAuthUser(profile, platformProfile));
     clearPendingPlatformMfaLogin();
-    return 'authenticated' as const;
+
+    // Si el backend indica que se debe cambiar la contrasena, informar al formulario
+    if (profile.passwordResetRequired) {
+      return 'password_reset_required';
+    }
+
+    return 'authenticated';
   }, []);
 
   const completeMfaLogin = useCallback(async (code: string) => {

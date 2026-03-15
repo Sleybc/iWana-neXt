@@ -12,15 +12,18 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Request as ExpressRequest, Response as ExpressResponse } from 'express';
+import { TenantContext } from '@iwana/db';
 import { AuthService } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
 import {
   ChangePasswordDto,
+  EmailVerifyDto,
   ForgotPasswordDto,
   LoginDto,
   MfaDisableDto,
   MfaVerifyDto,
+  ResendVerificationDto,
   ResetPasswordDto,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -209,9 +212,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Genera secret TOTP y QR code para configurar MFA' })
   @ApiResponse({ status: 200, description: 'QR code y URI de autenticacion.' })
-  async setupMfa(
-    @CurrentUser() user: JwtPayload,
-  ): Promise<{ data: MfaSetupResponse }> {
+  async setupMfa(@CurrentUser() user: JwtPayload): Promise<{ data: MfaSetupResponse }> {
     const result = await this.authService.setupMfa(user.sub, user.email);
     return { data: result };
   }
@@ -268,9 +269,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Solicita link de recuperacion de contrasena (respuesta siempre 200)' })
   @ApiResponse({ status: 200, description: 'Solicitud procesada.' })
-  async forgotPassword(
-    @Body() dto: ForgotPasswordDto,
-  ): Promise<{ data: { message: string } }> {
+  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<{ data: { message: string } }> {
     await this.authService.forgotPassword(dto);
     return { data: { message: 'Si el email existe, recibiras instrucciones de recuperacion.' } };
   }
@@ -287,9 +286,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Restablece la contrasena usando el token de recuperacion' })
   @ApiResponse({ status: 200, description: 'Contrasena restablecida.' })
   @ApiResponse({ status: 401, description: 'Token invalido o expirado.' })
-  async resetPassword(
-    @Body() dto: ResetPasswordDto,
-  ): Promise<{ data: { message: string } }> {
+  async resetPassword(@Body() dto: ResetPasswordDto): Promise<{ data: { message: string } }> {
     await this.authService.resetPassword(dto);
     return { data: { message: 'Contrasena restablecida correctamente.' } };
   }
@@ -311,5 +308,50 @@ export class AuthController {
   ): Promise<{ data: { message: string } }> {
     await this.authService.changePassword(user.sub, dto);
     return { data: { message: 'Contrasena actualizada correctamente.' } };
+  }
+
+  // ---------------------------------------------------------------------------
+  // VERIFICACION DE EMAIL
+  // ---------------------------------------------------------------------------
+
+  /**
+   * POST /api/v1/auth/email/verify
+   * Verifica el email del usuario con el token recibido por correo.
+   * Ruta publica — el usuario no esta autenticado en este paso.
+   *
+   * El tenant se resuelve automaticamente via TenantMiddleware (header X-Tenant-Slug).
+   */
+  @Public()
+  @Post('email/verify')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verifica el email del usuario con el token de verificacion' })
+  @ApiResponse({ status: 200, description: 'Email verificado correctamente.' })
+  @ApiResponse({ status: 401, description: 'Token invalido o expirado.' })
+  async verifyEmail(@Body() dto: EmailVerifyDto): Promise<{ data: { message: string } }> {
+    // TenantContext es resuelto por TenantMiddleware desde el header X-Tenant-Slug
+    const { schemaName } = TenantContext.getOrThrow();
+    await this.authService.verifyEmail(dto, schemaName);
+    return { data: { message: 'Email verificado correctamente.' } };
+  }
+
+  /**
+   * POST /api/v1/auth/email/resend-verification
+   * Reenvía el correo de verificacion de email.
+   * Ruta publica — responde siempre 200 sin revelar si el email existe (OWASP).
+   *
+   * El tenant se resuelve automaticamente via TenantMiddleware (header X-Tenant-Slug).
+   */
+  @Public()
+  @Post('email/resend-verification')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reenvía el correo de verificacion (respuesta siempre 200)' })
+  @ApiResponse({ status: 200, description: 'Solicitud procesada.' })
+  async resendVerification(
+    @Body() dto: ResendVerificationDto,
+  ): Promise<{ data: { message: string } }> {
+    // TenantContext es resuelto por TenantMiddleware desde el header X-Tenant-Slug
+    const { schemaName } = TenantContext.getOrThrow();
+    await this.authService.resendVerificationEmail(dto, schemaName);
+    return { data: { message: 'Si el email existe y no esta verificado, recibiras un correo.' } };
   }
 }

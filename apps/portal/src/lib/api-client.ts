@@ -73,6 +73,8 @@ export interface JwtProfile {
   schemaName: string | null;
   jti: string;
   type: 'platform' | 'tenant';
+  /** Indica si el usuario debe cambiar su contrasena en el siguiente ingreso */
+  passwordResetRequired?: boolean;
   iat?: number;
   exp?: number;
 }
@@ -240,6 +242,20 @@ export const authApi = {
 
   me: (tenantSlug?: string) => request<JwtProfile>('/auth/me', undefined, tenantSlug),
 
+  /**
+   * Cambia la contrasena del usuario autenticado.
+   * Invalida todos los refresh tokens al completar.
+   */
+  changePassword: (currentPassword: string, newPassword: string, tenantSlug?: string) =>
+    request<{ message: string }>(
+      '/auth/change-password',
+      {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword, newPassword }),
+      },
+      tenantSlug,
+    ),
+
   logout: async (tenantSlug?: string) => {
     try {
       await request<{ message: string }>('/auth/logout', { method: 'POST' }, tenantSlug);
@@ -250,6 +266,36 @@ export const authApi = {
       persistAccessToken('');
     }
   },
+
+  /**
+   * Verifica el email del usuario con el token recibido por correo.
+   */
+  verifyEmail: (token: string, tenantSlug?: string) =>
+    request<{ message: string }>(
+      '/auth/email/verify',
+      {
+        method: 'POST',
+        body: JSON.stringify({ token }),
+        skipAuth: true,
+        skipRefreshRetry: true,
+      },
+      tenantSlug,
+    ),
+
+  /**
+   * Reenvía el correo de verificacion de email.
+   */
+  resendVerification: (email: string, tenantSlug?: string) =>
+    request<{ message: string }>(
+      '/auth/email/resend-verification',
+      {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+        skipAuth: true,
+        skipRefreshRetry: true,
+      },
+      tenantSlug,
+    ),
 };
 
 export const auditApi = {
