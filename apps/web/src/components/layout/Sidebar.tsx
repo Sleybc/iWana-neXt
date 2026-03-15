@@ -3,7 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { LayoutDashboard, Users, Building2, ShieldAlert, Settings, X } from 'lucide-react';
+import { LayoutDashboard, Users, Building2, ClipboardList, Settings, X } from 'lucide-react';
 import { cn } from '@iwana/ui';
 
 interface SidebarProps {
@@ -19,7 +19,8 @@ const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/tenants', label: 'Empresas', icon: Building2 },
   { href: '/users', label: 'Usuarios', icon: Users },
-  { href: '/audit', label: 'Auditoría', icon: ShieldAlert },
+  // Registros de auditoría — historial de operaciones CUD del sistema
+  { href: '/audit-logs', label: 'Registros de Auditoría', icon: ClipboardList },
   { href: '/settings', label: 'Configuración', icon: Settings },
 ];
 

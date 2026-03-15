@@ -11,3 +11,6 @@
 
 /** Cola de provisioning de schemas PostgreSQL para nuevos tenants */
 export const TENANT_PROVISIONING_QUEUE = 'tenant-provisioning';
+
+/** Cola de purga diaria de refresh tokens expirados */
+export const REFRESH_TOKEN_PURGE_QUEUE = 'refresh-token-purge';
