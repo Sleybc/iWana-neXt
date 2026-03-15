@@ -75,6 +75,26 @@ export class PlatformUser {
   @Column({ name: 'mfa_secret', type: 'varchar', length: 512, nullable: true })
   mfaSecret: string | null;
 
+  /** Nombre del usuario de plataforma */
+  @Column({ name: 'first_name', type: 'varchar', length: 100, nullable: true })
+  firstName: string | null;
+
+  /** Apellido del usuario de plataforma */
+  @Column({ name: 'last_name', type: 'varchar', length: 100, nullable: true })
+  lastName: string | null;
+
+  /** Telefono de contacto opcional en formato E.164 */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  phone: string | null;
+
+  /** Zona horaria preferida para render de fechas en UI */
+  @Column({ length: 50, default: 'America/Bogota' })
+  timezone: string;
+
+  /** Idioma preferido del usuario de plataforma */
+  @Column({ length: 10, default: 'es-CO' })
+  language: string;
+
   @Column({ name: 'last_login_at', type: 'timestamptz', nullable: true })
   lastLoginAt: Date | null;
 
