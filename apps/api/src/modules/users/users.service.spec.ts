@@ -609,4 +609,80 @@ describe('UsersService', () => {
       );
     });
   });
+
+  // -------------------------------------------------------------------------
+  // findAll() — branches cursor, status, role
+  // -------------------------------------------------------------------------
+
+  describe('findAll() — branches de filtros opcionales', () => {
+    it('aplica filtro de cursor cuando se proporciona', async () => {
+      const userEntity = buildUserEntity();
+      const qb = {
+        where: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[userEntity], 1]),
+      };
+      setupRunInTenantSchema({ createQueryBuilder: jest.fn().mockReturnValue(qb) });
+
+      await service.findAll({ cursor: 'some-cursor-uuid' });
+
+      // El branch de cursor debe haber llamado andWhere con el cursor
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('u.id > :cursor'),
+        expect.objectContaining({ cursor: 'some-cursor-uuid' }),
+      );
+    });
+
+    it('aplica filtro de status cuando se proporciona', async () => {
+      const userEntity = buildUserEntity();
+      const qb = {
+        where: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[userEntity], 1]),
+      };
+      setupRunInTenantSchema({ createQueryBuilder: jest.fn().mockReturnValue(qb) });
+
+      await service.findAll({ status: UserStatus.ACTIVE });
+
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('u.status = :status'),
+        expect.objectContaining({ status: UserStatus.ACTIVE }),
+      );
+    });
+
+    it('aplica filtro de role cuando se proporciona', async () => {
+      const userEntity = buildUserEntity();
+      const qb = {
+        where: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[userEntity], 1]),
+      };
+      setupRunInTenantSchema({ createQueryBuilder: jest.fn().mockReturnValue(qb) });
+
+      await service.findAll({ role: UserRole.NOC });
+
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('u.role = :role'),
+        expect.objectContaining({ role: UserRole.NOC }),
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // decryptValue — branch formato invalido
+  // -------------------------------------------------------------------------
+
+  describe('decryptValue() privado — branch formato invalido', () => {
+    it('lanza Error cuando el valor cifrado no tiene el formato iv:tag:ciphertext', () => {
+      expect(() => {
+        (service as any).decryptValue('solo-dos:partes');
+      }).toThrow('Formato de valor cifrado inválido.');
+    });
+  });
 });

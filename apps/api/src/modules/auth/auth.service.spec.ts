@@ -30,11 +30,14 @@ import { REDIS_CLIENT } from '../redis/redis.module';
 import { AuditService } from '../audit/audit.service';
 import { MailerService } from '../mailer/mailer.service';
 import {
+  ChangePasswordDto,
   EmailVerifyDto,
+  ForgotPasswordDto,
   LoginDto,
   MfaVerifyDto,
   MfaDisableDto,
   ResendVerificationDto,
+  ResetPasswordDto,
 } from './dto/auth.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 
@@ -768,6 +771,440 @@ describe('AuthService', () => {
           subject: expect.stringContaining('Verifica'),
         }),
       );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // LOGIN PLATAFORMA
+  // ---------------------------------------------------------------------------
+
+  describe('loginPlatform()', () => {
+    let platformUserRepo: { findOne: jest.Mock; update: jest.Mock };
+
+    beforeEach(() => {
+      // Acceder al repositorio de PlatformUser inyectado en el servicio
+      platformUserRepo = (
+        service as unknown as {
+          platformUserRepository: { findOne: jest.Mock; update: jest.Mock };
+        }
+      ).platformUserRepository;
+    });
+
+    it('retorna accessToken cuando las credenciales de plataforma son validas', async () => {
+      const platformUser = {
+        id: 'platform-user-uuid-1',
+        emailHash: 'platform-hash',
+        passwordHash: '$2b$12$hash',
+        role: 'system_admin',
+        status: 'active',
+        mfaEnabled: false,
+        mfaSecret: null,
+        lastLoginAt: null,
+      };
+      platformUserRepo.findOne.mockResolvedValue(platformUser);
+      platformUserRepo.update.mockResolvedValue({ affected: 1 });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      const dto = { email: 'admin@iwana.co', password: 'Passw0rd!' };
+      const result = await service.loginPlatform(dto);
+
+      expect(result.accessToken).toBe('mock.jwt.token');
+      expect(result.mfaRequired).toBeUndefined();
+    });
+
+    it('lanza UnauthorizedException cuando el usuario de plataforma no existe', async () => {
+      platformUserRepo.findOne.mockResolvedValue(null);
+
+      const dto = { email: 'noexiste@iwana.co', password: 'Any1pass!' };
+      await expect(service.loginPlatform(dto)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('lanza ForbiddenException cuando la cuenta de plataforma esta suspendida', async () => {
+      platformUserRepo.findOne.mockResolvedValue({
+        id: 'pu-1',
+        emailHash: 'h',
+        passwordHash: 'ph',
+        status: UserStatus.SUSPENDED,
+        mfaEnabled: false,
+      });
+
+      const dto = { email: 'susp@iwana.co', password: 'Pass1234!' };
+      await expect(service.loginPlatform(dto)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('lanza UnauthorizedException cuando la cuenta de plataforma esta inactiva', async () => {
+      platformUserRepo.findOne.mockResolvedValue({
+        id: 'pu-2',
+        emailHash: 'h',
+        passwordHash: 'ph',
+        status: UserStatus.INACTIVE,
+        mfaEnabled: false,
+      });
+
+      const dto = { email: 'inact@iwana.co', password: 'Pass1234!' };
+      await expect(service.loginPlatform(dto)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('lanza UnauthorizedException cuando la contrasena de plataforma es incorrecta', async () => {
+      platformUserRepo.findOne.mockResolvedValue({
+        id: 'pu-3',
+        emailHash: 'h',
+        passwordHash: '$2b$12$real_hash',
+        status: 'active',
+        mfaEnabled: false,
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      const dto = { email: 'admin@iwana.co', password: 'WrongPass!' };
+      await expect(service.loginPlatform(dto)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('retorna mfaRequired=true cuando la cuenta tiene MFA y no se envio totpCode', async () => {
+      const encryptedSecret = (service as any).encryptSecret('PLATFORMMFASECRET') as string;
+      platformUserRepo.findOne.mockResolvedValue({
+        id: 'pu-4',
+        emailHash: 'h',
+        passwordHash: '$2b$12$hash',
+        status: 'active',
+        mfaEnabled: true,
+        mfaSecret: encryptedSecret,
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      const dto = { email: 'admin@iwana.co', password: 'Passw0rd!' };
+      const result = await service.loginPlatform(dto);
+
+      expect(result.mfaRequired).toBe(true);
+      expect(result.accessToken).toBe('');
+    });
+
+    it('lanza UnauthorizedException cuando el codigo MFA de plataforma es invalido', async () => {
+      const encryptedSecret = (service as any).encryptSecret('PLATFORMMFASECRET') as string;
+      platformUserRepo.findOne.mockResolvedValue({
+        id: 'pu-5',
+        emailHash: 'h',
+        passwordHash: '$2b$12$hash',
+        status: 'active',
+        mfaEnabled: true,
+        mfaSecret: encryptedSecret,
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      jest
+        .spyOn(service as unknown as { verifyTotp: () => Promise<boolean> }, 'verifyTotp')
+        .mockResolvedValue(false);
+
+      const dto = { email: 'admin@iwana.co', password: 'Passw0rd!', totpCode: '000000' };
+      await expect(service.loginPlatform(dto)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('lanza UnauthorizedException cuando MFA esta habilitado pero el secret es nulo', async () => {
+      platformUserRepo.findOne.mockResolvedValue({
+        id: 'pu-6',
+        emailHash: 'h',
+        passwordHash: '$2b$12$hash',
+        status: 'active',
+        mfaEnabled: true,
+        mfaSecret: null, // secret nulo — setup incompleto
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      // Se envia totpCode pero el secret no esta configurado
+      const dto = { email: 'admin@iwana.co', password: 'Passw0rd!', totpCode: '123456' };
+      await expect(service.loginPlatform(dto)).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // REFRESH TOKEN — branches adicionales
+  // ---------------------------------------------------------------------------
+
+  describe('refreshTokens() — branches adicionales', () => {
+    it('lanza UnauthorizedException cuando el refresh token no existe en DB', async () => {
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(null),
+      });
+
+      const rawToken = 'c'.repeat(96);
+      await expect(service.refreshTokens(rawToken)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('lanza UnauthorizedException cuando el refresh token esta expirado', async () => {
+      const rawToken = 'd'.repeat(96);
+      const hashedToken = require('crypto').createHash('sha256').update(rawToken).digest('hex');
+
+      const expiredToken = {
+        id: 'rt-expired',
+        userId: 'user-uuid-1',
+        tokenHash: hashedToken,
+        familyId: 'family-uuid-expired',
+        revokedAt: null,
+        expiresAt: new Date(Date.now() - 1000), // ya expiro
+      };
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(expiredToken),
+      });
+
+      await expect(service.refreshTokens(rawToken)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('lanza UnauthorizedException cuando el usuario no esta activo al refrescar', async () => {
+      const rawToken = 'e'.repeat(96);
+      const hashedToken = require('crypto').createHash('sha256').update(rawToken).digest('hex');
+
+      const validToken = {
+        id: 'rt-valid',
+        userId: 'user-uuid-suspended',
+        tokenHash: hashedToken,
+        familyId: 'family-uuid-2',
+        revokedAt: null,
+        expiresAt: new Date(Date.now() + 86400000),
+      };
+
+      const suspendedUser = buildUser({ status: 'suspended' as any });
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValueOnce(validToken).mockResolvedValueOnce(suspendedUser),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      });
+
+      await expect(service.refreshTokens(rawToken)).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // RECUPERACION DE CONTRASENA
+  // ---------------------------------------------------------------------------
+
+  describe('forgotPassword()', () => {
+    it('retorna void sin error cuando el email no existe (OWASP — no revelar existencia)', async () => {
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(null),
+      });
+
+      await expect(
+        service.forgotPassword({ email: 'noexiste@example.com' }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('genera el token de reset y envia el correo cuando el usuario existe', async () => {
+      const user = buildUser();
+
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      });
+
+      const mailerService = (service as unknown as { mailerService: { sendMail: jest.Mock } })
+        .mailerService;
+
+      await service.forgotPassword({ email: 'test@example.com' });
+
+      // Debe haber actualizado al usuario con el token de reset
+      expect(manager.update).toHaveBeenCalledWith(
+        User,
+        user.id,
+        expect.objectContaining({
+          passwordResetToken: expect.any(String),
+          passwordResetExpiresAt: expect.any(Date),
+        }),
+      );
+
+      // Debe haber llamado a sendMail (fire-and-forget)
+      // Nota: el void no garantiza espera, pero el mock se registra igualmente
+      expect(mailerService.sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'test@example.com',
+        }),
+      );
+    });
+  });
+
+  describe('resetPassword()', () => {
+    it('lanza UnauthorizedException cuando el token de reset no existe', async () => {
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(null),
+      });
+
+      await expect(
+        service.resetPassword({
+          token: 'token-invalido',
+          newPassword: 'NuevoPass1!',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('lanza UnauthorizedException cuando el token de reset esta expirado', async () => {
+      const user = buildUser({
+        passwordResetToken: 'token-expirado',
+        passwordResetExpiresAt: new Date(Date.now() - 60_000), // expirado hace 1 minuto
+      });
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+      });
+
+      await expect(
+        service.resetPassword({
+          token: 'token-expirado',
+          newPassword: 'NuevoPass1!',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('actualiza la contrasena y revoca refresh tokens cuando el token es valido', async () => {
+      const user = buildUser({
+        passwordResetToken: 'token-valido-hex',
+        passwordResetExpiresAt: new Date(Date.now() + 30 * 60 * 1000), // expira en 30 min
+      });
+
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      });
+
+      await service.resetPassword({
+        token: 'token-valido-hex',
+        newPassword: 'NuevoPass1!',
+      });
+
+      // Debe actualizar la contrasena del usuario
+      expect(manager.update).toHaveBeenCalledWith(
+        User,
+        user.id,
+        expect.objectContaining({
+          passwordHash: expect.any(String),
+          passwordResetToken: null,
+          passwordResetExpiresAt: null,
+          passwordResetRequired: false,
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+        }),
+      );
+
+      // Debe revocar los refresh tokens
+      expect(manager.update).toHaveBeenCalledWith(
+        RefreshToken,
+        expect.objectContaining({ userId: user.id }),
+        expect.objectContaining({ revokeReason: 'PASSWORD_CHANGE' }),
+      );
+    });
+
+    it('envia correo de confirmacion cuando el DTO incluye email', async () => {
+      const user = buildUser({
+        passwordResetToken: 'token-valido-con-email',
+        passwordResetExpiresAt: new Date(Date.now() + 30 * 60 * 1000),
+      });
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      });
+
+      const mailerService = (service as unknown as { mailerService: { sendMail: jest.Mock } })
+        .mailerService;
+
+      await service.resetPassword({
+        token: 'token-valido-con-email',
+        newPassword: 'NuevoPass1!',
+        email: 'usuario@example.com',
+      });
+
+      expect(mailerService.sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({ to: 'usuario@example.com' }),
+      );
+    });
+  });
+
+  describe('changePassword()', () => {
+    it('cambia la contrasena cuando la contrasena actual es correcta', async () => {
+      const user = buildUser();
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      });
+
+      await service.changePassword(user.id, {
+        currentPassword: 'OldPass1!',
+        newPassword: 'NewPass1!',
+      });
+
+      expect(manager.update).toHaveBeenCalledWith(
+        User,
+        user.id,
+        expect.objectContaining({ passwordHash: expect.any(String) }),
+      );
+    });
+
+    it('lanza NotFoundException cuando el usuario no existe al cambiar contrasena', async () => {
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(null),
+      });
+
+      await expect(
+        service.changePassword('ghost-uuid', {
+          currentPassword: 'OldPass1!',
+          newPassword: 'NewPass1!',
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('lanza UnauthorizedException cuando la contrasena actual es incorrecta', async () => {
+      const user = buildUser();
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+      });
+
+      await expect(
+        service.changePassword(user.id, {
+          currentPassword: 'WrongPass1!',
+          newPassword: 'NewPass1!',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // BRANCHES adicionales
+  // ---------------------------------------------------------------------------
+
+  describe('login() — branch INACTIVE', () => {
+    it('lanza UnauthorizedException cuando el usuario tiene estado INACTIVE', async () => {
+      const user = buildUser({ status: UserStatus.INACTIVE });
+      setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(user) });
+
+      const dto = { email: 'inact@example.com', password: 'Passw0rd!' };
+      await expect(service.login(dto)).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('regenerateTenantAdminCredentials() — branch adminUser no encontrado', () => {
+    it('lanza NotFoundException cuando el admin inicial no existe en el tenant', async () => {
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(null),
+      });
+
+      await expect(
+        service.regenerateTenantAdminCredentials({
+          tenantId: 'tenant-uuid-2',
+          schemaName: 'tenant_test',
+          adminEmail: 'noadmin@isptest.co',
+          idempotencyKey: 'idem-key-no-admin',
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('decryptSecret() — branch formato invalido', () => {
+    it('lanza Error cuando el mfaSecret tiene formato incorrecto (no iv:tag:ciphertext)', () => {
+      // Llamar al metodo privado directamente para cubrir el branch de validacion
+      expect(() => {
+        (service as any).decryptSecret('solo-dos:partes');
+      }).toThrow('Formato de mfaSecret cifrado invalido');
     });
   });
 });

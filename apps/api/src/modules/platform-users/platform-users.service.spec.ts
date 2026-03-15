@@ -115,4 +115,46 @@ describe('PlatformUsersService', () => {
       }),
     );
   });
+
+  it('updateProfile lanza 404 si el usuario no existe al actualizar', async () => {
+    repo.findOne.mockResolvedValue(null);
+
+    await expect(service.updateProfile('missing-id', { firstName: 'Test' })).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
+  it('updateProfile lanza BadRequestException para idioma no permitido', async () => {
+    const entity = buildPlatformUser();
+    repo.findOne.mockResolvedValue(entity);
+
+    await expect(service.updateProfile(entity.id, { language: 'fr-FR' })).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('updateProfile actualiza phone a null cuando se envia string vacio', async () => {
+    const entity = buildPlatformUser({ phone: '+573001112233' });
+    repo.findOne.mockResolvedValue(entity);
+    (repo.save as unknown as jest.Mock).mockImplementation(
+      async (data: unknown) => ({ ...entity, ...(data as object) }) as PlatformUser,
+    );
+
+    const result = await service.updateProfile(entity.id, { phone: '' });
+
+    // String vacio debe convertirse en null segun la logica del servicio
+    expect(result.phone).toBeNull();
+  });
+
+  it('updateProfile actualiza lastName a null cuando se envia string vacio', async () => {
+    const entity = buildPlatformUser();
+    repo.findOne.mockResolvedValue(entity);
+    (repo.save as unknown as jest.Mock).mockImplementation(
+      async (data: unknown) => ({ ...entity, ...(data as object) }) as PlatformUser,
+    );
+
+    const result = await service.updateProfile(entity.id, { lastName: '' });
+
+    expect(result.lastName).toBeNull();
+  });
 });

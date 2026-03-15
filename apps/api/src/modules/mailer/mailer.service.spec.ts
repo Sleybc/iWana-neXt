@@ -214,6 +214,21 @@ describe('MailerService', () => {
         }),
       ).rejects.toThrow('Error de conexion SMTP simulado');
     });
+
+    it('lanza Error si el transporter interno es nulo en modo produccion (guard defensivo)', async () => {
+      // Forzar el transporter a null para cubrir el branch defensivo de la linea 82-85
+      // Este estado es teoricamente imposible en condiciones normales pero el codigo lo guarda
+      (service as any).transporter = null;
+      (service as any).devMode = false;
+
+      await expect(
+        service.sendMail({
+          to: 'destinatario@prueba.co',
+          subject: 'Test guard',
+          html: '<p>HTML</p>',
+        }),
+      ).rejects.toThrow('Transporter SMTP no inicializado');
+    });
   });
 });
 
