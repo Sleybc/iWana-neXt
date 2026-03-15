@@ -9,7 +9,8 @@ function setupAdminBootstrapMocks() {
       role: 'SYSTEM_ADMIN',
       status: 'ACTIVE',
       mfaEnabled: false,
-      displayName: 'Administrador',
+      firstName: 'Admin',
+      lastName: 'Plataforma',
       phone: '+573001112233',
       timezone: 'America/Bogota',
       language: 'es-CO',
@@ -94,7 +95,8 @@ function setupAdminBootstrapMocks() {
 
       if (url.endsWith('/platform-users/me') && method === 'PATCH') {
         const payload = request.postDataJSON() as {
-          displayName?: string;
+          firstName?: string;
+          lastName?: string;
           phone?: string;
           timezone?: string;
           language?: string;
@@ -370,7 +372,8 @@ test.describe('Bootstrap operativo admin', () => {
 
     await page.goto('/profile');
     await expect(page.getByRole('heading', { name: 'Mi perfil' })).toBeVisible();
-    await page.getByLabel('Nombre visible').fill('Admin actualizado');
+    await page.getByLabel('Nombres').fill('Admin');
+    await page.getByLabel('Apellidos').fill('actualizado');
     await page.getByRole('button', { name: 'Guardar cambios' }).click();
     await expect(page.getByText('Perfil actualizado correctamente.')).toBeVisible();
 
