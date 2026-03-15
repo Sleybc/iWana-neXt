@@ -7,6 +7,14 @@
 /* Tailwind 4 — activacion CSS-first */
 @import "tailwindcss";
 
+/* Escaneo de fuentes de clases Tailwind en el monorepo.
+   Tailwind 4 no escanea node_modules por defecto.
+   Se declaran explicitamente los paths de componentes y apps consumidoras. */
+@source "../components/**/*.{ts,tsx}";
+@source "../tokens.ts";
+@source "../../../../apps/web/src/**/*.{ts,tsx}";
+@source "../../../../apps/portal/src/**/*.{ts,tsx}";
+
 /* ================================================================
    Design Tokens iWana neXt — @theme Tailwind 4
    NOTA ACCESIBILIDAD: --color-iwana-secondary (#A5C330) NO pasa
@@ -81,6 +89,12 @@ body {
   font-family: var(--font-sans);
   color: var(--color-iwana-primary);
   background-color: #FFFFFF;
+}
+
+/* Dark mode base — aplicado via clase .dark en <html> */
+.dark body {
+  color: #F0F0F0;
+  background-color: var(--color-dark-surface);
 }
 
 /* ================================================================

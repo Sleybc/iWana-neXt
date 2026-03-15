@@ -6,7 +6,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { loginSchema, type LoginFormValues } from '@iwana/shared';
-import { authApi, ApiError } from '@/lib/api-client';
+import { ApiError } from '@/lib/api-client';
+import { useAuth } from './AuthProvider';
 import { cn } from '@iwana/ui';
 
 /**
@@ -24,6 +25,7 @@ const errorMessages: Record<number, string> = {
 
 export function LoginForm() {
   const router = useRouter();
+  const { login } = useAuth();
   const [serverError, setServerError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -38,9 +40,8 @@ export function LoginForm() {
   const onSubmit = async (data: LoginFormValues) => {
     setServerError(null);
     try {
-      const response = await authApi.platformLogin(data.email, data.password);
-      localStorage.setItem('accessToken', response.accessToken);
-      router.push('/dashboard');
+      const result = await login(data.email, data.password);
+      router.push(result === 'mfa_required' ? '/auth/mfa/verify' : '/dashboard');
     } catch (err) {
       if (err instanceof ApiError) {
         setServerError(
@@ -217,7 +218,7 @@ export function LoginForm() {
       </button>
 
       <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col items-center gap-2 text-center">
-        <div className="flex items-center gap-1 text-xs font-bold text-slate-400 uppercase tracking-wider">
+        <div className="flex items-center gap-1 text-xs font-bold text-slate-600 uppercase tracking-wider">
           <svg
             className="w-4 h-4 text-[#A5C330]"
             fill="none"
@@ -233,7 +234,7 @@ export function LoginForm() {
           </svg>
           <span>Sesión segura vía JWT</span>
         </div>
-        <p className="text-xs text-slate-400">Auditoría de IP activada • v2.1.0</p>
+        <p className="text-xs text-slate-600">Auditoría de IP activada • v2.1.0</p>
       </div>
     </form>
   );

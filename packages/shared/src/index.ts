@@ -9,6 +9,8 @@ export * from './enums/user-status.enum';
 export * from './enums/tenant-status.enum';
 export * from './enums/audit-action.enum';
 export * from './enums/platform-role.enum';
+export * from './enums/company-type.enum';
+export * from './enums/document-type.enum';
 
 // Interfaces
 export * from './interfaces/api-response.interface';

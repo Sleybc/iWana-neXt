@@ -7,7 +7,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { UserRole, UserStatus } from '@iwana/shared';
+import { DocumentType, UserRole, UserStatus } from '@iwana/shared';
 
 /**
  * Entidad User — schema por tenant (dinamico via search_path).
@@ -107,6 +107,40 @@ export class User {
   /** Token de verificacion de email cifrado. Null post-verificacion */
   @Column({ name: 'email_verification_token', type: 'varchar', length: 512, nullable: true })
   emailVerificationToken: string | null;
+
+  // ── Perfil personal ─────────────────────────────────────────────────────────
+
+  /** Nombre cifrado AES-256-GCM (PII — Ley 1581). Null hasta completar perfil */
+  @Column({ name: 'first_name', type: 'varchar', length: 512, nullable: true })
+  firstName: string | null;
+
+  /** Apellido cifrado AES-256-GCM (PII — Ley 1581). Null hasta completar perfil */
+  @Column({ name: 'last_name', type: 'varchar', length: 512, nullable: true })
+  lastName: string | null;
+
+  /** Teléfono en formato E.164 (ej: "+573001234567") */
+  @Column({ name: 'phone', type: 'varchar', length: 20, nullable: true })
+  phone: string | null;
+
+  /** Cargo o posición del usuario en la empresa */
+  @Column({ name: 'job_title', type: 'varchar', length: 150, nullable: true })
+  jobTitle: string | null;
+
+  /** Tipo de documento de identidad colombiano */
+  @Column({ name: 'document_type', type: 'varchar', length: 20, nullable: true })
+  documentType: DocumentType | null;
+
+  /**
+   * Número de documento cifrado AES-256-GCM.
+   * PII sensible — Ley 1581 habeas data.
+   * NUNCA se retorna en DTOs públicos; solo se persiste.
+   */
+  @Column({ name: 'document_number', type: 'varchar', length: 512, nullable: true })
+  documentNumber: string | null;
+
+  /** URL de imagen de perfil */
+  @Column({ name: 'avatar_url', type: 'varchar', length: 500, nullable: true })
+  avatarUrl: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

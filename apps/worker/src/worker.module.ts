@@ -2,7 +2,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { AppDataSource } from '@iwana/db';
+import { dataSourceOptions } from '@iwana/db';
 import { TENANT_PROVISIONING_QUEUE } from '@iwana/shared';
 import { TenantProvisioningProcessor } from './processors/tenant-provisioning.processor';
 import { TenantSeedService } from './services/tenant-seed.service';
@@ -27,11 +27,34 @@ import { TenantSeedService } from './services/tenant-seed.service';
 @Module({
   imports: [
     // Variables de entorno disponibles en todos los providers del worker
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['.env', '../api/.env', '../../.env'],
+    }),
 
-    // Conexion PostgreSQL — reutiliza la misma DataSource del paquete @iwana/db
+    // La configuracion se construye con ConfigService para evitar leer process.env
+    // antes de que Nest cargue el archivo .env correspondiente del entorno local.
     TypeOrmModule.forRootAsync({
-      useFactory: () => AppDataSource.options,
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        type: 'postgres' as const,
+        host: config.get<string>('DB_HOST', 'localhost'),
+        port: config.get<number>('DB_PORT', 5432),
+        username: config.get<string>('DB_USER', 'iwana'),
+        password: config.get<string>('DB_PASSWORD', ''),
+        database: config.get<string>('DB_NAME', 'iwana'),
+        entities: dataSourceOptions.entities ?? [],
+        migrations: dataSourceOptions.migrations ?? [],
+        migrationsTableName: dataSourceOptions.migrationsTableName ?? 'typeorm_migrations',
+        migrationsRun: false,
+        synchronize: false,
+        ssl: false,
+        logging:
+          config.get<string>('NODE_ENV') !== 'production' ? ['error', 'migration'] : ['error'],
+        extra: dataSourceOptions.extra,
+        autoLoadEntities: true,
+      }),
     }),
 
     // Conexion Redis root para BullMQ (compartida entre todas las colas)
@@ -40,7 +63,7 @@ import { TenantSeedService } from './services/tenant-seed.service';
         connection: {
           host: config.get<string>('REDIS_HOST', 'localhost'),
           port: config.get<number>('REDIS_PORT', 6379),
-          password: config.get<string>('REDIS_PASSWORD'),
+          password: config.get<string>('REDIS_PASSWORD') || undefined,
           db: config.get<number>('REDIS_DB', 0),
         },
       }),
@@ -55,4 +78,3 @@ import { TenantSeedService } from './services/tenant-seed.service';
   providers: [TenantProvisioningProcessor, TenantSeedService],
 })
 export class WorkerModule {}
-

@@ -21,6 +21,9 @@ import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { DataSource } from 'typeorm';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { AuditService } from '../audit/audit.service';
+import { MailerService } from '../mailer/mailer.service';
+import { forgotPasswordTemplate } from '../mailer/templates/forgot-password.template';
+import { passwordResetConfirmTemplate } from '../mailer/templates/password-reset-confirm.template';
 import {
   ChangePasswordDto,
   ForgotPasswordDto,
@@ -92,6 +95,7 @@ export class AuthService {
     private readonly dataSource: DataSource,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly auditService: AuditService,
+    private readonly mailerService: MailerService,
   ) {
     // Derivar clave AES-256-GCM de 32 bytes desde el hexadecimal de 64 chars de entorno.
     // getOrThrow lanza si la variable no esta configurada — fallo rápido en startup.
@@ -382,7 +386,9 @@ export class AuthService {
    * RF-AUTH-05 (JTI blacklist), logout explícito
    */
   async logout(jwtPayload: JwtPayload, rawRefreshToken?: string): Promise<void> {
-    const { schemaName } = TenantContext.getOrThrow();
+    // En logout no siempre existe TenantContext (ej. tokens de plataforma).
+    // Priorizamos claims firmados del JWT y usamos el contexto solo como fallback.
+    const schemaName = jwtPayload.schemaName ?? TenantContext.get()?.schemaName ?? null;
 
     // Calcular TTL restante del access token para la blacklist
     const expiresAt = jwtPayload.exp ?? 0;
@@ -394,7 +400,7 @@ export class AuthService {
     }
 
     // Revocar refresh token si fue enviado
-    if (rawRefreshToken) {
+    if (rawRefreshToken && schemaName) {
       const tokenHash = this.hashToken(rawRefreshToken);
       await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
         await qr.manager.update(
@@ -456,7 +462,10 @@ export class AuthService {
     }
 
     // Verificar el codigo TOTP con la API async de otplib@13
-    const verifyResult = await this.totp.verify(dto.totpCode, { secret: pendingSecret, epochTolerance: 30 });
+    const verifyResult = await this.totp.verify(dto.totpCode, {
+      secret: pendingSecret,
+      epochTolerance: 30,
+    });
     const isValid = verifyResult.valid;
     if (!isValid) {
       throw new UnauthorizedException('Codigo MFA invalido.');
@@ -557,7 +566,18 @@ export class AuthService {
         userId: user.id,
       });
 
-      // TODO: emitir evento de dominio para que el modulo de notificaciones envie el email
+      // Construir el enlace de reset usando la URL del frontend configurada
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:3001');
+      const template = forgotPasswordTemplate({
+        resetLink: `${frontendUrl}/auth/reset-password?token=${token}`,
+        expiresInMinutes: 60,
+      });
+
+      // Descifrar el email para el envio — solo en memoria, nunca se persiste ni loguea
+      const plainEmail = dto.email.toLowerCase().trim();
+
+      // Enviar correo de recuperacion (fire-and-forget — no bloquea la respuesta al cliente)
+      void this.mailerService.sendMail({ to: plainEmail, ...template });
     });
   }
 
@@ -601,6 +621,15 @@ export class AuthService {
         { revokedAt: new Date(), revokeReason: 'PASSWORD_CHANGE' },
       );
     });
+
+    // Enviar correo de confirmacion si el cliente incluyo el email en el DTO
+    // El email no se almacena en DB (solo el hash SHA-256 no reversible)
+    if (dto.email) {
+      const plainEmail = dto.email.toLowerCase().trim();
+      const template = passwordResetConfirmTemplate();
+      // Fire-and-forget — no bloquea la respuesta al cliente
+      void this.mailerService.sendMail({ to: plainEmail, ...template });
+    }
   }
 
   /**
@@ -741,6 +770,8 @@ export class AuthService {
       schemaName: tenantContext.schemaName,
       jti,
       type: 'tenant',
+      // Indica al frontend si el usuario debe cambiar su contrasena en el primer ingreso
+      passwordResetRequired: user.passwordResetRequired ?? false,
     };
 
     const accessToken = this.jwtService.sign(payload, {
@@ -845,8 +876,8 @@ export class AuthService {
   private hasExpiredTemporaryPassword(user: User): boolean {
     return Boolean(
       user.passwordResetRequired &&
-        user.passwordResetExpiresAt &&
-        user.passwordResetExpiresAt < new Date(),
+      user.passwordResetExpiresAt &&
+      user.passwordResetExpiresAt < new Date(),
     );
   }
 

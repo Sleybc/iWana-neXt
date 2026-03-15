@@ -5,10 +5,11 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "strictPropertyInitialization": false,
+    "types": ["jest", "node"],
     "paths": {
       "@iwana/api": ["./src/index.ts"]
     }
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.spec.ts"]
+  "exclude": ["node_modules", "dist"]
 }

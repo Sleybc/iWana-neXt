@@ -23,11 +23,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import * as bcrypt from 'bcryptjs';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
-import { RefreshToken, User } from '@iwana/db';
+import { PlatformUser, RefreshToken, User } from '@iwana/db';
 import { UserRole, UserStatus } from '@iwana/shared';
 import { AuthService } from './auth.service';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { AuditService } from '../audit/audit.service';
+import { MailerService } from '../mailer/mailer.service';
 import { LoginDto, MfaVerifyDto, MfaDisableDto } from './dto/auth.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 
@@ -73,9 +74,8 @@ jest.mock('@iwana/db', () => {
   const actual = jest.requireActual('@iwana/db') as Record<string, unknown>;
   return {
     ...actual,
-    runInTenantSchema: (
-      ...args: Parameters<typeof mockRunInTenantSchema>
-    ) => mockRunInTenantSchema(...args),
+    runInTenantSchema: (...args: Parameters<typeof mockRunInTenantSchema>) =>
+      mockRunInTenantSchema(...args),
     TenantContext: {
       getOrThrow: () => mockTenantContextGetOrThrow(),
     },
@@ -167,6 +167,10 @@ describe('AuthService', () => {
           useValue: { findOne: jest.fn() },
         },
         {
+          provide: getRepositoryToken(PlatformUser),
+          useValue: { findOne: jest.fn(), update: jest.fn() },
+        },
+        {
           provide: getRepositoryToken(RefreshToken),
           useValue: { findOne: jest.fn() },
         },
@@ -174,7 +178,9 @@ describe('AuthService', () => {
           provide: JwtService,
           useValue: {
             sign: jest.fn().mockReturnValue('mock.jwt.token'),
-            verify: jest.fn().mockReturnValue({ jti: 'test-jti', exp: Math.floor(Date.now() / 1000) + 900 }),
+            verify: jest
+              .fn()
+              .mockReturnValue({ jti: 'test-jti', exp: Math.floor(Date.now() / 1000) + 900 }),
           },
         },
         {
@@ -203,6 +209,11 @@ describe('AuthService', () => {
           // AuditService: mock fire-and-forget — no debe bloquear los tests de auth
           provide: AuditService,
           useValue: { log: jest.fn().mockResolvedValue(undefined) },
+        },
+        {
+          // MailerService: mock — no enviar correos reales en tests
+          provide: MailerService,
+          useValue: { sendMail: jest.fn().mockResolvedValue(undefined) },
         },
       ],
     }).compile();
@@ -290,7 +301,6 @@ describe('AuthService', () => {
       const err = await service.login(dto).catch((e: UnauthorizedException) => e);
 
       expect(err).toBeInstanceOf(UnauthorizedException);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       expect((err as UnauthorizedException).message).toMatch(/bloqueada temporalmente/i);
     });
 
@@ -359,9 +369,10 @@ describe('AuthService', () => {
       const user = buildUser();
 
       const { manager } = setupRunInTenantSchema({
-        findOne: jest.fn()
+        findOne: jest
+          .fn()
           .mockResolvedValueOnce(tokenEntity) // primera llamada: buscar refresh token
-          .mockResolvedValueOnce(user),       // segunda llamada: buscar usuario
+          .mockResolvedValueOnce(user), // segunda llamada: buscar usuario
         update: jest.fn().mockResolvedValue({ affected: 1 }),
         save: jest.fn().mockResolvedValue({}),
         create: jest.fn().mockImplementation((_, p) => p),
@@ -493,11 +504,14 @@ describe('AuthService', () => {
       expect(result.mfaEnabled).toBe(true);
 
       // El mfaSecret almacenado debe estar cifrado (AES-256-GCM), no en texto plano
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      const [, , updatePayload] = (manager.update as jest.Mock).mock.calls[0] as [unknown, unknown, { mfaSecret: string; mfaEnabled: boolean }];
+      const [, , updatePayload] = (manager.update as jest.Mock).mock.calls[0] as [
+        unknown,
+        unknown,
+        { mfaSecret: string; mfaEnabled: boolean },
+      ];
       expect(updatePayload.mfaEnabled).toBe(true);
-      expect(updatePayload.mfaSecret).not.toBe(pendingSecret);            // no plano
-      expect(updatePayload.mfaSecret.split(':')).toHaveLength(3);         // formato iv:tag:ciphertext
+      expect(updatePayload.mfaSecret).not.toBe(pendingSecret); // no plano
+      expect(updatePayload.mfaSecret.split(':')).toHaveLength(3); // formato iv:tag:ciphertext
 
       expect(mockRedis.del).toHaveBeenCalledWith('mfa:pending:user-uuid-1');
     });
@@ -517,8 +531,10 @@ describe('AuthService', () => {
 
       // verifyMfaSetup llama this.totp.verify directamente (no verifyTotp);
       // acceder a la instancia privada para sobreescribir el mock en este test.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ((service as any).totp.verify as jest.Mock).mockResolvedValue({ valid: false, delta: 0 });
+      (service as unknown as { totp: { verify: jest.Mock } }).totp.verify.mockResolvedValue({
+        valid: false,
+        delta: 0,
+      });
 
       setupRunInTenantSchema({});
 
@@ -552,11 +568,10 @@ describe('AuthService', () => {
       const result = await service.disableMfa('user-uuid-1', dto);
 
       expect(result.mfaEnabled).toBe(false);
-      expect(manager.update).toHaveBeenCalledWith(
-        User,
-        'user-uuid-1',
-        { mfaEnabled: false, mfaSecret: null },
-      );
+      expect(manager.update).toHaveBeenCalledWith(User, 'user-uuid-1', {
+        mfaEnabled: false,
+        mfaSecret: null,
+      });
     });
 
     it('lanza NotFoundException cuando el usuario no existe', async () => {

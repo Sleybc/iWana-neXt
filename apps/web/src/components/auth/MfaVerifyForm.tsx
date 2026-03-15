@@ -4,7 +4,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { OtpInput, Button } from '@iwana/ui';
-import { authApi, ApiError } from '@/lib/api-client';
+import { ApiError } from '@/lib/api-client';
+import { useAuth } from './AuthProvider';
 
 /**
  * Formulario de verificación MFA (TOTP 6 dígitos).
@@ -15,6 +16,7 @@ const TOTP_INTERVAL = 30;
 
 export function MfaVerifyForm() {
   const router = useRouter();
+  const { completeMfaLogin } = useAuth();
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +33,6 @@ export function MfaVerifyForm() {
     return () => clearInterval(interval);
   }, []);
 
-  const progress = (secondsLeft / TOTP_INTERVAL) * 100;
   const isUrgent = secondsLeft <= 5;
 
   const handleVerify = async (codeToVerify: string) => {
@@ -40,7 +41,7 @@ export function MfaVerifyForm() {
     setError(null);
     setHasError(false);
     try {
-      await authApi.mfaVerify(codeToVerify);
+      await completeMfaLogin(codeToVerify);
       router.push('/dashboard');
     } catch (err) {
       setHasError(true);
@@ -84,23 +85,21 @@ export function MfaVerifyForm() {
 
       {/* Barra de progreso TOTP */}
       <div className="w-full flex flex-col gap-1.5">
-        <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
-          <div
-            className="h-full rounded-full transition-all duration-1000"
-            style={{
-              width: `${progress}%`,
-              backgroundColor: isUrgent ? '#EF4444' : secondsLeft <= 10 ? '#F59E0B' : '#A5C330',
-            }}
-            role="progressbar"
-            aria-valuenow={secondsLeft}
-            aria-valuemin={0}
-            aria-valuemax={TOTP_INTERVAL}
-            aria-label="Tiempo restante del código"
-          />
-        </div>
-        <p className="text-xs text-center" style={{ color: isUrgent ? '#EF4444' : '#6B7280' }}>
+        <progress
+          className={`h-1.5 w-full overflow-hidden rounded-full [&::-webkit-progress-bar]:bg-gray-100 [&::-webkit-progress-value]:transition-all [&::-webkit-progress-value]:duration-1000 ${
+            isUrgent
+              ? '[&::-webkit-progress-value]:bg-red-500 [&::-moz-progress-bar]:bg-red-500'
+              : secondsLeft <= 10
+                ? '[&::-webkit-progress-value]:bg-amber-500 [&::-moz-progress-bar]:bg-amber-500'
+                : '[&::-webkit-progress-value]:bg-[#A5C330] [&::-moz-progress-bar]:bg-[#A5C330]'
+          }`}
+          value={secondsLeft}
+          max={TOTP_INTERVAL}
+          aria-label="Tiempo restante del código"
+        />
+        <p className={`text-xs text-center ${isUrgent ? 'text-red-500' : 'text-gray-500'}`}>
           {isUrgent
-            ? `⚠ El código expira en ${secondsLeft}s — genera uno nuevo`
+            ? `El código expira en ${secondsLeft}s. Genera uno nuevo si vence.`
             : `El código expira en ${secondsLeft}s`}
         </p>
       </div>
@@ -139,9 +138,9 @@ export function MfaVerifyForm() {
       <button
         type="button"
         className="text-sm text-[#6B7280] hover:text-[#374151] underline-offset-4 hover:underline"
-        onClick={() => router.push('/auth/backup-code')}
+        onClick={() => router.push('/auth/login')}
       >
-        Usar código de respaldo
+        Volver al login
       </button>
     </form>
   );

@@ -5,7 +5,7 @@
 **Fecha:** 2026-03-13
 **Modo activo:** Architect
 **Autor:** AI-EM-ARCH
-**Aprobador requerido:** CTO Humano
+**Aprobador:** CTO Humano
 
 ---
 

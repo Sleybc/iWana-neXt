@@ -57,11 +57,25 @@ export class UsersController {
    * Solo accesible para administradores del tenant.
    */
   @Get()
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar usuarios del tenant (paginacion cursor-based)' })
-  @ApiQuery({ name: 'cursor', required: false, description: 'Cursor de paginacion (UUID del ultimo item)' })
-  @ApiQuery({ name: 'limit', required: false, description: 'Cantidad maxima de elementos (max 100)', type: Number })
-  @ApiQuery({ name: 'status', required: false, enum: UserStatus, description: 'Filtrar por estado' })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    description: 'Cursor de paginacion (UUID del ultimo item)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Cantidad maxima de elementos (max 100)',
+    type: Number,
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: UserStatus,
+    description: 'Filtrar por estado',
+  })
   @ApiQuery({ name: 'role', required: false, enum: UserRole, description: 'Filtrar por rol' })
   @ApiResponse({ status: 200, description: 'Listado paginado de usuarios.' })
   @ApiResponse({ status: 401, description: 'Token invalido o expirado.' })
@@ -71,13 +85,16 @@ export class UsersController {
     @Query('limit') limit?: string,
     @Query('status') status?: UserStatus,
     @Query('role') role?: UserRole,
-  ): Promise<{ data: UserResponseDto[]; meta: { nextCursor: string | null; total: number } }> {
+  ): Promise<{
+    data: { data: UserResponseDto[]; meta: { nextCursor: string | null; total: number } };
+  }> {
     const params: { cursor?: string; limit?: number; status?: UserStatus; role?: UserRole } = {};
     if (cursor) params.cursor = cursor;
     if (limit) params.limit = parseInt(limit, 10);
     if (status) params.status = status;
     if (role) params.role = role;
-    return this.usersService.findAll(params);
+    const result = await this.usersService.findAll(params);
+    return { data: result };
   }
 
   /**
@@ -86,10 +103,14 @@ export class UsersController {
    * Si no se provee password, se genera uno temporal y se retorna en la respuesta.
    */
   @Post()
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Crear usuario en el tenant' })
-  @ApiHeader({ name: 'Idempotency-Key', description: 'Clave de idempotencia obligatoria (max 128 chars)', required: true })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    description: 'Clave de idempotencia obligatoria (max 128 chars)',
+    required: true,
+  })
   @ApiResponse({ status: 201, description: 'Usuario creado exitosamente.' })
   @ApiResponse({ status: 400, description: 'Datos invalidos o Idempotency-Key faltante.' })
   @ApiResponse({ status: 401, description: 'Token invalido o expirado.' })
@@ -124,7 +145,7 @@ export class UsersController {
   ): Promise<{ data: UserResponseDto }> {
     // El servicio verifica si el requester puede ver el usuario solicitado
     // (admin puede ver cualquiera; no-admin solo el propio)
-    if (user.role !== UserRole.ADMIN && user.sub !== id) {
+    if (user.role !== UserRole.ADMIN && user.role !== UserRole.SYSTEM_ADMIN && user.sub !== id) {
       throw new BadRequestException('No tienes permisos para ver este usuario.');
     }
     const result = await this.usersService.findOne(id);
@@ -137,7 +158,11 @@ export class UsersController {
    */
   @Patch(':id')
   @ApiOperation({ summary: 'Actualizar estado o rol de un usuario' })
-  @ApiHeader({ name: 'Idempotency-Key', description: 'Clave de idempotencia obligatoria', required: true })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    description: 'Clave de idempotencia obligatoria',
+    required: true,
+  })
   @ApiResponse({ status: 200, description: 'Usuario actualizado.' })
   @ApiResponse({ status: 400, description: 'Datos invalidos o Idempotency-Key faltante.' })
   @ApiResponse({ status: 401, description: 'Token invalido o expirado.' })
@@ -163,13 +188,16 @@ export class UsersController {
    * No puede eliminarse a si mismo.
    */
   @Delete(':id')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Eliminar (soft delete) un usuario del tenant' })
   @ApiResponse({ status: 204, description: 'Usuario eliminado exitosamente.' })
   @ApiResponse({ status: 400, description: 'No puedes eliminar tu propio usuario.' })
   @ApiResponse({ status: 401, description: 'Token invalido o expirado.' })
-  @ApiResponse({ status: 403, description: 'No se puede eliminar a otro administrador del tenant.' })
+  @ApiResponse({
+    status: 403,
+    description: 'No se puede eliminar a otro administrador del tenant.',
+  })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado.' })
   async remove(
     @Param('id', ParseUUIDPipe) id: string,

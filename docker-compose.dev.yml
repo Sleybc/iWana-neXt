@@ -1,13 +1,13 @@
 # docker-compose.dev.yml — Stack de desarrollo local iWana neXt
-# Servicios: PostgreSQL 16, Redis 8, pgBouncer, MinIO, Nginx, Adminer
+# Servicios: PostgreSQL 18, Redis 8, pgBouncer, MinIO, Nginx, Adminer
 # Uso: docker compose -f docker-compose.dev.yml up -d
 
 services:
   # ---------------------------------------------------------------------------
-  # PostgreSQL 16 — Base de datos principal
+  # PostgreSQL 18 — Base de datos principal
   # ---------------------------------------------------------------------------
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     container_name: iwana_postgres_dev
     environment:
       POSTGRES_USER: iwana
@@ -114,6 +114,31 @@ services:
       ADMINER_DEFAULT_SERVER: postgres
     depends_on:
       postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Worker — BullMQ processor para provisioning de tenants
+  # ---------------------------------------------------------------------------
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: iwana_worker_dev
+    environment:
+      NODE_ENV: development
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: iwana
+      DB_PASSWORD: Iwana102+
+      DB_NAME: dbiw
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
 

@@ -62,7 +62,6 @@ export const DropdownUser = () => {
 
   const displayName = user?.displayName ?? 'Usuario';
   const subtitle = user?.subtitle ?? 'Sesión no inicializada';
-  const emailHash = user?.emailHash ?? 'Sin datos';
 
   return (
     <div className="relative">
@@ -106,7 +105,7 @@ export const DropdownUser = () => {
           <span className="block text-sm font-medium text-gray-800 dark:text-white">
             {displayName}
           </span>
-          <span className="block text-xs text-gray-500 dark:text-gray-400">{emailHash}</span>
+          <span className="block text-xs text-gray-500 dark:text-gray-400">{subtitle}</span>
         </div>
 
         <ul

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
@@ -9,11 +10,24 @@ import { InjectRepository } from '@nestjs/typeorm';
 import Redis from 'ioredis';
 import { Repository } from 'typeorm';
 import { Tenant } from '@iwana/db';
-import { TenantStatus } from '@iwana/shared';
+import { AuditAction, TenantStatus } from '@iwana/shared';
+import { AuditService } from '../audit/audit.service';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { CreateTenantDto, TenantResponseDto, UpdateTenantDto } from './dto/tenant.dto';
+import { TenantSettingsResponseDto, UpdateTenantSettingsDto } from './dto/tenant-settings.dto';
 
 const TENANT_CACHE_TTL_SECONDS = 5 * 60;
+
+const DEFAULT_TENANT_SETTINGS = {
+  timezone: 'America/Bogota',
+  currency: 'COP',
+  language: 'es-CO',
+  country: 'CO',
+  features: {
+    billing: false,
+    mfa_required_all: false,
+  },
+};
 
 /**
  * Servicio de gestion de tenants (ISPs clientes).
@@ -40,6 +54,7 @@ export class TenantService {
     private readonly tenantRepo: Repository<Tenant>,
     @Inject(REDIS_CLIENT)
     private readonly redis: Redis,
+    private readonly auditService: AuditService,
   ) {}
 
   /**
@@ -70,6 +85,22 @@ export class TenantService {
       maxSubscribers: dto.maxSubscribers ?? 0,
       settings: dto.settings ?? { timezone: 'America/Bogota', currency: 'COP' },
       status: TenantStatus.PROVISIONING, // El worker lo activa a ACTIVE post-provisioning
+      // Datos legales opcionales
+      legalName: dto.legalName ?? null,
+      nit: dto.nit ?? null,
+      nitDv: dto.nitDv ?? null,
+      companyType: dto.companyType ?? null,
+      // Dirección opcional
+      address: dto.address ?? null,
+      city: dto.city ?? null,
+      department: dto.department ?? null,
+      countryCode: dto.countryCode ?? 'CO',
+      postalCode: dto.postalCode ?? null,
+      coordinates: dto.coordinates ?? null,
+      // Contacto adicional opcional
+      phone: dto.phone ?? null,
+      website: dto.website ?? null,
+      economicSector: dto.economicSector ?? null,
     });
 
     const saved = await this.tenantRepo.save(tenant);
@@ -146,6 +177,22 @@ export class TenantService {
     if (dto.contactEmail !== undefined) tenant.contactEmail = dto.contactEmail;
     if (dto.maxSubscribers !== undefined) tenant.maxSubscribers = dto.maxSubscribers;
     if (dto.settings !== undefined) tenant.settings = dto.settings;
+    // Datos legales
+    if (dto.legalName !== undefined) tenant.legalName = dto.legalName ?? null;
+    if (dto.nit !== undefined) tenant.nit = dto.nit ?? null;
+    if (dto.nitDv !== undefined) tenant.nitDv = dto.nitDv ?? null;
+    if (dto.companyType !== undefined) tenant.companyType = dto.companyType ?? null;
+    // Dirección
+    if (dto.address !== undefined) tenant.address = dto.address ?? null;
+    if (dto.city !== undefined) tenant.city = dto.city ?? null;
+    if (dto.department !== undefined) tenant.department = dto.department ?? null;
+    if (dto.countryCode !== undefined) tenant.countryCode = dto.countryCode ?? null;
+    if (dto.postalCode !== undefined) tenant.postalCode = dto.postalCode ?? null;
+    if (dto.coordinates !== undefined) tenant.coordinates = dto.coordinates ?? null;
+    // Contacto adicional
+    if (dto.phone !== undefined) tenant.phone = dto.phone ?? null;
+    if (dto.website !== undefined) tenant.website = dto.website ?? null;
+    if (dto.economicSector !== undefined) tenant.economicSector = dto.economicSector ?? null;
 
     const updated = await this.tenantRepo.save(tenant);
     await this.invalidateTenantCache(tenant.id, tenant.slug);
@@ -163,6 +210,83 @@ export class TenantService {
   /** Activa un tenant previamente suspendido o inactivo. */
   async activate(id: string): Promise<TenantResponseDto> {
     return this.updateStatus(id, TenantStatus.ACTIVE);
+  }
+
+  /**
+   * Lee settings funcionales del tenant aplicando defaults para claves faltantes.
+   */
+  async getSettings(tenantId: string): Promise<TenantSettingsResponseDto> {
+    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new NotFoundException(`Tenant con id "${tenantId}" no encontrado.`);
+    }
+
+    return this.normalizeTenantSettings(tenant);
+  }
+
+  /**
+   * Aplica merge parcial de configuración funcional y persiste el JSONB `settings`.
+   */
+  async updateSettings(
+    tenantId: string,
+    dto: UpdateTenantSettingsDto,
+    actorUserId?: string,
+  ): Promise<TenantSettingsResponseDto> {
+    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new NotFoundException(`Tenant con id "${tenantId}" no encontrado.`);
+    }
+
+    if (dto.timezone !== undefined) {
+      this.assertValidTimezone(dto.timezone);
+    }
+
+    const oldValue = this.normalizeTenantSettings(tenant);
+
+    const currentSettings = this.asRecord(tenant.settings);
+    const currentFeatures = this.asRecord(currentSettings['features']);
+
+    tenant.settings = {
+      ...currentSettings,
+      ...(dto.timezone !== undefined ? { timezone: dto.timezone } : {}),
+      ...(dto.currency !== undefined ? { currency: dto.currency } : {}),
+      ...(dto.language !== undefined ? { language: dto.language } : {}),
+      ...(dto.country !== undefined ? { country: dto.country } : {}),
+      ...(dto.features
+        ? {
+            features: {
+              ...currentFeatures,
+              ...(dto.features.billing !== undefined ? { billing: dto.features.billing } : {}),
+              ...(dto.features.mfa_required_all !== undefined
+                ? { mfa_required_all: dto.features.mfa_required_all }
+                : {}),
+            },
+          }
+        : {}),
+    };
+
+    if (dto.maxSubscribers !== undefined) {
+      tenant.maxSubscribers = dto.maxSubscribers;
+    }
+
+    const saved = await this.tenantRepo.save(tenant);
+    await this.invalidateTenantCache(saved.id, saved.slug);
+    await this.cacheTenant(saved);
+
+    const newValue = this.normalizeTenantSettings(saved);
+
+    await this.auditService.log({
+      tenantId: saved.id,
+      schemaName: saved.schemaName,
+      userId: actorUserId ?? null,
+      action: AuditAction.UPDATE,
+      entityType: 'TenantSettings',
+      entityId: saved.id,
+      oldValue: oldValue as unknown as Record<string, unknown>,
+      newValue: newValue as unknown as Record<string, unknown>,
+    });
+
+    return newValue;
   }
 
   /**
@@ -192,6 +316,22 @@ export class TenantService {
     dto.contactEmail = tenant.contactEmail;
     dto.maxSubscribers = tenant.maxSubscribers;
     dto.settings = tenant.settings;
+    // Datos legales
+    dto.legalName = tenant.legalName ?? null;
+    dto.nit = tenant.nit ?? null;
+    dto.nitDv = tenant.nitDv ?? null;
+    dto.companyType = tenant.companyType ?? null;
+    // Dirección
+    dto.address = tenant.address ?? null;
+    dto.city = tenant.city ?? null;
+    dto.department = tenant.department ?? null;
+    dto.countryCode = tenant.countryCode ?? null;
+    dto.postalCode = tenant.postalCode ?? null;
+    dto.coordinates = tenant.coordinates ?? null;
+    // Contacto adicional
+    dto.phone = tenant.phone ?? null;
+    dto.website = tenant.website ?? null;
+    dto.economicSector = tenant.economicSector ?? null;
     dto.createdAt = tenant.createdAt;
     dto.updatedAt = tenant.updatedAt;
     return dto;
@@ -215,8 +355,18 @@ export class TenantService {
   private async cacheTenant(tenant: Tenant): Promise<void> {
     const serializedTenant = JSON.stringify(tenant);
     await Promise.all([
-      this.redis.set(this.buildIdCacheKey(tenant.id), serializedTenant, 'EX', TENANT_CACHE_TTL_SECONDS),
-      this.redis.set(this.buildSlugCacheKey(tenant.slug), serializedTenant, 'EX', TENANT_CACHE_TTL_SECONDS),
+      this.redis.set(
+        this.buildIdCacheKey(tenant.id),
+        serializedTenant,
+        'EX',
+        TENANT_CACHE_TTL_SECONDS,
+      ),
+      this.redis.set(
+        this.buildSlugCacheKey(tenant.slug),
+        serializedTenant,
+        'EX',
+        TENANT_CACHE_TTL_SECONDS,
+      ),
     ]);
   }
 
@@ -243,6 +393,55 @@ export class TenantService {
     return `tenant:slug:${slug}`;
   }
 
+  /** Normaliza settings JSONB para entregar un contrato estable en API. */
+  private normalizeTenantSettings(tenant: Tenant): TenantSettingsResponseDto {
+    const settings = this.asRecord(tenant.settings);
+    const features = this.asRecord(settings['features']);
+
+    return {
+      tenantId: tenant.id,
+      timezone: this.stringOrDefault(settings['timezone'], DEFAULT_TENANT_SETTINGS.timezone),
+      currency: this.stringOrDefault(settings['currency'], DEFAULT_TENANT_SETTINGS.currency),
+      language: this.stringOrDefault(settings['language'], DEFAULT_TENANT_SETTINGS.language),
+      country: this.stringOrDefault(settings['country'], DEFAULT_TENANT_SETTINGS.country),
+      maxSubscribers: tenant.maxSubscribers,
+      features: {
+        billing: this.booleanOrDefault(
+          features['billing'],
+          DEFAULT_TENANT_SETTINGS.features.billing,
+        ),
+        mfa_required_all: this.booleanOrDefault(
+          features['mfa_required_all'],
+          DEFAULT_TENANT_SETTINGS.features.mfa_required_all,
+        ),
+      },
+    };
+  }
+
+  private assertValidTimezone(timezone: string): void {
+    try {
+      new Intl.DateTimeFormat('es-CO', { timeZone: timezone }).format(new Date());
+    } catch {
+      throw new BadRequestException('timezone inválida. Debe ser un identificador IANA.');
+    }
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return {};
+    }
+
+    return value as Record<string, unknown>;
+  }
+
+  private stringOrDefault(value: unknown, fallback: string): string {
+    return typeof value === 'string' && value.trim() ? value : fallback;
+  }
+
+  private booleanOrDefault(value: unknown, fallback: boolean): boolean {
+    return typeof value === 'boolean' ? value : fallback;
+  }
+
   /** Actualiza solo el estado operativo del tenant manteniendo invalidez de cache consistente. */
   private async updateStatus(id: string, status: TenantStatus): Promise<TenantResponseDto> {
     const tenant = await this.tenantRepo.findOne({ where: { id } });
@@ -257,5 +456,26 @@ export class TenantService {
     this.logger.log(`Tenant ${status.toLowerCase()}: id=${updated.id} status=${updated.status}`);
 
     return this.toResponseDto(updated);
+  }
+
+  /**
+   * Elimina un tenant y su schema PostgreSQL asociado.
+   * OPERACION DESTRUCTIVA - debe usarse con extrema precaución.
+   */
+  async delete(id: string): Promise<void> {
+    const tenant = await this.tenantRepo.findOne({ where: { id } });
+    if (!tenant) {
+      throw new NotFoundException(`Tenant con id "${id}" no encontrado.`);
+    }
+
+    //TODO: Drop schema PostgreSQL cuando esté implementado el tenant-provisioning service
+    //await this.provisioningService.dropSchema(tenant.schemaName);
+
+    // Eliminar de cache
+    await this.invalidateTenantCache(tenant.id, tenant.slug);
+
+    // Eliminar de la base de datos
+    await this.tenantRepo.remove(tenant);
+    this.logger.log(`Tenant eliminado: id=${id} schema=${tenant.schemaName}`);
   }
 }

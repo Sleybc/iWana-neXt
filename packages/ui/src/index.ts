@@ -25,3 +25,6 @@ export * from './components/OtpInput';
 
 // Providers
 export * from './components/ThemeProvider';
+
+// Shell compartido
+export * from './components/ThemeToggle';

@@ -17,7 +17,7 @@ const DESKTOP_STORAGE_KEY = 'iwana-web-sidebar-collapsed';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/tenants', label: 'Tenants', icon: Building2 },
+  { href: '/tenants', label: 'Empresas', icon: Building2 },
   { href: '/users', label: 'Usuarios', icon: Users },
   { href: '/audit', label: 'Auditoría', icon: ShieldAlert },
   { href: '/settings', label: 'Configuración', icon: Settings },

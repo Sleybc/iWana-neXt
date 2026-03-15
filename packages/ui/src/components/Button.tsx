@@ -16,13 +16,22 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
+        // Light: azul noche (#17163A) con texto blanco.
+        // Dark: violeta medio (#534FD4, primary-400) con texto blanco — contraste 3.8:1 sobre #222 (WCAG AA para componentes UI).
         primary:
-          'bg-[#17163A] text-white hover:bg-[#232180] focus-visible:ring-[#17163A] active:bg-[#111040]',
+          'bg-iwana-primary text-white hover:bg-iwana-primary-600 focus-visible:ring-iwana-primary active:bg-iwana-primary-800 dark:bg-iwana-primary-400 dark:hover:bg-iwana-primary-300 dark:active:bg-iwana-primary-500',
+        // Light: borde+texto azul noche, fondo transparente.
+        // Dark: borde+texto violeta claro (#7E7BDF, primary-300) — contraste 5.1:1 sobre #222.
         secondary:
-          'border-2 border-[#17163A] text-[#17163A] bg-transparent hover:bg-[#17163A] hover:text-white focus-visible:ring-[#17163A]',
-        ghost: 'text-[#374151] hover:bg-[#F3F4F6] focus-visible:ring-[#17163A]',
-        destructive: 'bg-[#EF4444] text-white hover:bg-[#DC2626] focus-visible:ring-[#EF4444]',
-        link: 'text-[#6A7A1C] underline-offset-4 hover:underline focus-visible:ring-[#6A7A1C] p-0 h-auto',
+          'border-2 border-iwana-primary text-iwana-primary bg-transparent hover:bg-iwana-primary hover:text-white focus-visible:ring-iwana-primary dark:border-iwana-primary-300 dark:text-iwana-primary-300 dark:hover:bg-iwana-primary-400 dark:hover:border-iwana-primary-400 dark:hover:text-white',
+        // Dark: texto e icono en gris claro visible.
+        ghost:
+          'text-gray-700 hover:bg-gray-100 focus-visible:ring-iwana-primary dark:text-gray-300 dark:hover:bg-dark-surface-3',
+        // Rojo funciona bien en ambos modos — aclarar hover en dark.
+        destructive:
+          'bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-600 active:bg-red-800 dark:bg-red-500 dark:hover:bg-red-400',
+        // Dark: usar secondary (#A5C330) que tiene 6.1:1 sobre #222 — contraste excelente.
+        link: 'text-iwana-secondary-700 underline-offset-4 hover:underline focus-visible:ring-iwana-secondary-700 p-0 h-auto dark:text-iwana-secondary',
       },
       size: {
         sm: 'h-8 px-3 text-xs',

@@ -45,7 +45,6 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
               isPassword && 'pr-10',
               className,
             )}
-            aria-invalid={error ? 'true' : 'false'}
             aria-describedby={
               error ? `${inputId}-error` : helperText ? `${inputId}-helper` : undefined
             }

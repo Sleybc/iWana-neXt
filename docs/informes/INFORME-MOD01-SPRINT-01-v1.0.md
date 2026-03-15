@@ -6,7 +6,7 @@
 **Versión:** 1.0 (documento cerrado — cierre formal de producción)  
 **Estado:** ✅ CERRADO — MOD01 apto para producción  
 **Fecha de apertura:** 2026-03-12  
-**Última actualización:** 2026-03-13 (Hotfix frontend login tenant-aware en portal)  
+**Última actualización:** 2026-03-14 (Hotfix Docker worker monorepo + runtime BullMQ no recuperable + accesibilidad/login/logout previos)  
 **Agente responsable:** AI-EM-ARCH (Modo Mixto)  
 **Referencia al prompt de ejecución:** `docs/prompts/PROMPT-MOD01-SPRINT-01-v1.0.md`
 
@@ -39,6 +39,34 @@ iniciar cualquier código (`docs/prompts/PROMPT-MOD01-SPRINT-01-v1.0.md`).
 ---
 
 ## 2. Entregables de Este Corte
+
+### Addendum correctivo (2026-03-14) — Build Docker del worker
+
+| Artefacto | Archivo | Cambio | Estado |
+|-----------|---------|--------|--------|
+| Dockerfile del worker para compose | `apps/worker/Dockerfile` | Se reemplazó el build parcial con `tsc` directo por un build monorepo consistente (`@iwana/shared` → `@iwana/db` → `@iwana/worker`) preservando links de pnpm y copiando los paquetes workspace requeridos también en runtime | ✅ |
+| Validación local previa al contenedor | `apps/worker` | Se confirmó que `pnpm --filter @iwana/worker typecheck` compila en verde fuera de Docker, aislando la causa al Dockerfile y no al código del worker | ✅ |
+
+### Addendum correctivo (2026-03-14) — Runtime BullMQ del worker
+
+| Artefacto | Archivo | Cambio | Estado |
+|-----------|---------|--------|--------|
+| Clasificación de fallos permanentes | `apps/worker/src/processors/tenant-provisioning.processor.ts` | Los casos `schemaName` inválido y `tenant` inexistente ahora lanzan `UnrecoverableError`, evitando reintentos inútiles de BullMQ para errores de datos que no se resuelven con backoff | ✅ |
+| Cobertura del processor | `apps/worker/src/processors/tenant-provisioning.processor.spec.ts` | Se agregó test para verificar que un tenant inexistente se marca como fallo permanente y no intenta ejecutar DDL ni seed | ✅ |
+| Validación en stack compose | `docker-compose.dev.yml` + Redis/PostgreSQL locales | El worker volvió a levantar limpio y el job huérfano `provision-324ed043-ab17-4013-938f-30f22219c563` quedó estabilizado en `atm=3` sin nuevos reintentos tras recrear el contenedor | ✅ |
+
+### Addendum correctivo (2026-03-13) — Accesibilidad portal
+
+| Artefacto | Archivo | Cambio | Estado |
+|-----------|---------|--------|--------|
+| MFA Verify Form | `apps/portal/src/components/auth/MfaVerifyForm.tsx` | Eliminado `style` inline del temporizador y reemplazado por `<progress>` con atributos ARIA validos | ✅ |
+| Input design system | `packages/ui/src/components/Input.tsx` | Ajuste de atributos ARIA para eliminar warning de valores invalidos en `aria-invalid` | ✅ |
+| Login brand panel web | `apps/web/src/components/auth/LoginBrandPanel.tsx` | Eliminado `style` inline del fondo decorativo (reemplazado por `<img>` decorativa) | ✅ |
+| Login brand panel portal | `apps/portal/src/components/auth/LoginBrandPanel.tsx` | Eliminado `style` inline del fondo decorativo (reemplazado por `<img>` decorativa) | ✅ |
+| Login page web | `apps/web/src/app/auth/login/page.tsx` | Eliminado `style` inline del patron de puntos usando clases utilitarias Tailwind | ✅ |
+| AuthService logout | `apps/api/src/modules/auth/auth.service.ts` | Logout robusto para tokens de plataforma: no depende de `TenantContext` y solo revoca refresh token si existe `schemaName` | ✅ |
+| API client logout web | `apps/web/src/lib/api-client.ts` | Logout en cliente convertido a best-effort para evitar Runtime ApiError cuando backend falla en cierre de sesion | ✅ |
+| API client logout portal | `apps/portal/src/lib/api-client.ts` | Logout en cliente convertido a best-effort para mantener consistencia de UX | ✅ |
 
 ### 2.1 Capa de Datos (`@iwana/db`)
 

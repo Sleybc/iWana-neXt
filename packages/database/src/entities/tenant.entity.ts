@@ -6,7 +6,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { TenantStatus } from '@iwana/shared';
+import { CompanyType, TenantStatus } from '@iwana/shared';
 
 /**
  * Entidad Tenant — schema publico.
@@ -63,6 +63,62 @@ export class Tenant {
   /** Limite de suscriptores contratado. 0 = sin limite definido */
   @Column({ name: 'max_subscribers', default: 0 })
   maxSubscribers: number;
+
+  // ── Datos legales ────────────────────────────────────────────────────────────
+
+  /** Razón social registrada ante la Cámara de Comercio */
+  @Column({ name: 'legal_name', length: 300, nullable: true, type: 'varchar' })
+  legalName: string | null;
+
+  /** NIT sin dígito verificador (ej: "900123456") */
+  @Column({ name: 'nit', length: 20, nullable: true, type: 'varchar' })
+  nit: string | null;
+
+  /** Dígito verificador del NIT */
+  @Column({ name: 'nit_dv', length: 1, nullable: true, type: 'varchar' })
+  nitDv: string | null;
+
+  /** Tipo de persona jurídica o natural */
+  @Column({ name: 'company_type', length: 20, nullable: true, type: 'varchar' })
+  companyType: CompanyType | null;
+
+  // ── Dirección ────────────────────────────────────────────────────────────────
+
+  /** Dirección física completa */
+  @Column({ name: 'address', length: 500, nullable: true, type: 'varchar' })
+  address: string | null;
+
+  @Column({ name: 'city', length: 100, nullable: true, type: 'varchar' })
+  city: string | null;
+
+  /** Departamento colombiano (ej: "Cundinamarca") */
+  @Column({ name: 'department', length: 100, nullable: true, type: 'varchar' })
+  department: string | null;
+
+  /** ISO 3166-1 alpha-2 — distinto del campo "country" dentro del JSONB settings */
+  @Column({ name: 'country_code', length: 2, nullable: true, type: 'varchar', default: 'CO' })
+  countryCode: string | null;
+
+  @Column({ name: 'postal_code', length: 10, nullable: true, type: 'varchar' })
+  postalCode: string | null;
+
+  /** Coordenadas GPS en formato "lat,lng" (ej: "4.6097,-74.0817") */
+  @Column({ name: 'coordinates', length: 50, nullable: true, type: 'varchar' })
+  coordinates: string | null;
+
+  // ── Contacto adicional ───────────────────────────────────────────────────────
+
+  /** Teléfono principal en formato E.164 (ej: "+573001234567") */
+  @Column({ name: 'phone', length: 20, nullable: true, type: 'varchar' })
+  phone: string | null;
+
+  /** Sitio web corporativo */
+  @Column({ name: 'website', length: 255, nullable: true, type: 'varchar' })
+  website: string | null;
+
+  /** Código CIIU colombiano (ej: "6110") */
+  @Column({ name: 'economic_sector', length: 10, nullable: true, type: 'varchar' })
+  economicSector: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

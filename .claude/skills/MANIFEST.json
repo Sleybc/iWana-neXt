@@ -1,0 +1,186 @@
+{
+  "version": "1.0",
+  "status": "approved",
+  "date": "2026-03-12",
+  "governance": {
+    "precedence": [
+      "AGENTS.md",
+      "CLAUDE.md",
+      ".github/copilot-instructions.md",
+      ".agents/skills/INDEX.md",
+      "individual skill"
+    ],
+    "activeDirectory": ".agents/skills",
+    "archiveDirectory": ".agents/skills-archive"
+  },
+  "summary": {
+    "coreCount": 30,
+    "archivedItemCount": 683,
+    "archivedDirectoryCount": 679,
+    "archivedLegacyFileCount": 4,
+    "candidateCount": 0,
+    "reviewedArchivedCount": 6,
+    "holdCount": 3,
+    "potentializedCoreCount": 30,
+    "potentializationPhase": 8
+  },
+  "usagePriority": {
+    "firstLine": [
+      "nestjs-expert",
+      "nextjs-app-router-patterns",
+      "frontend-dev-guidelines",
+      "testing-patterns",
+      "monorepo-architect",
+      "core-components",
+      "postgresql"
+    ],
+    "secondLine": [
+      "architect-review",
+      "architecture-decision-records",
+      "auth-implementation-patterns",
+      "backend-security-coder",
+      "docs-architect",
+      "frontend-security-coder",
+      "openapi-spec-generation",
+      "security-auditor",
+      "typescript-expert",
+      "typescript-pro"
+    ],
+    "specializedOnDemand": [
+      "bullmq-specialist",
+      "docker-expert",
+      "i18n-localization",
+      "mermaid-expert",
+      "observability-engineer",
+      "playwright-skill",
+      "tailwind-patterns",
+      "test-driven-development",
+      "wcag-audit-patterns",
+      "turborepo-caching",
+      "database-migration",
+      "e2e-testing-patterns",
+      "codebase-cleanup-deps-audit"
+    ]
+  },
+  "core": {
+    "architecture": [
+      "architect-review",
+      "architecture-decision-records",
+      "docs-architect",
+      "mermaid-expert",
+      "monorepo-architect",
+      "turborepo-caching"
+    ],
+    "backend": [
+      "auth-implementation-patterns",
+      "backend-security-coder",
+      "bullmq-specialist",
+      "database-migration",
+      "docker-expert",
+      "nestjs-expert",
+      "openapi-spec-generation",
+      "observability-engineer",
+      "postgresql",
+      "security-auditor",
+      "typescript-expert",
+      "typescript-pro"
+    ],
+    "frontend": [
+      "core-components",
+      "frontend-dev-guidelines",
+      "frontend-security-coder",
+      "i18n-localization",
+      "nextjs-app-router-patterns",
+      "tailwind-patterns",
+      "wcag-audit-patterns"
+    ],
+    "testing": [
+      "e2e-testing-patterns",
+      "playwright-skill",
+      "test-driven-development",
+      "testing-patterns"
+    ],
+    "maintenance": ["codebase-cleanup-deps-audit"]
+  },
+  "candidates": {
+    "highPriority": []
+  },
+  "reviewedArchived": [
+    "github-actions-templates",
+    "deployment-pipeline-design",
+    "slo-implementation",
+    "prometheus-configuration",
+    "grafana-dashboards",
+    "distributed-tracing"
+  ],
+  "hold": ["nx-workspace-patterns", "nodejs-best-practices", "context7-auto-research"],
+  "restoreOrder": [],
+  "restoredFromArchive": ["docs-architect", "observability-engineer"],
+  "restoreCriteria": [
+    "adds direct value to the active stack or roadmap",
+    "does not duplicate an active core skill",
+    "does not conflict with repository governance",
+    "depends only on tools available in the real environment",
+    "improves delivery or operations rather than catalog breadth"
+  ],
+  "admissionPolicy": [
+    "requires a recurrent and verifiable use case in the repository",
+    "must be assigned a usage priority tier before activation",
+    "must declare whether it replaces, complements or duplicates an active skill",
+    "must be reflected in README, INDEX, MANIFEST and the current audit report",
+    "must not depend on unavailable tools, MCPs or unsupported workflows"
+  ],
+  "rejectionCriteria": [
+    "duplicates coverage already provided by an active skill",
+    "pushes stack or tooling outside the approved baseline without ADR",
+    "depends on external services or tools unavailable in the real environment",
+    "exists only for catalog breadth rather than project need",
+    "adds more activation noise than operational value"
+  ],
+  "archiveLayout": {
+    "candidateRestore": ".agents/skills-archive/candidate-restore",
+    "candidateKeep": ".agents/skills-archive/candidate-keep",
+    "hold": ".agents/skills-archive/hold",
+    "historicalRoot": ".agents/skills-archive"
+  },
+  "references": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".github/copilot-instructions.md",
+    ".agents/skills/INDEX.md",
+    "docs/quality/CHECKLIST-SISTEMA-SKILLS-GOBERNANZA-v1.0.md",
+    "docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md"
+  ],
+  "potentializedCoreSkills": [
+    "frontend-dev-guidelines",
+    "testing-patterns",
+    "core-components",
+    "nestjs-expert",
+    "monorepo-architect",
+    "architect-review",
+    "architecture-decision-records",
+    "playwright-skill",
+    "backend-security-coder",
+    "frontend-security-coder",
+    "postgresql",
+    "openapi-spec-generation",
+    "auth-implementation-patterns",
+    "mermaid-expert",
+    "bullmq-specialist",
+    "docker-expert",
+    "nextjs-app-router-patterns",
+    "security-auditor",
+    "typescript-expert",
+    "wcag-audit-patterns",
+    "i18n-localization",
+    "tailwind-patterns",
+    "test-driven-development",
+    "docs-architect",
+    "observability-engineer",
+    "turborepo-caching",
+    "database-migration",
+    "e2e-testing-patterns",
+    "typescript-pro",
+    "codebase-cleanup-deps-audit"
+  ]
+}

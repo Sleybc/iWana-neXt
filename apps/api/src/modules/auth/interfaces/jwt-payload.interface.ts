@@ -20,6 +20,8 @@ export interface JwtPayload {
   schemaName: string | null;
   jti: string;
   type: 'platform' | 'tenant';
+  /** Indica si el usuario debe cambiar su contrasena en el siguiente ingreso (primer acceso con credenciales temporales) */
+  passwordResetRequired?: boolean;
   iat?: number;
   exp?: number;
 }

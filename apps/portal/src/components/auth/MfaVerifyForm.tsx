@@ -26,7 +26,6 @@ export function MfaVerifyForm() {
     return () => clearInterval(interval);
   }, []);
 
-  const progress = (secondsLeft / TOTP_INTERVAL) * 100;
   const isUrgent = secondsLeft <= 5;
 
   const handleVerify = async (codeToVerify: string) => {
@@ -78,20 +77,18 @@ export function MfaVerifyForm() {
       />
 
       <div className="w-full flex flex-col gap-1.5">
-        <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
-          <div
-            className="h-full rounded-full transition-all duration-1000"
-            style={{
-              width: `${progress}%`,
-              backgroundColor: isUrgent ? '#EF4444' : secondsLeft <= 10 ? '#F59E0B' : '#A5C330',
-            }}
-            role="progressbar"
-            aria-valuenow={Number(secondsLeft)}
-            aria-valuemin={0}
-            aria-valuemax={Number(TOTP_INTERVAL)}
-            aria-label="Tiempo restante del código"
-          />
-        </div>
+        <progress
+          className={`h-1.5 w-full overflow-hidden rounded-full [&::-webkit-progress-bar]:bg-gray-100 [&::-webkit-progress-value]:transition-all [&::-webkit-progress-value]:duration-1000 ${
+            isUrgent
+              ? '[&::-webkit-progress-value]:bg-red-500 [&::-moz-progress-bar]:bg-red-500'
+              : secondsLeft <= 10
+                ? '[&::-webkit-progress-value]:bg-amber-500 [&::-moz-progress-bar]:bg-amber-500'
+                : '[&::-webkit-progress-value]:bg-[#A5C330] [&::-moz-progress-bar]:bg-[#A5C330]'
+          }`}
+          value={secondsLeft}
+          max={TOTP_INTERVAL}
+          aria-label="Tiempo restante del código"
+        />
         <p className={`text-xs text-center ${isUrgent ? 'text-red-500' : 'text-gray-500'}`}>
           {isUrgent
             ? `⚠ El código expira en ${secondsLeft}s`

@@ -1,7 +1,7 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Job } from 'bullmq';
+import { Job, UnrecoverableError } from 'bullmq';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Pool } from 'pg';
@@ -91,7 +91,7 @@ export class TenantProvisioningProcessor extends WorkerHost {
       const msg = `schemaName "${schemaName}" no pasa la validacion de seguridad. Job abortado.`;
       this.logger.error(`[provisioning] ${msg}`);
       await this.markFailed(tenantId);
-      throw new Error(msg);
+      throw new UnrecoverableError(msg);
     }
 
     try {
@@ -100,7 +100,7 @@ export class TenantProvisioningProcessor extends WorkerHost {
       });
 
       if (!tenant) {
-        throw new Error(`Tenant ${tenantId} no encontrado en public.tenants.`);
+        throw new UnrecoverableError(`Tenant ${tenantId} no encontrado en public.tenants.`);
       }
 
       // Leer el template SQL desde el paquete @iwana/db
@@ -131,9 +131,7 @@ export class TenantProvisioningProcessor extends WorkerHost {
         adminEmail: tenant.contactEmail,
       });
 
-      this.logger.log(
-        `[provisioning] Seed inicial del ADMIN completado para tenant ${tenantSlug}`,
-      );
+      this.logger.log(`[provisioning] Seed inicial del ADMIN completado para tenant ${tenantSlug}`);
 
       // Actualizar status del tenant a ACTIVE en el schema publico
       await this.dataSource
@@ -143,9 +141,7 @@ export class TenantProvisioningProcessor extends WorkerHost {
         .where('id = :id', { id: tenantId })
         .execute();
 
-      this.logger.log(
-        `[provisioning] Tenant ${tenantSlug} activado exitosamente (status=ACTIVE)`,
-      );
+      this.logger.log(`[provisioning] Tenant ${tenantSlug} activado exitosamente (status=ACTIVE)`);
     } catch (error) {
       this.logger.error(
         `[provisioning] Fallo al provisionar schema "${schemaName}" para tenant ${tenantId}: ${(error as Error).message}`,
@@ -153,7 +149,8 @@ export class TenantProvisioningProcessor extends WorkerHost {
 
       await this.markFailed(tenantId);
 
-      // Relanzar para que BullMQ gestione reintentos segun la politica del job
+      // Relanzar para que BullMQ gestione reintentos solo en fallos transitorios.
+      // Los errores de tipo UnrecoverableError ya vienen clasificados como permanentes.
       throw error;
     }
   }

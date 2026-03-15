@@ -53,7 +53,7 @@ export default function DashboardPage() {
                   </div>
                   <div
                     className="mt-1 flex h-8 w-8 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30"
-                    aria-label="Conectado"
+                    aria-hidden="true"
                   >
                     <Wifi
                       className="w-4 h-4 text-green-600 dark:text-green-400"

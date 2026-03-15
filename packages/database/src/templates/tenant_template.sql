@@ -53,6 +53,14 @@ CREATE TABLE users (
   last_login_at            TIMESTAMPTZ,
   email_verified           BOOLEAN      NOT NULL DEFAULT FALSE,
   email_verification_token VARCHAR(512),                   -- cifrado, nullable
+  -- Perfil personal del usuario (todos nullable — se completan post-creación)
+  first_name               VARCHAR(512),                   -- AES-256-GCM cifrado
+  last_name                VARCHAR(512),                   -- AES-256-GCM cifrado
+  phone                    VARCHAR(20),                    -- E.164
+  job_title                VARCHAR(150),
+  document_type            VARCHAR(20),                    -- CC|CE|PASAPORTE|NIT_PERSONA
+  document_number          VARCHAR(512),                   -- AES-256-GCM cifrado (PII sensible, no se expone en API)
+  avatar_url               VARCHAR(500),
   created_at               TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   updated_at               TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   deleted_at               TIMESTAMPTZ,

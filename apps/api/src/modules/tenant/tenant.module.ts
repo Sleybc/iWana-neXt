@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Tenant } from '@iwana/db';
 import { TENANT_PROVISIONING_QUEUE } from '@iwana/shared';
 import { AuthModule } from '../auth/auth.module';
+import { AuditModule } from '../audit/audit.module';
 import { TenantController } from './tenant.controller';
 import { TenantProvisioningService } from './tenant-provisioning.service';
 import { TenantMiddleware } from './tenant.middleware';
@@ -25,6 +26,9 @@ import { TenantService } from './tenant.service';
   imports: [
     // JwtModule exportado por AuthModule para verificar claims de tenant en middleware
     AuthModule,
+
+    // Audit trail para cambios de configuración funcional
+    AuditModule,
 
     // Registra el repositorio de Tenant en el scope de este modulo
     TypeOrmModule.forFeature([Tenant]),

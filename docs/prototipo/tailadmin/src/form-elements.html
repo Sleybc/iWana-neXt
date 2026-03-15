@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
+      content="width=device-width, initial-scale=1.0"
     />
     <meta http-equiv="X-UA-Compatible" content="ie=edge" />
     <title>
@@ -74,6 +74,7 @@
                       </label>
                       <input
                         type="text"
+                        aria-label="Input"
                         class="dark:bg-dark-900 shadow-theme-xs focus:border-brand-300 focus:ring-brand-500/10 dark:focus:border-brand-800 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 focus:ring-3 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30"
                       />
                     </div>
@@ -104,6 +105,7 @@
                         class="relative z-20 bg-transparent"
                       >
                         <select
+                          aria-label="Select Input"
                           class="dark:bg-dark-900 shadow-theme-xs focus:border-brand-300 focus:ring-brand-500/10 dark:focus:border-brand-800 h-11 w-full appearance-none rounded-lg border border-gray-300 bg-transparent bg-none px-4 py-2.5 pr-11 text-sm text-gray-800 placeholder:text-gray-400 focus:ring-3 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30"
                           :class="isOptionSelected && 'text-gray-800 dark:text-white/90'"
                           @change="isOptionSelected = true"
@@ -353,6 +355,7 @@
                         class="relative z-20 bg-transparent"
                       >
                         <select
+                          aria-label="Select Input"
                           class="dark:bg-dark-900 shadow-theme-xs focus:border-brand-300 focus:ring-brand-500/10 dark:focus:border-brand-800 h-11 w-full appearance-none rounded-lg border border-gray-300 bg-transparent bg-none px-4 py-2.5 pr-11 text-sm text-gray-800 placeholder:text-gray-400 focus:ring-3 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30"
                           :class="isOptionSelected && 'text-gray-800 dark:text-white/90'"
                           @change="isOptionSelected = true"
@@ -413,7 +416,7 @@
                         Multiple Select Options
                       </label>
                       <div>
-                        <select class="hidden" x-cloak id="select">
+                        <select class="hidden" x-cloak id="select" aria-label="Multiple Select Options">
                           <option value="1">Option 2</option>
                           <option value="2">Option 3</option>
                           <option value="3">Option 4</option>
@@ -493,6 +496,7 @@
                                     <button
                                       type="button"
                                       @click="open"
+                                      aria-label="Abrir opciones"
                                       class="h-5 w-5 cursor-pointer text-gray-700 outline-hidden focus:outline-hidden dark:text-gray-400"
                                       :class="isOpen() === true ? 'rotate-180' : ''"
                                     >
@@ -652,6 +656,7 @@
                         <input
                           type="text"
                           value="demoemail"
+                          aria-label="Email con error"
                           class="dark:bg-dark-900 border-error-300 shadow-theme-xs focus:border-error-300 focus:ring-error-500/10 dark:border-error-700 dark:focus:border-error-800 w-full rounded-lg border bg-transparent px-4 py-2.5 pr-10 text-sm text-gray-800 placeholder:text-gray-400 focus:ring-3 focus:outline-hidden dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30"
                         />
                         <span
@@ -690,6 +695,7 @@
                         <input
                           type="text"
                           value="demoemail@gmail.com"
+                          aria-label="Email válido"
                           class="dark:bg-dark-900 border-success-300 shadow-theme-xs focus:border-success-300 focus:ring-success-500/10 dark:border-success-700 dark:focus:border-success-800 w-full rounded-lg border bg-transparent px-4 py-2.5 pr-10 text-sm text-gray-800 placeholder:text-gray-400 focus:ring-3 focus:outline-hidden dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30"
                         />
                         <span
@@ -806,6 +812,7 @@
                           <select
                             x-model="selectedCountry"
                             @change="phoneNumber = countryCodes[selectedCountry]"
+                            aria-label="Código de país"
                             class="focus:border-brand-300 focus:ring-brand-500/10 appearance-none rounded-l-lg border-0 border-r border-gray-200 bg-transparent bg-none py-3 pr-8 pl-3.5 leading-tight text-gray-700 focus:ring-3 focus:outline-hidden dark:border-gray-800 dark:text-gray-400"
                           >
                             <option
@@ -887,6 +894,7 @@
                           <select
                             x-model="selectedCountry"
                             @change="phoneNumber = countryCodes[selectedCountry]"
+                            aria-label="Código de país"
                             class="focus:border-brand-300 focus:ring-brand-500/10 appearance-none rounded-r-lg border-0 border-l border-gray-200 bg-transparent bg-none py-3 pr-8 pl-3.5 leading-tight text-gray-700 focus:ring-3 focus:outline-hidden dark:border-gray-800 dark:text-gray-400"
                           >
                             <option
@@ -999,6 +1007,7 @@
                           value="www.tailadmin.com"
                           type="url"
                           id="website-input"
+                          aria-label="Website"
                           class="dark:bg-dark-900 shadow-theme-xs focus:border-brand-300 focus:ring-brand-500/10 dark:focus:border-brand-800 h-11 w-full rounded-lg border border-gray-300 bg-transparent py-3 pr-[90px] pl-4 text-sm text-gray-800 placeholder:text-gray-400 focus:ring-3 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30"
                         />
                       </div>
@@ -1028,6 +1037,7 @@
                       </label>
                       <input
                         type="file"
+                        aria-label="Upload file"
                         class="focus:border-ring-brand-300 shadow-theme-xs focus:file:ring-brand-300 h-11 w-full overflow-hidden rounded-lg border border-gray-300 bg-transparent text-sm text-gray-500 transition-colors file:mr-5 file:border-collapse file:cursor-pointer file:rounded-l-lg file:border-0 file:border-r file:border-solid file:border-gray-200 file:bg-gray-50 file:py-3 file:pr-3 file:pl-3.5 file:text-sm file:text-gray-700 placeholder:text-gray-400 hover:file:bg-gray-100 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 dark:text-white/90 dark:file:border-gray-800 dark:file:bg-white/[0.03] dark:file:text-gray-400 dark:placeholder:text-gray-400"
                       />
                     </div>
@@ -1571,3 +1581,4 @@
     </script>
   </body>
 </html>
+

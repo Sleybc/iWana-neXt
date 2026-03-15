@@ -2,9 +2,9 @@
 import { redirect } from 'next/navigation';
 
 /**
- * Ruta raíz — redirige al login.
+ * Ruta raíz — redirige al dashboard.
  * La lógica de auth guard se aplica en middleware.ts.
  */
 export default function HomePage() {
-  redirect('/auth/login');
+  redirect('/dashboard');
 }

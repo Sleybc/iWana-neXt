@@ -6,12 +6,14 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
+    "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
     "clean": "rm -rf dist",
     "migration:run": "typeorm migration:run -d dist/data-source.js",
     "migration:revert": "typeorm migration:revert -d dist/data-source.js",
-    "migration:show": "typeorm migration:show -d dist/data-source.js"
+    "migration:show": "typeorm migration:show -d dist/data-source.js",
+    "migration:tenant:run": "node dist/migrations/tenant/003_add_user_profile_fields.js"
   },
   "dependencies": {
     "pg": "^8.16.0",

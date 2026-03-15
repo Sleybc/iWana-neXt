@@ -12,7 +12,7 @@ import { DataSource } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { User } from '@iwana/db';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
-import { UserRole, UserStatus, AuditAction } from '@iwana/shared';
+import { DocumentType, UserRole, UserStatus, AuditAction } from '@iwana/shared';
 import { AuditService } from '../audit/audit.service';
 import { CreateUserDto, UpdateUserDto, UserResponseDto } from './dto/user.dto';
 
@@ -171,6 +171,14 @@ export class UsersService {
         lastLoginAt: null,
         emailVerified: false,
         emailVerificationToken: null,
+        // Perfil personal — cifrar campos PII antes de persistir
+        firstName: dto.firstName ? this.encryptValue(dto.firstName.trim()) : null,
+        lastName: dto.lastName ? this.encryptValue(dto.lastName.trim()) : null,
+        phone: dto.phone ?? null,
+        jobTitle: dto.jobTitle ?? null,
+        documentType: dto.documentType ?? null,
+        documentNumber: dto.documentNumber ? this.encryptValue(dto.documentNumber.trim()) : null,
+        avatarUrl: dto.avatarUrl ?? null,
       });
 
       await qr.manager.save(User, user);
@@ -207,7 +215,11 @@ export class UsersService {
       if (!user) throw new NotFoundException(`Usuario ${id} no encontrado.`);
 
       // Un usuario no-ADMIN solo puede actualizar su propio perfil
-      if (actorRole !== UserRole.ADMIN && actorUserId !== id) {
+      if (
+        actorRole !== UserRole.ADMIN &&
+        actorRole !== UserRole.SYSTEM_ADMIN &&
+        actorUserId !== id
+      ) {
         throw new ForbiddenException('No tienes permisos para actualizar este usuario.');
       }
 
@@ -215,6 +227,19 @@ export class UsersService {
 
       if (dto.status !== undefined) user.status = dto.status;
       if (dto.role !== undefined) user.role = dto.role;
+      // Perfil personal — cifrar campos PII si se actualizan
+      if (dto.firstName !== undefined)
+        user.firstName = dto.firstName ? this.encryptValue(dto.firstName.trim()) : null;
+      if (dto.lastName !== undefined)
+        user.lastName = dto.lastName ? this.encryptValue(dto.lastName.trim()) : null;
+      if (dto.phone !== undefined) user.phone = dto.phone ?? null;
+      if (dto.jobTitle !== undefined) user.jobTitle = dto.jobTitle ?? null;
+      if (dto.documentType !== undefined) user.documentType = dto.documentType ?? null;
+      if (dto.documentNumber !== undefined)
+        user.documentNumber = dto.documentNumber
+          ? this.encryptValue(dto.documentNumber.trim())
+          : null;
+      if (dto.avatarUrl !== undefined) user.avatarUrl = dto.avatarUrl ?? null;
 
       await qr.manager.save(User, user);
 
@@ -267,7 +292,11 @@ export class UsersService {
   // Helpers privados
   // ---------------------------------------------------------------------------
 
-  /** Convierte entidad User a DTO publico — excluye campos sensibles */
+  /**
+   * Convierte entidad User a DTO publico.
+   * Descifra firstName y lastName si están presentes.
+   * documentNumber NUNCA se incluye — PII sensible bajo Ley 1581.
+   */
   private toDto(user: User): UserResponseDto {
     return {
       id: user.id,
@@ -281,6 +310,14 @@ export class UsersService {
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
       deletedAt: user.deletedAt ?? null,
+      // Perfil personal — desencriptar campos cifrados
+      firstName: user.firstName ? this.decryptValue(user.firstName) : null,
+      lastName: user.lastName ? this.decryptValue(user.lastName) : null,
+      phone: user.phone ?? null,
+      jobTitle: user.jobTitle ?? null,
+      documentType: (user.documentType as DocumentType) ?? null,
+      avatarUrl: user.avatarUrl ?? null,
+      // documentNumber: omitido intencionalmente (PII sensible — Ley 1581)
     };
   }
 
@@ -299,5 +336,22 @@ export class UsersService {
     const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
     const authTag = cipher.getAuthTag();
     return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+  }
+
+  /**
+   * Descifra un valor cifrado con AES-256-GCM.
+   * Formato esperado: <iv_hex>:<authTag_hex>:<ciphertext_hex>
+   */
+  private decryptValue(encrypted: string): string {
+    const parts = encrypted.split(':');
+    if (parts.length !== 3) {
+      throw new Error('Formato de valor cifrado inválido.');
+    }
+    const iv = Buffer.from(parts[0]!, 'hex');
+    const authTag = Buffer.from(parts[1]!, 'hex');
+    const ciphertext = Buffer.from(parts[2]!, 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', this.encryptionKey, iv);
+    decipher.setAuthTag(authTag);
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
   }
 }

@@ -10,6 +10,8 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { AuditModule } from './modules/audit/audit.module';
+import { PlatformUsersModule } from './modules/platform-users/platform-users.module';
+import { MailerModule } from './modules/mailer/mailer.module';
 import { RedisModule } from './modules/redis/redis.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { TenantMiddleware } from './modules/tenant/tenant.middleware';
@@ -28,6 +30,7 @@ import { TenantMiddleware } from './modules/tenant/tenant.middleware';
  *
  * Completado en Sprint 1 (continuacion):
  * - UsersModule: CRUD de usuarios por tenant, RBAC, idempotencia, audit trail
+ * - MailerModule: envio de correos con modo dev (Logger) y produccion (Nodemailer SMTP)
  *
  * Pendiente (Sprint 2+):
  * - ValidationPipe global configurado en main.ts
@@ -41,7 +44,12 @@ import { TenantMiddleware } from './modules/tenant/tenant.middleware';
     // Variables de entorno disponibles globalmente con validacion fail-fast en produccion
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: process.env['NODE_ENV'] === 'test' ? '.env.test' : '.env',
+      envFilePath:
+        process.env['NODE_ENV'] === 'test'
+          ? '.env.test'
+          : process.env['NODE_ENV'] === 'development'
+            ? ['.env.development', '.env']
+            : '.env',
       // Validacion Joi omitida en modo test para no requerir todas las vars en CI
       ...(process.env['NODE_ENV'] !== 'test' && {
         validationSchema: Joi.object({
@@ -68,6 +76,15 @@ import { TenantMiddleware } from './modules/tenant/tenant.middleware';
           // CORS: URI del frontend; en dev admite localhost
           CORS_ORIGIN: Joi.string().default('http://localhost:3001,http://localhost:3002'),
           APP_NAME: Joi.string().default('iWana neXt'),
+          // Variables SMTP — todas opcionales; ausencia de SMTP_HOST activa modo dev en MailerService
+          SMTP_HOST: Joi.string().optional(),
+          SMTP_PORT: Joi.number().optional(),
+          SMTP_USER: Joi.string().optional(),
+          SMTP_PASS: Joi.string().optional(),
+          SMTP_FROM: Joi.string().optional(),
+          SMTP_SECURE: Joi.boolean().optional(),
+          // URL del frontend — usada para construir enlaces en correos (forgot password, etc.)
+          FRONTEND_URL: Joi.string().uri().optional(),
         }),
         validationOptions: { abortEarly: false },
       }),
@@ -100,6 +117,9 @@ import { TenantMiddleware } from './modules/tenant/tenant.middleware';
         autoLoadEntities: true,
       }),
     }),
+
+    // Modulo de correo electronico: modo dev (Logger) o produccion (Nodemailer SMTP)
+    MailerModule,
 
     // Redis global (JTI blacklist, cache de tenant, MFA pending secrets)
     RedisModule,
@@ -138,6 +158,9 @@ import { TenantMiddleware } from './modules/tenant/tenant.middleware';
 
     // Modulo de usuarios: CRUD de usuarios por tenant con RBAC y audit trail
     UsersModule,
+
+    // Modulo de perfil del usuario de plataforma (SYSTEM_ADMIN / IWANA_SUPPORT)
+    PlatformUsersModule,
   ],
   controllers: [],
   providers: [

@@ -1,9 +1,10 @@
 // apps/web/src/components/dashboard/TenantsTable.tsx
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button } from '@iwana/ui';
+import { Button } from '@iwana/ui';
 import { Card, CardHeader, CardTitle, CardContent } from '@iwana/ui';
 import { Search, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { TenantStatusBadge } from '@/components/tenants/TenantStatusBadge';
 
 type TenantStatus = 'ACTIVE' | 'PROVISIONING' | 'PROVISIONING_FAILED' | 'SUSPENDED' | 'INACTIVE';
 type SortField = 'name' | 'status' | 'createdAt';
@@ -23,6 +24,9 @@ interface TenantsTableProps {
   error?: string | null;
   onRetry?: () => void;
   searchQuery?: string;
+  onSuspend?: (id: string) => void;
+  onActivate?: (id: string) => void;
+  onRetryProvisioning?: (id: string) => void;
 }
 
 const statusConfig: Record<
@@ -73,6 +77,9 @@ export function TenantsTable({
   error = null,
   onRetry,
   searchQuery = '',
+  onSuspend,
+  onActivate,
+  onRetryProvisioning,
 }: TenantsTableProps) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<TenantStatus | typeof ALL_STATUSES>(
@@ -231,7 +238,6 @@ export function TenantsTable({
                 </tr>
               ) : (
                 filtered.map((tenant) => {
-                  const { label, variant } = statusConfig[tenant.status];
                   return (
                     <tr
                       key={tenant.id}
@@ -244,7 +250,7 @@ export function TenantsTable({
                         {tenant.slug}
                       </td>
                       <td className="px-6 py-4">
-                        <Badge variant={variant}>{label}</Badge>
+                        <TenantStatusBadge status={tenant.status} />
                       </td>
                       <td className="px-6 py-4 text-gray-500 dark:text-gray-400">
                         {tenant.createdAt}
@@ -252,16 +258,45 @@ export function TenantsTable({
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <a
-                            href={`/tenants/${tenant.id}`}
+                            href={`/tenants/${tenant.id}/settings`}
                             className="text-xs text-iwana-secondary-700 hover:underline dark:text-iwana-secondary-400"
                           >
-                            Ver detalle
+                            Configurar
                           </a>
-                          {tenant.status === 'PROVISIONING_FAILED' && (
-                            <Button size="sm" variant="destructive" className="h-7 px-2 text-xs">
-                              Retry
+
+                          {tenant.status === 'PROVISIONING_FAILED' && onRetryProvisioning && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => onRetryProvisioning(tenant.id)}
+                            >
+                              Reintentar
                             </Button>
                           )}
+
+                          {tenant.status === 'ACTIVE' && onSuspend && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => onSuspend(tenant.id)}
+                            >
+                              Suspender
+                            </Button>
+                          )}
+
+                          {(tenant.status === 'SUSPENDED' || tenant.status === 'INACTIVE') &&
+                            onActivate && (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => onActivate(tenant.id)}
+                              >
+                                Reactivar
+                              </Button>
+                            )}
                         </div>
                       </td>
                     </tr>

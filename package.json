@@ -13,6 +13,10 @@
     "dev": "docker compose -f docker-compose.dev.yml up -d && turbo run dev",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "test:e2e": "playwright test --config e2e/playwright.web.config.ts",
+    "test:e2e:headed": "playwright test --config e2e/playwright.web.config.ts --headed",
+    "test:e2e:portal": "playwright test --config e2e/playwright.portal.config.ts",
+    "test:e2e:all": "pnpm test:e2e && pnpm test:e2e:portal",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean && rm -rf node_modules",
     "prepare": "husky"
@@ -28,16 +32,18 @@
     }
   },
   "devDependencies": {
-    "turbo": "latest",
-    "typescript": "^5.9.0",
+    "@axe-core/playwright": "^4.11.1",
     "@commitlint/cli": "^19.0.0",
     "@commitlint/config-conventional": "^19.0.0",
+    "@playwright/test": "^1.58.2",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^9.0.0",
     "husky": "^9.0.0",
     "lint-staged": "^15.0.0",
     "prettier": "^3.0.0",
-    "eslint": "^9.0.0",
-    "@typescript-eslint/parser": "^8.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.0.0",
-    "eslint-config-prettier": "^9.0.0"
+    "turbo": "latest",
+    "typescript": "^5.9.0"
   }
 }

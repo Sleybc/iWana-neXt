@@ -1,5 +1,15 @@
-import { IsEmail, IsEnum, IsInt, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
-import { TenantStatus } from '@iwana/shared';
+import {
+  IsEmail,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUrl,
+  Matches,
+  MaxLength,
+  Min,
+} from 'class-validator';
+import { CompanyType, TenantStatus } from '@iwana/shared';
 
 /**
  * DTO para crear un nuevo tenant (ISP).
@@ -40,6 +50,87 @@ export class CreateTenantDto {
    */
   @IsOptional()
   settings?: Record<string, unknown>;
+
+  // ── Datos legales (opcionales) ────────────────────────────────────────────
+
+  /** Razón social registrada ante la Cámara de Comercio */
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  legalName?: string;
+
+  /** NIT sin dígito verificador — solo dígitos */
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{1,10}$/, { message: 'NIT debe contener solo dígitos (máx. 10).' })
+  nit?: string;
+
+  /** Dígito verificador del NIT */
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d$/, { message: 'nitDv debe ser un único dígito.' })
+  nitDv?: string;
+
+  /** Tipo de empresa */
+  @IsOptional()
+  @IsEnum(CompanyType)
+  companyType?: CompanyType;
+
+  // ── Dirección (opcionales) ────────────────────────────────────────────────
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  address?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  department?: string;
+
+  /** ISO 3166-1 alpha-2 (ej: "CO") */
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Z]{2}$/, {
+    message: 'countryCode debe ser un código ISO 3166-1 alpha-2 en mayúsculas.',
+  })
+  countryCode?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  postalCode?: string;
+
+  /** Coordenadas GPS en formato "lat,lng" (ej: "4.6097,-74.0817") */
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  coordinates?: string;
+
+  // ── Contacto adicional (opcionales) ──────────────────────────────────────
+
+  /** Teléfono en formato E.164 (ej: "+573001234567") */
+  @IsOptional()
+  @IsString()
+  @Matches(/^\+\d{7,15}$/, { message: 'phone debe estar en formato E.164 (ej: +573001234567).' })
+  phone?: string;
+
+  /** Sitio web corporativo */
+  @IsOptional()
+  @IsUrl({}, { message: 'website debe ser una URL válida.' })
+  @MaxLength(255)
+  website?: string;
+
+  /** Código CIIU colombiano (ej: "6110") */
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  economicSector?: string;
 }
 
 /**
@@ -69,6 +160,78 @@ export class UpdateTenantDto {
 
   @IsOptional()
   settings?: Record<string, unknown>;
+
+  // ── Datos legales (opcionales) ────────────────────────────────────────────
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  legalName?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{1,10}$/, { message: 'NIT debe contener solo dígitos (máx. 10).' })
+  nit?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d$/, { message: 'nitDv debe ser un único dígito.' })
+  nitDv?: string;
+
+  @IsOptional()
+  @IsEnum(CompanyType)
+  companyType?: CompanyType;
+
+  // ── Dirección (opcionales) ────────────────────────────────────────────────
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  address?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  department?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Z]{2}$/, {
+    message: 'countryCode debe ser un código ISO 3166-1 alpha-2 en mayúsculas.',
+  })
+  countryCode?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  postalCode?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  coordinates?: string;
+
+  // ── Contacto adicional (opcionales) ──────────────────────────────────────
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\+\d{7,15}$/, { message: 'phone debe estar en formato E.164 (ej: +573001234567).' })
+  phone?: string;
+
+  @IsOptional()
+  @IsUrl({}, { message: 'website debe ser una URL válida.' })
+  @MaxLength(255)
+  website?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  economicSector?: string;
 }
 
 /** Respuesta publica de un tenant — excluye campos internos del provisioning */
@@ -81,6 +244,22 @@ export class TenantResponseDto {
   contactEmail: string;
   maxSubscribers: number;
   settings: Record<string, unknown>;
+  // Datos legales
+  legalName: string | null;
+  nit: string | null;
+  nitDv: string | null;
+  companyType: CompanyType | null;
+  // Dirección
+  address: string | null;
+  city: string | null;
+  department: string | null;
+  countryCode: string | null;
+  postalCode: string | null;
+  coordinates: string | null;
+  // Contacto
+  phone: string | null;
+  website: string | null;
+  economicSector: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

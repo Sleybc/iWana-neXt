@@ -1,11 +1,4 @@
-import {
-  IsEmail,
-  IsOptional,
-  IsString,
-  Length,
-  MaxLength,
-  MinLength,
-} from 'class-validator';
+import { IsEmail, IsOptional, IsString, Length, MaxLength, MinLength } from 'class-validator';
 
 /**
  * DTO de login.
@@ -80,6 +73,9 @@ export class ForgotPasswordDto {
 
 /**
  * DTO de restablecimiento de contrasena (POST /api/v1/auth/reset-password).
+ *
+ * El email es opcional: si se incluye, se envia un correo de confirmacion al completar.
+ * Si no se incluye, el restablecimiento procede igualmente (la logica no depende del email).
  */
 export class ResetPasswordDto {
   @IsString()
@@ -89,6 +85,11 @@ export class ResetPasswordDto {
   @MinLength(10)
   @MaxLength(128)
   newPassword: string;
+
+  @IsEmail()
+  @MaxLength(255)
+  @IsOptional()
+  email?: string;
 }
 
 /**

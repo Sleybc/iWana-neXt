@@ -26,8 +26,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
-import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { UserRole, UserStatus, AuditAction } from '@iwana/shared';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import { UserRole, UserStatus, AuditAction, DocumentType } from '@iwana/shared';
 import { UsersService } from './users.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -64,7 +69,9 @@ const MOCK_TENANT_CTX = {
 };
 
 /** Usuario base que retorna el mock del manager */
-function buildUserEntity(overrides: Partial<Record<string, unknown>> = {}): Record<string, unknown> {
+function buildUserEntity(
+  overrides: Partial<Record<string, unknown>> = {},
+): Record<string, unknown> {
   return {
     id: 'usr-00000000-0000-4000-a000-000000000001',
     email: 'encrypted:mock',
@@ -84,6 +91,14 @@ function buildUserEntity(overrides: Partial<Record<string, unknown>> = {}): Reco
     createdAt: new Date('2025-01-01'),
     updatedAt: new Date('2025-01-01'),
     deletedAt: null,
+    // Campos de perfil (todos null por defecto)
+    firstName: null,
+    lastName: null,
+    phone: null,
+    jobTitle: null,
+    documentType: null,
+    documentNumber: null,
+    avatarUrl: null,
     ...overrides,
   };
 }
@@ -102,15 +117,20 @@ type MockQr = {
  * Configura mockRunInTenantSchema para ejecutar el callback con un QR mockeado.
  * Retorna las funciones del manager para inspeccion en tests.
  */
-function setupRunInTenantSchema(managerOverrides: Partial<MockQr['manager']> = {}): MockQr['manager'] {
+function setupRunInTenantSchema(
+  managerOverrides: Partial<MockQr['manager']> = {},
+): MockQr['manager'] {
   const mgr: MockQr['manager'] = {
     findOne: jest.fn(),
     create: jest.fn().mockImplementation((_entity: unknown, data: unknown) => data),
     // save() en TypeORM muta el objeto pasado (popula id, timestamps). El mock lo simula.
-    save: jest.fn().mockImplementation(async (_entity: unknown, entityInstance: Record<string, unknown>) => {
-      if (!entityInstance['id']) entityInstance['id'] = 'usr-generated-00000000-0000-4000-a000-000000000001';
-      return entityInstance;
-    }),
+    save: jest
+      .fn()
+      .mockImplementation(async (_entity: unknown, entityInstance: Record<string, unknown>) => {
+        if (!entityInstance['id'])
+          entityInstance['id'] = 'usr-generated-00000000-0000-4000-a000-000000000001';
+        return entityInstance;
+      }),
     softRemove: jest.fn().mockResolvedValue(undefined),
     createQueryBuilder: jest.fn(),
     ...managerOverrides,
@@ -186,7 +206,11 @@ describe('UsersService', () => {
 
     it('indica nextCursor cuando hay mas items', async () => {
       // limit=2, pero hay 3 resultados → nextCursor debe ser el id del ultimo
-      const users = [buildUserEntity({ id: 'id-1' }), buildUserEntity({ id: 'id-2' }), buildUserEntity({ id: 'id-3' })];
+      const users = [
+        buildUserEntity({ id: 'id-1' }),
+        buildUserEntity({ id: 'id-2' }),
+        buildUserEntity({ id: 'id-3' }),
+      ];
       const qb = {
         where: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
@@ -243,7 +267,9 @@ describe('UsersService', () => {
       });
 
       expect(result.id).toBeDefined();
-      expect((result as unknown as { temporaryPassword?: string }).temporaryPassword).toBeUndefined();
+      expect(
+        (result as unknown as { temporaryPassword?: string }).temporaryPassword,
+      ).toBeUndefined();
     });
 
     it('genera password temporal cuando no se provee password', async () => {
@@ -258,7 +284,9 @@ describe('UsersService', () => {
 
       // La respuesta debe incluir el password temporal
       expect((result as unknown as { temporaryPassword?: string }).temporaryPassword).toBeDefined();
-      expect(typeof (result as unknown as { temporaryPassword?: string }).temporaryPassword).toBe('string');
+      expect(typeof (result as unknown as { temporaryPassword?: string }).temporaryPassword).toBe(
+        'string',
+      );
     });
 
     it('lanza ConflictException si ya existe un usuario con ese email', async () => {
@@ -284,6 +312,67 @@ describe('UsersService', () => {
         expect.objectContaining({ action: AuditAction.CREATE, entityType: 'User' }),
       );
     });
+
+    it('crea usuario con campos de perfil y los cifra en la entidad', async () => {
+      let savedEntity: Record<string, unknown> | null = null;
+      const mgr = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(null),
+      });
+      // Capturar el objeto que se pasa a save() para verificar cifrado
+      mgr.save.mockImplementation(
+        async (_entity: unknown, entityInstance: Record<string, unknown>) => {
+          savedEntity = entityInstance;
+          if (!entityInstance['id']) entityInstance['id'] = 'usr-generated-profile';
+          return entityInstance;
+        },
+      );
+
+      await service.create({
+        email: 'perfil.completo@empresa.com',
+        role: UserRole.NOC,
+        firstName: 'Carlos',
+        lastName: 'García',
+        phone: '+573001234567',
+        jobTitle: 'Técnico de soporte',
+        documentType: DocumentType.CC,
+        documentNumber: '123456789',
+        avatarUrl: 'https://cdn.ejemplo.com/avatar.png',
+      });
+
+      // firstName y lastName deben estar cifrados (formato iv:authTag:ciphertext)
+      expect(typeof savedEntity!['firstName']).toBe('string');
+      expect((savedEntity!['firstName'] as string).split(':').length).toBe(3);
+      expect(typeof savedEntity!['lastName']).toBe('string');
+      expect((savedEntity!['lastName'] as string).split(':').length).toBe(3);
+      // documentNumber debe estar cifrado
+      expect(typeof savedEntity!['documentNumber']).toBe('string');
+      expect((savedEntity!['documentNumber'] as string).split(':').length).toBe(3);
+      // phone y jobTitle no cifrados
+      expect(savedEntity!['phone']).toBe('+573001234567');
+      expect(savedEntity!['jobTitle']).toBe('Técnico de soporte');
+      expect(savedEntity!['documentType']).toBe(DocumentType.CC);
+    });
+
+    it('crea usuario sin perfil — campos de perfil quedan null', async () => {
+      let savedEntity: Record<string, unknown> | null = null;
+      const mgr = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(null),
+      });
+      mgr.save.mockImplementation(
+        async (_entity: unknown, entityInstance: Record<string, unknown>) => {
+          savedEntity = entityInstance;
+          if (!entityInstance['id']) entityInstance['id'] = 'usr-sin-perfil';
+          return entityInstance;
+        },
+      );
+
+      await service.create({ email: 'sin.perfil@empresa.com', role: UserRole.NOC });
+
+      expect(savedEntity!['firstName']).toBeNull();
+      expect(savedEntity!['lastName']).toBeNull();
+      expect(savedEntity!['phone']).toBeNull();
+      expect(savedEntity!['documentNumber']).toBeNull();
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -295,8 +384,16 @@ describe('UsersService', () => {
     const TARGET_ID = 'usr-00000000-0000-4000-a000-000000000001';
 
     it('actualiza status y rol cuando el actor es ADMIN', async () => {
-      const entity = buildUserEntity({ id: TARGET_ID, status: UserStatus.ACTIVE, role: UserRole.NOC });
-      const updatedEntity = buildUserEntity({ id: TARGET_ID, status: UserStatus.SUSPENDED, role: UserRole.NOC });
+      const entity = buildUserEntity({
+        id: TARGET_ID,
+        status: UserStatus.ACTIVE,
+        role: UserRole.NOC,
+      });
+      const updatedEntity = buildUserEntity({
+        id: TARGET_ID,
+        status: UserStatus.SUSPENDED,
+        role: UserRole.NOC,
+      });
       setupRunInTenantSchema({
         findOne: jest.fn().mockResolvedValue(entity),
         save: jest.fn().mockResolvedValue(updatedEntity),
@@ -325,9 +422,44 @@ describe('UsersService', () => {
     it('lanza NotFoundException si el usuario objetivo no existe', async () => {
       setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(null) });
 
-      await expect(
-        service.update('no-existe', {}, ADMIN_ID, UserRole.ADMIN),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.update('no-existe', {}, ADMIN_ID, UserRole.ADMIN)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('actualiza campos de perfil cifrando firstName, lastName y documentNumber', async () => {
+      const TARGET_ID_PROFILE = 'usr-00000000-0000-4000-a000-000000000001';
+      const ADMIN_ID_PROFILE = 'usr-admin-00000000-0000-4000-a000-000000000100';
+      const entity = buildUserEntity({ id: TARGET_ID_PROFILE });
+      let savedEntity: Record<string, unknown> | null = null;
+      const mgr = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(entity),
+      });
+      mgr.save.mockImplementation(
+        async (_entity: unknown, entityInstance: Record<string, unknown>) => {
+          savedEntity = entityInstance;
+          return entityInstance;
+        },
+      );
+
+      await service.update(
+        TARGET_ID_PROFILE,
+        {
+          firstName: 'Ana',
+          lastName: 'López',
+          phone: '+573109876543',
+          documentNumber: '987654321',
+        },
+        ADMIN_ID_PROFILE,
+        UserRole.ADMIN,
+      );
+
+      // Campos PII deben estar cifrados al guardar
+      expect((savedEntity!['firstName'] as string).split(':').length).toBe(3);
+      expect((savedEntity!['lastName'] as string).split(':').length).toBe(3);
+      expect((savedEntity!['documentNumber'] as string).split(':').length).toBe(3);
+      // phone no se cifra
+      expect(savedEntity!['phone']).toBe('+573109876543');
     });
 
     it('registra AuditAction.UPDATE con oldValue y newValue', async () => {
@@ -349,6 +481,74 @@ describe('UsersService', () => {
           newValue: expect.objectContaining({ status: UserStatus.SUSPENDED }),
         }),
       );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // toDto (via findOne) — descifrado de perfil y omisión de documentNumber
+  // -------------------------------------------------------------------------
+
+  describe('toDto() via findOne()', () => {
+    it('desencripta firstName y lastName al retornar UserResponseDto', async () => {
+      // Necesitamos cifrar valores con la misma clave para que el servicio los pueda descifrar.
+      // Usamos el propio servicio como helper indirecto: create() cifra y findOne() descifra.
+      // Creamos un usuario con perfil y luego lo recuperamos.
+      let capturedEntity: Record<string, unknown> | null = null;
+
+      const createMgr = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(null),
+      });
+      createMgr.save.mockImplementation(
+        async (_entity: unknown, entityInstance: Record<string, unknown>) => {
+          capturedEntity = { ...entityInstance, id: 'usr-dto-test' };
+          return capturedEntity;
+        },
+      );
+
+      await service.create({
+        email: 'dto.test@empresa.com',
+        role: UserRole.NOC,
+        firstName: 'María',
+        lastName: 'Rodríguez',
+      });
+
+      // Ahora usamos findOne() con la entidad capturada (que tiene los campos cifrados)
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(capturedEntity),
+      });
+
+      const result = await service.findOne('usr-dto-test');
+
+      // El DTO debe exponer los valores descifrados
+      expect(result.firstName).toBe('María');
+      expect(result.lastName).toBe('Rodríguez');
+    });
+
+    it('documentNumber NUNCA aparece en UserResponseDto', async () => {
+      const entity = buildUserEntity({
+        documentNumber: 'some:encrypted:value',
+        documentType: DocumentType.CC,
+      });
+      setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(entity) });
+
+      const result = await service.findOne(entity['id'] as string);
+
+      // Verificar que la propiedad no existe en el resultado
+      expect('documentNumber' in result).toBe(false);
+    });
+
+    it('retorna null para campos de perfil no establecidos', async () => {
+      const entity = buildUserEntity(); // todos null por defecto
+      setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(entity) });
+
+      const result = await service.findOne(entity['id'] as string);
+
+      expect(result.firstName).toBeNull();
+      expect(result.lastName).toBeNull();
+      expect(result.phone).toBeNull();
+      expect(result.jobTitle).toBeNull();
+      expect(result.documentType).toBeNull();
+      expect(result.avatarUrl).toBeNull();
     });
   });
 
@@ -401,7 +601,11 @@ describe('UsersService', () => {
 
       await Promise.resolve();
       expect(auditServiceMock.log).toHaveBeenCalledWith(
-        expect.objectContaining({ action: AuditAction.DELETE, entityType: 'User', entityId: TARGET_ID }),
+        expect.objectContaining({
+          action: AuditAction.DELETE,
+          entityType: 'User',
+          entityId: TARGET_ID,
+        }),
       );
     });
   });

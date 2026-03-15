@@ -3,8 +3,9 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Repository } from 'typeorm';
 import { Tenant } from '@iwana/db';
-import { TenantStatus } from '@iwana/shared';
+import { CompanyType, TenantStatus } from '@iwana/shared';
 import { REDIS_CLIENT } from '../redis/redis.module';
+import { AuditService } from '../audit/audit.service';
 import { TenantService } from './tenant.service';
 import { CreateTenantDto, UpdateTenantDto } from './dto/tenant.dto';
 
@@ -26,6 +27,20 @@ function buildTenant(overrides: Partial<Tenant> = {}): Tenant {
     settings: { timezone: 'America/Bogota', currency: 'COP' },
     contactEmail: 'admin@isptest.co',
     maxSubscribers: 100,
+    // Campos de datos de empresa (nullable)
+    legalName: null,
+    nit: null,
+    nitDv: null,
+    companyType: null,
+    address: null,
+    city: null,
+    department: null,
+    countryCode: 'CO',
+    postalCode: null,
+    coordinates: null,
+    phone: null,
+    website: null,
+    economicSector: null,
     createdAt: new Date('2026-03-12T00:00:00Z'),
     updatedAt: new Date('2026-03-12T00:00:00Z'),
   };
@@ -64,6 +79,10 @@ describe('TenantService', () => {
         {
           provide: REDIS_CLIENT,
           useValue: redis,
+        },
+        {
+          provide: AuditService,
+          useValue: { log: jest.fn() },
         },
       ],
     }).compile();
@@ -148,6 +167,51 @@ describe('TenantService', () => {
       repo.findOne.mockResolvedValue(buildTenant()); // duplicado encontrado
 
       await expect(service.create(dto)).rejects.toThrow(ConflictException);
+    });
+
+    it('persiste campos legales opcionales cuando se proporcionan', async () => {
+      const savedTenant = buildTenant({
+        legalName: 'ISP Test SAS',
+        nit: '900123456',
+        nitDv: '7',
+        companyType: CompanyType.SAS,
+      });
+      repo.findOne.mockResolvedValue(null);
+      repo.create.mockReturnValue(savedTenant);
+      repo.save.mockResolvedValue(savedTenant);
+
+      const dtoConDatosLegales: CreateTenantDto = {
+        ...dto,
+        legalName: 'ISP Test SAS',
+        nit: '900123456',
+        nitDv: '7',
+        companyType: CompanyType.SAS,
+        city: 'Bogotá',
+        department: 'Cundinamarca',
+      };
+      await service.create(dtoConDatosLegales);
+
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          legalName: 'ISP Test SAS',
+          nit: '900123456',
+          companyType: CompanyType.SAS,
+        }),
+      );
+    });
+
+    it('toResponseDto retorna null para campos de empresa no asignados', async () => {
+      const savedTenant = buildTenant(); // todos los campos de empresa son null
+      repo.findOne.mockResolvedValue(null);
+      repo.create.mockReturnValue(savedTenant);
+      repo.save.mockResolvedValue(savedTenant);
+
+      const result = await service.create(dto);
+
+      expect(result.legalName).toBeNull();
+      expect(result.nit).toBeNull();
+      expect(result.companyType).toBeNull();
+      expect(result.countryCode).toBe('CO'); // default
     });
 
     it('el tenant creado queda en estado PROVISIONING', async () => {

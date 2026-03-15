@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import { UnrecoverableError } from 'bullmq';
 import { Pool } from 'pg';
 import { DataSource } from 'typeorm';
 import { TenantProvisioningProcessor } from './tenant-provisioning.processor';
@@ -93,5 +94,40 @@ describe('TenantProvisioningProcessor', () => {
     });
     expect(updateBuilder.execute).toHaveBeenCalledTimes(1);
     expect(mockClient.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('marca como fallo permanente cuando el tenant no existe y no debe reintentarse', async () => {
+    const tenantRepository = {
+      findOne: jest.fn().mockResolvedValue(null),
+    };
+    const updateBuilder = {
+      update: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue(undefined),
+    };
+    const dataSource = {
+      getRepository: jest.fn().mockReturnValue(tenantRepository),
+      createQueryBuilder: jest.fn().mockReturnValue(updateBuilder),
+    } as unknown as DataSource;
+    const tenantSeedService = {
+      seedInitialAdmin: jest.fn(),
+    } as unknown as TenantSeedService;
+
+    const processor = new TenantProvisioningProcessor(dataSource, tenantSeedService);
+
+    await expect(
+      processor.process({
+        data: {
+          tenantId: 'tenant-missing',
+          schemaName: 'tenant_missing',
+          tenantSlug: 'missing',
+        },
+      } as never),
+    ).rejects.toBeInstanceOf(UnrecoverableError);
+
+    expect(updateBuilder.execute).toHaveBeenCalledTimes(1);
+    expect(mockConnect).not.toHaveBeenCalled();
+    expect(tenantSeedService.seedInitialAdmin).not.toHaveBeenCalled();
   });
 });
