@@ -502,6 +502,62 @@ export interface UpdateUserPayload {
   avatarUrl?: string;
 }
 
+// Entrada de audit log — registro de una operación CUD en el sistema
+export interface AuditLogEntry {
+  id: string;
+  tenantId: string;
+  userId: string | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  oldValue: Record<string, unknown> | null;
+  newValue: Record<string, unknown> | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  requestId: string | null;
+  createdAt: string;
+}
+
+// Parámetros de filtrado para consulta de audit logs
+export interface AuditLogQueryParams {
+  cursor?: string;
+  limit?: number;
+  entityType?: string;
+  action?: string;
+  from?: string;
+  to?: string;
+}
+
+// API de audit logs — solo lectura (append-only por diseño)
+export const auditApi = {
+  list: (params?: AuditLogQueryParams, tenantSlug?: string) => {
+    const searchParams = new URLSearchParams();
+    if (params?.limit !== undefined) {
+      searchParams.set('limit', String(params.limit));
+    }
+    if (params?.cursor) {
+      searchParams.set('cursor', params.cursor);
+    }
+    if (params?.entityType) {
+      searchParams.set('entityType', params.entityType);
+    }
+    if (params?.action) {
+      searchParams.set('action', params.action);
+    }
+    if (params?.from) {
+      searchParams.set('from', params.from);
+    }
+    if (params?.to) {
+      searchParams.set('to', params.to);
+    }
+
+    const query = searchParams.toString();
+    return request<AuditLogEntry[]>(`/audit-logs${query ? `?${query}` : ''}`, {
+      headers: tenantSlug ? { 'X-Tenant-Slug': tenantSlug } : {},
+    });
+  },
+};
+
 export const usersApi = {
   list: (
     tenantSlug: string,

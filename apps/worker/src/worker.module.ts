@@ -3,8 +3,10 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { dataSourceOptions } from '@iwana/db';
-import { TENANT_PROVISIONING_QUEUE } from '@iwana/shared';
+import { REFRESH_TOKEN_PURGE_QUEUE, TENANT_PROVISIONING_QUEUE } from '@iwana/shared';
+import { RefreshTokenPurgeProcessor } from './processors/refresh-token-purge.processor';
 import { TenantProvisioningProcessor } from './processors/tenant-provisioning.processor';
+import { SchedulerService } from './services/scheduler.service';
 import { TenantSeedService } from './services/tenant-seed.service';
 
 /**
@@ -29,7 +31,10 @@ import { TenantSeedService } from './services/tenant-seed.service';
     // Variables de entorno disponibles en todos los providers del worker
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env', '../api/.env', '../../.env'],
+      envFilePath:
+        process.env['NODE_ENV'] === 'development'
+          ? ['../../.env.development', '../../.env']
+          : ['../../.env'],
     }),
 
     // La configuracion se construye con ConfigService para evitar leer process.env
@@ -74,7 +79,17 @@ import { TenantSeedService } from './services/tenant-seed.service';
     BullModule.registerQueue({
       name: TENANT_PROVISIONING_QUEUE,
     }),
+
+    // Cola de purga diaria de refresh tokens expirados
+    BullModule.registerQueue({
+      name: REFRESH_TOKEN_PURGE_QUEUE,
+    }),
   ],
-  providers: [TenantProvisioningProcessor, TenantSeedService],
+  providers: [
+    TenantProvisioningProcessor,
+    TenantSeedService,
+    RefreshTokenPurgeProcessor,
+    SchedulerService,
+  ],
 })
 export class WorkerModule {}
