@@ -78,7 +78,13 @@ export class MailerService {
     }
 
     // Modo produccion: enviar via Nodemailer
-    await this.transporter!.sendMail({
+    // Guarda explicita en lugar de non-null assertion — el transporter debe existir en este punto
+    if (!this.transporter) {
+      throw new Error(
+        'Transporter SMTP no inicializado — configurar SMTP_HOST en variables de entorno',
+      );
+    }
+    await this.transporter.sendMail({
       from: this.fromAddress,
       to: options.to,
       subject: options.subject,

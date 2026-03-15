@@ -570,7 +570,8 @@ export class AuthService {
       const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:3001');
       const template = forgotPasswordTemplate({
         resetLink: `${frontendUrl}/auth/reset-password?token=${token}`,
-        expiresInMinutes: 60,
+        // Calcular minutos desde la constante de TTL para evitar valores hardcodeados desincronizados
+        expiresInMinutes: PASSWORD_RESET_TOKEN_TTL_MS / (60 * 1000),
       });
 
       // Descifrar el email para el envio — solo en memoria, nunca se persiste ni loguea

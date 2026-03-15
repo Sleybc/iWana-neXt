@@ -35,6 +35,8 @@ export function welcomeTenantAdminTemplate(params: WelcomeTenantAdminParams): {
 </ul>
 <p><strong>Importante:</strong> Estas credenciales expiran en ${expiresInHours} horas. Debes cambiar tu contraseña en el primer ingreso.</p>
 <p>Si tienes alguna duda, contacta al soporte de iWana neXt.</p>`,
-    text: `Bienvenido a iWana neXt\n\nTu espacio de trabajo ${tenantName} ha sido provisionado.\n\nURL de acceso: ${loginUrl}\nContraseña temporal: ${temporaryPassword}\n\nEsta contraseña expira en ${expiresInHours} horas y debe ser cambiada en el primer ingreso.`,
+    // SEGURIDAD: el campo text es el que se loguea en modo dev; NO incluir temporaryPassword aqui.
+    // La contraseña temporal se transmite unicamente en el campo html del correo real.
+    text: `Bienvenido a iWana neXt\n\nTu espacio de trabajo ${tenantName} ha sido provisionado.\n\nURL de acceso: ${loginUrl}\n\nPor razones de seguridad, la contraseña temporal solo se muestra en el correo HTML.\n\nEsta contraseña expira en ${expiresInHours} horas y debe ser cambiada en el primer ingreso.`,
   };
 }

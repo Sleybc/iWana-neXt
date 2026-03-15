@@ -262,10 +262,13 @@ describe('welcomeTenantAdminTemplate', () => {
     expect(result.subject).toBe('Bienvenido a iWana neXt — Credenciales de acceso');
     expect(result.html).toContain('ISP Prueba S.A.S');
     expect(result.html).toContain('https://app.prueba.co/auth/login');
+    // La contraseña temporal SI aparece en el html (correo real entregado al destinatario)
     expect(result.html).toContain('IwN!a9-abcdef01');
     expect(result.html).toContain('24 horas');
+    // El campo text NO debe contener la contraseña — es el que se loguea en modo dev (CRITICO-2)
     expect(result.text).toContain('ISP Prueba S.A.S');
-    expect(result.text).toContain('IwN!a9-abcdef01');
+    expect(result.text).not.toContain('IwN!a9-abcdef01');
+    expect(result.text).toContain('solo se muestra en el correo HTML');
   });
 });
 

@@ -78,7 +78,7 @@ import { TenantMiddleware } from './modules/tenant/tenant.middleware';
           APP_NAME: Joi.string().default('iWana neXt'),
           // Variables SMTP — todas opcionales; ausencia de SMTP_HOST activa modo dev en MailerService
           SMTP_HOST: Joi.string().optional(),
-          SMTP_PORT: Joi.number().optional(),
+          SMTP_PORT: Joi.number().integer().min(1).max(65535).optional(),
           SMTP_USER: Joi.string().optional(),
           SMTP_PASS: Joi.string().optional(),
           SMTP_FROM: Joi.string().optional(),
