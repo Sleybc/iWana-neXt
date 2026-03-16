@@ -7,6 +7,19 @@ import { ChevronDown, LogOut, Settings, User as UserIcon, Headphones } from 'luc
 import { cn } from '@iwana/ui';
 import { useAuth } from '@/components/auth/AuthProvider';
 
+/** Avatar circular con la inicial del nombre del usuario */
+function UserAvatar({ displayName }: { displayName: string }) {
+  const initial = displayName[0]?.toUpperCase() ?? 'U';
+  return (
+    <div
+      className="h-8 w-8 rounded-full bg-iwana-primary-100 text-iwana-primary-700 flex items-center justify-center text-sm font-semibold shrink-0"
+      aria-hidden="true"
+    >
+      {initial}
+    </div>
+  );
+}
+
 export const DropdownUser = () => {
   const router = useRouter();
   const { user, logout } = useAuth();
@@ -79,9 +92,7 @@ export const DropdownUser = () => {
           <span className="block text-xs text-gray-500 dark:text-gray-400">{subtitle}</span>
         </span>
 
-        <span className="h-10 w-10 overflow-hidden rounded-full flex items-center justify-center bg-gray-200 dark:bg-dark-surface-4 shrink-0">
-          <UserIcon className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-        </span>
+        <UserAvatar displayName={displayName} />
 
         <ChevronDown
           className={cn(
