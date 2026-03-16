@@ -1,10 +1,9 @@
 // apps/web/src/components/dashboard/TenantsTable.tsx
 'use client';
-import { useEffect, useMemo, useState } from 'react';
-import { Button } from '@iwana/ui';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@iwana/ui';
-import { Search, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
-import { TenantStatusBadge } from '@/components/tenants/TenantStatusBadge';
+import { Search, ChevronUp, ChevronDown, ChevronsUpDown, MoreHorizontal } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 type TenantStatus = 'ACTIVE' | 'PROVISIONING' | 'PROVISIONING_FAILED' | 'SUSPENDED' | 'INACTIVE';
 type SortField = 'name' | 'status' | 'createdAt';
@@ -29,15 +28,27 @@ interface TenantsTableProps {
   onRetryProvisioning?: (id: string) => void;
 }
 
-const statusConfig: Record<
-  TenantStatus,
-  { label: string; variant: 'success' | 'warning' | 'error' | 'neutral' }
-> = {
-  ACTIVE: { label: 'Activo', variant: 'success' },
-  PROVISIONING: { label: 'Provisionando', variant: 'warning' },
-  PROVISIONING_FAILED: { label: 'Error provisión', variant: 'error' },
-  SUSPENDED: { label: 'Suspendido', variant: 'neutral' },
-  INACTIVE: { label: 'Inactivo', variant: 'neutral' },
+/** Clases CSS para pill badges por estado de tenant. */
+const statusPillClasses: Record<TenantStatus, string> = {
+  ACTIVE:
+    'rounded-full px-2.5 py-0.5 text-xs font-medium bg-success-50 text-success-700 dark:bg-success-500/15 dark:text-success-400',
+  PROVISIONING:
+    'rounded-full px-2.5 py-0.5 text-xs font-medium bg-warning-50 text-warning-700 dark:bg-warning-500/15 dark:text-warning-400',
+  PROVISIONING_FAILED:
+    'rounded-full px-2.5 py-0.5 text-xs font-medium bg-error-50 text-error-700 dark:bg-error-500/15 dark:text-error-400',
+  SUSPENDED:
+    'rounded-full px-2.5 py-0.5 text-xs font-medium bg-error-50 text-error-700 dark:bg-error-500/15 dark:text-error-400',
+  INACTIVE:
+    'rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+};
+
+/** Etiquetas legibles por estado de tenant. */
+const statusLabels: Record<TenantStatus, string> = {
+  ACTIVE: 'Activo',
+  PROVISIONING: 'Provisionando',
+  PROVISIONING_FAILED: 'Error provisión',
+  SUSPENDED: 'Suspendido',
+  INACTIVE: 'Inactivo',
 };
 
 const ALL_STATUSES = 'TODAS' as const;
@@ -67,9 +78,138 @@ function SortIcon({
   );
 }
 
+/** Dropdown de acciones por fila (3 puntos). Implementado con estado local sin librerías extra. */
+function ActionsDropdown({
+  tenantId,
+  tenantStatus,
+  onSuspend,
+  onActivate,
+  onRetryProvisioning,
+}: {
+  tenantId: string;
+  tenantStatus: TenantStatus;
+  onSuspend?: (id: string) => void;
+  onActivate?: (id: string) => void;
+  onRetryProvisioning?: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+
+  // Cerrar el dropdown al hacer clic fuera
+  useEffect(() => {
+    if (!open) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [open]);
+
+  // Cerrar al presionar Escape
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open]);
+
+  const canSuspend = tenantStatus === 'ACTIVE' && !!onSuspend;
+  const canActivate = (tenantStatus === 'SUSPENDED' || tenantStatus === 'INACTIVE') && !!onActivate;
+  const canRetry =
+    (tenantStatus === 'PROVISIONING_FAILED' || tenantStatus === 'PROVISIONING') &&
+    !!onRetryProvisioning;
+
+  return (
+    <div ref={dropdownRef} className="relative inline-block text-left">
+      <button
+        type="button"
+        aria-label="Abrir menú de acciones"
+        aria-haspopup="true"
+        aria-expanded={open ? 'true' : 'false'}
+        onClick={() => setOpen((prev) => !prev)}
+        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:text-gray-300 dark:hover:bg-gray-800 transition-colors"
+      >
+        <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 z-20 mt-1 w-48 rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900"
+        >
+          {/* Ver configuración — siempre disponible */}
+          <button
+            role="menuitem"
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              router.push(`/tenants/${tenantId}/settings`);
+            }}
+            className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800 rounded-t-xl transition-colors"
+          >
+            Ver configuración
+          </button>
+
+          {/* Suspender — solo si está ACTIVE */}
+          {canSuspend && (
+            <button
+              role="menuitem"
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                onSuspend!(tenantId);
+              }}
+              className="w-full px-4 py-2.5 text-left text-sm text-error-700 hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10 transition-colors"
+            >
+              Suspender
+            </button>
+          )}
+
+          {/* Reactivar — solo si está SUSPENDED o INACTIVE */}
+          {canActivate && (
+            <button
+              role="menuitem"
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                onActivate!(tenantId);
+              }}
+              className="w-full px-4 py-2.5 text-left text-sm text-success-700 hover:bg-success-50 dark:text-success-400 dark:hover:bg-success-500/10 transition-colors"
+            >
+              Reactivar
+            </button>
+          )}
+
+          {/* Reintentar — solo si está FAILED o PROVISIONING */}
+          {canRetry && (
+            <button
+              role="menuitem"
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                onRetryProvisioning!(tenantId);
+              }}
+              className="w-full px-4 py-2.5 text-left text-sm text-warning-700 hover:bg-warning-50 dark:text-warning-400 dark:hover:bg-warning-500/10 transition-colors rounded-b-xl"
+            >
+              Reintentar provisioning
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * Tabla de tenants para el dashboard administrativo.
- * Soporta búsqueda por nombre/slug, filtro por estado y ordenamiento por columna.
+ * Soporta búsqueda por nombre/slug, filtro por estado, ordenamiento por columna
+ * y un dropdown de acciones (3 puntos) por fila con navegación a configuración,
+ * suspensión, reactivación y reintento de provisioning.
  */
 export function TenantsTable({
   tenants,
@@ -150,9 +290,9 @@ export function TenantsTable({
             className="h-9 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-700 focus:outline-none focus:border-iwana-primary focus:ring-2 focus:ring-iwana-primary/20 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-200"
           >
             <option value={ALL_STATUSES}>Todos los estados</option>
-            {Object.entries(statusConfig).map(([key, { label }]) => (
+            {(Object.keys(statusLabels) as TenantStatus[]).map((key) => (
               <option key={key} value={key}>
-                {label}
+                {statusLabels[key]}
               </option>
             ))}
           </select>
@@ -160,151 +300,132 @@ export function TenantsTable({
       </CardHeader>
 
       <CardContent className="p-0 mt-4">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm" aria-label="Lista de tenants">
-            <thead>
-              <tr className="border-b border-gray-100 dark:border-dark-border">
-                <th className="px-6 py-3 text-left">
-                  <button
-                    type="button"
-                    onClick={() => handleSort('name')}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                  >
-                    Nombre <SortIcon field="name" sortField={sortField} sortDir={sortDir} />
-                  </button>
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">
-                  Slug
-                </th>
-                <th className="px-6 py-3 text-left">
-                  <button
-                    type="button"
-                    onClick={() => handleSort('status')}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                  >
-                    Estado <SortIcon field="status" sortField={sortField} sortDir={sortDir} />
-                  </button>
-                </th>
-                <th className="px-6 py-3 text-left">
-                  <button
-                    type="button"
-                    onClick={() => handleSort('createdAt')}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                  >
-                    Creado <SortIcon field="createdAt" sortField={sortField} sortDir={sortDir} />
-                  </button>
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">
-                  Acciones
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
-              {isLoading ? (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="px-6 py-10 text-center text-sm text-gray-400 dark:text-gray-500"
-                  >
-                    Cargando tenants...
-                  </td>
+        {/* Contenedor con estilo TailAdmin */}
+        <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" aria-label="Lista de tenants">
+              <thead>
+                <tr className="border-b border-gray-100 dark:border-dark-border bg-gray-50 dark:bg-gray-900/50">
+                  <th className="px-6 py-3 text-left">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('name')}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                    >
+                      Empresa <SortIcon field="name" sortField={sortField} sortDir={sortDir} />
+                    </button>
+                  </th>
+                  <th className="px-6 py-3 text-left">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('status')}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                    >
+                      Estado <SortIcon field="status" sortField={sortField} sortDir={sortDir} />
+                    </button>
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">
+                    Suscriptores
+                  </th>
+                  <th className="px-6 py-3 text-left">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('createdAt')}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                    >
+                      Fecha creación{' '}
+                      <SortIcon field="createdAt" sortField={sortField} sortDir={sortDir} />
+                    </button>
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">
+                    Acciones
+                  </th>
                 </tr>
-              ) : error ? (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="px-6 py-10 text-center text-sm text-red-500 dark:text-red-400"
-                  >
-                    <p>{error}</p>
-                    {onRetry && (
-                      <button
-                        type="button"
-                        onClick={onRetry}
-                        className="mt-2 text-xs text-iwana-primary underline dark:text-iwana-secondary"
-                      >
-                        Reintentar
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="px-6 py-10 text-center text-sm text-gray-400 dark:text-gray-500"
-                  >
-                    No se encontraron tenants con los filtros actuales.
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((tenant) => {
-                  return (
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
+                {isLoading ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-6 py-10 text-center text-sm text-gray-400 dark:text-gray-500"
+                    >
+                      Cargando tenants...
+                    </td>
+                  </tr>
+                ) : error ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-6 py-10 text-center text-sm text-red-500 dark:text-red-400"
+                    >
+                      <p>{error}</p>
+                      {onRetry && (
+                        <button
+                          type="button"
+                          onClick={onRetry}
+                          className="mt-2 text-xs text-iwana-primary underline dark:text-iwana-secondary"
+                        >
+                          Reintentar
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-6 py-10 text-center text-sm text-gray-400 dark:text-gray-500"
+                    >
+                      No se encontraron tenants con los filtros actuales.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((tenant) => (
                     <tr
                       key={tenant.id}
-                      className="hover:bg-gray-50 transition-colors dark:hover:bg-dark-surface-3/50"
+                      className="hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors"
                     >
-                      <td className="px-6 py-4 font-medium text-iwana-primary dark:text-white">
-                        {tenant.name}
-                      </td>
-                      <td className="px-6 py-4 font-mono text-xs text-gray-500 dark:text-gray-400">
-                        {tenant.slug}
-                      </td>
+                      {/* Columna Empresa: nombre principal + slug en gris debajo */}
                       <td className="px-6 py-4">
-                        <TenantStatusBadge status={tenant.status} />
+                        <div className="font-medium text-iwana-primary dark:text-white">
+                          {tenant.name}
+                        </div>
+                        <div className="mt-0.5 font-mono text-xs text-gray-400 dark:text-gray-500">
+                          {tenant.slug}
+                        </div>
                       </td>
+
+                      {/* Columna Estado: pill badge */}
+                      <td className="px-6 py-4">
+                        <span className={statusPillClasses[tenant.status]}>
+                          {statusLabels[tenant.status]}
+                        </span>
+                      </td>
+
+                      {/* Columna Suscriptores: dato no disponible aún, mostrar dash */}
+                      <td className="px-6 py-4 text-gray-500 dark:text-gray-400">—</td>
+
+                      {/* Columna Fecha creación */}
                       <td className="px-6 py-4 text-gray-500 dark:text-gray-400">
                         {tenant.createdAt}
                       </td>
+
+                      {/* Columna Acciones: dropdown 3 puntos */}
                       <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <a
-                            href={`/tenants/${tenant.id}/settings`}
-                            className="text-xs text-iwana-secondary-700 hover:underline dark:text-iwana-secondary-400"
-                          >
-                            Configurar
-                          </a>
-
-                          {tenant.status === 'PROVISIONING_FAILED' && onRetryProvisioning && (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              className="h-7 px-2 text-xs"
-                              onClick={() => onRetryProvisioning(tenant.id)}
-                            >
-                              Reintentar
-                            </Button>
-                          )}
-
-                          {tenant.status === 'ACTIVE' && onSuspend && (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              className="h-7 px-2 text-xs"
-                              onClick={() => onSuspend(tenant.id)}
-                            >
-                              Suspender
-                            </Button>
-                          )}
-
-                          {(tenant.status === 'SUSPENDED' || tenant.status === 'INACTIVE') &&
-                            onActivate && (
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                className="h-7 px-2 text-xs"
-                                onClick={() => onActivate(tenant.id)}
-                              >
-                                Reactivar
-                              </Button>
-                            )}
-                        </div>
+                        <ActionsDropdown
+                          tenantId={tenant.id}
+                          tenantStatus={tenant.status}
+                          {...(onSuspend && { onSuspend })}
+                          {...(onActivate && { onActivate })}
+                          {...(onRetryProvisioning && { onRetryProvisioning })}
+                        />
                       </td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Contador de resultados */}
