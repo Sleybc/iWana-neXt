@@ -121,6 +121,8 @@ export default function UsersPage() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [openCreateModal, setOpenCreateModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserListItem | null>(null);
+  /** Incrementar para forzar recarga del listado desde el servidor. */
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     const loadTenants = async () => {
@@ -157,7 +159,7 @@ export default function UsersPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [tenantSlug, cursor]);
+  }, [tenantSlug, cursor, refreshKey]);
 
   useEffect(() => {
     void loadUsers();
@@ -213,9 +215,11 @@ export default function UsersPage() {
         open={openCreateModal}
         tenantSlug={tenantSlug}
         onClose={() => setOpenCreateModal(false)}
-        onCreated={(user) => {
-          setUsers((prev) => [user, ...prev]);
-          setTotalUsers((prev) => prev + 1);
+        onCreated={() => {
+          // Volver a la primera página y recargar desde el servidor
+          setCursor(undefined);
+          setCursorHistory([]);
+          setRefreshKey((k) => k + 1);
         }}
       />
 
@@ -228,9 +232,11 @@ export default function UsersPage() {
           setUsers((prev) => prev.map((item) => (item.id === updatedUser.id ? updatedUser : item)));
           setSelectedUser(updatedUser);
         }}
-        onDeleted={(userId) => {
-          setUsers((prev) => prev.filter((item) => item.id !== userId));
-          setTotalUsers((prev) => Math.max(0, prev - 1));
+        onDeleted={() => {
+          // Recargar lista desde el servidor tras eliminar
+          setCursor(undefined);
+          setCursorHistory([]);
+          setRefreshKey((k) => k + 1);
         }}
       />
     </div>
