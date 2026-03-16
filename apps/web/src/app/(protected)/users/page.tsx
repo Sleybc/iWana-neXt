@@ -82,7 +82,7 @@ function TenantSelect({
         <ul
           role="listbox"
           aria-label="Seleccionar tenant"
-          className={`absolute left-0 z-20 min-w-[200px] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-dark-surface-2 ${
+          className={`absolute left-0 z-20 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-dark-surface-2 ${
             openUpward ? 'bottom-full mb-1' : 'top-full mt-1'
           }`}
         >
