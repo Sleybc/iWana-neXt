@@ -25,7 +25,7 @@ export default function SettingsPage() {
 
       {/* Navegación por tabs */}
       <div className="border-b border-gray-200 dark:border-gray-700">
-        <nav className="-mb-px flex gap-6" aria-label="Configuración tabs">
+        <nav className="-mb-px flex gap-6" aria-label="Pestañas de configuración">
           {TABS.map((tab) => (
             <button
               key={tab.id}
