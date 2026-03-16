@@ -109,6 +109,8 @@ export function UserCreateModal({
       }
       onCreated(created);
       reset({ email: '', role: values.role, password: '' });
+      // Cerrar el modal automáticamente después de crear el usuario
+      onClose();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No fue posible crear el usuario.');
     }
