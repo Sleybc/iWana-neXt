@@ -143,11 +143,6 @@ export function DashboardClient() {
                   icon={<Building2 className="w-5 h-5" />}
                   iconBg="#EAF5CC"
                   iconColor="#6A7A1C"
-                  trend={{
-                    value: 100,
-                    direction: 'neutral',
-                    label: 'del total',
-                  }}
                 />
                 <MetricCard
                   title="Activos"
@@ -156,11 +151,13 @@ export function DashboardClient() {
                   icon={<Users className="w-5 h-5" />}
                   iconBg="#EEEEFA"
                   iconColor="#17163A"
-                  trend={{
-                    value: summary.total > 0 ? (summary.active / summary.total) * 100 : 0,
-                    direction: summary.active > summary.total / 2 ? 'up' : 'down',
-                    label: 'del total',
-                  }}
+                  {...(!isLoading && {
+                    trend: {
+                      value: summary.total > 0 ? (summary.active / summary.total) * 100 : 0,
+                      direction: summary.active > summary.total / 2 ? 'up' : 'down',
+                      label: 'del total',
+                    },
+                  })}
                 />
                 <MetricCard
                   title="Provisionando"
@@ -169,11 +166,13 @@ export function DashboardClient() {
                   icon={<BriefcaseBusiness className="w-5 h-5" />}
                   iconBg="#DCFCE7"
                   iconColor="#22C55E"
-                  trend={{
-                    value: summary.total > 0 ? (summary.provisioning / summary.total) * 100 : 0,
-                    direction: summary.provisioning > 0 ? 'up' : 'neutral',
-                    label: 'del total',
-                  }}
+                  {...(!isLoading && {
+                    trend: {
+                      value: summary.total > 0 ? (summary.provisioning / summary.total) * 100 : 0,
+                      direction: summary.provisioning > 0 ? 'up' : 'neutral',
+                      label: 'del total',
+                    },
+                  })}
                 />
                 <MetricCard
                   title="Suspendidos"
@@ -182,11 +181,13 @@ export function DashboardClient() {
                   icon={<AlertTriangle className="w-5 h-5" />}
                   iconBg="#FEF2F2"
                   iconColor="#EF4444"
-                  trend={{
-                    value: summary.total > 0 ? (summary.suspended / summary.total) * 100 : 0,
-                    direction: summary.suspended > 0 ? 'down' : 'neutral',
-                    label: 'del total',
-                  }}
+                  {...(!isLoading && {
+                    trend: {
+                      value: summary.total > 0 ? (summary.suspended / summary.total) * 100 : 0,
+                      direction: summary.suspended > 0 ? 'down' : 'neutral',
+                      label: 'del total',
+                    },
+                  })}
                 />
               </div>
             </section>
