@@ -33,10 +33,13 @@ import { JwtPayload } from './interfaces/jwt-payload.interface';
 /** Nombre de la cookie del refresh token */
 const REFRESH_TOKEN_COOKIE = 'refreshToken';
 
-/** Opciones de la cookie del refresh token: httpOnly, Secure, SameSite=Strict */
+/** Opciones de la cookie del refresh token: httpOnly, SameSite=Strict.
+ *  COOKIE_SECURE=false para HTTP on-prem; cambiar a true si se agrega TLS/HTTPS en el futuro.
+ *  Con HTTP sin TLS, Secure=true impide que el browser envíe la cookie → flujo de refresh roto.
+ */
 const REFRESH_COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
+  secure: process.env['COOKIE_SECURE'] === 'true',
   sameSite: 'strict' as const,
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 dias en ms
   path: '/api/v1/auth',

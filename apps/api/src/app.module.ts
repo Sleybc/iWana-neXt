@@ -7,6 +7,7 @@ import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
 import * as Joi from 'joi';
 import { dataSourceOptions } from '@iwana/db';
 import { AuthModule } from './modules/auth/auth.module';
+import { HealthModule } from './modules/health/health.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { AuditModule } from './modules/audit/audit.module';
@@ -75,6 +76,8 @@ import { TenantMiddleware } from './modules/tenant/tenant.middleware';
           MFA_ENCRYPTION_KEY: Joi.string().length(64).required(),
           // CORS: URI del frontend; en dev admite localhost
           CORS_ORIGIN: Joi.string().default('http://localhost:3001,http://localhost:3002'),
+          // Cookie Secure: false para HTTP on-prem; true solo con HTTPS/TLS
+          COOKIE_SECURE: Joi.boolean().default(false),
           APP_NAME: Joi.string().default('iWana neXt'),
           // Variables SMTP — todas opcionales; ausencia de SMTP_HOST activa modo dev en MailerService
           SMTP_HOST: Joi.string().optional(),
@@ -107,7 +110,8 @@ import { TenantMiddleware } from './modules/tenant/tenant.middleware';
         entities: dataSourceOptions.entities ?? [],
         migrations: dataSourceOptions.migrations ?? [],
         migrationsTableName: dataSourceOptions.migrationsTableName ?? 'typeorm_migrations',
-        migrationsRun: false,
+        // Correr migraciones automáticamente en producción — nunca synchronize
+        migrationsRun: config.get<string>('NODE_ENV') === 'production',
         synchronize: false,
         ssl: false,
         logging:
@@ -161,11 +165,14 @@ import { TenantMiddleware } from './modules/tenant/tenant.middleware';
 
     // Modulo de perfil del usuario de plataforma (SYSTEM_ADMIN / IWANA_SUPPORT)
     PlatformUsersModule,
+
+    // Health check — GET /api/v1/health (Docker healthcheck + monitoreo)
+    HealthModule,
   ],
   controllers: [],
   providers: [
-    // AuditInterceptor registrado globalmente: intercepta todas las operaciones CUD
-    // que tengan TenantContext activo (rutas de plataforma se omiten automaticamente)
+    // AuditInterceptor registrado globalmente: intercepta todas las operaciones CUD.
+    // Enruta segun jwt.type: 'platform' → platform_audit_logs, 'tenant' → <schema>.audit_logs.
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
   ],
 })
@@ -186,6 +193,7 @@ export class AppModule implements NestModule {
       .exclude(
         { path: 'tenants', method: RequestMethod.ALL },
         { path: 'tenants/*path', method: RequestMethod.ALL },
+        { path: 'health', method: RequestMethod.GET },
       )
       .forRoutes({ path: '*path', method: RequestMethod.ALL });
   }
