@@ -99,6 +99,9 @@ export class AuthController {
       data: {
         accessToken: result.accessToken,
         ...(result.mfaRequired ? { mfaRequired: true } : {}),
+        // Propagado al cliente para que el portal redirija al flujo de MFA setup
+        // sin intentar llamar a /auth/me con un token de alcance limitado.
+        ...(result.mfaSetupRequired ? { mfaSetupRequired: true } : {}),
       },
     };
   }
