@@ -26,7 +26,9 @@ export default function ProfilePage() {
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
               {user?.displayName ?? 'Usuario'}
             </h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">{user?.subtitle ?? ''}</p>
+            {user?.subtitle && (
+              <p className="text-sm text-gray-500 dark:text-gray-400">{user.subtitle}</p>
+            )}
           </div>
         </div>
       </div>
