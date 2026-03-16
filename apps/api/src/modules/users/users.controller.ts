@@ -203,6 +203,6 @@ export class UsersController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() actor: JwtPayload,
   ): Promise<void> {
-    await this.usersService.remove(id, actor.sub);
+    await this.usersService.remove(id, actor.sub, actor.role);
   }
 }

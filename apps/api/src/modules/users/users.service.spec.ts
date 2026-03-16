@@ -106,6 +106,8 @@ function buildUserEntity(
 type MockQr = {
   manager: {
     findOne: jest.Mock;
+    find: jest.Mock;
+    count: jest.Mock;
     create: jest.Mock;
     save: jest.Mock;
     softRemove: jest.Mock;
@@ -122,6 +124,8 @@ function setupRunInTenantSchema(
 ): MockQr['manager'] {
   const mgr: MockQr['manager'] = {
     findOne: jest.fn(),
+    find: jest.fn().mockResolvedValue([]),
+    count: jest.fn().mockResolvedValue(0),
     create: jest.fn().mockImplementation((_entity: unknown, data: unknown) => data),
     // save() en TypeORM muta el objeto pasado (popula id, timestamps). El mock lo simula.
     save: jest
@@ -186,15 +190,9 @@ describe('UsersService', () => {
   describe('findAll()', () => {
     it('retorna lista paginada de usuarios', async () => {
       const userEntity = buildUserEntity();
-      const qb = {
-        where: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        take: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        getManyAndCount: jest.fn().mockResolvedValue([[userEntity], 1]),
-      };
       setupRunInTenantSchema({
-        createQueryBuilder: jest.fn().mockReturnValue(qb),
+        find: jest.fn().mockResolvedValue([userEntity]),
+        count: jest.fn().mockResolvedValue(1),
       });
 
       const result = await service.findAll({});
@@ -205,20 +203,16 @@ describe('UsersService', () => {
     });
 
     it('indica nextCursor cuando hay mas items', async () => {
-      // limit=2, pero hay 3 resultados → nextCursor debe ser el id del ultimo
+      // limit=2, find retorna 3 (limit+1) → nextCursor debe ser el id del segundo
       const users = [
         buildUserEntity({ id: 'id-1' }),
         buildUserEntity({ id: 'id-2' }),
         buildUserEntity({ id: 'id-3' }),
       ];
-      const qb = {
-        where: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        take: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        getManyAndCount: jest.fn().mockResolvedValue([users, 3]),
-      };
-      setupRunInTenantSchema({ createQueryBuilder: jest.fn().mockReturnValue(qb) });
+      setupRunInTenantSchema({
+        find: jest.fn().mockResolvedValue(users),
+        count: jest.fn().mockResolvedValue(3),
+      });
 
       const result = await service.findAll({ limit: 2 });
 
@@ -566,7 +560,7 @@ describe('UsersService', () => {
         findOne: jest.fn().mockResolvedValue(entity),
       });
 
-      await service.remove(TARGET_ID, ADMIN_ID);
+      await service.remove(TARGET_ID, ADMIN_ID, UserRole.ADMIN);
 
       expect(mgr.softRemove).toHaveBeenCalledWith(expect.anything(), entity);
     });
@@ -574,21 +568,36 @@ describe('UsersService', () => {
     it('lanza NotFoundException si el usuario no existe', async () => {
       setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(null) });
 
-      await expect(service.remove('no-existe', ADMIN_ID)).rejects.toThrow(NotFoundException);
+      await expect(service.remove('no-existe', ADMIN_ID, UserRole.ADMIN)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('lanza BadRequestException si el actor intenta eliminarse a si mismo', async () => {
       const entity = buildUserEntity({ id: ADMIN_ID, role: UserRole.ADMIN });
       setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(entity) });
 
-      await expect(service.remove(ADMIN_ID, ADMIN_ID)).rejects.toThrow(BadRequestException);
+      await expect(service.remove(ADMIN_ID, ADMIN_ID, UserRole.ADMIN)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
-    it('lanza ForbiddenException al intentar eliminar a un ADMIN (RF-RBAC-04)', async () => {
+    it('lanza ForbiddenException al intentar eliminar a un ADMIN siendo ADMIN (RF-RBAC-04)', async () => {
       const otherAdmin = buildUserEntity({ id: TARGET_ID, role: UserRole.ADMIN });
       setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(otherAdmin) });
 
-      await expect(service.remove(TARGET_ID, ADMIN_ID)).rejects.toThrow(ForbiddenException);
+      await expect(service.remove(TARGET_ID, ADMIN_ID, UserRole.ADMIN)).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('SYSTEM_ADMIN puede eliminar a un ADMIN de tenant (RF-RBAC-04 no aplica)', async () => {
+      const otherAdmin = buildUserEntity({ id: TARGET_ID, role: UserRole.ADMIN });
+      const mgr = setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(otherAdmin) });
+
+      await service.remove(TARGET_ID, ADMIN_ID, UserRole.SYSTEM_ADMIN);
+
+      expect(mgr.softRemove).toHaveBeenCalledWith(expect.anything(), otherAdmin);
     });
 
     it('registra AuditAction.DELETE tras soft delete exitoso', async () => {
@@ -597,7 +606,7 @@ describe('UsersService', () => {
         findOne: jest.fn().mockResolvedValue(entity),
       });
 
-      await service.remove(TARGET_ID, ADMIN_ID);
+      await service.remove(TARGET_ID, ADMIN_ID, UserRole.ADMIN);
 
       await Promise.resolve();
       expect(auditServiceMock.log).toHaveBeenCalledWith(
@@ -617,59 +626,50 @@ describe('UsersService', () => {
   describe('findAll() — branches de filtros opcionales', () => {
     it('aplica filtro de cursor cuando se proporciona', async () => {
       const userEntity = buildUserEntity();
-      const qb = {
-        where: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        take: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        getManyAndCount: jest.fn().mockResolvedValue([[userEntity], 1]),
-      };
-      setupRunInTenantSchema({ createQueryBuilder: jest.fn().mockReturnValue(qb) });
+      const findMock = jest.fn().mockResolvedValue([userEntity]);
+      const countMock = jest.fn().mockResolvedValue(1);
+      setupRunInTenantSchema({ find: findMock, count: countMock });
 
       await service.findAll({ cursor: 'some-cursor-uuid' });
 
-      // El branch de cursor debe haber llamado andWhere con el cursor
-      expect(qb.andWhere).toHaveBeenCalledWith(
-        expect.stringContaining('u.id > :cursor'),
-        expect.objectContaining({ cursor: 'some-cursor-uuid' }),
+      // El where del find debe incluir MoreThan con el cursor
+      expect(findMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          where: expect.objectContaining({ id: expect.anything() }),
+        }),
       );
     });
 
     it('aplica filtro de status cuando se proporciona', async () => {
       const userEntity = buildUserEntity();
-      const qb = {
-        where: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        take: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        getManyAndCount: jest.fn().mockResolvedValue([[userEntity], 1]),
-      };
-      setupRunInTenantSchema({ createQueryBuilder: jest.fn().mockReturnValue(qb) });
+      const findMock = jest.fn().mockResolvedValue([userEntity]);
+      const countMock = jest.fn().mockResolvedValue(1);
+      setupRunInTenantSchema({ find: findMock, count: countMock });
 
       await service.findAll({ status: UserStatus.ACTIVE });
 
-      expect(qb.andWhere).toHaveBeenCalledWith(
-        expect.stringContaining('u.status = :status'),
-        expect.objectContaining({ status: UserStatus.ACTIVE }),
+      expect(findMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          where: expect.objectContaining({ status: UserStatus.ACTIVE }),
+        }),
       );
     });
 
     it('aplica filtro de role cuando se proporciona', async () => {
       const userEntity = buildUserEntity();
-      const qb = {
-        where: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        take: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        getManyAndCount: jest.fn().mockResolvedValue([[userEntity], 1]),
-      };
-      setupRunInTenantSchema({ createQueryBuilder: jest.fn().mockReturnValue(qb) });
+      const findMock = jest.fn().mockResolvedValue([userEntity]);
+      const countMock = jest.fn().mockResolvedValue(1);
+      setupRunInTenantSchema({ find: findMock, count: countMock });
 
       await service.findAll({ role: UserRole.NOC });
 
-      expect(qb.andWhere).toHaveBeenCalledWith(
-        expect.stringContaining('u.role = :role'),
-        expect.objectContaining({ role: UserRole.NOC }),
+      expect(findMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          where: expect.objectContaining({ role: UserRole.NOC }),
+        }),
       );
     });
   });

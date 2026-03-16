@@ -257,9 +257,10 @@ export class UsersService {
 
   /**
    * Soft delete de usuario.
-   * Un ADMIN no puede eliminar a otro ADMIN del mismo tenant (RF-RBAC-04).
+   * RF-RBAC-04: un ADMIN de tenant no puede eliminar a otro ADMIN del mismo tenant.
+   * SYSTEM_ADMIN puede eliminar cualquier usuario (incluidos ADMINs).
    */
-  async remove(id: string, actorUserId: string): Promise<void> {
+  async remove(id: string, actorUserId: string, actorRole: string): Promise<void> {
     const { schemaName } = TenantContext.getOrThrow();
 
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
@@ -270,8 +271,8 @@ export class UsersService {
         throw new BadRequestException('No puedes eliminar tu propio usuario.');
       }
 
-      // RF-RBAC-04: ADMIN no puede eliminar a otro ADMIN del mismo tenant
-      if (user.role === UserRole.ADMIN) {
+      // RF-RBAC-04: solo aplica para ADMIN de tenant — SYSTEM_ADMIN puede eliminar ADMINs
+      if (user.role === UserRole.ADMIN && actorRole !== UserRole.SYSTEM_ADMIN) {
         throw new ForbiddenException('No es posible eliminar a otro administrador del tenant.');
       }
 
