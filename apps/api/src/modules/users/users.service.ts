@@ -8,7 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
-import { DataSource } from 'typeorm';
+import { DataSource, FindOptionsWhere, MoreThan } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { User } from '@iwana/db';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
@@ -72,28 +72,27 @@ export class UsersService {
     const limit = Math.min(params.limit ?? 50, 100);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const qb = qr.manager
-        .createQueryBuilder(User, 'u')
-        .where('u.deleted_at IS NULL')
-        .orderBy('u.id', 'ASC')
-        .take(limit + 1); // +1 para detectar si hay pagina siguiente
+      // Construir filtros tipados — TypeORM find* filtra soft-delete automáticamente
+      const where: FindOptionsWhere<User> = {};
+      if (params.cursor) where.id = MoreThan(params.cursor);
+      if (params.status) where.status = params.status;
+      if (params.role) where.role = params.role;
 
-      if (params.cursor) {
-        qb.andWhere('u.id > :cursor', { cursor: params.cursor });
-      }
-      if (params.status) {
-        qb.andWhere('u.status = :status', { status: params.status });
-      }
-      if (params.role) {
-        qb.andWhere('u.role = :role', { role: params.role });
-      }
+      // Consulta de datos: +1 para detectar si hay pagina siguiente
+      const users = await qr.manager.find(User, {
+        where,
+        order: { id: 'ASC' },
+        take: limit + 1,
+      });
 
-      const [users, total] = await qb.getManyAndCount();
+      // Total sin paginacion — misma conexion que garantiza el search_path
+      const total = await qr.manager.count(User, { where });
+
       const hasNext = users.length > limit;
       const items = hasNext ? users.slice(0, limit) : users;
 
       return {
-        data: items.map(this.toDto),
+        data: items.map((u) => this.toDto(u)),
         meta: {
           nextCursor: hasNext ? (items[items.length - 1]?.id ?? null) : null,
           total,

@@ -123,6 +123,8 @@ export default function UsersPage() {
   const [selectedUser, setSelectedUser] = useState<UserListItem | null>(null);
   /** Incrementar para forzar recarga del listado desde el servidor. */
   const [refreshKey, setRefreshKey] = useState(0);
+  /** Error visible al cargar usuarios — muestra el mensaje real del API. */
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadTenants = async () => {
@@ -146,13 +148,16 @@ export default function UsersPage() {
     }
 
     setIsLoading(true);
+    setLoadError(null);
     try {
       const params = cursor ? { cursor, limit: 20 } : { limit: 20 };
       const response = await usersApi.list(tenantSlug, params);
       setUsers(response.data ?? []);
       setTotalUsers(response.meta?.total ?? 0);
       setNextCursor(response.meta?.nextCursor ?? null);
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error desconocido al cargar usuarios.';
+      setLoadError(message);
       setUsers([]);
       setTotalUsers(0);
       setNextCursor(null);
@@ -189,6 +194,20 @@ export default function UsersPage() {
           Crear usuario
         </Button>
       </div>
+
+      {/* Error visible — facilita el diagnóstico de problemas de API */}
+      {loadError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+          <strong>Error al cargar usuarios:</strong> {loadError}
+          <button
+            type="button"
+            className="ml-3 underline hover:no-underline"
+            onClick={() => setRefreshKey((k) => k + 1)}
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
 
       <UsersTable
         users={users}
