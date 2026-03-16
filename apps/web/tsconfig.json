@@ -4,7 +4,6 @@
   "compilerOptions": {
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "plugins": [{ "name": "next" }],
-    "types": ["jest", "@testing-library/jest-dom"],
     "paths": {
       "@/*": ["./src/*"],
       "@iwana/ui": ["../../packages/ui/src/index.ts"],
