@@ -293,6 +293,31 @@ describe('UsersService', () => {
       ).rejects.toThrow(ConflictException);
     });
 
+    it('restaura y reinicializa un usuario previamente eliminado con el mismo email', async () => {
+      // Usuario eliminado (soft delete) con el mismo emailHash
+      const deletedUser = buildUserEntity({
+        id: 'usr-deleted-000',
+        deletedAt: new Date('2026-01-01'),
+        role: UserRole.ADMIN,
+        status: 'SUSPENDED',
+      });
+      const mgr = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(deletedUser),
+      });
+      // restore() debe llamarse para limpiar deletedAt en DB
+      (mgr as unknown as Record<string, jest.Mock>)['restore'] = jest
+        .fn()
+        .mockResolvedValue(undefined);
+
+      const result = await service.create({ email: 'restaurado@empresa.com', role: UserRole.NOC });
+
+      // El registro restaurado debe tener los nuevos valores
+      expect(result.role).toBe(UserRole.NOC);
+      expect(result.status).toBe(UserStatus.PENDING_VERIFICATION);
+      // No debe lanzar ConflictException
+      expect(result.id).toBeDefined();
+    });
+
     it('registra AuditAction.CREATE tras crear el usuario', async () => {
       setupRunInTenantSchema({
         findOne: jest.fn().mockResolvedValue(null),

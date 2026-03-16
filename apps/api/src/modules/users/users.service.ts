@@ -135,9 +135,10 @@ export class UsersService {
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const emailHash = this.hashEmail(dto.email);
 
-      // Verificar unicidad — email hash es unico por tenant
+      // Verificar unicidad incluyendo soft-deleted (emailHash tiene unique constraint en DB)
       const existing = await qr.manager.findOne(User, { where: { emailHash }, withDeleted: true });
-      if (existing) {
+      if (existing && !existing.deletedAt) {
+        // Usuario activo con ese email — conflicto real
         throw new ConflictException('Ya existe un usuario con ese email en este tenant.');
       }
 
@@ -155,32 +156,68 @@ export class UsersService {
         passwordHash = await bcrypt.hash(temporaryPassword, BCRYPT_ROUNDS);
       }
 
-      const user = qr.manager.create(User, {
-        email: encryptedEmail,
-        emailHash,
-        passwordHash,
-        role: dto.role,
-        status: UserStatus.PENDING_VERIFICATION,
-        tenantId,
-        mfaEnabled: false,
-        mfaSecret: null,
-        passwordResetRequired: !dto.password, // Temporal → debe cambiar en primer login
-        failedLoginAttempts: 0,
-        lockedUntil: null,
-        lastLoginAt: null,
-        emailVerified: false,
-        emailVerificationToken: null,
-        // Perfil personal — cifrar campos PII antes de persistir
-        firstName: dto.firstName ? this.encryptValue(dto.firstName.trim()) : null,
-        lastName: dto.lastName ? this.encryptValue(dto.lastName.trim()) : null,
-        phone: dto.phone ?? null,
-        jobTitle: dto.jobTitle ?? null,
-        documentType: dto.documentType ?? null,
-        documentNumber: dto.documentNumber ? this.encryptValue(dto.documentNumber.trim()) : null,
-        avatarUrl: dto.avatarUrl ?? null,
-      });
+      let user: User;
 
-      await qr.manager.save(User, user);
+      if (existing?.deletedAt) {
+        /**
+         * El usuario fue eliminado (soft delete) pero el email_hash tiene unique constraint
+         * a nivel de columna PostgreSQL — no se puede insertar una fila nueva con el mismo hash.
+         * Solución: restaurar el registro eliminado y reinicializar todos sus campos con los
+         * nuevos datos, como si fuera un usuario completamente nuevo.
+         */
+        await qr.manager.restore(User, { id: existing.id });
+        existing.email = encryptedEmail;
+        existing.emailHash = emailHash;
+        existing.passwordHash = passwordHash;
+        existing.role = dto.role;
+        existing.status = UserStatus.PENDING_VERIFICATION;
+        existing.tenantId = tenantId;
+        existing.mfaEnabled = false;
+        existing.mfaSecret = null;
+        existing.passwordResetRequired = !dto.password;
+        existing.failedLoginAttempts = 0;
+        existing.lockedUntil = null;
+        existing.lastLoginAt = null;
+        existing.emailVerified = false;
+        existing.emailVerificationToken = null;
+        existing.firstName = dto.firstName ? this.encryptValue(dto.firstName.trim()) : null;
+        existing.lastName = dto.lastName ? this.encryptValue(dto.lastName.trim()) : null;
+        existing.phone = dto.phone ?? null;
+        existing.jobTitle = dto.jobTitle ?? null;
+        existing.documentType = dto.documentType ?? null;
+        existing.documentNumber = dto.documentNumber
+          ? this.encryptValue(dto.documentNumber.trim())
+          : null;
+        existing.avatarUrl = dto.avatarUrl ?? null;
+        await qr.manager.save(User, existing);
+        user = existing;
+      } else {
+        // Usuario nuevo — insertar registro fresco
+        user = qr.manager.create(User, {
+          email: encryptedEmail,
+          emailHash,
+          passwordHash,
+          role: dto.role,
+          status: UserStatus.PENDING_VERIFICATION,
+          tenantId,
+          mfaEnabled: false,
+          mfaSecret: null,
+          passwordResetRequired: !dto.password,
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+          lastLoginAt: null,
+          emailVerified: false,
+          emailVerificationToken: null,
+          firstName: dto.firstName ? this.encryptValue(dto.firstName.trim()) : null,
+          lastName: dto.lastName ? this.encryptValue(dto.lastName.trim()) : null,
+          phone: dto.phone ?? null,
+          jobTitle: dto.jobTitle ?? null,
+          documentType: dto.documentType ?? null,
+          documentNumber: dto.documentNumber ? this.encryptValue(dto.documentNumber.trim()) : null,
+          avatarUrl: dto.avatarUrl ?? null,
+        });
+        await qr.manager.save(User, user);
+      }
 
       // Audit trail — no incluir el email cifrado ni el hash como newValue (contiene PII cifrada)
       void this.auditService.log({
