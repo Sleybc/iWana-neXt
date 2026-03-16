@@ -8,7 +8,7 @@ import { cn } from '@iwana/ui';
 import { useAuth } from '@/components/auth/AuthProvider';
 
 /** Avatar circular con la inicial del nombre del usuario */
-function UserAvatar({ displayName }: { displayName: string }) {
+export function UserAvatar({ displayName }: { displayName: string }) {
   const initial = displayName[0]?.toUpperCase() ?? 'U';
   return (
     <div
@@ -50,7 +50,7 @@ export const DropdownUser = () => {
     };
     document.addEventListener('click', clickHandler);
     return () => document.removeEventListener('click', clickHandler);
-  });
+  }, [dropdownOpen]);
 
   // Cerrar con tecla Escape
   useEffect(() => {
@@ -60,7 +60,7 @@ export const DropdownUser = () => {
     };
     document.addEventListener('keydown', keyHandler);
     return () => document.removeEventListener('keydown', keyHandler);
-  });
+  }, [dropdownOpen]);
 
   const handleLogout = async () => {
     try {
