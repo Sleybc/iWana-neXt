@@ -1,6 +1,8 @@
 'use client';
 
-// Tabla de registros de auditoría con paginación cursor-based
+// Tabla de registros de auditoría con paginación cursor-based, filtros client-side y export CSV
+import { useMemo, useState } from 'react';
+
 import type { AuditLogEntry } from '@/lib/api-client';
 
 // Props del componente de tabla de audit logs
@@ -46,8 +48,111 @@ export function AuditLogsTable({
   onNext,
   onPrev,
 }: AuditLogsTableProps) {
+  // Estado de los filtros client-side
+  const [actionFilter, setActionFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  // ID de la fila actualmente expandida para mostrar oldValue/newValue
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+
+  // Calcula los entries filtrados según los criterios activos
+  const filteredEntries = useMemo(() => {
+    return entries.filter((entry) => {
+      // Filtro por tipo de acción
+      if (actionFilter && entry.action !== actionFilter) return false;
+
+      // Filtro por fecha desde
+      if (dateFrom && new Date(entry.createdAt) < new Date(dateFrom)) return false;
+
+      // Filtro por fecha hasta (inclusive hasta las 23:59:59 del día seleccionado)
+      if (dateTo && new Date(entry.createdAt) > new Date(dateTo + 'T23:59:59')) return false;
+
+      return true;
+    });
+  }, [entries, actionFilter, dateFrom, dateTo]);
+
+  // Alterna la fila expandida al hacer click en una fila de datos
+  function handleRowClick(id: string) {
+    setExpandedRowId((prev) => (prev === id ? null : id));
+  }
+
+  // Exporta los entries filtrados visibles como archivo CSV
+  function handleExportCsv() {
+    const headers = ['Fecha', 'Acción', 'Entidad', 'ID Entidad', 'Usuario', 'IP'];
+    const rows = filteredEntries.map((e) =>
+      [
+        new Date(e.createdAt).toLocaleString('es-CO'),
+        e.action,
+        e.entityType,
+        e.entityId ?? '',
+        e.userId ?? '',
+        e.ipAddress ?? '',
+      ]
+        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+        .join(','),
+    );
+
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `audit-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-2">
+    <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden bg-white dark:bg-dark-surface-2">
+      {/* Barra de filtros y acciones */}
+      <div className="flex flex-wrap items-center gap-3 p-4 border-b border-gray-200 dark:border-gray-800">
+        {/* Filtro por acción */}
+        <select
+          value={actionFilter}
+          onChange={(e) => setActionFilter(e.target.value)}
+          aria-label="Filtrar por acción"
+          title="Filtrar por acción"
+          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 focus:outline-none"
+        >
+          <option value="">Todas las acciones</option>
+          <option value="CREATE">CREATE</option>
+          <option value="UPDATE">UPDATE</option>
+          <option value="DELETE">DELETE</option>
+          <option value="LOGIN">LOGIN</option>
+          <option value="LOGOUT">LOGOUT</option>
+        </select>
+
+        {/* Filtro por fecha desde */}
+        <input
+          type="date"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+          aria-label="Fecha desde"
+          title="Fecha desde"
+          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 focus:outline-none"
+        />
+
+        {/* Filtro por fecha hasta */}
+        <input
+          type="date"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+          aria-label="Fecha hasta"
+          title="Fecha hasta"
+          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 focus:outline-none"
+        />
+
+        {/* Botón exportar CSV — utiliza los entries filtrados actuales */}
+        <button
+          type="button"
+          onClick={handleExportCsv}
+          className="ml-auto rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors"
+        >
+          Exportar CSV
+        </button>
+      </div>
+
       <table className="w-full text-sm">
         <thead className="bg-gray-50 dark:bg-dark-surface-3">
           <tr>
@@ -72,7 +177,7 @@ export function AuditLogsTable({
                 ))}
               </tr>
             ))
-          ) : entries.length === 0 ? (
+          ) : filteredEntries.length === 0 ? (
             // Estado vacío — sin registros para mostrar
             <tr>
               <td colSpan={6} className="px-3 py-6 text-center text-gray-500">
@@ -80,39 +185,71 @@ export function AuditLogsTable({
               </td>
             </tr>
           ) : (
-            // Filas de datos de audit logs
-            entries.map((entry) => (
-              <tr key={entry.id} className="border-t border-gray-100 dark:border-dark-border">
-                {/* Fecha formateada en locale colombiano */}
-                <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600 dark:text-gray-400">
-                  {new Date(entry.createdAt).toLocaleString('es-CO')}
-                </td>
+            // Filas de datos de audit logs con soporte para expand row
+            filteredEntries.map((entry) => (
+              <>
+                {/* Fila principal — click alterna el panel expandido */}
+                <tr
+                  key={entry.id}
+                  onClick={() => handleRowClick(entry.id)}
+                  className="border-t border-gray-100 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors cursor-pointer"
+                >
+                  {/* Fecha formateada en locale colombiano */}
+                  <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600 dark:text-gray-400">
+                    {new Date(entry.createdAt).toLocaleString('es-CO')}
+                  </td>
 
-                {/* Badge de acción con color semántico */}
-                <td className="px-3 py-2">
-                  <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${actionBadgeClass(entry.action)}`}
-                  >
-                    {entry.action}
-                  </span>
-                </td>
+                  {/* Badge de acción con color semántico */}
+                  <td className="px-3 py-2">
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${actionBadgeClass(entry.action)}`}
+                    >
+                      {entry.action}
+                    </span>
+                  </td>
 
-                {/* Tipo de entidad afectada */}
-                <td className="px-3 py-2 font-medium">{entry.entityType}</td>
+                  {/* Tipo de entidad afectada */}
+                  <td className="px-3 py-2 font-medium">{entry.entityType}</td>
 
-                {/* ID de la entidad truncado a 12 caracteres */}
-                <td className="px-3 py-2 font-mono text-xs text-gray-500">
-                  {truncate(entry.entityId, 12)}
-                </td>
+                  {/* ID de la entidad truncado a 12 caracteres */}
+                  <td className="px-3 py-2 font-mono text-xs text-gray-500">
+                    {truncate(entry.entityId, 12)}
+                  </td>
 
-                {/* ID del usuario que ejecutó la acción o "Sistema" si es automático */}
-                <td className="px-3 py-2 font-mono text-xs text-gray-500">
-                  {entry.userId ? truncate(entry.userId, 12) : 'Sistema'}
-                </td>
+                  {/* ID del usuario que ejecutó la acción o "Sistema" si es automático */}
+                  <td className="px-3 py-2 font-mono text-xs text-gray-500">
+                    {entry.userId ? truncate(entry.userId, 12) : 'Sistema'}
+                  </td>
 
-                {/* Dirección IP del cliente */}
-                <td className="px-3 py-2 text-xs text-gray-500">{entry.ipAddress ?? '—'}</td>
-              </tr>
+                  {/* Dirección IP del cliente */}
+                  <td className="px-3 py-2 text-xs text-gray-500">{entry.ipAddress ?? '—'}</td>
+                </tr>
+
+                {/* Panel expandido con oldValue y newValue en JSON formateado */}
+                {expandedRowId === entry.id && (
+                  <tr key={`${entry.id}-expanded`}>
+                    <td
+                      colSpan={6}
+                      className="bg-gray-50 dark:bg-gray-800/50 px-6 py-4 border-t border-gray-100 dark:border-dark-border"
+                    >
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-xs font-semibold text-gray-500 mb-2">VALOR ANTERIOR</p>
+                          <pre className="text-xs text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-900 rounded p-3 overflow-x-auto">
+                            {entry.oldValue ? JSON.stringify(entry.oldValue, null, 2) : '—'}
+                          </pre>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-gray-500 mb-2">VALOR NUEVO</p>
+                          <pre className="text-xs text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-900 rounded p-3 overflow-x-auto">
+                            {entry.newValue ? JSON.stringify(entry.newValue, null, 2) : '—'}
+                          </pre>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </>
             ))
           )}
         </tbody>
@@ -121,7 +258,7 @@ export function AuditLogsTable({
       {/* Controles de paginación cursor-based */}
       <div className="flex items-center justify-between gap-2 border-t border-gray-100 px-3 py-2 dark:border-dark-border">
         <p className="text-xs text-gray-500">
-          {isLoading ? 'Cargando...' : `${entries.length} registro(s) en esta página`}
+          {isLoading ? 'Cargando...' : `${filteredEntries.length} registro(s) en esta página`}
         </p>
         <div className="flex items-center gap-2">
           <button
