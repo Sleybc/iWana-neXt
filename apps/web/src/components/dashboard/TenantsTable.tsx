@@ -93,8 +93,21 @@ function ActionsDropdown({
   onRetryProvisioning?: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  /** true = abrir hacia arriba, false = abrir hacia abajo */
+  const [openUpward, setOpenUpward] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+
+  // Calcular dirección de apertura al abrir el dropdown
+  const handleToggle = () => {
+    if (!open && dropdownRef.current) {
+      const rect = dropdownRef.current.getBoundingClientRect();
+      // Si hay menos de 160px debajo del botón hasta el borde inferior de la ventana, abrir hacia arriba
+      const spaceBelow = window.innerHeight - rect.bottom;
+      setOpenUpward(spaceBelow < 160);
+    }
+    setOpen((prev) => !prev);
+  };
 
   // Cerrar el dropdown al hacer clic fuera
   useEffect(() => {
@@ -130,8 +143,7 @@ function ActionsDropdown({
         type="button"
         aria-label="Abrir menú de acciones"
         aria-haspopup="true"
-        aria-expanded={open ? 'true' : 'false'}
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={handleToggle}
         className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:text-gray-300 dark:hover:bg-dark-surface-4 transition-colors"
       >
         <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
@@ -140,7 +152,9 @@ function ActionsDropdown({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 z-20 mt-1 w-48 rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-dark-surface-2"
+          className={`absolute right-0 z-20 w-48 rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-dark-surface-2 ${
+            openUpward ? 'bottom-full mb-1' : 'top-full mt-1'
+          }`}
         >
           {/* Ver configuración — siempre disponible */}
           <button
