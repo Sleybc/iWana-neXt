@@ -85,6 +85,7 @@ export function TenantCreateForm() {
   const [isPolling, setIsPolling] = useState(false);
   const [credentials, setCredentials] = useState<AdminCredentials | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<'basico' | 'legal' | 'direccion' | 'contacto'>(
     'basico',
   );
@@ -109,6 +110,7 @@ export function TenantCreateForm() {
 
   const onSubmit = async (values: TenantCreateFormValues) => {
     setError(null);
+    setSuccessMessage(null);
     setCreatedTenant(null);
 
     try {
@@ -135,6 +137,8 @@ export function TenantCreateForm() {
 
       const created = await tenantApi.create(payload);
       setCreatedTenant(created);
+      // Feedback inmediato de creación exitosa — igual que ProfileForm
+      setSuccessMessage(`Empresa "${created.name}" creada correctamente. Provisionando schema...`);
 
       if (created.status === 'PROVISIONING') {
         setIsPolling(true);
@@ -153,11 +157,19 @@ export function TenantCreateForm() {
       await new Promise((resolve) => setTimeout(resolve, 3000));
       const current = await tenantApi.getOne(tenantId);
       setCreatedTenant(current);
-      if (current.status !== 'PROVISIONING') {
+      if (current.status === 'ACTIVE') {
+        setSuccessMessage(`Empresa "${current.name}" activa y lista para usar.`);
+        return;
+      }
+      if (current.status === 'PROVISIONING_FAILED') {
+        setSuccessMessage(null);
+        setError(`El provisioning de "${current.name}" falló. Revisa los logs del worker.`);
         return;
       }
       attempts += 1;
     }
+    // Timeout: provisioning no completó en 60s — dejamos el mensaje de creación
+    setSuccessMessage(`Empresa creada. El provisioning está tomando más tiempo del esperado.`);
   };
 
   const getCredentials = async () => {
@@ -182,6 +194,9 @@ export function TenantCreateForm() {
   return (
     <div className="space-y-4">
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      {successMessage && (
+        <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">{successMessage}</p>
+      )}
 
       {/* Navegación por tabs */}
       <div className="flex gap-1 overflow-x-auto rounded-lg bg-gray-100 p-1 dark:bg-dark-surface-3">
