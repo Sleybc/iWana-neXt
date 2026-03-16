@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronDown, LogOut, Settings, User as UserIcon, Headphones } from 'lucide-react';
+import { ChevronDown, LogOut, Settings, User as UserIcon } from 'lucide-react';
 import { cn } from '@iwana/ui';
 import { useAuth } from '@/components/auth/AuthProvider';
 
@@ -143,17 +143,6 @@ export const DropdownUser = () => {
             >
               <Settings className="w-4 h-4" aria-hidden="true" />
               Configuración
-            </Link>
-          </li>
-          <li role="none">
-            <Link
-              href="/support"
-              role="menuitem"
-              onClick={() => setDropdownOpen(false)}
-              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-dark-surface-4 dark:hover:text-white"
-            >
-              <Headphones className="w-4 h-4" aria-hidden="true" />
-              Soporte
             </Link>
           </li>
         </ul>
