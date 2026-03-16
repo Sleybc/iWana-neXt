@@ -7,19 +7,19 @@ function roleBadgeClasses(role: string): string {
   const base = 'rounded-full px-2.5 py-0.5 text-xs font-medium';
   switch (role) {
     case 'ADMIN':
-      return `${base} bg-iwana-primary-50 text-iwana-primary-700`;
+      return `${base} bg-iwana-primary-50 text-iwana-primary-700 dark:bg-iwana-primary-500/15 dark:text-iwana-primary-300`;
     case 'NOC':
       return `${base} bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400`;
     case 'SUPPORT':
       return `${base} bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400`;
     case 'TECHNICIAN':
-      return `${base} bg-yellow-50 text-yellow-700`;
+      return `${base} bg-yellow-50 text-yellow-700 dark:bg-yellow-500/15 dark:text-yellow-400`;
     case 'SALES':
-      return `${base} bg-green-50 text-green-700`;
+      return `${base} bg-green-50 text-green-700 dark:bg-green-500/15 dark:text-green-400`;
     case 'ACCOUNTANT':
-      return `${base} bg-purple-50 text-purple-700`;
+      return `${base} bg-purple-50 text-purple-700 dark:bg-purple-500/15 dark:text-purple-400`;
     case 'HR':
-      return `${base} bg-pink-50 text-pink-700`;
+      return `${base} bg-pink-50 text-pink-700 dark:bg-pink-500/15 dark:text-pink-400`;
     case 'SUBSCRIBER':
       return `${base} bg-gray-100 text-gray-500`;
     default:
