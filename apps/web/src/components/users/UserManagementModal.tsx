@@ -65,7 +65,9 @@ export function UserManagementModal({
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Carga detalle del usuario al abrir el modal
+  // Carga detalle del usuario al abrir el modal o al cambiar de usuario.
+  // Dependencia en user?.id (no el objeto completo) para evitar recargar cuando
+  // el padre actualiza la referencia del objeto tras guardar (onSaved → setSelectedUser).
   useEffect(() => {
     if (!open || !tenantSlug || !user) return;
 
@@ -84,7 +86,7 @@ export function UserManagementModal({
         setJobTitle(current.jobTitle ?? '');
         setDocumentType(current.documentType ?? '');
         setAvatarUrl(current.avatarUrl ?? '');
-        // documentNumber nunca retorna del backend (PII sensible)
+        // documentNumber nunca retorna del backend (PII sensible — Ley 1581)
       } catch (err) {
         setError(err instanceof ApiError ? err.message : 'No fue posible cargar el detalle.');
       } finally {
@@ -93,7 +95,8 @@ export function UserManagementModal({
     };
 
     void loadDetail();
-  }, [open, tenantSlug, user]);
+    // user?.id en deps: solo recargar cuando cambia el usuario seleccionado, no su referencia
+  }, [open, tenantSlug, user?.id]);
 
   // Limpiar al cerrar
   useEffect(() => {
