@@ -314,139 +314,142 @@ export function TenantsTable({
       </CardHeader>
 
       <CardContent className="p-0 mt-4">
-        {/* Contenedor con estilo TailAdmin */}
-        <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" aria-label="Lista de tenants">
-              <thead>
-                <tr className="border-b border-gray-100 dark:border-dark-border bg-gray-50 dark:bg-dark-surface-3">
-                  <th className="px-6 py-3 text-left">
-                    <button
-                      type="button"
-                      onClick={() => handleSort('name')}
-                      className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                    >
-                      Empresa <SortIcon field="name" sortField={sortField} sortDir={sortDir} />
-                    </button>
-                  </th>
-                  <th className="px-6 py-3 text-left">
-                    <button
-                      type="button"
-                      onClick={() => handleSort('status')}
-                      className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                    >
-                      Estado <SortIcon field="status" sortField={sortField} sortDir={sortDir} />
-                    </button>
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">
-                    Suscriptores
-                  </th>
-                  <th className="px-6 py-3 text-left">
-                    <button
-                      type="button"
-                      onClick={() => handleSort('createdAt')}
-                      className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                    >
-                      Fecha creación{' '}
-                      <SortIcon field="createdAt" sortField={sortField} sortDir={sortDir} />
-                    </button>
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
-                {isLoading ? (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="px-6 py-10 text-center text-sm text-gray-400 dark:text-gray-500"
-                    >
-                      Cargando tenants...
-                    </td>
+        {/* px-6 alinea la tabla con los márgenes del CardHeader */}
+        <div className="px-6 pb-6">
+          <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm" aria-label="Lista de tenants">
+                <thead>
+                  <tr className="border-b border-gray-100 dark:border-dark-border bg-gray-50 dark:bg-dark-surface-3">
+                    <th className="px-6 py-3 text-left">
+                      <button
+                        type="button"
+                        onClick={() => handleSort('name')}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                      >
+                        Empresa <SortIcon field="name" sortField={sortField} sortDir={sortDir} />
+                      </button>
+                    </th>
+                    <th className="px-6 py-3 text-left">
+                      <button
+                        type="button"
+                        onClick={() => handleSort('status')}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                      >
+                        Estado <SortIcon field="status" sortField={sortField} sortDir={sortDir} />
+                      </button>
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">
+                      Suscriptores
+                    </th>
+                    <th className="px-6 py-3 text-left">
+                      <button
+                        type="button"
+                        onClick={() => handleSort('createdAt')}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                      >
+                        Fecha creación{' '}
+                        <SortIcon field="createdAt" sortField={sortField} sortDir={sortDir} />
+                      </button>
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">
+                      Acciones
+                    </th>
                   </tr>
-                ) : error ? (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="px-6 py-10 text-center text-sm text-red-500 dark:text-red-400"
-                    >
-                      <p>{error}</p>
-                      {onRetry && (
-                        <button
-                          type="button"
-                          onClick={onRetry}
-                          className="mt-2 text-xs text-iwana-primary underline dark:text-iwana-secondary"
-                        >
-                          Reintentar
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ) : filtered.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="px-6 py-10 text-center text-sm text-gray-400 dark:text-gray-500"
-                    >
-                      No se encontraron tenants con los filtros actuales.
-                    </td>
-                  </tr>
-                ) : (
-                  filtered.map((tenant) => (
-                    <tr
-                      key={tenant.id}
-                      className="hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors"
-                    >
-                      {/* Columna Empresa: nombre principal + slug en gris debajo */}
-                      <td className="px-6 py-4">
-                        <div className="font-medium text-iwana-primary dark:text-white">
-                          {tenant.name}
-                        </div>
-                        <div className="mt-0.5 font-mono text-xs text-gray-400 dark:text-gray-500">
-                          {tenant.slug}
-                        </div>
-                      </td>
-
-                      {/* Columna Estado: pill badge */}
-                      <td className="px-6 py-4">
-                        <span className={statusPillClasses[tenant.status]}>
-                          {statusLabels[tenant.status]}
-                        </span>
-                      </td>
-
-                      {/* Columna Suscriptores: dato no disponible aún, mostrar dash */}
-                      <td className="px-6 py-4 text-gray-500 dark:text-gray-400">—</td>
-
-                      {/* Columna Fecha creación */}
-                      <td className="px-6 py-4 text-gray-500 dark:text-gray-400">
-                        {tenant.createdAt
-                          ? new Date(tenant.createdAt).toLocaleDateString('es-CO', {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric',
-                            })
-                          : '—'}
-                      </td>
-
-                      {/* Columna Acciones: dropdown 3 puntos */}
-                      <td className="px-6 py-4 text-right">
-                        <ActionsDropdown
-                          tenantId={tenant.id}
-                          tenantStatus={tenant.status}
-                          {...(onSuspend && { onSuspend })}
-                          {...(onActivate && { onActivate })}
-                          {...(onRetryProvisioning && { onRetryProvisioning })}
-                        />
+                </thead>
+                <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
+                  {isLoading ? (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="px-6 py-10 text-center text-sm text-gray-400 dark:text-gray-500"
+                      >
+                        Cargando tenants...
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : error ? (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="px-6 py-10 text-center text-sm text-red-500 dark:text-red-400"
+                      >
+                        <p>{error}</p>
+                        {onRetry && (
+                          <button
+                            type="button"
+                            onClick={onRetry}
+                            className="mt-2 text-xs text-iwana-primary underline dark:text-iwana-secondary"
+                          >
+                            Reintentar
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ) : filtered.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="px-6 py-10 text-center text-sm text-gray-400 dark:text-gray-500"
+                      >
+                        No se encontraron tenants con los filtros actuales.
+                      </td>
+                    </tr>
+                  ) : (
+                    filtered.map((tenant) => (
+                      <tr
+                        key={tenant.id}
+                        className="hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors"
+                      >
+                        {/* Columna Empresa: nombre principal + slug en gris debajo */}
+                        <td className="px-6 py-4">
+                          <div className="font-medium text-iwana-primary dark:text-white">
+                            {tenant.name}
+                          </div>
+                          <div className="mt-0.5 font-mono text-xs text-gray-400 dark:text-gray-500">
+                            {tenant.slug}
+                          </div>
+                        </td>
+
+                        {/* Columna Estado: pill badge */}
+                        <td className="px-6 py-4">
+                          <span className={statusPillClasses[tenant.status]}>
+                            {statusLabels[tenant.status]}
+                          </span>
+                        </td>
+
+                        {/* Columna Suscriptores: dato no disponible aún, mostrar dash */}
+                        <td className="px-6 py-4 text-gray-500 dark:text-gray-400">—</td>
+
+                        {/* Columna Fecha creación */}
+                        <td className="px-6 py-4 text-gray-500 dark:text-gray-400">
+                          {tenant.createdAt
+                            ? new Date(tenant.createdAt).toLocaleDateString('es-CO', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                              })
+                            : '—'}
+                        </td>
+
+                        {/* Columna Acciones: dropdown 3 puntos */}
+                        <td className="px-6 py-4 text-right">
+                          <ActionsDropdown
+                            tenantId={tenant.id}
+                            tenantStatus={tenant.status}
+                            {...(onSuspend && { onSuspend })}
+                            {...(onActivate && { onActivate })}
+                            {...(onRetryProvisioning && { onRetryProvisioning })}
+                          />
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
+        {/* cierre px-6 pb-6 */}
 
         {/* Contador de resultados */}
         {filtered.length > 0 && (
