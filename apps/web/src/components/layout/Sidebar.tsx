@@ -34,7 +34,7 @@ const IconHome = () => (
     viewBox="0 0 24 24"
     strokeWidth={1.5}
     stroke="currentColor"
-    className="w-5 h-5 shrink-0"
+    className="w-5 h-5"
     aria-hidden="true"
   >
     <path
@@ -52,7 +52,7 @@ const IconBuilding = () => (
     viewBox="0 0 24 24"
     strokeWidth={1.5}
     stroke="currentColor"
-    className="w-5 h-5 shrink-0"
+    className="w-5 h-5"
     aria-hidden="true"
   >
     <path
@@ -70,7 +70,7 @@ const IconUsers = () => (
     viewBox="0 0 24 24"
     strokeWidth={1.5}
     stroke="currentColor"
-    className="w-5 h-5 shrink-0"
+    className="w-5 h-5"
     aria-hidden="true"
   >
     <path
@@ -88,7 +88,7 @@ const IconClipboard = () => (
     viewBox="0 0 24 24"
     strokeWidth={1.5}
     stroke="currentColor"
-    className="w-5 h-5 shrink-0"
+    className="w-5 h-5"
     aria-hidden="true"
   >
     <path
@@ -106,7 +106,7 @@ const IconCog = () => (
     viewBox="0 0 24 24"
     strokeWidth={1.5}
     stroke="currentColor"
-    className="w-5 h-5 shrink-0"
+    className="w-5 h-5"
     aria-hidden="true"
   >
     <path
@@ -152,8 +152,7 @@ export const Sidebar = ({
     const stored = localStorage.getItem(DESKTOP_STORAGE_KEY);
     if (stored === 'true') setDesktopCollapsed(true);
     else if (stored === 'false') setDesktopCollapsed(false);
-    // Solo al montar — dependencias omitidas intencionalmente
-  }, []);
+  }, [setDesktopCollapsed]);
 
   const handleDesktopToggle = () => {
     const next = !desktopCollapsed;
@@ -239,14 +238,14 @@ export const Sidebar = ({
       {/* MENÚ DE NAVEGACIÓN con grupos */}
       <div className="no-scrollbar flex flex-col overflow-y-auto flex-1 py-4">
         <nav aria-label="Menú principal">
-          {navGroups.map((navGroup) => (
+          {navGroups.map((navGroup, groupIndex) => (
             <div key={navGroup.group} className="mb-2">
               {/* Etiqueta del grupo — oculta en modo colapsado */}
               <p
                 className={cn(
                   'uppercase text-xs font-semibold text-gray-400 dark:text-gray-500 tracking-wider px-4 mb-2 mt-6',
                   // Primera sección no necesita margen top adicional
-                  navGroup.group === 'MENÚ' && 'mt-0',
+                  groupIndex === 0 && 'mt-0',
                   // Ocultar etiqueta cuando el sidebar está colapsado
                   desktopCollapsed && 'lg:hidden',
                 )}
