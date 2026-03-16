@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { Button } from '@iwana/ui';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -8,6 +8,107 @@ import { UserCreateModal } from '@/components/users/UserCreateModal';
 import { UserManagementModal } from '@/components/users/UserManagementModal';
 import { UsersTable } from '@/components/users/UsersTable';
 import { tenantApi, type TenantListItem, type UserListItem, usersApi } from '@/lib/api-client';
+
+/**
+ * Selector de tenant personalizado con dropdown estilizado.
+ * Reemplaza el <select> nativo para tener control total sobre bordes y lista desplegable.
+ */
+function TenantSelect({
+  tenants,
+  value,
+  onChange,
+}: {
+  tenants: TenantListItem[];
+  value: string;
+  onChange: (slug: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [openUpward, setOpenUpward] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const selectedName = tenants.find((t) => t.slug === value)?.name ?? 'Seleccionar empresa';
+
+  /** Calcula si hay espacio debajo antes de abrir */
+  const handleToggle = () => {
+    if (!open && ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      setOpenUpward(window.innerHeight - rect.bottom < 200);
+    }
+    setOpen((prev) => !prev);
+  };
+
+  /** Cierra al hacer clic fuera */
+  useEffect(() => {
+    if (!open) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [open]);
+
+  /** Cierra al presionar Escape */
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative inline-block text-left">
+      {/* Botón disparador */}
+      <button
+        type="button"
+        aria-label="Seleccionar tenant"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={handleToggle}
+        className="inline-flex h-10 items-center gap-2 rounded-xl border border-gray-300 bg-white pl-3 pr-3 text-sm text-gray-700 hover:border-iwana-primary focus:outline-none focus:ring-2 focus:ring-iwana-primary/30 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 transition-colors"
+      >
+        <span className="max-w-[180px] truncate">{selectedName}</span>
+        <ChevronDown
+          className={`h-4 w-4 flex-shrink-0 text-gray-400 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
+          aria-hidden="true"
+        />
+      </button>
+
+      {/* Lista de opciones */}
+      {open && tenants.length > 0 && (
+        <ul
+          role="listbox"
+          aria-label="Seleccionar tenant"
+          className={`absolute left-0 z-20 min-w-[200px] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-dark-surface-2 ${
+            openUpward ? 'bottom-full mb-1' : 'top-full mt-1'
+          }`}
+        >
+          {tenants.map((tenant) => (
+            <li key={tenant.id} role="option" aria-selected={tenant.slug === value}>
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(tenant.slug);
+                  setOpen(false);
+                }}
+                className={`w-full px-4 py-2.5 text-left text-sm transition-colors first:rounded-t-xl last:rounded-b-xl ${
+                  tenant.slug === value
+                    ? 'bg-iwana-primary/10 text-iwana-primary font-medium dark:bg-iwana-primary/20 dark:text-iwana-primary-300'
+                    : 'text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-dark-surface-3'
+                }`}
+              >
+                {tenant.name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 export default function UsersPage() {
   const [tenants, setTenants] = useState<TenantListItem[]>([]);
@@ -71,32 +172,16 @@ export default function UsersPage() {
       <PageHeader title="Usuarios" subtitle={`Gestión interna de ${selectedTenantName}`} />
 
       <div className="flex flex-wrap items-center gap-2">
-        {/* Selector de tenant con icono custom y bordes redondeados */}
-        <div className="relative">
-          <select
-            aria-label="Seleccionar tenant"
-            title="Seleccionar tenant"
-            value={tenantSlug}
-            onChange={(event) => {
-              setTenantSlug(event.target.value);
-              setCursor(undefined);
-              setCursorHistory([]);
-              setNextCursor(null);
-            }}
-            className="h-10 appearance-none rounded-xl border border-gray-300 bg-white pl-3 pr-9 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-iwana-primary/30 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200"
-          >
-            {tenants.map((tenant) => (
-              <option key={tenant.id} value={tenant.slug}>
-                {tenant.name}
-              </option>
-            ))}
-          </select>
-          {/* Flecha custom: pointer-events-none para no interferir con el click */}
-          <ChevronDown
-            className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
-            aria-hidden="true"
-          />
-        </div>
+        <TenantSelect
+          tenants={tenants}
+          value={tenantSlug}
+          onChange={(slug) => {
+            setTenantSlug(slug);
+            setCursor(undefined);
+            setCursorHistory([]);
+            setNextCursor(null);
+          }}
+        />
 
         <Button type="button" onClick={() => setOpenCreateModal(true)} disabled={!tenantSlug}>
           Crear usuario
