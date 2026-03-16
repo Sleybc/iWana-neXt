@@ -7,11 +7,15 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { SkipAudit } from './decorators/skip-audit.decorator';
 import { AuditLog } from '@iwana/db';
+import { UserRole } from '@iwana/shared';
 
 /**
  * Controlador de consulta del audit log del tenant.
  *
- * Solo accesible para roles con permisos de auditoria: ADMIN.
+ * Accesible para ADMIN del tenant y SYSTEM_ADMIN de plataforma.
+ * SYSTEM_ADMIN debe proveer X-Tenant-Slug para que TenantMiddleware
+ * establezca el contexto de schema antes de ejecutar la query.
+ *
  * Los registros son de solo lectura — la escritura es append-only via AuditService.
  *
  * Prefijo: /api/v1/audit-logs
@@ -19,7 +23,7 @@ import { AuditLog } from '@iwana/db';
  */
 @Controller('audit-logs')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('tenant_admin')
+@Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
 @SkipAudit()
 @ApiTags('audit-logs')
 @ApiBearerAuth('access-token')
