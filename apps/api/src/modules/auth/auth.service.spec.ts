@@ -1207,4 +1207,264 @@ describe('AuthService', () => {
       }).toThrow('Formato de mfaSecret cifrado invalido');
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // MOD02 — MFA ENFORCEMENT POR ROL CRITICO (RF-AUTH-04, RF-MFA-04)
+  // ---------------------------------------------------------------------------
+
+  describe('login() — MFA enforcement MOD02', () => {
+    it('retorna mfaSetupRequired=true para ADMIN sin MFA configurado', async () => {
+      // ADMIN activo, sin MFA habilitado — debe recibir token de alcance limitado
+      const user = buildUser({ role: UserRole.ADMIN, mfaEnabled: false });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+        save: jest.fn().mockResolvedValue({}),
+        create: jest.fn().mockImplementation((_, p) => p),
+      });
+
+      const dto: LoginDto = { email: 'admin@tenant.co', password: 'Passw0rd!' };
+      const result = await service.login(dto);
+
+      expect(result.mfaSetupRequired).toBe(true);
+      // El access token es emitido (token limitado scope=mfa-setup)
+      expect(result.accessToken).toBe('mock.jwt.token');
+      // NO se emite refresh token en el flujo de mfa-setup
+      expect(result.refreshToken).toBe('');
+    });
+
+    it('retorna mfaSetupRequired=true para NOC sin MFA configurado', async () => {
+      const user = buildUser({ role: UserRole.NOC, mfaEnabled: false });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+        save: jest.fn().mockResolvedValue({}),
+        create: jest.fn().mockImplementation((_, p) => p),
+      });
+
+      const dto: LoginDto = { email: 'noc@tenant.co', password: 'Passw0rd!' };
+      const result = await service.login(dto);
+
+      expect(result.mfaSetupRequired).toBe(true);
+    });
+
+    it('retorna mfaSetupRequired=true para ACCOUNTANT sin MFA configurado', async () => {
+      const user = buildUser({ role: UserRole.ACCOUNTANT, mfaEnabled: false });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+        save: jest.fn().mockResolvedValue({}),
+        create: jest.fn().mockImplementation((_, p) => p),
+      });
+
+      const dto: LoginDto = { email: 'accountant@tenant.co', password: 'Passw0rd!' };
+      const result = await service.login(dto);
+
+      expect(result.mfaSetupRequired).toBe(true);
+    });
+
+    it('login normal para SUPPORT sin MFA — no es rol critico, no debe forzar MFA setup', async () => {
+      // SUPPORT (tenant_support) no esta en MFA_REQUIRED_ROLES — login normal sin mfaSetupRequired
+      const user = buildUser({ role: 'tenant_support' as UserRole, mfaEnabled: false });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+        save: jest.fn().mockResolvedValue({}),
+        create: jest.fn().mockImplementation((_, p) => p),
+      });
+
+      const dto: LoginDto = { email: 'support@tenant.co', password: 'Passw0rd!' };
+      const result = await service.login(dto);
+
+      expect(result.mfaSetupRequired).toBeFalsy();
+      expect(result.accessToken).toBe('mock.jwt.token');
+      expect(typeof result.refreshToken).toBe('string');
+      expect(result.refreshToken.length).toBeGreaterThan(10);
+    });
+
+    it('ADMIN con MFA ya configurado recibe mfaRequired=true al hacer login sin TOTP', async () => {
+      // ADMIN con mfaEnabled=true — no se emite token limitado, se pide el TOTP
+      const user = buildUser({ role: UserRole.ADMIN, mfaEnabled: true, mfaSecret: 'BASE32SECRET' });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(user) });
+
+      const dto: LoginDto = { email: 'admin@tenant.co', password: 'Passw0rd!' };
+      const result = await service.login(dto);
+
+      // MFA configurado pero no enviado — flujo normal de MFA verify
+      expect(result.mfaRequired).toBe(true);
+      expect(result.mfaSetupRequired).toBeFalsy();
+    });
+
+    it('signAccessToken emite scope=mfa-setup en el payload JWT para token limitado', async () => {
+      const user = buildUser({ role: UserRole.ADMIN, mfaEnabled: false });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+        save: jest.fn().mockResolvedValue({}),
+        create: jest.fn().mockImplementation((_, p) => p),
+      });
+
+      const dto: LoginDto = { email: 'admin@tenant.co', password: 'Passw0rd!' };
+      await service.login(dto);
+
+      // jwtService.sign debe haber sido llamado con scope='mfa-setup' en el payload
+      expect(jwtService.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ scope: 'mfa-setup' }),
+        expect.anything(),
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // MOD02 — AUDIT EVENTS (RF-AUD-02)
+  // ---------------------------------------------------------------------------
+
+  describe('refreshTokens() — audit REFRESH (MOD02)', () => {
+    it('emite audit REFRESH tras rotar el token exitosamente', async () => {
+      const rawToken = 'c'.repeat(96);
+      const hashedToken = require('crypto').createHash('sha256').update(rawToken).digest('hex');
+
+      const tokenEntity = {
+        id: 'rt-audit-uuid',
+        userId: 'user-uuid-1',
+        tokenHash: hashedToken,
+        familyId: 'family-uuid-audit',
+        revokedAt: null,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      };
+
+      const user = buildUser();
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValueOnce(tokenEntity).mockResolvedValueOnce(user),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+        save: jest.fn().mockResolvedValue({}),
+        create: jest.fn().mockImplementation((_, p) => p),
+      });
+
+      mockRedis.get.mockResolvedValue(null);
+      const auditService = (service as unknown as { auditService: { log: jest.Mock } })
+        .auditService;
+
+      await service.refreshTokens(rawToken);
+
+      // Debe haber llamado a auditService.log con AuditAction.REFRESH
+      expect(auditService.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'REFRESH' }));
+    });
+  });
+
+  describe('resetPassword() — audit PASSWORD_RESET_COMPLETED (MOD02)', () => {
+    it('emite audit PASSWORD_RESET_COMPLETED tras reset exitoso', async () => {
+      const user = buildUser({
+        passwordResetToken: 'token-reset-audit',
+        passwordResetExpiresAt: new Date(Date.now() + 30 * 60 * 1000),
+      });
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      });
+
+      const auditService = (service as unknown as { auditService: { log: jest.Mock } })
+        .auditService;
+
+      await service.resetPassword({
+        token: 'token-reset-audit',
+        newPassword: 'NuevoPass1!',
+      });
+
+      expect(auditService.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'PASSWORD_RESET_COMPLETED' }),
+      );
+    });
+  });
+
+  describe('registerFailedAttempt() — audit ACCOUNT_LOCKED (MOD02)', () => {
+    it('emite audit ACCOUNT_LOCKED cuando se alcanza el limite de intentos fallidos', async () => {
+      // 4 intentos previos — el 5to debe bloquear la cuenta y emitir ACCOUNT_LOCKED
+      const user = buildUser({ failedLoginAttempts: 4 });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      });
+
+      const auditService = (service as unknown as { auditService: { log: jest.Mock } })
+        .auditService;
+
+      // Login fallido con 4 intentos previos = 5to intento = lockout
+      await expect(
+        service.login({ email: 'admin@tenant.co', password: 'WrongPass1!' }),
+      ).rejects.toThrow();
+
+      expect(auditService.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'ACCOUNT_LOCKED' }),
+      );
+    });
+
+    it('no emite ACCOUNT_LOCKED cuando los intentos son menos de 5', async () => {
+      // 3 intentos previos — el 4to falla pero no bloquea
+      const user = buildUser({ failedLoginAttempts: 3 });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      });
+
+      const auditService = (service as unknown as { auditService: { log: jest.Mock } })
+        .auditService;
+
+      await expect(
+        service.login({ email: 'admin@tenant.co', password: 'WrongPass1!' }),
+      ).rejects.toThrow();
+
+      // AuditAction.ACCOUNT_LOCKED no debe aparecer — solo LOGIN_FAILED
+      const calls = (auditService.log as jest.Mock).mock.calls as Array<[{ action: string }]>;
+      const accountLockedCalls = calls.filter(([args]) => args.action === 'ACCOUNT_LOCKED');
+      expect(accountLockedCalls).toHaveLength(0);
+    });
+  });
+
+  describe('verifyEmail() — audit EMAIL_VERIFIED (MOD02)', () => {
+    it('emite audit EMAIL_VERIFIED (no UPDATE) al verificar el email exitosamente', async () => {
+      const user = buildUser({
+        status: UserStatus.PENDING_VERIFICATION,
+        emailVerified: false,
+        emailVerificationToken: 'token-verificacion-audit',
+      } as Partial<User>);
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        save: jest.fn().mockResolvedValue({}),
+      });
+
+      const auditService = (service as unknown as { auditService: { log: jest.Mock } })
+        .auditService;
+
+      await service.verifyEmail({ token: 'token-verificacion-audit' }, 'tenant_test');
+
+      // Debe haber emitido EMAIL_VERIFIED — NO el generico UPDATE
+      expect(auditService.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'EMAIL_VERIFIED' }),
+      );
+
+      const calls = (auditService.log as jest.Mock).mock.calls as Array<[{ action: string }]>;
+      const updateCalls = calls.filter(([args]) => args.action === 'UPDATE');
+      expect(updateCalls).toHaveLength(0);
+    });
+  });
 });
