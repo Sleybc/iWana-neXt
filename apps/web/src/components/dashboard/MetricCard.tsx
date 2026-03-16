@@ -44,7 +44,7 @@ function resolveTrendClasses(direction: TrendBadge['direction']): string {
       return 'bg-error-50 text-error-600 dark:bg-error-500/15 dark:text-error-400';
     case 'neutral':
     default:
-      return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400';
+      return 'bg-gray-100 text-gray-600 dark:bg-white/[0.03] dark:text-gray-400';
   }
 }
 

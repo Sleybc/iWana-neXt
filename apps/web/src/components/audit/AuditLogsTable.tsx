@@ -114,7 +114,7 @@ export function AuditLogsTable({
           onChange={(e) => setActionFilter(e.target.value)}
           aria-label="Filtrar por acción"
           title="Filtrar por acción"
-          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 focus:outline-none"
+          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-dark-surface-3 dark:text-gray-300 focus:outline-none"
         >
           <option value="">Todas las acciones</option>
           <option value="CREATE">CREATE</option>
@@ -131,7 +131,7 @@ export function AuditLogsTable({
           onChange={(e) => setDateFrom(e.target.value)}
           aria-label="Fecha desde"
           title="Fecha desde"
-          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 focus:outline-none"
+          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-dark-surface-3 dark:text-gray-300 focus:outline-none"
         />
 
         {/* Filtro por fecha hasta */}
@@ -141,14 +141,14 @@ export function AuditLogsTable({
           onChange={(e) => setDateTo(e.target.value)}
           aria-label="Fecha hasta"
           title="Fecha hasta"
-          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 focus:outline-none"
+          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-dark-surface-3 dark:text-gray-300 focus:outline-none"
         />
 
         {/* Botón exportar CSV — utiliza los entries filtrados actuales */}
         <button
           type="button"
           onClick={handleExportCsv}
-          className="ml-auto rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors"
+          className="ml-auto rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-dark-surface-3 dark:text-gray-300 dark:hover:bg-dark-surface-4 transition-colors"
         >
           Exportar CSV
         </button>
@@ -239,18 +239,18 @@ export function AuditLogsTable({
                   <tr key={`${entry.id}-expanded`}>
                     <td
                       colSpan={6}
-                      className="bg-gray-50 dark:bg-gray-800/50 px-6 py-4 border-t border-gray-100 dark:border-dark-border"
+                      className="bg-gray-50 dark:bg-white/[0.03] px-6 py-4 border-t border-gray-100 dark:border-dark-border"
                     >
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <p className="text-xs font-semibold text-gray-500 mb-2">VALOR ANTERIOR</p>
-                          <pre className="text-xs text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-900 rounded p-3 overflow-x-auto">
+                          <pre className="text-xs text-gray-600 dark:text-gray-300 bg-white dark:bg-dark-surface-2 rounded p-3 overflow-x-auto">
                             {entry.oldValue ? JSON.stringify(entry.oldValue, null, 2) : '—'}
                           </pre>
                         </div>
                         <div>
                           <p className="text-xs font-semibold text-gray-500 mb-2">VALOR NUEVO</p>
-                          <pre className="text-xs text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-900 rounded p-3 overflow-x-auto">
+                          <pre className="text-xs text-gray-600 dark:text-gray-300 bg-white dark:bg-dark-surface-2 rounded p-3 overflow-x-auto">
                             {entry.newValue ? JSON.stringify(entry.newValue, null, 2) : '—'}
                           </pre>
                         </div>

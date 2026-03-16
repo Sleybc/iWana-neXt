@@ -177,7 +177,7 @@ export function DashboardClient() {
                 <MetricCard
                   title="Suspendidos"
                   value={isLoading ? '...' : String(summary.suspended)}
-                  change="Errores + suspendidos"
+                  change="Cuentas suspendidas"
                   icon={<AlertTriangle className="w-5 h-5" />}
                   iconBg="#FEF2F2"
                   iconColor="#EF4444"

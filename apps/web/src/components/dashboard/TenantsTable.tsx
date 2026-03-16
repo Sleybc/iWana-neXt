@@ -37,9 +37,9 @@ const statusPillClasses: Record<TenantStatus, string> = {
   PROVISIONING_FAILED:
     'rounded-full px-2.5 py-0.5 text-xs font-medium bg-error-50 text-error-700 dark:bg-error-500/15 dark:text-error-400',
   SUSPENDED:
-    'rounded-full px-2.5 py-0.5 text-xs font-medium bg-error-50 text-error-700 dark:bg-error-500/15 dark:text-error-400',
+    'rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 dark:bg-white/[0.03] dark:text-gray-400',
   INACTIVE:
-    'rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+    'rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 dark:bg-white/[0.03] dark:text-gray-400',
 };
 
 /** Etiquetas legibles por estado de tenant. */
@@ -132,7 +132,7 @@ function ActionsDropdown({
         aria-haspopup="true"
         aria-expanded={open ? 'true' : 'false'}
         onClick={() => setOpen((prev) => !prev)}
-        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:text-gray-300 dark:hover:bg-gray-800 transition-colors"
+        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:text-gray-300 dark:hover:bg-dark-surface-4 transition-colors"
       >
         <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
       </button>
@@ -140,7 +140,7 @@ function ActionsDropdown({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 z-20 mt-1 w-48 rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900"
+          className="absolute right-0 z-20 mt-1 w-48 rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-dark-surface-2"
         >
           {/* Ver configuración — siempre disponible */}
           <button
@@ -150,7 +150,7 @@ function ActionsDropdown({
               setOpen(false);
               router.push(`/tenants/${tenantId}/settings`);
             }}
-            className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800 rounded-t-xl last:rounded-b-xl transition-colors"
+            className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-dark-surface-3 rounded-t-xl last:rounded-b-xl transition-colors"
           >
             Ver configuración
           </button>
@@ -305,7 +305,7 @@ export function TenantsTable({
           <div className="overflow-x-auto">
             <table className="w-full text-sm" aria-label="Lista de tenants">
               <thead>
-                <tr className="border-b border-gray-100 dark:border-dark-border bg-gray-50 dark:bg-gray-900/50">
+                <tr className="border-b border-gray-100 dark:border-dark-border bg-gray-50 dark:bg-dark-surface-3">
                   <th className="px-6 py-3 text-left">
                     <button
                       type="button"
