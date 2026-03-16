@@ -166,6 +166,13 @@ export class UsersService {
          * nuevos datos, como si fuera un usuario completamente nuevo.
          */
         await qr.manager.restore(User, { id: existing.id });
+        /**
+         * CRÍTICO: limpiar deletedAt en el objeto en memoria ANTES de save().
+         * restore() limpia deleted_at en la BD, pero el objeto TypeScript todavía
+         * tiene deletedAt = Date. Si se omite esta línea, save() re-escribe el valor
+         * antiguo a la BD y el usuario queda soft-deleted inmediatamente otra vez.
+         */
+        existing.deletedAt = null;
         existing.email = encryptedEmail;
         existing.emailHash = emailHash;
         existing.passwordHash = passwordHash;
