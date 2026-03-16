@@ -1,7 +1,7 @@
 'use client';
 
 // Tabla de registros de auditoría con paginación cursor-based, filtros client-side y export CSV
-import { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 
 import type { AuditLogEntry } from '@/lib/api-client';
 
@@ -93,14 +93,15 @@ export function AuditLogsTable({
         .join(','),
     );
 
-    const csv = [headers.join(','), ...rows].join('\n');
+    const csv = [headers.join(','), ...rows].join('\r\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `audit-logs-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
-    URL.revokeObjectURL(url);
+    // Diferir la revocación para dar tiempo al navegador de iniciar la descarga (Firefox/Safari)
+    setTimeout(() => URL.revokeObjectURL(url), 100);
   }
 
   return (
@@ -187,10 +188,9 @@ export function AuditLogsTable({
           ) : (
             // Filas de datos de audit logs con soporte para expand row
             filteredEntries.map((entry) => (
-              <>
+              <React.Fragment key={entry.id}>
                 {/* Fila principal — click alterna el panel expandido */}
                 <tr
-                  key={entry.id}
                   onClick={() => handleRowClick(entry.id)}
                   className="border-t border-gray-100 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors cursor-pointer"
                 >
@@ -249,7 +249,7 @@ export function AuditLogsTable({
                     </td>
                   </tr>
                 )}
-              </>
+              </React.Fragment>
             ))
           )}
         </tbody>
