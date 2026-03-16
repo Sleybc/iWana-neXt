@@ -2,6 +2,13 @@
 import type { ReactNode } from 'react';
 import { Card, CardContent } from '@iwana/ui';
 
+/** Datos del badge de tendencia que se muestra al pie de la card. */
+interface TrendBadge {
+  value: number;
+  direction: 'up' | 'down' | 'neutral';
+  label?: string;
+}
+
 interface MetricCardProps {
   title: string;
   value: string | number;
@@ -9,6 +16,7 @@ interface MetricCardProps {
   icon: ReactNode;
   iconColor?: string;
   iconBg?: string;
+  trend?: TrendBadge;
 }
 
 function resolveIconTone(iconBg: string, iconColor: string) {
@@ -27,8 +35,29 @@ function resolveIconTone(iconBg: string, iconColor: string) {
   }
 }
 
+/** Resuelve las clases de color del badge según la dirección de la tendencia. */
+function resolveTrendClasses(direction: TrendBadge['direction']): string {
+  switch (direction) {
+    case 'up':
+      return 'bg-success-50 text-success-600 dark:bg-success-500/15 dark:text-success-400';
+    case 'down':
+      return 'bg-error-50 text-error-600 dark:bg-error-500/15 dark:text-error-400';
+    case 'neutral':
+    default:
+      return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400';
+  }
+}
+
+/** Devuelve el carácter de flecha que representa la dirección de la tendencia. */
+function trendArrow(direction: TrendBadge['direction']): string {
+  if (direction === 'up') return '↑';
+  if (direction === 'down') return '↓';
+  return '→';
+}
+
 /**
  * Card de métrica para el dashboard administrativo.
+ * Soporta un badge opcional de tendencia al pie de la card.
  */
 export function MetricCard({
   title,
@@ -37,6 +66,7 @@ export function MetricCard({
   icon,
   iconColor = '#17163A',
   iconBg = '#EEEEFA',
+  trend,
 }: MetricCardProps) {
   const iconToneClassName = resolveIconTone(iconBg, iconColor);
 
@@ -56,6 +86,19 @@ export function MetricCard({
             {icon}
           </div>
         </div>
+
+        {trend && (
+          <div className="mt-3">
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${resolveTrendClasses(trend.direction)}`}
+            >
+              {trendArrow(trend.direction)} {trend.value.toFixed(2)}%
+              {trend.label && (
+                <span className="text-gray-400 dark:text-gray-500 ml-1">{trend.label}</span>
+              )}
+            </span>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

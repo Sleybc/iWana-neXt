@@ -135,38 +135,58 @@ export function DashboardClient() {
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
           <div className="xl:col-span-8 flex flex-col gap-6">
             <section aria-label="Métricas de plataforma">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-2 2xl:grid-cols-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
                 <MetricCard
-                  title="Tenants activos"
-                  value={isLoading ? '...' : `${summary.active} / ${summary.total}`}
+                  title="Total tenants"
+                  value={isLoading ? '...' : String(summary.total)}
                   change="Desde endpoint /tenants"
                   icon={<Building2 className="w-5 h-5" />}
                   iconBg="#EAF5CC"
                   iconColor="#6A7A1C"
+                  trend={{
+                    value: 100,
+                    direction: 'neutral',
+                    label: 'del total',
+                  }}
                 />
                 <MetricCard
-                  title="Usuarios registrados"
-                  value="N/D"
-                  change="Pendiente integración /users"
+                  title="Activos"
+                  value={isLoading ? '...' : String(summary.active)}
+                  change="Tenants activos"
                   icon={<Users className="w-5 h-5" />}
                   iconBg="#EEEEFA"
                   iconColor="#17163A"
+                  trend={{
+                    value: summary.total > 0 ? (summary.active / summary.total) * 100 : 0,
+                    direction: summary.active > summary.total / 2 ? 'up' : 'down',
+                    label: 'del total',
+                  }}
                 />
                 <MetricCard
-                  title="Jobs en cola"
+                  title="Provisionando"
                   value={isLoading ? '...' : String(summary.provisioning)}
                   change="Tenants en provisioning"
                   icon={<BriefcaseBusiness className="w-5 h-5" />}
                   iconBg="#DCFCE7"
                   iconColor="#22C55E"
+                  trend={{
+                    value: summary.total > 0 ? (summary.provisioning / summary.total) * 100 : 0,
+                    direction: summary.provisioning > 0 ? 'up' : 'neutral',
+                    label: 'del total',
+                  }}
                 />
                 <MetricCard
-                  title="Alertas"
-                  value={isLoading ? '...' : String(summary.failed + summary.suspended)}
+                  title="Suspendidos"
+                  value={isLoading ? '...' : String(summary.suspended)}
                   change="Errores + suspendidos"
                   icon={<AlertTriangle className="w-5 h-5" />}
                   iconBg="#FEF2F2"
                   iconColor="#EF4444"
+                  trend={{
+                    value: summary.total > 0 ? (summary.suspended / summary.total) * 100 : 0,
+                    direction: summary.suspended > 0 ? 'down' : 'neutral',
+                    label: 'del total',
+                  }}
                 />
               </div>
             </section>
