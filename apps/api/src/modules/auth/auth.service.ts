@@ -463,14 +463,22 @@ export class AuthService {
    * RF-AUTH-03
    */
   async setupMfa(userId: string, email: string): Promise<MfaSetupResponse> {
-    const secret = this.totp.generateSecret();
+    // Idempotencia: si ya existe un setup pendiente reusar el mismo secret.
+    // Previene race condition cuando el cliente llama dos veces en rapida sucesion
+    // (p.ej. React Strict Mode doble-invocacion de useEffect en desarrollo).
+    // Si se reutiliza el secret, el QR generado sera identico al anterior.
+    let secret = await this.redis.get(`mfa:pending:${userId}`);
+
+    if (!secret) {
+      secret = this.totp.generateSecret();
+      // Guardar secret temporal en Redis (TTL 10 min para completar el setup)
+      await this.redis.set(`mfa:pending:${userId}`, secret, 'EX', 600);
+    }
+
     const issuer = this.configService.get<string>('APP_NAME', 'iWana neXt');
     const otpauthUri = this.totp.toURI({ secret, label: email, issuer });
 
     const qrCodeBase64 = await qrcode.toDataURL(otpauthUri);
-
-    // Guardar secret temporal en Redis (TTL 10 min para completar el setup)
-    await this.redis.set(`mfa:pending:${userId}`, secret, 'EX', 600);
 
     return { qrCodeBase64, otpauthUri };
   }

@@ -35,6 +35,7 @@ export function MfaSetupForm() {
         if (!mounted) return;
         if (err instanceof ApiError && err.status === 401) {
           // Token limitado expirado o inválido — volver al login
+          authApi.clearMfaSetupToken();
           router.replace('/auth/login');
         } else {
           setErrorMessage('No se pudo iniciar la configuración MFA. Intenta de nuevo.');
@@ -47,7 +48,7 @@ export function MfaSetupForm() {
     return () => {
       mounted = false;
     };
-  }, [router]);
+  }, []);
 
   const handleCodeChange = (newCode: string) => {
     setCode(newCode);
@@ -78,6 +79,7 @@ export function MfaSetupForm() {
         if (err.status === 401) {
           setErrorMessage('Código incorrecto. Verifica tu aplicación de autenticación.');
         } else if (err.status === 403) {
+          authApi.clearMfaSetupToken();
           setErrorMessage('Token de configuración expirado. Inicia sesión de nuevo.');
           setTimeout(() => router.replace('/auth/login'), 2000);
         } else {
