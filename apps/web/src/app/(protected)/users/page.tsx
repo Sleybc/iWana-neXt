@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { Button } from '@iwana/ui';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { UserCreateModal } from '@/components/users/UserCreateModal';
@@ -70,24 +71,32 @@ export default function UsersPage() {
       <PageHeader title="Usuarios" subtitle={`Gestión interna de ${selectedTenantName}`} />
 
       <div className="flex flex-wrap items-center gap-2">
-        <select
-          aria-label="Seleccionar tenant"
-          title="Seleccionar tenant"
-          value={tenantSlug}
-          onChange={(event) => {
-            setTenantSlug(event.target.value);
-            setCursor(undefined);
-            setCursorHistory([]);
-            setNextCursor(null);
-          }}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        >
-          {tenants.map((tenant) => (
-            <option key={tenant.id} value={tenant.slug}>
-              {tenant.name}
-            </option>
-          ))}
-        </select>
+        {/* Selector de tenant con icono custom y bordes redondeados */}
+        <div className="relative">
+          <select
+            aria-label="Seleccionar tenant"
+            title="Seleccionar tenant"
+            value={tenantSlug}
+            onChange={(event) => {
+              setTenantSlug(event.target.value);
+              setCursor(undefined);
+              setCursorHistory([]);
+              setNextCursor(null);
+            }}
+            className="h-10 appearance-none rounded-xl border border-gray-300 bg-white pl-3 pr-9 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-iwana-primary/30 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200"
+          >
+            {tenants.map((tenant) => (
+              <option key={tenant.id} value={tenant.slug}>
+                {tenant.name}
+              </option>
+            ))}
+          </select>
+          {/* Flecha custom: pointer-events-none para no interferir con el click */}
+          <ChevronDown
+            className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+            aria-hidden="true"
+          />
+        </div>
 
         <Button type="button" onClick={() => setOpenCreateModal(true)} disabled={!tenantSlug}>
           Crear usuario
