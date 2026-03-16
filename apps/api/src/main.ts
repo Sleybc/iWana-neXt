@@ -1,6 +1,7 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
@@ -38,8 +39,7 @@ async function bootstrap(): Promise<void> {
   app.use(helmet());
 
   // Habilitar lectura de cookies (refresh token llega como cookie httpOnly)
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  app.use(require('cookie-parser')());
+  app.use(cookieParser());
 
   // CORS: origen controlado por CORS_ORIGIN (puede ser lista separada por comas)
   // En produccion Joi garantiza que CORS_ORIGIN esta definido; el fallback solo aplica a dev local

@@ -13,6 +13,12 @@
 export interface AuthResponse {
   accessToken: string;
   mfaRequired?: boolean;
+  /**
+   * true cuando el usuario tiene rol critico (ADMIN, NOC, ACCOUNTANT) pero no tiene MFA configurado.
+   * El accessToken emitido tiene scope='mfa-setup' y solo permite llamar a /auth/mfa/setup y /auth/mfa/verify.
+   * No se emite refresh token en este caso.
+   */
+  mfaSetupRequired?: boolean;
 }
 
 /**

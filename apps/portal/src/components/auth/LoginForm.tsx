@@ -37,7 +37,12 @@ export function LoginForm() {
     try {
       const result = await login(data.email, data.password, tenantSlug);
 
-      if (result === 'password_reset_required') {
+      if (result === 'mfa_required') {
+        router.push('/auth/mfa/verify');
+      } else if (result === 'mfa_setup_required') {
+        // Rol critico sin MFA: token limitado ya almacenado — configurar MFA antes de continuar
+        router.push('/auth/mfa/setup');
+      } else if (result === 'password_reset_required') {
         // El usuario debe cambiar su contrasena temporal antes de continuar
         router.push('/auth/change-password');
       } else {

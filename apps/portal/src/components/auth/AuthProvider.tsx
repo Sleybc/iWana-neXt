@@ -9,7 +9,14 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { authApi, type JwtProfile } from '@/lib/api-client';
+import {
+  authApi,
+  ApiError,
+  clearPendingTenantMfaLogin,
+  getPendingTenantMfaLogin,
+  setPendingTenantMfaLogin,
+  type JwtProfile,
+} from '@/lib/api-client';
 
 interface AuthUser {
   id: string;
@@ -21,14 +28,27 @@ interface AuthUser {
   subtitle: string;
 }
 
-/** Resultados posibles del metodo login en el portal de tenant */
-export type LoginResult = 'authenticated' | 'password_reset_required';
+/**
+ * Resultados posibles del metodo login en el portal de tenant.
+ * - 'authenticated': sesion completa, tokens emitidos.
+ * - 'mfa_required': MFA configurado pero no se envio TOTP — pedir codigo.
+ * - 'password_reset_required': primer acceso con password temporal.
+ * - 'mfa_setup_required': rol critico (ADMIN/NOC/ACCOUNTANT) sin MFA configurado
+ *   — token limitado emitido, redirigir a /auth/mfa/setup.
+ *   HLD-MOD02-ARQUITECTURA-v1.0 §6.2 (DA-MOD02-01)
+ */
+export type LoginResult =
+  | 'authenticated'
+  | 'mfa_required'
+  | 'password_reset_required'
+  | 'mfa_setup_required';
 
 interface AuthContextValue {
   user: AuthUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string, tenantSlug?: string) => Promise<LoginResult>;
+  completeMfaLogin: (code: string) => Promise<void>;
   logout: (tenantSlug?: string) => Promise<void>;
   refreshProfile: (tenantSlug?: string) => Promise<void>;
 }
@@ -101,9 +121,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (email: string, password: string, tenantSlug?: string): Promise<LoginResult> => {
-      await authApi.tenantLogin(email, password, tenantSlug);
+      const result = await authApi.tenantLogin(email, password, tenantSlug);
+      const resolvedTenantSlug = tenantSlug?.trim().toLowerCase();
+
+      // Rol critico sin MFA configurado: token de alcance limitado ya persistido en api-client
+      // El usuario NO queda autenticado — user permanece null
+      if (result.mfaSetupRequired) {
+        return 'mfa_setup_required';
+      }
+
+      if (result.mfaRequired) {
+        if (!resolvedTenantSlug) {
+          throw new ApiError(
+            400,
+            'TENANT_SLUG_REQUIRED',
+            'El tenant es obligatorio para completar el MFA.',
+          );
+        }
+
+        setPendingTenantMfaLogin({
+          email,
+          password,
+          tenantSlug: resolvedTenantSlug,
+        });
+
+        return 'mfa_required';
+      }
+
       const profile = await authApi.me(tenantSlug);
       setUser(toAuthUser(profile));
+      clearPendingTenantMfaLogin();
 
       // Si el backend indica que se debe cambiar la contrasena, informar al formulario
       if (profile.passwordResetRequired) {
@@ -114,6 +161,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     [],
   );
+
+  const completeMfaLogin = useCallback(async (code: string) => {
+    const pendingLogin = getPendingTenantMfaLogin();
+    if (!pendingLogin) {
+      throw new ApiError(
+        400,
+        'MFA_CONTEXT_MISSING',
+        'La sesión MFA expiró. Inicia sesión nuevamente.',
+      );
+    }
+
+    const result = await authApi.tenantLogin(
+      pendingLogin.email,
+      pendingLogin.password,
+      pendingLogin.tenantSlug,
+      code,
+    );
+
+    if (result.mfaRequired) {
+      throw new ApiError(401, 'MFA_CODE_INVALID', 'Código incorrecto. Intenta de nuevo.');
+    }
+
+    const profile = await authApi.me(pendingLogin.tenantSlug);
+    setUser(toAuthUser(profile));
+    clearPendingTenantMfaLogin();
+  }, []);
 
   const logout = useCallback(async (tenantSlug?: string) => {
     await authApi.logout(tenantSlug);
@@ -126,10 +199,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: Boolean(user),
       isLoading,
       login,
+      completeMfaLogin,
       logout,
       refreshProfile,
     }),
-    [user, isLoading, login, logout, refreshProfile],
+    [user, isLoading, login, completeMfaLogin, logout, refreshProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

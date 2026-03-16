@@ -4,12 +4,14 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { OtpInput, Button } from '@iwana/ui';
-import { authApi, ApiError } from '@/lib/api-client';
+import { ApiError } from '@/lib/api-client';
+import { useAuth } from './AuthProvider';
 
 const TOTP_INTERVAL = 30;
 
 export function MfaVerifyForm() {
   const router = useRouter();
+  const { completeMfaLogin } = useAuth();
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +36,7 @@ export function MfaVerifyForm() {
     setError(null);
     setHasError(false);
     try {
-      await authApi.mfaVerify(codeToVerify);
+      await completeMfaLogin(codeToVerify);
       router.push('/dashboard');
     } catch (err) {
       setHasError(true);
@@ -91,7 +93,7 @@ export function MfaVerifyForm() {
         />
         <p className={`text-xs text-center ${isUrgent ? 'text-red-500' : 'text-gray-500'}`}>
           {isUrgent
-            ? `⚠ El código expira en ${secondsLeft}s`
+            ? `El código expira en ${secondsLeft}s. Solicita uno nuevo si vence.`
             : `El código expira en ${secondsLeft}s`}
         </p>
       </div>
@@ -130,9 +132,9 @@ export function MfaVerifyForm() {
       <button
         type="button"
         className="text-sm text-[#6B7280] hover:text-[#374151] underline-offset-4 hover:underline"
-        onClick={() => router.push('/auth/backup-code')}
+        onClick={() => router.push('/auth/login')}
       >
-        Usar código de respaldo
+        Volver al login
       </button>
     </form>
   );

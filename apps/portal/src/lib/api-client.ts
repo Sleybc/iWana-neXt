@@ -9,6 +9,22 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api/v
 const TENANT_SLUG_STORAGE_KEY = 'iwana.portal.tenant-slug';
 const ACCESS_TOKEN_STORAGE_KEY = 'iwana.portal.access-token';
 
+/**
+ * Clave localStorage para el token de alcance limitado emitido cuando un rol critico
+ * (ADMIN, NOC, ACCOUNTANT) no tiene MFA configurado.
+ * Solo existe durante el flujo de MFA setup. Se elimina al activar MFA.
+ * HLD-MOD02-ARQUITECTURA-v1.0 §6.3 (DA-MOD02-01)
+ */
+const MFA_SETUP_TOKEN_STORAGE_KEY = 'iwana.portal.mfa-setup-token';
+
+interface PendingTenantMfaLogin {
+  email: string;
+  password: string;
+  tenantSlug: string;
+}
+
+let pendingTenantMfaLogin: PendingTenantMfaLogin | null = null;
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -61,6 +77,34 @@ function persistAccessToken(token: string): void {
   window.localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, token);
 }
 
+/** Lee el token de alcance limitado para MFA setup desde localStorage. */
+function readMfaSetupToken(): string {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+  return window.localStorage.getItem(MFA_SETUP_TOKEN_STORAGE_KEY) ?? '';
+}
+
+/** Persiste el token limitado de MFA setup en localStorage. */
+function persistMfaSetupToken(token: string): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  if (!token) {
+    window.localStorage.removeItem(MFA_SETUP_TOKEN_STORAGE_KEY);
+    return;
+  }
+  window.localStorage.setItem(MFA_SETUP_TOKEN_STORAGE_KEY, token);
+}
+
+/** Elimina el token limitado de MFA setup del localStorage. */
+function clearMfaSetupTokenFromStorage(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.localStorage.removeItem(MFA_SETUP_TOKEN_STORAGE_KEY);
+}
+
 interface ApiEnvelope<T> {
   data: T;
 }
@@ -92,6 +136,18 @@ export interface AuditLogEntry {
   userAgent: string | null;
   requestId: string | null;
   createdAt: string;
+}
+
+export function setPendingTenantMfaLogin(payload: PendingTenantMfaLogin): void {
+  pendingTenantMfaLogin = payload;
+}
+
+export function getPendingTenantMfaLogin(): PendingTenantMfaLogin | null {
+  return pendingTenantMfaLogin;
+}
+
+export function clearPendingTenantMfaLogin(): void {
+  pendingTenantMfaLogin = null;
 }
 
 interface RequestOptions extends RequestInit {
@@ -201,16 +257,17 @@ async function request<T>(
 }
 
 export const authApi = {
-  tenantLogin: async (email: string, password: string, tenantSlug?: string) => {
+  tenantLogin: async (email: string, password: string, tenantSlug?: string, totpCode?: string) => {
     const resolvedTenantSlug = getTenantSlug(tenantSlug);
     const response = await request<{
       accessToken: string;
       mfaRequired?: boolean;
+      mfaSetupRequired?: boolean;
     }>(
       '/auth/login',
       {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, ...(totpCode ? { totpCode } : {}) }),
         skipAuth: true,
         skipRefreshRetry: true,
       },
@@ -220,8 +277,14 @@ export const authApi = {
     // Persistimos el ultimo tenant valido para reutilizarlo en MFA y reingresos.
     persistTenantSlug(resolvedTenantSlug);
 
-    if (response.accessToken) {
+    if (response.mfaSetupRequired && response.accessToken) {
+      // Token de alcance limitado: almacenar por separado, NO como token de sesion
+      persistMfaSetupToken(response.accessToken);
+      persistAccessToken('');
+    } else if (response.accessToken && !response.mfaRequired) {
       persistAccessToken(response.accessToken);
+    } else if (response.mfaRequired) {
+      persistAccessToken('');
     }
 
     return response;
@@ -230,7 +293,7 @@ export const authApi = {
   mfaVerify: async (code: string) => {
     const response = await request<{ accessToken: string }>('/auth/mfa/verify', {
       method: 'POST',
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ totpCode: code }),
     });
 
     if (response.accessToken) {
@@ -239,6 +302,30 @@ export const authApi = {
 
     return response;
   },
+
+  forgotPassword: (email: string, tenantSlug?: string) =>
+    request<{ message: string }>(
+      '/auth/forgot-password',
+      {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+        skipAuth: true,
+        skipRefreshRetry: true,
+      },
+      tenantSlug,
+    ),
+
+  resetPassword: (token: string, newPassword: string, email?: string, tenantSlug?: string) =>
+    request<{ message: string }>(
+      '/auth/reset-password',
+      {
+        method: 'POST',
+        body: JSON.stringify({ token, newPassword, ...(email ? { email } : {}) }),
+        skipAuth: true,
+        skipRefreshRetry: true,
+      },
+      tenantSlug,
+    ),
 
   me: (tenantSlug?: string) => request<JwtProfile>('/auth/me', undefined, tenantSlug),
 
@@ -264,6 +351,7 @@ export const authApi = {
       // aunque el backend falle para no bloquear al usuario en la UI.
     } finally {
       persistAccessToken('');
+      clearPendingTenantMfaLogin();
     }
   },
 
@@ -296,6 +384,97 @@ export const authApi = {
       },
       tenantSlug,
     ),
+
+  /**
+   * Inicia el setup de MFA: genera el QR code y el secret TOTP.
+   * Requiere el token de alcance limitado (scope='mfa-setup') almacenado en localStorage.
+   * Solo disponible para roles criticos (ADMIN, NOC, ACCOUNTANT) sin MFA configurado.
+   * HLD-MOD02-ARQUITECTURA-v1.0 §3.1 (Paso 4)
+   */
+  mfaSetup: async (tenantSlug?: string) => {
+    const mfaSetupToken = readMfaSetupToken();
+    if (!mfaSetupToken) {
+      throw new ApiError(
+        401,
+        'MFA_SETUP_TOKEN_MISSING',
+        'No hay token de configuración MFA. Inicia sesión de nuevo.',
+      );
+    }
+
+    const resolvedTenantSlug = getTenantSlug(tenantSlug);
+    const headers = new Headers({
+      'Content-Type': 'application/json',
+      'X-Tenant-Slug': resolvedTenantSlug,
+      Authorization: `Bearer ${mfaSetupToken}`,
+    });
+
+    const res = await fetch(`${API_BASE}/auth/mfa/setup`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+    });
+
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as Record<string, string>;
+      throw new ApiError(
+        res.status,
+        body['code'] ?? 'UNKNOWN',
+        body['message'] ?? 'Error al iniciar configuración MFA',
+      );
+    }
+
+    const body = (await res.json()) as { data: { qrCodeBase64: string; otpauthUri: string } };
+    return body.data;
+  },
+
+  /**
+   * Verifica el primer codigo TOTP para activar MFA.
+   * Usa el token de alcance limitado almacenado durante el flujo de setup.
+   * Tras activacion exitosa, el frontend debe llamar clearMfaSetupToken().
+   * HLD-MOD02-ARQUITECTURA-v1.0 §3.1 (Paso 4)
+   */
+  mfaVerifySetup: async (totpCode: string, tenantSlug?: string) => {
+    const mfaSetupToken = readMfaSetupToken();
+    if (!mfaSetupToken) {
+      throw new ApiError(
+        401,
+        'MFA_SETUP_TOKEN_MISSING',
+        'No hay token de configuración MFA. Inicia sesión de nuevo.',
+      );
+    }
+
+    const resolvedTenantSlug = getTenantSlug(tenantSlug);
+    const headers = new Headers({
+      'Content-Type': 'application/json',
+      'X-Tenant-Slug': resolvedTenantSlug,
+      Authorization: `Bearer ${mfaSetupToken}`,
+    });
+
+    const res = await fetch(`${API_BASE}/auth/mfa/verify`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ totpCode }),
+      credentials: 'include',
+    });
+
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as Record<string, string>;
+      throw new ApiError(
+        res.status,
+        body['code'] ?? 'UNKNOWN',
+        body['message'] ?? 'Error al verificar código MFA',
+      );
+    }
+
+    const body = (await res.json()) as { data: { mfaEnabled: boolean } };
+    return body.data;
+  },
+
+  /**
+   * Elimina el token de alcance limitado de MFA setup del localStorage.
+   * Llamar despues de activar MFA exitosamente para no dejar token residual.
+   */
+  clearMfaSetupToken: clearMfaSetupTokenFromStorage,
 };
 
 export const auditApi = {

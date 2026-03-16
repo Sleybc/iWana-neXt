@@ -22,6 +22,12 @@ export interface JwtPayload {
   type: 'platform' | 'tenant';
   /** Indica si el usuario debe cambiar su contrasena en el siguiente ingreso (primer acceso con credenciales temporales) */
   passwordResetRequired?: boolean;
+  /**
+   * Alcance del token. Si es 'mfa-setup', el token es de uso limitado:
+   * solo permite acceder a POST /auth/mfa/setup y POST /auth/mfa/verify.
+   * Ausente o undefined = token completo sin restricciones de ruta.
+   */
+  scope?: 'mfa-setup';
   iat?: number;
   exp?: number;
 }

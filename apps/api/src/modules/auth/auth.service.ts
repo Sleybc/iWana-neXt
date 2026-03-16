@@ -16,7 +16,7 @@ import * as qrcode from 'qrcode';
 import Redis from 'ioredis';
 import { Repository } from 'typeorm';
 import { PlatformUser, RefreshToken, User } from '@iwana/db';
-import { UserStatus, AuditAction } from '@iwana/shared';
+import { UserStatus, AuditAction, UserRole } from '@iwana/shared';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { DataSource } from 'typeorm';
 import { REDIS_CLIENT } from '../redis/redis.module';
@@ -46,6 +46,9 @@ const MAX_FAILED_ATTEMPTS = 5;
 
 /** TTL del access token en segundos (15 minutos) */
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
+
+/** Roles que requieren MFA obligatorio segun RF-AUTH-04 (HLD-MOD02 §3.2) */
+const MFA_REQUIRED_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.NOC, UserRole.ACCOUNTANT];
 
 /** TTL del refresh token en segundos (7 dias) */
 const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
@@ -272,6 +275,18 @@ export class AuthService {
         }
       }
 
+      // Enforcement MFA por rol critico: si el rol requiere MFA pero no esta configurado,
+      // emitir token de alcance limitado (scope='mfa-setup') en lugar de tokens completos.
+      // RF-AUTH-04, RF-MFA-04 (HLD-MOD02 §3.2 — DA-MOD02-01)
+      if (MFA_REQUIRED_ROLES.includes(user.role as UserRole) && !user.mfaEnabled) {
+        const { accessToken } = this.signAccessToken(user, 'mfa-setup');
+        return {
+          accessToken,
+          mfaSetupRequired: true,
+          refreshToken: '',
+        };
+      }
+
       // Reset de intentos y actualizacion de lastLoginAt
       await qr.manager.update(User, user.id, {
         failedLoginAttempts: 0,
@@ -372,6 +387,16 @@ export class AuthService {
         userAgent,
         existing.familyId, // Mantener la familia de sesion
       );
+
+      // Registrar rotacion de sesion en audit trail — RF-AUD-02 (HLD-MOD02 §4.2)
+      void this.auditService.log({
+        action: AuditAction.REFRESH,
+        entityType: 'User',
+        entityId: user.id,
+        userId: user.id,
+        ipAddress: ipAddress ?? null,
+        userAgent: userAgent ?? null,
+      });
 
       return { accessToken, refreshToken: newRawRefreshToken };
     });
@@ -624,6 +649,14 @@ export class AuthService {
         { userId: user.id, revokedAt: undefined },
         { revokedAt: new Date(), revokeReason: 'PASSWORD_CHANGE' },
       );
+
+      // Registrar reset completado en audit trail — RF-AUD-02 (HLD-MOD02 §4.2)
+      void this.auditService.log({
+        action: AuditAction.PASSWORD_RESET_COMPLETED,
+        entityType: 'User',
+        entityId: user.id,
+        userId: user.id,
+      });
     });
 
     // Enviar correo de confirmacion si el cliente incluyo el email en el DTO
@@ -711,9 +744,9 @@ export class AuthService {
 
       await qr.manager.save(User, user);
 
-      // Registrar verificacion de email en audit trail
+      // Registrar verificacion de email en audit trail — RF-AUD-02 (HLD-MOD02 §4.2)
       void this.auditService.log({
-        action: AuditAction.UPDATE,
+        action: AuditAction.EMAIL_VERIFIED,
         entityType: 'User',
         entityId: user.id,
         userId: user.id,
@@ -844,8 +877,13 @@ export class AuthService {
   /**
    * Firma un access token JWT RS256 con los claims del usuario.
    * Incluye JTI unico para soporte de blacklist de tokens revocados.
+   *
+   * @param user - Entidad User del tenant
+   * @param scope - Si es 'mfa-setup', emite un token de alcance limitado que solo
+   *   permite acceder a /auth/mfa/setup y /auth/mfa/verify. Usar cuando un rol
+   *   critico (ADMIN, NOC, ACCOUNTANT) no tiene MFA configurado.
    */
-  private signAccessToken(user: User): { accessToken: string; jti: string } {
+  private signAccessToken(user: User, scope?: 'mfa-setup'): { accessToken: string; jti: string } {
     const jti = crypto.randomUUID();
     const tenantContext = TenantContext.getOrThrow();
     const payload: Omit<JwtPayload, 'iat' | 'exp'> = {
@@ -858,6 +896,8 @@ export class AuthService {
       type: 'tenant',
       // Indica al frontend si el usuario debe cambiar su contrasena en el primer ingreso
       passwordResetRequired: user.passwordResetRequired ?? false,
+      // Scope limitado para flujo de MFA setup — ausente en tokens completos
+      ...(scope ? { scope } : {}),
     };
 
     const accessToken = this.jwtService.sign(payload, {
@@ -924,6 +964,7 @@ export class AuthService {
   /**
    * Registra un intento fallido de login.
    * Activa el lockout despues de MAX_FAILED_ATTEMPTS intentos consecutivos.
+   * Emite audit ACCOUNT_LOCKED cuando se alcanza el limite — RF-AUD-02 (HLD-MOD02 §4.2).
    */
   private async registerFailedAttempt(
     manager: import('typeorm').EntityManager,
@@ -934,6 +975,14 @@ export class AuthService {
 
     if (newAttempts >= MAX_FAILED_ATTEMPTS) {
       updates.lockedUntil = new Date(Date.now() + LOCKOUT_DURATION_SECONDS * 1000);
+      // Emitir evento de bloqueo de cuenta en audit trail
+      void this.auditService.log({
+        action: AuditAction.ACCOUNT_LOCKED,
+        entityType: 'User',
+        entityId: user.id,
+        userId: user.id,
+        newValue: { lockedUntil: updates.lockedUntil, failedLoginAttempts: newAttempts },
+      });
     }
 
     await manager.update(User, user.id, updates);
