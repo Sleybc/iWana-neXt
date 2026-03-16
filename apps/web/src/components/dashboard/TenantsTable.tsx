@@ -150,7 +150,7 @@ function ActionsDropdown({
               setOpen(false);
               router.push(`/tenants/${tenantId}/settings`);
             }}
-            className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800 rounded-t-xl transition-colors"
+            className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800 rounded-t-xl last:rounded-b-xl transition-colors"
           >
             Ver configuración
           </button>
@@ -164,7 +164,7 @@ function ActionsDropdown({
                 setOpen(false);
                 onSuspend!(tenantId);
               }}
-              className="w-full px-4 py-2.5 text-left text-sm text-error-700 hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10 transition-colors"
+              className="w-full px-4 py-2.5 text-left text-sm text-error-700 hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10 last:rounded-b-xl transition-colors"
             >
               Suspender
             </button>
@@ -179,7 +179,7 @@ function ActionsDropdown({
                 setOpen(false);
                 onActivate!(tenantId);
               }}
-              className="w-full px-4 py-2.5 text-left text-sm text-success-700 hover:bg-success-50 dark:text-success-400 dark:hover:bg-success-500/10 transition-colors"
+              className="w-full px-4 py-2.5 text-left text-sm text-success-700 hover:bg-success-50 dark:text-success-400 dark:hover:bg-success-500/10 last:rounded-b-xl transition-colors"
             >
               Reactivar
             </button>
@@ -194,7 +194,7 @@ function ActionsDropdown({
                 setOpen(false);
                 onRetryProvisioning!(tenantId);
               }}
-              className="w-full px-4 py-2.5 text-left text-sm text-warning-700 hover:bg-warning-50 dark:text-warning-400 dark:hover:bg-warning-500/10 transition-colors rounded-b-xl"
+              className="w-full px-4 py-2.5 text-left text-sm text-warning-700 hover:bg-warning-50 dark:text-warning-400 dark:hover:bg-warning-500/10 last:rounded-b-xl transition-colors"
             >
               Reintentar provisioning
             </button>
@@ -407,7 +407,13 @@ export function TenantsTable({
 
                       {/* Columna Fecha creación */}
                       <td className="px-6 py-4 text-gray-500 dark:text-gray-400">
-                        {tenant.createdAt}
+                        {tenant.createdAt
+                          ? new Date(tenant.createdAt).toLocaleDateString('es-CO', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                            })
+                          : '—'}
                       </td>
 
                       {/* Columna Acciones: dropdown 3 puntos */}
