@@ -62,6 +62,36 @@ export function getStoredAccessToken(): string {
   return window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) ?? '';
 }
 
+/**
+ * Decodifica el payload de un JWT sin verificar la firma (solo cliente).
+ * Retorna null si el token es inválido o está expirado.
+ */
+function decodeJwtPayload(token: string): { exp?: number } | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))) as {
+      exp?: number;
+    };
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Verifica si el access token almacenado tiene payload válido y no está expirado.
+ * Usa un margen de 30 segundos para anticipar expiración inminente.
+ */
+export function isStoredTokenValid(): boolean {
+  const token = getStoredAccessToken();
+  if (!token) return false;
+  const payload = decodeJwtPayload(token);
+  if (!payload?.exp) return false;
+  const nowSec = Math.floor(Date.now() / 1000);
+  return payload.exp > nowSec + 30;
+}
+
 export function persistAccessToken(token: string): void {
   if (!isBrowser()) {
     return;
@@ -121,8 +151,10 @@ async function request<T>(path: string, options?: RequestOptions): Promise<T> {
         },
         skipRefreshRetry: true,
       });
-    } catch {
-      // El refresh falló; devolvemos el error original para mostrar feedback claro en UI.
+    } catch (refreshError) {
+      // El refresh falló: re-lanzamos para que el llamador reciba un error claro
+      // en vez de caer en el bloque `if (!res.ok)` de la respuesta original.
+      throw refreshError;
     }
   }
 
@@ -453,6 +485,7 @@ export interface UserListItem {
   status: string;
   tenantId: string;
   mfaEnabled: boolean;
+  mfaRequired: boolean;
   emailVerified: boolean;
   passwordResetRequired: boolean;
   lastLoginAt: string | null;
@@ -487,6 +520,7 @@ export interface CreateUserPayload {
   documentType?: string;
   documentNumber?: string;
   avatarUrl?: string;
+  mfaRequired?: boolean;
 }
 
 export interface UpdateUserPayload {
@@ -500,6 +534,7 @@ export interface UpdateUserPayload {
   documentType?: string;
   documentNumber?: string;
   avatarUrl?: string;
+  mfaRequired?: boolean;
 }
 
 // Entrada de audit log — registro de una operación CUD en el sistema
