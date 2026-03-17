@@ -57,6 +57,8 @@ export const tenantCreateSchema = z.object({
   phone: optionalPhone,
   website: optionalUrl,
   economicSector: z.string().max(10).optional().or(z.literal('')),
+  // Seguridad
+  mfaRequiredAll: z.boolean().default(false),
 });
 
 type TenantCreateFormValues = z.infer<typeof tenantCreateSchema>;
@@ -98,7 +100,7 @@ export function TenantCreateForm() {
     formState: { errors, isSubmitting },
   } = useForm<TenantCreateFormValues>({
     resolver: zodResolver(tenantCreateSchema) as never,
-    defaultValues: { maxSubscribers: 0, countryCode: 'CO' },
+    defaultValues: { maxSubscribers: 0, countryCode: 'CO', mfaRequiredAll: false },
   });
 
   const statusLabel = useMemo(() => {
@@ -133,6 +135,11 @@ export function TenantCreateForm() {
         ...(values.phone ? { phone: values.phone } : {}),
         ...(values.website ? { website: values.website } : {}),
         ...(values.economicSector ? { economicSector: values.economicSector } : {}),
+        settings: {
+          features: {
+            mfa_required_all: values.mfaRequiredAll ?? false,
+          },
+        },
       };
 
       const created = await tenantApi.create(payload);
@@ -276,6 +283,19 @@ export function TenantCreateForm() {
                 {...register('maxSubscribers', { valueAsNumber: true })}
               />
               <p className="mt-1 text-xs text-gray-500">0 = sin límite definido.</p>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 p-3 dark:border-dark-border">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Seguridad
+              </p>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" className="rounded" {...register('mfaRequiredAll')} />
+                Requerir verificación en dos pasos (MFA) a todos los usuarios
+              </label>
+              <p className="mt-1 text-xs text-gray-400">
+                Si se activa, cada usuario será redirigido al setup de MFA en su primer ingreso.
+              </p>
             </div>
           </div>
         )}
