@@ -495,3 +495,92 @@ export const auditApi = {
     );
   },
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONTRATOS SELF-SERVICE DEL TENANT AUTENTICADO
+// Endpoints exclusivos del portal empresarial — nunca usar tenants/:id desde portal.
+// HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §3.2
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Estado del tenant — alineado con TenantStatus del backend */
+export type TenantStatus = 'ACTIVE' | 'SUSPENDED' | 'PROVISIONING' | 'PROVISIONING_FAILED';
+
+/** Datos base del tenant autenticado para el dashboard empresarial */
+export interface TenantSelf {
+  id: string;
+  name: string;
+  slug: string;
+  status: TenantStatus;
+  contactEmail: string;
+  legalName: string | null;
+  nit: string | null;
+  city: string | null;
+  department: string | null;
+  countryCode: string | null;
+  phone: string | null;
+  website: string | null;
+  createdAt: string;
+}
+
+/** Configuración operativa del tenant autenticado */
+export interface TenantSelfSettings {
+  timezone: string;
+  currency: string;
+  language: string;
+  country: string;
+  features: {
+    billing: boolean;
+    mfa_required_all: boolean;
+  };
+}
+
+/** Alerta de onboarding del dashboard del tenant */
+export interface DashboardAlert {
+  id: string;
+  severity: 'info' | 'warning' | 'error';
+  title: string;
+  description: string;
+  href?: string;
+}
+
+/** Métricas iniciales del dashboard — los campos opcionales son null si la fuente no existe */
+export interface DashboardMetrics {
+  configuredUsers: number | null;
+  mfaCoverage: number | null;
+  pendingAlerts: number;
+  auditEventsLast7d: number | null;
+}
+
+/** Respuesta completa del summary del dashboard empresarial */
+export interface DashboardSummary {
+  tenant: TenantSelf;
+  settings: TenantSelfSettings;
+  metrics: DashboardMetrics;
+  alerts: DashboardAlert[];
+}
+
+/**
+ * API de tenant self-service para el portal empresarial.
+ *
+ * IMPORTANTE: estos métodos consumen contratos propios del tenant autenticado.
+ * Nunca usan /tenants/:id — ese contrato es de administración de plataforma.
+ */
+export const tenantSelfApi = {
+  /** Retorna los datos base del tenant autenticado. */
+  getMe: (tenantSlug?: string) => request<TenantSelf>('/tenants/me', undefined, tenantSlug),
+
+  /** Retorna la configuración operativa del tenant autenticado. */
+  getMeSettings: (tenantSlug?: string) =>
+    request<TenantSelfSettings>('/tenants/me/settings', undefined, tenantSlug),
+};
+
+/**
+ * API del dashboard empresarial del portal.
+ * El summary agrega datos del tenant, métricas y alertas de onboarding.
+ * Solo disponible para el rol ADMIN — otros roles ven fallback controlado.
+ */
+export const dashboardApi = {
+  /** Retorna el summary completo del dashboard (solo ADMIN). */
+  getSummary: (tenantSlug?: string) =>
+    request<DashboardSummary>('/tenants/me/summary', undefined, tenantSlug),
+};

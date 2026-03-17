@@ -55,19 +55,30 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+/**
+ * Mapea el rol del usuario a etiqueta legible para el panel empresarial.
+ * Alineado con UserRole enum del backend (valores en UPPER_CASE).
+ * Gotcha: los roles vienen como 'ADMIN', 'NOC', etc. — nunca como 'tenant_admin'.
+ * CLAUDE.md §Gotchas conocidos — Auth / MFA
+ */
 function roleToDisplayName(role: string): string {
-  if (role === 'tenant_admin') {
-    return 'Administrador del tenant';
-  }
-  if (role === 'tenant_support') {
-    return 'Soporte del tenant';
-  }
-  return 'Suscriptor';
+  const labels: Record<string, string> = {
+    ADMIN: 'Administrador',
+    NOC: 'Operador NOC',
+    ACCOUNTANT: 'Contabilidad',
+    SUPPORT: 'Soporte',
+    SALES: 'Ventas',
+    TECHNICIAN: 'Técnico',
+    HR: 'Recursos Humanos',
+    AUDITOR: 'Auditor',
+    SUBSCRIBER: 'Suscriptor',
+    SYSTEM_ADMIN: 'Admin de plataforma',
+    IWANA_SUPPORT: 'Soporte iWana',
+  };
+  return labels[role] ?? role;
 }
 
 function toAuthUser(profile: JwtProfile): AuthUser {
-  const tenantCode = profile.tenantId ? profile.tenantId.slice(0, 8) : 'n/a';
-
   return {
     id: profile.sub,
     emailHash: profile.email,
@@ -75,7 +86,8 @@ function toAuthUser(profile: JwtProfile): AuthUser {
     type: profile.type,
     tenantId: profile.tenantId,
     displayName: roleToDisplayName(profile.role),
-    subtitle: `Tenant: ${tenantCode}...`,
+    // Subtitle muestra el rol — el nombre del tenant se carga desde tenantSelfApi
+    subtitle: roleToDisplayName(profile.role),
   };
 }
 

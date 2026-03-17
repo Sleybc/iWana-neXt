@@ -3,9 +3,28 @@
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronDown, LogOut, Settings, User as UserIcon, Headphones } from 'lucide-react';
+import { ChevronDown, LogOut, Settings, User as UserIcon } from 'lucide-react';
 import { cn } from '@iwana/ui';
 import { useAuth } from '@/components/auth/AuthProvider';
+
+/**
+ * Mapea el rol interno del tenant a texto legible para el panel empresarial.
+ * Alineado con UserRole enum del backend (valores en UPPER_CASE).
+ */
+function roleToLabel(role: string): string {
+  const labels: Record<string, string> = {
+    ADMIN: 'Administrador',
+    NOC: 'Operador NOC',
+    ACCOUNTANT: 'Contabilidad',
+    SUPPORT: 'Soporte',
+    SALES: 'Ventas',
+    TECHNICIAN: 'Técnico',
+    HR: 'Recursos Humanos',
+    AUDITOR: 'Auditor',
+    SUBSCRIBER: 'Suscriptor',
+  };
+  return labels[role] ?? role;
+}
 
 export const DropdownUser = () => {
   const router = useRouter();
@@ -18,9 +37,9 @@ export const DropdownUser = () => {
   const triggerAriaProps = {
     'aria-controls': menuId,
     'aria-expanded': dropdownOpen,
-    'aria-haspopup': 'menu',
+    'aria-haspopup': 'menu' as const,
     'aria-label': 'Menú de usuario',
-  } as const;
+  };
 
   // Cerrar al hacer click fuera del dropdown
   useEffect(() => {
@@ -60,9 +79,10 @@ export const DropdownUser = () => {
     }
   };
 
-  const displayName = user?.displayName ?? 'Suscriptor';
+  // Usar el rol como display name contextual para el panel empresarial
+  const displayName = user ? roleToLabel(user.role) : 'Usuario';
   const subtitle = user?.subtitle ?? 'Sesión no inicializada';
-  const emailHash = user?.emailHash ?? 'Sin datos';
+  const emailHash = user?.emailHash ?? '';
 
   return (
     <div className="relative">
@@ -106,23 +126,18 @@ export const DropdownUser = () => {
           <span className="block text-sm font-medium text-gray-800 dark:text-white">
             {displayName}
           </span>
-          <span className="block text-xs text-gray-500 dark:text-gray-400">{emailHash}</span>
+          {emailHash && (
+            <span className="block text-xs text-gray-500 dark:text-gray-400 truncate">
+              {emailHash}
+            </span>
+          )}
         </div>
 
+        {/* Opciones de navegación — solo rutas implementadas */}
         <ul
           className="flex flex-col gap-1 p-2 border-b border-gray-100 dark:border-dark-border-2"
           role="none"
         >
-          <li role="none">
-            <Link
-              href="/profile"
-              role="menuitem"
-              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-dark-surface-4 dark:hover:text-white"
-            >
-              <UserIcon className="w-4 h-4" aria-hidden="true" />
-              Mi perfil
-            </Link>
-          </li>
           <li role="none">
             <Link
               href="/settings"
@@ -130,17 +145,7 @@ export const DropdownUser = () => {
               className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-dark-surface-4 dark:hover:text-white"
             >
               <Settings className="w-4 h-4" aria-hidden="true" />
-              Configuración
-            </Link>
-          </li>
-          <li role="none">
-            <Link
-              href="/support"
-              role="menuitem"
-              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-dark-surface-4 dark:hover:text-white"
-            >
-              <Headphones className="w-4 h-4" aria-hidden="true" />
-              Soporte
+              Configuración de empresa
             </Link>
           </li>
         </ul>
