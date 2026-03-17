@@ -6,16 +6,21 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import Redis from 'ioredis';
-import { Repository } from 'typeorm';
-import { Tenant } from '@iwana/db';
+import { DataSource, Repository } from 'typeorm';
+import { Tenant, isValidSchemaName } from '@iwana/db';
 import { AuditAction, TenantStatus } from '@iwana/shared';
 import { AuditService } from '../audit/audit.service';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { CreateTenantDto, TenantResponseDto, UpdateTenantDto } from './dto/tenant.dto';
 import { TenantSettingsResponseDto, UpdateTenantSettingsDto } from './dto/tenant-settings.dto';
 import { TenantSelfResponseDto, TenantSelfSettingsResponseDto } from './dto/tenant-self.dto';
+import {
+  UpdateTenantSelfBrandingDto,
+  UpdateTenantSelfProfileDto,
+  UpdateTenantSelfSettingsDto,
+} from './dto/tenant-self-update.dto';
 
 const TENANT_CACHE_TTL_SECONDS = 5 * 60;
 
@@ -37,10 +42,10 @@ const DEFAULT_TENANT_SETTINGS = {
  * - CRUD completo de tenants en public.tenants
  * - Derivacion y validacion del schema_name a partir del slug
  *
- * Fuera del alcance de Sprint 1 (se implementa en Sprint 1 Semana 2+):
- * - TenantProvisioningService (BullMQ worker que ejecuta tenant_template.sql)
- * - TenantSeedService (seed inicial del admin del tenant)
- * - Cache Redis de tenant (TTL 5 min)
+ * El provisioning real del schema y el seed inicial viven fuera de este servicio:
+ * - TenantController crea el tenant y luego encola provisioning via BullMQ.
+ * - El worker ejecuta tenant_template.sql y el seed inicial del ADMIN.
+ * - Este servicio conserva la logica CRUD y de configuracion sobre public.tenants.
  *
  * Referencias:
  * - HLD-MOD01-ARQUITECTURA-v1.0 Seccion 1 (@iwana/tenant)
@@ -53,6 +58,8 @@ export class TenantService {
   constructor(
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
     @Inject(REDIS_CLIENT)
     private readonly redis: Redis,
     private readonly auditService: AuditService,
@@ -107,9 +114,6 @@ export class TenantService {
     const saved = await this.tenantRepo.save(tenant);
     await this.cacheTenant(saved);
     this.logger.log(`Tenant creado: id=${saved.id} slug=${saved.slug}`);
-
-    // TODO Sprint 1 Semana 2: encolar job BullMQ de provisioning de schema
-    // await this.tenantProvisioningQueue.add('provision', { tenantId: saved.id, schemaName });
 
     return this.toResponseDto(saved);
   }
@@ -166,6 +170,154 @@ export class TenantService {
     return this.toSelfSettingsDto(tenant);
   }
 
+  /**
+   * Actualiza solo campos tenant-managed del perfil empresarial self-service.
+   * `name`, `slug` y `status` permanecen fuera del alcance hasta confirmación de ownership.
+   */
+  async updateTenantSelfProfile(
+    tenantId: string,
+    dto: UpdateTenantSelfProfileDto,
+    actorUserId?: string,
+  ): Promise<TenantSelfResponseDto> {
+    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new NotFoundException(`Tenant con id "${tenantId}" no encontrado.`);
+    }
+
+    const oldValue = this.toSelfResponseDto(tenant);
+
+    if (dto.contactEmail !== undefined) tenant.contactEmail = dto.contactEmail;
+    if (dto.legalName !== undefined) tenant.legalName = dto.legalName ?? null;
+    if (dto.nit !== undefined) tenant.nit = dto.nit ?? null;
+    if (dto.city !== undefined) tenant.city = dto.city ?? null;
+    if (dto.department !== undefined) tenant.department = dto.department ?? null;
+    if (dto.countryCode !== undefined) tenant.countryCode = dto.countryCode ?? null;
+    if (dto.phone !== undefined) tenant.phone = dto.phone ?? null;
+    if (dto.website !== undefined) tenant.website = dto.website ?? null;
+
+    const saved = await this.tenantRepo.save(tenant);
+    await this.invalidateTenantCache(saved.id, saved.slug);
+    await this.cacheTenant(saved);
+
+    const newValue = this.toSelfResponseDto(saved);
+
+    await this.auditService.log({
+      tenantId: saved.id,
+      schemaName: saved.schemaName,
+      userId: actorUserId ?? null,
+      action: AuditAction.UPDATE,
+      entityType: 'TenantProfile',
+      entityId: saved.id,
+      oldValue: oldValue as unknown as Record<string, unknown>,
+      newValue: newValue as unknown as Record<string, unknown>,
+    });
+
+    return newValue;
+  }
+
+  /**
+   * Actualiza solo settings tenant-managed del portal empresarial.
+   * Cualquier campo de plataforma queda fuera del contrato self-service.
+   */
+  async updateTenantSelfSettings(
+    tenantId: string,
+    dto: UpdateTenantSelfSettingsDto,
+    actorUserId?: string,
+  ): Promise<TenantSelfSettingsResponseDto> {
+    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new NotFoundException(`Tenant con id "${tenantId}" no encontrado.`);
+    }
+
+    if (dto.timezone !== undefined) {
+      this.assertValidTimezone(dto.timezone);
+    }
+
+    const oldValue = this.toSelfSettingsDto(tenant);
+    const currentSettings = this.asRecord(tenant.settings);
+    const currentFeatures = this.asRecord(currentSettings['features']);
+
+    tenant.settings = {
+      ...currentSettings,
+      ...(dto.timezone !== undefined ? { timezone: dto.timezone } : {}),
+      ...(dto.currency !== undefined ? { currency: dto.currency } : {}),
+      ...(dto.language !== undefined ? { language: dto.language } : {}),
+      ...(dto.country !== undefined ? { country: dto.country } : {}),
+      ...(dto.features
+        ? {
+            features: {
+              ...currentFeatures,
+              ...(dto.features.mfa_required_all !== undefined
+                ? { mfa_required_all: dto.features.mfa_required_all }
+                : {}),
+            },
+          }
+        : {}),
+    };
+
+    const saved = await this.tenantRepo.save(tenant);
+    await this.invalidateTenantCache(saved.id, saved.slug);
+    await this.cacheTenant(saved);
+
+    const newValue = this.toSelfSettingsDto(saved);
+
+    await this.auditService.log({
+      tenantId: saved.id,
+      schemaName: saved.schemaName,
+      userId: actorUserId ?? null,
+      action: AuditAction.UPDATE,
+      entityType: 'TenantSettings',
+      entityId: saved.id,
+      oldValue: oldValue as unknown as Record<string, unknown>,
+      newValue: newValue as unknown as Record<string, unknown>,
+    });
+
+    return newValue;
+  }
+
+  /**
+   * Actualiza URLs de logo, sello y preferencia de visualización del tenant.
+   * Solo acepta URLs HTTPS — validado en DTO (previene XSS via data: URIs).
+   * Campos de plataforma no están expuestos en este contrato.
+   */
+  async updateTenantSelfBranding(
+    tenantId: string,
+    dto: UpdateTenantSelfBrandingDto,
+    actorUserId?: string,
+  ): Promise<TenantSelfResponseDto> {
+    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new NotFoundException(`Tenant con id "${tenantId}" no encontrado.`);
+    }
+
+    const oldValue = this.toSelfResponseDto(tenant);
+
+    if (dto.logoLightUrl !== undefined) tenant.logoLightUrl = dto.logoLightUrl ?? null;
+    if (dto.logoDarkUrl !== undefined) tenant.logoDarkUrl = dto.logoDarkUrl ?? null;
+    if (dto.sealLightUrl !== undefined) tenant.sealLightUrl = dto.sealLightUrl ?? null;
+    if (dto.sealDarkUrl !== undefined) tenant.sealDarkUrl = dto.sealDarkUrl ?? null;
+    if (dto.showTenantName !== undefined) tenant.showTenantName = dto.showTenantName;
+
+    const saved = await this.tenantRepo.save(tenant);
+    await this.invalidateTenantCache(saved.id, saved.slug);
+    await this.cacheTenant(saved);
+
+    const newValue = this.toSelfResponseDto(saved);
+
+    await this.auditService.log({
+      tenantId: saved.id,
+      schemaName: saved.schemaName,
+      userId: actorUserId ?? null,
+      action: AuditAction.UPDATE,
+      entityType: 'TenantBranding',
+      entityId: saved.id,
+      oldValue: oldValue as unknown as Record<string, unknown>,
+      newValue: newValue as unknown as Record<string, unknown>,
+    });
+
+    return newValue;
+  }
+
   /** Mapea Tenant a TenantSelfResponseDto — solo campos del panel empresarial. */
   private toSelfResponseDto(tenant: Tenant): TenantSelfResponseDto {
     const dto = new TenantSelfResponseDto();
@@ -182,6 +334,12 @@ export class TenantService {
     dto.phone = tenant.phone ?? null;
     dto.website = tenant.website ?? null;
     dto.createdAt = tenant.createdAt;
+    // Branding — nullable por defecto para tenants sin configuración
+    dto.logoLightUrl = tenant.logoLightUrl ?? null;
+    dto.logoDarkUrl = tenant.logoDarkUrl ?? null;
+    dto.sealLightUrl = tenant.sealLightUrl ?? null;
+    dto.sealDarkUrl = tenant.sealDarkUrl ?? null;
+    dto.showTenantName = tenant.showTenantName ?? true;
     return dto;
   }
 
@@ -533,14 +691,21 @@ export class TenantService {
       throw new NotFoundException(`Tenant con id "${id}" no encontrado.`);
     }
 
-    //TODO: Drop schema PostgreSQL cuando esté implementado el tenant-provisioning service
-    //await this.provisioningService.dropSchema(tenant.schemaName);
+    if (!isValidSchemaName(tenant.schemaName)) {
+      throw new BadRequestException(
+        `Schema name invalido para eliminacion: "${tenant.schemaName}". Operacion abortada.`,
+      );
+    }
+
+    await this.dataSource.transaction(async (manager) => {
+      // El schemaName ya fue validado con la regla canonica tenant_*.
+      await manager.query(`DROP SCHEMA IF EXISTS "${tenant.schemaName}" CASCADE`);
+      await manager.delete(Tenant, { id: tenant.id });
+    });
 
     // Eliminar de cache
     await this.invalidateTenantCache(tenant.id, tenant.slug);
 
-    // Eliminar de la base de datos
-    await this.tenantRepo.remove(tenant);
     this.logger.log(`Tenant eliminado: id=${id} schema=${tenant.schemaName}`);
   }
 }
