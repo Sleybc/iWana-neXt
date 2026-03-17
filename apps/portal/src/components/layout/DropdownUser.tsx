@@ -117,7 +117,7 @@ export const DropdownUser = () => {
         ref={dropdown}
         role="menu"
         className={cn(
-          'absolute right-0 mt-3 w-64 flex flex-col rounded-xl border border-gray-200 bg-white shadow-lg dark:border-dark-border-2 dark:bg-dark-surface-2',
+          'absolute right-0 mt-3 w-72 flex flex-col rounded-xl border border-gray-200 bg-white shadow-lg dark:border-dark-border-2 dark:bg-dark-surface-2',
           dropdownOpen ? 'block' : 'hidden',
         )}
       >
@@ -137,6 +137,7 @@ export const DropdownUser = () => {
             <Link
               href="/dashboard/profile"
               role="menuitem"
+              onClick={() => setDropdownOpen(false)}
               className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-dark-surface-4 dark:hover:text-white"
             >
               <UserIcon className="w-4 h-4" aria-hidden="true" />
@@ -147,10 +148,11 @@ export const DropdownUser = () => {
             <Link
               href="/dashboard/settings"
               role="menuitem"
+              onClick={() => setDropdownOpen(false)}
               className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-dark-surface-4 dark:hover:text-white"
             >
               <Settings className="w-4 h-4" aria-hidden="true" />
-              Configuración de empresa
+              Configuración
             </Link>
           </li>
         </ul>

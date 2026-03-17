@@ -155,7 +155,7 @@ export class DashboardSummaryService {
         title: 'MFA no obligatorio',
         description:
           'Se recomienda habilitar MFA obligatorio para todos los usuarios de la empresa.',
-        href: '/settings',
+        href: '/dashboard/settings',
       });
     }
 
@@ -177,7 +177,7 @@ export class DashboardSummaryService {
         severity: 'info',
         title: 'Perfil de empresa incompleto',
         description: 'Completa la información de contacto y datos de tu empresa.',
-        href: '/settings',
+        href: '/dashboard/settings',
       });
     }
 

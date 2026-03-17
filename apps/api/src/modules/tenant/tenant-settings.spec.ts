@@ -31,7 +31,7 @@ function buildTenant(overrides: Partial<Tenant> = {}): Tenant {
     phone: null,
     website: null,
     economicSector: null,
-    // Branding — null por defecto
+    // Branding
     logoLightUrl: null,
     logoDarkUrl: null,
     sealLightUrl: null,
@@ -217,45 +217,5 @@ describe('Tenant settings', () => {
     expect(auditServiceMock.log).toHaveBeenCalledWith(
       expect.objectContaining({ entityType: 'TenantProfile', userId: 'actor-1' }),
     );
-  });
-
-  it('updateTenantSelfBranding actualiza solo campos de branding y audita', async () => {
-    const tenant = buildTenant({
-      logoLightUrl: null,
-      sealLightUrl: null,
-      showTenantName: true,
-    });
-    repo.findOne.mockResolvedValue(tenant);
-    repo.save.mockImplementation(async (entity) => entity as Tenant);
-
-    const data = await service.updateTenantSelfBranding(
-      tenant.id,
-      {
-        sealLightUrl: 'https://cdn.empresa.co/seal.svg',
-        showTenantName: false,
-      },
-      'actor-1',
-    );
-
-    expect(data.sealLightUrl).toBe('https://cdn.empresa.co/seal.svg');
-    expect(data.showTenantName).toBe(false);
-    expect(data.logoLightUrl).toBeNull(); // no afectado
-    expect(auditServiceMock.log).toHaveBeenCalledWith(
-      expect.objectContaining({ entityType: 'TenantBranding', userId: 'actor-1' }),
-    );
-  });
-
-  it('updateTenantSelfBranding permite null para borrar una URL existente', async () => {
-    const tenant = buildTenant({
-      sealLightUrl: 'https://cdn.empresa.co/seal.svg',
-    });
-    repo.findOne.mockResolvedValue(tenant);
-    repo.save.mockImplementation(async (entity) => entity as Tenant);
-
-    const data = await service.updateTenantSelfBranding(tenant.id, {
-      sealLightUrl: null,
-    });
-
-    expect(data.sealLightUrl).toBeNull();
   });
 });

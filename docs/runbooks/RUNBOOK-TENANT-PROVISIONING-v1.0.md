@@ -201,6 +201,36 @@ LIMIT 5;
 RESET search_path;
 ```
 
+### Si el tenant quedó `ACTIVE` pero el ADMIN no recibió credenciales iniciales
+
+Actualmente el seed inicial crea el ADMIN y marca `passwordResetRequired=true`, pero la entrega automatizada por email todavía no es el camino operativo estable del repositorio. El workaround vigente y soportado es regenerar credenciales temporales por API, no consultar logs del worker.
+
+```bash
+curl -X POST https://api.iwana.local/api/v1/tenants/<tenantId>/regenerate-admin-credentials \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Idempotency-Key: <uuid-unico>" \
+  -H "Content-Type: application/json"
+```
+
+Respuesta esperada:
+
+```json
+{
+  "data": {
+    "message": "Credenciales temporales regeneradas para el ADMIN inicial del tenant.",
+    "adminEmail": "admin@tenant.com",
+    "temporaryPassword": "<solo visible en esta respuesta>",
+    "expiresAt": "2026-03-18T12:00:00.000Z"
+  }
+}
+```
+
+Reglas operativas:
+
+- La credencial temporal regenerada debe tratarse como secreto operativo de un solo uso.
+- No registrarla en tickets, logs, chats ni documentos permanentes.
+- Si el cliente reintenta con el mismo `Idempotency-Key`, recibirá exactamente la misma respuesta mientras la ventana siga vigente.
+
 ---
 
 ## 5. Reparación Manual
@@ -237,6 +267,8 @@ ORDER BY table_name;
 
 DROP SCHEMA IF EXISTS tenant_<slug> CASCADE;
 ```
+
+Usar este paso solo como reparación manual extraordinaria. La operación destructiva del sistema ya no debe interpretarse como simple eliminación del registro en `public.tenants`; cuando se elimine un tenant debe esperarse también limpieza del schema asociado.
 
 **Paso 2 — Verificar que el schema fue eliminado:**
 

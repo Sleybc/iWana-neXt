@@ -276,9 +276,8 @@ export class TenantService {
   }
 
   /**
-   * Actualiza URLs de logo, sello y preferencia de visualización del tenant.
-   * Solo acepta URLs HTTPS — validado en DTO (previene XSS via data: URIs).
-   * Campos de plataforma no están expuestos en este contrato.
+   * Actualiza solo campos de branding del tenant autenticado.
+   * Campos de plataforma quedan fuera del contrato self-service.
    */
   async updateTenantSelfBranding(
     tenantId: string,
@@ -334,7 +333,7 @@ export class TenantService {
     dto.phone = tenant.phone ?? null;
     dto.website = tenant.website ?? null;
     dto.createdAt = tenant.createdAt;
-    // Branding — nullable por defecto para tenants sin configuración
+    // Branding
     dto.logoLightUrl = tenant.logoLightUrl ?? null;
     dto.logoDarkUrl = tenant.logoDarkUrl ?? null;
     dto.sealLightUrl = tenant.sealLightUrl ?? null;

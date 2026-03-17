@@ -148,13 +148,13 @@ export class TenantController {
 
   /**
    * PATCH /api/v1/tenants/me/branding
-   * Actualiza URLs de logo, sello y preferencia de nombre del tenant autenticado.
-   * Solo ADMIN puede modificar la identidad visual de la empresa.
+   * Actualiza el branding self-service del tenant autenticado (logo, sello, preferencia nombre).
+   * Solo ADMIN.
    */
   @Patch('me/branding')
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Actualizar branding del tenant autenticado (logo y sello)' })
+  @ApiOperation({ summary: 'Actualizar branding del tenant autenticado' })
   @ApiResponse({ status: 200, description: 'Branding actualizado.' })
   async patchMeBranding(
     @CurrentUser() user: JwtPayload,

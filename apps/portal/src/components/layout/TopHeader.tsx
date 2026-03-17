@@ -2,7 +2,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { Menu, Search } from 'lucide-react';
 import { DropdownUser } from './DropdownUser';
 import { ThemeToggle } from './ThemeToggle';
@@ -15,12 +15,8 @@ interface TopHeaderProps {
   setMobileOpen: (v: boolean) => void;
 }
 
-export const TopHeader = ({
-  desktopCollapsed,
-  setDesktopCollapsed,
-  mobileOpen,
-  setMobileOpen,
-}: TopHeaderProps) => {
+// Componente interno aislado para useSearchParams (requiere Suspense boundary)
+const SearchBar = () => {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -46,6 +42,42 @@ export const TopHeader = ({
     router.push(query ? `${pathname}?${query}` : pathname);
   };
 
+  return (
+    <div className="relative">
+      <span
+        aria-hidden="true"
+        className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-500 dark:text-gray-400"
+      >
+        <Search className="w-4 h-4" />
+      </span>
+      <input
+        type="text"
+        value={searchText}
+        onChange={(e) => setSearchText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') submitSearch();
+        }}
+        placeholder="Buscar en el portal empresarial..."
+        aria-label="Buscar"
+        className="w-full h-10 rounded-lg border border-gray-200 bg-gray-50 pl-10 pr-16 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:border-iwana-primary focus:ring-2 focus:ring-iwana-primary/20 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-200 dark:placeholder:text-gray-500 dark:focus:border-iwana-primary-300"
+      />
+      <span
+        aria-hidden="true"
+        className="absolute top-1/2 right-2.5 -translate-y-1/2 flex items-center gap-0.5 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-xs text-gray-500 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 pointer-events-none"
+      >
+        <span>⌘</span>
+        <span>K</span>
+      </span>
+    </div>
+  );
+};
+
+export const TopHeader = ({
+  desktopCollapsed,
+  setDesktopCollapsed,
+  mobileOpen,
+  setMobileOpen,
+}: TopHeaderProps) => {
   const menuToggleAriaProps = {
     'aria-controls': 'sidebar',
     'aria-expanded': mobileOpen,
@@ -97,34 +129,13 @@ export const TopHeader = ({
           </Link>
         </div>
 
-        {/* CENTRO: buscador */}
+        {/* CENTRO: buscador — Suspense requerido por useSearchParams */}
         <div className="hidden lg:block flex-1 max-w-lg mx-6">
-          <div className="relative">
-            <span
-              aria-hidden="true"
-              className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-500 dark:text-gray-400"
-            >
-              <Search className="w-4 h-4" />
-            </span>
-            <input
-              type="text"
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') submitSearch();
-              }}
-              placeholder="Buscar en el portal empresarial..."
-              aria-label="Buscar"
-              className="w-full h-10 rounded-lg border border-gray-200 bg-gray-50 pl-10 pr-16 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:border-iwana-primary focus:ring-2 focus:ring-iwana-primary/20 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-200 dark:placeholder:text-gray-500 dark:focus:border-iwana-primary-300"
-            />
-            <span
-              aria-hidden="true"
-              className="absolute top-1/2 right-2.5 -translate-y-1/2 flex items-center gap-0.5 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-xs text-gray-500 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 pointer-events-none"
-            >
-              <span>⌘</span>
-              <span>K</span>
-            </span>
-          </div>
+          <Suspense
+            fallback={<div className="h-10 rounded-lg border border-gray-200 bg-gray-50" />}
+          >
+            <SearchBar />
+          </Suspense>
         </div>
 
         {/* DERECHA: acciones + usuario */}

@@ -7,6 +7,20 @@ import { z } from 'zod';
 import { Button, Card, CardContent, Input } from '@iwana/ui';
 import { userApi, type UpdateProfileDto, type UserProfile } from '@/lib/api-client';
 
+/** Mapa de código ISO 3166-1 alpha-2 → prefijo telefónico E.164 */
+const COUNTRY_PHONE_PREFIX: Record<string, string> = {
+  CO: '+57',
+  US: '+1',
+  MX: '+52',
+  AR: '+54',
+  CL: '+56',
+  PE: '+51',
+  EC: '+593',
+  VE: '+58',
+  BR: '+55',
+  PA: '+507',
+};
+
 const schema = z.object({
   firstName: z.string().max(100).optional().or(z.literal('')),
   lastName: z.string().max(100).optional().or(z.literal('')),
@@ -23,17 +37,26 @@ type FormValues = z.infer<typeof schema>;
 interface PersonalInfoFormProps {
   profile: UserProfile;
   userId: string;
-  /** Email del JWT para mostrarlo como campo de solo lectura */
-  email: string;
+  /** Código ISO 3166-1 alpha-2 del país del tenant (ej: "CO"). Determina el prefijo telefónico inicial. */
+  tenantCountry?: string;
   onUpdated: (updated: UserProfile) => void;
 }
 
 /**
  * Edicion de datos personales del usuario autenticado.
  */
-export function PersonalInfoForm({ profile, userId, email, onUpdated }: PersonalInfoFormProps) {
+export function PersonalInfoForm({
+  profile,
+  userId,
+  tenantCountry,
+  onUpdated,
+}: PersonalInfoFormProps) {
   const [success, setSuccess] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+
+  // Prefijo inicial: valor guardado del usuario → prefijo del país del tenant → '+57' por defecto (Colombia)
+  const phonePrefix = COUNTRY_PHONE_PREFIX[tenantCountry ?? 'CO'] ?? '+57';
+  const defaultPhone = profile.phone ?? phonePrefix;
 
   const {
     register,
@@ -44,7 +67,7 @@ export function PersonalInfoForm({ profile, userId, email, onUpdated }: Personal
     defaultValues: {
       firstName: profile.firstName ?? '',
       lastName: profile.lastName ?? '',
-      phone: profile.phone ?? '',
+      phone: defaultPhone,
       jobTitle: profile.jobTitle ?? '',
     },
   });
@@ -78,17 +101,6 @@ export function PersonalInfoForm({ profile, userId, email, onUpdated }: Personal
         </h2>
 
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
-          {/* Email — solo lectura; cambio de email requiere flujo de verificación */}
-          <div className="mb-2">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Correo electrónico
-              <span className="ml-2 text-xs font-normal text-gray-400">(no editable)</span>
-            </label>
-            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500 dark:border-dark-border-2 dark:bg-dark-surface-4 dark:text-gray-400 select-all">
-              {email}
-            </div>
-          </div>
-
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Input
               id="firstName"
@@ -109,7 +121,7 @@ export function PersonalInfoForm({ profile, userId, email, onUpdated }: Personal
               label="Teléfono (E.164)"
               type="tel"
               autoComplete="tel"
-              placeholder="+573001234567"
+              placeholder={`${phonePrefix}3001234567`}
               error={errors.phone?.message}
               {...register('phone')}
             />

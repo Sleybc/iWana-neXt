@@ -13,8 +13,7 @@
     "migration:run": "typeorm migration:run -d dist/data-source.js",
     "migration:revert": "typeorm migration:revert -d dist/data-source.js",
     "migration:show": "typeorm migration:show -d dist/data-source.js",
-    "migration:tenant:run": "node dist/migrations/tenant/003_add_user_profile_fields.js",
-    "migration:tenant:004": "node dist/migrations/tenant/004_add_mfa_required_to_users.js"
+    "migration:tenant:run": "node dist/migrations/tenant/run-all.js"
   },
   "dependencies": {
     "pg": "^8.16.0",

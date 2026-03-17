@@ -73,7 +73,7 @@ const mockTenantSummary = {
       severity: 'warning',
       title: 'MFA no obligatorio',
       description: 'Se recomienda habilitar MFA obligatorio.',
-      href: '/settings',
+        href: '/dashboard/settings',
     },
   ],
 };
@@ -187,7 +187,7 @@ test.describe('Dashboard empresarial — flujo login → dashboard', () => {
     await page.goto('/auth/login');
 
     // Completar formulario de login con slug del tenant
-    await page.getByLabel(/empresa/i).fill(MOCK_TENANT_SLUG);
+    await page.getByPlaceholder('ejemplo: isp-demo').fill(MOCK_TENANT_SLUG);
     await page.getByLabel(/correo/i).fill('admin@test-isp.co');
     await page.getByLabel(/contraseña/i).fill('PasswordSegura123!');
     await page.getByRole('button', { name: /ingresar/i }).click();
@@ -239,7 +239,9 @@ test.describe('Dashboard empresarial — flujo login → dashboard', () => {
     await page.waitForLoadState('networkidle');
 
     // El nombre de empresa del mock debe aparecer
-    await expect(page.getByText('ISP Prueba Colombia')).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page.getByRole('heading', { name: 'Bienvenido, ISP Prueba Colombia' }),
+    ).toBeVisible({ timeout: 10_000 });
   });
 
   test('CA-04: el dashboard muestra métricas reales sin datos inventados', async ({ page }) => {
@@ -249,9 +251,9 @@ test.describe('Dashboard empresarial — flujo login → dashboard', () => {
     await page.waitForLoadState('networkidle');
 
     // Usuarios activos: 5 (dato real del mock)
-    await expect(page.getByText('5')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('5', { exact: true }).first()).toBeVisible({ timeout: 10_000 });
     // Audit events: 23
-    await expect(page.getByText('23')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('23', { exact: true }).first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('CA-03: la navegación del sidebar no produce 404 desde las rutas habilitadas', async ({
@@ -271,8 +273,8 @@ test.describe('Dashboard empresarial — flujo login → dashboard', () => {
     await page.reload();
     await page.waitForLoadState('networkidle');
 
-    // Navegar a /settings — única ruta activa además del dashboard
-    await page.goto('/settings');
+    // Navegar a /dashboard/settings — ruta activa de configuración empresarial
+    await page.goto('/dashboard/settings');
     await page.waitForLoadState('networkidle');
 
     // No debe haber 404 de páginas del portal (excluimos assets estáticos)

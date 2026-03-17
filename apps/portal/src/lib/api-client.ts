@@ -554,12 +554,6 @@ export interface TenantSelf {
   phone: string | null;
   website: string | null;
   createdAt: string;
-  // Branding del tenant
-  logoLightUrl: string | null;
-  logoDarkUrl: string | null;
-  sealLightUrl: string | null;
-  sealDarkUrl: string | null;
-  showTenantName: boolean;
 }
 
 export interface UpdateTenantSelfProfileDto {
@@ -620,14 +614,6 @@ export interface DashboardSummary {
   alerts: DashboardAlert[];
 }
 
-export interface UpdateTenantSelfBrandingDto {
-  logoLightUrl?: string | null;
-  logoDarkUrl?: string | null;
-  sealLightUrl?: string | null;
-  sealDarkUrl?: string | null;
-  showTenantName?: boolean;
-}
-
 /**
  * API de tenant self-service para el portal empresarial.
  *
@@ -669,14 +655,6 @@ export const tenantSelfApi = {
   updateSettings: (dto: UpdateTenantSelfSettingsDto, tenantSlug?: string) =>
     request<TenantSelfSettings>(
       '/tenants/me/settings',
-      { method: 'PATCH', body: JSON.stringify(dto) },
-      tenantSlug,
-    ),
-
-  /** Actualiza el branding del tenant autenticado (logo, sello, preferencia de nombre). */
-  updateBranding: (dto: UpdateTenantSelfBrandingDto, tenantSlug?: string) =>
-    request<TenantSelf>(
-      '/tenants/me/branding',
       { method: 'PATCH', body: JSON.stringify(dto) },
       tenantSlug,
     ),

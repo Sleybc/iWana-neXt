@@ -571,8 +571,6 @@ export class AuthService {
    * SIEMPRE retorna sin error para no revelar si el email existe (OWASP).
    * Si el email existe, genera un token de reset y lo almacena en DB.
    *
-   * TODO Sprint 2: Integrar con modulo de notificaciones para enviar email.
-   *
    * RF-AUTH-07
    */
   async forgotPassword(dto: ForgotPasswordDto): Promise<void> {

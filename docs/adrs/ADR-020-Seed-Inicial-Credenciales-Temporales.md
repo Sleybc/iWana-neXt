@@ -33,8 +33,8 @@ El `TenantProvisioningProcessor` en `@iwana/worker`, después de ejecutar el DDL
 3. Crea el ADMIN con los siguientes flags:
    - `passwordResetRequired = true`
    - `passwordResetExpiresAt = now() + 24h`
-4. Envía un email al `contactEmail` del tenant con las credenciales temporales.
-5. La contraseña en texto plano **nunca se persiste ni se registra en logs** — se descarta tras el envío del email.
+4. Entrega las credenciales temporales por el canal operativo disponible del entorno.
+5. La contraseña en texto plano **nunca se persiste ni se registra en logs**.
 
 La operación de seed es **idempotente**: si el usuario ADMIN ya existe en el schema, el seed se omite sin duplicar registros.
 
@@ -80,7 +80,7 @@ POST /api/v1/tenants/:id/regenerate-admin-credentials
 Headers: Idempotency-Key: <uuid>
 ```
 
-El comportamiento es idéntico al seed inicial: nueva contraseña temporal, nuevo `passwordResetExpiresAt` de 24h, email al `contactEmail`.
+El comportamiento es idéntico al seed inicial en términos de seguridad de credencial: nueva contraseña temporal y nuevo `passwordResetExpiresAt` de 24h. En el estado actual del repositorio, la respuesta del endpoint devuelve la credencial temporal una sola vez al `SYSTEM_ADMIN` llamante y se cachea por idempotencia en Redis durante la misma ventana operativa.
 
 La operación usa **Redis para idempotencia**: la respuesta se cachea temporalmente por `Idempotency-Key`. Un retry del cliente recibe exactamente la misma credencial sin mutar otra vez el usuario ni generar una segunda contraseña distinta.
 
@@ -108,12 +108,12 @@ La operación usa **Redis para idempotencia**: la respuesta se cachea temporalme
 - La idempotencia de regeneración previene la creación accidental de múltiples credenciales en caso de retries del cliente.
 
 ### Restricciones
-- La entrega de credenciales depende del servicio de email. Si el email falla, el ADMIN no recibe las credenciales y debe solicitarlas via regeneración (requiere contacto con el SYSTEM_ADMIN).
+- La entrega inicial de credenciales depende del canal operativo habilitado en el entorno. Mientras el email no sea el mecanismo estable, el `SYSTEM_ADMIN` debe usar la regeneración controlada para exponer la credencial de manera puntual al cliente.
 - El `contactEmail` del tenant debe ser válido y accesible; si hay error tipográfico, el onboarding queda bloqueado hasta que el SYSTEM_ADMIN regenere las credenciales con un email corregido. Esto requiere que el frontend valide el formato del email antes de crear el tenant.
-- El envío de email en el worker es asíncrono; los fallos de entrega deben registrarse en el audit log pero no deben abortar el provisioning.
+- Cuando exista envío de email operativo, sus fallos no deben abortar el provisioning si el schema y el seed ya quedaron consistentes.
 
 ### Deuda técnica reconocida
-- **DT-MOD01-05**: El módulo de email (MailerModule + Nodemailer) no está integrado en Sprint 1. El envío está marcado como `TODO` en el processor. La entrega real de credenciales queda pendiente para Sprint 2. En Sprint 1, el SYSTEM_ADMIN debe consultar los logs del worker para obtener las credenciales temporales (workaround temporal aceptado).
+- **DT-MOD01-05**: El envío automático de credenciales iniciales desde el provisioning todavía no es el mecanismo operativo estable. Mientras ese camino se completa, el workaround soportado es `POST /api/v1/tenants/:id/regenerate-admin-credentials` con `Idempotency-Key`. Consultar logs del worker para obtener contraseñas temporales no está permitido.
 
 ---
 

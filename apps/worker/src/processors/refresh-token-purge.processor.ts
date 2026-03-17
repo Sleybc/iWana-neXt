@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Job, UnrecoverableError } from 'bullmq';
 import { Pool } from 'pg';
+import { isValidSchemaName } from '@iwana/db';
 import { REFRESH_TOKEN_PURGE_QUEUE } from '@iwana/shared';
 
 /**
@@ -79,7 +80,7 @@ export class RefreshTokenPurgeProcessor extends WorkerHost {
       this.logger.log(`[purge] Tenants activos encontrados: ${tenants.length}`);
 
       for (const tenant of tenants) {
-        // Validar schema_name ANTES de interpolarlo en SQL (previene SQL injection)
+        // Validar schema_name con la regla canonica de @iwana/db antes de interpolarlo.
         if (!isValidSchemaName(tenant.schema_name)) {
           throw new UnrecoverableError(
             `[purge] schema_name inválido detectado: "${tenant.schema_name}" — abortando purga por seguridad`,
@@ -109,14 +110,4 @@ export class RefreshTokenPurgeProcessor extends WorkerHost {
       client.release();
     }
   }
-}
-
-/**
- * Valida que el schema_name solo contenga caracteres alfanuméricos y guiones bajos,
- * comenzando con una letra minúscula. Máximo 63 caracteres (límite de PostgreSQL).
- *
- * Previene SQL injection al interpoler el schema name directamente en consultas DDL/DML.
- */
-function isValidSchemaName(name: string): boolean {
-  return /^[a-z][a-z0-9_]{0,62}$/.test(name);
 }

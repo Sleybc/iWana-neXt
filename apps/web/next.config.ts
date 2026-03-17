@@ -16,6 +16,12 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   transpilePackages: ['@iwana/ui', '@iwana/shared'],
   cacheComponents: true,
+  turbopack: {},
+  logging: {
+    fetches: {
+      fullUrl: false,
+    },
+  },
 };
 
 export default nextConfig;

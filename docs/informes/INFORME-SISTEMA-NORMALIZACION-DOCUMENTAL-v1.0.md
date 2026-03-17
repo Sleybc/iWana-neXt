@@ -2,9 +2,9 @@
 
 # INFORME-SISTEMA-NORMALIZACION-DOCUMENTAL-v1.0.md
 
-**Version:** 1.3
+**Version:** 2.3
 **Fecha:** 2026-03-08
-**Fecha de última actualización:** 2026-03-12
+**Fecha de última actualización:** 2026-03-17
 **Plantilla base:** docs/informes/TEMPLATE-INFORME-FASE-v1.0.md
 **Convención documental:** {TIPO}-{MODULO}-{FASE}-v{VERSION}.md
 **Política de ejecución:** ADR-022
@@ -196,3 +196,249 @@ _Informe generado por: AI-EM-ARCH (Engineering Manager + Architect Software) —
 _Fecha: 2026-03-08 | Framework de Gobernanza Multi-IA v2.0_
 _Plan ejecutado: docs/plans/2026-03-08-hld-prompt-informes-implementation.md_
 _Actualizado: 2026-03-08 — Corrección stack versions via Context7 MCP_
+
+---
+
+### Corrección 4 — Bootstrap operativo de instrucciones globales para Copilot (2026-03-17)
+
+**Motivo:** El archivo `.github/copilot-instructions.md` existia, pero seguia demasiado cerca de `AGENTS.md` y no cumplia bien el papel de bootstrap corto y accionable para que un agente fuera productivo desde el primer turno. Faltaban comandos reales del monorepo, boundaries operativos, gotchas verificados y archivos guia de referencia rapida.
+
+**Artefactos corregidos:**
+
+| Artefacto | Cambios realizados |
+| --- | --- |
+| `.github/copilot-instructions.md` | Reescrito como instruccion global de arranque rapido: fuentes obligatorias, comandos `pnpm`, mapa del monorepo, convenciones criticas, gotchas reales del repo, skills utiles y archivos guia. |
+| `docs/informes/INFORME-SISTEMA-NORMALIZACION-DOCUMENTAL-v1.0.md` | Actualizado como documento vivo para dejar trazabilidad de la correccion y evitar un informe paralelo. |
+
+**Decisión editorial aplicada:**
+
+- `AGENTS.md` se mantiene como fuente maestra de gobernanza amplia.
+- `.github/copilot-instructions.md` queda como capa corta de bootstrap operativo para Copilot.
+- No se renombro ni elimino `AGENTS.md` porque ya funciona como contrato maestro transversal del workspace y de otras herramientas; la correccion se limito a reducir duplicacion innecesaria en la capa de bootstrap.
+
+**Resultado observado:**
+
+- El workspace ya expone una instruccion global mas util para descubrimiento inicial.
+- Un agente puede identificar rapido comandos reales, boundaries entre `apps/web` y `apps/portal`, restricciones multi-tenant y gotchas de MFA, pgBouncer, BullMQ y Tailwind 4.
+- La traza documental queda consolidada dentro del informe sistemico vigente.
+
+**Hallazgos abiertos tras esta corrección:**
+
+- El repo conserva intencionalmente dos capas globales de instrucciones (`AGENTS.md` y `.github/copilot-instructions.md`). Aunque la guia generica de customization recomienda elegir una sola, en iWana neXt esto queda aceptado como compromiso operativo entre gobernanza maestra y bootstrap corto, siempre que no vuelvan a divergir.
+
+---
+
+### Corrección 5 — Partición adicional de instrucciones por área operativa (2026-03-17)
+
+**Motivo:** La instrucción por archivo existente quedaba corta para activación precisa por contexto. En particular, `frontend.instructions.md` no cubria `apps/portal`, y las reglas especificas de `apps/api` y del portal tenant-aware estaban demasiado mezcladas en capas generales.
+
+**Artefactos corregidos:**
+
+| Artefacto | Cambios realizados |
+| --- | --- |
+| `.github/instructions/frontend.instructions.md` | Se amplió `applyTo` para cubrir `apps/portal/**` además de `apps/web/**` y paquetes TSX compartidos; se agregó `description` rica para discovery on-demand. |
+| `.github/instructions/portal.instructions.md` | Nuevo archivo específico para `apps/portal/**` con reglas tenant-aware, separación de tokens MFA, prohibición de rutas rotas y política de métricas no ficticias. |
+| `.github/instructions/api.instructions.md` | Nuevo archivo específico para `apps/api/**` con reglas operativas de tenancy, pgBouncer, `@Roles(UserRole.*)`, auditoría y contratos self-service. |
+| `docs/informes/INFORME-SISTEMA-NORMALIZACION-DOCUMENTAL-v1.0.md` | Actualizado como documento vivo para registrar la partición adicional. |
+
+**Resultado observado:**
+
+- `apps/portal` ya no queda fuera del sistema de instrucciones por `applyTo`.
+- El agente puede cargar reglas más precisas cuando trabaja en frontend tenant-aware o backend API sin depender solo de una capa genérica.
+- La estructura queda separada por concern: frontend compartido, portal específico, api específica y documentación.
+
+**Hallazgos abiertos tras esta corrección:**
+
+- Si en el futuro `apps/web` requiere reglas propias adicionales de consola de plataforma, conviene crear `web.instructions.md` en lugar de seguir cargando esa especificidad en la capa frontend compartida.
+
+---
+
+### Corrección 6 — Instrucción específica para consola de plataforma `apps/web` (2026-03-17)
+
+**Motivo:** Tras separar `portal.instructions.md` y `api.instructions.md`, seguía faltando una capa explícita para `apps/web`. Esa app ya muestra patrones propios de consola de plataforma: login vía `POST /auth/platform/login`, usuarios `SYSTEM_ADMIN` e `IWANA_SUPPORT`, rutas protegidas administrativas y recuperación de acceso controlada, no tenant self-service.
+
+**Artefactos corregidos:**
+
+| Artefacto | Cambios realizados |
+| --- | --- |
+| `.github/instructions/web.instructions.md` | Nuevo archivo específico para `apps/web/**` con reglas de consola de plataforma, separación respecto a `apps/portal`, manejo de auth de plataforma y política de copy administrativo. |
+| `docs/informes/INFORME-SISTEMA-NORMALIZACION-DOCUMENTAL-v1.0.md` | Actualizado como documento vivo para registrar la nueva capa de instrucciones. |
+
+**Resultado observado:**
+
+- `apps/web` deja de depender solo de una instrucción frontend genérica.
+- La separación entre consola de plataforma y portal empresarial queda explícita también en el sistema de instrucciones por archivo.
+- El árbol de instrucciones queda más coherente por concern: frontend compartido, web plataforma, portal tenant-aware, api backend, testing y docs.
+
+**Hallazgos abiertos tras esta corrección:**
+
+- El siguiente refinamiento natural sería dividir `testing.instructions.md` en reglas separadas para unit, integration y E2E si el volumen de pruebas del repo sigue creciendo.
+
+---
+
+### Corrección 7 — Partición de testing por tipo y reducción de solapamiento backend/API (2026-03-17)
+
+**Motivo:** La capa `testing.instructions.md` seguía demasiado amplia y cargaba reglas de unit, integration y E2E en un solo archivo. Además, `backend.instructions.md` se solapaba innecesariamente con `api.instructions.md` sobre `apps/api/**`.
+
+**Artefactos corregidos:**
+
+| Artefacto | Cambios realizados |
+| --- | --- |
+| `.github/instructions/testing.instructions.md` | Reorientado a pruebas unitarias no E2E, con `description` rica y `applyTo` acotado a `src/` de apps y paquetes compartidos. |
+| `.github/instructions/integration.instructions.md` | Nuevo archivo para pruebas de integración y HTTP en `apps/api`, con foco en contratos, aislamiento por tenant y wiring realista. |
+| `.github/instructions/e2e.instructions.md` | Nuevo archivo para Playwright y journeys de usuario en `e2e/**` y `apps/portal/tests/e2e/**`. |
+| `.github/instructions/backend.instructions.md` | Ajustado para quitar `apps/api/**` del `applyTo` y quedar como capa backend compartida fuera de la instrucción específica de API. |
+| `docs/informes/INFORME-SISTEMA-NORMALIZACION-DOCUMENTAL-v1.0.md` | Actualizado como documento vivo para registrar la nueva partición. |
+
+**Resultado observado:**
+
+- Las pruebas unitarias, de integración y E2E ya no dependen de una sola instrucción monolítica.
+- `apps/api` carga reglas específicas desde `api.instructions.md` y no duplica en la misma intensidad la capa de backend genérico.
+- El sistema de instrucciones queda más cercano a la estructura real del repo: unit tests en `src`, integración HTTP/tenant en API y E2E Playwright en carpetas dedicadas.
+
+**Hallazgos abiertos tras esta corrección:**
+
+- Si el repo formaliza más pruebas de integración fuera de `apps/api`, convendrá ampliar `integration.instructions.md` o crear variantes por capa en lugar de volver a una instrucción única de testing.
+
+---
+
+### Corrección 8 — Refinamiento backend compartido, instrucción DB y prompts reutilizables (2026-03-17)
+
+**Motivo:** Tras la partición por área quedaban tres mejoras claras: 1) la instrucción backend genérica ya no estaba bien anclada al código real y debía cubrir `apps/worker`, 2) faltaba una instrucción específica para migraciones y tenancy en `packages/database`, y 3) todavía no existían prompts reutilizables de workspace para dos tareas repetitivas del repo: actualizar informes vivos y revisar boundaries del modulith.
+
+**Artefactos corregidos:**
+
+| Artefacto | Cambios realizados |
+| --- | --- |
+| `.github/instructions/backend.instructions.md` | Refinado para cubrir `apps/worker/src/**/*.ts` y backend compartido fuera de API; se retiró sesgo excesivo hacia endpoints HTTP y se enfatizó propagación explícita del contexto tenant en workers. |
+| `.github/instructions/database.instructions.md` | Nuevo archivo específico para `packages/database/**` con reglas de migraciones, `search_path`, pgBouncer, separación `public` vs `tenant` y uso de `runInTenantSchema()`. |
+| `.github/prompts/actualizar-informe-vivo.prompt.md` | Nuevo prompt reutilizable para localizar y actualizar el informe técnico vivo correcto sin duplicarlo. |
+| `.github/prompts/revisar-boundary-modulith.prompt.md` | Nuevo prompt reutilizable para revisar boundaries del modulith, mezcla plataforma/tenant y riesgos arquitectónicos. |
+| `docs/informes/INFORME-SISTEMA-NORMALIZACION-DOCUMENTAL-v1.0.md` | Actualizado como documento vivo para registrar el refinamiento adicional. |
+
+**Resultado observado:**
+
+- La capa backend compartida vuelve a tener un target real y útil en `apps/worker`.
+- Persistencia y migraciones ya cuentan con una instrucción especializada, separada de API y backend general.
+- El workspace ya expone prompts reutilizables para dos tareas frecuentes de gobierno técnico-documental.
+
+**Hallazgos abiertos tras esta corrección:**
+
+- Si el equipo empieza a usar con frecuencia prompts operativos adicionales, convendrá añadir un `README` o índice liviano en `.github/prompts/` para discoverability interna.
+
+---
+
+### Corrección 9 — Endurecimiento fino de tenancy y migraciones en instrucciones API/DB (2026-03-17)
+
+**Motivo:** Tras la partición principal de instrucciones, todavía faltaban algunas reglas finas ya evidentes en el código real del repo. En `apps/api` aparecían patrones concretos que convenía elevar a instrucción: orden de rutas `me` antes de `:id`, uso restringido de `scope='mfa-setup'`, validación cruzada de `tenantId/schemaName` y limitación del header `X-Tenant-Slug` a flujos públicos aprobados. En `packages/database` faltaba dejar explícitas reglas operativas de migraciones tenant sobre fallos parciales, reintentos y sincronización del runner CLI.
+
+**Artefactos corregidos:**
+
+| Artefacto | Cambios realizados |
+| --- | --- |
+| `.github/instructions/api.instructions.md` | Se endurecieron reglas específicas de tenancy y auth: orden de rutas self-service, alcance limitado para `mfa-setup`, consistencia entre `tenantId` y `schemaName`, restricción del fallback `X-Tenant-Slug` y separación explícita entre endpoints de plataforma y self-service. |
+| `.github/instructions/database.instructions.md` | Se agregaron reglas finas para migraciones tenant: logging por schema, fallo explícito ante resultados parciales, uso de `IF NOT EXISTS`, mantenimiento del runner CLI y patrón `main()` con importación dinámica del DataSource. |
+| `docs/informes/INFORME-SISTEMA-NORMALIZACION-DOCUMENTAL-v1.0.md` | Actualizado como documento vivo para registrar el endurecimiento fino adicional. |
+
+**Resultado observado:**
+
+- Las instrucciones de API y base de datos quedan más alineadas al comportamiento real ya implementado en `TenantController`, `TenantMiddleware`, `JwtAuthGuard` y las migraciones tenant existentes.
+- Se reduce la probabilidad de que futuras tareas reintroduzcan colisiones de routing, amplíen indebidamente `X-Tenant-Slug` o dejen runners de migración desactualizados.
+
+**Hallazgos abiertos tras esta corrección:**
+
+- Se mantiene un riesgo operativo menor en scripts de migraciones tenant si el equipo continúa agregando nuevas migraciones sin consolidar un runner centralizado; por ahora la instrucción lo mitiga, pero no reemplaza una futura normalización técnica del package `@iwana/db`.
+
+---
+
+### Corrección 10 — Normalización técnica del runner de migraciones tenant en `@iwana/db` (2026-03-17)
+
+**Motivo:** El package `@iwana/db` seguía exponiendo un riesgo operativo real: el script `migration:tenant:run` apuntaba de forma fija a una migración concreta (`003_add_user_profile_fields`) y coexistía con un script versionado manual (`migration:tenant:004`). Eso obligaba a mantener scripts por número de migración y abría la puerta a ejecuciones incompletas o desactualizadas.
+
+**Artefactos corregidos:**
+
+| Artefacto | Cambios realizados |
+| --- | --- |
+| `packages/database/src/migrations/tenant/run-all.ts` | Nuevo runner central que descubre migraciones tenant compiladas por convención `NNN_*.js`, las ordena y ejecuta secuencialmente. |
+| `packages/database/package.json` | `migration:tenant:run` ahora apunta al runner central `run-all.js`; se eliminó el script versionado manual `migration:tenant:004`. |
+| `docs/informes/INFORME-SISTEMA-NORMALIZACION-DOCUMENTAL-v1.0.md` | Actualizado como documento vivo para registrar la normalización técnica. |
+
+**Resultado observado:**
+
+- El flujo de migraciones tenant ya no depende de editar scripts por cada nueva versión.
+- Las migraciones tenant disponibles en `dist/migrations/tenant/` se ejecutan en orden determinista por prefijo numérico.
+- Si un archivo de migración no exporta `runMigration(dataSource)`, el runner falla de forma explícita y visible.
+
+**Riesgo residual tras la corrección:**
+
+- El runner central asume la convención `NNN_nombre.js`; si en el futuro se rompe esa convención en `packages/database/src/migrations/tenant/`, la detección automática dejará de incluir esos archivos. La convención queda ahora implícitamente estandarizada por implementación.
+
+---
+
+### Corrección 11 — Auditoría de cierre sobre migraciones públicas y validación de build en `@iwana/db` (2026-03-17)
+
+**Motivo:** Tras normalizar el runner tenant, quedaba validar si el flujo de migraciones públicas sufría el mismo problema operativo o si ya estaba correctamente centralizado. También era necesario confirmar que el nuevo runner tenant no solo tipeaba bien, sino que compilaba a `dist` sin romper el package.
+
+**Artefactos revisados o actualizados:**
+
+| Artefacto | Cambios realizados |
+| --- | --- |
+| `packages/database/package.json` | Revisado: se confirmó que las migraciones públicas ya usan el runner canónico de TypeORM (`migration:run`, `migration:revert`, `migration:show`) sobre `dist/data-source.js`. Sin cambios adicionales. |
+| `packages/database/src/data-source.ts` | Revisado: se confirmó que `migrations: ['dist/migrations/public/*.js']` ya resuelve por glob el conjunto de migraciones públicas compiladas. Sin cambios adicionales. |
+| `packages/database/src/migrations/public/*.ts` | Revisado: se verificó que el set vigente de migraciones públicas permanece alineado con el runner nativo de TypeORM. Sin cambios adicionales. |
+| `docs/informes/INFORME-SISTEMA-NORMALIZACION-DOCUMENTAL-v1.0.md` | Actualizado como documento vivo para dejar trazabilidad de la auditoría de cierre. |
+
+**Resultado observado:**
+
+- No existe una deriva equivalente en migraciones públicas: ese flujo ya estaba correctamente centralizado por TypeORM mediante glob sobre `dist/migrations/public/*.js`.
+- El package `@iwana/db` compiló correctamente después de introducir el runner tenant central.
+- La normalización quedó cerrada sin introducir cambios innecesarios en el flujo público.
+
+**Conclusión operativa:**
+
+- El riesgo real estaba acotado al runner tenant y quedó corregido.
+- El flujo de migraciones públicas queda validado como consistente con la estrategia recomendada para el repositorio.
+
+---
+
+### Corrección 12 — Runbook operativo de migraciones y ajuste del workaround de credenciales iniciales (2026-03-17)
+
+**Motivo:** Tras cerrar la normalización del runner tenant, faltaba materializar una guía operativa breve para ejecutar migraciones públicas y tenant sin ambigüedad. En paralelo, la auditoría de provisioning/seed detectó que un workaround documental previo era inconsistente con el código vigente: ADR-020 seguía sugiriendo consultar logs del worker para recuperar credenciales temporales, pero el código actual no expone la contraseña inicial por logs y esa práctica además contradiría la postura de seguridad del repo.
+
+**Artefactos corregidos:**
+
+| Artefacto | Cambios realizados |
+| --- | --- |
+| `docs/runbooks/RUNBOOK-DB-MIGRATIONS-v1.0.md` | Nuevo runbook operativo para migraciones públicas y tenant, incluyendo comandos, validación posterior, criterios de reintento y escalación. |
+| `docs/runbooks/RUNBOOK-TENANT-PROVISIONING-v1.0.md` | Se añadió el procedimiento operativo correcto para recuperar credenciales temporales del ADMIN inicial mediante el endpoint de regeneración con `Idempotency-Key`. |
+| `docs/adrs/ADR-020-Seed-Inicial-Credenciales-Temporales.md` | Se corrigió la deuda técnica/documentación operativa: se eliminó la sugerencia de consultar logs del worker y se alineó el workaround soportado con el endpoint real de regeneración. |
+| `docs/informes/INFORME-SISTEMA-NORMALIZACION-DOCUMENTAL-v1.0.md` | Actualizado como documento vivo para registrar este cierre. |
+
+**Resultado observado:**
+
+- El workspace ya tiene un runbook operativo específico para ejecución de migraciones en `@iwana/db`.
+- La documentación de provisioning deja de sugerir una práctica insegura e inconsistente con el código actual.
+- Seeds y provisioning no mostraron otra deriva operativa equivalente al problema corregido en el runner tenant; el hallazgo real fue documental y quedó normalizado.
+
+---
+
+### Corrección 13 — Cierre de pendientes técnicos residuales en delete tenant, purge worker y comentarios obsoletos (2026-03-17)
+
+**Motivo:** La revisión final de cierre dejó tres pendientes técnicos concretos: 1) el delete de tenant eliminaba solo el registro y dejaba el schema huérfano, 2) el worker de purga usaba una validación local de schema distinta de la regla canónica de `@iwana/db`, y 3) persistían comentarios/TODOs que ya no describían el estado real del código.
+
+**Artefactos corregidos:**
+
+| Artefacto | Cambios realizados |
+| --- | --- |
+| `apps/api/src/modules/tenant/tenant.service.ts` | `delete()` ahora valida `schemaName`, ejecuta `DROP SCHEMA ... CASCADE` y elimina el tenant dentro de una transacción antes de invalidar cache. Se removió el TODO obsoleto sobre encolado de provisioning desde este servicio. |
+| `apps/api/src/modules/tenant/tenant.service.spec.ts` | Se agregaron pruebas para el flujo destructivo: borrado transaccional de schema + tenant y caso `NotFound`. |
+| `apps/worker/src/processors/refresh-token-purge.processor.ts` | Se eliminó la regex local y se unificó la validación de schema usando `isValidSchemaName` de `@iwana/db`. |
+| `apps/api/src/modules/auth/auth.service.ts` | Se eliminó el TODO obsoleto en `forgotPassword()` que ya no reflejaba el estado del mailer del repositorio. |
+| `docs/runbooks/RUNBOOK-TENANT-PROVISIONING-v1.0.md` | Ajustado para dejar explícito que el borrado funcional del tenant no debe interpretarse como simple eliminación del registro público. |
+| `docs/informes/INFORME-SISTEMA-NORMALIZACION-DOCUMENTAL-v1.0.md` | Actualizado como documento vivo para registrar el cierre técnico. |
+
+**Resultado observado:**
+
+- El contrato destructivo de tenant deja de ser engañoso: eliminar un tenant ya limpia también su schema asociado.
+- El worker de purga usa la misma regla de validación tenant_* que el resto de la plataforma.
+- Se reduce ruido de mantenimiento al eliminar comentarios que inducían diagnósticos incorrectos sobre provisioning y notificaciones.

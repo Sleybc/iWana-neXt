@@ -1,5 +1,6 @@
 ---
-applyTo: "apps/web/**,packages/*/src/**/*.tsx"
+description: "Use when working on Next.js frontend code, shared React UI, forms, App Router pages, or client/server component boundaries in apps/web, apps/portal, or shared TSX packages."
+applyTo: "apps/web/**,apps/portal/**,packages/*/src/**/*.tsx"
 ---
 
 # Frontend Next.js Instructions
@@ -9,7 +10,7 @@ applyTo: "apps/web/**,packages/*/src/**/*.tsx"
 - TypeScript estricto, validacion de formularios con Zod.
 - Accesibilidad WCAG 2.2 AA minimo.
 - i18n segun convenciones del proyecto.
-- Tenant resuelto en servidor — nunca exponer logica de tenant al cliente.
+- Tenant resuelto en servidor cuando aplique — nunca hardcodear tenancy en UI.
 - Testing: Playwright para E2E, Jest para unit de logica.
 - Sin secretos ni API keys en bundle cliente.
 - Comentar en espanol componentes, hooks y flujos UI no triviales.

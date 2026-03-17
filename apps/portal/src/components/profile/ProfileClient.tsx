@@ -7,6 +7,7 @@ import { OnboardingAlerts } from '@/components/dashboard/OnboardingAlerts';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { userApi, dashboardApi, type UserProfile, type DashboardAlert } from '@/lib/api-client';
 import { ChangePasswordForm } from './ChangePasswordForm';
+import { MfaRequiredToggle } from './MfaRequiredToggle';
 import { PersonalInfoForm } from './PersonalInfoForm';
 import { ProfileHeader } from './ProfileHeader';
 
@@ -33,6 +34,8 @@ export function ProfileClient() {
   const { user } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [alerts, setAlerts] = useState<DashboardAlert[]>([]);
+  const [mfaRequiredAll, setMfaRequiredAll] = useState(false);
+  const [tenantCountry, setTenantCountry] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,6 +63,8 @@ export function ProfileClient() {
 
       if (summaryData.status === 'fulfilled' && summaryData.value) {
         setAlerts(summaryData.value.alerts);
+        setMfaRequiredAll(summaryData.value.settings.features.mfa_required_all);
+        setTenantCountry(summaryData.value.settings.country);
       }
     } catch {
       setError('No fue posible cargar tu perfil. Intenta de nuevo.');
@@ -76,10 +81,18 @@ export function ProfileClient() {
     return (
       <div className="flex flex-1 flex-col">
         <PageHeader title="Mi perfil" subtitle="Cargando tu información..." />
-        <main className="flex-1 space-y-6 p-6">
-          <div className="h-36 animate-pulse rounded-xl bg-gray-100 dark:bg-dark-surface-3" />
-          <div className="h-64 animate-pulse rounded-xl bg-gray-100 dark:bg-dark-surface-3" />
-          <div className="h-56 animate-pulse rounded-xl bg-gray-100 dark:bg-dark-surface-3" />
+        <main className="flex-1 p-6">
+          <div className="mx-auto grid w-full max-w-7xl gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.9fr)] lg:items-start">
+            <div className="space-y-6 lg:col-span-2">
+              <div className="h-36 animate-pulse rounded-xl bg-gray-100 dark:bg-dark-surface-3" />
+            </div>
+            <div className="space-y-6">
+              <div className="h-72 animate-pulse rounded-xl bg-gray-100 dark:bg-dark-surface-3" />
+            </div>
+            <div className="space-y-6">
+              <div className="h-56 animate-pulse rounded-xl bg-gray-100 dark:bg-dark-surface-3" />
+            </div>
+          </div>
         </main>
       </div>
     );
@@ -116,34 +129,53 @@ export function ProfileClient() {
     <div className="flex flex-1 flex-col">
       <PageHeader title="Mi perfil" subtitle="Gestiona tu información personal y seguridad" />
 
-      <main className="flex-1 max-w-3xl space-y-6 p-6">
-        {/* Header con avatar Gravatar, nombre, rol y estado */}
-        <ProfileHeader
-          profile={profile}
-          email={user.emailHash}
-          roleLabel={roleToLabel(user.role)}
-        />
+      <main className="flex-1 p-6">
+        <div className="mx-auto w-full max-w-7xl space-y-6">
+          {/* Header con avatar Gravatar, nombre, rol y estado — ancho completo */}
+          <ProfileHeader profile={profile} roleLabel={roleToLabel(user.role)} />
 
-        {/* Alertas de configuración de empresa — solo si hay alertas activas */}
-        {alerts.length > 0 && (
-          <section aria-label="Alertas de configuración pendiente">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
-              Configuración pendiente
-            </h2>
-            <OnboardingAlerts alerts={alerts} />
-          </section>
-        )}
+          {/* Contenido principal — dos columnas en pantallas grandes */}
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] lg:items-start">
+            <div className="space-y-6">
+              {/* Datos personales */}
+              <PersonalInfoForm
+                profile={profile}
+                userId={user.id}
+                {...(tenantCountry !== undefined ? { tenantCountry } : {})}
+                onUpdated={(updated) => setProfile(updated)}
+              />
+            </div>
 
-        {/* Datos personales */}
-        <PersonalInfoForm
-          profile={profile}
-          userId={user.id}
-          email={user.emailHash}
-          onUpdated={(updated) => setProfile(updated)}
-        />
+            <div className="space-y-6">
+              {/* Alertas de configuración de empresa — solo si hay alertas activas */}
+              {alerts.length > 0 && (
+                <section aria-label="Alertas de configuración pendiente">
+                  <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
+                    Configuración pendiente
+                  </h2>
+                  <OnboardingAlerts alerts={alerts} />
+                </section>
+              )}
 
-        {/* Cambio de contraseña */}
-        <ChangePasswordForm />
+              {/* Configuración de MFA obligatorio — solo ADMIN */}
+              {user.role === 'ADMIN' && (
+                <MfaRequiredToggle
+                  mfaRequiredAll={mfaRequiredAll}
+                  onUpdated={(val) => {
+                    setMfaRequiredAll(val);
+                    // Actualizar alertas: si MFA ya está activo, eliminar la alerta de MFA
+                    if (val) {
+                      setAlerts((prev) => prev.filter((a) => a.id !== 'mfa-not-required'));
+                    }
+                  }}
+                />
+              )}
+
+              {/* Cambio de contraseña */}
+              <ChangePasswordForm />
+            </div>
+          </div>
+        </div>
       </main>
     </div>
   );
