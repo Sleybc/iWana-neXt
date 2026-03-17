@@ -196,6 +196,7 @@ export class UsersService {
           ? this.encryptValue(dto.documentNumber.trim())
           : null;
         existing.avatarUrl = dto.avatarUrl ?? null;
+        existing.mfaRequired = dto.mfaRequired ?? false;
         await qr.manager.save(User, existing);
         user = existing;
       } else {
@@ -222,6 +223,7 @@ export class UsersService {
           documentType: dto.documentType ?? null,
           documentNumber: dto.documentNumber ? this.encryptValue(dto.documentNumber.trim()) : null,
           avatarUrl: dto.avatarUrl ?? null,
+          mfaRequired: dto.mfaRequired ?? false,
         });
         await qr.manager.save(User, user);
       }
@@ -283,6 +285,7 @@ export class UsersService {
           ? this.encryptValue(dto.documentNumber.trim())
           : null;
       if (dto.avatarUrl !== undefined) user.avatarUrl = dto.avatarUrl ?? null;
+      if (dto.mfaRequired !== undefined) user.mfaRequired = dto.mfaRequired;
 
       await qr.manager.save(User, user);
 
@@ -348,6 +351,7 @@ export class UsersService {
       status: user.status as UserStatus,
       tenantId: user.tenantId,
       mfaEnabled: user.mfaEnabled,
+      mfaRequired: user.mfaRequired,
       emailVerified: user.emailVerified,
       passwordResetRequired: user.passwordResetRequired,
       lastLoginAt: user.lastLoginAt,
