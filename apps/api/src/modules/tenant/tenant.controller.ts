@@ -22,24 +22,36 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { AuthService } from '../auth/auth.service';
-import { PlatformRole } from '@iwana/shared';
+import { PlatformRole, UserRole } from '@iwana/shared';
 import { TenantService } from './tenant.service';
 import { TenantProvisioningService } from './tenant-provisioning.service';
+import { DashboardSummaryService } from './dashboard-summary.service';
 import { CreateTenantDto, TenantResponseDto, UpdateTenantDto } from './dto/tenant.dto';
 import { TenantSettingsResponseDto, UpdateTenantSettingsDto } from './dto/tenant-settings.dto';
+import {
+  DashboardSummaryResponseDto,
+  TenantSelfResponseDto,
+  TenantSelfSettingsResponseDto,
+} from './dto/tenant-self.dto';
 
 /**
  * Controlador de gestion de tenants.
  *
- * Todos los endpoints son de administracion de plataforma:
- * solo accesibles para SYSTEM_ADMIN e IWANA_SUPPORT.
+ * Expone dos grupos de endpoints:
  *
- * Pipeline de seguridad:
- *   JwtAuthGuard (verifica JWT RS256) → RolesGuard (verifica PlatformRole)
+ * 1. Self-service del tenant autenticado — accesibles para roles internos del tenant
+ *    (ADMIN, NOC, ACCOUNTANT, SUPPORT). Prefijo: /tenants/me
+ *    Pipeline: JwtAuthGuard → RolesGuard (UserRole)
+ *
+ * 2. Administración de plataforma — solo SYSTEM_ADMIN e IWANA_SUPPORT.
+ *    Pipeline: JwtAuthGuard → RolesGuard (PlatformRole)
+ *
+ * IMPORTANTE: Los endpoints /me deben declararse ANTES de /:id para que Express
+ * no interprete "me" como un UUID parámetro.
  *
  * Prefijo: /api/v1/tenants
- * HLD-MOD01-ARQUITECTURA-v1.0 Seccion 2 (tenant.controller.ts)
- * HLD-MOD01-ARQUITECTURA-v1.0 Seccion 4 (endpoints 16-21)
+ * HLD-MOD01-ARQUITECTURA-v1.0 Seccion 2, Seccion 4
+ * HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §3.2 (contratos self-service)
  */
 @Controller('tenants')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -50,7 +62,70 @@ export class TenantController {
     private readonly tenantService: TenantService,
     private readonly provisioningService: TenantProvisioningService,
     private readonly authService: AuthService,
+    private readonly dashboardSummaryService: DashboardSummaryService,
   ) {}
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SELF-SERVICE DEL TENANT AUTENTICADO
+  // Accesibles para roles internos: ADMIN, NOC, ACCOUNTANT, SUPPORT.
+  // Declarados antes de /:id para que Express no interprete "me" como UUID.
+  // HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §3.2
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * GET /api/v1/tenants/me
+   * Retorna los datos base del tenant del usuario autenticado.
+   * No requiere privilegios de plataforma — solo JWT válido con tenantId.
+   */
+  @Get('me')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.ACCOUNTANT, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Obtener datos base del tenant autenticado (self-service)' })
+  @ApiResponse({ status: 200, description: 'Datos base del tenant.' })
+  @ApiResponse({ status: 404, description: 'Tenant no encontrado.' })
+  async getMe(@CurrentUser() user: JwtPayload): Promise<{ data: TenantSelfResponseDto }> {
+    const data = await this.tenantService.getTenantSelf(user.tenantId!);
+    return { data };
+  }
+
+  /**
+   * GET /api/v1/tenants/me/settings
+   * Retorna la configuración operativa del tenant autenticado (self-service).
+   * Accesible para todos los roles internos del tenant.
+   */
+  @Get('me/settings')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.ACCOUNTANT, UserRole.SUPPORT)
+  @ApiOperation({
+    summary: 'Obtener configuración operativa del tenant autenticado (self-service)',
+  })
+  @ApiResponse({ status: 200, description: 'Configuración operativa del tenant.' })
+  async getMeSettings(
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ data: TenantSelfSettingsResponseDto }> {
+    const data = await this.tenantService.getTenantSelfSettings(user.tenantId!);
+    return { data };
+  }
+
+  /**
+   * GET /api/v1/tenants/me/summary
+   * Retorna el summary del dashboard empresarial: datos del tenant, métricas iniciales
+   * y alertas de onboarding. Solo para ADMIN — es el rol con visibilidad completa en MVP.
+   *
+   * HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §5.2 (Matriz de visibilidad: ADMIN ve todo)
+   */
+  @Get('me/summary')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Obtener summary del dashboard empresarial (solo ADMIN)' })
+  @ApiResponse({ status: 200, description: 'Summary del dashboard.' })
+  async getMeSummary(
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ data: DashboardSummaryResponseDto }> {
+    const data = await this.dashboardSummaryService.getSummary(user.tenantId!, user.schemaName!);
+    return { data };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ADMINISTRACIÓN DE PLATAFORMA — Solo SYSTEM_ADMIN e IWANA_SUPPORT
+  // ─────────────────────────────────────────────────────────────────────────
 
   /**
    * POST /api/v1/tenants
