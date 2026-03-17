@@ -24,6 +24,7 @@ const createUserSchema = z.object({
   documentType: z.enum(['CC', 'CE', 'PASAPORTE', 'NIT_PERSONA']).optional(),
   documentNumber: z.string().max(30).optional().or(z.literal('')),
   avatarUrl: z.string().url('URL inválida').optional().or(z.literal('')),
+  mfaRequired: z.boolean().default(false),
 });
 
 type CreateUserFormValues = z.infer<typeof createUserSchema>;
@@ -78,8 +79,8 @@ export function UserCreateModal({
     reset,
     formState: { errors, isSubmitting },
   } = useForm<CreateUserFormValues>({
-    resolver: zodResolver(createUserSchema),
-    defaultValues: { role: 'NOC', password: '' },
+    resolver: zodResolver(createUserSchema) as never,
+    defaultValues: { role: 'NOC', password: '', mfaRequired: false },
   });
 
   useEffect(() => {
@@ -87,7 +88,7 @@ export function UserCreateModal({
       setError(null);
       setCreatedResult(null);
       setShowProfile(false);
-      reset({ email: '', role: 'NOC', password: '' });
+      reset({ email: '', role: 'NOC', password: '', mfaRequired: false });
     }
   }, [open, reset]);
 
@@ -110,6 +111,7 @@ export function UserCreateModal({
         ...(values.documentType ? { documentType: values.documentType } : {}),
         ...(values.documentNumber ? { documentNumber: values.documentNumber } : {}),
         ...(values.avatarUrl ? { avatarUrl: values.avatarUrl } : {}),
+        mfaRequired: values.mfaRequired ?? false,
       };
 
       const created = await usersApi.create(tenantSlug, payload, crypto.randomUUID());
@@ -245,6 +247,16 @@ export function UserCreateModal({
                     {...register('password')}
                   />
                   {errors.password && <p className={ERROR_CLASS}>{errors.password.message}</p>}
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" className="rounded" {...register('mfaRequired')} />
+                    Requerir verificación en dos pasos (MFA)
+                  </label>
+                  <p className="mt-1 text-xs text-gray-400">
+                    Si se activa, el usuario será redirigido al setup de MFA en su primer ingreso.
+                  </p>
                 </div>
               </div>
 
