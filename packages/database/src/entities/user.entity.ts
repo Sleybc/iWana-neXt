@@ -72,6 +72,14 @@ export class User {
   mfaSecret: string | null;
 
   /**
+   * Si true, el usuario debe completar el setup de MFA antes de acceder.
+   * El admin lo define al crear el usuario o puede cambiarlo después.
+   * Default false — no fuerza MFA por defecto.
+   */
+  @Column({ name: 'mfa_required', default: false })
+  mfaRequired: boolean;
+
+  /**
    * true cuando el usuario debe cambiar el password en el proximo login.
    * Se activa en: creacion inicial (seed), reset de password por admin.
    */
