@@ -50,6 +50,7 @@ export function UserManagementModal({
   const [detail, setDetail] = useState<UserListItem | null>(user);
   const [role, setRole] = useState(user?.role ?? 'NOC');
   const [status, setStatus] = useState(user?.status ?? 'ACTIVE');
+  const [mfaRequired, setMfaRequired] = useState(user?.mfaRequired ?? false);
   // Campos de perfil
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -86,6 +87,7 @@ export function UserManagementModal({
         setJobTitle(current.jobTitle ?? '');
         setDocumentType(current.documentType ?? '');
         setAvatarUrl(current.avatarUrl ?? '');
+        setMfaRequired(current.mfaRequired ?? false);
         // documentNumber nunca retorna del backend (PII sensible — Ley 1581)
       } catch (err) {
         setError(err instanceof ApiError ? err.message : 'No fue posible cargar el detalle.');
@@ -111,6 +113,7 @@ export function UserManagementModal({
       setDocumentType('');
       setDocumentNumber('');
       setAvatarUrl('');
+      setMfaRequired(false);
       setError(null);
       setSuccess(null);
     }
@@ -135,6 +138,7 @@ export function UserManagementModal({
         ...(documentType ? { documentType } : {}),
         ...(documentNumber ? { documentNumber } : {}),
         ...(avatarUrl ? { avatarUrl } : {}),
+        mfaRequired,
       };
       const updated = await usersApi.update(tenantSlug, user.id, payload, crypto.randomUUID());
       setDetail(updated);
@@ -264,6 +268,26 @@ export function UserManagementModal({
                   ))}
                 </select>
               </div>
+            </div>
+
+            {/* Seguridad */}
+            <div className="rounded-lg border border-gray-200 p-3 dark:border-dark-border">
+              <label className={LABEL_CLASS}>Seguridad</label>
+              <label className="mt-1 flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="rounded"
+                  checked={mfaRequired}
+                  onChange={(e) => setMfaRequired(e.target.checked)}
+                />
+                Requerir verificación en dos pasos (MFA)
+              </label>
+              {detail?.mfaEnabled && (
+                <p className="mt-1 text-xs text-gray-400">
+                  MFA actualmente configurado. Desactivar este toggle no elimina el MFA ya
+                  configurado.
+                </p>
+              )}
             </div>
 
             {/* Perfil personal */}
