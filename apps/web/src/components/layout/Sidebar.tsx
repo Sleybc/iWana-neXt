@@ -249,7 +249,6 @@ export const Sidebar = ({
                   // Ocultar etiqueta cuando el sidebar está colapsado
                   desktopCollapsed && 'lg:hidden',
                 )}
-                aria-hidden={desktopCollapsed ? true : undefined}
               >
                 {navGroup.group}
               </p>

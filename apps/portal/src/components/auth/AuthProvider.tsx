@@ -14,6 +14,8 @@ import {
   ApiError,
   clearPendingTenantMfaLogin,
   getPendingTenantMfaLogin,
+  isStoredTokenValid,
+  persistAccessToken,
   setPendingTenantMfaLogin,
   type JwtProfile,
 } from '@/lib/api-client';
@@ -109,9 +111,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const bootstrap = async () => {
       try {
+        if (!isStoredTokenValid()) {
+          // Token ausente o expirado localmente: limpiar y no hacer round-trip innecesario.
+          persistAccessToken('');
+          return;
+        }
+
         const profile = await authApi.me();
         if (mounted) {
-          setUser(toAuthUser(profile));
+          if (profile.passwordResetRequired) {
+            setUser(null);
+          } else {
+            setUser(toAuthUser(profile));
+          }
         }
       } catch {
         if (mounted) {
@@ -161,13 +173,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const profile = await authApi.me(tenantSlug);
-      setUser(toAuthUser(profile));
       clearPendingTenantMfaLogin();
 
       // Si el backend indica que se debe cambiar la contrasena, informar al formulario
+      // Y no popular el estado de usuario para mantener 'user' en null en estados intermedios.
       if (profile.passwordResetRequired) {
+        setUser(null);
         return 'password_reset_required';
       }
+
+      setUser(toAuthUser(profile));
 
       return 'authenticated';
     },

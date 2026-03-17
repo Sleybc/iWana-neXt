@@ -262,7 +262,8 @@ Referencia completa en docs/hlds/HLD-MOD01-ARQUITECTURA-v1.0.md — Sección 4.
 
 | Método | Endpoint                                           | Roles                        | Descripción                 |
 | ------ | -------------------------------------------------- | ---------------------------- | --------------------------- |
-| POST   | `/api/v1/auth/login`                               | Público                      | Login con credenciales      |
+| POST   | `/api/v1/auth/login`                               | Público                      | Login con credenciales (usuario de tenant)    |
+| POST   | `/api/v1/auth/platform/login`                      | Público                      | Login de plataforma (SYSTEM_ADMIN / IWANA_SUPPORT) — sin X-Tenant-Slug |
 | POST   | `/api/v1/auth/refresh`                             | Público (cookie)             | Rotar refresh token         |
 | POST   | `/api/v1/auth/logout`                              | Autenticado                  | Cerrar sesión               |
 | POST   | `/api/v1/auth/mfa/setup`                           | Autenticado                  | Iniciar setup TOTP          |
@@ -272,6 +273,8 @@ Referencia completa en docs/hlds/HLD-MOD01-ARQUITECTURA-v1.0.md — Sección 4.
 | POST   | `/api/v1/auth/forgot-password`                     | Público                      | Solicitar reset             |
 | POST   | `/api/v1/auth/reset-password`                      | Público (token)              | Establecer nueva contraseña |
 | POST   | `/api/v1/auth/change-password`                     | Autenticado                  | Cambiar contraseña          |
+| POST   | `/api/v1/auth/email/verify`                        | Público (token)              | Verificar email con token   |
+| POST   | `/api/v1/auth/email/resend-verification`           | Público                      | Reenviar email de verificación |
 | GET    | `/api/v1/users`                                    | ADMIN, SYSTEM_ADMIN          | Listar usuarios del tenant  |
 | POST   | `/api/v1/users`                                    | ADMIN                        | Crear usuario               |
 | GET    | `/api/v1/users/:id`                                | ADMIN, propio                | Ver usuario                 |
@@ -283,6 +286,7 @@ Referencia completa en docs/hlds/HLD-MOD01-ARQUITECTURA-v1.0.md — Sección 4.
 | PATCH  | `/api/v1/tenants/:id`                              | SYSTEM_ADMIN                 | Actualizar tenant           |
 | PATCH  | `/api/v1/tenants/:id/suspend`                      | SYSTEM_ADMIN                 | Suspender tenant            |
 | PATCH  | `/api/v1/tenants/:id/activate`                     | SYSTEM_ADMIN                 | Reactivar tenant            |
+| PATCH  | `/api/v1/tenants/:id/retry-provisioning`           | SYSTEM_ADMIN                 | Reintentar provisioning fallido |
 | POST   | `/api/v1/tenants/:id/regenerate-admin-credentials` | SYSTEM_ADMIN                 | Regenerar password admin    |
 | GET    | `/api/v1/audit-logs`                               | AUDITOR, ADMIN, SYSTEM_ADMIN | Consultar audit log         |
 | GET    | `/health`                                          | Público                      | Health check                |

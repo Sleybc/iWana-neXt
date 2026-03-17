@@ -238,7 +238,7 @@ export function DashboardClient() {
                   : [{ label: 'Sin actividad reciente', value: '-' }]
               }
               footerLabel="Ver historial completo"
-              footerHref="/audit"
+              footerHref="/audit-logs"
             />
 
             <PanelCard

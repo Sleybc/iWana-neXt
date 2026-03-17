@@ -109,7 +109,7 @@ export function LoginForm() {
             className="text-sm font-medium text-slate-500 hover:text-[#A5C330] transition-colors"
             href="/auth/forgot-password"
           >
-            ¿Olvidaste tu contraseña?
+            ¿Necesitas recuperar tu acceso?
           </a>
         </div>
         <div className="relative group">

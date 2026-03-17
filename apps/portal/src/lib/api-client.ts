@@ -64,7 +64,37 @@ function readStoredAccessToken(): string {
   return window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) ?? '';
 }
 
-function persistAccessToken(token: string): void {
+/**
+ * Decodifica el payload de un JWT sin verificar la firma (solo cliente).
+ * Retorna null si el token es inválido o está expirado.
+ */
+function decodeJwtPayload(token: string): { exp?: number } | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))) as {
+      exp?: number;
+    };
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Verifica si el access token almacenado tiene payload válido y no está expirado.
+ * Usa un margen de 30 segundos para anticipar expiración inminente.
+ */
+export function isStoredTokenValid(): boolean {
+  const token = readStoredAccessToken();
+  if (!token) return false;
+  const payload = decodeJwtPayload(token);
+  if (!payload?.exp) return false;
+  const nowSec = Math.floor(Date.now() / 1000);
+  return payload.exp > nowSec + 30;
+}
+
+export function persistAccessToken(token: string): void {
   if (typeof window === 'undefined') {
     return;
   }
@@ -238,8 +268,9 @@ async function request<T>(
         },
         resolvedTenantSlug,
       );
-    } catch {
-      // Si no se puede refrescar, dejamos que el error original se propague.
+    } catch (refreshError) {
+      // Si no se puede refrescar, re-lanzamos para que el llamador reciba un error claro.
+      throw refreshError;
     }
   }
 
@@ -352,6 +383,7 @@ export const authApi = {
     } finally {
       persistAccessToken('');
       clearPendingTenantMfaLogin();
+      clearMfaSetupTokenFromStorage();
     }
   },
 

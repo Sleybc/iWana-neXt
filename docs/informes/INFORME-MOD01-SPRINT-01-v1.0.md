@@ -6,7 +6,7 @@
 **Versión:** 1.0 (documento cerrado — cierre formal de producción)  
 **Estado:** ✅ CERRADO — MOD01 apto para producción  
 **Fecha de apertura:** 2026-03-12  
-**Última actualización:** 2026-03-14 (Hotfix Docker worker monorepo + runtime BullMQ no recuperable + accesibilidad/login/logout previos)  
+**Última actualización:** 2026-03-15 (Frontend PRD MOD01: MFA tenant corregido + recuperación/verificación públicas + hardening ARIA/rutas TailAdmin)  
 **Agente responsable:** AI-EM-ARCH (Modo Mixto)  
 **Referencia al prompt de ejecución:** `docs/prompts/PROMPT-MOD01-SPRINT-01-v1.0.md`
 
@@ -67,6 +67,26 @@ iniciar cualquier código (`docs/prompts/PROMPT-MOD01-SPRINT-01-v1.0.md`).
 | AuthService logout | `apps/api/src/modules/auth/auth.service.ts` | Logout robusto para tokens de plataforma: no depende de `TenantContext` y solo revoca refresh token si existe `schemaName` | ✅ |
 | API client logout web | `apps/web/src/lib/api-client.ts` | Logout en cliente convertido a best-effort para evitar Runtime ApiError cuando backend falla en cierre de sesion | ✅ |
 | API client logout portal | `apps/portal/src/lib/api-client.ts` | Logout en cliente convertido a best-effort para mantener consistencia de UX | ✅ |
+
+### Addendum correctivo (2026-03-15) — Frontend PRD MOD01 + TailAdmin governance
+
+| Artefacto | Archivo | Cambio | Estado |
+|-----------|---------|--------|--------|
+| Auth tenant MFA | `apps/portal/src/lib/api-client.ts` + `apps/portal/src/components/auth/AuthProvider.tsx` | Se corrigió el flujo tenant-aware de MFA: login ahora reconoce `mfaRequired`, persiste contexto efímero de tenant/email/password, reintenta `POST /auth/login` con `totpCode` y limpia sesión parcial si el segundo factor aún no se completa | ✅ |
+| Login portal | `apps/portal/src/components/auth/LoginForm.tsx` | El formulario ya no asume autenticación directa: redirige a `/auth/mfa/verify` cuando el backend exige segundo factor y preserva el flujo de cambio obligatorio de contraseña | ✅ |
+| MFA portal | `apps/portal/src/components/auth/MfaVerifyForm.tsx` | Se eliminó el enlace roto a `/auth/backup-code`; la verificación ahora usa `completeMfaLogin()` del `AuthProvider` y envía el payload correcto (`totpCode`) alineado al DTO backend | ✅ |
+| Recuperación tenant | `apps/portal/src/app/auth/forgot-password/page.tsx` | Nueva pantalla pública con `react-hook-form` + `zod` para `POST /auth/forgot-password`, incluyendo slug del tenant requerido por `TenantMiddleware` | ✅ |
+| Reset tenant | `apps/portal/src/app/auth/reset-password/page.tsx` | Nueva pantalla pública para `POST /auth/reset-password` con token, política de contraseña NIST/OWASP y soporte de `tenant` / `token` vía query params | ✅ |
+| Verificación email tenant | `apps/portal/src/app/auth/verify-email/page.tsx` | Nueva pantalla pública para `POST /auth/email/verify` y reenvío `POST /auth/email/resend-verification`, con formularios separados y validación Zod | ✅ |
+| Recuperación plataforma | `apps/web/src/app/auth/forgot-password/page.tsx` + `apps/web/src/components/auth/LoginForm.tsx` | Se sustituyó el enlace roto por una pantalla informativa gobernada: el módulo deja explícito que no existe contrato backend self-service para usuarios del schema público y deriva al canal controlado | ✅ |
+| Hardening shell TailAdmin | `apps/web/src/components/audit/AuditLogsTable.tsx` + `apps/web/src/components/dashboard/TenantsTable.tsx` + `apps/web/src/components/layout/Sidebar.tsx` + `apps/web/src/components/dashboard/DashboardClient.tsx` | Se corrigieron errores ARIA reportados por VS Code y se reparó la ruta incorrecta del panel de actividad (`/audit` → `/audit-logs`) | ✅ |
+| Validación de compilación | `apps/web` + `apps/portal` | Typecheck en verde con `pnpm --filter @iwana/web typecheck` y `pnpm --filter @iwana/portal typecheck` tras los cambios | ✅ |
+
+**Referencia documental utilizada para el corte:**
+
+- TailAdmin Docs: instalación Next.js, folder structure Next.js, app layout y catálogo de componentes.
+- ADR-023 (`docs/adrs/ADR-023-Referencia-TailAdmin-Shell-Dashboard.md`) como baseline visual y estructural.
+- PRD/HLD vigentes de MOD01 para alinear contratos públicos de auth y restricciones tenant-aware.
 
 ### 2.1 Capa de Datos (`@iwana/db`)
 

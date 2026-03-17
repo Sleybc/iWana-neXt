@@ -216,6 +216,16 @@ Variables pgBouncer: `DB_USER`, `DB_HOST`, `DB_NAME` (no bitnami).
 5. No iniciar módulo N+1 sin cerrar N (ADR-016).
 6. Todo código generado debe incluir comentarios funcionales en español cuando la lógica no sea trivial.
 
+## Gotchas conocidos — Auth / MFA
+
+- `@Roles()` siempre con enum `UserRole.*` — string literals como `'tenant_admin'` no arrojan error pero causan 403 silencioso.
+- `auth.controller.ts`: cada flag de respuesta (`mfaRequired`, `mfaSetupRequired`) debe propagarse explícitamente con spread en el return del controller — NestJS no serializa automáticamente campos extra del servicio.
+- `setupMfa()` es idempotente por diseño: reutiliza `mfa:pending:{userId}` en Redis si ya existe. Previene race condition con React Strict Mode que invoca `useEffect` dos veces en dev.
+- `useEffect` que llama endpoints de setup de MFA debe usar `[]` como dependencia — nunca `[router]`.
+- `TenantContext.getOrThrow()` lanza `Error` genérico (→ 500), no `UnauthorizedException` (→ 401). Si falta contexto en una ruta protegida, el error es 500, no 401.
+- Token `scope='mfa-setup'` SÍ contiene `tenantId` + `schemaName` — TenantMiddleware lo resuelve correctamente sin necesidad de `X-Tenant-Slug`.
+- **Portal — dos tokens en localStorage:** `iwana.portal.access-token` (sesión completa) y `iwana.portal.mfa-setup-token` (alcance limitado, solo durante setup MFA). `api-client.mfaSetup()` y `mfaVerifySetup()` leen el segundo directamente, sin pasar por `request()`.
+
 ## Formato de Respuesta
 
 - Explicita el **modo activo** (EM / Architect / Mixto) al inicio de entregables mayores.

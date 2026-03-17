@@ -1,5 +1,5 @@
 /**
- * Tests unitarios de AuditInterceptor — Sprint 1.
+ * Tests unitarios de AuditInterceptor — Sprint 1 + RF-AUD-03.
  *
  * Verifica:
  * - Pasa sin auditar para métodos GET, HEAD, OPTIONS.
@@ -7,11 +7,13 @@
  * - Audita PATCH → AuditAction.UPDATE.
  * - Audita DELETE → AuditAction.DELETE.
  * - Omite cuando el handler tiene @SkipAudit().
- * - Omite cuando no hay TenantContext activo.
+ * - Omite cuando no hay TenantContext ni usuario de plataforma activo.
  * - Extrae entityId desde el route param :id cuando está disponible.
  * - Extrae entityId desde response.data.id como fallback.
  * - Sanitiza passwordHash/mfaSecret del newValue antes de persistir.
  * - No audita respuestas de error (tap error callback).
+ * - RF-AUD-03: usuario de plataforma (jwt.type='platform') → PlatformAuditService.
+ * - RF-AUD-03: usuario de tenant (jwt.type='tenant') + TenantContext → AuditService.
  *
  * SEGURIDAD: Sin PII real — datos ficticios de prueba.
  */
@@ -23,6 +25,7 @@ import { lastValueFrom } from 'rxjs';
 import { AuditAction } from '@iwana/shared';
 import { AuditInterceptor } from './audit.interceptor';
 import { AuditService } from './audit.service';
+import { PlatformAuditService } from './platform-audit.service';
 import { SKIP_AUDIT_KEY } from './decorators/skip-audit.decorator';
 
 // ---------------------------------------------------------------------------
@@ -45,14 +48,16 @@ jest.mock('@iwana/db', () => {
 // Helpers de contexto de ejecucion
 // ---------------------------------------------------------------------------
 
-function buildMockContext(overrides: {
-  method?: string;
-  params?: Record<string, string>;
-  user?: { sub: string };
-  handlerSkipAudit?: boolean;
-  ip?: string;
-  headers?: Record<string, string>;
-} = {}): jest.Mocked<ExecutionContext> {
+function buildMockContext(
+  overrides: {
+    method?: string;
+    params?: Record<string, string>;
+    user?: { sub: string; type?: 'platform' | 'tenant' };
+    handlerSkipAudit?: boolean;
+    ip?: string;
+    headers?: Record<string, string>;
+  } = {},
+): jest.Mocked<ExecutionContext> {
   const {
     method = 'POST',
     params = {},
@@ -102,10 +107,12 @@ function buildReflector(options: { skipAudit?: boolean; entityName?: string } = 
 
 describe('AuditInterceptor', () => {
   let auditService: jest.Mocked<Pick<AuditService, 'log'>>;
+  let platformAuditService: jest.Mocked<Pick<PlatformAuditService, 'log'>>;
 
   beforeEach(() => {
     mockTenantContextGet.mockReset();
     auditService = { log: jest.fn().mockResolvedValue(undefined) };
+    platformAuditService = { log: jest.fn().mockResolvedValue(undefined) };
   });
 
   afterEach(() => {
@@ -120,7 +127,11 @@ describe('AuditInterceptor', () => {
     mockTenantContextGet.mockReturnValue({ tenantId: 'tid', schemaName: 's1' });
     const ctx = buildMockContext({ method: 'GET' });
     const reflector = buildReflector();
-    const interceptor = new AuditInterceptor(auditService as unknown as AuditService, reflector);
+    const interceptor = new AuditInterceptor(
+      auditService as unknown as AuditService,
+      platformAuditService as unknown as PlatformAuditService,
+      reflector,
+    );
 
     const result$ = interceptor.intercept(ctx, { handle: () => of({ data: { id: 'e1' } }) });
     await lastValueFrom(result$);
@@ -136,7 +147,11 @@ describe('AuditInterceptor', () => {
     mockTenantContextGet.mockReturnValue({ tenantId: 'tenant-1', schemaName: 'schema_1' });
     const ctx = buildMockContext({ method: 'POST', user: { sub: 'usr-1' } });
     const reflector = buildReflector();
-    const interceptor = new AuditInterceptor(auditService as unknown as AuditService, reflector);
+    const interceptor = new AuditInterceptor(
+      auditService as unknown as AuditService,
+      platformAuditService as unknown as PlatformAuditService,
+      reflector,
+    );
 
     const result$ = interceptor.intercept(ctx, {
       handle: () => of({ data: { id: 'entity-created' } }),
@@ -163,7 +178,11 @@ describe('AuditInterceptor', () => {
     mockTenantContextGet.mockReturnValue({ tenantId: 'tenant-2', schemaName: 'schema_2' });
     const ctx = buildMockContext({ method: 'PATCH', params: { id: 'route-uuid' } });
     const reflector = buildReflector();
-    const interceptor = new AuditInterceptor(auditService as unknown as AuditService, reflector);
+    const interceptor = new AuditInterceptor(
+      auditService as unknown as AuditService,
+      platformAuditService as unknown as PlatformAuditService,
+      reflector,
+    );
 
     const result$ = interceptor.intercept(ctx, { handle: () => of({ data: { name: 'updated' } }) });
     await lastValueFrom(result$);
@@ -184,7 +203,11 @@ describe('AuditInterceptor', () => {
     mockTenantContextGet.mockReturnValue({ tenantId: 'tenant-3', schemaName: 'schema_3' });
     const ctx = buildMockContext({ method: 'DELETE', params: { id: 'del-uuid' } });
     const reflector = buildReflector();
-    const interceptor = new AuditInterceptor(auditService as unknown as AuditService, reflector);
+    const interceptor = new AuditInterceptor(
+      auditService as unknown as AuditService,
+      platformAuditService as unknown as PlatformAuditService,
+      reflector,
+    );
 
     const result$ = interceptor.intercept(ctx, { handle: () => of({ data: null }) });
     await lastValueFrom(result$);
@@ -206,7 +229,11 @@ describe('AuditInterceptor', () => {
     mockTenantContextGet.mockReturnValue({ tenantId: 'tid', schemaName: 's1' });
     const ctx = buildMockContext({ method: 'POST' });
     const reflector = buildReflector({ skipAudit: true });
-    const interceptor = new AuditInterceptor(auditService as unknown as AuditService, reflector);
+    const interceptor = new AuditInterceptor(
+      auditService as unknown as AuditService,
+      platformAuditService as unknown as PlatformAuditService,
+      reflector,
+    );
 
     const result$ = interceptor.intercept(ctx, { handle: () => of({}) });
     await lastValueFrom(result$);
@@ -215,19 +242,108 @@ describe('AuditInterceptor', () => {
   });
 
   // --------------------------------------------------------------------------
-  // Sin TenantContext — no debe auditar
+  // Sin TenantContext ni usuario de plataforma — no debe auditar
   // --------------------------------------------------------------------------
 
-  it('omite completamente cuando no hay TenantContext activo', async () => {
+  it('omite completamente cuando no hay TenantContext ni usuario de plataforma', async () => {
     mockTenantContextGet.mockReturnValue(undefined); // Sin contexto
-    const ctx = buildMockContext({ method: 'POST' });
+    const ctx = buildMockContext({ method: 'POST' }); // Sin user en request
     const reflector = buildReflector();
-    const interceptor = new AuditInterceptor(auditService as unknown as AuditService, reflector);
+    const interceptor = new AuditInterceptor(
+      auditService as unknown as AuditService,
+      platformAuditService as unknown as PlatformAuditService,
+      reflector,
+    );
 
     const result$ = interceptor.intercept(ctx, { handle: () => of({}) });
     await lastValueFrom(result$);
 
     expect(auditService.log).not.toHaveBeenCalled();
+    expect(platformAuditService.log).not.toHaveBeenCalled();
+  });
+
+  // --------------------------------------------------------------------------
+  // RF-AUD-03: usuario de plataforma → PlatformAuditService
+  // --------------------------------------------------------------------------
+
+  it('RF-AUD-03: enruta a PlatformAuditService cuando jwt.type es "platform"', async () => {
+    mockTenantContextGet.mockReturnValue(undefined); // Sin TenantContext para usuario de plataforma
+    const ctx = buildMockContext({
+      method: 'PATCH',
+      params: { id: 'tenant-uuid-1' },
+      user: { sub: 'platform-user-1', type: 'platform' },
+    });
+    const reflector = buildReflector({ entityName: 'Tenant' });
+    const interceptor = new AuditInterceptor(
+      auditService as unknown as AuditService,
+      platformAuditService as unknown as PlatformAuditService,
+      reflector,
+    );
+
+    const result$ = interceptor.intercept(ctx, {
+      handle: () => of({ data: { name: 'ISP Bogotá' } }),
+    });
+    await lastValueFrom(result$);
+
+    // Solo PlatformAuditService debe llamarse
+    expect(platformAuditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.UPDATE,
+        entityType: 'Tenant',
+        entityId: 'tenant-uuid-1',
+        userId: 'platform-user-1',
+      }),
+    );
+    expect(auditService.log).not.toHaveBeenCalled();
+  });
+
+  it('RF-AUD-03: usuario de plataforma con TenantContext activo sigue usando PlatformAuditService', async () => {
+    // Aunque haya TenantContext (edge case), el tipo de usuario dicta el destino
+    mockTenantContextGet.mockReturnValue({ tenantId: 'tid', schemaName: 's1' });
+    const ctx = buildMockContext({
+      method: 'POST',
+      user: { sub: 'sys-admin-1', type: 'platform' },
+    });
+    const reflector = buildReflector();
+    const interceptor = new AuditInterceptor(
+      auditService as unknown as AuditService,
+      platformAuditService as unknown as PlatformAuditService,
+      reflector,
+    );
+
+    const result$ = interceptor.intercept(ctx, { handle: () => of({ data: { id: 'new-id' } }) });
+    await lastValueFrom(result$);
+
+    expect(platformAuditService.log).toHaveBeenCalledTimes(1);
+    expect(auditService.log).not.toHaveBeenCalled();
+  });
+
+  it('RF-AUD-03: usuario de tenant con TenantContext usa AuditService (no plataforma)', async () => {
+    mockTenantContextGet.mockReturnValue({ tenantId: 'tenant-1', schemaName: 'schema_1' });
+    const ctx = buildMockContext({
+      method: 'POST',
+      user: { sub: 'tenant-user-1', type: 'tenant' },
+    });
+    const reflector = buildReflector();
+    const interceptor = new AuditInterceptor(
+      auditService as unknown as AuditService,
+      platformAuditService as unknown as PlatformAuditService,
+      reflector,
+    );
+
+    const result$ = interceptor.intercept(ctx, {
+      handle: () => of({ data: { id: 'created-id' } }),
+    });
+    await lastValueFrom(result$);
+
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        schemaName: 'schema_1',
+        userId: 'tenant-user-1',
+      }),
+    );
+    expect(platformAuditService.log).not.toHaveBeenCalled();
   });
 
   // --------------------------------------------------------------------------
@@ -238,7 +354,11 @@ describe('AuditInterceptor', () => {
     mockTenantContextGet.mockReturnValue({ tenantId: 'tid', schemaName: 's1' });
     const ctx = buildMockContext({ method: 'POST', params: { id: 'uid' } });
     const reflector = buildReflector();
-    const interceptor = new AuditInterceptor(auditService as unknown as AuditService, reflector);
+    const interceptor = new AuditInterceptor(
+      auditService as unknown as AuditService,
+      platformAuditService as unknown as PlatformAuditService,
+      reflector,
+    );
 
     const sensitiveResponse = {
       data: {
@@ -277,7 +397,11 @@ describe('AuditInterceptor', () => {
     mockTenantContextGet.mockReturnValue({ tenantId: 'tid', schemaName: 's1' });
     const ctx = buildMockContext({ method: 'POST' });
     const reflector = buildReflector();
-    const interceptor = new AuditInterceptor(auditService as unknown as AuditService, reflector);
+    const interceptor = new AuditInterceptor(
+      auditService as unknown as AuditService,
+      platformAuditService as unknown as PlatformAuditService,
+      reflector,
+    );
 
     const result$ = interceptor.intercept(ctx, {
       handle: () => throwError(() => new Error('handler error')),
@@ -295,7 +419,11 @@ describe('AuditInterceptor', () => {
     mockTenantContextGet.mockReturnValue({ tenantId: 'tid', schemaName: 's1' });
     const ctx = buildMockContext({ method: 'POST' });
     const reflector = buildReflector({ entityName: 'Subscriber' });
-    const interceptor = new AuditInterceptor(auditService as unknown as AuditService, reflector);
+    const interceptor = new AuditInterceptor(
+      auditService as unknown as AuditService,
+      platformAuditService as unknown as PlatformAuditService,
+      reflector,
+    );
 
     const result$ = interceptor.intercept(ctx, { handle: () => of({ data: { id: 'sub-1' } }) });
     await lastValueFrom(result$);
@@ -314,7 +442,11 @@ describe('AuditInterceptor', () => {
     const ctx = buildMockContext({ method: 'POST' });
     (ctx.getType as jest.Mock).mockReturnValue('rpc');
     const reflector = buildReflector();
-    const interceptor = new AuditInterceptor(auditService as unknown as AuditService, reflector);
+    const interceptor = new AuditInterceptor(
+      auditService as unknown as AuditService,
+      platformAuditService as unknown as PlatformAuditService,
+      reflector,
+    );
 
     const result$ = interceptor.intercept(ctx, { handle: () => of({}) });
     await lastValueFrom(result$);

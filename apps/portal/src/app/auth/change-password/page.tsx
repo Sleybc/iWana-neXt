@@ -61,8 +61,9 @@ export default function ChangePasswordPage() {
     setServerError(null);
     try {
       await authApi.changePassword(data.currentPassword, data.newPassword);
-      // Contrasena cambiada con exito — redirigir al dashboard del portal
-      router.push('/dashboard');
+      // Tras cambio obligatorio, el backend invalida la sesion. Forzamos limpieza local y re-login.
+      await authApi.logout();
+      router.push('/auth/login');
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 401) {

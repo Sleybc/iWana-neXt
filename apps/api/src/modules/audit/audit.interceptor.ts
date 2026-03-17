@@ -1,10 +1,4 @@
-import {
-  CallHandler,
-  ExecutionContext,
-  Injectable,
-  Logger,
-  NestInterceptor,
-} from '@nestjs/common';
+import { CallHandler, ExecutionContext, Injectable, Logger, NestInterceptor } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { Observable } from 'rxjs';
@@ -12,6 +6,7 @@ import { tap } from 'rxjs/operators';
 import { AuditAction } from '@iwana/shared';
 import { TenantContext } from '@iwana/db';
 import { AuditService } from './audit.service';
+import { PlatformAuditService } from './platform-audit.service';
 import { AUDIT_ENTITY_KEY } from './decorators/audit-entity.decorator';
 import { SKIP_AUDIT_KEY } from './decorators/skip-audit.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
@@ -23,10 +18,16 @@ import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
  * y registra automaticamente una entrada de audit trail sin necesidad de que
  * el codigo de negocio lo haga explicitamente.
  *
+ * ENRUTAMIENTO DE AUDIT (RF-AUD-03, ADR-018):
+ * - jwt.type === 'platform' (SYSTEM_ADMIN / IWANA_SUPPORT) → PlatformAuditService
+ *   → escribe en public.platform_audit_logs
+ * - jwt.type === 'tenant' con TenantContext activo → AuditService
+ *   → escribe en <schema>.audit_logs del tenant
+ * - Sin usuario autenticado ni TenantContext → omite silenciosamente
+ *
  * EXCLUSIONES:
  * - Metodos GET, HEAD, OPTIONS (solo lectura)
  * - Handlers marcados con @SkipAudit() (emiten su propio audit o no lo requieren)
- * - Requests sin TenantContext activo (rutas de plataforma, auth publico)
  *
  * CONVENCION DE NOMBRE DE ENTIDAD:
  * - Primero busca @AuditEntity('nombre') en el handler o controlador
@@ -44,6 +45,7 @@ export class AuditInterceptor implements NestInterceptor {
 
   constructor(
     private readonly auditService: AuditService,
+    private readonly platformAuditService: PlatformAuditService,
     private readonly reflector: Reflector,
   ) {}
 
@@ -65,9 +67,17 @@ export class AuditInterceptor implements NestInterceptor {
     ]);
     if (skip) return next.handle();
 
-    // Verificar que hay TenantContext activo (rutas de plataforma no lo tienen)
+    // Usuario desde el JWT claim adjunto por JwtAuthGuard
+    const user = request['user'] as JwtPayload | undefined;
+    const isPlatformUser = user?.type === 'platform';
+
+    // Determinar contexto de audit:
+    // - Usuario de plataforma → PlatformAuditService (public.platform_audit_logs)
+    // - Usuario de tenant con TenantContext → AuditService (<schema>.audit_logs)
+    // - Sin contexto identificable → omitir silenciosamente
     const tenantCtx = TenantContext.get();
-    if (!tenantCtx) return next.handle();
+
+    if (!isPlatformUser && !tenantCtx) return next.handle();
 
     // Nombre de entidad desde decorador o clase del controlador
     const entityType =
@@ -76,8 +86,6 @@ export class AuditInterceptor implements NestInterceptor {
         context.getClass(),
       ]) ?? context.getClass().name.replace(/Controller$/i, '');
 
-    // Usuario desde el JWT claim adjunto por JwtAuthGuard
-    const user = request['user'] as JwtPayload | undefined;
     const userId = user?.sub ?? null;
 
     // IP/User-Agent del request
@@ -100,23 +108,31 @@ export class AuditInterceptor implements NestInterceptor {
           // Registrar solo el nuevo valor para CREATE; omitir el cuerpo para DELETE
           const newValue =
             action !== AuditAction.DELETE
-              ? this.sanitizeResponseData(
-                  (response as Record<string, unknown> | null)?.['data'],
-                )
+              ? this.sanitizeResponseData((response as Record<string, unknown> | null)?.['data'])
               : null;
 
-          // Fire-and-forget — errores de audit nunca bloquean la respuesta
-          void this.auditService.log({
+          const entryBase = {
             action,
             entityType,
             entityId: String(entityId),
             newValue,
             userId,
-            tenantId: tenantCtx.tenantId,
-            schemaName: tenantCtx.schemaName,
             ipAddress,
             userAgent,
-          });
+          };
+
+          // RF-AUD-03 (ADR-018): enrutar según tipo de usuario
+          if (isPlatformUser) {
+            // SYSTEM_ADMIN / IWANA_SUPPORT → public.platform_audit_logs
+            void this.platformAuditService.log(entryBase);
+          } else if (tenantCtx) {
+            // Usuario de tenant → <schema>.audit_logs
+            void this.auditService.log({
+              ...entryBase,
+              tenantId: tenantCtx.tenantId,
+              schemaName: tenantCtx.schemaName,
+            });
+          }
         },
         error: () => {
           // No auditar errores aqui — el handler de errores los registra si aplica
@@ -155,16 +171,14 @@ export class AuditInterceptor implements NestInterceptor {
       'passwordHash',
       'passwordResetToken',
       'mfaSecret',
-      'email',       // cifrado AES — no exponer en audit
+      'email', // cifrado AES — no exponer en audit
       'accessToken',
       'refreshToken',
       'tokenHash',
     ]);
 
     return Object.fromEntries(
-      Object.entries(data as Record<string, unknown>).filter(
-        ([key]) => !SENSITIVE_KEYS.has(key),
-      ),
+      Object.entries(data as Record<string, unknown>).filter(([key]) => !SENSITIVE_KEYS.has(key)),
     );
   }
 }

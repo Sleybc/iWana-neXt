@@ -45,5 +45,8 @@
     "prettier": "^3.0.0",
     "turbo": "latest",
     "typescript": "^5.9.0"
+  },
+  "dependencies": {
+    "cross-env": "^10.1.0"
   }
 }

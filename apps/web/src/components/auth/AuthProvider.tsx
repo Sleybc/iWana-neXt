@@ -13,7 +13,8 @@ import {
   authApi,
   clearPendingPlatformMfaLogin,
   getPendingPlatformMfaLogin,
-  getStoredAccessToken,
+  isStoredTokenValid,
+  persistAccessToken,
   platformUsersApi,
   setPendingPlatformMfaLogin,
   ApiError,
@@ -114,7 +115,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const bootstrap = async () => {
       try {
-        if (!getStoredAccessToken()) {
+        if (!isStoredTokenValid()) {
+          // Token ausente o expirado localmente: limpiar y no hacer round-trip innecesario.
+          persistAccessToken('');
           return;
         }
 

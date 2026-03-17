@@ -200,7 +200,6 @@ export function AuditLogsTable({
                   }}
                   tabIndex={0}
                   role="button"
-                  aria-expanded={expandedRowId === entry.id ? true : false}
                   className="border-t border-gray-100 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors cursor-pointer"
                 >
                   {/* Fecha formateada en locale colombiano */}

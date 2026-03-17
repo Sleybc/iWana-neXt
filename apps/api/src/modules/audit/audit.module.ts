@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { AuditService } from './audit.service';
+import { PlatformAuditService } from './platform-audit.service';
 import { AuditQueryService } from './audit-query.service';
 import { AuditController } from './audit.controller';
 import { AuditInterceptor } from './audit.interceptor';
@@ -12,7 +13,10 @@ import { AuditInterceptor } from './audit.interceptor';
  * - AuditService: escritura append-only en audit_logs del schema de tenant.
  *   Exportado para que otros modulos (AuthModule, UsersModule, etc.) puedan
  *   emitir eventos de audit explicitamente.
+ * - PlatformAuditService: escritura append-only en public.platform_audit_logs.
+ *   Usado exclusivamente para operaciones de SYSTEM_ADMIN e IWANA_SUPPORT (RF-AUD-03, ADR-018).
  * - AuditInterceptor: auditoria automatica de operaciones CUD vía HTTP.
+ *   Enruta al servicio correcto segun jwt.type ('platform' vs 'tenant').
  *   Registrado como APP_INTERCEPTOR global en AppModule.
  * - AuditQueryService + AuditController: consulta paginada del audit log.
  *
@@ -23,8 +27,8 @@ import { AuditInterceptor } from './audit.interceptor';
  */
 @Module({
   controllers: [AuditController],
-  providers: [AuditService, AuditQueryService],
-  exports: [AuditService, AuditQueryService],
+  providers: [AuditService, PlatformAuditService, AuditQueryService],
+  exports: [AuditService, PlatformAuditService, AuditQueryService],
 })
 export class AuditModule {}
 
