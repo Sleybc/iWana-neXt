@@ -1,7 +1,7 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Tenant } from '@iwana/db';
 import { CompanyType, TenantStatus } from '@iwana/shared';
 import { REDIS_CLIENT } from '../redis/redis.module';
@@ -41,6 +41,12 @@ function buildTenant(overrides: Partial<Tenant> = {}): Tenant {
     phone: null,
     website: null,
     economicSector: null,
+    // Branding — null por defecto
+    logoLightUrl: null,
+    logoDarkUrl: null,
+    sealLightUrl: null,
+    sealDarkUrl: null,
+    showTenantName: true,
     createdAt: new Date('2026-03-12T00:00:00Z'),
     updatedAt: new Date('2026-03-12T00:00:00Z'),
   };
@@ -50,6 +56,9 @@ function buildTenant(overrides: Partial<Tenant> = {}): Tenant {
 describe('TenantService', () => {
   let service: TenantService;
   let repo: jest.Mocked<Repository<Tenant>>;
+  let dataSource: {
+    transaction: jest.Mock;
+  };
   let redis: {
     get: jest.Mock;
     set: jest.Mock;
@@ -63,6 +72,9 @@ describe('TenantService', () => {
       findOne: jest.fn(),
       findAndCount: jest.fn(),
     };
+    dataSource = {
+      transaction: jest.fn(),
+    };
     redis = {
       get: jest.fn().mockResolvedValue(null),
       set: jest.fn().mockResolvedValue('OK'),
@@ -75,6 +87,10 @@ describe('TenantService', () => {
         {
           provide: getRepositoryToken(Tenant),
           useValue: mockRepo,
+        },
+        {
+          provide: DataSource,
+          useValue: dataSource,
         },
         {
           provide: REDIS_CLIENT,
@@ -375,6 +391,32 @@ describe('TenantService', () => {
 
       expect(result.status).toBe(TenantStatus.ACTIVE);
       expect(redis.del).toHaveBeenCalledWith('tenant:id:tenant-uuid-001', 'tenant:slug:isp-test');
+    });
+  });
+
+  describe('delete()', () => {
+    it('elimina el schema y el registro del tenant en una transaccion', async () => {
+      const tenant = buildTenant({ status: TenantStatus.PROVISIONING_FAILED });
+      const manager = {
+        query: jest.fn().mockResolvedValue(undefined),
+        delete: jest.fn().mockResolvedValue({ affected: 1 }),
+      };
+
+      repo.findOne.mockResolvedValue(tenant);
+      dataSource.transaction.mockImplementation(async (callback) => callback(manager));
+
+      await service.delete(tenant.id);
+
+      expect(manager.query).toHaveBeenCalledWith('DROP SCHEMA IF EXISTS "tenant_isp_test" CASCADE');
+      expect(manager.delete).toHaveBeenCalledWith(Tenant, { id: tenant.id });
+      expect(redis.del).toHaveBeenCalledWith('tenant:id:tenant-uuid-001', 'tenant:slug:isp-test');
+    });
+
+    it('lanza NotFoundException si el tenant no existe', async () => {
+      repo.findOne.mockResolvedValue(null);
+
+      await expect(service.delete('tenant-missing')).rejects.toThrow(NotFoundException);
+      expect(dataSource.transaction).not.toHaveBeenCalled();
     });
   });
 });

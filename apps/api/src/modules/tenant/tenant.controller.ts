@@ -33,6 +33,11 @@ import {
   TenantSelfResponseDto,
   TenantSelfSettingsResponseDto,
 } from './dto/tenant-self.dto';
+import {
+  UpdateTenantSelfBrandingDto,
+  UpdateTenantSelfProfileDto,
+  UpdateTenantSelfSettingsDto,
+} from './dto/tenant-self-update.dto';
 
 /**
  * Controlador de gestion de tenants.
@@ -102,6 +107,60 @@ export class TenantController {
     @CurrentUser() user: JwtPayload,
   ): Promise<{ data: TenantSelfSettingsResponseDto }> {
     const data = await this.tenantService.getTenantSelfSettings(user.tenantId!);
+    return { data };
+  }
+
+  /**
+   * PATCH /api/v1/tenants/me/profile
+   * Actualiza el perfil empresarial self-service del tenant autenticado.
+   * Solo ADMIN puede modificar campos tenant-managed del perfil.
+   */
+  @Patch('me/profile')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Actualizar perfil empresarial del tenant autenticado' })
+  @ApiResponse({ status: 200, description: 'Perfil empresarial actualizado.' })
+  async patchMeProfile(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: UpdateTenantSelfProfileDto,
+  ): Promise<{ data: TenantSelfResponseDto }> {
+    const data = await this.tenantService.updateTenantSelfProfile(user.tenantId!, dto, user.sub);
+    return { data };
+  }
+
+  /**
+   * PATCH /api/v1/tenants/me/settings
+   * Actualiza la configuración operativa del tenant autenticado (self-service).
+   * Solo ADMIN puede modificar la configuración de la empresa.
+   */
+  @Patch('me/settings')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Actualizar configuración operativa del tenant autenticado' })
+  @ApiResponse({ status: 200, description: 'Configuración actualizada.' })
+  async patchMeSettings(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: UpdateTenantSelfSettingsDto,
+  ): Promise<{ data: TenantSelfSettingsResponseDto }> {
+    const data = await this.tenantService.updateTenantSelfSettings(user.tenantId!, dto, user.sub);
+    return { data };
+  }
+
+  /**
+   * PATCH /api/v1/tenants/me/branding
+   * Actualiza URLs de logo, sello y preferencia de nombre del tenant autenticado.
+   * Solo ADMIN puede modificar la identidad visual de la empresa.
+   */
+  @Patch('me/branding')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Actualizar branding del tenant autenticado (logo y sello)' })
+  @ApiResponse({ status: 200, description: 'Branding actualizado.' })
+  async patchMeBranding(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: UpdateTenantSelfBrandingDto,
+  ): Promise<{ data: TenantSelfResponseDto }> {
+    const data = await this.tenantService.updateTenantSelfBranding(user.tenantId!, dto, user.sub);
     return { data };
   }
 

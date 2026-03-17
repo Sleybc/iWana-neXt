@@ -1,8 +1,9 @@
 // apps/portal/src/app/dashboard/layout.tsx
 'use client';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopHeader } from '@/components/layout/TopHeader';
+import { tenantSelfApi, type TenantSelf } from '@/lib/api-client';
 
 /**
  * Layout Base del Portal Suscriptor.
@@ -16,6 +17,15 @@ export default function PortalDashboardLayout({ children }: { children: ReactNod
   const [sidebarDesktopCollapsed, setSidebarDesktopCollapsed] = useState(false);
   // Estado mobile: el drawer arranca cerrado
   const [sidebarMobileOpen, setSidebarMobileOpen] = useState(false);
+  // Perfil del tenant — cargado una vez para sidebar y otros consumidores del layout
+  const [tenantProfile, setTenantProfile] = useState<TenantSelf | null>(null);
+
+  useEffect(() => {
+    void tenantSelfApi
+      .getMe()
+      .then(setTenantProfile)
+      .catch(() => null);
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-dark-surface">
@@ -34,6 +44,7 @@ export default function PortalDashboardLayout({ children }: { children: ReactNod
         setDesktopCollapsed={setSidebarDesktopCollapsed}
         mobileOpen={sidebarMobileOpen}
         setMobileOpen={setSidebarMobileOpen}
+        profile={tenantProfile}
       />
 
       {/* ÁREA DE CONTENIDO PRINCIPAL */}

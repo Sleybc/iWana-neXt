@@ -28,6 +28,13 @@ export class TenantSelfResponseDto {
   phone: string | null;
   website: string | null;
   createdAt: Date;
+
+  // Branding del tenant
+  logoLightUrl: string | null;
+  logoDarkUrl: string | null;
+  sealLightUrl: string | null;
+  sealDarkUrl: string | null;
+  showTenantName: boolean;
 }
 
 /**

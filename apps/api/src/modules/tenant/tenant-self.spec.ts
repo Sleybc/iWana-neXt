@@ -63,6 +63,12 @@ describe('TenantController — contratos self-service del tenant', () => {
     phone: null,
     website: null,
     createdAt: new Date('2026-01-01'),
+    // Branding
+    logoLightUrl: null,
+    logoDarkUrl: null,
+    sealLightUrl: null,
+    sealDarkUrl: null,
+    showTenantName: true,
   };
 
   const tenantSelfSettings = {
@@ -88,7 +94,7 @@ describe('TenantController — contratos self-service del tenant', () => {
         severity: 'warning' as const,
         title: 'MFA no obligatorio',
         description: 'Se recomienda habilitar MFA obligatorio.',
-        href: '/settings',
+        href: '/dashboard/settings',
       },
     ],
   };
@@ -96,6 +102,9 @@ describe('TenantController — contratos self-service del tenant', () => {
   const tenantService = {
     getTenantSelf: jest.fn().mockResolvedValue(tenantSelfData),
     getTenantSelfSettings: jest.fn().mockResolvedValue(tenantSelfSettings),
+    updateTenantSelfProfile: jest.fn().mockResolvedValue(tenantSelfData),
+    updateTenantSelfSettings: jest.fn().mockResolvedValue(tenantSelfSettings),
+    updateTenantSelfBranding: jest.fn().mockResolvedValue(tenantSelfData),
     findOne: jest.fn(),
     create: jest.fn(),
     findAll: jest.fn(),
@@ -173,6 +182,43 @@ describe('TenantController — contratos self-service del tenant', () => {
     });
   });
 
+  describe('PATCH /tenants/me/profile', () => {
+    it('actualiza el perfil empresarial usando tenantId y actor del JWT', async () => {
+      const payload = {
+        contactEmail: 'nuevo-contacto@empresa-test.co',
+        legalName: 'Empresa Test SAS',
+        city: 'Cali',
+      };
+
+      const result = await controller.patchMeProfile(adminJwt, payload);
+
+      expect(tenantService.updateTenantSelfProfile).toHaveBeenCalledWith(
+        'tenant-uuid-1',
+        payload,
+        'user-uuid-admin',
+      );
+      expect(result.data.name).toBe('Empresa Test ISP');
+    });
+  });
+
+  describe('PATCH /tenants/me/settings', () => {
+    it('actualiza settings tenant-managed usando tenantId y actor del JWT', async () => {
+      const payload = {
+        timezone: 'America/Lima',
+        features: { mfa_required_all: true },
+      };
+
+      const result = await controller.patchMeSettings(adminJwt, payload);
+
+      expect(tenantService.updateTenantSelfSettings).toHaveBeenCalledWith(
+        'tenant-uuid-1',
+        payload,
+        'user-uuid-admin',
+      );
+      expect(result.data.timezone).toBe('America/Bogota');
+    });
+  });
+
   describe('GET /tenants/me/summary', () => {
     it('retorna el summary completo para el ADMIN', async () => {
       const result = await controller.getMeSummary(adminJwt);
@@ -209,6 +255,35 @@ describe('TenantController — contratos self-service del tenant', () => {
       // Null está permitido — nunca datos inventados
       expect(result.data.metrics.configuredUsers).toBeNull();
       expect(result.data.metrics.mfaCoverage).toBeNull();
+    });
+  });
+
+  describe('PATCH /tenants/me/branding', () => {
+    it('actualiza branding usando tenantId y actor del JWT', async () => {
+      const payload = {
+        sealLightUrl: 'https://cdn.empresa.co/seal-light.svg',
+        showTenantName: false,
+      };
+
+      const result = await controller.patchMeBranding(adminJwt, payload);
+
+      expect(tenantService.updateTenantSelfBranding).toHaveBeenCalledWith(
+        'tenant-uuid-1',
+        payload,
+        'user-uuid-admin',
+      );
+      expect(result.data).toBeDefined();
+    });
+
+    it('pasa tenantId del JWT — nunca un id hardcodeado', async () => {
+      const otherJwt = { ...adminJwt, tenantId: 'otro-tenant-uuid' };
+      await controller.patchMeBranding(otherJwt, {});
+
+      expect(tenantService.updateTenantSelfBranding).toHaveBeenCalledWith(
+        'otro-tenant-uuid',
+        expect.any(Object),
+        expect.any(String),
+      );
     });
   });
 });

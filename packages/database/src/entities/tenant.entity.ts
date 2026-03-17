@@ -120,6 +120,28 @@ export class Tenant {
   @Column({ name: 'economic_sector', length: 10, nullable: true, type: 'varchar' })
   economicSector: string | null;
 
+  // ── Branding ─────────────────────────────────────────────────────────────────
+
+  /** URL pública HTTPS del logo horizontal — variante clara (fondo blanco/claro) */
+  @Column({ name: 'logo_light_url', length: 500, nullable: true, type: 'varchar' })
+  logoLightUrl: string | null;
+
+  /** URL pública HTTPS del logo horizontal — variante oscura (fondo dark) */
+  @Column({ name: 'logo_dark_url', length: 500, nullable: true, type: 'varchar' })
+  logoDarkUrl: string | null;
+
+  /** URL pública HTTPS del sello compacto (ícono 1:1) — variante clara */
+  @Column({ name: 'seal_light_url', length: 500, nullable: true, type: 'varchar' })
+  sealLightUrl: string | null;
+
+  /** URL pública HTTPS del sello compacto (ícono 1:1) — variante oscura */
+  @Column({ name: 'seal_dark_url', length: 500, nullable: true, type: 'varchar' })
+  sealDarkUrl: string | null;
+
+  /** Si el tenant elige mostrar su nombre comercial junto al sello en el sidebar */
+  @Column({ name: 'show_tenant_name', type: 'boolean', default: true })
+  showTenantName: boolean;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
