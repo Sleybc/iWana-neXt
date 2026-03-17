@@ -482,12 +482,12 @@ describe('AuthService', () => {
       expect(typeof result.otpauthUri).toBe('string');
       expect(result.otpauthUri).toMatch(/otpauth:\/\/totp\//);
 
-      // Debe haber guardado el secret en Redis con TTL de 600s
+      // Debe haber guardado el secret en Redis con TTL de 1800s (30 min)
       expect(mockRedis.set).toHaveBeenCalledWith(
         'mfa:pending:user-uuid-1',
         expect.any(String),
         'EX',
-        600,
+        1800,
       );
     });
   });
@@ -1307,7 +1307,7 @@ describe('AuthService', () => {
     });
 
     it('signAccessToken emite scope=mfa-setup en el payload JWT para token limitado', async () => {
-      const user = buildUser({ role: UserRole.ADMIN, mfaEnabled: false });
+      const user = buildUser({ role: UserRole.ADMIN, mfaEnabled: false, mfaRequired: true });
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
 
       setupRunInTenantSchema({
