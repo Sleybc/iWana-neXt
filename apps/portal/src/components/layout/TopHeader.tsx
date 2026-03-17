@@ -113,7 +113,7 @@ export const TopHeader = ({
               onKeyDown={(e) => {
                 if (e.key === 'Enter') submitSearch();
               }}
-              placeholder="Buscar trámites o facturas..."
+              placeholder="Buscar en el portal empresarial..."
               aria-label="Buscar"
               className="w-full h-10 rounded-lg border border-gray-200 bg-gray-50 pl-10 pr-16 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:border-iwana-primary focus:ring-2 focus:ring-iwana-primary/20 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-200 dark:placeholder:text-gray-500 dark:focus:border-iwana-primary-300"
             />

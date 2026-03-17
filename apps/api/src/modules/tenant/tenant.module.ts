@@ -9,6 +9,7 @@ import { TenantController } from './tenant.controller';
 import { TenantProvisioningService } from './tenant-provisioning.service';
 import { TenantMiddleware } from './tenant.middleware';
 import { TenantService } from './tenant.service';
+import { DashboardSummaryService } from './dashboard-summary.service';
 
 /**
  * Modulo de gestion de tenants.
@@ -17,17 +18,19 @@ import { TenantService } from './tenant.service';
  * Expone TenantService para ser consumido por otros modulos (AuthModule,
  * AuditModule) via imports — no acceso directo a repositorios ajenos.
  *
- * Sprint 1 Semana 2: se agrega TenantProvisioningService con BullMQ
- * para encolar el provisioning del schema PostgreSQL al crear un tenant.
+ * DashboardSummaryService: query facade para el panel empresarial del tenant.
+ * Inyecta AuditQueryService (exportado por AuditModule) para contar eventos
+ * de los últimos 7 días. Decisión arquitectónica Opción A — CTO 2026-03-17.
  *
  * HLD-MOD01-ARQUITECTURA-v1.0 Seccion 2 (@iwana/tenant)
+ * HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §3.3 (DashboardSummaryService)
  */
 @Module({
   imports: [
     // JwtModule exportado por AuthModule para verificar claims de tenant en middleware
     AuthModule,
 
-    // Audit trail para cambios de configuración funcional
+    // AuditModule exporta AuditService (escritura) y AuditQueryService (lectura dashboard)
     AuditModule,
 
     // Registra el repositorio de Tenant en el scope de este modulo
@@ -39,7 +42,7 @@ import { TenantService } from './tenant.service';
     }),
   ],
   controllers: [TenantController],
-  providers: [TenantService, TenantProvisioningService, TenantMiddleware],
+  providers: [TenantService, TenantProvisioningService, TenantMiddleware, DashboardSummaryService],
   // Exportar TenantService para que AuthModule y otros modulos puedan
   // resolver tenants sin acceder al repositorio directamente (boundary)
   exports: [TenantService, TenantProvisioningService, TenantMiddleware],

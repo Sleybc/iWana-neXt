@@ -24,7 +24,7 @@ import { AuditInterceptor } from './audit.interceptor';
 @Module({
   controllers: [AuditController],
   providers: [AuditService, AuditQueryService],
-  exports: [AuditService],
+  exports: [AuditService, AuditQueryService],
 })
 export class AuditModule {}
 

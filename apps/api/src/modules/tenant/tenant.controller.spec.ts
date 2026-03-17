@@ -8,6 +8,7 @@ import { AuthService } from '../auth/auth.service';
 import { TenantController } from './tenant.controller';
 import { TenantProvisioningService } from './tenant-provisioning.service';
 import { TenantService } from './tenant.service';
+import { DashboardSummaryService } from './dashboard-summary.service';
 
 describe('TenantController', () => {
   let controller: TenantController;
@@ -19,6 +20,8 @@ describe('TenantController', () => {
     update: jest.fn(),
     suspend: jest.fn(),
     activate: jest.fn(),
+    getTenantSelf: jest.fn(),
+    getTenantSelfSettings: jest.fn(),
   };
 
   const provisioningService = {
@@ -29,6 +32,10 @@ describe('TenantController', () => {
     regenerateTenantAdminCredentials: jest.fn(),
   };
 
+  const dashboardSummaryService = {
+    getSummary: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [TenantController],
@@ -36,6 +43,7 @@ describe('TenantController', () => {
         { provide: TenantService, useValue: tenantService },
         { provide: TenantProvisioningService, useValue: provisioningService },
         { provide: AuthService, useValue: authService },
+        { provide: DashboardSummaryService, useValue: dashboardSummaryService },
       ],
     }).compile();
 
@@ -47,9 +55,9 @@ describe('TenantController', () => {
   });
 
   it('rechaza la regeneracion si falta Idempotency-Key', async () => {
-    await expect(
-      controller.regenerateAdminCredentials('tenant-uuid-1', undefined),
-    ).rejects.toThrow(BadRequestException);
+    await expect(controller.regenerateAdminCredentials('tenant-uuid-1', undefined)).rejects.toThrow(
+      BadRequestException,
+    );
   });
 
   it('suspende un tenant usando el servicio de tenant', async () => {

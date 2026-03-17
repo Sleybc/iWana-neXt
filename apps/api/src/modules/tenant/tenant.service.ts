@@ -15,6 +15,7 @@ import { AuditService } from '../audit/audit.service';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { CreateTenantDto, TenantResponseDto, UpdateTenantDto } from './dto/tenant.dto';
 import { TenantSettingsResponseDto, UpdateTenantSettingsDto } from './dto/tenant-settings.dto';
+import { TenantSelfResponseDto, TenantSelfSettingsResponseDto } from './dto/tenant-self.dto';
 
 const TENANT_CACHE_TTL_SECONDS = 5 * 60;
 
@@ -134,6 +135,70 @@ export class TenantService {
       throw new NotFoundException(`Tenant con id "${id}" no encontrado.`);
     }
     return this.toResponseDto(tenant);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SELF-SERVICE DEL TENANT AUTENTICADO
+  // HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §3.2
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Retorna datos base del tenant para el panel empresarial (self-service).
+   * Expone solo los campos no sensibles relevantes para el dashboard.
+   */
+  async getTenantSelf(tenantId: string): Promise<TenantSelfResponseDto> {
+    const tenant = await this.findTenantEntityById(tenantId);
+    if (!tenant) {
+      throw new NotFoundException(`Tenant con id "${tenantId}" no encontrado.`);
+    }
+    return this.toSelfResponseDto(tenant);
+  }
+
+  /**
+   * Retorna la configuración operativa del tenant autenticado (self-service).
+   * Aplica defaults para claves faltantes — nunca devuelve undefined.
+   */
+  async getTenantSelfSettings(tenantId: string): Promise<TenantSelfSettingsResponseDto> {
+    const tenant = await this.findTenantEntityById(tenantId);
+    if (!tenant) {
+      throw new NotFoundException(`Tenant con id "${tenantId}" no encontrado.`);
+    }
+    return this.toSelfSettingsDto(tenant);
+  }
+
+  /** Mapea Tenant a TenantSelfResponseDto — solo campos del panel empresarial. */
+  private toSelfResponseDto(tenant: Tenant): TenantSelfResponseDto {
+    const dto = new TenantSelfResponseDto();
+    dto.id = tenant.id;
+    dto.name = tenant.name;
+    dto.slug = tenant.slug;
+    dto.status = tenant.status;
+    dto.contactEmail = tenant.contactEmail;
+    dto.legalName = tenant.legalName ?? null;
+    dto.nit = tenant.nit ?? null;
+    dto.city = tenant.city ?? null;
+    dto.department = tenant.department ?? null;
+    dto.countryCode = tenant.countryCode ?? null;
+    dto.phone = tenant.phone ?? null;
+    dto.website = tenant.website ?? null;
+    dto.createdAt = tenant.createdAt;
+    return dto;
+  }
+
+  /** Normaliza configuración operativa aplicando defaults. */
+  private toSelfSettingsDto(tenant: Tenant): TenantSelfSettingsResponseDto {
+    const settings = this.asRecord(tenant.settings);
+    const features = this.asRecord(settings['features']);
+    const dto = new TenantSelfSettingsResponseDto();
+    dto.timezone = String(settings['timezone'] ?? 'America/Bogota');
+    dto.currency = String(settings['currency'] ?? 'COP');
+    dto.language = String(settings['language'] ?? 'es-CO');
+    dto.country = String(settings['country'] ?? 'CO');
+    dto.features = {
+      billing: Boolean(features['billing'] ?? false),
+      mfa_required_all: Boolean(features['mfa_required_all'] ?? false),
+    };
+    return dto;
   }
 
   /** Busca un tenant por su slug — usado en TenantMiddleware */

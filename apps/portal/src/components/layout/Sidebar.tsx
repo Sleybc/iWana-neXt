@@ -3,7 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { LayoutDashboard, Receipt, Headphones, User, Waves, X } from 'lucide-react';
+import { LayoutDashboard, Settings, Users, ShieldCheck, BarChart3, X } from 'lucide-react';
 import { cn } from '@iwana/ui';
 
 interface SidebarProps {
@@ -15,12 +15,19 @@ interface SidebarProps {
 
 const DESKTOP_STORAGE_KEY = 'iwana-portal-sidebar-collapsed';
 
+/**
+ * Ítems de navegación del portal empresarial del tenant.
+ *
+ * Rutas activas en MVP: /dashboard, /settings.
+ * Rutas futuras marcadas como disabled para no generar 404.
+ * HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §4.3
+ */
 const navItems = [
-  { href: '/dashboard', label: 'Inicio', icon: LayoutDashboard },
-  { href: '/services', label: 'Servicios', icon: Waves },
-  { href: '/billing', label: 'Facturación', icon: Receipt },
-  { href: '/support', label: 'Soporte', icon: Headphones },
-  { href: '/profile', label: 'Mi perfil', icon: User },
+  { href: '/dashboard', label: 'Inicio', icon: LayoutDashboard, disabled: false },
+  { href: '/settings', label: 'Configuración', icon: Settings, disabled: false },
+  { href: '/users', label: 'Usuarios', icon: Users, disabled: true, badge: 'Próximo' },
+  { href: '/security', label: 'Seguridad', icon: ShieldCheck, disabled: true, badge: 'Próximo' },
+  { href: '/reports', label: 'Reportes', icon: BarChart3, disabled: true, badge: 'Próximo' },
 ];
 
 export const Sidebar = ({
@@ -32,19 +39,14 @@ export const Sidebar = ({
   const pathname = usePathname();
   const sidebar = useRef<HTMLElement>(null);
 
-  // Persistir estado desktop en localStorage
+  // Persistir estado desktop en localStorage — solo al montar
+  const setDesktopCollapsedRef = useRef(setDesktopCollapsed);
+  setDesktopCollapsedRef.current = setDesktopCollapsed;
   useEffect(() => {
     const stored = localStorage.getItem(DESKTOP_STORAGE_KEY);
-    if (stored === 'true') setDesktopCollapsed(true);
-    else if (stored === 'false') setDesktopCollapsed(false);
-    // Solo al montar — dependencias omitidas intencionalmente
+    if (stored === 'true') setDesktopCollapsedRef.current(true);
+    else if (stored === 'false') setDesktopCollapsedRef.current(false);
   }, []);
-
-  const handleDesktopToggle = () => {
-    const next = !desktopCollapsed;
-    setDesktopCollapsed(next);
-    localStorage.setItem(DESKTOP_STORAGE_KEY, String(next));
-  };
 
   // Cerrar drawer mobile con tecla Escape
   useEffect(() => {
@@ -74,7 +76,7 @@ export const Sidebar = ({
           desktopCollapsed ? 'lg:justify-center' : 'justify-between',
         )}
       >
-        {/* Logo — visible cuando está expandido */}
+        {/* Logo expandido */}
         <Link
           href="/dashboard"
           className={cn('flex items-center gap-3 min-w-0', desktopCollapsed && 'lg:hidden')}
@@ -84,10 +86,12 @@ export const Sidebar = ({
               iW
             </span>
           </div>
-          <span className="text-lg font-bold tracking-tight text-white truncate">iWana Portal</span>
+          <span className="text-lg font-bold tracking-tight text-white truncate">
+            iWana Empresa
+          </span>
         </Link>
 
-        {/* Icono solo — visible cuando está colapsado en desktop */}
+        {/* Icono solo — colapsado desktop */}
         <Link
           href="/dashboard"
           className={cn('hidden items-center justify-center', desktopCollapsed && 'lg:flex')}
@@ -110,7 +114,6 @@ export const Sidebar = ({
           <X className="w-5 h-5" />
         </button>
       </div>
-      {/* /SIDEBAR HEADER */}
 
       {/* MENÚ DE NAVEGACIÓN */}
       <div className="no-scrollbar flex flex-col overflow-y-auto flex-1 py-4">
@@ -121,12 +124,42 @@ export const Sidebar = ({
               desktopCollapsed && 'lg:sr-only',
             )}
           >
-            MENÚ
+            EMPRESA
           </h3>
 
           <ul className="flex flex-col gap-1 px-2">
             {navItems.map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+              const isActive =
+                !item.disabled && (pathname === item.href || pathname.startsWith(`${item.href}/`));
+
+              // Ítems deshabilitados: no navegan para evitar 404
+              if (item.disabled) {
+                return (
+                  <li key={item.href}>
+                    <span
+                      title={desktopCollapsed ? item.label : undefined}
+                      className={cn(
+                        'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium cursor-not-allowed opacity-50',
+                        desktopCollapsed && 'lg:justify-center lg:px-2',
+                      )}
+                      aria-disabled="true"
+                    >
+                      <item.icon className="w-5 h-5 shrink-0 text-white/40" aria-hidden="true" />
+                      <span
+                        className={cn('flex items-center gap-2', desktopCollapsed && 'lg:hidden')}
+                      >
+                        {item.label}
+                        {item.badge && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/60 font-medium">
+                            {item.badge}
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                  </li>
+                );
+              }
+
               return (
                 <li key={item.href}>
                   <Link
@@ -157,7 +190,6 @@ export const Sidebar = ({
           </ul>
         </nav>
       </div>
-      {/* /MENÚ DE NAVEGACIÓN */}
     </aside>
   );
 };
