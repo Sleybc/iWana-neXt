@@ -44,3 +44,6 @@ out/
 *.tsbuildinfo
 .eslintcache
 .claude/worktrees/
+
+# Worktrees
+.worktrees/
