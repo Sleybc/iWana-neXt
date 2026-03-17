@@ -104,6 +104,7 @@ function buildUser(overrides: Partial<User> = {}): User {
     tenantId: 'tenant-test-uuid',
     status: UserStatus.ACTIVE,
     mfaEnabled: false,
+    mfaRequired: false,
     mfaSecret: null,
     failedLoginAttempts: 0,
     lockedUntil: null,
@@ -1215,7 +1216,7 @@ describe('AuthService', () => {
   describe('login() — MFA enforcement MOD02', () => {
     it('retorna mfaSetupRequired=true para ADMIN sin MFA configurado', async () => {
       // ADMIN activo, sin MFA habilitado — debe recibir token de alcance limitado
-      const user = buildUser({ role: UserRole.ADMIN, mfaEnabled: false });
+      const user = buildUser({ role: UserRole.ADMIN, mfaEnabled: false, mfaRequired: true });
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
 
       setupRunInTenantSchema({
@@ -1236,7 +1237,7 @@ describe('AuthService', () => {
     });
 
     it('retorna mfaSetupRequired=true para NOC sin MFA configurado', async () => {
-      const user = buildUser({ role: UserRole.NOC, mfaEnabled: false });
+      const user = buildUser({ role: UserRole.NOC, mfaEnabled: false, mfaRequired: true });
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
 
       setupRunInTenantSchema({
@@ -1253,7 +1254,7 @@ describe('AuthService', () => {
     });
 
     it('retorna mfaSetupRequired=true para ACCOUNTANT sin MFA configurado', async () => {
-      const user = buildUser({ role: UserRole.ACCOUNTANT, mfaEnabled: false });
+      const user = buildUser({ role: UserRole.ACCOUNTANT, mfaEnabled: false, mfaRequired: true });
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
 
       setupRunInTenantSchema({
