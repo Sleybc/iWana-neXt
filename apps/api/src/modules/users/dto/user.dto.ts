@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsEmail,
   IsEnum,
   IsOptional,
@@ -91,6 +92,12 @@ export class CreateUserDto {
   @IsUrl({}, { message: 'avatarUrl debe ser una URL válida.' })
   @MaxLength(500)
   avatarUrl?: string;
+
+  /** Si true, el usuario deberá configurar MFA en su primer ingreso. Default false. */
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @IsBoolean()
+  mfaRequired?: boolean;
 }
 
 /**
@@ -152,6 +159,12 @@ export class UpdateUserDto {
   @IsUrl({}, { message: 'avatarUrl debe ser una URL válida.' })
   @MaxLength(500)
   avatarUrl?: string;
+
+  /** Cambia si se requiere MFA para este usuario. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  mfaRequired?: boolean;
 }
 
 /**
@@ -174,6 +187,9 @@ export class UserResponseDto {
 
   @ApiProperty()
   mfaEnabled: boolean;
+
+  @ApiProperty()
+  mfaRequired: boolean;
 
   @ApiProperty()
   emailVerified: boolean;
