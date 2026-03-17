@@ -72,7 +72,9 @@ function decodeJwtPayload(token: string): { exp?: number } | null {
   try {
     const parts = token.split('.');
     if (parts.length !== 3) return null;
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))) as {
+    const encodedPayload = parts[1];
+    if (!encodedPayload) return null;
+    const payload = JSON.parse(atob(encodedPayload.replace(/-/g, '+').replace(/_/g, '/'))) as {
       exp?: number;
     };
     return payload;
@@ -552,6 +554,23 @@ export interface TenantSelf {
   phone: string | null;
   website: string | null;
   createdAt: string;
+  // Branding del tenant
+  logoLightUrl: string | null;
+  logoDarkUrl: string | null;
+  sealLightUrl: string | null;
+  sealDarkUrl: string | null;
+  showTenantName: boolean;
+}
+
+export interface UpdateTenantSelfProfileDto {
+  contactEmail?: string;
+  legalName?: string | null;
+  nit?: string | null;
+  city?: string | null;
+  department?: string | null;
+  countryCode?: string | null;
+  phone?: string | null;
+  website?: string | null;
 }
 
 /** Configuración operativa del tenant autenticado */
@@ -563,6 +582,16 @@ export interface TenantSelfSettings {
   features: {
     billing: boolean;
     mfa_required_all: boolean;
+  };
+}
+
+export interface UpdateTenantSelfSettingsDto {
+  timezone?: string;
+  currency?: string;
+  language?: string;
+  country?: string;
+  features?: {
+    mfa_required_all?: boolean;
   };
 }
 
@@ -591,6 +620,14 @@ export interface DashboardSummary {
   alerts: DashboardAlert[];
 }
 
+export interface UpdateTenantSelfBrandingDto {
+  logoLightUrl?: string | null;
+  logoDarkUrl?: string | null;
+  sealLightUrl?: string | null;
+  sealDarkUrl?: string | null;
+  showTenantName?: boolean;
+}
+
 /**
  * API de tenant self-service para el portal empresarial.
  *
@@ -601,9 +638,48 @@ export const tenantSelfApi = {
   /** Retorna los datos base del tenant autenticado. */
   getMe: (tenantSlug?: string) => request<TenantSelf>('/tenants/me', undefined, tenantSlug),
 
+  /** Alias semántico para la lectura del perfil empresarial del tenant autenticado. */
+  getProfile: (tenantSlug?: string) => request<TenantSelf>('/tenants/me', undefined, tenantSlug),
+
+  /** Actualiza el perfil empresarial self-service del tenant autenticado (solo ADMIN). */
+  updateMeProfile: (dto: UpdateTenantSelfProfileDto, tenantSlug?: string) =>
+    request<TenantSelf>(
+      '/tenants/me/profile',
+      { method: 'PATCH', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
   /** Retorna la configuración operativa del tenant autenticado. */
   getMeSettings: (tenantSlug?: string) =>
     request<TenantSelfSettings>('/tenants/me/settings', undefined, tenantSlug),
+
+  /** Alias semántico para la configuración operativa self-service. */
+  getSettings: (tenantSlug?: string) =>
+    request<TenantSelfSettings>('/tenants/me/settings', undefined, tenantSlug),
+
+  /** Actualiza la configuración operativa del tenant autenticado (solo ADMIN). */
+  updateMeSettings: (dto: UpdateTenantSelfSettingsDto, tenantSlug?: string) =>
+    request<TenantSelfSettings>(
+      '/tenants/me/settings',
+      { method: 'PATCH', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  /** Alias semántico para la mutación de settings self-service. */
+  updateSettings: (dto: UpdateTenantSelfSettingsDto, tenantSlug?: string) =>
+    request<TenantSelfSettings>(
+      '/tenants/me/settings',
+      { method: 'PATCH', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  /** Actualiza el branding del tenant autenticado (logo, sello, preferencia de nombre). */
+  updateBranding: (dto: UpdateTenantSelfBrandingDto, tenantSlug?: string) =>
+    request<TenantSelf>(
+      '/tenants/me/branding',
+      { method: 'PATCH', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
 };
 
 /**
@@ -615,4 +691,54 @@ export const dashboardApi = {
   /** Retorna el summary completo del dashboard (solo ADMIN). */
   getSummary: (tenantSlug?: string) =>
     request<DashboardSummary>('/tenants/me/summary', undefined, tenantSlug),
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PERFIL DEL USUARIO AUTENTICADO
+// Contratos para /users/:id consumidos por el portal empresarial.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Campos de perfil retornados por GET /users/:id */
+export interface UserProfile {
+  id: string;
+  role: string;
+  status: string;
+  firstName: string | null;
+  lastName: string | null;
+  phone: string | null;
+  jobTitle: string | null;
+  avatarUrl: string | null;
+  mfaEnabled: boolean;
+  emailVerified: boolean;
+  createdAt: string;
+}
+
+/** Campos actualizables por el usuario autenticado */
+export interface UpdateProfileDto {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  jobTitle?: string;
+}
+
+/**
+ * API de perfil del usuario autenticado.
+ * El userId debe provenir del claim sub del JWT vigente.
+ */
+export const userApi = {
+  /** Obtiene el perfil del usuario autenticado */
+  getMe: (userId: string, tenantSlug?: string) =>
+    request<UserProfile>(`/users/${userId}`, undefined, tenantSlug),
+
+  /** Actualiza los datos personales del usuario autenticado */
+  updateMe: (userId: string, dto: UpdateProfileDto, tenantSlug?: string) =>
+    request<UserProfile>(
+      `/users/${userId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
+        body: JSON.stringify(dto),
+      },
+      tenantSlug,
+    ),
 };

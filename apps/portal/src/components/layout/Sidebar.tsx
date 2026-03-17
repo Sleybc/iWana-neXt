@@ -5,12 +5,16 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { LayoutDashboard, Settings, Users, ShieldCheck, BarChart3, X } from 'lucide-react';
 import { cn } from '@iwana/ui';
+import { TenantSeal } from './TenantSeal';
+import type { TenantSelf } from '@/lib/api-client';
 
 interface SidebarProps {
   desktopCollapsed: boolean;
   setDesktopCollapsed: (v: boolean) => void;
   mobileOpen: boolean;
   setMobileOpen: (v: boolean) => void;
+  /** Datos del tenant autenticado — para mostrar sello y nombre en el header del sidebar */
+  profile?: TenantSelf | null;
 }
 
 const DESKTOP_STORAGE_KEY = 'iwana-portal-sidebar-collapsed';
@@ -35,6 +39,7 @@ export const Sidebar = ({
   setDesktopCollapsed,
   mobileOpen,
   setMobileOpen,
+  profile,
 }: SidebarProps) => {
   const pathname = usePathname();
   const sidebar = useRef<HTMLElement>(null);
@@ -76,32 +81,37 @@ export const Sidebar = ({
           desktopCollapsed ? 'lg:justify-center' : 'justify-between',
         )}
       >
-        {/* Logo expandido */}
+        {/* Marca del tenant — expandido */}
         <Link
           href="/dashboard"
           className={cn('flex items-center gap-3 min-w-0', desktopCollapsed && 'lg:hidden')}
         >
-          <div className="w-8 h-8 shrink-0 rounded-md bg-iwana-secondary flex items-center justify-center">
-            <span className="text-[#17163a] font-bold text-base" aria-hidden="true">
-              iW
+          <TenantSeal
+            sealLightUrl={profile?.sealLightUrl ?? null}
+            sealDarkUrl={profile?.sealDarkUrl ?? null}
+            name={profile?.name ?? 'iW'}
+            size="sm"
+            className="shrink-0"
+          />
+          {(profile?.showTenantName ?? true) && (
+            <span className="text-lg font-bold tracking-tight text-white truncate">
+              {profile?.name ?? 'iWana Empresa'}
             </span>
-          </div>
-          <span className="text-lg font-bold tracking-tight text-white truncate">
-            iWana Empresa
-          </span>
+          )}
         </Link>
 
-        {/* Icono solo — colapsado desktop */}
+        {/* Sello solo — colapsado desktop */}
         <Link
           href="/dashboard"
           className={cn('hidden items-center justify-center', desktopCollapsed && 'lg:flex')}
           aria-label="Ir al dashboard"
         >
-          <div className="w-8 h-8 rounded-md bg-iwana-secondary flex items-center justify-center">
-            <span className="text-[#17163a] font-bold text-base" aria-hidden="true">
-              iW
-            </span>
-          </div>
+          <TenantSeal
+            sealLightUrl={profile?.sealLightUrl ?? null}
+            sealDarkUrl={profile?.sealDarkUrl ?? null}
+            name={profile?.name ?? 'iW'}
+            size="sm"
+          />
         </Link>
 
         {/* Botón cerrar — solo mobile */}
