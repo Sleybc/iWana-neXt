@@ -24,7 +24,7 @@ const DESKTOP_STORAGE_KEY = 'iwana-portal-sidebar-collapsed';
  */
 const navItems = [
   { href: '/dashboard', label: 'Inicio', icon: LayoutDashboard, disabled: false },
-  { href: '/settings', label: 'Configuración', icon: Settings, disabled: false },
+  { href: '/dashboard/settings', label: 'Configuración', icon: Settings, disabled: false },
   { href: '/users', label: 'Usuarios', icon: Users, disabled: true, badge: 'Próximo' },
   { href: '/security', label: 'Seguridad', icon: ShieldCheck, disabled: true, badge: 'Próximo' },
   { href: '/reports', label: 'Reportes', icon: BarChart3, disabled: true, badge: 'Próximo' },

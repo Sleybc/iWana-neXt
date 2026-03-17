@@ -140,7 +140,17 @@ export const DropdownUser = () => {
         >
           <li role="none">
             <Link
-              href="/settings"
+              href="/dashboard/profile"
+              role="menuitem"
+              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-dark-surface-4 dark:hover:text-white"
+            >
+              <UserIcon className="w-4 h-4" aria-hidden="true" />
+              Mi perfil
+            </Link>
+          </li>
+          <li role="none">
+            <Link
+              href="/dashboard/settings"
               role="menuitem"
               className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-dark-surface-4 dark:hover:text-white"
             >
