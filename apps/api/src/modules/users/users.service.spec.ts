@@ -392,6 +392,46 @@ describe('UsersService', () => {
       expect(savedEntity!['phone']).toBeNull();
       expect(savedEntity!['documentNumber']).toBeNull();
     });
+
+    it('persiste mfaRequired=true cuando se envía en el DTO', async () => {
+      let savedEntity: Record<string, unknown> | null = null;
+      const mgr = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(null),
+      });
+      mgr.save.mockImplementation(
+        async (_entity: unknown, entityInstance: Record<string, unknown>) => {
+          savedEntity = entityInstance;
+          if (!entityInstance['id']) entityInstance['id'] = 'usr-mfa-required-true';
+          return entityInstance;
+        },
+      );
+
+      await service.create({
+        email: 'mfa.requerido@empresa.com',
+        role: UserRole.NOC,
+        mfaRequired: true,
+      });
+
+      expect(savedEntity!['mfaRequired']).toBe(true);
+    });
+
+    it('persiste mfaRequired=false por defecto si no se envía en el DTO', async () => {
+      let savedEntity: Record<string, unknown> | null = null;
+      const mgr = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(null),
+      });
+      mgr.save.mockImplementation(
+        async (_entity: unknown, entityInstance: Record<string, unknown>) => {
+          savedEntity = entityInstance;
+          if (!entityInstance['id']) entityInstance['id'] = 'usr-mfa-required-false';
+          return entityInstance;
+        },
+      );
+
+      await service.create({ email: 'sin.mfa@empresa.com', role: UserRole.SUPPORT });
+
+      expect(savedEntity!['mfaRequired']).toBe(false);
+    });
   });
 
   // -------------------------------------------------------------------------
