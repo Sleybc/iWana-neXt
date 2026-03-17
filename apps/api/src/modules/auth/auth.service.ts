@@ -16,7 +16,7 @@ import * as qrcode from 'qrcode';
 import Redis from 'ioredis';
 import { Repository } from 'typeorm';
 import { PlatformUser, RefreshToken, User } from '@iwana/db';
-import { UserStatus, AuditAction, UserRole } from '@iwana/shared';
+import { UserStatus, AuditAction } from '@iwana/shared';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { DataSource } from 'typeorm';
 import { REDIS_CLIENT } from '../redis/redis.module';
@@ -46,9 +46,6 @@ const MAX_FAILED_ATTEMPTS = 5;
 
 /** TTL del access token en segundos (15 minutos) */
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
-
-/** Roles que requieren MFA obligatorio segun RF-AUTH-04 (HLD-MOD02 §3.2) */
-const MFA_REQUIRED_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.NOC, UserRole.ACCOUNTANT];
 
 /** TTL del refresh token en segundos (7 dias) */
 const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
@@ -278,7 +275,7 @@ export class AuthService {
       // Enforcement MFA por rol critico: si el rol requiere MFA pero no esta configurado,
       // emitir token de alcance limitado (scope='mfa-setup') en lugar de tokens completos.
       // RF-AUTH-04, RF-MFA-04 (HLD-MOD02 §3.2 — DA-MOD02-01)
-      if (MFA_REQUIRED_ROLES.includes(user.role as UserRole) && !user.mfaEnabled) {
+      if (user.mfaRequired && !user.mfaEnabled) {
         const { accessToken } = this.signAccessToken(user, 'mfa-setup');
         return {
           accessToken,
@@ -471,9 +468,10 @@ export class AuthService {
 
     if (!secret) {
       secret = this.totp.generateSecret();
-      // Guardar secret temporal en Redis (TTL 10 min para completar el setup)
-      await this.redis.set(`mfa:pending:${userId}`, secret, 'EX', 600);
     }
+    // Renovar TTL siempre (nuevo o reutilizado): 30 min desde la última llamada a setup.
+    // Esto da tiempo suficiente para que el usuario escanee el QR y complete la verificación.
+    await this.redis.set(`mfa:pending:${userId}`, secret, 'EX', 1800);
 
     const issuer = this.configService.get<string>('APP_NAME', 'iWana neXt');
     const otpauthUri = this.totp.toURI({ secret, label: email, issuer });
