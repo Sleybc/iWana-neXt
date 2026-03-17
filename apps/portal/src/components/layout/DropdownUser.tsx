@@ -79,10 +79,9 @@ export const DropdownUser = () => {
     }
   };
 
-  // Usar el rol como display name contextual para el panel empresarial
-  const displayName = user ? roleToLabel(user.role) : 'Usuario';
-  const subtitle = user?.subtitle ?? 'Sesión no inicializada';
-  const emailHash = user?.emailHash ?? '';
+  // displayName: nombre real del usuario si está disponible, si no el rol
+  const displayName = user?.displayName ?? 'Usuario';
+  const subtitle = user?.subtitle ?? '';
 
   return (
     <div className="relative">
@@ -126,11 +125,7 @@ export const DropdownUser = () => {
           <span className="block text-sm font-medium text-gray-800 dark:text-white">
             {displayName}
           </span>
-          {emailHash && (
-            <span className="block text-xs text-gray-500 dark:text-gray-400 truncate">
-              {emailHash}
-            </span>
-          )}
+          <span className="block text-xs text-gray-500 dark:text-gray-400">{subtitle}</span>
         </div>
 
         {/* Opciones de navegación — solo rutas implementadas */}

@@ -11,6 +11,7 @@ import {
 } from 'react';
 import {
   authApi,
+  userApi,
   ApiError,
   clearPendingTenantMfaLogin,
   getPendingTenantMfaLogin,
@@ -28,6 +29,8 @@ interface AuthUser {
   tenantId: string | null;
   displayName: string;
   subtitle: string;
+  firstName: string | null;
+  lastName: string | null;
 }
 
 /**
@@ -80,17 +83,36 @@ function roleToDisplayName(role: string): string {
   return labels[role] ?? role;
 }
 
-function toAuthUser(profile: JwtProfile): AuthUser {
+function toAuthUser(
+  profile: JwtProfile,
+  firstName: string | null = null,
+  lastName: string | null = null,
+): AuthUser {
+  const fullName = [firstName, lastName].filter(Boolean).join(' ') || null;
   return {
     id: profile.sub,
     emailHash: profile.email,
     role: profile.role,
     type: profile.type,
     tenantId: profile.tenantId,
-    displayName: roleToDisplayName(profile.role),
-    // Subtitle muestra el rol — el nombre del tenant se carga desde tenantSelfApi
+    // displayName: nombre real si existe, si no el rol
+    displayName: fullName ?? roleToDisplayName(profile.role),
     subtitle: roleToDisplayName(profile.role),
+    firstName,
+    lastName,
   };
+}
+
+/** Carga el perfil del usuario y retorna nombre/apellido si están disponibles */
+async function fetchUserName(
+  userId: string,
+): Promise<{ firstName: string | null; lastName: string | null }> {
+  try {
+    const profile = await userApi.getMe(userId);
+    return { firstName: profile.firstName, lastName: profile.lastName };
+  } catch {
+    return { firstName: null, lastName: null };
+  }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -100,7 +122,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshProfile = useCallback(async (tenantSlug?: string) => {
     try {
       const profile = await authApi.me(tenantSlug);
-      setUser(toAuthUser(profile));
+      const { firstName, lastName } = await fetchUserName(profile.sub);
+      setUser(toAuthUser(profile, firstName, lastName));
     } catch {
       setUser(null);
     }
@@ -122,7 +145,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (profile.passwordResetRequired) {
             setUser(null);
           } else {
-            setUser(toAuthUser(profile));
+            const { firstName, lastName } = await fetchUserName(profile.sub);
+            setUser(toAuthUser(profile, firstName, lastName));
           }
         }
       } catch {
@@ -182,7 +206,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return 'password_reset_required';
       }
 
-      setUser(toAuthUser(profile));
+      const { firstName, lastName } = await fetchUserName(profile.sub);
+      setUser(toAuthUser(profile, firstName, lastName));
 
       return 'authenticated';
     },
@@ -211,7 +236,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const profile = await authApi.me(pendingLogin.tenantSlug);
-    setUser(toAuthUser(profile));
+    const { firstName, lastName } = await fetchUserName(profile.sub);
+    setUser(toAuthUser(profile, firstName, lastName));
     clearPendingTenantMfaLogin();
   }, []);
 
