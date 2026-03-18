@@ -53,7 +53,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string, tenantSlug?: string) => Promise<LoginResult>;
-  completeMfaLogin: (code: string) => Promise<void>;
+  completeMfaLogin: (code: string) => Promise<LoginResult>;
   logout: (tenantSlug?: string) => Promise<void>;
   refreshProfile: (tenantSlug?: string) => Promise<void>;
 }
@@ -122,6 +122,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshProfile = useCallback(async (tenantSlug?: string) => {
     try {
       const profile = await authApi.me(tenantSlug);
+
+      if (profile.passwordResetRequired) {
+        setUser(null);
+        return;
+      }
+
       const { firstName, lastName } = await fetchUserName(profile.sub);
       setUser(toAuthUser(profile, firstName, lastName));
     } catch {
@@ -214,7 +220,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const completeMfaLogin = useCallback(async (code: string) => {
+  const completeMfaLogin = useCallback(async (code: string): Promise<LoginResult> => {
     const pendingLogin = getPendingTenantMfaLogin();
     if (!pendingLogin) {
       throw new ApiError(
@@ -236,9 +242,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const profile = await authApi.me(pendingLogin.tenantSlug);
+
+    if (profile.passwordResetRequired) {
+      setUser(null);
+      clearPendingTenantMfaLogin();
+      return 'password_reset_required';
+    }
+
     const { firstName, lastName } = await fetchUserName(profile.sub);
     setUser(toAuthUser(profile, firstName, lastName));
     clearPendingTenantMfaLogin();
+    return 'authenticated';
   }, []);
 
   const logout = useCallback(async (tenantSlug?: string) => {

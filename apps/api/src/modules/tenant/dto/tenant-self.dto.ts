@@ -22,6 +22,7 @@ export class TenantSelfResponseDto {
   contactEmail: string;
   legalName: string | null;
   nit: string | null;
+  nitDv: string | null;
   city: string | null;
   department: string | null;
   countryCode: string | null;

@@ -37,7 +37,6 @@ export class AuditQueryService {
       const repo = qr.manager.getRepository(AuditLog);
 
       // Construir clausulas where dinamicamente
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const where: Record<string, any> = {};
 
       if (dto.action) where['action'] = dto.action;

@@ -9,7 +9,7 @@
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
     "test": "jest --passWithNoTests",
-    "clean": "rm -rf dist"
+    "clean": "node ../../scripts/clean-paths.mjs dist"
   },
   "dependencies": {
     "@hapi/joi": "^17.1.1",

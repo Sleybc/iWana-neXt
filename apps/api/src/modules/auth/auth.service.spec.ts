@@ -16,7 +16,12 @@
  * - Ningun dato PII real en los tests — solo datos ficticios de prueba.
  */
 
-import { ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -98,6 +103,7 @@ jest.mock('@iwana/db', () => {
 function buildUser(overrides: Partial<User> = {}): User {
   return {
     id: 'user-uuid-1',
+    email: 'admin@iwana.co',
     emailHash: 'abc123hash',
     passwordHash: '$2b$12$hash',
     role: 'tenant_admin',
@@ -197,7 +203,10 @@ describe('AuthService', () => {
           provide: ConfigService,
           useValue: {
             get: jest.fn().mockImplementation((key: string, def?: unknown) => {
-              const map: Record<string, unknown> = { APP_NAME: 'iWana Test' };
+              const map: Record<string, unknown> = {
+                APP_NAME: 'iWana Test',
+                TENANT_INITIAL_ADMIN_PASSWORD: 'InitAdmin!2026',
+              };
               return map[key] ?? def;
             }),
             // getOrThrow necesario para derivar la clave AES-256-GCM en el constructor de AuthService
@@ -608,7 +617,11 @@ describe('AuthService', () => {
 
   describe('regenerateTenantAdminCredentials()', () => {
     it('regenera el password temporal, lo marca como obligatorio y cachea la respuesta por idempotencia', async () => {
-      const adminUser = buildUser({ role: UserRole.ADMIN, emailHash: 'admin-hash-1' });
+      const adminUser = buildUser({
+        role: UserRole.ADMIN,
+        emailHash: 'admin-hash-1',
+        email: 'admin@iwana.co',
+      });
       const { manager } = setupRunInTenantSchema({
         findOne: jest.fn().mockResolvedValue(adminUser),
         update: jest.fn().mockResolvedValue({ affected: 1 }),
@@ -617,11 +630,10 @@ describe('AuthService', () => {
       const result = await service.regenerateTenantAdminCredentials({
         tenantId: 'tenant-uuid-1',
         schemaName: 'tenant_test',
-        adminEmail: 'admin@isptest.co',
         idempotencyKey: 'idem-key-1',
       });
 
-      expect(result.adminEmail).toBe('admin@isptest.co');
+      expect(result.adminEmail).toBe('admin@iwana.co');
       expect(result.message).toMatch(/regeneradas/i);
       expect(result.temporaryPassword).toMatch(/^IwN!a9-/);
       expect(bcrypt.hash).toHaveBeenCalledWith(expect.stringMatching(/^IwN!a9-/), 12);
@@ -657,13 +669,61 @@ describe('AuthService', () => {
       const result = await service.regenerateTenantAdminCredentials({
         tenantId: 'tenant-uuid-1',
         schemaName: 'tenant_test',
-        adminEmail: 'admin@isptest.co',
         idempotencyKey: 'idem-key-2',
       });
 
       expect(result.temporaryPassword).toBe('IwN!a9-cachedpass');
       expect(mockRunInTenantSchema).not.toHaveBeenCalled();
       expect(bcrypt.hash).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getBootstrapTenantAdminCredentials()', () => {
+    it('retorna el acceso fijo inicial mientras el admin siga en primer ingreso', async () => {
+      const adminUser = buildUser({
+        role: UserRole.ADMIN,
+        emailHash: 'admin-hash-1',
+        email: 'admin@iwana.co',
+        passwordResetRequired: true,
+        passwordResetExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      });
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(adminUser),
+      });
+
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      const result = await service.getBootstrapTenantAdminCredentials({
+        tenantId: 'tenant-uuid-1',
+        schemaName: 'tenant_test',
+      });
+
+      expect(result.adminEmail).toBe('admin@iwana.co');
+      expect(result.temporaryPassword).toBe('InitAdmin!2026');
+    });
+
+    it('rechaza consultar el acceso fijo si el admin ya rotó o regeneró la contraseña', async () => {
+      const adminUser = buildUser({
+        role: UserRole.ADMIN,
+        emailHash: 'admin-hash-1',
+        email: 'admin@iwana.co',
+        passwordResetRequired: true,
+        passwordResetExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      });
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(adminUser),
+      });
+
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(
+        service.getBootstrapTenantAdminCredentials({
+          tenantId: 'tenant-uuid-1',
+          schemaName: 'tenant_test',
+        }),
+      ).rejects.toThrow(ConflictException);
     });
   });
 
@@ -1193,7 +1253,6 @@ describe('AuthService', () => {
         service.regenerateTenantAdminCredentials({
           tenantId: 'tenant-uuid-2',
           schemaName: 'tenant_test',
-          adminEmail: 'noadmin@isptest.co',
           idempotencyKey: 'idem-key-no-admin',
         }),
       ).rejects.toThrow(NotFoundException);

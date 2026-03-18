@@ -1,12 +1,18 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Test, TestingModule } from '@nestjs/testing';
+import * as bcrypt from 'bcryptjs';
 import { PlatformUser } from '@iwana/db';
 import { PlatformRole, UserStatus } from '@iwana/shared';
 import { Repository } from 'typeorm';
 import { AuditService } from '../audit/audit.service';
 import { PlatformUsersService } from './platform-users.service';
+
+jest.mock('bcryptjs', () => ({
+  compare: jest.fn(),
+}));
 
 function buildPlatformUser(overrides: Partial<PlatformUser> = {}): PlatformUser {
   return {
@@ -48,6 +54,12 @@ describe('PlatformUsersService', () => {
           },
         },
         { provide: AuditService, useValue: auditServiceMock },
+        {
+          provide: ConfigService,
+          useValue: {
+            getOrThrow: jest.fn().mockReturnValue('0'.repeat(64)),
+          },
+        },
       ],
     }).compile();
 
@@ -65,6 +77,14 @@ describe('PlatformUsersService', () => {
     expect((result as unknown as { passwordHash?: string }).passwordHash).toBeUndefined();
     expect((result as unknown as { mfaSecret?: string }).mfaSecret).toBeUndefined();
     expect((result as unknown as { emailHash?: string }).emailHash).toBeUndefined();
+  });
+
+  it('getProfile retorna el email de acceso actual', async () => {
+    repo.findOne.mockResolvedValue(buildPlatformUser({ email: 'admin@iwana.co' }));
+
+    const result = await service.getProfile('2cfa4585-c2f2-49d3-8f42-1265f951a7a9');
+
+    expect(result.email).toBe('admin@iwana.co');
   });
 
   it('getProfile lanza 404 si el usuario no existe', async () => {
@@ -156,5 +176,35 @@ describe('PlatformUsersService', () => {
     const result = await service.updateProfile(entity.id, { lastName: '' });
 
     expect(result.lastName).toBeNull();
+  });
+
+  it('changeLoginEmail actualiza el correo de acceso cuando la contraseña actual es válida', async () => {
+    const entity = buildPlatformUser({ email: 'admin@iwana.co', emailHash: 'hash-actual' });
+    repo.findOne.mockResolvedValueOnce(entity).mockResolvedValueOnce(null);
+    (repo.save as unknown as jest.Mock).mockImplementation(
+      async (data: unknown) => ({ ...entity, ...(data as object) }) as PlatformUser,
+    );
+    (bcrypt.compare as unknown as jest.Mock).mockImplementation(async () => true);
+
+    const result = await service.changeLoginEmail(entity.id, {
+      email: 'nuevo.admin@iwana.co',
+      currentPassword: 'Passw0rd!Segura',
+    });
+
+    expect(result.email).toBe('nuevo.admin@iwana.co');
+    expect(repo.save).toHaveBeenCalled();
+  });
+
+  it('changeLoginEmail rechaza el cambio cuando la contraseña actual no coincide', async () => {
+    const entity = buildPlatformUser();
+    repo.findOne.mockResolvedValue(entity);
+    (bcrypt.compare as unknown as jest.Mock).mockImplementation(async () => false);
+
+    await expect(
+      service.changeLoginEmail(entity.id, {
+        email: 'otro.admin@iwana.co',
+        currentPassword: 'incorrecta',
+      }),
+    ).rejects.toThrow(BadRequestException);
   });
 });

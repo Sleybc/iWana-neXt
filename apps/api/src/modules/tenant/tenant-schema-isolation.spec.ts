@@ -16,7 +16,6 @@
 
 import { DataSource } from 'typeorm';
 // Importar la implementacion real (no el mock global si lo hubiera)
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { runInTenantSchema, isValidSchemaName } = jest.requireActual<
   typeof import('@iwana/db')
 >('@iwana/db');

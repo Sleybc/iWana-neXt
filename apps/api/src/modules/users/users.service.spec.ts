@@ -25,6 +25,7 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import * as bcrypt from 'bcryptjs';
 import { DataSource } from 'typeorm';
 import {
   BadRequestException,
@@ -35,6 +36,15 @@ import {
 import { UserRole, UserStatus, AuditAction, DocumentType } from '@iwana/shared';
 import { UsersService } from './users.service';
 import { AuditService } from '../audit/audit.service';
+import { TenantService } from '../tenant/tenant.service';
+
+jest.mock('bcryptjs', () => {
+  const actual = jest.requireActual('bcryptjs') as Record<string, unknown>;
+  return {
+    ...actual,
+    compare: jest.fn(),
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Mock global de @iwana/db
@@ -158,6 +168,7 @@ function setupRunInTenantSchema(
 describe('UsersService', () => {
   let service: UsersService;
   let auditServiceMock: { log: jest.Mock };
+  let tenantServiceMock: { updateTenantSelfProfile: jest.Mock };
 
   beforeEach(async () => {
     mockRunInTenantSchema.mockReset();
@@ -165,12 +176,14 @@ describe('UsersService', () => {
     mockTenantContextGetOrThrow.mockReturnValue(MOCK_TENANT_CTX);
 
     auditServiceMock = { log: jest.fn() };
+    tenantServiceMock = { updateTenantSelfProfile: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
         { provide: DataSource, useValue: {} },
         { provide: AuditService, useValue: auditServiceMock },
+        { provide: TenantService, useValue: tenantServiceMock },
         {
           provide: ConfigService,
           useValue: {
@@ -219,6 +232,96 @@ describe('UsersService', () => {
       // Con limit=2, slice deja [id-1, id-2] y nextCursor = 'id-2'
       expect(result.data).toHaveLength(2);
       expect(result.meta.nextCursor).toBe('id-2');
+    });
+  });
+
+  describe('changeLoginEmail()', () => {
+    it('actualiza el email de acceso del propio usuario y sincroniza el contactEmail si es el admin principal', async () => {
+      const actorId = 'usr-admin-principal';
+      const entity = buildUserEntity({
+        id: actorId,
+        role: UserRole.ADMIN,
+        emailHash: 'hash-actual',
+        passwordHash: '$2b$12$hash',
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+      });
+      const mgr = setupRunInTenantSchema({
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(entity)
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(entity),
+      });
+      (bcrypt.compare as unknown as jest.Mock).mockImplementation(async () => true);
+
+      const result = await service.changeLoginEmail(
+        actorId,
+        {
+          email: 'principal.nuevo@empresa.com',
+          currentPassword: 'Passw0rd!Segura',
+        },
+        actorId,
+      );
+
+      expect(result.email).toBe('principal.nuevo@empresa.com');
+      expect(mgr.save).toHaveBeenCalled();
+      expect(tenantServiceMock.updateTenantSelfProfile).toHaveBeenCalledWith(
+        MOCK_TENANT_CTX.tenantId,
+        { contactEmail: 'principal.nuevo@empresa.com' },
+        actorId,
+      );
+    });
+
+    it('no sincroniza contactEmail cuando el usuario no es el admin principal', async () => {
+      const actorId = 'usr-secundario';
+      const entity = buildUserEntity({
+        id: actorId,
+        role: UserRole.SUPPORT,
+        emailHash: 'hash-secundario',
+        passwordHash: '$2b$12$hash',
+      });
+      const principalAdmin = buildUserEntity({
+        id: 'usr-admin-principal',
+        role: UserRole.ADMIN,
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+      });
+      setupRunInTenantSchema({
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(entity)
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(principalAdmin),
+      });
+      (bcrypt.compare as unknown as jest.Mock).mockImplementation(async () => true);
+
+      await service.changeLoginEmail(
+        actorId,
+        {
+          email: 'operador.nuevo@empresa.com',
+          currentPassword: 'Passw0rd!Segura',
+        },
+        actorId,
+      );
+
+      expect(tenantServiceMock.updateTenantSelfProfile).not.toHaveBeenCalled();
+    });
+
+    it('rechaza el cambio cuando la contraseña actual no coincide', async () => {
+      const actorId = 'usr-admin-principal';
+      const entity = buildUserEntity({ id: actorId, passwordHash: '$2b$12$hash' });
+      setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(entity) });
+      (bcrypt.compare as unknown as jest.Mock).mockImplementation(async () => false);
+
+      await expect(
+        service.changeLoginEmail(
+          actorId,
+          {
+            email: 'principal.nuevo@empresa.com',
+            currentPassword: 'incorrecta',
+          },
+          actorId,
+        ),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -608,6 +711,32 @@ describe('UsersService', () => {
       expect(result.jobTitle).toBeNull();
       expect(result.documentType).toBeNull();
       expect(result.avatarUrl).toBeNull();
+    });
+
+    it('tolera nombres legados en texto plano sin lanzar error', async () => {
+      const entity = buildUserEntity({
+        firstName: 'Ana',
+        lastName: 'Prueba',
+      });
+      setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(entity) });
+
+      const result = await service.findOne(entity['id'] as string);
+
+      expect(result.firstName).toBe('Ana');
+      expect(result.lastName).toBe('Prueba');
+    });
+
+    it('degrada a null cuando el valor parece cifrado pero es inválido', async () => {
+      const entity = buildUserEntity({
+        firstName: '00112233445566778899aabb:00112233445566778899aabbccddeeff:aabbccdd',
+        lastName: 'ffeeddccbbaa998877665544:ffeeddccbbaa99887766554433221100:11223344',
+      });
+      setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(entity) });
+
+      const result = await service.findOne(entity['id'] as string);
+
+      expect(result.firstName).toBeNull();
+      expect(result.lastName).toBeNull();
     });
   });
 

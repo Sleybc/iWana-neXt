@@ -283,7 +283,9 @@ test.describe('Configuración empresarial del portal', () => {
     expect(requestLog.settingsPatches[0]).not.toHaveProperty('maxSubscribers');
     expect(requestLog.settingsPatches[0]).not.toHaveProperty('billing');
 
-    await page.getByLabel('Activar MFA obligatorio').click();
+    const mfaToggle = page.getByLabel('Activar MFA obligatorio');
+    await mfaToggle.scrollIntoViewIfNeeded();
+    await mfaToggle.check({ force: true });
     await page.getByRole('button', { name: 'Guardar seguridad' }).click();
 
     await expect(page.getByText('Política de seguridad actualizada correctamente.')).toBeVisible();

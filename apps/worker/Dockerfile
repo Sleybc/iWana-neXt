@@ -58,6 +58,9 @@ COPY --from=builder --chown=worker:nodejs /app/apps/worker ./apps/worker
 COPY --from=builder --chown=worker:nodejs /app/packages/shared ./packages/shared
 COPY --from=builder --chown=worker:nodejs /app/packages/database ./packages/database
 
+# El runtime no debe heredar archivos .env del workspace local.
+RUN rm -f /app/apps/worker/.env /app/apps/worker/.env.*
+
 USER worker
 
 WORKDIR /app/apps/worker

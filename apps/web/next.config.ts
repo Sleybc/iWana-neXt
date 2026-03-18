@@ -1,5 +1,15 @@
 import type { NextConfig } from 'next';
 
+function resolveWebApiProxyBase(): string {
+  const configuredApiBase = process.env.NEXT_PUBLIC_API_URL?.trim();
+
+  if (configuredApiBase && /^https?:\/\//.test(configuredApiBase)) {
+    return configuredApiBase.replace(/\/$/, '');
+  }
+
+  return 'http://localhost:3000/api/v1';
+}
+
 /**
  * Configuracion Next.js — Portal Administrativo (@iwana/web)
  *
@@ -17,6 +27,14 @@ const nextConfig: NextConfig = {
   transpilePackages: ['@iwana/ui', '@iwana/shared'],
   cacheComponents: true,
   turbopack: {},
+  async rewrites() {
+    return [
+      {
+        source: '/api/v1/:path*',
+        destination: `${resolveWebApiProxyBase()}/:path*`,
+      },
+    ];
+  },
   logging: {
     fetches: {
       fullUrl: false,

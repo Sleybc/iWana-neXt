@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build": "turbo run build",
-    "dev": "docker compose -f docker-compose.dev.yml up -d && turbo run dev",
+    "dev": "docker compose -f docker-compose.dev.yml up -d postgres redis pgbouncer minio nginx adminer && pnpm --filter @iwana/shared build && pnpm --filter @iwana/db build && pnpm --filter @iwana/db migration:run && turbo run dev",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "test:e2e": "playwright test --config e2e/playwright.web.config.ts",
@@ -18,7 +18,7 @@
     "test:e2e:portal": "playwright test --config e2e/playwright.portal.config.ts",
     "test:e2e:all": "pnpm test:e2e && pnpm test:e2e:portal",
     "typecheck": "turbo run typecheck",
-    "clean": "turbo run clean && rm -rf node_modules",
+    "clean": "turbo run clean && node scripts/clean-paths.mjs node_modules .turbo test-results apps/portal/test-results apps/api/coverage",
     "prepare": "husky"
   },
   "pnpm": {

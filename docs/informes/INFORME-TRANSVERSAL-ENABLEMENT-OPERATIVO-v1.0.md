@@ -9,9 +9,45 @@
 
 Se ejecutó la implementación transversal de enablement operativo para habilitar perfil de plataforma, settings funcionales de tenant, flujo de alta de primera empresa y gestión operativa de usuarios internos. El cierre incluyó la corrección del flujo MFA de plataforma en web, la activación real de acciones de usuarios por tenant y la ampliación del E2E de bootstrap administrativo.
 
+### Addendum correctivo 2026-03-18 — Bootstrap genérico del admin principal y cambio de email de acceso
+
+Se corrigió una deuda de diseño en el onboarding de empresas: el login inicial del ADMIN del tenant estaba acoplado al `contactEmail` empresarial. El flujo quedó desacoplado en tres frentes. Primero, el worker ahora siembra siempre un usuario principal genérico `admin@iwana.co` con contraseña inicial fija controlada por entorno mediante `TENANT_INITIAL_ADMIN_PASSWORD` y `passwordResetRequired=true`, sin depender del correo comercial de la empresa ni hardcodear secretos en código versionado. Segundo, `POST /api/v1/tenants/:id/regenerate-admin-credentials` dejó de buscar por `contactEmail` y pasó a regenerar sobre el ADMIN principal vigente del tenant. Tercero, tanto portal como web incorporaron cambio de email de acceso desde Perfil con validación de contraseña actual; en el caso del ADMIN principal del tenant, ese cambio sincroniza también `public.tenants.contact_email`.
+
+### Addendum correctivo 2026-03-18 — Eliminación del warning Redis por deriva de entorno y arranque duplicado
+
+Se corrigió la causa raíz de los mensajes repetidos `This Redis server's default user does not require a password, but a password was supplied` durante el arranque local. Había dos derivas combinadas. La primera era de configuración: API y, sobre todo, worker mezclaban `.env.development` con `.env`, por lo que en desarrollo terminaban heredando `REDIS_PASSWORD=CHANGE_ME_REDIS_PASSWORD` desde el template de producción aun cuando `docker-compose.dev.yml` levanta Redis sin `requirepass`. La segunda era operativa: `pnpm dev` arrancaba infraestructura Docker y luego `turbo run dev`, pero también dejaba disponible un worker Docker en la misma compose, abriendo la puerta a procesos BullMQ duplicados. El fix dejó el bootstrap de Nest aislado por entorno: en `development` solo carga `.env.development`, en `production/staging` ignora archivos `.env` y depende exclusivamente de variables inyectadas. Además, el script raíz `pnpm dev` pasó a levantar solo la infraestructura base de Docker y no el worker containerizado, evitando duplicidad con `@iwana/worker` ejecutado por Turbo.
+
+### Addendum correctivo 2026-03-18 — Limpieza estructural de workspace y contexto Docker
+
+Se ejecutó una limpieza transversal para eliminar residuos locales que estaban inflando innecesariamente el workspace y el contexto de build de Docker. El diagnóstico mostró que el peso principal no estaba en código fuente sino en artefactos generados: `apps/web/.next` (~890 MB), `apps/portal/.next` (~648 MB), `apps/portal/test-results` y `.turbo`. Como corrección estructural se añadió un `.dockerignore` raíz para excluir `node_modules`, `.next`, `dist`, `coverage`, `test-results`, documentación y metadatos de tooling del contexto enviado al daemon. En paralelo, `.gitignore` quedó alineado para ignorar artefactos de Playwright y resultados locales de pruebas, el worker de `docker-compose.dev.yml` pasó a un profile opcional para no levantarse por defecto en entornos locales, y el `Dockerfile` del worker ahora elimina `.env*` del runtime igual que la API. Como endurecimiento adicional de mantenimiento, los scripts `clean` del monorepo dejaron de depender de `rm -rf` y pasaron a un helper Node cross-platform para limpiar artefactos también en Windows.
+
+### Addendum correctivo 2026-03-18 — Orden de build en `pnpm dev` para `@iwana/shared` y `@iwana/db`
+
+Se corrigió una regresión operativa introducida al limpiar los artefactos `dist` del workspace. El script raíz `pnpm dev` reconstruía `@iwana/db` antes de que existiera nuevamente el build de `@iwana/shared`, pero `packages/database` importa enums y tipos desde `@iwana/shared` tanto para compilación como para runtime de migraciones. Con `dist` limpio, `tsc` en `@iwana/db` fallaba con `TS2307: Cannot find module '@iwana/shared'`. El flujo quedó corregido construyendo primero `@iwana/shared` y luego `@iwana/db` antes de ejecutar `migration:run`, manteniendo el arranque local determinista después de una limpieza completa del monorepo.
+
+### Addendum correctivo 2026-03-18 — Limpieza de `dist` antes del watch de `@iwana/worker`
+
+Se corrigió una deriva operativa en el arranque local del worker. Aunque el código fuente de `TenantSeedService` ya validaba `TENANT_INITIAL_ADMIN_PASSWORD` correctamente, `@iwana/worker:dev` podía iniciar con una versión obsoleta de `apps/worker/dist` mientras `nest start --watch` recompilaba en segundo plano. Eso permitía ejecutar JavaScript viejo en el bootstrap y reintroducir mensajes o validaciones ya corregidas en `src`. El ajuste dejó el script `dev` de `@iwana/worker` limpiando `dist` antes de levantar el watcher, forzando que cada arranque en desarrollo compile desde el código fuente vigente y evitando que el bootstrap cargue artefactos stale.
+
+### Addendum correctivo 2026-03-18 — Override local seguro para `.env.development`
+
+Se corrigió la precedencia de configuración local para evitar que secretos operativos de desarrollo dependieran del entorno persistido del sistema o de templates versionados con placeholders. `@iwana/api` y `@iwana/worker` ahora cargan `.env.development.local` antes de `.env.development` cuando `NODE_ENV=development`. Con esto, los overrides locales quedan fuera de git, mantienen el aislamiento respecto a `.env` de producción y permiten fijar secretos de bootstrap válidos sin reintroducir la deriva previa de Redis ni acoplar el arranque a variables de usuario del sistema.
+
+### Addendum correctivo 2026-03-18 — Acceso inicial fijo del tenant y enforcement real de cambio de contraseña
+
+Se cerró una inconsistencia funcional en el onboarding de empresas. El seed del ADMIN inicial ya dejaba `passwordResetRequired=true`, pero el flujo no era coherente extremo a extremo: la consola web seguía privilegiando la regeneración manual de credenciales y, además, después de completar MFA el portal podía saltarse la redirección obligatoria a cambio de contraseña. El ajuste dejó tres correcciones coordinadas. Primero, la API expone de forma controlada el acceso bootstrap fijo del ADMIN inicial solo mientras el hash vigente siga correspondiendo a `TENANT_INITIAL_ADMIN_PASSWORD`, el usuario continúe en primer ingreso y la ventana temporal no haya expirado; si ya hubo rotación o regeneración, el endpoint rechaza la consulta. Segundo, la pantalla de creación de empresa ahora distingue entre `Ver acceso inicial fijo` y `Regenerar credenciales temporales`, preservando el soporte operativo sin mezclar ambos conceptos. Tercero, tanto web como portal corrigen el flujo post-MFA para que `passwordResetRequired=true` redirija siempre a `/auth/change-password` antes de conceder acceso al dashboard.
+
 ### Addendum correctivo 2026-03-14 — Estabilización de `pnpm run dev`
 
 Se corrigieron tres fallos detectados durante el arranque integrado del workspace: desalineación entre DTOs y servicio de `PlatformUsersModule`, carga temprana de configuración PostgreSQL en el worker y consumo de artefactos `dist` obsoletos desde `@iwana/db` en runtime. Como cierre, `pnpm run dev` volvió a levantar `@iwana/db`, `@iwana/api`, `@iwana/worker`, `@iwana/web` y `@iwana/portal` sin errores de compilación ni de conexión.
+
+### Addendum correctivo 2026-03-17 — Alineación de proxy frontend + saneamiento estático
+
+Se eliminó el acoplamiento por defecto de `@iwana/web` y `@iwana/portal` a `http://localhost:3000/api/v1` en el navegador, migrando ambos clientes HTTP a base relativa `/api/v1` con rewrites de Next.js hacia el backend real. En paralelo, se alinearon contratos TypeScript del portal con el backend self-service de branding y se normalizó la flat config de ESLint para registrar `@typescript-eslint` en todo el monorepo. Como cierre, `typecheck` y `lint` quedaron sin errores en todos los workspaces; solo persiste una advertencia no bloqueante de Node sobre `eslint.config.js` como ESM sin `type: module` en el `package.json` raíz.
+
+### Addendum correctivo 2026-03-17 — Hotfix de login tenant por drift de esquema público
+
+Se corrigió un `500 Internal Server Error` en `POST /api/v1/auth/login` que afectaba tanto a `@iwana/api` como al portal vía rewrite. La causa raíz no estaba en el cliente HTTP ni en JWT: `TenantMiddleware` resolvía el tenant con `TenantService.findBySlug()`, pero la entidad `Tenant` ya esperaba columnas de branding (`logo_light_url`, `logo_dark_url`, `seal_light_url`, `seal_dark_url`, `show_tenant_name`) ausentes en `public.tenants`. El fix operativo consistió en dos partes: aplicar la migración pendiente `005_add_tenant_branding_columns.ts` sobre la base local y endurecer `packages/database/src/data-source.ts` para que el runner CLI de TypeORM cargue `.env.development`/`.env` cuando se ejecuta fuera del bootstrap de NestJS. Como validación final, el login dejó de responder 500 y volvió a entregar `401 Credenciales invalidas` para intentos no válidos, tanto por `http://localhost:3000/api/v1/auth/login` como por `http://localhost:3002/api/v1/auth/login`.
 
 ## Cambios Implementados
 
@@ -22,11 +58,17 @@ Se corrigieron tres fallos detectados durante el arranque integrado del workspac
 - Se implementó `PlatformUsersModule` con:
   - `GET /api/v1/platform-users/me`
   - `PATCH /api/v1/platform-users/me`
+  - `PATCH /api/v1/platform-users/me/login-email`
+- Se implementó cambio de email de acceso para usuarios tenant en `PATCH /api/v1/users/:id/login-email` con confirmación de contraseña actual.
 - Se implementaron DTOs y lógica de `GET/PATCH /api/v1/tenants/:id/settings` con defaults Colombia y merge parcial.
 - Se agregó auditoría de cambios de settings de tenant con `oldValue/newValue`.
 - Ajuste correctivo posterior: el contrato operativo de `PlatformUsersModule` quedó alineado con la evolución real del esquema `public.platform_users` (`firstName` + `lastName` en lugar de `displayName`), eliminando errores de compilación en `platform-users.service.ts` y sus pruebas.
 - El worker dejó de usar `AppDataSource.options` evaluado antes de cargar variables de entorno y pasó a construir TypeORM con `ConfigService`, reutilizando el fallback local `apps/api/.env` cuando corre fuera de Docker.
 - Se añadieron scripts `dev` con `tsc --watch` en `@iwana/shared` y `@iwana/db` para evitar que API y worker consuman artefactos `dist` desactualizados durante el desarrollo.
+- Ajuste correctivo posterior de migraciones: `packages/database/src/data-source.ts` ahora carga `.env.development` y `.env` cuando se invoca desde el runner CLI de TypeORM fuera de NestJS, evitando fallos SASL por credenciales no inicializadas al ejecutar `migration:run` en local.
+- Ajuste correctivo posterior de bootstrap: `TenantSeedService` ahora siembra el ADMIN principal con login genérico cifrado `admin@iwana.co` y contraseña fija inicial tomada desde `TENANT_INITIAL_ADMIN_PASSWORD`, mientras `AuthService.regenerateTenantAdminCredentials()` resuelve al ADMIN principal por orden de creación en vez de depender de `contactEmail`.
+- Ajuste correctivo posterior de onboarding: `AuthService.getBootstrapTenantAdminCredentials()` expone el acceso inicial fijo del ADMIN bootstrap únicamente mientras siga vigente el primer ingreso; `TenantCreateForm` lo consume desde la consola de creación y el flujo post-MFA de web/portal ya no puede saltarse `passwordResetRequired`.
+- Ajuste correctivo posterior de entorno Redis: `AppModule` y `WorkerModule` dejaron de usar `.env` de producción como fallback en `development`; ahora solo consumen `.env.development` en local y variables inyectadas en `production/staging`.
 
 ### Frontend
 
@@ -44,6 +86,7 @@ Se corrigieron tres fallos detectados durante el arranque integrado del workspac
   - `/tenants`, `/tenants/new`, `/tenants/[id]/settings`
   - `/users` + `UsersTable` + `UserCreateModal` + `UserManagementModal`
 - Se actualizó `Sidebar` (label negocio: "Empresas") y tabla de tenants con acción "Configurar".
+- `ProfileForm` en web y `PersonalInfoForm` en portal ahora separan datos personales del cambio de email de acceso, exigiendo contraseña actual para confirmar la rotación del login.
 - Se corrigió el flujo MFA de plataforma en web:
   - login inicial con soporte de `mfaRequired`
   - segundo paso MFA reutilizando `POST /auth/platform/login` con `totpCode`
@@ -72,15 +115,20 @@ Se corrigieron tres fallos detectados durante el arranque integrado del workspac
   - `tenant-settings.spec.ts`
   - `tenant.controller.spec.ts`
   - `users.service.spec.ts`
+  - `auth.service.spec.ts`
 - E2E:
   - `e2e/tests/web/admin-bootstrap.spec.ts`
+  - `apps/portal/tests/e2e/auth-tenant.spec.ts`
 
 ## Archivos Creados/Modificados
 
 - Backend y DB:
   - `packages/database/src/entities/platform-user.entity.ts`
   - `packages/database/src/migrations/public/002_add_platform_user_profile.ts`
+  - `packages/database/src/migrations/public/005_add_tenant_branding_columns.ts`
+  - `packages/database/src/data-source.ts`
   - `apps/api/src/modules/platform-users/*`
+  - `apps/api/src/modules/users/*`
   - `apps/api/src/modules/tenant/dto/tenant-settings.dto.ts`
   - `apps/api/src/modules/tenant/tenant.controller.ts`
   - `apps/api/src/modules/tenant/tenant.service.ts`
@@ -96,12 +144,17 @@ Se corrigieron tres fallos detectados durante el arranque integrado del workspac
   - `apps/web/src/components/dashboard/TenantsTable.tsx`
   - `apps/web/src/lib/api-client.ts`
   - `apps/web/src/components/auth/AuthProvider.tsx`
+  - `apps/portal/src/components/profile/PersonalInfoForm.tsx`
+  - `apps/portal/src/lib/api-client.ts`
+  - `apps/worker/src/services/tenant-seed.service.ts`
+  - `apps/worker/src/processors/tenant-provisioning.processor.ts`
 
 ## Resultados de Validación
 
 - Backend:
   - `pnpm typecheck` en verde para todo el monorepo.
   - Validación correctiva puntual posterior: `pnpm --filter @iwana/api exec tsc --noEmit` en verde.
+  - Validación correctiva adicional posterior: `pnpm --filter @iwana/api test -- --runInBand src/modules/auth/auth.service.spec.ts src/modules/tenant/tenant.controller.spec.ts src/modules/users/users.service.spec.ts src/modules/platform-users/platform-users.service.spec.ts src/modules/platform-users/platform-users.controller.spec.ts` en verde (`5` suites / `116` tests).
   - Corrida focalizada de backend en verde:
     - `platform-users.service.spec.ts`
     - `platform-users.controller.spec.ts`
@@ -120,12 +173,22 @@ Se corrigieron tres fallos detectados durante el arranque integrado del workspac
     - `tenant.controller.ts` y `tenant.service.ts` quedan por debajo del umbral agregado porque el archivo conserva superficie legacy fuera del alcance de settings; los contratos nuevos `getSettings/updateSettings` quedaron cubiertos por `tenant-settings.spec.ts` y `tenant.controller.spec.ts`.
 - Frontend:
   - `@iwana/web` typecheck en verde dentro de la corrida de monorepo.
+  - Validación correctiva adicional posterior: `pnpm --filter @iwana/web typecheck` y `pnpm --filter @iwana/portal typecheck` en verde tras separar el cambio de email de acceso del formulario general de perfil.
   - Diagnósticos del editor sin errores en MFA, profile, tenants y users tras el cierre funcional.
   - Ajuste incremental de layout validado con `pnpm --filter @iwana/web typecheck` en verde tras reestructurar `PageHeader`, `ProfileForm` y `SecuritySettings`.
   - Validación correctiva puntual posterior: `pnpm --filter @iwana/web typecheck` en verde tras migrar el perfil de plataforma a `firstName` / `lastName`.
+  - Validación correctiva transversal posterior: `@iwana/web` y `@iwana/portal` con typecheck en verde tras adoptar base relativa `/api/v1` + rewrites de Next.js.
+  - Diagnósticos del editor sin errores tras alinear `TenantSelf`/`updateBranding` con los DTOs reales del backend y simplificar el control accesible de MFA obligatorio en portal.
+- Tooling:
+  - Validación secuencial de typecheck en verde para `@iwana/api`, `@iwana/web`, `@iwana/portal`, `@iwana/worker`, `@iwana/db`, `@iwana/shared` y `@iwana/ui`.
+  - Validación correctiva adicional posterior: `pnpm --filter @iwana/worker typecheck` en verde tras fijar el seed genérico del admin principal.
+  - Validación secuencial de lint sin errores en todos los workspaces tras registrar `@typescript-eslint` en `eslint.config.js` y limpiar directivas obsoletas en tests/servicios.
+  - Advertencia residual no bloqueante: `MODULE_TYPELESS_PACKAGE_JSON` al cargar `eslint.config.js` como ESM desde Node.
 - Runtime dev:
   - `pnpm run dev` quedó estable tras corregir los errores iniciales de TypeScript en `@iwana/api`, la conexión PostgreSQL del worker y el consumo de `dist` obsoleto desde `@iwana/db`.
   - Arranque final verificado en verde para `@iwana/db`, `@iwana/api`, `@iwana/worker`, `@iwana/web` y `@iwana/portal`.
+  - Hotfix adicional 2026-03-18: se eliminó la deriva de `REDIS_PASSWORD` en local y se evitó el arranque duplicado del worker desde Docker en `pnpm dev`; con esto, BullMQ/ioredis dejan de autenticar contra el Redis dev sin password y el entorno reduce el riesgo de consumidores duplicados.
+  - Hotfix adicional 2026-03-18: se corrigió `GET /api/v1/users/:id` para tolerar nombres/apellidos legados en texto plano o con cifrado inválido/incompatible. Antes, `UsersService.toDto()` intentaba descifrar siempre `first_name` / `last_name` y el portal disparaba un `500` durante login al resolver el nombre del usuario desde `AuthProvider`. El endpoint ahora degrada de forma segura: valores legados se retornan tal cual, y payloads con forma de AES-GCM pero no descifrables se omiten como `null` sin romper la sesión.
 - E2E:
   - Se detectó causa de fallo en `admin-bootstrap.spec.ts`: el patrón `testMatch` no incluía specs bajo `e2e/tests/web/**`.
   - Fix aplicado en `e2e/playwright.web.config.ts` para incluir ambos patrones: specs legacy (`web-*.spec.ts`) y specs organizados por carpeta (`web/**.spec.ts`).
@@ -149,12 +212,17 @@ Se corrigieron tres fallos detectados durante el arranque integrado del workspac
   - Se ejecutó `pnpm --filter @iwana/db migration:revert` en verde; `migration:show` posterior volvió a dejar `AddPlatformUserProfile1742100000000` como pendiente.
   - Se verificó físicamente la reversión: el conteo de columnas objetivo en `public.platform_users` pasó de 4 antes del revert a 0 después del revert.
   - Como cierre operativo del workspace local, se reaplicó `pnpm --filter @iwana/db migration:run`; `migration:show` final dejó `AddPlatformUserProfile1742100000000` marcada como aplicada y la verificación SQL final confirmó nuevamente las 4 columnas presentes en `public.platform_users`.
+  - Hotfix adicional 2026-03-17: se detectó una tercera deriva de esquema en `public.tenants`, donde la entidad ya requería columnas de branding pero la base local seguía en el estado previo a `005_add_tenant_branding_columns.ts`; tras recompilar `@iwana/db`, aplicar la migración y verificar `typeorm_migrations`, el login tenant dejó de lanzar `QueryFailedError: column Tenant.logo_light_url does not exist`.
+  - Hotfix adicional 2026-03-18: se corrigió una deriva de configuración en Docker para `@iwana/api`. La imagen runtime estaba en riesgo de leer `apps/api/.env` copiado dentro del contenedor por el `Dockerfile`, mientras `docker compose config` ya mostraba que `MFA_ENCRYPTION_KEY` y los `SMTP_*` se resolvían correctamente desde el entorno inyectado. Se endureció `ConfigModule.forRoot()` para ignorar archivos `.env` en producción y se eliminó cualquier `.env` embebido del runtime image, de modo que el arranque en contenedor dependa solo de variables de entorno explícitas y no de archivos locales arrastrados por el build context.
+  - Hotfix adicional 2026-03-18: se corrigió el arranque del entorno dev para evitar `500` en `POST /api/v1/auth/login` sobre bases limpias. La causa raíz era operativa: `pnpm dev` levantaba PostgreSQL/Redis y los servidores locales, pero no aplicaba migraciones, dejando `public.tenants` inexistente y haciendo que el proxy del portal a `localhost:3000` fallara durante la resolución de tenant. Se aplicaron las migraciones pendientes en la base local y se actualizó el script raíz `pnpm dev` para ejecutar `@iwana/db build` + `migration:run` antes de `turbo run dev`.
+  - Hotfix adicional 2026-03-18: se corrigió una deriva entre el template SQL de schemas tenant y la entidad `User`. El provisioning fallaba en `PROVISIONING_FAILED` porque `tenant_template.sql` no creaba la columna `mfa_required`, y el `TenantSeedService` consultaba `users` vía TypeORM con una metadata más nueva. Como refuerzo operativo, el template quedó idempotente para reintentos (tablas e índices con `IF NOT EXISTS`, recreación segura de la política RLS) y el script raíz `pnpm dev` ahora usa `docker compose -f docker-compose.dev.yml up -d --build` para evitar workers Docker con imágenes stale durante cambios de provisioning.
 - Estado global: validación funcional completa para cierre de fase.
 
 ## Pendientes y Deuda Técnica
 
 - Se cerró la deuda preexistente de `auth.service.spec.ts` agregando el mock de `PlatformUserRepository` requerido por el constructor actual de `AuthService`; la suite quedó nuevamente estable en verde (20/20).
 - Durante la validación de migraciones se detectó una incompatibilidad de metadata TypeORM en `PlatformUser`: `displayName` y `phone` no explicitaban `type: 'varchar'`, lo que hacía fallar `migration:show` con `DataTypeNotSupportedError`. Se corrigió la entidad y la validación quedó operativa.
+- Hotfix backend validado: `pnpm --filter @iwana/api exec jest src/modules/users/users.service.spec.ts --runInBand` en verde (`33/33` tests), incluyendo cobertura nueva para compatibilidad con datos legados en `firstName`/`lastName`.
 
 ## Trazabilidad
 

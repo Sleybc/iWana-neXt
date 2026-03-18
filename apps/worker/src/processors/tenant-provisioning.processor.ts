@@ -128,7 +128,6 @@ export class TenantProvisioningProcessor extends WorkerHost {
         tenantId,
         tenantSlug,
         schemaName,
-        adminEmail: tenant.contactEmail,
       });
 
       this.logger.log(`[provisioning] Seed inicial del ADMIN completado para tenant ${tenantSlug}`);

@@ -90,7 +90,6 @@ describe('AuthController HTTP', () => {
     );
 
     // El controlador lee la cookie httpOnly del refresh token desde req.cookies.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     app.use(require('cookie-parser')());
 
     await app.init();

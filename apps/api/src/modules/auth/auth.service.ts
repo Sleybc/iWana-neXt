@@ -16,7 +16,7 @@ import * as qrcode from 'qrcode';
 import Redis from 'ioredis';
 import { Repository } from 'typeorm';
 import { PlatformUser, RefreshToken, User } from '@iwana/db';
-import { UserStatus, AuditAction } from '@iwana/shared';
+import { UserRole, UserStatus, AuditAction } from '@iwana/shared';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { DataSource } from 'typeorm';
 import { REDIS_CLIENT } from '../redis/redis.module';
@@ -55,6 +55,12 @@ const PASSWORD_RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 
 /** Duracion de las credenciales temporales del ADMIN inicial (24 horas) */
 const TEMPORARY_PASSWORD_TTL_SECONDS = 24 * 60 * 60;
+
+/** Login bootstrap fijo del ADMIN inicial sembrado por el worker */
+const INITIAL_TENANT_ADMIN_EMAIL = 'admin@iwana.co';
+
+/** Variable de entorno compartida entre worker y API para el password inicial fijo */
+const TENANT_INITIAL_ADMIN_PASSWORD_CONFIG_KEY = 'TENANT_INITIAL_ADMIN_PASSWORD';
 
 /**
  * Servicio de autenticacion de iWana neXt.
@@ -810,7 +816,6 @@ export class AuthService {
   async regenerateTenantAdminCredentials(input: {
     tenantId: string;
     schemaName: string;
-    adminEmail: string;
     idempotencyKey: string;
   }): Promise<{
     message: string;
@@ -831,9 +836,9 @@ export class AuthService {
     }
 
     return runInTenantSchema(this.dataSource, input.schemaName, async (qr) => {
-      const adminEmailHash = this.hashEmail(input.adminEmail);
       const adminUser = await qr.manager.findOne(User, {
-        where: { emailHash: adminEmailHash },
+        where: { role: UserRole.ADMIN },
+        order: { createdAt: 'ASC' },
         withDeleted: false,
       });
 
@@ -858,7 +863,7 @@ export class AuthService {
 
       const response = {
         message: 'Credenciales temporales regeneradas para el ADMIN inicial del tenant.',
-        adminEmail: input.adminEmail,
+        adminEmail: this.decodeStoredValue(adminUser.email),
         temporaryPassword,
         expiresAt: expiresAt.toISOString(),
       };
@@ -871,6 +876,78 @@ export class AuthService {
       );
 
       return response;
+    });
+  }
+
+  /**
+   * Retorna el acceso bootstrap fijo del ADMIN inicial solo mientras siga vigente.
+   *
+   * Reglas de negocio:
+   * - Solo aplica al ADMIN inicial sembrado por el worker (`admin@iwana.co`).
+   * - Solo se expone si el usuario sigue en primer ingreso (`passwordResetRequired=true`).
+   * - Se valida que el hash actual todavía corresponda al password fijo inicial.
+   * - Si ya hubo cambio de contraseña o regeneración temporal, deja de exponerse.
+   */
+  async getBootstrapTenantAdminCredentials(input: {
+    tenantId: string;
+    schemaName: string;
+  }): Promise<{
+    message: string;
+    adminEmail: string;
+    temporaryPassword: string;
+    expiresAt: string;
+  }> {
+    return runInTenantSchema(this.dataSource, input.schemaName, async (qr) => {
+      const adminUser = await qr.manager.findOne(User, {
+        where: { role: UserRole.ADMIN },
+        order: { createdAt: 'ASC' },
+        withDeleted: false,
+      });
+
+      if (!adminUser) {
+        throw new NotFoundException(
+          'No existe el ADMIN inicial del tenant para consultar el acceso bootstrap.',
+        );
+      }
+
+      const adminEmail = this.decodeStoredValue(adminUser.email);
+      if (adminEmail.toLowerCase() !== INITIAL_TENANT_ADMIN_EMAIL) {
+        throw new ConflictException(
+          'El ADMIN inicial ya no conserva el login bootstrap esperado para este tenant.',
+        );
+      }
+
+      if (!adminUser.passwordResetRequired || !adminUser.passwordResetExpiresAt) {
+        throw new ConflictException(
+          'El acceso inicial fijo ya no está disponible porque el primer ingreso ya fue completado.',
+        );
+      }
+
+      if (adminUser.passwordResetExpiresAt < new Date()) {
+        throw new ConflictException(
+          'El acceso inicial fijo expiró. Usa la regeneración de credenciales temporales.',
+        );
+      }
+
+      const bootstrapPassword = this.getInitialTenantAdminPassword();
+      const matchesBootstrapPassword = await bcrypt.compare(
+        bootstrapPassword,
+        adminUser.passwordHash,
+      );
+
+      if (!matchesBootstrapPassword) {
+        throw new ConflictException(
+          'El acceso inicial fijo ya no está vigente porque la contraseña fue rotada o regenerada.',
+        );
+      }
+
+      return {
+        message:
+          'Acceso inicial fijo vigente para el ADMIN bootstrap del tenant. Debe cambiarse al primer ingreso.',
+        adminEmail,
+        temporaryPassword: bootstrapPassword,
+        expiresAt: adminUser.passwordResetExpiresAt.toISOString(),
+      };
     });
   }
 
@@ -1028,6 +1105,56 @@ export class AuthService {
   /** Genera una contrasena temporal fuerte y corta para onboarding operativo. */
   private generateTemporaryPassword(): string {
     return `IwN!a9-${crypto.randomBytes(8).toString('hex')}`;
+  }
+
+  /**
+   * Lee y valida el password fijo del ADMIN bootstrap desde configuración runtime.
+   * No se cachea al construir el servicio para no bloquear el arranque si el flujo no se usa.
+   */
+  private getInitialTenantAdminPassword(): string {
+    const configuredPassword = this.configService.get<string>(TENANT_INITIAL_ADMIN_PASSWORD_CONFIG_KEY);
+
+    if (!configuredPassword?.trim()) {
+      throw new ConflictException(
+        'TENANT_INITIAL_ADMIN_PASSWORD no está configurada en la API para exponer el acceso inicial fijo.',
+      );
+    }
+
+    return this.validateBootstrapPassword(configuredPassword);
+  }
+
+  /** Reutiliza la misma política mínima exigida por el seed bootstrap del worker. */
+  private validateBootstrapPassword(password: string): string {
+    const normalizedPassword = password.trim();
+
+    const meetsPolicy =
+      normalizedPassword.length >= 10 &&
+      /[A-Z]/.test(normalizedPassword) &&
+      /[a-z]/.test(normalizedPassword) &&
+      /\d/.test(normalizedPassword) &&
+      /[^A-Za-z0-9]/.test(normalizedPassword);
+
+    if (!meetsPolicy) {
+      throw new ConflictException(
+        TENANT_INITIAL_ADMIN_PASSWORD_CONFIG_KEY +
+          ' no cumple la política mínima: 10+ caracteres, mayúscula, minúscula, número y especial.',
+      );
+    }
+
+    return normalizedPassword;
+  }
+
+  private decodeStoredValue(value: string): string {
+    const parts = value.split(':');
+    if (parts.length !== 3) {
+      return value;
+    }
+
+    try {
+      return this.decryptSecret(value);
+    } catch {
+      return value;
+    }
   }
 
   /**   * Cifra un secreto MFA con AES-256-GCM usando la clave derivada al inicio.

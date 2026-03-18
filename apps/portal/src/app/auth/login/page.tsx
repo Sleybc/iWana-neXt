@@ -4,12 +4,12 @@ import { LoginBrandPanel } from '@/components/auth/LoginBrandPanel';
 import { LoginForm } from '@/components/auth/LoginForm';
 
 export const metadata: Metadata = {
-  title: 'Iniciar sesión — Portal de Suscriptores — iWana neXt',
-  description: 'Acceso al portal de suscriptores iWana neXt',
+  title: 'Iniciar sesión — Portal Corporativo — iWana neXt',
+  description: 'Acceso al portal corporativo iWana neXt',
 };
 
 /**
- * Página de login del portal de suscriptores.
+ * Página de login del portal corporativo.
  * Layout split-screen adaptado del prototipo de identidad visual.
  */
 export default function LoginPage() {

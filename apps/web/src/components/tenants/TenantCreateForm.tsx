@@ -190,6 +190,22 @@ export function TenantCreateForm() {
     }
   };
 
+  const getBootstrapCredentials = async () => {
+    if (!createdTenant) return;
+
+    try {
+      const creds = await tenantApi.getBootstrapCredentials(createdTenant.id);
+      setCredentials(creds);
+      setError(null);
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : 'No fue posible consultar el acceso inicial fijo del tenant.',
+      );
+    }
+  };
+
   // Pestañas de sección
   const tabs: { key: typeof activeSection; label: string }[] = [
     { key: 'basico', label: 'Básico' },
@@ -269,6 +285,10 @@ export function TenantCreateForm() {
                 className={INPUT_CLASS}
                 {...register('contactEmail')}
               />
+              <p className="mt-1 text-xs text-gray-500">
+                Este correo se usa como contacto empresarial. El acceso inicial del tenant se crea
+                con el usuario genérico admin@iwana.co y luego puede cambiarse desde Perfil.
+              </p>
               {errors.contactEmail && <p className={ERROR_CLASS}>{errors.contactEmail.message}</p>}
             </div>
 
@@ -511,8 +531,11 @@ export function TenantCreateForm() {
 
           {createdTenant.status === 'ACTIVE' && (
             <div className="mt-3 flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" onClick={getBootstrapCredentials}>
+                Ver acceso inicial fijo
+              </Button>
               <Button type="button" variant="secondary" onClick={getCredentials}>
-                Obtener credenciales admin
+                Regenerar credenciales temporales
               </Button>
               <Button
                 type="button"

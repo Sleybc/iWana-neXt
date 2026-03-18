@@ -5,6 +5,8 @@ import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
 import * as Joi from 'joi';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { dataSourceOptions } from '@iwana/db';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
@@ -16,6 +18,49 @@ import { MailerModule } from './modules/mailer/mailer.module';
 import { RedisModule } from './modules/redis/redis.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { TenantMiddleware } from './modules/tenant/tenant.middleware';
+
+const runtimeEnv = process.env['NODE_ENV'];
+const apiDevelopmentLocalEnvPath = resolve(__dirname, '../../../.env.development.local');
+const apiEnvFilePath =
+  runtimeEnv === 'test'
+    ? [resolve(__dirname, '../../../.env.test')]
+    : runtimeEnv === 'development'
+      ? [resolve(__dirname, '../../../.env.development')]
+      : null;
+
+if (runtimeEnv === 'development') {
+  preloadDevelopmentLocalEnv(apiDevelopmentLocalEnvPath);
+}
+
+function preloadDevelopmentLocalEnv(filePath: string): void {
+  if (!existsSync(filePath)) {
+    return;
+  }
+
+  const fileContent = readFileSync(filePath, 'utf8');
+
+  for (const rawLine of fileContent.split(/\r?\n/u)) {
+    const line = rawLine.trim();
+
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+
+    const separatorIndex = line.indexOf('=');
+
+    if (separatorIndex <= 0) {
+      continue;
+    }
+
+    const key = line.slice(0, separatorIndex).trim();
+    const value = line.slice(separatorIndex + 1).trim();
+    const currentValue = process.env[key];
+
+    if (!currentValue || currentValue.startsWith('CHANGE_ME_')) {
+      process.env[key] = value;
+    }
+  }
+}
 
 /**
  * Modulo raiz de la aplicacion iWana neXt API — Sprint 1 Semana 2.
@@ -45,12 +90,12 @@ import { TenantMiddleware } from './modules/tenant/tenant.middleware';
     // Variables de entorno disponibles globalmente con validacion fail-fast en produccion
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath:
-        process.env['NODE_ENV'] === 'test'
-          ? '.env.test'
-          : process.env['NODE_ENV'] === 'development'
-            ? ['.env.development', '.env']
-            : '.env',
+      // En Docker/produccion la fuente de verdad debe ser process.env inyectado,
+      // no archivos locales que puedan haberse copiado accidentalmente a la imagen.
+      // En desarrollo, .env.development.local se precarga en process.env
+      // antes del template versionado .env.development.
+      ignoreEnvFile: runtimeEnv === 'production' || runtimeEnv === 'staging',
+      ...(apiEnvFilePath ? { envFilePath: apiEnvFilePath } : {}),
       // Validacion Joi omitida en modo test para no requerir todas las vars en CI
       ...(process.env['NODE_ENV'] !== 'test' && {
         validationSchema: Joi.object({
@@ -80,11 +125,11 @@ import { TenantMiddleware } from './modules/tenant/tenant.middleware';
           COOKIE_SECURE: Joi.boolean().default(false),
           APP_NAME: Joi.string().default('iWana neXt'),
           // Variables SMTP — todas opcionales; ausencia de SMTP_HOST activa modo dev en MailerService
-          SMTP_HOST: Joi.string().optional(),
+          SMTP_HOST: Joi.string().allow('').optional(),
           SMTP_PORT: Joi.number().integer().min(1).max(65535).optional(),
-          SMTP_USER: Joi.string().optional(),
-          SMTP_PASS: Joi.string().optional(),
-          SMTP_FROM: Joi.string().optional(),
+          SMTP_USER: Joi.string().allow('').optional(),
+          SMTP_PASS: Joi.string().allow('').optional(),
+          SMTP_FROM: Joi.string().allow('').optional(),
           SMTP_SECURE: Joi.boolean().optional(),
           // URL del frontend — usada para construir enlaces en correos (forgot password, etc.)
           FRONTEND_URL: Joi.string().uri().optional(),

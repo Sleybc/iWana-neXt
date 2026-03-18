@@ -167,6 +167,28 @@ export class UpdateUserDto {
   mfaRequired?: boolean;
 }
 
+export class ChangeUserLoginEmailDto {
+  @ApiProperty({ example: 'nuevo.acceso@empresa.com', description: 'Nuevo email de acceso' })
+  @IsEmail()
+  @MaxLength(255)
+  email: string;
+
+  @ApiProperty({ minLength: 10, description: 'Contraseña actual para confirmar el cambio' })
+  @IsString()
+  @MinLength(10)
+  @MaxLength(128)
+  currentPassword: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Si el usuario es el administrador principal, sincroniza también el email de contacto del tenant.',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  syncCompanyContactEmail?: boolean;
+}
+
 /**
  * Representacion publica de un usuario.
  * Excluye campos sensibles: passwordHash, mfaSecret, tokens, emailHash, documentNumber.
@@ -175,6 +197,9 @@ export class UpdateUserDto {
 export class UserResponseDto {
   @ApiProperty()
   id: string;
+
+  @ApiProperty({ description: 'Email de acceso del usuario' })
+  email: string;
 
   @ApiProperty({ enum: UserRole })
   role: UserRole;

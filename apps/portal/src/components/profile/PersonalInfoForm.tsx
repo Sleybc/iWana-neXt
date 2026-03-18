@@ -5,7 +5,12 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button, Card, CardContent, Input } from '@iwana/ui';
-import { userApi, type UpdateProfileDto, type UserProfile } from '@/lib/api-client';
+import {
+  userApi,
+  type ChangeLoginEmailDto,
+  type UpdateProfileDto,
+  type UserProfile,
+} from '@/lib/api-client';
 
 /** Mapa de código ISO 3166-1 alpha-2 → prefijo telefónico E.164 */
 const COUNTRY_PHONE_PREFIX: Record<string, string> = {
@@ -32,7 +37,13 @@ const schema = z.object({
   jobTitle: z.string().max(150).optional().or(z.literal('')),
 });
 
+const emailSchema = z.object({
+  email: z.string().email('Email inválido').max(255),
+  currentPassword: z.string().min(10, 'Debes confirmar con tu contraseña actual').max(128),
+});
+
 type FormValues = z.infer<typeof schema>;
+type EmailFormValues = z.infer<typeof emailSchema>;
 
 interface PersonalInfoFormProps {
   profile: UserProfile;
@@ -53,6 +64,8 @@ export function PersonalInfoForm({
 }: PersonalInfoFormProps) {
   const [success, setSuccess] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [emailSuccess, setEmailSuccess] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
 
   // Prefijo inicial: valor guardado del usuario → prefijo del país del tenant → '+57' por defecto (Colombia)
   const phonePrefix = COUNTRY_PHONE_PREFIX[tenantCountry ?? 'CO'] ?? '+57';
@@ -69,6 +82,19 @@ export function PersonalInfoForm({
       lastName: profile.lastName ?? '',
       phone: defaultPhone,
       jobTitle: profile.jobTitle ?? '',
+    },
+  });
+
+  const {
+    register: registerEmail,
+    handleSubmit: handleSubmitEmail,
+    reset: resetEmailForm,
+    formState: { errors: emailErrors, isSubmitting: isSubmittingEmail, isDirty: isEmailDirty },
+  } = useForm<EmailFormValues>({
+    resolver: zodResolver(emailSchema),
+    defaultValues: {
+      email: profile.email,
+      currentPassword: '',
     },
   });
 
@@ -90,6 +116,27 @@ export function PersonalInfoForm({
       setTimeout(() => setSuccess(false), 3000);
     } catch {
       setServerError('No fue posible guardar los cambios. Intenta de nuevo.');
+    }
+  };
+
+  const onSubmitEmail = async (values: EmailFormValues) => {
+    setEmailError(null);
+    setEmailSuccess(false);
+
+    try {
+      const dto: ChangeLoginEmailDto = {
+        email: values.email,
+        currentPassword: values.currentPassword,
+        syncCompanyContactEmail: true,
+      };
+
+      const updated = await userApi.changeLoginEmail(userId, dto);
+      onUpdated(updated);
+      resetEmailForm({ email: updated.email, currentPassword: '' });
+      setEmailSuccess(true);
+      setTimeout(() => setEmailSuccess(false), 3000);
+    } catch {
+      setEmailError('No fue posible actualizar el email de acceso. Verifica la contraseña actual.');
     }
   };
 
@@ -152,6 +199,54 @@ export function PersonalInfoForm({
             </Button>
           </div>
         </form>
+
+        <div className="mt-8 border-t border-gray-200 pt-6 dark:border-dark-border">
+          <h3 className="mb-2 text-sm font-semibold text-gray-900 dark:text-white">
+            Email de acceso
+          </h3>
+          <p className="mb-4 text-sm text-gray-500 dark:text-gray-300">
+            Este correo se usa para iniciar sesión. Si este usuario sigue siendo el administrador
+            principal, el correo de contacto de la empresa también se sincroniza.
+          </p>
+
+          <form onSubmit={handleSubmitEmail(onSubmitEmail)} noValidate className="space-y-4">
+            <Input id="current-email" label="Email actual" value={profile.email} readOnly />
+            <Input
+              id="login-email"
+              label="Nuevo email de acceso"
+              type="email"
+              autoComplete="email"
+              error={emailErrors.email?.message}
+              {...registerEmail('email')}
+            />
+            <Input
+              id="current-password"
+              label="Contraseña actual"
+              type="password"
+              autoComplete="current-password"
+              error={emailErrors.currentPassword?.message}
+              {...registerEmail('currentPassword')}
+            />
+
+            {emailError && (
+              <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
+                {emailError}
+              </p>
+            )}
+
+            {emailSuccess && (
+              <p className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-400">
+                Email de acceso actualizado correctamente.
+              </p>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <Button type="submit" disabled={isSubmittingEmail || !isEmailDirty}>
+                {isSubmittingEmail ? 'Actualizando...' : 'Actualizar email de acceso'}
+              </Button>
+            </div>
+          </form>
+        </div>
       </CardContent>
     </Card>
   );

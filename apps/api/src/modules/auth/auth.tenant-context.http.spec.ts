@@ -141,7 +141,6 @@ describe('Auth HTTP tenant context integration', () => {
       }),
     );
 
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     app.use(require('cookie-parser')());
 
     await app.init();

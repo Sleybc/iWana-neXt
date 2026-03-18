@@ -36,8 +36,12 @@ export function MfaVerifyForm() {
     setError(null);
     setHasError(false);
     try {
-      await completeMfaLogin(codeToVerify);
-      router.push('/dashboard');
+      const result = await completeMfaLogin(codeToVerify);
+      if (result === 'password_reset_required') {
+        router.push('/auth/change-password');
+      } else {
+        router.push('/dashboard');
+      }
     } catch (err) {
       setHasError(true);
       setCode('');

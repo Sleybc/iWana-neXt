@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { DataSource } from 'typeorm';
@@ -6,12 +7,13 @@ import { User, runInTenantSchema } from '@iwana/db';
 import { UserRole, UserStatus } from '@iwana/shared';
 
 const TEMPORARY_PASSWORD_TTL_MS = 24 * 60 * 60 * 1000;
+export const INITIAL_TENANT_ADMIN_EMAIL = 'admin@iwana.co';
+const TENANT_INITIAL_ADMIN_PASSWORD_CONFIG_KEY = 'TENANT_INITIAL_ADMIN_PASSWORD';
 
 export interface TenantSeedInput {
   tenantId: string;
   tenantSlug: string;
   schemaName: string;
-  adminEmail: string;
 }
 
 /**
@@ -20,22 +22,34 @@ export interface TenantSeedInput {
  * Responsabilidad:
  * - Crear el ADMIN inicial dentro del schema del tenant ya provisionado.
  * - Garantizar idempotencia: si el ADMIN ya existe, no duplica usuarios.
- * - Generar un password temporal compatible con AuthService (bcrypt 12 rounds).
+ * - Aplicar una contraseña inicial fija controlada por entorno y compatible con
+ *   la política mínima de AuthService.
  *
  * SEGURIDAD:
- * - Nunca persiste ni loggea el password temporal en texto plano.
+ * - Nunca persiste ni loggea la contraseña inicial en texto plano.
  * - El ADMIN inicial queda con `passwordResetRequired=true` para forzar rotacion
  *   en el primer ingreso operativo.
  */
 @Injectable()
 export class TenantSeedService {
   private readonly logger = new Logger(TenantSeedService.name);
+  private readonly encryptionKey: Buffer;
+  private readonly initialAdminPassword: string;
 
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly configService: ConfigService,
+  ) {
+    const keyHex = this.configService.getOrThrow<string>('MFA_ENCRYPTION_KEY');
+    this.encryptionKey = Buffer.from(keyHex, 'hex');
+    this.initialAdminPassword = this.validateBootstrapPassword(
+      this.configService.getOrThrow<string>(TENANT_INITIAL_ADMIN_PASSWORD_CONFIG_KEY),
+    );
+  }
 
   async seedInitialAdmin(input: TenantSeedInput): Promise<{ created: boolean }> {
     return runInTenantSchema(this.dataSource, input.schemaName, async (qr) => {
-      const emailHash = this.hashEmail(input.adminEmail);
+      const emailHash = this.hashEmail(INITIAL_TENANT_ADMIN_EMAIL);
 
       const existingAdmin = await qr.manager.findOne(User, {
         where: { emailHash },
@@ -49,11 +63,10 @@ export class TenantSeedService {
         return { created: false };
       }
 
-      const temporaryPassword = this.generateTemporaryPassword();
-      const passwordHash = await bcrypt.hash(temporaryPassword, 12);
+      const passwordHash = await bcrypt.hash(this.initialAdminPassword, 12);
 
       const adminUser = qr.manager.create(User, {
-        email: input.adminEmail,
+        email: this.encryptValue(INITIAL_TENANT_ADMIN_EMAIL),
         emailHash,
         passwordHash,
         role: UserRole.ADMIN,
@@ -85,8 +98,36 @@ export class TenantSeedService {
     return crypto.createHash('sha256').update(email.toLowerCase().trim()).digest('hex');
   }
 
-  private generateTemporaryPassword(): string {
-    // Satisface la politica actual: mayuscula, minuscula, numero y caracter especial.
-    return `IwN!a9-${crypto.randomBytes(8).toString('hex')}`;
+  private encryptValue(plaintext: string): string {
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
+    const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+    const authTag = cipher.getAuthTag();
+    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+  }
+
+  /**
+   * Valida la contraseña fija del ADMIN inicial leída desde variables de entorno.
+   * No se hardcodea en código para evitar versionar secretos, pero sí se exige
+   * una política mínima compatible con el flujo de primer ingreso.
+   */
+  private validateBootstrapPassword(password: string): string {
+    const normalizedPassword = password.trim();
+
+    const meetsPolicy =
+      normalizedPassword.length >= 10 &&
+      /[A-Z]/.test(normalizedPassword) &&
+      /[a-z]/.test(normalizedPassword) &&
+      /\d/.test(normalizedPassword) &&
+      /[^A-Za-z0-9]/.test(normalizedPassword);
+
+    if (!meetsPolicy) {
+      throw new Error(
+        TENANT_INITIAL_ADMIN_PASSWORD_CONFIG_KEY +
+          ' no cumple la política mínima: 10+ caracteres, mayúscula, minúscula, número y especial.',
+      );
+    }
+
+    return normalizedPassword;
   }
 }

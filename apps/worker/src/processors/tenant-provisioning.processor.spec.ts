@@ -90,7 +90,6 @@ describe('TenantProvisioningProcessor', () => {
       tenantId: 'tenant-uuid-1',
       tenantSlug: 'isp-test',
       schemaName: 'tenant_isp_test',
-      adminEmail: 'admin@isptest.co',
     });
     expect(updateBuilder.execute).toHaveBeenCalledTimes(1);
     expect(mockClient.release).toHaveBeenCalledTimes(1);

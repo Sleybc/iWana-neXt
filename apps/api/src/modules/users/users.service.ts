@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -14,7 +15,13 @@ import { User } from '@iwana/db';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { DocumentType, UserRole, UserStatus, AuditAction } from '@iwana/shared';
 import { AuditService } from '../audit/audit.service';
-import { CreateUserDto, UpdateUserDto, UserResponseDto } from './dto/user.dto';
+import { TenantService } from '../tenant/tenant.service';
+import {
+  ChangeUserLoginEmailDto,
+  CreateUserDto,
+  UpdateUserDto,
+  UserResponseDto,
+} from './dto/user.dto';
 
 /** Iteraciones bcrypt para hashes de password de usuarios creados por admin */
 const BCRYPT_ROUNDS = 12;
@@ -45,6 +52,8 @@ const TEMP_PASSWORD_BYTES = 16;
  */
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   /** Clave AES-256-GCM derivada de MFA_ENCRYPTION_KEY (64 chars hex) */
   private readonly encryptionKey: Buffer;
 
@@ -53,6 +62,7 @@ export class UsersService {
     private readonly dataSource: DataSource,
     private readonly auditService: AuditService,
     private readonly configService: ConfigService,
+    private readonly tenantService: TenantService,
   ) {
     const keyHex = this.configService.getOrThrow<string>('MFA_ENCRYPTION_KEY');
     this.encryptionKey = Buffer.from(keyHex, 'hex');
@@ -303,6 +313,80 @@ export class UsersService {
   }
 
   /**
+   * Cambia el email de acceso del propio usuario.
+   * Si el usuario coincide con el ADMIN principal del tenant, sincroniza también
+   * el email de contacto de la empresa en public.tenants.
+   */
+  async changeLoginEmail(
+    id: string,
+    dto: ChangeUserLoginEmailDto,
+    actorUserId: string,
+  ): Promise<UserResponseDto> {
+    const { schemaName } = TenantContext.getOrThrow();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const user = await qr.manager.findOne(User, { where: { id } });
+      if (!user) {
+        throw new NotFoundException(`Usuario ${id} no encontrado.`);
+      }
+
+      if (actorUserId !== id) {
+        throw new ForbiddenException('No tienes permisos para cambiar este email de acceso.');
+      }
+
+      const passwordValid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+      if (!passwordValid) {
+        throw new BadRequestException('La contraseña actual no es válida.');
+      }
+
+      const normalizedEmail = dto.email.toLowerCase().trim();
+      const nextEmailHash = this.hashEmail(normalizedEmail);
+
+      if (nextEmailHash !== user.emailHash) {
+        const existingUser = await qr.manager.findOne(User, {
+          where: { emailHash: nextEmailHash },
+          withDeleted: false,
+        });
+
+        if (existingUser && existingUser.id !== user.id) {
+          throw new ConflictException('Ya existe un usuario con ese email en este tenant.');
+        }
+
+        user.email = this.encryptValue(normalizedEmail);
+        user.emailHash = nextEmailHash;
+        await qr.manager.save(User, user);
+      }
+
+      const shouldSyncContactEmail = dto.syncCompanyContactEmail !== false;
+      const shouldUpdateTenantContactEmail = shouldSyncContactEmail
+        ? await this.isPrincipalAdminUser(qr.manager, user.id)
+        : false;
+
+      if (shouldUpdateTenantContactEmail) {
+        await this.tenantService.updateTenantSelfProfile(
+          user.tenantId,
+          { contactEmail: normalizedEmail },
+          actorUserId,
+        );
+      }
+
+      await this.auditService.log({
+        action: AuditAction.UPDATE,
+        entityType: 'UserLoginEmail',
+        entityId: user.id,
+        userId: actorUserId,
+        oldValue: { loginEmailChanged: false },
+        newValue: {
+          loginEmailChanged: true,
+          companyContactEmailSynced: shouldUpdateTenantContactEmail,
+        },
+      });
+
+      return this.toDto(user);
+    });
+  }
+
+  /**
    * Soft delete de usuario.
    * RF-RBAC-04: un ADMIN de tenant no puede eliminar a otro ADMIN del mismo tenant.
    * SYSTEM_ADMIN puede eliminar cualquier usuario (incluidos ADMINs).
@@ -347,6 +431,7 @@ export class UsersService {
   private toDto(user: User): UserResponseDto {
     return {
       id: user.id,
+      email: this.decodeProfileValue(user.email) ?? '',
       role: user.role as UserRole,
       status: user.status as UserStatus,
       tenantId: user.tenantId,
@@ -358,9 +443,10 @@ export class UsersService {
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
       deletedAt: user.deletedAt ?? null,
-      // Perfil personal — desencriptar campos cifrados
-      firstName: user.firstName ? this.decryptValue(user.firstName) : null,
-      lastName: user.lastName ? this.decryptValue(user.lastName) : null,
+      // Compatibilidad hacia atrás: algunos tenants pueden tener nombres legados
+      // en texto plano o con cifrado inválido. El endpoint no debe caer por eso.
+      firstName: this.decodeProfileValue(user.firstName),
+      lastName: this.decodeProfileValue(user.lastName),
       phone: user.phone ?? null,
       jobTitle: user.jobTitle ?? null,
       documentType: (user.documentType as DocumentType) ?? null,
@@ -401,5 +487,60 @@ export class UsersService {
     const decipher = crypto.createDecipheriv('aes-256-gcm', this.encryptionKey, iv);
     decipher.setAuthTag(authTag);
     return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+  }
+
+  /**
+   * Decodifica nombres/apellidos almacenados en DB.
+   * - Si el valor no parece AES-256-GCM, se trata como legado en texto plano.
+   * - Si parece cifrado pero no puede descifrarse, se degrada a null sin romper el endpoint.
+   */
+  private decodeProfileValue(value: string | null): string | null {
+    if (!value) {
+      return null;
+    }
+
+    if (!this.looksLikeEncryptedValue(value)) {
+      return value;
+    }
+
+    try {
+      return this.decryptValue(value);
+    } catch {
+      this.logger.warn(
+        'Se detectó un campo de perfil con cifrado inválido o incompatible. Se omitirá en la respuesta.',
+      );
+      return null;
+    }
+  }
+
+  private looksLikeEncryptedValue(value: string): boolean {
+    const parts = value.split(':');
+    if (parts.length !== 3) {
+      return false;
+    }
+
+    const [iv, authTag, ciphertext] = parts;
+    const isHex = (segment: string, expectedLength?: number) => {
+      if (!segment || (expectedLength && segment.length !== expectedLength)) {
+        return false;
+      }
+
+      return /^[0-9a-f]+$/i.test(segment) && segment.length % 2 === 0;
+    };
+
+    return isHex(iv ?? '', 24) && isHex(authTag ?? '', 32) && isHex(ciphertext ?? '');
+  }
+
+  private async isPrincipalAdminUser(
+    manager: import('typeorm').EntityManager,
+    userId: string,
+  ): Promise<boolean> {
+    const principalAdmin = await manager.findOne(User, {
+      where: { role: UserRole.ADMIN },
+      order: { createdAt: 'ASC' },
+      withDeleted: false,
+    });
+
+    return principalAdmin?.id === userId;
   }
 }

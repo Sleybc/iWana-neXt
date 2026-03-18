@@ -9,7 +9,7 @@
     "lint": "eslint src --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
     "test": "jest --passWithNoTests",
-    "clean": "rm -rf .next dist"
+    "clean": "node ../../scripts/clean-paths.mjs .next dist"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

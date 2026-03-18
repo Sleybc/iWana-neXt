@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '@iwana/db';
 import { AuditModule } from '../audit/audit.module';
+import { TenantModule } from '../tenant/tenant.module';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 
@@ -21,6 +22,7 @@ import { UsersService } from './users.service';
     ConfigModule,
     TypeOrmModule.forFeature([User]),
     AuditModule,
+    TenantModule,
   ],
   controllers: [UsersController],
   providers: [UsersService],

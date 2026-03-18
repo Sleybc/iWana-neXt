@@ -4,7 +4,7 @@ import { LoginBrandPanel } from '@/components/auth/LoginBrandPanel';
 import { LoginForm } from '@/components/auth/LoginForm';
 
 export const metadata: Metadata = {
-  title: 'Iniciar sesión — iWana neXt Admin',
+  title: 'Iniciar sesión — iWana neXt',
   description: 'Acceso al portal de administración de plataforma iWana neXt',
 };
 

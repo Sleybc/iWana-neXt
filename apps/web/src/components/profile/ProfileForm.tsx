@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { Button } from '@iwana/ui';
 import {
   ApiError,
+  type ChangePlatformUserLoginEmailPayload,
   platformUsersApi,
   type PlatformUserProfile,
   type UpdatePlatformUserPayload,
@@ -26,7 +27,13 @@ export const profileSchema = z.object({
   language: z.string().max(10).optional(),
 });
 
+export const loginEmailSchema = z.object({
+  email: z.string().email('Email inválido').max(255),
+  currentPassword: z.string().min(10, 'Debes confirmar con tu contraseña actual').max(128),
+});
+
 type ProfileFormValues = z.infer<typeof profileSchema>;
+type LoginEmailFormValues = z.infer<typeof loginEmailSchema>;
 
 const TIMEZONES = ['America/Bogota', 'America/Lima', 'America/Mexico_City', 'UTC'];
 
@@ -34,8 +41,11 @@ export function ProfileForm() {
   const { refreshProfile } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingEmail, setIsSavingEmail] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailSuccessMessage, setEmailSuccessMessage] = useState<string | null>(null);
 
   const {
     register,
@@ -53,12 +63,26 @@ export function ProfileForm() {
     },
   });
 
+  const {
+    register: registerEmail,
+    handleSubmit: handleSubmitEmail,
+    reset: resetEmailForm,
+    formState: { errors: emailErrors },
+  } = useForm<LoginEmailFormValues>({
+    resolver: zodResolver(loginEmailSchema),
+    defaultValues: {
+      email: '',
+      currentPassword: '',
+    },
+  });
+
   useEffect(() => {
     const loadProfile = async () => {
       try {
         setIsLoading(true);
         const profile = await platformUsersApi.me();
         reset(mapProfileToForm(profile));
+        resetEmailForm({ email: profile.email, currentPassword: '' });
       } catch {
         setServerError('No fue posible cargar tu perfil.');
       } finally {
@@ -67,7 +91,7 @@ export function ProfileForm() {
     };
 
     loadProfile();
-  }, [reset]);
+  }, [reset, resetEmailForm]);
 
   const onSubmit = async (values: ProfileFormValues) => {
     setServerError(null);
@@ -93,6 +117,31 @@ export function ProfileForm() {
       }
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const onSubmitLoginEmail = async (values: LoginEmailFormValues) => {
+    setEmailError(null);
+    setEmailSuccessMessage(null);
+    setIsSavingEmail(true);
+
+    try {
+      const payload: ChangePlatformUserLoginEmailPayload = {
+        email: values.email,
+        currentPassword: values.currentPassword,
+      };
+      const updated = await platformUsersApi.changeLoginEmail(payload);
+      resetEmailForm({ email: updated.email, currentPassword: '' });
+      await refreshProfile();
+      setEmailSuccessMessage('Email de acceso actualizado correctamente.');
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setEmailError(error.message);
+      } else {
+        setEmailError('No fue posible actualizar el email de acceso.');
+      }
+    } finally {
+      setIsSavingEmail(false);
     }
   };
 
@@ -218,6 +267,68 @@ export function ProfileForm() {
           </Button>
         </div>
       </form>
+
+      <div className="mt-8 border-t border-gray-200 pt-6 dark:border-dark-border">
+        <h3 className="mb-2 text-base font-semibold text-iwana-primary dark:text-white">
+          Email de acceso
+        </h3>
+        <p className="mb-4 text-sm text-gray-500 dark:text-gray-300">
+          Este correo es el que usarás para ingresar a la consola de plataforma.
+        </p>
+
+        <form onSubmit={handleSubmitEmail(onSubmitLoginEmail)} className="space-y-4">
+          <div>
+            <label
+              htmlFor="profile-login-email"
+              className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
+            >
+              Nuevo email de acceso
+            </label>
+            <input
+              id="profile-login-email"
+              type="email"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
+              {...registerEmail('email')}
+            />
+            {emailErrors.email && (
+              <p className="mt-1 text-xs text-red-600">{emailErrors.email.message}</p>
+            )}
+          </div>
+
+          <div>
+            <label
+              htmlFor="profile-login-current-password"
+              className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
+            >
+              Contraseña actual
+            </label>
+            <input
+              id="profile-login-current-password"
+              type="password"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
+              {...registerEmail('currentPassword')}
+            />
+            {emailErrors.currentPassword && (
+              <p className="mt-1 text-xs text-red-600">{emailErrors.currentPassword.message}</p>
+            )}
+          </div>
+
+          {emailError && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{emailError}</p>
+          )}
+          {emailSuccessMessage && (
+            <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+              {emailSuccessMessage}
+            </p>
+          )}
+
+          <div className="flex justify-end">
+            <Button type="submit" loading={isSavingEmail}>
+              Actualizar email de acceso
+            </Button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

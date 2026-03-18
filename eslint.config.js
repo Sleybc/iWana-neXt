@@ -9,6 +9,7 @@
  * - ADR a definir Sprint 1 (ESLint flat config por paquete)
  */
 import tsParser from '@typescript-eslint/parser';
+import tsEslintPlugin from '@typescript-eslint/eslint-plugin';
 
 /** @type {import('eslint').Linter.Config[]} */
 export default [
@@ -26,6 +27,9 @@ export default [
   {
     // Configurar parser TypeScript para todos los archivos .ts y .tsx
     files: ['**/*.ts', '**/*.tsx'],
+    plugins: {
+      '@typescript-eslint': tsEslintPlugin,
+    },
     languageOptions: {
       parser: tsParser,
       parserOptions: {

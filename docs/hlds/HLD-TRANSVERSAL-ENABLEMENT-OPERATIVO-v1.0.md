@@ -47,10 +47,10 @@ Este HLD define la arquitectura funcional para convertir lo ya construido en una
 
 | Pieza | Descripción |
 |-------|-------------|
-| **Perfil del superusuario** | Endpoint `GET/PATCH /api/v1/platform-users/me` + pantalla `/profile` en web |
+| **Perfil del superusuario** | Endpoint `GET/PATCH /api/v1/platform-users/me` + `PATCH /api/v1/platform-users/me/login-email` + pantalla `/profile` en web |
 | **Seguridad del superusuario** | Pantalla `/settings` con acceso a cambio de contraseña y gestión MFA (reutiliza endpoints existentes de auth) |
 | **Configuración de empresa** | Endpoint `GET/PATCH /api/v1/tenants/:id/settings` con DTO validado + pantalla `/tenants/:id/settings` |
-| **Alta de primera empresa** | Pantalla `/tenants/new` que reutiliza `POST /api/v1/tenants` + feedback de provisioning + credenciales admin |
+| **Alta de primera empresa** | Pantalla `/tenants/new` que reutiliza `POST /api/v1/tenants` + feedback de provisioning + credenciales del admin principal con login genérico |
 | **Estado de provisioning** | Enriquecer `GET /api/v1/tenants/:id` con metadata de provisioning (o endpoint dedicado si ya devuelve status) |
 | **Gestión de usuarios internos** | Pantalla `/users` (listar, crear, editar status/rol) que consume el CRUD existente de UsersController |
 | **Navegación real** | Actualizar Sidebar y DropdownUser para que `/profile`, `/settings`, `/tenants` y `/users` apunten a pantallas funcionales |
@@ -84,11 +84,13 @@ sequenceDiagram
     Web->>API: POST /auth/platform/login
     API-->>Web: accessToken (+ mfaRequired)
     
-    SA->>Web: Editar mi perfil
+    SA->>Web: Editar mi perfil y email de acceso
     Web->>API: GET /platform-users/me
     API-->>Web: datos del superusuario
     Web->>API: PATCH /platform-users/me
     API-->>Web: perfil actualizado
+    Web->>API: PATCH /platform-users/me/login-email
+    API-->>Web: email de acceso actualizado
 
     SA->>Web: Crear primera empresa
     Web->>API: POST /tenants {name, slug, contactEmail, settings}
@@ -116,6 +118,9 @@ sequenceDiagram
     API-->>Web: lista paginada
     Web->>API: POST /users {email, role}
     API-->>Web: usuario creado + temporaryPassword
+
+    Note over API,WK: El seed inicial siempre crea el login admin@iwana.co
+    Note over API,Web: El admin principal puede cambiar luego su email desde Perfil
 ```
 
 ### 3.2 Contratos de API nuevos y modificados
@@ -132,7 +137,7 @@ sequenceDiagram
     role: PlatformRole;
     status: UserStatus;
     mfaEnabled: boolean;
-    displayName: string | null;  // campo nuevo en entidad
+    email: string;               // solo en perfil propio
     phone: string | null;        // campo nuevo en entidad
     timezone: string;            // campo nuevo, default 'America/Bogota'
     language: string;            // campo nuevo, default 'es-CO'
@@ -150,10 +155,25 @@ sequenceDiagram
 
 ```typescript
 {
-  displayName?: string;   // max 150 chars
+  firstName?: string;     // max 100 chars
+  lastName?: string;      // max 100 chars
   phone?: string;         // max 20 chars, regex E.164
   timezone?: string;      // IANA timezone válido
   language?: string;      // 'es-CO' | 'en-US' (extensible)
+}
+```
+
+**Response 200:** mismo formato que GET `/platform-users/me`
+
+#### 3.2.2.b `PATCH /api/v1/platform-users/me/login-email` (NUEVO)
+
+**Guard:** JwtAuthGuard + rol SYSTEM_ADMIN o IWANA_SUPPORT
+**Body:**
+
+```typescript
+{
+  email: string;
+  currentPassword: string;
 }
 ```
 
@@ -271,7 +291,7 @@ apps/web/src/app/
 | `TenantCreateForm` | `apps/web/src/components/tenants/TenantCreateForm.tsx` | Formulario de alta de empresa |
 | `TenantSettingsForm` | `apps/web/src/components/tenants/TenantSettingsForm.tsx` | Configuración funcional del tenant |
 | `TenantStatusBadge` | `apps/web/src/components/tenants/TenantStatusBadge.tsx` | Badge visual del estado de provisioning |
-| `CredentialsModal` | `apps/web/src/components/tenants/CredentialsModal.tsx` | Modal con credenciales temporales del admin |
+| `CredentialsModal` | `apps/web/src/components/tenants/CredentialsModal.tsx` | Modal con credenciales temporales del admin principal |
 | `UsersTable` | `apps/web/src/components/users/UsersTable.tsx` | Tabla paginada de usuarios del tenant |
 | `UserCreateModal` | `apps/web/src/components/users/UserCreateModal.tsx` | Modal de alta de usuario con credenciales temporales |
 
@@ -318,11 +338,11 @@ No se requieren migraciones adicionales para tenants ni users — la estructura 
 
 | Aspecto | Tratamiento |
 |---------|-------------|
-| Datos del perfil | displayName y phone no son PII crítico pero se auditan. Email no se expone en claro |
+| Datos del perfil | `firstName`, `lastName`, `phone` y email de acceso propio se auditan. El email solo se expone en endpoints de perfil propio y regeneración controlada |
 | Cambio de contraseña | Reutiliza `POST /auth/change-password` existente — invalida todos los refresh tokens |
 | MFA | Reutiliza `POST /auth/mfa/setup`, `/mfa/verify`, `/mfa/disable` existentes |
 | Settings del tenant | Solo SYSTEM_ADMIN puede escribir. Se audita cada cambio |
-| Credenciales temporales | Se muestran una sola vez en modal, no se persisten en frontend |
+| Credenciales temporales | Se muestran una sola vez en modal, no se persisten en frontend. El login inicial del admin principal es genérico (`admin@iwana.co`) y luego se rota desde Perfil |
 | Audit trail | Todas las operaciones CUD de perfil y settings pasan por AuditInterceptor existente |
 
 ---

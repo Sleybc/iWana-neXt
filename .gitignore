@@ -35,6 +35,11 @@ Thumbs.db
 
 # Tests
 coverage/
+test-results/
+playwright-report/
+blob-report/
+*.trace
+*.har
 
 # Next.js
 .next/

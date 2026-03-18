@@ -327,6 +327,7 @@ export class TenantService {
     dto.contactEmail = tenant.contactEmail;
     dto.legalName = tenant.legalName ?? null;
     dto.nit = tenant.nit ?? null;
+    dto.nitDv = tenant.nitDv ?? null;
     dto.city = tenant.city ?? null;
     dto.department = tenant.department ?? null;
     dto.countryCode = tenant.countryCode ?? null;

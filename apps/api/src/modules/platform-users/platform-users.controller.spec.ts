@@ -51,6 +51,7 @@ describe('PlatformUsersController HTTP', () => {
   const platformUsersServiceMock = {
     getProfile: jest.fn<() => Promise<Record<string, unknown>>>(),
     updateProfile: jest.fn<() => Promise<Record<string, unknown>>>(),
+    changeLoginEmail: jest.fn<() => Promise<Record<string, unknown>>>(),
   };
 
   beforeAll(async () => {
@@ -129,5 +130,21 @@ describe('PlatformUsersController HTTP', () => {
       .set('Authorization', 'Bearer test-access-token')
       .send({ phone: 'invalido' })
       .expect(400);
+  });
+
+  it('PATCH /platform-users/me/login-email retorna 200 cuando actualiza el email de acceso', async () => {
+    platformUsersServiceMock.changeLoginEmail.mockResolvedValue({
+      id: 'u1',
+      email: 'nuevo.admin@iwana.co',
+    });
+
+    await request(app.getHttpServer())
+      .patch('/api/v1/platform-users/me/login-email')
+      .set('Authorization', 'Bearer test-access-token')
+      .send({ email: 'nuevo.admin@iwana.co', currentPassword: 'Passw0rd!Segura' })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data.email).toBe('nuevo.admin@iwana.co');
+      });
   });
 });

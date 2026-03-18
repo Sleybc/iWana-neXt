@@ -9,6 +9,8 @@ import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '@iwana/
 import { tenantSelfApi, type TenantSelf } from '@/lib/api-client';
 import { TenantSeal } from '@/components/layout/TenantSeal';
 
+const BRANDING_EVENT_NAME = 'tenant-branding-updated';
+
 // Validación: string HTTPS de hasta 500 caracteres, o vacío para borrar
 const httpsUrl = z
   .string()
@@ -142,8 +144,18 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
         showTenantName: values.showTenantName,
       });
 
+      window.dispatchEvent(
+        new CustomEvent(BRANDING_EVENT_NAME, {
+          detail: {
+            name: updated.name,
+            sealLightUrl: updated.sealLightUrl,
+            sealDarkUrl: updated.sealDarkUrl,
+          },
+        }),
+      );
+
       onUpdated(updated);
-      setSuccess('Logo y sello actualizados correctamente.');
+      setSuccess('Logo, sello y favicon actualizados correctamente.');
     } catch {
       setServerError('No fue posible guardar el branding. Intenta de nuevo.');
     }
@@ -167,8 +179,8 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                 Sello (ícono compacto)
               </h3>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Proporción 1:1. Se usa en el menú lateral y próximamente como favicon y en
-                documentos.
+                Proporción 1:1. Se usa en el menú lateral, como favicon del navegador y en
+                futuras superficies compactas del tenant.
               </p>
             </div>
 
@@ -214,6 +226,36 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                     {profile.name}
                   </span>
                 )}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-gray-100 bg-white px-4 py-4 dark:border-dark-border dark:bg-dark-surface-2">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
+                    Favicon del navegador
+                  </h4>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    El portal reutiliza este sello como icono de la pestaña. Si cambias las URLs
+                    del sello, el favicon se actualiza en caliente para el tenant autenticado.
+                  </p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
+                  <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Vista previa de pestaña
+                  </p>
+                  <div className="flex items-center gap-2 rounded-md bg-white px-2 py-1.5 dark:bg-dark-surface-4">
+                    <TenantSeal
+                      sealLightUrl={watchedSealLight || null}
+                      sealDarkUrl={watchedSealDark || null}
+                      name={profile.name}
+                      size="sm"
+                    />
+                    <span className="max-w-[180px] truncate text-xs font-medium text-gray-700 dark:text-gray-200">
+                      Portal de {profile.name}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -296,7 +338,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
             </p>
             {canEdit && (
               <Button type="submit" loading={isSubmitting} disabled={isSubmitting || !isDirty}>
-                Guardar logo y sello
+                Guardar branding
               </Button>
             )}
           </div>

@@ -29,7 +29,12 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { UsersService } from './users.service';
-import { CreateUserDto, UpdateUserDto, UserResponseDto } from './dto/user.dto';
+import {
+  ChangeUserLoginEmailDto,
+  CreateUserDto,
+  UpdateUserDto,
+  UserResponseDto,
+} from './dto/user.dto';
 import { UserRole, UserStatus } from '@iwana/shared';
 
 /**
@@ -179,6 +184,28 @@ export class UsersController {
     }
 
     const result = await this.usersService.update(id, updateUserDto, actor.sub, actor.role);
+    return { data: result };
+  }
+
+  /**
+   * Cambia el email de acceso del propio usuario autenticado.
+   * Requiere contraseña actual para evitar cambios no autorizados sobre una sesión abierta.
+   */
+  @Patch(':id/login-email')
+  @ApiOperation({ summary: 'Cambiar el email de acceso del propio usuario' })
+  @ApiResponse({ status: 200, description: 'Email de acceso actualizado.' })
+  @ApiResponse({ status: 400, description: 'Solo puedes cambiar tu propio email.' })
+  @ApiResponse({ status: 409, description: 'El nuevo email ya está en uso.' })
+  async changeLoginEmail(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ChangeUserLoginEmailDto,
+    @CurrentUser() actor: JwtPayload,
+  ): Promise<{ data: UserResponseDto }> {
+    if (actor.sub !== id) {
+      throw new BadRequestException('Solo puedes cambiar tu propio email de acceso.');
+    }
+
+    const result = await this.usersService.changeLoginEmail(id, dto, actor.sub);
     return { data: result };
   }
 

@@ -1,4 +1,4 @@
-import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsEmail, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
 export class UpdatePlatformUserDto {
   @IsOptional()
@@ -28,4 +28,15 @@ export class UpdatePlatformUserDto {
   @IsString()
   @MaxLength(10)
   language?: string;
+}
+
+export class ChangePlatformUserLoginEmailDto {
+  @IsEmail()
+  @MaxLength(255)
+  email: string;
+
+  @IsString()
+  @MinLength(10)
+  @MaxLength(128)
+  currentPassword: string;
 }

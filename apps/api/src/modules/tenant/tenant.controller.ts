@@ -340,6 +340,35 @@ export class TenantController {
   }
 
   /**
+   * POST /api/v1/tenants/:id/bootstrap-admin-credentials
+   * Expone el acceso bootstrap fijo del ADMIN inicial solo mientras siga vigente.
+   */
+  @Post(':id/bootstrap-admin-credentials')
+  @Roles(PlatformRole.SYSTEM_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Consultar acceso inicial fijo del ADMIN bootstrap del tenant' })
+  @ApiResponse({ status: 200, description: 'Acceso inicial vigente.' })
+  @ApiResponse({ status: 409, description: 'El acceso inicial ya no está disponible.' })
+  async getBootstrapAdminCredentials(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<{
+    data: {
+      message: string;
+      adminEmail: string;
+      temporaryPassword: string;
+      expiresAt: string;
+    };
+  }> {
+    const tenant = await this.tenantService.findOne(id);
+    const credentials = await this.authService.getBootstrapTenantAdminCredentials({
+      tenantId: tenant.id,
+      schemaName: tenant.schemaName,
+    });
+
+    return { data: credentials };
+  }
+
+  /**
    * POST /api/v1/tenants/:id/regenerate-admin-credentials
    * Regenera las credenciales temporales del ADMIN inicial del tenant.
    *
@@ -376,7 +405,6 @@ export class TenantController {
     const credentials = await this.authService.regenerateTenantAdminCredentials({
       tenantId: tenant.id,
       schemaName: tenant.schemaName,
-      adminEmail: tenant.contactEmail,
       idempotencyKey: idempotencyKey.trim(),
     });
 

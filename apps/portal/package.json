@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint src --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf .next dist"
+    "clean": "node ../../scripts/clean-paths.mjs .next dist test-results"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

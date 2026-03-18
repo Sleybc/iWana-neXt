@@ -4,12 +4,12 @@
   "private": true,
   "scripts": {
     "build": "nest build",
-    "dev": "cross-env NODE_ENV=development nest start --watch",
+    "dev": "node ../../scripts/clean-paths.mjs dist && cross-env NODE_ENV=development nest start --watch",
     "start": "node dist/main",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
     "test": "jest --passWithNoTests",
-    "clean": "rm -rf dist"
+    "clean": "node ../../scripts/clean-paths.mjs dist"
   },
   "dependencies": {
     "@iwana/db": "workspace:*",

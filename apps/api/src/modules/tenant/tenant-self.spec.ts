@@ -57,6 +57,7 @@ describe('TenantController — contratos self-service del tenant', () => {
     contactEmail: 'contacto@empresa-test.co',
     legalName: null,
     nit: null,
+    nitDv: null,
     city: 'Bogotá',
     department: 'Cundinamarca',
     countryCode: 'CO',

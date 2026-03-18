@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { resolve } from 'path';
 import { DataSource, DataSourceOptions, QueryRunner } from 'typeorm';
 
 import { AuditLog } from './entities/audit-log.entity';
@@ -7,6 +8,44 @@ import { PlatformUser } from './entities/platform-user.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { Tenant } from './entities/tenant.entity';
 import { User } from './entities/user.entity';
+
+/**
+ * Carga variables de entorno cuando este archivo se ejecuta desde el runner
+ * de TypeORM fuera del bootstrap NestJS.
+ *
+ * En `apps/api`, `ConfigModule` ya resolvió el `.env` antes de construir
+ * `TypeOrmModule`, así que este fallback solo actúa cuando faltan variables
+ * críticas como `DB_HOST` o `DB_PASSWORD`.
+ */
+function ensureDatabaseEnvLoaded(): void {
+  if (process.env['DB_HOST'] && process.env['DB_USER'] && process.env['DB_PASSWORD']) {
+    return;
+  }
+
+  const loadEnvFile = (process as NodeJS.Process & {
+    loadEnvFile?: (path?: string) => void;
+  }).loadEnvFile;
+
+  if (!loadEnvFile) {
+    return;
+  }
+
+  const workspaceRoot = resolve(__dirname, '..', '..', '..');
+
+  for (const candidate of ['.env.development', '.env']) {
+    try {
+      loadEnvFile(resolve(workspaceRoot, candidate));
+    } catch {
+      // Ignoramos archivos ausentes para permitir otros entornos/controladores.
+    }
+
+    if (process.env['DB_HOST'] && process.env['DB_USER'] && process.env['DB_PASSWORD']) {
+      return;
+    }
+  }
+}
+
+ensureDatabaseEnvLoaded();
 
 /**
  * Opciones de configuracion del DataSource TypeORM.

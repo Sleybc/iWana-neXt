@@ -35,16 +35,23 @@ export function CredentialsModal({ credentials, onClose }: CredentialsModalProps
     >
       <Card className="w-full max-w-lg">
         <CardHeader>
-          <CardTitle id="tenant-credentials-modal-title">Credenciales temporales</CardTitle>
+          <CardTitle id="tenant-credentials-modal-title">Acceso del administrador inicial</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+            {credentials.message}
+          </p>
           <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            Estas credenciales se muestran una sola vez. Guárdalas en un gestor seguro.
+            Usa este acceso solo para el primer ingreso. Apenas el usuario entre, deberá cambiar la contraseña.
+          </p>
+          <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+            El correo de acceso inicial es independiente del email de contacto empresarial y puede
+            cambiarse luego desde la sección de perfil del usuario principal.
           </p>
 
           <div className="space-y-2 text-sm text-gray-700 dark:text-gray-200">
             <p>
-              <strong>Email:</strong> {credentials.adminEmail}
+              <strong>Usuario inicial:</strong> {credentials.adminEmail}
             </p>
             <p>
               <strong>Contraseña temporal:</strong> {credentials.temporaryPassword}

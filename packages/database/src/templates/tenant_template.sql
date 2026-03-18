@@ -35,7 +35,7 @@ SET LOCAL search_path TO "__SCHEMA_NAME__";
 -- Empleados, tecnicos, vendedores y suscriptores del ISP.
 -- email y mfa_secret cifrados AES-256-GCM; email_hash SHA-256 para busquedas.
 -- ===========================================================================
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id                       UUID         NOT NULL DEFAULT gen_random_uuid(),
   email                    VARCHAR(512) NOT NULL,          -- AES-256-GCM cifrado
   email_hash               VARCHAR(64)  NOT NULL,          -- SHA-256, para busquedas
@@ -45,6 +45,7 @@ CREATE TABLE users (
   tenant_id                UUID         NOT NULL,          -- FK logica a public.tenants
   mfa_enabled              BOOLEAN      NOT NULL DEFAULT FALSE,
   mfa_secret               VARCHAR(512),                   -- AES-256-GCM cifrado, nullable
+  mfa_required             BOOLEAN      NOT NULL DEFAULT FALSE,
   password_reset_required  BOOLEAN      NOT NULL DEFAULT FALSE,
   password_reset_token     VARCHAR(512),                   -- cifrado, nullable
   password_reset_expires_at TIMESTAMPTZ,
@@ -76,11 +77,14 @@ CREATE TABLE users (
   ))
 );
 
-CREATE INDEX idx_users_email_hash    ON users(email_hash);
-CREATE INDEX idx_users_tenant_role   ON users(tenant_id, role);
-CREATE INDEX idx_users_tenant_status ON users(tenant_id, status);
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS mfa_required BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_users_email_hash    ON users(email_hash);
+CREATE INDEX IF NOT EXISTS idx_users_tenant_role   ON users(tenant_id, role);
+CREATE INDEX IF NOT EXISTS idx_users_tenant_status ON users(tenant_id, status);
 -- Indice parcial para soft-delete: solo registros eliminados
-CREATE INDEX idx_users_deleted_at    ON users(deleted_at) WHERE deleted_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_users_deleted_at    ON users(deleted_at) WHERE deleted_at IS NOT NULL;
 
 -- ===========================================================================
 -- Tabla: refresh_tokens
@@ -88,7 +92,7 @@ CREATE INDEX idx_users_deleted_at    ON users(deleted_at) WHERE deleted_at IS NO
 -- tokenHash = SHA-256 del token real (el token crudo nunca se persiste).
 -- familyId agrupa todos los tokens rotados de una misma sesion.
 -- ===========================================================================
-CREATE TABLE refresh_tokens (
+CREATE TABLE IF NOT EXISTS refresh_tokens (
   id            UUID        NOT NULL DEFAULT gen_random_uuid(),
   user_id       UUID        NOT NULL,
   token_hash    VARCHAR(64) NOT NULL,    -- SHA-256 del token, longitud fija 64 hex
@@ -109,9 +113,9 @@ CREATE TABLE refresh_tokens (
   -- SIN updated_at — revokedAt captura cualquier cambio de estado
 );
 
-CREATE INDEX idx_rt_token_hash  ON refresh_tokens(token_hash);
-CREATE INDEX idx_rt_family_id   ON refresh_tokens(family_id);
-CREATE INDEX idx_rt_user_revoked ON refresh_tokens(user_id, revoked_at);
+CREATE INDEX IF NOT EXISTS idx_rt_token_hash  ON refresh_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_rt_family_id   ON refresh_tokens(family_id);
+CREATE INDEX IF NOT EXISTS idx_rt_user_revoked ON refresh_tokens(user_id, revoked_at);
 
 -- ===========================================================================
 -- Tabla: audit_logs
@@ -119,7 +123,7 @@ CREATE INDEX idx_rt_user_revoked ON refresh_tokens(user_id, revoked_at);
 -- Retencion minima 7 anios (Ley 1581/2012 + CRC).
 -- RLS previene DELETE y UPDATE directos (refuerzo a nivel de DB).
 -- ===========================================================================
-CREATE TABLE audit_logs (
+CREATE TABLE IF NOT EXISTS audit_logs (
   id           UUID        NOT NULL DEFAULT gen_random_uuid(),
   tenant_id    UUID        NOT NULL,
   user_id      UUID,                    -- nullable: jobs del sistema
@@ -142,15 +146,17 @@ CREATE TABLE audit_logs (
   -- SIN updated_at — SIN deleted_at — APPEND-ONLY
 );
 
-CREATE INDEX idx_al_tenant_created ON audit_logs(tenant_id, created_at);
-CREATE INDEX idx_al_entity         ON audit_logs(entity_type, entity_id);
-CREATE INDEX idx_al_user_created   ON audit_logs(user_id, created_at);
-CREATE INDEX idx_al_action_tenant  ON audit_logs(action, tenant_id);
+CREATE INDEX IF NOT EXISTS idx_al_tenant_created ON audit_logs(tenant_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_al_entity         ON audit_logs(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_al_user_created   ON audit_logs(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_al_action_tenant  ON audit_logs(action, tenant_id);
 
 -- RLS: prevenir DELETE y UPDATE directos en audit_logs
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- Politica restrictiva: permite solo SELECT e INSERT, bloquea UPDATE/DELETE
+DROP POLICY IF EXISTS audit_logs_no_mutate ON audit_logs;
+
 CREATE POLICY audit_logs_no_mutate
   ON audit_logs
   AS RESTRICTIVE

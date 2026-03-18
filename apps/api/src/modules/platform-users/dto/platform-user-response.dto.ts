@@ -2,6 +2,7 @@ import { PlatformRole, UserStatus } from '@iwana/shared';
 
 export class PlatformUserResponseDto {
   id: string;
+  email: string;
   role: PlatformRole;
   status: UserStatus;
   mfaEnabled: boolean;

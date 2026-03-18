@@ -161,8 +161,28 @@ Las rutas futuras (`/users`, `/security`, `/reports`) se renderizan como `<span 
 
 ---
 
+## 8.1 Addendum Correctivo E2E (2026-03-18)
+
+Se aplicó una corrección de causa raíz en las suites E2E de portal para eliminar falsos negativos y asegurar que CA-03 y CA-06 validen comportamiento real de navegación/UI en vez de ruido de mocks o selectores ambiguos.
+
+**Archivos ajustados:**
+- `e2e/tests/portal-dashboard-empresa.spec.ts`
+- `e2e/tests/portal-settings-empresa.spec.ts`
+
+**Correcciones aplicadas:**
+1. **Selector de contraseña no ambiguo (CA-06):** se reemplazó `getByLabel(/contraseña/i)` por `getByRole('textbox', { name: /^contraseña/i })` para evitar colisión con el botón "Mostrar contraseña".
+2. **Filtro de 404 orientado a páginas (CA-03):** la captura de 404 ahora considera solo requests `document` y excluye `/api/`, evitando falsos fallos por endpoints no mockeados en ese caso de navegación.
+3. **Interacción robusta del toggle MFA en settings:** se agregó `scrollIntoViewIfNeeded()` y `check({ force: true })` sobre el control etiquetado para evitar interceptación de puntero del span visual del switch.
+
+**Validación posterior:**
+- `pnpm exec playwright test -c e2e/playwright.portal.config.ts e2e/tests/portal-dashboard-empresa.spec.ts e2e/tests/portal-settings-empresa.spec.ts`
+- Resultado: **10 passed, 0 failed**.
+
+---
+
 ## 9. Historial de Cambios
 
 | Versión | Fecha | Autor | Descripción |
 |---|---|---|---|
 | v1.0 | 2026-03-17 | Claude Sonnet 4.6 | Creación inicial — ejecución completa Fase 01 |
+| v1.1 | 2026-03-18 | GitHub Copilot (GPT-5.3-Codex) | Addendum correctivo E2E: estabilización de selectores, filtro de 404 por navegación y toggle MFA en pruebas portal |

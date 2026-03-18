@@ -6,7 +6,19 @@
  * Endpoint de autenticación de plataforma: POST /auth/platform/login
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api/v1';
+function resolveApiBase(): string {
+  const configuredApiBase = process.env.NEXT_PUBLIC_API_URL?.trim();
+
+  if (!configuredApiBase) {
+    // En desarrollo usamos el mismo origen del frontend y delegamos el acceso
+    // al backend al rewrite de Next.js para evitar acoplar el navegador a localhost:3000.
+    return '/api/v1';
+  }
+
+  return configuredApiBase.replace(/\/$/, '');
+}
+
+const API_BASE = resolveApiBase();
 const ACCESS_TOKEN_STORAGE_KEY = 'iwana.web.access-token';
 
 interface PendingPlatformMfaLogin {
@@ -70,7 +82,9 @@ function decodeJwtPayload(token: string): { exp?: number } | null {
   try {
     const parts = token.split('.');
     if (parts.length !== 3) return null;
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))) as {
+    const encodedPayload = parts[1];
+    if (!encodedPayload) return null;
+    const payload = JSON.parse(atob(encodedPayload.replace(/-/g, '+').replace(/_/g, '/'))) as {
       exp?: number;
     };
     return payload;
@@ -276,6 +290,7 @@ export const authApi = {
 
 export interface PlatformUserProfile {
   id: string;
+  email: string;
   role: string;
   status: string;
   mfaEnabled: boolean;
@@ -297,11 +312,22 @@ export interface UpdatePlatformUserPayload {
   language?: string;
 }
 
+export interface ChangePlatformUserLoginEmailPayload {
+  email: string;
+  currentPassword: string;
+}
+
 export const platformUsersApi = {
   me: () => request<PlatformUserProfile>('/platform-users/me'),
 
   updateMe: (data: UpdatePlatformUserPayload) =>
     request<PlatformUserProfile>('/platform-users/me', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  changeLoginEmail: (data: ChangePlatformUserLoginEmailPayload) =>
+    request<PlatformUserProfile>('/platform-users/me/login-email', {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
@@ -356,6 +382,11 @@ export const tenantApi = {
     request<TenantListItem>('/tenants', {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+
+  getBootstrapCredentials: (id: string) =>
+    request<AdminCredentials>(`/tenants/${encodeURIComponent(id)}/bootstrap-admin-credentials`, {
+      method: 'POST',
     }),
 
   getSettings: (id: string) =>
@@ -481,6 +512,7 @@ export interface AdminCredentials {
 
 export interface UserListItem {
   id: string;
+  email: string;
   role: string;
   status: string;
   tenantId: string;

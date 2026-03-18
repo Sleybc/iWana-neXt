@@ -57,6 +57,14 @@ export class UpdateTenantSelfProfileDto {
   @IsOptional()
   @Transform(trimNullableString)
   @IsString()
+  @Matches(/^[0-9]{1}$/, {
+    message: 'nitDv debe ser un único dígito numérico.',
+  })
+  nitDv?: string | null;
+
+  @IsOptional()
+  @Transform(trimNullableString)
+  @IsString()
   @MaxLength(100)
   city?: string | null;
 

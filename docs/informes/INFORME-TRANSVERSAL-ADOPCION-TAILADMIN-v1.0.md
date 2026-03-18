@@ -126,8 +126,10 @@ En este corte se ejecuto la FASE-06 de calidad extendida: cobertura E2E para por
 | AuthProvider portal | `apps/portal/src/components/auth/AuthProvider.tsx` | Nuevo — contexto de sesion tenant-aware, login/logout y perfil real desde `/auth/me` |
 | Root layout web | `apps/web/src/app/layout.tsx` | Actualizado — integra `AuthProvider` sobre el arbol de app |
 | Root layout portal | `apps/portal/src/app/layout.tsx` | Actualizado — integra `AuthProvider` sobre el arbol de app |
-| API client web | `apps/web/src/lib/api-client.ts` | Refactorizado — `Authorization: Bearer`, refresh en 401 con `/auth/refresh`, `auth.me`, `auth.logout`, `tenantApi.list` |
-| API client portal | `apps/portal/src/lib/api-client.ts` | Refactorizado — bearer + `X-Tenant-Slug`, refresh tenant-aware, `auth.me`, `auth.logout` |
+| API client web | `apps/web/src/lib/api-client.ts` | Refactorizado — `Authorization: Bearer`, refresh en 401 con `/auth/refresh`, `auth.me`, `auth.logout`, `tenantApi.list`; base relativa `/api/v1` por defecto para no acoplar el navegador a `localhost:3000` |
+| Next config web | `apps/web/next.config.ts` | Actualizado — rewrite `/api/v1/:path*` hacia backend para alinear ADR-023 y sostener autenticación/admin desde el mismo origen del frontend |
+| API client portal | `apps/portal/src/lib/api-client.ts` | Refactorizado — bearer + `X-Tenant-Slug`, refresh tenant-aware, `auth.me`, `auth.logout`; base relativa `/api/v1` por defecto para no acoplar el navegador a `localhost:3000` |
+| Next config portal | `apps/portal/next.config.ts` | Actualizado — rewrite `/api/v1/:path*` hacia backend para alinear ADR-023 y sostener login tenant-aware desde el mismo origen del portal |
 | LoginForm web | `apps/web/src/components/auth/LoginForm.tsx` | Refactorizado — usa `useAuth().login` |
 | LoginForm portal | `apps/portal/src/components/auth/LoginForm.tsx` | Refactorizado — usa `useAuth().login` con `tenantSlug` |
 | DropdownUser web | `apps/web/src/components/layout/DropdownUser.tsx` | Refactorizado — nombre/hash/rol desde AuthProvider + logout real |

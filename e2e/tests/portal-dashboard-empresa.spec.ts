@@ -189,7 +189,7 @@ test.describe('Dashboard empresarial — flujo login → dashboard', () => {
     // Completar formulario de login con slug del tenant
     await page.getByPlaceholder('ejemplo: isp-demo').fill(MOCK_TENANT_SLUG);
     await page.getByLabel(/correo/i).fill('admin@test-isp.co');
-    await page.getByLabel(/contraseña/i).fill('PasswordSegura123!');
+    await page.getByRole('textbox', { name: /^contraseña/i }).fill('PasswordSegura123!');
     await page.getByRole('button', { name: /ingresar/i }).click();
 
     // Verificar que redirigió al dashboard
@@ -263,7 +263,10 @@ test.describe('Dashboard empresarial — flujo login → dashboard', () => {
 
     // Capturar respuestas 404 del navegador
     page.on('response', (response) => {
-      if (response.status() === 404 && response.url().includes('3002')) {
+      const isDocumentRequest = response.request().resourceType() === 'document';
+      const isPortalPage = response.url().includes('3002') && !response.url().includes('/api/');
+
+      if (response.status() === 404 && isDocumentRequest && isPortalPage) {
         notFoundPages.push(response.url());
       }
     });

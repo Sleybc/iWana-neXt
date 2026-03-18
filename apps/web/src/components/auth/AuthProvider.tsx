@@ -39,7 +39,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<LoginResult>;
-  completeMfaLogin: (code: string) => Promise<void>;
+  completeMfaLogin: (code: string) => Promise<LoginResult>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -103,6 +103,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshProfile = useCallback(async () => {
     try {
       const profile = await authApi.me();
+
+      if (profile.passwordResetRequired) {
+        setUser(null);
+        return;
+      }
+
       const platformProfile = await fetchPlatformProfileSafely();
       setUser(toAuthUser(profile, platformProfile));
     } catch {
@@ -122,9 +128,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         const profile = await authApi.me();
-        const platformProfile = await fetchPlatformProfileSafely();
         if (mounted) {
-          setUser(toAuthUser(profile, platformProfile));
+          if (profile.passwordResetRequired) {
+            setUser(null);
+          } else {
+            const platformProfile = await fetchPlatformProfileSafely();
+            setUser(toAuthUser(profile, platformProfile));
+          }
         }
       } catch {
         if (mounted) {
@@ -164,7 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return 'authenticated';
   }, []);
 
-  const completeMfaLogin = useCallback(async (code: string) => {
+  const completeMfaLogin = useCallback(async (code: string): Promise<LoginResult> => {
     const pendingLogin = getPendingPlatformMfaLogin();
     if (!pendingLogin) {
       throw new ApiError(
@@ -181,8 +191,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     clearPendingPlatformMfaLogin();
     const profile = await authApi.me();
+
+    if (profile.passwordResetRequired) {
+      setUser(null);
+      return 'password_reset_required';
+    }
+
     const platformProfile = await fetchPlatformProfileSafely();
     setUser(toAuthUser(profile, platformProfile));
+    return 'authenticated';
   }, []);
 
   const logout = useCallback(async () => {

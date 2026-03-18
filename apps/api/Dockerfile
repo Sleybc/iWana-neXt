@@ -57,6 +57,10 @@ COPY --from=builder --chown=nestjs:nodejs /app/apps/api          ./apps/api
 COPY --from=builder --chown=nestjs:nodejs /app/packages/shared   ./packages/shared
 COPY --from=builder --chown=nestjs:nodejs /app/packages/database ./packages/database
 
+# El runtime no debe depender de archivos .env copiados desde el workspace.
+# En contenedor la configuracion llega por variables de entorno inyectadas.
+RUN rm -f /app/apps/api/.env /app/apps/api/.env.*
+
 USER nestjs
 
 WORKDIR /app/apps/api

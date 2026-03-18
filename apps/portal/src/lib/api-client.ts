@@ -5,7 +5,19 @@
  * Requiere header X-Tenant-Slug para identificar el tenant.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000/api/v1';
+function resolveApiBase(): string {
+  const configuredApiBase = process.env.NEXT_PUBLIC_API_URL?.trim();
+
+  if (!configuredApiBase) {
+    // En desarrollo usamos el mismo origen del portal y delegamos el salto al backend
+    // al rewrite de Next.js para evitar acoplar el navegador a localhost:3000.
+    return '/api/v1';
+  }
+
+  return configuredApiBase.replace(/\/$/, '');
+}
+
+const API_BASE = resolveApiBase();
 const TENANT_SLUG_STORAGE_KEY = 'iwana.portal.tenant-slug';
 const ACCESS_TOKEN_STORAGE_KEY = 'iwana.portal.access-token';
 
@@ -548,23 +560,38 @@ export interface TenantSelf {
   contactEmail: string;
   legalName: string | null;
   nit: string | null;
+  nitDv: string | null;
   city: string | null;
   department: string | null;
   countryCode: string | null;
   phone: string | null;
   website: string | null;
   createdAt: string;
+  logoLightUrl: string | null;
+  logoDarkUrl: string | null;
+  sealLightUrl: string | null;
+  sealDarkUrl: string | null;
+  showTenantName: boolean;
 }
 
 export interface UpdateTenantSelfProfileDto {
   contactEmail?: string;
   legalName?: string | null;
   nit?: string | null;
+  nitDv?: string | null;
   city?: string | null;
   department?: string | null;
   countryCode?: string | null;
   phone?: string | null;
   website?: string | null;
+}
+
+export interface UpdateTenantSelfBrandingDto {
+  logoLightUrl?: string | null;
+  logoDarkUrl?: string | null;
+  sealLightUrl?: string | null;
+  sealDarkUrl?: string | null;
+  showTenantName?: boolean;
 }
 
 /** Configuración operativa del tenant autenticado */
@@ -635,6 +662,14 @@ export const tenantSelfApi = {
       tenantSlug,
     ),
 
+  /** Actualiza el branding self-service del tenant autenticado (solo ADMIN). */
+  updateBranding: (dto: UpdateTenantSelfBrandingDto, tenantSlug?: string) =>
+    request<TenantSelf>(
+      '/tenants/me/branding',
+      { method: 'PATCH', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
   /** Retorna la configuración operativa del tenant autenticado. */
   getMeSettings: (tenantSlug?: string) =>
     request<TenantSelfSettings>('/tenants/me/settings', undefined, tenantSlug),
@@ -679,6 +714,7 @@ export const dashboardApi = {
 /** Campos de perfil retornados por GET /users/:id */
 export interface UserProfile {
   id: string;
+  email: string;
   role: string;
   status: string;
   firstName: string | null;
@@ -699,6 +735,12 @@ export interface UpdateProfileDto {
   jobTitle?: string;
 }
 
+export interface ChangeLoginEmailDto {
+  email: string;
+  currentPassword: string;
+  syncCompanyContactEmail?: boolean;
+}
+
 /**
  * API de perfil del usuario autenticado.
  * El userId debe provenir del claim sub del JWT vigente.
@@ -715,6 +757,17 @@ export const userApi = {
       {
         method: 'PATCH',
         headers: { 'Idempotency-Key': crypto.randomUUID() },
+        body: JSON.stringify(dto),
+      },
+      tenantSlug,
+    ),
+
+  /** Actualiza el email de acceso del usuario autenticado */
+  changeLoginEmail: (userId: string, dto: ChangeLoginEmailDto, tenantSlug?: string) =>
+    request<UserProfile>(
+      `/users/${userId}/login-email`,
+      {
+        method: 'PATCH',
         body: JSON.stringify(dto),
       },
       tenantSlug,

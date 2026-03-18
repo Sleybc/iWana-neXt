@@ -29,6 +29,7 @@ describe('TenantController', () => {
   };
 
   const authService = {
+    getBootstrapTenantAdminCredentials: jest.fn(),
     regenerateTenantAdminCredentials: jest.fn(),
   };
 
@@ -84,11 +85,32 @@ describe('TenantController', () => {
     expect(result.data.status).toBe('ACTIVE');
   });
 
+  it('consulta el acceso bootstrap fijo del admin inicial', async () => {
+    tenantService.findOne.mockResolvedValue({
+      id: 'tenant-uuid-1',
+      schemaName: 'tenant_isp_test',
+    });
+    authService.getBootstrapTenantAdminCredentials.mockResolvedValue({
+      message: 'Acceso inicial fijo vigente para el ADMIN bootstrap del tenant.',
+      adminEmail: 'admin@iwana.co',
+      temporaryPassword: 'InitAdmin!2026',
+      expiresAt: '2026-03-20T00:00:00.000Z',
+    });
+
+    const result = await controller.getBootstrapAdminCredentials('tenant-uuid-1');
+
+    expect(tenantService.findOne).toHaveBeenCalledWith('tenant-uuid-1');
+    expect(authService.getBootstrapTenantAdminCredentials).toHaveBeenCalledWith({
+      tenantId: 'tenant-uuid-1',
+      schemaName: 'tenant_isp_test',
+    });
+    expect(result.data.adminEmail).toBe('admin@iwana.co');
+  });
+
   it('usa el tenant y delega la regeneracion segura en AuthService', async () => {
     tenantService.findOne.mockResolvedValue({
       id: 'tenant-uuid-1',
       schemaName: 'tenant_isp_test',
-      contactEmail: 'admin@isptest.co',
     });
     authService.regenerateTenantAdminCredentials.mockResolvedValue({
       message: 'Credenciales temporales regeneradas para el ADMIN inicial del tenant.',
@@ -103,7 +125,6 @@ describe('TenantController', () => {
     expect(authService.regenerateTenantAdminCredentials).toHaveBeenCalledWith({
       tenantId: 'tenant-uuid-1',
       schemaName: 'tenant_isp_test',
-      adminEmail: 'admin@isptest.co',
       idempotencyKey: 'idem-1',
     });
     expect(result.data.temporaryPassword).toBe('IwN!a9-newpass');

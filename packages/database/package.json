@@ -9,7 +9,7 @@
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
-    "clean": "rm -rf dist",
+    "clean": "node ../../scripts/clean-paths.mjs dist",
     "migration:run": "typeorm migration:run -d dist/data-source.js",
     "migration:revert": "typeorm migration:revert -d dist/data-source.js",
     "migration:show": "typeorm migration:show -d dist/data-source.js",
