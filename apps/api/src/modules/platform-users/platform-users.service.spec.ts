@@ -13,6 +13,7 @@ import { PlatformUsersService } from './platform-users.service';
 
 jest.mock('bcryptjs', () => ({
   compare: jest.fn(),
+  hash: jest.fn(),
 }));
 
 function buildPlatformUser(overrides: Partial<PlatformUser> = {}): PlatformUser {
@@ -41,7 +42,7 @@ function buildPlatformUser(overrides: Partial<PlatformUser> = {}): PlatformUser 
 describe('PlatformUsersService', () => {
   let service: PlatformUsersService;
   let repo: jest.Mocked<Repository<PlatformUser>>;
-  const auditServiceMock = { log: jest.fn<() => Promise<void>>() };
+  const auditServiceMock = { log: jest.fn() };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -94,7 +95,10 @@ describe('PlatformUsersService', () => {
       (repo.save as unknown as jest.Mock).mockImplementation(
         async (user: unknown) => ({ ...(user as object), id: 'new-uuid' }) as PlatformUser,
       );
-      (auditServiceMock.log as jest.Mock).mockResolvedValue();
+      (bcrypt.hash as unknown as jest.Mock).mockImplementation(async () => 'hashed_password');
+      (auditServiceMock.log as unknown as jest.Mock).mockImplementation(async () => {
+        /* void */
+      });
     });
 
     it('crea usuario admin con SYSTEM_ADMIN cuando no hay usuarios', async () => {
