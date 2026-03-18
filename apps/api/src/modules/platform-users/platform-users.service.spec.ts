@@ -1,11 +1,12 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Test, TestingModule } from '@nestjs/testing';
 import * as bcrypt from 'bcryptjs';
 import { PlatformUser } from '@iwana/db';
-import { PlatformRole, UserStatus } from '@iwana/shared';
+import { PlatformRole, UserStatus, AuditAction } from '@iwana/shared';
+import { CreatePlatformUserBootstrapDto } from '../dto/create-platform-user-bootstrap.dto';
 import { Repository } from 'typeorm';
 import { AuditService } from '../audit/audit.service';
 import { PlatformUsersService } from './platform-users.service';
