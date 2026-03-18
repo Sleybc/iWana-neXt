@@ -6,7 +6,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import * as bcrypt from 'bcryptjs';
 import { PlatformUser } from '@iwana/db';
 import { PlatformRole, UserStatus, AuditAction } from '@iwana/shared';
-import { CreatePlatformUserBootstrapDto } from '../dto/create-platform-user-bootstrap.dto';
+import { CreatePlatformUserBootstrapDto } from './dto/create-platform-user-bootstrap.dto';
 import { Repository } from 'typeorm';
 import { AuditService } from '../audit/audit.service';
 import { PlatformUsersService } from './platform-users.service';
@@ -41,7 +41,7 @@ function buildPlatformUser(overrides: Partial<PlatformUser> = {}): PlatformUser 
 describe('PlatformUsersService', () => {
   let service: PlatformUsersService;
   let repo: jest.Mocked<Repository<PlatformUser>>;
-  const auditServiceMock = { log: jest.fn() };
+  const auditServiceMock = { log: jest.fn<() => Promise<void>>() };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -52,6 +52,8 @@ describe('PlatformUsersService', () => {
           useValue: {
             findOne: jest.fn(),
             save: jest.fn(),
+            count: jest.fn(),
+            create: jest.fn(),
           },
         },
         { provide: AuditService, useValue: auditServiceMock },
@@ -67,6 +69,77 @@ describe('PlatformUsersService', () => {
     service = module.get<PlatformUsersService>(PlatformUsersService);
     repo = module.get(getRepositoryToken(PlatformUser));
     jest.clearAllMocks();
+  });
+
+  describe('getBootstrapStatus', () => {
+    it('retorna hasUsers=false cuando no hay usuarios', async () => {
+      repo.count.mockResolvedValue(0);
+      const result = await service.getBootstrapStatus();
+      expect(result).toEqual({ hasUsers: false, pendingUser: false });
+    });
+
+    it('retorna hasUsers=true cuando existe al menos un usuario', async () => {
+      repo.count.mockResolvedValue(1);
+      const result = await service.getBootstrapStatus();
+      expect(result).toEqual({ hasUsers: true, pendingUser: false });
+    });
+  });
+
+  describe('createBootstrapUser', () => {
+    beforeEach(() => {
+      repo.count.mockResolvedValue(0);
+      (repo.create as unknown as jest.Mock).mockImplementation(
+        (data: unknown) => data as PlatformUser,
+      );
+      (repo.save as unknown as jest.Mock).mockImplementation(
+        async (user: unknown) => ({ ...(user as object), id: 'new-uuid' }) as PlatformUser,
+      );
+      (auditServiceMock.log as jest.Mock).mockResolvedValue();
+    });
+
+    it('crea usuario admin con SYSTEM_ADMIN cuando no hay usuarios', async () => {
+      const dto: CreatePlatformUserBootstrapDto = {
+        email: 'admin@iwana.co',
+        password: 'Admin123!@#',
+        confirmPassword: 'Admin123!@#',
+      };
+      const result = await service.createBootstrapUser(dto);
+      expect(result.role).toBe(PlatformRole.SYSTEM_ADMIN);
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({ entityType: 'PlatformUser', action: AuditAction.CREATE }),
+      );
+    });
+
+    it('lanza ConflictException si ya existen usuarios', async () => {
+      repo.count.mockResolvedValue(1);
+      await expect(
+        service.createBootstrapUser({
+          email: 'admin@iwana.co',
+          password: 'Admin123!@#',
+          confirmPassword: 'Admin123!@#',
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('lanza BadRequestException si el email no es admin@iwana.co', async () => {
+      await expect(
+        service.createBootstrapUser({
+          email: 'otro@iwana.co',
+          password: 'Admin123!@#',
+          confirmPassword: 'Admin123!@#',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('lanza BadRequestException si las contraseñas no coinciden', async () => {
+      await expect(
+        service.createBootstrapUser({
+          email: 'admin@iwana.co',
+          password: 'Admin123!@#',
+          confirmPassword: 'Different123!@#',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
   });
 
   it('getProfile retorna datos sin campos sensibles', async () => {
