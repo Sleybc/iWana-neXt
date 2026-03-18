@@ -10,12 +10,14 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { PlatformRole } from '@iwana/shared';
+import { AuthService } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { PlatformUser } from '@iwana/db';
 import { CreatePlatformUserBootstrapDto } from './dto/create-platform-user-bootstrap.dto';
 import { PlatformUserResponseDto } from './dto/platform-user-response.dto';
 import {
@@ -29,7 +31,10 @@ import { PlatformUsersService } from './platform-users.service';
 @ApiTags('platform-users')
 @ApiBearerAuth('access-token')
 export class PlatformUsersController {
-  constructor(private readonly platformUsersService: PlatformUsersService) {}
+  constructor(
+    private readonly platformUsersService: PlatformUsersService,
+    private readonly authService: AuthService,
+  ) {}
 
   @Get('bootstrap/status')
   @Public()
@@ -43,15 +48,17 @@ export class PlatformUsersController {
   @Public()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: 'Crea el usuario admin inicial de plataforma (solo si no existen usuarios)',
+    summary:
+      'Crea el usuario admin inicial de plataforma y retorna el access token (flujo bootstrap)',
   })
-  @ApiResponse({ status: 201, description: 'Usuario admin creado.' })
+  @ApiResponse({ status: 201, description: 'Usuario admin creado y token emitido.' })
   @ApiResponse({ status: 409, description: 'Ya existen usuarios o email inválido.' })
   async createBootstrapUser(
     @Body() dto: CreatePlatformUserBootstrapDto,
-  ): Promise<{ data: { message: string } }> {
-    await this.platformUsersService.createBootstrapUser(dto);
-    return { data: { message: 'Usuario admin creado correctamente.' } };
+  ): Promise<{ data: { accessToken: string } }> {
+    const user = await this.platformUsersService.createBootstrapUser(dto);
+    const accessToken = this.authService.signPlatformToken(user as unknown as PlatformUser);
+    return { data: { accessToken } };
   }
 
   @Get('me')

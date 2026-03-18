@@ -350,7 +350,7 @@ export const platformUsersApi = {
     }),
 
   createBootstrapUser: (data: CreateBootstrapUserPayload) =>
-    request<{ message: string }>('/platform-users/bootstrap', {
+    request<{ accessToken: string }>('/platform-users/bootstrap', {
       method: 'POST',
       body: JSON.stringify(data),
       skipAuth: true,

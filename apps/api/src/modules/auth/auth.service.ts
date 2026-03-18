@@ -1013,6 +1013,14 @@ export class AuthService {
   }
 
   /**
+   * Firma un access token para un usuario de plataforma recien creado.
+   * Usado por el flujo bootstrap para evitar una llamada adicional a platformLogin.
+   */
+  signPlatformToken(user: PlatformUser): string {
+    return this.signPlatformAccessToken(user).accessToken;
+  }
+
+  /**
    * Crea un nuevo refresh token, lo guarda hasheado en DB y retorna el valor raw.
    * El valor raw solo existe en memoria y en la cookie httpOnly — nunca en logs ni DB.
    */

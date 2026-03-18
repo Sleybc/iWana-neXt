@@ -11,7 +11,7 @@ import {
   type CreateBootstrapPasswordFormValues,
   type LoginFormValues,
 } from '@iwana/shared';
-import { ApiError, authApi, platformUsersApi } from '@/lib/api-client';
+import { ApiError, authApi, persistAccessToken, platformUsersApi } from '@/lib/api-client';
 import { useAuth } from './AuthProvider';
 import { cn } from '@iwana/ui';
 
@@ -99,18 +99,14 @@ export function LoginForm() {
   const onPasswordSubmit = passwordForm.handleSubmit(async ({ password }) => {
     setServerError(null);
     try {
-      await platformUsersApi.createBootstrapUser({
+      const result = await platformUsersApi.createBootstrapUser({
         email: bootstrapEmail,
         password,
         confirmPassword: password,
       });
-      const result = await authApi.platformLogin(bootstrapEmail, password);
       if (result.accessToken) {
-        if (result.mfaRequired) {
-          router.push('/auth/mfa/verify');
-        } else {
-          router.push('/dashboard');
-        }
+        persistAccessToken(result.accessToken);
+        router.push('/dashboard');
       }
     } catch (err) {
       if (err instanceof ApiError) {
