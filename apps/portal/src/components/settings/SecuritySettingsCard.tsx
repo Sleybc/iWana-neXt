@@ -10,11 +10,7 @@ interface SecuritySettingsCardProps {
   onUpdated: (updated: TenantSelfSettings) => void;
 }
 
-export function SecuritySettingsCard({
-  settings,
-  canEdit,
-  onUpdated,
-}: SecuritySettingsCardProps) {
+export function SecuritySettingsCard({ settings, canEdit, onUpdated }: SecuritySettingsCardProps) {
   const [mfaRequiredAll, setMfaRequiredAll] = useState(settings.features.mfa_required_all);
   const [isDirty, setIsDirty] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -71,7 +67,9 @@ export function SecuritySettingsCard({
                 className="peer sr-only"
                 checked={mfaRequiredAll}
                 disabled={!canEdit || isSubmitting}
-                aria-label={mfaRequiredAll ? 'Desactivar MFA obligatorio' : 'Activar MFA obligatorio'}
+                aria-label={
+                  mfaRequiredAll ? 'Desactivar MFA obligatorio' : 'Activar MFA obligatorio'
+                }
                 onChange={() => {
                   if (!canEdit) return;
                   setMfaRequiredAll((current) => !current);
@@ -91,7 +89,9 @@ export function SecuritySettingsCard({
               Facturación
             </p>
             <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
-              {settings.features.billing ? 'Habilitada por plataforma' : 'Deshabilitada por plataforma'}
+              {settings.features.billing
+                ? 'Habilitada por plataforma'
+                : 'Deshabilitada por plataforma'}
             </p>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               Este flag es solo lectura desde el portal empresarial.
@@ -129,7 +129,12 @@ export function SecuritySettingsCard({
               : 'Tu rol puede consultar esta política, pero no modificarla.'}
           </p>
           {canEdit && (
-            <Button type="button" loading={isSubmitting} disabled={!isDirty || isSubmitting} onClick={() => void handleSubmit()}>
+            <Button
+              type="button"
+              loading={isSubmitting}
+              disabled={!isDirty || isSubmitting}
+              onClick={() => void handleSubmit()}
+            >
               Guardar seguridad
             </Button>
           )}

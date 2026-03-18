@@ -43,3 +43,25 @@ export const changePasswordSchema = z
   });
 
 export type ChangePasswordFormValues = z.infer<typeof changePasswordSchema>;
+
+export const createBootstrapPasswordSchema = z
+  .object({
+    email: z
+      .string()
+      .min(1, 'El correo es requerido')
+      .email('Ingresa un correo electrónico válido'),
+    password: z
+      .string()
+      .min(10, 'La contraseña debe tener al menos 10 caracteres')
+      .regex(/[A-Z]/, 'Debe contener al menos una mayúscula')
+      .regex(/[a-z]/, 'Debe contener al menos una minúscula')
+      .regex(/\d/, 'Debe contener al menos un número')
+      .regex(/[^A-Za-z0-9]/, 'Debe contener al menos un carácter especial'),
+    confirmPassword: z.string().min(1, 'Confirma tu nueva contraseña'),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'Las contraseñas no coinciden',
+    path: ['confirmPassword'],
+  });
+
+export type CreateBootstrapPasswordFormValues = z.infer<typeof createBootstrapPasswordSchema>;

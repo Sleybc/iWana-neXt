@@ -35,14 +35,17 @@ export function CredentialsModal({ credentials, onClose }: CredentialsModalProps
     >
       <Card className="w-full max-w-lg">
         <CardHeader>
-          <CardTitle id="tenant-credentials-modal-title">Acceso del administrador inicial</CardTitle>
+          <CardTitle id="tenant-credentials-modal-title">
+            Acceso del administrador inicial
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
             {credentials.message}
           </p>
           <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            Usa este acceso solo para el primer ingreso. Apenas el usuario entre, deberá cambiar la contraseña.
+            Usa este acceso solo para el primer ingreso. Apenas el usuario entre, deberá cambiar la
+            contraseña.
           </p>
           <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
             El correo de acceso inicial es independiente del email de contacto empresarial y puede

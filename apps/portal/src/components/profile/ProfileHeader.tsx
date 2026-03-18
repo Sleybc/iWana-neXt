@@ -30,10 +30,8 @@ export function ProfileHeader({ profile, roleLabel }: ProfileHeaderProps) {
   const fullName =
     [profile.firstName, profile.lastName].filter(Boolean).join(' ') || 'Sin nombre configurado';
 
-  const initials = [profile.firstName?.[0], profile.lastName?.[0]]
-    .filter(Boolean)
-    .join('')
-    .toUpperCase() || '?';
+  const initials =
+    [profile.firstName?.[0], profile.lastName?.[0]].filter(Boolean).join('').toUpperCase() || '?';
 
   return (
     <div className="flex items-center gap-6 rounded-xl border border-gray-200 bg-white p-6 dark:border-dark-border-2 dark:bg-dark-surface-2">

@@ -40,7 +40,7 @@ function md5(input: string): string {
     x[i >> 5] = (x[i >> 5] ?? 0) | ((str.charCodeAt(i / 8) & 0xff) << (i % 32));
   }
 
-  x[str.length * 8 >> 5] = (x[str.length * 8 >> 5] ?? 0) | (0x80 << ((str.length * 8) % 32));
+  x[(str.length * 8) >> 5] = (x[(str.length * 8) >> 5] ?? 0) | (0x80 << ((str.length * 8) % 32));
   x[(((str.length * 8 + 64) >>> 9) << 4) + 14] = str.length * 8;
 
   let a = 0x67452301;

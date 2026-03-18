@@ -27,11 +27,14 @@ jest.mock('./guards/jwt-auth.guard', () => ({
     canActivate(context: {
       getHandler: () => unknown;
       getClass: () => unknown;
-      switchToHttp: () => { getRequest: () => { headers: Record<string, string | undefined>; user?: JwtPayload } };
+      switchToHttp: () => {
+        getRequest: () => { headers: Record<string, string | undefined>; user?: JwtPayload };
+      };
     }): boolean {
       const handler = context.getHandler() as object;
       const classRef = context.getClass() as object;
-      const isPublic = Reflect.getMetadata(IS_PUBLIC_KEY, handler) ?? Reflect.getMetadata(IS_PUBLIC_KEY, classRef);
+      const isPublic =
+        Reflect.getMetadata(IS_PUBLIC_KEY, handler) ?? Reflect.getMetadata(IS_PUBLIC_KEY, classRef);
 
       if (isPublic) {
         return true;

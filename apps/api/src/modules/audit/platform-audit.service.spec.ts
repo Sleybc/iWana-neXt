@@ -57,10 +57,7 @@ describe('PlatformAuditService', () => {
     create = c;
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        PlatformAuditService,
-        { provide: DataSource, useValue: dataSource },
-      ],
+      providers: [PlatformAuditService, { provide: DataSource, useValue: dataSource }],
     }).compile();
 
     service = module.get<PlatformAuditService>(PlatformAuditService);
@@ -108,9 +105,7 @@ describe('PlatformAuditService', () => {
   it('acepta userId null para acciones de sistema', async () => {
     await service.log({ ...BASE_ENTRY, userId: null });
 
-    expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: null }),
-    );
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ userId: null }));
   });
 
   // --------------------------------------------------------------------------
@@ -138,9 +133,7 @@ describe('PlatformAuditService', () => {
 
     await service.log({ ...BASE_ENTRY, oldValue, newValue });
 
-    expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ oldValue, newValue }),
-    );
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ oldValue, newValue }));
   });
 
   it('persiste null para oldValue y newValue cuando no se proveen', async () => {

@@ -97,7 +97,12 @@ export function OperationalSettingsForm({
               <label htmlFor="timezone" className="text-sm font-medium text-[#374151]">
                 Zona horaria
               </label>
-              <select id="timezone" className={selectClassName} disabled={!canEdit} {...register('timezone')}>
+              <select
+                id="timezone"
+                className={selectClassName}
+                disabled={!canEdit}
+                {...register('timezone')}
+              >
                 {TIMEZONE_OPTIONS.map((option) => (
                   <option key={option} value={option}>
                     {option}
@@ -113,7 +118,12 @@ export function OperationalSettingsForm({
               <label htmlFor="currency" className="text-sm font-medium text-[#374151]">
                 Moneda
               </label>
-              <select id="currency" className={selectClassName} disabled={!canEdit} {...register('currency')}>
+              <select
+                id="currency"
+                className={selectClassName}
+                disabled={!canEdit}
+                {...register('currency')}
+              >
                 {CURRENCY_OPTIONS.map((option) => (
                   <option key={option} value={option}>
                     {option}
@@ -129,7 +139,12 @@ export function OperationalSettingsForm({
               <label htmlFor="language" className="text-sm font-medium text-[#374151]">
                 Idioma
               </label>
-              <select id="language" className={selectClassName} disabled={!canEdit} {...register('language')}>
+              <select
+                id="language"
+                className={selectClassName}
+                disabled={!canEdit}
+                {...register('language')}
+              >
                 {LANGUAGE_OPTIONS.map((option) => (
                   <option key={option} value={option}>
                     {option}
@@ -145,7 +160,12 @@ export function OperationalSettingsForm({
               <label htmlFor="country" className="text-sm font-medium text-[#374151]">
                 País operativo
               </label>
-              <select id="country" className={selectClassName} disabled={!canEdit} {...register('country')}>
+              <select
+                id="country"
+                className={selectClassName}
+                disabled={!canEdit}
+                {...register('country')}
+              >
                 {COUNTRY_OPTIONS.map((option) => (
                   <option key={option} value={option}>
                     {option}
@@ -181,11 +201,7 @@ export function OperationalSettingsForm({
                 : 'Tu rol puede consultar la configuración operativa, pero no modificarla.'}
             </p>
             {canEdit && (
-              <Button
-                type="submit"
-                loading={isSubmitting}
-                disabled={isSubmitting || !isDirty}
-              >
+              <Button type="submit" loading={isSubmitting} disabled={isSubmitting || !isDirty}>
                 Guardar configuración operativa
               </Button>
             )}

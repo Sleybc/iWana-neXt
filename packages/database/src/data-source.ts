@@ -22,9 +22,11 @@ function ensureDatabaseEnvLoaded(): void {
     return;
   }
 
-  const loadEnvFile = (process as NodeJS.Process & {
-    loadEnvFile?: (path?: string) => void;
-  }).loadEnvFile;
+  const loadEnvFile = (
+    process as NodeJS.Process & {
+      loadEnvFile?: (path?: string) => void;
+    }
+  ).loadEnvFile;
 
   if (!loadEnvFile) {
     return;

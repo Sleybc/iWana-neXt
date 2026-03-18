@@ -179,8 +179,8 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                 Sello (ícono compacto)
               </h3>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Proporción 1:1. Se usa en el menú lateral, como favicon del navegador y en
-                futuras superficies compactas del tenant.
+                Proporción 1:1. Se usa en el menú lateral, como favicon del navegador y en futuras
+                superficies compactas del tenant.
               </p>
             </div>
 
@@ -236,8 +236,8 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                     Favicon del navegador
                   </h4>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    El portal reutiliza este sello como icono de la pestaña. Si cambias las URLs
-                    del sello, el favicon se actualiza en caliente para el tenant autenticado.
+                    El portal reutiliza este sello como icono de la pestaña. Si cambias las URLs del
+                    sello, el favicon se actualiza en caliente para el tenant autenticado.
                   </p>
                 </div>
                 <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">

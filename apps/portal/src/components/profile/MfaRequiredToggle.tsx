@@ -50,7 +50,10 @@ export function MfaRequiredToggle({ mfaRequiredAll, onUpdated }: MfaRequiredTogg
       {/* Encabezado */}
       <div className="mb-4 flex items-center gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-iwana-primary/10 dark:bg-iwana-primary-900/20">
-          <Shield className="h-5 w-5 text-iwana-primary dark:text-iwana-primary-300" aria-hidden="true" />
+          <Shield
+            className="h-5 w-5 text-iwana-primary dark:text-iwana-primary-300"
+            aria-hidden="true"
+          />
         </div>
         <div>
           <h2 className="text-sm font-semibold text-gray-800 dark:text-white">
@@ -66,7 +69,10 @@ export function MfaRequiredToggle({ mfaRequiredAll, onUpdated }: MfaRequiredTogg
       <div className="mb-4 flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
         <div className="flex items-center gap-2">
           {mfaRequiredAll ? (
-            <ShieldCheck className="h-4 w-4 text-green-600 dark:text-green-400" aria-hidden="true" />
+            <ShieldCheck
+              className="h-4 w-4 text-green-600 dark:text-green-400"
+              aria-hidden="true"
+            />
           ) : (
             <Shield className="h-4 w-4 text-amber-500 dark:text-amber-400" aria-hidden="true" />
           )}

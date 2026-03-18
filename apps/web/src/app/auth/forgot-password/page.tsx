@@ -20,10 +20,13 @@ export default function PlatformForgotPasswordPage() {
           <div className="space-y-4">
             <h1 className="text-3xl font-bold text-[#181818]">Solicita soporte de acceso</h1>
             <p className="text-slate-500">
-              El módulo actual no publica recuperación autoservicio para cuentas de plataforma. Para restablecer el acceso, usa el canal corporativo autorizado de soporte iWana y valida el incidente con el equipo responsable.
+              El módulo actual no publica recuperación autoservicio para cuentas de plataforma. Para
+              restablecer el acceso, usa el canal corporativo autorizado de soporte iWana y valida
+              el incidente con el equipo responsable.
             </p>
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              Mantener este flujo fuera del autoservicio evita exponer recuperación sobre usuarios del schema público sin un contrato backend aprobado.
+              Mantener este flujo fuera del autoservicio evita exponer recuperación sobre usuarios
+              del schema público sin un contrato backend aprobado.
             </div>
           </div>
 

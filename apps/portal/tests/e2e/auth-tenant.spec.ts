@@ -50,7 +50,9 @@ test.describe('Portal Tenant Auth E2E', () => {
     await expect(page).toHaveURL(new RegExp('.*/dashboard'));
   });
 
-  test('debe redirigir a verificacion MFA si la cuenta lo requiere (mfa_required)', async ({ page }) => {
+  test('debe redirigir a verificacion MFA si la cuenta lo requiere (mfa_required)', async ({
+    page,
+  }) => {
     // Registrar mock ANTES de interactuar
     await page.route('**/api/v1/auth/login', async (route) => {
       await route.fulfill({
@@ -72,7 +74,9 @@ test.describe('Portal Tenant Auth E2E', () => {
     await expect(page.getByText('Verificación en dos pasos')).toBeVisible();
   });
 
-  test('debe redirigir a configurar MFA si es primer acceso de rol critico (mfa_setup_required)', async ({ page }) => {
+  test('debe redirigir a configurar MFA si es primer acceso de rol critico (mfa_setup_required)', async ({
+    page,
+  }) => {
     // Registrar mock ANTES de interactuar
     await page.route('**/api/v1/auth/login', async (route) => {
       await route.fulfill({
@@ -95,7 +99,9 @@ test.describe('Portal Tenant Auth E2E', () => {
     await expect(page.getByText('Configurar autenticación segura')).toBeVisible();
   });
 
-  test('debe redirigir a cambio de contraseña si backend lo exige (password_reset_required)', async ({ page }) => {
+  test('debe redirigir a cambio de contraseña si backend lo exige (password_reset_required)', async ({
+    page,
+  }) => {
     // Registrar mocks ANTES de interactuar
     await page.route('**/api/v1/auth/login', async (route) => {
       await route.fulfill({
@@ -127,7 +133,9 @@ test.describe('Portal Tenant Auth E2E', () => {
     await expect(page).toHaveURL(new RegExp('.*/auth/change-password'));
   });
 
-  test('debe redirigir a cambio de contraseña tras completar MFA cuando sigue siendo primer ingreso', async ({ page }) => {
+  test('debe redirigir a cambio de contraseña tras completar MFA cuando sigue siendo primer ingreso', async ({
+    page,
+  }) => {
     let loginAttempts = 0;
 
     await page.route('**/api/v1/auth/login', async (route) => {

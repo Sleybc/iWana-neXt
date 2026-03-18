@@ -317,6 +317,17 @@ export interface ChangePlatformUserLoginEmailPayload {
   currentPassword: string;
 }
 
+export interface BootstrapStatusResponse {
+  hasUsers: boolean;
+  pendingUser: boolean;
+}
+
+export interface CreateBootstrapUserPayload {
+  email: string;
+  password: string;
+  confirmPassword: string;
+}
+
 export const platformUsersApi = {
   me: () => request<PlatformUserProfile>('/platform-users/me'),
 
@@ -330,6 +341,20 @@ export const platformUsersApi = {
     request<PlatformUserProfile>('/platform-users/me/login-email', {
       method: 'PATCH',
       body: JSON.stringify(data),
+    }),
+
+  bootstrapStatus: () =>
+    request<BootstrapStatusResponse>('/platform-users/bootstrap/status', {
+      skipAuth: true,
+      skipRefreshRetry: true,
+    }),
+
+  createBootstrapUser: (data: CreateBootstrapUserPayload) =>
+    request<{ message: string }>('/platform-users/bootstrap', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      skipAuth: true,
+      skipRefreshRetry: true,
     }),
 };
 

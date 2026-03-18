@@ -16,9 +16,8 @@
 
 import { DataSource } from 'typeorm';
 // Importar la implementacion real (no el mock global si lo hubiera)
-const { runInTenantSchema, isValidSchemaName } = jest.requireActual<
-  typeof import('@iwana/db')
->('@iwana/db');
+const { runInTenantSchema, isValidSchemaName } =
+  jest.requireActual<typeof import('@iwana/db')>('@iwana/db');
 
 // ---------------------------------------------------------------------------
 // Helper: construye un QueryRunner mock que registra todas las queries emitidas
@@ -53,7 +52,13 @@ function buildMockQueryRunner(
     rollbackTransaction: jest.fn().mockResolvedValue(undefined),
     release: jest.fn().mockResolvedValue(undefined),
     manager: {
-      find: jest.fn().mockResolvedValue(throwOnCallback ? (() => { throw new Error('callback error'); })() : callbackResult),
+      find: jest.fn().mockResolvedValue(
+        throwOnCallback
+          ? (() => {
+              throw new Error('callback error');
+            })()
+          : callbackResult,
+      ),
     },
   };
 }
@@ -69,7 +74,6 @@ function buildDataSource(qr: MockQueryRunner): DataSource {
 // ---------------------------------------------------------------------------
 
 describe('runInTenantSchema — aislamiento de schema', () => {
-
   // -------------------------------------------------------------------------
   // 1. SET LOCAL search_path correcto para cada tenant
   // -------------------------------------------------------------------------
@@ -132,20 +136,17 @@ describe('runInTenantSchema — aislamiento de schema', () => {
     'tenant_', // prefix sin nombre
   ];
 
-  it.each(invalidSchemas)(
-    'rechaza schema invalido "%s" sin emitir SQL',
-    async (badSchema) => {
-      const qr = buildMockQueryRunner();
-      const ds = buildDataSource(qr);
+  it.each(invalidSchemas)('rechaza schema invalido "%s" sin emitir SQL', async (badSchema) => {
+    const qr = buildMockQueryRunner();
+    const ds = buildDataSource(qr);
 
-      await expect(runInTenantSchema(ds, badSchema, async () => null)).rejects.toThrow(
-        /schema name invalido/i,
-      );
+    await expect(runInTenantSchema(ds, badSchema, async () => null)).rejects.toThrow(
+      /schema name invalido/i,
+    );
 
-      // No debe haber creado ningun QueryRunner — la validacion ocurre antes
-      expect(ds.createQueryRunner as jest.Mock).not.toHaveBeenCalled();
-    },
-  );
+    // No debe haber creado ningun QueryRunner — la validacion ocurre antes
+    expect(ds.createQueryRunner as jest.Mock).not.toHaveBeenCalled();
+  });
 
   // -------------------------------------------------------------------------
   // 3. Rollback + release cuando el callback lanza un error

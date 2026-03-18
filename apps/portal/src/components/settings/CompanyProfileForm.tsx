@@ -265,11 +265,7 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
                 : 'Tu rol tiene acceso solo lectura sobre esta sección.'}
             </p>
             {canEdit && (
-              <Button
-                type="submit"
-                loading={isSubmitting}
-                disabled={isSubmitting || !isDirty}
-              >
+              <Button type="submit" loading={isSubmitting} disabled={isSubmitting || !isDirty}>
                 Guardar perfil empresarial
               </Button>
             )}

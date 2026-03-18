@@ -92,7 +92,8 @@ export default function ResetPasswordPage() {
           <div className="mb-8 space-y-2">
             <h1 className="text-3xl font-bold text-[#181818]">Nueva contraseña</h1>
             <p className="text-slate-500">
-              Este formulario consume el token emitido por el backend del tenant y deja la sesión lista para volver a autenticarse.
+              Este formulario consume el token emitido por el backend del tenant y deja la sesión
+              lista para volver a autenticarse.
             </p>
           </div>
 
@@ -123,11 +124,15 @@ export default function ResetPasswordPage() {
                   placeholder="usuario@tenant.co"
                   className={cn(
                     'w-full h-14 px-4 bg-slate-50 border rounded-xl text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all',
-                    errors.email ? 'border-red-500 focus:ring-red-500' : 'border-slate-200 focus:ring-[#A5C330]',
+                    errors.email
+                      ? 'border-red-500 focus:ring-red-500'
+                      : 'border-slate-200 focus:ring-[#A5C330]',
                   )}
                   {...register('email')}
                 />
-                {errors.email && <span className="text-sm text-red-500">{errors.email.message}</span>}
+                {errors.email && (
+                  <span className="text-sm text-red-500">{errors.email.message}</span>
+                )}
               </label>
             </div>
 
@@ -138,7 +143,9 @@ export default function ResetPasswordPage() {
                 placeholder="Pega aquí el token recibido"
                 className={cn(
                   'w-full rounded-xl px-4 py-3 bg-slate-50 border text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all resize-none',
-                  errors.token ? 'border-red-500 focus:ring-red-500' : 'border-slate-200 focus:ring-[#A5C330]',
+                  errors.token
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-slate-200 focus:ring-[#A5C330]',
                 )}
                 {...register('token')}
               />

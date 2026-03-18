@@ -64,7 +64,8 @@ export default function ForgotPasswordPage() {
           <div className="mb-8 space-y-2">
             <h1 className="text-3xl font-bold text-[#181818]">Recuperar contraseña</h1>
             <p className="text-slate-500">
-              Ingresa tu correo y el slug del tenant. Si la cuenta existe, recibirás el enlace de recuperación.
+              Ingresa tu correo y el slug del tenant. Si la cuenta existe, recibirás el enlace de
+              recuperación.
             </p>
           </div>
 

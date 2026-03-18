@@ -349,9 +349,7 @@ export class TenantController {
   @ApiOperation({ summary: 'Consultar acceso inicial fijo del ADMIN bootstrap del tenant' })
   @ApiResponse({ status: 200, description: 'Acceso inicial vigente.' })
   @ApiResponse({ status: 409, description: 'El acceso inicial ya no está disponible.' })
-  async getBootstrapAdminCredentials(
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<{
+  async getBootstrapAdminCredentials(@Param('id', ParseUUIDPipe) id: string): Promise<{
     data: {
       message: string;
       adminEmail: string;

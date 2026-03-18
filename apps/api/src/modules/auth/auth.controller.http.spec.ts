@@ -1,8 +1,4 @@
-import {
-  INestApplication,
-  UnauthorizedException,
-  ValidationPipe,
-} from '@nestjs/common';
+import { INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { AuthController } from './auth.controller';
@@ -19,10 +15,17 @@ jest.mock('./auth.service', () => ({
 
 jest.mock('./guards/jwt-auth.guard', () => ({
   JwtAuthGuard: class JwtAuthGuard {
-    canActivate(context: { getHandler: () => unknown; getClass: () => unknown; switchToHttp: () => { getRequest: () => { headers: Record<string, string | undefined>; user?: JwtPayload } } }): boolean {
+    canActivate(context: {
+      getHandler: () => unknown;
+      getClass: () => unknown;
+      switchToHttp: () => {
+        getRequest: () => { headers: Record<string, string | undefined>; user?: JwtPayload };
+      };
+    }): boolean {
       const handler = context.getHandler() as object;
       const classRef = context.getClass() as object;
-      const isPublic = Reflect.getMetadata(IS_PUBLIC_KEY, handler) ?? Reflect.getMetadata(IS_PUBLIC_KEY, classRef);
+      const isPublic =
+        Reflect.getMetadata(IS_PUBLIC_KEY, handler) ?? Reflect.getMetadata(IS_PUBLIC_KEY, classRef);
 
       if (isPublic) {
         return true;
@@ -197,18 +200,14 @@ describe('AuthController HTTP', () => {
   });
 
   it('responde 401 en POST /api/v1/auth/refresh cuando no llega la cookie de refresh token', async () => {
-    const response = await request(app.getHttpServer())
-      .post('/api/v1/auth/refresh')
-      .expect(401);
+    const response = await request(app.getHttpServer()).post('/api/v1/auth/refresh').expect(401);
 
     expect(response.body.message).toBe('No se encontro el refresh token.');
     expect(mockAuthService.refreshTokens).not.toHaveBeenCalled();
   });
 
   it('protege POST /api/v1/auth/logout y devuelve 401 sin Bearer token', async () => {
-    await request(app.getHttpServer())
-      .post('/api/v1/auth/logout')
-      .expect(401);
+    await request(app.getHttpServer()).post('/api/v1/auth/logout').expect(401);
 
     expect(mockAuthService.logout).not.toHaveBeenCalled();
   });

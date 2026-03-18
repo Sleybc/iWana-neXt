@@ -18,12 +18,7 @@ import { UsersService } from './users.service';
  * HLD-MOD01-ARQUITECTURA-v1.0 — Seccion 4 (Capa de usuarios del tenant)
  */
 @Module({
-  imports: [
-    ConfigModule,
-    TypeOrmModule.forFeature([User]),
-    AuditModule,
-    TenantModule,
-  ],
+  imports: [ConfigModule, TypeOrmModule.forFeature([User]), AuditModule, TenantModule],
   controllers: [UsersController],
   providers: [UsersService],
   exports: [UsersService],

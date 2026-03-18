@@ -1112,7 +1112,9 @@ export class AuthService {
    * No se cachea al construir el servicio para no bloquear el arranque si el flujo no se usa.
    */
   private getInitialTenantAdminPassword(): string {
-    const configuredPassword = this.configService.get<string>(TENANT_INITIAL_ADMIN_PASSWORD_CONFIG_KEY);
+    const configuredPassword = this.configService.get<string>(
+      TENANT_INITIAL_ADMIN_PASSWORD_CONFIG_KEY,
+    );
 
     if (!configuredPassword?.trim()) {
       throw new ConflictException(
