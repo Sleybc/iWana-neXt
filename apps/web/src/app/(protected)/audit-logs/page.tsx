@@ -6,15 +6,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { AuditLogsTable } from '@/components/audit/AuditLogsTable';
-import { auditApi, tenantApi, type AuditLogEntry, type TenantListItem } from '@/lib/api-client';
+import {
+  auditApi,
+  platformAuditApi,
+  tenantApi,
+  type AuditLogEntry,
+  type TenantListItem,
+  type PlatformAuditLogEntry,
+} from '@/lib/api-client';
 
-// Número de registros por página
 const PAGE_LIMIT = 50;
 
-/**
- * Selector de tenant personalizado con dropdown estilizado.
- * Idéntico al de la página de usuarios para consistencia visual.
- */
 function TenantSelect({
   tenants,
   value,
@@ -30,7 +32,6 @@ function TenantSelect({
 
   const selectedName = tenants.find((t) => t.slug === value)?.name ?? 'Seleccionar empresa';
 
-  /** Calcula si hay espacio debajo antes de abrir */
   const handleToggle = () => {
     if (!open && ref.current) {
       const rect = ref.current.getBoundingClientRect();
@@ -39,7 +40,6 @@ function TenantSelect({
     setOpen((prev) => !prev);
   };
 
-  /** Cierra al hacer clic fuera */
   useEffect(() => {
     if (!open) return;
     const handleOutsideClick = (e: MouseEvent) => {
@@ -51,7 +51,6 @@ function TenantSelect({
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, [open]);
 
-  /** Cierra al presionar Escape */
   useEffect(() => {
     if (!open) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -63,7 +62,6 @@ function TenantSelect({
 
   return (
     <div ref={ref} className="relative inline-block text-left">
-      {/* Botón disparador */}
       <button
         type="button"
         aria-label="Seleccionar tenant"
@@ -79,7 +77,6 @@ function TenantSelect({
         />
       </button>
 
-      {/* Lista de opciones */}
       {open && tenants.length > 0 && (
         <ul
           role="listbox"
@@ -112,63 +109,39 @@ function TenantSelect({
   );
 }
 
-export default function AuditLogsPage() {
-  // Lista de tenants activos para el selector
-  const [tenants, setTenants] = useState<TenantListItem[]>([]);
-  // Lista de entradas de la página actual
-  const [entries, setEntries] = useState<AuditLogEntry[]>([]);
-  // Cursor de la página actual (undefined = primera página)
+type BaseAuditEntry = Pick<
+  AuditLogEntry,
+  | 'id'
+  | 'action'
+  | 'entityType'
+  | 'entityId'
+  | 'userId'
+  | 'ipAddress'
+  | 'userAgent'
+  | 'oldValue'
+  | 'newValue'
+  | 'createdAt'
+>;
+
+function useAuditTable(initialEntries: BaseAuditEntry[] = []) {
+  const [entries, setEntries] = useState<BaseAuditEntry[]>(initialEntries);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
-  // Historial de cursores para navegar hacia atrás
   const [cursorHistory, setCursorHistory] = useState<string[]>([]);
-  // Cursor para la siguiente página (último id de la página actual)
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
-  // Indicador de carga de datos
   const [isLoading, setIsLoading] = useState(false);
-  // Slug del tenant seleccionado para filtrar los registros
-  const [tenantSlug, setTenantSlug] = useState('');
-  // Error visible al cargar — muestra el mensaje real del API
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Cargar lista de tenants activos al montar el componente
-  useEffect(() => {
-    const loadTenants = async () => {
-      try {
-        const list = await tenantApi.list({ limit: 100, offset: 0 });
-        const active = list.filter((item) => item.status === 'ACTIVE');
-        setTenants(active);
-        // Seleccionar automáticamente el primer tenant activo
-        if (active[0]) {
-          setTenantSlug(active[0].slug);
-        }
-      } catch {
-        // Si no hay tenants disponibles, el selector quedará vacío
-      }
-    };
-
-    void loadTenants();
-  }, []);
-
-  // Carga la página de audit logs correspondiente al cursor dado
   const loadEntries = useCallback(
-    async (cur?: string) => {
-      if (!tenantSlug) {
-        setEntries([]);
-        setNextCursor(undefined);
-        return;
-      }
-
+    async (
+      fetchFn: () => Promise<{ data: BaseAuditEntry[]; nextCursor: string | null | undefined }>,
+    ) => {
       setIsLoading(true);
       setLoadError(null);
       try {
-        const params = cur ? { limit: PAGE_LIMIT, cursor: cur } : { limit: PAGE_LIMIT };
-        const result = await auditApi.list(params, tenantSlug);
-        setEntries(result);
-        // El nextCursor es el id del último elemento de la página actual
-        const lastId = result[result.length - 1]?.id;
-        setNextCursor(result.length === PAGE_LIMIT ? lastId : undefined);
+        const result = await fetchFn();
+        setEntries(result.data);
+        setNextCursor(result.nextCursor ?? undefined);
       } catch (err) {
-        // Mostrar el error real al usuario en lugar de silenciarlo
         const message =
           err instanceof ApiError ? err.message : 'Error al cargar los registros de auditoría.';
         setLoadError(message);
@@ -178,73 +151,177 @@ export default function AuditLogsPage() {
         setIsLoading(false);
       }
     },
-    [tenantSlug],
+    [],
   );
 
-  // Cargar primera página al montar y cuando cambia el tenant
-  useEffect(() => {
+  const reset = useCallback(() => {
     setCursor(undefined);
     setCursorHistory([]);
     setNextCursor(undefined);
-    void loadEntries(undefined);
-  }, [loadEntries]);
+  }, []);
 
-  // Navegar a la siguiente página guardando el cursor actual en el historial
   const handleNext = () => {
-    if (!nextCursor) {
-      return;
-    }
+    if (!nextCursor) return;
     setCursorHistory((prev) => [...prev, cursor ?? '']);
-    const newCursor = nextCursor;
-    setCursor(newCursor);
-    void loadEntries(newCursor);
+    setCursor(nextCursor);
   };
 
-  // Navegar a la página anterior recuperando el cursor del historial
   const handlePrev = () => {
     const previousCursor = cursorHistory[cursorHistory.length - 1];
     const restoredCursor = previousCursor === '' ? undefined : previousCursor;
     setCursorHistory((prev) => prev.slice(0, -1));
     setCursor(restoredCursor);
-    void loadEntries(restoredCursor);
+  };
+
+  return {
+    entries,
+    cursor,
+    cursorHistory,
+    nextCursor,
+    isLoading,
+    loadError,
+    loadEntries,
+    reset,
+    handleNext,
+    handlePrev,
+    setEntries,
+    setNextCursor,
+  };
+}
+
+export default function AuditLogsPage() {
+  const [tenants, setTenants] = useState<TenantListItem[]>([]);
+  const [tenantSlug, setTenantSlug] = useState('');
+
+  const platformTable = useAuditTable();
+
+  const tenantTable = useAuditTable();
+
+  useEffect(() => {
+    const loadTenants = async () => {
+      try {
+        const list = await tenantApi.list({ limit: 100, offset: 0 });
+        const active = list.filter((item) => item.status === 'ACTIVE');
+        setTenants(active);
+        if (active[0]) {
+          setTenantSlug(active[0].slug);
+        }
+      } catch {
+        // Si no hay tenants, queda vacío
+      }
+    };
+
+    void loadTenants();
+  }, []);
+
+  useEffect(() => {
+    const fetchPlatform = () => {
+      const params: { limit: number; cursor?: string } = { limit: PAGE_LIMIT };
+      if (platformTable.cursor) params.cursor = platformTable.cursor;
+      return platformAuditApi.list(params).then((r) => ({
+        data: r.data as BaseAuditEntry[],
+        nextCursor: r.nextCursor,
+      }));
+    };
+    void platformTable.loadEntries(fetchPlatform);
+  }, [platformTable.cursor]);
+
+  useEffect(() => {
+    if (!tenantSlug) return;
+    const fetchTenant = () => {
+      const params: { limit: number; cursor?: string } = { limit: PAGE_LIMIT };
+      if (tenantTable.cursor) params.cursor = tenantTable.cursor;
+      return auditApi.list(params, tenantSlug).then((r) => ({
+        data: r as unknown as BaseAuditEntry[],
+        nextCursor: undefined,
+      }));
+    };
+    void tenantTable.loadEntries(fetchTenant);
+  }, [tenantSlug, tenantTable.cursor]);
+
+  const handleTenantChange = (slug: string) => {
+    setTenantSlug(slug);
+    tenantTable.reset();
+    tenantTable.setEntries([]);
+    tenantTable.setNextCursor(undefined);
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-10">
       <PageHeader
         title="Registros de Auditoría"
         subtitle="Historial de operaciones CUD del sistema"
       />
 
-      {/* Selector de empresa */}
-      <div className="flex flex-wrap items-center gap-2">
-        <TenantSelect
-          tenants={tenants}
-          value={tenantSlug}
-          onChange={(slug) => {
-            setTenantSlug(slug);
-            setCursor(undefined);
-            setCursorHistory([]);
-            setNextCursor(undefined);
-          }}
+      {/* --- Sección: Auditoría de Plataforma --- */}
+      <section aria-labelledby="platform-audit-heading">
+        <h2
+          id="platform-audit-heading"
+          className="text-lg font-bold text-[#181818] dark:text-white mb-3"
+        >
+          Auditoría de Plataforma
+        </h2>
+        <p className="text-sm text-slate-500 mb-4">
+          Operaciones de administradores de plataforma (SYSTEM_ADMIN, IWANA_SUPPORT) sobre tenants y
+          usuarios de plataforma.
+        </p>
+
+        {platformTable.loadError && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+            <strong>Error al cargar registros:</strong> {platformTable.loadError}
+          </div>
+        )}
+
+        <AuditLogsTable
+          entries={platformTable.entries}
+          isLoading={platformTable.isLoading}
+          hasNextPage={Boolean(platformTable.nextCursor)}
+          hasPrevPage={platformTable.cursorHistory.length > 0}
+          onNext={platformTable.handleNext}
+          onPrev={platformTable.handlePrev}
         />
-      </div>
+      </section>
 
-      {/* Banner de error — visible cuando la carga falla */}
-      {loadError && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
-          <strong>Error al cargar registros:</strong> {loadError}
+      {/* --- Sección: Auditoría por Tenant --- */}
+      <section aria-labelledby="tenant-audit-heading">
+        <h2
+          id="tenant-audit-heading"
+          className="text-lg font-bold text-[#181818] dark:text-white mb-3"
+        >
+          Auditoría por Empresa
+        </h2>
+
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <TenantSelect tenants={tenants} value={tenantSlug} onChange={handleTenantChange} />
+          {tenantSlug && (
+            <span className="text-sm text-slate-500">
+              Mostrando registros de{' '}
+              <strong>{tenants.find((t) => t.slug === tenantSlug)?.name ?? tenantSlug}</strong>
+            </span>
+          )}
         </div>
-      )}
 
-      <AuditLogsTable
-        entries={entries}
-        isLoading={isLoading}
-        hasNextPage={Boolean(nextCursor)}
-        hasPrevPage={cursorHistory.length > 0}
-        onNext={handleNext}
-        onPrev={handlePrev}
-      />
+        {tenantTable.loadError && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+            <strong>Error al cargar registros:</strong> {tenantTable.loadError}
+          </div>
+        )}
+
+        {tenantSlug ? (
+          <AuditLogsTable
+            entries={tenantTable.entries}
+            isLoading={tenantTable.isLoading}
+            hasNextPage={Boolean(tenantTable.nextCursor)}
+            hasPrevPage={tenantTable.cursorHistory.length > 0}
+            onNext={tenantTable.handleNext}
+            onPrev={tenantTable.handlePrev}
+          />
+        ) : (
+          <div className="rounded-xl border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-slate-500 dark:border-gray-700 dark:text-slate-400">
+            Selecciona una empresa para ver sus registros de auditoría.
+          </div>
+        )}
+      </section>
     </div>
   );
 }

@@ -3,11 +3,26 @@
 // Tabla de registros de auditoría con paginación cursor-based, filtros client-side y export CSV
 import React, { useMemo, useState } from 'react';
 
-import type { AuditLogEntry } from '@/lib/api-client';
+import type { AuditLogEntry, PlatformAuditLogEntry } from '@/lib/api-client';
+
+// Base type con campos comunes
+type BaseAuditEntry = Pick<
+  AuditLogEntry,
+  | 'id'
+  | 'action'
+  | 'entityType'
+  | 'entityId'
+  | 'userId'
+  | 'ipAddress'
+  | 'userAgent'
+  | 'oldValue'
+  | 'newValue'
+  | 'createdAt'
+>;
 
 // Props del componente de tabla de audit logs
 interface AuditLogsTableProps {
-  entries: AuditLogEntry[];
+  entries: BaseAuditEntry[];
   isLoading: boolean;
   hasNextPage: boolean;
   hasPrevPage: boolean;

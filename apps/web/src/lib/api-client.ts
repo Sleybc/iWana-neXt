@@ -650,6 +650,38 @@ export const auditApi = {
   },
 };
 
+// Platform audit log entry — sin tenantId (schema público)
+export interface PlatformAuditLogEntry {
+  id: string;
+  userId: string | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  oldValue: Record<string, unknown> | null;
+  newValue: Record<string, unknown> | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  requestId: string | null;
+  createdAt: string;
+}
+
+export interface PlatformAuditLogResponse {
+  data: PlatformAuditLogEntry[];
+  nextCursor: string | null;
+}
+
+export const platformAuditApi = {
+  list: (params?: { cursor?: string; limit?: number; action?: string; entityType?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.limit !== undefined) searchParams.set('limit', String(params.limit));
+    if (params?.cursor) searchParams.set('cursor', params.cursor);
+    if (params?.action) searchParams.set('action', params.action);
+    if (params?.entityType) searchParams.set('entityType', params.entityType);
+    const query = searchParams.toString();
+    return request<PlatformAuditLogResponse>(`/platform-audit-logs${query ? `?${query}` : ''}`);
+  },
+};
+
 export const usersApi = {
   list: (
     tenantSlug: string,

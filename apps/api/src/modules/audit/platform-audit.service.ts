@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, LessThan } from 'typeorm';
 import { PlatformAuditLog } from '@iwana/db';
 import { AuditEntryInput } from './interfaces/audit-entry.interface';
 
@@ -48,11 +48,45 @@ export class PlatformAuditService {
       });
       await repo.save(logEntry);
     } catch (err) {
-      // Audit failure NUNCA debe bloquear la operacion principal
       this.logger.warn(
         `Fallo al registrar platform audit entry ` +
           `[action=${entry.action} entity=${entry.entityType}:${entry.entityId}]: ${String(err)}`,
       );
     }
+  }
+
+  /**
+   * Consulta platform_audit_logs con filtros opcionales y paginación cursor-based.
+   * Sin dependencia de TenantContext — opera siempre sobre el schema público.
+   */
+  async query(
+    params: {
+      limit?: number;
+      cursor?: string;
+      action?: string;
+      entityType?: string;
+      userId?: string;
+    } = {},
+  ): Promise<{ data: PlatformAuditLog[]; nextCursor: string | null }> {
+    const limit = params.limit ?? 50;
+    const repo = this.dataSource.getRepository(PlatformAuditLog);
+
+    const where: Record<string, unknown> = {};
+    if (params.action) where['action'] = params.action;
+    if (params.entityType) where['entityType'] = params.entityType;
+    if (params.userId) where['userId'] = params.userId;
+    if (params.cursor) where['id'] = LessThan(params.cursor);
+
+    const [data, total] = await repo.findAndCount({
+      where,
+      order: { createdAt: 'DESC', id: 'DESC' },
+      take: limit + 1,
+    });
+
+    const hasNext = total > limit;
+    const slice = hasNext ? data.slice(0, limit) : data;
+    const nextCursor = hasNext ? (slice[slice.length - 1]?.id ?? null) : null;
+
+    return { data: slice, nextCursor };
   }
 }

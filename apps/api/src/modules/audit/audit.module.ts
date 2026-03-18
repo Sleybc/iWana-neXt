@@ -4,6 +4,7 @@ import { AuditService } from './audit.service';
 import { PlatformAuditService } from './platform-audit.service';
 import { AuditQueryService } from './audit-query.service';
 import { AuditController } from './audit.controller';
+import { PlatformAuditController } from './platform-audit.controller';
 import { AuditInterceptor } from './audit.interceptor';
 
 /**
@@ -26,7 +27,7 @@ import { AuditInterceptor } from './audit.interceptor';
  * HLD-MOD01-ARQUITECTURA-v1.0 Seccion 1 (@iwana/audit)
  */
 @Module({
-  controllers: [AuditController],
+  controllers: [AuditController, PlatformAuditController],
   providers: [AuditService, PlatformAuditService, AuditQueryService],
   exports: [AuditService, PlatformAuditService, AuditQueryService],
 })

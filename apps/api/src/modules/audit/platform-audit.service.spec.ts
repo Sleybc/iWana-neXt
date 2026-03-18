@@ -24,13 +24,15 @@ function buildMockDataSource(): {
   dataSource: DataSource;
   save: jest.Mock;
   create: jest.Mock;
+  findAndCount: jest.Mock;
 } {
   const save = jest.fn().mockResolvedValue({});
   const create = jest.fn().mockImplementation((_entity: unknown, data: unknown) => data);
+  const findAndCount = jest.fn().mockResolvedValue([[], 0]);
   const dataSource = {
-    getRepository: jest.fn().mockReturnValue({ save, create }),
+    getRepository: jest.fn().mockReturnValue({ save, create, findAndCount }),
   } as unknown as DataSource;
-  return { dataSource, save, create };
+  return { dataSource, save, create, findAndCount };
 }
 
 const BASE_ENTRY: AuditEntryInput = {
@@ -50,11 +52,13 @@ describe('PlatformAuditService', () => {
   let service: PlatformAuditService;
   let save: jest.Mock;
   let create: jest.Mock;
+  let findAndCount: jest.Mock;
 
   beforeEach(async () => {
-    const { dataSource, save: s, create: c } = buildMockDataSource();
+    const { dataSource, save: s, create: c, findAndCount: fc } = buildMockDataSource();
     save = s;
     create = c;
+    findAndCount = fc;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [PlatformAuditService, { provide: DataSource, useValue: dataSource }],
@@ -142,5 +146,67 @@ describe('PlatformAuditService', () => {
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ oldValue: null, newValue: null }),
     );
+  });
+
+  describe('query', () => {
+    const mockEntry = {
+      id: 'entry-uuid-1',
+      userId: 'user-uuid-1',
+      action: 'CREATE',
+      entityType: 'PlatformUser',
+      entityId: 'pu-uuid-1',
+      oldValue: null,
+      newValue: { email: 'admin@iwana.co' },
+      ipAddress: '10.0.0.1',
+      userAgent: 'Mozilla/5.0',
+      requestId: null,
+      createdAt: new Date(),
+    };
+
+    beforeEach(() => {
+      findAndCount.mockResolvedValue([[mockEntry], 1]);
+    });
+
+    it('retorna datos y nextCursor=null cuando hay resultados', async () => {
+      const result = await service.query({ limit: 50 });
+      expect(result.data).toHaveLength(1);
+      expect(result.nextCursor).toBeNull();
+      expect(findAndCount).toHaveBeenCalledWith({
+        where: {},
+        order: { createdAt: 'DESC', id: 'DESC' },
+        take: 51,
+      });
+    });
+
+    it('retorna nextCursor cuando hay mas resultados que el limite', async () => {
+      findAndCount.mockResolvedValue([
+        [mockEntry, { ...mockEntry, id: 'entry-uuid-2' }, { ...mockEntry, id: 'entry-uuid-3' }],
+        3,
+      ]);
+      const result = await service.query({ limit: 2 });
+      expect(result.data).toHaveLength(2);
+      expect(result.nextCursor).toBe('entry-uuid-2');
+    });
+
+    it('aplica filtro de action cuando se provee', async () => {
+      await service.query({ limit: 50, action: 'CREATE' });
+      expect(findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ action: 'CREATE' }) }),
+      );
+    });
+
+    it('aplica filtro de entityType cuando se provee', async () => {
+      await service.query({ limit: 50, entityType: 'PlatformUser' });
+      expect(findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ entityType: 'PlatformUser' }) }),
+      );
+    });
+
+    it('aplica filtro de cursor cuando se provee', async () => {
+      await service.query({ limit: 50, cursor: 'entry-uuid-5' });
+      expect(findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ id: expect.anything() }) }),
+      );
+    });
   });
 });
