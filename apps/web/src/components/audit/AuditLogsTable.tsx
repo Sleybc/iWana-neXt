@@ -22,7 +22,7 @@ type BaseAuditEntry = Pick<
 
 // Props del componente de tabla de audit logs
 interface AuditLogsTableProps {
-  entries: BaseAuditEntry[];
+  entries?: BaseAuditEntry[];
   isLoading: boolean;
   hasNextPage: boolean;
   hasPrevPage: boolean;
@@ -56,7 +56,7 @@ function truncate(value: string | null, maxLength: number): string {
 }
 
 export function AuditLogsTable({
-  entries,
+  entries = [],
   isLoading,
   hasNextPage,
   hasPrevPage,
