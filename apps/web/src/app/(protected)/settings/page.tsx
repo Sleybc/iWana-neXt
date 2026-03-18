@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { cn } from '@iwana/ui';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { ProfileForm } from '@/components/profile/ProfileForm';
 import { SecuritySettings } from '@/components/settings/SecuritySettings';
 
 // Identificadores de tabs disponibles en la página de configuración
@@ -46,7 +45,17 @@ export default function SettingsPage() {
       </div>
 
       {/* Contenido del tab activo */}
-      {activeTab === 'general' && <ProfileForm />}
+      {activeTab === 'general' && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-dark-border dark:bg-dark-surface-2">
+          <h2 className="mb-4 text-lg font-semibold text-iwana-primary dark:text-white">
+            Preferencias generales
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            La configuración operativa y los datos de empresa se gestionan desde el detalle de cada
+            tenant en la sección <strong>Empresas</strong>.
+          </p>
+        </div>
+      )}
 
       {activeTab === 'seguridad' && <SecuritySettings />}
     </div>
