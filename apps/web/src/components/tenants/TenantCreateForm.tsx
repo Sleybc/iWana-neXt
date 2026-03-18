@@ -10,11 +10,7 @@ import { ApiError, tenantApi, type AdminCredentials, type TenantListItem } from 
 import { CredentialsModal } from './CredentialsModal';
 
 // Validaciones opcionales compartidas entre secciones
-const optionalPhone = z
-  .string()
-  .regex(/^\+\d{7,15}$/, 'Teléfono debe estar en formato E.164 (ej: +573001234567)')
-  .optional()
-  .or(z.literal(''));
+const optionalPhone = z.string().max(50, 'Máximo 50 caracteres').optional().or(z.literal(''));
 
 const optionalUrl = z.string().url('URL inválida (incluye https://)').optional().or(z.literal(''));
 
@@ -59,6 +55,11 @@ export const tenantCreateSchema = z.object({
   economicSector: z.string().max(10).optional().or(z.literal('')),
   // Seguridad
   mfaRequiredAll: z.boolean().default(false),
+  // Configuración regional
+  timezone: z.string().default('America/Bogota'),
+  currency: z.string().default('COP'),
+  language: z.string().default('es-CO'),
+  country: z.string().default('CO'),
 });
 
 type TenantCreateFormValues = z.infer<typeof tenantCreateSchema>;
@@ -88,9 +89,9 @@ export function TenantCreateForm() {
   const [credentials, setCredentials] = useState<AdminCredentials | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [activeSection, setActiveSection] = useState<'basico' | 'legal' | 'direccion' | 'contacto'>(
-    'basico',
-  );
+  const [activeSection, setActiveSection] = useState<
+    'basico' | 'legal' | 'direccion' | 'contacto' | 'regional'
+  >('basico');
 
   const {
     register,
@@ -100,7 +101,15 @@ export function TenantCreateForm() {
     formState: { errors, isSubmitting },
   } = useForm<TenantCreateFormValues>({
     resolver: zodResolver(tenantCreateSchema) as never,
-    defaultValues: { maxSubscribers: 0, countryCode: 'CO', mfaRequiredAll: false },
+    defaultValues: {
+      maxSubscribers: 0,
+      countryCode: 'CO',
+      mfaRequiredAll: false,
+      timezone: 'America/Bogota',
+      currency: 'COP',
+      language: 'es-CO',
+      country: 'CO',
+    },
   });
 
   const statusLabel = useMemo(() => {
@@ -136,6 +145,10 @@ export function TenantCreateForm() {
         ...(values.website ? { website: values.website } : {}),
         ...(values.economicSector ? { economicSector: values.economicSector } : {}),
         settings: {
+          timezone: values.timezone,
+          currency: values.currency,
+          language: values.language,
+          country: values.country,
           features: {
             mfa_required_all: values.mfaRequiredAll ?? false,
           },
@@ -209,6 +222,7 @@ export function TenantCreateForm() {
   // Pestañas de sección
   const tabs: { key: typeof activeSection; label: string }[] = [
     { key: 'basico', label: 'Básico' },
+    { key: 'regional', label: 'Regional' },
     { key: 'legal', label: 'Datos legales' },
     { key: 'direccion', label: 'Dirección' },
     { key: 'contacto', label: 'Contacto' },
@@ -316,6 +330,83 @@ export function TenantCreateForm() {
               <p className="mt-1 text-xs text-gray-400">
                 Si se activa, cada usuario será redirigido al setup de MFA en su primer ingreso.
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* ── Sección: Regional ─────────────────────────────────────── */}
+        {activeSection === 'regional' && (
+          <div className={SECTION_CLASS}>
+            <p className={SECTION_TITLE_CLASS}>Configuración regional</p>
+            <p className="mb-4 text-xs text-gray-500 dark:text-gray-400">
+              Define la zona horaria, moneda, idioma y país operativo de la empresa.
+            </p>
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <div>
+                <label htmlFor="tenant-timezone" className={LABEL_CLASS}>
+                  Zona horaria
+                </label>
+                <select id="tenant-timezone" className={INPUT_CLASS} {...register('timezone')}>
+                  <option value="America/Bogota">America/Bogota (Colombia)</option>
+                  <option value="America/Guayaquil">America/Guayaquil (Ecuador)</option>
+                  <option value="America/Lima">America/Lima (Perú)</option>
+                  <option value="America/Mexico_City">America/Mexico_City (México)</option>
+                  <option value="America/New_York">America/New_York (EE.UU.)</option>
+                  <option value="America/Santiago">America/Santiago (Chile)</option>
+                  <option value="America/Buenos_Aires">America/Buenos_Aires (Argentina)</option>
+                  <option value="Europe/Madrid">Europe/Madrid (España)</option>
+                  <option value="UTC">UTC</option>
+                </select>
+                {errors.timezone && <p className={ERROR_CLASS}>{errors.timezone.message}</p>}
+              </div>
+
+              <div>
+                <label htmlFor="tenant-currency" className={LABEL_CLASS}>
+                  Moneda
+                </label>
+                <select id="tenant-currency" className={INPUT_CLASS} {...register('currency')}>
+                  <option value="COP">COP — Peso colombiano</option>
+                  <option value="USD">USD — Dólar estadounidense</option>
+                  <option value="EUR">EUR — Euro</option>
+                  <option value="MXN">MXN — Peso mexicano</option>
+                  <option value="PEN">PEN — Sol peruano</option>
+                  <option value="CLP">CLP — Peso chileno</option>
+                  <option value="ARS">ARS — Peso argentino</option>
+                </select>
+                {errors.currency && <p className={ERROR_CLASS}>{errors.currency.message}</p>}
+              </div>
+
+              <div>
+                <label htmlFor="tenant-language" className={LABEL_CLASS}>
+                  Idioma
+                </label>
+                <select id="tenant-language" className={INPUT_CLASS} {...register('language')}>
+                  <option value="es-CO">Español de Colombia (es-CO)</option>
+                  <option value="es-MX">Español de México (es-MX)</option>
+                  <option value="es-PE">Español de Perú (es-PE)</option>
+                  <option value="es-ES">Español de España (es-ES)</option>
+                  <option value="en-US">English (en-US)</option>
+                </select>
+                {errors.language && <p className={ERROR_CLASS}>{errors.language.message}</p>}
+              </div>
+
+              <div>
+                <label htmlFor="tenant-country" className={LABEL_CLASS}>
+                  País operativo
+                </label>
+                <select id="tenant-country" className={INPUT_CLASS} {...register('country')}>
+                  <option value="CO">Colombia (CO)</option>
+                  <option value="EC">Ecuador (EC)</option>
+                  <option value="MX">México (MX)</option>
+                  <option value="PE">Perú (PE)</option>
+                  <option value="US">Estados Unidos (US)</option>
+                  <option value="CL">Chile (CL)</option>
+                  <option value="AR">Argentina (AR)</option>
+                  <option value="ES">España (ES)</option>
+                </select>
+                {errors.country && <p className={ERROR_CLASS}>{errors.country.message}</p>}
+              </div>
             </div>
           </div>
         )}
@@ -480,7 +571,7 @@ export function TenantCreateForm() {
                 id="tenant-phone"
                 type="tel"
                 className={INPUT_CLASS}
-                placeholder="+573001234567"
+                placeholder="3001234567"
                 {...register('phone')}
               />
               {errors.phone && <p className={ERROR_CLASS}>{errors.phone.message}</p>}

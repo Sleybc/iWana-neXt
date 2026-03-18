@@ -68,3 +68,38 @@ export class TenantSettingsResponseDto {
     mfa_required_all: boolean;
   };
 }
+
+/**
+ * Schema de settings para crear un tenant.
+ * Validado como DTO anidado dentro de CreateTenantDto.
+ */
+export class CreateTenantSettingsDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  timezone?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Z]{3}$/, {
+    message: 'currency debe estar en formato ISO 4217 (3 letras mayúsculas).',
+  })
+  currency?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  language?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Z]{2}$/, {
+    message: 'country debe estar en formato ISO 3166-1 alpha-2.',
+  })
+  country?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => TenantFeaturesDto)
+  features?: TenantFeaturesDto;
+}

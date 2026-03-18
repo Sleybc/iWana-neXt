@@ -1,3 +1,4 @@
+import { Type } from 'class-transformer';
 import {
   IsEmail,
   IsEnum,
@@ -8,8 +9,10 @@ import {
   Matches,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import { CompanyType, TenantStatus } from '@iwana/shared';
+import { CreateTenantSettingsDto } from './tenant-settings.dto';
 
 /**
  * DTO para crear un nuevo tenant (ISP).
@@ -47,6 +50,7 @@ export class CreateTenantDto {
   /**
    * Configuracion inicial del tenant.
    * Ejemplo: { timezone: 'America/Bogota', currency: 'COP' }
+   * Los campos se validan via CreateTenantSettingsDto en el servicio.
    */
   @IsOptional()
   settings?: Record<string, unknown>;
@@ -114,10 +118,10 @@ export class CreateTenantDto {
 
   // ── Contacto adicional (opcionales) ──────────────────────────────────────
 
-  /** Teléfono en formato E.164 (ej: "+573001234567") */
+  /** Teléfono principal — cualquier formato entre 7 y 50 caracteres */
   @IsOptional()
   @IsString()
-  @Matches(/^\+\d{7,15}$/, { message: 'phone debe estar en formato E.164 (ej: +573001234567).' })
+  @MaxLength(50)
   phone?: string;
 
   /** Sitio web corporativo */
@@ -218,9 +222,10 @@ export class UpdateTenantDto {
 
   // ── Contacto adicional (opcionales) ──────────────────────────────────────
 
+  /** Teléfono principal — cualquier formato entre 7 y 50 caracteres */
   @IsOptional()
   @IsString()
-  @Matches(/^\+\d{7,15}$/, { message: 'phone debe estar en formato E.164 (ej: +573001234567).' })
+  @MaxLength(50)
   phone?: string;
 
   @IsOptional()

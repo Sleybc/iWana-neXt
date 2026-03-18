@@ -9,12 +9,17 @@ import {
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import Redis from 'ioredis';
 import { DataSource, Repository } from 'typeorm';
+import { validateSync } from 'class-validator';
 import { Tenant, isValidSchemaName } from '@iwana/db';
 import { AuditAction, TenantStatus } from '@iwana/shared';
 import { AuditService } from '../audit/audit.service';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { CreateTenantDto, TenantResponseDto, UpdateTenantDto } from './dto/tenant.dto';
-import { TenantSettingsResponseDto, UpdateTenantSettingsDto } from './dto/tenant-settings.dto';
+import {
+  CreateTenantSettingsDto,
+  TenantSettingsResponseDto,
+  UpdateTenantSettingsDto,
+} from './dto/tenant-settings.dto';
 import { TenantSelfResponseDto, TenantSelfSettingsResponseDto } from './dto/tenant-self.dto';
 import {
   UpdateTenantSelfBrandingDto,
@@ -85,13 +90,29 @@ export class TenantService {
       );
     }
 
+    let validatedSettings: Record<string, unknown> = {
+      timezone: 'America/Bogota',
+      currency: 'COP',
+    };
+    if (dto.settings) {
+      const settingsDto = Object.assign(new CreateTenantSettingsDto(), dto.settings);
+      const errors = validateSync(settingsDto, { whitelist: true });
+      if (errors.length > 0) {
+        const messages = errors
+          .map((e) => Object.values(e.constraints ?? {}).join(', '))
+          .join('; ');
+        throw new BadRequestException(`Configuración regional inválida: ${messages}`);
+      }
+      validatedSettings = dto.settings;
+    }
+
     const tenant = this.tenantRepo.create({
       name: dto.name,
       slug: dto.slug,
       schemaName,
       contactEmail: dto.contactEmail,
       maxSubscribers: dto.maxSubscribers ?? 0,
-      settings: dto.settings ?? { timezone: 'America/Bogota', currency: 'COP' },
+      settings: validatedSettings,
       status: TenantStatus.PROVISIONING, // El worker lo activa a ACTIVE post-provisioning
       // Datos legales opcionales
       legalName: dto.legalName ?? null,
