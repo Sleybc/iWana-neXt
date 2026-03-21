@@ -9,7 +9,6 @@ import {
   dashboardApi,
   tenantSelfApi,
   type DashboardAlert,
-  type DashboardSummary,
   type TenantSelf,
   type TenantSelfSettings,
 } from '@/lib/api-client';
@@ -49,7 +48,6 @@ export function SettingsClient() {
   const tabNamespace = useId();
   const [profile, setProfile] = useState<TenantSelf | null>(null);
   const [settings, setSettings] = useState<TenantSelfSettings | null>(null);
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [alerts, setAlerts] = useState<DashboardAlert[]>([]);
   const [activeTab, setActiveTab] = useState<SettingsTabId>('general');
   const [isLoading, setIsLoading] = useState(true);
@@ -107,14 +105,11 @@ export function SettingsClient() {
       setSettings(settingsResult.value);
 
       if (summaryResult.status === 'fulfilled' && summaryResult.value) {
-        setSummary(summaryResult.value);
         setAlerts(summaryResult.value.alerts);
       } else {
-        setSummary(null);
         setAlerts([]);
       }
     } catch (loadError) {
-      setSummary(null);
       setError(mapError(loadError));
     } finally {
       setIsLoading(false);
