@@ -58,11 +58,29 @@ describe('TenantService', () => {
   let repo: jest.Mocked<Repository<Tenant>>;
   let dataSource: {
     transaction: jest.Mock;
+    createQueryRunner: jest.Mock;
+  };
+  let queryRunner: {
+    connect: jest.Mock;
+    startTransaction: jest.Mock;
+    query: jest.Mock;
+    commitTransaction: jest.Mock;
+    rollbackTransaction: jest.Mock;
+    release: jest.Mock;
+    manager: {
+      find: jest.Mock;
+      findOne: jest.Mock;
+      create: jest.Mock;
+      save: jest.Mock;
+    };
   };
   let redis: {
     get: jest.Mock;
     set: jest.Mock;
     del: jest.Mock;
+  };
+  let auditServiceMock: {
+    log: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -72,13 +90,31 @@ describe('TenantService', () => {
       findOne: jest.fn(),
       findAndCount: jest.fn(),
     };
+    queryRunner = {
+      connect: jest.fn().mockResolvedValue(undefined),
+      startTransaction: jest.fn().mockResolvedValue(undefined),
+      query: jest.fn().mockResolvedValue(undefined),
+      commitTransaction: jest.fn().mockResolvedValue(undefined),
+      rollbackTransaction: jest.fn().mockResolvedValue(undefined),
+      release: jest.fn().mockResolvedValue(undefined),
+      manager: {
+        find: jest.fn(),
+        findOne: jest.fn(),
+        create: jest.fn(),
+        save: jest.fn(),
+      },
+    };
     dataSource = {
       transaction: jest.fn(),
+      createQueryRunner: jest.fn().mockReturnValue(queryRunner),
     };
     redis = {
       get: jest.fn().mockResolvedValue(null),
       set: jest.fn().mockResolvedValue('OK'),
       del: jest.fn().mockResolvedValue(1),
+    };
+    auditServiceMock = {
+      log: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -98,7 +134,7 @@ describe('TenantService', () => {
         },
         {
           provide: AuditService,
-          useValue: { log: jest.fn() },
+          useValue: auditServiceMock,
         },
       ],
     }).compile();
@@ -417,6 +453,195 @@ describe('TenantService', () => {
 
       await expect(service.delete('tenant-missing')).rejects.toThrow(NotFoundException);
       expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('plan catalog', () => {
+    const tenantId = 'tenant-uuid-001';
+    const schemaName = 'tenant_isp_test';
+
+    it('createPlanCatalogItem aplica regla NONE forzando installationFee=0 y mapea installationRule', async () => {
+      const dto = {
+        name: 'Plan 200',
+        technology: 'GPON',
+        downloadSpeedMbps: 200,
+        uploadSpeedMbps: 100,
+        basePrice: 89900,
+        installationFee: 75000,
+        installationRule: 'NONE',
+      };
+
+      queryRunner.manager.create.mockImplementation((_entity, payload) => payload);
+      queryRunner.manager.save.mockResolvedValue({
+        id: 'plan-1',
+        ...dto,
+        basePrice: '89900.00',
+        installationFee: '0.00',
+        validFrom: null,
+        validTo: null,
+        isActive: true,
+        createdAt: new Date('2026-03-21T10:00:00Z'),
+        updatedAt: new Date('2026-03-21T10:00:00Z'),
+      });
+      queryRunner.manager.find.mockResolvedValue([
+        {
+          id: 'plan-1',
+          tenantId,
+          name: 'Plan 200',
+          technology: 'GPON',
+          installationRule: 'NONE',
+          downloadSpeedMbps: 200,
+          uploadSpeedMbps: 100,
+          basePrice: '89900.00',
+          installationFee: '0.00',
+          validFrom: null,
+          validTo: null,
+          isActive: true,
+          createdAt: new Date('2026-03-21T10:00:00Z'),
+          updatedAt: new Date('2026-03-21T10:00:00Z'),
+        },
+      ]);
+
+      const result = await service.createPlanCatalogItem(tenantId, schemaName, dto);
+
+      expect(queryRunner.manager.create).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          installationRule: 'NONE',
+          installationFee: '0.00',
+        }),
+      );
+      expect(result[0]?.installationRule).toBe('NONE');
+      expect(result[0]?.installationFee).toBe(0);
+    });
+
+    it('createPlanCatalogItem usa ALWAYS por defecto cuando installationRule no viene', async () => {
+      const dto = {
+        name: 'Plan 100',
+        technology: 'GPON',
+        downloadSpeedMbps: 100,
+        uploadSpeedMbps: 50,
+        basePrice: 69900,
+      };
+
+      queryRunner.manager.create.mockImplementation((_entity, payload) => payload);
+      queryRunner.manager.save.mockResolvedValue({
+        id: 'plan-2',
+        tenantId,
+        ...dto,
+        installationRule: 'ALWAYS',
+        basePrice: '69900.00',
+        installationFee: '0.00',
+        validFrom: null,
+        validTo: null,
+        isActive: true,
+        createdAt: new Date('2026-03-21T10:00:00Z'),
+        updatedAt: new Date('2026-03-21T10:00:00Z'),
+      });
+      queryRunner.manager.find.mockResolvedValue([
+        {
+          id: 'plan-2',
+          tenantId,
+          ...dto,
+          installationRule: 'ALWAYS',
+          basePrice: '69900.00',
+          installationFee: '0.00',
+          validFrom: null,
+          validTo: null,
+          isActive: true,
+          createdAt: new Date('2026-03-21T10:00:00Z'),
+          updatedAt: new Date('2026-03-21T10:00:00Z'),
+        },
+      ]);
+
+      await service.createPlanCatalogItem(tenantId, schemaName, dto as never);
+
+      expect(queryRunner.manager.create).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ installationRule: 'ALWAYS' }),
+      );
+    });
+
+    it('updatePlanCatalogItem fuerza installationFee a 0.00 cuando la regla efectiva es NONE', async () => {
+      const currentEntity = {
+        id: 'plan-1',
+        tenantId,
+        name: 'Plan 200',
+        technology: 'GPON',
+        installationRule: 'ALWAYS',
+        downloadSpeedMbps: 200,
+        uploadSpeedMbps: 100,
+        basePrice: '89900.00',
+        installationFee: '50000.00',
+        validFrom: null,
+        validTo: null,
+        isActive: true,
+        createdAt: new Date('2026-03-21T10:00:00Z'),
+        updatedAt: new Date('2026-03-21T10:00:00Z'),
+      };
+
+      queryRunner.manager.findOne.mockResolvedValue(currentEntity);
+      queryRunner.manager.save.mockImplementation(async (_entity, updated) => updated);
+      queryRunner.manager.find.mockResolvedValue([
+        { ...currentEntity, installationRule: 'NONE', installationFee: '0.00' },
+      ]);
+
+      await service.updatePlanCatalogItem(
+        tenantId,
+        schemaName,
+        'plan-1',
+        { installationRule: 'NONE', installationFee: 95000 },
+        'actor-1',
+      );
+
+      expect(queryRunner.manager.save).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          installationRule: 'NONE',
+          installationFee: '0.00',
+        }),
+      );
+    });
+
+    it('updatePlanCatalogItem respeta installationFee enviado cuando la regla efectiva no es NONE', async () => {
+      const currentEntity = {
+        id: 'plan-3',
+        tenantId,
+        name: 'Plan 300',
+        technology: 'GPON',
+        installationRule: 'ALWAYS',
+        downloadSpeedMbps: 300,
+        uploadSpeedMbps: 150,
+        basePrice: '109900.00',
+        installationFee: '35000.00',
+        validFrom: null,
+        validTo: null,
+        isActive: true,
+        createdAt: new Date('2026-03-21T10:00:00Z'),
+        updatedAt: new Date('2026-03-21T10:00:00Z'),
+      };
+
+      queryRunner.manager.findOne.mockResolvedValue(currentEntity);
+      queryRunner.manager.save.mockImplementation(async (_entity, updated) => updated);
+      queryRunner.manager.find.mockResolvedValue([
+        { ...currentEntity, installationFee: '42000.00' },
+      ]);
+
+      await service.updatePlanCatalogItem(
+        tenantId,
+        schemaName,
+        'plan-3',
+        { installationFee: 42000 },
+        'actor-1',
+      );
+
+      expect(queryRunner.manager.save).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          installationRule: 'ALWAYS',
+          installationFee: '42000.00',
+        }),
+      );
     });
   });
 });

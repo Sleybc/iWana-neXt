@@ -94,6 +94,15 @@ describe('Tenant settings', () => {
     expect(data.timezone).toBe('America/Bogota');
     expect(data.currency).toBe('COP');
     expect(data.features.billing).toBe(false);
+    expect(data.fiberInstallationThresholdMeters).toBe(50);
+  });
+
+  it('getTenantSelfSettings retorna fiberInstallationThresholdMeters=50 cuando no existe en settings', async () => {
+    repo.findOne.mockResolvedValue(buildTenant({ settings: {} }));
+
+    const data = await service.getTenantSelfSettings('9f6e39ec-d756-4447-ad8f-bf6b768feefe');
+
+    expect(data.fiberInstallationThresholdMeters).toBe(50);
   });
 
   it('getSettings retorna valores mergeados cuando JSONB tiene datos parciales', async () => {
@@ -125,6 +134,23 @@ describe('Tenant settings', () => {
     expect(data.currency).toBe('USD');
     expect(data.timezone).toBe('America/Bogota');
     expect(data.features.billing).toBe(true);
+  });
+
+  it('updateSettings persiste fiberInstallationThresholdMeters cuando viene en dto', async () => {
+    const tenant = buildTenant({
+      settings: { timezone: 'America/Bogota', fiberInstallationThresholdMeters: 80 },
+    });
+    repo.findOne.mockResolvedValue(tenant);
+    repo.save.mockImplementation(async (entity) => entity as Tenant);
+
+    const data = await service.updateSettings(tenant.id, {
+      fiberInstallationThresholdMeters: 120,
+    });
+
+    expect(data.fiberInstallationThresholdMeters).toBe(120);
+    expect((tenant.settings as Record<string, unknown>)['fiberInstallationThresholdMeters']).toBe(
+      120,
+    );
   });
 
   it('updateSettings registra auditoría con oldValue/newValue', async () => {

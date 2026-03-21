@@ -31,3 +31,31 @@
 
 - Se requiere Task 5 para alinear respuestas de servicio con los nuevos campos `installationRule` y `fiberInstallationThresholdMeters`.
 - Se requiere Task 5 para remover dependencia de tipado legacy de tecnologia en adapters relacionados.
+
+## Actualizacion Task 5 (2026-03-21)
+
+### Ajustes aplicados
+
+- `apps/api/src/modules/tenant/tenant.service.ts`
+  - `createPlanCatalogItem` acepta `installationRule` del DTO, aplica default `ALWAYS` cuando falta y fuerza `installationFee = '0.00'` cuando la regla es `NONE`.
+  - `updatePlanCatalogItem` permite actualizar `installationRule` y aplica regla efectiva: `NONE` fuerza `installationFee = '0.00'`; en otras reglas respeta `installationFee` cuando llega en DTO.
+  - `toPlanCatalogDto` incluye `installationRule` en el mapeo de respuesta.
+  - `toSelfSettingsDto` incluye `fiberInstallationThresholdMeters` con default `50`.
+  - `updateSettings` persiste `fiberInstallationThresholdMeters` en la ruta de merge cuando viene en el DTO.
+- `apps/api/src/modules/tenant/dto/tenant-self.dto.ts`
+  - `TenantSelfSettingsResponseDto` incluye `fiberInstallationThresholdMeters` para mantener consistencia con el contrato self-service.
+
+### Cobertura de pruebas
+
+- `apps/api/src/modules/tenant/tenant.service.spec.ts`
+  - Nuevas pruebas para reglas de negocio del catálogo de planes (`installationRule`, default `ALWAYS`, coerción de `installationFee`).
+- `apps/api/src/modules/tenant/tenant-settings.spec.ts`
+  - Nuevas pruebas para default y persistencia de `fiberInstallationThresholdMeters`.
+
+### Verificacion Task 5
+
+- `pnpm --filter @iwana/api test -- tenant.service.spec.ts tenant-settings.spec.ts`
+  - Estado: OK (`38 passed`, `0 failed`).
+- `pnpm --filter @iwana/api typecheck`
+  - Estado: falla fuera de alcance de Task 5.
+  - Motivo: `apps/api/src/modules/tenant/tenant-crm-read-adapter.service.ts` mantiene tipado legacy para `technology` y no fue modificado en esta tarea por restricción de alcance.

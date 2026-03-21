@@ -10,13 +10,14 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import Redis from 'ioredis';
 import { DataSource, Repository } from 'typeorm';
 import { validateSync } from 'class-validator';
-import { Tenant, isValidSchemaName } from '@iwana/db';
+import { Tenant, isValidSchemaName, runInTenantSchema } from '@iwana/db';
 import { AuditAction, TenantStatus } from '@iwana/shared';
 import { AuditService } from '../audit/audit.service';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { CreateTenantDto, TenantResponseDto, UpdateTenantDto } from './dto/tenant.dto';
 import {
   CreateTenantSettingsDto,
+  TenantFeaturesDto,
   TenantSettingsResponseDto,
   UpdateTenantSettingsDto,
 } from './dto/tenant-settings.dto';
@@ -26,6 +27,22 @@ import {
   UpdateTenantSelfProfileDto,
   UpdateTenantSelfSettingsDto,
 } from './dto/tenant-self-update.dto';
+import {
+  CreateCommercialNodeDto,
+  CreateCoverageZoneDto,
+  CoverageAdminResponseDto,
+  CoverageCheckResponseDto,
+  UpdateCommercialNodeDto,
+  UpdateCoverageZoneDto,
+} from './dto/tenant-commercial-coverage.dto';
+import {
+  CreatePlanCatalogItemDto,
+  PlanCatalogItemResponseDto,
+  UpdatePlanCatalogItemDto,
+} from './dto/tenant-plan-catalog.dto';
+import { CommercialNode } from './entities/commercial-node.entity';
+import { CoverageZone } from './entities/coverage-zone.entity';
+import { PlanCatalogItem } from './entities/plan-catalog-item.entity';
 
 const TENANT_CACHE_TTL_SECONDS = 5 * 60;
 
@@ -96,6 +113,9 @@ export class TenantService {
     };
     if (dto.settings) {
       const settingsDto = Object.assign(new CreateTenantSettingsDto(), dto.settings);
+      if (settingsDto.features) {
+        settingsDto.features = Object.assign(new TenantFeaturesDto(), settingsDto.features);
+      }
       const errors = validateSync(settingsDto, { whitelist: true });
       if (errors.length > 0) {
         const messages = errors
@@ -338,6 +358,351 @@ export class TenantService {
     return newValue;
   }
 
+  /**
+   * Devuelve la configuración comercial de cobertura para administración tenant.
+   */
+  async getCoverageAdmin(tenantId: string, schemaName: string): Promise<CoverageAdminResponseDto> {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const nodes = await qr.manager.find(CommercialNode, {
+        where: { tenantId },
+        order: { createdAt: 'DESC' },
+      });
+      const zones = await qr.manager.find(CoverageZone, {
+        where: { tenantId },
+        order: { createdAt: 'DESC' },
+      });
+
+      return {
+        nodes: nodes.map((item) => this.toCommercialNodeDto(item)),
+        zones: zones.map((item) => this.toCoverageZoneDto(item)),
+      };
+    });
+  }
+
+  /**
+   * Evalúa factibilidad comercial inicial sin invadir lógica de provisioning técnico.
+   */
+  async checkCoverage(
+    tenantId: string,
+    schemaName: string,
+    address: string,
+    latitude?: number,
+    longitude?: number,
+  ): Promise<CoverageCheckResponseDto> {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const nodes = await qr.manager.find(CommercialNode, {
+        where: { tenantId, isActive: true },
+      });
+      const zones = await qr.manager.find(CoverageZone, {
+        where: { tenantId, isActive: true },
+      });
+
+      const matches: Array<{
+        id: string;
+        name: string;
+        type: 'NODE' | 'ZONE';
+        available: boolean;
+      }> = [];
+
+      if (latitude !== undefined && longitude !== undefined) {
+        for (const node of nodes) {
+          const distanceKm = this.calculateDistanceKm(
+            latitude,
+            longitude,
+            node.latitude,
+            node.longitude,
+          );
+          if (distanceKm <= 5) {
+            matches.push({ id: node.id, name: node.name, type: 'NODE', available: true });
+          }
+        }
+
+        for (const zone of zones) {
+          const distanceKm = this.calculateDistanceKm(
+            latitude,
+            longitude,
+            zone.centerLatitude,
+            zone.centerLongitude,
+          );
+          if (distanceKm <= Number(zone.radiusKm)) {
+            matches.push({ id: zone.id, name: zone.name, type: 'ZONE', available: true });
+          }
+        }
+      }
+
+      if (matches.length > 0) {
+        return {
+          available: true,
+          reason: 'Cobertura comercial disponible para la ubicación consultada.',
+          matches,
+        };
+      }
+
+      return {
+        available: false,
+        reason:
+          latitude !== undefined && longitude !== undefined
+            ? 'No se encontró cobertura comercial activa para la ubicación consultada.'
+            : `No hay cobertura comercial activa configurada para la dirección ${address}.`,
+        matches: [],
+      };
+    });
+  }
+
+  /**
+   * Crea un nodo comercial en el schema del tenant autenticado con auditoría.
+   */
+  async createCommercialNode(
+    tenantId: string,
+    schemaName: string,
+    dto: CreateCommercialNodeDto,
+    actorUserId?: string,
+  ): Promise<CoverageAdminResponseDto> {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const entity = qr.manager.create(CommercialNode, {
+        tenantId,
+        name: dto.name,
+        latitude: dto.latitude,
+        longitude: dto.longitude,
+        isActive: dto.isActive ?? true,
+      });
+      const saved = await qr.manager.save(CommercialNode, entity);
+
+      await this.auditService.log({
+        tenantId,
+        schemaName,
+        userId: actorUserId ?? null,
+        action: AuditAction.CREATE,
+        entityType: 'CommercialNode',
+        entityId: saved.id,
+        newValue: this.toCommercialNodeDto(saved) as unknown as Record<string, unknown>,
+      });
+
+      return this.getCoverageAdmin(tenantId, schemaName);
+    });
+  }
+
+  /**
+   * Actualiza un nodo comercial tenant-managed y registra delta de auditoría.
+   */
+  async updateCommercialNode(
+    tenantId: string,
+    schemaName: string,
+    nodeId: string,
+    dto: UpdateCommercialNodeDto,
+    actorUserId?: string,
+  ): Promise<CoverageAdminResponseDto> {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const entity = await qr.manager.findOne(CommercialNode, {
+        where: { id: nodeId, tenantId },
+      });
+      if (!entity) {
+        throw new NotFoundException(`Nodo comercial con id "${nodeId}" no encontrado.`);
+      }
+
+      const oldValue = this.toCommercialNodeDto(entity);
+      if (dto.name !== undefined) entity.name = dto.name;
+      if (dto.latitude !== undefined) entity.latitude = dto.latitude;
+      if (dto.longitude !== undefined) entity.longitude = dto.longitude;
+      if (dto.isActive !== undefined) entity.isActive = dto.isActive;
+
+      const saved = await qr.manager.save(CommercialNode, entity);
+
+      await this.auditService.log({
+        tenantId,
+        schemaName,
+        userId: actorUserId ?? null,
+        action: AuditAction.UPDATE,
+        entityType: 'CommercialNode',
+        entityId: saved.id,
+        oldValue: oldValue as unknown as Record<string, unknown>,
+        newValue: this.toCommercialNodeDto(saved) as unknown as Record<string, unknown>,
+      });
+
+      return this.getCoverageAdmin(tenantId, schemaName);
+    });
+  }
+
+  async createCoverageZone(
+    tenantId: string,
+    schemaName: string,
+    dto: CreateCoverageZoneDto,
+    actorUserId?: string,
+  ): Promise<CoverageAdminResponseDto> {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const entity = qr.manager.create(CoverageZone, {
+        tenantId,
+        name: dto.name,
+        centerLatitude: dto.centerLatitude,
+        centerLongitude: dto.centerLongitude,
+        radiusKm: dto.radiusKm.toFixed(2),
+        isActive: dto.isActive ?? true,
+      });
+      const saved = await qr.manager.save(CoverageZone, entity);
+
+      await this.auditService.log({
+        tenantId,
+        schemaName,
+        userId: actorUserId ?? null,
+        action: AuditAction.CREATE,
+        entityType: 'CoverageZone',
+        entityId: saved.id,
+        newValue: this.toCoverageZoneDto(saved) as unknown as Record<string, unknown>,
+      });
+
+      return this.getCoverageAdmin(tenantId, schemaName);
+    });
+  }
+
+  async updateCoverageZone(
+    tenantId: string,
+    schemaName: string,
+    zoneId: string,
+    dto: UpdateCoverageZoneDto,
+    actorUserId?: string,
+  ): Promise<CoverageAdminResponseDto> {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const entity = await qr.manager.findOne(CoverageZone, {
+        where: { id: zoneId, tenantId },
+      });
+      if (!entity) {
+        throw new NotFoundException(`Zona de cobertura con id "${zoneId}" no encontrada.`);
+      }
+
+      const oldValue = this.toCoverageZoneDto(entity);
+      if (dto.name !== undefined) entity.name = dto.name;
+      if (dto.centerLatitude !== undefined) entity.centerLatitude = dto.centerLatitude;
+      if (dto.centerLongitude !== undefined) entity.centerLongitude = dto.centerLongitude;
+      if (dto.radiusKm !== undefined) entity.radiusKm = dto.radiusKm.toFixed(2);
+      if (dto.isActive !== undefined) entity.isActive = dto.isActive;
+
+      const saved = await qr.manager.save(CoverageZone, entity);
+
+      await this.auditService.log({
+        tenantId,
+        schemaName,
+        userId: actorUserId ?? null,
+        action: AuditAction.UPDATE,
+        entityType: 'CoverageZone',
+        entityId: saved.id,
+        oldValue: oldValue as unknown as Record<string, unknown>,
+        newValue: this.toCoverageZoneDto(saved) as unknown as Record<string, unknown>,
+      });
+
+      return this.getCoverageAdmin(tenantId, schemaName);
+    });
+  }
+
+  /**
+   * Retorna catálogo activo para consumo self-service y CRM read-only.
+   */
+  async getPlanCatalog(
+    tenantId: string,
+    schemaName: string,
+  ): Promise<PlanCatalogItemResponseDto[]> {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const items = await qr.manager.find(PlanCatalogItem, {
+        where: { tenantId },
+        order: { createdAt: 'DESC' },
+      });
+      return items.map((item) => this.toPlanCatalogDto(item));
+    });
+  }
+
+  async createPlanCatalogItem(
+    tenantId: string,
+    schemaName: string,
+    dto: CreatePlanCatalogItemDto,
+    actorUserId?: string,
+  ): Promise<PlanCatalogItemResponseDto[]> {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      // Regla comercial: installationRule faltante se interpreta como ALWAYS.
+      // Si la regla es NONE, la instalacion siempre se cobra en 0 sin importar el payload.
+      const installationRule = dto.installationRule ?? 'ALWAYS';
+      const installationFee =
+        installationRule === 'NONE' ? '0.00' : (dto.installationFee ?? 0).toFixed(2);
+
+      const entity = qr.manager.create(PlanCatalogItem, {
+        tenantId,
+        name: dto.name,
+        technology: dto.technology,
+        installationRule,
+        downloadSpeedMbps: dto.downloadSpeedMbps,
+        uploadSpeedMbps: dto.uploadSpeedMbps,
+        basePrice: dto.basePrice.toFixed(2),
+        installationFee,
+        validFrom: dto.validFrom ? new Date(dto.validFrom) : null,
+        validTo: dto.validTo ? new Date(dto.validTo) : null,
+        isActive: dto.isActive ?? true,
+      });
+
+      const saved = await qr.manager.save(PlanCatalogItem, entity);
+
+      await this.auditService.log({
+        tenantId,
+        schemaName,
+        userId: actorUserId ?? null,
+        action: AuditAction.CREATE,
+        entityType: 'PlanCatalogItem',
+        entityId: saved.id,
+        newValue: this.toPlanCatalogDto(saved) as unknown as Record<string, unknown>,
+      });
+
+      return this.getPlanCatalog(tenantId, schemaName);
+    });
+  }
+
+  async updatePlanCatalogItem(
+    tenantId: string,
+    schemaName: string,
+    planId: string,
+    dto: UpdatePlanCatalogItemDto,
+    actorUserId?: string,
+  ): Promise<PlanCatalogItemResponseDto[]> {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const entity = await qr.manager.findOne(PlanCatalogItem, {
+        where: { id: planId, tenantId },
+      });
+      if (!entity) {
+        throw new NotFoundException(`Plan con id "${planId}" no encontrado.`);
+      }
+
+      const oldValue = this.toPlanCatalogDto(entity);
+
+      if (dto.name !== undefined) entity.name = dto.name;
+      if (dto.technology !== undefined) entity.technology = dto.technology;
+      if (dto.downloadSpeedMbps !== undefined) entity.downloadSpeedMbps = dto.downloadSpeedMbps;
+      if (dto.uploadSpeedMbps !== undefined) entity.uploadSpeedMbps = dto.uploadSpeedMbps;
+      if (dto.basePrice !== undefined) entity.basePrice = dto.basePrice.toFixed(2);
+      if (dto.installationRule !== undefined) entity.installationRule = dto.installationRule;
+      // La regla efectiva siempre manda sobre installationFee para evitar estados inconsistentes.
+      if (entity.installationRule === 'NONE') {
+        entity.installationFee = '0.00';
+      } else if (dto.installationFee !== undefined) {
+        entity.installationFee = dto.installationFee.toFixed(2);
+      }
+      if (dto.validFrom !== undefined)
+        entity.validFrom = dto.validFrom ? new Date(dto.validFrom) : null;
+      if (dto.validTo !== undefined) entity.validTo = dto.validTo ? new Date(dto.validTo) : null;
+      if (dto.isActive !== undefined) entity.isActive = dto.isActive;
+
+      const saved = await qr.manager.save(PlanCatalogItem, entity);
+
+      await this.auditService.log({
+        tenantId,
+        schemaName,
+        userId: actorUserId ?? null,
+        action: AuditAction.UPDATE,
+        entityType: 'PlanCatalogItem',
+        entityId: saved.id,
+        oldValue: oldValue as unknown as Record<string, unknown>,
+        newValue: this.toPlanCatalogDto(saved) as unknown as Record<string, unknown>,
+      });
+
+      return this.getPlanCatalog(tenantId, schemaName);
+    });
+  }
+
   /** Mapea Tenant a TenantSelfResponseDto — solo campos del panel empresarial. */
   private toSelfResponseDto(tenant: Tenant): TenantSelfResponseDto {
     const dto = new TenantSelfResponseDto();
@@ -364,6 +729,67 @@ export class TenantService {
     return dto;
   }
 
+  private toCommercialNodeDto(entity: CommercialNode) {
+    return {
+      id: entity.id,
+      name: entity.name,
+      latitude: entity.latitude,
+      longitude: entity.longitude,
+      isActive: entity.isActive,
+      createdAt: entity.createdAt,
+      updatedAt: entity.updatedAt,
+    };
+  }
+
+  private toCoverageZoneDto(entity: CoverageZone) {
+    return {
+      id: entity.id,
+      name: entity.name,
+      centerLatitude: entity.centerLatitude,
+      centerLongitude: entity.centerLongitude,
+      radiusKm: Number(entity.radiusKm),
+      isActive: entity.isActive,
+      createdAt: entity.createdAt,
+      updatedAt: entity.updatedAt,
+    };
+  }
+
+  private toPlanCatalogDto(entity: PlanCatalogItem): PlanCatalogItemResponseDto {
+    return {
+      id: entity.id,
+      name: entity.name,
+      technology: entity.technology,
+      installationRule: entity.installationRule,
+      downloadSpeedMbps: entity.downloadSpeedMbps,
+      uploadSpeedMbps: entity.uploadSpeedMbps,
+      basePrice: Number(entity.basePrice),
+      installationFee: Number(entity.installationFee),
+      validFrom: entity.validFrom,
+      validTo: entity.validTo,
+      isActive: entity.isActive,
+      createdAt: entity.createdAt,
+      updatedAt: entity.updatedAt,
+    };
+  }
+
+  private calculateDistanceKm(latA: number, lonA: number, latB: number, lonB: number): number {
+    const earthRadiusKm = 6371;
+    const dLat = this.toRadians(latB - latA);
+    const dLon = this.toRadians(lonB - lonA);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(this.toRadians(latA)) *
+        Math.cos(this.toRadians(latB)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return earthRadiusKm * c;
+  }
+
+  private toRadians(value: number): number {
+    return (value * Math.PI) / 180;
+  }
+
   /** Normaliza configuración operativa aplicando defaults. */
   private toSelfSettingsDto(tenant: Tenant): TenantSelfSettingsResponseDto {
     const settings = this.asRecord(tenant.settings);
@@ -373,6 +799,9 @@ export class TenantService {
     dto.currency = String(settings['currency'] ?? 'COP');
     dto.language = String(settings['language'] ?? 'es-CO');
     dto.country = String(settings['country'] ?? 'CO');
+    dto.fiberInstallationThresholdMeters = Number(
+      settings['fiberInstallationThresholdMeters'] ?? 50,
+    );
     dto.features = {
       billing: Boolean(features['billing'] ?? false),
       mfa_required_all: Boolean(features['mfa_required_all'] ?? false),
@@ -496,6 +925,9 @@ export class TenantService {
       ...(dto.currency !== undefined ? { currency: dto.currency } : {}),
       ...(dto.language !== undefined ? { language: dto.language } : {}),
       ...(dto.country !== undefined ? { country: dto.country } : {}),
+      ...(dto.fiberInstallationThresholdMeters !== undefined
+        ? { fiberInstallationThresholdMeters: dto.fiberInstallationThresholdMeters }
+        : {}),
       ...(dto.features
         ? {
             features: {
@@ -649,6 +1081,11 @@ export class TenantService {
       language: this.stringOrDefault(settings['language'], DEFAULT_TENANT_SETTINGS.language),
       country: this.stringOrDefault(settings['country'], DEFAULT_TENANT_SETTINGS.country),
       maxSubscribers: tenant.maxSubscribers,
+      fiberInstallationThresholdMeters:
+        typeof settings['fiberInstallationThresholdMeters'] === 'number' &&
+        Number.isFinite(settings['fiberInstallationThresholdMeters'])
+          ? settings['fiberInstallationThresholdMeters']
+          : 50,
       features: {
         billing: this.booleanOrDefault(
           features['billing'],

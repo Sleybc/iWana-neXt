@@ -47,6 +47,7 @@ export class TenantSelfSettingsResponseDto {
   currency: string;
   language: string;
   country: string;
+  fiberInstallationThresholdMeters: number;
   features: {
     billing: boolean;
     mfa_required_all: boolean;
