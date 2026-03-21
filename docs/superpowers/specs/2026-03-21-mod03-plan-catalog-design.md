@@ -55,7 +55,7 @@ Implementar la gestión completa del catálogo de planes de internet del tenant 
 fiberInstallationThresholdMeters: number; // default: 50, min: 1, max: 10000
 ```
 
-Persiste en la tabla `tenant_settings` (o equivalente según migración existente). Se configura en la sección **Operación** del portal (tab Operación > nuevo campo en `OperationalSettingsForm`).
+Persiste en la tabla de ajustes del tenant (el implementador debe confirmar el nombre exacto buscando la entidad en `apps/api/src/modules/tenant/`). Se configura en la sección **Operación** del portal (tab Operación > nuevo campo en `OperationalSettingsForm`).
 
 ### 3.3 Migraciones requeridas
 
@@ -77,7 +77,7 @@ Persiste en la tabla `tenant_settings` (o equivalente según migración existent
 
 - `technology`: de `@IsEnum(PlanTechnologyDto)` a `@IsString() @MinLength(2) @MaxLength(100) @Trim()`
 - `installationRule`: nuevo campo `@IsIn(['NONE', 'ALWAYS', 'FIBER_DROP_THRESHOLD']) @IsOptional()` — default `ALWAYS`
-- `installationFee`: solo requerido si `installationRule !== 'NONE'`. Validación cruzada en el service.
+- `installationFee`: `@IsOptional()` en el DTO. En el service, si `installationRule === 'NONE'` se fuerza a `0` independientemente del valor recibido. Esto permite que el frontend omita el campo cuando no aplica cobro, sin causar error de validación.
 
 **`UpdatePlanCatalogItemDto`** — mismos cambios, todos opcionales (Partial).
 
@@ -242,6 +242,10 @@ interface PlanCatalogManagerProps {
 
 El `fiberThresholdMeters` llega desde `SettingsClient` — que ya carga `TenantSelfSettings` — para evitar una segunda llamada a la API desde `PlanCatalogManager`.
 
+> **Nota de implementación:** Este es un cambio de props en **dos niveles**:
+> `SettingsClient` → `CommercialTabLayout` → `PlanCatalogManager`.
+> Ambos componentes deben actualizarse.
+
 ---
 
 ## 7. Integración en `SettingsClient` y `CommercialTabLayout`
@@ -283,14 +287,14 @@ Microondas
 
 ## 9. Reglas de validación frontend
 
-| Campo              | Regla                                                                       |
-| ------------------ | --------------------------------------------------------------------------- |
-| `name`             | Requerido, 2–140 chars                                                      |
-| `technology`       | Requerido, 2–100 chars                                                      |
-| Velocidad          | Entero, 1–100.000 Mbps                                                      |
-| `basePrice`        | Número ≥ 0, máximo 2 decimales                                              |
-| `installationFee`  | Número ≥ 0 si `installationRule !== NONE`                                   |
-| `installationRule` | Requerido si cobro activo. Debe ser uno de `ALWAYS`, `FIBER_DROP_THRESHOLD` |
+| Campo              | Regla                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------ |
+| `name`             | Requerido, 2–140 chars (coincide con `@MaxLength(140)` del backend)                        |
+| `technology`       | Requerido, 2–100 chars                                                                     |
+| Velocidad          | Entero, 1–100.000 Mbps                                                                     |
+| `basePrice`        | Número ≥ 0, máximo 2 decimales en el schema Zod (aunque la tabla lo muestre sin decimales) |
+| `installationFee`  | Número ≥ 0, máximo 2 decimales, si `installationRule !== NONE`                             |
+| `installationRule` | Requerido si cobro activo. Debe ser uno de `ALWAYS`, `FIBER_DROP_THRESHOLD`                |
 
 Validación con **Zod** en el frontend (patrón establecido en el proyecto).
 
