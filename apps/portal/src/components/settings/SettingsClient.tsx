@@ -1,22 +1,28 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Eye } from 'lucide-react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { OnboardingAlerts } from '@/components/dashboard/OnboardingAlerts';
 import { useAuth } from '@/components/auth/AuthProvider';
 import {
   ApiError,
   dashboardApi,
   tenantSelfApi,
   type DashboardAlert,
+  type DashboardSummary,
   type TenantSelf,
   type TenantSelfSettings,
 } from '@/lib/api-client';
 import { BrandingForm } from './BrandingForm';
+import { CommercialCoverageCard } from './CommercialCoverageCard';
 import { CompanyProfileForm } from './CompanyProfileForm';
 import { OperationalSettingsForm } from './OperationalSettingsForm';
+import { PlanCatalogCard } from './PlanCatalogCard';
 import { SecuritySettingsCard } from './SecuritySettingsCard';
+import { SettingsOverviewPanel } from './SettingsOverviewPanel';
+import { SettingsTabPanel } from './SettingsTabPanel';
+import { SettingsTabs } from './SettingsTabs';
+import { SETTINGS_NAVIGATION, type SettingsTabId } from './settings-navigation';
 
 function mapError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -40,13 +46,38 @@ function SettingsSkeleton() {
 
 export function SettingsClient() {
   const { user, isLoading: authLoading } = useAuth();
+  const tabNamespace = useId();
   const [profile, setProfile] = useState<TenantSelf | null>(null);
   const [settings, setSettings] = useState<TenantSelfSettings | null>(null);
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [alerts, setAlerts] = useState<DashboardAlert[]>([]);
+  const [activeTab, setActiveTab] = useState<SettingsTabId>('general');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const canEdit = user?.role === 'ADMIN';
+
+  const tabBadgeMap = useMemo(() => {
+    return {
+      general: null,
+      operations: null,
+      commercial: null,
+      security: !settings?.features.mfa_required_all
+        ? { label: 'Atención', variant: 'warning' as const }
+        : null,
+      branding: !canEdit ? { label: 'Solo lectura', variant: 'info' as const } : null,
+    };
+  }, [canEdit, settings?.features.mfa_required_all]);
+
+  const getTabId = useCallback(
+    (tabId: SettingsTabId) => `${tabNamespace}-${tabId}-tab`,
+    [tabNamespace],
+  );
+
+  const getPanelId = useCallback(
+    (tabId: SettingsTabId) => `${tabNamespace}-${tabId}-panel`,
+    [tabNamespace],
+  );
 
   const loadSettings = useCallback(async () => {
     if (!user) {
@@ -76,11 +107,14 @@ export function SettingsClient() {
       setSettings(settingsResult.value);
 
       if (summaryResult.status === 'fulfilled' && summaryResult.value) {
+        setSummary(summaryResult.value);
         setAlerts(summaryResult.value.alerts);
       } else {
+        setSummary(null);
         setAlerts([]);
       }
     } catch (loadError) {
+      setSummary(null);
       setError(mapError(loadError));
     } finally {
       setIsLoading(false);
@@ -145,39 +179,70 @@ export function SettingsClient() {
 
       <main className="flex-1 p-6">
         <div className="mx-auto w-full max-w-7xl space-y-6">
-          {!canEdit && (
-            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-900/20">
-              <div className="flex items-start gap-3">
-                <Eye className="mt-0.5 h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" />
-                <div>
-                  <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
-                    Vista solo lectura para tu rol
-                  </p>
-                  <p className="mt-0.5 text-sm text-blue-700 dark:text-blue-400">
-                    Puedes consultar la configuración del tenant, pero las escrituras quedan
-                    reservadas al rol ADMIN.
-                  </p>
-                </div>
+          <SettingsOverviewPanel
+            profile={profile}
+            settings={settings}
+            alerts={alerts}
+            canEdit={canEdit}
+          />
+
+          <SettingsTabs
+            items={SETTINGS_NAVIGATION}
+            activeTab={activeTab}
+            onChange={setActiveTab}
+            getTabId={getTabId}
+            getPanelId={getPanelId}
+            getBadge={(tabId) => tabBadgeMap[tabId]}
+          />
+
+          <div className="space-y-6">
+            <SettingsTabPanel
+              id={getPanelId('general')}
+              labelledBy={getTabId('general')}
+              isActive={activeTab === 'general'}
+            >
+              <CompanyProfileForm profile={profile} canEdit={canEdit} onUpdated={setProfile} />
+            </SettingsTabPanel>
+
+            <SettingsTabPanel
+              id={getPanelId('operations')}
+              labelledBy={getTabId('operations')}
+              isActive={activeTab === 'operations'}
+            >
+              <OperationalSettingsForm
+                settings={settings}
+                canEdit={canEdit}
+                onUpdated={setSettings}
+              />
+            </SettingsTabPanel>
+
+            <SettingsTabPanel
+              id={getPanelId('commercial')}
+              labelledBy={getTabId('commercial')}
+              isActive={activeTab === 'commercial'}
+            >
+              <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+                <CommercialCoverageCard canEdit={canEdit} />
+                <PlanCatalogCard canEdit={canEdit} />
               </div>
-            </div>
-          )}
+            </SettingsTabPanel>
 
-          {canEdit && alerts.length > 0 && (
-            <section aria-label="Alertas de configuración pendiente">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
-                Alertas de configuración
-              </h2>
-              <OnboardingAlerts alerts={alerts} />
-            </section>
-          )}
+            <SettingsTabPanel
+              id={getPanelId('security')}
+              labelledBy={getTabId('security')}
+              isActive={activeTab === 'security'}
+            >
+              <SecuritySettingsCard settings={settings} canEdit={canEdit} onUpdated={setSettings} />
+            </SettingsTabPanel>
 
-          <CompanyProfileForm profile={profile} canEdit={canEdit} onUpdated={setProfile} />
-
-          <OperationalSettingsForm settings={settings} canEdit={canEdit} onUpdated={setSettings} />
-
-          <SecuritySettingsCard settings={settings} canEdit={canEdit} onUpdated={setSettings} />
-
-          <BrandingForm profile={profile} canEdit={canEdit} onUpdated={setProfile} />
+            <SettingsTabPanel
+              id={getPanelId('branding')}
+              labelledBy={getTabId('branding')}
+              isActive={activeTab === 'branding'}
+            >
+              <BrandingForm profile={profile} canEdit={canEdit} onUpdated={setProfile} />
+            </SettingsTabPanel>
+          </div>
         </div>
       </main>
     </div>
