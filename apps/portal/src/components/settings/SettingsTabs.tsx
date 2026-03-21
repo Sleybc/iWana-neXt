@@ -68,6 +68,7 @@ export function SettingsTabs({
             )}
             onClick={() => onChange(item.id)}
             onKeyDown={(event) => {
+              // WCAG: ambos ejes (horizontal y vertical) permiten navegar en un tablist horizontal.
               if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
                 event.preventDefault();
                 focusTabAt(activeIndex + 1);
