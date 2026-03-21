@@ -5,12 +5,13 @@ import {
   IsOptional,
   IsString,
   Matches,
+  Max,
   MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
 
-class TenantFeaturesDto {
+export class TenantFeaturesDto {
   @IsOptional()
   @IsBoolean()
   billing?: boolean;
@@ -51,6 +52,12 @@ export class UpdateTenantSettingsDto {
   maxSubscribers?: number;
 
   @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(10000)
+  fiberInstallationThresholdMeters?: number;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => TenantFeaturesDto)
   features?: TenantFeaturesDto;
@@ -63,6 +70,7 @@ export class TenantSettingsResponseDto {
   language: string;
   country: string;
   maxSubscribers: number;
+  fiberInstallationThresholdMeters: number;
   features: {
     billing: boolean;
     mfa_required_all: boolean;
