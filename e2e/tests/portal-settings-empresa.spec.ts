@@ -38,6 +38,49 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
     summaryRequests: 0,
   };
 
+  const coverageConfig = {
+    nodes: [
+      {
+        id: 'node-1',
+        name: 'Nodo Centro',
+        latitude: 4.60971,
+        longitude: -74.08175,
+        isActive: true,
+        createdAt: '2026-03-20T10:00:00.000Z',
+        updatedAt: '2026-03-20T10:00:00.000Z',
+      },
+    ],
+    zones: [
+      {
+        id: 'zone-1',
+        name: 'Zona Norte',
+        centerLatitude: 4.710989,
+        centerLongitude: -74.07209,
+        radiusKm: 12,
+        isActive: true,
+        createdAt: '2026-03-20T10:00:00.000Z',
+        updatedAt: '2026-03-20T10:00:00.000Z',
+      },
+    ],
+  };
+
+  const planCatalog = [
+    {
+      id: 'plan-1',
+      name: 'Internet Hogar 200',
+      technology: 'FTTH',
+      downloadSpeedMbps: 200,
+      uploadSpeedMbps: 80,
+      basePrice: 129900,
+      installationFee: 90000,
+      validFrom: null,
+      validTo: null,
+      isActive: true,
+      createdAt: '2026-03-20T10:00:00.000Z',
+      updatedAt: '2026-03-20T10:00:00.000Z',
+    },
+  ];
+
   const tenantProfile = {
     id: 'tenant-uuid-test',
     name: 'ISP Prueba Colombia',
@@ -182,6 +225,46 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
       return;
     }
 
+    if (url.includes('/tenants/me/coverage/check') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            available: true,
+            reason: 'Cobertura disponible para validación comercial.',
+            matches: [
+              {
+                id: 'node-1',
+                name: 'Nodo Centro',
+                type: 'NODE',
+                available: true,
+              },
+            ],
+          },
+        }),
+      });
+      return;
+    }
+
+    if (url.includes('/tenants/me/coverage') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: coverageConfig }),
+      });
+      return;
+    }
+
+    if (url.includes('/tenants/me/plans') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: planCatalog }),
+      });
+      return;
+    }
+
     if (url.includes('/tenants/me/summary') && method === 'GET') {
       requestLog.summaryRequests += 1;
       await route.fulfill({
@@ -244,9 +327,7 @@ test.describe('Configuración empresarial del portal', () => {
     await page.goto('/dashboard/settings');
     await page.waitForLoadState('networkidle');
 
-    await expect(
-      page.getByRole('heading', { name: 'Configuración empresarial' }),
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Configuración empresarial' })).toBeVisible();
     await expect(page.getByLabel('Correo de contacto')).toHaveValue('contacto@test-isp.co');
 
     await page.getByLabel('Correo de contacto').fill('gestion@test-isp.co');
@@ -265,9 +346,10 @@ test.describe('Configuración empresarial del portal', () => {
     );
     expect(requestLog.profilePatches[0]).not.toHaveProperty('name');
 
-    await page.getByLabel('Zona horaria').selectOption('America/Guayaquil');
-    await page.getByLabel('Moneda').selectOption('USD');
-    await page.getByLabel('País operativo').selectOption('EC');
+    await page.getByRole('tab', { name: 'Operación', exact: true }).click();
+    await page.getByLabel('Zona horaria', { exact: true }).selectOption('America/Guayaquil');
+    await page.getByLabel('Moneda', { exact: true }).selectOption('USD');
+    await page.getByLabel('País operativo', { exact: true }).selectOption('EC');
     await page.getByRole('button', { name: 'Guardar configuración operativa' }).click();
 
     await expect(
@@ -283,6 +365,7 @@ test.describe('Configuración empresarial del portal', () => {
     expect(requestLog.settingsPatches[0]).not.toHaveProperty('maxSubscribers');
     expect(requestLog.settingsPatches[0]).not.toHaveProperty('billing');
 
+    await page.getByRole('tab', { name: 'Seguridad', exact: true }).click();
     const mfaToggle = page.getByLabel('Activar MFA obligatorio');
     await mfaToggle.scrollIntoViewIfNeeded();
     await mfaToggle.check({ force: true });
@@ -305,7 +388,7 @@ test.describe('Configuración empresarial del portal', () => {
     await page.goto('/dashboard/settings');
     await page.waitForLoadState('networkidle');
 
-    // Desplazar hasta la sección de branding
+    await page.getByRole('tab', { name: 'Marca', exact: true }).click();
     await page.getByRole('heading', { name: 'Logo y Sello' }).scrollIntoViewIfNeeded();
 
     // Llenar la URL del sello variante clara (primer campo con label "URL variante clara")
@@ -319,7 +402,9 @@ test.describe('Configuración empresarial del portal', () => {
     await expect(page.getByText('Logo y sello actualizados correctamente.')).toBeVisible();
   });
 
-  test('NOC ve la pantalla en modo solo lectura y no consume summary de ADMIN', async ({ page }) => {
+  test('NOC ve la pantalla en modo solo lectura y no consume summary de ADMIN', async ({
+    page,
+  }) => {
     const { requestLog } = await setupSettingsMocks(page, 'NOC');
     await setAuthSession(page, 'NOC');
 
@@ -329,11 +414,65 @@ test.describe('Configuración empresarial del portal', () => {
     await expect(page.getByText('Vista solo lectura para tu rol')).toBeVisible();
     await expect(page.getByLabel('Correo de contacto')).toBeDisabled();
     await expect(page.getByRole('button', { name: 'Guardar perfil empresarial' })).toHaveCount(0);
-    await expect(
-      page.getByRole('button', { name: 'Guardar configuración operativa' }),
-    ).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Guardar configuración operativa' })).toHaveCount(
+      0,
+    );
     await expect(page.getByRole('button', { name: 'Guardar seguridad' })).toHaveCount(0);
     expect(requestLog.summaryRequests).toBe(0);
     expect(requestLog.platformCalls).toHaveLength(0);
+  });
+
+  test('Configuracion usa tabs accesibles y conserva borradores al cambiar de seccion', async ({
+    page,
+  }) => {
+    await setupSettingsMocks(page, 'ADMIN');
+    await setAuthSession(page, 'ADMIN');
+
+    await page.goto('/dashboard/settings');
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.getByRole('tab', { name: 'General', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Operación', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Comercial', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Seguridad', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Marca', exact: true })).toBeVisible();
+
+    await expect(page.getByRole('tab', { name: 'General', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(page.getByRole('tabpanel', { name: 'General' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Perfil empresarial' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Cobertura comercial' })).toHaveCount(0);
+
+    await page.getByRole('tab', { name: 'General', exact: true }).focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByRole('tab', { name: 'Operación', exact: true })).toBeFocused();
+
+    await page.keyboard.press('End');
+    await expect(page.getByRole('tab', { name: 'Marca', exact: true })).toBeFocused();
+
+    await page.keyboard.press('Home');
+    await expect(page.getByRole('tab', { name: 'General', exact: true })).toBeFocused();
+
+    await page.getByLabel('Correo de contacto').fill('draft-tabs@test-isp.co');
+    await page.getByRole('tab', { name: 'Comercial', exact: true }).click();
+
+    await expect(page.getByRole('tab', { name: 'Comercial', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(page.getByRole('tabpanel', { name: 'Comercial' })).toBeVisible();
+    // Por defecto se muestra Cobertura; Planes no está visible aún
+    await expect(page.getByRole('heading', { name: 'Cobertura comercial' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Planes y valores' })).toHaveCount(0);
+
+    // Navegar a Planes mediante el sidebar interno
+    await page.getByRole('button', { name: 'Planes' }).click();
+    await expect(page.getByRole('heading', { name: 'Planes y valores' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Cobertura comercial' })).toHaveCount(0);
+
+    await page.getByRole('tab', { name: 'General', exact: true }).click();
+    await expect(page.getByLabel('Correo de contacto')).toHaveValue('draft-tabs@test-isp.co');
   });
 });
