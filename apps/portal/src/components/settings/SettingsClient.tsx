@@ -13,10 +13,9 @@ import {
   type TenantSelfSettings,
 } from '@/lib/api-client';
 import { BrandingForm } from './BrandingForm';
-import { CommercialCoverageCard } from './CommercialCoverageCard';
+import { CommercialTabLayout } from './CommercialTabLayout';
 import { CompanyProfileForm } from './CompanyProfileForm';
 import { OperationalSettingsForm } from './OperationalSettingsForm';
-import { PlanCatalogCard } from './PlanCatalogCard';
 import { SecuritySettingsCard } from './SecuritySettingsCard';
 import { SettingsOverviewPanel } from './SettingsOverviewPanel';
 import { SettingsTabPanel } from './SettingsTabPanel';
@@ -216,10 +215,7 @@ export function SettingsClient() {
               labelledBy={getTabId('commercial')}
               isActive={activeTab === 'commercial'}
             >
-              <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-                <CommercialCoverageCard canEdit={canEdit} />
-                <PlanCatalogCard canEdit={canEdit} />
-              </div>
+              <CommercialTabLayout canEdit={canEdit} />
             </SettingsTabPanel>
 
             <SettingsTabPanel
