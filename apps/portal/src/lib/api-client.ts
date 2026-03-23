@@ -42,6 +42,7 @@ export class ApiError extends Error {
     public readonly status: number,
     public readonly code: string,
     message: string,
+    public readonly details?: unknown,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -197,6 +198,7 @@ export function clearPendingTenantMfaLogin(): void {
 interface RequestOptions extends RequestInit {
   skipAuth?: boolean;
   skipRefreshRetry?: boolean;
+  returnFullResponse?: boolean;
 }
 
 function getTenantSlug(tenantSlugOverride?: string): string {
@@ -270,18 +272,20 @@ async function request<T>(
   if (res.status === 401 && !options?.skipAuth && !options?.skipRefreshRetry) {
     try {
       const renewedToken = await refreshAccessToken(resolvedTenantSlug);
-      return request<T>(
-        path,
-        {
-          ...options,
-          headers: {
-            ...Object.fromEntries(headers.entries()),
-            Authorization: `Bearer ${renewedToken}`,
-          },
-          skipRefreshRetry: true,
+      const retryOptions: RequestOptions = {
+        ...options,
+        headers: {
+          ...Object.fromEntries(headers.entries()),
+          Authorization: `Bearer ${renewedToken}`,
         },
-        resolvedTenantSlug,
-      );
+        skipRefreshRetry: true,
+      };
+
+      if (options?.returnFullResponse !== undefined) {
+        retryOptions.returnFullResponse = options.returnFullResponse;
+      }
+
+      return request<T>(path, retryOptions, resolvedTenantSlug);
     } catch (refreshError) {
       // Si no se puede refrescar, re-lanzamos para que el llamador reciba un error claro.
       throw refreshError;
@@ -289,16 +293,25 @@ async function request<T>(
   }
 
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as Record<string, string>;
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     throw new ApiError(
       res.status,
-      body['code'] ?? 'UNKNOWN',
-      body['message'] ?? 'Error del servidor',
+      typeof body['code'] === 'string' ? body['code'] : 'UNKNOWN',
+      typeof body['message'] === 'string' ? body['message'] : 'Error del servidor',
+      body['details'],
     );
   }
 
-  const body = (await res.json()) as ApiEnvelope<T>;
-  return body.data;
+  if (res.status === 204 || res.headers.get('content-length') === '0') {
+    return undefined as T;
+  }
+
+  const body = (await res.json()) as ApiEnvelope<T> | T;
+  if (options?.returnFullResponse) {
+    return body as T;
+  }
+
+  return (body as ApiEnvelope<T>).data;
 }
 
 export const authApi = {
@@ -600,10 +613,55 @@ export interface TenantSelfSettings {
   currency: string;
   language: string;
   country: string;
+  fiberInstallationThresholdMeters: number;
   features: {
     billing: boolean;
     mfa_required_all: boolean;
   };
+}
+
+export type PlanInstallationRule = 'NONE' | 'ALWAYS' | 'FIBER_DROP_THRESHOLD';
+
+export interface PlanCatalogItem {
+  id: string;
+  name: string;
+  technology: string;
+  installationRule: PlanInstallationRule;
+  downloadSpeedMbps: number;
+  uploadSpeedMbps: number;
+  basePrice: number;
+  installationFee: number;
+  validFrom: string | null;
+  validTo: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreatePlanCatalogItemDto {
+  name: string;
+  technology: string;
+  installationRule?: PlanInstallationRule;
+  downloadSpeedMbps: number;
+  uploadSpeedMbps: number;
+  basePrice: number;
+  installationFee?: number;
+  validFrom?: string;
+  validTo?: string;
+  isActive?: boolean;
+}
+
+export interface UpdatePlanCatalogItemDto {
+  name?: string;
+  technology?: string;
+  installationRule?: PlanInstallationRule;
+  downloadSpeedMbps?: number;
+  uploadSpeedMbps?: number;
+  basePrice?: number;
+  installationFee?: number;
+  validFrom?: string;
+  validTo?: string;
+  isActive?: boolean;
 }
 
 export interface UpdateTenantSelfSettingsDto {
@@ -614,6 +672,73 @@ export interface UpdateTenantSelfSettingsDto {
   features?: {
     mfa_required_all?: boolean;
   };
+}
+
+export interface CoverageNodeConfig {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CoverageZoneConfig {
+  id: string;
+  name: string;
+  centerLatitude: number;
+  centerLongitude: number;
+  radiusKm: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CoverageAdminConfig {
+  nodes: CoverageNodeConfig[];
+  zones: CoverageZoneConfig[];
+}
+
+export interface CoverageCheckResponse {
+  available: boolean;
+  reason: string;
+  matches: Array<{
+    id: string;
+    name: string;
+    type: 'NODE' | 'ZONE';
+    available: boolean;
+  }>;
+}
+
+export interface CreateCommercialNodeDto {
+  name: string;
+  latitude: number;
+  longitude: number;
+  isActive?: boolean;
+}
+
+export interface UpdateCommercialNodeDto {
+  name?: string;
+  latitude?: number;
+  longitude?: number;
+  isActive?: boolean;
+}
+
+export interface CreateCoverageZoneDto {
+  name: string;
+  centerLatitude: number;
+  centerLongitude: number;
+  radiusKm: number;
+  isActive?: boolean;
+}
+
+export interface UpdateCoverageZoneDto {
+  name?: string;
+  centerLatitude?: number;
+  centerLongitude?: number;
+  radiusKm?: number;
+  isActive?: boolean;
 }
 
 /** Alerta de onboarding del dashboard del tenant */
@@ -693,6 +818,79 @@ export const tenantSelfApi = {
       { method: 'PATCH', body: JSON.stringify(dto) },
       tenantSlug,
     ),
+
+  getCoverage: (tenantSlug?: string) =>
+    request<CoverageAdminConfig>('/tenants/me/coverage', undefined, tenantSlug),
+
+  checkCoverage: (
+    params: {
+      address: string;
+      latitude?: number;
+      longitude?: number;
+    },
+    tenantSlug?: string,
+  ) => {
+    const search = new URLSearchParams({ address: params.address });
+    if (params.latitude !== undefined) search.set('latitude', String(params.latitude));
+    if (params.longitude !== undefined) search.set('longitude', String(params.longitude));
+    return request<CoverageCheckResponse>(
+      `/tenants/me/coverage/check?${search.toString()}`,
+      undefined,
+      tenantSlug,
+    );
+  },
+
+  createCoverageNode: (dto: CreateCommercialNodeDto, tenantSlug?: string) =>
+    request<CoverageAdminConfig>(
+      '/tenants/me/coverage/nodes',
+      { method: 'POST', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  updateCoverageNode: (nodeId: string, dto: UpdateCommercialNodeDto, tenantSlug?: string) =>
+    request<CoverageAdminConfig>(
+      `/tenants/me/coverage/nodes/${nodeId}`,
+      { method: 'PATCH', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  createCoverageZone: (dto: CreateCoverageZoneDto, tenantSlug?: string) =>
+    request<CoverageAdminConfig>(
+      '/tenants/me/coverage/zones',
+      { method: 'POST', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  updateCoverageZone: (zoneId: string, dto: UpdateCoverageZoneDto, tenantSlug?: string) =>
+    request<CoverageAdminConfig>(
+      `/tenants/me/coverage/zones/${zoneId}`,
+      { method: 'PATCH', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  /** Lista el catálogo de planes del tenant autenticado. */
+  getPlans: (tenantSlug?: string) =>
+    request<PlanCatalogItem[]>('/tenants/me/plans', undefined, tenantSlug),
+
+  /** Crea un plan en el catálogo del tenant autenticado. */
+  createPlan: (dto: CreatePlanCatalogItemDto, tenantSlug?: string) =>
+    request<PlanCatalogItem[]>(
+      '/tenants/me/plans',
+      { method: 'POST', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  /** Actualiza un plan del catálogo del tenant autenticado. */
+  updatePlan: (planId: string, dto: UpdatePlanCatalogItemDto, tenantSlug?: string) =>
+    request<PlanCatalogItem[]>(
+      `/tenants/me/plans/${planId}`,
+      { method: 'PATCH', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  /** Elimina un plan del catálogo del tenant autenticado. */
+  deletePlan: (planId: string, tenantSlug?: string) =>
+    request<void>(`/tenants/me/plans/${planId}`, { method: 'DELETE' }, tenantSlug),
 };
 
 /**
@@ -704,6 +902,152 @@ export const dashboardApi = {
   /** Retorna el summary completo del dashboard (solo ADMIN). */
   getSummary: (tenantSlug?: string) =>
     request<DashboardSummary>('/tenants/me/summary', undefined, tenantSlug),
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GESTION DE USUARIOS INTERNOS DEL TENANT
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface InternalUser {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  tenantId: string;
+  mfaEnabled: boolean;
+  mfaRequired: boolean;
+  emailVerified: boolean;
+  passwordResetRequired: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  phone: string | null;
+  jobTitle: string | null;
+  documentType: string | null;
+  documentNumber: string | null;
+  avatarUrl: string | null;
+}
+
+export interface ListUsersParams {
+  cursor?: string;
+  limit?: number;
+  status?: string;
+  role?: string;
+}
+
+export interface UsersPaginationMeta {
+  nextCursor: string | null;
+  total: number;
+}
+
+export interface ListUsersResponse {
+  data: InternalUser[];
+  meta: UsersPaginationMeta;
+}
+
+export interface CreateInternalUserDto {
+  email: string;
+  role: string;
+  password?: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  jobTitle?: string;
+  documentType?: string;
+  documentNumber?: string;
+  avatarUrl?: string;
+  mfaRequired?: boolean;
+}
+
+export interface UpdateInternalUserDto {
+  status?: string | undefined;
+  role?: string | undefined;
+  firstName?: string | undefined;
+  lastName?: string | undefined;
+  phone?: string | undefined;
+  jobTitle?: string | undefined;
+  documentType?: string | undefined;
+  documentNumber?: string | undefined;
+  avatarUrl?: string | undefined;
+  mfaRequired?: boolean | undefined;
+}
+
+export const usersApi = {
+  list: (params?: ListUsersParams, tenantSlug?: string) => {
+    const searchParams = new URLSearchParams();
+    if (params?.cursor) searchParams.set('cursor', params.cursor);
+    if (params?.limit !== undefined) searchParams.set('limit', String(params.limit));
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.role) searchParams.set('role', params.role);
+
+    const query = searchParams.toString();
+    return request<ListUsersResponse>(`/users${query ? `?${query}` : ''}`, undefined, tenantSlug);
+  },
+
+  getById: (id: string, tenantSlug?: string) =>
+    request<InternalUser>(`/users/${id}`, undefined, tenantSlug),
+
+  create: (dto: CreateInternalUserDto, idempotencyKey: string, tenantSlug?: string) =>
+    request<InternalUser & { temporaryPassword?: string }>(
+      '/users',
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey },
+        body: JSON.stringify(dto),
+      },
+      tenantSlug,
+    ),
+
+  update: (id: string, dto: UpdateInternalUserDto, idempotencyKey: string, tenantSlug?: string) =>
+    request<InternalUser>(
+      `/users/${id}`,
+      {
+        method: 'PATCH',
+        headers: { 'Idempotency-Key': idempotencyKey },
+        body: JSON.stringify(dto),
+      },
+      tenantSlug,
+    ),
+
+  remove: (id: string, tenantSlug?: string) =>
+    request<void>(`/users/${id}`, { method: 'DELETE' }, tenantSlug),
+
+  resetPassword: (
+    id: string,
+    options?: {
+      password?: string | undefined;
+      idempotencyKey?: string | undefined;
+      tenantSlug?: string | undefined;
+    },
+  ) => {
+    const password = options?.password;
+    const idempotencyKey = options?.idempotencyKey;
+    const tenantSlug = options?.tenantSlug;
+    const headers: Record<string, string> = {};
+    if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
+
+    const body = password !== undefined ? JSON.stringify({ password }) : '{}';
+
+    return request<{ temporaryPassword: string }>(
+      `/users/${id}/password`,
+      { method: 'PATCH', headers, body },
+      tenantSlug,
+    );
+  },
+
+  changeEmail: (id: string, email: string, tenantSlug?: string) =>
+    request<InternalUser>(
+      `/users/${id}/email`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      },
+      tenantSlug,
+    ),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -770,6 +1114,223 @@ export const userApi = {
         method: 'PATCH',
         body: JSON.stringify(dto),
       },
+      tenantSlug,
+    ),
+};
+
+export type ExpedienteStatus =
+  | 'NUEVO_POTENCIAL'
+  | 'CONTACTADO'
+  | 'PENDIENTE_DATOS'
+  | 'PRECALIFICADO'
+  | 'VALIDANDO_COBERTURA'
+  | 'VIABLE_COMERCIALMENTE'
+  | 'EN_COTIZACION'
+  | 'PENDIENTE_DECISION'
+  | 'LISTO_PARA_INSTALACION'
+  | 'INSTALACION_AGENDADA'
+  | 'CLIENTE_ACTIVO'
+  | 'DESCARTADO';
+
+export interface ExpedienteRecord {
+  id: string;
+  tenantId: string;
+  status: ExpedienteStatus;
+  previousStatus: ExpedienteStatus | null;
+  statusChangedAt: string;
+  discardReason: string | null;
+  fullName: string;
+  documentType: string | null;
+  documentNumberEncrypted?: string | null;
+  personType?: string | null;
+  companyName?: string | null;
+  phonePrimaryEncrypted: string | null;
+  phoneSecondaryEncrypted?: string | null;
+  emailPrimaryEncrypted: string | null;
+  emailSecondary?: string | null;
+  altContactName?: string | null;
+  contactPreference?: string | null;
+  bestContactTime?: string | null;
+  address: string | null;
+  municipality: string | null;
+  department: string | null;
+  stratum?: number | null;
+  neighborhood?: string | null;
+  coordinatesSource?: string | null;
+  coordinatesConfidence?: string | null;
+  accessReferences?: string | null;
+  zoneType?: string | null;
+  source: string;
+  interestedPlanId: string | null;
+  campaign?: string | null;
+  casePriority?: string | null;
+  estimatedBudget?: number | null;
+  commercialNotes?: string | null;
+  coverageResult?: string | null;
+  availableTechnology?: string | null;
+  estimatedDistanceM?: number | null;
+  feasibility?: string | null;
+  technicalObservations?: string | null;
+  estimatedEquipment?: string | null;
+  identityVerified?: string | null;
+  legalComplianceStatus?: string | null;
+  paymentMethod?: string | null;
+  billingCycle?: string | null;
+  fiscalName?: string | null;
+  fiscalDocument?: string | null;
+  fiscalAddress?: string | null;
+  rutReference?: string | null;
+  installationAddress?: string | null;
+  availabilityWindow?: string | null;
+  siteContactName?: string | null;
+  siteContactPhoneEncrypted?: string | null;
+  specialAccessNotes?: string | null;
+  requiredMaterials?: string | null;
+  completenessCommercial: number | null;
+  completenessLegal: number | null;
+  completenessTechnical: number | null;
+  completenessOperational: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateExpedienteDto {
+  fullName: string;
+  source: string;
+}
+
+export interface TransitionStatusDto {
+  targetStatus: ExpedienteStatus;
+  reason?: string;
+}
+
+export interface CompletenessResult {
+  commercial: number;
+  legal: number;
+  technical: number;
+  operational: number;
+  overall: number;
+}
+
+export interface ExpedienteTimelineChange {
+  id: string;
+  fromStatus: string;
+  toStatus: string;
+  changedAt: string;
+  reason: string | null;
+  actor: {
+    userId: string | null;
+    name: string | null;
+  };
+}
+
+export interface ExpedienteActivityItem {
+  id: string;
+  type: 'CREATED' | 'SECTION_UPDATED' | 'STATUS_CHANGED';
+  occurredAt: string;
+  actor: {
+    userId: string | null;
+    name: string | null;
+  };
+  sectionLabel: string | null;
+  fromStatus: string | null;
+  toStatus: string | null;
+  reason: string | null;
+}
+
+export interface ExpedienteOperationalMetadata {
+  createdBy: {
+    userId: string | null;
+    name: string | null;
+  };
+  lastEditedBy: {
+    userId: string | null;
+    name: string | null;
+  };
+  lastActivityAt: string | null;
+}
+
+export const crmApi = {
+  listExpedientes: (
+    filters?: {
+      status?: ExpedienteStatus;
+      municipality?: string;
+      search?: string;
+      page?: number;
+      limit?: number;
+    },
+    tenantSlug?: string,
+  ) => {
+    const searchParams = new URLSearchParams();
+
+    if (filters?.status) searchParams.set('status', filters.status);
+    if (filters?.municipality) searchParams.set('municipality', filters.municipality);
+    if (filters?.search) searchParams.set('search', filters.search);
+    if (filters?.page) searchParams.set('page', String(filters.page));
+    if (filters?.limit) searchParams.set('limit', String(filters.limit));
+
+    const query = searchParams.toString();
+
+    return request<{ data: ExpedienteRecord[]; total: number }>(
+      `/crm/expedientes${query ? `?${query}` : ''}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    );
+  },
+
+  getExpediente: (id: string, tenantSlug?: string) =>
+    request<{ data: ExpedienteRecord; completeness: CompletenessResult }>(
+      `/crm/expedientes/${id}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  createExpediente: (dto: CreateExpedienteDto, tenantSlug?: string) =>
+    request<{ data: ExpedienteRecord }>(
+      '/crm/expedientes',
+      { method: 'POST', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  updateExpedienteSection: (
+    id: string,
+    section: string,
+    data: Record<string, unknown>,
+    tenantSlug?: string,
+  ) =>
+    request<{ data: ExpedienteRecord }>(
+      `/crm/expedientes/${id}/sections/${section}`,
+      { method: 'PATCH', body: JSON.stringify({ data }) },
+      tenantSlug,
+    ),
+
+  transitionExpedienteStatus: (id: string, dto: TransitionStatusDto, tenantSlug?: string) =>
+    request<{ data: ExpedienteRecord; completeness: CompletenessResult }>(
+      `/crm/expedientes/${id}/status`,
+      { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  reactivateExpediente: (id: string, tenantSlug?: string) =>
+    request<{ data: ExpedienteRecord }>(
+      `/crm/expedientes/${id}/reactivate`,
+      { method: 'POST' },
+      tenantSlug,
+    ),
+
+  getExpedienteTimeline: (id: string, tenantSlug?: string) =>
+    request<{
+      data: {
+        changes: ExpedienteTimelineChange[];
+        activities: ExpedienteActivityItem[];
+        metadata: ExpedienteOperationalMetadata;
+      };
+    }>(`/crm/expedientes/${id}/timeline`, { returnFullResponse: true }, tenantSlug),
+
+  getPipelineSummary: (tenantSlug?: string) =>
+    request<{ data: Record<string, number>; total: number }>(
+      '/crm/pipeline/summary',
+      { returnFullResponse: true },
       tenantSlug,
     ),
 };

@@ -215,7 +215,10 @@ export function SettingsClient() {
               labelledBy={getTabId('commercial')}
               isActive={activeTab === 'commercial'}
             >
-              <CommercialTabLayout canEdit={canEdit} />
+              <CommercialTabLayout
+                canEdit={canEdit}
+                fiberThresholdMeters={settings.fiberInstallationThresholdMeters}
+              />
             </SettingsTabPanel>
 
             <SettingsTabPanel

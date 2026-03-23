@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import { cn } from '@iwana/ui';
 import { CommercialCoverageCard } from './CommercialCoverageCard';
-import { PlanCatalogCard } from './PlanCatalogCard';
+import { PlanCatalogManager } from './PlanCatalogManager';
 
 export type CommercialSubItem = 'coverage' | 'plans';
 
@@ -14,9 +14,10 @@ const COMMERCIAL_SUBNAV: Array<{ id: CommercialSubItem; label: string }> = [
 
 interface CommercialTabLayoutProps {
   canEdit: boolean;
+  fiberThresholdMeters: number;
 }
 
-export function CommercialTabLayout({ canEdit }: CommercialTabLayoutProps) {
+export function CommercialTabLayout({ canEdit, fiberThresholdMeters }: CommercialTabLayoutProps) {
   const [activeSubItem, setActiveSubItem] = useState<CommercialSubItem>('coverage');
 
   // Refs para roving focus — patrón consistente con SettingsTabs.tsx (WCAG 2.1)
@@ -90,7 +91,9 @@ export function CommercialTabLayout({ canEdit }: CommercialTabLayoutProps) {
       {/* Contenido del sub-item activo */}
       <div className="min-w-0 flex-1">
         {activeSubItem === 'coverage' && <CommercialCoverageCard canEdit={canEdit} />}
-        {activeSubItem === 'plans' && <PlanCatalogCard canEdit={canEdit} />}
+        {activeSubItem === 'plans' && (
+          <PlanCatalogManager canEdit={canEdit} fiberThresholdMeters={fiberThresholdMeters} />
+        )}
       </div>
     </div>
   );
