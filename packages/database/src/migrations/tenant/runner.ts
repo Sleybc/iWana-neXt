@@ -3,6 +3,15 @@ import { DataSource } from 'typeorm';
 const MIGRATION_LOCK_NAMESPACE = 42;
 const MIGRATION_LOCK_RESOURCE = 1001;
 
+interface PostgresOptions {
+  type: 'postgres';
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  database: string;
+}
+
 export async function runTenantMigrations(dataSource: DataSource): Promise<void> {
   await acquireGlobalLock(dataSource);
   try {
@@ -49,14 +58,15 @@ async function runMigrationsForTenant(
   schemaName: string,
 ): Promise<void> {
   let tenantDs: DataSource | null = null;
+  const baseOpts = baseDataSource.options as PostgresOptions;
   try {
     tenantDs = new DataSource({
       type: 'postgres',
-      host: baseDataSource.options.host,
-      port: baseDataSource.options.port,
-      username: baseDataSource.options.username,
-      password: baseDataSource.options.password,
-      database: baseDataSource.options.database,
+      host: baseOpts.host,
+      port: baseOpts.port,
+      username: baseOpts.username,
+      password: baseOpts.password,
+      database: baseOpts.database,
       schema: schemaName,
       name: `tenant-${schemaName}`,
       migrationsTableName: 'typeorm_migrations',
