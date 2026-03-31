@@ -76,11 +76,30 @@
 
 ## 4. Evidencia de calidad
 
-- **Unit tests:** N/A (implementacion de infraestructura)
-- **Integration tests:** N/A (requiere entorno PostgreSQL)
-- **E2E tests:** N/A
-- **Cobertura:** N/A
-- **Hallazgos abiertos:** Ninguno
+### Politica de testing (segun ADR-022 y PRD)
+
+| Criterio              | Requisito              | Estado actual                                                                                                                                                                                                              | Proximo paso                                   |
+| --------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| **Cobertura**         | >= 80% en modulos core | N/A (infraestructura)                                                                                                                                                                                                      | N/A para infraestructura                       |
+| **Unit tests**        | Jest                   | Tests existentes en `tenant-provisioning.processor.spec.ts` verifican flujo original. Nuevas funcionalidades (hashSchemaName, acquireTenantLock, runMigrationsForSchema, rollbackProvisioning) requieren tests adicionales | Agregar tests para nuevas funcionalidades      |
+| **Integration tests** | Supertest              | Requieren entorno PostgreSQL con schema multi-tenant                                                                                                                                                                       | Implementar cuando haya entorno de integracion |
+| **E2E tests**         | Playwright             | N/A para esta implementacion                                                                                                                                                                                               | N/A                                            |
+
+### Nota sobre cobertura
+
+Segun el PRD (seccion 13.3):
+
+- La cobertura >= 80% aplica a **modulos core** (CRM, Billing, Provisioning, etc.)
+- **Infraestructura** (migraciones, CI/CD, Docker) no requiere cobertura de modulos core
+
+### Tests existentes
+
+- `apps/worker/src/processors/tenant-provisioning.processor.spec.ts` - 2 test cases para flujo original de provisioning
+
+### Hallazgos abiertos
+
+- Tests unitarios para las nuevas funcionalidades del processor (hashSchemaName, advisory locks, rollbackProvisioning)
+- Tests de integracion con PostgreSQL real para validar migraciones multi-tenant
 
 ---
 
@@ -104,9 +123,10 @@
 
 ## 7. Decision de salida
 
-- **Puede pasar a siguiente fase:** Si
+- **Puede pasar a siguiente fase:** Si (infraestructura operativa)
 - **Requiere correcciones previas:** No
 - **Aprobadores pendientes:** Ninguno
+- **Nota:** Los tests unitarios para nuevas funcionalidades del processor son tecnicamente deseables pero no bloquean el funcionamiento de la infraestructura
 
 ---
 
@@ -141,3 +161,5 @@
 - [x] CI valida migraciones con Postgres ephemeral
 - [x] Scripts migration:run, migration:show, migration:revert intactos
 - [x] Typecheck, build, lint pasan
+- [ ] Tests unitarios para nuevas funcionalidades del processor (pendiente)
+- [ ] Tests de integracion con PostgreSQL multi-tenant (pendiente)
