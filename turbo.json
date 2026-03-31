@@ -23,6 +23,14 @@
     },
     "clean": {
       "cache": false
+    },
+    "@iwana/db#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@iwana/db#migration:tenant:run": {
+      "dependsOn": ["@iwana/db#build"],
+      "cache": false
     }
   }
 }
