@@ -48,6 +48,25 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     restart: unless-stopped
 
+  # ── Migrator (ejecuta migraciones y seed) ─────────────────────────────────
+  migrator:
+    build:
+      context: .
+      dockerfile: packages/database/Dockerfile.migrator
+    container_name: iwana_migrator
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+    command: ['node', 'dist/cli/tenant-migrate.js']
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # ── API NestJS ────────────────────────────────────────────────────────────
   api:
     build:
@@ -90,6 +109,8 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-no-reply@iwana.local}
     depends_on:
+      migrator:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -122,6 +143,8 @@ services:
       MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY}
       PLATFORM_SUPER_ADMIN_EMAIL: ${PLATFORM_SUPER_ADMIN_EMAIL}
     depends_on:
+      migrator:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
