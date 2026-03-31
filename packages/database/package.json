@@ -5,7 +5,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsc",
+    "build": "node ../../scripts/clean-paths.mjs dist && tsc",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
@@ -13,7 +13,7 @@
     "migration:run": "typeorm migration:run -d dist/data-source.js",
     "migration:revert": "typeorm migration:revert -d dist/data-source.js",
     "migration:show": "typeorm migration:show -d dist/data-source.js",
-    "migration:tenant:run": "node dist/migrations/tenant/run-all.js"
+    "migration:tenant:run": "node dist/cli/tenant-migrate.js"
   },
   "dependencies": {
     "pg": "^8.16.0",
