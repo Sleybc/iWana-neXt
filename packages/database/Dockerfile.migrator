@@ -1,0 +1,14 @@
+FROM node:20-alpine
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
+COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
+COPY packages/database/package.json ./packages/database/
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/config/package.json ./packages/config/
+RUN pnpm install --frozen-lockfile --filter @iwana/db --filter @iwana/shared --filter @iwana/config
+COPY packages/database ./packages/database
+COPY packages/shared ./packages/shared
+COPY packages/config ./packages/config
+RUN pnpm --filter @iwana/shared build && pnpm --filter @iwana/config build && pnpm --filter @iwana/db build
+WORKDIR /app/packages/database
+CMD ["node", "dist/cli/tenant-migrate.js"]
