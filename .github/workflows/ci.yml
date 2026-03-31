@@ -42,6 +42,21 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
 
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -53,3 +68,34 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Check pending migrations (public)
+        run: |
+          OUTPUT=$(pnpm --filter @iwana/db migration:show 2>&1 || true)
+          echo "$OUTPUT"
+          if echo "$OUTPUT" | grep -E "pending|not run"; then
+            echo "❌ Pending migrations detected in public schema"
+            exit 1
+          fi
+          echo "✅ No pending migrations"
+
+      - name: Run public migrations (test)
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: test
+          DB_PASSWORD: test
+          DB_NAME: test
+        run: pnpm --filter @iwana/db migration:run
+
+      - name: Run tenant migrations (test)
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: test
+          DB_PASSWORD: test
+          DB_NAME: test
+        run: |
+          psql -h localhost -U test -d test -c "CREATE SCHEMA tenant_test;"
+          psql -h localhost -U test -d test -c "INSERT INTO public.tenants (id, slug, schema_name, status) VALUES (gen_random_uuid(), 'test', 'tenant_test', 'ACTIVE');"
+          pnpm --filter @iwana/db migration:tenant:run
