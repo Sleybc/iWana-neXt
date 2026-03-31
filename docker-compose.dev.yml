@@ -45,6 +45,27 @@ services:
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
+  # Migrator — Ejecuta migraciones de base de datos
+  # ---------------------------------------------------------------------------
+  migrator:
+    build:
+      context: .
+      dockerfile: packages/database/Dockerfile.migrator
+    container_name: iwana_migrator_dev
+    environment:
+      NODE_ENV: development
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: iwana
+      DB_PASSWORD: Iwana102+
+      DB_NAME: dbiw
+    command: ['node', 'dist/cli/tenant-migrate.js']
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
   # pgBouncer — Connection pooling para PostgreSQL
   # ---------------------------------------------------------------------------
   pgbouncer:
@@ -121,8 +142,6 @@ services:
   # Worker — BullMQ processor para provisioning de tenants
   # ---------------------------------------------------------------------------
   worker:
-    profiles:
-      - worker
     build:
       context: .
       dockerfile: apps/worker/Dockerfile
@@ -142,6 +161,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 # ---------------------------------------------------------------------------
