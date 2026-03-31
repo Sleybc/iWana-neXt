@@ -251,10 +251,18 @@ export class PlatformUsersService {
       return value;
     }
 
+    const ivHex = parts[0]!;
+    const authTagHex = parts[1]!;
+    const ciphertextHex = parts[2]!;
+
+    if (ivHex.length !== 32 || authTagHex.length !== 32) {
+      return value;
+    }
+
     try {
-      const iv = Buffer.from(parts[0]!, 'hex');
-      const authTag = Buffer.from(parts[1]!, 'hex');
-      const ciphertext = Buffer.from(parts[2]!, 'hex');
+      const iv = Buffer.from(ivHex, 'hex');
+      const authTag = Buffer.from(authTagHex, 'hex');
+      const ciphertext = Buffer.from(ciphertextHex, 'hex');
       const decipher = crypto.createDecipheriv('aes-256-gcm', this.encryptionKey, iv);
       decipher.setAuthTag(authTag);
       return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');

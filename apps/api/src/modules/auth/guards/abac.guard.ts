@@ -45,7 +45,7 @@ export class AbacGuard implements CanActivate {
     // Usuarios de tenant: verificar que no operen fuera de su tenant
     const requestedTenantId =
       (request.params['tenantId'] as string | undefined) ??
-      (request.body['tenantId'] as string | undefined);
+      (request.body?.['tenantId'] as string | undefined);
 
     if (requestedTenantId && requestedTenantId !== user.tenantId) {
       throw new ForbiddenException(

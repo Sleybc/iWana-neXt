@@ -54,7 +54,7 @@ function RoleRestrictedView() {
           <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
             Panel en preparación
           </p>
-          <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
             El dashboard para tu rol estará disponible próximamente.
           </p>
         </div>

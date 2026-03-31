@@ -19,6 +19,8 @@ import { TenantService } from '../tenant/tenant.service';
 import {
   ChangeUserLoginEmailDto,
   CreateUserDto,
+  ResetPasswordDto,
+  UpdateProfileDto,
   UpdateUserDto,
   UserResponseDto,
 } from './dto/user.dto';
@@ -33,7 +35,8 @@ const TEMP_PASSWORD_BYTES = 16;
  * Servicio de gestion de usuarios por tenant.
  *
  * Opera siempre dentro del schema del tenant via TenantContext + runInTenantSchema.
- * El email se cifra antes de persistir y se indexa por emailHash (SHA-256).
+ * El email se persiste en texto plano y mantiene emailHash como derivado SHA-256
+ * para compatibilidad transversal con autenticacion y bootstrap.
  *
  * Operaciones disponibles:
  * - findAll: listado cursor-based con filtros por status y rol
@@ -43,7 +46,7 @@ const TEMP_PASSWORD_BYTES = 16;
  * - remove: soft delete (solo ADMIN, no puede borrar a otro ADMIN del mismo tenant)
  *
  * SEGURIDAD:
- * - Email siempre cifrado AES-256-GCM antes de persistir (necesita MFA_ENCRYPTION_KEY)
+ * - Email en texto plano con unique constraint; emailHash derivado para compatibilidad
  * - Password temporal generado con crypto.randomBytes (nunca predecible)
  * - Audit trail en CREATE, UPDATE, DELETE via AuditService
  * - RBAC: ADMIN no puede eliminar a otro ADMIN (RF-RBAC-04)
@@ -54,7 +57,7 @@ const TEMP_PASSWORD_BYTES = 16;
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
 
-  /** Clave AES-256-GCM derivada de MFA_ENCRYPTION_KEY (64 chars hex) */
+  /** Clave AES-256-GCM derivada de MFA_ENCRYPTION_KEY (64 chars hex) para lectura legacy. */
   private readonly encryptionKey: Buffer;
 
   constructor(
@@ -77,25 +80,53 @@ export class UsersService {
     limit?: number;
     status?: UserStatus;
     role?: UserRole;
+    search?: string;
   }): Promise<{ data: UserResponseDto[]; meta: { nextCursor: string | null; total: number } }> {
     const { schemaName } = TenantContext.getOrThrow();
     const limit = Math.min(params.limit ?? 50, 100);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      // Construir filtros tipados — TypeORM find* filtra soft-delete automáticamente
       const where: FindOptionsWhere<User> = {};
       if (params.cursor) where.id = MoreThan(params.cursor);
       if (params.status) where.status = params.status;
       if (params.role) where.role = params.role;
 
-      // Consulta de datos: +1 para detectar si hay pagina siguiente
+      if (params.search) {
+        const qb = qr.manager.createQueryBuilder(User, 'user');
+        qb.where('user.deletedAt IS NULL');
+        if (params.cursor) qb.andWhere('user.id > :cursor', { cursor: params.cursor });
+        if (params.status) qb.andWhere('user.status = :status', { status: params.status });
+        if (params.role) qb.andWhere('user.role = :role', { role: params.role });
+
+        const pattern = `%${params.search}%`;
+        qb.andWhere(
+          '(user.email ILIKE :search OR user.firstName ILIKE :search OR user.lastName ILIKE :search OR user.jobTitle ILIKE :search)',
+          { search: pattern },
+        );
+
+        qb.orderBy('user.id', 'ASC');
+        qb.take(limit + 1);
+
+        const [users, total] = await Promise.all([qb.getMany(), qb.getCount()]);
+
+        const hasNext = users.length > limit;
+        const items = hasNext ? users.slice(0, limit) : users;
+
+        return {
+          data: items.map((u) => this.toDto(u)),
+          meta: {
+            nextCursor: hasNext ? (items[items.length - 1]?.id ?? null) : null,
+            total,
+          },
+        };
+      }
+
       const users = await qr.manager.find(User, {
         where,
         order: { id: 'ASC' },
         take: limit + 1,
       });
 
-      // Total sin paginacion — misma conexion que garantiza el search_path
       const total = await qr.manager.count(User, { where });
 
       const hasNext = users.length > limit;
@@ -128,7 +159,7 @@ export class UsersService {
   /**
    * Crea un usuario en el tenant.
    *
-   * - El email se cifra AES-256-GCM y se indexa por emailHash SHA-256.
+   * - El email se almacena en texto plano y se indexa por unique + emailHash derivado.
    * - Si no se provee password, se genera uno temporal y se activa passwordResetRequired.
    * - Lanza ConflictException si ya existe un usuario con ese email en el tenant.
    * - Idempotente por Idempotency-Key (el caller debe pasarla como paramero separado para
@@ -145,15 +176,15 @@ export class UsersService {
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const emailHash = this.hashEmail(dto.email);
 
-      // Verificar unicidad incluyendo soft-deleted (emailHash tiene unique constraint en DB)
-      const existing = await qr.manager.findOne(User, { where: { emailHash }, withDeleted: true });
+      const normalizedEmail = dto.email.toLowerCase().trim();
+      const existing = await qr.manager.findOne(User, {
+        where: { email: normalizedEmail },
+        withDeleted: true,
+      });
       if (existing && !existing.deletedAt) {
         // Usuario activo con ese email — conflicto real
         throw new ConflictException('Ya existe un usuario con ese email en este tenant.');
       }
-
-      // Cifrar email antes de persistir
-      const encryptedEmail = this.encryptValue(dto.email.toLowerCase().trim());
 
       // Generar o usar el password provisto
       let temporaryPassword: string | undefined;
@@ -183,7 +214,7 @@ export class UsersService {
          * antiguo a la BD y el usuario queda soft-deleted inmediatamente otra vez.
          */
         existing.deletedAt = null;
-        existing.email = encryptedEmail;
+        existing.email = normalizedEmail;
         existing.emailHash = emailHash;
         existing.passwordHash = passwordHash;
         existing.role = dto.role;
@@ -197,14 +228,12 @@ export class UsersService {
         existing.lastLoginAt = null;
         existing.emailVerified = false;
         existing.emailVerificationToken = null;
-        existing.firstName = dto.firstName ? this.encryptValue(dto.firstName.trim()) : null;
-        existing.lastName = dto.lastName ? this.encryptValue(dto.lastName.trim()) : null;
+        existing.firstName = dto.firstName?.trim() ?? null;
+        existing.lastName = dto.lastName?.trim() ?? null;
         existing.phone = dto.phone ?? null;
         existing.jobTitle = dto.jobTitle ?? null;
         existing.documentType = dto.documentType ?? null;
-        existing.documentNumber = dto.documentNumber
-          ? this.encryptValue(dto.documentNumber.trim())
-          : null;
+        existing.documentNumber = dto.documentNumber?.trim() ?? null;
         existing.avatarUrl = dto.avatarUrl ?? null;
         existing.mfaRequired = dto.mfaRequired ?? false;
         await qr.manager.save(User, existing);
@@ -212,7 +241,7 @@ export class UsersService {
       } else {
         // Usuario nuevo — insertar registro fresco
         user = qr.manager.create(User, {
-          email: encryptedEmail,
+          email: normalizedEmail,
           emailHash,
           passwordHash,
           role: dto.role,
@@ -226,12 +255,12 @@ export class UsersService {
           lastLoginAt: null,
           emailVerified: false,
           emailVerificationToken: null,
-          firstName: dto.firstName ? this.encryptValue(dto.firstName.trim()) : null,
-          lastName: dto.lastName ? this.encryptValue(dto.lastName.trim()) : null,
+          firstName: dto.firstName?.trim() ?? null,
+          lastName: dto.lastName?.trim() ?? null,
           phone: dto.phone ?? null,
           jobTitle: dto.jobTitle ?? null,
           documentType: dto.documentType ?? null,
-          documentNumber: dto.documentNumber ? this.encryptValue(dto.documentNumber.trim()) : null,
+          documentNumber: dto.documentNumber?.trim() ?? null,
           avatarUrl: dto.avatarUrl ?? null,
           mfaRequired: dto.mfaRequired ?? false,
         });
@@ -282,18 +311,14 @@ export class UsersService {
 
       if (dto.status !== undefined) user.status = dto.status;
       if (dto.role !== undefined) user.role = dto.role;
-      // Perfil personal — cifrar campos PII si se actualizan
-      if (dto.firstName !== undefined)
-        user.firstName = dto.firstName ? this.encryptValue(dto.firstName.trim()) : null;
-      if (dto.lastName !== undefined)
-        user.lastName = dto.lastName ? this.encryptValue(dto.lastName.trim()) : null;
+      // Perfil personal — texto plano, manteniendo compatibilidad de lectura legacy.
+      if (dto.firstName !== undefined) user.firstName = dto.firstName?.trim() ?? null;
+      if (dto.lastName !== undefined) user.lastName = dto.lastName?.trim() ?? null;
       if (dto.phone !== undefined) user.phone = dto.phone ?? null;
       if (dto.jobTitle !== undefined) user.jobTitle = dto.jobTitle ?? null;
       if (dto.documentType !== undefined) user.documentType = dto.documentType ?? null;
       if (dto.documentNumber !== undefined)
-        user.documentNumber = dto.documentNumber
-          ? this.encryptValue(dto.documentNumber.trim())
-          : null;
+        user.documentNumber = dto.documentNumber?.trim() ?? null;
       if (dto.avatarUrl !== undefined) user.avatarUrl = dto.avatarUrl ?? null;
       if (dto.mfaRequired !== undefined) user.mfaRequired = dto.mfaRequired;
 
@@ -344,7 +369,7 @@ export class UsersService {
 
       if (nextEmailHash !== user.emailHash) {
         const existingUser = await qr.manager.findOne(User, {
-          where: { emailHash: nextEmailHash },
+          where: { email: normalizedEmail },
           withDeleted: false,
         });
 
@@ -352,7 +377,7 @@ export class UsersService {
           throw new ConflictException('Ya existe un usuario con ese email en este tenant.');
         }
 
-        user.email = this.encryptValue(normalizedEmail);
+        user.email = normalizedEmail;
         user.emailHash = nextEmailHash;
         await qr.manager.save(User, user);
       }
@@ -419,19 +444,103 @@ export class UsersService {
     });
   }
 
+  /** Reinicia el password de un usuario por acción administrativa. */
+  async resetPassword(
+    id: string,
+    actorId: string,
+    actorRole: UserRole,
+    ipAddress: string,
+    password?: string,
+  ): Promise<{ temporaryPassword: string }> {
+    const { schemaName } = TenantContext.getOrThrow();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const user = await qr.manager.findOne(User, { where: { id } });
+      if (!user) {
+        throw new NotFoundException(`Usuario ${id} no encontrado.`);
+      }
+
+      if (user.role === UserRole.SYSTEM_ADMIN && actorRole !== UserRole.SYSTEM_ADMIN) {
+        throw new ForbiddenException('No puedes reiniciar la contraseña de un SYSTEM_ADMIN.');
+      }
+
+      const temporaryPassword = password ?? crypto.randomBytes(TEMP_PASSWORD_BYTES).toString('hex');
+      user.passwordHash = await bcrypt.hash(temporaryPassword, BCRYPT_ROUNDS);
+      user.passwordResetRequired = true;
+      await qr.manager.save(User, user);
+
+      void this.auditService.log({
+        action: AuditAction.PASSWORD_CHANGED,
+        entityType: 'UserPasswordReset',
+        entityId: user.id,
+        userId: actorId,
+        ipAddress,
+      });
+
+      return { temporaryPassword };
+    });
+  }
+
+  /** Retorna el perfil del usuario autenticado. */
+  async findMe(actorId: string): Promise<UserResponseDto> {
+    return this.findOne(actorId);
+  }
+
+  /** Actualiza solo los campos de perfil del usuario autenticado. */
+  async updateMe(
+    actorId: string,
+    dto: UpdateProfileDto,
+    ipAddress: string,
+  ): Promise<UserResponseDto> {
+    const { schemaName } = TenantContext.getOrThrow();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const user = await qr.manager.findOne(User, { where: { id: actorId } });
+      if (!user) {
+        throw new NotFoundException(`Usuario ${actorId} no encontrado.`);
+      }
+
+      if (dto.firstName !== undefined) user.firstName = dto.firstName?.trim() ?? null;
+      if (dto.lastName !== undefined) user.lastName = dto.lastName?.trim() ?? null;
+      if (dto.phone !== undefined) user.phone = dto.phone ?? null;
+      if (dto.jobTitle !== undefined) user.jobTitle = dto.jobTitle ?? null;
+      if (dto.documentType !== undefined) user.documentType = dto.documentType ?? null;
+      if (dto.documentNumber !== undefined)
+        user.documentNumber = dto.documentNumber?.trim() ?? null;
+      if (dto.avatarUrl !== undefined) user.avatarUrl = dto.avatarUrl ?? null;
+
+      await qr.manager.save(User, user);
+
+      void this.auditService.log({
+        action: AuditAction.UPDATE,
+        entityType: 'UserProfile',
+        entityId: user.id,
+        userId: actorId,
+        ipAddress,
+      });
+
+      return this.toDto(user);
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers privados
   // ---------------------------------------------------------------------------
 
   /**
    * Convierte entidad User a DTO publico.
-   * Descifra firstName y lastName si están presentes.
-   * documentNumber NUNCA se incluye — PII sensible bajo Ley 1581.
+   * Tolera datos legacy cifrados solo en lectura durante la transición.
+   * documentNumber se devuelve para edicion en portal interno autenticado.
    */
   private toDto(user: User): UserResponseDto {
+    const decodedEmail = this.decodeLegacyValue(user.email);
+
     return {
       id: user.id,
-      email: this.decodeProfileValue(user.email) ?? '',
+      // Compatibilidad temporal: algunos tenants pueden mantener email legacy cifrado.
+      // Se intenta descifrar para exponer siempre el email usable en portal/admin.
+      // Si falla el descifrado, se conserva el valor original para no romper el contrato.
+      email: decodedEmail ?? user.email,
       role: user.role as UserRole,
       status: user.status as UserStatus,
       tenantId: user.tenantId,
@@ -445,38 +554,48 @@ export class UsersService {
       deletedAt: user.deletedAt ?? null,
       // Compatibilidad hacia atrás: algunos tenants pueden tener nombres legados
       // en texto plano o con cifrado inválido. El endpoint no debe caer por eso.
-      firstName: this.decodeProfileValue(user.firstName),
-      lastName: this.decodeProfileValue(user.lastName),
+      firstName: this.decodeLegacyValue(user.firstName),
+      lastName: this.decodeLegacyValue(user.lastName),
       phone: user.phone ?? null,
       jobTitle: user.jobTitle ?? null,
       documentType: (user.documentType as DocumentType) ?? null,
       avatarUrl: user.avatarUrl ?? null,
-      // documentNumber: omitido intencionalmente (PII sensible — Ley 1581)
+      // Compatibilidad temporal: documentNumber puede venir legacy cifrado.
+      // Se intenta descifrar para mostrar valor editable en UI interna.
+      documentNumber: this.decodeLegacyValue(user.documentNumber),
     };
   }
 
-  /** SHA-256 del email normalizado — para busquedas indexadas sin exponer PII */
+  /** SHA-256 del email normalizado — para compatibilidad transversal. */
   private hashEmail(email: string): string {
     return crypto.createHash('sha256').update(email.toLowerCase().trim()).digest('hex');
   }
 
   /**
-   * Cifra un valor con AES-256-GCM usando la clave derivada del constructor.
-   * Formato: <iv_hex>:<authTag_hex>:<ciphertext_hex>
+   * TODO: eliminar tras confirmar que no quedan datos cifrados legacy en perfil.
+   * Tolera texto plano y valores legacy AES-256-GCM sin romper el endpoint.
    */
-  private encryptValue(plaintext: string): string {
-    const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
-    const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-    const authTag = cipher.getAuthTag();
-    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+  private decodeLegacyValue(value: string | null): string | null {
+    if (!value) {
+      return null;
+    }
+
+    if (!this.looksLikeEncryptedValue(value)) {
+      return value;
+    }
+
+    try {
+      return this.decryptLegacyValue(value);
+    } catch {
+      this.logger.warn(
+        'Se detectó un campo de perfil con cifrado inválido o incompatible. Se omitirá en la respuesta.',
+      );
+      return null;
+    }
   }
 
-  /**
-   * Descifra un valor cifrado con AES-256-GCM.
-   * Formato esperado: <iv_hex>:<authTag_hex>:<ciphertext_hex>
-   */
-  private decryptValue(encrypted: string): string {
+  /** Descifra únicamente valores legacy AES-256-GCM. */
+  private decryptLegacyValue(encrypted: string): string {
     const parts = encrypted.split(':');
     if (parts.length !== 3) {
       throw new Error('Formato de valor cifrado inválido.');
@@ -487,30 +606,6 @@ export class UsersService {
     const decipher = crypto.createDecipheriv('aes-256-gcm', this.encryptionKey, iv);
     decipher.setAuthTag(authTag);
     return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
-  }
-
-  /**
-   * Decodifica nombres/apellidos almacenados en DB.
-   * - Si el valor no parece AES-256-GCM, se trata como legado en texto plano.
-   * - Si parece cifrado pero no puede descifrarse, se degrada a null sin romper el endpoint.
-   */
-  private decodeProfileValue(value: string | null): string | null {
-    if (!value) {
-      return null;
-    }
-
-    if (!this.looksLikeEncryptedValue(value)) {
-      return value;
-    }
-
-    try {
-      return this.decryptValue(value);
-    } catch {
-      this.logger.warn(
-        'Se detectó un campo de perfil con cifrado inválido o incompatible. Se omitirá en la respuesta.',
-      );
-      return null;
-    }
   }
 
   private looksLikeEncryptedValue(value: string): boolean {

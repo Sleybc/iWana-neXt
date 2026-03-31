@@ -30,29 +30,111 @@ interface AuditLogsTableProps {
   onPrev: () => void;
 }
 
+// Campos esenciales para mostrar en auditoría resumida
+const ESSENTIAL_FIELDS = [
+  'name',
+  'status',
+  'contactEmail',
+  'legalName',
+  'nit',
+  'phone',
+  'address',
+  'city',
+  'department',
+  'countryCode',
+  'website',
+  'role',
+  'email',
+  'firstName',
+  'lastName',
+  'jobTitle',
+  'mfaEnabled',
+  'passwordResetRequired',
+  'maxSubscribers',
+  'companyType',
+  'currency',
+  'language',
+  'timezone',
+  'country',
+];
+
+// Trunca un string a un máximo de caracteres y agrega puntos suspensivos si supera el límite
+function truncate(value: unknown, maxLength: number = 50): string {
+  if (value === null || value === undefined) return '—';
+  const str = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  return str.length > maxLength ? `${str.slice(0, maxLength)}...` : str;
+}
+
 // Determina el estilo del badge según la acción registrada
 function actionBadgeClass(action: string): string {
   switch (action) {
     case 'CREATE':
-      return 'bg-green-100 text-green-700';
+      return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
     case 'UPDATE':
-      return 'bg-yellow-100 text-yellow-700';
+      return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400';
     case 'DELETE':
-      return 'bg-red-100 text-red-700';
+      return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
     case 'LOGIN':
     case 'LOGOUT':
-      return 'bg-blue-100 text-blue-700';
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
     default:
-      return 'bg-gray-100 text-gray-700';
+      return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
   }
 }
 
-// Trunca un string a un máximo de caracteres y agrega puntos suspensivos si supera el límite
-function truncate(value: string | null, maxLength: number): string {
-  if (!value) {
-    return '—';
+// Formatea el nombre del campo para mostrar
+function formatFieldName(field: string): string {
+  return field
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, (str) => str.toUpperCase())
+    .replace('Id', 'ID')
+    .trim();
+}
+
+// Compara oldValue y newValue y retorna solo los campos que cambiaron
+function computeDiff(
+  oldValue: Record<string, unknown> | null,
+  newValue: Record<string, unknown> | null,
+): Array<{ field: string; old: unknown; new: unknown }> {
+  if (!oldValue && !newValue) return [];
+  if (!oldValue) {
+    return Object.entries(newValue ?? {}).map(([field, val]) => ({
+      field,
+      old: '—',
+      new: val,
+    }));
   }
-  return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+  if (!newValue) {
+    return Object.entries(oldValue).map(([field, val]) => ({
+      field,
+      old: val,
+      new: '—',
+    }));
+  }
+
+  const diffs: Array<{ field: string; old: unknown; new: unknown }> = [];
+  const allKeys = new Set([...Object.keys(oldValue), ...Object.keys(newValue)]);
+
+  for (const key of allKeys) {
+    const oldVal = oldValue[key];
+    const newVal = newValue[key];
+    if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
+      diffs.push({ field: key, old: oldVal, new: newVal });
+    }
+  }
+
+  return diffs.sort((a, b) => a.field.localeCompare(b.field));
+}
+
+// Renderiza un valor de manera legible
+function renderValue(val: unknown): React.ReactNode {
+  if (val === null || val === undefined) return '—';
+  if (typeof val === 'boolean') return val ? 'Sí' : 'No';
+  if (typeof val === 'object') {
+    const str = JSON.stringify(val);
+    return truncate(str, 80);
+  }
+  return String(val);
 }
 
 export function AuditLogsTable({
@@ -248,27 +330,112 @@ export function AuditLogsTable({
                   <td className="px-3 py-2 text-xs text-gray-500">{entry.ipAddress ?? '—'}</td>
                 </tr>
 
-                {/* Panel expandido con oldValue y newValue en JSON formateado */}
+                {/* Panel expandido con diff de oldValue y newValue */}
                 {expandedRowId === entry.id && (
                   <tr key={`${entry.id}-expanded`}>
                     <td
                       colSpan={6}
                       className="bg-gray-50 dark:bg-white/[0.03] px-6 py-4 border-t border-gray-100 dark:border-dark-border"
                     >
-                      <div className="grid grid-cols-2 gap-4">
+                      {entry.action === 'UPDATE' ? (
                         <div>
-                          <p className="text-xs font-semibold text-gray-500 mb-2">VALOR ANTERIOR</p>
-                          <pre className="text-xs text-gray-600 dark:text-gray-300 bg-white dark:bg-dark-surface-2 rounded p-3 overflow-x-auto">
-                            {entry.oldValue ? JSON.stringify(entry.oldValue, null, 2) : '—'}
-                          </pre>
+                          <p className="text-xs font-semibold text-gray-500 mb-3">
+                            CAMBIOS REALIZADOS (
+                            {computeDiff(entry.oldValue ?? null, entry.newValue ?? null).length}{' '}
+                            campo(s) modificado(s))
+                          </p>
+                          <div className="space-y-2">
+                            {computeDiff(entry.oldValue ?? null, entry.newValue ?? null).map(
+                              ({ field, old: oldVal, new: newVal }) => (
+                                <div
+                                  key={field}
+                                  className="flex items-center gap-3 text-xs bg-white dark:bg-dark-surface-2 rounded-lg p-3"
+                                >
+                                  <span className="font-medium text-gray-700 dark:text-gray-300 min-w-[140px]">
+                                    {formatFieldName(field)}
+                                  </span>
+                                  <span className="text-red-600 dark:text-red-400 line-through max-w-[200px] truncate">
+                                    {renderValue(oldVal)}
+                                  </span>
+                                  <span className="text-gray-400">→</span>
+                                  <span className="text-green-600 dark:text-green-400 max-w-[200px] truncate">
+                                    {renderValue(newVal)}
+                                  </span>
+                                </div>
+                              ),
+                            )}
+                            {computeDiff(entry.oldValue ?? null, entry.newValue ?? null).length ===
+                              0 && (
+                              <p className="text-xs text-gray-500 italic">Sin cambios detectados</p>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-xs font-semibold text-gray-500 mb-2">VALOR NUEVO</p>
-                          <pre className="text-xs text-gray-600 dark:text-gray-300 bg-white dark:bg-dark-surface-2 rounded p-3 overflow-x-auto">
-                            {entry.newValue ? JSON.stringify(entry.newValue, null, 2) : '—'}
-                          </pre>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-xs font-semibold text-gray-500 mb-2">
+                              VALOR ANTERIOR
+                            </p>
+                            <div className="bg-white dark:bg-dark-surface-2 rounded p-3 overflow-x-auto text-xs">
+                              {entry.oldValue ? (
+                                <div className="space-y-1">
+                                  {Object.entries(entry.oldValue)
+                                    .filter(([key]) => ESSENTIAL_FIELDS.includes(key))
+                                    .map(([key, val]) => (
+                                      <div key={key} className="flex gap-2">
+                                        <span className="font-medium text-gray-600 dark:text-gray-400">
+                                          {formatFieldName(key)}:
+                                        </span>
+                                        <span className="text-gray-800 dark:text-gray-200">
+                                          {renderValue(val)}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  {Object.keys(entry.oldValue).filter((k) =>
+                                    ESSENTIAL_FIELDS.includes(k),
+                                  ).length === 0 && (
+                                    <pre className="text-gray-600 dark:text-gray-400">
+                                      {JSON.stringify(entry.oldValue, null, 2)}
+                                    </pre>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold text-gray-500 mb-2">VALOR NUEVO</p>
+                            <div className="bg-white dark:bg-dark-surface-2 rounded p-3 overflow-x-auto text-xs">
+                              {entry.newValue ? (
+                                <div className="space-y-1">
+                                  {Object.entries(entry.newValue)
+                                    .filter(([key]) => ESSENTIAL_FIELDS.includes(key))
+                                    .map(([key, val]) => (
+                                      <div key={key} className="flex gap-2">
+                                        <span className="font-medium text-gray-600 dark:text-gray-400">
+                                          {formatFieldName(key)}:
+                                        </span>
+                                        <span className="text-gray-800 dark:text-gray-200">
+                                          {renderValue(val)}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  {Object.keys(entry.newValue).filter((k) =>
+                                    ESSENTIAL_FIELDS.includes(k),
+                                  ).length === 0 && (
+                                    <pre className="text-gray-600 dark:text-gray-400">
+                                      {JSON.stringify(entry.newValue, null, 2)}
+                                    </pre>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </td>
                   </tr>
                 )}

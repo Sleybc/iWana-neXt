@@ -188,7 +188,8 @@ export function EditUserModal({
     setEmailError(null);
     setIsSavingEmail(true);
     try {
-      await usersApi.changeEmail(user.id, email);
+      // El admin cambia el email sin necesidad de contraseña propia
+      await usersApi.changeEmail(user.id, { email });
       onEmailChanged?.();
     } catch (err: unknown) {
       setEmailError(mapError(err));

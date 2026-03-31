@@ -4,7 +4,7 @@
  * Verifica:
  * - findAll(): retorna lista paginada de usuarios del tenant con cursor-based pagination.
  * - findOne(): retorna usuario por id; lanza NotFoundException si no existe.
- * - create(): crea usuario con email cifrado; lanza ConflictException si email ya existe.
+ * - create(): crea usuario con email en texto plano; lanza ConflictException si email ya existe.
  * - create(): genera password temporal cuando dto.password no se provee.
  * - create(): registra evento AuditAction.CREATE.
  * - update(): actualiza status y/o rol; lanza NotFoundException si no existe.
@@ -26,6 +26,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
 import { DataSource } from 'typeorm';
 import {
   BadRequestException,
@@ -43,6 +44,7 @@ jest.mock('bcryptjs', () => {
   return {
     ...actual,
     compare: jest.fn(),
+    hash: jest.fn(async (value: string) => `hashed:${value}`),
   };
 });
 
@@ -84,7 +86,7 @@ function buildUserEntity(
 ): Record<string, unknown> {
   return {
     id: 'usr-00000000-0000-4000-a000-000000000001',
-    email: 'encrypted:mock',
+    email: 'usuario.mock@empresa.com',
     emailHash: 'hash-mock',
     passwordHash: 'hashed-pw',
     role: UserRole.NOC,
@@ -161,6 +163,15 @@ function setupRunInTenantSchema(
   return mgr;
 }
 
+function encryptLegacyValue(plaintext: string): string {
+  const iv = Buffer.from('00112233445566778899aabb', 'hex');
+  const key = Buffer.from(MOCK_KEY_HEX, 'hex');
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+}
+
 // ---------------------------------------------------------------------------
 // Suite principal
 // ---------------------------------------------------------------------------
@@ -232,6 +243,170 @@ describe('UsersService', () => {
       // Con limit=2, slice deja [id-1, id-2] y nextCursor = 'id-2'
       expect(result.data).toHaveLength(2);
       expect(result.meta.nextCursor).toBe('id-2');
+    });
+
+    it('aplica busqueda ILIKE en email, firstName, lastName y jobTitle cuando search esta presente', async () => {
+      const getMany = jest.fn().mockResolvedValue([buildUserEntity({ email: 'ana@empresa.com' })]);
+      const getCount = jest.fn().mockResolvedValue(1);
+      const andWhere = jest.fn().mockReturnThis();
+      const where = jest.fn().mockReturnThis();
+      const orderBy = jest.fn().mockReturnThis();
+      const take = jest.fn().mockReturnThis();
+      const qb = { andWhere, where, orderBy, take, getMany, getCount };
+
+      const createQueryBuilder = jest.fn().mockReturnValue(qb);
+      setupRunInTenantSchema({ createQueryBuilder });
+
+      const result = await service.findAll({ search: 'ana', limit: 10 });
+
+      expect(createQueryBuilder).toHaveBeenCalledWith(expect.anything(), 'user');
+      expect(andWhere).toHaveBeenCalledWith(
+        '(user.email ILIKE :search OR user.firstName ILIKE :search OR user.lastName ILIKE :search OR user.jobTitle ILIKE :search)',
+        { search: '%ana%' },
+      );
+      expect(result.data).toHaveLength(1);
+      expect(result.meta.total).toBe(1);
+    });
+
+    it('combina search con filtros de status y role', async () => {
+      const getMany = jest.fn().mockResolvedValue([]);
+      const getCount = jest.fn().mockResolvedValue(0);
+      const andWhere = jest.fn().mockReturnThis();
+      const where = jest.fn().mockReturnThis();
+      const orderBy = jest.fn().mockReturnThis();
+      const take = jest.fn().mockReturnThis();
+      const qb = { andWhere, where, orderBy, take, getMany, getCount };
+
+      const createQueryBuilder = jest.fn().mockReturnValue(qb);
+      setupRunInTenantSchema({ createQueryBuilder });
+
+      const result = await service.findAll({
+        search: 'soporte',
+        status: UserStatus.ACTIVE,
+        role: UserRole.SUPPORT,
+      });
+
+      expect(andWhere).toHaveBeenCalledWith('user.status = :status', { status: UserStatus.ACTIVE });
+      expect(andWhere).toHaveBeenCalledWith('user.role = :role', { role: UserRole.SUPPORT });
+      expect(result.data).toEqual([]);
+      expect(result.meta.total).toBe(0);
+    });
+  });
+
+  describe('resetPassword()', () => {
+    it('genera password temporal y activa passwordResetRequired cuando no se provee password', async () => {
+      const targetUser = buildUserEntity({ id: 'usr-target', role: UserRole.NOC });
+      const mgr = setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(targetUser) });
+
+      const result = await service.resetPassword(
+        'usr-target',
+        'usr-admin',
+        UserRole.ADMIN,
+        '127.0.0.1',
+      );
+
+      expect(typeof result.temporaryPassword).toBe('string');
+      expect(result.temporaryPassword).toHaveLength(32);
+      expect(mgr.save).toHaveBeenCalled();
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.PASSWORD_CHANGED,
+          entityType: 'UserPasswordReset',
+          entityId: 'usr-target',
+        }),
+      );
+    });
+
+    it('rechaza cuando ADMIN intenta resetear a SYSTEM_ADMIN', async () => {
+      const targetUser = buildUserEntity({ id: 'usr-platform', role: UserRole.SYSTEM_ADMIN });
+      setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(targetUser) });
+
+      await expect(
+        service.resetPassword('usr-platform', 'usr-admin', UserRole.ADMIN, '127.0.0.1'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('usa bcrypt 12 rounds para hashear un password provisto', async () => {
+      const targetUser = buildUserEntity({ id: 'usr-target', role: UserRole.NOC });
+      setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(targetUser) });
+      const hashMock = bcrypt.hash as jest.MockedFunction<typeof bcrypt.hash>;
+
+      await service.resetPassword(
+        'usr-target',
+        'usr-admin',
+        UserRole.ADMIN,
+        '127.0.0.1',
+        'PasswordTemporal!123',
+      );
+
+      expect(hashMock).toHaveBeenCalledWith('PasswordTemporal!123', 12);
+    });
+
+    it('lanza NotFoundException si usuario no existe', async () => {
+      setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(null) });
+
+      await expect(
+        service.resetPassword('usr-missing', 'usr-admin', UserRole.ADMIN, '127.0.0.1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('findMe()', () => {
+    it('retorna el perfil del actor autenticado', async () => {
+      const entity = buildUserEntity({ id: 'usr-self', firstName: 'Ana', lastName: 'Perez' });
+      setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(entity) });
+
+      const result = await service.findMe('usr-self');
+
+      expect(result.id).toBe('usr-self');
+      expect(result.documentNumber).toBeNull();
+    });
+
+    it('lanza NotFoundException si actor no existe', async () => {
+      setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(null) });
+
+      await expect(service.findMe('usr-missing')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('updateMe()', () => {
+    it('actualiza solo campos de perfil propio y preserva role/status', async () => {
+      const entity = buildUserEntity({
+        id: 'usr-self',
+        role: UserRole.NOC,
+        status: UserStatus.ACTIVE,
+      });
+      const mgr = setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(entity) });
+
+      const result = await service.updateMe(
+        'usr-self',
+        {
+          firstName: 'Andrea',
+          jobTitle: 'Soporte L2',
+          documentNumber: '123456789',
+        },
+        '127.0.0.1',
+      );
+
+      expect(result.firstName).toBe('Andrea');
+      expect(entity.role).toBe(UserRole.NOC);
+      expect(entity.status).toBe(UserStatus.ACTIVE);
+      expect(mgr.save).toHaveBeenCalled();
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.UPDATE,
+          entityType: 'UserProfile',
+          entityId: 'usr-self',
+        }),
+      );
+    });
+
+    it('lanza NotFoundException si el perfil propio no existe', async () => {
+      setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(null) });
+
+      await expect(service.updateMe('usr-missing', {}, '127.0.0.1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -435,7 +610,7 @@ describe('UsersService', () => {
       );
     });
 
-    it('crea usuario con campos de perfil y los cifra en la entidad', async () => {
+    it('crea usuario con campos de perfil en texto plano en la entidad', async () => {
       let savedEntity: Record<string, unknown> | null = null;
       const mgr = setupRunInTenantSchema({
         findOne: jest.fn().mockResolvedValue(null),
@@ -461,15 +636,14 @@ describe('UsersService', () => {
         avatarUrl: 'https://cdn.ejemplo.com/avatar.png',
       });
 
-      // firstName y lastName deben estar cifrados (formato iv:authTag:ciphertext)
+      // Los campos del perfil ahora se persisten en texto plano.
       expect(typeof savedEntity!['firstName']).toBe('string');
-      expect((savedEntity!['firstName'] as string).split(':').length).toBe(3);
+      expect(savedEntity!['firstName']).toBe('Carlos');
       expect(typeof savedEntity!['lastName']).toBe('string');
-      expect((savedEntity!['lastName'] as string).split(':').length).toBe(3);
-      // documentNumber debe estar cifrado
+      expect(savedEntity!['lastName']).toBe('García');
+      // documentNumber también se mantiene en texto plano, aunque no se expone en DTOs.
       expect(typeof savedEntity!['documentNumber']).toBe('string');
-      expect((savedEntity!['documentNumber'] as string).split(':').length).toBe(3);
-      // phone y jobTitle no cifrados
+      expect(savedEntity!['documentNumber']).toBe('123456789');
       expect(savedEntity!['phone']).toBe('+573001234567');
       expect(savedEntity!['jobTitle']).toBe('Técnico de soporte');
       expect(savedEntity!['documentType']).toBe(DocumentType.CC);
@@ -589,7 +763,7 @@ describe('UsersService', () => {
       );
     });
 
-    it('actualiza campos de perfil cifrando firstName, lastName y documentNumber', async () => {
+    it('actualiza campos de perfil en texto plano', async () => {
       const TARGET_ID_PROFILE = 'usr-00000000-0000-4000-a000-000000000001';
       const ADMIN_ID_PROFILE = 'usr-admin-00000000-0000-4000-a000-000000000100';
       const entity = buildUserEntity({ id: TARGET_ID_PROFILE });
@@ -616,11 +790,9 @@ describe('UsersService', () => {
         UserRole.ADMIN,
       );
 
-      // Campos PII deben estar cifrados al guardar
-      expect((savedEntity!['firstName'] as string).split(':').length).toBe(3);
-      expect((savedEntity!['lastName'] as string).split(':').length).toBe(3);
-      expect((savedEntity!['documentNumber'] as string).split(':').length).toBe(3);
-      // phone no se cifra
+      expect(savedEntity!['firstName']).toBe('Ana');
+      expect(savedEntity!['lastName']).toBe('López');
+      expect(savedEntity!['documentNumber']).toBe('987654321');
       expect(savedEntity!['phone']).toBe('+573109876543');
     });
 
@@ -686,17 +858,16 @@ describe('UsersService', () => {
       expect(result.lastName).toBe('Rodríguez');
     });
 
-    it('documentNumber NUNCA aparece en UserResponseDto', async () => {
+    it('incluye documentNumber en UserResponseDto para edicion interna', async () => {
       const entity = buildUserEntity({
-        documentNumber: 'some:encrypted:value',
+        documentNumber: '123456789',
         documentType: DocumentType.CC,
       });
       setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(entity) });
 
       const result = await service.findOne(entity['id'] as string);
 
-      // Verificar que la propiedad no existe en el resultado
-      expect('documentNumber' in result).toBe(false);
+      expect(result.documentNumber).toBe('123456789');
     });
 
     it('retorna null para campos de perfil no establecidos', async () => {
@@ -711,6 +882,7 @@ describe('UsersService', () => {
       expect(result.jobTitle).toBeNull();
       expect(result.documentType).toBeNull();
       expect(result.avatarUrl).toBeNull();
+      expect(result.documentNumber).toBeNull();
     });
 
     it('tolera nombres legados en texto plano sin lanzar error', async () => {
@@ -869,14 +1041,25 @@ describe('UsersService', () => {
   });
 
   // -------------------------------------------------------------------------
-  // decryptValue — branch formato invalido
+  // decryptLegacyValue — branch formato invalido
   // -------------------------------------------------------------------------
 
-  describe('decryptValue() privado — branch formato invalido', () => {
+  describe('decryptLegacyValue() privado — branch formato invalido', () => {
     it('lanza Error cuando el valor cifrado no tiene el formato iv:tag:ciphertext', () => {
       expect(() => {
-        (service as any).decryptValue('solo-dos:partes');
+        (service as any).decryptLegacyValue('solo-dos:partes');
       }).toThrow('Formato de valor cifrado inválido.');
+    });
+  });
+
+  describe('decodeLegacyValue()', () => {
+    it('retorna texto plano sin cambios', () => {
+      expect((service as any).decodeLegacyValue('Texto plano')).toBe('Texto plano');
+    });
+
+    it('descifra valor en formato legacy iv:tag:cipher', () => {
+      const encrypted = encryptLegacyValue('Nombre Legacy');
+      expect((service as any).decodeLegacyValue(encrypted)).toBe('Nombre Legacy');
     });
   });
 });

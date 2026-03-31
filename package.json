@@ -1,6 +1,7 @@
 {
   "name": "iwana-next",
   "private": true,
+  "type": "module",
   "version": "0.1.0",
   "description": "iWana neXt — ISP/OSS/BSS/NMS Platform Colombia",
   "packageManager": "pnpm@10.32.1",

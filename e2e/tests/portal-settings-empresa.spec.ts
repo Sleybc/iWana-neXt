@@ -36,6 +36,15 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
     settingsPatches: [] as Array<Record<string, unknown>>,
     platformCalls: [] as string[],
     summaryRequests: 0,
+    coverageNodePosts: 0,
+    coverageNodePatches: 0,
+    coverageNodeDeletes: 0,
+    coverageZonePosts: 0,
+    coverageZonePatches: 0,
+    coverageZoneDeletes: 0,
+    planPosts: 0,
+    planPatches: 0,
+    planDeletes: 0,
   };
 
   const coverageConfig = {
@@ -69,6 +78,7 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
       id: 'plan-1',
       name: 'Internet Hogar 200',
       technology: 'FTTH',
+      installationRule: 'ALWAYS',
       downloadSpeedMbps: 200,
       uploadSpeedMbps: 80,
       basePrice: 129900,
@@ -247,6 +257,130 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
       return;
     }
 
+    if (url.includes('/tenants/me/coverage/nodes') && method === 'POST') {
+      requestLog.coverageNodePosts += 1;
+      const body = JSON.parse(route.request().postData() ?? '{}') as {
+        name: string;
+        latitude: number;
+        longitude: number;
+        isActive?: boolean;
+      };
+
+      coverageConfig.nodes.unshift({
+        id: `node-${coverageConfig.nodes.length + 1}`,
+        name: body.name,
+        latitude: body.latitude,
+        longitude: body.longitude,
+        isActive: body.isActive ?? true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: coverageConfig }),
+      });
+      return;
+    }
+
+    if (/\/tenants\/me\/coverage\/nodes\/[^/]+$/.test(url) && method === 'PATCH') {
+      requestLog.coverageNodePatches += 1;
+      const body = JSON.parse(route.request().postData() ?? '{}') as Record<string, unknown>;
+      const nodeId = url.split('/').at(-1) ?? '';
+      const target = coverageConfig.nodes.find((node) => node.id === nodeId);
+
+      if (target) {
+        Object.assign(target, body, { updatedAt: new Date().toISOString() });
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: coverageConfig }),
+      });
+      return;
+    }
+
+    if (/\/tenants\/me\/coverage\/nodes\/[^/]+$/.test(url) && method === 'DELETE') {
+      requestLog.coverageNodeDeletes += 1;
+      const nodeId = url.split('/').at(-1) ?? '';
+      const index = coverageConfig.nodes.findIndex((node) => node.id === nodeId);
+      if (index >= 0) {
+        coverageConfig.nodes.splice(index, 1);
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: coverageConfig }),
+      });
+      return;
+    }
+
+    if (url.includes('/tenants/me/coverage/zones') && method === 'POST') {
+      requestLog.coverageZonePosts += 1;
+      const body = JSON.parse(route.request().postData() ?? '{}') as {
+        name: string;
+        centerLatitude: number;
+        centerLongitude: number;
+        radiusKm: number;
+        isActive?: boolean;
+      };
+
+      coverageConfig.zones.unshift({
+        id: `zone-${coverageConfig.zones.length + 1}`,
+        name: body.name,
+        centerLatitude: body.centerLatitude,
+        centerLongitude: body.centerLongitude,
+        radiusKm: body.radiusKm,
+        isActive: body.isActive ?? true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: coverageConfig }),
+      });
+      return;
+    }
+
+    if (/\/tenants\/me\/coverage\/zones\/[^/]+$/.test(url) && method === 'PATCH') {
+      requestLog.coverageZonePatches += 1;
+      const body = JSON.parse(route.request().postData() ?? '{}') as Record<string, unknown>;
+      const zoneId = url.split('/').at(-1) ?? '';
+      const target = coverageConfig.zones.find((zone) => zone.id === zoneId);
+
+      if (target) {
+        Object.assign(target, body, { updatedAt: new Date().toISOString() });
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: coverageConfig }),
+      });
+      return;
+    }
+
+    if (/\/tenants\/me\/coverage\/zones\/[^/]+$/.test(url) && method === 'DELETE') {
+      requestLog.coverageZoneDeletes += 1;
+      const zoneId = url.split('/').at(-1) ?? '';
+      const index = coverageConfig.zones.findIndex((zone) => zone.id === zoneId);
+      if (index >= 0) {
+        coverageConfig.zones.splice(index, 1);
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: coverageConfig }),
+      });
+      return;
+    }
+
     if (url.includes('/tenants/me/coverage') && method === 'GET') {
       await route.fulfill({
         status: 200,
@@ -257,6 +391,66 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
     }
 
     if (url.includes('/tenants/me/plans') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: planCatalog }),
+      });
+      return;
+    }
+
+    if (url.includes('/tenants/me/plans') && method === 'POST') {
+      requestLog.planPosts += 1;
+      const body = JSON.parse(route.request().postData() ?? '{}') as Record<string, unknown>;
+      planCatalog.unshift({
+        id: `plan-${planCatalog.length + 1}`,
+        name: String(body.name ?? 'Plan nuevo'),
+        technology: String(body.technology ?? 'FTTH'),
+        installationRule: String(body.installationRule ?? 'ALWAYS'),
+        downloadSpeedMbps: Number(body.downloadSpeedMbps ?? 200),
+        uploadSpeedMbps: Number(body.uploadSpeedMbps ?? 200),
+        basePrice: Number(body.basePrice ?? 0),
+        installationFee: Number(body.installationFee ?? 0),
+        validFrom: null,
+        validTo: null,
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: planCatalog }),
+      });
+      return;
+    }
+
+    if (/\/tenants\/me\/plans\/[^/]+$/.test(url) && method === 'PATCH') {
+      requestLog.planPatches += 1;
+      const body = JSON.parse(route.request().postData() ?? '{}') as Record<string, unknown>;
+      const planId = url.split('/').at(-1) ?? '';
+      const target = planCatalog.find((plan) => plan.id === planId);
+      if (target) {
+        Object.assign(target, body, { updatedAt: new Date().toISOString() });
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: planCatalog }),
+      });
+      return;
+    }
+
+    if (/\/tenants\/me\/plans\/[^/]+$/.test(url) && method === 'DELETE') {
+      requestLog.planDeletes += 1;
+      const planId = url.split('/').at(-1) ?? '';
+      const index = planCatalog.findIndex((plan) => plan.id === planId);
+      if (index >= 0) {
+        planCatalog.splice(index, 1);
+      }
+
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -397,9 +591,9 @@ test.describe('Configuración empresarial del portal', () => {
     // Desactivar nombre en sidebar
     await page.getByRole('checkbox', { name: /mostrar nombre comercial/i }).uncheck();
 
-    await page.getByRole('button', { name: 'Guardar logo y sello' }).click();
+    await page.getByRole('button', { name: 'Guardar branding' }).click();
 
-    await expect(page.getByText('Logo y sello actualizados correctamente.')).toBeVisible();
+    await expect(page.getByText('Logo, sello y favicon actualizados correctamente.')).toBeVisible();
   });
 
   test('NOC ve la pantalla en modo solo lectura y no consume summary de ADMIN', async ({
@@ -420,6 +614,158 @@ test.describe('Configuración empresarial del portal', () => {
     await expect(page.getByRole('button', { name: 'Guardar seguridad' })).toHaveCount(0);
     expect(requestLog.summaryRequests).toBe(0);
     expect(requestLog.platformCalls).toHaveLength(0);
+  });
+
+  test('ADMIN crea nodo de cobertura desde dialogo', async ({ page }) => {
+    const { requestLog } = await setupSettingsMocks(page, 'ADMIN');
+    await setAuthSession(page, 'ADMIN');
+
+    await page.goto('/dashboard/settings');
+    await page.waitForLoadState('networkidle');
+    await page.getByRole('tab', { name: 'Comercial', exact: true }).click();
+
+    await page.getByTestId('add-node-btn').click();
+    await page.getByTestId('node-dialog').getByLabel('Nombre').fill('Nodo Sur');
+    await page.getByTestId('node-dialog').getByLabel('Latitud').fill('4.55');
+    await page.getByTestId('node-dialog').getByLabel('Longitud').fill('-74.12');
+    await page.getByTestId('node-dialog').getByRole('button', { name: 'Crear nodo' }).click();
+
+    await expect(page.getByTestId('coverage-node-table')).toContainText('Nodo Sur');
+    expect(requestLog.coverageNodePosts).toBe(1);
+  });
+
+  test('ADMIN edita y desactiva nodo de cobertura', async ({ page }) => {
+    const { requestLog } = await setupSettingsMocks(page, 'ADMIN');
+    await setAuthSession(page, 'ADMIN');
+
+    await page.goto('/dashboard/settings');
+    await page.waitForLoadState('networkidle');
+    await page.getByRole('tab', { name: 'Comercial', exact: true }).click();
+
+    await page.getByTestId('node-edit-btn-node-1').click();
+    await page.getByTestId('node-dialog').getByLabel('Nombre').fill('Nodo Centro Editado');
+    await page.getByTestId('node-dialog').getByRole('button', { name: 'Guardar cambios' }).click();
+
+    await expect(page.getByTestId('coverage-node-table')).toContainText('Nodo Centro Editado');
+    await page.getByLabel('Cambiar estado de Nodo Centro Editado').click({ force: true });
+
+    expect(requestLog.coverageNodePatches).toBeGreaterThanOrEqual(2);
+  });
+
+  test('ADMIN elimina nodo de cobertura', async ({ page }) => {
+    const { requestLog } = await setupSettingsMocks(page, 'ADMIN');
+    await setAuthSession(page, 'ADMIN');
+
+    await page.goto('/dashboard/settings');
+    await page.waitForLoadState('networkidle');
+    await page.getByRole('tab', { name: 'Comercial', exact: true }).click();
+
+    await expect(page.getByTestId('coverage-node-table')).toContainText('Nodo Centro');
+    await page.getByTestId('node-delete-btn-node-1').click();
+    await expect(page.getByTestId('coverage-node-table')).not.toContainText('Nodo Centro');
+
+    expect(requestLog.coverageNodeDeletes).toBe(1);
+  });
+
+  test('ADMIN ejecuta CRUD de zonas de cobertura', async ({ page }) => {
+    const { requestLog } = await setupSettingsMocks(page, 'ADMIN');
+    await setAuthSession(page, 'ADMIN');
+
+    await page.goto('/dashboard/settings');
+    await page.waitForLoadState('networkidle');
+    await page.getByRole('tab', { name: 'Comercial', exact: true }).click();
+
+    await page.getByTestId('add-zone-btn').click();
+    await page.getByTestId('zone-dialog').getByLabel('Nombre').fill('Zona Sur');
+    await page.getByTestId('zone-dialog').getByLabel('Latitud centro').fill('4.58');
+    await page.getByTestId('zone-dialog').getByLabel('Longitud centro').fill('-74.10');
+    await page.getByTestId('zone-dialog').getByLabel('Radio (km)').fill('8');
+    await page.getByTestId('zone-dialog').getByRole('button', { name: 'Crear zona' }).click();
+
+    await expect(page.getByTestId('coverage-zone-table')).toContainText('Zona Sur');
+
+    await page.getByTestId('zone-edit-btn-zone-1').click();
+    await page.getByTestId('zone-dialog').getByLabel('Nombre').fill('Zona Norte Editada');
+    await page.getByTestId('zone-dialog').getByRole('button', { name: 'Guardar cambios' }).click();
+
+    await expect(page.getByTestId('coverage-zone-table')).toContainText('Zona Norte Editada');
+    await page.getByTestId('zone-delete-btn-zone-1').click();
+    await expect(page.getByTestId('coverage-zone-table')).not.toContainText('Zona Norte Editada');
+
+    expect(requestLog.coverageZonePosts).toBe(1);
+    expect(requestLog.coverageZonePatches).toBeGreaterThanOrEqual(1);
+    expect(requestLog.coverageZoneDeletes).toBe(1);
+  });
+
+  test('ADMIN ejecuta CRUD de planes en catalogo', async ({ page }) => {
+    const { requestLog } = await setupSettingsMocks(page, 'ADMIN');
+    await setAuthSession(page, 'ADMIN');
+
+    await page.goto('/dashboard/settings');
+    await page.waitForLoadState('networkidle');
+    await page.getByRole('tab', { name: 'Comercial', exact: true }).click();
+    await page.getByRole('button', { name: 'Planes' }).click();
+
+    await page.getByRole('button', { name: 'Nuevo plan' }).click();
+    await page.getByLabel('Nombre del plan').fill('Plan Oficina 500');
+    await page.getByLabel('Velocidad de bajada (Mbps)').fill('500');
+    await page.getByRole('radio', { name: 'Asimétrica' }).click();
+    await page.getByLabel('Velocidad de subida (Mbps)').fill('250');
+    await page.getByLabel('Precio base (COP)').fill('220000');
+    await page.getByRole('button', { name: 'Crear plan' }).click();
+
+    await expect(page.getByText('Plan Oficina 500')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Editar' }).first().click();
+    await page.getByLabel('Nombre del plan').fill('Plan Oficina 500 Editado');
+    await page.getByRole('button', { name: 'Guardar cambios' }).click();
+    await expect(page.getByText('Plan Oficina 500 Editado')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Editar' }).first().click();
+    await page.getByRole('button', { name: 'Eliminar este plan' }).click();
+
+    expect(requestLog.planPosts).toBe(1);
+    expect(requestLog.planPatches).toBeGreaterThanOrEqual(1);
+    expect(requestLog.planDeletes).toBe(1);
+  });
+
+  test('NOC ve cobertura y planes en solo lectura sin acciones', async ({ page }) => {
+    await setupSettingsMocks(page, 'NOC');
+    await setAuthSession(page, 'NOC');
+
+    await page.goto('/dashboard/settings');
+    await page.waitForLoadState('networkidle');
+    await page.getByRole('tab', { name: 'Comercial', exact: true }).click();
+
+    await expect(page.getByTestId('add-node-btn')).toHaveCount(0);
+    await expect(page.getByTestId('add-zone-btn')).toHaveCount(0);
+    await expect(page.getByTestId('coverage-node-table')).toBeVisible();
+    await expect(page.getByTestId('coverage-zone-table')).toBeVisible();
+    await expect(page.getByTestId('coverage-map')).toBeVisible();
+    await expect(page.getByTestId('node-edit-btn-node-1')).toHaveCount(0);
+    await expect(page.getByTestId('node-delete-btn-node-1')).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Planes' }).click();
+    await expect(page.getByRole('button', { name: 'Nuevo plan' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Editar' })).toHaveCount(0);
+  });
+
+  test('Validador de factibilidad muestra resultados esperados', async ({ page }) => {
+    await setupSettingsMocks(page, 'ADMIN');
+    await setAuthSession(page, 'ADMIN');
+
+    await page.goto('/dashboard/settings');
+    await page.waitForLoadState('networkidle');
+    await page.getByRole('tab', { name: 'Comercial', exact: true }).click();
+
+    const section = page.getByTestId('coverage-check-section');
+    await section.getByLabel('Direccion a validar').fill('Calle 123 #45-67, Bogota');
+    await section.getByLabel('Latitud').fill('4.60971');
+    await section.getByLabel('Longitud').fill('-74.08175');
+    await section.getByRole('button', { name: 'Validar' }).click();
+
+    await expect(section).toContainText('Cobertura disponible');
+    await expect(section).toContainText('Nodo Centro');
   });
 
   test('Configuracion usa tabs accesibles y conserva borradores al cambiar de seccion', async ({
@@ -463,13 +809,13 @@ test.describe('Configuración empresarial del portal', () => {
       'true',
     );
     await expect(page.getByRole('tabpanel', { name: 'Comercial' })).toBeVisible();
-    // Por defecto se muestra Cobertura; Planes no está visible aún
+    // Por defecto se muestra Cobertura; Catálogo no está visible aún
     await expect(page.getByRole('heading', { name: 'Cobertura comercial' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Planes y valores' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Catálogo de planes' })).toHaveCount(0);
 
     // Navegar a Planes mediante el sidebar interno
     await page.getByRole('button', { name: 'Planes' }).click();
-    await expect(page.getByRole('heading', { name: 'Planes y valores' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Catálogo de planes' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Cobertura comercial' })).toHaveCount(0);
 
     await page.getByRole('tab', { name: 'General', exact: true }).click();

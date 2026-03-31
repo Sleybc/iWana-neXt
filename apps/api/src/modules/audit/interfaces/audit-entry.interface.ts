@@ -15,10 +15,21 @@ export interface AuditEntryInput {
   entityType: string;
   /** ID de la entidad afectada */
   entityId: string;
-  /** Estado anterior — sanitizado, sin campos cifrados ni contrasenas */
+  /**
+   * Estado anterior — sanitizado, sin campos cifrados ni contrasenas.
+   * Para UPDATE: puede ser null si no se pudo obtener el estado previo.
+   */
   oldValue?: Record<string, unknown> | null;
-  /** Estado nuevo — sanitizado, sin campos cifrados ni contrasenas */
+  /**
+   * Estado nuevo — sanitizado, sin campos cifrados ni contrasenas.
+   * Para UPDATE con diff: objeto con solo campos { old, new }.
+   * Para CREATE/DELETE: objeto completo.
+   */
   newValue?: Record<string, unknown> | null;
+  /**
+   * Indica si newValue es un diff (solo campos modificados) en lugar del objeto completo.
+   */
+  isDiff?: boolean;
   /**
    * ID del usuario que realizo la accion.
    * Null para acciones del sistema (jobs BullMQ, startup).

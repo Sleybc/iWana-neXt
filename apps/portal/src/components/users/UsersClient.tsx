@@ -1,12 +1,13 @@
 // apps/portal/src/components/users/UsersClient.tsx
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { UsersTable } from './UsersTable';
 import { CreateUserModal } from './CreateUserModal';
 import { EditUserModal } from './EditUserModal';
 import { DeleteUserDialog } from './DeleteUserDialog';
+import { ResetPasswordDialog } from './ResetPasswordDialog';
 import {
   usersApi,
   type InternalUser,
@@ -50,6 +51,7 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<InternalUser | null>(null);
 
   const [actionError, setActionError] = useState<string | null>(null);
@@ -57,6 +59,11 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [newUserEmail, setNewUserEmail] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  /** Texto ingresado por el usuario en el input de búsqueda (sin debounce) */
+  const [searchValue, setSearchValue] = useState('');
+  /** Timer id para el debounce del input de búsqueda */
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // append=true cuando el usuario pulsa "Cargar más"; en ese caso se concatenan los
   // resultados al final de la lista en lugar de reemplazarla.
@@ -90,6 +97,20 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
       // Se pasa append=true para concatenar la siguiente página sin descartar la actual
       void loadUsers({ ...filters, cursor: meta.nextCursor }, true);
     }
+  };
+
+  /**
+   * Actualiza el valor del input de búsqueda y dispara una nueva carga con debounce de 300ms.
+   * Se cancela el timer anterior antes de crear uno nuevo para evitar peticiones redundantes.
+   */
+  const handleSearchChange = (value: string) => {
+    setSearchValue(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      const newFilters: ListUsersParams = { limit: PAGE_SIZE };
+      if (value) newFilters.search = value;
+      void loadUsers(newFilters);
+    }, 300);
   };
 
   const handleCreate = async (dto: CreateInternalUserDto) => {
@@ -151,6 +172,28 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
     }
   };
 
+  /**
+   * Confirma el reinicio de contraseña para el usuario seleccionado.
+   * Genera una contraseña temporal y la expone al admin para que la entregue manualmente.
+   */
+  const handleResetPasswordConfirm = async () => {
+    if (!selectedUser) return;
+    setActionError(null);
+    setIsSubmitting(true);
+    try {
+      const result = await usersApi.resetPassword(selectedUser.id, {
+        idempotencyKey: crypto.randomUUID(),
+      });
+      setTempPassword(result.temporaryPassword);
+      setNewUserEmail(selectedUser.email);
+      setIsResetPasswordOpen(false);
+    } catch (err: unknown) {
+      setActionError(mapError(err));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const openEdit = (userToEdit: InternalUser) => {
     setSelectedUser(userToEdit);
     setActionError(null);
@@ -169,9 +212,23 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
     setIsDeleteOpen(true);
   };
 
+  /**
+   * Abre el dialog de confirmación de reinicio de contraseña para el usuario seleccionado.
+   * Resetea los estados de acción previos para evitar mensajes residuales.
+   */
+  const openResetPassword = (userToReset: InternalUser) => {
+    setSelectedUser(userToReset);
+    setActionError(null);
+    setActionSuccess(null);
+    setTempPassword(null);
+    setNewUserEmail(null);
+    setIsResetPasswordOpen(true);
+  };
+
   const closeModals = () => {
     setIsEditOpen(false);
     setIsDeleteOpen(false);
+    setIsResetPasswordOpen(false);
     setSelectedUser(null);
     setActionError(null);
     setActionSuccess(null);
@@ -281,8 +338,11 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
           meta={meta}
           onEdit={openEdit}
           onDelete={openDelete}
+          onResetPassword={openResetPassword}
           onFilterChange={handleFilterChange}
           onLoadMore={handleLoadMore}
+          searchValue={searchValue}
+          onSearchChange={handleSearchChange}
           currentUserId={user?.id}
         />
       </main>
@@ -297,6 +357,64 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
         tempPasswordEmail={newUserEmail}
         onDismissSuccess={dismissTempPassword}
       />
+
+      {/* Modal de contraseña temporal tras reset desde la tabla */}
+      {tempPassword && newUserEmail && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reset-success-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl dark:bg-dark-surface-2">
+            <h2
+              id="reset-success-title"
+              className="text-base font-semibold text-gray-900 dark:text-white"
+            >
+              Contraseña temporal generada
+            </h2>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+              Entrega esta contraseña a{' '}
+              <span className="font-medium text-gray-900 dark:text-white">{newUserEmail}</span>.
+              Deberá cambiarla en el próximo inicio de sesión.
+            </p>
+            <div className="mt-4 flex items-center gap-2 rounded-xl bg-gray-50 px-4 py-3 dark:bg-dark-surface-3">
+              <code className="flex-1 break-all font-mono text-sm text-gray-900 dark:text-white select-all">
+                {tempPassword}
+              </code>
+              <button
+                type="button"
+                onClick={() => void navigator.clipboard.writeText(tempPassword)}
+                className="shrink-0 rounded-lg p-1.5 text-gray-500 hover:bg-gray-200 dark:hover:bg-dark-surface-4 transition-colors"
+                aria-label="Copiar contraseña temporal"
+                title="Copiar"
+              >
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                  />
+                </svg>
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={dismissTempPassword}
+              className="mt-4 w-full rounded-xl bg-iwana-primary px-4 py-2 text-sm font-medium text-white hover:bg-iwana-primary-600 transition-colors"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
 
       {selectedUser && (
         <>
@@ -318,6 +436,15 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
             isSubmitting={isSubmitting}
             error={actionError}
             isSelfDelete={selectedUser.id === user?.id}
+          />
+
+          <ResetPasswordDialog
+            isOpen={isResetPasswordOpen}
+            user={selectedUser}
+            onClose={closeModals}
+            onConfirm={handleResetPasswordConfirm}
+            isSubmitting={isSubmitting}
+            error={actionError}
           />
         </>
       )}

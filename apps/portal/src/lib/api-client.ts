@@ -20,6 +20,8 @@ function resolveApiBase(): string {
 const API_BASE = resolveApiBase();
 const TENANT_SLUG_STORAGE_KEY = 'iwana.portal.tenant-slug';
 const ACCESS_TOKEN_STORAGE_KEY = 'iwana.portal.access-token';
+const TEST_TENANT_SLUG = 'test-isp';
+const DEFAULT_DEV_TENANT_SLUG = 'iwana';
 
 /**
  * Clave localStorage para el token de alcance limitado emitido cuando un rol critico
@@ -58,7 +60,17 @@ function readStoredTenantSlug(): string {
     return '';
   }
 
-  return normalizeTenantSlug(window.localStorage.getItem(TENANT_SLUG_STORAGE_KEY));
+  const storedSlug = normalizeTenantSlug(window.localStorage.getItem(TENANT_SLUG_STORAGE_KEY));
+
+  // En entorno local algunos flujos E2E antiguos pudieron persistir "test-isp"
+  // en el mismo navegador de desarrollo. Ese tenant no existe en la instalación
+  // real y genera requests inconsistentes. Lo descartamos para forzar resolución
+  // por tenant real (env/login) y evitar errores operativos.
+  if (storedSlug === TEST_TENANT_SLUG) {
+    return '';
+  }
+
+  return storedSlug;
 }
 
 function persistTenantSlug(tenantSlug: string): void {
@@ -66,7 +78,21 @@ function persistTenantSlug(tenantSlug: string): void {
     return;
   }
 
+  if (!tenantSlug) {
+    window.localStorage.removeItem(TENANT_SLUG_STORAGE_KEY);
+    return;
+  }
+
   window.localStorage.setItem(TENANT_SLUG_STORAGE_KEY, tenantSlug);
+}
+
+/** Limpia el tenant slug del localStorage — usado en logout y en flujos de error. */
+function clearTenantSlugFromStorage(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.removeItem(TENANT_SLUG_STORAGE_KEY);
 }
 
 function readStoredAccessToken(): string {
@@ -215,6 +241,12 @@ function getTenantSlug(tenantSlugOverride?: string): string {
   const storedSlug = readStoredTenantSlug();
   if (storedSlug) {
     return storedSlug;
+  }
+
+  // Fallback local para no depender de un tenant temporal de pruebas.
+  // En producción se exige configuración explícita o selección en login.
+  if (process.env.NODE_ENV !== 'production') {
+    return DEFAULT_DEV_TENANT_SLUG;
   }
 
   throw new ApiError(
@@ -409,6 +441,7 @@ export const authApi = {
       // aunque el backend falle para no bloquear al usuario en la UI.
     } finally {
       persistAccessToken('');
+      persistTenantSlug('');
       clearPendingTenantMfaLogin();
       clearMfaSetupTokenFromStorage();
     }
@@ -854,6 +887,13 @@ export const tenantSelfApi = {
       tenantSlug,
     ),
 
+  deleteCoverageNode: (nodeId: string, tenantSlug?: string) =>
+    request<CoverageAdminConfig>(
+      `/tenants/me/coverage/nodes/${nodeId}`,
+      { method: 'DELETE' },
+      tenantSlug,
+    ),
+
   createCoverageZone: (dto: CreateCoverageZoneDto, tenantSlug?: string) =>
     request<CoverageAdminConfig>(
       '/tenants/me/coverage/zones',
@@ -865,6 +905,13 @@ export const tenantSelfApi = {
     request<CoverageAdminConfig>(
       `/tenants/me/coverage/zones/${zoneId}`,
       { method: 'PATCH', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  deleteCoverageZone: (zoneId: string, tenantSlug?: string) =>
+    request<CoverageAdminConfig>(
+      `/tenants/me/coverage/zones/${zoneId}`,
+      { method: 'DELETE' },
       tenantSlug,
     ),
 
@@ -936,6 +983,8 @@ export interface ListUsersParams {
   limit?: number;
   status?: string;
   role?: string;
+  /** Texto libre para filtrar por nombre, apellido o email */
+  search?: string;
 }
 
 export interface UsersPaginationMeta {
@@ -982,6 +1031,7 @@ export const usersApi = {
     if (params?.limit !== undefined) searchParams.set('limit', String(params.limit));
     if (params?.status) searchParams.set('status', params.status);
     if (params?.role) searchParams.set('role', params.role);
+    if (params?.search) searchParams.set('search', params.search);
 
     const query = searchParams.toString();
     return request<ListUsersResponse>(`/users${query ? `?${query}` : ''}`, undefined, tenantSlug);
@@ -1038,13 +1088,22 @@ export const usersApi = {
     );
   },
 
-  changeEmail: (id: string, email: string, tenantSlug?: string) =>
+  /**
+   * Cambia el email de login de un usuario.
+   * El admin puede cambiar sin contraseña propia; el self-service requiere currentPassword.
+   * Ruta: PATCH /users/:id/login-email
+   */
+  changeEmail: (
+    id: string,
+    dto: { email: string; currentPassword?: string; syncCompanyContactEmail?: boolean },
+    tenantSlug?: string,
+  ) =>
     request<InternalUser>(
-      `/users/${id}/email`,
+      `/users/${id}/login-email`,
       {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify(dto),
       },
       tenantSlug,
     ),
@@ -1137,16 +1196,25 @@ export interface ExpedienteRecord {
   tenantId: string;
   status: ExpedienteStatus;
   previousStatus: ExpedienteStatus | null;
+  assignedTo?: string | null;
+  dataConsentRevoked?: boolean;
   statusChangedAt: string;
   discardReason: string | null;
   fullName: string;
   documentType: string | null;
   documentNumberEncrypted?: string | null;
+  documentNumber?: string | null;
   personType?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  primaryContactName?: string | null;
+  primaryContactRole?: string | null;
   companyName?: string | null;
   phonePrimaryEncrypted: string | null;
+  phonePrimary?: string | null;
   phoneSecondaryEncrypted?: string | null;
   emailPrimaryEncrypted: string | null;
+  emailPrimary?: string | null;
   emailSecondary?: string | null;
   altContactName?: string | null;
   contactPreference?: string | null;
@@ -1154,6 +1222,8 @@ export interface ExpedienteRecord {
   address: string | null;
   municipality: string | null;
   department: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   stratum?: number | null;
   neighborhood?: string | null;
   coordinatesSource?: string | null;
@@ -1204,6 +1274,35 @@ export interface TransitionStatusDto {
   reason?: string;
 }
 
+export interface CreateContactAttemptDto {
+  channel: string;
+  result: string;
+  durationMinutes?: number | undefined;
+  notes?: string | undefined;
+}
+
+export interface CreateConsentDto {
+  consentType: string;
+  status: string;
+  channel: string;
+  legalTextVersion?: string;
+  evidenceRef?: string | undefined;
+}
+
+export interface CreateCoverageCheckDto {
+  latitude?: number | undefined;
+  longitude?: number | undefined;
+  addressUsed: string;
+  result: string;
+  technologyAvailable?: string | undefined;
+  distanceM?: number | undefined;
+  snapshotJson?: Record<string, unknown> | undefined;
+}
+
+export interface AssignExpedienteDto {
+  assignedTo: string;
+}
+
 export interface CompletenessResult {
   commercial: number;
   legal: number;
@@ -1226,7 +1325,7 @@ export interface ExpedienteTimelineChange {
 
 export interface ExpedienteActivityItem {
   id: string;
-  type: 'CREATED' | 'SECTION_UPDATED' | 'STATUS_CHANGED';
+  type: 'CREATED' | 'SECTION_UPDATED' | 'STATUS_CHANGED' | 'CONTACT_ATTEMPT';
   occurredAt: string;
   actor: {
     userId: string | null;
@@ -1236,6 +1335,41 @@ export interface ExpedienteActivityItem {
   fromStatus: string | null;
   toStatus: string | null;
   reason: string | null;
+}
+
+export interface ContactAttemptRecord {
+  id: string;
+  attemptedAt: string;
+  channel: string;
+  result: string;
+  durationMinutes: number | null;
+  notes: string | null;
+  advisorId: string;
+  actorName?: string | null;
+}
+
+export interface ConsentRecordItem {
+  id: string;
+  consentType: string;
+  status: string;
+  channel: string;
+  obtainedAt: string;
+  ipAddress: string | null;
+  legalTextVersion: string;
+  evidenceRef: string | null;
+}
+
+export interface CoverageCheckRecord {
+  id: string;
+  checkedAt: string;
+  latitude: number | null;
+  longitude: number | null;
+  addressUsed: string | null;
+  result: string;
+  technologyAvailable: string | null;
+  distanceM: number | null;
+  snapshotJson: Record<string, unknown>;
+  checkedBy: string;
 }
 
 export interface ExpedienteOperationalMetadata {
@@ -1256,6 +1390,8 @@ export const crmApi = {
       status?: ExpedienteStatus;
       municipality?: string;
       search?: string;
+      assignedTo?: string;
+      documentNumber?: string;
       page?: number;
       limit?: number;
     },
@@ -1266,6 +1402,8 @@ export const crmApi = {
     if (filters?.status) searchParams.set('status', filters.status);
     if (filters?.municipality) searchParams.set('municipality', filters.municipality);
     if (filters?.search) searchParams.set('search', filters.search);
+    if (filters?.assignedTo) searchParams.set('assignedTo', filters.assignedTo);
+    if (filters?.documentNumber) searchParams.set('documentNumber', filters.documentNumber);
     if (filters?.page) searchParams.set('page', String(filters.page));
     if (filters?.limit) searchParams.set('limit', String(filters.limit));
 
@@ -1331,6 +1469,68 @@ export const crmApi = {
     request<{ data: Record<string, number>; total: number }>(
       '/crm/pipeline/summary',
       { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  createContactAttempt: (id: string, dto: CreateContactAttemptDto, tenantSlug?: string) =>
+    request<{ data: ContactAttemptRecord }>(
+      `/crm/expedientes/${id}/contact-attempts`,
+      { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  listContactAttempts: (id: string, page?: number, limit?: number, tenantSlug?: string) => {
+    const searchParams = new URLSearchParams();
+    if (page) searchParams.set('page', String(page));
+    if (limit) searchParams.set('limit', String(limit));
+    const query = searchParams.toString();
+
+    return request<{ data: ContactAttemptRecord[]; total: number }>(
+      `/crm/expedientes/${id}/contact-attempts${query ? `?${query}` : ''}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    );
+  },
+
+  createConsent: (id: string, dto: CreateConsentDto, tenantSlug?: string) =>
+    request<{ data: ConsentRecordItem }>(
+      `/crm/expedientes/${id}/consents`,
+      { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  listConsents: (id: string, tenantSlug?: string) =>
+    request<{ data: ConsentRecordItem[] }>(
+      `/crm/expedientes/${id}/consents`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  revokeConsent: (id: string, consentId: string, reason: string, tenantSlug?: string) =>
+    request<{ data: ConsentRecordItem }>(
+      `/crm/expedientes/${id}/consents/${consentId}/revoke`,
+      { method: 'PATCH', body: JSON.stringify({ reason }), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  createCoverageCheck: (id: string, dto: CreateCoverageCheckDto, tenantSlug?: string) =>
+    request<{ data: CoverageCheckRecord }>(
+      `/crm/expedientes/${id}/coverage-checks`,
+      { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  listCoverageChecks: (id: string, tenantSlug?: string) =>
+    request<{ data: CoverageCheckRecord[] }>(
+      `/crm/expedientes/${id}/coverage-checks`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  assignExpediente: (id: string, dto: AssignExpedienteDto, tenantSlug?: string) =>
+    request<{ data: ExpedienteRecord }>(
+      `/crm/expedientes/${id}/assign`,
+      { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
       tenantSlug,
     ),
 };

@@ -1,5 +1,7 @@
 # PROMPT PARA ARCHITECT SOFTWARE — Claude Opus
 
+> **Estado documental:** legado para trazabilidad historica. El prompt canonico normalizado del modulo es `docs/prompts/PROMPT-MOD01-ARQUITECTURA-v1.0.md`. Este archivo se conserva porque todavia es referenciado por planes e informes historicos.
+
 ## Módulo 1: Auth + Usuarios + Tenant + Audit
 
 ## Proyecto: iWana neXt Platform

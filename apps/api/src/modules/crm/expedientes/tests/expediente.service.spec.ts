@@ -113,6 +113,58 @@ describe('ExpedienteService', () => {
     );
   });
 
+  it('expone documentNumber en detalle autorizado', async () => {
+    const encryptedDocument = encryptTestValue('900123456');
+    const expediente = buildExpediente({
+      id: 'exp-1',
+      documentNumberEncrypted: encryptedDocument,
+      documentType: 'NIT',
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    const result = await service.findById('exp-1');
+    expect((result as any).documentNumber).toBe('900123456');
+    expect(result.documentNumberEncrypted).toBe(encryptedDocument);
+  });
+
+  it('audita acceso autorizado al Documento visible sin persistir el valor plano', async () => {
+    const encryptedDocument = encryptTestValue('900123456');
+    const expediente = buildExpediente({
+      id: 'exp-1',
+      documentNumberEncrypted: encryptedDocument,
+      documentType: 'NIT',
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    await service.findById('exp-1');
+
+    expect(auditServiceMock.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: expect.anything(),
+        entityId: 'exp-1',
+      }),
+    );
+    expect(auditServiceMock.log).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        newValue: expect.objectContaining({ documentNumber: '900123456' }),
+      }),
+    );
+  });
+
   it('actualiza la seccion de contacto cifrando datos sensibles y recalculando completitud', async () => {
     const expediente = buildExpediente({ id: 'exp-2' });
 
@@ -928,6 +980,180 @@ describe('ExpedienteService', () => {
     expect(updated.companyName).toBe('Empresa Demo SAS');
     expect(updated.primaryContactName).toBe('Laura Perez');
     expect(updated.primaryContactRole).toBe('Representante legal');
+  });
+
+  it('deriva fullName desde firstName y lastName para persona natural', async () => {
+    const expediente = buildExpediente({ id: 'exp-natural' });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          save: async (_entity: unknown, data: ExpedienteRecord) => data,
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 10,
+      legal: 20,
+      technical: 30,
+      operational: 40,
+      overall: 25,
+    });
+
+    const updated = await service.updateSection(
+      'exp-natural',
+      {
+        section: ExpedienteSection.IDENTIFICATION,
+        data: {
+          personType: 'PERSONA_NATURAL',
+          firstName: 'Laura',
+          lastName: 'Perez',
+          documentType: 'CC',
+          documentNumber: '1012345678',
+        },
+      },
+      'user-1',
+    );
+
+    expect(updated.fullName).toBe('Laura Perez');
+    expect(updated.companyName).toBeNull();
+  });
+
+  it('rechaza persona juridica sin contacto principal ni cargo', async () => {
+    const expediente = buildExpediente({ id: 'exp-invalid' });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          save: async (_entity: unknown, data: ExpedienteRecord) => data,
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    await expect(
+      service.updateSection(
+        'exp-invalid',
+        {
+          section: ExpedienteSection.IDENTIFICATION,
+          data: {
+            personType: 'PERSONA_JURIDICA',
+            companyName: 'Empresa Demo SAS',
+            documentType: 'NIT',
+            documentNumber: '900123456',
+          },
+        },
+        'user-1',
+      ),
+    ).rejects.toThrow('Contacto principal');
+  });
+
+  it('rechaza persona natural sin firstName', async () => {
+    const expediente = buildExpediente({ id: 'exp-test' });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          save: async (_entity: unknown, data: ExpedienteRecord) => data,
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    await expect(
+      service.updateSection(
+        'exp-test',
+        {
+          section: ExpedienteSection.IDENTIFICATION,
+          data: {
+            personType: 'PERSONA_NATURAL',
+            lastName: 'Perez',
+            documentType: 'CC',
+            documentNumber: '1012345678',
+          },
+        },
+        'user-1',
+      ),
+    ).rejects.toThrow('Nombres');
+  });
+
+  it('rechaza documentType fuera del catalogo', async () => {
+    const expediente = buildExpediente({ id: 'exp-test' });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          save: async (_entity: unknown, data: ExpedienteRecord) => data,
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    await expect(
+      service.updateSection(
+        'exp-test',
+        {
+          section: ExpedienteSection.IDENTIFICATION,
+          data: {
+            personType: 'PERSONA_NATURAL',
+            firstName: 'Laura',
+            lastName: 'Perez',
+            documentType: 'PASAPORTE_FALSO',
+            documentNumber: '1012345678',
+          },
+        },
+        'user-1',
+      ),
+    ).rejects.toThrow('Tipo de documento');
+  });
+
+  it('redacta documentNumber en auditoria al actualizar identificacion', async () => {
+    const expediente = buildExpediente({ id: 'exp-audit' });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          save: async (_entity: unknown, data: ExpedienteRecord) => data,
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 10,
+      legal: 20,
+      technical: 30,
+      operational: 40,
+      overall: 25,
+    });
+
+    await service.updateSection(
+      'exp-audit',
+      {
+        section: ExpedienteSection.IDENTIFICATION,
+        data: {
+          personType: 'PERSONA_NATURAL',
+          firstName: 'Laura',
+          lastName: 'Perez',
+          documentType: 'CC',
+          documentNumber: '1012345678',
+        },
+      },
+      'user-1',
+    );
+
+    expect(auditServiceMock.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        newValue: expect.not.objectContaining({
+          data: expect.objectContaining({ documentNumber: '1012345678' }),
+        }),
+      }),
+    );
   });
 });
 

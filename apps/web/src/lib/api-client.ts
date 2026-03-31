@@ -671,14 +671,37 @@ export interface PlatformAuditLogResponse {
 }
 
 export const platformAuditApi = {
-  list: (params?: { cursor?: string; limit?: number; action?: string; entityType?: string }) => {
+  list: async (params?: {
+    cursor?: string;
+    limit?: number;
+    action?: string;
+    entityType?: string;
+  }) => {
     const searchParams = new URLSearchParams();
     if (params?.limit !== undefined) searchParams.set('limit', String(params.limit));
     if (params?.cursor) searchParams.set('cursor', params.cursor);
     if (params?.action) searchParams.set('action', params.action);
     if (params?.entityType) searchParams.set('entityType', params.entityType);
     const query = searchParams.toString();
-    return request<PlatformAuditLogResponse>(`/platform-audit-logs${query ? `?${query}` : ''}`);
+
+    const token = getStoredAccessToken();
+    const headers = new Headers();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+
+    const res = await fetch(`${API_BASE}/platform-audit-logs${query ? `?${query}` : ''}`, {
+      headers,
+    });
+
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as Record<string, string>;
+      throw new ApiError(
+        res.status,
+        body['code'] ?? 'UNKNOWN',
+        body['message'] ?? 'Error del servidor',
+      );
+    }
+
+    return res.json() as Promise<PlatformAuditLogResponse>;
   },
 };
 

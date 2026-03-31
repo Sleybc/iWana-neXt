@@ -456,6 +456,131 @@ describe('TenantService', () => {
     });
   });
 
+  describe('commercial config compatibility fallback', () => {
+    const tenantId = 'tenant-uuid-001';
+    const schemaName = 'tenant_isp_test';
+
+    it('getCoverageAdmin retorna configuracion vacia si el schema aun no tiene tablas comerciales', async () => {
+      queryRunner.manager.find.mockRejectedValueOnce({
+        driverError: { code: '42P01' },
+      });
+
+      const result = await service.getCoverageAdmin(tenantId, schemaName);
+
+      expect(result).toEqual({ nodes: [], zones: [] });
+    });
+
+    it('getPlanCatalog retorna lista vacia si el error viene anidado en cause.driverError', async () => {
+      queryRunner.manager.find.mockRejectedValueOnce({
+        cause: {
+          driverError: { code: '42P01' },
+        },
+      });
+
+      const result = await service.getPlanCatalog(tenantId, schemaName);
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('coverage soft-delete', () => {
+    const tenantId = 'tenant-uuid-001';
+    const schemaName = 'tenant_isp_test';
+
+    it('removeCoverageNode marca deletedAt, desactiva el nodo y retorna cobertura actualizada', async () => {
+      const nodeEntity = {
+        id: 'node-1',
+        tenantId,
+        name: 'Nodo Centro',
+        latitude: 4.60971,
+        longitude: -74.08175,
+        isActive: true,
+        deletedAt: null,
+        createdAt: new Date('2026-03-20T10:00:00Z'),
+        updatedAt: new Date('2026-03-20T10:00:00Z'),
+      };
+
+      queryRunner.manager.findOne.mockResolvedValue(nodeEntity);
+      queryRunner.manager.save.mockImplementation(async (_entity, updated) => updated);
+      queryRunner.manager.find
+        .mockResolvedValueOnce([]) // nodes
+        .mockResolvedValueOnce([]); // zones
+
+      const result = await service.removeCoverageNode(tenantId, schemaName, 'node-1', 'actor-1');
+
+      expect(queryRunner.manager.save).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ isActive: false, deletedAt: expect.any(Date) }),
+      );
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'DELETE', entityType: 'CommercialNode' }),
+      );
+      expect(result).toEqual({ nodes: [], zones: [] });
+    });
+
+    it('removeCoverageNode no falla si el nodo ya estaba eliminado (idempotente)', async () => {
+      queryRunner.manager.findOne.mockResolvedValue({
+        id: 'node-1',
+        tenantId,
+        name: 'Nodo Centro',
+        latitude: 4.60971,
+        longitude: -74.08175,
+        isActive: false,
+        deletedAt: new Date('2026-03-22T10:00:00Z'),
+        createdAt: new Date('2026-03-20T10:00:00Z'),
+        updatedAt: new Date('2026-03-22T10:00:00Z'),
+      });
+      queryRunner.manager.find
+        .mockResolvedValueOnce([]) // nodes
+        .mockResolvedValueOnce([]); // zones
+
+      const result = await service.removeCoverageNode(tenantId, schemaName, 'node-1', 'actor-1');
+
+      expect(queryRunner.manager.save).not.toHaveBeenCalled();
+      expect(result).toEqual({ nodes: [], zones: [] });
+    });
+
+    it('removeCoverageNode lanza NotFound si no existe para el tenant (aislamiento)', async () => {
+      queryRunner.manager.findOne.mockResolvedValue(null);
+
+      await expect(service.removeCoverageNode(tenantId, schemaName, 'node-x', 'actor-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('removeCoverageZone marca deletedAt, desactiva la zona y retorna cobertura actualizada', async () => {
+      const zoneEntity = {
+        id: 'zone-1',
+        tenantId,
+        name: 'Zona Norte',
+        centerLatitude: 4.710989,
+        centerLongitude: -74.07209,
+        radiusKm: '12.00',
+        isActive: true,
+        deletedAt: null,
+        createdAt: new Date('2026-03-20T10:00:00Z'),
+        updatedAt: new Date('2026-03-20T10:00:00Z'),
+      };
+
+      queryRunner.manager.findOne.mockResolvedValue(zoneEntity);
+      queryRunner.manager.save.mockImplementation(async (_entity, updated) => updated);
+      queryRunner.manager.find
+        .mockResolvedValueOnce([]) // nodes
+        .mockResolvedValueOnce([]); // zones
+
+      const result = await service.removeCoverageZone(tenantId, schemaName, 'zone-1', 'actor-1');
+
+      expect(queryRunner.manager.save).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ isActive: false, deletedAt: expect.any(Date) }),
+      );
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'DELETE', entityType: 'CoverageZone' }),
+      );
+      expect(result).toEqual({ nodes: [], zones: [] });
+    });
+  });
+
   describe('plan catalog', () => {
     const tenantId = 'tenant-uuid-001';
     const schemaName = 'tenant_isp_test';

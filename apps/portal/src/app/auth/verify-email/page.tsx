@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -24,9 +25,12 @@ type VerifyEmailFormValues = z.infer<typeof verifyEmailSchema>;
 type ResendVerificationFormValues = z.infer<typeof resendSchema>;
 
 /**
- * Pantalla pública para verificar email y reenviar el correo cuando el token ya venció.
+ * Contenido interno del formulario de verificación de email.
+ * Separado del export default para poder envolver con <Suspense> y satisfacer
+ * el requisito de Next.js 15+: useSearchParams() solo se puede usar dentro de
+ * un árbol con límite Suspense (evita bloqueo de prerenderizado estático).
  */
-export default function VerifyEmailPage() {
+function VerifyEmailContent() {
   const searchParams = useSearchParams();
   const [verifyMessage, setVerifyMessage] = useState<string | null>(null);
   const [verifyError, setVerifyError] = useState<string | null>(null);
@@ -247,5 +251,18 @@ export default function VerifyEmailPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+/**
+ * Página pública para verificar email y reenviar verificación cuando el token vence.
+ * Envuelve el contenido en <Suspense> para permitir el uso de useSearchParams()
+ * sin bloquear el prerenderizado estático de Next.js.
+ */
+export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={null}>
+      <VerifyEmailContent />
+    </Suspense>
   );
 }

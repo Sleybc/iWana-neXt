@@ -42,11 +42,7 @@ const businessSchema = z.object({
     .or(z.literal('')),
   postalCode: z.string().max(10).optional().or(z.literal('')),
   coordinates: z.string().max(50).optional().or(z.literal('')),
-  phone: z
-    .string()
-    .regex(/^\+\d{7,15}$/, 'Formato E.164 (ej: +573001234567)')
-    .optional()
-    .or(z.literal('')),
+  phone: z.string().max(20, 'Máximo 20 caracteres').optional().or(z.literal('')),
   website: z.string().url('URL inválida (incluye https://)').optional().or(z.literal('')),
   economicSector: z.string().max(10).optional().or(z.literal('')),
 });

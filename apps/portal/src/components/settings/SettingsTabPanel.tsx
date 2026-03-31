@@ -26,7 +26,13 @@ export function SettingsTabPanel({
       hidden={!isActive}
       className={cn('space-y-6', !isActive && 'hidden', className)}
     >
-      {children}
+      {/*
+        Los paneles inactivos no deben montar su contenido.
+        Esto evita inicializar componentes sensibles al layout oculto (ej. Leaflet)
+        dentro de contenedores con display:none, lo que provoca errores de ciclo de vida
+        y reuso inválido de contenedores al cambiar de pestaña.
+      */}
+      {isActive ? children : null}
     </section>
   );
 }

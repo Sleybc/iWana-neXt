@@ -30,12 +30,7 @@ const profileSchema = z.object({
     .regex(/^[A-Za-z]{2}$/, 'Usa un código ISO alpha-2, por ejemplo CO.')
     .optional()
     .or(z.literal('')),
-  phone: z
-    .string()
-    .trim()
-    .regex(/^\+\d{7,15}$/, 'Usa formato E.164, por ejemplo +573001234567.')
-    .optional()
-    .or(z.literal('')),
+  phone: z.string().trim().max(20, 'Máximo 20 caracteres.').optional().or(z.literal('')),
   website: z
     .string()
     .trim()

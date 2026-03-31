@@ -81,7 +81,7 @@
 
 ## 8. Actualización 2026-03-17 — Página Mi Perfil
 
-- Plan ejecutado: `docs/plans/2026-03-17-user-profile-page.md`.
+- Plan ejecutado: `docs/plans/PLAN-MOD02-USER-PROFILE-PAGE-FASE-01-v1.0.md`.
 - Alcance implementado en `apps/portal`:
   - API de perfil en cliente HTTP:
     - `userApi.getMe(userId)` y `userApi.updateMe(userId, dto)` en `src/lib/api-client.ts`.

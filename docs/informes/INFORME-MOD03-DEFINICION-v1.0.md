@@ -1,8 +1,8 @@
 # INFORME - MOD03 Definicion
 
 **Version:** 1.0  
-**Estado:** En revision  
-**Fecha:** 2026-03-17  
+**Estado:** Aprobado  
+**Fecha:** 2026-03-23  
 **Modo activo:** Mixto  
 **Modulo:** MOD03 - Configuracion Empresarial  
 **Artefacto principal:** docs/prds/PRD-MOD03-CONFIGURACION-EMPRESA-v1.0.md
@@ -144,3 +144,39 @@ La ejecucion de Fase 01 cerro esa brecha con los siguientes resultados:
 - Estado recomendado: `GO` para cierre de Fase 01 dentro del alcance aprobado.
 - Bloqueos no detectados: no hubo necesidad de migracion estructural ni de cambio de stack.
 - Restriccion preservada: no se habilito escritura de campos platform-managed.
+
+---
+
+## 11. Preparacion de Fase 02 — Cobertura Comercial y Planes y Valores
+
+Con Fase 01 cerrada con GO, se preparo la expansion del modulo para cubrir las dos subcapacidades faltantes:
+
+- **Cobertura Comercial:** gestion de nodos de cobertura (zona/nodo/radio) con jerarquia, tecnologia disponible y factibilidad por coordenadas.
+- **Catalogo de Planes y Valores:** gestion del catalogo de planes de servicio del tenant con velocidades, precios, ciclos y features.
+
+Decision de boundary: ambas subcapacidades pertenecen a MOD03 dentro de TenantModule, no a MOD05 CRM. CRM las consume via contratos read-only (`ICoverageReadPort`, `IPlanCatalogReadPort`).
+
+Artefactos emitidos:
+
+| Documento | Ruta | Estado |
+| --- | --- | --- |
+| Prompt Fase 02 | `docs/prompts/PROMPT-MOD03-CONFIGURACION-EMPRESA-FASE-02-v1.0.md` | Aprobado |
+| Backlog Fase 02 | `docs/plans/PLAN-MOD03-CONFIGURACION-EMPRESA-FASE-02-v1.0.md` | Aprobado |
+
+Backlog: 13 tareas (BT-CE2-01 a BT-CE2-13), priorizadas P0 a P3.
+
+---
+
+## 12. Aprobacion documental y habilitacion de ejecucion
+
+El 2026-03-23 se aprobaron los cinco documentos vigentes de MOD03 para habilitar la ejecucion de Fase 02 por el Sr. Dev Fullstack:
+
+| Documento | Estado anterior | Estado nuevo |
+| --- | --- | --- |
+| PRD-MOD03-CONFIGURACION-EMPRESA-v1.0.md | En revision | Aprobado |
+| HLD-MOD03-CONFIGURACION-EMPRESA-v1.0.md | En revision | Aprobado |
+| PROMPT-MOD03-CONFIGURACION-EMPRESA-FASE-02-v1.0.md | En revision | Aprobado |
+| PLAN-MOD03-CONFIGURACION-EMPRESA-FASE-02-v1.0.md | En revision | Aprobado |
+| Este informe | En revision | Aprobado |
+
+El paquete queda listo para entregar al Sr. Dev Fullstack para ejecucion.

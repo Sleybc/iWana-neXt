@@ -18,6 +18,7 @@ import { Throttle } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { AbacGuard } from '../auth/guards/abac.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
@@ -38,6 +39,20 @@ import {
   UpdateTenantSelfProfileDto,
   UpdateTenantSelfSettingsDto,
 } from './dto/tenant-self-update.dto';
+import {
+  CoverageAdminResponseDto,
+  CoverageCheckQueryDto,
+  CoverageCheckResponseDto,
+  CreateCommercialNodeDto,
+  CreateCoverageZoneDto,
+  UpdateCommercialNodeDto,
+  UpdateCoverageZoneDto,
+} from './dto/tenant-commercial-coverage.dto';
+import {
+  CreatePlanCatalogItemDto,
+  PlanCatalogItemResponseDto,
+  UpdatePlanCatalogItemDto,
+} from './dto/tenant-plan-catalog.dto';
 
 /**
  * Controlador de gestion de tenants.
@@ -179,6 +194,212 @@ export class TenantController {
     @CurrentUser() user: JwtPayload,
   ): Promise<{ data: DashboardSummaryResponseDto }> {
     const data = await this.dashboardSummaryService.getSummary(user.tenantId!, user.schemaName!);
+    return { data };
+  }
+
+  /**
+   * GET /api/v1/tenants/me/coverage
+   * Retorna la configuración comercial de cobertura del tenant autenticado.
+   */
+  @Get('me/coverage')
+  @UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.ACCOUNTANT, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Obtener cobertura comercial del tenant autenticado' })
+  async getMeCoverage(@CurrentUser() user: JwtPayload): Promise<{ data: CoverageAdminResponseDto }> {
+    const data = await this.tenantService.getCoverageAdmin(user.tenantId!, user.schemaName!);
+    return { data };
+  }
+
+  /**
+   * GET /api/v1/tenants/me/coverage/check
+   * Evalúa factibilidad comercial para una dirección y coordenadas opcionales.
+   */
+  @Get('me/coverage/check')
+  @UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.ACCOUNTANT, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Validar factibilidad comercial del tenant autenticado' })
+  async checkMeCoverage(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: CoverageCheckQueryDto,
+  ): Promise<{ data: CoverageCheckResponseDto }> {
+    const data = await this.tenantService.checkCoverage(
+      user.tenantId!,
+      user.schemaName!,
+      query.address,
+      query.latitude,
+      query.longitude,
+    );
+    return { data };
+  }
+
+  @Post('me/coverage/nodes')
+  @UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Crear nodo comercial en cobertura del tenant autenticado' })
+  async createCoverageNode(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateCommercialNodeDto,
+  ): Promise<{ data: CoverageAdminResponseDto }> {
+    const data = await this.tenantService.createCommercialNode(
+      user.tenantId!,
+      user.schemaName!,
+      dto,
+      user.sub,
+    );
+    return { data };
+  }
+
+  @Patch('me/coverage/nodes/:nodeId')
+  @UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Actualizar nodo comercial del tenant autenticado' })
+  async updateCoverageNode(
+    @CurrentUser() user: JwtPayload,
+    @Param('nodeId', ParseUUIDPipe) nodeId: string,
+    @Body() dto: UpdateCommercialNodeDto,
+  ): Promise<{ data: CoverageAdminResponseDto }> {
+    const data = await this.tenantService.updateCommercialNode(
+      user.tenantId!,
+      user.schemaName!,
+      nodeId,
+      dto,
+      user.sub,
+    );
+    return { data };
+  }
+
+  @Delete('me/coverage/nodes/:nodeId')
+  @UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Eliminar (soft-delete) nodo comercial del tenant autenticado' })
+  async removeCoverageNode(
+    @CurrentUser() user: JwtPayload,
+    @Param('nodeId', ParseUUIDPipe) nodeId: string,
+  ): Promise<{ data: CoverageAdminResponseDto }> {
+    const data = await this.tenantService.removeCoverageNode(
+      user.tenantId!,
+      user.schemaName!,
+      nodeId,
+      user.sub,
+    );
+    return { data };
+  }
+
+  @Post('me/coverage/zones')
+  @UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Crear zona comercial de cobertura del tenant autenticado' })
+  async createCoverageZone(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateCoverageZoneDto,
+  ): Promise<{ data: CoverageAdminResponseDto }> {
+    const data = await this.tenantService.createCoverageZone(
+      user.tenantId!,
+      user.schemaName!,
+      dto,
+      user.sub,
+    );
+    return { data };
+  }
+
+  @Patch('me/coverage/zones/:zoneId')
+  @UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Actualizar zona comercial de cobertura del tenant autenticado' })
+  async updateCoverageZone(
+    @CurrentUser() user: JwtPayload,
+    @Param('zoneId', ParseUUIDPipe) zoneId: string,
+    @Body() dto: UpdateCoverageZoneDto,
+  ): Promise<{ data: CoverageAdminResponseDto }> {
+    const data = await this.tenantService.updateCoverageZone(
+      user.tenantId!,
+      user.schemaName!,
+      zoneId,
+      dto,
+      user.sub,
+    );
+    return { data };
+  }
+
+  @Delete('me/coverage/zones/:zoneId')
+  @UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Eliminar (soft-delete) zona de cobertura del tenant autenticado' })
+  async removeCoverageZone(
+    @CurrentUser() user: JwtPayload,
+    @Param('zoneId', ParseUUIDPipe) zoneId: string,
+  ): Promise<{ data: CoverageAdminResponseDto }> {
+    const data = await this.tenantService.removeCoverageZone(
+      user.tenantId!,
+      user.schemaName!,
+      zoneId,
+      user.sub,
+    );
+    return { data };
+  }
+
+  @Get('me/plans')
+  @UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.ACCOUNTANT, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Listar catálogo de planes del tenant autenticado' })
+  async getPlans(@CurrentUser() user: JwtPayload): Promise<{ data: PlanCatalogItemResponseDto[] }> {
+    const data = await this.tenantService.getPlanCatalog(user.tenantId!, user.schemaName!);
+    return { data };
+  }
+
+  @Post('me/plans')
+  @UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Crear plan en catálogo del tenant autenticado' })
+  async createPlan(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreatePlanCatalogItemDto,
+  ): Promise<{ data: PlanCatalogItemResponseDto[] }> {
+    const data = await this.tenantService.createPlanCatalogItem(
+      user.tenantId!,
+      user.schemaName!,
+      dto,
+      user.sub,
+    );
+    return { data };
+  }
+
+  @Patch('me/plans/:planId')
+  @UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Actualizar plan en catálogo del tenant autenticado' })
+  async updatePlan(
+    @CurrentUser() user: JwtPayload,
+    @Param('planId', ParseUUIDPipe) planId: string,
+    @Body() dto: UpdatePlanCatalogItemDto,
+  ): Promise<{ data: PlanCatalogItemResponseDto[] }> {
+    const data = await this.tenantService.updatePlanCatalogItem(
+      user.tenantId!,
+      user.schemaName!,
+      planId,
+      dto,
+      user.sub,
+    );
+    return { data };
+  }
+
+  @Delete('me/plans/:planId')
+  @UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Eliminar (soft-delete) plan del catálogo del tenant autenticado' })
+  async removePlan(
+    @CurrentUser() user: JwtPayload,
+    @Param('planId', ParseUUIDPipe) planId: string,
+  ): Promise<{ data: PlanCatalogItemResponseDto[] }> {
+    const data = await this.tenantService.removePlanCatalogItem(
+      user.tenantId!,
+      user.schemaName!,
+      planId,
+      user.sub,
+    );
     return { data };
   }
 

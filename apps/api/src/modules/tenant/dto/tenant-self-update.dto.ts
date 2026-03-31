@@ -85,9 +85,7 @@ export class UpdateTenantSelfProfileDto {
   @IsOptional()
   @Transform(trimNullableString)
   @IsString()
-  @Matches(/^\+\d{7,15}$/, {
-    message: 'phone debe usar formato E.164 (ej: +573001234567).',
-  })
+  @MaxLength(20, { message: 'phone no puede exceder20 caracteres.' })
   phone?: string | null;
 
   @IsOptional()

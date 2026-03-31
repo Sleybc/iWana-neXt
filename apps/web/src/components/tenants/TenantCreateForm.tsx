@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -92,12 +92,25 @@ export function TenantCreateForm() {
   const [activeSection, setActiveSection] = useState<
     'basico' | 'legal' | 'direccion' | 'contacto' | 'regional'
   >('basico');
+  const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (Object.keys(validationErrors).length > 0) {
+      setTimeout(() => {
+        const firstErrorSection = getFirstErrorSectionFromFormState();
+        if (firstErrorSection) {
+          setActiveSection(firstErrorSection);
+        }
+      }, 0);
+    }
+  }, [validationErrors]);
 
   const {
     register,
     setValue,
     watch,
     handleSubmit,
+    trigger,
     formState: { errors, isSubmitting },
   } = useForm<TenantCreateFormValues>({
     resolver: zodResolver(tenantCreateSchema) as never,
@@ -112,6 +125,109 @@ export function TenantCreateForm() {
     },
   });
 
+  const FIELDS_BY_SECTION = {
+    basico: ['name', 'slug', 'contactEmail', 'maxSubscribers', 'mfaRequiredAll'] as const,
+    regional: ['timezone', 'currency', 'language', 'country'] as const,
+    legal: ['legalName', 'nit', 'nitDv', 'companyType'] as const,
+    direccion: [
+      'address',
+      'city',
+      'department',
+      'countryCode',
+      'postalCode',
+      'coordinates',
+    ] as const,
+    contacto: ['phone', 'website', 'economicSector'] as const,
+  } as const;
+
+  const hasErrorsInSection = (
+    section: keyof typeof FIELDS_BY_SECTION,
+    errs: Record<string, unknown>,
+  ): boolean => {
+    return FIELDS_BY_SECTION[section].some((field) => errs[field]);
+  };
+
+  const getFirstErrorSectionFromFormState = (): typeof activeSection | null => {
+    const sectionOrder: (typeof activeSection)[] = [
+      'basico',
+      'regional',
+      'legal',
+      'direccion',
+      'contacto',
+    ];
+    for (const section of sectionOrder) {
+      if (hasErrorsInSection(section, errors as Record<string, unknown>)) {
+        return section;
+      }
+    }
+    return null;
+  };
+
+  const sectionsWithFormStateErrors = Object.keys(FIELDS_BY_SECTION).filter((section) =>
+    hasErrorsInSection(
+      section as keyof typeof FIELDS_BY_SECTION,
+      errors as Record<string, unknown>,
+    ),
+  ) as (keyof typeof FIELDS_BY_SECTION)[];
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await trigger();
+    const fieldNames = [
+      'name',
+      'slug',
+      'contactEmail',
+      'maxSubscribers',
+      'mfaRequiredAll',
+      'timezone',
+      'currency',
+      'language',
+      'country',
+      'legalName',
+      'nit',
+      'nitDv',
+      'companyType',
+      'address',
+      'city',
+      'department',
+      'countryCode',
+      'postalCode',
+      'coordinates',
+      'phone',
+      'website',
+      'economicSector',
+    ] as const;
+    const newValidationErrors: Record<string, boolean> = {};
+    for (const field of fieldNames) {
+      if (errors[field as keyof typeof errors]) {
+        newValidationErrors[field] = true;
+      }
+    }
+    setValidationErrors(newValidationErrors);
+    if (Object.keys(newValidationErrors).length > 0) {
+      return;
+    }
+    await handleSubmit(onSubmit)(e);
+  };
+
+  const getFirstErrorSectionFromErrors = (
+    errs: Record<string, boolean>,
+  ): typeof activeSection | null => {
+    const sectionOrder: (typeof activeSection)[] = [
+      'basico',
+      'regional',
+      'legal',
+      'direccion',
+      'contacto',
+    ];
+    for (const section of sectionOrder) {
+      if (FIELDS_BY_SECTION[section].some((field) => errs[field])) {
+        return section;
+      }
+    }
+    return null;
+  };
+
   const statusLabel = useMemo(() => {
     if (!createdTenant) return null;
     if (createdTenant.status === 'ACTIVE') return 'Provisioning completado.';
@@ -125,12 +241,11 @@ export function TenantCreateForm() {
     setCreatedTenant(null);
 
     try {
-      // Construir payload enviando solo campos con valor
       const payload = {
         name: values.name,
         slug: values.slug,
         contactEmail: values.contactEmail,
-        ...(values.maxSubscribers !== undefined ? { maxSubscribers: values.maxSubscribers } : {}),
+        ...(values.maxSubscribers != null ? { maxSubscribers: values.maxSubscribers } : {}),
         ...(values.legalName ? { legalName: values.legalName } : {}),
         ...(values.nit ? { nit: values.nit } : {}),
         ...(values.nitDv ? { nitDv: values.nitDv } : {}),
@@ -153,7 +268,7 @@ export function TenantCreateForm() {
             mfa_required_all: values.mfaRequiredAll ?? false,
           },
         },
-      };
+      } as Parameters<typeof tenantApi.create>[0];
 
       const created = await tenantApi.create(payload);
       setCreatedTenant(created);
@@ -188,7 +303,7 @@ export function TenantCreateForm() {
       }
       attempts += 1;
     }
-    // Timeout: provisioning no completó en 60s — dejamos el mensaje de creación
+    setIsPolling(false);
     setSuccessMessage(`Empresa creada. El provisioning está tomando más tiempo del esperado.`);
   };
 
@@ -235,25 +350,50 @@ export function TenantCreateForm() {
         <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">{successMessage}</p>
       )}
 
+      {/* Resumen de errores */}
+      {sectionsWithFormStateErrors.length > 0 && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-900/20">
+          <p className="flex items-center gap-2 text-sm font-medium text-red-700 dark:text-red-400">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white">
+              {sectionsWithFormStateErrors.length}
+            </span>
+            {sectionsWithFormStateErrors.length === 1
+              ? 'Se encontró un error en la pestaña '
+              : `Se encontraron ${sectionsWithFormStateErrors.length} errores en las pestañas `}
+            {sectionsWithFormStateErrors
+              .map((s) => `"${tabs.find((t) => t.key === s)?.label}"`)
+              .join(', ')}
+          </p>
+        </div>
+      )}
+
       {/* Navegación por tabs */}
       <div className="flex gap-1 overflow-x-auto rounded-lg bg-gray-100 p-1 dark:bg-dark-surface-3">
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => setActiveSection(tab.key)}
-            className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-              activeSection === tab.key
-                ? 'bg-white shadow-sm dark:bg-dark-surface-2'
-                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+        {tabs.map((tab) => {
+          const hasError = hasErrorsInSection(tab.key, errors as Record<string, unknown>);
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveSection(tab.key)}
+              className={`relative whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                activeSection === tab.key
+                  ? 'bg-white shadow-sm dark:bg-dark-surface-2'
+                  : 'text-gray-600 hover:text-gray-900 dark:text-gray-400'
+              }`}
+            >
+              {tab.label}
+              {hasError && (
+                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-xs text-white">
+                  !
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
-      <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
+      <form className="space-y-4" onSubmit={handleFormSubmit}>
         {/* ── Sección: Datos básicos ────────────────────────────────── */}
         {activeSection === 'basico' && (
           <div className={SECTION_CLASS}>

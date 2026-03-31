@@ -5,8 +5,10 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Button } from '@iwana/ui';
+import { Mail, Lock } from 'lucide-react';
 import {
   ApiError,
+  authApi,
   type ChangePlatformUserLoginEmailPayload,
   platformUsersApi,
   type PlatformUserProfile,
@@ -17,12 +19,7 @@ import { useAuth } from '@/components/auth/AuthProvider';
 export const profileSchema = z.object({
   firstName: z.string().max(100).optional().or(z.literal('')),
   lastName: z.string().max(100).optional().or(z.literal('')),
-  phone: z
-    .string()
-    .max(20)
-    .regex(/^\+?[1-9]\d{1,14}$/, 'Formato E.164 inválido')
-    .optional()
-    .or(z.literal('')),
+  phone: z.string().max(20, 'Máximo 20 caracteres').optional().or(z.literal('')),
   timezone: z.string().max(50).optional(),
   language: z.string().max(10).optional(),
 });
@@ -32,20 +29,38 @@ export const loginEmailSchema = z.object({
   currentPassword: z.string().min(10, 'Debes confirmar con tu contraseña actual').max(128),
 });
 
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(10, 'Debe tener al menos 10 caracteres').max(128),
+    newPassword: z.string().min(10, 'Debe tener al menos 10 caracteres').max(128),
+    confirmPassword: z.string().min(10, 'Debe tener al menos 10 caracteres').max(128),
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: 'Las contraseñas no coinciden',
+    path: ['confirmPassword'],
+  });
+
 type ProfileFormValues = z.infer<typeof profileSchema>;
 type LoginEmailFormValues = z.infer<typeof loginEmailSchema>;
+type ChangePasswordFormValues = z.infer<typeof changePasswordSchema>;
 
 const TIMEZONES = ['America/Bogota', 'America/Lima', 'America/Mexico_City', 'UTC'];
 
 export function ProfileForm() {
-  const { refreshProfile } = useAuth();
+  const { refreshProfile, logout } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingEmail, setIsSavingEmail] = useState(false);
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [emailSuccessMessage, setEmailSuccessMessage] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccessMessage, setPasswordSuccessMessage] = useState<string | null>(null);
+  const [currentEmail, setCurrentEmail] = useState<string>('');
+  const [isEmailSectionExpanded, setIsEmailSectionExpanded] = useState(false);
+  const [isPasswordSectionExpanded, setIsPasswordSectionExpanded] = useState(false);
 
   const {
     register,
@@ -76,12 +91,27 @@ export function ProfileForm() {
     },
   });
 
+  const {
+    register: registerPassword,
+    handleSubmit: handleSubmitPassword,
+    reset: resetPasswordForm,
+    formState: { errors: passwordErrors },
+  } = useForm<ChangePasswordFormValues>({
+    resolver: zodResolver(changePasswordSchema),
+    defaultValues: {
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: '',
+    },
+  });
+
   useEffect(() => {
     const loadProfile = async () => {
       try {
         setIsLoading(true);
         const profile = await platformUsersApi.me();
         reset(mapProfileToForm(profile));
+        setCurrentEmail(profile.email);
         resetEmailForm({ email: profile.email, currentPassword: '' });
       } catch {
         setServerError('No fue posible cargar tu perfil.');
@@ -91,7 +121,7 @@ export function ProfileForm() {
     };
 
     loadProfile();
-  }, [reset, resetEmailForm]);
+  }, [reset, resetEmailForm, setCurrentEmail]);
 
   const onSubmit = async (values: ProfileFormValues) => {
     setServerError(null);
@@ -132,8 +162,10 @@ export function ProfileForm() {
       };
       const updated = await platformUsersApi.changeLoginEmail(payload);
       resetEmailForm({ email: updated.email, currentPassword: '' });
+      setCurrentEmail(updated.email);
       await refreshProfile();
       setEmailSuccessMessage('Email de acceso actualizado correctamente.');
+      setIsEmailSectionExpanded(false);
     } catch (error) {
       if (error instanceof ApiError) {
         setEmailError(error.message);
@@ -142,6 +174,29 @@ export function ProfileForm() {
       }
     } finally {
       setIsSavingEmail(false);
+    }
+  };
+
+  const onSubmitPassword = async (values: ChangePasswordFormValues) => {
+    setPasswordError(null);
+    setPasswordSuccessMessage(null);
+    setIsSavingPassword(true);
+
+    try {
+      await authApi.changePassword(values.currentPassword, values.newPassword);
+      setPasswordSuccessMessage('Contraseña actualizada. Debes iniciar sesión de nuevo.');
+      setIsPasswordSectionExpanded(false);
+      setTimeout(() => {
+        logout();
+      }, 2000);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setPasswordError(error.message);
+      } else {
+        setPasswordError('No fue posible cambiar la contraseña.');
+      }
+    } finally {
+      setIsSavingPassword(false);
     }
   };
 
@@ -269,65 +324,231 @@ export function ProfileForm() {
       </form>
 
       <div className="mt-8 border-t border-gray-200 pt-6 dark:border-dark-border">
-        <h3 className="mb-2 text-base font-semibold text-iwana-primary dark:text-white">
-          Email de acceso
+        <h3 className="mb-6 text-lg font-semibold text-iwana-primary dark:text-white">
+          Seguridad de la cuenta
         </h3>
-        <p className="mb-4 text-sm text-gray-500 dark:text-gray-300">
-          Este correo es el que usarás para ingresar a la consola de plataforma.
-        </p>
 
-        <form onSubmit={handleSubmitEmail(onSubmitLoginEmail)} className="space-y-4">
-          <div>
-            <label
-              htmlFor="profile-login-email"
-              className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-            >
-              Nuevo email de acceso
-            </label>
-            <input
-              id="profile-login-email"
-              type="email"
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
-              {...registerEmail('email')}
-            />
-            {emailErrors.email && (
-              <p className="mt-1 text-xs text-red-600">{emailErrors.email.message}</p>
+        <div className="space-y-6">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-surface-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+                  <Mail className="h-4 w-4" /> Email de acceso
+                </h4>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{currentEmail}</p>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setIsEmailSectionExpanded(!isEmailSectionExpanded);
+                  setIsPasswordSectionExpanded(false);
+                  setEmailError(null);
+                  setEmailSuccessMessage(null);
+                  resetEmailForm({ email: currentEmail, currentPassword: '' });
+                }}
+              >
+                {isEmailSectionExpanded ? 'Cancelar' : 'Cambiar email'}
+              </Button>
+            </div>
+
+            {isEmailSectionExpanded && (
+              <form
+                onSubmit={handleSubmitEmail(onSubmitLoginEmail)}
+                className="mt-4 space-y-4 border-t border-gray-200 pt-4 dark:border-dark-border"
+              >
+                <div>
+                  <label
+                    htmlFor="profile-login-email"
+                    className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                  >
+                    Nuevo email de acceso
+                  </label>
+                  <input
+                    id="profile-login-email"
+                    type="email"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
+                    {...registerEmail('email')}
+                  />
+                  {emailErrors.email && (
+                    <p className="mt-1 text-xs text-red-600">{emailErrors.email.message}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="profile-login-current-password"
+                    className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                  >
+                    Contraseña actual
+                  </label>
+                  <input
+                    id="profile-login-current-password"
+                    type="password"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
+                    {...registerEmail('currentPassword')}
+                  />
+                  {emailErrors.currentPassword && (
+                    <p className="mt-1 text-xs text-red-600">
+                      {emailErrors.currentPassword.message}
+                    </p>
+                  )}
+                </div>
+
+                {emailError && (
+                  <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {emailError}
+                  </p>
+                )}
+                {emailSuccessMessage && (
+                  <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+                    {emailSuccessMessage}
+                  </p>
+                )}
+
+                <div className="flex justify-end gap-3">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setIsEmailSectionExpanded(false);
+                      setEmailError(null);
+                      setEmailSuccessMessage(null);
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button type="submit" loading={isSavingEmail}>
+                    Actualizar email
+                  </Button>
+                </div>
+              </form>
             )}
           </div>
 
-          <div>
-            <label
-              htmlFor="profile-login-current-password"
-              className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-            >
-              Contraseña actual
-            </label>
-            <input
-              id="profile-login-current-password"
-              type="password"
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
-              {...registerEmail('currentPassword')}
-            />
-            {emailErrors.currentPassword && (
-              <p className="mt-1 text-xs text-red-600">{emailErrors.currentPassword.message}</p>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-surface-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+                  <Lock className="h-4 w-4" /> Cambiar contraseña
+                </h4>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  Requiere contraseña actual para confirmar
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setIsPasswordSectionExpanded(!isPasswordSectionExpanded);
+                  setIsEmailSectionExpanded(false);
+                  setPasswordError(null);
+                  setPasswordSuccessMessage(null);
+                  resetPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                }}
+              >
+                {isPasswordSectionExpanded ? 'Cancelar' : 'Cambiar contraseña'}
+              </Button>
+            </div>
+
+            {isPasswordSectionExpanded && (
+              <form
+                onSubmit={handleSubmitPassword(onSubmitPassword)}
+                className="mt-4 space-y-4 border-t border-gray-200 pt-4 dark:border-dark-border"
+              >
+                <div>
+                  <label
+                    htmlFor="profile-password-current"
+                    className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                  >
+                    Contraseña actual
+                  </label>
+                  <input
+                    id="profile-password-current"
+                    type="password"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
+                    {...registerPassword('currentPassword')}
+                  />
+                  {passwordErrors.currentPassword && (
+                    <p className="mt-1 text-xs text-red-600">
+                      {passwordErrors.currentPassword.message}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="profile-password-new"
+                    className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                  >
+                    Nueva contraseña
+                  </label>
+                  <input
+                    id="profile-password-new"
+                    type="password"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
+                    {...registerPassword('newPassword')}
+                  />
+                  {passwordErrors.newPassword && (
+                    <p className="mt-1 text-xs text-red-600">
+                      {passwordErrors.newPassword.message}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="profile-password-confirm"
+                    className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                  >
+                    Confirmar nueva contraseña
+                  </label>
+                  <input
+                    id="profile-password-confirm"
+                    type="password"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
+                    {...registerPassword('confirmPassword')}
+                  />
+                  {passwordErrors.confirmPassword && (
+                    <p className="mt-1 text-xs text-red-600">
+                      {passwordErrors.confirmPassword.message}
+                    </p>
+                  )}
+                </div>
+
+                {passwordError && (
+                  <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {passwordError}
+                  </p>
+                )}
+                {passwordSuccessMessage && (
+                  <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+                    {passwordSuccessMessage}
+                  </p>
+                )}
+
+                <div className="flex justify-end gap-3">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setIsPasswordSectionExpanded(false);
+                      setPasswordError(null);
+                      setPasswordSuccessMessage(null);
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button type="submit" loading={isSavingPassword}>
+                    Cambiar contraseña
+                  </Button>
+                </div>
+              </form>
             )}
           </div>
-
-          {emailError && (
-            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{emailError}</p>
-          )}
-          {emailSuccessMessage && (
-            <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
-              {emailSuccessMessage}
-            </p>
-          )}
-
-          <div className="flex justify-end">
-            <Button type="submit" loading={isSavingEmail}>
-              Actualizar email de acceso
-            </Button>
-          </div>
-        </form>
+        </div>
       </div>
     </div>
   );

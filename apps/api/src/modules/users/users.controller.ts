@@ -32,6 +32,8 @@ import { UsersService } from './users.service';
 import {
   ChangeUserLoginEmailDto,
   CreateUserDto,
+  ResetPasswordDto,
+  UpdateProfileDto,
   UpdateUserDto,
   UserResponseDto,
 } from './dto/user.dto';
@@ -82,6 +84,12 @@ export class UsersController {
     description: 'Filtrar por estado',
   })
   @ApiQuery({ name: 'role', required: false, enum: UserRole, description: 'Filtrar por rol' })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    type: String,
+    description: 'Busqueda ILIKE en email, firstName, lastName y jobTitle',
+  })
   @ApiResponse({ status: 200, description: 'Listado paginado de usuarios.' })
   @ApiResponse({ status: 401, description: 'Token invalido o expirado.' })
   @ApiResponse({ status: 403, description: 'Sin permisos de administrador.' })
@@ -90,14 +98,22 @@ export class UsersController {
     @Query('limit') limit?: string,
     @Query('status') status?: UserStatus,
     @Query('role') role?: UserRole,
+    @Query('search') search?: string,
   ): Promise<{
     data: { data: UserResponseDto[]; meta: { nextCursor: string | null; total: number } };
   }> {
-    const params: { cursor?: string; limit?: number; status?: UserStatus; role?: UserRole } = {};
+    const params: {
+      cursor?: string;
+      limit?: number;
+      status?: UserStatus;
+      role?: UserRole;
+      search?: string;
+    } = {};
     if (cursor) params.cursor = cursor;
     if (limit) params.limit = parseInt(limit, 10);
     if (status) params.status = status;
     if (role) params.role = role;
+    if (search) params.search = search;
     const result = await this.usersService.findAll(params);
     return { data: result };
   }
@@ -131,6 +147,36 @@ export class UsersController {
 
     const user = await this.usersService.create(createUserDto);
     return { data: user };
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Obtener perfil propio' })
+  @ApiResponse({ status: 200, description: 'Perfil propio del usuario autenticado.' })
+  async getMe(@CurrentUser() actor: JwtPayload): Promise<{ data: UserResponseDto }> {
+    return { data: await this.usersService.findMe(actor.sub) };
+  }
+
+  @Patch('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Actualizar perfil propio' })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    description: 'Clave de idempotencia obligatoria',
+    required: true,
+  })
+  @ApiResponse({ status: 200, description: 'Perfil propio actualizado.' })
+  async updateMe(
+    @CurrentUser() actor: JwtPayload,
+    @Body() dto: UpdateProfileDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
+    @Headers('x-forwarded-for') ipAddress?: string,
+  ): Promise<{ data: UserResponseDto }> {
+    if (!idempotencyKey?.trim()) {
+      throw new BadRequestException('El header Idempotency-Key es obligatorio.');
+    }
+
+    return { data: await this.usersService.updateMe(actor.sub, dto, ipAddress || 'unknown') };
   }
 
   /**
@@ -207,6 +253,38 @@ export class UsersController {
 
     const result = await this.usersService.changeLoginEmail(id, dto, actor.sub);
     return { data: result };
+  }
+
+  @Patch(':id/password')
+  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Reiniciar password de usuario' })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    description: 'Clave de idempotencia obligatoria',
+    required: true,
+  })
+  @ApiResponse({ status: 200, description: 'Password reiniciado exitosamente.' })
+  @ApiResponse({ status: 403, description: 'No puedes reiniciar a un SYSTEM_ADMIN.' })
+  async resetPassword(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() actor: JwtPayload,
+    @Body() dto: ResetPasswordDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
+    @Headers('x-forwarded-for') ipAddress?: string,
+  ): Promise<{ data: { temporaryPassword: string } }> {
+    if (!idempotencyKey?.trim()) {
+      throw new BadRequestException('El header Idempotency-Key es obligatorio.');
+    }
+
+    return {
+      data: await this.usersService.resetPassword(
+        id,
+        actor.sub,
+        actor.role as UserRole,
+        ipAddress || 'unknown',
+        dto?.password,
+      ),
+    };
   }
 
   /**

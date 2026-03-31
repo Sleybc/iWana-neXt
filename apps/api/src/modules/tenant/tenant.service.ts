@@ -362,21 +362,32 @@ export class TenantService {
    * Devuelve la configuración comercial de cobertura para administración tenant.
    */
   async getCoverageAdmin(tenantId: string, schemaName: string): Promise<CoverageAdminResponseDto> {
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const nodes = await qr.manager.find(CommercialNode, {
-        where: { tenantId },
-        order: { createdAt: 'DESC' },
-      });
-      const zones = await qr.manager.find(CoverageZone, {
-        where: { tenantId },
-        order: { createdAt: 'DESC' },
-      });
+    try {
+      return await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+        const nodes = await qr.manager.find(CommercialNode, {
+          where: { tenantId },
+          order: { createdAt: 'DESC' },
+        });
+        const zones = await qr.manager.find(CoverageZone, {
+          where: { tenantId },
+          order: { createdAt: 'DESC' },
+        });
 
-      return {
-        nodes: nodes.map((item) => this.toCommercialNodeDto(item)),
-        zones: zones.map((item) => this.toCoverageZoneDto(item)),
-      };
-    });
+        return {
+          nodes: nodes.map((item) => this.toCommercialNodeDto(item)),
+          zones: zones.map((item) => this.toCoverageZoneDto(item)),
+        };
+      });
+    } catch (error) {
+      // Compatibilidad temporal: algunos tenants legacy aun no tienen tablas MOD03 en su schema.
+      if (this.isTenantCommercialSchemaCompatibilityError(error)) {
+        this.logger.warn(
+          `Cobertura comercial no disponible en schema ${schemaName}. Se retorna configuración vacía hasta aplicar migraciones tenant.`,
+        );
+        return { nodes: [], zones: [] };
+      }
+      throw error;
+    }
   }
 
   /**
@@ -389,64 +400,79 @@ export class TenantService {
     latitude?: number,
     longitude?: number,
   ): Promise<CoverageCheckResponseDto> {
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const nodes = await qr.manager.find(CommercialNode, {
-        where: { tenantId, isActive: true },
-      });
-      const zones = await qr.manager.find(CoverageZone, {
-        where: { tenantId, isActive: true },
-      });
+    try {
+      return await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+        const nodes = await qr.manager.find(CommercialNode, {
+          where: { tenantId, isActive: true },
+        });
+        const zones = await qr.manager.find(CoverageZone, {
+          where: { tenantId, isActive: true },
+        });
 
-      const matches: Array<{
-        id: string;
-        name: string;
-        type: 'NODE' | 'ZONE';
-        available: boolean;
-      }> = [];
+        const matches: Array<{
+          id: string;
+          name: string;
+          type: 'NODE' | 'ZONE';
+          available: boolean;
+        }> = [];
 
-      if (latitude !== undefined && longitude !== undefined) {
-        for (const node of nodes) {
-          const distanceKm = this.calculateDistanceKm(
-            latitude,
-            longitude,
-            node.latitude,
-            node.longitude,
-          );
-          if (distanceKm <= 5) {
-            matches.push({ id: node.id, name: node.name, type: 'NODE', available: true });
+        if (latitude !== undefined && longitude !== undefined) {
+          for (const node of nodes) {
+            const distanceKm = this.calculateDistanceKm(
+              latitude,
+              longitude,
+              node.latitude,
+              node.longitude,
+            );
+            if (distanceKm <= 5) {
+              matches.push({ id: node.id, name: node.name, type: 'NODE', available: true });
+            }
+          }
+
+          for (const zone of zones) {
+            const distanceKm = this.calculateDistanceKm(
+              latitude,
+              longitude,
+              zone.centerLatitude,
+              zone.centerLongitude,
+            );
+            if (distanceKm <= Number(zone.radiusKm)) {
+              matches.push({ id: zone.id, name: zone.name, type: 'ZONE', available: true });
+            }
           }
         }
 
-        for (const zone of zones) {
-          const distanceKm = this.calculateDistanceKm(
-            latitude,
-            longitude,
-            zone.centerLatitude,
-            zone.centerLongitude,
-          );
-          if (distanceKm <= Number(zone.radiusKm)) {
-            matches.push({ id: zone.id, name: zone.name, type: 'ZONE', available: true });
-          }
+        if (matches.length > 0) {
+          return {
+            available: true,
+            reason: 'Cobertura comercial disponible para la ubicación consultada.',
+            matches,
+          };
         }
-      }
 
-      if (matches.length > 0) {
         return {
-          available: true,
-          reason: 'Cobertura comercial disponible para la ubicación consultada.',
-          matches,
+          available: false,
+          reason:
+            latitude !== undefined && longitude !== undefined
+              ? 'No se encontró cobertura comercial activa para la ubicación consultada.'
+              : `No hay cobertura comercial activa configurada para la dirección ${address}.`,
+          matches: [],
+        };
+      });
+    } catch (error) {
+      if (this.isTenantCommercialSchemaCompatibilityError(error)) {
+        this.logger.warn(
+          `Validación de cobertura no disponible en schema ${schemaName}. Se retorna respuesta no viable por compatibilidad temporal.`,
+        );
+        return {
+          available: false,
+          reason:
+            'La cobertura comercial aún no está habilitada para esta empresa. Aplica migraciones tenant y reintenta.',
+          matches: [],
         };
       }
-
-      return {
-        available: false,
-        reason:
-          latitude !== undefined && longitude !== undefined
-            ? 'No se encontró cobertura comercial activa para la ubicación consultada.'
-            : `No hay cobertura comercial activa configurada para la dirección ${address}.`,
-        matches: [],
-      };
-    });
+      throw error;
+    }
   }
 
   /**
@@ -594,19 +620,115 @@ export class TenantService {
   }
 
   /**
+   * Soft-delete idempotente para nodos comerciales tenant-managed.
+   */
+  async removeCoverageNode(
+    tenantId: string,
+    schemaName: string,
+    nodeId: string,
+    actorUserId?: string,
+  ): Promise<CoverageAdminResponseDto> {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const entity = await qr.manager.findOne(CommercialNode, {
+        where: { id: nodeId, tenantId },
+        withDeleted: true,
+      });
+      if (!entity) {
+        throw new NotFoundException(`Nodo comercial con id "${nodeId}" no encontrado.`);
+      }
+
+      if (entity.deletedAt) {
+        return this.getCoverageAdmin(tenantId, schemaName);
+      }
+
+      const oldValue = this.toCommercialNodeDto(entity);
+      entity.isActive = false;
+      entity.deletedAt = new Date();
+
+      await qr.manager.save(CommercialNode, entity);
+
+      await this.auditService.log({
+        tenantId,
+        schemaName,
+        userId: actorUserId ?? null,
+        action: AuditAction.DELETE,
+        entityType: 'CommercialNode',
+        entityId: entity.id,
+        oldValue: oldValue as unknown as Record<string, unknown>,
+        newValue: this.toCommercialNodeDto(entity) as unknown as Record<string, unknown>,
+      });
+
+      return this.getCoverageAdmin(tenantId, schemaName);
+    });
+  }
+
+  /**
+   * Soft-delete idempotente para zonas de cobertura tenant-managed.
+   */
+  async removeCoverageZone(
+    tenantId: string,
+    schemaName: string,
+    zoneId: string,
+    actorUserId?: string,
+  ): Promise<CoverageAdminResponseDto> {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const entity = await qr.manager.findOne(CoverageZone, {
+        where: { id: zoneId, tenantId },
+        withDeleted: true,
+      });
+      if (!entity) {
+        throw new NotFoundException(`Zona de cobertura con id "${zoneId}" no encontrada.`);
+      }
+
+      if (entity.deletedAt) {
+        return this.getCoverageAdmin(tenantId, schemaName);
+      }
+
+      const oldValue = this.toCoverageZoneDto(entity);
+      entity.isActive = false;
+      entity.deletedAt = new Date();
+
+      await qr.manager.save(CoverageZone, entity);
+
+      await this.auditService.log({
+        tenantId,
+        schemaName,
+        userId: actorUserId ?? null,
+        action: AuditAction.DELETE,
+        entityType: 'CoverageZone',
+        entityId: entity.id,
+        oldValue: oldValue as unknown as Record<string, unknown>,
+        newValue: this.toCoverageZoneDto(entity) as unknown as Record<string, unknown>,
+      });
+
+      return this.getCoverageAdmin(tenantId, schemaName);
+    });
+  }
+
+  /**
    * Retorna catálogo activo para consumo self-service y CRM read-only.
    */
   async getPlanCatalog(
     tenantId: string,
     schemaName: string,
   ): Promise<PlanCatalogItemResponseDto[]> {
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const items = await qr.manager.find(PlanCatalogItem, {
-        where: { tenantId },
-        order: { createdAt: 'DESC' },
+    try {
+      return await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+        const items = await qr.manager.find(PlanCatalogItem, {
+          where: { tenantId },
+          order: { createdAt: 'DESC' },
+        });
+        return items.map((item) => this.toPlanCatalogDto(item));
       });
-      return items.map((item) => this.toPlanCatalogDto(item));
-    });
+    } catch (error) {
+      if (this.isTenantCommercialSchemaCompatibilityError(error)) {
+        this.logger.warn(
+          `Catalogo comercial no disponible en schema ${schemaName}. Se retorna lista vacía hasta aplicar migraciones tenant.`,
+        );
+        return [];
+      }
+      throw error;
+    }
   }
 
   async createPlanCatalogItem(
@@ -703,6 +825,49 @@ export class TenantService {
     });
   }
 
+  /**
+   * Soft-delete idempotente de plan del catálogo para el tenant autenticado.
+   */
+  async removePlanCatalogItem(
+    tenantId: string,
+    schemaName: string,
+    planId: string,
+    actorUserId?: string,
+  ): Promise<PlanCatalogItemResponseDto[]> {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const entity = await qr.manager.findOne(PlanCatalogItem, {
+        where: { id: planId, tenantId },
+        withDeleted: true,
+      });
+      if (!entity) {
+        throw new NotFoundException(`Plan con id "${planId}" no encontrado.`);
+      }
+
+      if (entity.deletedAt) {
+        return this.getPlanCatalog(tenantId, schemaName);
+      }
+
+      const oldValue = this.toPlanCatalogDto(entity);
+      entity.isActive = false;
+      entity.deletedAt = new Date();
+
+      await qr.manager.save(PlanCatalogItem, entity);
+
+      await this.auditService.log({
+        tenantId,
+        schemaName,
+        userId: actorUserId ?? null,
+        action: AuditAction.DELETE,
+        entityType: 'PlanCatalogItem',
+        entityId: entity.id,
+        oldValue: oldValue as unknown as Record<string, unknown>,
+        newValue: this.toPlanCatalogDto(entity) as unknown as Record<string, unknown>,
+      });
+
+      return this.getPlanCatalog(tenantId, schemaName);
+    });
+  }
+
   /** Mapea Tenant a TenantSelfResponseDto — solo campos del panel empresarial. */
   private toSelfResponseDto(tenant: Tenant): TenantSelfResponseDto {
     const dto = new TenantSelfResponseDto();
@@ -788,6 +953,42 @@ export class TenantService {
 
   private toRadians(value: number): number {
     return (value * Math.PI) / 180;
+  }
+
+  private isTenantCommercialSchemaCompatibilityError(error: unknown): boolean {
+    const pgCode = this.extractPgErrorCode(error);
+    return pgCode === '42P01' || pgCode === '42703';
+  }
+
+  private extractPgErrorCode(error: unknown): string | undefined {
+    if (!error || typeof error !== 'object') {
+      return undefined;
+    }
+
+    const visited = new Set<object>();
+    const stack: Array<Record<string, unknown>> = [error as Record<string, unknown>];
+
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (!current || visited.has(current)) {
+        continue;
+      }
+      visited.add(current);
+
+      if (typeof current.code === 'string') {
+        return current.code;
+      }
+
+      if (current.driverError && typeof current.driverError === 'object') {
+        stack.push(current.driverError as Record<string, unknown>);
+      }
+
+      if (current.cause && typeof current.cause === 'object') {
+        stack.push(current.cause as Record<string, unknown>);
+      }
+    }
+
+    return undefined;
   }
 
   /** Normaliza configuración operativa aplicando defaults. */
@@ -1016,7 +1217,7 @@ export class TenantService {
   /** Busca un tenant por id con cache Redis para evitar lecturas repetidas al schema publico. */
   private async findTenantEntityById(id: string): Promise<Tenant | null> {
     const cachedTenant = await this.getCachedTenant(this.buildIdCacheKey(id));
-    if (cachedTenant) {
+    if (cachedTenant && cachedTenant.status !== 'PROVISIONING') {
       return cachedTenant;
     }
 

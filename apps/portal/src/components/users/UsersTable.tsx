@@ -8,9 +8,10 @@ import {
   Pencil,
   Trash2,
   ChevronDown,
-  ChevronUp,
   ChevronsLeftRight,
   ShieldCheck,
+  KeyRound,
+  Search,
 } from 'lucide-react';
 
 interface UsersTableProps {
@@ -19,8 +20,13 @@ interface UsersTableProps {
   meta: UsersPaginationMeta | null;
   onEdit: (user: InternalUser) => void;
   onDelete: (user: InternalUser) => void;
+  onResetPassword: (user: InternalUser) => void;
   onFilterChange: (filters: ListUsersParams) => void;
   onLoadMore: () => void;
+  /** Valor actual del input de búsqueda — controlado desde UsersClient */
+  searchValue: string;
+  /** Callback invocado cuando el usuario escribe en el input de búsqueda */
+  onSearchChange: (value: string) => void;
   currentUserId?: string;
 }
 
@@ -72,8 +78,11 @@ export function UsersTable({
   meta,
   onEdit,
   onDelete,
+  onResetPassword,
   onFilterChange,
   onLoadMore,
+  searchValue,
+  onSearchChange,
   currentUserId,
 }: UsersTableProps) {
   const [statusFilter, setStatusFilter] = useState<string>('');
@@ -105,6 +114,27 @@ export function UsersTable({
     <div className="rounded-2xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-2 overflow-hidden">
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-3 p-4 border-b border-gray-100 dark:border-dark-border">
+        {/* Input de búsqueda — debounce gestionado en UsersClient */}
+        <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+          <label htmlFor="search-filter" className="sr-only">
+            Buscar usuario
+          </label>
+          <div className="relative flex-1">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none"
+              aria-hidden="true"
+            />
+            <input
+              id="search-filter"
+              type="search"
+              placeholder="Buscar por nombre o correo…"
+              value={searchValue}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="h-9 w-full rounded-xl border border-gray-200 bg-white pl-9 pr-3 text-sm dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-iwana-primary"
+            />
+          </div>
+        </div>
+
         <div className="flex items-center gap-2">
           <label
             htmlFor="status-filter"
@@ -151,12 +181,13 @@ export function UsersTable({
           </select>
         </div>
 
-        {(statusFilter || roleFilter) && (
+        {(statusFilter || roleFilter || searchValue) && (
           <button
             type="button"
             onClick={() => {
               setStatusFilter('');
               setRoleFilter('');
+              onSearchChange('');
               onFilterChange({});
             }}
             className="text-sm text-iwana-secondary hover:underline dark:text-iwana-secondary-400"
@@ -307,6 +338,15 @@ export function UsersTable({
                       aria-label={`Editar usuario ${user.email}`}
                     >
                       <Pencil className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onResetPassword(user)}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-amber-50 hover:text-amber-600 dark:hover:bg-amber-900/20 dark:hover:text-amber-400 transition-colors"
+                      aria-label={`Reiniciar contraseña de ${user.email}`}
+                      title="Reiniciar contraseña"
+                    >
+                      <KeyRound className="h-4 w-4" aria-hidden="true" />
                     </button>
                     <button
                       type="button"

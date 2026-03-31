@@ -29,11 +29,7 @@ const COUNTRY_PHONE_PREFIX: Record<string, string> = {
 const schema = z.object({
   firstName: z.string().max(100).optional().or(z.literal('')),
   lastName: z.string().max(100).optional().or(z.literal('')),
-  phone: z
-    .string()
-    .regex(/^\+\d{7,15}$/, 'Formato E.164 requerido (ej: +573001234567)')
-    .optional()
-    .or(z.literal('')),
+  phone: z.string().max(20, 'Máximo 20 caracteres.').optional().or(z.literal('')),
   jobTitle: z.string().max(150).optional().or(z.literal('')),
 });
 

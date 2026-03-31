@@ -2,9 +2,11 @@
 
 **Versión:** 1.0
 **Fecha:** 2026-03-15
-**Estado:** En revisión
+**Estado:** Deprecado
 **Modo activo:** Mixto
 **Convención documental:** INFORME-MOD02-DEFINICION-v1.0.md
+
+> **Documento deprecado:** este informe queda como antecedente histórico de definición. El documento operativo vigente para la ejecución frontend de MOD02 es `docs/informes/INFORME-MOD02-FRONTEND-FASE-01-v1.0.md`.
 
 ## Vínculos de trazabilidad
 

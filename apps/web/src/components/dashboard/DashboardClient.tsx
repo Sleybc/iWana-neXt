@@ -108,7 +108,7 @@ export function DashboardClient() {
               : null;
 
         return {
-          label: `Tenant "${tenant.name}" — ${tenant.status.toLowerCase()}`,
+          label: `Empresa "${tenant.name}" — ${tenant.status.toLowerCase()}`,
           value: formatRelativeDate(tenant.updatedAt),
           ...(valueClassName ? { valueClassName } : {}),
         };
@@ -137,9 +137,9 @@ export function DashboardClient() {
             <section aria-label="Métricas de plataforma">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
                 <MetricCard
-                  title="Total tenants"
+                  title="Total empresas"
                   value={isLoading ? '...' : String(summary.total)}
-                  change="Desde endpoint /tenants"
+                  change="Desde el sistema"
                   icon={<Building2 className="w-5 h-5" />}
                   iconBg="#EAF5CC"
                   iconColor="#6A7A1C"
@@ -147,7 +147,7 @@ export function DashboardClient() {
                 <MetricCard
                   title="Activos"
                   value={isLoading ? '...' : String(summary.active)}
-                  change="Tenants activos"
+                  change="Empresas activas"
                   icon={<Users className="w-5 h-5" />}
                   iconBg="#EEEEFA"
                   iconColor="#17163A"
@@ -162,7 +162,7 @@ export function DashboardClient() {
                 <MetricCard
                   title="Provisionando"
                   value={isLoading ? '...' : String(summary.provisioning)}
-                  change="Tenants en provisioning"
+                  change="Empresas en provisioning"
                   icon={<BriefcaseBusiness className="w-5 h-5" />}
                   iconBg="#DCFCE7"
                   iconColor="#22C55E"
@@ -192,7 +192,7 @@ export function DashboardClient() {
               </div>
             </section>
 
-            <section aria-label="Tenants de la plataforma">
+            <section aria-label="Empresas de la plataforma">
               <TenantsTable
                 tenants={tableRows}
                 isLoading={isLoading}
@@ -242,7 +242,7 @@ export function DashboardClient() {
             />
 
             <PanelCard
-              title="Distribución de tenants"
+              title="Distribución de empresas"
               columnHeaders={{ label: 'Estado', value: 'Cantidad' }}
               rows={[
                 {

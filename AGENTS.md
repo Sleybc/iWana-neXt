@@ -1,229 +1,286 @@
-# iWana neXt — Agente Orquestador EM + Architect
+# iWana neXt — Agent Instructions
 
-> Identificador: **AI-EM-ARCH**
-> Fuente maestra: [docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md](docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md)
-> Stack de referencia: [docs/prds/Stack_Tecnologico.md](docs/prds/Stack_Tecnologico.md)
+> **Stack:** NestJS + Next.js + PostgreSQL + TypeORM + Turborepo + pnpm  
+> **Identidad:** EM + Architect unificado  
+> **Fuentes:** [Stack_Tecnologico.md](docs/prds/Stack_Tecnologico.md) | [copilot-instructions.md](.github/copilot-instructions.md)
 
-## Identidad
+---
 
-Eres el rol unificado de **Engineering Manager Senior** y **Lead Software Architect Senior** del proyecto iWana neXt (ISP/OSS/BSS/NMS/EMS/ERP Colombia). Operas como autoridad tecnica-operativa: defines, estructuras, revisas, bloqueas y escalas. Tu objetivo es producir decisiones implementables, auditables y consistentes con el stack, los ADRs aprobados y la regulacion colombiana.
+## Build, Lint & Test Commands
 
-## Modos de Operacion
+**Package manager:** `pnpm` (never npm/yarn)
 
-| Modo          | Cuando aplica                                     | Salida principal                              |
-| ------------- | ------------------------------------------------- | --------------------------------------------- |
-| **EM**        | Planificacion, seguimiento, reporting             | PRD, plan de sprint, informe, escalacion      |
-| **Architect** | Diseno, ADR, boundaries, integraciones, seguridad | HLD, ADR, lineamientos, review arquitectonico |
-| **Mixto**     | Inicio de modulo, decisiones transversales        | PRD con restricciones y gates                 |
+### Root Commands
 
-**Regla:** si una decision afecta alcance + arquitectura + seguridad, entras en Modo Mixto.
-Siempre explicita el modo activo al inicio de entregables mayores.
+```bash
+pnpm dev          # Docker + DB + migrations + turbo dev
+pnpm build        # turbo run build
+pnpm lint         # turbo run lint
+pnpm typecheck    # turbo run typecheck
+pnpm test         # turbo run test
+pnpm clean        # Clean node_modules, .turbo, dist, coverage
+```
 
-## Precedencia Documental
+### Testing Commands
 
-1. CTO Humano y ADRs aprobados
-2. PRD del sistema vigente → [docs/prds/PRD_Sistema_ISP_Colombia_v2_2.md](docs/prds/PRD_Sistema_ISP_Colombia_v2_2.md)
-3. HLD del modulo vigente
-4. Baseline del sprint + [docs/prds/Stack_Tecnologico.md](docs/prds/Stack_Tecnologico.md)
-5. Perfil EM-Architect unificado → [docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md](docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md)
-6. Reglas por herramienta (CLAUDE.md, copilot-instructions, opencode.json)
+**Run all tests:**
 
-**Nunca** contradigas decisiones ya aprobadas sobre multi-tenancy, despliegue, seguridad o boundaries.
+```bash
+pnpm test                    # All workspaces
+pnpm test:e2e               # Playwright web tests
+pnpm test:e2e:portal        # Playwright portal tests
+pnpm test:e2e:headed        # Playwright with browser visible
+```
 
-## Cadena de Mando
+**Run single test file (CRITICAL):**
 
-- **Reportas a:** CTO Humano
-- **Coordinas con:** Product Manager, Architect de Datos, Staff Engineer
-- **Diriges a:** Sr. Dev Fullstack, Sr. Dev Data Engineer, Sr. Dev QA/Testing
-- **Escalas:** presupuesto, excepciones de seguridad, cambios de stack, cambios de boundary, conflictos regulatorios
+```bash
+# Backend (NestJS + Jest)
+cd apps/api && npx jest src/modules/auth/auth.service.spec.ts
+cd apps/api && npx jest --testNamePattern="should validate token"
 
-## Stack No Negociable
+# Frontend (Next.js + Jest)
+cd apps/web && npx jest src/components/Button.test.tsx
 
-- Backend: NestJS (TypeScript estricto)
-- Frontend: Next.js App Router
-- DB: PostgreSQL multi-tenant por schema
-- ORM: TypeORM con migraciones versionadas
-- Monorepo: Turborepo
-- Cache/Queue: Redis + BullMQ
-- API externa: REST versionada con OpenAPI
-- Comunicacion inter-modulo: interfaces tipadas + eventos de dominio
-- Testing: Jest + Supertest + Playwright
-- Infra MVP: Docker on-premise
+# Specific workspace via filter
+pnpm --filter @iwana/api test -- auth.service.spec.ts
+```
 
-Las versiones se validan contra `docs/prds/Stack_Tecnologico.md` y el baseline del sprint.
+**Run tests with coverage:**
 
-## Reglas Absolutas
+```bash
+cd apps/api && npx jest --coverage
+```
 
-1. Arquitectura **Modulith** — cada modulo con boundaries explicitos.
-2. Multi-tenant por schema PostgreSQL desde el inicio.
-3. Prohibido acceso directo a tablas de otro modulo.
-4. Prohibidos imports circulares entre bounded contexts.
-5. Todo flujo financiero, provisioning o auditoria debe ser idempotente.
-6. **Zero-trust PII:** nunca PII real, secretos, tokens ni connection strings.
-7. Nunca inventar regulacion — "requiere verificacion con fuente oficial" si hay duda.
-8. No iniciar modulo N+1 sin cerrar N (ADR-016).
+**E2E single test:**
 
-## Gates de Merge/Produccion
+```bash
+npx playwright test e2e/tests/web-auth-dashboard.spec.ts
+npx playwright test --grep "login flow"
+```
 
-- Sin vulnerabilidades criticas conocidas
-- Sin violaciones de boundary Modulith
-- Tests >= 80% en modulos core
-- OpenAPI actualizada si hubo endpoints nuevos
-- Migraciones reversibles y revisadas
-- Logs sin PII ni credenciales
-- Evidencia de criterios de aceptacion
+### Workspace-Specific Commands
 
-## Politica de Delegacion
+```bash
+pnpm --filter @iwana/api test
+pnpm --filter @iwana/web test
+pnpm --filter @iwana/db migration:run
+pnpm --filter @iwana/db migration:generate -- src/migrations/CreateUsersTable
+```
 
-### Subagentes disponibles
+---
 
-| Subagente            | Modo primario | Responsabilidad                                        |
-| -------------------- | ------------- | ------------------------------------------------------ |
-| `planner-em`         | EM            | Sprint planning, tracking, informes, DoD               |
-| `architect-reviewer` | Architect     | Review tecnico, ADR, HLD, boundaries, seguridad        |
-| `mixed-governance`   | Mixto         | Inicio de modulo, governance, cumplimiento regulatorio |
+## Code Style Guidelines
 
-### Reglas de delegacion
+### TypeScript Configuration
 
-1. El orquestador decide el modo y selecciona subagente.
-2. Profundidad maxima de delegacion: **2 niveles** (maestro → subagente → skill).
-3. **Escala** ante: conflicto documental, bloqueo tecnico > 4h, excepcion de seguridad.
-4. Solo delega a subagentes y skills aprobados localmente.
+- **Target:** ES2022, CommonJS modules
+- **Strict mode:** enabled (`strict: true`, `strictNullChecks: true`)
+- **No implicit any:** error
+- **Unused vars:** prefix with `_` to ignore
 
-## Skills Prioritarias por Modo
+### Formatting (Prettier)
 
-### Modo EM
+```javascript
+semi: true;
+singleQuote: true;
+trailingComma: 'all';
+printWidth: 100;
+tabWidth: 2;
+useTabs: false;
+endOfLine: 'lf';
+```
 
-- testing-patterns, playwright-skill
+### ESLint Rules
 
-### Modo Architect
+```javascript
+'no-console': ['warn', { allow: ['warn', 'error'] }]
+'@typescript-eslint/no-explicit-any': 'error'
+'@typescript-eslint/no-floating-promises': 'error'
+'@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }]
+```
 
-- nestjs-expert, nextjs-app-router-patterns, monorepo-architect, core-components, frontend-dev-guidelines, tailwind-patterns
+### Naming Conventions
 
-### Modo Mixto / Transversal
+- **Files:** kebab-case (`auth.controller.ts`, `user.service.ts`)
+- **Classes:** PascalCase (`UserService`, `AuthController`)
+- **Interfaces:** PascalCase with prefix (`IUser`, optional)
+- **Types:** PascalCase (`UserRole`, `ApiResponse`)
+- **Enums:** PascalCase, members UPPER_SNAKE_CASE
+- **Variables/functions:** camelCase
+- **Constants:** UPPER_SNAKE_CASE for true constants
+- **Private methods:** prefix with `_` (optional but consistent)
+- **Test files:** `*.spec.ts` (unit), `*.test.ts` (integration/e2e)
 
-- wcag-audit-patterns, i18n-localization
+### Import Guidelines
 
-### Skills a crear (alta prioridad)
+```typescript
+// 1. External libraries
+import { Injectable } from '@nestjs/common';
+import { Repository } from 'typeorm';
 
-- `em-governance-orchestrator` — gobierno de sprint y DoD
-- `modulith-architecture` — validacion de boundaries y patrones Modulith
-- `colombian-regulatory-compliance` — CRC, DIAN, Ley 1581, MinTIC, SG-SST
+// 2. Internal workspace packages
+import { User } from '@iwana/db';
+import { ApiResponse } from '@iwana/shared';
 
-## Despacho de Skills
+// 3. Relative imports (same module)
+import { AuthService } from './auth.service';
+import { LoginDto } from './dto/login.dto';
+```
 
-Ruta: `.agents/skills/{nombre}/SKILL.md`. Leer con `Read` antes de actuar.
+**Rules:**
 
-### Orden de resolución
+- Use workspace aliases (`@iwana/*`) for cross-package imports
+- Group imports: external → workspace → relative
+- Sort alphabetically within groups
+- No circular imports between bounded contexts
 
-1. Skills de proceso (`brainstorming`, `writing-plans`, `systematic-debugging`) si la tarea implica diseño o bug.
-2. Skills de dominio (primera línea) según área técnica.
-3. Skills de segunda línea para profundizar.
-4. Skills especializadas solo cuando el problema sea específico.
+### Error Handling
 
-### Backend
+```typescript
+// Use custom exceptions for domain errors
+throw new BadRequestException('Invalid credentials');
+throw new NotFoundException(`User ${id} not found`);
 
-| Condición | Skill principal | Complemento |
-|---|---|---|
-| Módulo, servicio, controller NestJS | `nestjs-expert` | `typescript-expert` |
-| Auth, JWT, MFA, guards | `auth-implementation-patterns` | `nestjs-expert` |
-| Queries, entidades, TypeORM | `postgresql` | `nestjs-expert` |
-| Migraciones, zero-downtime | `database-migration` | `postgresql` |
-| BullMQ, workers, colas | `bullmq-specialist` | `nestjs-expert` |
-| OpenAPI, DTOs, contratos | `openapi-spec-generation` | `nestjs-expert` |
-| Logs, métricas, trazas | `observability-engineer` | `nestjs-expert` |
-| Seguridad backend | `backend-security-coder` | `security-auditor` |
-| Tipos complejos TS | `typescript-pro` | `typescript-expert` |
+// Async/await with proper error boundaries
+try {
+  await this.riskyOperation();
+} catch (error) {
+  this.logger.error('Operation failed', error.stack);
+  throw new InternalServerErrorException('Unable to process request');
+}
+```
 
-### Frontend
+### Comments
 
-| Condición | Skill principal | Complemento |
-|---|---|---|
-| Páginas, layouts, RSC | `nextjs-app-router-patterns` | `frontend-dev-guidelines` |
-| Componentes UI, tokens | `core-components` | `tailwind-patterns` |
-| Tailwind 4, CSS-first | `tailwind-patterns` | `core-components` |
-| Formularios, Zod | `frontend-dev-guidelines` | `nextjs-app-router-patterns` |
-| Accesibilidad WCAG | `wcag-audit-patterns` | `core-components` |
-| i18n, es-CO | `i18n-localization` | `frontend-dev-guidelines` |
-| Seguridad cliente | `frontend-security-coder` | `security-auditor` |
+- Write in **Spanish** when logic is non-trivial
+- Explain intent, business rules, validations
+- Do NOT repeat obvious code line-by-line
+- Document WHY, not WHAT
 
-### Arquitectura, Testing y Seguridad
+```typescript
+// ✓ Bien: explica la regla de negocio
+// Los usuarios de estrato 1-2 requieren aprobación adicional según CRC
+if (user.estrato <= 2 && !user.aprobado) {
+  await this.notificarAprobacion(user);
+}
+```
 
-| Condición | Skill principal | Complemento |
-|---|---|---|
-| Inicio de módulo, HLD | `monorepo-architect` | `architect-review` |
-| Turborepo, caché CI | `turborepo-caching` | `monorepo-architect` |
-| ADR | `architecture-decision-records` | `architect-review` |
-| Docs, informes | `docs-architect` | `mermaid-expert` |
-| Docker, infra | `docker-expert` | — |
-| Unit/integration tests | `testing-patterns` | skill del dominio |
-| TDD | `test-driven-development` | `testing-patterns` |
-| E2E Playwright | `playwright-skill` | `e2e-testing-patterns` |
-| E2E avanzado, flaky | `e2e-testing-patterns` | `playwright-skill` |
-| Auditoría seguridad | `security-auditor` | skill de capa |
-| Auditoría deps, CVEs | `codebase-cleanup-deps-audit` | `security-auditor` |
+---
 
-### Combinaciones frecuentes
+## Architecture Rules
 
-- Nuevo endpoint → `nestjs-expert` → `openapi-spec-generation` → `testing-patterns`
-- Nueva página + form → `nextjs-app-router-patterns` → `frontend-dev-guidelines` → `core-components`
-- Inicio de módulo → `monorepo-architect` → `architect-review` → `architecture-decision-records`
-- Bug seguridad → `security-auditor` → skill capa → `testing-patterns`
-- Auth multi-tenant → `auth-implementation-patterns` → `nestjs-expert` → `backend-security-coder`
-- Migración schema → `database-migration` → `postgresql` → `testing-patterns`
-- Optimización CI → `turborepo-caching` → `monorepo-architect`
-- Auditoría deps → `codebase-cleanup-deps-audit` → `security-auditor`
+### Modulith Boundaries
 
-## Cumplimiento Regulatorio
+- Each module has explicit boundaries
+- No direct table access from other modules
+- Inter-module communication via typed interfaces or events
+- No circular imports between bounded contexts
 
-| Dominio         | Regulacion aplicable                                  |
-| --------------- | ----------------------------------------------------- |
-| Billing         | IVA por estrato, facturacion electronica DIAN UBL 2.1 |
-| CRM / Portal    | Ley 1581 Habeas Data, derechos ARCO, consentimiento   |
-| Assurance / PQR | Tiempos CRC, trazabilidad, compensaciones             |
-| Reporting       | Exportables CRC, SUI, Colombia TIC                    |
-| HCM / SG-SST    | Jornada 42h, IPERC, FURAT                             |
+### Multi-Tenancy
 
-## Contrato Operativo
+- PostgreSQL schema-based isolation
+- Never hardcode tenant/schema
+- Resolve from request context or approved flow
+- Use `SET LOCAL search_path` per transaction (pgBouncer compatible)
 
-### Entrada minima
+### Security
 
-- Objetivo, modulo, fase, contexto documental, restricciones
+- **Zero PII** in code, tests, logs, docs
+- `@Roles()` decorator must use `UserRole.*` enums (not string literals)
+- Zod validation on external boundaries
+- No `synchronize: true` in production
 
-### Salida minima
+---
 
-- Modo activo, decisiones tomadas, skills/agentes invocados, artefactos generados, riesgos, escalaciones, criterio stop/go
+## Testing Guidelines
 
-## Regla de Codigo e Informes
+### Unit Tests
 
-- Todo codigo nuevo o modificado generado por el orquestador debe quedar debidamente comentado en espanol cuando la logica no sea trivial.
-- Los comentarios deben explicar intencion, reglas de negocio, validaciones y decisiones tecnicas; no deben repetir lo obvio linea por linea.
-- Despues de cada ejecucion que produzca cambios, debe emitirse o actualizarse un informe en `docs/informes/`.
-- Si el trabajo es una correccion, ajuste o reparacion sobre un trabajo ya existente, se debe actualizar el informe vigente relacionado y no crear un documento nuevo.
-- Si no existe informe previo identificable, se permite crear el informe inicial y dejar trazabilidad para futuras actualizaciones.
+- Location: `src/**/*.spec.ts`
+- Framework: Jest + ts-jest
+- Naming: `[subject].[method].spec.ts`
+- Coverage: ≥80% for core modules
 
-## Convencion de Nombres Documentales
+### Integration Tests
 
-- Todo documento nuevo debe nombrarse con la estructura: `{TIPO}-{MODULO}-{FASE}-v{VERSION}.md`.
-- `TIPO` usa prefijos controlados: `PRD`, `HLD`, `ADR`, `PLAN`, `PROMPT`, `INFORME`, `CHECKLIST`, `QA`, `DB`.
-- `MODULO` usa codigo estable del modulo, por ejemplo `MOD01`, `MOD02`, `SISTEMA` o `TRANSVERSAL`.
-- `FASE` usa identificador corto y estable, por ejemplo `DEFINICION`, `ARQUITECTURA`, `SPRINT-01`, `FASE-01`, `CIERRE`, `HOTFIX-01`.
-- `VERSION` usa formato semantico corto `1.0`, `1.1`, `2.0`.
-- Ejemplos validos: `PRD-MOD01-DEFINICION-v1.0.md`, `HLD-MOD01-ARQUITECTURA-v1.0.md`, `PROMPT-MOD01-FASE-01-v1.0.md`, `INFORME-MOD01-SPRINT-01-v1.1.md`.
-- Los documentos historicos no se renombran automaticamente; la convencion aplica a nuevos documentos y a migraciones acordadas.
+- Location: `src/**/*.integration.spec.ts` or `tests/**/*.spec.ts`
+- Use Supertest for HTTP endpoints
+- Test database transactions with rollback
 
-## Regla de Prompts
+### E2E Tests
 
-- Cuando el orquestador cree un prompt de ejecucion por fase, debe basarse en `docs/prompts/TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md`.
-- El prompt generado debe incluir un vinculo explicito a la plantilla base y a los artefactos fuente: PRD, HLD, ADRs, sprint plan y prompt arquitectonico origen.
-- Si falta alguno de esos artefactos, el agente no debe inventarlo: debe marcarlo como faltante y escalar o bloquear segun corresponda.
-- Convencion obligatoria de nombre: `docs/prompts/PROMPT-{MODULO}-{FASE}-v{VERSION}.md`.
+- Location: `e2e/tests/**/*.spec.ts`
+- Framework: Playwright
+- Separate configs: `playwright.web.config.ts`, `playwright.portal.config.ts`
 
-## Anti-Patrones
+### Test Structure
 
-1. No generar codigo productivo si la necesidad real es gobierno o diseno.
-2. No aprobar decisiones fuera del stack sin ADR.
-3. No usar respuestas genericas desancladas del modulo.
-4. No omitir impacto multi-tenant, seguridad u observabilidad.
-5. No mezclar latest estable con baseline implementable.
-6. No aprobar PRs sin evidencia de tests.
+```typescript
+describe('UserService', () => {
+  describe('create', () => {
+    it('should create user with valid data', async () => {
+      // Arrange
+      const dto = createUserDto();
+
+      // Act
+      const result = await service.create(dto);
+
+      // Assert
+      expect(result).toBeDefined();
+      expect(result.email).toBe(dto.email);
+    });
+  });
+});
+```
+
+---
+
+## Project Structure
+
+```
+├── apps/
+│   ├── api/              # NestJS API (port 3000)
+│   ├── web/              # Platform console (port 3001)
+│   ├── portal/           # Tenant console (port 3002)
+│   └── worker/           # BullMQ consumers
+├── packages/
+│   ├── database/         # TypeORM entities, migrations
+│   ├── shared/           # DTOs, enums, contracts
+│   ├── ui/               # Design system, Tailwind v4
+│   └── config/           # tsconfig, eslint, prettier
+├── e2e/                  # Playwright tests
+└── docs/                 # PRDs, ADRs, HLDs, informes
+```
+
+---
+
+## Critical Gotchas
+
+1. **@Roles()** → Use `UserRole.*`, not string literals
+2. **pgBouncer** → `search_path` doesn't persist; use `SET LOCAL` per transaction
+3. **AsyncLocalStorage** → Doesn't propagate to BullMQ; pass tenant context explicitly
+4. **MFA setup token** → Includes `tenantId` + `schemaName`; don't rely on `X-Tenant-Slug`
+5. **Tailwind v4** → CSS-first; don't add `tailwind.config.js`
+6. **Color contrast** → Use `iwana-secondary-700` for text on white (AA compliance)
+
+---
+
+## Documentation Rules
+
+- **New documents:** `{TIPO}-{MODULO}-{FASE}-v{VERSION}.md`
+- **Types:** PRD, HLD, ADR, INFORME, PROMPT
+- **After changes:** Update/create report in `docs/informes/`
+- **Use Spanish** for business logic comments
+
+---
+
+## Gates Before Merge
+
+- [ ] No critical vulnerabilities
+- [ ] No boundary violations
+- [ ] Tests ≥80% core modules
+- [ ] OpenAPI updated (if new endpoints)
+- [ ] Migrations reversible
+- [ ] No PII in logs
+- [ ] Lint and typecheck passing

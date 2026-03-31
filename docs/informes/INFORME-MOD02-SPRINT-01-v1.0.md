@@ -8,7 +8,7 @@
 **Fecha de apertura:** 2026-03-16
 **Última actualización:** 2026-03-16
 **Agente responsable:** AI-EM (Modo Ejecutor con revisión mixta)
-**Referencia al plan:** `docs/plans/calm-stirring-riddle.md`
+**Referencia al plan:** `docs/plans/PLAN-MOD02-AUTH-SPRINT-01-v1.0.md`
 
 ---
 

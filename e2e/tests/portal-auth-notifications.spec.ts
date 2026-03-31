@@ -118,7 +118,7 @@ test.describe('Portal auth + notifications', () => {
     await page.getByRole('button', { name: 'Ingresar' }).click();
 
     await expect(page).toHaveURL(/\/dashboard/);
-    await expect(page.getByText('Mi Portal')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Panel empresarial' })).toBeVisible();
     await page.waitForLoadState('networkidle');
 
     // Validación WCAG 2.1 AA en dashboard del portal
@@ -126,8 +126,8 @@ test.describe('Portal auth + notifications', () => {
     expect(dashboardA11y.violations).toEqual([]);
 
     // Checks básicos de accesibilidad del flujo visible.
-    await expect(page.getByRole('region', { name: 'Estado del servicio' })).toBeVisible();
-    await expect(page.getByRole('region', { name: 'Accesos rápidos' })).toBeVisible();
+    await expect(page.getByText('Panel en preparación')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Accesos rápidos' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Notificaciones' }).click();
     await expect(page.getByText('Notificaciones del portal')).toBeVisible();

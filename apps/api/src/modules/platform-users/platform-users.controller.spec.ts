@@ -3,10 +3,19 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, jest } from '@je
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { PlatformRole } from '@iwana/shared';
+import { AuthService } from '../auth/auth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PlatformUsersController } from './platform-users.controller';
 import { PlatformUsersService } from './platform-users.service';
+
+jest.mock('../auth/auth.service', () => ({
+  AuthService: class AuthService {
+    signPlatformToken(): string {
+      return 'mock-platform-access-token';
+    }
+  },
+}));
 
 jest.mock('../auth/guards/jwt-auth.guard', () => ({
   JwtAuthGuard: class JwtAuthGuard {
@@ -54,11 +63,16 @@ describe('PlatformUsersController HTTP', () => {
     changeLoginEmail: jest.fn<() => Promise<Record<string, unknown>>>(),
   };
 
+  const authServiceMock = {
+    signPlatformToken: jest.fn().mockReturnValue('mock-platform-access-token'),
+  };
+
   beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       controllers: [PlatformUsersController],
       providers: [
         { provide: PlatformUsersService, useValue: platformUsersServiceMock },
+        { provide: AuthService, useValue: authServiceMock },
         JwtAuthGuard,
         RolesGuard,
       ],

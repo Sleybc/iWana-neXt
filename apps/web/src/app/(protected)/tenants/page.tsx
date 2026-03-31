@@ -124,7 +124,7 @@ export default function TenantsPage() {
 
       <PageHeader
         title="Empresas"
-        subtitle="Gestión de tenants y provisioning"
+        subtitle="Administración de empresas del sistema"
         actions={
           <Button asChild>
             <Link href="/tenants/new">Nueva empresa</Link>

@@ -21,8 +21,8 @@ import { DocumentType, UserRole, UserStatus } from '@iwana/shared';
  * cada transaccion (ADR-017, Riesgo R2 pgBouncer).
  *
  * SEGURIDAD:
- * - email: AES-256-GCM cifrado (IV unico por registro)
- * - emailHash: SHA-256 para busquedas indexadas
+ * - email: texto plano con constraint UNIQUE dentro del tenant
+ * - emailHash: SHA-256 derivado para compatibilidad transversal de autenticacion
  * - passwordHash: bcrypt 12 rounds
  * - mfaSecret: AES-256-GCM cifrado (nullable hasta activacion MFA)
  * - password_reset_token: cifrado (nullable, expira en 24h)
@@ -30,6 +30,8 @@ import { DocumentType, UserRole, UserStatus } from '@iwana/shared';
  * HLD-MOD01-ARQUITECTURA-v1.0 Seccion 3 (Modelo de Datos)
  */
 @Index('idx_users_email_hash', ['emailHash'])
+@Index('idx_users_first_name', ['firstName'])
+@Index('idx_users_last_name', ['lastName'])
 @Index('idx_users_tenant_role', ['tenantId', 'role'])
 @Index('idx_users_tenant_status', ['tenantId', 'status'])
 @Entity({ name: 'users' }) // Sin schema — resuelto via SET LOCAL search_path
@@ -37,8 +39,8 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  /** Email cifrado AES-256-GCM. Para buscar, usar emailHash */
-  @Column({ length: 512 })
+  /** Email en texto plano; emailHash se mantiene derivado para compatibilidad transversal. */
+  @Column({ length: 255, unique: true })
   email: string;
 
   /** SHA-256 del email normalizado. Longitud 64 = 256 bits en hex */
@@ -118,12 +120,12 @@ export class User {
 
   // ── Perfil personal ─────────────────────────────────────────────────────────
 
-  /** Nombre cifrado AES-256-GCM (PII — Ley 1581). Null hasta completar perfil */
-  @Column({ name: 'first_name', type: 'varchar', length: 512, nullable: true })
+  /** Nombre en texto plano. Se mantiene compatibilidad de lectura para datos legacy cifrados. */
+  @Column({ name: 'first_name', type: 'varchar', length: 100, nullable: true })
   firstName: string | null;
 
-  /** Apellido cifrado AES-256-GCM (PII — Ley 1581). Null hasta completar perfil */
-  @Column({ name: 'last_name', type: 'varchar', length: 512, nullable: true })
+  /** Apellido en texto plano. Se mantiene compatibilidad de lectura para datos legacy cifrados. */
+  @Column({ name: 'last_name', type: 'varchar', length: 100, nullable: true })
   lastName: string | null;
 
   /** Teléfono en formato E.164 (ej: "+573001234567") */
@@ -139,11 +141,11 @@ export class User {
   documentType: DocumentType | null;
 
   /**
-   * Número de documento cifrado AES-256-GCM.
+   * Número de documento en texto plano.
    * PII sensible — Ley 1581 habeas data.
    * NUNCA se retorna en DTOs públicos; solo se persiste.
    */
-  @Column({ name: 'document_number', type: 'varchar', length: 512, nullable: true })
+  @Column({ name: 'document_number', type: 'varchar', length: 30, nullable: true })
   documentNumber: string | null;
 
   /** URL de imagen de perfil */

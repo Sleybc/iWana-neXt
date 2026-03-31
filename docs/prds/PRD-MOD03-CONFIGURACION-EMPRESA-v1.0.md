@@ -1,15 +1,18 @@
 # PRD - MOD03 Configuracion Empresarial
 
-**Version:** 1.0  
-**Estado:** En revision  
-**Fecha:** 2026-03-17  
-**Modo activo:** Architect  
-**Autor:** AI-EM-ARCH (Lead Software Architect Senior)  
+**Version:** 1.1  
+**Estado:** Aprobado  
+**Fecha:** 2026-03-24  
+**Modo activo:** Mixto  
+**Autor:** AI-EM-ARCH (Engineering Manager + Lead Architect)  
 **Trazabilidad base:** docs/prds/PRD_Sistema_ISP_Colombia_v2_2.md  
 **PRD relacionado:** docs/prds/PRD-MOD02-DASHBOARD-EMPRESA-v1.0.md  
-**HLD relacionado:** docs/hlds/HLD-MOD02-DASHBOARD-EMPRESA-v1.0.md  
-**Informe relacionado:** docs/informes/INFORME-MOD03-DEFINICION-v1.0.md  
-**ADRs aplicables:** ADR-016, ADR-018, ADR-019, ADR-022, ADR-023
+**HLD relacionado:** docs/hlds/HLD-MOD03-CONFIGURACION-EMPRESA-v1.0.md  
+**Informe relacionado:** docs/informes/INFORME-MOD03-AUDITORIA-ESTADO-v1.0.md  
+**ADRs aplicables:** ADR-016, ADR-018, ADR-019, ADR-022, ADR-023  
+**PRDs cruzados:** PRD-MOD04-USUARIOS-INTERNOS-v1.0.md, PRD-MOD05-CRM-DEFINICION-v2.0.md
+
+> **Changelog v1.1 (2026-03-24):** Ampliacion aprobada tras auditoria de estado. Se incorporan secciones de Cobertura Comercial (nodos y zonas con mapa interactivo Leaflet), Catalogo de Planes y Valores, endpoints DELETE para soft-delete, y pruebas E2E con validacion de roles. El ABM de cobertura y planes es responsabilidad exclusiva de MOD03; MOD05 CRM los consume en modo read-only via puertos tipados.
 
 > Nota de gobernanza: este modulo no crea un bounded context nuevo ni mueve ownership fuera de TenantModule. Formaliza la capacidad de configuracion self-service para una empresa ya creada y autenticada dentro del boundary vigente de tenant empresarial.
 
@@ -52,6 +55,12 @@ Definir e implementar la capacidad de Configuracion Empresarial para que el tena
 - Auditoria de cambios de configuracion con oldValue y newValue.
 - Reglas RBAC para lectura y escritura dentro del tenant.
 - Alertas de onboarding relacionadas con configuracion incompleta o inconsistente.
+- **(v1.1)** CRUD completo de Cobertura Comercial: nodos de red y zonas de cobertura con coordenadas geograficas, ABM visual en portal con tablas y dialogos.
+- **(v1.1)** Mapa interactivo Leaflet para posicionar nodos y visualizar radios de zonas de cobertura, con tiles OpenStreetMap (sin dependencia de API keys externas).
+- **(v1.1)** CRUD completo de Catalogo de Planes y Valores: tecnologia, velocidades, precios, reglas de instalacion, vigencia.
+- **(v1.1)** Endpoints DELETE (soft-delete) para nodos de cobertura y zonas de cobertura.
+- **(v1.1)** Validador de factibilidad comercial por coordenadas (`coverage/check`).
+- **(v1.1)** Pruebas E2E Playwright para flujos CRUD de cobertura y planes, incluyendo validacion de roles (NOC read-only).
 
 ### Fuera de scope
 
@@ -62,6 +71,11 @@ Definir e implementar la capacidad de Configuracion Empresarial para que el tena
 - Configuracion tributaria avanzada, resoluciones DIAN, numeracion o adaptadores contables definitivos.
 - Parametros de infraestructura, Redis, pgBouncer, JWT, correo saliente o integraciones externas.
 - Cualquier cambio de stack, tenancy o boundary entre apps/web y apps/portal.
+- **(v1.1)** Geocoding inverso (conversion automatica de direccion a coordenadas) — mejora futura.
+- **(v1.1)** Edicion de perimetro de zona como poligono — solo radio circular por ahora.
+- **(v1.1)** Google Maps u otros proveedores de mapas con API key de pago.
+- **(v1.1)** Validacion de integridad referencial al eliminar nodos/zonas vinculados a suscriptores — se implementara cuando MOD05 CRM vincule contratos a cobertura.
+- **(v1.1)** Importacion masiva de nodos/zonas via CSV/Excel — mejora futura.
 
 ### Decision de boundary
 
@@ -109,6 +123,42 @@ Definir e implementar la capacidad de Configuracion Empresarial para que el tena
 
 - El sistema identifica faltantes criticos como NIT ausente, timezone invalida para Colombia o MFA pendiente.
 - El dashboard y la vista de configuracion muestran alertas accionables.
+
+**(v1.1) CU-06: Administrar nodos de cobertura**
+
+- El ADMIN accede al sub-tab Cobertura dentro de Configuracion Comercial.
+- Crea un nodo indicando nombre, latitud y longitud (manual o click en mapa).
+- Puede editar, activar/desactivar o eliminar (soft-delete) nodos existentes.
+- Los nodos se visualizan como markers en el mapa interactivo.
+
+**(v1.1) CU-07: Administrar zonas de cobertura**
+
+- El ADMIN crea una zona con nombre, coordenadas de centro y radio en km.
+- Las zonas se visualizan como circulos en el mapa.
+- Puede editar, activar/desactivar o eliminar zonas.
+
+**(v1.1) CU-08: Visualizar cobertura en mapa interactivo**
+
+- El mapa Leaflet muestra nodos (markers) y zonas (circulos) del tenant.
+- Click en marker abre dialogo de edicion del nodo.
+- Click en mapa vacio pre-llena latitud y longitud para crear nuevo nodo.
+- Markers activos en azul, inactivos en gris.
+
+**(v1.1) CU-09: Validar factibilidad comercial**
+
+- Un usuario con rol autorizado ingresa coordenadas o direccion.
+- El sistema responde si hay cobertura disponible y lista los matches (nodos y zonas).
+
+**(v1.1) CU-10: Administrar catalogo de planes**
+
+- El ADMIN accede al sub-tab Planes dentro de Configuracion Comercial.
+- Crea planes con nombre, tecnologia, velocidades (simetrica/asimetrica), precio base, tarifa de instalacion, regla de instalacion y vigencia.
+- Puede editar, activar/desactivar o eliminar (soft-delete) planes.
+
+**(v1.1) CU-11: Consulta read-only para NOC/ACCOUNTANT/SUPPORT**
+
+- Roles no-ADMIN ven tablas de nodos, zonas y planes sin botones de accion.
+- El mapa se muestra pero sin capacidad de click-para-crear.
 
 ---
 
@@ -158,6 +208,41 @@ Definir e implementar la capacidad de Configuracion Empresarial para que el tena
 | RF-CE-18 | ACCOUNTANT y NOC pueden consultar la configuracion operativa y empresarial en modo lectura segun contratos aprobados. | MVP |
 | RF-CE-19 | SUPPORT puede consultar datos base y alertas de configuracion, pero no editar configuracion sensible. | MVP |
 | RF-CE-20 | Ningun rol del tenant puede leer o modificar configuracion de otro tenant. | MVP |
+
+### 4.6 Cobertura comercial (v1.1)
+
+| ID | Requerimiento | Prioridad |
+| --- | --- | --- |
+| RF-CE-21 | El modulo debe permitir al ADMIN crear, editar, activar/desactivar y eliminar (soft-delete) nodos de cobertura comercial con nombre, latitud, longitud y estado. | MVP |
+| RF-CE-22 | El modulo debe permitir al ADMIN crear, editar, activar/desactivar y eliminar (soft-delete) zonas de cobertura con nombre, coordenadas de centro y radio en km. | MVP |
+| RF-CE-23 | Los endpoints DELETE para nodos y zonas deben ejecutar soft-delete (setear `deletedAt` + `isActive=false`), consistente con el patron de planes. | MVP |
+| RF-CE-24 | La UI debe mostrar tablas de nodos y zonas con columnas relevantes (nombre, coordenadas, radio, estado) y acciones contextuales. | MVP |
+| RF-CE-25 | La creacion y edicion de nodos y zonas debe usar dialogos modales con validacion Zod frontend (nombre requerido, lat -90 a 90, lng -180 a 180, radio 0.1 a 300 km). | MVP |
+| RF-CE-26 | El validador de factibilidad (`coverage/check`) debe aceptar coordenadas y retornar los matches de nodos y zonas con indicador de disponibilidad. | MVP |
+| RF-CE-27 | Los contadores de nodos activos y zonas activas deben actualizarse dinamicamente tras cada mutacion. | MVP |
+
+### 4.7 Mapa interactivo (v1.1)
+
+| ID | Requerimiento | Prioridad |
+| --- | --- | --- |
+| RF-CE-28 | El sub-tab Cobertura debe incluir un mapa interactivo Leaflet con tiles OpenStreetMap, sin dependencia de API keys de pago. | MVP |
+| RF-CE-29 | Los nodos deben representarse como markers (azul = activo, gris = inactivo) con popup de nombre. | MVP |
+| RF-CE-30 | Las zonas deben representarse como circulos con radio visual proporcional a `radiusKm`. | MVP |
+| RF-CE-31 | Click en marker del mapa debe abrir el dialogo de edicion del nodo correspondiente. | MVP |
+| RF-CE-32 | Click en area vacia del mapa debe pre-llenar latitud y longitud en el dialogo de creacion de nodo. | MVP |
+| RF-CE-33 | El mapa debe centrarse en el primer nodo existente o en coordenadas de Colombia por defecto (4.6097, -74.0817 Bogota). | MVP |
+| RF-CE-34 | El mapa debe renderizarse de forma segura con SSR deshabilitado (`next/dynamic` con `ssr: false`) para evitar errores de `window` en servidor. | MVP |
+| RF-CE-35 | En modo read-only (NOC/ACCOUNTANT/SUPPORT), el mapa no dispara acciones de creacion por click. | MVP |
+
+### 4.8 Catalogo de planes y valores (v1.1)
+
+| ID | Requerimiento | Prioridad |
+| --- | --- | --- |
+| RF-CE-36 | El modulo debe permitir al ADMIN crear, editar, activar/desactivar y eliminar (soft-delete) planes del catalogo de servicios. | MVP |
+| RF-CE-37 | Cada plan debe incluir: nombre, tecnologia, velocidad descarga/subida (simetrica/asimetrica), precio base, tarifa instalacion, regla de instalacion (NONE/ALWAYS/FIBER_DROP_THRESHOLD), vigencia y estado. | MVP |
+| RF-CE-38 | La UI debe mostrar tabla de planes con formateo de moneda COP y velocidades en Mbps. | MVP |
+| RF-CE-39 | La creacion y edicion de planes debe usar dialogo modal con validacion Zod frontend que incluya logica cruzada (velocidad simetrica, regla de instalacion). | MVP |
+| RF-CE-40 | MOD05 CRM debe consumir cobertura y planes en modo read-only via puertos tipados (`CoverageReadPort`, `PlanCatalogReadPort`), sin acceso directo a tablas de MOD03. | MVP |
 
 ---
 
@@ -234,6 +319,9 @@ El HLD y la ejecucion deben clasificar cada campo en una de estas categorias:
 | `GET` | `/api/v1/tenants/me` | Obtener perfil empresarial base del tenant autenticado |
 | `GET` | `/api/v1/tenants/me/settings` | Obtener configuracion operativa normalizada del tenant autenticado |
 | `GET` | `/api/v1/tenants/me/summary` | Obtener resumen del dashboard y alertas relacionadas |
+| `GET` | `/api/v1/tenants/me/coverage` | **(v1.1)** Obtener configuracion de cobertura: nodos y zonas activos |
+| `GET` | `/api/v1/tenants/me/coverage/check` | **(v1.1)** Validar factibilidad comercial por coordenadas |
+| `GET` | `/api/v1/tenants/me/plans` | **(v1.1)** Obtener catalogo completo de planes del tenant |
 
 ### Contratos de escritura propuestos
 
@@ -241,6 +329,15 @@ El HLD y la ejecucion deben clasificar cada campo en una de estas categorias:
 | --- | --- | --- |
 | `PATCH` | `/api/v1/tenants/me/profile` | Actualizar perfil empresarial tenant-managed |
 | `PATCH` | `/api/v1/tenants/me/settings` | Actualizar configuracion operativa tenant-managed |
+| `POST` | `/api/v1/tenants/me/coverage/nodes` | **(v1.1)** Crear nodo de cobertura |
+| `PATCH` | `/api/v1/tenants/me/coverage/nodes/{nodeId}` | **(v1.1)** Actualizar nodo de cobertura |
+| `DELETE` | `/api/v1/tenants/me/coverage/nodes/{nodeId}` | **(v1.1)** Soft-delete nodo de cobertura |
+| `POST` | `/api/v1/tenants/me/coverage/zones` | **(v1.1)** Crear zona de cobertura |
+| `PATCH` | `/api/v1/tenants/me/coverage/zones/{zoneId}` | **(v1.1)** Actualizar zona de cobertura |
+| `DELETE` | `/api/v1/tenants/me/coverage/zones/{zoneId}` | **(v1.1)** Soft-delete zona de cobertura |
+| `POST` | `/api/v1/tenants/me/plans` | **(v1.1)** Crear plan en catalogo |
+| `PATCH` | `/api/v1/tenants/me/plans/{planId}` | **(v1.1)** Actualizar plan |
+| `DELETE` | `/api/v1/tenants/me/plans/{planId}` | **(v1.1)** Soft-delete plan |
 
 ### Reglas contractuales
 
@@ -264,6 +361,15 @@ El HLD y la ejecucion deben clasificar cada campo en una de estas categorias:
 | CA-CE-06 | Los flags platform-managed no pueden ser alterados desde el portal empresarial. |
 | CA-CE-07 | El modulo muestra alertas de configuracion incompleta cuando falten datos criticos definidos por el negocio. |
 | CA-CE-08 | Las validaciones de moneda, pais, formatos y permisos se aplican tanto en backend como en frontend donde corresponda. |
+| CA-CE-09 | **(v1.1)** ADMIN puede crear, editar, activar/desactivar y eliminar nodos de cobertura desde el sub-tab Cobertura. |
+| CA-CE-10 | **(v1.1)** ADMIN puede crear, editar, activar/desactivar y eliminar zonas de cobertura desde el sub-tab Cobertura. |
+| CA-CE-11 | **(v1.1)** El mapa interactivo Leaflet muestra nodos como markers y zonas como circulos con radio proporcional. |
+| CA-CE-12 | **(v1.1)** Click en area vacia del mapa pre-llena coordenadas en el formulario de creacion de nodo. |
+| CA-CE-13 | **(v1.1)** El validador de factibilidad retorna matches correctos para coordenadas dentro y fuera de cobertura. |
+| CA-CE-14 | **(v1.1)** ADMIN puede crear, editar, activar/desactivar y eliminar planes del catalogo con todas las validaciones de negocio. |
+| CA-CE-15 | **(v1.1)** NOC/ACCOUNTANT/SUPPORT ven tablas de cobertura y planes en modo read-only sin botones de accion. |
+| CA-CE-16 | **(v1.1)** Los endpoints DELETE ejecutan soft-delete y no eliminan fisicamente registros. |
+| CA-CE-17 | **(v1.1)** Existen pruebas E2E Playwright que cubren flujos CRUD de cobertura y planes, incluyendo validacion de roles. |
 
 ---
 
@@ -286,6 +392,10 @@ El HLD y la ejecucion deben clasificar cada campo en una de estas categorias:
 | `maxSubscribers` puede representar limite comercial o contractual, no simple setting operativo | Medio | Mantenerlo fuera de la escritura self-service hasta validar ownership con negocio/plataforma |
 | Faltan validaciones de dominio para NIT y datos legales | Medio | Definir contrato y reglas en HLD/ejecucion antes de habilitar escritura |
 | La UI podria duplicar logica del dashboard en lugar de reutilizar summary y contratos existentes | Bajo | Reutilizar fuentes self-service y unificar alertas de onboarding |
+| **(v1.1)** Leaflet requiere `window` y rompe SSR en Next.js | Medio | Usar `next/dynamic` con `ssr: false`; importar CSS dentro del componente cliente |
+| **(v1.1)** Marker icons de Leaflet no resuelven path en Next.js por defecto | Bajo | Usar `L.icon()` apuntando a assets en `public/` o importar PNGs directamente |
+| **(v1.1)** Eliminacion de nodo/zona con suscriptores vinculados en MOD05 | Medio | Soft-delete por ahora; agregar validacion de integridad referencial cuando CRM vincule contratos |
+| **(v1.1)** Dependencia de paquete `leaflet` (MIT) sin auditoria previa | Bajo | Verificar licencia MIT y ejecutar `pnpm audit` post-instalacion |
 
 ### Decision documental
 
@@ -303,3 +413,9 @@ Por el alcance actual no se requiere ADR nuevo, siempre que la implementacion ma
 - Hay pruebas unitarias/integracion del backend y pruebas frontend/E2E para los flujos criticos del modulo.
 - La documentacion operativa e informe vivo del modulo quedan actualizados.
 - No hay rutas rotas, no hay consumo de endpoints globales desde portal y no hay violaciones cross-tenant.
+- **(v1.1)** El ABM de nodos y zonas de cobertura esta operativo con tablas, dialogos y mapa Leaflet.
+- **(v1.1)** El ABM de catalogo de planes esta operativo con tabla, dialogo modal y validaciones de negocio.
+- **(v1.1)** Los endpoints DELETE para nodos, zonas y planes ejecutan soft-delete correctamente.
+- **(v1.1)** Existen pruebas E2E que validan CRUD de cobertura y planes, incluyendo variantes de rol (ADMIN activo, NOC read-only).
+- **(v1.1)** El mapa Leaflet renderiza sin errores, con markers, circles y acciones de click funcionales.
+- **(v1.1)** MOD05 CRM puede consumir datos de cobertura y planes via puertos read-only tipados.

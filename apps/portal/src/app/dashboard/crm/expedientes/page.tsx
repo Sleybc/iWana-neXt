@@ -83,21 +83,31 @@ export default function ExpedientesPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<ExpedienteStatus | ''>('');
   const [search, setSearch] = useState('');
+  const [assignedTo, setAssignedTo] = useState('');
+  const [documentNumber, setDocumentNumber] = useState('');
   const [createValues, setCreateValues] = useState({ fullName: '', source: 'Manual' });
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadExpedientes();
-  }, [statusFilter, search]);
+  }, [statusFilter, search, assignedTo, documentNumber]);
 
   const loadExpedientes = async () => {
     try {
       setLoading(true);
       setError(null);
-      const filters: { status?: ExpedienteStatus; search?: string; limit: number } = { limit: 100 };
+      const filters: {
+        status?: ExpedienteStatus;
+        search?: string;
+        assignedTo?: string;
+        documentNumber?: string;
+        limit: number;
+      } = { limit: 100 };
       if (statusFilter) filters.status = statusFilter as ExpedienteStatus;
       if (search) filters.search = search;
+      if (assignedTo.trim()) filters.assignedTo = assignedTo.trim();
+      if (documentNumber.trim()) filters.documentNumber = documentNumber.trim();
 
       const response = await crmApi.listExpedientes(filters);
       setExpedientes(response.data);
@@ -201,7 +211,7 @@ export default function ExpedientesPage() {
 
         <Card>
           <CardContent className="pt-6">
-            <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)_auto] lg:items-end">
+            <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)_220px_220px_auto] lg:items-end">
               <div>
                 <label
                   htmlFor="expediente-status-filter"
@@ -241,14 +251,32 @@ export default function ExpedientesPage() {
                 />
               </div>
 
+              <Input
+                id="expediente-assigned-to-filter"
+                label="Asesor asignado"
+                value={assignedTo}
+                onChange={(e) => setAssignedTo(e.target.value)}
+                placeholder="UUID del asesor"
+              />
+
+              <Input
+                id="expediente-document-filter"
+                label="Documento exacto"
+                value={documentNumber}
+                onChange={(e) => setDocumentNumber(e.target.value)}
+                placeholder="Número de documento"
+              />
+
               <div className="flex justify-start lg:justify-end">
                 <Button
                   type="button"
                   variant="ghost"
-                  disabled={!statusFilter && !search}
+                  disabled={!statusFilter && !search && !assignedTo && !documentNumber}
                   onClick={() => {
                     setStatusFilter('');
                     setSearch('');
+                    setAssignedTo('');
+                    setDocumentNumber('');
                   }}
                 >
                   Limpiar filtros

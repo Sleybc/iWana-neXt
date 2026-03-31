@@ -119,7 +119,7 @@ export const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps
 
     return (
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6"
+        className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 px-4 py-6"
         onMouseDown={() => {
           // Click sobre el overlay equivale a interacción fuera del contenido.
           onInteractOutside?.();
@@ -140,7 +140,7 @@ export const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps
           role="dialog"
           aria-modal="true"
           className={cn(
-            'max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-xl dark:border-dark-border dark:bg-dark-surface-2',
+            'relative z-[1001] max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-xl dark:border-dark-border dark:bg-dark-surface-2',
             className,
           )}
           onMouseDown={(event) => {

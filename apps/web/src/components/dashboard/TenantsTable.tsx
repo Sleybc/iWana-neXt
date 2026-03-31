@@ -220,7 +220,7 @@ function ActionsDropdown({
 }
 
 /**
- * Tabla de tenants para el dashboard administrativo.
+ * Tabla de empresas para el dashboard administrativo.
  * Soporta búsqueda por nombre/slug, filtro por estado, ordenamiento por columna
  * y un dropdown de acciones (3 puntos) por fila con navegación a configuración,
  * suspensión, reactivación y reintento de provisioning.
@@ -276,7 +276,7 @@ export function TenantsTable({
   return (
     <Card>
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-0">
-        <CardTitle>Tenants de la plataforma</CardTitle>
+        <CardTitle>Empresas de la plataforma</CardTitle>
 
         {/* Toolbar: búsqueda + filtro */}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -318,7 +318,7 @@ export function TenantsTable({
         <div className="px-6 pb-6">
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm" aria-label="Lista de tenants">
+              <table className="w-full text-sm" aria-label="Lista de empresas">
                 <thead>
                   <tr className="border-b border-gray-100 dark:border-dark-border bg-gray-50 dark:bg-dark-surface-3">
                     <th className="px-6 py-3 text-left">
@@ -364,7 +364,7 @@ export function TenantsTable({
                         colSpan={5}
                         className="px-6 py-10 text-center text-sm text-gray-400 dark:text-gray-500"
                       >
-                        Cargando tenants...
+                        Cargando empresas...
                       </td>
                     </tr>
                   ) : error ? (
@@ -391,7 +391,7 @@ export function TenantsTable({
                         colSpan={5}
                         className="px-6 py-10 text-center text-sm text-gray-400 dark:text-gray-500"
                       >
-                        No se encontraron tenants con los filtros actuales.
+                        No se encontraron empresas con los filtros actuales.
                       </td>
                     </tr>
                   ) : (
@@ -455,7 +455,7 @@ export function TenantsTable({
         {filtered.length > 0 && (
           <div className="px-6 py-3 border-t border-gray-100 dark:border-dark-border">
             <p className="text-xs text-gray-600 dark:text-gray-400">
-              Mostrando {filtered.length} de {tenants.length} tenants
+              Mostrando {filtered.length} de {tenants.length} empresas
             </p>
           </div>
         )}

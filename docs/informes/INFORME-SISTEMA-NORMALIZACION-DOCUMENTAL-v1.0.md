@@ -2,9 +2,9 @@
 
 # INFORME-SISTEMA-NORMALIZACION-DOCUMENTAL-v1.0.md
 
-**Version:** 2.3
+**Version:** 2.4
 **Fecha:** 2026-03-08
-**Fecha de última actualización:** 2026-03-17
+**Fecha de última actualización:** 2026-03-24
 **Plantilla base:** docs/informes/TEMPLATE-INFORME-FASE-v1.0.md
 **Convención documental:** {TIPO}-{MODULO}-{FASE}-v{VERSION}.md
 **Política de ejecución:** ADR-022
@@ -442,3 +442,68 @@ _Actualizado: 2026-03-08 — Corrección stack versions via Context7 MCP_
 - El contrato destructivo de tenant deja de ser engañoso: eliminar un tenant ya limpia también su schema asociado.
 - El worker de purga usa la misma regla de validación tenant_* que el resto de la plataforma.
 - Se reduce ruido de mantenimiento al eliminar comentarios que inducían diagnósticos incorrectos sobre provisioning y notificaciones.
+
+---
+
+### Corrección 14 — Limpieza conservadora de `docs/informes` y `docs/plans` con política operativa de archivo (2026-03-24)
+
+**Motivo:** La revisión manual de `docs/` confirmó deuda documental concentrada en `docs/informes` y `docs/plans`: nombres no canónicos, documentos históricos mezclados con artefactos activos, un checklist de calidad ubicado como informe y al menos un duplicado residual entre `docs/plans` y `docs/archive/plans`. El objetivo fue limpiar sin romper trazabilidad ni eliminar documentos importantes del proyecto.
+
+**Artefactos corregidos o reclasificados:**
+
+| Artefacto | Cambios realizados |
+| --- | --- |
+| `docs/plans/calm-stirring-riddle.md` | Renombrado a `docs/plans/PLAN-MOD02-AUTH-SPRINT-01-v1.0.md`. |
+| `docs/plans/2026-03-16-produccion-mod01.md` | Normalizado inicialmente a `PLAN-MOD01-PRODUCCION-DEPLOYMENT-v1.0.md` y luego reclasificado a `docs/archive/plans/PLAN-MOD01-PRODUCCION-DEPLOYMENT-v1.0.md` por ser histórico. |
+| `docs/plans/2026-03-17-user-profile-page.md` | Renombrado a `docs/plans/PLAN-MOD02-USER-PROFILE-PAGE-FASE-01-v1.0.md`. |
+| `docs/plans/2026-03-17-branding-logo-sello.md` | Renombrado a `docs/plans/PLAN-MOD03-BRANDING-LOGO-SELLO-FASE-02-v1.0.md`. |
+| `docs/plans/2026-03-17-mfa-required-toggle.md` | Renombrado a `docs/plans/PLAN-MOD01-MFA-REQUIRED-TOGGLE-v1.0.md`. |
+| `docs/plans/2026-03-17-user-profile-page-design.md` | Archivado en `docs/archive/plans/`. |
+| `docs/plans/2026-03-17-branding-logo-sello-design.md` | Archivado en `docs/archive/plans/`. |
+| `docs/plans/2026-03-17-mfa-required-toggle-design.md` | Archivado en `docs/archive/plans/`. |
+| `docs/plans/2026-03-14-profile-settings-card-layout.md` | Archivado en `docs/archive/plans/` al no mantener referencias activas. |
+| `docs/informes/CHECKLIST-TAILADMIN-CIERRE-v1.0.md` | Reclasificado a `docs/quality/CHECKLIST-TAILADMIN-CIERRE-v1.0.md`. |
+| `docs/informes/INFORME-MOD01-FRONTEND-TAILADMIN-v1.0.md` | Archivado en `docs/archive/informes/`. |
+| `docs/informes/INFORME-MOD03-FASE01-REVISION-v1.0.md` | Normalizado a `docs/informes/INFORME-MOD03-FASE-01-REVISION-v1.0.md`. |
+| `docs/prompts/PROMPT-ARCHITECT-MOD01-Auth-Tenant-Audit.md` | Conservado in situ con nota explícita de legado por seguir referenciado históricamente. |
+| `docs/plans/PLAN-MOD01-PRODUCCION-DEPLOYMENT-v1.0.md` | Eliminado de `docs/plans/` como duplicado residual tras confirmar que la copia histórica canónica quedó en `docs/archive/plans/`. |
+
+**Ajustes de trazabilidad aplicados:**
+
+- Se actualizaron referencias internas en informes y planes para apuntar a los nuevos nombres canónicos.
+- Se añadieron metadatos mínimos faltantes en planes normalizados: versión, estado, fecha y convención documental.
+- Se validó que los nombres anteriores ya no quedaran referenciados activamente dentro de `docs/`.
+
+**Política operativa resultante para futuras limpiezas:**
+
+| Categoría | Regla operativa |
+| --- | --- |
+| Documentos canónicos | Permanecen en sus carpetas activas (`adrs`, `prds`, `hlds`, `prompts`, `runbooks`, `quality`, `informes`, `plans`) con nombre normalizado. |
+| Documentos históricos con trazabilidad activa | No se eliminan ni se mueven si todavía son citados por PRD, HLD, ADR, prompts o informes; se marcan como legado si hace falta. |
+| Diseños o planes cerrados sin rol canónico actual | Se mueven a `docs/archive/plans/` o `docs/archive/informes/`. |
+| Duplicados exactos | Se conserva una sola copia en la ubicación correcta y se elimina la residual tras verificar referencias. |
+| Checklist y artefactos de calidad | Deben vivir en `docs/quality/`, no en `docs/informes/`. |
+
+**Mapa operativo actual del árbol documental:**
+
+| Área | Rol esperado |
+| --- | --- |
+| `docs/adrs/` | Decisiones arquitectónicas aprobadas o en revisión formal. |
+| `docs/prds/` | Fuente funcional canónica por sistema o módulo. |
+| `docs/hlds/` | Diseño de alto nivel canónico por módulo o transversal. |
+| `docs/prompts/` | Prompts vigentes de ejecución y plantillas activas. |
+| `docs/informes/` | Informes vivos o cierres que siguen siendo referencia operativa activa. |
+| `docs/plans/` | Planes activos o backlog vigente con nombre formal. |
+| `docs/quality/` | Checklists y artefactos de verificación/calidad. |
+| `docs/archive/` | Historia preservada sin rol operativo principal actual. |
+
+**Resultado observado:**
+
+- `docs/plans/` quedó reducido a artefactos activos o backlog vigente, con menos ruido histórico y mejor semántica de nombres.
+- `docs/archive/` pasa a ser el destino explícito para diseño histórico y planes cerrados, en lugar de mantenerlos mezclados con el trabajo activo.
+- La limpieza se ejecutó sin tocar PRDs, HLDs, ADRs, prompts canónicos ni templates dependientes.
+
+**Hallazgos abiertos tras esta corrección:**
+
+- Permanecen en `docs/plans/` algunos pares `design` + `implementation` o planes fechados antiguos que todavía conservan referencias históricas activas y no deben archivarse hasta consolidar esas citas.
+- El archivo `docs/prompts/TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md` se mantiene en su ruta actual porque la gobernanza del repo y varios prompts activos aún dependen explícitamente de ese path.

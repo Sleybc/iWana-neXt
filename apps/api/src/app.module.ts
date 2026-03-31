@@ -18,6 +18,7 @@ import { MailerModule } from './modules/mailer/mailer.module';
 import { RedisModule } from './modules/redis/redis.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { TenantMiddleware } from './modules/tenant/tenant.middleware';
+import { CrmModule } from './modules/crm/crm.module';
 
 const runtimeEnv = process.env['NODE_ENV'];
 const apiDevelopmentLocalEnvPath = resolve(__dirname, '../../../.env.development.local');
@@ -213,6 +214,9 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
 
     // Health check — GET /api/v1/health (Docker healthcheck + monitoreo)
     HealthModule,
+
+    // Modulo CRM: expedientes, contactos, contratos, pipeline
+    CrmModule,
   ],
   controllers: [],
   providers: [

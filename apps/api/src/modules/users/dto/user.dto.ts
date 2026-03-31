@@ -42,14 +42,14 @@ export class CreateUserDto {
 
   // ── Perfil personal (todos opcionales) ──────────────────────────────────────
 
-  /** Nombres del usuario — se cifran con AES-256-GCM antes de persistir */
+  /** Nombres del usuario en texto plano */
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   @MaxLength(100)
   firstName?: string;
 
-  /** Apellidos del usuario — se cifran con AES-256-GCM antes de persistir */
+  /** Apellidos del usuario en texto plano */
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -77,7 +77,7 @@ export class CreateUserDto {
   documentType?: DocumentType;
 
   /**
-   * Número de documento de identidad — se cifra con AES-256-GCM.
+   * Número de documento de identidad en texto plano.
    * PII sensible — Ley 1581 habeas data. No se retorna en respuestas.
    */
   @ApiPropertyOptional()
@@ -189,10 +189,66 @@ export class ChangeUserLoginEmailDto {
   syncCompanyContactEmail?: boolean;
 }
 
+export class ResetPasswordDto {
+  @ApiPropertyOptional({
+    description: 'Password nuevo. Si se omite, el backend genera uno temporal.',
+    minLength: 10,
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(10)
+  @MaxLength(128)
+  password?: string;
+}
+
+export class UpdateProfileDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  firstName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  lastName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(/^\+\d{7,15}$/, { message: 'phone debe estar en formato E.164.' })
+  phone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  jobTitle?: string;
+
+  @ApiPropertyOptional({ enum: DocumentType })
+  @IsOptional()
+  @IsEnum(DocumentType)
+  documentType?: DocumentType;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  documentNumber?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUrl({}, { message: 'avatarUrl debe ser una URL válida.' })
+  @MaxLength(500)
+  avatarUrl?: string;
+}
+
 /**
  * Representacion publica de un usuario.
- * Excluye campos sensibles: passwordHash, mfaSecret, tokens, emailHash, documentNumber.
- * Nota: documentNumber NUNCA se expone — PII sensible bajo Ley 1581.
+ * Excluye campos sensibles: passwordHash, mfaSecret, tokens y emailHash.
+ * Nota: documentNumber se expone de forma controlada en este DTO para casos de
+ * gestion interna del tenant y perfil propio autenticado.
  */
 export class UserResponseDto {
   @ApiProperty()
@@ -234,7 +290,7 @@ export class UserResponseDto {
   @ApiPropertyOptional({ nullable: true })
   deletedAt: Date | null;
 
-  // ── Perfil personal (desencriptado al retornar) ──────────────────────────────
+  // ── Perfil personal ──────────────────────────────────────────────────────────
 
   @ApiPropertyOptional({ nullable: true })
   firstName: string | null;
@@ -253,5 +309,7 @@ export class UserResponseDto {
 
   @ApiPropertyOptional({ nullable: true })
   avatarUrl: string | null;
-  // documentNumber: omitido intencionalmente — PII sensible bajo Ley 1581
+
+  @ApiPropertyOptional({ nullable: true })
+  documentNumber: string | null;
 }

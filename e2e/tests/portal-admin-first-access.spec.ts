@@ -190,6 +190,15 @@ function setupAdminFirstAccessMocks() {
 test.describe('Portal — primer acceso ADMIN (MOD02)', () => {
   test.beforeEach(setupAdminFirstAccessMocks());
 
+  async function setMfaSetupSession(page: import('@playwright/test').Page): Promise<void> {
+    // localStorage requiere un documento con origen válido; about:blank produce SecurityError.
+    await page.goto('/auth/login');
+    await page.evaluate(() => {
+      localStorage.setItem('iwana.portal.mfa-setup-token', 'mock-token-mfa-setup');
+      localStorage.setItem('iwana.portal.tenant-slug', 'isp-demo');
+    });
+  }
+
   test('paso 1: login con password temporal → redirect a change-password', async ({ page }) => {
     await page.goto('/auth/login');
 
@@ -233,11 +242,8 @@ test.describe('Portal — primer acceso ADMIN (MOD02)', () => {
   test('paso 4: página de MFA setup muestra cargando y luego el formulario de configuración', async ({
     page,
   }) => {
-    // Navegar directamente a /auth/mfa/setup (con token limitado simulado)
-    await page.evaluate(() => {
-      localStorage.setItem('iwana.portal.mfa-setup-token', 'mock-token-mfa-setup');
-      localStorage.setItem('iwana.portal.tenant-slug', 'isp-demo');
-    });
+    // Navegar a /auth/mfa/setup con sesión limitada de setup MFA simulada.
+    await setMfaSetupSession(page);
 
     await page.goto('/auth/mfa/setup');
 
@@ -251,10 +257,7 @@ test.describe('Portal — primer acceso ADMIN (MOD02)', () => {
   });
 
   test('página de MFA setup es accesible (WCAG 2.2 AA básico)', async ({ page }) => {
-    await page.evaluate(() => {
-      localStorage.setItem('iwana.portal.mfa-setup-token', 'mock-token-mfa-setup');
-      localStorage.setItem('iwana.portal.tenant-slug', 'isp-demo');
-    });
+    await setMfaSetupSession(page);
 
     await page.goto('/auth/mfa/setup');
     await page.waitForLoadState('networkidle');
@@ -275,6 +278,13 @@ test.describe('Portal — primer acceso ADMIN (MOD02)', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Portal — MFA enforcement por rol (MOD02)', () => {
+  async function setTenantSlug(page: import('@playwright/test').Page): Promise<void> {
+    await page.goto('/auth/login');
+    await page.evaluate(() => {
+      localStorage.setItem('iwana.portal.tenant-slug', 'isp-demo');
+    });
+  }
+
   test('ADMIN sin MFA ve la página de setup correctamente', async ({ page }) => {
     await page.route('**/api/v1/**', async (route) => {
       const url = route.request().url();
@@ -300,9 +310,9 @@ test.describe('Portal — MFA enforcement por rol (MOD02)', () => {
       await route.continue();
     });
 
+    await setTenantSlug(page);
     await page.evaluate(() => {
       localStorage.setItem('iwana.portal.mfa-setup-token', 'mock-limited-token');
-      localStorage.setItem('iwana.portal.tenant-slug', 'isp-demo');
     });
 
     await page.goto('/auth/mfa/setup');
@@ -338,9 +348,9 @@ test.describe('Portal — MFA enforcement por rol (MOD02)', () => {
     });
 
     // Sin token en localStorage — el componente debe redirigir al login
+    await setTenantSlug(page);
     await page.evaluate(() => {
       localStorage.removeItem('iwana.portal.mfa-setup-token');
-      localStorage.setItem('iwana.portal.tenant-slug', 'isp-demo');
     });
 
     await page.goto('/auth/mfa/setup');

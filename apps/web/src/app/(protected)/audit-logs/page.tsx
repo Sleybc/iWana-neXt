@@ -262,7 +262,7 @@ export default function AuditLogsPage() {
           Auditoría de Plataforma
         </h2>
         <p className="text-sm text-slate-500 mb-4">
-          Operaciones de administradores de plataforma (SYSTEM_ADMIN, IWANA_SUPPORT) sobre tenants y
+          Operaciones de administradores de plataforma (SYSTEM_ADMIN, IWANA_SUPPORT) sobre empresas y
           usuarios de plataforma.
         </p>
 

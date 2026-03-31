@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -34,10 +35,12 @@ const resetPasswordSchema = z
 type ResetPasswordFormValues = z.infer<typeof resetPasswordSchema>;
 
 /**
- * Pantalla pública de restablecimiento de contraseña tenant-aware.
- * Usa token de recuperación y vuelve a login una vez completado.
+ * Contenido interno del formulario de restablecimiento.
+ * Separado del export default para poder envolver con <Suspense> y satisfacer
+ * el requisito de Next.js 15+: useSearchParams() solo se puede usar dentro de
+ * un árbol con límite Suspense (evita bloqueo de prerenderizado estático).
  */
-export default function ResetPasswordPage() {
+function ResetPasswordContent() {
   const searchParams = useSearchParams();
   const [serverMessage, setServerMessage] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -217,5 +220,18 @@ export default function ResetPasswordPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+/**
+ * Página pública de restablecimiento de contraseña tenant-aware.
+ * Envuelve el contenido en <Suspense> para permitir el uso de useSearchParams()
+ * sin bloquear el prerenderizado estático de Next.js.
+ */
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={null}>
+      <ResetPasswordContent />
+    </Suspense>
   );
 }

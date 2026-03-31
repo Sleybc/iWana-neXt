@@ -1,9 +1,17 @@
 // apps/portal/src/components/layout/Sidebar.tsx
 'use client';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, Suspense } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { LayoutDashboard, Settings, Users, ShieldCheck, BarChart3, X } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Settings,
+  Users,
+  ShieldCheck,
+  BarChart3,
+  BriefcaseBusiness,
+  X,
+} from 'lucide-react';
 import { cn } from '@iwana/ui';
 import { TenantSeal } from './TenantSeal';
 import type { TenantSelf } from '@/lib/api-client';
@@ -28,11 +36,87 @@ const DESKTOP_STORAGE_KEY = 'iwana-portal-sidebar-collapsed';
  */
 const navItems = [
   { href: '/dashboard', label: 'Inicio', icon: LayoutDashboard, disabled: false },
+  { href: '/dashboard/crm', label: 'CRM', icon: BriefcaseBusiness, disabled: false },
   { href: '/dashboard/settings', label: 'Configuración', icon: Settings, disabled: false },
-  { href: '/users', label: 'Usuarios', icon: Users, disabled: true, badge: 'Próximo' },
+  { href: '/dashboard/users', label: 'Usuarios', icon: Users, disabled: false },
   { href: '/security', label: 'Seguridad', icon: ShieldCheck, disabled: true, badge: 'Próximo' },
   { href: '/reports', label: 'Reportes', icon: BarChart3, disabled: true, badge: 'Próximo' },
 ];
+
+interface NavItemsProps {
+  desktopCollapsed: boolean;
+}
+
+/**
+ * Sub-componente aislado que usa usePathname().
+ * Debe estar envuelto en <Suspense> en el árbol del Sidebar para evitar
+ * que Next.js bloquee el prerenderizado estático (requisito desde Next.js 15+).
+ */
+const NavItems = ({ desktopCollapsed }: NavItemsProps) => {
+  const pathname = usePathname();
+
+  return (
+    <ul className="flex flex-col gap-1 px-2">
+      {navItems.map((item) => {
+        const isActive =
+          !item.disabled && (pathname === item.href || pathname.startsWith(`${item.href}/`));
+
+        // Ítems deshabilitados: no navegan para evitar 404
+        if (item.disabled) {
+          return (
+            <li key={item.href}>
+              <span
+                title={desktopCollapsed ? item.label : undefined}
+                className={cn(
+                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium cursor-not-allowed opacity-50',
+                  desktopCollapsed && 'lg:justify-center lg:px-2',
+                )}
+                aria-disabled="true"
+              >
+                <item.icon className="w-5 h-5 shrink-0 text-white/40" aria-hidden="true" />
+                <span className={cn('flex items-center gap-2', desktopCollapsed && 'lg:hidden')}>
+                  {item.label}
+                  {item.badge && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/60 font-medium">
+                      {item.badge}
+                    </span>
+                  )}
+                </span>
+              </span>
+            </li>
+          );
+        }
+
+        return (
+          <li key={item.href}>
+            <Link
+              href={item.href}
+              title={desktopCollapsed ? item.label : undefined}
+              className={cn(
+                'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium duration-200 hover:bg-white/10 dark:hover:bg-dark-surface-3',
+                isActive
+                  ? 'bg-white/10 dark:bg-dark-surface-3 text-iwana-secondary'
+                  : 'text-white/80 dark:text-gray-300',
+                desktopCollapsed && 'lg:justify-center lg:px-2',
+              )}
+            >
+              <item.icon
+                className={cn(
+                  'w-5 h-5 shrink-0',
+                  isActive
+                    ? 'text-iwana-secondary'
+                    : 'text-white/60 dark:text-gray-400 group-hover:text-white/90 dark:group-hover:text-white',
+                )}
+                aria-hidden="true"
+              />
+              <span className={cn(desktopCollapsed && 'lg:hidden')}>{item.label}</span>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
+};
 
 export const Sidebar = ({
   desktopCollapsed,
@@ -41,7 +125,6 @@ export const Sidebar = ({
   setMobileOpen,
   profile,
 }: SidebarProps) => {
-  const pathname = usePathname();
   const sidebar = useRef<HTMLElement>(null);
 
   // Persistir estado desktop en localStorage — solo al montar
@@ -137,67 +220,10 @@ export const Sidebar = ({
             EMPRESA
           </h3>
 
-          <ul className="flex flex-col gap-1 px-2">
-            {navItems.map((item) => {
-              const isActive =
-                !item.disabled && (pathname === item.href || pathname.startsWith(`${item.href}/`));
-
-              // Ítems deshabilitados: no navegan para evitar 404
-              if (item.disabled) {
-                return (
-                  <li key={item.href}>
-                    <span
-                      title={desktopCollapsed ? item.label : undefined}
-                      className={cn(
-                        'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium cursor-not-allowed opacity-50',
-                        desktopCollapsed && 'lg:justify-center lg:px-2',
-                      )}
-                      aria-disabled="true"
-                    >
-                      <item.icon className="w-5 h-5 shrink-0 text-white/40" aria-hidden="true" />
-                      <span
-                        className={cn('flex items-center gap-2', desktopCollapsed && 'lg:hidden')}
-                      >
-                        {item.label}
-                        {item.badge && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/60 font-medium">
-                            {item.badge}
-                          </span>
-                        )}
-                      </span>
-                    </span>
-                  </li>
-                );
-              }
-
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    title={desktopCollapsed ? item.label : undefined}
-                    className={cn(
-                      'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium duration-200 hover:bg-white/10 dark:hover:bg-dark-surface-3',
-                      isActive
-                        ? 'bg-white/10 dark:bg-dark-surface-3 text-iwana-secondary'
-                        : 'text-white/80 dark:text-gray-300',
-                      desktopCollapsed && 'lg:justify-center lg:px-2',
-                    )}
-                  >
-                    <item.icon
-                      className={cn(
-                        'w-5 h-5 shrink-0',
-                        isActive
-                          ? 'text-iwana-secondary'
-                          : 'text-white/60 dark:text-gray-400 group-hover:text-white/90 dark:group-hover:text-white',
-                      )}
-                      aria-hidden="true"
-                    />
-                    <span className={cn(desktopCollapsed && 'lg:hidden')}>{item.label}</span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+          {/* NavItems aislado en Suspense — usePathname() requiere boundary desde Next.js 15+ */}
+          <Suspense fallback={null}>
+            <NavItems desktopCollapsed={desktopCollapsed} />
+          </Suspense>
         </nav>
       </div>
     </aside>

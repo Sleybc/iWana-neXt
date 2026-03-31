@@ -16,12 +16,16 @@ import { PlatformRole, UserStatus } from '@iwana/shared';
 @Injectable()
 export class PlatformBootstrapService implements OnApplicationBootstrap {
   private readonly logger = new Logger(PlatformBootstrapService.name);
+  private readonly encryptionKey: Buffer;
 
   constructor(
     private readonly configService: ConfigService,
     @InjectRepository(PlatformUser)
     private readonly platformUserRepository: Repository<PlatformUser>,
-  ) {}
+  ) {
+    const keyHex = this.configService.getOrThrow<string>('MFA_ENCRYPTION_KEY');
+    this.encryptionKey = Buffer.from(keyHex, 'hex');
+  }
 
   async onApplicationBootstrap(): Promise<void> {
     const email = this.configService.get<string>('PLATFORM_SUPER_ADMIN_EMAIL')?.trim();
@@ -45,12 +49,11 @@ export class PlatformBootstrapService implements OnApplicationBootstrap {
     const passwordHash = await bcrypt.hash(password, 12);
 
     const superAdmin = this.platformUserRepository.create({
-      email,
+      email: this.encryptValue(email.toLowerCase().trim()),
       emailHash,
       passwordHash,
       role: PlatformRole.SYSTEM_ADMIN,
       status: UserStatus.ACTIVE,
-      // Primer ingreso operativo sin MFA para poder completar bootstrap.
       mfaEnabled: false,
       mfaSecret: null,
       lastLoginAt: null,
@@ -63,5 +66,13 @@ export class PlatformBootstrapService implements OnApplicationBootstrap {
 
   private hashEmail(email: string): string {
     return crypto.createHash('sha256').update(email.toLowerCase().trim()).digest('hex');
+  }
+
+  private encryptValue(plaintext: string): string {
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
+    const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+    const authTag = cipher.getAuthTag();
+    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
   }
 }
