@@ -55,6 +55,8 @@ interface ProvisioningJobPayload {
 export class TenantProvisioningProcessor extends WorkerHost {
   private readonly logger = new Logger(TenantProvisioningProcessor.name);
 
+  private static readonly PROVISIONING_LOCK_NAMESPACE = 42;
+
   /** Pool de conexiones pg directo para ejecutar DDL (CREATE SCHEMA, CREATE TABLE) */
   private readonly pgPool: Pool;
 
@@ -94,7 +96,15 @@ export class TenantProvisioningProcessor extends WorkerHost {
       throw new UnrecoverableError(msg);
     }
 
+    const lockResource = this.hashSchemaName(schemaName);
+    await this.acquireTenantLock(lockResource);
+
     try {
+      const schemaExists = await this.checkSchemaExists(schemaName);
+      if (schemaExists) {
+        this.logger.warn(`[provisioning] Schema "${schemaName}" ya existe, omitiendo creacion`);
+        return;
+      }
       const tenant = await this.dataSource.getRepository(Tenant).findOne({
         where: { id: tenantId },
       });
@@ -132,6 +142,9 @@ export class TenantProvisioningProcessor extends WorkerHost {
 
       this.logger.log(`[provisioning] Seed inicial del ADMIN completado para tenant ${tenantSlug}`);
 
+      await this.runMigrationsForSchema(schemaName);
+      this.logger.log(`[provisioning] Migraciones ejecutadas para schema "${schemaName}"`);
+
       // Actualizar status del tenant a ACTIVE en el schema publico
       await this.dataSource
         .createQueryBuilder()
@@ -146,11 +159,11 @@ export class TenantProvisioningProcessor extends WorkerHost {
         `[provisioning] Fallo al provisionar schema "${schemaName}" para tenant ${tenantId}: ${(error as Error).message}`,
       );
 
-      await this.markFailed(tenantId);
+      await this.rollbackProvisioning(schemaName, tenantId, error as Error);
 
-      // Relanzar para que BullMQ gestione reintentos solo en fallos transitorios.
-      // Los errores de tipo UnrecoverableError ya vienen clasificados como permanentes.
       throw error;
+    } finally {
+      await this.releaseTenantLock(lockResource);
     }
   }
 
@@ -170,5 +183,73 @@ export class TenantProvisioningProcessor extends WorkerHost {
         `[provisioning] No se pudo actualizar status a PROVISIONING_FAILED para tenant ${tenantId}: ${(updateError as Error).message}`,
       );
     }
+  }
+
+  private hashSchemaName(schemaName: string): number {
+    let hash = 2166136261;
+    for (let i = 0; i < schemaName.length; i++) {
+      hash ^= schemaName.charCodeAt(i);
+      hash = (hash * 16777619) >>> 0;
+    }
+    return hash;
+  }
+
+  private async acquireTenantLock(resource: number): Promise<void> {
+    await this.pgPool.query(`SELECT pg_advisory_lock($1, $2)`, [42, resource]);
+  }
+
+  private async releaseTenantLock(resource: number): Promise<void> {
+    await this.pgPool.query(`SELECT pg_advisory_unlock($1, $2)`, [42, resource]);
+  }
+
+  private async checkSchemaExists(schemaName: string): Promise<boolean> {
+    const result = await this.pgPool.query(
+      `SELECT schema_name FROM information_schema.schemata WHERE schema_name = $1`,
+      [schemaName],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  private async runMigrationsForSchema(schemaName: string): Promise<void> {
+    let tenantDs: DataSource | null = null;
+    try {
+      tenantDs = new DataSource({
+        type: 'postgres',
+        host: process.env['DB_HOST'] ?? 'localhost',
+        port: parseInt(process.env['DB_PORT'] ?? '5432', 10),
+        database: process.env['DB_NAME'] ?? 'iwana',
+        username: process.env['DB_USER'] ?? 'postgres',
+        password: process.env['DB_PASSWORD'] ?? '',
+        schema: schemaName,
+        name: `tenant-${schemaName}`,
+        migrationsTableName: 'typeorm_migrations',
+        migrations: ['dist/migrations/tenant/*.js'],
+        synchronize: false,
+      });
+      await tenantDs.initialize();
+      await tenantDs.runMigrations();
+    } finally {
+      if (tenantDs?.isInitialized) {
+        await tenantDs.destroy();
+      }
+    }
+  }
+
+  private async rollbackProvisioning(
+    schemaName: string,
+    tenantId: string,
+    error: Error,
+  ): Promise<void> {
+    await this.pgPool.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+    await this.dataSource
+      .createQueryBuilder()
+      .update('public.tenants')
+      .set({
+        status: 'PROVISIONING_FAILED',
+        provisioning_error: error.message,
+        provisioning_failed_at: () => 'NOW()',
+      })
+      .where('id = :id', { id: tenantId })
+      .execute();
   }
 }
