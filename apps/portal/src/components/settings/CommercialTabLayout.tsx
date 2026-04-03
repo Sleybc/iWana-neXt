@@ -2,14 +2,16 @@
 
 import { useRef, useState } from 'react';
 import { cn } from '@iwana/ui';
+import { AdditionalProductsManager } from './AdditionalProductsManager';
 import { CommercialCoverageCard } from './CommercialCoverageCard';
 import { PlanCatalogManager } from './PlanCatalogManager';
 
-export type CommercialSubItem = 'coverage' | 'plans';
+export type CommercialSubItem = 'coverage' | 'plans' | 'products';
 
 const COMMERCIAL_SUBNAV: Array<{ id: CommercialSubItem; label: string }> = [
   { id: 'coverage', label: 'Cobertura' },
   { id: 'plans', label: 'Planes' },
+  { id: 'products', label: 'Productos adicionales' },
 ];
 
 interface CommercialTabLayoutProps {
@@ -94,6 +96,7 @@ export function CommercialTabLayout({ canEdit, fiberThresholdMeters }: Commercia
         {activeSubItem === 'plans' && (
           <PlanCatalogManager canEdit={canEdit} fiberThresholdMeters={fiberThresholdMeters} />
         )}
+        {activeSubItem === 'products' && <AdditionalProductsManager canEdit={canEdit} />}
       </div>
     </div>
   );
