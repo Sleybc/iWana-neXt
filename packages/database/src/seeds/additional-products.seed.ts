@@ -1,4 +1,4 @@
-import { DataSource } from 'typeorm';
+import { DataSource, QueryRunner } from 'typeorm';
 import { AdditionalProductCategory } from '@iwana/shared';
 
 const DEFAULT_PRODUCTS = [
@@ -23,53 +23,64 @@ const DEFAULT_PRODUCTS = [
 ];
 
 export async function seedAdditionalProducts(
-  dataSource: DataSource,
+  queryRunner: QueryRunner,
   tenantId: string,
+  schemaName: string,
 ): Promise<void> {
-  const queryRunner = dataSource.createQueryRunner();
-  await queryRunner.connect();
-  await queryRunner.startTransaction();
+  await queryRunner.query(`SET LOCAL search_path TO "${schemaName}"`);
 
-  try {
-    for (const product of DEFAULT_PRODUCTS) {
-      await queryRunner.query(
-        `INSERT INTO additional_products (tenant_id, name, category, sort_order, is_active, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, true, now(), now())
-         ON CONFLICT DO NOTHING`,
-        [tenantId, product.name, product.category, product.sortOrder],
-      );
-    }
-    await queryRunner.commitTransaction();
-    console.log(`[SEED] Additional products seeded for tenant ${tenantId}`);
-  } catch (error) {
-    await queryRunner.rollbackTransaction();
-    console.error(`[SEED] Failed to seed additional products for tenant ${tenantId}:`, error);
-    throw error;
-  } finally {
-    await queryRunner.release();
+  for (const product of DEFAULT_PRODUCTS) {
+    await queryRunner.query(
+      `INSERT INTO additional_products (tenant_id, name, category, sort_order, is_active, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, true, now(), now())
+       ON CONFLICT DO NOTHING`,
+      [tenantId, product.name, product.category, product.sortOrder],
+    );
   }
+  console.log(`[SEED] Additional products seeded for tenant ${tenantId} (schema: ${schemaName})`);
+}
+
+interface PostgresOptions {
+  type: string;
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  database: string;
 }
 
 export async function seedAdditionalProductsForAllTenants(dataSource: DataSource): Promise<void> {
-  const tenants = await dataSource.query(
+  const tenants = (await dataSource.query(
     `SELECT id, schema_name FROM public.tenants WHERE status = 'ACTIVE'`,
-  );
+  )) as Array<{ id: string; schema_name: string }>;
 
   for (const tenant of tenants) {
+    const baseOpts = dataSource.options as PostgresOptions;
     const tenantDs = new DataSource({
       type: 'postgres',
-      host: (dataSource.options as { host: string }).host,
-      port: (dataSource.options as { port: number }).port,
-      username: (dataSource.options as { username: string }).username,
-      password: (dataSource.options as { password: string }).password,
-      database: (dataSource.options as { database: string }).database,
+      host: baseOpts.host,
+      port: baseOpts.port,
+      username: baseOpts.username,
+      password: baseOpts.password,
+      database: baseOpts.database,
       schema: tenant.schema_name,
+      logging: false,
     });
 
+    await tenantDs.initialize();
+    const queryRunner = tenantDs.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
     try {
-      await tenantDs.initialize();
-      await seedAdditionalProducts(tenantDs, tenant.id);
+      await seedAdditionalProducts(queryRunner, tenant.id, tenant.schema_name);
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      console.error(`[SEED] Failed to seed additional products for tenant ${tenant.id}:`, error);
+      throw error;
     } finally {
+      await queryRunner.release();
       if (tenantDs.isInitialized) {
         await tenantDs.destroy();
       }
