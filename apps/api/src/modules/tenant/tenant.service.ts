@@ -40,6 +40,12 @@ import {
   PlanCatalogItemResponseDto,
   UpdatePlanCatalogItemDto,
 } from './dto/tenant-plan-catalog.dto';
+import {
+  CreateAdditionalProductDto,
+  UpdateAdditionalProductDto,
+  AdditionalProductResponseDto,
+} from './dto/tenant-additional-products.dto';
+import { AdditionalProduct } from './entities/additional-product.entity';
 import { CommercialNode } from './entities/commercial-node.entity';
 import { CoverageZone } from './entities/coverage-zone.entity';
 import { PlanCatalogItem } from './entities/plan-catalog-item.entity';
@@ -865,6 +871,166 @@ export class TenantService {
       });
 
       return this.getPlanCatalog(tenantId, schemaName);
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // ADDITIONAL PRODUCTS
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  async getAdditionalProducts(
+    tenantId: string,
+    schemaName: string,
+  ): Promise<AdditionalProductResponseDto[]> {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const items = await qr.manager.find(AdditionalProduct, {
+        where: { tenantId },
+        order: { category: 'ASC', sortOrder: 'ASC' },
+      });
+      return items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        category: item.category,
+        sortOrder: item.sortOrder,
+        isActive: item.isActive,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+      }));
+    });
+  }
+
+  async createAdditionalProduct(
+    tenantId: string,
+    schemaName: string,
+    dto: CreateAdditionalProductDto,
+    actorUserId?: string,
+  ): Promise<AdditionalProductResponseDto[]> {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const entity = qr.manager.create(AdditionalProduct, {
+        tenantId,
+        name: dto.name,
+        category: dto.category,
+        sortOrder: dto.sortOrder ?? 0,
+        isActive: dto.isActive ?? true,
+      });
+
+      const saved = await qr.manager.save(AdditionalProduct, entity);
+
+      await this.auditService.log({
+        tenantId,
+        schemaName,
+        userId: actorUserId ?? null,
+        action: AuditAction.CREATE,
+        entityType: 'AdditionalProduct',
+        entityId: saved.id,
+        newValue: {
+          id: saved.id,
+          name: saved.name,
+          category: saved.category,
+          sortOrder: saved.sortOrder,
+          isActive: saved.isActive,
+        },
+      });
+
+      return this.getAdditionalProducts(tenantId, schemaName);
+    });
+  }
+
+  async updateAdditionalProduct(
+    tenantId: string,
+    schemaName: string,
+    productId: string,
+    dto: UpdateAdditionalProductDto,
+    actorUserId?: string,
+  ): Promise<AdditionalProductResponseDto[]> {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const entity = await qr.manager.findOne(AdditionalProduct, {
+        where: { id: productId, tenantId },
+      });
+      if (!entity) {
+        throw new NotFoundException(`Producto adicional con id "${productId}" no encontrado.`);
+      }
+
+      const oldValue = {
+        id: entity.id,
+        name: entity.name,
+        category: entity.category,
+        sortOrder: entity.sortOrder,
+        isActive: entity.isActive,
+      };
+
+      if (dto.name !== undefined) entity.name = dto.name;
+      if (dto.category !== undefined) entity.category = dto.category;
+      if (dto.sortOrder !== undefined) entity.sortOrder = dto.sortOrder;
+      if (dto.isActive !== undefined) entity.isActive = dto.isActive;
+
+      const saved = await qr.manager.save(AdditionalProduct, entity);
+
+      await this.auditService.log({
+        tenantId,
+        schemaName,
+        userId: actorUserId ?? null,
+        action: AuditAction.UPDATE,
+        entityType: 'AdditionalProduct',
+        entityId: saved.id,
+        oldValue,
+        newValue: {
+          id: saved.id,
+          name: saved.name,
+          category: saved.category,
+          sortOrder: saved.sortOrder,
+          isActive: saved.isActive,
+        },
+      });
+
+      return this.getAdditionalProducts(tenantId, schemaName);
+    });
+  }
+
+  async removeAdditionalProduct(
+    tenantId: string,
+    schemaName: string,
+    productId: string,
+    actorUserId?: string,
+  ): Promise<AdditionalProductResponseDto[]> {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const entity = await qr.manager.findOne(AdditionalProduct, {
+        where: { id: productId, tenantId },
+        withDeleted: true,
+      });
+      if (!entity) {
+        throw new NotFoundException(`Producto adicional con id "${productId}" no encontrado.`);
+      }
+
+      if (entity.deletedAt) {
+        return this.getAdditionalProducts(tenantId, schemaName);
+      }
+
+      const oldValue = {
+        id: entity.id,
+        name: entity.name,
+        category: entity.category,
+        sortOrder: entity.sortOrder,
+        isActive: entity.isActive,
+      };
+
+      entity.isActive = false;
+      entity.deletedAt = new Date();
+
+      await qr.manager.save(AdditionalProduct, entity);
+
+      await this.auditService.log({
+        tenantId,
+        schemaName,
+        userId: actorUserId ?? null,
+        action: AuditAction.DELETE,
+        entityType: 'AdditionalProduct',
+        entityId: entity.id,
+        oldValue,
+        newValue: { id: entity.id, name: entity.name, isActive: false },
+      });
+
+      return this.getAdditionalProducts(tenantId, schemaName);
     });
   }
 
