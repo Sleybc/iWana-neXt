@@ -1,4 +1,15 @@
-import { DataSource } from 'typeorm';
+import { DataSource, MigrationInterface } from 'typeorm';
+import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
+import { AddExpedienteTechnicalViabilityFields1700000000006 } from './006_add_expediente_technical_viability_fields';
+import { AddAcquisitionChannelAndSalesAttributions1700000000007 } from './007_add_acquisition_channel_and_sales_attributions';
+import { AddAdditionalProducts1700000000008 } from './008_add_additional_products';
+
+const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
+  InitialTenantSchema1700000000000,
+  AddExpedienteTechnicalViabilityFields1700000000006,
+  AddAcquisitionChannelAndSalesAttributions1700000000007,
+  AddAdditionalProducts1700000000008,
+];
 
 const MIGRATION_LOCK_NAMESPACE = 42;
 const MIGRATION_LOCK_RESOURCE = 1001;
@@ -70,9 +81,12 @@ async function runMigrationsForTenant(
       schema: schemaName,
       name: `tenant-${schemaName}`,
       migrationsTableName: 'typeorm_migrations',
-      migrations: ['dist/migrations/tenant/*.js'],
+      migrations: TENANT_MIGRATIONS,
       synchronize: false,
       logging: ['error'],
+      // Fuerza search_path para que las migraciones usen el schema correcto
+      // sin necesidad de calificar cada tabla con schema explícito
+      extra: { options: `-c search_path="${schemaName}"` },
     });
     await tenantDs.initialize();
     await tenantDs.runMigrations();
