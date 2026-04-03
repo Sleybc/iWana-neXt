@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input } from '@iwana/ui';
+import { AcquisitionChannel } from '@iwana/shared';
 import {
   ArrowLeft,
   BriefcaseBusiness,
@@ -22,30 +23,53 @@ import {
   Wrench,
 } from 'lucide-react';
 import {
+  CreateAttributionDto,
   CompletenessResult,
   crmApi,
   ExpedienteActivityItem,
+  InternalUser,
   ExpedienteOperationalMetadata,
   ExpedienteRecord,
+  SalesAttributionRecord,
   ExpedienteStatus,
   ExpedienteTimelineChange,
+  usersApi,
 } from '@/lib/api-client';
 import { PageHeader } from '@/components/layout/PageHeader';
 
 import {
+  ACQUISITION_CHANNEL_OPTIONS,
   DEPARTAMENTO_DEFAULT,
   DEPARTAMENTOS,
   DOCUMENT_TYPE_OPTIONS,
+  EVALUATION_SOURCE_OPTIONS,
   EXPEDIENTE_STATUS_META,
+  formatAcquisitionChannel,
   formatCrmDate,
   formatCrmDateTime,
   formatExpedienteStatus,
   getMunicipiosByDepartamento,
+  TECHNICAL_CONFIDENCE_OPTIONS,
+  TECHNICAL_VIABILITY_RESULT_OPTIONS,
+  TECHNOLOGY_OPTION_OPTIONS,
 } from '@/components/crm/expedientes/expediente-ui';
 import { ExpedienteTabsContainer } from '@/components/crm/expedientes/ExpedienteTabsContainer';
 import { useAuth } from '@/components/auth/AuthProvider';
 type SectionId = (typeof SECTIONS)[number]['id'];
 type DraftValues = Record<string, string>;
+type CompletenessDimension = keyof Pick<
+  CompletenessResult,
+  'commercial' | 'legal' | 'technical' | 'operational'
+>;
+type SectionConfig = {
+  id: string;
+  label: string;
+  description: string;
+  icon: typeof UserRound;
+  renderFields: readonly string[];
+  payloadFields: readonly string[];
+  completionFields: readonly string[];
+};
 
 const EMPTY_VALUE = '';
 
@@ -57,10 +81,12 @@ const FIELD_LABELS: Record<string, string> = {
   firstName: 'Nombres',
   lastName: 'Apellidos',
   companyName: 'Razón social',
-  primaryContactName: 'Contacto principal',
+  primaryContactName: 'Nombre del contacto principal',
   primaryContactRole: 'Cargo del contacto',
   phonePrimary: 'Teléfono principal',
   emailPrimary: 'Correo principal',
+  altContactName: 'Nombre contacto alternativo',
+  altContactPhone: 'Teléfono contacto alternativo',
   address: 'Dirección',
   municipality: 'Municipio',
   department: 'Departamento',
@@ -68,9 +94,16 @@ const FIELD_LABELS: Record<string, string> = {
   latitude: 'Latitud',
   longitude: 'Longitud',
   interestedPlanId: 'Plan de interés',
-  source: 'Fuente de captación',
+  additionalProductIds: 'Productos adicionales',
+  acquisitionChannel: 'Canal de captación',
+  sourceDetail: 'Detalle de origen',
   coverageResult: 'Resultado de cobertura',
-  feasibility: 'Factibilidad',
+  feasibility: 'Resultado de viabilidad',
+  candidateTechnologies: 'Tecnologías candidatas',
+  availableTechnology: 'Tecnología recomendada',
+  technicalConfidence: 'Nivel de certeza',
+  evaluationSource: 'Fuente de evaluación',
+  technicalObservations: 'Observación técnica',
   identityVerified: 'Identidad verificada',
   paymentMethod: 'Método de pago',
   billingCycle: 'Ciclo de facturación',
@@ -90,6 +123,8 @@ const FIELD_PLACEHOLDERS: Record<string, string> = {
   primaryContactRole: 'Gerente, representante...',
   phonePrimary: '3001234567',
   emailPrimary: 'cliente@empresa.co',
+  altContactName: 'Nombre de quien puede contactar',
+  altContactPhone: '3001234567',
   address: 'Dirección principal',
   municipality: 'Selecciona el municipio',
   department: 'Cundinamarca',
@@ -97,9 +132,12 @@ const FIELD_PLACEHOLDERS: Record<string, string> = {
   latitude: '4.7110',
   longitude: '-74.0721',
   interestedPlanId: 'Plan o referencia comercial',
-  source: 'Manual, referido, web...',
-  coverageResult: 'Viable, parcial, sin cobertura...',
-  feasibility: 'Observación de factibilidad',
+  additionalProductIds: 'Productos adicionales',
+  acquisitionChannel: 'Canal de adquisición',
+  sourceDetail: 'Detalle de campaña u observación',
+  coverageResult: 'Resultado preliminar de cobertura',
+  feasibility: 'Selecciona el resultado técnico',
+  technicalObservations: 'Explica brevemente el criterio técnico aplicado',
   identityVerified: 'Sí / No / Pendiente',
   paymentMethod: 'Transferencia, PSE, efectivo...',
   billingCycle: 'Mensual, quincenal...',
@@ -127,64 +165,184 @@ function getIdentificationRelevantFields(personType: string | null | undefined):
   return IDENTIFICATION_FIELDS_NATURAL;
 }
 
-const SECTIONS = [
+function hasPersistedIdentificationData(values: DraftValues): boolean {
+  const relevantFields = getIdentificationRelevantFields(values.personType);
+  return relevantFields.some((field) => values[field]?.trim());
+}
+
+const SECTIONS: SectionConfig[] = [
   {
     id: 'identification',
     label: 'Identificación',
     description: 'Datos base del titular o razón social.',
     icon: UserRound,
-    fields: [...IDENTIFICATION_FIELDS_NATURAL, ...IDENTIFICATION_FIELDS_JURIDICA.slice(3)],
+    renderFields: [...IDENTIFICATION_FIELDS_NATURAL, ...IDENTIFICATION_FIELDS_JURIDICA.slice(3)],
+    payloadFields: [...IDENTIFICATION_FIELDS_NATURAL, ...IDENTIFICATION_FIELDS_JURIDICA.slice(3)],
+    completionFields: [
+      ...IDENTIFICATION_FIELDS_NATURAL,
+      ...IDENTIFICATION_FIELDS_JURIDICA.slice(3),
+    ],
   },
   {
     id: 'contact',
     label: 'Contacto',
     description: 'Canales directos para seguimiento comercial.',
     icon: Phone,
-    fields: ['phonePrimary', 'emailPrimary'],
+    renderFields: ['phonePrimary', 'emailPrimary', 'altContactName', 'altContactPhone'],
+    payloadFields: ['phonePrimary', 'emailPrimary', 'altContactName', 'altContactPhone'],
+    completionFields: ['phonePrimary', 'emailPrimary'],
   },
   {
     id: 'location',
     label: 'Ubicación',
     description: 'Referencia geográfica y dirección del potencial.',
     icon: MapPin,
-    fields: ['department', 'municipality', 'address', 'neighborhood', 'latitude', 'longitude'],
+    renderFields: [
+      'department',
+      'municipality',
+      'address',
+      'neighborhood',
+      'latitude',
+      'longitude',
+    ],
+    payloadFields: [
+      'department',
+      'municipality',
+      'address',
+      'neighborhood',
+      'latitude',
+      'longitude',
+    ],
+    completionFields: [
+      'department',
+      'municipality',
+      'address',
+      'neighborhood',
+      'latitude',
+      'longitude',
+    ],
   },
   {
     id: 'commercial_interest',
     label: 'Interés comercial',
     description: 'Plan deseado y origen de la oportunidad.',
     icon: BriefcaseBusiness,
-    fields: ['interestedPlanId', 'source'],
+    renderFields: [
+      'interestedPlanId',
+      'additionalProductIds',
+      'acquisitionChannel',
+      'sourceDetail',
+    ],
+    payloadFields: [
+      'interestedPlanId',
+      'additionalProductIds',
+      'acquisitionChannel',
+      'sourceDetail',
+    ],
+    completionFields: ['interestedPlanId', 'acquisitionChannel'],
   },
   {
     id: 'technical_feasibility',
     label: 'Viabilidad técnica',
-    description: 'Resultado de cobertura y criterio de factibilidad.',
+    description: 'Resultado técnico, alternativas y recomendación operativa.',
     icon: Wrench,
-    fields: ['coverageResult', 'feasibility'],
+    renderFields: [
+      'coverageResult',
+      'feasibility',
+      'candidateTechnologies',
+      'availableTechnology',
+      'technicalConfidence',
+      'evaluationSource',
+      'technicalObservations',
+    ],
+    payloadFields: [
+      'coverageResult',
+      'feasibility',
+      'candidateTechnologies',
+      'availableTechnology',
+      'technicalConfidence',
+      'evaluationSource',
+      'technicalObservations',
+    ],
+    completionFields: [
+      'feasibility',
+      'candidateTechnologies',
+      'availableTechnology',
+      'technicalConfidence',
+      'evaluationSource',
+    ],
   },
   {
     id: 'legal_consent',
     label: 'Consentimiento y validación',
     description: 'Asegura identidad y preparación legal del caso.',
     icon: ShieldCheck,
-    fields: ['identityVerified'],
+    renderFields: ['identityVerified'],
+    payloadFields: ['identityVerified'],
+    completionFields: ['identityVerified'],
   },
   {
     id: 'billing',
     label: 'Facturación',
     description: 'Parámetros de pago y ciclo administrativo.',
     icon: Receipt,
-    fields: ['paymentMethod', 'billingCycle'],
+    renderFields: ['paymentMethod', 'billingCycle'],
+    payloadFields: ['paymentMethod', 'billingCycle'],
+    completionFields: ['paymentMethod', 'billingCycle'],
   },
   {
     id: 'installation',
     label: 'Instalación',
     description: 'Datos operativos para agendar y ejecutar el cierre.',
     icon: Hammer,
-    fields: ['installationAddress', 'siteContactName'],
+    renderFields: ['installationAddress', 'siteContactName'],
+    payloadFields: ['installationAddress', 'siteContactName'],
+    completionFields: ['installationAddress', 'siteContactName'],
   },
-] as const;
+];
+
+const DIMENSION_SECTION_GROUPS: Record<CompletenessDimension, readonly SectionId[]> = {
+  commercial: ['identification', 'contact', 'commercial_interest'],
+  legal: ['legal_consent'],
+  technical: ['location', 'technical_feasibility'],
+  operational: ['billing', 'installation'],
+};
+
+function getSectionRenderFields(
+  sectionId: SectionId,
+  personType: string | null | undefined,
+): readonly string[] {
+  if (sectionId === 'identification') {
+    return getIdentificationRelevantFields(personType);
+  }
+
+  const section = SECTIONS.find((current) => current.id === sectionId);
+  return section?.renderFields ?? [];
+}
+
+function getSectionPayloadFields(
+  sectionId: SectionId,
+  personType: string | null | undefined,
+): readonly string[] {
+  if (sectionId === 'identification') {
+    return getIdentificationRelevantFields(personType);
+  }
+
+  const section = SECTIONS.find((current) => current.id === sectionId);
+  return section?.payloadFields ?? [];
+}
+
+function getSectionCompletionFields(
+  sectionId: SectionId,
+  personType: string | null | undefined,
+): readonly string[] {
+  if (sectionId === 'identification') {
+    return getIdentificationRelevantFields(personType);
+  }
+
+  const section = SECTIONS.find((current) => current.id === sectionId);
+  return section?.completionFields ?? [];
+}
 
 function buildDraftValues(expediente: ExpedienteRecord, previous: DraftValues = {}): DraftValues {
   return {
@@ -200,6 +358,8 @@ function buildDraftValues(expediente: ExpedienteRecord, previous: DraftValues = 
     primaryContactRole: expediente.primaryContactRole ?? EMPTY_VALUE,
     phonePrimary: expediente.phonePrimary ?? previous.phonePrimary ?? EMPTY_VALUE,
     emailPrimary: expediente.emailPrimary ?? previous.emailPrimary ?? EMPTY_VALUE,
+    altContactName: expediente.altContactName ?? EMPTY_VALUE,
+    altContactPhone: expediente.altContactPhone ?? previous.altContactPhone ?? EMPTY_VALUE,
     address: expediente.address ?? EMPTY_VALUE,
     municipality: expediente.municipality ?? EMPTY_VALUE,
     department: expediente.department ?? DEPARTAMENTO_DEFAULT,
@@ -207,15 +367,32 @@ function buildDraftValues(expediente: ExpedienteRecord, previous: DraftValues = 
     latitude: expediente.latitude != null ? String(expediente.latitude) : EMPTY_VALUE,
     longitude: expediente.longitude != null ? String(expediente.longitude) : EMPTY_VALUE,
     interestedPlanId: expediente.interestedPlanId ?? EMPTY_VALUE,
-    source: expediente.source ?? EMPTY_VALUE,
+    additionalProductIds: expediente.additionalProductIds
+      ? JSON.stringify(expediente.additionalProductIds)
+      : '[]',
+    acquisitionChannel: expediente.acquisitionChannel ?? 'OTRO',
+    sourceDetail: expediente.sourceDetail ?? EMPTY_VALUE,
     coverageResult: expediente.coverageResult ?? EMPTY_VALUE,
     feasibility: expediente.feasibility ?? EMPTY_VALUE,
+    candidateTechnologies: expediente.candidateTechnologies?.join(',') ?? EMPTY_VALUE,
+    availableTechnology: expediente.availableTechnology ?? EMPTY_VALUE,
+    technicalConfidence: expediente.technicalConfidence ?? EMPTY_VALUE,
+    evaluationSource: expediente.evaluationSource ?? EMPTY_VALUE,
+    technicalObservations: expediente.technicalObservations ?? EMPTY_VALUE,
     identityVerified: expediente.identityVerified ?? EMPTY_VALUE,
     paymentMethod: expediente.paymentMethod ?? EMPTY_VALUE,
     billingCycle: expediente.billingCycle ?? EMPTY_VALUE,
     installationAddress: expediente.installationAddress ?? EMPTY_VALUE,
     siteContactName: expediente.siteContactName ?? EMPTY_VALUE,
   };
+}
+
+function getCandidateTechnologiesFromDraft(values: DraftValues): string[] {
+  const rawValue = values.candidateTechnologies ?? EMPTY_VALUE;
+  return rawValue
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function calculateSectionCompletion(fields: readonly string[], values: DraftValues): number {
@@ -227,6 +404,20 @@ function calculateSectionCompletion(fields: readonly string[], values: DraftValu
   return Math.round((completedFields / fields.length) * 100);
 }
 
+function calculateDimensionCompletion(
+  sectionIds: readonly SectionId[],
+  sectionCompletionById: Record<string, number>,
+): number {
+  if (sectionIds.length === 0) {
+    return 0;
+  }
+
+  return Math.round(
+    sectionIds.reduce((sum, sectionId) => sum + (sectionCompletionById[sectionId] ?? 0), 0) /
+      sectionIds.length,
+  );
+}
+
 function getProtectedFieldHelper(expediente: ExpedienteRecord, field: string): string | undefined {
   if (field === 'phonePrimary' && expediente.phonePrimaryEncrypted) {
     return 'Teléfono protegido ya registrado. Si lo editas, el valor actual se reemplazará.';
@@ -234,6 +425,10 @@ function getProtectedFieldHelper(expediente: ExpedienteRecord, field: string): s
 
   if (field === 'emailPrimary' && expediente.emailPrimaryEncrypted) {
     return 'Correo protegido ya registrado. Si lo editas, el valor actual se reemplazará.';
+  }
+
+  if (field === 'altContactPhone' && expediente.altContactPhoneEncrypted) {
+    return 'Teléfono protegido ya registrado. Si lo editas, el valor actual se reemplazará.';
   }
 
   return undefined;
@@ -312,6 +507,18 @@ export default function ExpedienteDetailPage() {
   const [transitionReason, setTransitionReason] = useState('');
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [lockedSections, setLockedSections] = useState<Set<SectionId>>(new Set());
+  const [currentAttribution, setCurrentAttribution] = useState<SalesAttributionRecord | null>(null);
+  const [attributionHistory, setAttributionHistory] = useState<SalesAttributionRecord[]>([]);
+  const [attributionForm, setAttributionForm] = useState<CreateAttributionDto>({
+    actorId: '',
+    acquisitionChannel: AcquisitionChannel.OTRO,
+    notes: '',
+    reattributionReason: '',
+  });
+  const [attributionUsers, setAttributionUsers] = useState<InternalUser[]>([]);
+  const [loadingAttributionUsers, setLoadingAttributionUsers] = useState(false);
+  const [revokeReason, setRevokeReason] = useState('');
+  const [savingAttribution, setSavingAttribution] = useState(false);
 
   const effectivePersonType = draftValues.personType || null;
 
@@ -337,6 +544,59 @@ export default function ExpedienteDetailPage() {
     currentUserDisplayName ||
     'Usuario no disponible';
 
+  const sectionCompletionById = SECTIONS.reduce<Record<string, number>>((accumulator, section) => {
+    const completionFields = getSectionCompletionFields(
+      section.id as SectionId,
+      effectivePersonType,
+    );
+    accumulator[section.id] = calculateSectionCompletion(completionFields, draftValues);
+    return accumulator;
+  }, {});
+
+  const sectionsOverallProgress =
+    SECTIONS.length > 0
+      ? Math.round(
+          SECTIONS.reduce((sum, section) => sum + (sectionCompletionById[section.id] ?? 0), 0) /
+            SECTIONS.length,
+        )
+      : 0;
+
+  const sectionDimensionSnapshot = {
+    commercial: calculateDimensionCompletion(
+      DIMENSION_SECTION_GROUPS.commercial,
+      sectionCompletionById,
+    ),
+    legal: calculateDimensionCompletion(DIMENSION_SECTION_GROUPS.legal, sectionCompletionById),
+    technical: calculateDimensionCompletion(
+      DIMENSION_SECTION_GROUPS.technical,
+      sectionCompletionById,
+    ),
+    operational: calculateDimensionCompletion(
+      DIMENSION_SECTION_GROUPS.operational,
+      sectionCompletionById,
+    ),
+  };
+
+  const completenessSnapshot = {
+    commercial: Math.max(
+      completeness?.commercial ?? expediente?.completenessCommercial ?? 0,
+      sectionDimensionSnapshot.commercial,
+    ),
+    legal: Math.max(
+      completeness?.legal ?? expediente?.completenessLegal ?? 0,
+      sectionDimensionSnapshot.legal,
+    ),
+    technical: Math.max(
+      completeness?.technical ?? expediente?.completenessTechnical ?? 0,
+      sectionDimensionSnapshot.technical,
+    ),
+    operational: Math.max(
+      completeness?.operational ?? expediente?.completenessOperational ?? 0,
+      sectionDimensionSnapshot.operational,
+    ),
+    overall: completeness?.overall ?? 0,
+  };
+
   useEffect(() => {
     if (!id) return;
     void loadExpediente();
@@ -347,10 +607,24 @@ export default function ExpedienteDetailPage() {
       setLoading(true);
       const response = await crmApi.getExpediente(id);
       const timelineResponse = await crmApi.getExpedienteTimeline(id);
+      const currentAttributionResponse = await crmApi.getAttribution(id);
+      const attributionHistoryResponse = await crmApi.getAttributionHistory(id);
 
       setExpediente(response.data);
       setCompleteness(response.completeness);
-      setDraftValues((current) => buildDraftValues(response.data, current));
+      setDraftValues((current) => {
+        const nextDraft = buildDraftValues(response.data, current);
+        setLockedSections((currentLocks) => {
+          const nextLocks = new Set(currentLocks);
+          if (hasPersistedIdentificationData(nextDraft)) {
+            nextLocks.add('identification');
+          } else {
+            nextLocks.delete('identification');
+          }
+          return nextLocks;
+        });
+        return nextDraft;
+      });
       setTimeline(timelineResponse.data.changes ?? []);
       setRecentActivity(timelineResponse.data.activities ?? []);
       setOperationalMetadata(
@@ -360,6 +634,14 @@ export default function ExpedienteDetailPage() {
           lastActivityAt: null,
         },
       );
+      setCurrentAttribution(currentAttributionResponse.data);
+      setAttributionHistory(attributionHistoryResponse.data ?? []);
+      setAttributionForm((current) => ({
+        ...current,
+        acquisitionChannel:
+          (response.data.acquisitionChannel as CreateAttributionDto['acquisitionChannel']) ??
+          'OTRO',
+      }));
       setTransitionTarget(response.data.status);
       setError(null);
       setActionMessage(null);
@@ -375,18 +657,99 @@ export default function ExpedienteDetailPage() {
     setDraftValues((current) => ({ ...current, [field]: value }));
   };
 
-  const handleSaveSection = async (section: SectionId) => {
-    const sectionDefinition = SECTIONS.find((item) => item.id === section);
-    if (!sectionDefinition) return;
+  const handleCandidateTechnologyToggle = (technology: string, checked: boolean) => {
+    setDraftValues((current) => {
+      const currentValues = getCandidateTechnologiesFromDraft(current);
+      const nextValues = checked
+        ? Array.from(new Set([...currentValues, technology]))
+        : currentValues.filter((value) => value !== technology);
 
-    let fieldsToSend: readonly string[] = sectionDefinition.fields;
-    if (section === 'identification') {
-      fieldsToSend = getIdentificationRelevantFields(effectivePersonType);
+      return {
+        ...current,
+        candidateTechnologies: nextValues.join(','),
+      };
+    });
+  };
+
+  const handleSaveSection = async (section: SectionId) => {
+    if (section === 'technical_feasibility') {
+      const technicalPayload = {
+        coverageResult: draftValues.coverageResult?.trim() || null,
+        feasibility: draftValues.feasibility?.trim() || null,
+        candidateTechnologies: getCandidateTechnologiesFromDraft(draftValues),
+        availableTechnology: draftValues.availableTechnology?.trim() || null,
+        technicalConfidence: draftValues.technicalConfidence?.trim() || null,
+        evaluationSource: draftValues.evaluationSource?.trim() || null,
+        technicalObservations: draftValues.technicalObservations?.trim() || null,
+      };
+
+      if (technicalPayload.feasibility === 'VIABLE') {
+        if (
+          technicalPayload.candidateTechnologies.length === 0 ||
+          !technicalPayload.availableTechnology ||
+          !technicalPayload.technicalConfidence ||
+          !technicalPayload.evaluationSource
+        ) {
+          setActionMessage(
+            'Para Viable debes registrar tecnologías candidatas, tecnología recomendada, nivel de certeza y fuente de evaluación.',
+          );
+          return;
+        }
+      }
+
+      if (technicalPayload.feasibility === 'VALIDATION_REQUIRED') {
+        if (
+          technicalPayload.candidateTechnologies.length === 0 ||
+          !technicalPayload.technicalConfidence ||
+          !technicalPayload.evaluationSource ||
+          !technicalPayload.technicalObservations
+        ) {
+          setActionMessage(
+            'Para Validación técnica requerida debes registrar tecnologías candidatas, nivel de certeza, fuente y observación técnica.',
+          );
+          return;
+        }
+      }
+
+      if (technicalPayload.feasibility === 'NOT_VIABLE') {
+        if (!technicalPayload.evaluationSource || !technicalPayload.technicalObservations) {
+          setActionMessage(
+            'Para No viable debes registrar fuente de evaluación y observación técnica.',
+          );
+          return;
+        }
+      }
+
+      try {
+        setSavingSection(section);
+        setActionMessage(null);
+        await crmApi.updateExpedienteSection(id, section, technicalPayload);
+        await loadExpediente();
+        setLockedSections((current) => new Set(current).add(section));
+        setActionMessage('Sección actualizada correctamente.');
+      } catch (err) {
+        console.error(err);
+        setActionMessage(err instanceof Error ? err.message : 'No fue posible guardar la sección.');
+      } finally {
+        setSavingSection(null);
+      }
+
+      return;
     }
+
+    const fieldsToSend = getSectionPayloadFields(section, effectivePersonType);
 
     const payload = fieldsToSend.reduce<Record<string, unknown>>((accumulator, field) => {
       const value = draftValues[field]?.trim();
-      if (value) accumulator[field] = value;
+      if (field === 'altContactName' || field === 'altContactPhone') {
+        accumulator[field] = value || null;
+        return accumulator;
+      }
+
+      if (value) {
+        accumulator[field] = value;
+      }
+
       return accumulator;
     }, {});
 
@@ -435,6 +798,127 @@ export default function ExpedienteDetailPage() {
     }
   };
 
+  const canManageAttribution = new Set(['ADMIN', 'SYSTEM_ADMIN']).has(user?.role ?? '');
+
+  const selectedAttributionActor = attributionUsers.find(
+    (candidate) => candidate.id === attributionForm.actorId,
+  );
+
+  // Usuarios ordenados alfabéticamente para el select sin filtrado.
+  const sortedAttributionUsers = [...attributionUsers].sort((left, right) => {
+    const leftName = [left.firstName, left.lastName].filter(Boolean).join(' ').trim();
+    const rightName = [right.firstName, right.lastName].filter(Boolean).join(' ').trim();
+    return leftName.localeCompare(rightName, 'es', { sensitivity: 'base' });
+  });
+
+  // Carga usuarios activos una sola vez al activar el panel de atribución.
+  // No se envía `search` al backend porque firstName/lastName pueden estar
+  // cifrados en BD — ILIKE contra valores cifrados nunca coincide con texto
+  // plano. El filtrado se realiza client-side en `filteredAttributionUsers`
+  // sobre los nombres ya decodificados que devuelve toDto().
+  useEffect(() => {
+    if (!canManageAttribution) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadAttributionUsers = async () => {
+      try {
+        setLoadingAttributionUsers(true);
+        const response = await usersApi.list({ status: 'ACTIVE', limit: 100 });
+
+        if (!cancelled) {
+          setAttributionUsers(response.data ?? []);
+        }
+      } catch (err) {
+        console.error(err);
+        if (!cancelled) {
+          setActionMessage('No fue posible cargar usuarios para atribución.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingAttributionUsers(false);
+        }
+      }
+    };
+
+    void loadAttributionUsers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canManageAttribution]);
+
+  const handleCreateAttribution = async () => {
+    if (!attributionForm.actorId.trim()) {
+      setActionMessage('Debes seleccionar el actor originador.');
+      return;
+    }
+
+    if (!selectedAttributionActor) {
+      setActionMessage('Selecciona un usuario válido para el actor originador.');
+      return;
+    }
+
+    if (currentAttribution && !attributionForm.reattributionReason?.trim()) {
+      setActionMessage('La reatribución exige motivo.');
+      return;
+    }
+
+    try {
+      setSavingAttribution(true);
+      const payload: CreateAttributionDto = {
+        actorId: attributionForm.actorId.trim(),
+        acquisitionChannel: attributionForm.acquisitionChannel,
+      };
+
+      const notes = attributionForm.notes?.trim();
+      if (notes) {
+        payload.notes = notes;
+      }
+
+      const reattributionReason = attributionForm.reattributionReason?.trim();
+      if (reattributionReason) {
+        payload.reattributionReason = reattributionReason;
+      }
+
+      await crmApi.createAttribution(id, payload);
+      setAttributionForm((current) => ({ ...current, notes: '', reattributionReason: '' }));
+      setActionMessage('Atribución comercial actualizada correctamente.');
+      await loadExpediente();
+    } catch (err) {
+      console.error(err);
+      setActionMessage(
+        err instanceof Error ? err.message : 'No fue posible guardar la atribución.',
+      );
+    } finally {
+      setSavingAttribution(false);
+    }
+  };
+
+  const handleRevokeAttribution = async () => {
+    if (!revokeReason.trim()) {
+      setActionMessage('La revocación exige motivo.');
+      return;
+    }
+
+    try {
+      setSavingAttribution(true);
+      await crmApi.revokeAttribution(id, revokeReason.trim());
+      setRevokeReason('');
+      setActionMessage('Atribución revocada correctamente.');
+      await loadExpediente();
+    } catch (err) {
+      console.error(err);
+      setActionMessage(
+        err instanceof Error ? err.message : 'No fue posible revocar la atribución.',
+      );
+    } finally {
+      setSavingAttribution(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center gap-3 text-sm text-gray-500 dark:text-gray-400">
@@ -464,7 +948,7 @@ export default function ExpedienteDetailPage() {
     );
   }
 
-  const overallProgress = completeness?.overall ?? 0;
+  const overallProgress = Math.max(completenessSnapshot.overall, sectionsOverallProgress);
 
   return (
     <div className="space-y-6 pb-6">
@@ -517,15 +1001,27 @@ export default function ExpedienteDetailPage() {
                     Fuente
                   </p>
                   <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                    {expediente.source}
+                    {formatAcquisitionChannel(expediente.acquisitionChannel)}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {expediente.sourceDetail || 'Sin detalle de origen'}
                   </p>
                 </div>
+
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
                     Municipio
                   </p>
                   <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
                     {expediente.municipality || 'Sin municipio'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Asesor asignado
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                    {expediente.assignedTo || 'Sin asignar'}
                   </p>
                 </div>
               </div>
@@ -541,14 +1037,19 @@ export default function ExpedienteDetailPage() {
                   className="h-2 w-full overflow-hidden rounded-full [&::-webkit-progress-bar]:bg-gray-200 [&::-webkit-progress-value]:bg-iwana-primary dark:[&::-webkit-progress-bar]:bg-dark-surface-4 dark:[&::-webkit-progress-value]:bg-iwana-secondary [&::-moz-progress-bar]:bg-iwana-primary dark:[&::-moz-progress-bar]:bg-iwana-secondary"
                 />
                 <div className="mt-3 grid gap-3 text-xs text-gray-500 dark:text-gray-400 sm:grid-cols-2 xl:grid-cols-4">
-                  <span>Comercial: {completeness?.commercial ?? 0}%</span>
-                  <span>Legal: {completeness?.legal ?? 0}%</span>
-                  <span>Técnico: {completeness?.technical ?? 0}%</span>
-                  <span>Operativo: {completeness?.operational ?? 0}%</span>
+                  <span>Comercial: {completenessSnapshot.commercial}%</span>
+                  <span>Legal: {completenessSnapshot.legal}%</span>
+                  <span>Técnico: {completenessSnapshot.technical}%</span>
+                  <span>Operativo: {completenessSnapshot.operational}%</span>
                 </div>
                 {actionMessage && (
                   <p className="mt-4 rounded-xl border border-iwana-primary/15 bg-iwana-primary/5 px-4 py-3 text-sm text-iwana-primary dark:border-iwana-primary-300/20 dark:bg-iwana-primary-400/10 dark:text-iwana-primary-200">
                     {actionMessage}
+                  </p>
+                )}
+                {expediente.dataConsentRevoked && (
+                  <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+                    El consentimiento de tratamiento de datos fue revocado.
                   </p>
                 )}
               </div>
@@ -568,11 +1069,11 @@ export default function ExpedienteDetailPage() {
                   const Icon = section.icon;
                   const isExpanded = expandedSection === section.id;
                   const isLocked = lockedSections.has(section.id);
-                  const relevantFields =
-                    section.id === 'identification'
-                      ? getIdentificationRelevantFields(effectivePersonType)
-                      : section.fields;
-                  const sectionCompletion = calculateSectionCompletion(relevantFields, draftValues);
+                  const renderFields = getSectionRenderFields(
+                    section.id as SectionId,
+                    effectivePersonType,
+                  );
+                  const sectionCompletion = sectionCompletionById[section.id] ?? 0;
 
                   return (
                     <section key={section.id}>
@@ -710,7 +1211,7 @@ export default function ExpedienteDetailPage() {
                                     });
                                   }}
                                 >
-                                  Editar
+                                  Editar identificación
                                 </Button>
                               </div>
                             </div>
@@ -773,37 +1274,303 @@ export default function ExpedienteDetailPage() {
                                       placeholder={FIELD_PLACEHOLDERS.documentNumber!}
                                     />
                                   </div>
-                                  {/* Segunda fila: 2 columnas */}
+                                  {effectivePersonType === 'PERSONA_JURIDICA' ? (
+                                    <div className="grid gap-4 md:grid-cols-3">
+                                      <Input
+                                        id="companyName"
+                                        label={FIELD_LABELS.companyName!}
+                                        value={draftValues.companyName ?? EMPTY_VALUE}
+                                        onChange={(event) =>
+                                          handleDraftChange('companyName', event.target.value)
+                                        }
+                                        placeholder={FIELD_PLACEHOLDERS.companyName!}
+                                      />
+                                      <Input
+                                        id="primaryContactName"
+                                        label={FIELD_LABELS.primaryContactName!}
+                                        value={draftValues.primaryContactName ?? EMPTY_VALUE}
+                                        onChange={(event) =>
+                                          handleDraftChange(
+                                            'primaryContactName',
+                                            event.target.value,
+                                          )
+                                        }
+                                        placeholder={FIELD_PLACEHOLDERS.primaryContactName!}
+                                      />
+                                      <Input
+                                        id="primaryContactRole"
+                                        label={FIELD_LABELS.primaryContactRole!}
+                                        value={draftValues.primaryContactRole ?? EMPTY_VALUE}
+                                        onChange={(event) =>
+                                          handleDraftChange(
+                                            'primaryContactRole',
+                                            event.target.value,
+                                          )
+                                        }
+                                        placeholder={FIELD_PLACEHOLDERS.primaryContactRole!}
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                      <Input
+                                        id="firstName"
+                                        label={FIELD_LABELS.firstName!}
+                                        value={draftValues.firstName ?? EMPTY_VALUE}
+                                        onChange={(event) =>
+                                          handleDraftChange('firstName', event.target.value)
+                                        }
+                                        placeholder={FIELD_PLACEHOLDERS.firstName!}
+                                      />
+                                      <Input
+                                        id="lastName"
+                                        label={FIELD_LABELS.lastName!}
+                                        value={draftValues.lastName ?? EMPTY_VALUE}
+                                        onChange={(event) =>
+                                          handleDraftChange('lastName', event.target.value)
+                                        }
+                                        placeholder={FIELD_PLACEHOLDERS.lastName!}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              ) : section.id === 'technical_feasibility' ? (
+                                <div className="space-y-4">
                                   <div className="grid gap-4 md:grid-cols-2">
-                                    <Input
-                                      id="firstName"
-                                      label={FIELD_LABELS.firstName!}
-                                      value={draftValues.firstName ?? EMPTY_VALUE}
+                                    <div>
+                                      <label
+                                        htmlFor={`${section.id}-coverageResult`}
+                                        className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                                      >
+                                        {FIELD_LABELS.coverageResult}
+                                      </label>
+                                      <Input
+                                        id={`${section.id}-coverageResult`}
+                                        value={draftValues.coverageResult ?? EMPTY_VALUE}
+                                        onChange={(event) =>
+                                          handleDraftChange('coverageResult', event.target.value)
+                                        }
+                                        placeholder={FIELD_PLACEHOLDERS.coverageResult}
+                                      />
+                                    </div>
+                                    <div>
+                                      <label
+                                        htmlFor={`${section.id}-feasibility`}
+                                        className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                                      >
+                                        {FIELD_LABELS.feasibility}
+                                      </label>
+                                      <select
+                                        id={`${section.id}-feasibility`}
+                                        value={draftValues.feasibility ?? EMPTY_VALUE}
+                                        onChange={(event) =>
+                                          handleDraftChange('feasibility', event.target.value)
+                                        }
+                                        className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:focus:border-iwana-primary-300"
+                                      >
+                                        <option value="">Selecciona el resultado técnico</option>
+                                        {TECHNICAL_VIABILITY_RESULT_OPTIONS.map((option) => (
+                                          <option key={option.value} value={option.value}>
+                                            {option.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <p className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200">
+                                      {FIELD_LABELS.candidateTechnologies}
+                                    </p>
+                                    <div className="grid gap-3 rounded-xl border border-gray-200 bg-white p-4 md:grid-cols-2 dark:border-dark-border dark:bg-dark-surface-3">
+                                      {TECHNOLOGY_OPTION_OPTIONS.map((option) => {
+                                        const selectedValues =
+                                          getCandidateTechnologiesFromDraft(draftValues);
+                                        const checked = selectedValues.includes(option.value);
+
+                                        return (
+                                          <label
+                                            key={option.value}
+                                            className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={checked}
+                                              onChange={(event) =>
+                                                handleCandidateTechnologyToggle(
+                                                  option.value,
+                                                  event.target.checked,
+                                                )
+                                              }
+                                              className="h-4 w-4 rounded border-gray-300 text-iwana-primary accent-iwana-primary"
+                                            />
+                                            {option.label}
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+
+                                  <div className="grid gap-4 md:grid-cols-3">
+                                    <div>
+                                      <label
+                                        htmlFor={`${section.id}-availableTechnology`}
+                                        className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                                      >
+                                        {FIELD_LABELS.availableTechnology}
+                                      </label>
+                                      <select
+                                        id={`${section.id}-availableTechnology`}
+                                        value={draftValues.availableTechnology ?? EMPTY_VALUE}
+                                        onChange={(event) =>
+                                          handleDraftChange(
+                                            'availableTechnology',
+                                            event.target.value,
+                                          )
+                                        }
+                                        className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:focus:border-iwana-primary-300"
+                                      >
+                                        <option value="">Selecciona la recomendada</option>
+                                        {TECHNOLOGY_OPTION_OPTIONS.map((option) => (
+                                          <option key={option.value} value={option.value}>
+                                            {option.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label
+                                        htmlFor={`${section.id}-technicalConfidence`}
+                                        className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                                      >
+                                        {FIELD_LABELS.technicalConfidence}
+                                      </label>
+                                      <select
+                                        id={`${section.id}-technicalConfidence`}
+                                        value={draftValues.technicalConfidence ?? EMPTY_VALUE}
+                                        onChange={(event) =>
+                                          handleDraftChange(
+                                            'technicalConfidence',
+                                            event.target.value,
+                                          )
+                                        }
+                                        className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:focus:border-iwana-primary-300"
+                                      >
+                                        <option value="">Selecciona el nivel</option>
+                                        {TECHNICAL_CONFIDENCE_OPTIONS.map((option) => (
+                                          <option key={option.value} value={option.value}>
+                                            {option.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label
+                                        htmlFor={`${section.id}-evaluationSource`}
+                                        className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                                      >
+                                        {FIELD_LABELS.evaluationSource}
+                                      </label>
+                                      <select
+                                        id={`${section.id}-evaluationSource`}
+                                        value={draftValues.evaluationSource ?? EMPTY_VALUE}
+                                        onChange={(event) =>
+                                          handleDraftChange('evaluationSource', event.target.value)
+                                        }
+                                        className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:focus:border-iwana-primary-300"
+                                      >
+                                        <option value="">Selecciona la fuente</option>
+                                        {EVALUATION_SOURCE_OPTIONS.map((option) => (
+                                          <option key={option.value} value={option.value}>
+                                            {option.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <label
+                                      htmlFor={`${section.id}-technicalObservations`}
+                                      className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                                    >
+                                      {FIELD_LABELS.technicalObservations}
+                                    </label>
+                                    <textarea
+                                      id={`${section.id}-technicalObservations`}
+                                      value={draftValues.technicalObservations ?? EMPTY_VALUE}
                                       onChange={(event) =>
-                                        handleDraftChange('firstName', event.target.value)
+                                        handleDraftChange(
+                                          'technicalObservations',
+                                          event.target.value,
+                                        )
                                       }
-                                      placeholder={FIELD_PLACEHOLDERS.firstName!}
+                                      rows={4}
+                                      placeholder={FIELD_PLACEHOLDERS.technicalObservations}
+                                      className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:focus:border-iwana-primary-300"
                                     />
-                                    <Input
-                                      id="lastName"
-                                      label={FIELD_LABELS.lastName!}
-                                      value={draftValues.lastName ?? EMPTY_VALUE}
-                                      onChange={(event) =>
-                                        handleDraftChange('lastName', event.target.value)
-                                      }
-                                      placeholder={FIELD_PLACEHOLDERS.lastName!}
-                                    />
+                                    {(draftValues.feasibility === 'VALIDATION_REQUIRED' ||
+                                      draftValues.feasibility === 'NOT_VIABLE') && (
+                                      <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                        Describe brevemente el criterio técnico para justificar el
+                                        estado seleccionado.
+                                      </p>
+                                    )}
                                   </div>
                                 </div>
                               ) : (
                                 <div className="grid gap-4 md:grid-cols-2">
-                                  {relevantFields
+                                  {renderFields
                                     .filter((field) => field !== 'personType')
                                     .map((field) => {
                                       const protectedFieldHelper = getProtectedFieldHelper(
                                         expediente,
                                         field,
                                       );
+
+                                      if (section.id === 'contact' && field === 'altContactName') {
+                                        return (
+                                          <div key={field} className="md:col-span-2 space-y-4">
+                                            <div className="border-t border-gray-200 pt-4 dark:border-dark-border" />
+                                            <Input
+                                              id={`${section.id}-${field}`}
+                                              label={FIELD_LABELS[field] ?? field}
+                                              value={draftValues[field] ?? EMPTY_VALUE}
+                                              onChange={(event) =>
+                                                handleDraftChange(field, event.target.value)
+                                              }
+                                              maxLength={160}
+                                              placeholder={
+                                                FIELD_PLACEHOLDERS[field] ??
+                                                `Ingresa ${FIELD_LABELS[field] ?? field}`
+                                              }
+                                            />
+                                          </div>
+                                        );
+                                      }
+
+                                      if (field === 'altContactPhone') {
+                                        return (
+                                          <Input
+                                            key={field}
+                                            id={`${section.id}-${field}`}
+                                            type="tel"
+                                            maxLength={10}
+                                            pattern="3[0-9]{9}"
+                                            label={FIELD_LABELS[field] ?? field}
+                                            value={draftValues[field] ?? EMPTY_VALUE}
+                                            onChange={(event) =>
+                                              handleDraftChange(field, event.target.value)
+                                            }
+                                            placeholder={
+                                              FIELD_PLACEHOLDERS[field] ??
+                                              `Ingresa ${FIELD_LABELS[field] ?? field}`
+                                            }
+                                            {...(protectedFieldHelper
+                                              ? { helperText: protectedFieldHelper }
+                                              : {})}
+                                          />
+                                        );
+                                      }
 
                                       if (field === 'department') {
                                         return (
@@ -878,6 +1645,144 @@ export default function ExpedienteDetailPage() {
                                             }
                                             placeholder={FIELD_PLACEHOLDERS[field]!}
                                           />
+                                        );
+                                      }
+
+                                      if (field === 'additionalProductIds') {
+                                        // Parse selected IDs from draft value (stored as JSON array string)
+                                        const selectedIds: string[] = (() => {
+                                          try {
+                                            const raw = draftValues[field] ?? '[]';
+                                            return JSON.parse(raw);
+                                          } catch {
+                                            return [];
+                                          }
+                                        })();
+
+                                        const defaultProducts = [
+                                          {
+                                            id: 'default-tvbox',
+                                            name: 'TvBox',
+                                            category: 'ENTERTAINMENT',
+                                          },
+                                          {
+                                            id: 'default-decoder',
+                                            name: 'Decodificador adicional',
+                                            category: 'ENTERTAINMENT',
+                                          },
+                                          {
+                                            id: 'default-camaras',
+                                            name: 'Cámaras de seguridad',
+                                            category: 'SECURITY',
+                                          },
+                                          {
+                                            id: 'default-dvr',
+                                            name: 'DVR / NVR',
+                                            category: 'SECURITY',
+                                          },
+                                          {
+                                            id: 'default-alarma',
+                                            name: 'Alarma residencial',
+                                            category: 'SECURITY',
+                                          },
+                                          {
+                                            id: 'default-router',
+                                            name: 'Router WiFi mesh',
+                                            category: 'CONNECTIVITY',
+                                          },
+                                          {
+                                            id: 'default-extensor',
+                                            name: 'Extensor de cobertura',
+                                            category: 'CONNECTIVITY',
+                                          },
+                                          {
+                                            id: 'default-ip',
+                                            name: 'IP estática',
+                                            category: 'CONNECTIVITY',
+                                          },
+                                          {
+                                            id: 'default-soporte',
+                                            name: 'Soporte prioritario',
+                                            category: 'BUSINESS',
+                                          },
+                                          {
+                                            id: 'default-linea',
+                                            name: 'Línea telefónica adicional',
+                                            category: 'BUSINESS',
+                                          },
+                                        ];
+
+                                        const handleCheckboxChange = (
+                                          productId: string,
+                                          checked: boolean,
+                                        ) => {
+                                          let newSelectedIds: string[];
+                                          if (checked) {
+                                            newSelectedIds = [...selectedIds, productId];
+                                          } else {
+                                            newSelectedIds = selectedIds.filter(
+                                              (id) => id !== productId,
+                                            );
+                                          }
+                                          handleDraftChange(field, JSON.stringify(newSelectedIds));
+                                        };
+
+                                        return (
+                                          <div key={field} className="space-y-3">
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+                                              {FIELD_LABELS[field]}
+                                            </label>
+                                            <div className="grid gap-2 rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-surface-2 p-3">
+                                              {defaultProducts.map((product) => (
+                                                <label
+                                                  key={product.id}
+                                                  className="flex items-center gap-2 cursor-pointer"
+                                                >
+                                                  <input
+                                                    type="checkbox"
+                                                    checked={selectedIds.includes(product.id)}
+                                                    onChange={(e) =>
+                                                      handleCheckboxChange(
+                                                        product.id,
+                                                        e.target.checked,
+                                                      )
+                                                    }
+                                                    className="h-4 w-4 rounded border-gray-300 text-iwana-primary focus:ring-iwana-primary"
+                                                  />
+                                                  <span className="text-sm text-gray-700 dark:text-gray-200">
+                                                    {product.name}
+                                                  </span>
+                                                </label>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        );
+                                      }
+
+                                      if (field === 'acquisitionChannel') {
+                                        return (
+                                          <div key={field}>
+                                            <label
+                                              htmlFor={`${section.id}-${field}`}
+                                              className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                                            >
+                                              {FIELD_LABELS[field]}
+                                            </label>
+                                            <select
+                                              id={`${section.id}-${field}`}
+                                              value={draftValues[field] ?? AcquisitionChannel.OTRO}
+                                              onChange={(event) =>
+                                                handleDraftChange(field, event.target.value)
+                                              }
+                                              className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:focus:border-iwana-primary-300"
+                                            >
+                                              {ACQUISITION_CHANNEL_OPTIONS.map((option) => (
+                                                <option key={option.value} value={option.value}>
+                                                  {option.label}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </div>
                                         );
                                       }
 
@@ -1088,9 +1993,217 @@ export default function ExpedienteDetailPage() {
               </div>
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                  Fuente
+                  Canal de captación
                 </p>
-                <p className="mt-1 text-gray-900 dark:text-white">{expediente.source}</p>
+                <p className="mt-1 text-gray-900 dark:text-white">
+                  {formatAcquisitionChannel(expediente.acquisitionChannel)}
+                </p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {expediente.sourceDetail || 'Sin detalle de origen'}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Atribución comercial</CardTitle>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Originador actual e historial de reatribuciones del expediente.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-xl border border-gray-100 px-4 py-3 dark:border-dark-border">
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Originador actual
+                </p>
+                {currentAttribution ? (
+                  <div className="mt-2 space-y-1 text-sm text-gray-900 dark:text-white">
+                    <p>{currentAttribution.actorName}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Rol: {currentAttribution.actorRole}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Canal: {formatAcquisitionChannel(currentAttribution.acquisitionChannel)}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Fecha: {formatCrmDateTime(currentAttribution.attributedAt)}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                    Sin atribución activa.
+                  </p>
+                )}
+              </div>
+
+              {canManageAttribution && (
+                <div className="space-y-3 rounded-xl border border-gray-100 p-4 dark:border-dark-border">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">
+                    Reatribuir originador
+                  </p>
+                  <div>
+                    <label
+                      htmlFor="attribution-actor-id"
+                      className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                    >
+                      Actor originador
+                    </label>
+                    <select
+                      id="attribution-actor-id"
+                      value={attributionForm.actorId}
+                      onChange={(event) => {
+                        const actorId = event.target.value;
+                        setAttributionForm((current) => ({
+                          ...current,
+                          actorId,
+                        }));
+                      }}
+                      disabled={loadingAttributionUsers}
+                      className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 focus:border-iwana-primary disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:focus:border-iwana-primary-300 dark:disabled:bg-dark-surface-4"
+                    >
+                      <option value="">
+                        {loadingAttributionUsers
+                          ? 'Cargando usuarios activos...'
+                          : 'Selecciona un usuario activo'}
+                      </option>
+                      {sortedAttributionUsers.map((candidate) => {
+                        const fullName = [candidate.firstName, candidate.lastName]
+                          .filter(Boolean)
+                          .join(' ')
+                          .trim();
+                        const label = fullName || candidate.email || 'Usuario sin nombre';
+
+                        return (
+                          <option key={candidate.id} value={candidate.id}>
+                            {label}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      Usuario responsable de originar la oportunidad. El sistema guarda su
+                      identificador único internamente para trazabilidad de incentivos y auditoría.
+                    </p>
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="attribution-channel"
+                      className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                    >
+                      Canal de captación
+                    </label>
+                    <select
+                      id="attribution-channel"
+                      value={attributionForm.acquisitionChannel}
+                      onChange={(event) =>
+                        setAttributionForm((current) => ({
+                          ...current,
+                          acquisitionChannel: event.target
+                            .value as CreateAttributionDto['acquisitionChannel'],
+                        }))
+                      }
+                      className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:focus:border-iwana-primary-300"
+                    >
+                      {ACQUISITION_CHANNEL_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <Input
+                    id="attribution-notes"
+                    label="Notas (opcional)"
+                    value={attributionForm.notes ?? ''}
+                    onChange={(event) =>
+                      setAttributionForm((current) => ({ ...current, notes: event.target.value }))
+                    }
+                    placeholder="Contexto de la atribución"
+                  />
+                  <Input
+                    id="attribution-reattribution-reason"
+                    label="Motivo de reatribución"
+                    value={attributionForm.reattributionReason ?? ''}
+                    onChange={(event) =>
+                      setAttributionForm((current) => ({
+                        ...current,
+                        reattributionReason: event.target.value,
+                      }))
+                    }
+                    placeholder="Obligatorio cuando ya existe atribución activa"
+                  />
+                  <p className="-mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    Explica por qué el expediente cambia de originador. Este motivo queda en el
+                    historial como evidencia de auditoría de la reatribución.
+                  </p>
+                  <Button
+                    type="button"
+                    loading={savingAttribution}
+                    onClick={handleCreateAttribution}
+                  >
+                    Guardar atribución
+                  </Button>
+                  {currentAttribution && (
+                    <div className="space-y-2 rounded-xl border border-gray-100 p-3 dark:border-dark-border">
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                        Revocar atribución actual
+                      </p>
+                      <Input
+                        id="attribution-revoke-reason"
+                        label="Motivo de revocación"
+                        value={revokeReason}
+                        onChange={(event) => setRevokeReason(event.target.value)}
+                        placeholder="Motivo obligatorio"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        loading={savingAttribution}
+                        onClick={handleRevokeAttribution}
+                      >
+                        Revocar atribución
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!canManageAttribution && (
+                <p className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
+                  Tu rol puede consultar originador e historial, pero no editar atribuciones. La
+                  edición está habilitada para ADMIN y SYSTEM_ADMIN.
+                </p>
+              )}
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-gray-900 dark:text-white">Historial</p>
+                {attributionHistory.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Aún no hay historial de atribuciones.
+                  </p>
+                ) : (
+                  attributionHistory.map((item) => (
+                    <div
+                      key={item.id}
+                      className="rounded-xl border border-gray-100 px-4 py-3 text-sm dark:border-dark-border"
+                    >
+                      <p className="font-medium text-gray-900 dark:text-white">{item.actorName}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {item.actorRole} · {formatAcquisitionChannel(item.acquisitionChannel)}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {formatCrmDateTime(item.attributedAt)}
+                      </p>
+                      {item.revokedAt && (
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          Revocado: {formatCrmDateTime(item.revokedAt)} ·{' '}
+                          {item.revokedReason || 'Sin motivo'}
+                        </p>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>
