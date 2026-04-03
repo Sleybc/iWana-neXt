@@ -53,6 +53,11 @@ import {
   PlanCatalogItemResponseDto,
   UpdatePlanCatalogItemDto,
 } from './dto/tenant-plan-catalog.dto';
+import {
+  CreateAdditionalProductDto,
+  UpdateAdditionalProductDto,
+  AdditionalProductResponseDto,
+} from './dto/tenant-additional-products.dto';
 
 /**
  * Controlador de gestion de tenants.
@@ -205,7 +210,9 @@ export class TenantController {
   @UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.ACCOUNTANT, UserRole.SUPPORT)
   @ApiOperation({ summary: 'Obtener cobertura comercial del tenant autenticado' })
-  async getMeCoverage(@CurrentUser() user: JwtPayload): Promise<{ data: CoverageAdminResponseDto }> {
+  async getMeCoverage(
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ data: CoverageAdminResponseDto }> {
     const data = await this.tenantService.getCoverageAdmin(user.tenantId!, user.schemaName!);
     return { data };
   }
@@ -398,6 +405,76 @@ export class TenantController {
       user.tenantId!,
       user.schemaName!,
       planId,
+      user.sub,
+    );
+    return { data };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // ADDITIONAL PRODUCTS
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  @Get('me/additional-products')
+  @UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.ACCOUNTANT, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Listar productos adicionales del tenant autenticado' })
+  async getAdditionalProducts(
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ data: AdditionalProductResponseDto[] }> {
+    const data = await this.tenantService.getAdditionalProducts(user.tenantId!, user.schemaName!);
+    return { data };
+  }
+
+  @Post('me/additional-products')
+  @UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Crear producto adicional para el tenant autenticado' })
+  async createAdditionalProduct(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateAdditionalProductDto,
+  ): Promise<{ data: AdditionalProductResponseDto[] }> {
+    const data = await this.tenantService.createAdditionalProduct(
+      user.tenantId!,
+      user.schemaName!,
+      dto,
+      user.sub,
+    );
+    return { data };
+  }
+
+  @Patch('me/additional-products/:productId')
+  @UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Actualizar producto adicional del tenant autenticado' })
+  async updateAdditionalProduct(
+    @CurrentUser() user: JwtPayload,
+    @Param('productId', ParseUUIDPipe) productId: string,
+    @Body() dto: UpdateAdditionalProductDto,
+  ): Promise<{ data: AdditionalProductResponseDto[] }> {
+    const data = await this.tenantService.updateAdditionalProduct(
+      user.tenantId!,
+      user.schemaName!,
+      productId,
+      dto,
+      user.sub,
+    );
+    return { data };
+  }
+
+  @Delete('me/additional-products/:productId')
+  @UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Eliminar (soft-delete) producto adicional del tenant' })
+  async removeAdditionalProduct(
+    @CurrentUser() user: JwtPayload,
+    @Param('productId', ParseUUIDPipe) productId: string,
+  ): Promise<{ data: AdditionalProductResponseDto[] }> {
+    const data = await this.tenantService.removeAdditionalProduct(
+      user.tenantId!,
+      user.schemaName!,
+      productId,
       user.sub,
     );
     return { data };
