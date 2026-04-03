@@ -1,5 +1,15 @@
 // apps/portal/src/lib/api-client.ts
 
+import {
+  AcquisitionChannel,
+  ConsentChannel,
+  AttributionRole,
+  EvaluationSource,
+  TechnicalConfidence,
+  TechnicalViabilityResult,
+  TechnologyOption,
+} from '@iwana/shared';
+
 /**
  * Cliente HTTP para @iwana/portal — Portal de Suscriptores.
  * Requiere header X-Tenant-Slug para identificar el tenant.
@@ -697,6 +707,31 @@ export interface UpdatePlanCatalogItemDto {
   isActive?: boolean;
 }
 
+// Additional Products types
+export interface AdditionalProduct {
+  id: string;
+  name: string;
+  category: 'ENTERTAINMENT' | 'SECURITY' | 'CONNECTIVITY' | 'BUSINESS';
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAdditionalProductDto {
+  name: string;
+  category: AdditionalProduct['category'];
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+export interface UpdateAdditionalProductDto {
+  name?: string;
+  category?: AdditionalProduct['category'];
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
 export interface UpdateTenantSelfSettingsDto {
   timezone?: string;
   currency?: string;
@@ -938,6 +973,39 @@ export const tenantSelfApi = {
   /** Elimina un plan del catálogo del tenant autenticado. */
   deletePlan: (planId: string, tenantSlug?: string) =>
     request<void>(`/tenants/me/plans/${planId}`, { method: 'DELETE' }, tenantSlug),
+
+  // Additional Products
+  /** Lista los productos adicionales del tenant autenticado. */
+  getAdditionalProducts: (tenantSlug?: string) =>
+    request<AdditionalProduct[]>('/tenants/me/additional-products', undefined, tenantSlug),
+
+  /** Crea un producto adicional en el catálogo del tenant autenticado. */
+  createAdditionalProduct: (dto: CreateAdditionalProductDto, tenantSlug?: string) =>
+    request<AdditionalProduct[]>(
+      '/tenants/me/additional-products',
+      { method: 'POST', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  /** Actualiza un producto adicional del catálogo del tenant autenticado. */
+  updateAdditionalProduct: (
+    productId: string,
+    dto: UpdateAdditionalProductDto,
+    tenantSlug?: string,
+  ) =>
+    request<AdditionalProduct[]>(
+      `/tenants/me/additional-products/${productId}`,
+      { method: 'PATCH', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  /** Elimina un producto adicional del catálogo del tenant autenticado. */
+  deleteAdditionalProduct: (productId: string, tenantSlug?: string) =>
+    request<AdditionalProduct[]>(
+      `/tenants/me/additional-products/${productId}`,
+      { method: 'DELETE' },
+      tenantSlug,
+    ),
 };
 
 /**
@@ -1217,6 +1285,8 @@ export interface ExpedienteRecord {
   emailPrimary?: string | null;
   emailSecondary?: string | null;
   altContactName?: string | null;
+  altContactPhoneEncrypted?: string | null;
+  altContactPhone?: string | null;
   contactPreference?: string | null;
   bestContactTime?: string | null;
   address: string | null;
@@ -1231,15 +1301,20 @@ export interface ExpedienteRecord {
   accessReferences?: string | null;
   zoneType?: string | null;
   source: string;
+  acquisitionChannel: AcquisitionChannel;
+  sourceDetail?: string | null;
   interestedPlanId: string | null;
   campaign?: string | null;
   casePriority?: string | null;
   estimatedBudget?: number | null;
   commercialNotes?: string | null;
   coverageResult?: string | null;
-  availableTechnology?: string | null;
+  availableTechnology?: TechnologyOption | null;
   estimatedDistanceM?: number | null;
-  feasibility?: string | null;
+  feasibility?: TechnicalViabilityResult | null;
+  candidateTechnologies?: TechnologyOption[] | null;
+  technicalConfidence?: TechnicalConfidence | null;
+  evaluationSource?: EvaluationSource | null;
   technicalObservations?: string | null;
   estimatedEquipment?: string | null;
   identityVerified?: string | null;
@@ -1266,7 +1341,35 @@ export interface ExpedienteRecord {
 
 export interface CreateExpedienteDto {
   fullName: string;
-  source: string;
+  acquisitionChannel: AcquisitionChannel;
+  sourceDetail?: string;
+  source?: string;
+}
+
+export interface SalesAttributionRecord {
+  id: string;
+  tenantId: string;
+  expedienteId: string;
+  attributionRole: AttributionRole;
+  actorId: string;
+  actorRole: string;
+  actorName: string;
+  acquisitionChannel: AcquisitionChannel;
+  notes: string | null;
+  attributedAt: string;
+  attributedBy: string;
+  revokedAt: string | null;
+  revokedBy: string | null;
+  revokedReason: string | null;
+  createdAt: string;
+}
+
+export interface CreateAttributionDto {
+  actorId: string;
+  actorRole?: string;
+  acquisitionChannel: AcquisitionChannel;
+  notes?: string;
+  reattributionReason?: string;
 }
 
 export interface TransitionStatusDto {
@@ -1284,7 +1387,7 @@ export interface CreateContactAttemptDto {
 export interface CreateConsentDto {
   consentType: string;
   status: string;
-  channel: string;
+  channel: ConsentChannel;
   legalTextVersion?: string;
   evidenceRef?: string | undefined;
 }
@@ -1531,6 +1634,34 @@ export const crmApi = {
     request<{ data: ExpedienteRecord }>(
       `/crm/expedientes/${id}/assign`,
       { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  createAttribution: (id: string, dto: CreateAttributionDto, tenantSlug?: string) =>
+    request<{ data: SalesAttributionRecord }>(
+      `/crm/expedientes/${id}/attribution`,
+      { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  getAttribution: (id: string, tenantSlug?: string) =>
+    request<{ data: SalesAttributionRecord | null }>(
+      `/crm/expedientes/${id}/attribution`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  revokeAttribution: (id: string, reason: string, tenantSlug?: string) =>
+    request<{ data: SalesAttributionRecord }>(
+      `/crm/expedientes/${id}/attribution`,
+      { method: 'DELETE', body: JSON.stringify({ reason }), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  getAttributionHistory: (id: string, tenantSlug?: string) =>
+    request<{ data: SalesAttributionRecord[] }>(
+      `/crm/expedientes/${id}/attribution/history`,
+      { returnFullResponse: true },
       tenantSlug,
     ),
 };
