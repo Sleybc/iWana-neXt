@@ -14,6 +14,7 @@ import { ConsentRecord } from './consent-record-v2.entity';
 import { CoverageCheck } from './coverage-check.entity';
 import { StatusChange } from './status-change.entity';
 import { Quote } from '../../quotes/entities/quote.entity';
+import { SalesAttribution } from '../../attributions/entities/sales-attribution.entity';
 
 /**
  * Entidad maestra del Expediente Único Progresivo
@@ -156,8 +157,17 @@ export class ExpedienteRecord {
   @Column({ type: 'varchar', length: 120, name: 'source' })
   source: string;
 
+  @Column({ type: 'varchar', length: 30, name: 'acquisition_channel', default: 'OTRO' })
+  acquisitionChannel: string;
+
+  @Column({ type: 'varchar', length: 255, name: 'source_detail', nullable: true })
+  sourceDetail: string | null;
+
   @Column({ type: 'varchar', length: 120, name: 'interested_plan_id', nullable: true })
   interestedPlanId: string | null;
+
+  @Column({ type: 'jsonb', name: 'additional_product_ids', nullable: true })
+  additionalProductIds: string[] | null;
 
   @Column({ type: 'varchar', length: 120, name: 'campaign', nullable: true })
   campaign: string | null;
@@ -183,6 +193,15 @@ export class ExpedienteRecord {
 
   @Column({ type: 'varchar', length: 30, name: 'feasibility', nullable: true })
   feasibility: string | null;
+
+  @Column({ type: 'jsonb', name: 'candidate_technologies', nullable: true })
+  candidateTechnologies: string[] | null;
+
+  @Column({ type: 'varchar', length: 20, name: 'technical_confidence', nullable: true })
+  technicalConfidence: string | null;
+
+  @Column({ type: 'varchar', length: 30, name: 'evaluation_source', nullable: true })
+  evaluationSource: string | null;
 
   @Column({ type: 'text', name: 'technical_observations', nullable: true })
   technicalObservations: string | null;
@@ -304,4 +323,7 @@ export class ExpedienteRecord {
 
   @OneToMany(() => StatusChange, (change) => change.expediente)
   statusChanges: StatusChange[];
+
+  @OneToMany(() => SalesAttribution, (attribution) => attribution.expediente)
+  salesAttributions: SalesAttribution[];
 }
