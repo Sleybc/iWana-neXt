@@ -92,31 +92,26 @@ export class UsersService {
       if (params.role) where.role = params.role;
 
       if (params.search) {
-        const qb = qr.manager.createQueryBuilder(User, 'user');
-        qb.where('user.deletedAt IS NULL');
-        if (params.cursor) qb.andWhere('user.id > :cursor', { cursor: params.cursor });
-        if (params.status) qb.andWhere('user.status = :status', { status: params.status });
-        if (params.role) qb.andWhere('user.role = :role', { role: params.role });
+        // firstName/lastName pueden existir en formato legacy cifrado.
+        // ILIKE sobre la columna no encuentra texto plano, por lo que la
+        // busqueda se resuelve sobre los DTOs ya decodificados.
+        const users = await qr.manager.find(User, {
+          where,
+          order: { id: 'ASC' },
+        });
 
-        const pattern = `%${params.search}%`;
-        qb.andWhere(
-          '(user.email ILIKE :search OR user.firstName ILIKE :search OR user.lastName ILIKE :search OR user.jobTitle ILIKE :search)',
-          { search: pattern },
-        );
+        const filteredUsers = users
+          .map((user) => this.toDto(user))
+          .filter((user) => this.matchesUserSearch(user, params.search ?? ''));
 
-        qb.orderBy('user.id', 'ASC');
-        qb.take(limit + 1);
-
-        const [users, total] = await Promise.all([qb.getMany(), qb.getCount()]);
-
-        const hasNext = users.length > limit;
-        const items = hasNext ? users.slice(0, limit) : users;
+        const hasNext = filteredUsers.length > limit;
+        const items = hasNext ? filteredUsers.slice(0, limit) : filteredUsers;
 
         return {
-          data: items.map((u) => this.toDto(u)),
+          data: items,
           meta: {
             nextCursor: hasNext ? (items[items.length - 1]?.id ?? null) : null,
-            total,
+            total: filteredUsers.length,
           },
         };
       }
@@ -569,6 +564,80 @@ export class UsersService {
   /** SHA-256 del email normalizado — para compatibilidad transversal. */
   private hashEmail(email: string): string {
     return crypto.createHash('sha256').update(email.toLowerCase().trim()).digest('hex');
+  }
+
+  private matchesUserSearch(
+    user: Pick<UserResponseDto, 'firstName' | 'lastName' | 'email' | 'jobTitle'>,
+    rawSearch: string,
+  ): boolean {
+    const query = this.normalizeSearchValue(rawSearch);
+    if (!query) {
+      return true;
+    }
+
+    const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ');
+    const candidates = [fullName, user.firstName, user.lastName, user.email, user.jobTitle]
+      .map((value) => this.normalizeSearchValue(value))
+      .filter((value) => value.length > 0);
+
+    return candidates.some((candidate) => {
+      if (candidate.includes(query)) {
+        return true;
+      }
+
+      return candidate
+        .split(' ')
+        .some(
+          (token) =>
+            token.startsWith(query) ||
+            (query.length >= 4 && this.levenshteinDistance(token, query) <= 1),
+        );
+    });
+  }
+
+  private normalizeSearchValue(value: string | null | undefined): string {
+    return (value ?? '')
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ');
+  }
+
+  private levenshteinDistance(left: string, right: string): number {
+    if (left === right) {
+      return 0;
+    }
+
+    if (!left.length) {
+      return right.length;
+    }
+
+    if (!right.length) {
+      return left.length;
+    }
+
+    const previousRow = Array.from({ length: right.length + 1 }, (_, index) => index);
+
+    for (let leftIndex = 0; leftIndex < left.length; leftIndex += 1) {
+      let previousDiagonal = previousRow[0] ?? 0;
+      previousRow[0] = leftIndex + 1;
+
+      for (let rightIndex = 0; rightIndex < right.length; rightIndex += 1) {
+        const currentValue = previousRow[rightIndex + 1] ?? 0;
+        const substitutionCost = left[leftIndex] === right[rightIndex] ? 0 : 1;
+
+        previousRow[rightIndex + 1] = Math.min(
+          (previousRow[rightIndex] ?? 0) + 1,
+          currentValue + 1,
+          previousDiagonal + substitutionCost,
+        );
+
+        previousDiagonal = currentValue;
+      }
+    }
+
+    return previousRow[right.length] ?? 0;
   }
 
   /**

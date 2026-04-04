@@ -10,7 +10,12 @@ jest.mock('@nestjs/typeorm', () => ({
 }));
 
 jest.mock('typeorm', () => ({
-  DataSource: class DataSource {},
+  DataSource: jest.fn().mockImplementation(() => ({
+    initialize: jest.fn().mockResolvedValue(undefined),
+    runMigrations: jest.fn().mockResolvedValue([]),
+    destroy: jest.fn().mockResolvedValue(undefined),
+    isInitialized: true,
+  })),
 }));
 
 jest.mock('@iwana/db', () => ({
@@ -27,12 +32,14 @@ const mockClient = {
   release: jest.fn(),
 };
 
-const mockConnect = jest.fn().mockResolvedValue(mockClient);
+const mockPool = {
+  query: jest.fn(),
+  connect: jest.fn().mockResolvedValue(mockClient),
+  end: jest.fn(),
+};
 
 jest.mock('pg', () => ({
-  Pool: jest.fn().mockImplementation(() => ({
-    connect: mockConnect,
-  })),
+  Pool: jest.fn().mockImplementation(() => mockPool),
 }));
 
 function buildTenantRepository(contactEmail = 'admin@isptest.co') {
@@ -52,6 +59,8 @@ describe('TenantProvisioningProcessor', () => {
   });
 
   it('ejecuta el DDL, siembra el ADMIN inicial y activa el tenant', async () => {
+    mockPool.query.mockResolvedValueOnce({ rowCount: 0 }).mockResolvedValueOnce({ rowCount: 0 });
+
     const tenantRepository = buildTenantRepository();
     const updateBuilder = {
       update: jest.fn().mockReturnThis(),
@@ -82,7 +91,7 @@ describe('TenantProvisioningProcessor', () => {
     } as never);
 
     expect(Pool).toHaveBeenCalledTimes(1);
-    expect(mockConnect).toHaveBeenCalledTimes(1);
+    expect(mockPool.connect).toHaveBeenCalledTimes(1);
     expect(mockClient.query).toHaveBeenCalledWith(
       'BEGIN; CREATE SCHEMA IF NOT EXISTS "tenant_isp_test"; COMMIT;',
     );
@@ -96,6 +105,8 @@ describe('TenantProvisioningProcessor', () => {
   });
 
   it('marca como fallo permanente cuando el tenant no existe y no debe reintentarse', async () => {
+    mockPool.query.mockResolvedValueOnce({ rowCount: 0 }).mockResolvedValueOnce({ rowCount: 0 });
+
     const tenantRepository = {
       findOne: jest.fn().mockResolvedValue(null),
     };
@@ -126,7 +137,7 @@ describe('TenantProvisioningProcessor', () => {
     ).rejects.toBeInstanceOf(UnrecoverableError);
 
     expect(updateBuilder.execute).toHaveBeenCalledTimes(1);
-    expect(mockConnect).not.toHaveBeenCalled();
+    expect(mockPool.connect).not.toHaveBeenCalled();
     expect(tenantSeedService.seedInitialAdmin).not.toHaveBeenCalled();
   });
 });

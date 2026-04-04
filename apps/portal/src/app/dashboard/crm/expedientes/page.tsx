@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input } from '@iwana/ui';
+import { AcquisitionChannel } from '@iwana/shared';
 import {
   ArrowRight,
   Building2,
@@ -16,22 +17,30 @@ import {
 } from 'lucide-react';
 import { ApiError, crmApi, ExpedienteRecord, ExpedienteStatus } from '@/lib/api-client';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { EXPEDIENTE_STATUS_META, formatCrmDate } from '@/components/crm/expedientes/expediente-ui';
+import {
+  ACQUISITION_CHANNEL_OPTIONS,
+  EXPEDIENTE_STATUS_META,
+  formatAcquisitionChannel,
+  formatCrmDate,
+} from '@/components/crm/expedientes/expediente-ui';
 
-function validateCreateValues(values: { fullName: string; source: string }): string | null {
+function validateCreateValues(values: {
+  fullName: string;
+  acquisitionChannel: string;
+  sourceDetail: string;
+}): string | null {
   const fullName = values.fullName.trim();
-  const source = values.source.trim();
 
-  if (!fullName || !source) {
-    return 'Nombre completo y fuente son obligatorios para crear la oportunidad.';
+  if (!fullName || !values.acquisitionChannel) {
+    return 'Nombre completo y canal de captación son obligatorios para crear la oportunidad.';
   }
 
   if (fullName.length > 160) {
     return 'El nombre completo no puede superar 160 caracteres.';
   }
 
-  if (source.length > 120) {
-    return 'La fuente de captación no puede superar 120 caracteres.';
+  if (values.sourceDetail.trim().length > 255) {
+    return 'El detalle de origen no puede superar 255 caracteres.';
   }
 
   return null;
@@ -56,7 +65,7 @@ function formatApiError(error: ApiError): string {
   const validationMessages = [...fieldMessages, ...formMessages];
 
   if (validationMessages.length === 0) {
-    return 'Verifica nombre completo y fuente de captación antes de crear la oportunidad.';
+    return 'Verifica nombre completo, canal y detalle de origen antes de crear la oportunidad.';
   }
 
   return validationMessages.join(' ');
@@ -85,7 +94,11 @@ export default function ExpedientesPage() {
   const [search, setSearch] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
   const [documentNumber, setDocumentNumber] = useState('');
-  const [createValues, setCreateValues] = useState({ fullName: '', source: 'Manual' });
+  const [createValues, setCreateValues] = useState({
+    fullName: '',
+    acquisitionChannel: 'OTRO',
+    sourceDetail: '',
+  });
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -131,11 +144,22 @@ export default function ExpedientesPage() {
     try {
       setCreating(true);
       setError(null);
-      await crmApi.createExpediente({
+      const payload: {
+        fullName: string;
+        acquisitionChannel: AcquisitionChannel;
+        sourceDetail?: string;
+      } = {
         fullName: createValues.fullName.trim(),
-        source: createValues.source.trim(),
-      });
-      setCreateValues({ fullName: '', source: 'Manual' });
+        acquisitionChannel: createValues.acquisitionChannel as AcquisitionChannel,
+      };
+
+      const sourceDetail = createValues.sourceDetail.trim();
+      if (sourceDetail) {
+        payload.sourceDetail = sourceDetail;
+      }
+
+      await crmApi.createExpediente(payload);
+      setCreateValues({ fullName: '', acquisitionChannel: 'OTRO', sourceDetail: '' });
       await loadExpedientes();
     } catch (err) {
       console.error('Error creating expediente:', err);
@@ -185,15 +209,40 @@ export default function ExpedientesPage() {
                   maxLength={160}
                 />
                 <Input
-                  id="expediente-source"
-                  label="Fuente de captación"
-                  value={createValues.source}
+                  id="expediente-source-detail"
+                  label="Detalle de origen (opcional)"
+                  value={createValues.sourceDetail}
                   onChange={(event) =>
-                    setCreateValues((current) => ({ ...current, source: event.target.value }))
+                    setCreateValues((current) => ({ ...current, sourceDetail: event.target.value }))
                   }
-                  placeholder="Manual, web, referido"
-                  maxLength={120}
+                  placeholder="Campaña, observación o contexto"
+                  maxLength={255}
                 />
+                <div>
+                  <label
+                    htmlFor="expediente-acquisition-channel"
+                    className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                  >
+                    Canal de captación
+                  </label>
+                  <select
+                    id="expediente-acquisition-channel"
+                    value={createValues.acquisitionChannel}
+                    onChange={(event) =>
+                      setCreateValues((current) => ({
+                        ...current,
+                        acquisitionChannel: event.target.value,
+                      }))
+                    }
+                    className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:focus:border-iwana-primary-300"
+                  >
+                    {ACQUISITION_CHANNEL_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <Button type="submit" loading={creating} className="w-full xl:w-auto">
                   {!creating && <Plus className="h-4 w-4" aria-hidden="true" />}
                   {creating ? 'Creando oportunidad...' : 'Crear oportunidad'}
@@ -383,7 +432,14 @@ export default function ExpedientesPage() {
                             </Badge>
                           </td>
                           <td className="px-5 py-4 text-gray-700 dark:text-gray-200">
-                            <Badge variant="primary">{expediente.source}</Badge>
+                            <Badge variant="primary">
+                              {formatAcquisitionChannel(expediente.acquisitionChannel)}
+                            </Badge>
+                            {expediente.sourceDetail && (
+                              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                {expediente.sourceDetail}
+                              </p>
+                            )}
                           </td>
                           <td className="px-5 py-4">
                             <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">

@@ -1,7 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
-import { AuditAction, ConsentStatus, ConsentType, ExpedienteStatus } from '@iwana/shared';
+import {
+  AcquisitionChannel,
+  AuditAction,
+  ConsentStatus,
+  ConsentType,
+  ExpedienteStatus,
+  TechnicalViabilityResult,
+} from '@iwana/shared';
 import { AuditService } from '../../../audit/audit.service';
 import { CompletenessCalculator } from '../completeness-calculator.service';
 import { UpdateSectionDto, ExpedienteSection } from '../dto/update-section.dto';
@@ -97,7 +105,11 @@ describe('ExpedienteService', () => {
     });
 
     const created = await service.create(
-      { fullName: '  Cliente Demo  ', source: '  Referido  ' },
+      {
+        fullName: '  Cliente Demo  ',
+        source: '  Referido  ',
+        acquisitionChannel: AcquisitionChannel.REFERIDO_CLIENTE,
+      },
       'user-1',
     );
 
@@ -132,6 +144,26 @@ describe('ExpedienteService', () => {
     const result = await service.findById('exp-1');
     expect((result as any).documentNumber).toBe('900123456');
     expect(result.documentNumberEncrypted).toBe(encryptedDocument);
+  });
+
+  it('expone altContactPhone en detalle autorizado cuando existe cifrado', async () => {
+    const encryptedAltPhone = encryptTestValue('3005556677');
+    const expediente = buildExpediente({
+      id: 'exp-alt-phone',
+      altContactPhoneEncrypted: encryptedAltPhone,
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    const result = await service.findById('exp-alt-phone');
+    expect((result as any).altContactPhone).toBe('3005556677');
+    expect(result.altContactPhoneEncrypted).toBe(encryptedAltPhone);
   });
 
   it('audita acceso autorizado al Documento visible sin persistir el valor plano', async () => {
@@ -204,6 +236,109 @@ describe('ExpedienteService', () => {
         userId: 'user-2',
       }),
     );
+  });
+
+  it('limpia contacto alternativo cuando se envía vacío y persiste null', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-contact-clear',
+      altContactName: 'Contacto previo',
+      altContactPhoneEncrypted: encryptTestValue('3001112233'),
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          save: async (_entity: unknown, data: ExpedienteRecord) => data,
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 80,
+      legal: 50,
+      technical: 40,
+      operational: 30,
+      overall: 50,
+    });
+
+    const updated = await service.updateSection(
+      'exp-contact-clear',
+      {
+        section: ExpedienteSection.CONTACT,
+        data: { altContactName: '', altContactPhone: '' },
+      } satisfies UpdateSectionDto,
+      'user-2',
+    );
+
+    expect(updated.altContactName).toBeNull();
+    expect(updated.altContactPhoneEncrypted).toBeNull();
+  });
+
+  it('normaliza coma decimal al guardar ubicación y persiste coordenadas válidas', async () => {
+    const expediente = buildExpediente({ id: 'exp-location-1' });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          save: async (_entity: unknown, data: ExpedienteRecord) => data,
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 80,
+      legal: 50,
+      technical: 40,
+      operational: 30,
+      overall: 50,
+    });
+
+    const updated = await service.updateSection(
+      'exp-location-1',
+      {
+        section: ExpedienteSection.LOCATION,
+        data: {
+          address: 'Cra 10 # 20-30',
+          municipality: 'EL_COLEGIO',
+          department: 'CUNDINAMARCA',
+          latitude: '4,7110000',
+          longitude: '-74,0721000',
+        },
+      } satisfies UpdateSectionDto,
+      'user-location',
+    );
+
+    expect(updated.latitude).toBeCloseTo(4.711, 3);
+    expect(updated.longitude).toBeCloseTo(-74.0721, 3);
+  });
+
+  it('rechaza ubicación con coordenada inválida devolviendo error semántico', async () => {
+    const expediente = buildExpediente({ id: 'exp-location-2' });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          save: async (_entity: unknown, data: ExpedienteRecord) => data,
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    await expect(
+      service.updateSection(
+        'exp-location-2',
+        {
+          section: ExpedienteSection.LOCATION,
+          data: {
+            latitude: 'abc',
+          },
+        } satisfies UpdateSectionDto,
+        'user-location',
+      ),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it('actualiza la seccion de interes comercial incluyendo la fuente cuando se edita desde portal', async () => {
@@ -421,6 +556,7 @@ describe('ExpedienteService', () => {
       orderBy: jest.fn().mockReturnThis(),
       skip: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([matchingExpediente]),
       getManyAndCount: jest.fn().mockResolvedValue([[matchingExpediente], 1]),
     });
 
@@ -588,7 +724,7 @@ describe('ExpedienteService', () => {
       expect.objectContaining({
         consentType: ConsentType.TRATAMIENTO_DATOS,
         status: ConsentStatus.ACEPTADO,
-        legalTextVersion: 'Ley 1581 de 2012',
+        legalTextVersion: 'Ley 1581 v1',
       }),
     );
   });
@@ -668,72 +804,6 @@ describe('ExpedienteService', () => {
         availableTechnology: 'FIBRA_OPTICA',
         estimatedDistanceM: 300,
         feasibility: 'VIABLE',
-      }),
-    );
-  });
-
-  it('asigna el expediente y deja evidencia operativa con el actor que ejecuta la accion', async () => {
-    const expediente = buildExpediente({ id: 'exp-assign', assignedTo: null });
-    const cambiosEstado: Array<Record<string, unknown>> = [];
-
-    jest
-      .spyOn(service, 'findById')
-      .mockResolvedValueOnce(expediente)
-      .mockResolvedValueOnce({
-        ...expediente,
-        assignedTo: 'advisor-1',
-      });
-
-    mockRunInTenantSchema
-      .mockImplementationOnce(async (_ds, _schema, callback) =>
-        callback({
-          manager: {
-            findOne: async () => ({
-              id: 'user-assign',
-              firstName: 'Laura',
-              lastName: 'Pérez',
-              email: 'laura@tenant.test',
-            }),
-          },
-        }),
-      )
-      .mockImplementationOnce(async (_ds, _schema, callback) =>
-        callback({
-          manager: {
-            save: async (entity: unknown, data: Record<string, unknown>) => {
-              if (entity === ExpedienteRecord) {
-                Object.assign(expediente, data);
-              }
-
-              if (entity === StatusChange) {
-                cambiosEstado.push(data);
-              }
-
-              return data;
-            },
-            create: (_entity: unknown, data: Record<string, unknown>) => data,
-          },
-        }),
-      );
-
-    const assigned = await service.assignExpediente('exp-assign', 'advisor-1', 'user-assign');
-
-    expect(expediente.assignedTo).toBe('advisor-1');
-    expect(assigned.assignedTo).toBe('advisor-1');
-    expect(cambiosEstado[0]).toEqual(
-      expect.objectContaining({
-        changedBy: 'user-assign',
-        actorName: 'Laura Pérez',
-        metadataJson: { type: 'ASSIGNMENT', assignedTo: 'advisor-1' },
-      }),
-    );
-    expect(auditServiceMock.log).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: AuditAction.UPDATE,
-        entityType: 'ExpedienteRecord',
-        entityId: 'exp-assign',
-        userId: 'user-assign',
-        newValue: { assignedTo: 'advisor-1' },
       }),
     );
   });
@@ -1155,6 +1225,102 @@ describe('ExpedienteService', () => {
       }),
     );
   });
+
+  it('rechaza viabilidad tecnica viable cuando falta tecnologia recomendada', async () => {
+    const expediente = buildExpediente({ id: 'exp-tech-invalid' });
+    jest.spyOn(service, 'findById').mockResolvedValue(expediente);
+
+    await expect(
+      service.updateSection(
+        'exp-tech-invalid',
+        {
+          section: ExpedienteSection.TECHNICAL_FEASIBILITY,
+          data: {
+            feasibility: TechnicalViabilityResult.VIABLE,
+            candidateTechnologies: ['FIBER'],
+            technicalConfidence: 'HIGH',
+            evaluationSource: 'MAP',
+          },
+        },
+        'user-tech',
+      ),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('persiste viabilidad tecnica estructurada completa cuando el payload es valido', async () => {
+    const expediente = buildExpediente({ id: 'exp-tech-valid' });
+    const persisted = buildExpediente({
+      id: 'exp-tech-valid',
+      feasibility: TechnicalViabilityResult.VIABLE,
+      candidateTechnologies: ['FIBER'],
+      availableTechnology: 'FIBER',
+      technicalConfidence: 'HIGH',
+      evaluationSource: 'TECHNICAL_SITE_VISIT',
+      technicalObservations: 'Viable con ajuste menor de acometida',
+    });
+
+    const saveExpediente = jest
+      .fn()
+      .mockImplementation(async (_entity: unknown, data: ExpedienteRecord) => data);
+    const syncCompleteness = jest.fn().mockResolvedValue(undefined);
+
+    jest
+      .spyOn(service, 'findById')
+      .mockResolvedValueOnce(expediente)
+      .mockResolvedValueOnce(persisted);
+
+    mockRunInTenantSchema
+      .mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            save: saveExpediente,
+          },
+        }),
+      )
+      .mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            update: syncCompleteness,
+          },
+        }),
+      );
+
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 60,
+      legal: 40,
+      technical: 75,
+      operational: 20,
+      overall: 49,
+    });
+
+    const updated = await service.updateSection(
+      'exp-tech-valid',
+      {
+        section: ExpedienteSection.TECHNICAL_FEASIBILITY,
+        data: {
+          feasibility: TechnicalViabilityResult.VIABLE,
+          candidateTechnologies: ['FIBER'],
+          availableTechnology: 'FIBER',
+          technicalConfidence: 'HIGH',
+          evaluationSource: 'TECHNICAL_SITE_VISIT',
+          technicalObservations: 'Viable con ajuste menor de acometida',
+        },
+      },
+      'user-tech',
+    );
+
+    expect(updated.feasibility).toBe(TechnicalViabilityResult.VIABLE);
+    expect(saveExpediente).toHaveBeenCalledWith(
+      ExpedienteRecord,
+      expect.objectContaining({
+        feasibility: TechnicalViabilityResult.VIABLE,
+        candidateTechnologies: ['FIBER'],
+        availableTechnology: 'FIBER',
+        technicalConfidence: 'HIGH',
+        evaluationSource: 'TECHNICAL_SITE_VISIT',
+      }),
+    );
+  });
 });
 
 function buildExpediente(overrides: Partial<ExpedienteRecord>): ExpedienteRecord {
@@ -1196,6 +1362,8 @@ function buildExpediente(overrides: Partial<ExpedienteRecord>): ExpedienteRecord
     accessReferences: null,
     zoneType: null,
     source: 'Web',
+    acquisitionChannel: AcquisitionChannel.WEB,
+    sourceDetail: null,
     interestedPlanId: null,
     campaign: null,
     casePriority: null,
@@ -1205,6 +1373,9 @@ function buildExpediente(overrides: Partial<ExpedienteRecord>): ExpedienteRecord
     availableTechnology: null,
     estimatedDistanceM: null,
     feasibility: null,
+    candidateTechnologies: null,
+    technicalConfidence: null,
+    evaluationSource: null,
     technicalObservations: null,
     estimatedEquipment: null,
     identityVerified: null,

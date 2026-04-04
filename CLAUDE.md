@@ -158,10 +158,14 @@ Arquitectura **Modulith**: cada módulo tiene boundaries explícitos. Los módul
 | Módulo | Responsabilidad |
 |--------|----------------|
 | `AuthModule` | JWT RS256, MFA TOTP, refresh rotation, JTI blacklist Redis, guards |
-| `TenantModule` | CRUD de tenants (schema público), provisioning BullMQ, `TenantMiddleware` |
+| `TenantModule` | CRUD de tenants (schema público), provisioning BullMQ, `TenantMiddleware`, `DashboardSummaryService` |
 | `UsersModule` | CRUD usuarios por tenant, RBAC, idempotencia |
 | `AuditModule` | Interceptor global CUD + `AuditService` para eventos de dominio |
 | `RedisModule` | Cliente ioredis global (JTI blacklist, cache tenant, MFA secrets) |
+| `CrmModule` | MOD05 CRM — Contacts, Habeas Data, Opportunities, Quotes, Contracts, Expedientes; sub-módulos: contacts, habeas-data, opportunities, quotes, contracts, expedientes |
+| `PlatformUsersModule` | CRUD usuarios de plataforma (SYSTEM_ADMIN, IWANA_SUPPORT) en schema público |
+| `MailerModule` | Servicio de email global; dev-mode loguea por Logger, prod usa `SMTP_*` |
+| `HealthModule` | Health check `GET /api/v1/health` para Docker y monitoreo externo |
 
 **Flujo de autenticación por request:**
 `JwtAuthGuard → TenantMiddleware → RolesGuard → AbacGuard → Controller`
@@ -238,4 +242,4 @@ Variables pgBouncer: `DB_USER`, `DB_HOST`, `DB_NAME` (no bitnami).
 2. PRD del sistema → `docs/prds/PRD_Sistema_ISP_Colombia_v2_2.md`
 3. HLD del módulo vigente (`docs/hlds/`)
 4. Baseline del sprint + `docs/prds/Stack_Tecnologico.md`
-5. ADRs individuales → `docs/adrs/` (ADR-017 a ADR-026; ADR-001-016 inline en PRD v2.2)
+5. ADRs individuales → `docs/adrs/` (ADR-017 a ADR-024; ADR-001-016 inline en PRD v2.2)

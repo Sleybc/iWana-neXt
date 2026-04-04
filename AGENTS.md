@@ -263,6 +263,8 @@ describe('UserService', () => {
 4. **MFA setup token** → Includes `tenantId` + `schemaName`; don't rely on `X-Tenant-Slug`
 5. **Tailwind v4** → CSS-first; don't add `tailwind.config.js`
 6. **Color contrast** → Use `iwana-secondary-700` for text on white (AA compliance)
+7. **Portal localStorage — two tokens** → `iwana.portal.access-token` (full session) and `iwana.portal.mfa-setup-token` (limited scope, MFA setup only); `mfaSetup()` and `mfaVerifySetup()` read the second token directly, bypassing `request()`
+8. **TenantContext.getOrThrow()** → Throws a generic `Error` (→ 500), not `UnauthorizedException` (→ 401); a missing context on a protected route surfaces as 500, not 401
 
 ---
 

@@ -134,6 +134,31 @@ async function setupDashboardMocks(page: import('@playwright/test').Page) {
       return;
     }
 
+    // Perfil del usuario autenticado (usado por AuthProvider para displayName)
+    if (url.match(/\/users\/[^/]+$/) && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: 'user-uuid-admin-test',
+            email: 'admin@test-isp.co',
+            role: 'ADMIN',
+            status: 'ACTIVE',
+            firstName: 'Ana',
+            lastName: 'Prueba',
+            phone: null,
+            jobTitle: 'Administradora',
+            avatarUrl: null,
+            mfaEnabled: true,
+            emailVerified: true,
+            createdAt: '2026-01-15T00:00:00.000Z',
+          },
+        }),
+      });
+      return;
+    }
+
     // Summary del dashboard — contrato self-service
     if (url.includes('/tenants/me/summary') && method === 'GET') {
       await route.fulfill({
@@ -167,9 +192,8 @@ async function setupDashboardMocks(page: import('@playwright/test').Page) {
 
 /** Establece el estado de sesión en localStorage para simular usuario ya autenticado */
 async function setAuthSession(page: import('@playwright/test').Page) {
-  await page.goto('/dashboard');
-  await page.evaluate(
-    ({ token, slug }) => {
+  await page.addInitScript(
+    ({ token, slug }: { token: string; slug: string }) => {
       localStorage.setItem('iwana.portal.access-token', token);
       localStorage.setItem('iwana.portal.tenant-slug', slug);
     },
@@ -199,7 +223,7 @@ test.describe('Dashboard empresarial — flujo login → dashboard', () => {
   test('CA-01: el dashboard no muestra contenido de suscriptor', async ({ page }) => {
     await setupDashboardMocks(page);
     await setAuthSession(page);
-    await page.reload();
+    await page.goto('/dashboard');
     await page.waitForLoadState('networkidle');
 
     // Verificar que NO están los textos de suscriptor
@@ -225,7 +249,7 @@ test.describe('Dashboard empresarial — flujo login → dashboard', () => {
 
     await setupDashboardMocks(page);
     await setAuthSession(page);
-    await page.reload();
+    await page.goto('/dashboard');
     await page.waitForLoadState('networkidle');
 
     // Ninguna llamada a /tenants/:uuid de plataforma debe haberse hecho
@@ -235,7 +259,7 @@ test.describe('Dashboard empresarial — flujo login → dashboard', () => {
   test('CA-04: el dashboard muestra el nombre de la empresa del summary', async ({ page }) => {
     await setupDashboardMocks(page);
     await setAuthSession(page);
-    await page.reload();
+    await page.goto('/dashboard');
     await page.waitForLoadState('networkidle');
 
     // El nombre de empresa del mock debe aparecer
@@ -247,7 +271,7 @@ test.describe('Dashboard empresarial — flujo login → dashboard', () => {
   test('CA-04: el dashboard muestra métricas reales sin datos inventados', async ({ page }) => {
     await setupDashboardMocks(page);
     await setAuthSession(page);
-    await page.reload();
+    await page.goto('/dashboard');
     await page.waitForLoadState('networkidle');
 
     // Usuarios activos: 5 (dato real del mock)
@@ -273,7 +297,7 @@ test.describe('Dashboard empresarial — flujo login → dashboard', () => {
 
     await setupDashboardMocks(page);
     await setAuthSession(page);
-    await page.reload();
+    await page.goto('/dashboard');
     await page.waitForLoadState('networkidle');
 
     // Navegar a /dashboard/settings — ruta activa de configuración empresarial
@@ -290,7 +314,7 @@ test.describe('Dashboard empresarial — flujo login → dashboard', () => {
   test('CA-05: la actividad reciente se muestra al ADMIN', async ({ page }) => {
     await setupDashboardMocks(page);
     await setAuthSession(page);
-    await page.reload();
+    await page.goto('/dashboard');
     await page.waitForLoadState('networkidle');
 
     // El panel de actividad reciente debe existir para ADMIN

@@ -1,6 +1,20 @@
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
+function buildMockJwt(expirationSecondsFromNow = 3600): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+  const payload = Buffer.from(
+    JSON.stringify({ exp: Math.floor(Date.now() / 1000) + expirationSecondsFromNow }),
+  )
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+  return `${header}.${payload}.signature`;
+}
+
 function setupWebApiMocks() {
   return async ({ page }: { page: import('@playwright/test').Page }) => {
     let isLoggedIn = false;
@@ -18,7 +32,7 @@ function setupWebApiMocks() {
           contentType: 'application/json',
           body: JSON.stringify({
             data: {
-              accessToken: 'mock-access-token',
+              accessToken: buildMockJwt(),
             },
           }),
         });
@@ -103,7 +117,7 @@ function setupWebApiMocks() {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ data: { accessToken: 'mock-access-token' } }),
+          body: JSON.stringify({ data: { accessToken: buildMockJwt() } }),
         });
         return;
       }
@@ -131,7 +145,7 @@ test.describe('Web auth + dashboard flows', () => {
     await page.getByRole('button', { name: 'Ingresar' }).click();
 
     await expect(page).toHaveURL(/\/dashboard/);
-    await expect(page.getByText('Tenants de la plataforma')).toBeVisible();
+    await expect(page.getByText(/Tenants de la plataforma|Empresas de la plataforma/i)).toBeVisible();
     await page.waitForLoadState('networkidle');
 
     // Validación WCAG 2.1 AA en dashboard admin

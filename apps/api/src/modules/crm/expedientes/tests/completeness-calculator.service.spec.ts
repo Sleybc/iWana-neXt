@@ -199,6 +199,8 @@ function buildExpediente(overrides: Partial<ExpedienteRecord>): ExpedienteRecord
     inventoryAssignmentRef: null,
     expansionRequestId: null,
     executionPolicyRef: null,
+    currentResponsibleUserId: null,
+    currentResponsibleAssignedAt: null,
     checklistCompleted: false,
     evidenceMode: null,
     conformityEvidenceRef: null,

@@ -405,7 +405,7 @@ export function TenantsTable({
                           <div className="font-medium text-iwana-primary dark:text-white">
                             {tenant.name}
                           </div>
-                          <div className="mt-0.5 font-mono text-xs text-gray-400 dark:text-gray-500">
+                          <div className="mt-0.5 font-mono text-xs text-gray-600 dark:text-gray-300">
                             {tenant.slug}
                           </div>
                         </td>

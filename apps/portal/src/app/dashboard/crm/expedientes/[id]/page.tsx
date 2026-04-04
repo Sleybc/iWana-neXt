@@ -30,6 +30,8 @@ import {
   InternalUser,
   ExpedienteOperationalMetadata,
   ExpedienteRecord,
+  OperationalHistoryItem,
+  ResponsibilitySnapshot,
   SalesAttributionRecord,
   ExpedienteStatus,
   ExpedienteTimelineChange,
@@ -224,7 +226,7 @@ const SECTIONS: SectionConfig[] = [
   },
   {
     id: 'commercial_interest',
-    label: 'Interés comercial',
+    label: 'Interés del cliente',
     description: 'Plan deseado y origen de la oportunidad.',
     icon: BriefcaseBusiness,
     renderFields: [
@@ -519,6 +521,14 @@ export default function ExpedienteDetailPage() {
   const [loadingAttributionUsers, setLoadingAttributionUsers] = useState(false);
   const [revokeReason, setRevokeReason] = useState('');
   const [savingAttribution, setSavingAttribution] = useState(false);
+  const [responsibility, setResponsibility] = useState<ResponsibilitySnapshot | null>(null);
+  const [responsibilityHistory, setResponsibilityHistory] = useState<OperationalHistoryItem[]>([]);
+  const [showResponsibilityForm, setShowResponsibilityForm] = useState(false);
+  const [responsibilityForm, setResponsibilityForm] = useState({
+    responsibleUserId: '',
+    notes: '',
+  });
+  const [savingResponsibility, setSavingResponsibility] = useState(false);
 
   const effectivePersonType = draftValues.personType || null;
 
@@ -636,6 +646,10 @@ export default function ExpedienteDetailPage() {
       );
       setCurrentAttribution(currentAttributionResponse.data);
       setAttributionHistory(attributionHistoryResponse.data ?? []);
+      const responsibilityResponse = await crmApi.getResponsibility(id);
+      const historyResponse = await crmApi.getResponsibilityHistory(id);
+      setResponsibility(responsibilityResponse.data);
+      setResponsibilityHistory(historyResponse.data ?? []);
       setAttributionForm((current) => ({
         ...current,
         acquisitionChannel:
@@ -919,6 +933,33 @@ export default function ExpedienteDetailPage() {
     }
   };
 
+  const handleUpdateResponsibility = async () => {
+    if (!responsibilityForm.responsibleUserId.trim()) {
+      setActionMessage('Debes seleccionar un usuario responsable.');
+      return;
+    }
+
+    try {
+      setSavingResponsibility(true);
+      const notes = responsibilityForm.notes.trim();
+      await crmApi.updateResponsibility(id, {
+        responsibleUserId: responsibilityForm.responsibleUserId.trim(),
+        ...(notes ? { notes } : {}),
+      });
+      setResponsibilityForm({ responsibleUserId: '', notes: '' });
+      setShowResponsibilityForm(false);
+      setActionMessage('Responsable actualizado correctamente.');
+      await loadExpediente();
+    } catch (err) {
+      console.error(err);
+      setActionMessage(
+        err instanceof Error ? err.message : 'No fue posible actualizar el responsable.',
+      );
+    } finally {
+      setSavingResponsibility(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center gap-3 text-sm text-gray-500 dark:text-gray-400">
@@ -1051,6 +1092,270 @@ export default function ExpedienteDetailPage() {
                   <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
                     El consentimiento de tratamiento de datos fue revocado.
                   </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <BriefcaseBusiness className="h-4 w-4 text-iwana-primary" aria-hidden="true" />
+                Gestión comercial y operativa
+              </CardTitle>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Responsable actual, interés del cliente, origen de la oportunidad y trazabilidad
+                operativa.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="rounded-xl border border-iwana-primary/20 bg-iwana-primary/5 p-4 dark:border-iwana-primary-300/20 dark:bg-iwana-primary-400/10">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      Responsable actual
+                    </p>
+                    {responsibility?.currentResponsible ? (
+                      <div className="space-y-1">
+                        <p className="font-semibold text-gray-900 dark:text-white">
+                          {responsibility.currentResponsible.name || 'Sin nombre'}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {responsibility.currentResponsible.role || 'Sin rol'}
+                        </p>
+                        {responsibility.currentResponsibleAssignedAt && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Asignado el{' '}
+                            {formatCrmDateTime(responsibility.currentResponsibleAssignedAt)}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        Sin responsable asignado
+                      </p>
+                    )}
+                  </div>
+                  {canManageAttribution && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setShowResponsibilityForm(!showResponsibilityForm)}
+                    >
+                      {showResponsibilityForm ? 'Cancelar' : 'Reasignar'}
+                    </Button>
+                  )}
+                </div>
+
+                {showResponsibilityForm && (
+                  <div className="mt-4 space-y-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-3">
+                    <div>
+                      <label
+                        htmlFor="responsibility-user"
+                        className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                      >
+                        Nuevo responsable
+                      </label>
+                      <select
+                        id="responsibility-user"
+                        value={responsibilityForm.responsibleUserId}
+                        onChange={(event) =>
+                          setResponsibilityForm((current) => ({
+                            ...current,
+                            responsibleUserId: event.target.value,
+                          }))
+                        }
+                        disabled={loadingAttributionUsers}
+                        className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:focus:border-iwana-primary-300"
+                      >
+                        <option value="">
+                          {loadingAttributionUsers
+                            ? 'Cargando usuarios...'
+                            : 'Selecciona un usuario activo'}
+                        </option>
+                        {sortedAttributionUsers.map((candidate) => {
+                          const fullName = [candidate.firstName, candidate.lastName]
+                            .filter(Boolean)
+                            .join(' ')
+                            .trim();
+                          const label = fullName || candidate.email || 'Usuario sin nombre';
+                          return (
+                            <option key={candidate.id} value={candidate.id}>
+                              {label}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                    <Input
+                      id="responsibility-notes"
+                      label="Notas (opcional)"
+                      value={responsibilityForm.notes}
+                      onChange={(event) =>
+                        setResponsibilityForm((current) => ({
+                          ...current,
+                          notes: event.target.value,
+                        }))
+                      }
+                      placeholder="Motivo de la reasignación"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setShowResponsibilityForm(false);
+                          setResponsibilityForm({ responsibleUserId: '', notes: '' });
+                        }}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        loading={savingResponsibility}
+                        onClick={handleUpdateResponsibility}
+                      >
+                        Guardar responsable
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-xl border border-gray-100 px-4 py-3 dark:border-dark-border">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Interés del cliente
+                  </p>
+                  <div className="mt-2 space-y-1 text-sm">
+                    <p className="font-medium text-gray-900 dark:text-white">
+                      Plan: {expediente.interestedPlanId || 'No registrado'}
+                    </p>
+                    {expediente.additionalProductIds &&
+                    expediente.additionalProductIds.length > 0 ? (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Productos: {expediente.additionalProductIds.join(', ')}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Sin productos adicionales
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-gray-100 px-4 py-3 dark:border-dark-border">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Origen de la oportunidad
+                  </p>
+                  <div className="mt-2 space-y-1 text-sm">
+                    <p className="font-medium text-gray-900 dark:text-white">
+                      Canal: {formatAcquisitionChannel(expediente.acquisitionChannel)}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Detalle: {expediente.sourceDetail || 'Sin detalle'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 px-4 py-3 dark:border-dark-border">
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Atribución comercial
+                </p>
+                {currentAttribution ? (
+                  <div className="mt-2 space-y-1 text-sm">
+                    <p className="font-medium text-gray-900 dark:text-white">
+                      Originador: {currentAttribution.actorName}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Rol: {currentAttribution.actorRole} · Canal:{' '}
+                      {formatAcquisitionChannel(currentAttribution.acquisitionChannel)}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Desde: {formatCrmDateTime(currentAttribution.attributedAt)}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                    Sin atribución comercial activa.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                  Historial comercial
+                </p>
+                {attributionHistory.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Aún no hay historial de atribuciones.
+                  </p>
+                ) : (
+                  <div className="max-h-40 space-y-2 overflow-y-auto">
+                    {attributionHistory.map((item) => (
+                      <div
+                        key={item.id}
+                        className="rounded-xl border border-gray-100 px-4 py-2 text-xs dark:border-dark-border"
+                      >
+                        <p className="font-medium text-gray-900 dark:text-white">
+                          {item.actorName}
+                        </p>
+                        <p className="text-gray-500 dark:text-gray-400">
+                          {item.actorRole} · {formatAcquisitionChannel(item.acquisitionChannel)} ·{' '}
+                          {formatCrmDateTime(item.attributedAt)}
+                        </p>
+                        {item.revokedAt && (
+                          <p className="mt-1 text-gray-500 dark:text-gray-400">
+                            Revocado: {formatCrmDateTime(item.revokedAt)} ·{' '}
+                            {item.revokedReason || 'Sin motivo'}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                  Historial operativo
+                </p>
+                {responsibilityHistory.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Aún no hay historial de cambios de responsable.
+                  </p>
+                ) : (
+                  <div className="max-h-40 space-y-2 overflow-y-auto">
+                    {responsibilityHistory.map((item) => (
+                      <div
+                        key={item.id}
+                        className="rounded-xl border border-gray-100 px-4 py-2 text-xs dark:border-dark-border"
+                      >
+                        <p className="font-medium text-gray-900 dark:text-white">
+                          {item.newResponsible.name || 'Sin nombre'}
+                        </p>
+                        <p className="text-gray-500 dark:text-gray-400">
+                          {item.newResponsible.role || 'Sin rol'} ·{' '}
+                          {formatCrmDateTime(item.changedAt)}
+                        </p>
+                        {item.previousResponsible && (
+                          <p className="mt-1 text-gray-500 dark:text-gray-400">
+                            Anterior: {item.previousResponsible.name || 'Sin nombre'} (
+                            {item.previousResponsible.role || 'Sin rol'})
+                          </p>
+                        )}
+                        {item.notes && (
+                          <p className="mt-1 text-gray-500 dark:text-gray-400">
+                            Nota: {item.notes}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             </CardContent>

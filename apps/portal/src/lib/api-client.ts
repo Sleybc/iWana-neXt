@@ -1304,6 +1304,7 @@ export interface ExpedienteRecord {
   acquisitionChannel: AcquisitionChannel;
   sourceDetail?: string | null;
   interestedPlanId: string | null;
+  additionalProductIds?: string[] | null;
   campaign?: string | null;
   casePriority?: string | null;
   estimatedBudget?: number | null;
@@ -1372,6 +1373,28 @@ export interface CreateAttributionDto {
   reattributionReason?: string;
 }
 
+export interface ResponsibilityActor {
+  userId: string | null;
+  name: string | null;
+  role: string | null;
+}
+
+export interface ResponsibilitySnapshot {
+  currentResponsibleUserId: string | null;
+  currentResponsibleAssignedAt: string | null;
+  currentResponsible: ResponsibilityActor;
+  expedienteId: string;
+}
+
+export interface OperationalHistoryItem {
+  id: string;
+  previousResponsible: ResponsibilityActor | null;
+  newResponsible: ResponsibilityActor;
+  changedByActor: ResponsibilityActor;
+  changedAt: string;
+  notes: string | null;
+}
+
 export interface TransitionStatusDto {
   targetStatus: ExpedienteStatus;
   reason?: string;
@@ -1400,10 +1423,6 @@ export interface CreateCoverageCheckDto {
   technologyAvailable?: string | undefined;
   distanceM?: number | undefined;
   snapshotJson?: Record<string, unknown> | undefined;
-}
-
-export interface AssignExpedienteDto {
-  assignedTo: string;
 }
 
 export interface CompletenessResult {
@@ -1630,13 +1649,6 @@ export const crmApi = {
       tenantSlug,
     ),
 
-  assignExpediente: (id: string, dto: AssignExpedienteDto, tenantSlug?: string) =>
-    request<{ data: ExpedienteRecord }>(
-      `/crm/expedientes/${id}/assign`,
-      { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
-      tenantSlug,
-    ),
-
   createAttribution: (id: string, dto: CreateAttributionDto, tenantSlug?: string) =>
     request<{ data: SalesAttributionRecord }>(
       `/crm/expedientes/${id}/attribution`,
@@ -1664,4 +1676,38 @@ export const crmApi = {
       { returnFullResponse: true },
       tenantSlug,
     ),
+
+  getResponsibility: (id: string, tenantSlug?: string) =>
+    request<{ data: ResponsibilitySnapshot }>(
+      `/crm/expedientes/${id}/responsibility`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  updateResponsibility: (
+    id: string,
+    dto: { responsibleUserId: string; notes?: string },
+    tenantSlug?: string,
+  ) =>
+    request<{ data: ResponsibilitySnapshot }>(
+      `/crm/expedientes/${id}/responsibility`,
+      { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  getResponsibilityHistory: (
+    id: string,
+    params?: { page?: number; limit?: number },
+    tenantSlug?: string,
+  ) => {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const query = searchParams.toString();
+    return request<{ data: OperationalHistoryItem[]; total: number }>(
+      `/crm/expedientes/${id}/responsibility/history${query ? `?${query}` : ''}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    );
+  },
 };

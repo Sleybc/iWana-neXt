@@ -48,6 +48,29 @@ export function formatCrmDateTime(value: string): string {
   }).format(new Date(value));
 }
 
+export const ACQUISITION_CHANNEL_OPTIONS = [
+  { value: 'OFICINA', label: 'Visita a oficina' },
+  { value: 'WHATSAPP', label: 'WhatsApp' },
+  { value: 'LLAMADA_ENTRANTE', label: 'Llamada entrante' },
+  { value: 'LLAMADA_SALIENTE', label: 'Llamada saliente' },
+  { value: 'REDES_SOCIALES', label: 'Redes sociales' },
+  { value: 'REFERIDO_CLIENTE', label: 'Referido por cliente' },
+  { value: 'REFERIDO_VENDEDOR', label: 'Referido por vendedor' },
+  { value: 'REFERIDO_TECNICO', label: 'Referido por técnico' },
+  { value: 'PUERTA_A_PUERTA', label: 'Puerta a puerta' },
+  { value: 'EVENTO', label: 'Evento / feria' },
+  { value: 'WEB', label: 'Formulario web' },
+  { value: 'OTRO', label: 'Otro' },
+] as const;
+
+export function formatAcquisitionChannel(value: string | null | undefined): string {
+  if (!value) {
+    return 'Sin canal';
+  }
+
+  return ACQUISITION_CHANNEL_OPTIONS.find((option) => option.value === value)?.label ?? value;
+}
+
 export function getContactResultBadgeVariant(result: string): StatusBadgeVariant {
   const successResults = ['EXITOSO', 'SUCCESSFUL'];
   const warningResults = [
@@ -98,6 +121,33 @@ export function formatPersonType(value: string): string {
 export function formatDocumentType(value: string): string {
   return DOCUMENT_TYPE_OPTIONS.find((o) => o.value === value)?.label ?? value;
 }
+
+export const TECHNICAL_VIABILITY_RESULT_OPTIONS = [
+  { value: 'VIABLE', label: 'Viable' },
+  { value: 'VALIDATION_REQUIRED', label: 'Validación técnica requerida' },
+  { value: 'NOT_VIABLE', label: 'No viable' },
+] as const;
+
+export const TECHNOLOGY_OPTION_OPTIONS = [
+  { value: 'FIBER', label: 'Fibra óptica' },
+  { value: 'RADIO', label: 'Radio enlace' },
+  { value: 'SATELLITE', label: 'Satelital' },
+  { value: 'NETWORK_EXPANSION', label: 'Requiere expansión de red' },
+  { value: 'COVERAGE_REINFORCEMENT', label: 'Refuerzo de cobertura' },
+] as const;
+
+export const TECHNICAL_CONFIDENCE_OPTIONS = [
+  { value: 'HIGH', label: 'Alta' },
+  { value: 'MEDIUM', label: 'Media' },
+  { value: 'LOW', label: 'Baja' },
+] as const;
+
+export const EVALUATION_SOURCE_OPTIONS = [
+  { value: 'MAP', label: 'Mapa' },
+  { value: 'COMMERCIAL_REFERENCE', label: 'Referencia comercial' },
+  { value: 'CUSTOMER_CALL', label: 'Llamada con cliente' },
+  { value: 'TECHNICAL_SITE_VISIT', label: 'Visita técnica' },
+] as const;
 
 export const DEPARTAMENTOS = [
   {

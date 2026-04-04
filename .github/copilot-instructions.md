@@ -102,6 +102,8 @@ Para el mapa completo de despacho, usa `AGENTS.md`.
 - `setupMfa()` es idempotente para tolerar dobles invocaciones en React Strict Mode.
 - Tailwind es v4 CSS-first: no agregues `tailwind.config.js` salvo ADR explicito.
 - Para texto sobre blanco con color secundario, usar `iwana-secondary-700`; el verde secundario base no cumple AA para texto.
+- **Portal — dos tokens en localStorage:** `iwana.portal.access-token` (sesion completa) y `iwana.portal.mfa-setup-token` (alcance limitado, solo setup MFA). `mfaSetup()` y `mfaVerifySetup()` leen el segundo directamente, sin pasar por `request()`.
+- `TenantContext.getOrThrow()` lanza `Error` generico (→ 500), no `UnauthorizedException` (→ 401). Contexto faltante en ruta protegida = 500, no 401.
 
 ## Archivos guia
 

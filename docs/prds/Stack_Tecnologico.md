@@ -1,6 +1,6 @@
 # Stack Tecnológico — iWana neXt Platform
 
-**Última actualización:** 2026-02-28
+**Última actualización:** 2026-04-01
 **Fuente:** Documentación oficial de cada proyecto (verificado)
 
 > ⚠️ **IMPORTANTE — Dos capas de versiones:**
@@ -17,11 +17,11 @@
 
 ## Runtime y Tooling
 
-| Tecnología    | Versión Latest (Feb 2026) | Link oficial                                     |
+| Tecnología    | Versión Latest (Abr 2026) | Link oficial                                     |
 | ------------- | ------------------------- | ------------------------------------------------ |
-| Node.js       | **24.13.1 LTS**           | https://nodejs.org/en/blog/release/v24.13.1      |
-| pnpm          | **10.30.3**               | https://github.com/pnpm/pnpm/releases            |
-| TypeScript    | **5.9**                   | https://www.typescriptlang.org/docs              |
+| Node.js       | **25.8.2** (current; LTS: v24.x)| https://nodejs.org/en/blog/                      |
+| pnpm          | **10.32.1**               | https://github.com/pnpm/pnpm/releases            |
+| TypeScript    | **5.9.3**                 | https://www.typescriptlang.org/docs              |
 | Turborepo     | **2.8.11**                | https://turbo.build/repo/docs                    |
 | Docker Engine | **29.1.5**                | https://docs.docker.com/engine/release-notes/29/ |
 
@@ -29,16 +29,16 @@
 
 ## Backend (apps/api)
 
-| Paquete                 | Versión Latest (Feb 2026) | Notas                                          |
+| Paquete                 | Versión Latest (Abr 2026) | Notas                                          |
 | ----------------------- | ------------------------- | ---------------------------------------------- |
 | NestJS (`@nestjs/core`) | **11.1.14**               | https://github.com/nestjs/nest/releases        |
 | TypeORM                 | **0.3.28**                | https://github.com/typeorm/typeorm/releases    |
-| BullMQ                  | **5.70.1**                | https://github.com/taskforcesh/bullmq/releases |
-| Zod                     | **4.3.6** ⚠️              | https://github.com/colinhacks/zod/releases     |
-| bcrypt                  | **6.0.0**                 | https://www.npmjs.com/package/bcrypt           |
+| BullMQ                  | **5.71.0**                | https://github.com/taskforcesh/bullmq/releases |
+| Zod                     | **4.0.1** ⚠️              | https://github.com/colinhacks/zod/releases     |
+| bcryptjs                | **3.0.3**                 | https://www.npmjs.com/package/bcryptjs         |
 | otplib                  | **13.3.0** ⚠️             | https://github.com/yeojz/otplib                |
 | pg (node-postgres)      | latest stable             | https://github.com/brianc/node-postgres        |
-| ioredis                 | latest stable             | https://github.com/redis/ioredis               |
+| ioredis                 | **5.10.0**                | https://github.com/redis/ioredis               |
 | Pino                    | latest stable             | https://github.com/pinojs/pino                 |
 | Helmet                  | latest stable             | https://github.com/helmetjs/helmet             |
 | uuid                    | latest stable             | https://github.com/uuidjs/uuid                 |
@@ -48,7 +48,7 @@
 
 ## Frontend (apps/web, apps/portal)
 
-| Paquete                 | Versión Latest (Feb 2026) | Notas                                       |
+| Paquete                 | Versión Latest (Abr 2026) | Notas                                       |
 | ----------------------- | ------------------------- | ------------------------------------------- |
 | Next.js                 | **16.1.6**                | https://nextjs.org/blog                     |
 | React                   | **19.2**                  | https://react.dev/versions                  |
@@ -56,15 +56,15 @@
 | shadcn/ui               | **2.5.0+**                | https://ui.shadcn.com/docs/changelog        |
 | `@tanstack/react-query` | latest stable             | https://tanstack.com/query                  |
 | react-hook-form         | latest stable             | https://react-hook-form.com/                |
-| Zod                     | **4.3.6** ⚠️              | (compartido con backend)                    |
+| Zod                     | **4.0.1** ⚠️              | (compartido con backend; en proyecto: 3.24.2)    |
 
 ---
 
 ## Testing
 
-| Paquete    | Versión Latest (Feb 2026) | Notas                                            |
+| Paquete    | Versión Latest (Abr 2026) | Notas                                            |
 | ---------- | ------------------------- | ------------------------------------------------ |
-| Jest       | **30.2.0**                | https://jestjs.io/versions                       |
+| Jest       | **29.7.0**                | https://jestjs.io/versions                       |
 | Playwright | **1.58.2**                | https://github.com/microsoft/playwright/releases |
 | Supertest  | latest stable             | Integración con Jest para integration tests      |
 
@@ -72,7 +72,7 @@
 
 ## Infraestructura
 
-| Servicio   | Versión Latest (Feb 2026) | Notas                                  |
+| Servicio   | Versión Latest (Abr 2026) | Notas                                  |
 | ---------- | ------------------------- | -------------------------------------- |
 | PostgreSQL | **18.3** ⚠️               | https://www.postgresql.org/about/news/ |
 | Redis      | **8.6**                   | https://redis.io/downloads/            |
@@ -91,10 +91,10 @@ de que el Staff Engineer proponga actualizar el PROMPT-EXEC de un sprint:
 | ---------------- | ---------------- | -------------- | ------------------------------------------------------------------------ |
 | **PostgreSQL**   | 16               | 18.3           | Cambios en SQL parser, comportamiento de RLS, funciones                  |
 | **Tailwind CSS** | 3.4.x            | 4.x            | Sintaxis de configuración completamente nueva (CSS-first, sin JS config) |
-| **Zod**          | 3.24.x           | 4.3.x          | API de métodos cambiada — migración requerida en todos los validators    |
+| **Zod**          | 3.24.x           | 4.0.1          | API de métodos cambiada — migración requerida en todos los validators    |
 | **otplib**       | 7.11.x           | 13.3.x         | API de autenticación TOTP cambiada (+6 versiones major)                  |
-| **bcrypt**       | 5.1.x            | 6.0.x          | Revisar compatibilidad con Node.js 24                                    |
-| **Node.js**      | 22.14.0 LTS      | 24.13.1 LTS    | Cambios en resolución de módulos, deprecaciones de APIs                  |
+| **bcryptjs**     | 2.4.x            | 3.0.x          | Paquete en uso es `bcryptjs` (no `bcrypt`); revisar compatibilidad Node 24 |
+| **Node.js**      | 22.14.0 LTS      | 25.8.2 (current; LTS: v24.x) | Cambios en resolución de módulos, deprecaciones de APIs |
 | **pnpm**         | 9.15.x           | 10.x           | Workspace protocol y lockfile format                                     |
 | **Next.js**      | 15.2.x           | 16.x           | Revisar App Router, RSC y Server Actions                                 |
 
@@ -105,7 +105,7 @@ de que el Staff Engineer proponga actualizar el PROMPT-EXEC de un sprint:
 | Sprint    | Node.js                                                 | NestJS | Next.js | PostgreSQL | Fecha verificación |
 | --------- | ------------------------------------------------------- | ------ | ------- | ---------- | ------------------ |
 | Sprint 1  | 22.14.0 LTS                                             | 11.1.0 | 15.2.0  | 16         | 2026-02-27         |
-| Sprint 2+ | _TBD — validar con Architect Software antes de iniciar_ |        |         |            |                    |
+| Sprint 2  | 25.8.2 (LTS: v24.x)                                     | 11.1.14 | 16.1.6 | 18         | 2026-04-01         |
 
 > El Architect Software actualiza esta tabla al inicio de cada sprint si propone cambios de versión.
 > Las versiones deben ser verificadas en conjunto antes de actualizar el PROMPT-EXEC.
@@ -147,18 +147,18 @@ El proyecto adopta un **baseline moderno alineado con latest stable** para las c
 | ----------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | **NestJS 11.1.x**       | Adecuado y maduro                                              | **Adoptar** como baseline                                               |
 | **TypeORM 0.3.28**      | Adecuado para Modulith + migraciones versionadas               | **Adoptar** como baseline                                               |
-| **BullMQ 5.70.x**       | Adecuado para jobs de provisioning, billing y ETL              | **Adoptar** como baseline                                               |
+| **BullMQ 5.71.x**       | Adecuado para jobs de provisioning, billing y ETL              | **Adoptar** como baseline                                               |
 | **Next.js 16.1.x**      | Adecuado para App Router, portales multirol y RSC              | **Adoptar** como baseline                                               |
 | **React 19.2**          | Coherente con Next.js 16                                       | **Adoptar** como baseline                                               |
 | **Tailwind CSS 4.x**    | Adecuado y consistente con el enfoque CSS-first ya documentado | **Adoptar** como baseline                                               |
 | **shadcn/ui 2.5+**      | Muy adecuado para velocidad de desarrollo y consistencia de UI | **Adoptar** como baseline                                               |
 | **PostgreSQL 18.3**     | Potente y alineado al crecimiento del proyecto                 | **Adoptar**, con validación reforzada de RLS, migraciones y performance |
 | **Redis 8.6**           | Adecuado y consistente con BullMQ                              | **Adoptar** como baseline                                               |
-| **Node.js 24.13.1 LTS** | LTS vigente y deseado para el proyecto                         | **Adoptar** como baseline                                               |
-| **pnpm 10.30.x**        | Coherente con Node 24 y monorepo moderno                       | **Adoptar** como baseline                                               |
-| **Zod 4.3.x**           | Adecuado para validación moderna del proyecto                  | **Adoptar** como baseline                                               |
+| **Node.js 25.8.2** (LTS: v24.x) | LTS vigente y deseado para el proyecto                         | **Adoptar** como baseline                                               |
+| **pnpm 10.32.x**        | Coherente con Node 24/25 y monorepo moderno                    | **Adoptar** como baseline                                               |
+| **Zod 4.0.1**           | Adecuado para validación moderna del proyecto                  | **Adoptar** como baseline                                               |
 | **otplib 13.3.x**       | Adecuado para MFA/TOTP en baseline moderno                     | **Adoptar** como baseline                                               |
-| **bcrypt 6.0.0**        | Adecuado si compatibilidad con runtime queda verificada        | **Adoptar** como baseline                                               |
+| **bcryptjs 3.0.x**      | Adecuado y verificado con runtime actual                       | **Adoptar** como baseline                                               |
 
 ---
 
@@ -174,7 +174,7 @@ Se adopta una estrategia **moderna con latest stable**, manteniendo control téc
 
 ### Regla de ejecución
 
-1. El baseline del sprint debe declarar explícitamente Node 24, pnpm 10, Next.js 16, Tailwind 4, Zod 4, otplib 13, bcrypt 6 y PostgreSQL 18 si ese sprint los usa.
+1. El baseline del sprint debe declarar explícitamente Node 24/25, pnpm 10, Next.js 16, Tailwind 4, Zod 4, otplib 13, bcryptjs 3 y PostgreSQL 18 si ese sprint los usa.
 2. Todo cambio con breaking changes debe acompañarse de smoke tests, pruebas de compatibilidad y, si afecta decisiones estructurales, ADR correspondiente.
 3. La estrategia del proyecto es **adoptar latest stable con disciplina**, no permanecer en versiones anteriores por inercia.
 
@@ -186,12 +186,12 @@ El baseline sugerido para el siguiente sprint, alineado con la decisión actual 
 
 | Capa            | Recomendación Sprint 2                                          |
 | --------------- | --------------------------------------------------------------- |
-| Runtime         | Node.js 24.13.1 LTS                                             |
-| Package manager | pnpm 10.30.x                                                    |
-| Backend         | NestJS 11.1.x + TypeORM 0.3.28 + BullMQ 5.70.x                  |
+| Runtime         | Node.js 25.8.2 (LTS: v24.x)                                    |
+| Package manager | pnpm 10.32.x                                                    |
+| Backend         | NestJS 11.1.x + TypeORM 0.3.28 + BullMQ 5.71.x                  |
 | Frontend        | Next.js 16.1.x + React 19.2 + Tailwind CSS 4.x + shadcn/ui 2.5+ |
-| Validación      | Zod 4.3.x                                                       |
-| Auth/MFA        | otplib 13.3.x + bcrypt 6.0.0                                    |
+| Validación      | Zod 4.0.1 (en proyecto activo: 3.24.2)                          |
+| Auth/MFA        | otplib 13.3.x + bcryptjs 3.0.x                                  |
 | Infra de datos  | PostgreSQL 18.3                                                 |
 | Cache/colas     | Redis 8.6                                                       |
 
@@ -202,8 +202,8 @@ Esta combinación alinea el proyecto con un baseline actual, reduce deuda de act
 ### Controles obligatorios para este baseline
 
 - Smoke test de instalación completa en monorepo con Node 24 + pnpm 10.
-- Verificación de compatibilidad real de bcrypt 6 y otplib 13.
-- Validación de todos los schemas y validators con Zod 4.
+- Verificación de compatibilidad real de bcryptjs 3 y otplib 13.
+- Validación de todos los schemas y validators con Zod 4 (migración pendiente desde 3.24.2).
 - Pruebas de RLS, migraciones y rendimiento básico sobre PostgreSQL 18.3.
 - Validación de frontend con Next.js 16 + React 19 + Tailwind 4 + shadcn/ui.
 
@@ -219,5 +219,5 @@ La decisión técnicamente más sólida para iWana neXt es:
 
 - mantener este documento como fuente primaria del baseline objetivo,
 - fijar por sprint la combinación exacta de versiones implementadas,
-- trabajar con Node 24 + pnpm 10 + Zod 4 + otplib 13 + bcrypt 6 + PostgreSQL 18 como línea base moderna,
+- trabajar con Node 24/25 + pnpm 10 + Zod 4 + otplib 13 + bcryptjs 3 + PostgreSQL 18 como línea base moderna,
 - y acompañar esa decisión con pruebas conjuntas y ADR cuando los breaking changes afecten arquitectura, seguridad o persistencia.

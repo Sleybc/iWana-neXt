@@ -1,5 +1,19 @@
 import { expect, test } from '@playwright/test';
 
+function buildMockJwt(expirationSecondsFromNow = 3600): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+  const payload = Buffer.from(
+    JSON.stringify({ exp: Math.floor(Date.now() / 1000) + expirationSecondsFromNow }),
+  )
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+  return `${header}.${payload}.signature`;
+}
+
 function setupAdminBootstrapMocks() {
   return async ({ page }: { page: import('@playwright/test').Page }) => {
     let tenantStatus: 'PROVISIONING' | 'ACTIVE' = 'PROVISIONING';
@@ -54,7 +68,7 @@ function setupAdminBootstrapMocks() {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ data: { accessToken: 'mock-token' } }),
+          body: JSON.stringify({ data: { accessToken: buildMockJwt() } }),
         });
         return;
       }
@@ -264,7 +278,7 @@ function setupAdminBootstrapMocks() {
         return;
       }
 
-      if (url.includes('/users') && method === 'GET') {
+      if (/\/users(?:\?.*)?$/.test(url) && method === 'GET') {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -370,8 +384,9 @@ test.describe('Bootstrap operativo admin', () => {
 
     await expect(page).toHaveURL(/\/dashboard/);
 
-    await page.goto('/profile');
-    await expect(page.getByRole('heading', { name: 'Mi perfil' })).toBeVisible();
+    await page.getByLabel('Menú de usuario').click();
+    await page.getByRole('menuitem', { name: 'Editar perfil' }).click();
+    await expect(page.getByRole('heading', { name: /Mi perfil/i })).toBeVisible();
     await page.getByLabel('Nombres').fill('Admin');
     await page.getByLabel('Apellidos').fill('actualizado');
     await page.getByRole('button', { name: 'Guardar cambios' }).click();
@@ -381,53 +396,56 @@ test.describe('Bootstrap operativo admin', () => {
     await expect(page.getByText('Admin actualizado').first()).toBeVisible();
     await page.getByRole('menuitem', { name: 'Configuración' }).click();
     await expect(page.getByRole('heading', { name: 'Configuración' })).toBeVisible();
+    await page.getByRole('button', { name: 'Seguridad' }).click();
     await page.getByRole('button', { name: 'Configurar MFA' }).click();
     await expect(page.getByText('Escanea el QR en tu app Authenticator')).toBeVisible();
     await page.getByPlaceholder('Código TOTP de 6 dígitos').fill('123456');
     await page.getByRole('button', { name: 'Verificar MFA' }).click();
     await expect(page.getByText('MFA habilitado correctamente.')).toBeVisible();
 
-    await page.goto('/tenants/new');
+    await page.getByRole('link', { name: 'Empresas' }).click();
+    await page.getByRole('link', { name: 'Nueva empresa' }).click();
     await expect(page.getByRole('heading', { name: 'Nueva empresa' })).toBeVisible();
-    await page.getByLabel('Nombre').fill('Empresa Demo');
-    await page.getByLabel('Slug').fill('empresa-demo');
-    await page.getByLabel('Email de contacto').fill('ops@example.test');
-    await page.getByLabel('Máximo suscriptores').fill('100');
+    await page.locator('#tenant-name').fill('Empresa Demo');
+    await page.locator('#tenant-slug').fill('empresa-demo');
+    await page.locator('#tenant-contact-email').fill('ops@example.test');
+    await page.locator('#tenant-max-subscribers').fill('100');
     await page.getByRole('button', { name: 'Crear empresa' }).click();
     await expect(page.getByText('Provisioning completado.')).toBeVisible();
-    await page.getByRole('button', { name: 'Obtener credenciales admin' }).click();
+    await page.getByRole('button', { name: 'Regenerar credenciales temporales' }).click();
     await expect(page.getByText('admin@empresa-demo.test')).toBeVisible();
     await expect(page.getByText('TempPass123!')).toBeVisible();
     await page.getByRole('button', { name: 'Cerrar' }).click();
     await page.getByRole('button', { name: 'Configurar empresa' }).click();
 
     await expect(page).toHaveURL(/\/tenants\/tenant-1\/settings/);
-    await page.getByPlaceholder('Timezone').fill('America/Lima');
-    await page.getByPlaceholder('Moneda \(COP\)').fill('USD');
-    await page.getByLabel('Requerir MFA a todos').check();
+    await page.getByPlaceholder('America/Bogota').fill('America/Lima');
+    await page.getByPlaceholder('COP').fill('USD');
+    await page.getByLabel('Requerir MFA a todos los usuarios').check();
     await page.getByRole('button', { name: 'Guardar configuración' }).click();
-    await expect(page.getByText('Configuración actualizada.')).toBeVisible();
+    await expect(page.getByText('Configuración operativa actualizada.')).toBeVisible();
 
-    await page.goto('/users');
+    await page.getByRole('link', { name: 'Usuarios' }).click();
     await expect(page.getByRole('heading', { name: 'Usuarios' })).toBeVisible();
     await page.getByRole('button', { name: 'Crear usuario' }).click();
     const createUserDialog = page.getByRole('dialog', { name: 'Crear usuario' });
-    await createUserDialog.getByPlaceholder('Email').fill('noc@empresa-demo.test');
-    await createUserDialog.locator('select').selectOption('SUPPORT');
+    await createUserDialog.locator('#uc-email').fill('noc@empresa-demo.test');
+    await createUserDialog.locator('#uc-role').selectOption('SUPPORT');
     await createUserDialog.getByRole('button', { name: 'Crear' }).click();
-    await expect(page.getByText('Contraseña temporal:')).toBeVisible();
-    await expect(page.getByText('TempUser123!')).toBeVisible();
-    await expect(page.locator('table').getByRole('cell', { name: 'SUPPORT' }).first()).toBeVisible();
-    await createUserDialog.getByRole('button', { name: 'Cerrar' }).click();
+    await expect(page.getByText('Usuario creado exitosamente')).toBeVisible();
+    await expect(page.getByLabel('Contraseña temporal')).toContainText('TempUser123!');
+    await createUserDialog.getByRole('button', { name: 'Entendido, cerrar' }).click();
+    await expect(page.getByRole('cell', { name: 'SUPPORT' }).first()).toBeVisible();
+    await expect(page.getByRole('cell', { name: /user-2/ }).first()).toBeVisible();
 
     await page.getByRole('button', { name: 'Gestionar' }).first().click();
     const manageUserDialog = page.getByRole('dialog', { name: 'Gestión de usuario' });
-    await expect(manageUserDialog.getByText('Gestión de usuario')).toBeVisible();
-    await manageUserDialog.locator('select').nth(0).selectOption('NOC');
-    await manageUserDialog.locator('select').nth(1).selectOption('ACTIVE');
+    await expect(manageUserDialog).toBeVisible();
+    await manageUserDialog.locator('#um-role').selectOption('NOC');
+    await manageUserDialog.locator('#um-status').selectOption('ACTIVE');
     await manageUserDialog.getByRole('button', { name: 'Guardar cambios' }).click();
     await expect(page.getByText('Usuario actualizado correctamente.')).toBeVisible();
     await manageUserDialog.getByRole('button', { name: 'Eliminar usuario' }).click();
-    await expect(page.locator('table')).not.toContainText('user-2');
+    await expect(page.getByRole('cell', { name: /user-2/ })).toHaveCount(0);
   });
 });

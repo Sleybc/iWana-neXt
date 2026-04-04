@@ -1,9 +1,11 @@
 // apps/portal/src/app/dashboard/layout.tsx
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopHeader } from '@/components/layout/TopHeader';
 import { tenantSelfApi, type TenantSelf } from '@/lib/api-client';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 /**
  * Layout Base del Portal Suscriptor.
@@ -13,6 +15,9 @@ import { tenantSelfApi, type TenantSelf } from '@/lib/api-client';
  * - sidebarMobileOpen: drawer overlay en mobile (transitorio, no persiste)
  */
 export default function PortalDashboardLayout({ children }: { children: ReactNode }) {
+  const router = useRouter();
+  const { user, isLoading: authLoading } = useAuth();
+
   // Estado desktop: el sidebar arranca expandido
   const [sidebarDesktopCollapsed, setSidebarDesktopCollapsed] = useState(false);
   // Estado mobile: el drawer arranca cerrado
@@ -21,11 +26,30 @@ export default function PortalDashboardLayout({ children }: { children: ReactNod
   const [tenantProfile, setTenantProfile] = useState<TenantSelf | null>(null);
 
   useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace('/auth/login');
+    }
+  }, [authLoading, user, router]);
+
+  useEffect(() => {
+    if (!user) {
+      setTenantProfile(null);
+      return;
+    }
+
     void tenantSelfApi
       .getMe()
       .then(setTenantProfile)
       .catch(() => null);
-  }, []);
+  }, [user]);
+
+  if (authLoading || !user) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-dark-surface">
+        <p className="text-sm text-gray-600 dark:text-gray-300">Validando sesión...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-dark-surface">

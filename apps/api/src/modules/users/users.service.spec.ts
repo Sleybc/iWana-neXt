@@ -245,40 +245,40 @@ describe('UsersService', () => {
       expect(result.meta.nextCursor).toBe('id-2');
     });
 
-    it('aplica busqueda ILIKE en email, firstName, lastName y jobTitle cuando search esta presente', async () => {
-      const getMany = jest.fn().mockResolvedValue([buildUserEntity({ email: 'ana@empresa.com' })]);
-      const getCount = jest.fn().mockResolvedValue(1);
-      const andWhere = jest.fn().mockReturnThis();
-      const where = jest.fn().mockReturnThis();
-      const orderBy = jest.fn().mockReturnThis();
-      const take = jest.fn().mockReturnThis();
-      const qb = { andWhere, where, orderBy, take, getMany, getCount };
+    it('busca por nombre sobre valores legacy decodificados y tolera mayusculas', async () => {
+      setupRunInTenantSchema({
+        find: jest.fn().mockResolvedValue([
+          buildUserEntity({
+            firstName: encryptLegacyValue('Liliana'),
+            lastName: encryptLegacyValue('Ramirez'),
+            email: 'liliana@empresa.com',
+          }),
+        ]),
+      });
 
-      const createQueryBuilder = jest.fn().mockReturnValue(qb);
-      setupRunInTenantSchema({ createQueryBuilder });
+      const result = await service.findAll({ search: 'liliana', limit: 10 });
 
-      const result = await service.findAll({ search: 'ana', limit: 10 });
-
-      expect(createQueryBuilder).toHaveBeenCalledWith(expect.anything(), 'user');
-      expect(andWhere).toHaveBeenCalledWith(
-        '(user.email ILIKE :search OR user.firstName ILIKE :search OR user.lastName ILIKE :search OR user.jobTitle ILIKE :search)',
-        { search: '%ana%' },
-      );
       expect(result.data).toHaveLength(1);
       expect(result.meta.total).toBe(1);
+      expect(result.data[0]?.firstName).toBe('Liliana');
     });
 
     it('combina search con filtros de status y role', async () => {
-      const getMany = jest.fn().mockResolvedValue([]);
-      const getCount = jest.fn().mockResolvedValue(0);
-      const andWhere = jest.fn().mockReturnThis();
-      const where = jest.fn().mockReturnThis();
-      const orderBy = jest.fn().mockReturnThis();
-      const take = jest.fn().mockReturnThis();
-      const qb = { andWhere, where, orderBy, take, getMany, getCount };
+      const find = jest.fn().mockResolvedValue([
+        buildUserEntity({
+          role: UserRole.SUPPORT,
+          status: UserStatus.ACTIVE,
+          jobTitle: 'Soporte tecnico',
+        }),
+        buildUserEntity({
+          id: 'usr-00000000-0000-4000-a000-000000000099',
+          role: UserRole.NOC,
+          status: UserStatus.ACTIVE,
+          jobTitle: 'NOC',
+        }),
+      ]);
 
-      const createQueryBuilder = jest.fn().mockReturnValue(qb);
-      setupRunInTenantSchema({ createQueryBuilder });
+      setupRunInTenantSchema({ find });
 
       const result = await service.findAll({
         search: 'soporte',
@@ -286,10 +286,30 @@ describe('UsersService', () => {
         role: UserRole.SUPPORT,
       });
 
-      expect(andWhere).toHaveBeenCalledWith('user.status = :status', { status: UserStatus.ACTIVE });
-      expect(andWhere).toHaveBeenCalledWith('user.role = :role', { role: UserRole.SUPPORT });
-      expect(result.data).toEqual([]);
-      expect(result.meta.total).toBe(0);
+      expect(find).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          where: expect.objectContaining({
+            status: UserStatus.ACTIVE,
+            role: UserRole.SUPPORT,
+          }),
+        }),
+      );
+      expect(result.data).toHaveLength(1);
+      expect(result.meta.total).toBe(1);
+    });
+
+    it('tolera coincidencias aproximadas en nombres', async () => {
+      setupRunInTenantSchema({
+        find: jest.fn().mockResolvedValue([
+          buildUserEntity({ firstName: 'Liliana', lastName: 'Gomez' }),
+        ]),
+      });
+
+      const result = await service.findAll({ search: 'lilina', limit: 10 });
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]?.firstName).toBe('Liliana');
     });
   });
 

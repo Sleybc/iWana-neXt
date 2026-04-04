@@ -39,12 +39,12 @@ function resolveIconTone(iconBg: string, iconColor: string) {
 function resolveTrendClasses(direction: TrendBadge['direction']): string {
   switch (direction) {
     case 'up':
-      return 'bg-success-50 text-success-600 dark:bg-success-500/15 dark:text-success-400';
+      return 'bg-success-50 text-success-700 dark:bg-success-500/15 dark:text-success-400';
     case 'down':
-      return 'bg-error-50 text-error-600 dark:bg-error-500/15 dark:text-error-400';
+      return 'bg-error-50 text-error-700 dark:bg-error-500/15 dark:text-error-400';
     case 'neutral':
     default:
-      return 'bg-gray-100 text-gray-600 dark:bg-white/[0.03] dark:text-gray-400';
+      return 'bg-gray-100 text-gray-700 dark:bg-white/[0.03] dark:text-gray-300';
   }
 }
 
@@ -94,7 +94,7 @@ export function MetricCard({
             >
               {trendArrow(trend.direction)} {trend.value.toFixed(2)}%
               {trend.label && (
-                <span className="text-gray-400 dark:text-gray-500 ml-1">{trend.label}</span>
+                <span className="ml-1 text-current/80">{trend.label}</span>
               )}
             </span>
           </div>

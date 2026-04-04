@@ -57,6 +57,12 @@ export class ExpedienteRecord {
   @Column({ type: 'uuid', name: 'assigned_to', nullable: true })
   assignedTo?: string | null;
 
+  @Column({ type: 'uuid', name: 'current_responsible_user_id', nullable: true })
+  currentResponsibleUserId: string | null;
+
+  @Column({ type: 'timestamptz', name: 'current_responsible_assigned_at', nullable: true })
+  currentResponsibleAssignedAt: Date | null;
+
   @Column({ type: 'boolean', name: 'data_consent_revoked', default: false })
   dataConsentRevoked?: boolean;
 

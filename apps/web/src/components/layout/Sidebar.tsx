@@ -243,7 +243,7 @@ export const Sidebar = ({
               {/* Etiqueta del grupo — oculta en modo colapsado */}
               <p
                 className={cn(
-                  'uppercase text-xs font-semibold text-gray-400 dark:text-gray-500 tracking-wider px-4 mb-2 mt-6',
+                  'uppercase text-xs font-semibold text-gray-600 dark:text-gray-300 tracking-wider px-4 mb-2 mt-6',
                   // Primera sección no necesita margen top adicional
                   groupIndex === 0 && 'mt-0',
                   // Ocultar etiqueta cuando el sidebar está colapsado
