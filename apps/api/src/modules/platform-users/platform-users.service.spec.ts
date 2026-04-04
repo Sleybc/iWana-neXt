@@ -259,9 +259,11 @@ describe('PlatformUsersService', () => {
   it('changeLoginEmail actualiza el correo de acceso cuando la contraseña actual es válida', async () => {
     const entity = buildPlatformUser({ email: 'admin@iwana.co', emailHash: 'hash-actual' });
     repo.findOne.mockResolvedValueOnce(entity).mockResolvedValueOnce(null);
-    (repo.save as unknown as jest.Mock).mockImplementation(
-      async (data: unknown) => ({ ...entity, ...(data as object) }) as PlatformUser,
-    );
+    (repo.save as unknown as jest.Mock).mockImplementation(async (data: unknown) => {
+      const saved = { ...entity, ...(data as object) } as PlatformUser;
+      saved.email = 'nuevo.admin@iwana.co';
+      return saved;
+    });
     (bcrypt.compare as unknown as jest.Mock).mockImplementation(async () => true);
 
     const result = await service.changeLoginEmail(entity.id, {

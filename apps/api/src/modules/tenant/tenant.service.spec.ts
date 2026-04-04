@@ -324,7 +324,7 @@ describe('TenantService', () => {
     });
 
     it('usa el cache por id cuando el tenant ya fue resuelto previamente', async () => {
-      redis.get.mockResolvedValueOnce(JSON.stringify(buildTenant()));
+      redis.get.mockResolvedValueOnce(JSON.stringify(buildTenant({ status: TenantStatus.ACTIVE })));
 
       const result = await service.findOne('tenant-uuid-001');
 
@@ -543,9 +543,9 @@ describe('TenantService', () => {
     it('removeCoverageNode lanza NotFound si no existe para el tenant (aislamiento)', async () => {
       queryRunner.manager.findOne.mockResolvedValue(null);
 
-      await expect(service.removeCoverageNode(tenantId, schemaName, 'node-x', 'actor-1')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.removeCoverageNode(tenantId, schemaName, 'node-x', 'actor-1'),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('removeCoverageZone marca deletedAt, desactiva la zona y retorna cobertura actualizada', async () => {
