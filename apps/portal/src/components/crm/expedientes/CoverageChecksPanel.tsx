@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input } from '@iwana/ui';
-import { Loader2, MapPin, MapPinCheck, MapPinX } from 'lucide-react';
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@iwana/ui';
+import { CircleAlert, Loader2, MapPin, MapPinCheck, MapPinX, Radar } from 'lucide-react';
 import { crmApi, type CoverageCheckRecord, type CreateCoverageCheckDto } from '@/lib/api-client';
 
 const RESULT_OPTIONS = [
@@ -141,9 +141,19 @@ export function CoverageChecksPanel({ expedienteId }: CoverageChecksPanelProps) 
       </div>
 
       {showForm && (
-        <Card>
+        <Card className="rounded-[28px] border border-white/70 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
           <CardHeader>
-            <CardTitle className="text-base">Nueva verificación de cobertura</CardTitle>
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300">
+                <Radar className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                  Factibilidad técnica
+                </p>
+                <CardTitle className="text-base">Nueva verificación de cobertura</CardTitle>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
@@ -156,24 +166,19 @@ export function CoverageChecksPanel({ expedienteId }: CoverageChecksPanelProps) 
                 required
               />
               <div>
-                <label
-                  htmlFor="result"
-                  className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200"
-                >
-                  Resultado
-                </label>
-                <select
+                <Select
                   id="result"
+                  label="Resultado"
                   value={formData.result}
                   onChange={(e) => setFormData({ ...formData, result: e.target.value })}
-                  className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:focus:border-iwana-primary-300"
+                  className="h-11"
                 >
                   {RESULT_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
@@ -230,7 +235,12 @@ export function CoverageChecksPanel({ expedienteId }: CoverageChecksPanelProps) 
                 placeholder="Distancia desde el nodo"
               />
             </div>
-            {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+            {error && (
+              <div className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+                <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+                <p>{error}</p>
+              </div>
+            )}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>
                 Cancelar
@@ -253,7 +263,7 @@ export function CoverageChecksPanel({ expedienteId }: CoverageChecksPanelProps) 
           <Loader2 className="h-6 w-6 animate-spin text-iwana-primary" aria-hidden="true" />
         </div>
       ) : checks.length === 0 ? (
-        <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-8 text-center dark:border-dark-border dark:bg-dark-surface-3">
+        <div className="rounded-[24px] border border-gray-200 bg-[#f8faf5] px-4 py-8 text-center shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3">
           <MapPin className="mx-auto h-8 w-8 text-gray-400" aria-hidden="true" />
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
             No hay verificaciones de cobertura registradas.
@@ -266,12 +276,12 @@ export function CoverageChecksPanel({ expedienteId }: CoverageChecksPanelProps) 
             return (
               <div
                 key={check.id}
-                className="rounded-xl border border-gray-200 bg-white px-4 py-4 dark:border-dark-border dark:bg-dark-surface-3"
+                className="rounded-[24px] border border-gray-200 bg-white px-4 py-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3">
                     <div
-                      className={`mt-0.5 flex h-10 w-10 items-center justify-center rounded-lg ${
+                      className={`mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl ${
                         check.result === 'VIABLE' || check.result === 'VIABLE_COMERCIALMENTE'
                           ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
                           : check.result === 'CONDITIONAL' || check.result === 'CONDICIONAL'

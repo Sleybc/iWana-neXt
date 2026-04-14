@@ -117,3 +117,16 @@
 - Resultado esperado:
   - En desktop, la página aprovecha el ancho útil para mostrar datos personales en una columna principal y alertas/cambio de contraseña en una columna secundaria.
   - En tablet y móvil, el layout colapsa nuevamente a una sola columna sin romper legibilidad.
+
+## 10. Actualización 2026-04-13 — Corrección runtime en login (`useAuth` fuera de provider)
+
+- Causa raíz corregida:
+  - El layout raíz de `apps/portal` envolvía el árbol con `Suspense fallback={children}` por fuera de `AuthProvider`.
+  - Cuando el fallback se renderizaba, `LoginForm` podía montarse sin contexto y lanzar: `useAuth debe usarse dentro de AuthProvider`.
+- Ajuste implementado en `apps/portal`:
+  - `src/app/layout.tsx`: se eliminó `Suspense` en el root layout y se mantuvo el árbol siempre dentro de `AuthProvider` junto a `TenantFavicon`.
+- Resultado esperado:
+  - La ruta `/auth/login` deja de fallar por contexto inexistente y `LoginForm` siempre consume `useAuth` dentro de su provider.
+- Evidencia de validación:
+  - `pnpm --filter @iwana/portal lint` ✅
+  - `pnpm --filter @iwana/portal typecheck` ❌ (fallos preexistentes no relacionados en `src/app/dashboard/crm/expedientes/[id]/page.tsx` y `src/components/crm/expedientes/SeguimientoTab.tsx`).

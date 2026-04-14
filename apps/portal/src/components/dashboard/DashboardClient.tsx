@@ -37,7 +37,7 @@ function MetricsSkeleton() {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-busy="true">
       {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="h-28 rounded-xl bg-gray-100 dark:bg-dark-surface-3 animate-pulse" />
+        <div key={i} className="h-28 animate-pulse rounded-[24px] bg-gray-100 shadow-iwana-soft dark:bg-dark-surface-3" />
       ))}
     </div>
   );
@@ -49,9 +49,12 @@ function RoleRestrictedView() {
     <div className="flex flex-col flex-1">
       <PageHeader title="Panel empresarial" subtitle="Vista según tus permisos de acceso" />
       <main className="flex-1 p-6">
-        <div className="rounded-xl border border-gray-200 bg-gray-50 p-8 text-center dark:border-dark-border-2 dark:bg-dark-surface-3">
-          <Activity className="w-10 h-10 text-gray-400 mx-auto mb-3" aria-hidden="true" />
-          <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
+        <div className="rounded-[28px] border border-white/70 bg-[linear-gradient(135deg,rgba(248,250,245,0.96),rgba(255,255,255,0.92))] p-8 text-center shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-3">
+          <Activity className="mx-auto mb-3 h-10 w-10 text-gray-400" aria-hidden="true" />
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+            Rol en expansión
+          </p>
+          <p className="mt-2 text-sm font-medium text-gray-700 dark:text-gray-300">
             Panel en preparación
           </p>
           <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
@@ -107,7 +110,7 @@ export function DashboardClient() {
       <div className="flex flex-col flex-1">
         <PageHeader title="Panel empresarial" subtitle="Cargando datos de tu empresa..." />
         <main className="flex-1 p-6 space-y-6">
-          <div className="h-40 rounded-xl bg-gray-100 dark:bg-dark-surface-3 animate-pulse" />
+          <div className="h-40 animate-pulse rounded-[28px] bg-gray-100 shadow-iwana-soft dark:bg-dark-surface-3" />
           <MetricsSkeleton />
         </main>
       </div>
@@ -120,18 +123,15 @@ export function DashboardClient() {
       <div className="flex flex-col flex-1">
         <PageHeader title="Panel empresarial" subtitle="Error al cargar el dashboard" />
         <main className="flex-1 p-6">
-          <div className="rounded-xl border border-red-200 bg-red-50 p-6 dark:border-red-800 dark:bg-red-900/20">
+          <div className="rounded-[28px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] p-6 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20">
             <div className="flex items-start gap-3">
-              <AlertTriangle
-                className="w-5 h-5 text-red-600 dark:text-red-400 mt-0.5 shrink-0"
-                aria-hidden="true"
-              />
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-400" aria-hidden="true" />
               <div>
                 <p className="text-sm font-medium text-red-800 dark:text-red-300">{error}</p>
                 <button
                   type="button"
                   onClick={() => void loadSummary()}
-                  className="text-sm text-red-700 dark:text-red-400 underline mt-2 hover:no-underline"
+                  className="mt-2 text-sm font-medium text-red-700 underline decoration-red-300 underline-offset-4 hover:no-underline dark:text-red-400"
                 >
                   Reintentar
                 </button>

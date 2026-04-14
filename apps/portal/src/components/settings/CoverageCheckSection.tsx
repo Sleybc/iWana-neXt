@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { CheckCircle2, CircleAlert, MapPinned } from 'lucide-react';
 import { Button, Input } from '@iwana/ui';
 import type { CoverageCheckResponse } from '@/lib/api-client';
 
@@ -52,6 +53,22 @@ export function CoverageCheckSection({ canEdit, onCheck }: CoverageCheckSectionP
 
   return (
     <section className="space-y-4" data-testid="coverage-check-section">
+      <div className="rounded-[24px] border border-gray-100 bg-[#f8faf5] p-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300">
+            <MapPinned className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+              Factibilidad inicial
+            </p>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+              Usa dirección y coordenadas opcionales para una validación comercial rápida antes del flujo técnico detallado.
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_180px_180px_auto]">
         <Input
           id="coverage-address"
@@ -86,27 +103,35 @@ export function CoverageCheckSection({ canEdit, onCheck }: CoverageCheckSectionP
       </div>
 
       {error && (
-        <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">
-          {error}
-        </p>
+        <div className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+          <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+          <p>{error}</p>
+        </div>
       )}
 
       {result && (
-        <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 text-sm dark:border-dark-border dark:bg-dark-surface-3">
-          <p className="font-semibold text-gray-900 dark:text-white">
+        <div className="rounded-[24px] border border-gray-100 bg-gray-50 p-4 text-sm shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+              <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-gray-900 dark:text-white">
             {result.available ? 'Cobertura disponible' : 'Cobertura no disponible'}
-          </p>
-          <p className="mt-1 text-gray-600 dark:text-gray-300">{result.reason}</p>
+              </p>
+              <p className="mt-1 text-gray-600 dark:text-gray-300">{result.reason}</p>
 
-          {result.matches.length > 0 && (
-            <ul className="mt-3 space-y-1 text-xs text-gray-600 dark:text-gray-300">
-              {result.matches.map((match) => (
-                <li key={match.id}>
-                  {match.type}: {match.name}
-                </li>
-              ))}
-            </ul>
-          )}
+              {result.matches.length > 0 && (
+                <ul className="mt-3 space-y-1 text-xs text-gray-600 dark:text-gray-300">
+                  {result.matches.map((match) => (
+                    <li key={match.id}>
+                      {match.type}: {match.name}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </section>

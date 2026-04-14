@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { CheckCircle2, CircleAlert, PackagePlus } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -18,6 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
+  Select,
   cn,
 } from '@iwana/ui';
 import {
@@ -180,9 +182,19 @@ export function AdditionalProductsManager({ canEdit }: AdditionalProductsManager
   );
 
   return (
-    <Card>
+    <Card className="rounded-[28px] border border-white/70 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-lg font-semibold">Productos Adicionales</CardTitle>
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300">
+            <PackagePlus className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+              Venta consultiva
+            </p>
+            <CardTitle className="mt-1 text-lg font-semibold">Productos Adicionales</CardTitle>
+          </div>
+        </div>
         {canEdit && (
           <Button onClick={openCreateDialog} size="sm">
             Agregar producto
@@ -191,13 +203,20 @@ export function AdditionalProductsManager({ canEdit }: AdditionalProductsManager
       </CardHeader>
       <CardContent>
         {loading ? (
-          <p className="text-sm text-gray-500">Cargando productos...</p>
+          <div className="h-28 animate-pulse rounded-[24px] bg-gray-100 shadow-iwana-soft dark:bg-dark-surface-3" />
         ) : error ? (
-          <p className="text-sm text-red-600">{error}</p>
+          <div className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+            <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+            <p>{error}</p>
+          </div>
         ) : products.length === 0 ? (
-          <p className="text-sm text-gray-500">
-            No hay productos adicionales. Crea uno para empezar.
-          </p>
+          <div className="flex items-start gap-3 rounded-[24px] border border-emerald-200/60 bg-[linear-gradient(135deg,rgba(248,250,245,0.96),rgba(255,255,255,0.94))] px-4 py-4 text-sm text-gray-600 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+            <div>
+              <p className="font-medium text-gray-800 dark:text-white">Catálogo listo para crecer</p>
+              <p className="mt-1">No hay productos adicionales. Crea uno para empezar.</p>
+            </div>
+          </div>
         ) : (
           <div className="space-y-6">
             {CATEGORY_ORDER.map((category) => {
@@ -209,9 +228,9 @@ export function AdditionalProductsManager({ canEdit }: AdditionalProductsManager
                   <h3 className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
                     {ADDITIONAL_PRODUCT_CATEGORY_LABELS[category]}
                   </h3>
-                  <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-dark-border">
+                  <div className="overflow-x-auto rounded-[24px] border border-gray-200 dark:border-dark-border">
                     <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-                      <thead className="bg-gray-50 dark:bg-dark-surface-2">
+                      <thead className="bg-[#f6f8f4] dark:bg-dark-surface-2">
                         <tr>
                           <th className={tableHeadClass}>Nombre</th>
                           <th className={tableHeadClass}>Orden</th>
@@ -293,16 +312,13 @@ export function AdditionalProductsManager({ canEdit }: AdditionalProductsManager
               <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200">
                 Categoría
               </label>
-              <select
-                {...register('category')}
-                className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200"
-              >
+              <Select {...register('category')} className="h-11">
                 {CATEGORY_ORDER.map((cat) => (
                   <option key={cat} value={cat}>
                     {ADDITIONAL_PRODUCT_CATEGORY_LABELS[cat]}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div>
@@ -329,7 +345,12 @@ export function AdditionalProductsManager({ canEdit }: AdditionalProductsManager
               </label>
             </div>
 
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && (
+              <div className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+                <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+                <p>{error}</p>
+              </div>
+            )}
 
             <div className="flex justify-end gap-2">
               <DialogClose asChild>

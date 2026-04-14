@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { CheckCircle2, ShieldCheck } from 'lucide-react';
 import { Button, Card, CardContent, Input } from '@iwana/ui';
 import { ApiError, authApi } from '@/lib/api-client';
 
@@ -60,10 +61,23 @@ export function ChangePasswordForm() {
 
   return (
     <Card>
-      <CardContent className="p-6">
-        <h2 className="mb-5 text-base font-semibold text-gray-900 dark:text-white">
-          Cambiar contraseña
-        </h2>
+      <CardContent className="p-6 md:p-7">
+        <div className="mb-6 flex items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[20px] bg-iwana-primary/10 text-iwana-primary dark:bg-iwana-primary/20 dark:text-iwana-primary-300">
+            <ShieldCheck className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+              Seguridad de acceso
+            </p>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Cambiar contraseña
+            </h2>
+            <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
+              Refuerza la cuenta con una clave robusta y diferente a la usada en otros servicios.
+            </p>
+          </div>
+        </div>
 
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
           <Input
@@ -94,15 +108,16 @@ export function ChangePasswordForm() {
           />
 
           {serverError && (
-            <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
+            <div className="rounded-2xl border border-red-200 bg-red-50/90 px-4 py-3 text-sm text-red-700 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-300">
               {serverError}
-            </p>
+            </div>
           )}
 
           {success && (
-            <p className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-400">
+            <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-300">
+              <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
               Contraseña actualizada correctamente.
-            </p>
+            </div>
           )}
 
           <div className="flex justify-end pt-2">

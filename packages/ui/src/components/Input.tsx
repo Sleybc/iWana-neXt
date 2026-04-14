@@ -24,7 +24,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="flex flex-col gap-1.5 w-full">
         {label && (
-          <label htmlFor={inputId} className="text-sm font-medium text-[#374151]">
+          <label htmlFor={inputId} className="text-sm font-medium text-gray-700 dark:text-gray-300">
             {label}
           </label>
         )}
@@ -34,14 +34,13 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             type={inputType}
             ref={ref}
             className={cn(
-              'flex h-10 w-full rounded-xl border bg-white px-3 py-2 text-sm text-[#111827]',
-              'placeholder:text-[#9CA3AF]',
+              'flex h-10 w-full rounded-xl border bg-white px-3 py-2 text-sm text-gray-900 dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-500',
               'transition-colors duration-200',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#17163A] focus-visible:border-transparent',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:border-transparent dark:focus-visible:ring-iwana-primary-300',
               'disabled:cursor-not-allowed disabled:opacity-50',
               error
-                ? 'border-[#EF4444] focus-visible:ring-[#EF4444]'
-                : 'border-[#D1D5DB] hover:border-[#9CA3AF]',
+                ? 'border-red-500 dark:border-red-500 focus-visible:ring-red-500'
+                : 'border-gray-300 dark:border-dark-border-2 hover:border-gray-400 dark:hover:border-gray-500',
               isPassword && 'pr-10',
               className,
             )}
@@ -54,7 +53,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             <button
               type="button"
               onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280] hover:text-[#374151] focus:outline-none"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 focus:outline-none"
               aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
             >
               {showPassword ? (
@@ -115,7 +114,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           </p>
         )}
         {helperText && !error && (
-          <p id={`${inputId}-helper`} className="text-xs text-[#6B7280]">
+          <p id={`${inputId}-helper`} className="text-xs text-gray-500 dark:text-gray-400">
             {helperText}
           </p>
         )}

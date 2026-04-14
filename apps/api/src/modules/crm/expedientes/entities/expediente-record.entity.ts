@@ -135,6 +135,9 @@ export class ExpedienteRecord {
   @Column({ type: 'varchar', length: 120, name: 'department', nullable: true })
   department: string | null;
 
+  @Column({ type: 'varchar', length: 12, name: 'postal_code', nullable: true })
+  postalCode: string | null;
+
   @Column({ type: 'smallint', name: 'stratum', nullable: true })
   stratum: number | null;
 
@@ -221,6 +224,9 @@ export class ExpedienteRecord {
 
   @Column({ type: 'varchar', length: 30, name: 'legal_compliance_status', nullable: true })
   legalComplianceStatus: string | null;
+
+  @Column({ type: 'jsonb', name: 'document_supports', nullable: true })
+  documentSupports?: Record<string, unknown> | null;
 
   // ===== SECCIÓN 7: FACTURACIÓN Y PAGO =====
   @Column({ type: 'varchar', length: 60, name: 'payment_method', nullable: true })

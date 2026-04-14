@@ -2,6 +2,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertTriangle, CheckCircle2, ShieldAlert } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { UsersTable } from './UsersTable';
 import { CreateUserModal } from './CreateUserModal';
@@ -246,10 +247,20 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
       <div className="flex flex-col flex-1">
         <PageHeader title="Usuarios" subtitle="Acceso restringido" />
         <main className="flex-1 p-6">
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 dark:border-amber-800 dark:bg-amber-900/20">
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-              Solo los administradores pueden gestionar usuarios internos.
-            </p>
+          <div className="rounded-[24px] border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(254,243,199,0.72))] p-6 shadow-iwana-soft dark:border-amber-800 dark:bg-amber-900/20">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                <ShieldAlert className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700 dark:text-amber-300">
+                  Permisos insuficientes
+                </p>
+                <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+                  Solo los administradores pueden gestionar usuarios internos.
+                </p>
+              </div>
+            </div>
           </div>
         </main>
       </div>
@@ -294,36 +305,38 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
 
       <main className="flex-1 p-6 space-y-4">
         {actionSuccess && !actionError && !tempPassword && (
-          <div className="rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-900/20">
-            <p className="text-sm font-medium text-green-800 dark:text-green-300">
-              {actionSuccess}
-            </p>
+          <div className="rounded-[24px] border border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.98),rgba(209,250,229,0.82))] p-4 shadow-iwana-soft dark:border-emerald-800 dark:bg-emerald-900/20">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-300">
+                  Operación completada
+                </p>
+                <p className="text-sm font-medium text-emerald-900 dark:text-emerald-200">
+                  {actionSuccess}
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
         {error && (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
+          <div className="rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] p-4 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20">
             <div className="flex items-start gap-3">
-              <svg
-                className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 shrink-0"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                />
-              </svg>
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
+                <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+              </div>
               <div className="flex-1">
-                <p className="text-sm font-medium text-red-800 dark:text-red-300">{error}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-red-700 dark:text-red-300">
+                  Incidente en la carga
+                </p>
+                <p className="text-sm font-medium text-red-900 dark:text-red-200">{error}</p>
                 <button
                   type="button"
                   onClick={() => void loadUsers(filters)}
-                  className="text-sm text-red-700 dark:text-red-400 underline mt-1 hover:no-underline"
+                  className="mt-2 text-sm font-medium text-red-700 underline decoration-red-300 underline-offset-4 hover:no-underline dark:text-red-400"
                 >
                   Reintentar
                 </button>
@@ -366,10 +379,10 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
           aria-labelledby="reset-success-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
         >
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl dark:bg-dark-surface-2">
+          <div className="w-full max-w-sm rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-iwana-lg dark:border-dark-border dark:bg-dark-surface-2">
             <h2
               id="reset-success-title"
-              className="text-base font-semibold text-gray-900 dark:text-white"
+              className="text-base font-semibold text-iwana-primary dark:text-white"
             >
               Contraseña temporal generada
             </h2>
@@ -378,14 +391,14 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
               <span className="font-medium text-gray-900 dark:text-white">{newUserEmail}</span>.
               Deberá cambiarla en el próximo inicio de sesión.
             </p>
-            <div className="mt-4 flex items-center gap-2 rounded-xl bg-gray-50 px-4 py-3 dark:bg-dark-surface-3">
+            <div className="mt-4 flex items-center gap-2 rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
               <code className="flex-1 break-all font-mono text-sm text-gray-900 dark:text-white select-all">
                 {tempPassword}
               </code>
               <button
                 type="button"
                 onClick={() => void navigator.clipboard.writeText(tempPassword)}
-                className="shrink-0 rounded-lg p-1.5 text-gray-500 hover:bg-gray-200 dark:hover:bg-dark-surface-4 transition-colors"
+                className="shrink-0 rounded-xl p-1.5 text-gray-500 transition-colors hover:bg-white dark:hover:bg-dark-surface-4"
                 aria-label="Copiar contraseña temporal"
                 title="Copiar"
               >
@@ -408,7 +421,7 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
             <button
               type="button"
               onClick={dismissTempPassword}
-              className="mt-4 w-full rounded-xl bg-iwana-primary px-4 py-2 text-sm font-medium text-white hover:bg-iwana-primary-600 transition-colors"
+              className="mt-4 w-full rounded-2xl bg-iwana-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-iwana-primary-600"
             >
               Entendido
             </button>

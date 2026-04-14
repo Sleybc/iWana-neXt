@@ -34,10 +34,10 @@ function mapError(error: unknown): string {
 function SettingsSkeleton() {
   return (
     <div className="space-y-6" aria-busy="true">
-      <div className="h-28 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3" />
-      <div className="h-80 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3" />
-      <div className="h-72 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3" />
-      <div className="h-64 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3" />
+      <div className="h-32 animate-pulse rounded-[24px] bg-gray-100 shadow-iwana-soft dark:bg-dark-surface-3" />
+      <div className="h-20 animate-pulse rounded-[24px] bg-gray-100 shadow-iwana-soft dark:bg-dark-surface-3" />
+      <div className="h-80 animate-pulse rounded-[24px] bg-gray-100 shadow-iwana-soft dark:bg-dark-surface-3" />
+      <div className="h-72 animate-pulse rounded-[24px] bg-gray-100 shadow-iwana-soft dark:bg-dark-surface-3" />
     </div>
   );
 }
@@ -142,17 +142,25 @@ export function SettingsClient() {
       <div className="flex flex-1 flex-col">
         <PageHeader title="Configuración empresarial" subtitle="Error al cargar la vista" />
         <main className="flex-1 p-6">
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-6 dark:border-red-800 dark:bg-red-900/20">
+          <div className="rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] p-6 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20">
             <div className="flex items-start gap-3">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
+                <AlertTriangle className="h-5 w-5 shrink-0" />
+              </div>
               <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-red-700 dark:text-red-300">
+                  Vista temporalmente no disponible
+                </p>
                 <p className="text-sm font-medium text-red-800 dark:text-red-300">
                   {error ?? 'No se pudo cargar la configuración empresarial.'}
+                </p>
+                <p className="mt-1 text-sm text-red-700/80 dark:text-red-200/80">
+                  Reintenta para recuperar el perfil del tenant, sus parámetros operativos y la política base de seguridad.
                 </p>
                 <button
                   type="button"
                   onClick={() => void loadSettings()}
-                  className="mt-2 text-sm text-red-700 underline hover:no-underline dark:text-red-400"
+                  className="mt-2 text-sm font-medium text-red-700 underline decoration-red-300 underline-offset-4 hover:no-underline dark:text-red-400"
                 >
                   Reintentar
                 </button>
@@ -172,7 +180,16 @@ export function SettingsClient() {
       />
 
       <main className="flex-1 p-6">
-        <div className="mx-auto w-full max-w-7xl space-y-6">
+        <div className="w-full space-y-6">
+          <div className="rounded-[24px] border border-white/70 bg-[linear-gradient(135deg,rgba(248,250,245,0.96),rgba(255,255,255,0.92))] px-5 py-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2/90">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+              Centro de control
+            </p>
+            <p className="mt-1 max-w-3xl text-sm text-gray-600 dark:text-gray-400">
+              Aquí se consolidan identidad comercial, parámetros operativos, seguridad base y branding del tenant autenticado.
+            </p>
+          </div>
+
           <SettingsOverviewPanel
             profile={profile}
             settings={settings}

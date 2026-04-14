@@ -17,7 +17,7 @@ const ACTIVE_ICON = L.icon({
 
 const INACTIVE_ICON = L.divIcon({
   className: 'coverage-marker-inactive',
-  html: '<span style="display:block;width:18px;height:18px;border-radius:9999px;background:#9ca3af;border:2px solid #4b5563;"></span>',
+  html: '<span style="display:block;width:18px;height:18px;border-radius:9999px;background:#a5c330;border:2px solid #17163a;opacity:0.6;"></span>',
   iconSize: [18, 18],
   iconAnchor: [9, 9],
 });
@@ -187,9 +187,31 @@ export default function CoverageMap({
 
   return (
     <div
-      className="overflow-hidden rounded-xl border border-gray-200 dark:border-dark-border"
+      className="overflow-hidden rounded-[24px] border border-white/70 bg-white/95 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95"
       data-testid="coverage-map"
     >
+      <div className="flex flex-col gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-border sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+            Cobertura visual
+          </p>
+          <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">Mapa comercial</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {readonly
+              ? 'Vista de consulta para revisar nodos y zonas configuradas.'
+              : 'Haz clic sobre el mapa para proponer un nuevo nodo comercial.'}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2 text-xs font-semibold">
+          <span className="rounded-full border border-gray-200 bg-[#f8faf5] px-3 py-1 text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
+            {nodes.length} nodo{nodes.length !== 1 ? 's' : ''}
+          </span>
+          <span className="rounded-full border border-gray-200 bg-[#f8faf5] px-3 py-1 text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
+            {zones.length} zona{zones.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+      </div>
       <div ref={containerRef} className="h-[400px] w-full" />
     </div>
   );

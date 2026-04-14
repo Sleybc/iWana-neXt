@@ -1,7 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import * as crypto from 'crypto';
+import { access, mkdir, writeFile } from 'node:fs/promises';
+import { extname, join, resolve } from 'node:path';
 import { DataSource, In, Like } from 'typeorm';
 import { AuditLog, PlatformUser, runInTenantSchema, TenantContext, User } from '@iwana/db';
 import {
@@ -28,6 +30,17 @@ import { TransitionStatusDto } from './dto/transition-status.dto';
 import { CreateContactAttemptDto } from './dto/create-contact-attempt.dto';
 import { CreateConsentDto, CONSENT_LEGAL_VERSION } from './dto/create-consent.dto';
 import { CreateCoverageCheckDto } from './dto/create-coverage-check.dto';
+import { OperationalResponsibilityHistory } from '../responsibilities/entities/operational-responsibility-history.entity';
+import {
+  DOCUMENT_SUPPORT_STATUS,
+  type DocumentSupportDefinition,
+  type DocumentSupportStatus,
+  type ExpedienteDocumentItemDto,
+  type ExpedienteDocumentSupportResponseDto,
+  getDocumentDefinitionsByPersonType,
+  type StoredDocumentSupportMap,
+  type StoredDocumentSupportVersion,
+} from './document-support.types';
 
 export interface ExpedienteTimelineActor {
   userId: string | null;
@@ -51,6 +64,13 @@ export interface ExpedienteOperationalMetadata {
   lastActivityAt: Date | null;
 }
 
+interface UploadedDocumentFile {
+  originalname: string;
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+}
+
 function hasActorIdentity(actor: ExpedienteTimelineActor | null | undefined): boolean {
   return Boolean(actor?.name?.trim() || actor?.userId);
 }
@@ -66,8 +86,79 @@ const SECTION_LABELS: Record<string, string> = {
   commercial_interest: 'Interés comercial',
   technical_feasibility: 'Viabilidad técnica',
   legal_consent: 'Consentimiento y validación',
+  document_support: 'Soportes documentales',
   billing: 'Facturación',
   installation: 'Instalación',
+};
+
+const SECTION_FIELD_LABELS: Record<string, string> = {
+  personType: 'Tipo de persona',
+  documentType: 'Tipo de documento',
+  documentNumberEncrypted: 'Documento',
+  firstName: 'Nombres',
+  lastName: 'Apellidos',
+  companyName: 'Razón social',
+  primaryContactName: 'Contacto principal',
+  primaryContactRole: 'Cargo del contacto',
+  fullName: 'Nombre completo',
+  phonePrimaryEncrypted: 'Teléfono principal',
+  phoneSecondaryEncrypted: 'Teléfono secundario',
+  emailPrimaryEncrypted: 'Correo principal',
+  emailSecondary: 'Correo secundario',
+  altContactName: 'Nombre contacto alterno',
+  altContactPhoneEncrypted: 'Teléfono alterno',
+  contactPreference: 'Preferencia de contacto',
+  bestContactTime: 'Mejor horario',
+  address: 'Dirección',
+  municipality: 'Municipio',
+  department: 'Departamento',
+  postalCode: 'Código postal',
+  neighborhood: 'Barrio',
+  stratum: 'Estrato',
+  latitude: 'Latitud',
+  longitude: 'Longitud',
+  coordinatesSource: 'Fuente de coordenadas',
+  coordinatesConfidence: 'Confianza coordenadas',
+  accessReferences: 'Referencias de acceso',
+  zoneType: 'Tipo de zona',
+  acquisitionChannel: 'Canal de captación',
+  source: 'Fuente',
+  sourceDetail: 'Detalle de fuente',
+  interestedPlanId: 'Plan de interés',
+  additionalProductIds: 'Productos adicionales',
+  campaign: 'Campaña',
+  casePriority: 'Prioridad',
+  estimatedBudget: 'Presupuesto estimado',
+  commercialNotes: 'Notas comerciales',
+  coverageResult: 'Resultado de cobertura',
+  availableTechnology: 'Tecnología recomendada',
+  estimatedDistanceM: 'Distancia estimada',
+  feasibility: 'Viabilidad técnica',
+  candidateTechnologies: 'Tecnologías candidatas',
+  technicalConfidence: 'Confianza técnica',
+  evaluationSource: 'Fuente de evaluación',
+  technicalObservations: 'Observaciones técnicas',
+  estimatedEquipment: 'Equipamiento estimado',
+  identityVerified: 'Verificación de identidad',
+  legalComplianceStatus: 'Autorización Habeas Data',
+  identity_document: 'Copia de documento de identidad',
+  utility_bill: 'Recibo de servicio público',
+  chamber_of_commerce: 'Cámara de comercio',
+  rut: 'RUT',
+  legal_representative_id: 'Documento del representante legal',
+  documentSupportStatus: 'Estado del soporte',
+  paymentMethod: 'Método de pago',
+  billingCycle: 'Ciclo de facturación',
+  fiscalName: 'Nombre fiscal',
+  fiscalDocument: 'Documento fiscal',
+  fiscalAddress: 'Dirección fiscal',
+  rutReference: 'Referencia RUT',
+  installationAddress: 'Dirección de instalación',
+  availabilityWindow: 'Ventana de disponibilidad',
+  siteContactName: 'Contacto en sitio',
+  siteContactPhoneEncrypted: 'Teléfono en sitio',
+  specialAccessNotes: 'Notas de acceso',
+  requiredMaterials: 'Materiales requeridos',
 };
 
 /**
@@ -77,6 +168,8 @@ const SECTION_LABELS: Record<string, string> = {
 @Injectable()
 export class ExpedienteService {
   private readonly encryptionKey: Buffer;
+  private readonly documentSupportDir: string;
+  private readonly logger = new Logger(ExpedienteService.name);
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
@@ -86,6 +179,168 @@ export class ExpedienteService {
   ) {
     const keyHex = this.configService.getOrThrow<string>('MFA_ENCRYPTION_KEY');
     this.encryptionKey = Buffer.from(keyHex, 'hex');
+    const configuredDocumentSupportDir = (
+      this.configService as ConfigService & { get?: (key: string) => string | undefined }
+    ).get?.('EXPEDIENTE_DOCUMENTS_DIR');
+    this.documentSupportDir =
+      configuredDocumentSupportDir?.trim() ||
+      resolve(process.cwd(), 'storage', 'expediente-document-supports');
+  }
+
+  async getDocumentSupports(
+    id: string,
+    personTypeOverride?: string | null,
+  ): Promise<ExpedienteDocumentSupportResponseDto> {
+    const expediente = await this.findById(id);
+    // Usar el override si se envía desde el frontend (cuando identificación no ha sido guardada aún)
+    const resolvedPersonType = personTypeOverride || expediente.personType;
+    return this.buildDocumentSupportResponse(id, resolvedPersonType, expediente.documentSupports);
+  }
+
+  async uploadDocumentSupport(
+    id: string,
+    documentKey: string,
+    file: UploadedDocumentFile,
+    actorUserId: string,
+  ): Promise<ExpedienteDocumentSupportResponseDto> {
+    const { schemaName } = TenantContext.getOrThrow();
+    const expediente = await this.findById(id);
+    const definitions = getDocumentDefinitionsByPersonType(expediente.personType);
+    const documentDefinition = this.requireDocumentDefinition(definitions, documentKey);
+    this.validateDocumentUpload(file);
+
+    const supports = this.getNormalizedDocumentSupports(expediente.documentSupports);
+    const actorName = await this.resolveActorName(schemaName, actorUserId);
+    const versionId = crypto.randomUUID();
+    const safeExtension = this.resolveSafeFileExtension(file.originalname, file.mimetype);
+    const storedFileName = `${versionId}${safeExtension}`;
+    const targetDirectory = join(this.documentSupportDir, schemaName, id, documentKey);
+    const targetPath = join(targetDirectory, storedFileName);
+
+    await mkdir(targetDirectory, { recursive: true });
+    await writeFile(targetPath, file.buffer);
+
+    const nextVersion: StoredDocumentSupportVersion = {
+      id: versionId,
+      fileName: this.sanitizeStoredFileName(file.originalname),
+      storedFileName,
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+      uploadedAt: new Date().toISOString(),
+      uploadedByUserId: actorUserId,
+      uploadedByName: actorName,
+      status: DOCUMENT_SUPPORT_STATUS.UPLOADED,
+      note: null,
+    };
+
+    supports[documentKey] = {
+      versions: [nextVersion, ...(supports[documentKey]?.versions ?? [])],
+    };
+
+    await this.persistDocumentSupports(id, schemaName, supports);
+
+    await this.auditService.log({
+      action: AuditAction.UPDATE,
+      entityType: 'ExpedienteRecord',
+      entityId: id,
+      userId: actorUserId,
+      newValue: {
+        section: 'document_support',
+        actorName,
+        changedFields: [documentDefinition.key],
+      },
+    });
+
+    await this.syncCompleteness(id, schemaName);
+
+    return this.buildDocumentSupportResponse(id, expediente.personType, supports);
+  }
+
+  async updateDocumentSupportStatus(
+    id: string,
+    documentKey: string,
+    versionId: string,
+    status: DocumentSupportStatus,
+    actorUserId: string,
+    note?: string | null,
+  ): Promise<ExpedienteDocumentSupportResponseDto> {
+    const { schemaName } = TenantContext.getOrThrow();
+    const expediente = await this.findById(id);
+    const definitions = getDocumentDefinitionsByPersonType(expediente.personType);
+    const documentDefinition = this.requireDocumentDefinition(definitions, documentKey);
+    const supports = this.getNormalizedDocumentSupports(expediente.documentSupports);
+    const versions = supports[documentKey]?.versions ?? [];
+    const versionIndex = versions.findIndex((version) => version.id === versionId);
+
+    if (versionIndex === -1) {
+      throw new NotFoundException('La versión documental solicitada no existe en este expediente.');
+    }
+
+    const actorName = await this.resolveActorName(schemaName, actorUserId);
+    const targetVersion = versions[versionIndex];
+
+    if (!targetVersion) {
+      throw new NotFoundException('La versión documental solicitada no existe en este expediente.');
+    }
+
+    versions[versionIndex] = {
+      ...targetVersion,
+      status,
+      note: this.normalizeOptionalText(note),
+    };
+
+    supports[documentKey] = { versions };
+
+    await this.persistDocumentSupports(id, schemaName, supports);
+
+    await this.auditService.log({
+      action: AuditAction.UPDATE,
+      entityType: 'ExpedienteRecord',
+      entityId: id,
+      userId: actorUserId,
+      newValue: {
+        section: 'document_support',
+        actorName,
+        changedFields: [documentDefinition.key, 'documentSupportStatus'],
+      },
+    });
+
+    await this.syncCompleteness(id, schemaName);
+
+    return this.buildDocumentSupportResponse(id, expediente.personType, supports);
+  }
+
+  async getDocumentSupportFile(
+    id: string,
+    documentKey: string,
+    versionId: string,
+  ): Promise<{ filePath: string; fileName: string; mimeType: string }> {
+    const expediente = await this.findById(id);
+    const definitions = getDocumentDefinitionsByPersonType(expediente.personType);
+    this.requireDocumentDefinition(definitions, documentKey);
+
+    const supports = this.getNormalizedDocumentSupports(expediente.documentSupports);
+    const version = (supports[documentKey]?.versions ?? []).find((item) => item.id === versionId);
+
+    if (!version) {
+      throw new NotFoundException('No se encontró el archivo solicitado para este expediente.');
+    }
+
+    const { schemaName } = TenantContext.getOrThrow();
+    const filePath = join(
+      this.documentSupportDir,
+      schemaName,
+      id,
+      documentKey,
+      version.storedFileName,
+    );
+    await access(filePath);
+
+    return {
+      filePath,
+      fileName: version.fileName,
+      mimeType: version.mimeType,
+    };
   }
 
   /**
@@ -112,6 +367,9 @@ export class ExpedienteService {
         assignedTo: null,
         dataConsentRevoked: false,
         statusChangedAt: now,
+        // El creador es el primer responsable del expediente
+        currentResponsibleUserId: actorUserId,
+        currentResponsibleAssignedAt: now,
         completenessCommercial: 0,
         completenessLegal: 0,
         completenessTechnical: 0,
@@ -119,7 +377,25 @@ export class ExpedienteService {
         checklistCompleted: false,
         createdBy: actorUserId,
       });
-      return qr.manager.save(ExpedienteRecord, entity);
+      const saved = await qr.manager.save(ExpedienteRecord, entity);
+
+      // Registrar la asignación inicial en el historial de responsabilidad
+      try {
+        const historyEntry = qr.manager.create(OperationalResponsibilityHistory, {
+          tenantId,
+          expedienteId: saved.id,
+          previousResponsibleUserId: null,
+          newResponsibleUserId: actorUserId,
+          changedBy: actorUserId,
+          changedAt: now,
+          notes: 'Asignación inicial al creador del expediente',
+        });
+        await qr.manager.save(OperationalResponsibilityHistory, historyEntry);
+      } catch {
+        // Si la tabla aún no existe (schema compat), no bloquear la creación
+      }
+
+      return saved;
     });
 
     await this.syncCompleteness(created.id, schemaName);
@@ -202,11 +478,14 @@ export class ExpedienteService {
     const hydratedData = await Promise.all(
       data.map(async (item) => {
         const completeness = await this.completenessCalculator.calculate(item.id);
+        const pipelineProgress = this.calculatePipelineProgress(completeness);
         Object.assign(item, {
           completenessCommercial: completeness.commercial,
           completenessLegal: completeness.legal,
           completenessTechnical: completeness.technical,
           completenessOperational: completeness.operational,
+          completenessOverall: completeness.overall,
+          pipelineProgress,
         });
         item.documentNumberEncrypted = null;
         item.phonePrimaryEncrypted = null;
@@ -276,7 +555,8 @@ export class ExpedienteService {
         entityType: 'ExpedienteRecord',
         entityId: id,
         userId: null,
-        newValue: { piiaAccess: 'documentNumber', section: 'identification' },
+        // Evento de lectura sensible: se audita, pero no debe tratarse como actualización de sección.
+        newValue: { piiaAccess: 'documentNumber', source: 'findById' },
       });
     }
 
@@ -297,6 +577,16 @@ export class ExpedienteService {
         this.decryptValue(entity.altContactPhoneEncrypted);
     }
 
+    const completeness = await this.completenessCalculator.calculate(id);
+    Object.assign(entity, {
+      completenessCommercial: completeness.commercial,
+      completenessLegal: completeness.legal,
+      completenessTechnical: completeness.technical,
+      completenessOperational: completeness.operational,
+      completenessOverall: completeness.overall,
+      pipelineProgress: this.calculatePipelineProgress(completeness),
+    });
+
     return entity;
   }
 
@@ -313,13 +603,21 @@ export class ExpedienteService {
     const entity = await this.findById(id);
 
     const updateData = this.buildSectionUpdate(dto.section, dto.data);
+    const effectiveUpdateData = this.extractMeaningfulUpdateData(entity, updateData);
+
+    // Evita generar auditoría y actividad cuando no hay cambios reales.
+    if (Object.keys(effectiveUpdateData).length === 0) {
+      return entity;
+    }
 
     if (dto.section === ExpedienteSection.TECHNICAL_FEASIBILITY) {
-      const projected = { ...entity, ...updateData } as ExpedienteRecord;
+      const projected = { ...entity, ...effectiveUpdateData } as ExpedienteRecord;
       this.validateTechnicalFeasibilityConsistency(projected);
     }
 
-    Object.assign(entity, updateData);
+    Object.assign(entity, effectiveUpdateData);
+
+    const actorName = await this.resolveActorName(schemaName, actorUserId);
 
     const updated = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
       qr.manager.save(ExpedienteRecord, entity),
@@ -330,7 +628,11 @@ export class ExpedienteService {
       entityType: 'ExpedienteRecord',
       entityId: id,
       userId: actorUserId,
-      newValue: { section: dto.section, data: this.sanitizeAuditData(dto.section, dto.data) },
+      newValue: {
+        section: dto.section,
+        actorName,
+        changedFields: this.sanitizeAuditChangedFields(dto.section, effectiveUpdateData),
+      },
     });
 
     await this.syncCompleteness(id, schemaName);
@@ -352,6 +654,7 @@ export class ExpedienteService {
     const fromStatus = entity.status;
     const toStatus = dto.targetStatus;
     const actorName = await this.resolveActorName(schemaName, actorUserId);
+    const statusChangeActorId = this.resolveStatusChangeActorId(actorUserId, entity.createdBy);
 
     if (fromStatus === toStatus) {
       return entity;
@@ -368,18 +671,19 @@ export class ExpedienteService {
 
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       await qr.manager.save(ExpedienteRecord, entity);
+    });
 
-      const statusChange = qr.manager.create(StatusChange, {
-        tenantId,
-        expedienteId: id,
-        fromStatus,
-        toStatus,
-        changedAt: now,
-        changedBy: actorUserId,
-        actorName,
-        reason: dto.reason ?? null,
-      });
-      await qr.manager.save(StatusChange, statusChange);
+    await this.persistStatusChangeSafely({
+      schemaName,
+      tenantId,
+      expedienteId: id,
+      fromStatus,
+      toStatus,
+      changedAt: now,
+      changedBy: statusChangeActorId,
+      actorName,
+      reason: dto.reason ?? null,
+      contextLabel: 'TRANSITION',
     });
 
     await this.syncCompleteness(id, schemaName);
@@ -409,25 +713,28 @@ export class ExpedienteService {
 
     const previousStatus = entity.previousStatus || ExpedienteStatus.NUEVO_POTENCIAL;
     const actorName = await this.resolveActorName(schemaName, actorUserId);
+    const statusChangeActorId = this.resolveStatusChangeActorId(actorUserId, entity.createdBy);
+    const changedAt = new Date();
     entity.status = previousStatus;
     entity.previousStatus = ExpedienteStatus.DESCARTADO;
-    entity.statusChangedAt = new Date();
+    entity.statusChangedAt = changedAt;
     entity.discardReason = null;
 
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       await qr.manager.save(ExpedienteRecord, entity);
+    });
 
-      const statusChange = qr.manager.create(StatusChange, {
-        tenantId,
-        expedienteId: id,
-        fromStatus: ExpedienteStatus.DESCARTADO,
-        toStatus: previousStatus,
-        changedAt: new Date(),
-        changedBy: actorUserId,
-        actorName,
-        reason: 'Reactivación de expediente',
-      });
-      await qr.manager.save(StatusChange, statusChange);
+    await this.persistStatusChangeSafely({
+      schemaName,
+      tenantId,
+      expedienteId: id,
+      fromStatus: ExpedienteStatus.DESCARTADO,
+      toStatus: previousStatus,
+      changedAt,
+      changedBy: statusChangeActorId,
+      actorName,
+      reason: 'Reactivación de expediente',
+      contextLabel: 'REACTIVATE',
     });
 
     await this.syncCompleteness(id, schemaName);
@@ -821,15 +1128,28 @@ export class ExpedienteService {
 
       for (const log of auditLogs) {
         const newValue = log.newValue ?? null;
+        const isPiiAccessLog = typeof newValue?.['piiaAccess'] === 'string';
+
+        // Evita ruido en la bitácora funcional: acceso PII no es edición de sección.
+        if (isPiiAccessLog) {
+          continue;
+        }
+
         const section =
           typeof newValue?.['section'] === 'string' ? String(newValue['section']) : null;
+        const changedFields = this.extractChangedFieldsFromAuditLog(newValue, section);
+        const actorNameFromLog =
+          typeof newValue?.['actorName'] === 'string' ? String(newValue['actorName']) : null;
+        const actor = actorNameFromLog
+          ? { userId: log.userId, name: actorNameFromLog }
+          : getActor(log.userId);
 
         if (log.action === AuditAction.CREATE) {
           auditActivities.push({
             id: `audit:${log.id}`,
             type: 'CREATED',
             occurredAt: log.createdAt,
-            actor: getActor(log.userId),
+            actor,
             sectionLabel: null,
             fromStatus: null,
             toStatus: null,
@@ -843,11 +1163,11 @@ export class ExpedienteService {
             id: `audit:${log.id}`,
             type: 'SECTION_UPDATED',
             occurredAt: log.createdAt,
-            actor: getActor(log.userId),
+            actor,
             sectionLabel: SECTION_LABELS[section] ?? section,
             fromStatus: null,
             toStatus: null,
-            reason: null,
+            reason: this.buildAuditChangeSummary(changedFields),
           });
         }
       }
@@ -933,6 +1253,9 @@ export class ExpedienteService {
         if (data.address) result.address = String(data.address);
         if (data.municipality) result.municipality = String(data.municipality);
         if (data.department) result.department = String(data.department);
+        if ('postalCode' in data) {
+          result.postalCode = this.normalizeOptionalText(data.postalCode);
+        }
         if ('stratum' in data) {
           const parsedStratum = this.parseOptionalNumber(data.stratum, 'stratum');
           result.stratum = parsedStratum;
@@ -978,6 +1301,10 @@ export class ExpedienteService {
           }
         }
         if (data.interestedPlanId) result.interestedPlanId = String(data.interestedPlanId);
+        if ('additionalProductIds' in data) {
+          const parsedAdditionalProducts = this.parseStringArray(data.additionalProductIds);
+          result.additionalProductIds = parsedAdditionalProducts ?? [];
+        }
         if (data.campaign) result.campaign = String(data.campaign);
         if (data.casePriority) result.casePriority = String(data.casePriority);
         if (data.estimatedBudget) result.estimatedBudget = Number(data.estimatedBudget);
@@ -1035,6 +1362,68 @@ export class ExpedienteService {
     }
 
     return result;
+  }
+
+  private extractMeaningfulUpdateData(
+    entity: ExpedienteRecord,
+    updateData: Record<string, unknown>,
+  ): Record<string, unknown> {
+    return Object.entries(updateData).reduce<Record<string, unknown>>((acc, [field, nextValue]) => {
+      const currentValue = (entity as unknown as Record<string, unknown>)[field];
+
+      if (!this.isSamePersistedValue(field, currentValue, nextValue)) {
+        acc[field] = nextValue;
+      }
+
+      return acc;
+    }, {});
+  }
+
+  private isSamePersistedValue(field: string, currentValue: unknown, nextValue: unknown): boolean {
+    if (currentValue === null || currentValue === undefined) {
+      return nextValue === null || nextValue === undefined;
+    }
+
+    if (nextValue === null || nextValue === undefined) {
+      return currentValue === null || currentValue === undefined;
+    }
+
+    if (field.endsWith('Encrypted')) {
+      if (typeof currentValue !== 'string' || typeof nextValue !== 'string') {
+        return currentValue === nextValue;
+      }
+
+      return (
+        this.getComparableEncryptedValue(currentValue) ===
+        this.getComparableEncryptedValue(nextValue)
+      );
+    }
+
+    if (Array.isArray(currentValue) && Array.isArray(nextValue)) {
+      if (currentValue.length !== nextValue.length) {
+        return false;
+      }
+
+      return currentValue.every((value, index) => value === nextValue[index]);
+    }
+
+    if (currentValue instanceof Date && nextValue instanceof Date) {
+      return currentValue.getTime() === nextValue.getTime();
+    }
+
+    return currentValue === nextValue;
+  }
+
+  private getComparableEncryptedValue(value: string): string {
+    if (!this.looksLikeEncryptedValue(value)) {
+      return value;
+    }
+
+    try {
+      return this.decryptValue(value);
+    } catch {
+      return value;
+    }
   }
 
   private parseOptionalNumber(
@@ -1151,18 +1540,45 @@ export class ExpedienteService {
     return this.sanitizePlainText(stringValue);
   }
 
-  private sanitizeAuditData(
-    section: string,
-    data: Record<string, unknown>,
-  ): Record<string, unknown> {
+  private sanitizeAuditChangedFields(section: string, data: Record<string, unknown>): string[] {
+    const changedFields = Object.keys(data);
+
     if (section === ExpedienteSection.IDENTIFICATION) {
-      const sanitized = { ...data };
-      if (sanitized.documentNumber) {
-        sanitized.documentNumber = '[REDACTED]';
-      }
-      return sanitized;
+      return changedFields.filter((field) => field !== 'documentNumberEncrypted');
     }
-    return data;
+
+    return changedFields;
+  }
+
+  private extractChangedFieldsFromAuditLog(newValue: unknown, section: string | null): string[] {
+    if (!newValue || typeof newValue !== 'object') {
+      return [];
+    }
+
+    const record = newValue as Record<string, unknown>;
+
+    if (Array.isArray(record.changedFields)) {
+      return record.changedFields.filter((value): value is string => typeof value === 'string');
+    }
+
+    if (record.data && typeof record.data === 'object') {
+      const rawData = record.data as Record<string, unknown>;
+      if (section) {
+        return this.sanitizeAuditChangedFields(section, rawData);
+      }
+      return Object.keys(rawData);
+    }
+
+    return [];
+  }
+
+  private buildAuditChangeSummary(changedFields: string[]): string | null {
+    if (changedFields.length === 0) {
+      return null;
+    }
+
+    const labels = changedFields.map((field) => SECTION_FIELD_LABELS[field] ?? field);
+    return `Campos actualizados: ${labels.join(', ')}`;
   }
 
   private sanitizePlainText(value: string): string {
@@ -1286,6 +1702,150 @@ export class ExpedienteService {
     return value;
   }
 
+  private getNormalizedDocumentSupports(value: unknown): StoredDocumentSupportMap {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return {};
+    }
+
+    return value as StoredDocumentSupportMap;
+  }
+
+  private requireDocumentDefinition(
+    definitions: DocumentSupportDefinition[],
+    documentKey: string,
+  ): DocumentSupportDefinition {
+    const definition = definitions.find((item) => item.key === documentKey);
+
+    if (!definition) {
+      throw new BadRequestException({
+        code: 'INVALID_DOCUMENT_SUPPORT_KEY',
+        message: 'El soporte solicitado no aplica para el tipo de persona del expediente.',
+      });
+    }
+
+    return definition;
+  }
+
+  private validateDocumentUpload(
+    file: UploadedDocumentFile | undefined,
+  ): asserts file is UploadedDocumentFile {
+    if (!file) {
+      throw new BadRequestException('Debes adjuntar un archivo para continuar.');
+    }
+
+    const allowedMimeTypes = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/webp']);
+
+    if (!allowedMimeTypes.has(file.mimetype)) {
+      throw new BadRequestException('Solo se permiten archivos PDF, PNG, JPG o WEBP.');
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      throw new BadRequestException('El archivo supera el límite de 10 MB permitido.');
+    }
+  }
+
+  private resolveSafeFileExtension(fileName: string, mimeType: string): string {
+    const normalized = extname(fileName).toLowerCase();
+    if (
+      normalized === '.pdf' ||
+      normalized === '.png' ||
+      normalized === '.jpg' ||
+      normalized === '.jpeg' ||
+      normalized === '.webp'
+    ) {
+      return normalized;
+    }
+
+    if (mimeType === 'application/pdf') return '.pdf';
+    if (mimeType === 'image/png') return '.png';
+    if (mimeType === 'image/webp') return '.webp';
+    return '.jpg';
+  }
+
+  private sanitizeStoredFileName(fileName: string): string {
+    const normalized = fileName.trim().replace(/[^a-zA-Z0-9._-]/g, '_');
+    return normalized || 'soporte_documental';
+  }
+
+  private async persistDocumentSupports(
+    expedienteId: string,
+    schemaName: string,
+    supports: StoredDocumentSupportMap,
+  ): Promise<void> {
+    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await qr.manager.update(
+        ExpedienteRecord,
+        { id: expedienteId },
+        { documentSupports: supports },
+      );
+    });
+  }
+
+  private buildDocumentSupportResponse(
+    expedienteId: string,
+    personType: string | null | undefined,
+    storedValue: unknown,
+  ): ExpedienteDocumentSupportResponseDto {
+    const supports = this.getNormalizedDocumentSupports(storedValue);
+    const definitions = getDocumentDefinitionsByPersonType(personType);
+    const items: ExpedienteDocumentItemDto[] = definitions.map((definition) => {
+      const versions = supports[definition.key]?.versions ?? [];
+
+      return {
+        key: definition.key,
+        label: definition.label,
+        hint: definition.hint,
+        versions: versions.map((version) => ({
+          id: version.id,
+          fileName: version.fileName,
+          mimeType: version.mimeType,
+          sizeBytes: version.sizeBytes,
+          uploadedAt: version.uploadedAt,
+          uploadedBy: version.uploadedByName ?? 'Equipo interno',
+          status: version.status,
+          note: version.note,
+          downloadUrl: `/api/v1/crm/expedientes/${expedienteId}/document-supports/${definition.key}/${version.id}/file`,
+        })),
+      };
+    });
+
+    const currentStatuses = items.map(
+      (item) => item.versions[0]?.status ?? DOCUMENT_SUPPORT_STATUS.PENDING,
+    );
+    const uploadedCount = items.filter((item) => item.versions.length > 0).length;
+    const approvedCount = items.filter(
+      (item) => item.versions[0]?.status === DOCUMENT_SUPPORT_STATUS.APPROVED,
+    ).length;
+
+    const blockStatus =
+      approvedCount === items.length && items.length > 0
+        ? 'COMPLETO'
+        : currentStatuses.some(
+              (status) =>
+                status === DOCUMENT_SUPPORT_STATUS.OBSERVED ||
+                status === DOCUMENT_SUPPORT_STATUS.REJECTED,
+            )
+          ? 'OBSERVADO'
+          : currentStatuses.some(
+                (status) =>
+                  status === DOCUMENT_SUPPORT_STATUS.UPLOADED ||
+                  status === DOCUMENT_SUPPORT_STATUS.APPROVED,
+              )
+            ? 'EN_REVISION'
+            : 'PENDIENTE';
+
+    return {
+      personType: personType ?? null,
+      items,
+      summary: {
+        requiredCount: items.length,
+        uploadedCount,
+        approvedCount,
+        blockStatus,
+      },
+    };
+  }
+
   /**
    * Algunos usuarios de plataforma pueden autenticarse con `sub` no UUID.
    * Las tablas tenant exigen UUID en columnas operativas (`advisor_id`, `checked_by`).
@@ -1307,6 +1867,23 @@ export class ExpedienteService {
     });
   }
 
+  /**
+   * `status_changes.changed_by` es UUID obligatorio, pero en flujos híbridos
+   * el `sub` del actor puede llegar no UUID. Para no romper guardados de
+   * sección, degradamos a `createdBy` del expediente cuando es válido.
+   */
+  private resolveStatusChangeActorId(actorUserId: string, fallbackUserId: string): string | null {
+    if (this.isUuid(actorUserId)) {
+      return actorUserId;
+    }
+
+    if (this.isUuid(fallbackUserId)) {
+      return fallbackUserId;
+    }
+
+    return null;
+  }
+
   private isUuid(value: string | null | undefined): boolean {
     if (!value) {
       return false;
@@ -1316,6 +1893,13 @@ export class ExpedienteService {
   }
 
   private async resolveActorName(schemaName: string, userId: string): Promise<string | null> {
+    if (!this.isUuid(userId)) {
+      this.logger.warn(
+        `No se pudo resolver actor por id no UUID al registrar actividad de expediente: ${userId}`,
+      );
+      return null;
+    }
+
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const tenantUser = await qr.manager.findOne(User, { where: { id: userId } });
       if (tenantUser) {
@@ -1419,5 +2003,61 @@ export class ExpedienteService {
         },
       );
     });
+  }
+
+  private async persistStatusChangeSafely(params: {
+    schemaName: string;
+    tenantId: string;
+    expedienteId: string;
+    fromStatus: ExpedienteStatus;
+    toStatus: ExpedienteStatus;
+    changedAt: Date;
+    changedBy: string | null;
+    actorName: string | null;
+    reason: string | null;
+    contextLabel: 'TRANSITION' | 'REACTIVATE';
+  }): Promise<void> {
+    if (!params.changedBy) {
+      this.logger.warn(
+        `[${params.contextLabel}] Se omite status_change para expediente ${params.expedienteId} porque no hay actor UUID persistible.`,
+      );
+      return;
+    }
+
+    const changedBy = params.changedBy;
+
+    try {
+      await runInTenantSchema(this.dataSource, params.schemaName, async (qr) => {
+        const statusChangePayload = {
+          tenantId: params.tenantId,
+          expedienteId: params.expedienteId,
+          fromStatus: params.fromStatus,
+          toStatus: params.toStatus,
+          changedAt: params.changedAt,
+          changedBy,
+          actorName: params.actorName,
+          reason: params.reason,
+        };
+
+        const statusChangeEntity =
+          typeof qr.manager.create === 'function'
+            ? qr.manager.create(StatusChange, statusChangePayload)
+            : statusChangePayload;
+        await qr.manager.save(StatusChange, statusChangeEntity as StatusChange);
+      });
+    } catch (error) {
+      // No bloquear la operación de negocio por fallos en trazabilidad histórica.
+      this.logger.warn(
+        `[${params.contextLabel}] Falló persistencia de status_change para expediente ${params.expedienteId}: ${String(error)}`,
+      );
+    }
+  }
+
+  private calculatePipelineProgress(completeness: {
+    commercial: number;
+    legal: number;
+    technical: number;
+  }): number {
+    return Math.round((completeness.commercial + completeness.legal + completeness.technical) / 3);
   }
 }

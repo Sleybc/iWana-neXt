@@ -2,7 +2,8 @@
 /* Tailwind 4 CSS-first: sin tailwind.config.js */
 
 /* Tipografia: Exo 2 (display/UI) + JetBrains Mono (codigo) */
-@import url('https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+/* Pesos: 100 Thin, 300 Light, 400 Regular, 500 Medium, 600 SemiBold, 700 Bold — segun manual identidad iWana */
+@import url('https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,100;0,300;0,400;0,500;0,600;0,700;1,100;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
 
 /* Tailwind 4 — activacion CSS-first */
 @import "tailwindcss";
@@ -22,35 +23,60 @@
    (#6A7A1C) con contraste 6.2:1.
    ================================================================ */
 @theme {
-  /* Tipografia */
-  --font-sans: 'Exo 2', 'Inter', 'SF Pro Display', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  /* Tipografia — Exo 2 Bold/Thin segun Manual Identidad Corporativa iWana */
+  --font-sans:    'Exo 2', 'SF Pro Display', system-ui, sans-serif;
+  --font-display: 'Exo 2', sans-serif;
+  --font-mono:    var(--font-jetbrains-mono), 'JetBrains Mono', 'Fira Code', monospace;
 
-  /* Color primario — Azul Noche iWana */
+  /* Color primario — Azul Noche iWana (escala oficial Manual de Identidad) */
   --color-iwana-primary:     #17163A;
-  --color-iwana-primary-50:  #EEEEFA;
-  --color-iwana-primary-100: #D4D3F5;
-  --color-iwana-primary-200: #A9A7EA;
-  --color-iwana-primary-300: #7E7BDF;
-  --color-iwana-primary-400: #534FD4;
-  --color-iwana-primary-500: #2D2A9E;
-  --color-iwana-primary-600: #232180;
-  --color-iwana-primary-700: #1A1960;
-  --color-iwana-primary-800: #111040;
-  --color-iwana-primary-950: #0B0B1E;
+  --color-iwana-primary-50:  #F8F8FB;
+  --color-iwana-primary-100: #E8E7F0;
+  --color-iwana-primary-200: #D1CFE1;
+  --color-iwana-primary-300: #A8A4C8;
+  --color-iwana-primary-400: #7B75AB;
+  --color-iwana-primary-500: #5A5190;
+  --color-iwana-primary-600: #4A4176;
+  --color-iwana-primary-700: #3D3461;
+  --color-iwana-primary-800: #342E52;
+  --color-iwana-primary-900: #17163A;
+  --color-iwana-primary-950: #0F0E24;
 
-  /* Color secundario — Lima iWana */
+  /* Color secundario — Lima iWana (escala oficial Manual de Identidad) */
   /* SOLO decorativo — ver nota accesibilidad arriba */
   --color-iwana-secondary:     #A5C330;
-  --color-iwana-secondary-50:  #F5FAE6;
-  --color-iwana-secondary-100: #EAF5CC;
-  --color-iwana-secondary-200: #D5EB99;
-  --color-iwana-secondary-300: #C0E166;
-  --color-iwana-secondary-400: #ABD733;
+  --color-iwana-secondary-50:  #F7FCE8;
+  --color-iwana-secondary-100: #EDF8CC;
+  --color-iwana-secondary-200: #DCF19F;
+  --color-iwana-secondary-300: #C5E668;
+  --color-iwana-secondary-400: #B2D93C;
   --color-iwana-secondary-500: #A5C330;
-  --color-iwana-secondary-600: #84A226;
+  --color-iwana-secondary-600: #8BA020;
   /* Texto accesible sobre blanco — contraste 6.2:1 (WCAG AA) */
   --color-iwana-secondary-700: #6A7A1C;
+  --color-iwana-secondary-800: #55621C;
+  --color-iwana-secondary-900: #48531D;
+  --color-iwana-secondary-950: #252E0B;
+
+  /* Color neutral — Gris iWana (R:174 G:174 B:173, Manual de Identidad) */
+  --color-iwana-neutral:     #AEAEAD;
+  --color-iwana-neutral-50:  #F9F9F9;
+  --color-iwana-neutral-100: #F1F1F1;
+  --color-iwana-neutral-200: #E4E4E4;
+  --color-iwana-neutral-300: #D1D1D1;
+  --color-iwana-neutral-400: #B8B8B8;
+  --color-iwana-neutral-500: #AEAEAD;
+  --color-iwana-neutral-600: #8A8A8A;
+  --color-iwana-neutral-700: #6F6F6F;
+  --color-iwana-neutral-800: #5C5C5C;
+  --color-iwana-neutral-900: #4F4F4F;
+  --color-iwana-neutral-950: #2E2E2E;
+
+  /* Tokens semanticos de superficie */
+  --color-iwana-background: #FFFFFF;
+  --color-iwana-foreground: #17163A;
+  --color-iwana-muted:      #F5F5F5;
+  --color-iwana-accent:     #A5C330;
 
   /* Colores semanticos — valores base iWana */
   --color-iwana-success: #22C55E;
@@ -98,6 +124,15 @@
 
   --color-dark-border:    #2E2E2E;   /* border principal (reemplaza gray-800) */
   --color-dark-border-2:  #383838;   /* border secundario (reemplaza gray-700) */
+
+  /* Sombras iWana — escala definida en Manual de Implementacion */
+  /* Base (Manual secc. 3.1) */
+  --shadow-iwana:        0 1px 3px 0 rgba(23, 22, 58, 0.10), 0 1px 2px 0 rgba(23, 22, 58, 0.06);
+  --shadow-iwana-lg:     0 10px 15px -3px rgba(23, 22, 58, 0.10), 0 4px 6px -2px rgba(23, 22, 58, 0.05);
+  /* Extendidas — usadas en Card, PageHeader y contenedores elevados */
+  --shadow-iwana-soft:   0 10px 40px -10px rgba(23, 22, 58, 0.08);
+  --shadow-iwana-active: 0 8px 30px -5px rgba(23, 22, 58, 0.12);
+  --shadow-iwana-card:   0 1px 3px 0 rgba(23, 22, 58, 0.10), 0 1px 2px 0 rgba(23, 22, 58, 0.06);
 }
 
 /* ================================================================
@@ -125,6 +160,57 @@ body {
 }
 .no-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+/* ================================================================
+   Scrollbar personalizado iWana (Manual Implementacion secc. 3.2)
+   ================================================================ */
+::-webkit-scrollbar {
+  width: 0.375rem; /* 6px */
+  height: 0.375rem;
+}
+::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--color-iwana-neutral) 15%, transparent);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-iwana-primary) 20%, transparent);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-iwana-primary) 35%, transparent);
+}
+
+/* ================================================================
+   Utilidades de marca iWana (Manual Implementacion secc. 3.2)
+   ================================================================ */
+@layer components {
+  /* Efecto glassmorphism — fondos traslucidos con blur */
+  .iwana-glass {
+    background: color-mix(in srgb, #FFFFFF 80%, transparent);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  /* Degradado de marca horizontal */
+  .iwana-gradient {
+    background: linear-gradient(135deg, var(--color-iwana-primary) 0%, var(--color-iwana-secondary) 100%);
+  }
+
+  /* Texto con degradado de marca */
+  .iwana-text-gradient {
+    background: linear-gradient(90deg, var(--color-iwana-primary) 0%, var(--color-iwana-secondary-700) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Tipografia Thin — para heroes y titulares de alto impacto */
+  .font-thin-exo {
+    font-family: var(--font-display);
+    font-weight: 100;
+  }
 }
 
 /* ================================================================

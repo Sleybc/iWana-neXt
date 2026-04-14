@@ -13,6 +13,7 @@ import {
   KeyRound,
   Search,
 } from 'lucide-react';
+import { Badge, Select } from '@iwana/ui';
 
 interface UsersTableProps {
   users: InternalUser[];
@@ -64,6 +65,18 @@ const STATUS_LABELS: Record<string, string> = {
   INACTIVE: 'Inactivo',
 };
 
+const STATUS_OPTIONS = Object.values(UserStatus).map((status) => ({
+  value: status,
+  label: STATUS_LABELS[status] ?? status,
+}));
+
+const ROLE_OPTIONS = Object.values(UserRole)
+  .filter((role) => !PLATFORM_ROLES.has(role))
+  .map((role) => ({
+    value: role,
+    label: ROLE_LABELS[role] ?? role,
+  }));
+
 function formatDate(value: string | null): string {
   if (!value) return '-';
   return new Intl.DateTimeFormat('es-CO', {
@@ -111,17 +124,35 @@ export function UsersTable({
   };
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-2 overflow-hidden">
+    <div className="overflow-hidden rounded-[24px] border border-white/70 bg-white/95 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
       {/* Filtros */}
-      <div className="flex flex-wrap items-center gap-3 p-4 border-b border-gray-100 dark:border-dark-border">
+      <div className="border-b border-gray-100/80 px-5 py-5 dark:border-dark-border">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+              Directorio interno
+            </p>
+            <h2 className="text-lg font-semibold text-iwana-primary dark:text-white">
+              Gestión de accesos del tenant
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Filtra por estado, rol o búsqueda libre para operar usuarios sin salir del panel.
+            </p>
+          </div>
+          <Badge variant="neutral" className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]">
+            {meta?.total ?? users.length} registros
+          </Badge>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_220px_220px_auto] lg:items-end">
         {/* Input de búsqueda — debounce gestionado en UsersClient */}
-        <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+        <div className="flex min-w-[200px] items-center gap-2">
           <label htmlFor="search-filter" className="sr-only">
             Buscar usuario
           </label>
           <div className="relative flex-1">
             <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none"
+              className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
               aria-hidden="true"
             />
             <input
@@ -130,55 +161,35 @@ export function UsersTable({
               placeholder="Buscar por nombre o correo…"
               value={searchValue}
               onChange={(e) => onSearchChange(e.target.value)}
-              className="h-9 w-full rounded-xl border border-gray-200 bg-white pl-9 pr-3 text-sm dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-iwana-primary"
+              className="h-12 w-full rounded-2xl border border-gray-200 bg-gray-50/70 pl-11 pr-4 text-sm text-iwana-primary shadow-sm transition-all duration-200 placeholder:text-gray-400 focus:border-iwana-secondary focus:bg-white focus:outline-none focus:ring-2 focus:ring-iwana-secondary/35 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100 dark:placeholder-gray-500"
             />
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <label
-            htmlFor="status-filter"
-            className="text-sm font-medium text-gray-700 dark:text-gray-300"
-          >
-            Estado:
-          </label>
-          <select
+        <div>
+          <Select
             id="status-filter"
+            label="Estado"
             value={statusFilter}
             onChange={(e) => handleStatusChange(e.target.value)}
-            className="h-9 rounded-xl border border-gray-200 bg-white px-3 text-sm dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-iwana-primary"
+            className="h-12"
+            options={STATUS_OPTIONS}
           >
             <option value="">Todos</option>
-            {Object.values(UserStatus).map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABELS[s] ?? s}
-              </option>
-            ))}
-          </select>
+          </Select>
         </div>
 
-        <div className="flex items-center gap-2">
-          <label
-            htmlFor="role-filter"
-            className="text-sm font-medium text-gray-700 dark:text-gray-300"
-          >
-            Rol:
-          </label>
-          <select
+        <div>
+          <Select
             id="role-filter"
+            label="Rol"
             value={roleFilter}
             onChange={(e) => handleRoleChange(e.target.value)}
-            className="h-9 rounded-xl border border-gray-200 bg-white px-3 text-sm dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-iwana-primary"
+            className="h-12"
+            options={ROLE_OPTIONS}
           >
             <option value="">Todos</option>
-            {Object.values(UserRole)
-              .filter((r) => !PLATFORM_ROLES.has(r))
-              .map((r) => (
-                <option key={r} value={r}>
-                  {ROLE_LABELS[r] ?? r}
-                </option>
-              ))}
-          </select>
+          </Select>
         </div>
 
         {(statusFilter || roleFilter || searchValue) && (
@@ -190,37 +201,38 @@ export function UsersTable({
               onSearchChange('');
               onFilterChange({});
             }}
-            className="text-sm text-iwana-secondary hover:underline dark:text-iwana-secondary-400"
+            className="inline-flex h-12 items-center justify-center rounded-2xl border border-gray-200 px-4 text-sm font-semibold text-iwana-primary transition-colors hover:border-iwana-secondary/40 hover:bg-iwana-secondary-50 dark:border-dark-border dark:text-gray-100 dark:hover:bg-dark-surface-3"
           >
             Limpiar filtros
           </button>
         )}
+        </div>
       </div>
 
       {/* Tabla */}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-100 bg-gray-50 dark:border-dark-border dark:bg-dark-surface-3">
-              <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
+            <tr className="border-b border-gray-100 bg-[#f6f8f4] dark:border-dark-border dark:bg-dark-surface-3">
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
                 Usuario
               </th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
                 Rol
               </th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
                 Estado
               </th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
                 MFA
               </th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
                 Último acceso
               </th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
                 Creado
               </th>
-              <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
+              <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
                 Acciones
               </th>
             </tr>
@@ -267,7 +279,7 @@ export function UsersTable({
             {users.map((user) => (
               <tr
                 key={user.id}
-                className="border-b border-gray-50 last:border-0 hover:bg-gray-50 dark:border-dark-border dark:hover:bg-dark-surface-3 transition-colors"
+                className="border-b border-gray-50 transition-colors hover:bg-[#fbfcf8] dark:border-dark-border dark:hover:bg-dark-surface-3"
               >
                 <td className="px-4 py-3">
                   <div className="flex flex-col">
@@ -278,7 +290,7 @@ export function UsersTable({
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <span className="inline-flex items-center gap-1.5 text-gray-700 dark:text-gray-200">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
                     {(user.role === UserRole.ADMIN || user.role === UserRole.SYSTEM_ADMIN) && (
                       <ShieldCheck
                         className="h-3.5 w-3.5 text-iwana-primary dark:text-iwana-primary-400"
@@ -289,17 +301,9 @@ export function UsersTable({
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
-                      ${STATUS_VARIANTS[user.status] === 'success' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : ''}
-                      ${STATUS_VARIANTS[user.status] === 'warning' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400' : ''}
-                      ${STATUS_VARIANTS[user.status] === 'error' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' : ''}
-                      ${STATUS_VARIANTS[user.status] === 'neutral' ? 'bg-gray-100 text-gray-600 dark:bg-dark-surface-4 dark:text-gray-300' : ''}
-                      ${STATUS_VARIANTS[user.status] === 'info' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' : ''}
-                    `}
-                  >
+                  <Badge variant={STATUS_VARIANTS[user.status] ?? 'neutral'}>
                     {STATUS_LABELS[user.status] ?? user.status}
-                  </span>
+                  </Badge>
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-col gap-0.5">
@@ -374,7 +378,7 @@ export function UsersTable({
 
       {/* Paginacion */}
       {(meta?.nextCursor || users.length > 0) && (
-        <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 dark:border-dark-border">
+        <div className="flex items-center justify-between border-t border-gray-100 px-5 py-4 dark:border-dark-border">
           <p className="text-sm text-gray-500 dark:text-gray-400">
             Mostrando {users.length} de {meta?.total ?? 0} usuarios
           </p>
@@ -384,7 +388,7 @@ export function UsersTable({
                 type="button"
                 onClick={onLoadMore}
                 disabled={isLoading}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-4 transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:border-iwana-secondary/40 hover:bg-[#fbfcf8] disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-4"
               >
                 {isLoading ? (
                   <>

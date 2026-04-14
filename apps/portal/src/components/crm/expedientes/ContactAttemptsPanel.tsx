@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input } from '@iwana/ui';
-import { Loader2, Phone, PhoneOutgoing } from 'lucide-react';
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@iwana/ui';
+import { CircleAlert, Loader2, Phone, PhoneOutgoing } from 'lucide-react';
 import { crmApi, type ContactAttemptRecord, type CreateContactAttemptDto } from '@/lib/api-client';
 import { getContactResultBadgeVariant, getContactChannelBadgeVariant } from './expediente-ui';
 
@@ -33,7 +33,7 @@ export function ContactAttemptsPanel({ expedienteId }: ContactAttemptsPanelProps
   const [attempts, setAttempts] = useState<ContactAttemptRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [showForm, setShowForm] = useState(true);
+  const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -104,67 +104,58 @@ export function ContactAttemptsPanel({ expedienteId }: ContactAttemptsPanelProps
       </div>
 
       {successMessage && (
-        <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:border-green-900/40 dark:bg-green-900/20 dark:text-green-300">
+        <div className="rounded-[24px] border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 shadow-iwana-soft dark:border-green-900/40 dark:bg-green-900/20 dark:text-green-300">
           {successMessage}
         </div>
       )}
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
-          {error}
+        <div className="flex items-start gap-3 rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+          <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+          <p>{error}</p>
         </div>
       )}
 
       {showForm && (
-        <Card>
+        <Card className="rounded-[28px] border border-white/70 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
           <CardHeader>
             <CardTitle className="text-base">Nuevo intento de contacto</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <label
-                  htmlFor="channel"
-                  className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200"
-                >
-                  Canal
-                </label>
-                <select
+                <Select
                   id="channel"
+                  label="Canal"
                   value={formData.channel}
                   onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
                     setFormData({ ...formData, channel: e.target.value })
                   }
-                  className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:focus:border-iwana-primary-300"
+                  className="h-11"
                 >
                   {CHANNEL_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               <div>
-                <label
-                  htmlFor="result"
-                  className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200"
-                >
-                  Resultado
-                </label>
-                <select
+                <Select
                   id="result"
+                  label="Resultado"
                   value={formData.result}
                   onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
                     setFormData({ ...formData, result: e.target.value })
                   }
-                  className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:focus:border-iwana-primary-300"
+                  className="h-11"
                 >
                   {RESULT_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
             </div>
             <Input
@@ -220,7 +211,7 @@ export function ContactAttemptsPanel({ expedienteId }: ContactAttemptsPanelProps
           <Loader2 className="h-6 w-6 animate-spin text-iwana-primary" aria-hidden="true" />
         </div>
       ) : attempts.length === 0 ? (
-        <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-8 text-center dark:border-dark-border dark:bg-dark-surface-3">
+        <div className="rounded-[24px] border border-gray-200 bg-[#f8faf5] px-4 py-8 text-center shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3">
           <Phone className="mx-auto h-8 w-8 text-gray-400" aria-hidden="true" />
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
             No hay intentos de contacto registrados.
@@ -231,11 +222,11 @@ export function ContactAttemptsPanel({ expedienteId }: ContactAttemptsPanelProps
           {attempts.map((attempt) => (
             <div
               key={attempt.id}
-              className="rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3"
+              className="rounded-[24px] border border-gray-200 bg-white px-4 py-3 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3">
-                  <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg bg-iwana-primary/10">
+                  <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-xl bg-iwana-primary/10">
                     <Phone className="h-4 w-4 text-iwana-primary" aria-hidden="true" />
                   </div>
                   <div>

@@ -53,15 +53,18 @@ export function ResetPasswordDialog({
       aria-modal="true"
       aria-labelledby="reset-password-dialog-title"
     >
-      <div className="relative w-full max-w-md mx-4 rounded-2xl bg-white p-6 shadow-xl dark:bg-dark-surface-2">
+      <div className="relative mx-4 w-full max-w-md rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-iwana-lg dark:border-dark-border dark:bg-dark-surface-2/95">
         <div className="mb-6 flex items-center gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-100 dark:bg-amber-900/30">
             <KeyRound className="h-6 w-6 text-amber-600 dark:text-amber-400" aria-hidden="true" />
           </div>
           <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700 dark:text-amber-300">
+              Credenciales temporales
+            </p>
             <h2
               id="reset-password-dialog-title"
-              className="text-lg font-semibold text-gray-900 dark:text-white"
+              className="mt-1 text-lg font-semibold text-iwana-primary dark:text-white"
             >
               Reiniciar contraseña
             </h2>
@@ -72,7 +75,7 @@ export function ResetPasswordDialog({
         </div>
 
         {/* Información del usuario afectado */}
-        <div className="mb-6 rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-surface-3">
+        <div className="mb-6 rounded-[24px] border border-gray-100 bg-[#f8faf5] p-4 dark:border-dark-border dark:bg-dark-surface-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-iwana-primary/10 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-400">
               <svg
@@ -103,7 +106,7 @@ export function ResetPasswordDialog({
         </p>
 
         {serverError && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
+          <div className="mb-4 rounded-2xl border border-red-200/80 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
             <p className="text-sm text-red-700 dark:text-red-300">{serverError}</p>
           </div>
         )}
@@ -113,7 +116,7 @@ export function ResetPasswordDialog({
             type="button"
             onClick={onClose}
             disabled={isSubmitting}
-            className="inline-flex items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-4 transition-colors"
+            className="inline-flex items-center justify-center rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-4"
           >
             Cancelar
           </button>
@@ -121,7 +124,7 @@ export function ResetPasswordDialog({
             type="button"
             onClick={() => void onConfirm()}
             disabled={isSubmitting}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50 transition-colors dark:bg-amber-500 dark:hover:bg-amber-400"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-amber-500 dark:hover:bg-amber-400"
           >
             {isSubmitting ? (
               <>

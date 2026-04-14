@@ -1,8 +1,8 @@
 # INFORME — Definición MOD05 CRM / Expediente Único Progresivo
 
-**Versión:** 3.5  
+**Versión:** 4.0  
 **Estado:** Sprint 02 cerrado — refinamiento técnico validado  
-**Fecha:** 2026-04-02  
+**Fecha:** 2026-04-14  
 **Modo activo:** Architect  
 **Módulo:** MOD05 — CRM / Expediente Único Progresivo  
 **Artefacto principal:** docs/prds/PRD-MOD05-CRM-DEFINICION-v2.0.md
@@ -141,6 +141,172 @@ Decisión documental registrada:
 3. Incentivos comerciales y productividad técnica quedan proyectados como backlog futuro en un bounded context separado.
 4. El backlog futuro queda documentado en `docs/plans/PLAN-MOD05-INCENTIVOS-BACKLOG-v1.0.md`.
 
+### Evidencia funcional del 2026-04-11
+
+Se aplicó un refinamiento UX en `apps/portal` para la sección **Viabilidad técnica** del expediente:
+
+- Se eliminó la percepción de duplicidad entre `Tecnologías candidatas` y `Tecnología recomendada` mediante un flujo guiado en un único bloque de alternativas.
+- La `opción principal recomendada` ahora se selecciona desde las alternativas marcadas, evitando catálogos repetidos en controles separados.
+- `Resultado de cobertura` pasó a rol contextual (`Referencia de cobertura`) y visibilidad condicional, para priorizar la conclusión de viabilidad.
+- Se reforzó consistencia frontend: la opción principal debe pertenecer al conjunto de alternativas seleccionadas.
+
+Archivos impactados en portal:
+
+- `apps/portal/src/components/crm/expedientes/sections/TechnicalFeasibilitySection.tsx`
+- `apps/portal/src/components/crm/expedientes/sections/constants.ts`
+- `apps/portal/src/app/dashboard/crm/expedientes/[id]/page.tsx`
+
+Validación ejecutada:
+
+- `pnpm --filter @iwana/portal typecheck` sin errores.
+
+### Evidencia funcional adicional del 2026-04-11
+
+Se ejecutó la consolidación mínima del bloque legal en la vista de expediente del portal:
+
+- La sección `legal_consent` se renombró visualmente a **Cumplimiento legal**.
+- Se dejó un flujo manual simplificado con dos decisiones:
+  - `Identidad verificada`: `Verificado` o `Sin verificar`.
+  - `Tratamiento de datos personales`: `Autoriza` o `No autoriza`.
+- Se eliminó la pestaña separada de `Consentimientos` para evitar duplicidad operativa con la captura en Secciones.
+
+Archivos impactados en portal:
+
+- `apps/portal/src/components/crm/expedientes/sections/LegalConsentSection.tsx`
+- `apps/portal/src/components/crm/expedientes/sections/constants.ts`
+- `apps/portal/src/app/dashboard/crm/expedientes/[id]/page.tsx`
+
+### Evidencia funcional adicional 2 del 2026-04-11
+
+### Evidencia documental del 2026-04-13
+
+Se emitieron los artefactos de definición para el ajuste de **auto-pipeline de expedientes**:
+
+- `docs/prds/PRD-MOD05-CRM-AUTO-PIPELINE-v1.0.md`
+- `docs/prompts/PROMPT-MOD05-CRM-AUTO-PIPELINE-v1.0.md`
+
+Decisiones documentadas en esta actualización:
+
+1. el estado del expediente debe derivarse automáticamente del avance real de captura y de la conclusión técnica, con backend como fuente de verdad;
+2. el retroceso automático será mixto y solo estará permitido en estados tempranos del pipeline;
+3. la actualización automática visible del portal en esta fase se resolverá con polling inteligente, no con SSE ni WebSocket;
+4. `DESCARTADO` y `reactivate` permanecen manuales y fuera del motor de automatización.
+
+### Evidencia de ejecución técnica del 2026-04-13
+
+Se ejecutó la implementación full stack del ajuste de auto-pipeline definido en los artefactos anteriores.
+
+Cambios backend aplicados:
+
+- `apps/api/src/modules/crm/expedientes/expediente.service.ts`
+  - se incorporó motor de recálculo automático de estado con fuente de verdad en backend;
+  - se aplicó política de retroceso mixto (sin downgrade automático desde `EN_COTIZACION` en adelante);
+  - se integró trazabilidad de cambio automático en `StatusChange` y `AuditLog`;
+  - se activó recálculo automático tras `updateSection` y `createCoverageCheck`.
+
+Cambios de pruebas backend:
+
+- `apps/api/src/modules/crm/expedientes/tests/expediente.service.spec.ts`
+  - se agregaron pruebas de promoción automática a `PRECALIFICADO`;
+  - se agregó prueba de no retroceso automático desde `EN_COTIZACION`.
+
+Cambios frontend aplicados:
+
+- `apps/portal/src/app/dashboard/crm/expedientes/[id]/page.tsx`
+  - polling inteligente de detalle cada 15s con guardado de estado de edición local (sin pisar draft en captura).
+- `apps/portal/src/app/dashboard/crm/expedientes/page.tsx`
+  - polling inteligente de listado cada 15s.
+- `apps/portal/src/components/crm/CrmOverviewClient.tsx`
+  - polling inteligente de resumen/recientes cada 15s.
+
+Validaciones ejecutadas:
+
+- `pnpm --filter @iwana/api test -- expediente.service.spec.ts` ✅
+- `pnpm --filter @iwana/portal typecheck` ✅
+
+### Evidencia correctiva del 2026-04-14
+
+Se corrigió un error 500 en guardado de secciones del expediente (`PATCH /crm/expedientes/:id/sections/:section`) asociado al recálculo automático de pipeline.
+
+Causa raíz confirmada:
+
+- `status_changes.changed_by` exige UUID en PostgreSQL;
+- en expedientes heredados, el actor de sesión (`sub`) y candidatos de fallback podían no ser UUID;
+- el motor `AUTO_PIPELINE` intentaba persistir `StatusChange` con `changedBy` no válido y la transacción devolvía `Internal server error`.
+
+Corrección aplicada:
+
+- `apps/api/src/modules/crm/expedientes/expediente.service.ts`
+  - se agregó resolución defensiva de actor UUID para cambios automáticos (`resolveAutoStatusChangeActorId`);
+  - cuando no existe candidato UUID válido, el recálculo automático actualiza estado del expediente y auditoría, pero omite el insert en `status_changes` para evitar fallo transaccional;
+  - se registra `warn` técnico para trazabilidad operativa.
+
+Pruebas ajustadas/agregadas:
+
+- `apps/api/src/modules/crm/expedientes/tests/expediente.service.spec.ts`
+  - nueva regresión: auto-pipeline no falla cuando no hay actor UUID candidato y omite `status_change`;
+  - ajuste de caso de promoción automática para usar actor UUID válido y mantener expectativa de registro en `status_changes`.
+
+Validación ejecutada:
+
+- `pnpm --filter @iwana/api test -- src/modules/crm/expedientes/tests/expediente.service.spec.ts` ✅ (38/38)
+
+### Evidencia correctiva complementaria del 2026-04-14 (hardening de raíz)
+
+Se aplicó una segunda corrección de raíz para evitar que cualquier fallo al persistir historial en `status_changes` vuelva a bloquear guardados de secciones.
+
+Corrección aplicada:
+
+- `apps/api/src/modules/crm/expedientes/expediente.service.ts`
+  - se desacopló la persistencia de historial de estado con helper seguro (`persistStatusChangeSafely`) en modo best-effort;
+  - `transitionStatus` y `reactivate` mantienen la operación principal aunque falle el insert de `StatusChange`;
+  - se reforzó tipado para no propagar `changedBy` nullable a inserciones que requieren UUID.
+
+Pruebas ajustadas/agregadas:
+
+- `apps/api/src/modules/crm/expedientes/tests/expediente.service.spec.ts`
+  - se actualizaron casos de transición/reactivación con actores UUID válidos;
+  - nueva regresión: auto-pipeline no falla cuando persiste estado pero falla `status_change`.
+
+Validación ejecutada:
+
+- `npx jest src/modules/crm/expedientes/tests/expediente.service.spec.ts` ✅ (39/39)
+
+### Evidencia correctiva del 2026-04-14 (rollback funcional de auto-pipeline)
+
+Se ejecutó rollback funcional en portal para retirar el modo de “override manual” introducido como complemento del auto-pipeline y volver al flujo estándar de transición manual del pipeline.
+
+Corrección aplicada:
+
+- `apps/portal/src/app/dashboard/crm/expedientes/[id]/page.tsx`
+  - se reemplazó el catálogo limitado de estados por el catálogo estándar de transición manual (`NUEVO_POTENCIAL` → `DESCARTADO`);
+  - se retiró copy de auto-movimiento del pipeline y se restauró copy operativo neutral;
+  - se eliminó el bloque de tarjetas de “override” y se volvió al formulario simple de transición.
+
+Validación ejecutada:
+
+- `pnpm --filter @iwana/portal typecheck` ✅
+
+Se retiraron temporalmente de la pestaña `Secciones` los bloques de **Facturación** e **Instalación** por dependencia funcional de módulos aún no activos:
+
+- Facturación: el ciclo de facturación se define en el momento de instalación y requiere configuración previa de ciclos.
+- Instalación: la programación depende del módulo de agenda/programación de instalación.
+
+Decisión aplicada en portal:
+
+- Se removieron ambas secciones del arreglo activo `SECTIONS`.
+- Se removieron del agrupador `operational` en `DIMENSION_SECTION_GROUPS`.
+- Se removió su renderizado del panel de Secciones del expediente.
+
+Archivos impactados:
+
+- `apps/portal/src/components/crm/expedientes/sections/constants.ts`
+- `apps/portal/src/components/crm/expedientes/sections/ExpedienteSections.tsx`
+
+Nota de roadmap:
+
+- Reintroducir estas capacidades en un flujo dedicado de ejecución cuando estén disponibles los módulos de parametrización de ciclos y programación de instalación.
+
 ---
 
 ## 5. Evidencia de calidad
@@ -169,7 +335,7 @@ Decisión documental registrada:
 | `docs/prompts/PROMPT-MOD05-CRM-FASE-02-v1.0.md`              | Prompt ejecución vigente (v1.1) | Aprobado con cierre extendido  |
 | `docs/prompts/PROMPT-MOD05-CRM-ORIGEN-ATRIBUCION-FASE1-v1.1.md` | Prompt operativo de origen/atribución | Aprobado por CTO |
 | `docs/superpowers/specs/SPEC-MOD05-EXPEDIENTE-UNICO-v1.0.md` | Spec expediente único           | Aprobado por CTO               |
-| Este informe                                                 | Informe vivo de definición      | Actualizado v3.5               |
+| Este informe                                                 | Informe vivo de definición      | Actualizado v4.0               |
 
 **Documentos eliminados por consolidación:**
 

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { CheckCircle2, CircleAlert, Layers3, Sparkles } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -18,6 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
+  Select,
   cn,
 } from '@iwana/ui';
 import {
@@ -341,11 +343,21 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
   };
 
   return (
-    <Card>
+    <Card className="rounded-[28px] border border-white/70 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
-            <CardTitle>Catálogo de planes</CardTitle>
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300">
+                <Layers3 className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                  Oferta comercial
+                </p>
+                <CardTitle className="mt-1">Catálogo de planes</CardTitle>
+              </div>
+            </div>
             <p className="text-sm text-gray-500 dark:text-gray-400">
               Gestiona los planes comercializables del tenant autenticado.
             </p>
@@ -360,24 +372,42 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
       </CardHeader>
 
       <CardContent className="space-y-4">
+        <div className="rounded-[24px] border border-gray-100 bg-[#f8faf5] p-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-iwana-secondary-700 shadow-sm dark:bg-dark-surface-2 dark:text-iwana-secondary-400">
+              <Sparkles className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">
+                Reglas activas
+              </p>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                Mantén al menos un plan activo y define reglas de instalación coherentes con el umbral de acometida de {fiberThresholdMeters} m.
+              </p>
+            </div>
+          </div>
+        </div>
+
         {loadError && (
-          <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">
-            {loadError}
-          </p>
+          <div className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+            <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+            <p>{loadError}</p>
+          </div>
         )}
 
         {serverMessage && !loadError && (
-          <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
-            {serverMessage}
-          </p>
+          <div className="flex items-start gap-3 rounded-[24px] border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(254,243,199,0.78))] px-4 py-3 text-sm text-amber-800 shadow-iwana-soft dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+            <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+            <p>{serverMessage}</p>
+          </div>
         )}
 
         {isLoading ? (
-          <div className="h-44 animate-pulse rounded-xl bg-gray-100 dark:bg-dark-surface-3" />
+          <div className="h-44 animate-pulse rounded-[24px] bg-gray-100 shadow-iwana-soft dark:bg-dark-surface-3" />
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-dark-border">
+          <div className="overflow-x-auto rounded-[24px] border border-gray-200 dark:border-dark-border">
             <table className="w-full min-w-[860px] border-collapse">
-              <thead className="bg-gray-50 dark:bg-dark-surface-3">
+              <thead className="bg-[#f6f8f4] dark:bg-dark-surface-3">
                 <tr>
                   <th scope="col" className={tableHeadClass}>
                     Plan
@@ -408,7 +438,7 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
                   <tr>
                     <td
                       colSpan={canEdit ? 6 : 4}
-                      className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400"
+                      className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400"
                     >
                       No hay planes registrados todavía.
                     </td>
@@ -428,7 +458,7 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
                     <tr
                       key={plan.id}
                       className={cn(
-                        'border-t border-gray-100 dark:border-dark-border',
+                        'border-t border-gray-100 transition-colors hover:bg-[#fbfcf8] dark:border-dark-border dark:hover:bg-dark-surface-3',
                         !plan.isActive && 'opacity-55',
                       )}
                     >
@@ -533,8 +563,8 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
                 id="plan-technology"
                 list="plan-technology-options"
                 className={cn(
-                  'flex h-10 w-full rounded-xl border bg-white px-3 py-2 text-sm text-[#111827] placeholder:text-[#9CA3AF] transition-colors duration-200',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#17163A] focus-visible:border-transparent',
+                  'flex h-11 w-full rounded-2xl border bg-gray-50/80 px-4 py-2 text-sm text-[#111827] placeholder:text-[#9CA3AF] transition-all duration-200',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-secondary/35 focus-visible:border-iwana-secondary focus-visible:bg-white',
                   errors.technology
                     ? 'border-[#EF4444]'
                     : 'border-[#D1D5DB] hover:border-[#9CA3AF]',
@@ -557,7 +587,7 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
             <div className="space-y-1.5">
               <p className="text-sm font-medium text-[#374151]">Modalidad de velocidad</p>
               <div role="radiogroup" aria-label="Modalidad de velocidad" className="flex gap-2">
-                <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm">
+                <label className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 px-3 py-2 text-sm">
                   <input
                     type="radio"
                     value="SYMMETRIC"
@@ -566,7 +596,7 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
                   />
                   Simétrica
                 </label>
-                <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm">
+                <label className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 px-3 py-2 text-sm">
                   <input
                     type="radio"
                     value="ASYMMETRIC"
@@ -612,7 +642,7 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
               {...register('basePrice', { valueAsNumber: true })}
             />
 
-            <div className="space-y-3 rounded-xl border border-gray-200 p-3 dark:border-dark-border">
+            <div className="space-y-3 rounded-[24px] border border-gray-200 p-4 dark:border-dark-border">
               <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
                 <input
                   type="checkbox"
@@ -625,15 +655,10 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
               {installationEnabled && (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-1.5">
-                    <label
-                      htmlFor="installation-rule"
-                      className="text-sm font-medium text-[#374151]"
-                    >
-                      Regla de instalación
-                    </label>
-                    <select
+                    <Select
                       id="installation-rule"
-                      className="flex h-10 w-full rounded-xl border border-[#D1D5DB] bg-white px-3 py-2 text-sm text-[#111827]"
+                      label="Regla de instalación"
+                      className="h-11"
                       disabled={!canEdit || isSubmitting}
                       {...register('installationRule')}
                     >
@@ -641,7 +666,7 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
                       <option value="FIBER_DROP_THRESHOLD">
                         Cobrar solo sobre {fiberThresholdMeters} m de acometida
                       </option>
-                    </select>
+                    </Select>
                   </div>
 
                   <Input
@@ -659,9 +684,10 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
             </div>
 
             {serverMessage && (
-              <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">
-                {serverMessage}
-              </p>
+              <div className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+                <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+                <p>{serverMessage}</p>
+              </div>
             )}
 
             <div className="flex flex-wrap justify-end gap-2">
@@ -680,7 +706,7 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
             </div>
 
             {editingPlan && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20">
+              <div className="rounded-[24px] border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(254,243,199,0.78))] p-4 shadow-iwana-soft dark:border-amber-800 dark:bg-amber-900/20">
                 <p className="mb-2 text-sm font-medium text-amber-800 dark:text-amber-300">
                   Zona de peligro
                 </p>

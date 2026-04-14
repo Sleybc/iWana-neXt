@@ -15,6 +15,9 @@ describe('ExpedientesController', () => {
     findAll: jest.fn(),
     findById: jest.fn(),
     getTimelineSummary: jest.fn(),
+    getDocumentSupports: jest.fn(),
+    uploadDocumentSupport: jest.fn(),
+    updateDocumentSupportStatus: jest.fn(),
     updateSection: jest.fn(),
     transitionStatus: jest.fn(),
     reactivate: jest.fn(),
@@ -250,5 +253,90 @@ describe('ExpedientesController', () => {
     });
 
     expect(result.data[0]!.ipAddress).toBe('10.0.0.2');
+  });
+
+  it('expone soportes documentales del expediente', async () => {
+    expedienteServiceMock.getDocumentSupports.mockResolvedValue({
+      personType: 'PERSONA_NATURAL',
+      items: [{ key: 'identity_document', label: 'Documento', hint: 'Hint', versions: [] }],
+      summary: { requiredCount: 2, uploadedCount: 0, approvedCount: 0, blockStatus: 'PENDIENTE' },
+    });
+
+    const result = await controller.getDocumentSupports('00000000-0000-4000-a000-000000000001');
+
+    expect(expedienteServiceMock.getDocumentSupports).toHaveBeenCalledWith(
+      '00000000-0000-4000-a000-000000000001',
+    );
+    expect(result.data.items).toHaveLength(1);
+  });
+
+  it('propaga upload documental al servicio con el actor autenticado', async () => {
+    expedienteServiceMock.uploadDocumentSupport.mockResolvedValue({
+      personType: 'PERSONA_NATURAL',
+      items: [],
+      summary: { requiredCount: 2, uploadedCount: 1, approvedCount: 0, blockStatus: 'EN_REVISION' },
+    });
+
+    const file = {
+      originalname: 'cedula.pdf',
+      mimetype: 'application/pdf',
+      size: 1234,
+      buffer: Buffer.from('pdf'),
+    };
+
+    await controller.uploadDocumentSupport(
+      '00000000-0000-4000-a000-000000000001',
+      'identity_document',
+      file,
+      {
+        sub: 'user-1',
+        email: 'hash',
+        role: 'ADMIN',
+        tenantId: 'tenant-1',
+        schemaName: 'tenant_1',
+        jti: 'jti-1',
+        type: 'tenant',
+      },
+    );
+
+    expect(expedienteServiceMock.uploadDocumentSupport).toHaveBeenCalledWith(
+      '00000000-0000-4000-a000-000000000001',
+      'identity_document',
+      file,
+      'user-1',
+    );
+  });
+
+  it('propaga cambio de estado documental al servicio', async () => {
+    expedienteServiceMock.updateDocumentSupportStatus.mockResolvedValue({
+      personType: 'PERSONA_NATURAL',
+      items: [],
+      summary: { requiredCount: 2, uploadedCount: 1, approvedCount: 1, blockStatus: 'EN_REVISION' },
+    });
+
+    await controller.updateDocumentSupportStatus(
+      '00000000-0000-4000-a000-000000000001',
+      'identity_document',
+      'ver-1',
+      { status: 'APPROVED', note: null },
+      {
+        sub: 'user-1',
+        email: 'hash',
+        role: 'ADMIN',
+        tenantId: 'tenant-1',
+        schemaName: 'tenant_1',
+        jti: 'jti-1',
+        type: 'tenant',
+      },
+    );
+
+    expect(expedienteServiceMock.updateDocumentSupportStatus).toHaveBeenCalledWith(
+      '00000000-0000-4000-a000-000000000001',
+      'identity_document',
+      'ver-1',
+      'APPROVED',
+      'user-1',
+      null,
+    );
   });
 });

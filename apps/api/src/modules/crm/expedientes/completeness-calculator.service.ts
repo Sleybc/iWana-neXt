@@ -7,6 +7,11 @@ import { ConsentRecord } from './entities/consent-record-v2.entity';
 import { CoverageCheck } from './entities/coverage-check.entity';
 import { Quote } from '../quotes/entities/quote.entity';
 import { ConsentType, ConsentStatus, Feasibility } from '@iwana/shared';
+import {
+  DOCUMENT_SUPPORT_STATUS,
+  getDocumentDefinitionsByPersonType,
+  type StoredDocumentSupportMap,
+} from './document-support.types';
 
 /**
  * Interfaz de resultado de completitud por dimensión
@@ -47,25 +52,39 @@ export class CompletenessCalculator {
       throw new Error(`Expediente ${expedienteId} no encontrado`);
     }
 
+    // Intentar cargar sub-tablas CRM. Si no existen (migración pendiente), continuar con
+    // arrays vacíos para que al menos los campos del expediente contribuyan al score.
+    let consents: ConsentRecord[] = [];
+    let quotes: Quote[] = [];
+    let coverageChecks: CoverageCheck[] = [];
+
     try {
       const expedienteData = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-        const consents = await qr.manager.find(ConsentRecord, {
+        const loadedConsents = await qr.manager.find(ConsentRecord, { where: { expedienteId } });
+        const loadedQuotes = await qr.manager.find(Quote, { where: { expedienteId } });
+        const loadedCoverageChecks = await qr.manager.find(CoverageCheck, {
           where: { expedienteId },
         });
-
-        const quotes = await qr.manager.find(Quote, {
-          where: { expedienteId },
-        });
-
-        const coverageChecks = await qr.manager.find(CoverageCheck, {
-          where: { expedienteId },
-        });
-
-        return { consents, quotes, coverageChecks };
+        return { consents: loadedConsents, quotes: loadedQuotes, coverageChecks: loadedCoverageChecks };
       });
 
-      const { consents, quotes, coverageChecks } = expedienteData;
+      consents = expedienteData.consents;
+      quotes = expedienteData.quotes;
+      coverageChecks = expedienteData.coverageChecks;
+    } catch (subTableError) {
+      if (this.isSchemaCompatibilityError(subTableError)) {
+        // Sub-tablas aún no migradas — calcular con arrays vacíos para reflejar al menos
+        // los campos del expediente (identificación, interés comercial, operativa).
+        this.logger.warn(
+          `Sub-tablas CRM no disponibles para expediente ${expedienteId} en schema ${schemaName}. ` +
+            `Se calculará completitud parcial sin consents/quotes/coverage.`,
+        );
+      } else {
+        throw subTableError;
+      }
+    }
 
+    try {
       const commercial = this.calculateCommercial(expediente, quotes);
       const legal = this.calculateLegal(expediente, consents);
       const technical = Math.max(
@@ -158,7 +177,7 @@ export class CompletenessCalculator {
    */
   private calculateLegal(expediente: ExpedienteRecord, consents: ConsentRecord[]): number {
     let score = 0;
-    let total = 3;
+    let total = 4;
 
     const dataTreatment = consents.find(
       (c) => c.consentType === 'TRATAMIENTO_DATOS' && c.status === 'ACEPTADO',
@@ -167,10 +186,22 @@ export class CompletenessCalculator {
       (c) => c.consentType === 'CONTACTO_COMERCIAL' && c.status === 'ACEPTADO',
     );
     const identityVerified = expediente.identityVerified === 'verified';
+    const documentSupports =
+      expediente.documentSupports && typeof expediente.documentSupports === 'object'
+        ? (expediente.documentSupports as StoredDocumentSupportMap)
+        : {};
+    const requiredDocumentDefinitions = getDocumentDefinitionsByPersonType(expediente.personType);
+    const allRequiredDocumentsApproved =
+      requiredDocumentDefinitions.length > 0 &&
+      requiredDocumentDefinitions.every(
+        (definition) =>
+          documentSupports[definition.key]?.versions?.[0]?.status === DOCUMENT_SUPPORT_STATUS.APPROVED,
+      );
 
     if (dataTreatment) score++;
     if (commercialConsent) score++;
     if (identityVerified) score++;
+    if (allRequiredDocumentsApproved) score++;
 
     return Math.round((score / total) * 100);
   }

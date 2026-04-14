@@ -45,28 +45,29 @@ export function MfaRequiredToggle({ mfaRequiredAll, onUpdated }: MfaRequiredTogg
   return (
     <section
       aria-label="Configuración de MFA obligatorio"
-      className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
+      className="rounded-[24px] border border-white/70 bg-white/95 p-5 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95"
     >
-      {/* Encabezado */}
       <div className="mb-4 flex items-center gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-iwana-primary/10 dark:bg-iwana-primary-900/20">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] bg-iwana-primary/10 dark:bg-iwana-primary-900/20">
           <Shield
             className="h-5 w-5 text-iwana-primary dark:text-iwana-primary-300"
             aria-hidden="true"
           />
         </div>
-        <div>
+        <div className="space-y-1">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+            Politica de acceso
+          </p>
           <h2 className="text-sm font-semibold text-gray-800 dark:text-white">
             Seguridad — MFA obligatorio
           </h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+          <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
             Exige autenticación de dos factores a todos los usuarios del tenant.
           </p>
         </div>
       </div>
 
-      {/* Estado actual */}
-      <div className="mb-4 flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
+      <div className="mb-4 flex items-center justify-between rounded-[20px] border border-gray-200 bg-[#f8faf5] px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
         <div className="flex items-center gap-2">
           {mfaRequiredAll ? (
             <ShieldCheck
@@ -104,26 +105,29 @@ export function MfaRequiredToggle({ mfaRequiredAll, onUpdated }: MfaRequiredTogg
         </button>
       </div>
 
-      {/* Descripción contextual */}
-      <p className="mb-4 text-xs text-gray-500 dark:text-gray-400">
+      <p className="mb-4 rounded-[20px] border border-gray-200 bg-white px-4 py-3 text-sm leading-6 text-gray-500 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-400">
         {mfaRequiredAll
           ? 'Los usuarios que no tengan MFA configurado serán redirigidos al flujo de configuración en su próximo inicio de sesión.'
           : 'Al activar esta opción, todos los usuarios de la empresa deberán configurar MFA en su próximo inicio de sesión.'}
       </p>
 
-      {/* Feedback: error o éxito */}
       {error && (
-        <p role="alert" className="mt-1 text-xs font-medium text-red-600 dark:text-red-400">
+        <p
+          role="alert"
+          className="mt-1 rounded-2xl border border-red-200 bg-red-50/90 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-300"
+        >
           {error}
         </p>
       )}
       {successMsg && !error && (
-        <p role="status" className="mt-1 text-xs font-medium text-green-600 dark:text-green-400">
+        <p
+          role="status"
+          className="mt-1 rounded-2xl border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-sm font-medium text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-300"
+        >
           {successMsg}
         </p>
       )}
 
-      {/* Indicador de carga */}
       {isLoading && (
         <div className="mt-2 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
           <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />

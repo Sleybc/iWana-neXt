@@ -20,6 +20,7 @@ export class AddCurrentResponsibleFieldsAndOperationalHistory1700000000009 imple
         changed_by uuid NOT NULL,
         changed_at timestamptz NOT NULL DEFAULT now(),
         notes varchar(255) NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
         CONSTRAINT pk_operational_responsibility_history PRIMARY KEY (id),
         CONSTRAINT fk_operational_resp_hist_expediente
           FOREIGN KEY (expediente_id)

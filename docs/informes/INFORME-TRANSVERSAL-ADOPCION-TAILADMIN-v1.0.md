@@ -3,7 +3,7 @@
 **Version:** 1.0
 **Estado:** Dark Mode Surface #181818 Ejecutado
 **Fecha creacion:** 2026-03-13
-**Fecha ultima actualizacion:** 2026-03-14
+**Fecha ultima actualizacion:** 2026-04-10
 **Modo activo:** Mixto
 **Agente responsable:** AI-EM-ARCH / Sr. Dev Fullstack
 **Referencia al prompt de ejecucion:** `docs/prompts/PROMPT-TRANSVERSAL-ADOPCION-TAILADMIN-FASE-01-v1.0.md`
@@ -177,6 +177,47 @@ En este corte se ejecuto la FASE-06 de calidad extendida: cobertura E2E para por
 ---
 
 ## 5b. Criterios de aceptacion — Fase 03
+
+---
+
+## Addendum correctivo — 2026-04-10
+
+Se ejecutó un ajuste de consistencia visual adicional en `apps/portal` para cerrar diferencias entre el shell iWana ya refinado y los módulos funcionales de usuarios internos y configuración empresarial.
+
+### Artefactos ajustados
+
+| Artefacto | Archivo | Cambio |
+| --- | --- | --- |
+| Tabla de usuarios | `apps/portal/src/components/users/UsersTable.tsx` | Filtros promovidos a barra de control iWana con mejor jerarquía visual, uso de `Select` del design system, badges consistentes y tabla con encabezados/acciones alineados al shell refinado |
+| Cliente de usuarios | `apps/portal/src/components/users/UsersClient.tsx` | Estados de éxito/error/acceso restringido y modal de contraseña temporal ajustados a tarjetas iWana con mejor señalización visual |
+| Resumen de configuración | `apps/portal/src/components/settings/SettingsOverviewPanel.tsx` | Panel convertido en resumen operativo con identidad del tenant, estado, MFA y alertas en superficies coherentes con el dashboard |
+| Tabs de configuración | `apps/portal/src/components/settings/SettingsTabs.tsx` | Tabs migradas a contenedor/pills más cercanos al lenguaje iWana, preservando navegación WCAG por teclado |
+| Cliente de configuración | `apps/portal/src/components/settings/SettingsClient.tsx` | Skeleton, error state e intro del módulo refinados para evitar contraste con el shell actualizado |
+| Modales de usuarios | `apps/portal/src/components/users/CreateUserModal.tsx`, `apps/portal/src/components/users/EditUserModal.tsx`, `apps/portal/src/components/users/DeleteUserDialog.tsx`, `apps/portal/src/components/users/ResetPasswordDialog.tsx` | Capas y mensajes de alta, edición, borrado y reseteo alineados al sistema iWana con mejor jerarquía, superficies premium y estados de confirmación más claros |
+| Login portal | `apps/portal/src/app/auth/login/page.tsx`, `apps/portal/src/components/auth/LoginForm.tsx`, `apps/portal/src/components/auth/LoginBrandPanel.tsx` | Revisión del acceso contra el manual: microcopy más corporativo, tarjetas/inputs premium, jerarquía de marca y beneficios reforzados |
+| Dashboard restringido/carga/error | `apps/portal/src/components/dashboard/DashboardClient.tsx` | Estados no ideales refinados para evitar placeholders genéricos dentro del portal empresarial |
+| Formularios Settings | `apps/portal/src/components/settings/CompanyProfileForm.tsx`, `apps/portal/src/components/settings/OperationalSettingsForm.tsx`, `apps/portal/src/components/settings/SecuritySettingsCard.tsx`, `apps/portal/src/components/settings/BrandingForm.tsx` | Tarjetas, avisos, feedbacks y controles alineados al shell iWana; `OperationalSettingsForm` migra selects visualmente al componente `Select` del sistema |
+| Actividad reciente | `apps/portal/src/components/dashboard/RecentActivityPanel.tsx` | Skeleton y estados vacío/error refinados para mantener consistencia premium en el dashboard |
+| Tab comercial | `apps/portal/src/components/settings/CommercialTabLayout.tsx`, `apps/portal/src/components/settings/CoverageCheckSection.tsx`, `apps/portal/src/components/settings/PlanCatalogManager.tsx`, `apps/portal/src/components/settings/AdditionalProductsManager.tsx` | Subnavegación, formularios, tablas y estados del frente comercial refinados para cerrar el salto visual dentro de Settings |
+| Cobertura comercial extendida | `apps/portal/src/components/settings/CoverageNodeDialog.tsx`, `apps/portal/src/components/settings/CoverageZoneDialog.tsx`, `apps/portal/src/components/settings/CoverageNodeTable.tsx`, `apps/portal/src/components/settings/CoverageZoneTable.tsx`, `apps/portal/src/components/settings/CoverageMapWrapper.tsx` | Diálogos, tablas y fallback del mapa alineados visualmente con el resto del módulo comercial |
+| CRM secundario | `apps/portal/src/components/crm/expedientes/CoverageChecksPanel.tsx`, `apps/portal/src/components/crm/expedientes/ContactAttemptsPanel.tsx`, `apps/portal/src/components/crm/expedientes/ConsentsPanel.tsx` | Formularios, estados vacíos/error y cards históricas refinadas para reducir deuda visual en los paneles auxiliares del expediente |
+| Cierre de consistencia portal | `apps/portal/src/components/profile/ProfileClient.tsx`, `apps/portal/src/components/profile/PersonalInfoForm.tsx`, `apps/portal/src/components/profile/ChangePasswordForm.tsx`, `apps/portal/src/components/profile/MfaRequiredToggle.tsx`, `apps/portal/src/components/layout/NotificationBell.tsx`, `apps/portal/src/components/crm/expedientes/ExpedienteTabsContainer.tsx`, `apps/portal/src/components/settings/CoverageMap.tsx`, `apps/portal/src/components/settings/CommercialCoverageCard.tsx`, `apps/portal/src/components/crm/CrmOverviewClient.tsx`, `apps/portal/src/components/dashboard/QuickActionsPanel.tsx`, `apps/portal/src/app/dashboard/crm/expedientes/page.tsx`, `apps/portal/src/app/dashboard/crm/expedientes/[id]/page.tsx`, `apps/portal/src/components/layout/Sidebar.tsx`, `apps/portal/src/components/dashboard/MetricCard.tsx`, `apps/portal/src/components/settings/CommercialTabLayout.tsx`, `apps/portal/src/components/settings/SettingsTabs.tsx`, `packages/ui/src/components/ProgressMeter.tsx`, `packages/ui/src/components/SectionAccordion.tsx`, `packages/ui/src/components/Select.tsx`, `packages/ui/src/styles/globals.css`, `docs/prototipo/prototipo_datos_usuario.html` | Último pase de cierre sobre perfil, seguridad, notificaciones, overview CRM, listado/detalle CRM, accesos rápidos, tabs CRM, roadmap del sidebar, correcciones WCAG/ARIA, rediseño visual del Select compartido y saneamiento del prototipo HTML |
+
+### Verificación ejecutada
+
+- `pnpm --filter @iwana/portal typecheck` ✅
+
+### Resultado
+
+- Se reduce la sensación de “módulo heredado” en Users/Settings dentro del portal.
+- Se preservan contratos, flujos y selectores funcionales, concentrando el cambio en presentación y consistencia visual.
+- Se extiende el mismo lenguaje visual a formularios self-service y paneles secundarios del dashboard, cerrando diferencias perceptibles entre shell, login, Users y Settings.
+- El tab comercial de Settings queda visualmente alineado con el resto del módulo, incluyendo cobertura, catálogo de planes y productos adicionales.
+- Los paneles auxiliares de CRM y las piezas de cobertura comercial ya comparten la misma jerarquía visual y tratamiento de estados que el resto del portal.
+- Perfil, notificaciones y tabs residuales del expediente ya no rompen el lenguaje visual premium ni vuelven a estados genéricos dentro del portal.
+- El listado y el detalle top-level del CRM ya muestran estados de carga y error coherentes con el resto del portal, y se retiró `PlanCatalogCard`, una pieza heredada sin uso dentro de `apps/portal`.
+- Los diagnósticos de accesibilidad reportados por Edge Tools sobre `aria-expanded`, `aria-selected`, `aria-pressed`, `aria-invalid`, `progressbar` y controles sin nombre visible quedaron corregidos o reestructurados sobre componentes y prototipos afectados.
+- La barra de completitud vuelve a renderizarse con geometría y colores de marca, y el `Select` compartido deja de depender del dropdown nativo del navegador para usar un listbox visualmente coherente con el sistema iWana.
 
 | Criterio | Estado |
 | --- | --- |

@@ -1,8 +1,24 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import '@iwana/ui/styles/globals.css';
+import './portal-typography.css';
 import { ThemeProvider } from '@iwana/ui';
+import { Exo_2, JetBrains_Mono } from 'next/font/google';
 import { AuthProvider } from '@/components/auth/AuthProvider';
 import { TenantFavicon } from '@/components/layout/TenantFavicon';
+
+const exo2 = Exo_2({
+  subsets: ['latin'],
+  weight: ['100', '300', '400', '500', '600', '700'],
+  display: 'swap',
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500'],
+  display: 'swap',
+  variable: '--font-jetbrains-mono',
+});
 
 export const metadata: Metadata = {
   title: 'iWana neXt — Portal Corporativo',
@@ -20,12 +36,14 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <body>
+      <body className={`${exo2.className} ${jetbrainsMono.variable} antialiased`}>
         <ThemeProvider>
-          <AuthProvider>
-            <TenantFavicon />
-            {children}
-          </AuthProvider>
+          <Suspense fallback={null}>
+            <AuthProvider>
+              <TenantFavicon />
+              {children}
+            </AuthProvider>
+          </Suspense>
         </ThemeProvider>
       </body>
     </html>

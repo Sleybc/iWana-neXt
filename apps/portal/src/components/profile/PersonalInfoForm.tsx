@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { CheckCircle2, Mail, UserRound } from 'lucide-react';
 import { Button, Card, CardContent, Input } from '@iwana/ui';
 import {
   userApi,
@@ -138,10 +139,21 @@ export function PersonalInfoForm({
 
   return (
     <Card>
-      <CardContent className="p-6">
-        <h2 className="mb-5 text-base font-semibold text-gray-900 dark:text-white">
-          Datos personales
-        </h2>
+      <CardContent className="p-6 md:p-7">
+        <div className="mb-6 flex items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[20px] bg-iwana-primary/10 text-iwana-primary dark:bg-iwana-primary/20 dark:text-iwana-primary-300">
+            <UserRound className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+              Identidad del usuario
+            </p>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Datos personales</h2>
+            <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
+              Mantén actualizado el perfil que usa tu equipo para operar, contactar y auditar la cuenta.
+            </p>
+          </div>
+        </div>
 
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -178,15 +190,16 @@ export function PersonalInfoForm({
           </div>
 
           {serverError && (
-            <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
+            <div className="rounded-2xl border border-red-200 bg-red-50/90 px-4 py-3 text-sm text-red-700 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-300">
               {serverError}
-            </p>
+            </div>
           )}
 
           {success && (
-            <p className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-400">
+            <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-300">
+              <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
               Perfil actualizado correctamente.
-            </p>
+            </div>
           )}
 
           <div className="flex justify-end pt-2">
@@ -197,13 +210,18 @@ export function PersonalInfoForm({
         </form>
 
         <div className="mt-8 border-t border-gray-200 pt-6 dark:border-dark-border">
-          <h3 className="mb-2 text-sm font-semibold text-gray-900 dark:text-white">
-            Email de acceso
-          </h3>
-          <p className="mb-4 text-sm text-gray-500 dark:text-gray-300">
+          <div className="mb-4 flex items-start gap-4">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] bg-iwana-secondary-100 text-iwana-secondary-700 dark:bg-iwana-secondary-900/30 dark:text-iwana-secondary-300">
+              <Mail className="h-4.5 w-4.5" aria-hidden="true" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Email de acceso</h3>
+              <p className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-300">
             Este correo se usa para iniciar sesión. Si este usuario sigue siendo el administrador
             principal, el correo de contacto de la empresa también se sincroniza.
-          </p>
+              </p>
+            </div>
+          </div>
 
           <form onSubmit={handleSubmitEmail(onSubmitEmail)} noValidate className="space-y-4">
             <Input id="current-email" label="Email actual" value={profile.email} readOnly />
@@ -225,15 +243,16 @@ export function PersonalInfoForm({
             />
 
             {emailError && (
-              <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
+              <div className="rounded-2xl border border-red-200 bg-red-50/90 px-4 py-3 text-sm text-red-700 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-300">
                 {emailError}
-              </p>
+              </div>
             )}
 
             {emailSuccess && (
-              <p className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-400">
+              <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-300">
+                <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
                 Email de acceso actualizado correctamente.
-              </p>
+              </div>
             )}
 
             <div className="flex justify-end pt-2">

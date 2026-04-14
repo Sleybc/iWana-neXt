@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { MapPinned } from 'lucide-react';
 import {
   Button,
   Dialog,
@@ -90,7 +91,17 @@ export function CoverageNodeDialog({
         aria-describedby="node-dialog-description"
       >
         <DialogHeader>
-          <DialogTitle id="node-dialog-title">{node ? 'Editar nodo' : 'Nuevo nodo'}</DialogTitle>
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300">
+              <MapPinned className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                Nodo comercial
+              </p>
+              <DialogTitle id="node-dialog-title">{node ? 'Editar nodo' : 'Nuevo nodo'}</DialogTitle>
+            </div>
+          </div>
           <DialogDescription id="node-dialog-description">
             Define nombre, coordenadas y estado del nodo comercial.
           </DialogDescription>
@@ -132,7 +143,7 @@ export function CoverageNodeDialog({
             />
           </div>
 
-          <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+          <label className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 bg-[#f8faf5] px-3 py-2 text-sm font-medium text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
             <input type="checkbox" disabled={!canEdit || isSubmitting} {...register('isActive')} />
             Nodo activo
           </label>

@@ -21,11 +21,11 @@ export default function LoginPage() {
       <LoginBrandPanel />
 
       {/* Panel derecho — formulario */}
-      <div className="w-full lg:w-1/2 bg-[#181818] flex items-center justify-center p-6 lg:p-12 relative">
+      <div className="relative flex w-full items-center justify-center bg-[#181818] p-6 lg:w-1/2 lg:p-12">
         {/* Patrón de puntos */}
         <div className="absolute inset-0 opacity-5 bg-[radial-gradient(#A5C330_1px,transparent_1px)] bg-[length:32px_32px]" />
 
-        <div className="w-full max-w-[480px] bg-white rounded-2xl p-8 lg:p-12 shadow-2xl relative z-10">
+        <div className="relative z-10 w-full max-w-[520px] rounded-[30px] border border-white/70 bg-white/95 p-8 shadow-iwana-lg lg:p-12">
           <div className="mb-10">
             {/* Title / welcome message */}
             <div className="flex lg:hidden items-center gap-2 mb-6">
@@ -44,9 +44,12 @@ export default function LoginPage() {
               <span className="font-bold text-[#181818]">iWana neXt</span>
             </div>
 
-            <h2 className="text-3xl font-bold text-[#181818] mb-2">Bienvenido al Portal</h2>
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700">
+              Portal corporativo
+            </p>
+            <h2 className="mb-2 text-3xl font-bold text-[#181818]">Bienvenido al Portal</h2>
             <p className="text-slate-500 text-base">
-              Ingresa tus credenciales para acceder a tus servicios
+              Ingresa tus credenciales para acceder a tus servicios y a la operación del tenant.
             </p>
           </div>
 

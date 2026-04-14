@@ -294,8 +294,9 @@ async function request<T>(
   const resolvedTenantSlug = getTenantSlug(tenantSlugOverride);
   const token = readStoredAccessToken();
   const headers = new Headers(options?.headers);
+  const isFormDataBody = typeof FormData !== 'undefined' && options?.body instanceof FormData;
 
-  if (!headers.has('Content-Type') && options?.body !== undefined) {
+  if (!headers.has('Content-Type') && options?.body !== undefined && !isFormDataBody) {
     headers.set('Content-Type', 'application/json');
   }
 
@@ -1292,6 +1293,7 @@ export interface ExpedienteRecord {
   address: string | null;
   municipality: string | null;
   department: string | null;
+  postalCode?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   stratum?: number | null;
@@ -1320,6 +1322,7 @@ export interface ExpedienteRecord {
   estimatedEquipment?: string | null;
   identityVerified?: string | null;
   legalComplianceStatus?: string | null;
+  documentSupports?: Record<string, unknown> | null;
   paymentMethod?: string | null;
   billingCycle?: string | null;
   fiscalName?: string | null;
@@ -1336,8 +1339,44 @@ export interface ExpedienteRecord {
   completenessLegal: number | null;
   completenessTechnical: number | null;
   completenessOperational: number | null;
+  completenessOverall?: number | null;
+  pipelineProgress?: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export type DocumentReviewStatus = 'PENDING' | 'UPLOADED' | 'OBSERVED' | 'APPROVED' | 'REJECTED';
+
+export interface ExpedienteDocumentVersion {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedAt: string;
+  uploadedBy: string;
+  status: DocumentReviewStatus;
+  note: string | null;
+  downloadUrl: string;
+}
+
+export interface ExpedienteDocumentItem {
+  key: string;
+  label: string;
+  hint: string;
+  versions: ExpedienteDocumentVersion[];
+}
+
+export interface ExpedienteDocumentSummary {
+  requiredCount: number;
+  uploadedCount: number;
+  approvedCount: number;
+  blockStatus: 'PENDIENTE' | 'EN_REVISION' | 'OBSERVADO' | 'COMPLETO';
+}
+
+export interface ExpedienteDocumentSupportResponse {
+  personType: string | null;
+  items: ExpedienteDocumentItem[];
+  summary: ExpedienteDocumentSummary;
 }
 
 export interface CreateExpedienteDto {
@@ -1710,4 +1749,37 @@ export const crmApi = {
       tenantSlug,
     );
   },
+
+  getDocumentSupports: (id: string, tenantSlug?: string, personType?: string | null) => {
+    const query = personType ? `?personType=${encodeURIComponent(personType)}` : '';
+    return request<{ data: ExpedienteDocumentSupportResponse }>(
+      `/crm/expedientes/${id}/document-supports${query}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    );
+  },
+
+  uploadDocumentSupport: (id: string, documentKey: string, file: File, tenantSlug?: string) => {
+    const body = new FormData();
+    body.append('file', file);
+
+    return request<{ data: ExpedienteDocumentSupportResponse }>(
+      `/crm/expedientes/${id}/document-supports/${documentKey}/upload`,
+      { method: 'POST', body, returnFullResponse: true },
+      tenantSlug,
+    );
+  },
+
+  updateDocumentSupportStatus: (
+    id: string,
+    documentKey: string,
+    versionId: string,
+    dto: { status: DocumentReviewStatus; note?: string | null },
+    tenantSlug?: string,
+  ) =>
+    request<{ data: ExpedienteDocumentSupportResponse }>(
+      `/crm/expedientes/${id}/document-supports/${documentKey}/${versionId}/status`,
+      { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
 };

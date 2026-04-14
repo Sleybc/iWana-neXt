@@ -43,10 +43,13 @@ export function CommercialTabLayout({ canEdit, fiberThresholdMeters }: Commercia
       {/* Sidebar de sub-navegación */}
       <nav
         aria-label="Subsecciones comerciales"
-        className="flex shrink-0 flex-row gap-1 md:w-44 md:flex-col"
+        className="flex shrink-0 flex-row gap-2 rounded-[24px] border border-white/70 bg-white/95 p-2 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95 md:w-52 md:flex-col md:self-start"
       >
         {COMMERCIAL_SUBNAV.map((item, index) => {
           const isActive = item.id === activeSubItem;
+          const pressedState = isActive
+            ? ({ 'aria-pressed': 'true' } as const)
+            : ({ 'aria-pressed': 'false' } as const);
           return (
             <button
               key={item.id}
@@ -55,13 +58,13 @@ export function CommercialTabLayout({ canEdit, fiberThresholdMeters }: Commercia
               }}
               type="button"
               // aria-pressed: correcto para toggles de panel en-página (no aria-current="page")
-              aria-pressed={isActive}
+              {...pressedState}
               tabIndex={isActive ? 0 : -1}
               className={cn(
-                'rounded-lg px-3 py-2 text-left text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2',
+                'rounded-2xl px-3 py-2.5 text-left text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2',
                 isActive
-                  ? 'bg-iwana-primary/10 text-iwana-primary dark:bg-iwana-primary-400/15 dark:text-iwana-primary-300'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-dark-surface-3 dark:hover:text-white',
+                  ? 'bg-iwana-primary/10 text-iwana-primary shadow-sm dark:bg-iwana-primary-400/15 dark:text-iwana-primary-300'
+                  : 'text-gray-600 hover:bg-[#f8faf5] hover:text-gray-900 dark:text-gray-400 dark:hover:bg-dark-surface-3 dark:hover:text-white',
               )}
               onClick={() => setActiveSubItem(item.id)}
               onKeyDown={(event) => {

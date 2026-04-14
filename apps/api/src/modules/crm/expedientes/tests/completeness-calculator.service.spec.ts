@@ -154,6 +154,7 @@ function buildExpediente(overrides: Partial<ExpedienteRecord>): ExpedienteRecord
     address: null,
     municipality: null,
     department: null,
+    postalCode: null,
     stratum: null,
     neighborhood: null,
     latitude: null,

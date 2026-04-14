@@ -54,10 +54,16 @@ export function QuickActionsPanel() {
   return (
     <Card>
       <CardHeader>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+          Atajos operativos
+        </p>
         <CardTitle className="flex items-center gap-2 text-base">
           <Zap className="w-4 h-4 text-iwana-secondary-700" aria-hidden="true" />
           Accesos rápidos
         </CardTitle>
+        <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
+          Entradas directas al autoservicio ya disponible y visibilidad controlada del roadmap del portal.
+        </p>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -67,7 +73,7 @@ export function QuickActionsPanel() {
                 <Link
                   key={action.href}
                   href={action.href}
-                  className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3 text-sm hover:border-iwana-primary hover:bg-iwana-primary-50 transition-all dark:border-gray-700 dark:hover:border-iwana-primary-300 dark:hover:bg-iwana-primary/10"
+                  className="flex items-center justify-between rounded-[24px] border border-gray-200 px-4 py-4 text-sm transition-all hover:-translate-y-0.5 hover:border-iwana-primary hover:bg-iwana-primary-50 dark:border-gray-700 dark:hover:border-iwana-primary-300 dark:hover:bg-iwana-primary/10"
                 >
                   <span className="flex items-center gap-3">
                     <action.icon
@@ -92,22 +98,22 @@ export function QuickActionsPanel() {
             return (
               <div
                 key={action.href}
-                className="flex items-center justify-between rounded-xl border border-gray-100 px-4 py-3 text-sm cursor-not-allowed opacity-50 dark:border-gray-800"
+                className="flex items-center justify-between rounded-[24px] border border-gray-200 bg-[#f8faf5] px-4 py-4 text-sm dark:border-dark-border dark:bg-dark-surface-3"
                 aria-disabled="true"
               >
                 <span className="flex items-center gap-3">
                   <action.icon className="w-4 h-4 text-gray-400 shrink-0" aria-hidden={true} />
                   <span className="min-w-0">
-                    <span className="block font-medium text-gray-500 dark:text-gray-400">
+                    <span className="block font-medium text-gray-700 dark:text-gray-200">
                       {action.label}
                     </span>
-                    <span className="block text-xs text-gray-400 dark:text-gray-500 truncate">
+                    <span className="block text-xs text-gray-500 dark:text-gray-400 truncate">
                       {action.description}
                     </span>
                   </span>
                 </span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-dark-surface-3 text-gray-400 font-medium shrink-0 ml-2">
-                  Próximo
+                <span className="ml-2 shrink-0 rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:border-dark-border-2 dark:bg-dark-surface-2 dark:text-gray-300">
+                  Fase siguiente
                 </span>
               </div>
             );

@@ -2,6 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import type { InternalUser } from '@/lib/api-client';
 
 interface DeleteUserDialogProps {
@@ -57,28 +58,18 @@ export function DeleteUserDialog({
       aria-modal="true"
       aria-labelledby="delete-user-title"
     >
-      <div className="relative w-full max-w-md mx-4 rounded-2xl bg-white p-6 shadow-xl dark:bg-dark-surface-2">
+      <div className="relative mx-4 w-full max-w-md rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-iwana-lg dark:border-dark-border dark:bg-dark-surface-2/95">
         <div className="mb-6 flex items-center gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
-            <svg
-              className="h-6 w-6 text-red-600 dark:text-red-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-              />
-            </svg>
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">
+            <AlertTriangle className="h-6 w-6" aria-hidden="true" />
           </div>
           <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-red-700 dark:text-red-300">
+              Acción sensible
+            </p>
             <h2
               id="delete-user-title"
-              className="text-lg font-semibold text-gray-900 dark:text-white"
+              className="mt-1 text-lg font-semibold text-iwana-primary dark:text-white"
             >
               Eliminar usuario
             </h2>
@@ -88,7 +79,7 @@ export function DeleteUserDialog({
           </div>
         </div>
 
-        <div className="mb-6 rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-surface-3">
+        <div className="mb-6 rounded-[24px] border border-gray-100 bg-[#f8faf5] p-4 dark:border-dark-border dark:bg-dark-surface-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-iwana-primary/10 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-400">
               <svg
@@ -114,7 +105,7 @@ export function DeleteUserDialog({
         </div>
 
         {isSelfDelete && (
-          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20">
+          <div className="mb-4 rounded-[24px] border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(254,243,199,0.78))] p-4 shadow-iwana-soft dark:border-amber-800 dark:bg-amber-900/20">
             <p className="text-sm text-amber-800 dark:text-amber-300">
               <strong>Advertencia:</strong> Estás a punto de eliminar tu propia cuenta. Perderás el
               acceso al portal y necesitarás que otro administrador restaure tu cuenta.
@@ -155,7 +146,7 @@ export function DeleteUserDialog({
         </div>
 
         {serverError && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
+          <div className="mb-4 rounded-2xl border border-red-200/80 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
             <p className="text-sm text-red-700 dark:text-red-300">{serverError}</p>
           </div>
         )}
@@ -165,7 +156,7 @@ export function DeleteUserDialog({
             type="button"
             onClick={onClose}
             disabled={isSubmitting}
-            className="inline-flex items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-4 transition-colors"
+            className="inline-flex items-center justify-center rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-4"
           >
             Cancelar
           </button>
@@ -173,7 +164,7 @@ export function DeleteUserDialog({
             type="button"
             onClick={handleConfirm}
             disabled={isSubmitting || !isConfirmed}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50 transition-colors dark:bg-red-500 dark:hover:bg-red-400"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-500 dark:hover:bg-red-400"
           >
             {isSubmitting ? (
               <>

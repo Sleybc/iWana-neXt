@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { CheckCircle2, CircleAlert, ImageIcon } from 'lucide-react';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '@iwana/ui';
 import { tenantSelfApi, type TenantSelf } from '@/lib/api-client';
 import { TenantSeal } from '@/components/layout/TenantSeal';
@@ -162,9 +163,19 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
   };
 
   return (
-    <Card>
+    <Card className="rounded-[28px] border border-white/70 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
       <CardHeader>
-        <CardTitle>Logo y Sello</CardTitle>
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300">
+            <ImageIcon className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+              Activos de marca
+            </p>
+            <CardTitle className="mt-1">Logo y Sello</CardTitle>
+          </div>
+        </div>
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Configura la identidad visual del tenant. Las imágenes deben estar publicadas en HTTPS.
           Formatos recomendados: SVG o PNG con fondo transparente.
@@ -210,7 +221,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
             </div>
 
             {/* Preview del sidebar en tiempo real */}
-            <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
+            <div className="rounded-[24px] border border-gray-100 bg-[#f8faf5] px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
               <p className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">
                 Así quedaría en el menú lateral:
               </p>
@@ -229,7 +240,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
               </div>
             </div>
 
-            <div className="rounded-xl border border-gray-100 bg-white px-4 py-4 dark:border-dark-border dark:bg-dark-surface-2">
+            <div className="rounded-[24px] border border-gray-100 bg-white px-4 py-4 dark:border-dark-border dark:bg-dark-surface-2">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
@@ -320,14 +331,16 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
 
           {/* Mensajes de feedback */}
           {serverError && (
-            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
-              {serverError}
-            </p>
+            <div className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+              <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+              <p>{serverError}</p>
+            </div>
           )}
           {success && !serverError && (
-            <p className="rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-400">
-              {success}
-            </p>
+            <div className="flex items-start gap-3 rounded-[24px] border border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.98),rgba(209,250,229,0.82))] px-4 py-3 text-sm text-emerald-700 shadow-iwana-soft dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400">
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+              <p>{success}</p>
+            </div>
           )}
 
           <div className="flex items-center justify-between gap-3">

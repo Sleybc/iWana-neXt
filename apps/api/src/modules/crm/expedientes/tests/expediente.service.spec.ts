@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { DataSource } from 'typeorm';
 import {
   AcquisitionChannel,
@@ -16,6 +17,12 @@ import { UpdateSectionDto, ExpedienteSection } from '../dto/update-section.dto';
 import { ExpedienteRecord } from '../entities/expediente-record.entity';
 import { StatusChange } from '../entities/status-change.entity';
 import { ExpedienteService } from '../expediente.service';
+
+jest.mock('node:fs/promises', () => ({
+  mkdir: jest.fn().mockResolvedValue(undefined),
+  writeFile: jest.fn().mockResolvedValue(undefined),
+  access: jest.fn().mockResolvedValue(undefined),
+}));
 
 const mockRunInTenantSchema = jest.fn();
 const mockTenantContextGetOrThrow = jest.fn();
@@ -125,6 +132,19 @@ describe('ExpedienteService', () => {
     );
   });
 
+  it('no consulta tablas de usuario cuando el actor no tiene UUID', async () => {
+    const resolveActorName = (
+      service as unknown as {
+        resolveActorName: (schemaName: string, userId: string) => Promise<string | null>;
+      }
+    ).resolveActorName.bind(service);
+
+    const result = await resolveActorName('tenant_test', 'platform-sub-no-uuid');
+
+    expect(result).toBeNull();
+    expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+  });
+
   it('expone documentNumber en detalle autorizado', async () => {
     const encryptedDocument = encryptTestValue('900123456');
     const expediente = buildExpediente({
@@ -164,6 +184,59 @@ describe('ExpedienteService', () => {
     const result = await service.findById('exp-alt-phone');
     expect((result as any).altContactPhone).toBe('3005556677');
     expect(result.altContactPhoneEncrypted).toBe(encryptedAltPhone);
+  });
+
+  it('usa progreso 100 en detalle cuando comercial, legal y tecnica estan al 100%', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-progress-detail',
+      personType: 'PERSONA_NATURAL',
+      firstName: 'Andres',
+      lastName: 'Orjuela',
+      documentType: 'CC',
+      documentNumberEncrypted: encryptTestValue('123456789'),
+      phonePrimaryEncrypted: encryptTestValue('3001112233'),
+      emailPrimaryEncrypted: encryptTestValue('demo@test.com'),
+      department: 'CUNDINAMARCA',
+      municipality: 'EL_COLEGIO',
+      address: 'Calle 1 # 2-3',
+      postalCode: '252601',
+      stratum: 2,
+      neighborhood: 'Centro',
+      latitude: 4.58,
+      longitude: -74.44,
+      interestedPlanId: 'plan-1',
+      acquisitionChannel: 'OTRO' as any,
+      feasibility: 'VIABLE' as any,
+      candidateTechnologies: ['FIBER'] as any,
+      availableTechnology: 'FIBER' as any,
+      technicalConfidence: 'HIGH' as any,
+      evaluationSource: 'MAP' as any,
+      identityVerified: 'VERIFICADO',
+      legalComplianceStatus: 'AUTORIZADO',
+      documentSupports: {
+        identity_document: { versions: [{ id: 'v1' }] },
+        utility_bill: { versions: [{ id: 'v2' }] },
+      } as any,
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: async () => expediente,
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 100,
+      legal: 100,
+      technical: 100,
+      operational: 0,
+      overall: 75,
+    });
+
+    const result = await service.findById('exp-progress-detail');
+
+    expect((result as any).pipelineProgress).toBe(100);
   });
 
   it('audita acceso autorizado al Documento visible sin persistir el valor plano', async () => {
@@ -238,6 +311,160 @@ describe('ExpedienteService', () => {
     );
   });
 
+  it('sube un soporte documental requerido y devuelve la versión registrada', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-1',
+      personType: 'PERSONA_NATURAL',
+      documentSupports: {},
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+          find: jest.fn().mockResolvedValue([]),
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 80,
+      legal: 75,
+      technical: 40,
+      operational: 30,
+      overall: 56,
+    });
+
+    const result = await service.uploadDocumentSupport(
+      'exp-doc-1',
+      'identity_document',
+      {
+        originalname: 'cedula.pdf',
+        mimetype: 'application/pdf',
+        size: 2048,
+        buffer: Buffer.from('pdf-demo'),
+      },
+      'user-docs',
+    );
+
+    expect(mkdir).toHaveBeenCalled();
+    expect(writeFile).toHaveBeenCalled();
+    expect(result.items).toHaveLength(2);
+    expect(result.items[0]?.versions[0]).toEqual(
+      expect.objectContaining({
+        fileName: 'cedula.pdf',
+        status: 'UPLOADED',
+      }),
+    );
+    expect(auditServiceMock.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        newValue: expect.objectContaining({
+          section: 'document_support',
+          changedFields: ['identity_document'],
+        }),
+      }),
+    );
+  });
+
+  it('actualiza el estado de una versión documental y recalcula el resumen', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-2',
+      personType: 'PERSONA_JURIDICA',
+      documentSupports: {
+        rut: {
+          versions: [
+            {
+              id: 'ver-1',
+              fileName: 'rut.pdf',
+              storedFileName: 'ver-1.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 1024,
+              uploadedAt: '2026-04-13T12:00:00.000Z',
+              uploadedByUserId: 'user-docs',
+              uploadedByName: 'Equipo interno',
+              status: 'UPLOADED',
+              note: null,
+            },
+          ],
+        },
+      },
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+          find: jest.fn().mockResolvedValue([]),
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 80,
+      legal: 75,
+      technical: 40,
+      operational: 30,
+      overall: 56,
+    });
+
+    const result = await service.updateDocumentSupportStatus(
+      'exp-doc-2',
+      'rut',
+      'ver-1',
+      'APPROVED',
+      'user-docs',
+    );
+
+    const rutItem = result.items.find((item) => item.key === 'rut');
+    expect(rutItem?.versions[0]?.status).toBe('APPROVED');
+    expect(result.summary.approvedCount).toBe(1);
+    expect(auditServiceMock.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        newValue: expect.objectContaining({
+          changedFields: ['rut', 'documentSupportStatus'],
+        }),
+      }),
+    );
+  });
+
+  it('no registra actividad cuando el payload no produce cambios reales', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-noop-contact',
+      phonePrimaryEncrypted: encryptTestValue('3001112233'),
+    });
+    const saveSpy = jest.fn(async (_entity: unknown, data: ExpedienteRecord) => data);
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          save: saveSpy,
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    const updated = await service.updateSection(
+      'exp-noop-contact',
+      {
+        section: ExpedienteSection.CONTACT,
+        data: { phonePrimary: '3001112233' },
+      } satisfies UpdateSectionDto,
+      'user-noop',
+    );
+
+    expect(updated.id).toBe('exp-noop-contact');
+    expect(saveSpy).not.toHaveBeenCalled();
+    expect(auditServiceMock.log).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.UPDATE,
+        entityId: 'exp-noop-contact',
+      }),
+    );
+    expect(completenessCalculatorMock.calculate).toHaveBeenCalledTimes(1);
+    expect(completenessCalculatorMock.calculate).toHaveBeenCalledWith('exp-noop-contact');
+  });
+
   it('limpia contacto alternativo cuando se envía vacío y persiste null', async () => {
     const expediente = buildExpediente({
       id: 'exp-contact-clear',
@@ -303,6 +530,8 @@ describe('ExpedienteService', () => {
           address: 'Cra 10 # 20-30',
           municipality: 'EL_COLEGIO',
           department: 'CUNDINAMARCA',
+          postalCode: '252601',
+          stratum: '3',
           latitude: '4,7110000',
           longitude: '-74,0721000',
         },
@@ -310,6 +539,8 @@ describe('ExpedienteService', () => {
       'user-location',
     );
 
+    expect(updated.postalCode).toBe('252601');
+    expect(updated.stratum).toBe(3);
     expect(updated.latitude).toBeCloseTo(4.711, 3);
     expect(updated.longitude).toBeCloseTo(-74.0721, 3);
   });
@@ -379,6 +610,7 @@ describe('ExpedienteService', () => {
   });
 
   it('registra el cambio de estado con el actor autenticado', async () => {
+    const actorUserId = '6e2eb956-c266-4c14-b00d-0eea857f66cc';
     const expediente = buildExpediente({
       id: 'exp-3',
       status: ExpedienteStatus.CONTACTADO,
@@ -421,14 +653,14 @@ describe('ExpedienteService', () => {
     const updated = await service.transitionStatus(
       'exp-3',
       { targetStatus: ExpedienteStatus.EN_COTIZACION, reason: 'Plan validado' },
-      'user-3',
+      actorUserId,
     );
 
     expect(updated.status).toBe(ExpedienteStatus.EN_COTIZACION);
     expect(createdStatusChanges).toHaveLength(1);
     expect(createdStatusChanges[0]).toEqual(
       expect.objectContaining({
-        changedBy: 'user-3',
+        changedBy: actorUserId,
         fromStatus: ExpedienteStatus.CONTACTADO,
         toStatus: ExpedienteStatus.EN_COTIZACION,
       }),
@@ -436,6 +668,7 @@ describe('ExpedienteService', () => {
   });
 
   it('reactiva un expediente descartado al estado previo y limpia el motivo de descarte', async () => {
+    const actorUserId = 'f8f5fa0e-c9f3-4d14-97e6-88c61f8f0e5f';
     const expediente = buildExpediente({
       id: 'exp-4',
       status: ExpedienteStatus.DESCARTADO,
@@ -476,13 +709,13 @@ describe('ExpedienteService', () => {
       overall: 45,
     });
 
-    const updated = await service.reactivate('exp-4', 'user-4');
+    const updated = await service.reactivate('exp-4', actorUserId);
 
     expect(updated.status).toBe(ExpedienteStatus.PRECALIFICADO);
     expect(updated.discardReason).toBeNull();
     expect(createdStatusChanges[0]).toEqual(
       expect.objectContaining({
-        changedBy: 'user-4',
+        changedBy: actorUserId,
         fromStatus: ExpedienteStatus.DESCARTADO,
         toStatus: ExpedienteStatus.PRECALIFICADO,
       }),
@@ -541,6 +774,67 @@ describe('ExpedienteService', () => {
         siteContactPhoneEncrypted: null,
       }),
     );
+  });
+
+  it('usa progreso 100 en listado cuando comercial, legal y tecnica estan al 100%', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-progress-list',
+      personType: 'PERSONA_NATURAL',
+      firstName: 'Andres',
+      lastName: 'Orjuela',
+      documentType: 'CC',
+      documentNumberEncrypted: 'enc-documento',
+      phonePrimaryEncrypted: 'enc-telefono',
+      emailPrimaryEncrypted: 'enc-email',
+      department: 'CUNDINAMARCA',
+      municipality: 'EL_COLEGIO',
+      address: 'Calle 1 # 2-3',
+      postalCode: '252601',
+      stratum: 2,
+      neighborhood: 'Centro',
+      latitude: 4.58,
+      longitude: -74.44,
+      interestedPlanId: 'plan-1',
+      acquisitionChannel: 'OTRO' as any,
+      feasibility: 'VIABLE' as any,
+      candidateTechnologies: ['FIBER'] as any,
+      availableTechnology: 'FIBER' as any,
+      technicalConfidence: 'HIGH' as any,
+      evaluationSource: 'MAP' as any,
+      identityVerified: 'VERIFICADO',
+      legalComplianceStatus: 'AUTORIZADO',
+      documentSupports: {
+        identity_document: { versions: [{ id: 'v1' }] },
+        utility_bill: { versions: [{ id: 'v2' }] },
+      } as any,
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) => {
+      const queryBuilder = {
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[expediente], 1]),
+      };
+
+      return callback({
+        manager: {
+          createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+        },
+      });
+    });
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 100,
+      legal: 100,
+      technical: 100,
+      operational: 0,
+      overall: 75,
+    });
+
+    const result = await service.findAll({ page: 1, limit: 10 });
+
+    expect((result.data[0] as any).pipelineProgress).toBe(100);
   });
 
   it('filtra por assignedTo y documentNumber exacto manteniendo PII oculta en listados', async () => {
@@ -871,12 +1165,24 @@ describe('ExpedienteService', () => {
               if ((entity as { name?: string }).name === 'AuditLog') {
                 return [
                   {
+                    id: 'audit-pii-access',
+                    action: AuditAction.UPDATE,
+                    entityType: 'ExpedienteRecord',
+                    entityId: 'exp-activity',
+                    userId: null,
+                    newValue: { piiaAccess: 'documentNumber', source: 'findById' },
+                    createdAt: new Date('2026-03-23T10:30:30Z'),
+                  },
+                  {
                     id: 'audit-1',
                     action: AuditAction.UPDATE,
                     entityType: 'ExpedienteRecord',
                     entityId: 'exp-activity',
                     userId: 'user-editor',
-                    newValue: { section: 'location' },
+                    newValue: {
+                      section: 'location',
+                      data: { municipality: 'Bogotá', address: 'Calle 10 # 20-30' },
+                    },
                     createdAt: new Date('2026-03-23T12:00:00Z'),
                   },
                   {
@@ -932,11 +1238,74 @@ describe('ExpedienteService', () => {
       expect.objectContaining({
         type: 'SECTION_UPDATED',
         sectionLabel: 'Ubicación',
+        reason: 'Campos actualizados: Municipio, Dirección',
         actor: expect.objectContaining({ name: 'Ana Torres' }),
       }),
     );
+    expect(
+      timeline.activities.some(
+        (activity) =>
+          activity.type === 'SECTION_UPDATED' &&
+          activity.sectionLabel === 'Identificación' &&
+          activity.actor?.name == null,
+      ),
+    ).toBe(false);
     expect(timeline.metadata.createdBy.name).toBe('Carlos Mejía');
     expect(timeline.metadata.lastEditedBy.name).toBe('Ana Torres');
+  });
+
+  it('usa actorName del audit log cuando no se puede resolver el usuario', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-activity-actor-name',
+      statusChanges: [],
+      contactAttempts: [],
+      createdBy: 'user-no-match',
+      updatedAt: new Date('2026-03-23T12:40:00Z'),
+    });
+
+    mockRunInTenantSchema
+      .mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: async () => expediente,
+          },
+        }),
+      )
+      .mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            find: async (entity: unknown, options?: { where?: Record<string, unknown> }) => {
+              if ((entity as { name?: string }).name === 'AuditLog') {
+                return [
+                  {
+                    id: 'audit-actor-fallback',
+                    action: AuditAction.UPDATE,
+                    entityType: 'ExpedienteRecord',
+                    entityId: 'exp-activity-actor-name',
+                    userId: 'user-no-match',
+                    newValue: {
+                      section: 'identification',
+                      actorName: 'Liliana Paola Borda Ovalle',
+                    },
+                    createdAt: new Date('2026-03-23T12:35:00Z'),
+                  },
+                ];
+              }
+
+              return [];
+            },
+          },
+        }),
+      );
+
+    const timeline = await service.getTimelineSummary('exp-activity-actor-name');
+
+    expect(timeline.activities[0]).toEqual(
+      expect.objectContaining({
+        type: 'SECTION_UPDATED',
+        actor: expect.objectContaining({ name: 'Liliana Paola Borda Ovalle' }),
+      }),
+    );
   });
 
   it('infiere creado por desde auditoría histórica cuando el expediente no tiene createdBy resoluble', async () => {
@@ -1219,8 +1588,9 @@ describe('ExpedienteService', () => {
 
     expect(auditServiceMock.log).toHaveBeenCalledWith(
       expect.objectContaining({
-        newValue: expect.not.objectContaining({
-          data: expect.objectContaining({ documentNumber: '1012345678' }),
+        newValue: expect.objectContaining({
+          section: 'identification',
+          changedFields: expect.arrayContaining(['firstName', 'lastName', 'documentType']),
         }),
       }),
     );
@@ -1269,21 +1639,15 @@ describe('ExpedienteService', () => {
       .mockResolvedValueOnce(expediente)
       .mockResolvedValueOnce(persisted);
 
-    mockRunInTenantSchema
-      .mockImplementationOnce(async (_ds, _schema, callback) =>
-        callback({
-          manager: {
-            save: saveExpediente,
-          },
-        }),
-      )
-      .mockImplementationOnce(async (_ds, _schema, callback) =>
-        callback({
-          manager: {
-            update: syncCompleteness,
-          },
-        }),
-      );
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: async () => null,
+          save: saveExpediente,
+          update: syncCompleteness,
+        },
+      }),
+    );
 
     completenessCalculatorMock.calculate.mockResolvedValue({
       commercial: 60,
@@ -1353,6 +1717,7 @@ function buildExpediente(overrides: Partial<ExpedienteRecord>): ExpedienteRecord
     address: null,
     municipality: null,
     department: null,
+    postalCode: null,
     stratum: null,
     neighborhood: null,
     latitude: null,

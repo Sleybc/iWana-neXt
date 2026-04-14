@@ -41,10 +41,13 @@ export function SettingsTabs({
     <div
       role="tablist"
       aria-label="Secciones de configuración empresarial"
-      className="flex gap-1 overflow-x-auto rounded-xl border border-gray-200 bg-white p-1 shadow-sm dark:border-dark-border dark:bg-dark-surface-2"
+      className="flex gap-2 overflow-x-auto rounded-[24px] border border-white/70 bg-white/95 p-2 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95"
     >
       {items.map((item, index) => {
         const isActive = item.id === activeTab;
+        const selectedState = isActive
+          ? ({ 'aria-selected': 'true' } as const)
+          : ({ 'aria-selected': 'false' } as const);
         const badge = getBadge?.(item.id) ?? null;
 
         return (
@@ -57,14 +60,14 @@ export function SettingsTabs({
             type="button"
             role="tab"
             aria-label={item.label}
-            aria-selected={isActive}
             aria-controls={getPanelId(item.id)}
+            {...selectedState}
             tabIndex={isActive ? 0 : -1}
             className={cn(
-              'flex min-w-fit items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2',
+              'flex min-w-fit items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2',
               isActive
-                ? 'bg-iwana-primary text-white shadow-sm dark:bg-iwana-primary-400'
-                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-dark-surface-3 dark:hover:text-white',
+                ? 'bg-iwana-primary text-white shadow-iwana dark:bg-iwana-primary-400'
+                : 'text-gray-600 hover:bg-[#f8faf5] hover:text-gray-900 dark:text-gray-300 dark:hover:bg-dark-surface-3 dark:hover:text-white',
             )}
             onClick={() => onChange(item.id)}
             onKeyDown={(event) => {
@@ -91,7 +94,10 @@ export function SettingsTabs({
             {badge ? (
               <Badge
                 variant={badge.variant ?? 'neutral'}
-                className={cn(isActive && 'bg-white/15 text-white dark:bg-white/20')}
+                className={cn(
+                  'rounded-full px-2 py-0.5 text-[11px] uppercase tracking-[0.14em]',
+                  isActive && 'bg-white/15 text-white dark:bg-white/20',
+                )}
               >
                 {badge.label}
               </Badge>

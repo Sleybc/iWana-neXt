@@ -59,11 +59,11 @@ const SearchBar = () => {
         }}
         placeholder="Buscar en el portal empresarial..."
         aria-label="Buscar"
-        className="w-full h-10 rounded-lg border border-gray-200 bg-gray-50 pl-10 pr-16 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:border-iwana-primary focus:ring-2 focus:ring-iwana-primary/20 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-200 dark:placeholder:text-gray-500 dark:focus:border-iwana-primary-300"
+        className="h-11 w-full rounded-2xl border border-gray-100 bg-gray-50 pl-10 pr-16 text-sm text-gray-700 shadow-[var(--shadow-iwana-card)] placeholder:text-gray-400 focus:border-iwana-primary focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-200 dark:placeholder:text-gray-500 dark:focus:border-iwana-primary-300"
       />
       <span
         aria-hidden="true"
-        className="absolute top-1/2 right-2.5 -translate-y-1/2 flex items-center gap-0.5 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-xs text-gray-500 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 pointer-events-none"
+        className="pointer-events-none absolute top-1/2 right-2.5 flex -translate-y-1/2 items-center gap-0.5 rounded-lg border border-gray-100 bg-white px-1.5 py-0.5 text-xs text-gray-500 shadow-[var(--shadow-iwana-card)] dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400"
       >
         <span>⌘</span>
         <span>K</span>
@@ -91,7 +91,7 @@ export const TopHeader = ({
   } as const;
 
   return (
-    <header className="sticky top-0 z-[999] flex w-full bg-white border-b border-gray-200 dark:bg-dark-surface-2 dark:border-dark-border">
+    <header className="sticky top-0 z-[999] flex w-full border-b border-gray-100 bg-white/90 backdrop-blur-sm dark:border-dark-border dark:bg-dark-surface-2/90">
       <div className="flex flex-grow items-center justify-between px-4 py-3 md:px-6">
         {/* IZQUIERDA: botón hamburger + logo mobile */}
         <div className="flex items-center gap-3">
@@ -103,7 +103,7 @@ export const TopHeader = ({
               e.stopPropagation();
               setDesktopCollapsed(!desktopCollapsed);
             }}
-            className="hidden h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-100 lg:flex dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-surface-4"
+            className="hidden h-11 w-11 items-center justify-center rounded-2xl border border-gray-100 bg-white text-gray-500 shadow-[var(--shadow-iwana-card)] hover:bg-gray-100 lg:flex dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-surface-4"
           >
             <Menu className="w-5 h-5" />
           </button>
@@ -115,7 +115,7 @@ export const TopHeader = ({
               e.stopPropagation();
               setMobileOpen(!mobileOpen);
             }}
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-100 lg:hidden dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-surface-4"
+            className="flex h-11 w-11 items-center justify-center rounded-2xl border border-gray-100 bg-white text-gray-500 shadow-[var(--shadow-iwana-card)] hover:bg-gray-100 lg:hidden dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-surface-4"
           >
             <Menu className="w-5 h-5" />
           </button>
@@ -132,7 +132,7 @@ export const TopHeader = ({
         {/* CENTRO: buscador — Suspense requerido por useSearchParams */}
         <div className="hidden lg:block flex-1 max-w-lg mx-6">
           <Suspense
-            fallback={<div className="h-10 rounded-lg border border-gray-200 bg-gray-50" />}
+            fallback={<div className="h-11 rounded-2xl border border-gray-100 bg-gray-50 shadow-[var(--shadow-iwana-card)]" />}
           >
             <SearchBar />
           </Suspense>

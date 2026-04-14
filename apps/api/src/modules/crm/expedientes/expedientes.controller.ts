@@ -9,11 +9,15 @@ import {
   Post,
   Query,
   Req,
+  Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRole, ExpedienteStatus } from '@iwana/shared';
-import { Request } from 'express';
+import { Request, Response } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -41,6 +45,17 @@ import {
   RevokeConsentSchema,
 } from './dto/create-consent.dto';
 import { CreateCoverageCheckDto, CreateCoverageCheckSchema } from './dto/create-coverage-check.dto';
+import {
+  UpdateDocumentSupportStatusBodyDto,
+  UpdateDocumentSupportStatusSchema,
+} from './dto/update-document-support-status.dto';
+
+interface UploadedDocumentFile {
+  originalname: string;
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+}
 
 @ApiTags('crm')
 @ApiBearerAuth('access-token')
@@ -167,6 +182,67 @@ export class ExpedientesController {
         metadata: timeline.metadata,
       },
     };
+  }
+
+  @Get(':id/document-supports')
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Listar soportes documentales del expediente' })
+  async getDocumentSupports(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('personType') personTypeOverride?: string,
+  ) {
+    const data = await this.expedienteService.getDocumentSupports(id, personTypeOverride);
+    return { data };
+  }
+
+  @Post(':id/document-supports/:documentKey/upload')
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  @ApiOperation({ summary: 'Subir o reemplazar un soporte documental del expediente' })
+  async uploadDocumentSupport(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('documentKey') documentKey: string,
+    @UploadedFile() file: UploadedDocumentFile,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const data = await this.expedienteService.uploadDocumentSupport(id, documentKey, file, user.sub);
+    return { data };
+  }
+
+  @Patch(':id/document-supports/:documentKey/:versionId/status')
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Actualizar estado de revisión de un soporte documental' })
+  async updateDocumentSupportStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('documentKey') documentKey: string,
+    @Param('versionId') versionId: string,
+    @Body(new ZodBodyValidationPipe(UpdateDocumentSupportStatusSchema)) dto: UpdateDocumentSupportStatusBodyDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const data = await this.expedienteService.updateDocumentSupportStatus(
+      id,
+      documentKey,
+      versionId,
+      dto.status,
+      user.sub,
+      dto.note,
+    );
+    return { data };
+  }
+
+  @Get(':id/document-supports/:documentKey/:versionId/file')
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Descargar una versión específica de soporte documental' })
+  async getDocumentSupportFile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('documentKey') documentKey: string,
+    @Param('versionId') versionId: string,
+    @Res() response: Response,
+  ) {
+    const file = await this.expedienteService.getDocumentSupportFile(id, documentKey, versionId);
+    response.setHeader('Content-Type', file.mimeType);
+    return response.download(file.filePath, file.fileName);
   }
 
   @Post(':id/contact-attempts')

@@ -39,8 +39,8 @@ const navItems = [
   { href: '/dashboard/crm', label: 'CRM', icon: BriefcaseBusiness, disabled: false },
   { href: '/dashboard/settings', label: 'Configuración', icon: Settings, disabled: false },
   { href: '/dashboard/users', label: 'Usuarios', icon: Users, disabled: false },
-  { href: '/security', label: 'Seguridad', icon: ShieldCheck, disabled: true, badge: 'Próximo' },
-  { href: '/reports', label: 'Reportes', icon: BarChart3, disabled: true, badge: 'Próximo' },
+  { href: '/security', label: 'Seguridad', icon: ShieldCheck, disabled: true, badge: 'Siguiente fase' },
+  { href: '/reports', label: 'Reportes', icon: BarChart3, disabled: true, badge: 'Siguiente fase' },
 ];
 
 interface NavItemsProps {
@@ -68,7 +68,7 @@ const NavItems = ({ desktopCollapsed }: NavItemsProps) => {
               <span
                 title={desktopCollapsed ? item.label : undefined}
                 className={cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium cursor-not-allowed opacity-50',
+                  'flex cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium opacity-50',
                   desktopCollapsed && 'lg:justify-center lg:px-2',
                 )}
                 aria-disabled="true"
@@ -77,7 +77,7 @@ const NavItems = ({ desktopCollapsed }: NavItemsProps) => {
                 <span className={cn('flex items-center gap-2', desktopCollapsed && 'lg:hidden')}>
                   {item.label}
                   {item.badge && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/60 font-medium">
+                    <span className="rounded-full border border-white/10 bg-white/8 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/65">
                       {item.badge}
                     </span>
                   )}
@@ -93,9 +93,9 @@ const NavItems = ({ desktopCollapsed }: NavItemsProps) => {
               href={item.href}
               title={desktopCollapsed ? item.label : undefined}
               className={cn(
-                'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium duration-200 hover:bg-white/10 dark:hover:bg-dark-surface-3',
+                'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold duration-200 hover:bg-white/10 dark:hover:bg-dark-surface-3',
                 isActive
-                  ? 'bg-white/10 dark:bg-dark-surface-3 text-iwana-secondary'
+                  ? 'bg-white/12 text-iwana-secondary shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)] dark:bg-dark-surface-3'
                   : 'text-white/80 dark:text-gray-300',
                 desktopCollapsed && 'lg:justify-center lg:px-2',
               )}
@@ -160,7 +160,7 @@ export const Sidebar = ({
       {/* SIDEBAR HEADER */}
       <div
         className={cn(
-          'flex items-center gap-2 px-4 py-5 min-h-[4.5rem]',
+          'flex min-h-[4.75rem] items-center gap-2 border-b border-white/8 px-4 py-5',
           desktopCollapsed ? 'lg:justify-center' : 'justify-between',
         )}
       >
@@ -213,7 +213,7 @@ export const Sidebar = ({
         <nav aria-label="Menú principal">
           <h3
             className={cn(
-              'mb-3 px-4 text-xs font-semibold text-white/60 dark:text-gray-500 uppercase tracking-widest',
+              'mb-3 px-4 text-[11px] font-bold uppercase tracking-[0.22em] text-white/55 dark:text-gray-500',
               desktopCollapsed && 'lg:sr-only',
             )}
           >

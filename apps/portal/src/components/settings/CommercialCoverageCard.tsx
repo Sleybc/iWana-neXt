@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, Loader2, MapPinned, Orbit } from 'lucide-react';
 import { Button, Card, CardContent, CardHeader, CardTitle } from '@iwana/ui';
 import {
   type CoverageNodeConfig,
@@ -242,32 +243,58 @@ export function CommercialCoverageCard({ canEdit }: CommercialCoverageCardProps)
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Cobertura comercial</CardTitle>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+          Factibilidad comercial
+        </p>
+        <CardTitle className="text-xl font-semibold">Cobertura comercial</CardTitle>
+        <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
           Gestiona nodos y zonas para factibilidad comercial inicial sin invadir provisioning.
         </p>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-5">
         {loading && (
-          <p className="text-sm text-gray-500 dark:text-gray-400">Cargando cobertura...</p>
+          <div className="flex items-center gap-3 rounded-[24px] border border-gray-200 bg-[#f8faf5] px-4 py-5 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
+            <Loader2 className="h-4 w-4 animate-spin text-iwana-primary" aria-hidden="true" />
+            Estamos cargando la red comercial y sus zonas configuradas.
+          </div>
+        )}
+        {error && (
+          <div className="flex items-start gap-3 rounded-[24px] border border-red-200 bg-red-50/90 px-4 py-4 text-sm text-red-700 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-300">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>{error}</span>
+          </div>
         )}
         {!loading && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="rounded-xl border border-gray-100 p-3 dark:border-dark-border">
-              <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            <div className="rounded-[24px] border border-gray-200 bg-white px-4 py-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3">
+              <div className="flex items-center gap-3">
+                <span className="flex h-11 w-11 items-center justify-center rounded-[18px] bg-iwana-primary/10 text-iwana-primary dark:bg-iwana-primary/20 dark:text-iwana-primary-300">
+                  <MapPinned className="h-4.5 w-4.5" aria-hidden="true" />
+                </span>
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
                 Nodos activos
-              </p>
-              <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                {activeNodes}
-              </p>
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
+                    {activeNodes}
+                  </p>
+                </div>
+              </div>
             </div>
-            <div className="rounded-xl border border-gray-100 p-3 dark:border-dark-border">
-              <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            <div className="rounded-[24px] border border-gray-200 bg-white px-4 py-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3">
+              <div className="flex items-center gap-3">
+                <span className="flex h-11 w-11 items-center justify-center rounded-[18px] bg-iwana-secondary-100 text-iwana-secondary-700 dark:bg-iwana-secondary-900/30 dark:text-iwana-secondary-300">
+                  <Orbit className="h-4.5 w-4.5" aria-hidden="true" />
+                </span>
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
                 Zonas activas
-              </p>
-              <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                {activeZones}
-              </p>
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
+                    {activeZones}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -328,7 +355,12 @@ export function CommercialCoverageCard({ canEdit }: CommercialCoverageCardProps)
         </div>
 
         <div className="space-y-2">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Mapa de cobertura</h3>
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Mapa de cobertura</h3>
+            <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
+              Superficie operativa para revisar nodos, zonas y capturar nuevas ubicaciones desde el mapa.
+            </p>
+          </div>
           <CoverageMapWrapper
             nodes={nodes}
             zones={zones}
@@ -378,11 +410,6 @@ export function CommercialCoverageCard({ canEdit }: CommercialCoverageCardProps)
           onSubmit={handleZoneSubmit}
         />
 
-        {error && (
-          <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
-            {error}
-          </p>
-        )}
       </CardContent>
     </Card>
   );

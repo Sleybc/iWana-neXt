@@ -4,6 +4,8 @@ import { AddExpedienteTechnicalViabilityFields1700000000006 } from './006_add_ex
 import { AddAcquisitionChannelAndSalesAttributions1700000000007 } from './007_add_acquisition_channel_and_sales_attributions';
 import { AddAdditionalProducts1700000000008 } from './008_add_additional_products';
 import { AddCurrentResponsibleFieldsAndOperationalHistory1700000000009 } from './009_add_current_responsible_fields_and_operational_history';
+import { AddPostalCodeToExpedienteRecords1700000000010 } from './010_add_postal_code_to_expediente_records';
+import { AddDocumentSupportsToExpedienteRecords1700000000011 } from './011_add_document_supports_to_expediente_records';
 
 const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   InitialTenantSchema1700000000000,
@@ -11,6 +13,8 @@ const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   AddAcquisitionChannelAndSalesAttributions1700000000007,
   AddAdditionalProducts1700000000008,
   AddCurrentResponsibleFieldsAndOperationalHistory1700000000009,
+  AddPostalCodeToExpedienteRecords1700000000010,
+  AddDocumentSupportsToExpedienteRecords1700000000011,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

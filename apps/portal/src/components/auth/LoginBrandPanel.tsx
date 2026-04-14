@@ -13,11 +13,11 @@ interface LoginBrandPanelProps {
 
 export function LoginBrandPanel({
   title = 'iWana neXt',
-  subtitle = 'Autenticación segura e identidad centralizada. Accede a tu portal con encriptación de grado militar.',
+  subtitle = 'Autenticación segura, trazabilidad activa y una experiencia premium para la operación empresarial.',
   children,
 }: LoginBrandPanelProps) {
   return (
-    <div className="relative hidden lg:flex lg:w-1/2 bg-[#181818] flex-col justify-between p-8 lg:p-16 text-white overflow-hidden border-r border-white/5">
+    <div className="relative hidden overflow-hidden border-r border-white/5 bg-[#181818] p-8 text-white lg:flex lg:w-1/2 lg:flex-col lg:justify-between lg:p-16">
       {/* Background Image pattern from prototype */}
       <img
         src="https://lh3.googleusercontent.com/aida-public/AB6AXuCHI4LM_NAHCAJ3MNL4M6WPHz31HVbomoUOssE0eZhErv0MfuccPw3aYms_n07IkyuNbSK8q4lhZv16uyobCgB864Jf6HadYfLg7hqx2yc1ARQ1j8mx_EStoaUUmAApxfoKQIHR4nZO7mR8En5Bp2Tgnf2h-WWUDetkSZEoVPCCogfOk-Z_nPm8fYodWf7jD5O2wdDrlp_1f4LaAxuPqfe7MLGnHphIwaXrd9JzKmrDSt2qAei9pHcZ2_z7hM8gO-jxpEWa9woXrIZY"
@@ -53,7 +53,10 @@ export function LoginBrandPanel({
 
       {/* Center Content */}
       <div className="relative z-10 my-auto">
-        <h1 className="text-4xl lg:text-6xl font-bold leading-tight tracking-tight mb-6 max-w-xl text-white">
+        <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.26em] text-[#A5C330]">
+          Conectividad premium
+        </p>
+        <h1 className="mb-6 max-w-xl text-4xl font-bold leading-tight tracking-tight text-white lg:text-6xl">
           {title}
           <br />
           <span className="text-[#A5C330]">Sistema Integrado</span>
@@ -61,7 +64,7 @@ export function LoginBrandPanel({
         <p className="text-lg text-slate-400 max-w-md leading-relaxed">{subtitle}</p>
         {children ?? (
           <div className="mt-8 flex gap-4">
-            <div className="flex items-center gap-2 bg-white/5 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 text-slate-300">
+            <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-slate-300 backdrop-blur-md">
               <svg
                 className="w-4 h-4 text-[#A5C330]"
                 fill="none"
@@ -77,7 +80,7 @@ export function LoginBrandPanel({
               </svg>
               <span className="text-sm font-medium">Cifrado AES-256</span>
             </div>
-            <div className="flex items-center gap-2 bg-white/5 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 text-slate-300">
+            <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-slate-300 backdrop-blur-md">
               <svg
                 className="w-4 h-4 text-[#A5C330]"
                 fill="none"
@@ -95,6 +98,25 @@ export function LoginBrandPanel({
             </div>
           </div>
         )}
+
+        <div className="mt-10 grid max-w-xl grid-cols-2 gap-3">
+          <div className="rounded-[22px] border border-white/10 bg-white/5 p-4 backdrop-blur-md">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#A5C330]">
+              Velocidad
+            </p>
+            <p className="mt-2 text-sm text-slate-300">
+              Inicio rápido con políticas activas y rutas seguras por tenant.
+            </p>
+          </div>
+          <div className="rounded-[22px] border border-white/10 bg-white/5 p-4 backdrop-blur-md">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#A5C330]">
+              Expertos
+            </p>
+            <p className="mt-2 text-sm text-slate-300">
+              Flujo pensado para operación empresarial, soporte y control de acceso.
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Footer */}

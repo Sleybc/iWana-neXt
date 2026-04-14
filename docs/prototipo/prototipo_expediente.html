@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Iwana - Mockup CRM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Usamos Phosphor Icons para un look minimalista -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Exo 2"', 'sans-serif'],
+                    },
+                    colors: {
+                        iwana: {
+                            primary: '#17163A',   // Azul Oscuro
+                            secondary: '#A5C330', // Verde Lima
+                            neutral: '#AEAEAD',   // Gris neutro
+                            bg: '#F8F8FB',        // Fondo app
+                        }
+                    },
+                    boxShadow: {
+                        'iwana-soft': '0 10px 40px -10px rgba(23, 22, 58, 0.08)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Exo 2', sans-serif; background-color: #F8F8FB; }
+        /* Custom Scrollbar para el timeline */
+        .custom-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background-color: #E4E4E4; border-radius: 10px; }
+        /* Progress bar fill */
+        .progress-fill-63 { width: 63%; }
+    </style>
+</head>
+<body class="text-iwana-primary h-screen flex overflow-hidden">
+
+    <!-- SIDEBAR (Menú lateral) -->
+    <aside class="w-64 bg-iwana-primary text-white flex flex-col transition-all duration-300">
+        <!-- Logo Area -->
+        <div class="h-20 flex items-center px-6 border-b border-white/10">
+            <div class="bg-iwana-secondary text-iwana-primary font-bold rounded-lg p-2 mr-3 flex items-center justify-center h-8 w-8">iW</div>
+            <span class="text-xl font-bold tracking-wide">iWana</span>
+        </div>
+
+        <!-- Navegación -->
+        <div class="p-4 flex-1 overflow-y-auto">
+            <p class="text-xs text-white/50 font-semibold uppercase tracking-wider mb-4 px-2">Empresa</p>
+            <nav class="space-y-2">
+                <a href="#" class="flex items-center space-x-3 px-3 py-2.5 rounded-xl text-white/70 hover:bg-white/5 hover:text-white transition-colors">
+                    <i class="ph ph-squares-four text-xl"></i>
+                    <span class="font-medium">Inicio</span>
+                </a>
+                <!-- Ítem Activo -->
+                <a href="#" class="flex items-center space-x-3 px-3 py-2.5 rounded-xl bg-white/10 text-white relative">
+                    <!-- Indicador verde lima -->
+                    <div class="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-iwana-secondary rounded-r-full"></div>
+                    <i class="ph ph-briefcase text-xl text-iwana-secondary"></i>
+                    <span class="font-medium">CRM</span>
+                </a>
+                <a href="#" class="flex items-center space-x-3 px-3 py-2.5 rounded-xl text-white/70 hover:bg-white/5 hover:text-white transition-colors">
+                    <i class="ph ph-gear text-xl"></i>
+                    <span class="font-medium">Configuración</span>
+                </a>
+                <a href="#" class="flex items-center space-x-3 px-3 py-2.5 rounded-xl text-white/70 hover:bg-white/5 hover:text-white transition-colors">
+                    <i class="ph ph-users text-xl"></i>
+                    <span class="font-medium">Usuarios</span>
+                </a>
+            </nav>
+        </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 flex flex-col h-screen overflow-hidden relative">
+        
+        <!-- Background decorativo sutil (Brand Guideline) -->
+        <div class="absolute top-0 right-0 w-96 h-96 bg-iwana-secondary/5 rounded-full blur-3xl -z-10 pointer-events-none translate-x-1/3 -translate-y-1/3"></div>
+
+        <!-- Top Header Buscador -->
+        <header class="h-20 px-8 flex items-center justify-between z-10">
+            <!-- Buscador -->
+            <div class="relative w-96">
+                <i class="ph ph-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                <input type="text" placeholder="Buscar en el portal empresarial..." class="w-full bg-white border-none rounded-2xl py-2.5 pl-11 pr-12 text-sm shadow-sm focus:ring-2 focus:ring-iwana-secondary outline-none transition-all">
+                <div class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center space-x-1 bg-gray-100 rounded px-1.5 py-0.5">
+                    <span class="text-xs text-gray-500 font-mono">⌘K</span>
+                </div>
+            </div>
+
+            <!-- Perfil / Notificaciones -->
+            <div class="flex items-center space-x-4">
+                <button class="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm text-gray-600 hover:text-iwana-primary transition-colors" title="Notificaciones" aria-label="Notificaciones">
+                    <i class="ph ph-bell text-xl"></i>
+                </button>
+                <div class="flex items-center space-x-3 bg-white pl-2 pr-4 py-1 rounded-full shadow-sm cursor-pointer">
+                    <img src="https://ui-avatars.com/api/?name=Liliana+Paola&background=A5C330&color=17163A" alt="Avatar" class="w-8 h-8 rounded-full">
+                    <div class="flex flex-col">
+                        <span class="text-sm font-semibold leading-tight">Liliana Paola</span>
+                        <span class="text-[10px] text-gray-500 leading-tight">Administrador</span>
+                    </div>
+                    <i class="ph ph-caret-down text-gray-400 ml-2"></i>
+                </div>
+            </div>
+        </header>
+
+        <!-- Área de contenido desplazable -->
+        <div class="flex-1 overflow-y-auto px-8 pb-12 custom-scroll z-10">
+            
+            <!-- Page Title Area -->
+            <div class="flex items-end justify-between mb-8 mt-2">
+                <div>
+                    <button class="flex items-center text-sm text-gray-500 hover:text-iwana-primary mb-2 transition-colors">
+                        <i class="ph ph-arrow-left mr-1"></i> Volver al listado
+                    </button>
+                    <div class="flex items-center space-x-4">
+                        <h1 class="text-3xl font-bold">Ana Clovis Alferes</h1>
+                        <!-- Badge Corporativo Nuevo -->
+                        <span class="px-3 py-1 rounded-full bg-[#EDF8CC] text-[#48531D] text-xs font-bold tracking-wide">NUEVO</span>
+                    </div>
+                    <p class="text-gray-500 text-sm mt-1">Oportunidad 3580FC05 · Gestión progresiva comercial y operativa.</p>
+                </div>
+                
+                <!-- Botón Principal Iwana -->
+                <button class="bg-iwana-secondary text-iwana-primary font-bold px-6 py-2.5 rounded-2xl shadow-iwana-soft hover:-translate-y-0.5 hover:shadow-lg transition-all flex items-center space-x-2">
+                    <i class="ph ph-plus-circle text-lg"></i>
+                    <span>Nuevo Registro</span>
+                </button>
+            </div>
+
+            <!-- Grid Layout -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                <!-- Columna Izquierda (Contenido Principal) -->
+                <div class="lg:col-span-8 space-y-6">
+                    
+                    <!-- Card 1: Resumen -->
+                    <div class="bg-white rounded-[20px] p-6 shadow-iwana-soft">
+                        <div class="flex items-center space-x-2 mb-6 text-iwana-primary">
+                            <i class="ph ph-file-text text-xl"></i>
+                            <h2 class="text-lg font-bold">Resumen de la oportunidad</h2>
+                        </div>
+                        
+                        <div class="grid grid-cols-3 gap-6 p-4 bg-gray-50/50 rounded-2xl mb-6">
+                            <div>
+                                <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Estado Actual</p>
+                                <span class="px-3 py-1 rounded-full bg-iwana-primary/5 text-iwana-primary text-xs font-semibold">En Proceso</span>
+                            </div>
+                            <div>
+                                <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Fuente</p>
+                                <p class="font-semibold text-sm">Visita a oficina</p>
+                                <p class="text-xs text-gray-500">Manual</p>
+                            </div>
+                            <div>
+                                <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Municipio</p>
+                                <p class="font-semibold text-sm">El Colegio</p>
+                            </div>
+                        </div>
+
+                        <!-- Barra de progreso rediseñada -->
+                        <div class="mb-2">
+                            <div class="flex justify-between items-end mb-2">
+                                <span class="text-sm font-medium">Completitud general</span>
+                                <span class="text-xl font-bold text-iwana-secondary">63%</span>
+                            </div>
+                            <!-- Track gris claro, relleno degradado de la marca -->
+                            <div class="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div class="h-full bg-gradient-to-r from-iwana-primary to-iwana-secondary rounded-full progress-fill-63"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-between text-xs mt-3">
+                            <span class="flex items-center text-iwana-secondary font-medium"><i class="ph-fill ph-check-circle mr-1"></i> Comercial: 100%</span>
+                            <span class="flex items-center text-iwana-secondary font-medium"><i class="ph-fill ph-check-circle mr-1"></i> Legal: 100%</span>
+                            <span class="flex items-center text-gray-500"><i class="ph ph-circle mr-1"></i> Técnico: 50%</span>
+                            <span class="flex items-center text-gray-400"><i class="ph ph-circle mr-1"></i> Operativo: 0%</span>
+                        </div>
+                    </div>
+
+                    <!-- Card 2: Acordeón Secciones -->
+                    <div class="bg-white rounded-[20px] p-6 shadow-iwana-soft">
+                        <div class="mb-6">
+                            <h2 class="text-lg font-bold">Secciones de la oportunidad</h2>
+                            <p class="text-sm text-gray-500">Completa las ocho zonas de la oportunidad según avance el caso.</p>
+                        </div>
+
+                        <!-- Acordeón Item (Estilo Minimalista) -->
+                        <div class="border border-gray-100 rounded-2xl p-4 hover:border-iwana-secondary/30 hover:shadow-md transition-all cursor-pointer bg-white group">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center space-x-4">
+                                    <div class="w-10 h-10 rounded-full bg-iwana-secondary/10 text-iwana-secondary flex items-center justify-center group-hover:bg-iwana-secondary group-hover:text-iwana-primary transition-colors">
+                                        <i class="ph ph-user text-xl"></i>
+                                    </div>
+                                    <div>
+                                        <h3 class="font-bold text-[15px]">Identificación</h3>
+                                        <p class="text-xs text-gray-500">Datos base del titular o razón social.</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center space-x-3">
+                                    <span class="text-sm font-bold text-iwana-secondary">100%</span>
+                                    <i class="ph ph-caret-down text-gray-400"></i>
+                                </div>
+                            </div>
+                            
+                            <!-- Contenido del acordeón expandido (simulado) -->
+                            <div class="mt-4 pt-4 border-t border-gray-50 grid grid-cols-2 gap-4">
+                                <div>
+                                    <p class="text-[10px] uppercase text-gray-400 font-bold tracking-wider mb-1">Tipo de persona</p>
+                                    <p class="text-sm font-medium">Persona natural</p>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] uppercase text-gray-400 font-bold tracking-wider mb-1">Tipo de documento</p>
+                                    <p class="text-sm font-medium">Cédula de Ciudadanía (CC)</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Columna Derecha (Timeline) -->
+                <div class="lg:col-span-4 space-y-6">
+                    
+                    <div class="bg-white rounded-[20px] p-6 shadow-iwana-soft">
+                        <div class="flex items-center space-x-2 mb-6">
+                            <i class="ph ph-clock-counter-clockwise text-xl text-iwana-primary"></i>
+                            <h2 class="text-lg font-bold">Actividad reciente</h2>
+                        </div>
+
+                        <!-- Timeline Orgánico -->
+                        <div class="relative pl-4 space-y-6 before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-gray-200 before:to-transparent">
+                            
+                            <!-- Timeline Item 1 -->
+                            <div class="relative flex items-start space-x-4">
+                                <div class="absolute left-[-21px] w-3 h-3 bg-iwana-secondary rounded-full border-4 border-white shadow-sm ring-1 ring-gray-100 z-10"></div>
+                                <div class="flex-1">
+                                    <div class="flex justify-between items-start">
+                                        <h4 class="text-sm font-bold">Se actualizó Identificación</h4>
+                                        <span class="text-[10px] text-gray-400 font-mono">Hoy, 7:07 a.m.</span>
+                                    </div>
+                                    <p class="text-xs text-gray-500 mt-1">Usuario del sistema guardó información operativa y comercial.</p>
+                                </div>
+                            </div>
+
+                            <!-- Timeline Item 2 -->
+                            <div class="relative flex items-start space-x-4">
+                                <div class="absolute left-[-21px] w-3 h-3 bg-iwana-primary/20 rounded-full border-4 border-white shadow-sm ring-1 ring-gray-100 z-10"></div>
+                                <div class="flex-1">
+                                    <div class="flex justify-between items-start">
+                                        <h4 class="text-sm font-bold text-gray-700">Se creó la oportunidad</h4>
+                                        <span class="text-[10px] text-gray-400 font-mono">Ayer, 4:30 p.m.</span>
+                                    </div>
+                                    <p class="text-xs text-gray-500 mt-1">Liliana Paola inició el registro desde oficina central.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Card Simple (Metadata) -->
+                    <div class="bg-white rounded-[20px] p-6 shadow-iwana-soft border border-gray-50">
+                        <h3 class="font-bold mb-4">Metadata operativa</h3>
+                        <div class="space-y-3">
+                            <div class="flex justify-between text-sm border-b border-gray-50 pb-2">
+                                <span class="text-gray-500">ID Interno</span>
+                                <span class="font-mono text-xs">#CRM-3580FC05</span>
+                            </div>
+                            <div class="flex justify-between text-sm">
+                                <span class="text-gray-500">Prioridad</span>
+                                <span class="text-iwana-secondary font-bold">Alta</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </main>
+
+</body>
+</html>

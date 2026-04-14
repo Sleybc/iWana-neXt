@@ -2,12 +2,14 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input } from '@iwana/ui';
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@iwana/ui';
 import { AcquisitionChannel } from '@iwana/shared';
 import {
+  AlertTriangle,
   ArrowRight,
   Building2,
   CircleDashed,
+  User,
   FileText,
   Filter,
   Loader2,
@@ -15,32 +17,36 @@ import {
   Plus,
   Search,
 } from 'lucide-react';
-import { ApiError, crmApi, ExpedienteRecord, ExpedienteStatus } from '@/lib/api-client';
+import {
+  ApiError,
+  crmApi,
+  ExpedienteRecord,
+  ExpedienteStatus,
+  usersApi,
+  InternalUser,
+} from '@/lib/api-client';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   ACQUISITION_CHANNEL_OPTIONS,
   EXPEDIENTE_STATUS_META,
   formatAcquisitionChannel,
   formatCrmDate,
+  formatMunicipio,
 } from '@/components/crm/expedientes/expediente-ui';
 
 function validateCreateValues(values: {
   fullName: string;
   acquisitionChannel: string;
-  sourceDetail: string;
+  originadorId: string;
 }): string | null {
   const fullName = values.fullName.trim();
 
   if (!fullName || !values.acquisitionChannel) {
-    return 'Nombre completo y canal de captación son obligatorios para crear la oportunidad.';
+    return 'Nombre completo y origen son obligatorios para crear la oportunidad.';
   }
 
   if (fullName.length > 160) {
     return 'El nombre completo no puede superar 160 caracteres.';
-  }
-
-  if (values.sourceDetail.trim().length > 255) {
-    return 'El detalle de origen no puede superar 255 caracteres.';
   }
 
   return null;
@@ -65,25 +71,10 @@ function formatApiError(error: ApiError): string {
   const validationMessages = [...fieldMessages, ...formMessages];
 
   if (validationMessages.length === 0) {
-    return 'Verifica nombre completo, canal y detalle de origen antes de crear la oportunidad.';
+    return 'Verifica nombre completo y origen antes de crear la oportunidad.';
   }
 
   return validationMessages.join(' ');
-}
-
-function calculateOverallCompleteness(expediente: ExpedienteRecord): number {
-  const values = [
-    expediente.completenessCommercial,
-    expediente.completenessLegal,
-    expediente.completenessTechnical,
-    expediente.completenessOperational,
-  ].filter((value): value is number => typeof value === 'number');
-
-  if (values.length === 0) {
-    return 0;
-  }
-
-  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
 }
 
 export default function ExpedientesPage() {
@@ -92,34 +83,35 @@ export default function ExpedientesPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<ExpedienteStatus | ''>('');
   const [search, setSearch] = useState('');
-  const [assignedTo, setAssignedTo] = useState('');
   const [documentNumber, setDocumentNumber] = useState('');
   const [createValues, setCreateValues] = useState({
     fullName: '',
     acquisitionChannel: 'OTRO',
-    sourceDetail: '',
+    originadorId: '',
   });
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [employees, setEmployees] = useState<InternalUser[]>([]);
 
   useEffect(() => {
-    loadExpedientes();
-  }, [statusFilter, search, assignedTo, documentNumber]);
+    void loadExpedientes();
+    void loadEmployees();
+  }, [statusFilter, search, documentNumber]);
 
-  const loadExpedientes = async () => {
+  const loadExpedientes = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
       setError(null);
       const filters: {
         status?: ExpedienteStatus;
         search?: string;
-        assignedTo?: string;
         documentNumber?: string;
         limit: number;
       } = { limit: 100 };
       if (statusFilter) filters.status = statusFilter as ExpedienteStatus;
       if (search) filters.search = search;
-      if (assignedTo.trim()) filters.assignedTo = assignedTo.trim();
       if (documentNumber.trim()) filters.documentNumber = documentNumber.trim();
 
       const response = await crmApi.listExpedientes(filters);
@@ -129,7 +121,18 @@ export default function ExpedientesPage() {
       console.error('Error loading expedientes:', err);
       setError('No fue posible cargar las oportunidades del tenant.');
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
+    }
+  };
+
+  const loadEmployees = async () => {
+    try {
+      const response = await usersApi.list({ status: 'ACTIVE', limit: 200 });
+      setEmployees(response.data);
+    } catch {
+      // Si no se pueden cargar los empleados, el dropdown queda vacío pero no bloquea el formulario
     }
   };
 
@@ -147,19 +150,25 @@ export default function ExpedientesPage() {
       const payload: {
         fullName: string;
         acquisitionChannel: AcquisitionChannel;
-        sourceDetail?: string;
       } = {
         fullName: createValues.fullName.trim(),
         acquisitionChannel: createValues.acquisitionChannel as AcquisitionChannel,
       };
 
-      const sourceDetail = createValues.sourceDetail.trim();
-      if (sourceDetail) {
-        payload.sourceDetail = sourceDetail;
+      const created = await crmApi.createExpediente(payload);
+
+      if (createValues.originadorId) {
+        try {
+          await crmApi.createAttribution(created.data.id, {
+            actorId: createValues.originadorId,
+            acquisitionChannel: createValues.acquisitionChannel as AcquisitionChannel,
+          });
+        } catch {
+          // La atribución falló pero el expediente se creó. No bloqueamos al usuario.
+        }
       }
 
-      await crmApi.createExpediente(payload);
-      setCreateValues({ fullName: '', acquisitionChannel: 'OTRO', sourceDetail: '' });
+      setCreateValues({ fullName: '', acquisitionChannel: 'OTRO', originadorId: '' });
       await loadExpedientes();
     } catch (err) {
       console.error('Error creating expediente:', err);
@@ -184,6 +193,13 @@ export default function ExpedientesPage() {
       />
 
       <div className="px-6 space-y-6">
+        {error && (
+          <div className="flex items-start gap-3 rounded-[24px] border border-red-200 bg-red-50/90 px-5 py-4 text-sm text-red-700 shadow-[var(--shadow-iwana-card)] dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>{error}</span>
+          </div>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -197,7 +213,7 @@ export default function ExpedientesPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCreateNew} className="space-y-4" noValidate>
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_260px_auto] xl:items-end">
+              <div className="grid gap-4 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-end">
                 <Input
                   id="expediente-full-name"
                   label="Nombre completo"
@@ -208,24 +224,48 @@ export default function ExpedientesPage() {
                   placeholder="Ej. Empresa Demo SAS"
                   maxLength={160}
                 />
-                <Input
-                  id="expediente-source-detail"
-                  label="Detalle de origen (opcional)"
-                  value={createValues.sourceDetail}
-                  onChange={(event) =>
-                    setCreateValues((current) => ({ ...current, sourceDetail: event.target.value }))
-                  }
-                  placeholder="Campaña, observación o contexto"
-                  maxLength={255}
-                />
+                <div>
+                  <label
+                    htmlFor="expediente-originador"
+                    className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                  >
+                    Origenador
+                  </label>
+                  <Select
+                    id="expediente-originador"
+                    value={createValues.originadorId}
+                    onChange={(event) =>
+                      setCreateValues((current) => ({
+                        ...current,
+                        originadorId: event.target.value,
+                      }))
+                    }
+                    className="h-10"
+                  >
+                    <option value="">Sin asignar</option>
+                    {employees.map((employee) => (
+                      <option key={employee.id} value={employee.id}>
+                        {[
+                          employee.firstName,
+                          employee.lastName,
+                          employee.firstName || employee.lastName ? '—' : '',
+                          employee.email,
+                        ]
+                          .filter(Boolean)
+                          .join(' ')
+                          .trim()}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
                 <div>
                   <label
                     htmlFor="expediente-acquisition-channel"
                     className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200"
                   >
-                    Canal de captación
+                    Origen
                   </label>
-                  <select
+                  <Select
                     id="expediente-acquisition-channel"
                     value={createValues.acquisitionChannel}
                     onChange={(event) =>
@@ -234,18 +274,18 @@ export default function ExpedientesPage() {
                         acquisitionChannel: event.target.value,
                       }))
                     }
-                    className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:focus:border-iwana-primary-300"
+                    className="h-10"
                   >
                     {ACQUISITION_CHANNEL_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
-                <Button type="submit" loading={creating} className="w-full xl:w-auto">
+                <Button type="submit" loading={creating} className="h-10">
                   {!creating && <Plus className="h-4 w-4" aria-hidden="true" />}
-                  {creating ? 'Creando oportunidad...' : 'Crear oportunidad'}
+                  {creating ? 'Creando...' : 'Crear'}
                 </Button>
               </div>
 
@@ -260,7 +300,7 @@ export default function ExpedientesPage() {
 
         <Card>
           <CardContent className="pt-6">
-            <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)_220px_220px_auto] lg:items-end">
+            <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)_220px_auto] lg:items-end">
               <div>
                 <label
                   htmlFor="expediente-status-filter"
@@ -269,11 +309,11 @@ export default function ExpedientesPage() {
                   <Filter className="h-4 w-4 text-iwana-secondary-700" aria-hidden="true" />
                   Estado
                 </label>
-                <select
+                <Select
                   id="expediente-status-filter"
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value as ExpedienteStatus | '')}
-                  className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:focus:border-iwana-primary-300"
+                  className="h-10"
                 >
                   <option value="">Todos los estados</option>
                   {Object.entries(EXPEDIENTE_STATUS_META).map(([value, meta]) => (
@@ -281,7 +321,7 @@ export default function ExpedientesPage() {
                       {meta.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div className="relative">
@@ -301,14 +341,6 @@ export default function ExpedientesPage() {
               </div>
 
               <Input
-                id="expediente-assigned-to-filter"
-                label="Asesor asignado"
-                value={assignedTo}
-                onChange={(e) => setAssignedTo(e.target.value)}
-                placeholder="UUID del asesor"
-              />
-
-              <Input
                 id="expediente-document-filter"
                 label="Documento exacto"
                 value={documentNumber}
@@ -320,11 +352,10 @@ export default function ExpedientesPage() {
                 <Button
                   type="button"
                   variant="ghost"
-                  disabled={!statusFilter && !search && !assignedTo && !documentNumber}
+                  disabled={!statusFilter && !search && !documentNumber}
                   onClick={() => {
                     setStatusFilter('');
                     setSearch('');
-                    setAssignedTo('');
                     setDocumentNumber('');
                   }}
                 >
@@ -347,9 +378,9 @@ export default function ExpedientesPage() {
           </CardHeader>
           <CardContent className="p-0">
             {loading ? (
-              <div className="flex items-center justify-center gap-3 px-6 py-14 text-sm text-gray-500 dark:text-gray-400">
+              <div className="flex items-center justify-center gap-3 px-6 py-14 text-sm text-gray-600 dark:text-gray-300">
                 <Loader2 className="h-5 w-5 animate-spin text-iwana-primary" aria-hidden="true" />
-                Cargando oportunidades...
+                Estamos consolidando el pipeline comercial del tenant.
               </div>
             ) : expedientes.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
@@ -361,10 +392,11 @@ export default function ExpedientesPage() {
                 </div>
                 <div className="space-y-1">
                   <h2 className="text-base font-semibold text-gray-900 dark:text-white">
-                    Aún no hay oportunidades registradas
+                    Pipeline sin oportunidades activas
                   </h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Crea la primera oportunidad para iniciar el flujo comercial del tenant.
+                    Registra la primera oportunidad para habilitar seguimiento, calificación y
+                    cierre comercial.
                   </p>
                 </div>
               </div>
@@ -386,9 +418,6 @@ export default function ExpedientesPage() {
                         Ubicación
                       </th>
                       <th className="px-5 py-3 text-left font-medium text-gray-500 dark:text-gray-400">
-                        Completitud
-                      </th>
-                      <th className="px-5 py-3 text-left font-medium text-gray-500 dark:text-gray-400">
                         Creado
                       </th>
                       <th className="px-5 py-3 text-right font-medium text-gray-500 dark:text-gray-400">
@@ -398,8 +427,6 @@ export default function ExpedientesPage() {
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
                     {expedientes.map((expediente) => {
-                      const overallCompleteness = calculateOverallCompleteness(expediente);
-
                       return (
                         <tr
                           key={expediente.id}
@@ -408,10 +435,17 @@ export default function ExpedientesPage() {
                           <td className="px-5 py-4">
                             <div className="flex items-center gap-3">
                               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-iwana-primary/10 dark:bg-iwana-primary/20">
-                                <Building2
-                                  className="h-5 w-5 text-iwana-primary dark:text-iwana-primary-300"
-                                  aria-hidden="true"
-                                />
+                                {expediente.personType === 'PERSONA_NATURAL' ? (
+                                  <User
+                                    className="h-5 w-5 text-iwana-primary dark:text-iwana-primary-300"
+                                    aria-hidden="true"
+                                  />
+                                ) : (
+                                  <Building2
+                                    className="h-5 w-5 text-iwana-primary dark:text-iwana-primary-300"
+                                    aria-hidden="true"
+                                  />
+                                )}
                               </div>
                               <div className="min-w-0">
                                 <Link
@@ -447,18 +481,8 @@ export default function ExpedientesPage() {
                                 className="h-4 w-4 text-iwana-secondary-700 dark:text-iwana-secondary"
                                 aria-hidden="true"
                               />
-                              <span>{expediente.municipality || 'Sin municipio'}</span>
-                            </div>
-                          </td>
-                          <td className="px-5 py-4">
-                            <div className="flex min-w-[170px] items-center gap-3">
-                              <progress
-                                value={overallCompleteness}
-                                max={100}
-                                className="h-2 w-24 overflow-hidden rounded-full [&::-webkit-progress-bar]:bg-gray-200 [&::-webkit-progress-value]:bg-iwana-primary dark:[&::-webkit-progress-bar]:bg-dark-surface-4 dark:[&::-webkit-progress-value]:bg-iwana-secondary [&::-moz-progress-bar]:bg-iwana-primary dark:[&::-moz-progress-bar]:bg-iwana-secondary"
-                              />
-                              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                                {overallCompleteness}%
+                              <span>
+                                {formatMunicipio(expediente.municipality || '') || 'Sin municipio'}
                               </span>
                             </div>
                           </td>

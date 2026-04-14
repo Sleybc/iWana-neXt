@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { CheckCircle2, Copy, UserPlus, X } from 'lucide-react';
 import { UserRole, DocumentType } from '@iwana/shared';
 import type { CreateInternalUserDto } from '@/lib/api-client';
 
@@ -165,114 +166,72 @@ export function CreateUserModal({
       aria-modal="true"
       aria-labelledby="create-user-title"
     >
-      <div className="relative w-full max-w-lg mx-4 rounded-2xl bg-white border border-gray-200 p-6 shadow-xl dark:bg-dark-surface-2 dark:border-dark-border max-h-[90vh] overflow-y-auto">
+      <div className="relative mx-4 max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-iwana-lg dark:border-dark-border dark:bg-dark-surface-2/95">
         <div className="mb-6 flex items-center justify-between">
-          <h2
-            id="create-user-title"
-            className="text-lg font-semibold text-gray-900 dark:text-white"
-          >
-            {showSuccess ? 'Usuario creado' : 'Crear usuario interno'}
-          </h2>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+              Gestión de accesos
+            </p>
+            <h2
+              id="create-user-title"
+              className="mt-1 text-xl font-semibold text-iwana-primary dark:text-white"
+            >
+              {showSuccess ? 'Usuario creado' : 'Crear usuario interno'}
+            </h2>
+            {!showSuccess && (
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Registra un nuevo colaborador con su rol, datos base y política inicial de MFA.
+              </p>
+            )}
+          </div>
           {!showSuccess && (
             <button
               type="button"
               onClick={onClose}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-surface-3 dark:hover:text-gray-200 transition-colors"
+              className="flex h-10 w-10 items-center justify-center rounded-2xl text-gray-400 transition-colors hover:bg-[#f8faf5] hover:text-gray-700 dark:hover:bg-dark-surface-3 dark:hover:text-gray-200"
               aria-label="Cerrar"
             >
-              <svg
-                className="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
+              <X className="h-5 w-5" aria-hidden="true" />
             </button>
           )}
         </div>
 
         {showSuccess && tempPassword ? (
           <div className="space-y-4">
-            <div className="rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-900/20">
+            <div className="rounded-[24px] border border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.98),rgba(209,250,229,0.82))] p-5 shadow-iwana-soft dark:border-emerald-800 dark:bg-emerald-900/20">
               <div className="flex items-center gap-2 mb-2">
-                <svg
-                  className="h-5 w-5 text-green-600 dark:text-green-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-                <p className="text-sm font-medium text-green-800 dark:text-green-300">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
                   Usuario creado exitosamente
                 </p>
               </div>
-              <p className="text-sm text-green-700 dark:text-green-400">
+              <p className="text-sm text-emerald-700 dark:text-emerald-400">
                 Comparte la siguiente clave temporal con <strong>{tempPasswordEmail}</strong>. El
                 usuario debera cambiarla al primer inicio de sesion.
               </p>
             </div>
 
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
-              <p className="text-xs font-medium text-amber-700 dark:text-amber-300 mb-2 uppercase tracking-wide">
+            <div className="rounded-[24px] border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(254,243,199,0.78))] p-5 shadow-iwana-soft dark:border-amber-800 dark:bg-amber-900/20">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700 dark:text-amber-300">
                 Clave temporal
               </p>
               <div className="flex items-center gap-2">
-                <code className="flex-1 rounded-lg bg-white px-4 py-3 text-base font-mono font-bold text-gray-900 border border-amber-200 dark:bg-dark-surface-3 dark:text-white dark:border-amber-700 tracking-wider">
+                <code className="flex-1 rounded-2xl border border-amber-200 bg-white px-4 py-3 text-base font-mono font-bold tracking-wider text-gray-900 dark:border-amber-700 dark:bg-dark-surface-3 dark:text-white">
                   {tempPassword}
                 </code>
                 <button
                   type="button"
                   onClick={handleCopy}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:bg-dark-surface-3 dark:text-amber-300 dark:hover:bg-amber-900/30 transition-colors shrink-0"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-2xl border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:border-amber-700 dark:bg-dark-surface-3 dark:text-amber-300 dark:hover:bg-amber-900/30"
                 >
                   {copied ? (
                     <>
-                      <svg
-                        className="h-3.5 w-3.5 text-green-600"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        aria-hidden="true"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
                       Copiado
                     </>
                   ) : (
                     <>
-                      <svg
-                        className="h-3.5 w-3.5"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        aria-hidden="true"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
-                        />
-                      </svg>
+                      <Copy className="h-3.5 w-3.5" aria-hidden="true" />
                       Copiar
                     </>
                   )}
@@ -284,7 +243,7 @@ export function CreateUserModal({
               <button
                 type="button"
                 onClick={handleDismiss}
-                className="inline-flex items-center justify-center rounded-xl bg-iwana-primary px-6 py-2.5 text-sm font-medium text-white hover:bg-iwana-primary-600 dark:bg-iwana-primary-400 dark:hover:bg-iwana-primary-300 transition-colors"
+                className="inline-flex items-center justify-center rounded-2xl bg-iwana-primary px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-iwana-primary-600 dark:bg-iwana-primary-400 dark:hover:bg-iwana-primary-300"
               >
                 Entendido
               </button>
@@ -292,6 +251,20 @@ export function CreateUserModal({
           </div>
         ) : (
           <form onSubmit={handleSubmit(onFormSubmit)} noValidate className="space-y-4">
+            <div className="flex items-start gap-3 rounded-[24px] border border-gray-200 bg-[#f8faf5] p-4 dark:border-dark-border dark:bg-dark-surface-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300">
+                <UserPlus className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">
+                  Alta controlada
+                </p>
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  Los campos marcados como obligatorios definen identidad de acceso. Los demás enriquecen el perfil operativo del colaborador.
+                </p>
+              </div>
+            </div>
+
             <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
               {/*
                 Email: siempre ancho completo (campos largos como emails se ven mejor en una fila)
@@ -523,7 +496,7 @@ export function CreateUserModal({
             </div>
 
             {serverError && (
-              <div className="rounded-xl border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
+              <div className="rounded-2xl border border-red-200/80 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
                 <p className="text-sm text-red-700 dark:text-red-300">{serverError}</p>
               </div>
             )}
@@ -533,14 +506,14 @@ export function CreateUserModal({
                 type="button"
                 onClick={onClose}
                 disabled={isSubmitting}
-                className="inline-flex items-center justify-center rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-4 transition-colors"
+                className="inline-flex items-center justify-center rounded-2xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-4"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting || !isDirty}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-iwana-primary px-4 py-2 text-sm font-medium text-white hover:bg-iwana-primary-600 disabled:opacity-50 dark:bg-iwana-primary-400 dark:hover:bg-iwana-primary-300 transition-colors"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-iwana-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-iwana-primary-600 disabled:opacity-50 dark:bg-iwana-primary-400 dark:hover:bg-iwana-primary-300"
               >
                 {isSubmitting ? (
                   <>

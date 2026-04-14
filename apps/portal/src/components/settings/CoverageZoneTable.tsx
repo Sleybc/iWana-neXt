@@ -17,9 +17,9 @@ const cellClass = 'px-4 py-3 align-top text-sm text-gray-700 dark:text-gray-200'
 
 export function CoverageZoneTable({ zones, canEdit, onEdit, onDelete, onToggle }: CoverageZoneTableProps) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-dark-border">
+    <div className="overflow-x-auto rounded-[24px] border border-gray-200 dark:border-dark-border">
       <table className="w-full min-w-[860px] border-collapse" data-testid="coverage-zone-table">
-        <thead className="bg-gray-50 dark:bg-dark-surface-3">
+        <thead className="bg-[#f6f8f4] dark:bg-dark-surface-3">
           <tr>
             <th scope="col" className={tableHeadClass}>
               Nombre
@@ -56,7 +56,7 @@ export function CoverageZoneTable({ zones, canEdit, onEdit, onDelete, onToggle }
           )}
 
           {zones.map((zone) => (
-            <tr key={zone.id} className="border-t border-gray-100 dark:border-dark-border">
+            <tr key={zone.id} className="border-t border-gray-100 transition-colors hover:bg-[#fbfcf8] dark:border-dark-border dark:hover:bg-dark-surface-3">
               <td className={cellClass}>
                 <p className="font-semibold text-gray-900 dark:text-white">{zone.name}</p>
               </td>

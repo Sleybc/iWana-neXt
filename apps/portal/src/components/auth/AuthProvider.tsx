@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { usePathname } from 'next/navigation';
 import {
   authApi,
   userApi,
@@ -116,6 +117,7 @@ async function fetchUserName(
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -137,9 +139,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    const isAuthRoute = pathname.startsWith('/auth');
 
     const bootstrap = async () => {
       try {
+        if (isAuthRoute) {
+          setUser(null);
+          return;
+        }
+
         if (!isStoredTokenValid()) {
           // Token ausente o expirado localmente: limpiar y no hacer round-trip innecesario.
           persistAccessToken('');
@@ -156,6 +164,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
       } catch {
+        persistAccessToken('');
+        clearPendingTenantMfaLogin();
         if (mounted) {
           setUser(null);
         }
@@ -171,7 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [pathname]);
 
   const login = useCallback(
     async (email: string, password: string, tenantSlug?: string): Promise<LoginResult> => {

@@ -36,14 +36,14 @@ function statusLabel(status: TenantSelf['status']): string {
  */
 export function TenantSummaryCard({ tenant, settings }: TenantSummaryCardProps) {
   return (
-    <Card>
+    <Card className="border border-gray-100 shadow-[var(--shadow-iwana-soft)] dark:border-dark-border">
       <CardContent className="p-6">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-4 min-w-0">
             {/* Ícono empresa */}
-            <div className="w-12 h-12 shrink-0 rounded-xl bg-iwana-primary/10 dark:bg-iwana-primary/20 flex items-center justify-center">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gray-100 dark:bg-dark-surface-3">
               <Building2
-                className="w-6 h-6 text-iwana-primary dark:text-iwana-primary-300"
+                className="h-6 w-6 text-iwana-primary dark:text-iwana-primary-300"
                 aria-hidden="true"
               />
             </div>
@@ -53,7 +53,7 @@ export function TenantSummaryCard({ tenant, settings }: TenantSummaryCardProps) 
                 {tenant.name}
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                <span className="font-mono text-xs bg-gray-100 dark:bg-dark-surface-3 px-1.5 py-0.5 rounded">
+                <span className="rounded-lg bg-gray-100 px-1.5 py-0.5 font-mono text-xs dark:bg-dark-surface-3">
                   {tenant.slug}
                 </span>
               </p>
@@ -83,36 +83,36 @@ export function TenantSummaryCard({ tenant, settings }: TenantSummaryCardProps) 
         </div>
 
         {/* Configuración operativa */}
-        <div className="mt-5 pt-5 border-t border-gray-100 dark:border-dark-border-2 grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="mt-6 grid grid-cols-2 gap-4 border-t border-gray-100 pt-5 sm:grid-cols-4 dark:border-dark-border-2">
           <div>
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
               Zona horaria
             </p>
-            <p className="text-sm font-medium text-gray-800 dark:text-white mt-1">
+            <p className="mt-1 text-sm font-semibold text-gray-800 dark:text-white">
               {settings.timezone}
             </p>
           </div>
           <div>
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
               Moneda
             </p>
-            <p className="text-sm font-medium text-gray-800 dark:text-white mt-1">
+            <p className="mt-1 text-sm font-semibold text-gray-800 dark:text-white">
               {settings.currency}
             </p>
           </div>
           <div>
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
               Idioma
             </p>
-            <p className="text-sm font-medium text-gray-800 dark:text-white mt-1">
+            <p className="mt-1 text-sm font-semibold text-gray-800 dark:text-white">
               {settings.language}
             </p>
           </div>
           <div>
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
               País
             </p>
-            <p className="text-sm font-medium text-gray-800 dark:text-white mt-1">
+            <p className="mt-1 text-sm font-semibold text-gray-800 dark:text-white">
               {settings.country}
             </p>
           </div>

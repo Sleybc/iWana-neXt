@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { Building2, CheckCircle2, CircleAlert } from 'lucide-react';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '@iwana/ui';
 import { tenantSelfApi, type TenantSelf } from '@/lib/api-client';
 
@@ -122,15 +123,25 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
   };
 
   return (
-    <Card>
+    <Card className="rounded-[28px] border border-white/70 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
       <CardHeader>
-        <CardTitle>Perfil empresarial</CardTitle>
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300">
+            <Building2 className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+              Identidad legal
+            </p>
+            <CardTitle className="mt-1">Perfil empresarial</CardTitle>
+          </div>
+        </div>
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Gestiona los datos legales y de contacto del tenant autenticado.
         </p>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="grid gap-4 rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-surface-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 rounded-[24px] border border-gray-100 bg-[#f8faf5] p-4 dark:border-dark-border dark:bg-dark-surface-3 sm:grid-cols-2 xl:grid-cols-4">
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
               Nombre comercial
@@ -165,10 +176,13 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
           </div>
         </div>
 
-        <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
-          El nombre comercial y el slug permanecen en solo lectura mientras el ownership de naming
-          sigue reservado a plataforma.
-        </p>
+        <div className="flex items-start gap-3 rounded-[24px] border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(254,243,199,0.78))] px-4 py-4 text-sm text-amber-800 shadow-iwana-soft dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+          <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+          <p>
+            El nombre comercial y el slug permanecen en solo lectura mientras el ownership de naming
+            sigue reservado a plataforma.
+          </p>
+        </div>
 
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -243,14 +257,16 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
           </div>
 
           {serverError && (
-            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
-              {serverError}
-            </p>
+            <div className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+              <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+              <p>{serverError}</p>
+            </div>
           )}
           {success && !serverError && (
-            <p className="rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-400">
-              {success}
-            </p>
+            <div className="flex items-start gap-3 rounded-[24px] border border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.98),rgba(209,250,229,0.82))] px-4 py-3 text-sm text-emerald-700 shadow-iwana-soft dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400">
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+              <p>{success}</p>
+            </div>
           )}
 
           <div className="flex items-center justify-between gap-3">

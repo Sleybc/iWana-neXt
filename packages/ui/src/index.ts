@@ -19,10 +19,14 @@ export * from './lib/utils';
 // Componentes
 export * from './components/Button';
 export * from './components/Input';
+export * from './components/Select';
+export * from './components/FormField';
 export * from './components/Card';
 export * from './components/Badge';
 export * from './components/OtpInput';
 export * from './components/Dialog';
+export * from './components/SectionAccordion';
+export * from './components/ProgressMeter';
 
 // Providers
 export * from './components/ThemeProvider';
