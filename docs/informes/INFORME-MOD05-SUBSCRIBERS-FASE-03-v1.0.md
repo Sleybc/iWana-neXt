@@ -93,3 +93,37 @@
   - `pnpm --filter @iwana/api lint` ✅
   - `pnpm --filter @iwana/portal typecheck` ✅
   - `pnpm --filter @iwana/portal lint` ✅
+
+## Corrección aplicada — normalización de campos en Suscriptores (Datos/Contacto/Dirección)
+
+- **Objetivo:** alinear el módulo de Suscriptores con el requerimiento funcional de negocio para la pestaña Datos y el patrón de contacto del CRM.
+
+- **Ajuste implementado (portal):**
+  1. Se retiraron de la sección Datos los campos `fecha de nacimiento`, `estrato` y `segmento`.
+  2. Se normalizó la sección Contacto a: `Correo principal`, `Teléfono principal`, `Contacto alternativo`, `Teléfono`.
+  3. Se actualizó Dirección para incluir: `Departamento`, `Municipio`, `Dirección`, `Código postal`, `Barrio/Sector`, `Latitud`, `Longitud` y vista de mapa embebida (OSM).
+
+- **Ajuste implementado (backend + contrato):**
+  1. Se extendió `Subscriber` con `altContactName` y `altContactPhoneEncrypted`.
+  2. Se extendieron DTOs, servicio y respuesta para soportar `altContactName` y `altContactPhone` (descifrado en salida).
+  3. Se extendió el schema compartido (`@iwana/shared`) de create/update con los dos campos de contacto alternativo.
+  4. Se agregó migración tenant `016_add_subscriber_alternate_contact_fields` y registro en `runner.ts`.
+  5. Se actualizó el contrato de `SubscriberRecord` en el portal para mapear campos nuevos.
+
+- **Archivos impactados principales:**
+  - `packages/shared/src/schemas/subscriber.schema.ts`
+  - `apps/api/src/modules/crm/subscribers/entities/subscriber.entity.ts`
+  - `apps/api/src/modules/crm/subscribers/dto/create-subscriber.dto.ts`
+  - `apps/api/src/modules/crm/subscribers/dto/update-subscriber.dto.ts`
+  - `apps/api/src/modules/crm/subscribers/dto/subscriber-response.dto.ts`
+  - `apps/api/src/modules/crm/subscribers/subscribers.service.ts`
+  - `apps/api/src/modules/crm/subscribers/subscribers.controller.ts`
+  - `packages/database/src/migrations/tenant/016_add_subscriber_alternate_contact_fields.ts`
+  - `packages/database/src/migrations/tenant/runner.ts`
+  - `apps/portal/src/lib/api-client.ts`
+  - `apps/portal/src/components/crm/subscribers/SubscriberSections.tsx`
+
+- **Validación ejecutada:**
+  - `pnpm --filter @iwana/api typecheck` ✅
+  - `pnpm --filter @iwana/portal typecheck` ✅
+  - `pnpm --filter @iwana/api test -- src/modules/crm/subscribers/tests/subscribers.controller.spec.ts src/modules/crm/subscribers/tests/subscribers.service.spec.ts` ✅ (44 tests)
