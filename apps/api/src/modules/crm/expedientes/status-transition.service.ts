@@ -28,7 +28,15 @@ export class StatusTransitionService {
 
   /**
    * Validar si una transición es permitida según campos mínimos
-   * PRD v2.0 §4.5
+   * Pipeline consolidado (8 estados): NUEVO_POTENCIAL, PRECALIFICADO,
+   * VALIDANDO_COBERTURA, EN_COTIZACION, LISTO_PARA_INSTALACION,
+   * INSTALACION_AGENDADA, CLIENTE_ACTIVO, DESCARTADO
+   *
+   * Estados eliminados (ADR-026):
+   * - CONTACTADO → absorbido por NUEVO_POTENCIAL
+   * - PENDIENTE_DATOS → absorbido por PRECALIFICADO
+   * - VIABLE_COMERCIALMENTE → absorbido por VALIDANDO_COBERTURA
+   * - PENDIENTE_DECISION → absorbido por EN_COTIZACION
    */
   async validateTransition(
     expedienteId: string,
@@ -44,19 +52,17 @@ export class StatusTransitionService {
       throw new NotFoundException(`Expediente ${expedienteId} no encontrado`);
     }
 
+    if (expediente.status === targetStatus) {
+      return { valid: true };
+    }
+
     switch (targetStatus) {
-      case ExpedienteStatus.CONTACTADO:
-        return this.validateContacted(expediente);
       case ExpedienteStatus.PRECALIFICADO:
         return this.validatePrecalificado(expediente);
       case ExpedienteStatus.VALIDANDO_COBERTURA:
         return this.validateValidandoCobertura(expediente);
-      case ExpedienteStatus.VIABLE_COMERCIALMENTE:
-        return this.validateViableComercialmente(expediente);
       case ExpedienteStatus.EN_COTIZACION:
         return this.validateEnCotizacion(expediente);
-      case ExpedienteStatus.PENDIENTE_DECISION:
-        return this.validatePendienteDecision(expediente);
       case ExpedienteStatus.LISTO_PARA_INSTALACION:
         return this.validateListoParaInstalacion(expediente);
       case ExpedienteStatus.INSTALACION_AGENDADA:
@@ -70,15 +76,8 @@ export class StatusTransitionService {
     }
   }
 
-  private validateContacted(expediente: ExpedienteRecord): TransitionValidationResult {
-    const hasContact = expediente.phonePrimaryEncrypted || expediente.emailPrimaryEncrypted;
-    if (!hasContact) {
-      return { valid: false, missingFields: ['Teléfono o Email'] };
-    }
-    return { valid: true };
-  }
-
   private validatePrecalificado(expediente: ExpedienteRecord): TransitionValidationResult {
+    // PRECALIFICADO absorbe los requisitos de CONTACTADO y PENDIENTE_DATOS (ADR-026)
     const missing: string[] = [];
 
     if (!expediente.documentType) missing.push('Tipo de documento');
@@ -95,6 +94,7 @@ export class StatusTransitionService {
   }
 
   private validateValidandoCobertura(expediente: ExpedienteRecord): TransitionValidationResult {
+    // VALIDANDO_COBERTURA absorbe VIABLE_COMERCIALMENTE (ADR-026)
     const hasCoordinates = expediente.latitude && expediente.longitude;
     const hasAddress = expediente.address && expediente.municipality;
 
@@ -104,30 +104,18 @@ export class StatusTransitionService {
     return { valid: true };
   }
 
-  private validateViableComercialmente(expediente: ExpedienteRecord): TransitionValidationResult {
-    return { valid: true };
-  }
-
   private validateEnCotizacion(expediente: ExpedienteRecord): TransitionValidationResult {
+    // EN_COTIZACION absorbe PENDIENTE_DECISION (ADR-026)
     if (!expediente.interestedPlanId) {
       return { valid: false, missingFields: ['Plan de interés seleccionado'] };
     }
     return { valid: true };
   }
 
-  private validatePendienteDecision(expediente: ExpedienteRecord): TransitionValidationResult {
-    return { valid: true };
-  }
-
-  private validateListoParaInstalacion(expediente: ExpedienteRecord): TransitionValidationResult {
-    const missing: string[] = [];
-
-    if (!expediente.installationAddress) missing.push('Dirección de instalación');
-    if (!expediente.siteContactName) missing.push('Contacto en sitio');
-
-    if (missing.length > 0) {
-      return { valid: false, missingFields: missing };
-    }
+  private validateListoParaInstalacion(_expediente: ExpedienteRecord): TransitionValidationResult {
+    // La dirección de instalación corresponde a la dirección del suscriptor, ya capturada
+    // en la etapa de precalificación. El contacto en sitio se resuelve desde el titular
+    // o el contacto alternativo. No se requieren campos adicionales para esta transición.
     return { valid: true };
   }
 
@@ -159,7 +147,11 @@ export class StatusTransitionService {
       missing.push('Completitud >= 90% en las 4 dimensiones');
     }
 
-    if (!expediente.checklistCompleted) missing.push('Checklist completo');
+    // Compatibilidad operativa MOD05: en expediente no existe aún captura explícita
+    // de checklist desde UI. Si la completitud ya cumple el umbral, no bloqueamos.
+    if (!expediente.checklistCompleted && missing.length > 0) {
+      missing.push('Checklist completo');
+    }
 
     if (missing.length > 0) {
       return { valid: false, missingFields: missing };

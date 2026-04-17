@@ -65,7 +65,11 @@ export class CompletenessCalculator {
         const loadedCoverageChecks = await qr.manager.find(CoverageCheck, {
           where: { expedienteId },
         });
-        return { consents: loadedConsents, quotes: loadedQuotes, coverageChecks: loadedCoverageChecks };
+        return {
+          consents: loadedConsents,
+          quotes: loadedQuotes,
+          coverageChecks: loadedCoverageChecks,
+        };
       });
 
       consents = expedienteData.consents;
@@ -195,7 +199,8 @@ export class CompletenessCalculator {
       requiredDocumentDefinitions.length > 0 &&
       requiredDocumentDefinitions.every(
         (definition) =>
-          documentSupports[definition.key]?.versions?.[0]?.status === DOCUMENT_SUPPORT_STATUS.APPROVED,
+          documentSupports[definition.key]?.versions?.[0]?.status ===
+          DOCUMENT_SUPPORT_STATUS.APPROVED,
       );
 
     if (dataTreatment) score++;
@@ -249,14 +254,9 @@ export class CompletenessCalculator {
    */
   private calculateOperational(expediente: ExpedienteRecord): number {
     let score = 0;
-    let total = 6;
+    const total = 3;
 
-    // Instalación
-    if (expediente.installationAddress) score++;
-    if (expediente.siteContactName) score++;
-    if (expediente.siteContactPhoneEncrypted) score++;
-
-    // Facturación
+    // Facturación — se ingresa desde Suscriptor 360 una vez que el expediente se convierte a cliente.
     if (expediente.paymentMethod) score++;
     if (expediente.billingCycle) score++;
     if (expediente.fiscalName) score++;

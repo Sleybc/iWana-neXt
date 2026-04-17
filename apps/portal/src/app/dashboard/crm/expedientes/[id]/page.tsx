@@ -47,6 +47,7 @@ import { SeguimientoTab } from '@/components/crm/expedientes/SeguimientoTab';
 
 import {
   EXPEDIENTE_STATUS_META,
+  getStatusMeta,
   formatAcquisitionChannel,
   formatMunicipio,
 } from '@/components/crm/expedientes/expediente-ui';
@@ -99,20 +100,16 @@ const PIPELINE_STATUS_OPTIONS: Array<{
     label: 'Nuevo potencial',
   },
   {
-    value: 'CONTACTADO',
-    label: 'Contactado',
-  },
-  {
     value: 'PRECALIFICADO',
     label: 'Precalificado',
   },
   {
-    value: 'EN_COTIZACION',
-    label: 'En cotización',
+    value: 'VALIDANDO_COBERTURA',
+    label: 'Validando cobertura',
   },
   {
-    value: 'PENDIENTE_DECISION',
-    label: 'Pendiente decisión',
+    value: 'EN_COTIZACION',
+    label: 'En cotización',
   },
   {
     value: 'LISTO_PARA_INSTALACION',
@@ -123,10 +120,34 @@ const PIPELINE_STATUS_OPTIONS: Array<{
     label: 'Instalación agendada',
   },
   {
+    value: 'CLIENTE_ACTIVO',
+    label: 'Cliente activo',
+  },
+  {
     value: 'DESCARTADO',
     label: 'Descartado',
   },
 ];
+
+const PIPELINE_PROGRESS_ORDER: ExpedienteStatus[] = [
+  'NUEVO_POTENCIAL',
+  'PRECALIFICADO',
+  'VALIDANDO_COBERTURA',
+  'EN_COTIZACION',
+  'LISTO_PARA_INSTALACION',
+  'INSTALACION_AGENDADA',
+  'CLIENTE_ACTIVO',
+  'DESCARTADO',
+];
+
+function getSuggestedTransitionTarget(currentStatus: ExpedienteStatus): ExpedienteStatus {
+  const currentIndex = PIPELINE_PROGRESS_ORDER.indexOf(currentStatus);
+  if (currentIndex === -1 || currentIndex === PIPELINE_PROGRESS_ORDER.length - 1) {
+    return currentStatus;
+  }
+
+  return PIPELINE_PROGRESS_ORDER[currentIndex + 1]!;
+}
 
 export default function ExpedienteDetailPage() {
   const params = useParams();
@@ -144,7 +165,7 @@ export default function ExpedienteDetailPage() {
   const [recentActivity, setRecentActivity] = useState<ExpedienteActivityItem[]>([]);
   const [operationalMetadata, setOperationalMetadata] =
     useState<ExpedienteOperationalMetadata | null>(null);
-  const [transitionTarget, setTransitionTarget] = useState<ExpedienteStatus>('NUEVO_POTENCIAL');
+  const [transitionTarget, setTransitionTarget] = useState<ExpedienteStatus | ''>('');
   const [transitionReason, setTransitionReason] = useState('');
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionMessageTone, setActionMessageTone] = useState<'success' | 'error' | 'info'>('info');
@@ -261,7 +282,6 @@ export default function ExpedienteDetailPage() {
       .catch(() => {
         // Si falla, el selector queda vacío; no es bloqueante
       });
-
   }, [id]);
 
   const loadExpediente = async (options?: {
@@ -310,7 +330,11 @@ export default function ExpedienteDetailPage() {
       const historyResponse = await crmApi.getResponsibilityHistory(id);
       setResponsibility(responsibilityResponse.data);
       setResponsibilityHistory(historyResponse.data ?? []);
-      setTransitionTarget(response.data.status);
+      setTransitionTarget((current) =>
+        current && current !== response.data.status
+          ? current
+          : getSuggestedTransitionTarget(response.data.status),
+      );
       setError(null);
       if (clearActionMessage) {
         setActionMessage(null);
@@ -495,17 +519,35 @@ export default function ExpedienteDetailPage() {
   };
 
   const handleTransition = async (targetStatus = transitionTarget) => {
+    if (!targetStatus) {
+      setActionMessageTone('error');
+      setActionMessage('Selecciona un estado destino antes de aplicar la transición.');
+      return;
+    }
+
+    if (expediente && targetStatus === expediente.status) {
+      setActionMessageTone('info');
+      setActionMessage('Selecciona un estado diferente al actual para avanzar el pipeline.');
+      return;
+    }
+
     try {
       setActionMessage(null);
+
+      // No hay secciones con campos requeridos pre-transición que deban auto-persistirse.
+      // Billing e instalación ya no son secciones del expediente.
+
       await crmApi.transitionExpedienteStatus(id, {
         targetStatus,
         ...(transitionReason.trim() ? { reason: transitionReason.trim() } : {}),
       });
       await loadExpediente();
       setTransitionReason('');
+      setActionMessageTone('success');
       setActionMessage('Transición aplicada correctamente.');
     } catch (err) {
       console.error(err);
+      setActionMessageTone('error');
       setActionMessage(err instanceof Error ? err.message : 'No fue posible cambiar el estado.');
     }
   };
@@ -785,8 +827,8 @@ export default function ExpedienteDetailPage() {
             Estado actual
           </p>
           <div className="mt-2">
-            <Badge variant={EXPEDIENTE_STATUS_META[expediente.status].variant}>
-              {EXPEDIENTE_STATUS_META[expediente.status].label}
+            <Badge variant={getStatusMeta(expediente.status).variant}>
+              {getStatusMeta(expediente.status).label}
             </Badge>
           </div>
         </div>
@@ -865,8 +907,8 @@ export default function ExpedienteDetailPage() {
               Cambia el estado comercial de forma controlada y registra un motivo cuando aplique.
             </p>
           </div>
-          <Badge variant={EXPEDIENTE_STATUS_META[expediente.status].variant} className="w-fit">
-            Estado actual: {EXPEDIENTE_STATUS_META[expediente.status].label}
+          <Badge variant={getStatusMeta(expediente.status).variant} className="w-fit">
+            Estado actual: {getStatusMeta(expediente.status).label}
           </Badge>
         </div>
 

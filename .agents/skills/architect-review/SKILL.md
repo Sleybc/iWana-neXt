@@ -1,6 +1,6 @@
 ---
 name: architect-review
-description: Review arquitectonico enfocado en iWana neXt: modulith, boundaries, multi-tenant por schema, seguridad y stack aprobado.
+description: "Review arquitectonico enfocado en iWana neXt: modulith, boundaries, multi-tenant por schema, seguridad y stack aprobado."
 ---
 
 # Architect Review

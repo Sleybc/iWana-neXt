@@ -7,5 +7,5 @@ export const metadata = {
 
 export default function SubscribersPage() {
   // Esta ruta se conserva solo por compatibilidad de navegación histórica.
-  redirect('/dashboard/crm');
+  redirect('/dashboard/crm/subscribers');
 }

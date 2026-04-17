@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { AlertTriangle, Bell, BellRing } from 'lucide-react';
 import { auditApi, ApiError, type AuditLogEntry } from '@/lib/api-client';
 import { cn } from '@iwana/ui';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 // Mapea el action crudo del audit log a texto español legible
 function formatAuditAction(action: string): string {
@@ -55,13 +56,21 @@ function formatRelativeDate(value: string): string {
 }
 
 export function NotificationBell() {
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const canViewAuditNotifications = new Set(['ADMIN', 'SYSTEM_ADMIN']).has(user?.role ?? '');
 
   const loadNotifications = useCallback(async () => {
+    if (!canViewAuditNotifications) {
+      setError(null);
+      setEntries([]);
+      return;
+    }
+
     try {
       setError(null);
       const logs = await auditApi.list({ limit: 10 });
@@ -74,13 +83,19 @@ export function NotificationBell() {
       }
       setEntries([]);
     }
-  }, []);
+  }, [canViewAuditNotifications]);
 
   useEffect(() => {
+    if (!canViewAuditNotifications) {
+      setError(null);
+      setEntries([]);
+      return;
+    }
+
     loadNotifications();
     const intervalId = window.setInterval(loadNotifications, 60_000);
     return () => window.clearInterval(intervalId);
-  }, [loadNotifications]);
+  }, [canViewAuditNotifications, loadNotifications]);
 
   useEffect(() => {
     const onClickOutside = (event: MouseEvent) => {
@@ -171,9 +186,14 @@ export function NotificationBell() {
           ) : count === 0 ? (
             <li className="px-4 py-3">
               <div className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-3 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
-                <BellRing className="mt-0.5 h-4 w-4 shrink-0 text-iwana-secondary-700 dark:text-iwana-secondary-300" aria-hidden="true" />
+                <BellRing
+                  className="mt-0.5 h-4 w-4 shrink-0 text-iwana-secondary-700 dark:text-iwana-secondary-300"
+                  aria-hidden="true"
+                />
                 <div>
-                  <p className="font-medium text-gray-800 dark:text-white">Sin actividad reciente</p>
+                  <p className="font-medium text-gray-800 dark:text-white">
+                    Sin actividad reciente
+                  </p>
                   <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
                     Cuando existan cambios relevantes del tenant aparecerán aquí.
                   </p>
@@ -191,7 +211,8 @@ export function NotificationBell() {
                     {formatAuditAction(entry.action)} · {formatAuditEntity(entry.entityType)}
                   </p>
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {formatRelativeDate(entry.createdAt)} · ID: {entry.entityId.slice(0, 8).toUpperCase()}
+                    {formatRelativeDate(entry.createdAt)} · ID:{' '}
+                    {entry.entityId.slice(0, 8).toUpperCase()}
                   </p>
                 </Link>
               </li>

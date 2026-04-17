@@ -90,6 +90,7 @@ export class ExpedientesController {
     @Query('limit') limit?: number,
     @Query('assignedTo') assignedTo?: string,
     @Query('documentNumber') documentNumber?: string,
+    @Query('includeCompleted') includeCompleted?: string,
   ) {
     const result = await this.expedienteService.findAll({
       status: status as ExpedienteStatus | undefined,
@@ -99,6 +100,7 @@ export class ExpedientesController {
       limit: limit ? Number(limit) : undefined,
       assignedTo: assignedTo ?? undefined,
       documentNumber: documentNumber ?? undefined,
+      includeCompleted: includeCompleted === 'true',
     });
     return result;
   }
@@ -150,10 +152,14 @@ export class ExpedientesController {
     const validation = await this.statusTransitionService.validateTransition(id, dto.targetStatus);
 
     if (!validation.valid) {
+      const missingFields = validation.missingFields ?? [];
       throw new BadRequestException({
         code: 'INVALID_STATUS_TRANSITION',
-        message: 'La transición solicitada no está permitida para el expediente.',
-        missingFields: validation.missingFields,
+        message:
+          missingFields.length > 0
+            ? `La transición solicitada no está permitida para el expediente. Faltantes: ${missingFields.join(', ')}.`
+            : 'La transición solicitada no está permitida para el expediente.',
+        missingFields,
       });
     }
 
@@ -206,7 +212,12 @@ export class ExpedientesController {
     @UploadedFile() file: UploadedDocumentFile,
     @CurrentUser() user: JwtPayload,
   ) {
-    const data = await this.expedienteService.uploadDocumentSupport(id, documentKey, file, user.sub);
+    const data = await this.expedienteService.uploadDocumentSupport(
+      id,
+      documentKey,
+      file,
+      user.sub,
+    );
     return { data };
   }
 
@@ -217,7 +228,8 @@ export class ExpedientesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('documentKey') documentKey: string,
     @Param('versionId') versionId: string,
-    @Body(new ZodBodyValidationPipe(UpdateDocumentSupportStatusSchema)) dto: UpdateDocumentSupportStatusBodyDto,
+    @Body(new ZodBodyValidationPipe(UpdateDocumentSupportStatusSchema))
+    dto: UpdateDocumentSupportStatusBodyDto,
     @CurrentUser() user: JwtPayload,
   ) {
     const data = await this.expedienteService.updateDocumentSupportStatus(

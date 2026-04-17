@@ -36,7 +36,9 @@ describe('CompletenessCalculator', () => {
     service = module.get<CompletenessCalculator>(CompletenessCalculator);
   });
 
-  it('retorna completitud almacenada si una tabla hija del esquema tenant aun no existe', async () => {
+  it('calcula completitud con arrays vacios cuando sub-tablas CRM aun no existen en el schema', async () => {
+    // Cuando la tabla de quotes/consents/coverage no existe (migración pendiente),
+    // el servicio continúa el cálculo con arrays vacíos en lugar de usar los valores almacenados.
     const expediente = buildExpediente({
       completenessCommercial: 75,
       completenessLegal: 50,
@@ -60,12 +62,14 @@ describe('CompletenessCalculator', () => {
         throw error;
       });
 
+    // Con sub-tablas vacías el cálculo refleja solo los campos del expediente en memoria.
+    // El expediente de prueba solo tiene fullName, lo que aporta ~20% en comercial.
     await expect(service.calculate('exp-1')).resolves.toEqual({
-      commercial: 75,
-      legal: 50,
-      technical: 25,
+      commercial: 20,
+      legal: 0,
+      technical: 0,
       operational: 0,
-      overall: 38,
+      overall: 5,
     });
   });
 

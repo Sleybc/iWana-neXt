@@ -164,7 +164,7 @@ describe('ExpedientesController', () => {
 
   it('expone timeline enriquecido con actividad y metadata operativa', async () => {
     expedienteServiceMock.getTimelineSummary.mockResolvedValue({
-      changes: [{ id: 'change-1', fromStatus: 'CONTACTADO', toStatus: 'EN_COTIZACION' }],
+      changes: [{ id: 'change-1', fromStatus: 'PRECALIFICADO', toStatus: 'EN_COTIZACION' }],
       activities: [{ id: 'activity-1', type: 'SECTION_UPDATED' }],
       metadata: {
         createdBy: { userId: 'user-1', name: 'Carlos Mejía' },
@@ -266,6 +266,7 @@ describe('ExpedientesController', () => {
 
     expect(expedienteServiceMock.getDocumentSupports).toHaveBeenCalledWith(
       '00000000-0000-4000-a000-000000000001',
+      undefined,
     );
     expect(result.data.items).toHaveLength(1);
   });

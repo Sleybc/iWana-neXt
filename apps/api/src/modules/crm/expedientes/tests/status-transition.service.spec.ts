@@ -43,12 +43,20 @@ describe('StatusTransitionService', () => {
     service = module.get<StatusTransitionService>(StatusTransitionService);
   });
 
-  it('rechaza CONTACTADO cuando no existe telefono ni correo', async () => {
-    mockExpediente(buildExpediente());
+  it('permite PRECALIFICADO cuando tiene datos de contacto (absorbe CONTACTADO)', async () => {
+    mockExpediente(
+      buildExpediente({
+        documentType: 'CC',
+        documentNumberEncrypted: 'encrypted-doc',
+        phonePrimaryEncrypted: 'encrypted-phone',
+        address: 'Calle 1 #2-3',
+        municipality: 'Bogotá',
+      }),
+    );
 
-    const result = await service.validateTransition('exp-1', ExpedienteStatus.CONTACTADO);
+    const result = await service.validateTransition('exp-1', ExpedienteStatus.PRECALIFICADO);
 
-    expect(result).toEqual({ valid: false, missingFields: ['Teléfono o Email'] });
+    expect(result).toEqual({ valid: true });
   });
 
   it('rechaza PRECALIFICADO cuando faltan campos obligatorios', async () => {
@@ -70,7 +78,7 @@ describe('StatusTransitionService', () => {
     expect(result).toEqual({ valid: false, missingFields: ['Plan de interés seleccionado'] });
   });
 
-  it('rechaza CLIENTE_ACTIVO si la completitud o el checklist no cumplen', async () => {
+  it('rechaza CLIENTE_ACTIVO si la completitud no cumple', async () => {
     mockExpediente(buildExpediente({ checklistCompleted: false }));
     completenessCalculatorMock.calculate.mockResolvedValue({
       commercial: 95,
@@ -88,8 +96,8 @@ describe('StatusTransitionService', () => {
     );
   });
 
-  it('permite CLIENTE_ACTIVO cuando las cuatro dimensiones y el checklist estan completos', async () => {
-    mockExpediente(buildExpediente({ checklistCompleted: true }));
+  it('permite CLIENTE_ACTIVO cuando las cuatro dimensiones cumplen (aunque checklist esté en false)', async () => {
+    mockExpediente(buildExpediente({ checklistCompleted: false }));
     completenessCalculatorMock.calculate.mockResolvedValue({
       commercial: 95,
       legal: 92,
@@ -99,6 +107,23 @@ describe('StatusTransitionService', () => {
     });
 
     const result = await service.validateTransition('exp-5', ExpedienteStatus.CLIENTE_ACTIVO);
+
+    expect(result).toEqual({ valid: true });
+  });
+
+  it('permite transicion no-op cuando el target coincide con el estado actual', async () => {
+    mockExpediente(
+      buildExpediente({
+        status: ExpedienteStatus.LISTO_PARA_INSTALACION,
+        installationAddress: null,
+        siteContactName: null,
+      }),
+    );
+
+    const result = await service.validateTransition(
+      'exp-noop',
+      ExpedienteStatus.LISTO_PARA_INSTALACION,
+    );
 
     expect(result).toEqual({ valid: true });
   });
@@ -113,7 +138,7 @@ describe('StatusTransitionService', () => {
     );
 
     await expect(
-      service.validateTransition('exp-missing', ExpedienteStatus.CONTACTADO),
+      service.validateTransition('exp-missing', ExpedienteStatus.PRECALIFICADO),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 

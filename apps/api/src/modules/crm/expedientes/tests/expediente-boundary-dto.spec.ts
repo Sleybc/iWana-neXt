@@ -52,12 +52,12 @@ describe('Expedientes boundary DTOs', () => {
   it('preserva targetStatus y reason antes de la validacion Zod de transicion', async () => {
     await expect(
       validationPipe.transform(
-        { targetStatus: 'CONTACTADO', reason: 'Contacto exitoso' },
+        { targetStatus: 'PRECALIFICADO', reason: 'Datos completos' },
         buildBodyMetadata(TransitionStatusDto),
       ),
     ).resolves.toMatchObject({
-      targetStatus: 'CONTACTADO',
-      reason: 'Contacto exitoso',
+      targetStatus: 'PRECALIFICADO',
+      reason: 'Datos completos',
     });
   });
 

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as crypto from 'crypto';
 import { access, mkdir, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
@@ -24,6 +25,11 @@ import { ConsentRecord } from './entities/consent-record-v2.entity';
 import { CoverageCheck } from './entities/coverage-check.entity';
 import { AuditService } from '../../audit/audit.service';
 import { CompletenessCalculator } from './completeness-calculator.service';
+import {
+  ExpedienteActivatedEvent,
+  ExpedienteDiscardedEvent,
+  ExpedienteReadyForInstallationEvent,
+} from './events/expediente-pipeline.events';
 import { CreateExpedienteDto } from './dto/create-expediente.dto';
 import { UpdateSectionDto, ExpedienteSection } from './dto/update-section.dto';
 import { TransitionStatusDto } from './dto/transition-status.dto';
@@ -176,6 +182,7 @@ export class ExpedienteService {
     private readonly configService: ConfigService,
     private readonly auditService: AuditService,
     private readonly completenessCalculator: CompletenessCalculator,
+    private readonly eventEmitter: EventEmitter2,
   ) {
     const keyHex = this.configService.getOrThrow<string>('MFA_ENCRYPTION_KEY');
     this.encryptionKey = Buffer.from(keyHex, 'hex');
@@ -425,6 +432,7 @@ export class ExpedienteService {
     search?: string | undefined;
     assignedTo?: string | undefined;
     documentNumber?: string | undefined;
+    includeCompleted?: boolean | undefined;
     page?: number | undefined;
     limit?: number | undefined;
   }): Promise<{ data: ExpedienteRecord[]; total: number }> {
@@ -436,6 +444,7 @@ export class ExpedienteService {
     const search = filters.search;
     const assignedTo = filters.assignedTo;
     const documentNumber = filters.documentNumber?.trim();
+    const includeCompleted = filters.includeCompleted ?? false;
 
     const [data, total] = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const query = qr.manager.createQueryBuilder(ExpedienteRecord, 'expediente');
@@ -444,6 +453,11 @@ export class ExpedienteService {
       if (municipality) query.andWhere('expediente.municipality = :municipality', { municipality });
       if (search) query.andWhere('expediente.fullName LIKE :search', { search: `%${search}%` });
       if (assignedTo) query.andWhere('expediente.assignedTo = :assignedTo', { assignedTo });
+      if (!includeCompleted) {
+        query.andWhere('expediente.status NOT IN (:...closedStatuses)', {
+          closedStatuses: [ExpedienteStatus.CLIENTE_ACTIVO, ExpedienteStatus.DESCARTADO],
+        });
+      }
 
       query.orderBy('expediente.createdAt', 'DESC');
 
@@ -577,6 +591,11 @@ export class ExpedienteService {
         this.decryptValue(entity.altContactPhoneEncrypted);
     }
 
+    if (entity.siteContactPhoneEncrypted) {
+      (entity as ExpedienteRecord & { siteContactPhone?: string }).siteContactPhone =
+        this.decryptValue(entity.siteContactPhoneEncrypted);
+    }
+
     const completeness = await this.completenessCalculator.calculate(id);
     Object.assign(entity, {
       completenessCommercial: completeness.commercial,
@@ -665,6 +684,11 @@ export class ExpedienteService {
     entity.status = toStatus;
     entity.statusChangedAt = now;
 
+    if (toStatus === ExpedienteStatus.CLIENTE_ACTIVO && !entity.checklistCompleted) {
+      // Cierre automático de checklist cuando el expediente ya cumple la transición.
+      entity.checklistCompleted = true;
+    }
+
     if (toStatus === ExpedienteStatus.DESCARTADO && dto.reason) {
       entity.discardReason = dto.reason;
     }
@@ -695,6 +719,30 @@ export class ExpedienteService {
       userId: actorUserId,
       newValue: { fromStatus, toStatus, reason: dto.reason },
     });
+
+    if (toStatus === ExpedienteStatus.LISTO_PARA_INSTALACION) {
+      await this.emitPipelineEventSafely(
+        'crm.expediente.ready-for-installation',
+        new ExpedienteReadyForInstallationEvent(tenantId, schemaName, id, actorUserId),
+        id,
+      );
+    }
+
+    if (toStatus === ExpedienteStatus.CLIENTE_ACTIVO) {
+      await this.emitPipelineEventSafely(
+        'crm.expediente.activated',
+        new ExpedienteActivatedEvent(tenantId, schemaName, id, actorUserId),
+        id,
+      );
+    }
+
+    if (toStatus === ExpedienteStatus.DESCARTADO) {
+      await this.emitPipelineEventSafely(
+        'crm.expediente.discarded',
+        new ExpedienteDiscardedEvent(tenantId, schemaName, id, actorUserId, dto.reason ?? null),
+        id,
+      );
+    }
 
     return this.findById(id);
   }
@@ -2003,6 +2051,23 @@ export class ExpedienteService {
         },
       );
     });
+  }
+
+  private async emitPipelineEventSafely(
+    eventName: string,
+    payload:
+      | ExpedienteReadyForInstallationEvent
+      | ExpedienteActivatedEvent
+      | ExpedienteDiscardedEvent,
+    expedienteId: string,
+  ): Promise<void> {
+    try {
+      await this.eventEmitter.emitAsync(eventName, payload);
+    } catch (error) {
+      this.logger.warn(
+        `[PIPELINE_EVENT] Falló emisión ${eventName} para expediente ${expedienteId}: ${String(error)}`,
+      );
+    }
   }
 
   private async persistStatusChangeSafely(params: {

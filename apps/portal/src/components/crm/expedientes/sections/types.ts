@@ -6,9 +6,7 @@ export type SectionId =
   | 'location'
   | 'commercial_interest'
   | 'technical_feasibility'
-  | 'legal_consent'
-  | 'billing'
-  | 'installation';
+  | 'legal_consent';
 
 export type DraftValues = Record<string, string>;
 

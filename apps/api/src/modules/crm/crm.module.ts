@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ContactsModule } from './contacts/contacts.module';
 import { HabeasDataModule } from './habeas-data/habeas-data.module';
 import { OpportunitiesModule } from './opportunities/opportunities.module';
@@ -12,6 +13,7 @@ import { ExpedientesModule } from './expedientes/expedientes.module';
 import { ExecutionPolicyMode } from './enums/execution-policy-mode.enum';
 import { AttributionsModule } from './attributions/attributions.module';
 import { ResponsibilitiesModule } from './responsibilities/responsibilities.module';
+import { SubscribersModule } from './subscribers/subscribers.module';
 
 class TenantExecutionPolicyReadAdapter extends ExecutionPolicyReadPort {
   async resolvePolicy(
@@ -34,6 +36,7 @@ class TenantExecutionPolicyReadAdapter extends ExecutionPolicyReadPort {
 
 @Module({
   imports: [
+    EventEmitterModule.forRoot(),
     TenantModule,
     ContactsModule,
     HabeasDataModule,
@@ -43,6 +46,7 @@ class TenantExecutionPolicyReadAdapter extends ExecutionPolicyReadPort {
     ExpedientesModule,
     AttributionsModule,
     ResponsibilitiesModule,
+    SubscribersModule,
   ],
   providers: [
     { provide: CoverageReadPort, useClass: TenantCoverageReadAdapter },

@@ -13,7 +13,7 @@ interface InstallationSectionProps {
 
 export function InstallationSection({ draftValues, onChange }: InstallationSectionProps) {
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className="grid gap-4 md:grid-cols-3">
       <Input
         id="installation-installationAddress"
         label={FIELD_LABELS.installationAddress!}
@@ -27,6 +27,13 @@ export function InstallationSection({ draftValues, onChange }: InstallationSecti
         value={draftValues.siteContactName ?? EMPTY_VALUE}
         onChange={(event) => onChange('siteContactName', event.target.value)}
         placeholder={FIELD_PLACEHOLDERS.siteContactName!}
+      />
+      <Input
+        id="installation-siteContactPhone"
+        label={FIELD_LABELS.siteContactPhone!}
+        value={draftValues.siteContactPhone ?? EMPTY_VALUE}
+        onChange={(event) => onChange('siteContactPhone', event.target.value)}
+        placeholder={FIELD_PLACEHOLDERS.siteContactPhone!}
       />
     </div>
   );

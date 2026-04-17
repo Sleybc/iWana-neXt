@@ -4,10 +4,19 @@ import {
   AcquisitionChannel,
   ConsentChannel,
   AttributionRole,
+  CreateSubscriberPayload,
+  CustomerSegment,
+  DocumentType,
   EvaluationSource,
+  PersonType,
+  SubscriberStatus,
   TechnicalConfidence,
   TechnicalViabilityResult,
+  TaxRegime,
   TechnologyOption,
+  TransitionStatusPayload,
+  UpdateSubscriberPayload,
+  VatTreatment,
 } from '@iwana/shared';
 
 /**
@@ -1248,13 +1257,9 @@ export const userApi = {
 
 export type ExpedienteStatus =
   | 'NUEVO_POTENCIAL'
-  | 'CONTACTADO'
-  | 'PENDIENTE_DATOS'
   | 'PRECALIFICADO'
   | 'VALIDANDO_COBERTURA'
-  | 'VIABLE_COMERCIALMENTE'
   | 'EN_COTIZACION'
-  | 'PENDIENTE_DECISION'
   | 'LISTO_PARA_INSTALACION'
   | 'INSTALACION_AGENDADA'
   | 'CLIENTE_ACTIVO'
@@ -1329,10 +1334,7 @@ export interface ExpedienteRecord {
   fiscalDocument?: string | null;
   fiscalAddress?: string | null;
   rutReference?: string | null;
-  installationAddress?: string | null;
   availabilityWindow?: string | null;
-  siteContactName?: string | null;
-  siteContactPhoneEncrypted?: string | null;
   specialAccessNotes?: string | null;
   requiredMaterials?: string | null;
   completenessCommercial: number | null;
@@ -1377,6 +1379,92 @@ export interface ExpedienteDocumentSupportResponse {
   personType: string | null;
   items: ExpedienteDocumentItem[];
   summary: ExpedienteDocumentSummary;
+}
+
+export interface SubscriberRecord {
+  id: string;
+  tenantId: string;
+  userId: string | null;
+  personType: PersonType;
+  customerSegment: CustomerSegment;
+  documentType: DocumentType | null;
+  documentNumber?: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  stratum: number | null;
+  birthDate: string | null;
+  nit: string | null;
+  nitVerificationDigit: string | null;
+  businessName: string | null;
+  commercialName: string | null;
+  legalRepresentativeId: string | null;
+  altContactName: string | null;
+  altContactPhone?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  whatsapp: string | null;
+  vatTreatment: VatTreatment;
+  taxRegime: TaxRegime;
+  address: string | null;
+  neighborhood: string | null;
+  city: string | null;
+  department: string | null;
+  postalCode: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  coverageNodeId: string | null;
+  expedienteId: string | null;
+  convertedAt: string | null;
+  activatedAt: string | null;
+  manualOverrideReason: string | null;
+  status: SubscriberStatus;
+  externalId: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface ListSubscribersParams {
+  status?: SubscriberStatus;
+  personType?: PersonType;
+  customerSegment?: CustomerSegment;
+  stratum?: number;
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface SearchSubscribersParams {
+  documentNumber?: string;
+  nit?: string;
+  email?: string;
+  phone?: string;
+}
+
+export interface Subscriber360Response {
+  subscriber: SubscriberRecord;
+  contacts: unknown[];
+  contracts: unknown[];
+  quotes: unknown[];
+  habeasData: unknown[];
+  arcoRequests: unknown[];
+  expedienteSummary: {
+    id: string;
+    fullName: string;
+    status: string;
+    source: string | null;
+    createdAt: string;
+    statusChangedAt: string | null;
+    paymentMethod: string | null;
+    billingCycle: string | null;
+    fiscalName: string | null;
+  } | null;
+  timelineSeed: Array<{
+    type: string;
+    occurredAt: string;
+    expedienteId: string | null;
+  }>;
 }
 
 export interface CreateExpedienteDto {
@@ -1553,6 +1641,7 @@ export const crmApi = {
       search?: string;
       assignedTo?: string;
       documentNumber?: string;
+      includeCompleted?: boolean;
       page?: number;
       limit?: number;
     },
@@ -1565,6 +1654,7 @@ export const crmApi = {
     if (filters?.search) searchParams.set('search', filters.search);
     if (filters?.assignedTo) searchParams.set('assignedTo', filters.assignedTo);
     if (filters?.documentNumber) searchParams.set('documentNumber', filters.documentNumber);
+    if (filters?.includeCompleted) searchParams.set('includeCompleted', 'true');
     if (filters?.page) searchParams.set('page', String(filters.page));
     if (filters?.limit) searchParams.set('limit', String(filters.limit));
 
@@ -1782,4 +1872,101 @@ export const crmApi = {
       { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
       tenantSlug,
     ),
+};
+
+export const subscribersApi = {
+  create: (payload: CreateSubscriberPayload, tenantSlug?: string) =>
+    request<SubscriberRecord>(
+      '/crm/subscribers',
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
+        body: JSON.stringify(payload),
+      },
+      tenantSlug,
+    ),
+
+  list: (params?: ListSubscribersParams, tenantSlug?: string) => {
+    const searchParams = new URLSearchParams();
+
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.personType) searchParams.set('personType', params.personType);
+    if (params?.customerSegment) searchParams.set('customerSegment', params.customerSegment);
+    if (params?.stratum !== undefined) searchParams.set('stratum', String(params.stratum));
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+
+    const query = searchParams.toString();
+
+    return request<{ data: SubscriberRecord[]; total: number }>(
+      `/crm/subscribers${query ? `?${query}` : ''}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    );
+  },
+
+  search: (params?: SearchSubscribersParams, tenantSlug?: string) => {
+    const searchParams = new URLSearchParams();
+
+    if (params?.documentNumber) searchParams.set('documentNumber', params.documentNumber);
+    if (params?.nit) searchParams.set('nit', params.nit);
+    if (params?.email) searchParams.set('email', params.email);
+    if (params?.phone) searchParams.set('phone', params.phone);
+
+    const query = searchParams.toString();
+
+    return request<{ data: SubscriberRecord[] }>(
+      `/crm/subscribers/search${query ? `?${query}` : ''}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    );
+  },
+
+  getById: (id: string, tenantSlug?: string) =>
+    request<SubscriberRecord>(`/crm/subscribers/${id}`, undefined, tenantSlug),
+
+  update: (id: string, payload: UpdateSubscriberPayload, tenantSlug?: string) =>
+    request<SubscriberRecord>(
+      `/crm/subscribers/${id}`,
+      {
+        method: 'PATCH',
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
+        body: JSON.stringify(payload),
+      },
+      tenantSlug,
+    ),
+
+  updateSection: (
+    id: string,
+    section: string,
+    payload: Record<string, unknown>,
+    tenantSlug?: string,
+  ) =>
+    request<SubscriberRecord>(
+      `/crm/subscribers/${id}/section/${section}`,
+      {
+        method: 'PATCH',
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
+        body: JSON.stringify(payload),
+      },
+      tenantSlug,
+    ),
+
+  remove: (id: string, tenantSlug?: string) =>
+    request<{ id: string; deleted: true }>(
+      `/crm/subscribers/${id}`,
+      { method: 'DELETE' },
+      tenantSlug,
+    ),
+
+  transitionStatus: (id: string, payload: TransitionStatusPayload, tenantSlug?: string) =>
+    request<SubscriberRecord>(
+      `/crm/subscribers/${id}/status`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      tenantSlug,
+    ),
+
+  get360: (id: string, tenantSlug?: string) =>
+    request<Subscriber360Response>(`/crm/subscribers/${id}/360`, undefined, tenantSlug),
 };

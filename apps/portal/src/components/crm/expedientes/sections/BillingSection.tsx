@@ -13,7 +13,7 @@ interface BillingSectionProps {
 
 export function BillingSection({ draftValues, onChange }: BillingSectionProps) {
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className="grid gap-4 md:grid-cols-3">
       <Input
         id="billing-paymentMethod"
         label={FIELD_LABELS.paymentMethod!}
@@ -27,6 +27,13 @@ export function BillingSection({ draftValues, onChange }: BillingSectionProps) {
         value={draftValues.billingCycle ?? EMPTY_VALUE}
         onChange={(event) => onChange('billingCycle', event.target.value)}
         placeholder={FIELD_PLACEHOLDERS.billingCycle!}
+      />
+      <Input
+        id="billing-fiscalName"
+        label={FIELD_LABELS.fiscalName!}
+        value={draftValues.fiscalName ?? EMPTY_VALUE}
+        onChange={(event) => onChange('fiscalName', event.target.value)}
+        placeholder={FIELD_PLACEHOLDERS.fiscalName!}
       />
     </div>
   );

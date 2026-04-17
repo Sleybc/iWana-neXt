@@ -2,6 +2,8 @@
 export enum DocumentType {
   CC = 'CC', // Cédula de Ciudadanía
   CE = 'CE', // Cédula de Extranjería
-  PASAPORTE = 'PASAPORTE',
+  PASAPORTE = 'PASAPORTE', // Pasaporte
+  PEP = 'PEP', // Permiso Especial de Permanencia
+  PTP = 'PTP', // Permiso Temporal de Permanencia
   NIT_PERSONA = 'NIT_PERSONA', // NIT de persona natural
 }

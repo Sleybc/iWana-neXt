@@ -3,7 +3,7 @@
 import { Badge, ProgressMeter } from '@iwana/ui';
 import { ArrowLeft, CalendarPlus, Radio, User } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { EXPEDIENTE_STATUS_META } from './expediente-ui';
+import { getStatusMeta } from './expediente-ui';
 import { ExpedienteStatus } from '@/lib/api-client';
 
 interface DimensionProgress {
@@ -34,7 +34,7 @@ export function ExpedienteHeader({
   acquisitionChannel,
 }: ExpedienteHeaderProps) {
   const router = useRouter();
-  const statusMeta = EXPEDIENTE_STATUS_META[status];
+  const statusMeta = getStatusMeta(status);
 
   return (
     <div className="bg-white rounded-[20px] p-6 shadow-[var(--shadow-iwana-soft)] border border-gray-100 dark:bg-dark-surface-2 dark:border-dark-border">
@@ -62,9 +62,7 @@ export function ExpedienteHeader({
             </Badge>
           </div>
 
-          {subtitle && (
-            <p className="text-sm text-gray-500 dark:text-gray-400">{subtitle}</p>
-          )}
+          {subtitle && <p className="text-sm text-gray-500 dark:text-gray-400">{subtitle}</p>}
 
           {/* Metadata operativa inmutable — siempre visible */}
           {(createdAt || createdBy || acquisitionChannel) && (
@@ -93,13 +91,9 @@ export function ExpedienteHeader({
 
         {/* Progreso derecha */}
         <div className="rounded-2xl border border-gray-100 bg-gray-50/50 px-5 py-4 dark:border-dark-border dark:bg-dark-surface-3 lg:min-w-[260px]">
-          <ProgressMeter
-            value={overallProgress}
-            {...(dimensions ? { dimensions } : {})}
-          />
+          <ProgressMeter value={overallProgress} {...(dimensions ? { dimensions } : {})} />
         </div>
       </div>
     </div>
   );
 }
-

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { DataSource } from 'typeorm';
 import {
@@ -50,6 +51,10 @@ describe('ExpedienteService', () => {
     calculate: jest.fn(),
   };
 
+  const eventEmitterMock = {
+    emitAsync: jest.fn().mockResolvedValue([]),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
     mockTenantContextGetOrThrow.mockReturnValue({
@@ -67,6 +72,7 @@ describe('ExpedienteService', () => {
         },
         { provide: AuditService, useValue: auditServiceMock },
         { provide: CompletenessCalculator, useValue: completenessCalculatorMock },
+        { provide: EventEmitter2, useValue: eventEmitterMock },
       ],
     }).compile();
 
@@ -184,6 +190,26 @@ describe('ExpedienteService', () => {
     const result = await service.findById('exp-alt-phone');
     expect((result as any).altContactPhone).toBe('3005556677');
     expect(result.altContactPhoneEncrypted).toBe(encryptedAltPhone);
+  });
+
+  it('expone siteContactPhone en detalle autorizado cuando existe cifrado', async () => {
+    const encryptedSitePhone = encryptTestValue('3014445566');
+    const expediente = buildExpediente({
+      id: 'exp-site-phone',
+      siteContactPhoneEncrypted: encryptedSitePhone,
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    const result = await service.findById('exp-site-phone');
+    expect((result as any).siteContactPhone).toBe('3014445566');
+    expect(result.siteContactPhoneEncrypted).toBe(encryptedSitePhone);
   });
 
   it('usa progreso 100 en detalle cuando comercial, legal y tecnica estan al 100%', async () => {
@@ -613,7 +639,7 @@ describe('ExpedienteService', () => {
     const actorUserId = '6e2eb956-c266-4c14-b00d-0eea857f66cc';
     const expediente = buildExpediente({
       id: 'exp-3',
-      status: ExpedienteStatus.CONTACTADO,
+      status: ExpedienteStatus.PRECALIFICADO,
       previousStatus: ExpedienteStatus.NUEVO_POTENCIAL,
     });
     const createdStatusChanges: Array<Record<string, unknown>> = [];
@@ -661,7 +687,7 @@ describe('ExpedienteService', () => {
     expect(createdStatusChanges[0]).toEqual(
       expect.objectContaining({
         changedBy: actorUserId,
-        fromStatus: ExpedienteStatus.CONTACTADO,
+        fromStatus: ExpedienteStatus.PRECALIFICADO,
         toStatus: ExpedienteStatus.EN_COTIZACION,
       }),
     );
@@ -1110,7 +1136,7 @@ describe('ExpedienteService', () => {
         groupBy: jest.fn().mockReturnThis(),
         getRawMany: jest.fn().mockResolvedValue([
           { status: ExpedienteStatus.NUEVO_POTENCIAL, count: '2' },
-          { status: ExpedienteStatus.CONTACTADO, count: '1' },
+          { status: ExpedienteStatus.PRECALIFICADO, count: '1' },
         ]),
       };
 
@@ -1125,7 +1151,7 @@ describe('ExpedienteService', () => {
 
     expect(summary.total).toBe(3);
     expect(summary.data[ExpedienteStatus.NUEVO_POTENCIAL]).toBe(2);
-    expect(summary.data[ExpedienteStatus.CONTACTADO]).toBe(1);
+    expect(summary.data[ExpedienteStatus.PRECALIFICADO]).toBe(1);
     expect(summary.data[ExpedienteStatus.DESCARTADO]).toBe(0);
   });
 
@@ -1139,7 +1165,7 @@ describe('ExpedienteService', () => {
           id: 'status-1',
           tenantId: 'ten-1',
           expedienteId: 'exp-activity',
-          fromStatus: ExpedienteStatus.CONTACTADO,
+          fromStatus: ExpedienteStatus.PRECALIFICADO,
           toStatus: ExpedienteStatus.EN_COTIZACION,
           changedAt: new Date('2026-03-23T11:00:00Z'),
           changedBy: 'user-sales',

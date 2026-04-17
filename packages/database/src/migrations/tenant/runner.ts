@@ -6,6 +6,11 @@ import { AddAdditionalProducts1700000000008 } from './008_add_additional_product
 import { AddCurrentResponsibleFieldsAndOperationalHistory1700000000009 } from './009_add_current_responsible_fields_and_operational_history';
 import { AddPostalCodeToExpedienteRecords1700000000010 } from './010_add_postal_code_to_expediente_records';
 import { AddDocumentSupportsToExpedienteRecords1700000000011 } from './011_add_document_supports_to_expediente_records';
+import { AddSubscribersTable1700000000012 } from './012_add_subscribers';
+import { ConsolidateExpedientePipeline1700000000013 } from './013_consolidate_expediente_pipeline';
+import { AddSubscriberHashColumns1700000000014 } from './014_add_subscriber_hash_columns';
+import { AddSubscriberConversionFields1700000000015 } from './015_add_subscriber_conversion_fields';
+import { AddSubscriberAlternateContactFields1700000000016 } from './016_add_subscriber_alternate_contact_fields';
 
 const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   InitialTenantSchema1700000000000,
@@ -15,6 +20,11 @@ const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   AddCurrentResponsibleFieldsAndOperationalHistory1700000000009,
   AddPostalCodeToExpedienteRecords1700000000010,
   AddDocumentSupportsToExpedienteRecords1700000000011,
+  AddSubscribersTable1700000000012,
+  ConsolidateExpedientePipeline1700000000013,
+  AddSubscriberHashColumns1700000000014,
+  AddSubscriberConversionFields1700000000015,
+  AddSubscriberAlternateContactFields1700000000016,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

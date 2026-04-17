@@ -37,9 +37,16 @@ const DESKTOP_STORAGE_KEY = 'iwana-portal-sidebar-collapsed';
 const navItems = [
   { href: '/dashboard', label: 'Inicio', icon: LayoutDashboard, disabled: false },
   { href: '/dashboard/crm', label: 'CRM', icon: BriefcaseBusiness, disabled: false },
+  { href: '/dashboard/crm/subscribers', label: 'Suscriptores', icon: Users, disabled: false },
   { href: '/dashboard/settings', label: 'Configuración', icon: Settings, disabled: false },
   { href: '/dashboard/users', label: 'Usuarios', icon: Users, disabled: false },
-  { href: '/security', label: 'Seguridad', icon: ShieldCheck, disabled: true, badge: 'Siguiente fase' },
+  {
+    href: '/security',
+    label: 'Seguridad',
+    icon: ShieldCheck,
+    disabled: true,
+    badge: 'Siguiente fase',
+  },
   { href: '/reports', label: 'Reportes', icon: BarChart3, disabled: true, badge: 'Siguiente fase' },
 ];
 

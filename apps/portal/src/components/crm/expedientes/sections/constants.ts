@@ -1,11 +1,4 @@
-import {
-  BriefcaseBusiness,
-  MapPin,
-  Phone,
-  ShieldCheck,
-  UserRound,
-  Wrench,
-} from 'lucide-react';
+import { BriefcaseBusiness, MapPin, Phone, ShieldCheck, UserRound, Wrench } from 'lucide-react';
 import type { CompletenessResult, ExpedienteRecord } from '@/lib/api-client';
 import {
   ACQUISITION_CHANNEL_OPTIONS,
@@ -60,7 +53,9 @@ function isLegalEntityPersonType(value: string | null | undefined): boolean {
   );
 }
 
-function getRequiredDocumentKeysByPersonType(personType: string | null | undefined): readonly string[] {
+function getRequiredDocumentKeysByPersonType(
+  personType: string | null | undefined,
+): readonly string[] {
   return isLegalEntityPersonType(personType)
     ? LEGAL_ENTITY_DOCUMENT_KEYS
     : NATURAL_PERSON_DOCUMENT_KEYS;
@@ -76,8 +71,7 @@ export function calculateDocumentSupportCompletion(
     return 0;
   }
 
-  const supports =
-    documentSupports && typeof documentSupports === 'object' ? documentSupports : {};
+  const supports = documentSupports && typeof documentSupports === 'object' ? documentSupports : {};
 
   const uploadedCount = requiredDocumentKeys.filter((key) => {
     const item = supports[key];
@@ -127,10 +121,6 @@ export const FIELD_LABELS: Record<string, string> = {
   technicalObservations: 'Observación técnica',
   identityVerified: 'Identidad verificada',
   legalComplianceStatus: 'Tratamiento de datos personales',
-  paymentMethod: 'Método de pago',
-  billingCycle: 'Ciclo de facturación',
-  installationAddress: 'Dirección de instalación',
-  siteContactName: 'Contacto en sitio',
 };
 
 export const FIELD_PLACEHOLDERS: Record<string, string> = {
@@ -164,10 +154,6 @@ export const FIELD_PLACEHOLDERS: Record<string, string> = {
   technicalObservations: 'Explica brevemente el criterio técnico aplicado',
   identityVerified: 'Verificado / Sin verificar',
   legalComplianceStatus: 'Autoriza / No autoriza',
-  paymentMethod: 'Transferencia, PSE, efectivo...',
-  billingCycle: 'Mensual, quincenal...',
-  installationAddress: 'Dirección del punto a instalar',
-  siteContactName: 'Nombre del responsable en sitio',
 };
 
 const IDENTIFICATION_FIELDS_BASE = ['personType', 'documentType', 'documentNumber'] as const;
@@ -320,7 +306,7 @@ export const DIMENSION_SECTION_GROUPS: Record<CompletenessDimension, readonly Se
   commercial: ['identification', 'contact', 'commercial_interest'],
   legal: ['legal_consent'],
   technical: ['location', 'technical_feasibility'],
-  operational: ['technical_feasibility'],
+  operational: [],
 };
 
 export function getSectionRenderFields(
@@ -401,10 +387,6 @@ export function buildDraftValues(
     technicalObservations: expediente.technicalObservations ?? EMPTY_VALUE,
     identityVerified: expediente.identityVerified ?? EMPTY_VALUE,
     legalComplianceStatus: expediente.legalComplianceStatus ?? EMPTY_VALUE,
-    paymentMethod: expediente.paymentMethod ?? EMPTY_VALUE,
-    billingCycle: expediente.billingCycle ?? EMPTY_VALUE,
-    installationAddress: expediente.installationAddress ?? EMPTY_VALUE,
-    siteContactName: expediente.siteContactName ?? EMPTY_VALUE,
   };
 }
 

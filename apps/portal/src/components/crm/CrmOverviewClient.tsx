@@ -3,10 +3,19 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '@iwana/ui';
-import { Activity, AlertTriangle, ArrowRight, Loader2, Radar, ShieldCheck, Target } from 'lucide-react';
+import {
+  Activity,
+  AlertTriangle,
+  ArrowRight,
+  Loader2,
+  Radar,
+  ShieldCheck,
+  Target,
+  Users,
+} from 'lucide-react';
 import { crmApi, type ExpedienteRecord } from '@/lib/api-client';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { EXPEDIENTE_STATUS_META, formatCrmDate } from './expedientes/expediente-ui';
+import { getStatusMeta, formatCrmDate } from './expedientes/expediente-ui';
 
 interface PipelineSummary {
   data: Record<string, number>;
@@ -52,13 +61,8 @@ export function CrmOverviewClient() {
 
     return {
       total: summary?.total ?? null,
-      nuevos: (data.NUEVO_POTENCIAL ?? 0) + (data.CONTACTADO ?? 0) + (data.PENDIENTE_DATOS ?? 0),
-      evaluacion:
-        (data.PRECALIFICADO ?? 0) +
-        (data.VALIDANDO_COBERTURA ?? 0) +
-        (data.VIABLE_COMERCIALMENTE ?? 0) +
-        (data.EN_COTIZACION ?? 0) +
-        (data.PENDIENTE_DECISION ?? 0),
+      nuevos: (data.NUEVO_POTENCIAL ?? 0) + (data.PRECALIFICADO ?? 0),
+      evaluacion: (data.VALIDANDO_COBERTURA ?? 0) + (data.EN_COTIZACION ?? 0),
       instalacion: (data.LISTO_PARA_INSTALACION ?? 0) + (data.INSTALACION_AGENDADA ?? 0),
       activos: data.CLIENTE_ACTIVO ?? 0,
     };
@@ -73,12 +77,12 @@ export function CrmOverviewClient() {
     {
       label: 'Prospección',
       value: loading ? '...' : String(metrics.nuevos),
-      description: 'Nuevos, contactados o pendientes de datos',
+      description: 'Nuevos y precalificados',
     },
     {
       label: 'Evaluación',
       value: loading ? '...' : String(metrics.evaluacion),
-      description: 'Cobertura, cotización o decisión',
+      description: 'Cobertura y cotización',
     },
     {
       label: 'Cierre',
@@ -91,14 +95,14 @@ export function CrmOverviewClient() {
     {
       label: 'Prospección activa',
       value: metrics.nuevos,
-      helper: 'Nuevo, contactado y pendiente de datos',
+      helper: 'Nuevo potencial y precalificado',
       icon: Radar,
       tone: 'bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary/15 dark:text-iwana-primary-300',
     },
     {
       label: 'Evaluación comercial',
       value: metrics.evaluacion,
-      helper: 'Viabilidad, cotización y decisión',
+      helper: 'Validando cobertura y en cotización',
       icon: Target,
       tone: 'bg-iwana-secondary/15 text-iwana-secondary-700 dark:bg-iwana-secondary/20 dark:text-iwana-secondary',
     },
@@ -186,7 +190,10 @@ export function CrmOverviewClient() {
               </div>
             </div>
 
-            <div className="grid gap-4 px-6 py-6 sm:grid-cols-2 xl:grid-cols-4" aria-label="Resumen CRM">
+            <div
+              className="grid gap-4 px-6 py-6 sm:grid-cols-2 xl:grid-cols-4"
+              aria-label="Resumen CRM"
+            >
               {compactMetrics.map((item) => (
                 <div
                   key={item.label}
@@ -223,9 +230,12 @@ export function CrmOverviewClient() {
                 </div>
               ) : recentExpedientes.length === 0 ? (
                 <div className="rounded-[24px] border border-gray-200 bg-[#f8faf5] px-4 py-6 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
-                  <p className="font-semibold text-gray-800 dark:text-white">Sin oportunidades recientes</p>
+                  <p className="font-semibold text-gray-800 dark:text-white">
+                    Sin oportunidades recientes
+                  </p>
                   <p className="mt-1 leading-6 text-gray-500 dark:text-gray-400">
-                    Cuando el tenant empiece a registrar prospectos, aquí aparecerán los accesos directos al expediente.
+                    Cuando el tenant empiece a registrar prospectos, aquí aparecerán los accesos
+                    directos al expediente.
                   </p>
                 </div>
               ) : (
@@ -244,8 +254,8 @@ export function CrmOverviewClient() {
                       </span>
                     </span>
                     <span className="flex items-center gap-3 shrink-0">
-                      <Badge variant={EXPEDIENTE_STATUS_META[expediente.status].variant}>
-                        {EXPEDIENTE_STATUS_META[expediente.status].label}
+                      <Badge variant={getStatusMeta(expediente.status).variant}>
+                        {getStatusMeta(expediente.status).label}
                       </Badge>
                       <ArrowRight className="h-4 w-4 text-gray-400" aria-hidden="true" />
                     </span>
@@ -286,7 +296,9 @@ export function CrmOverviewClient() {
                           <p className="truncate text-sm font-bold text-gray-900 dark:text-white">
                             {row.label}
                           </p>
-                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{row.helper}</p>
+                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            {row.helper}
+                          </p>
                         </div>
                       </div>
                       <Badge variant="neutral">{row.value}</Badge>
@@ -297,8 +309,37 @@ export function CrmOverviewClient() {
             </CardContent>
           </Card>
         </div>
+
+        <Card>
+          <CardHeader className="border-b border-gray-100 dark:border-dark-border">
+            <CardTitle className="flex items-center gap-2 text-lg font-bold">
+              <Users className="h-5 w-5 text-iwana-primary" aria-hidden="true" />
+              Suscriptores
+            </CardTitle>
+            <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
+              Acceso directo al listado operativo de suscriptores del tenant, con alta, detalle y
+              transición de estado.
+            </p>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                El módulo ya concentra el seguimiento comercial y postventa del cliente.
+              </p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Si aún no hay métricas agregadas disponibles para esta vista, entra al módulo para
+                operar el detalle.
+              </p>
+            </div>
+            <Button asChild>
+              <Link href="/dashboard/crm/subscribers">
+                Ver suscriptores
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
 }
-

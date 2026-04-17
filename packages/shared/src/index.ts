@@ -11,6 +11,11 @@ export * from './enums/audit-action.enum';
 export * from './enums/platform-role.enum';
 export * from './enums/company-type.enum';
 export * from './enums/document-type.enum';
+export * from './enums/person-type.enum';
+export * from './enums/customer-segment.enum';
+export * from './enums/vat-treatment.enum';
+export * from './enums/tax-regime.enum';
+export * from './enums/subscriber-status.enum';
 export * from './enums/crm';
 
 // Interfaces
@@ -24,3 +29,4 @@ export * from './constants/queue-names';
 
 // Schemas Zod (frontend)
 export * from './schemas/auth.schema';
+export * from './schemas/subscriber.schema';

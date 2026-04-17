@@ -9,30 +9,65 @@ export type StatusBadgeVariant =
   | 'primary'
   | 'lime';
 
+/**
+ * Mapeo de estados legacy (eliminados en ADR-026) a sus equivalentes consolidados.
+ * CONTACTADO → PRECALIFICADO
+ * PENDIENTE_DATOS → PRECALIFICADO
+ * VIABLE_COMERCIALMENTE → VALIDANDO_COBERTURA
+ * PENDIENTE_DECISION → EN_COTIZACION
+ */
+const LEGACY_STATUS_MAP: Record<string, ExpedienteStatus> = {
+  CONTACTADO: 'PRECALIFICADO',
+  PENDIENTE_DATOS: 'PRECALIFICADO',
+  VIABLE_COMERCIALMENTE: 'VALIDANDO_COBERTURA',
+  PENDIENTE_DECISION: 'EN_COTIZACION',
+};
+
 export const EXPEDIENTE_STATUS_META: Record<
   ExpedienteStatus,
   { label: string; variant: StatusBadgeVariant }
 > = {
   NUEVO_POTENCIAL: { label: 'Nuevo', variant: 'info' },
-  CONTACTADO: { label: 'Contactado', variant: 'primary' },
-  PENDIENTE_DATOS: { label: 'Pendiente datos', variant: 'warning' },
   PRECALIFICADO: { label: 'Precalificado', variant: 'primary' },
   VALIDANDO_COBERTURA: { label: 'Validando cobertura', variant: 'primary' },
-  VIABLE_COMERCIALMENTE: { label: 'Viable', variant: 'lime' },
   EN_COTIZACION: { label: 'En cotización', variant: 'info' },
-  PENDIENTE_DECISION: { label: 'Pendiente decisión', variant: 'warning' },
   LISTO_PARA_INSTALACION: { label: 'Listo instalación', variant: 'lime' },
   INSTALACION_AGENDADA: { label: 'Instalación agendada', variant: 'success' },
   CLIENTE_ACTIVO: { label: 'Activo', variant: 'success' },
   DESCARTADO: { label: 'Descartado', variant: 'neutral' },
 };
 
+/**
+ * Normaliza un estado (incluyendo legacy) a su equivalente consolidado.
+ * Si el estado no existe en el mapa actual ni en el mapa legacy,
+ * lo retorna tal cual para que el fallback lo maneje.
+ */
+function normalizeStatus(status: string): string {
+  return LEGACY_STATUS_MAP[status] ?? status;
+}
+
 export function getStatusBadgeVariant(status: string): StatusBadgeVariant {
-  return EXPEDIENTE_STATUS_META[status as ExpedienteStatus]?.variant ?? 'neutral';
+  const normalized = normalizeStatus(status);
+  return EXPEDIENTE_STATUS_META[normalized as ExpedienteStatus]?.variant ?? 'neutral';
 }
 
 export function formatExpedienteStatus(status: string): string {
-  return EXPEDIENTE_STATUS_META[status as ExpedienteStatus]?.label ?? status.replace(/_/g, ' ');
+  const normalized = normalizeStatus(status);
+  return EXPEDIENTE_STATUS_META[normalized as ExpedienteStatus]?.label ?? status.replace(/_/g, ' ');
+}
+
+/**
+ * Obtiene los metadatos de estado de forma segura, normalizando estados legacy.
+ * Retorna siempre un objeto válido con label y variant.
+ */
+export function getStatusMeta(status: string): { label: string; variant: StatusBadgeVariant } {
+  const normalized = normalizeStatus(status);
+  return (
+    EXPEDIENTE_STATUS_META[normalized as ExpedienteStatus] ?? {
+      label: status.replace(/_/g, ' '),
+      variant: 'neutral' as StatusBadgeVariant,
+    }
+  );
 }
 
 export function formatCrmDate(value: string): string {

@@ -29,6 +29,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import {
   ACQUISITION_CHANNEL_OPTIONS,
   EXPEDIENTE_STATUS_META,
+  getStatusMeta,
   formatAcquisitionChannel,
   formatCrmDate,
   formatMunicipio,
@@ -461,8 +462,8 @@ export default function ExpedientesPage() {
                             </div>
                           </td>
                           <td className="px-5 py-4">
-                            <Badge variant={EXPEDIENTE_STATUS_META[expediente.status].variant}>
-                              {EXPEDIENTE_STATUS_META[expediente.status].label}
+                            <Badge variant={getStatusMeta(expediente.status).variant}>
+                              {getStatusMeta(expediente.status).label}
                             </Badge>
                           </td>
                           <td className="px-5 py-4 text-gray-700 dark:text-gray-200">
