@@ -127,3 +127,57 @@
   - `pnpm --filter @iwana/api typecheck` ✅
   - `pnpm --filter @iwana/portal typecheck` ✅
   - `pnpm --filter @iwana/api test -- src/modules/crm/subscribers/tests/subscribers.controller.spec.ts src/modules/crm/subscribers/tests/subscribers.service.spec.ts` ✅ (44 tests)
+
+## Corrección aplicada — código postal de CRM visible en Suscriptores
+
+- **Síntoma observado:** el `Código postal` capturado en CRM no aparecía en la ficha de Suscriptores.
+
+- **Causa raíz confirmada:**
+  1. En la conversión automática `Expediente -> Subscriber` no se estaba propagando `postalCode`.
+  2. Los subscribers convertidos antes del ajuste quedaban con `postalCode` nulo aunque el expediente sí tenía valor.
+
+- **Ajuste implementado (backend):**
+  1. Se propagó `postalCode` en `SubscriberCreationService` al invocar `createFromExpediente()`.
+  2. Se extendió el contrato interno de `SubscribersService.createFromExpediente()` para aceptar y persistir `postalCode`.
+  3. Se añadió compatibilidad en `get360View()`: si el subscriber no tiene `postalCode` y el expediente vinculado sí, se hidrata para visualización inmediata.
+  4. Se reforzaron tests unitarios de creación para validar la propagación de `postalCode` en natural y jurídica.
+
+- **Archivos impactados:**
+  - `apps/api/src/modules/crm/subscribers/subscriber-creation.service.ts`
+  - `apps/api/src/modules/crm/subscribers/subscribers.service.ts`
+  - `apps/api/src/modules/crm/subscribers/tests/subscriber-creation.service.spec.ts`
+
+- **Validación ejecutada:**
+  - `pnpm --filter @iwana/api typecheck` ✅
+  - `pnpm --filter @iwana/api test -- src/modules/crm/subscribers/tests/subscriber-creation.service.spec.ts` ✅ (24 tests)
+
+## Ajuste UI aplicado — retiro de porcentaje en títulos de sección
+
+- **Solicitud funcional:** eliminar el indicador `100%` del lado derecho en los encabezados de `Identificación`, `Contacto` y `Dirección` dentro de la vista de Suscriptores.
+- **Implementación:** se retiró el badge de completitud en `SectionCard` y se eliminó el cálculo de porcentaje no usado en el componente.
+- **Archivo impactado:**
+  - `apps/portal/src/components/crm/subscribers/SubscriberSections.tsx`
+- **Validación ejecutada:**
+  - `pnpm --filter @iwana/portal typecheck` ✅
+
+## Ajuste UI aplicado — vista general en español y formato amigable
+
+- **Solicitud funcional atendida:**
+  1. En `Identidad del suscriptor`, mostrar `Estado`, `Tipo` y `Segmento` en español y con sentence case.
+  2. En `Origen del expediente`, mostrar una referencia amigable del expediente y mantener el identificador completo como código interno.
+  3. Mostrar `Estado` del expediente en formato legible (no `UPPER_SNAKE_CASE`).
+
+- **Implementación (portal):**
+  1. Se usaron metadatos existentes (`SUBSCRIBER_STATUS_META`, `PERSON_TYPE_META`, `CUSTOMER_SEGMENT_META`) para renderizar labels de negocio en español.
+  2. Se aplicó `formatExpedienteStatus()` para el estado del expediente en la vista general.
+  3. Se creó referencia amigable de expediente con patrón `EXP-<primer bloque UUID>` y se conserva `Código interno` completo en texto auxiliar.
+
+- **Gobernanza actualizada:**
+  1. Se agregó regla explícita en `AGENTS.md` para UI copy en español + sentence case y prohibición de enums crudos en `UPPER_SNAKE_CASE` en vistas finales.
+
+- **Archivos impactados:**
+  - `apps/portal/src/components/crm/subscribers/SubscriberDetailClient.tsx`
+  - `AGENTS.md`
+
+- **Validación ejecutada:**
+  - `pnpm --filter @iwana/portal typecheck` ✅

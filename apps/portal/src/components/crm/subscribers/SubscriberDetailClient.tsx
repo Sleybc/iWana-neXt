@@ -16,12 +16,14 @@ import {
 } from 'lucide-react';
 import type { CreateSubscriberPayload, UpdateSubscriberPayload } from '@iwana/shared';
 import { ApiError, Subscriber360Response, crmApi, subscribersApi } from '@/lib/api-client';
+import { formatExpedienteStatus } from '@/components/crm/expedientes/expediente-ui';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { SubscriberForm } from './SubscriberForm';
 import { SubscriberHeader } from './SubscriberHeader';
 import { SubscriberSections } from './SubscriberSections';
 import { SubscriberStatusTransitionDialog } from './SubscriberStatusTransitionDialog';
 import { SubscriberTabsContainer } from './SubscriberTabsContainer';
+import { CUSTOMER_SEGMENT_META, PERSON_TYPE_META, SUBSCRIBER_STATUS_META } from './subscriber-ui';
 
 interface SubscriberDetailClientProps {
   mode: 'create' | 'detail';
@@ -57,6 +59,16 @@ function mapError(error: unknown): string {
   }
 
   return 'No fue posible completar la operación del suscriptor.';
+}
+
+function toSentenceCase(value: string): string {
+  const normalized = value.replace(/_/g, ' ').toLowerCase();
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function formatFriendlyExpedienteRef(expedienteId: string): string {
+  const shortToken = expedienteId.split('-')[0]?.toUpperCase();
+  return shortToken ? `EXP-${shortToken}` : expedienteId;
 }
 
 export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
@@ -117,13 +129,19 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
               </CardHeader>
               <CardContent className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
                 <p>
-                  <strong>Estado:</strong> {subscriber.status}
+                  <strong>Estado:</strong>{' '}
+                  {SUBSCRIBER_STATUS_META[subscriber.status]?.label ??
+                    toSentenceCase(subscriber.status)}
                 </p>
                 <p>
-                  <strong>Tipo:</strong> {subscriber.personType}
+                  <strong>Tipo:</strong>{' '}
+                  {PERSON_TYPE_META[subscriber.personType]?.label ??
+                    toSentenceCase(subscriber.personType)}
                 </p>
                 <p>
-                  <strong>Segmento:</strong> {subscriber.customerSegment}
+                  <strong>Segmento:</strong>{' '}
+                  {CUSTOMER_SEGMENT_META[subscriber.customerSegment]?.label ??
+                    toSentenceCase(subscriber.customerSegment)}
                 </p>
               </CardContent>
             </Card>
@@ -136,10 +154,15 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
                 {subscriber360?.expedienteSummary ? (
                   <>
                     <p>
-                      <strong>Expediente:</strong> {subscriber360.expedienteSummary.id}
+                      <strong>Expediente:</strong>{' '}
+                      {formatFriendlyExpedienteRef(subscriber360.expedienteSummary.id)}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Código interno: {subscriber360.expedienteSummary.id}
                     </p>
                     <p>
-                      <strong>Estado:</strong> {subscriber360.expedienteSummary.status}
+                      <strong>Estado:</strong>{' '}
+                      {formatExpedienteStatus(subscriber360.expedienteSummary.status)}
                     </p>
                     <Link
                       className="text-iwana-primary underline"

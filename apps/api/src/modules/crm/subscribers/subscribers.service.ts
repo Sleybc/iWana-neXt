@@ -562,6 +562,7 @@ export class SubscribersService {
       city?: string | undefined;
       department?: string | undefined;
       neighborhood?: string | undefined;
+      postalCode?: string | undefined;
       latitude?: number | undefined;
       longitude?: number | undefined;
     },
@@ -584,6 +585,7 @@ export class SubscribersService {
         city: overrides.city,
         department: overrides.department,
         neighborhood: overrides.neighborhood,
+        postalCode: overrides.postalCode,
         latitude: overrides.latitude,
         longitude: overrides.longitude,
         expedienteId,
@@ -678,6 +680,12 @@ export class SubscribersService {
       );
 
       if (expediente) {
+        // Compatibilidad con subscribers creados antes de propagar postalCode
+        // desde expediente en la conversión automática.
+        if (!subscriber.postalCode && expediente.postalCode) {
+          subscriber.postalCode = expediente.postalCode;
+        }
+
         expedienteSummary = {
           id: expediente.id,
           fullName: expediente.fullName,

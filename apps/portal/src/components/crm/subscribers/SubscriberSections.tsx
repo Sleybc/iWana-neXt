@@ -7,7 +7,10 @@ import { PersonType } from '@iwana/shared';
 import type { UpdateSubscriberPayload } from '@iwana/shared';
 import type { SubscriberRecord } from '@/lib/api-client';
 import { DOCUMENT_TYPE_OPTIONS, PERSON_TYPE_OPTIONS } from './subscriber-ui';
-import { VatTreatmentBanner } from './VatTreatmentBanner';
+import {
+  DEPARTAMENTOS,
+  getMunicipiosByDepartamento,
+} from '@/components/crm/expedientes/expediente-ui';
 
 interface SubscriberSectionsProps {
   subscriber: SubscriberRecord;
@@ -19,7 +22,6 @@ function SectionCard({
   icon: Icon,
   title,
   description,
-  completion,
   saving,
   onSave,
   error,
@@ -28,7 +30,6 @@ function SectionCard({
   icon: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
   title: string;
   description: string;
-  completion: number;
   saving: boolean;
   onSave: () => void;
   error: string | null;
@@ -36,7 +37,7 @@ function SectionCard({
 }) {
   return (
     <div className="rounded-[20px] border border-gray-100 bg-white shadow-[var(--shadow-iwana-soft)] dark:border-dark-border dark:bg-dark-surface-2">
-      {/* Cabecera: icono + título + descripción + badge % */}
+      {/* Cabecera: icono + título + descripción */}
       <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-border">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-iwana-secondary/10 text-iwana-secondary-700 dark:bg-iwana-secondary/20 dark:text-iwana-secondary-300">
           <Icon className="h-5 w-5" aria-hidden={true} />
@@ -45,9 +46,6 @@ function SectionCard({
           <p className="text-base font-bold text-gray-900 dark:text-white">{title}</p>
           <p className="mt-0.5 text-xs leading-5 text-gray-500 dark:text-gray-400">{description}</p>
         </div>
-        <span className="text-xs font-semibold tabular-nums text-iwana-secondary-700 dark:text-iwana-secondary-400">
-          {completion}%
-        </span>
       </div>
 
       {/* Contenido */}
@@ -71,12 +69,6 @@ function SectionCard({
   );
 }
 
-/** Calcula el porcentaje de campos requeridos completados (0–100) */
-function pct(values: (string | undefined | null)[]): number {
-  const filled = values.filter((v) => Boolean(v?.trim())).length;
-  return Math.round((filled / values.length) * 100);
-}
-
 function parseCoordinate(value: string): number | undefined {
   const normalized = value.trim();
   if (!normalized) {
@@ -85,6 +77,67 @@ function parseCoordinate(value: string): number | undefined {
 
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseLatLngPair(
+  value: string,
+): { latitude: number; longitude: number } | undefined | null {
+  const normalized = value.trim();
+  if (!normalized) {
+    return undefined;
+  }
+
+  const parts = normalized.split(',');
+  if (parts.length !== 2) {
+    return null;
+  }
+
+  const latitude = parseCoordinate(parts[0] ?? '');
+  const longitude = parseCoordinate(parts[1] ?? '');
+
+  if (latitude === undefined || longitude === undefined) {
+    return null;
+  }
+
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+    return null;
+  }
+
+  return { latitude, longitude };
+}
+
+function normalizeMunicipalityValue(
+  department: string,
+  rawMunicipality: string | null | undefined,
+): string {
+  const municipality = (rawMunicipality ?? '').trim();
+  if (!municipality) {
+    return '';
+  }
+
+  const scopedMunicipios = getMunicipiosByDepartamento(department);
+  const scopedByValue = scopedMunicipios.find((m) => m.value === municipality);
+  if (scopedByValue) {
+    return scopedByValue.value;
+  }
+
+  const scopedByLabel = scopedMunicipios.find(
+    (m) => m.label.toLowerCase() === municipality.toLowerCase(),
+  );
+  if (scopedByLabel) {
+    return scopedByLabel.value;
+  }
+
+  for (const depto of DEPARTAMENTOS) {
+    const globalMatch = depto.municipios.find(
+      (m) => m.value === municipality || m.label.toLowerCase() === municipality.toLowerCase(),
+    );
+    if (globalMatch) {
+      return globalMatch.value;
+    }
+  }
+
+  return municipality;
 }
 
 export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsProps) {
@@ -129,11 +182,13 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
   const [addressDraft, setAddressDraft] = useState({
     address: subscriber.address ?? '',
     neighborhood: subscriber.neighborhood ?? '',
-    municipality: subscriber.city ?? '',
+    municipality: normalizeMunicipalityValue(subscriber.department ?? '', subscriber.city),
     department: subscriber.department ?? '',
     postalCode: subscriber.postalCode ?? '',
-    latitude: subscriber.latitude !== null ? String(subscriber.latitude) : '',
-    longitude: subscriber.longitude !== null ? String(subscriber.longitude) : '',
+    coordinates:
+      subscriber.latitude !== null && subscriber.longitude !== null
+        ? `${subscriber.latitude}, ${subscriber.longitude}`
+        : '',
   });
   const [savingAddress, setSavingAddress] = useState(false);
   const [errorAddress, setErrorAddress] = useState<string | null>(null);
@@ -161,28 +216,17 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
     setAddressDraft({
       address: subscriber.address ?? '',
       neighborhood: subscriber.neighborhood ?? '',
-      municipality: subscriber.city ?? '',
+      municipality: normalizeMunicipalityValue(subscriber.department ?? '', subscriber.city),
       department: subscriber.department ?? '',
       postalCode: subscriber.postalCode ?? '',
-      latitude: subscriber.latitude !== null ? String(subscriber.latitude) : '',
-      longitude: subscriber.longitude !== null ? String(subscriber.longitude) : '',
+      coordinates:
+        subscriber.latitude !== null && subscriber.longitude !== null
+          ? `${subscriber.latitude}, ${subscriber.longitude}`
+          : '',
     });
   }, [subscriber]);
 
-  // ── Cálculo de completitud ───────────────────────────────────────────────────
   const isJuridica = ident.personType === PersonType.JURIDICA;
-
-  const identRequired = isJuridica
-    ? [ident.personType, ident.nit, ident.businessName]
-    : [ident.personType, ident.documentNumber, ident.firstName, ident.lastName];
-  const identCompletion = pct(identRequired);
-
-  const contactCompletion = pct([contact.email, contact.phone]);
-  const addressCompletion = pct([
-    addressDraft.department,
-    addressDraft.municipality,
-    addressDraft.address,
-  ]);
 
   // ── Guardar sección Identificación ──────────────────────────────────────────
   const saveIdent = async () => {
@@ -238,14 +282,20 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
     setErrorAddress(null);
     setSavingAddress(true);
     try {
+      const parsedCoordinates = parseLatLngPair(addressDraft.coordinates);
+      if (parsedCoordinates === null) {
+        setErrorAddress('Usa el formato de coordenadas: latitud, longitud. Ej: 4.6097, -74.0817');
+        return;
+      }
+
       await onSave({
         address: addressDraft.address || undefined,
         neighborhood: addressDraft.neighborhood || undefined,
         city: addressDraft.municipality || undefined,
         department: addressDraft.department || undefined,
         postalCode: addressDraft.postalCode || undefined,
-        latitude: parseCoordinate(addressDraft.latitude),
-        longitude: parseCoordinate(addressDraft.longitude),
+        latitude: parsedCoordinates?.latitude,
+        longitude: parsedCoordinates?.longitude,
       });
     } catch {
       setErrorAddress('No fue posible guardar la dirección.');
@@ -253,6 +303,9 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
       setSavingAddress(false);
     }
   };
+
+  const parsedMapCoordinates = parseLatLngPair(addressDraft.coordinates);
+  const municipalityOptions = getMunicipiosByDepartamento(addressDraft.department);
 
   return (
     <div className="space-y-6">
@@ -275,7 +328,6 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
           icon={UserRound}
           title="Identificación"
           description="Datos base del titular o razón social."
-          completion={identCompletion}
           saving={savingIdent}
           onSave={saveIdent}
           error={errorIdent}
@@ -386,14 +438,6 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
                 />
               </div>
             )}
-
-            {/* Banner régimen fiscal (lectura) */}
-            {subscriber.vatTreatment && (
-              <VatTreatmentBanner
-                vatTreatment={subscriber.vatTreatment}
-                taxRegime={subscriber.taxRegime}
-              />
-            )}
           </div>
         </SectionCard>
 
@@ -403,7 +447,6 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
             icon={Phone}
             title="Contacto"
             description="Canales directos para comunicación con el suscriptor."
-            completion={contactCompletion}
             saving={savingContact}
             onSave={saveContact}
             error={errorContact}
@@ -425,23 +468,25 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
                   onChange={(e) => setContact((prev) => ({ ...prev, phone: e.target.value }))}
                 />
               </div>
-              <Input
-                label="Contacto alternativo"
-                value={contact.altContactName}
-                placeholder="Nombre de contacto alternativo"
-                onChange={(e) =>
-                  setContact((prev) => ({ ...prev, altContactName: e.target.value }))
-                }
-              />
-              <Input
-                label="Teléfono"
-                type="tel"
-                value={contact.altContactPhone}
-                placeholder="3001234567"
-                onChange={(e) =>
-                  setContact((prev) => ({ ...prev, altContactPhone: e.target.value }))
-                }
-              />
+              <div className="grid gap-4 md:grid-cols-2">
+                <Input
+                  label="Contacto alternativo"
+                  value={contact.altContactName}
+                  placeholder="Nombre de contacto alternativo"
+                  onChange={(e) =>
+                    setContact((prev) => ({ ...prev, altContactName: e.target.value }))
+                  }
+                />
+                <Input
+                  label="Teléfono"
+                  type="tel"
+                  value={contact.altContactPhone}
+                  placeholder="3001234567"
+                  onChange={(e) =>
+                    setContact((prev) => ({ ...prev, altContactPhone: e.target.value }))
+                  }
+                />
+              </div>
             </div>
           </SectionCard>
 
@@ -449,35 +494,12 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
             icon={MapPin}
             title="Dirección"
             description="Ubicación del suscriptor para servicio e instalación."
-            completion={addressCompletion}
             saving={savingAddress}
             onSave={saveAddress}
             error={errorAddress}
           >
             <div className="space-y-4">
-              <Input
-                label="Dirección"
-                value={addressDraft.address}
-                placeholder="Calle / Carrera / Avenida..."
-                onChange={(e) => setAddressDraft((prev) => ({ ...prev, address: e.target.value }))}
-              />
               <div className="grid gap-4 md:grid-cols-2">
-                <Input
-                  label="Barrio / Sector"
-                  value={addressDraft.neighborhood}
-                  placeholder="Sector o barrio"
-                  onChange={(e) =>
-                    setAddressDraft((prev) => ({ ...prev, neighborhood: e.target.value }))
-                  }
-                />
-                <Input
-                  label="Municipio"
-                  value={addressDraft.municipality}
-                  placeholder="Municipio"
-                  onChange={(e) =>
-                    setAddressDraft((prev) => ({ ...prev, municipality: e.target.value }))
-                  }
-                />
                 <Input
                   label="Departamento"
                   value={addressDraft.department}
@@ -486,47 +508,86 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
                     setAddressDraft((prev) => ({ ...prev, department: e.target.value }))
                   }
                 />
-                <Input
-                  label="Código postal"
-                  value={addressDraft.postalCode}
-                  placeholder="Ej: 110111"
+                <Select
+                  label="Municipio"
+                  value={addressDraft.municipality}
                   onChange={(e) =>
-                    setAddressDraft((prev) => ({ ...prev, postalCode: e.target.value }))
+                    setAddressDraft((prev) => ({ ...prev, municipality: e.target.value }))
                   }
-                />
-                <Input
-                  label="Latitud"
-                  value={addressDraft.latitude}
-                  placeholder="4.6097100"
-                  onChange={(e) =>
-                    setAddressDraft((prev) => ({ ...prev, latitude: e.target.value }))
-                  }
-                />
-                <Input
-                  label="Longitud"
-                  value={addressDraft.longitude}
-                  placeholder="-74.0817500"
-                  onChange={(e) =>
-                    setAddressDraft((prev) => ({ ...prev, longitude: e.target.value }))
-                  }
-                />
+                >
+                  <option value="">Selecciona un municipio</option>
+                  {municipalityOptions.map((municipio) => (
+                    <option key={municipio.value} value={municipio.value}>
+                      {municipio.label}
+                    </option>
+                  ))}
+                </Select>
               </div>
+
+              <div className="grid gap-4 md:grid-cols-12">
+                <div className="md:col-span-5">
+                  <Input
+                    label="Barrio / Sector"
+                    value={addressDraft.neighborhood}
+                    placeholder="Sector o barrio"
+                    onChange={(e) =>
+                      setAddressDraft((prev) => ({ ...prev, neighborhood: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="md:col-span-4">
+                  <Input
+                    label="Dirección"
+                    value={addressDraft.address}
+                    placeholder="Calle / Carrera / Avenida..."
+                    onChange={(e) =>
+                      setAddressDraft((prev) => ({ ...prev, address: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="md:col-span-3">
+                  <Input
+                    label="Código postal"
+                    value={addressDraft.postalCode}
+                    placeholder="Ej: 110111"
+                    onChange={(e) =>
+                      setAddressDraft((prev) => ({ ...prev, postalCode: e.target.value }))
+                    }
+                  />
+                </div>
+              </div>
+
+              <Input
+                label="Coordenadas (Lat, Lng)"
+                value={addressDraft.coordinates}
+                placeholder="4.6097100, -74.0817500"
+                onChange={(e) =>
+                  setAddressDraft((prev) => ({ ...prev, coordinates: e.target.value }))
+                }
+              />
 
               <div className="rounded-xl border border-gray-100 p-3 dark:border-dark-border">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                   Vista del mapa
                 </p>
-                {parseCoordinate(addressDraft.latitude) !== undefined &&
-                parseCoordinate(addressDraft.longitude) !== undefined ? (
-                  <iframe
-                    title="Vista de ubicación del suscriptor"
-                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${(parseCoordinate(addressDraft.longitude) ?? 0) - 0.01}%2C${(parseCoordinate(addressDraft.latitude) ?? 0) - 0.01}%2C${(parseCoordinate(addressDraft.longitude) ?? 0) + 0.01}%2C${(parseCoordinate(addressDraft.latitude) ?? 0) + 0.01}&layer=mapnik&marker=${parseCoordinate(addressDraft.latitude)}%2C${parseCoordinate(addressDraft.longitude)}`}
-                    className="h-56 w-full rounded-lg border border-gray-200 dark:border-dark-border"
-                    loading="lazy"
-                  />
+                {parsedMapCoordinates && parsedMapCoordinates !== null ? (
+                  <div className="space-y-2">
+                    <div className="h-56 overflow-hidden rounded-lg border border-gray-200 dark:border-dark-border">
+                      <iframe
+                        title="Vista de ubicación del suscriptor"
+                        src={`https://www.openstreetmap.org/export/embed.html?bbox=${parsedMapCoordinates.longitude - 0.01}%2C${parsedMapCoordinates.latitude - 0.01}%2C${parsedMapCoordinates.longitude + 0.01}%2C${parsedMapCoordinates.latitude + 0.01}&layer=mapnik&marker=${parsedMapCoordinates.latitude}%2C${parsedMapCoordinates.longitude}`}
+                        className="-mb-[38px] h-[calc(100%+38px)] w-full"
+                        loading="lazy"
+                        referrerPolicy="no-referrer-when-downgrade"
+                      />
+                    </div>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                      © Colaboradores de OpenStreetMap
+                    </p>
+                  </div>
                 ) : (
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Ingresa latitud y longitud para visualizar el mapa.
+                    Ingresa coordenadas en formato latitud, longitud para visualizar el mapa.
                   </p>
                 )}
               </div>

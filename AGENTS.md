@@ -166,6 +166,12 @@ if (user.estrato <= 2 && !user.aprobado) {
 }
 ```
 
+### UI Copy y Casing
+
+- Todo texto visible en UI (`apps/web` y `apps/portal`) debe mostrarse en español.
+- Usar **sentence case**: solo la inicial en mayúscula (ej: `Prospecto`, `Persona natural`, `Listo instalación`).
+- No renderizar enums crudos en inglés o en `UPPER_SNAKE_CASE` en vistas finales; mapear siempre a labels de negocio.
+
 ---
 
 ## Architecture Rules

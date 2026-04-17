@@ -105,6 +105,7 @@ export class SubscriberCreationService {
         city: expediente.municipality ?? undefined,
         department: expediente.department ?? undefined,
         neighborhood: expediente.neighborhood ?? undefined,
+        postalCode: expediente.postalCode ?? undefined,
         latitude: expediente.latitude ?? undefined,
         longitude: expediente.longitude ?? undefined,
       },
