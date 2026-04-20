@@ -1,17 +1,17 @@
 ---
 title: "PRD & Arquitectura — Plataforma Integral de Gestión ISP (Colombia)"
-version: "2.2"
+version: "2.3"
 owner: "Arquitectura de Soluciones / Producto"
-date: "2026-02-24"
+date: "2026-04-18"
 status: "Aprobado — Base Definitiva del Proyecto"
 classification: "Confidencial — Uso Interno"
-previousVersion: "2.0 (2026-02-24)"
-changelog: "v2.2: Matriz de Roles IA ampliada (13 modelos: GLM-5, MiniMax-M2.5/Text-01, Grok 4.1/4.2, Plan A/B/C). Inventario: ciclo de vida completo activos + 6 categorías técnico. Compras: módulo nuevo (solicitud→cotizaciones→OC→recepción). WFM: Hoja de Trabajo con materiales+firma+excepción. KPIs inventario. Bounded Contexts actualizados."
+previousVersion: "2.2 (2026-02-24)"
+changelog: "v2.3: Extracción del Módulo Comercial (Catálogo) como Bounded Context independiente (MOD06). Definición del patrón SCD Tipo 2 para historial de precios inmutable. Motor de clasificación tributaria configurable (IVA exento/excluido/pleno, retención, ICA). Bundles (triple play) y promociones temporales. Reglas de compatibilidad entre ítems. Pricing por segmento de cliente. Refinamiento de la Ficha Suscriptor 360° como agregador BFF de dominios. Nuevo evento PlanPriceUpdated para integración Billing."
 ---
 
 # PRD & Documento de Arquitectura — Plataforma Integral ISP Colombia
 
-### Versión 2.2 — Base Definitiva del Proyecto
+### Versión 2.3 — Base Definitiva del Proyecto
 
 ---
 
@@ -570,6 +570,45 @@ Técnico cierra tarea en app →
 | RF-SEC-09 | Rotación de secrets cada 90 días                                                                                                                       | Fase 2    |
 | RF-SEC-10 | Pentest trimestral                                                                                                                                     | Fase 2    |
 
+## 5.9 Catálogo y Gestión Comercial (Módulo Comercial)
+
+Se establece un módulo de primer nivel dedicado a la configuración centralizada de la oferta de valor del ISP. Actúa como fuente única de verdad para Planes, Productos, Servicios, Bundles, Promociones y reglas tributarias.
+
+**Principios:**
+
+- **Desacoplamiento:** El Catálogo maneja entidades abstractas (qué y a cuánto); Inventario maneja instancias físicas (dónde y cuál).
+- **Inmutabilidad financiera:** SCD Tipo 2 — todo cambio de precio genera nuevo registro de vigencia, preservando histórico completo.
+- **Clasificación tributaria configurable:** Las reglas de impuestos son administrables por UI, adaptables a cambios regulatorios sin código.
+- **Pricing por segmento:** Precios diferenciados por segmento de cliente (RESIDENTIAL, SOHO, PYME, CORPORATE, GOVERNMENT, WHOLESALE).
+
+| ID        | Requerimiento                                                                                                                               | Prioridad |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| RF-COM-01 | CRUD de Planes de servicio con velocidad (DL/UL), tecnología, regla de instalación y clasificación tributaria                               | MVP       |
+| RF-COM-02 | CRUD de Productos tangibles con flag de comodato (propiedad ISP vs venta) y requerimiento de inventario físico                             | MVP       |
+| RF-COM-03 | CRUD de Servicios Adicionales con tipo de cargo (único, bajo demanda, recurrente)                                                          | MVP       |
+| RF-COM-04 | Motor de Precios SCD Tipo 2: historial inmutable de tarifas con vigencia automática (fecha inicio = NOW al guardar)                         | MVP       |
+| RF-COM-05 | Pricing por segmento de cliente: cada ítem puede tener precios diferenciados por segmento (RESIDENTIAL, SOHO, PYME, CORPORATE, GOVERNMENT)  | MVP       |
+| RF-COM-06 | Clasificación tributaria configurable: IVA pleno (19%), exento (estratos 1-2), excluido (estrato 3), retención, ICA municipal               | MVP       |
+| RF-COM-07 | Tabla de reglas tributarias administrable por UI: mapeo (clasificación × segmento × estrato × municipio) → impuestos aplicables con tasas   | MVP       |
+| RF-COM-08 | Bundles / Combos: agrupación de ítems (PLAN + PRODUCTO + SERVICIO) con descuento sobre total, vigencia temporal                            | MVP       |
+| RF-COM-09 | Promociones temporales: descuentos sobre ítems, bundles o instalación con vigencia, límite de usos y código de tracking                    | MVP       |
+| RF-COM-10 | Reglas de compatibilidad entre ítems: REQUIRES (prerequisito), EXCLUDES (incompatible), REPLACES (sustitución)                             | MVP       |
+| RF-COM-11 | Historial de tarifas visible en UI: pestaña de historial en detalle de cada ítem con vigencias y responsable del cambio                    | MVP       |
+| RF-COM-12 | RBAC estricto: CRUD para Gerencia Comercial, Facturación y SuperAdmin; Solo Lectura para SAC, Ventas, Técnicos                             | MVP       |
+| RF-COM-13 | Integración con CRM: Expediente consume catálogo para cotización y selección de plan/productos                                             | MVP       |
+| RF-COM-14 | Evento `PlanPriceUpdated`: Billing recalcula proyecciones próximo ciclo sin afectar facturas ya emitidas                                   | MVP       |
+| RF-COM-15 | Evento `CatalogItemDeactivated`: CRM alerta cotizaciones pendientes con ítems desactivados                                                | Fase 2    |
+| RF-COM-16 | Vigencia programada de precios: programar cambio de tarifa para fecha futura específica                                                    | Fase 2    |
+| RF-COM-17 | Catálogo público para Portal Cliente: vista de planes y combos disponibles sin autenticación                                               | Fase 2    |
+
+**Ficha Suscriptor 360° (refinamiento):** Opera como Agregador de Dominios (BFF), consultando datos en tiempo real de cada Bounded Context:
+
+- **Datos del Cliente:** Dominio CRM (básicos, contacto, consentimientos)
+- **Servicios Activos:** Dominio Comercial + Contratos (plan asociado, características)
+- **Activos Físicos:** Dominio Inventario (equipos instalados, MAC/Serial en comodato)
+- **Estado Financiero:** Dominio Billing (saldo, facturas con snapshot inmutable del precio cobrado)
+- **Soporte Técnico:** Tickets + Órdenes de Trabajo unificados en historial de "Casos"
+
 ## 5.8 Migración de Datos
 
 | ID        | Requerimiento                                                                   | Prioridad |
@@ -938,6 +977,7 @@ C4Component
 flowchart TB
     subgraph Core["Core Domain"]
         CRM["CRM / Subscriber Management\n(Natural + Jurídico, Estrato, IVA)"]
+        COM["Commercial Catalog\n(Planes+Productos+Servicios+Bundles\nSCD Tipo 2, Tax Rules)"]
         BIL["Billing / Rating\n(Motor IVA EXENTO/EXCLUIDO/19%)"]
         PRV["Provisioning / Order Mgmt\n(PPPoE + DHCP + IP Fija + MAC)"]
         NMS["NMS/EMS\n(IOltAdapter multi-marca)"]
@@ -967,6 +1007,9 @@ flowchart TB
     end
 
     CRM -->|"ContractSigned event"| PRV
+    CRM -->|"QuoteRequested query"| COM
+    COM -->|"PlanPriceUpdated event"| BIL
+    COM -->|"CatalogItemDeactivated event"| CRM
     PRV -->|"OrderCompleted event"| BIL
     PRV -->|"ResourceReserved cmd"| INV
     PRV -->|"WorkOrderCreated event"| WFM
@@ -986,6 +1029,9 @@ flowchart TB
 
 | Upstream          | Downstream        | Relación              | Mecanismo                                                            |
 | ----------------- | ----------------- | --------------------- | -------------------------------------------------------------------- |
+| Commercial Catalog| Billing           | Customer-Supplier     | Domain Event `PlanPriceUpdated` + query `GetCurrentPrice`            |
+| Commercial Catalog| CRM               | Customer-Supplier     | Query `GetCatalogItems`, Event `CatalogItemDeactivated`              |
+| CRM               | Commercial Catalog| Customer-Supplier     | Query `QuoteRequested` → lectura de catálogo para cotización         |
 | CRM               | Provisioning      | Customer-Supplier     | Domain Event `ContractSigned`                                        |
 | Provisioning      | Billing           | Customer-Supplier     | Domain Event `ServiceActivated`                                      |
 | Provisioning      | Inventory         | Customer-Supplier     | Sync command `ReserveResources`                                      |

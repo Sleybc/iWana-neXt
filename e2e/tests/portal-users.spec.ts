@@ -256,8 +256,9 @@ test('caso 4 — selector de estado envía ?status= al backend', async ({ page }
   await page.goto('/dashboard/users');
   await expect(page.getByText('Carlos López')).toBeVisible();
 
-  // Cambiar el selector de estado a SUSPENDED
-  await page.selectOption('#status-filter', 'SUSPENDED');
+  // Cambiar el selector custom de estado a "Suspendido"
+  await page.locator('#status-filter').locator('xpath=following-sibling::button').click();
+  await page.getByRole('option', { name: 'Suspendido' }).click();
   await page.waitForTimeout(200);
 
   expect(capturedStatus).toBe('SUSPENDED');

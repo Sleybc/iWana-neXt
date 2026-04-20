@@ -409,7 +409,7 @@ _Actualizado: 2026-03-08 — Corrección stack versions via Context7 MCP_
 
 | Artefacto | Cambios realizados |
 | --- | --- |
-| `docs/runbooks/RUNBOOK-DB-MIGRATIONS-v1.0.md` | Nuevo runbook operativo para migraciones públicas y tenant, incluyendo comandos, validación posterior, criterios de reintento y escalación. |
+| `docs/runbooks/RUNBOOK-DB-MIGRATIONS-v1.1.md` | Nuevo runbook operativo para migraciones públicas y tenant, incluyendo comandos, validación posterior, criterios de reintento y escalación. |
 | `docs/runbooks/RUNBOOK-TENANT-PROVISIONING-v1.0.md` | Se añadió el procedimiento operativo correcto para recuperar credenciales temporales del ADMIN inicial mediante el endpoint de regeneración con `Idempotency-Key`. |
 | `docs/adrs/ADR-020-Seed-Inicial-Credenciales-Temporales.md` | Se corrigió la deuda técnica/documentación operativa: se eliminó la sugerencia de consultar logs del worker y se alineó el workaround soportado con el endpoint real de regeneración. |
 | `docs/informes/INFORME-SISTEMA-NORMALIZACION-DOCUMENTAL-v1.0.md` | Actualizado como documento vivo para registrar este cierre. |

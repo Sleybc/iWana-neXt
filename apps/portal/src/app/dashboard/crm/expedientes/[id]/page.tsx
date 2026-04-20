@@ -27,6 +27,8 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import {
+  AdditionalProduct,
+  commercialApi,
   CompletenessResult,
   crmApi,
   ExpedienteActivityItem,
@@ -39,7 +41,6 @@ import {
   SalesAttributionRecord,
   ExpedienteStatus,
   ExpedienteTimelineChange,
-  tenantSelfApi,
   usersApi,
 } from '@/lib/api-client';
 import { ExpedienteHeader } from '@/components/crm/expedientes/ExpedienteHeader';
@@ -177,6 +178,7 @@ export default function ExpedienteDetailPage() {
   const [responsibility, setResponsibility] = useState<ResponsibilitySnapshot | null>(null);
   const [responsibilityHistory, setResponsibilityHistory] = useState<OperationalHistoryItem[]>([]);
   const [planCatalog, setPlanCatalog] = useState<PlanCatalogItem[]>([]);
+  const [additionalProducts, setAdditionalProducts] = useState<AdditionalProduct[]>([]);
 
   // Controla que el spinner de carga full-page solo se muestre en la carga inicial.
   // Las recargas posteriores (después de guardar) son silenciosas para no resetear el tab activo.
@@ -274,13 +276,22 @@ export default function ExpedienteDetailPage() {
     void loadExpediente();
 
     // Carga el catálogo de planes activos para el selector de "Interés del cliente"
-    tenantSelfApi
+    commercialApi
       .getPlans()
       .then((items) => {
         setPlanCatalog(items.filter((p) => p.isActive));
       })
       .catch(() => {
         // Si falla, el selector queda vacío; no es bloqueante
+      });
+
+    commercialApi
+      .getAdditionalProducts()
+      .then((items) => {
+        setAdditionalProducts(items.filter((item) => item.isActive));
+      })
+      .catch(() => {
+        // Si falla, los checkboxes quedan vacíos; no es bloqueante
       });
   }, [id]);
 
@@ -975,6 +986,7 @@ export default function ExpedienteDetailPage() {
       }}
       savingSection={savingSection}
       planCatalog={planCatalog}
+      additionalProducts={additionalProducts}
       actionMessage={actionMessage}
       actionMessageTone={actionMessageTone}
       onDocumentSupportSaved={loadExpediente}
@@ -993,6 +1005,7 @@ export default function ExpedienteDetailPage() {
       sortedAttributionUsers={sortedAttributionUsers}
       loadingAttributionUsers={loadingAttributionUsers}
       planCatalog={planCatalog}
+      additionalProducts={additionalProducts}
       recentActivity={recentActivity}
       pipelineChanges={timeline}
       onSaved={loadExpediente}

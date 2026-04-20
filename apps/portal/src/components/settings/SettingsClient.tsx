@@ -13,7 +13,6 @@ import {
   type TenantSelfSettings,
 } from '@/lib/api-client';
 import { BrandingForm } from './BrandingForm';
-import { CommercialTabLayout } from './CommercialTabLayout';
 import { CompanyProfileForm } from './CompanyProfileForm';
 import { OperationalSettingsForm } from './OperationalSettingsForm';
 import { SecuritySettingsCard } from './SecuritySettingsCard';
@@ -58,7 +57,6 @@ export function SettingsClient() {
     return {
       general: null,
       operations: null,
-      commercial: null,
       security: !settings?.features.mfa_required_all
         ? { label: 'Atención', variant: 'warning' as const }
         : null,
@@ -155,7 +153,8 @@ export function SettingsClient() {
                   {error ?? 'No se pudo cargar la configuración empresarial.'}
                 </p>
                 <p className="mt-1 text-sm text-red-700/80 dark:text-red-200/80">
-                  Reintenta para recuperar el perfil del tenant, sus parámetros operativos y la política base de seguridad.
+                  Reintenta para recuperar el perfil del tenant, sus parámetros operativos y la
+                  política base de seguridad.
                 </p>
                 <button
                   type="button"
@@ -186,7 +185,8 @@ export function SettingsClient() {
               Centro de control
             </p>
             <p className="mt-1 max-w-3xl text-sm text-gray-600 dark:text-gray-400">
-              Aquí se consolidan identidad comercial, parámetros operativos, seguridad base y branding del tenant autenticado.
+              Aquí se consolidan perfil empresarial, parámetros operativos, seguridad base y
+              branding del tenant autenticado.
             </p>
           </div>
 
@@ -224,17 +224,6 @@ export function SettingsClient() {
                 settings={settings}
                 canEdit={canEdit}
                 onUpdated={setSettings}
-              />
-            </SettingsTabPanel>
-
-            <SettingsTabPanel
-              id={getPanelId('commercial')}
-              labelledBy={getTabId('commercial')}
-              isActive={activeTab === 'commercial'}
-            >
-              <CommercialTabLayout
-                canEdit={canEdit}
-                fiberThresholdMeters={settings.fiberInstallationThresholdMeters}
               />
             </SettingsTabPanel>
 

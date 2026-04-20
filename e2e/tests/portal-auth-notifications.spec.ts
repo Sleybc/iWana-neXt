@@ -37,7 +37,7 @@ function setupPortalApiMocks() {
             data: {
               sub: '2f145de2-aaaa-4abc-9e08-3b768a194777',
               email: 'sha256:subscriber-hash',
-              role: 'tenant_admin',
+              role: 'ADMIN',
               tenantId: 'tenant-portal-1',
               schemaName: 'tenant_isp_demo',
               jti: 'portal-jti-1',
@@ -69,6 +69,24 @@ function setupPortalApiMocks() {
                 createdAt: '2026-03-13T12:30:00.000Z',
               },
             ],
+          }),
+        });
+        return;
+      }
+
+      if (url.includes('/dashboard/summary') && method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              tenantName: 'ISP Prueba Colombia',
+              activeSubscribers: 42,
+              pendingInstallations: 3,
+              overdueInvoices: 1,
+              uptimePercent: 99.5,
+              alerts: [],
+            },
           }),
         });
         return;
@@ -125,13 +143,12 @@ test.describe('Portal auth + notifications', () => {
     const dashboardA11y = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
     expect(dashboardA11y.violations).toEqual([]);
 
-    // Checks básicos de accesibilidad del flujo visible.
-    await expect(page.getByText('Panel en preparación')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Accesos rápidos' })).toBeVisible();
+    // Check básico de navegación en dashboard autenticado.
+    await expect(page.getByRole('heading', { name: 'Panel empresarial' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Notificaciones' }).click();
     await expect(page.getByText('Notificaciones del portal')).toBeVisible();
-    await expect(page.getByText('LOGIN · User')).toBeVisible();
+    await expect(page.getByText('Inicio de sesión · Usuario')).toBeVisible();
 
     await page.getByRole('button', { name: 'Menú de usuario' }).click();
     await page.getByRole('menuitem', { name: 'Cerrar sesión' }).click();

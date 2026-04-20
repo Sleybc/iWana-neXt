@@ -4,11 +4,17 @@ import {
   AcquisitionChannel,
   ConsentChannel,
   AttributionRole,
+  CatalogItemType,
+  ChargeType,
+  InstallationRule,
   CreateSubscriberPayload,
   CustomerSegment,
+  DiscountType,
   DocumentType,
   EvaluationSource,
   PersonType,
+  PromotionScope,
+  ProductCategory,
   SubscriberStatus,
   TechnicalConfidence,
   TechnicalViabilityResult,
@@ -673,7 +679,7 @@ export interface TenantSelfSettings {
   };
 }
 
-export type PlanInstallationRule = 'NONE' | 'ALWAYS' | 'FIBER_DROP_THRESHOLD';
+export type PlanInstallationRule = InstallationRule;
 
 export interface PlanCatalogItem {
   id: string;
@@ -684,8 +690,10 @@ export interface PlanCatalogItem {
   uploadSpeedMbps: number;
   basePrice: number;
   installationFee: number;
-  validFrom: string | null;
-  validTo: string | null;
+  currentPrice?: string | null;
+  description?: string | null;
+  retentionApplicable?: boolean;
+  taxClassificationId?: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -721,25 +729,273 @@ export interface UpdatePlanCatalogItemDto {
 export interface AdditionalProduct {
   id: string;
   name: string;
-  category: 'ENTERTAINMENT' | 'SECURITY' | 'CONNECTIVITY' | 'BUSINESS';
-  sortOrder: number;
+  category: ProductCategory;
+  isLoan: boolean;
+  requiresInventory: boolean;
+  isActive: boolean;
+  description?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdditionalService {
+  id: string;
+  name: string;
+  chargeType: ChargeType;
+  isActive: boolean;
+  description?: string | null;
+  currentPrice: string | null;
+  basePrice: number;
+  installationFee: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CommercialBundle {
+  id: string;
+  tenantId: string;
+  name: string;
+  description: string | null;
+  discountType: DiscountType;
+  discountValue: string;
+  validFrom: string;
+  validTo: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
+export interface CommercialBundleItemDetail {
+  itemId: string;
+  isRequired: boolean;
+  sortOrder: number;
+  item: {
+    id: string;
+    type: CatalogItemType;
+    name: string;
+    isActive: boolean;
+  } | null;
+}
+
+export interface CommercialBundleDetail extends CommercialBundle {
+  items: CommercialBundleItemDetail[];
+}
+
+export interface BundlePriceResult {
+  bundleId: string;
+  segment: CustomerSegment;
+  subtotal: string;
+  discount: string;
+  total: string;
+  breakdown: Array<{
+    itemId: string;
+    name: string;
+    price: string;
+  }>;
+}
+
+export interface CreateBundleDto {
+  name: string;
+  description?: string;
+  discountType: Extract<DiscountType, DiscountType.PERCENTAGE | DiscountType.FIXED_AMOUNT>;
+  discountValue: string;
+  validFrom: string;
+  validTo?: string;
+  itemIds: string[];
+  optionalItemIds?: string[];
+}
+
+export interface CommercialPromotion {
+  id: string;
+  tenantId: string;
+  name: string;
+  code: string;
+  description: string | null;
+  discountType: DiscountType;
+  discountValue: string;
+  appliesTo: PromotionScope;
+  targetItemId: string | null;
+  targetBundleId: string | null;
+  targetSegments: CustomerSegment[] | null;
+  maxUses: number | null;
+  currentUses: number;
+  validFrom: string;
+  validTo: string;
+  isActive: boolean;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreatePromotionDto {
+  name: string;
+  code: string;
+  description?: string;
+  discountType: DiscountType;
+  discountValue: string;
+  appliesTo: PromotionScope;
+  targetItemId?: string;
+  targetBundleId?: string;
+  targetSegments?: CustomerSegment[];
+  maxUses?: number;
+  validFrom: string;
+  validTo: string;
+}
+
 export interface CreateAdditionalProductDto {
   name: string;
+  description?: string | undefined;
   category: AdditionalProduct['category'];
-  sortOrder?: number;
+  isLoan?: boolean;
+  requiresInventory?: boolean;
   isActive?: boolean;
 }
 
 export interface UpdateAdditionalProductDto {
   name?: string;
+  description?: string | undefined;
   category?: AdditionalProduct['category'];
-  sortOrder?: number;
+  isLoan?: boolean;
+  requiresInventory?: boolean;
   isActive?: boolean;
+}
+
+export interface CreateAdditionalServiceDto {
+  name: string;
+  description?: string | undefined;
+  chargeType: ChargeType;
+  basePrice?: number;
+  installationFee?: number;
+  isActive?: boolean;
+}
+
+export interface UpdateAdditionalServiceDto {
+  name?: string;
+  description?: string | undefined;
+  chargeType?: ChargeType;
+  basePrice?: number;
+  installationFee?: number;
+  isActive?: boolean;
+}
+
+function mapCommercialBundle(bundle: CommercialBundle): CommercialBundle {
+  return {
+    ...bundle,
+    discountValue: bundle.discountValue ?? '0.00',
+    validFrom: bundle.validFrom ?? new Date(0).toISOString(),
+    validTo: bundle.validTo ?? null,
+    createdAt: bundle.createdAt ?? new Date(0).toISOString(),
+    updatedAt: bundle.updatedAt ?? new Date(0).toISOString(),
+  };
+}
+
+function mapCommercialPromotion(promotion: CommercialPromotion): CommercialPromotion {
+  return {
+    ...promotion,
+    code: promotion.code ?? '',
+    discountValue: promotion.discountValue ?? '0.00',
+    validFrom: promotion.validFrom ?? new Date(0).toISOString(),
+    validTo: promotion.validTo ?? new Date(0).toISOString(),
+    createdAt: promotion.createdAt ?? new Date(0).toISOString(),
+    updatedAt: promotion.updatedAt ?? new Date(0).toISOString(),
+  };
+}
+
+interface CommercialCatalogListResponse<T> {
+  data: T[];
+  meta: {
+    total: number;
+  };
+}
+
+interface CommercialCatalogItemPayload {
+  id: string;
+  type: CatalogItemType;
+  name: string;
+  description: string | null;
+  taxClassificationId: string | null;
+  retentionApplicable: boolean;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  downloadSpeedMbps?: number;
+  uploadSpeedMbps?: number;
+  technology?: string;
+  installationRule?: InstallationRule;
+  currentPrice?: string | null;
+  installationFee?: string | null;
+  category?: ProductCategory;
+  chargeType?: ChargeType;
+  isLoan?: boolean;
+  requiresInventory?: boolean;
+}
+
+function mapCommercialPlan(item: CommercialCatalogItemPayload): PlanCatalogItem {
+  return {
+    id: item.id,
+    name: item.name,
+    technology: item.technology ?? 'N/A',
+    installationRule: item.installationRule ?? InstallationRule.ALWAYS,
+    downloadSpeedMbps: item.downloadSpeedMbps ?? 0,
+    uploadSpeedMbps: item.uploadSpeedMbps ?? 0,
+    basePrice: Number(item.currentPrice ?? 0),
+    installationFee: Number(item.installationFee ?? 0),
+    currentPrice: item.currentPrice ?? null,
+    description: item.description,
+    retentionApplicable: item.retentionApplicable,
+    taxClassificationId: item.taxClassificationId,
+    isActive: item.isActive,
+    createdAt: item.createdAt ?? new Date(0).toISOString(),
+    updatedAt: item.updatedAt ?? new Date(0).toISOString(),
+  };
+}
+
+function mapCommercialProduct(item: CommercialCatalogItemPayload): AdditionalProduct {
+  return {
+    id: item.id,
+    name: item.name,
+    category: item.category ?? ProductCategory.CONNECTIVITY,
+    isLoan: item.isLoan ?? false,
+    requiresInventory: item.requiresInventory ?? false,
+    isActive: item.isActive,
+    description: item.description,
+    createdAt: item.createdAt ?? new Date(0).toISOString(),
+    updatedAt: item.updatedAt ?? new Date(0).toISOString(),
+  };
+}
+
+function mapCommercialService(item: CommercialCatalogItemPayload): AdditionalService {
+  return {
+    id: item.id,
+    name: item.name,
+    chargeType: item.chargeType ?? ChargeType.ONE_TIME,
+    isActive: item.isActive,
+    description: item.description,
+    currentPrice: item.currentPrice ?? null,
+    basePrice: Number(item.currentPrice ?? 0),
+    installationFee: Number(item.installationFee ?? 0),
+    createdAt: item.createdAt ?? new Date(0).toISOString(),
+    updatedAt: item.updatedAt ?? new Date(0).toISOString(),
+  };
+}
+
+async function setCommercialCatalogPrice(
+  itemId: string,
+  dto: { basePrice: number; installationFee?: number },
+  tenantSlug?: string,
+): Promise<void> {
+  await request(
+    `/commercial/catalog/${itemId}/prices`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        customerSegment: CustomerSegment.RESIDENTIAL,
+        basePrice: dto.basePrice.toFixed(2),
+        installationFee: (dto.installationFee ?? 0).toFixed(2),
+      }),
+    },
+    tenantSlug,
+  );
 }
 
 export interface UpdateTenantSelfSettingsDto {
@@ -959,43 +1215,148 @@ export const tenantSelfApi = {
       { method: 'DELETE' },
       tenantSlug,
     ),
+};
 
+/**
+ * API del bounded context Comercial para el tenant autenticado.
+ * Expone exclusivamente catálogo comercial; no mezclar con self-service del tenant.
+ */
+export const commercialApi = {
   /** Lista el catálogo de planes del tenant autenticado. */
-  getPlans: (tenantSlug?: string) =>
-    request<PlanCatalogItem[]>('/tenants/me/plans', undefined, tenantSlug),
+  getPlans: async (tenantSlug?: string) => {
+    const response = await request<CommercialCatalogListResponse<CommercialCatalogItemPayload>>(
+      '/commercial/catalog?type=PLAN',
+      { returnFullResponse: true },
+      tenantSlug,
+    );
+
+    return response.data.map(mapCommercialPlan);
+  },
 
   /** Crea un plan en el catálogo del tenant autenticado. */
-  createPlan: (dto: CreatePlanCatalogItemDto, tenantSlug?: string) =>
-    request<PlanCatalogItem[]>(
-      '/tenants/me/plans',
-      { method: 'POST', body: JSON.stringify(dto) },
+  createPlan: async (dto: CreatePlanCatalogItemDto, tenantSlug?: string) => {
+    const item = await request<CommercialCatalogItemPayload>(
+      '/commercial/catalog/plans',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          name: dto.name,
+          technology: dto.technology,
+          installationRule: dto.installationRule,
+          downloadSpeedMbps: dto.downloadSpeedMbps,
+          uploadSpeedMbps: dto.uploadSpeedMbps,
+          retentionApplicable: false,
+        }),
+      },
       tenantSlug,
-    ),
+    );
+
+    await request(
+      `/commercial/catalog/${item.id}/prices`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          customerSegment: CustomerSegment.RESIDENTIAL,
+          basePrice: dto.basePrice.toFixed(2),
+          installationFee: (dto.installationFee ?? 0).toFixed(2),
+        }),
+      },
+      tenantSlug,
+    );
+
+    return commercialApi.getPlans(tenantSlug);
+  },
 
   /** Actualiza un plan del catálogo del tenant autenticado. */
-  updatePlan: (planId: string, dto: UpdatePlanCatalogItemDto, tenantSlug?: string) =>
-    request<PlanCatalogItem[]>(
-      `/tenants/me/plans/${planId}`,
-      { method: 'PATCH', body: JSON.stringify(dto) },
-      tenantSlug,
-    ),
+  updatePlan: async (planId: string, dto: UpdatePlanCatalogItemDto, tenantSlug?: string) => {
+    // Construir solo los campos que aplican al PATCH (basePrice e installationFee
+    // se gestionan con un POST separado a /prices).
+    const patchBody = {
+      ...(dto.name !== undefined && { name: dto.name }),
+      ...(dto.technology !== undefined && { technology: dto.technology }),
+      ...(dto.installationRule !== undefined && { installationRule: dto.installationRule }),
+      ...(dto.downloadSpeedMbps !== undefined && {
+        downloadSpeedMbps: dto.downloadSpeedMbps,
+      }),
+      ...(dto.uploadSpeedMbps !== undefined && { uploadSpeedMbps: dto.uploadSpeedMbps }),
+      ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+    };
+
+    // Solo enviar PATCH si hay al menos un campo de catálogo que cambiar; evita 500 por body vacío.
+    if (Object.keys(patchBody).length > 0) {
+      await request(
+        `/commercial/catalog/${planId}`,
+        { method: 'PATCH', body: JSON.stringify(patchBody) },
+        tenantSlug,
+      );
+    }
+
+    if (dto.basePrice !== undefined || dto.installationFee !== undefined) {
+      try {
+        await request(
+          `/commercial/catalog/${planId}/prices`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              customerSegment: CustomerSegment.RESIDENTIAL,
+              basePrice: (dto.basePrice ?? 0).toFixed(2),
+              installationFee: (dto.installationFee ?? 0).toFixed(2),
+            }),
+          },
+          tenantSlug,
+        );
+      } catch (error) {
+        // Idempotencia operativa: si el precio vigente ya es idéntico, no bloqueamos la edición.
+        if (
+          error instanceof ApiError &&
+          error.status === 409 &&
+          /precio vigente idéntico/i.test(error.message)
+        ) {
+          return commercialApi.getPlans(tenantSlug);
+        }
+
+        throw error;
+      }
+    }
+
+    return commercialApi.getPlans(tenantSlug);
+  },
 
   /** Elimina un plan del catálogo del tenant autenticado. */
   deletePlan: (planId: string, tenantSlug?: string) =>
-    request<void>(`/tenants/me/plans/${planId}`, { method: 'DELETE' }, tenantSlug),
+    request<void>(`/commercial/catalog/${planId}`, { method: 'DELETE' }, tenantSlug),
 
-  // Additional Products
   /** Lista los productos adicionales del tenant autenticado. */
-  getAdditionalProducts: (tenantSlug?: string) =>
-    request<AdditionalProduct[]>('/tenants/me/additional-products', undefined, tenantSlug),
+  getAdditionalProducts: async (tenantSlug?: string) => {
+    const response = await request<CommercialCatalogListResponse<CommercialCatalogItemPayload>>(
+      '/commercial/catalog?type=PRODUCT',
+      { returnFullResponse: true },
+      tenantSlug,
+    );
+
+    return response.data.map(mapCommercialProduct);
+  },
 
   /** Crea un producto adicional en el catálogo del tenant autenticado. */
-  createAdditionalProduct: (dto: CreateAdditionalProductDto, tenantSlug?: string) =>
-    request<AdditionalProduct[]>(
-      '/tenants/me/additional-products',
-      { method: 'POST', body: JSON.stringify(dto) },
+  createAdditionalProduct: async (dto: CreateAdditionalProductDto, tenantSlug?: string) => {
+    await request(
+      '/commercial/catalog/products',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          name: dto.name,
+          description: dto.description,
+          category: dto.category,
+          isLoan: dto.isLoan ?? false,
+          requiresInventory: dto.requiresInventory ?? false,
+          retentionApplicable: false,
+        }),
+      },
       tenantSlug,
-    ),
+    );
+
+    return commercialApi.getAdditionalProducts(tenantSlug);
+  },
 
   /** Actualiza un producto adicional del catálogo del tenant autenticado. */
   updateAdditionalProduct: (
@@ -1004,17 +1365,203 @@ export const tenantSelfApi = {
     tenantSlug?: string,
   ) =>
     request<AdditionalProduct[]>(
-      `/tenants/me/additional-products/${productId}`,
-      { method: 'PATCH', body: JSON.stringify(dto) },
+      `/commercial/catalog/${productId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          ...(dto.name !== undefined && { name: dto.name }),
+          ...(dto.description !== undefined && { description: dto.description }),
+          ...(dto.category !== undefined && { category: dto.category }),
+          ...(dto.isLoan !== undefined && { isLoan: dto.isLoan }),
+          ...(dto.requiresInventory !== undefined && {
+            requiresInventory: dto.requiresInventory,
+          }),
+          ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+        }),
+      },
       tenantSlug,
-    ),
+    ).then(() => commercialApi.getAdditionalProducts(tenantSlug)),
 
   /** Elimina un producto adicional del catálogo del tenant autenticado. */
   deleteAdditionalProduct: (productId: string, tenantSlug?: string) =>
     request<AdditionalProduct[]>(
-      `/tenants/me/additional-products/${productId}`,
+      `/commercial/catalog/${productId}`,
       { method: 'DELETE' },
       tenantSlug,
+    ).then(() => commercialApi.getAdditionalProducts(tenantSlug)),
+
+  /** Lista los servicios adicionales del tenant autenticado. */
+  getAdditionalServices: async (tenantSlug?: string) => {
+    const response = await request<CommercialCatalogListResponse<CommercialCatalogItemPayload>>(
+      '/commercial/catalog?type=SERVICE',
+      { returnFullResponse: true },
+      tenantSlug,
+    );
+
+    return response.data.map(mapCommercialService);
+  },
+
+  /** Crea un servicio adicional en el catálogo del tenant autenticado. */
+  createAdditionalService: async (dto: CreateAdditionalServiceDto, tenantSlug?: string) => {
+    const item = await request<CommercialCatalogItemPayload>(
+      '/commercial/catalog/services',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          name: dto.name,
+          description: dto.description,
+          chargeType: dto.chargeType,
+          retentionApplicable: false,
+        }),
+      },
+      tenantSlug,
+    );
+
+    if (dto.basePrice !== undefined) {
+      await setCommercialCatalogPrice(
+        item.id,
+        {
+          basePrice: dto.basePrice,
+          ...(dto.installationFee !== undefined && { installationFee: dto.installationFee }),
+        },
+        tenantSlug,
+      );
+    }
+
+    return commercialApi.getAdditionalServices(tenantSlug);
+  },
+
+  /** Actualiza un servicio adicional del catálogo del tenant autenticado. */
+  updateAdditionalService: (
+    serviceId: string,
+    dto: UpdateAdditionalServiceDto,
+    tenantSlug?: string,
+  ) =>
+    request<AdditionalService[]>(
+      `/commercial/catalog/${serviceId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          ...(dto.name !== undefined && { name: dto.name }),
+          ...(dto.description !== undefined && { description: dto.description }),
+          ...(dto.chargeType !== undefined && { chargeType: dto.chargeType }),
+          ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+        }),
+      },
+      tenantSlug,
+    ).then(async () => {
+      if (dto.basePrice !== undefined) {
+        try {
+          await setCommercialCatalogPrice(
+            serviceId,
+            {
+              basePrice: dto.basePrice,
+              ...(dto.installationFee !== undefined && {
+                installationFee: dto.installationFee,
+              }),
+            },
+            tenantSlug,
+          );
+        } catch (error) {
+          if (
+            error instanceof ApiError &&
+            error.status === 409 &&
+            /precio vigente idéntico/i.test(error.message)
+          ) {
+            return commercialApi.getAdditionalServices(tenantSlug);
+          }
+
+          throw error;
+        }
+      }
+
+      return commercialApi.getAdditionalServices(tenantSlug);
+    }),
+
+  /** Elimina un servicio adicional del catálogo del tenant autenticado. */
+  deleteAdditionalService: (serviceId: string, tenantSlug?: string) =>
+    request<AdditionalService[]>(
+      `/commercial/catalog/${serviceId}`,
+      { method: 'DELETE' },
+      tenantSlug,
+    ).then(() => commercialApi.getAdditionalServices(tenantSlug)),
+
+  /** Lista bundles activos del tenant autenticado. */
+  getBundles: async (tenantSlug?: string) => {
+    const bundles = await request<CommercialBundle[]>('/commercial/bundles', undefined, tenantSlug);
+    return bundles.map(mapCommercialBundle);
+  },
+
+  /** Retorna el detalle de un bundle con sus ítems. */
+  getBundleDetail: (bundleId: string, tenantSlug?: string) =>
+    request<CommercialBundleDetail>(`/commercial/bundles/${bundleId}`, undefined, tenantSlug),
+
+  /** Crea un bundle y retorna la lista actualizada. */
+  createBundle: (dto: CreateBundleDto, tenantSlug?: string) =>
+    request<CommercialBundle>(
+      '/commercial/bundles',
+      { method: 'POST', body: JSON.stringify(dto) },
+      tenantSlug,
+    ).then(() => commercialApi.getBundles(tenantSlug)),
+
+  /** Desactiva un bundle y retorna la lista actualizada. */
+  deactivateBundle: (bundleId: string, tenantSlug?: string) =>
+    request(`/commercial/bundles/${bundleId}`, { method: 'DELETE' }, tenantSlug).then(() =>
+      commercialApi.getBundles(tenantSlug),
+    ),
+
+  /** Calcula precio dinámico de un bundle por segmento para previsualización de oferta. */
+  getBundlePrice: (
+    bundleId: string,
+    options?: {
+      segment?: CustomerSegment;
+      optionalItemIds?: string[];
+    },
+    tenantSlug?: string,
+  ) => {
+    const query = new URLSearchParams({
+      segment: options?.segment ?? CustomerSegment.RESIDENTIAL,
+    });
+
+    options?.optionalItemIds?.forEach((itemId) => {
+      query.append('optionalItemIds', itemId);
+    });
+
+    return request<BundlePriceResult>(
+      `/commercial/bundles/${bundleId}/price?${query.toString()}`,
+      undefined,
+      tenantSlug,
+    );
+  },
+
+  /** Lista promociones activas del tenant autenticado. */
+  getPromotions: async (tenantSlug?: string) => {
+    const promotions = await request<CommercialPromotion[]>(
+      '/commercial/promotions',
+      undefined,
+      tenantSlug,
+    );
+    return promotions.map(mapCommercialPromotion);
+  },
+
+  /** Crea una promoción y retorna la lista actualizada. */
+  createPromotion: (dto: CreatePromotionDto, tenantSlug?: string) =>
+    request<CommercialPromotion>(
+      '/commercial/promotions',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          ...dto,
+          code: dto.code.toUpperCase(),
+        }),
+      },
+      tenantSlug,
+    ).then(() => commercialApi.getPromotions(tenantSlug)),
+
+  /** Desactiva una promoción y retorna la lista actualizada. */
+  deactivatePromotion: (promotionId: string, tenantSlug?: string) =>
+    request(`/commercial/promotions/${promotionId}`, { method: 'DELETE' }, tenantSlug).then(() =>
+      commercialApi.getPromotions(tenantSlug),
     ),
 };
 

@@ -259,6 +259,18 @@ importers:
       '@tailwindcss/postcss':
         specifier: ^4.0.0
         version: 4.2.1
+      '@testing-library/jest-dom':
+        specifier: ^6.6.3
+        version: 6.9.1
+      '@testing-library/react':
+        specifier: ^16.3.0
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@testing-library/user-event':
+        specifier: ^14.5.2
+        version: 14.6.1(@testing-library/dom@10.4.1)
+      '@types/jest':
+        specifier: ^29.5.14
+        version: 29.5.14
       '@types/leaflet':
         specifier: ^1.9.21
         version: 1.9.21
@@ -271,12 +283,21 @@ importers:
       '@types/react-dom':
         specifier: ^19.0.0
         version: 19.2.3(@types/react@19.2.14)
+      jest:
+        specifier: ^29.7.0
+        version: 29.7.0(@types/node@24.12.0)
+      jest-environment-jsdom:
+        specifier: ^29.7.0
+        version: 29.7.0
       postcss:
         specifier: ^8.4.0
         version: 8.5.8
       tailwindcss:
         specifier: ^4.0.0
         version: 4.2.1
+      ts-jest:
+        specifier: ^29.2.5
+        version: 29.4.6(@babel/core@7.29.0)(@jest/transform@29.7.0)(@jest/types@29.6.3)(babel-jest@29.7.0(@babel/core@7.29.0))(jest-util@29.7.0)(jest@29.7.0(@types/node@24.12.0))(typescript@5.9.3)
       typescript:
         specifier: ^5.9.0
         version: 5.9.3

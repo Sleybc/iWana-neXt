@@ -5,10 +5,8 @@ import { AuditModule } from '../../audit/audit.module';
 import { TenantModule } from '../../tenant/tenant.module';
 import { CoverageReadPort } from '../ports/coverage-read.port';
 import { PlanCatalogReadPort } from '../ports/plan-catalog-read.port';
-import {
-  TenantCoverageReadAdapter,
-  TenantPlanCatalogReadAdapter,
-} from '../../tenant/tenant-crm-read-adapter.service';
+import { TenantCoverageReadAdapter } from '../../tenant/tenant-crm-read-adapter.service';
+import { CommercialModule } from '../../commercial/commercial.module';
 import { PotentialLead } from './entities/potential-lead.entity';
 import { ProspectCase } from '../prospects/entities/prospect-case.entity';
 import { ConsentRecord } from '../reviews/entities/consent-record.entity';
@@ -19,6 +17,7 @@ import { PotentialsService } from './potentials.service';
   imports: [
     ConfigModule,
     AuditModule,
+    CommercialModule,
     TenantModule,
     TypeOrmModule.forFeature([PotentialLead, ProspectCase, ConsentRecord]),
   ],
@@ -26,7 +25,6 @@ import { PotentialsService } from './potentials.service';
   providers: [
     PotentialsService,
     { provide: CoverageReadPort, useClass: TenantCoverageReadAdapter },
-    { provide: PlanCatalogReadPort, useClass: TenantPlanCatalogReadAdapter },
   ],
   exports: [PotentialsService],
 })

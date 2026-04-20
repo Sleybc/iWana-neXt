@@ -38,6 +38,8 @@ const mockExpediente = {
   phonePrimaryEncrypted: 'enc-telefono-demo',
   phoneSecondaryEncrypted: null,
   emailPrimaryEncrypted: null,
+  acquisitionChannel: 'REFERRAL',
+  sourceDetail: 'Aliado estratégico',
   altContactName: null as string | null,
   altContactPhone: null as string | null,
   source: 'Manual',
@@ -45,6 +47,7 @@ const mockExpediente = {
   municipality: 'Bogotá',
   department: 'Cundinamarca',
   interestedPlanId: 'plan-500',
+  additionalProductIds: ['prod-router'],
   completenessCommercial: 70,
   completenessLegal: 50,
   completenessTechnical: 40,
@@ -52,6 +55,45 @@ const mockExpediente = {
   createdAt: '2026-03-26T10:00:00.000Z',
   updatedAt: '2026-03-26T12:00:00.000Z',
 };
+
+const mockResponsibility = {
+  currentResponsibleUserId: 'user-uuid-admin-test',
+  currentResponsibleAssignedAt: '2026-03-26T10:30:00.000Z',
+  currentResponsible: {
+    userId: 'user-uuid-admin-test',
+    name: 'Laura Pérez',
+    role: 'ADMIN',
+  },
+  expedienteId: mockExpediente.id,
+};
+
+const mockAttribution = {
+  id: 'attr-1',
+  tenantId: 'tenant-uuid-test',
+  expedienteId: mockExpediente.id,
+  attributionRole: 'ORIGINATOR',
+  actorId: 'user-uuid-admin-test',
+  actorRole: 'ADMIN',
+  actorName: 'Laura Pérez',
+  acquisitionChannel: 'REFERRAL',
+  notes: null,
+  attributedAt: '2026-03-26T10:00:00.000Z',
+  attributedBy: 'user-uuid-admin-test',
+  revokedAt: null,
+  revokedBy: null,
+  revokedReason: null,
+  createdAt: '2026-03-26T10:00:00.000Z',
+};
+
+const mockUsers = [
+  {
+    id: 'user-uuid-admin-test',
+    firstName: 'Laura',
+    lastName: 'Pérez',
+    email: 'laura@iwana.co',
+    role: 'ADMIN',
+  },
+];
 
 async function setAuthSession(page: import('@playwright/test').Page) {
   await page.goto('http://127.0.0.1:3002/dashboard');
@@ -133,6 +175,62 @@ async function setupContactSectionMocks(page: import('@playwright/test').Page) {
         }),
       });
       return;
+    }
+
+    if (pathname.endsWith('/commercial/catalog') && method === 'GET') {
+      const type = new URL(url).searchParams.get('type');
+      if (type === 'PLAN') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: [
+              {
+                id: 'plan-500',
+                type: 'PLAN',
+                name: 'Plan Fibra 500',
+                description: null,
+                taxClassificationId: null,
+                retentionApplicable: false,
+                isActive: true,
+                technology: 'FTTH',
+                installationRule: 'ON_DEMAND',
+                downloadSpeedMbps: 500,
+                uploadSpeedMbps: 500,
+                currentPrice: '109900.00',
+                installationFee: '0.00',
+              },
+            ],
+            meta: { total: 1 },
+          }),
+        });
+        return;
+      }
+
+      if (type === 'PRODUCT') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: [
+              {
+                id: 'prod-router',
+                type: 'PRODUCT',
+                name: 'Router WiFi 6',
+                description: null,
+                taxClassificationId: null,
+                retentionApplicable: false,
+                isActive: true,
+                category: 'CPE',
+                isLoan: true,
+                requiresInventory: true,
+              },
+            ],
+            meta: { total: 1 },
+          }),
+        });
+        return;
+      }
     }
 
     if (pathname.endsWith('/crm/pipeline/summary') && method === 'GET') {
@@ -233,6 +331,65 @@ async function setupContactSectionMocks(page: import('@playwright/test').Page) {
     }
 
     if (
+      pathname.endsWith(`/crm/expedientes/${mockExpediente.id}/responsibility`) &&
+      method === 'GET'
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: mockResponsibility }),
+      });
+      return;
+    }
+
+    if (
+      pathname.endsWith(`/crm/expedientes/${mockExpediente.id}/responsibility/history`) &&
+      method === 'GET'
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [], total: 0 }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith(`/crm/expedientes/${mockExpediente.id}/attribution`) && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: mockAttribution }),
+      });
+      return;
+    }
+
+    if (
+      pathname.endsWith(`/crm/expedientes/${mockExpediente.id}/attribution/history`) &&
+      method === 'GET'
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [mockAttribution] }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/users') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            data: mockUsers,
+            meta: { nextCursor: null, total: mockUsers.length },
+          },
+        }),
+      });
+      return;
+    }
+
+    if (
       pathname.includes(`/crm/expedientes/${mockExpediente.id}/coverage-checks`) &&
       method === 'GET'
     ) {
@@ -292,12 +449,8 @@ test.describe('CRM Expedientes - Sección Contacto: altContactName y altContactP
     await setAuthSession(page);
     await page.goto(`http://127.0.0.1:3002/dashboard/crm/expedientes/${mockExpediente.id}`);
     await page.waitForLoadState('networkidle');
-
-    await page
-      .getByRole('button', { name: /contacto/i })
-      .first()
-      .click();
-    await page.waitForLoadState('networkidle');
+    await page.getByRole('button', { name: 'Gestión' }).click();
+    await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
 
     const altContactNameInput = page.getByLabel(/nombre contacto alternativo/i);
     const altContactPhoneInput = page.getByLabel(/teléfono contacto alternativo/i);
@@ -307,7 +460,7 @@ test.describe('CRM Expedientes - Sección Contacto: altContactName y altContactP
     await altContactNameInput.fill('Carlos Martinez');
     await altContactPhoneInput.fill('3001234567');
 
-    await page.getByRole('button', { name: /guardar sección/i }).click();
+    await page.getByRole('button', { name: /guardar cambios/i }).nth(1).click();
     await expect(page.getByText(/sección actualizada correctamente/i)).toBeVisible();
 
     const savedPayload = mocks.getSavedContactPayload();
@@ -318,12 +471,8 @@ test.describe('CRM Expedientes - Sección Contacto: altContactName y altContactP
 
     await page.reload();
     await page.waitForLoadState('networkidle');
-
-    await page
-      .getByRole('button', { name: /contacto/i })
-      .first()
-      .click();
-    await page.waitForLoadState('networkidle');
+    await page.getByRole('button', { name: 'Gestión' }).click();
+    await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
 
     await expect(altContactNameInput).toHaveValue('Carlos Martinez');
     await expect(altContactPhoneInput).toHaveValue('3001234567');
@@ -331,7 +480,7 @@ test.describe('CRM Expedientes - Sección Contacto: altContactName y altContactP
     await altContactNameInput.clear();
     await altContactPhoneInput.clear();
 
-    await page.getByRole('button', { name: /guardar sección/i }).click();
+    await page.getByRole('button', { name: /guardar cambios/i }).nth(1).click();
     await expect(page.getByText(/sección actualizada correctamente/i)).toBeVisible();
 
     const clearedPayload = mocks.getSavedContactPayload();
@@ -342,12 +491,8 @@ test.describe('CRM Expedientes - Sección Contacto: altContactName y altContactP
 
     await page.reload();
     await page.waitForLoadState('networkidle');
-
-    await page
-      .getByRole('button', { name: /contacto/i })
-      .first()
-      .click();
-    await page.waitForLoadState('networkidle');
+    await page.getByRole('button', { name: 'Gestión' }).click();
+    await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
 
     await expect(altContactNameInput).toHaveValue('');
     await expect(altContactPhoneInput).toHaveValue('');
@@ -358,12 +503,8 @@ test.describe('CRM Expedientes - Sección Contacto: altContactName y altContactP
     await setAuthSession(page);
     await page.goto(`http://127.0.0.1:3002/dashboard/crm/expedientes/${mockExpediente.id}`);
     await page.waitForLoadState('networkidle');
-
-    await page
-      .getByRole('button', { name: /contacto/i })
-      .first()
-      .click();
-    await page.waitForLoadState('networkidle');
+    await page.getByRole('button', { name: 'Gestión' }).click();
+    await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
 
     const altContactPhoneInput = page.getByLabel(/teléfono contacto alternativo/i);
     await expect(altContactPhoneInput).toBeVisible();

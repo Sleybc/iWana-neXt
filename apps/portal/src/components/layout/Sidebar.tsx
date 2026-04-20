@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   BarChart3,
   BriefcaseBusiness,
+  HandCoins,
   X,
 } from 'lucide-react';
 import { cn } from '@iwana/ui';
@@ -36,6 +37,7 @@ const DESKTOP_STORAGE_KEY = 'iwana-portal-sidebar-collapsed';
  */
 const navItems = [
   { href: '/dashboard', label: 'Inicio', icon: LayoutDashboard, disabled: false },
+  { href: '/dashboard/commercial', label: 'Comercial', icon: HandCoins, disabled: false },
   { href: '/dashboard/crm', label: 'CRM', icon: BriefcaseBusiness, disabled: false },
   { href: '/dashboard/crm/subscribers', label: 'Suscriptores', icon: Users, disabled: false },
   { href: '/dashboard/settings', label: 'Configuración', icon: Settings, disabled: false },

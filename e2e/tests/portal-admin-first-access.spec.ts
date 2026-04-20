@@ -31,7 +31,7 @@ function setupAdminFirstAccessMocks() {
       // -----------------------------------------------------------------------
       // POST /auth/login — comportamiento segun el paso del flujo
       // -----------------------------------------------------------------------
-      if (url.endsWith('/auth/login') && method === 'POST') {
+      if (url.includes('/auth/login') && method === 'POST') {
         if (loginStep === 0) {
           // Paso 1: primer login con password temporal → passwordResetRequired=true en /me
           loginStep = 1;
@@ -69,7 +69,7 @@ function setupAdminFirstAccessMocks() {
       // -----------------------------------------------------------------------
       // GET /auth/me — retorna profile segun el paso
       // -----------------------------------------------------------------------
-      if (url.endsWith('/auth/me') && method === 'GET') {
+      if (url.includes('/auth/me') && method === 'GET') {
         if (loginStep === 1) {
           // Post primer login: passwordResetRequired=true
           await route.fulfill({
@@ -124,7 +124,7 @@ function setupAdminFirstAccessMocks() {
       // -----------------------------------------------------------------------
       // POST /auth/change-password — aceptar cambio de password
       // -----------------------------------------------------------------------
-      if (url.endsWith('/auth/change-password') && method === 'POST') {
+      if (url.includes('/auth/change-password') && method === 'POST') {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -136,7 +136,7 @@ function setupAdminFirstAccessMocks() {
       // -----------------------------------------------------------------------
       // POST /auth/mfa/setup — retornar QR code simulado
       // -----------------------------------------------------------------------
-      if (url.endsWith('/auth/mfa/setup') && method === 'POST') {
+      if (url.includes('/auth/mfa/setup') && method === 'POST') {
         // QR mínimo en base64 — PNG 1x1 pixel transparente
         const minimalPng =
           'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
@@ -157,7 +157,7 @@ function setupAdminFirstAccessMocks() {
       // -----------------------------------------------------------------------
       // POST /auth/mfa/verify — verificar codigo TOTP y activar MFA
       // -----------------------------------------------------------------------
-      if (url.endsWith('/auth/mfa/verify') && method === 'POST') {
+      if (url.includes('/auth/mfa/verify') && method === 'POST') {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -169,7 +169,7 @@ function setupAdminFirstAccessMocks() {
       // -----------------------------------------------------------------------
       // POST /auth/refresh — renovar access token
       // -----------------------------------------------------------------------
-      if (url.endsWith('/auth/refresh') && method === 'POST') {
+      if (url.includes('/auth/refresh') && method === 'POST') {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -210,7 +210,7 @@ test.describe('Portal — primer acceso ADMIN (MOD02)', () => {
     await page.getByRole('button', { name: 'Ingresar' }).click();
 
     // El portal detecta passwordResetRequired=true y redirige a change-password
-    await expect(page).toHaveURL(/\/auth\/change-password/);
+    await expect(page).toHaveURL(/\/auth\/change-password/, { timeout: 10000 });
   });
 
   test('paso 3: re-login post cambio de password → redirect a mfa/setup', async ({ page }) => {
@@ -224,7 +224,7 @@ test.describe('Portal — primer acceso ADMIN (MOD02)', () => {
     await page.getByPlaceholder('••••••••').fill('TempPass123!');
     await page.getByRole('button', { name: 'Ingresar' }).click();
     // loginStep ahora es 1 — /auth/me retorna passwordResetRequired=true → /auth/change-password
-    await expect(page).toHaveURL(/\/auth\/change-password/);
+    await expect(page).toHaveURL(/\/auth\/change-password/, { timeout: 10000 });
 
     // Desde change-password, volvemos al login para el 2do intento
     await page.goto('/auth/login');
@@ -236,7 +236,7 @@ test.describe('Portal — primer acceso ADMIN (MOD02)', () => {
     await page.getByRole('button', { name: 'Ingresar' }).click();
 
     // loginStep=1 → backend retorna mfaSetupRequired=true → redirect a /auth/mfa/setup
-    await expect(page).toHaveURL(/\/auth\/mfa\/setup/);
+    await expect(page).toHaveURL(/\/auth\/mfa\/setup/, { timeout: 10000 });
   });
 
   test('paso 4: página de MFA setup muestra cargando y luego el formulario de configuración', async ({

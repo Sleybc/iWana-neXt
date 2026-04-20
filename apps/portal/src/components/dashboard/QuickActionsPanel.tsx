@@ -1,7 +1,7 @@
 // apps/portal/src/components/dashboard/QuickActionsPanel.tsx
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@iwana/ui';
-import { Settings, Users, ShieldCheck, BarChart3, ArrowRight, Zap } from 'lucide-react';
+import { Settings, Users, ShieldCheck, BarChart3, ArrowRight, Zap, HandCoins } from 'lucide-react';
 
 interface QuickAction {
   label: string;
@@ -14,25 +14,32 @@ interface QuickAction {
 /**
  * Accesos rápidos del dashboard empresarial.
  *
- * Ítems disponibles en MVP: /settings.
+ * Ítems disponibles en MVP: /dashboard/settings, /dashboard/commercial.
  * Módulos futuros marcados como no disponibles — no generan 404.
  *
  * HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §2.2 (BT-DE-11)
  */
 const quickActions: QuickAction[] = [
   {
+    label: 'Comercial',
+    description: 'Catálogo comercial, precios vigentes y reglas operativas',
+    href: '/dashboard/commercial',
+    icon: HandCoins,
+    available: true,
+  },
+  {
     label: 'Configuración',
     description: 'Zona horaria, moneda y datos de empresa',
-    href: '/settings',
+    href: '/dashboard/settings',
     icon: Settings,
     available: true,
   },
   {
     label: 'Usuarios',
     description: 'Gestión de usuarios y roles del equipo',
-    href: '/users',
+    href: '/dashboard/users',
     icon: Users,
-    available: false,
+    available: true,
   },
   {
     label: 'Seguridad',
@@ -62,7 +69,8 @@ export function QuickActionsPanel() {
           Accesos rápidos
         </CardTitle>
         <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
-          Entradas directas al autoservicio ya disponible y visibilidad controlada del roadmap del portal.
+          Entradas directas al autoservicio ya disponible y visibilidad controlada del roadmap del
+          portal.
         </p>
       </CardHeader>
       <CardContent>

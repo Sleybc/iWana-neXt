@@ -40,11 +40,14 @@ const mockExpediente = {
   phonePrimaryEncrypted: 'enc-telefono-demo',
   phoneSecondaryEncrypted: null,
   emailPrimaryEncrypted: null,
+  acquisitionChannel: 'REFERRAL',
+  sourceDetail: 'Aliado estratégico',
   source: 'Manual',
   address: 'Calle 10 # 20-30',
   municipality: 'Bogotá',
   department: 'Cundinamarca',
   interestedPlanId: 'plan-500',
+  additionalProductIds: ['prod-router'],
   completenessCommercial: 70,
   completenessLegal: 50,
   completenessTechnical: 40,
@@ -175,6 +178,62 @@ async function setupMocks(page: import('@playwright/test').Page) {
         }),
       });
       return;
+    }
+
+    if (pathname.endsWith('/commercial/catalog') && method === 'GET') {
+      const type = new URL(url).searchParams.get('type');
+      if (type === 'PLAN') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: [
+              {
+                id: 'plan-500',
+                type: 'PLAN',
+                name: 'Plan Fibra 500',
+                description: null,
+                taxClassificationId: null,
+                retentionApplicable: false,
+                isActive: true,
+                technology: 'FTTH',
+                installationRule: 'ON_DEMAND',
+                downloadSpeedMbps: 500,
+                uploadSpeedMbps: 500,
+                currentPrice: '109900.00',
+                installationFee: '0.00',
+              },
+            ],
+            meta: { total: 1 },
+          }),
+        });
+        return;
+      }
+
+      if (type === 'PRODUCT') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: [
+              {
+                id: 'prod-router',
+                type: 'PRODUCT',
+                name: 'Router WiFi 6',
+                description: null,
+                taxClassificationId: null,
+                retentionApplicable: false,
+                isActive: true,
+                category: 'CPE',
+                isLoan: true,
+                requiresInventory: true,
+              },
+            ],
+            meta: { total: 1 },
+          }),
+        });
+        return;
+      }
     }
 
     if (pathname.endsWith('/crm/pipeline/summary') && method === 'GET') {
@@ -315,8 +374,10 @@ async function setupMocks(page: import('@playwright/test').Page) {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          data: mockUsers,
-          meta: { nextCursor: null, total: mockUsers.length },
+          data: {
+            data: mockUsers,
+            meta: { nextCursor: null, total: mockUsers.length },
+          },
         }),
       });
       return;
@@ -378,110 +439,128 @@ async function setupMocks(page: import('@playwright/test').Page) {
 }
 
 test.describe('CRM Gestion Comercial y Operativa — MOD05 Fase 01', () => {
-  test('renders unified section with all sub-blocks', async ({ page }) => {
+  test('renderiza el tab Seguimiento con bloques operativos vigentes', async ({ page }) => {
     await setupMocks(page);
     await setAuthSession(page);
     await page.goto(`/dashboard/crm/expedientes/${mockExpedienteId}`);
     await page.waitForLoadState('networkidle');
 
-    await expect(
-      page.getByRole('heading', { name: /gestión comercial y operativa/i }),
-    ).toBeVisible();
+    await page.getByText('Seguimiento', { exact: true }).click();
+
+    await expect(page.getByText('Responsable', { exact: true })).toBeVisible();
+    await expect(page.getByText('Originador', { exact: true })).toBeVisible();
+    await expect(page.getByText('Interés del cliente', { exact: true })).toBeVisible();
+    await expect(page.getByText('Origen', { exact: true })).toBeVisible();
   });
 
-  test('Responsable actual block appears first with highlighted background', async ({ page }) => {
+  test('bloque de responsable muestra al responsable actual', async ({ page }) => {
     await setupMocks(page);
     await setAuthSession(page);
     await page.goto(`/dashboard/crm/expedientes/${mockExpedienteId}`);
     await page.waitForLoadState('networkidle');
 
-    const section = page.locator('text=Responsable actual').first();
-    await expect(section).toBeVisible();
-
-    const parent = section.locator('..').locator('..');
-    const bgClass = await parent.getAttribute('class');
-    expect(bgClass ?? '').toMatch(/bg-iwana-primary/i);
+    await page.getByText('Seguimiento', { exact: true }).click();
+    await expect(page.getByText('Responsable', { exact: true })).toBeVisible();
+    await expect(page.getByText('Laura Pérez', { exact: false }).first()).toBeVisible();
   });
 
-  test('Responsable actual displays name, role and assignment date', async ({ page }) => {
+  test('responsable actual muestra nombre, rol y fecha de asignación', async ({ page }) => {
     await setupMocks(page);
     await setAuthSession(page);
     await page.goto(`/dashboard/crm/expedientes/${mockExpedienteId}`);
     await page.waitForLoadState('networkidle');
+
+    await page.getByText('Seguimiento', { exact: true }).click();
 
     await expect(page.getByText('Laura Pérez', { exact: false }).first()).toBeVisible();
     await expect(page.getByText(/admin/i).first()).toBeVisible();
+    await expect(page.getByText(/desde/i).first()).toBeVisible();
   });
 
-  test('Interes del cliente sub-block renders without attribution label', async ({ page }) => {
+  test('interés del cliente muestra plan y producto adicional', async ({ page }) => {
     await setupMocks(page);
     await setAuthSession(page);
     await page.goto(`/dashboard/crm/expedientes/${mockExpedienteId}`);
     await page.waitForLoadState('networkidle');
+
+    await page.getByText('Seguimiento', { exact: true }).click();
 
     await expect(page.getByText('Interés del cliente', { exact: true })).toBeVisible();
-    await expect(page.getByText('Plan:')).toBeVisible();
+    await expect(page.getByText('Plan Fibra 500')).toBeVisible();
+    await expect(page.getByText('Router WiFi 6')).toBeVisible();
   });
 
-  test('Origen de la oportunidad shows canal and detalle', async ({ page }) => {
+  test('origen muestra el canal comercial activo', async ({ page }) => {
     await setupMocks(page);
     await setAuthSession(page);
     await page.goto(`/dashboard/crm/expedientes/${mockExpedienteId}`);
     await page.waitForLoadState('networkidle');
 
-    await expect(page.getByText('Origen de la oportunidad', { exact: true })).toBeVisible();
-    await expect(page.getByText(/canal:/i)).toBeVisible();
-    await expect(page.getByText(/detalle:/i)).toBeVisible();
+    await page.getByText('Seguimiento', { exact: true }).click();
+
+    const originBlock = page.locator('aside > div').filter({
+      has: page.getByText('Origen', { exact: true }),
+    });
+
+    await expect(originBlock.getByText('Origen', { exact: true })).toBeVisible();
+    await expect(originBlock.getByText('REFERRAL', { exact: true })).toBeVisible();
+    await expect(originBlock.getByText('Aliado estratégico', { exact: true })).toBeVisible();
   });
 
-  test('Atribucion comercial block shows originador', async ({ page }) => {
+  test('bloque de originador muestra la atribución comercial activa', async ({ page }) => {
     await setupMocks(page);
     await setAuthSession(page);
     await page.goto(`/dashboard/crm/expedientes/${mockExpedienteId}`);
     await page.waitForLoadState('networkidle');
 
-    await expect(page.getByText('Atribución comercial', { exact: true })).toBeVisible();
-    await expect(page.getByText(/originador/i)).toBeVisible();
-    await expect(page.getByText('Laura Pérez', { exact: false })).toBeVisible();
+    await page.getByText('Seguimiento', { exact: true }).click();
+
+    const originatorBlock = page.locator('aside > div').filter({
+      has: page.getByText('Originador', { exact: true }),
+    });
+
+    await expect(originatorBlock.getByText('Originador', { exact: true })).toBeVisible();
+    await expect(originatorBlock.getByText('Laura Pérez', { exact: true })).toBeVisible();
+    await expect(originatorBlock.getByText('ADMIN', { exact: true })).toBeVisible();
   });
 
-  test('two separate history blocks exist — historial comercial and historial operativo', async ({
-    page,
-  }) => {
+  test('bitácora unificada expone filtros de pipeline y asignaciones', async ({ page }) => {
     await setupMocks(page);
     await setAuthSession(page);
     await page.goto(`/dashboard/crm/expedientes/${mockExpedienteId}`);
     await page.waitForLoadState('networkidle');
 
-    const historialComercial = page.getByText('Historial comercial', { exact: true });
-    const historialOperativo = page.getByText('Historial operativo', { exact: true });
+    await page.getByText('Seguimiento', { exact: true }).click();
 
-    await expect(historialComercial).toBeVisible();
-    await expect(historialOperativo).toBeVisible();
-
-    const commercialCount = await page.getByText('Historial comercial').count();
-    const operativeCount = await page.getByText('Historial operativo').count();
-    expect(commercialCount).toBe(1);
-    expect(operativeCount).toBe(1);
+    await expect(page.getByText(/bitácora de actividad/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Pipeline' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Asignaciones' })).toBeVisible();
   });
 
-  test('historial operativo shows previous and new responsible on reasign', async ({ page }) => {
+  test('bitácora muestra responsables previo y actual', async ({ page }) => {
     await setupMocks(page);
     await setAuthSession(page);
     await page.goto(`/dashboard/crm/expedientes/${mockExpedienteId}`);
     await page.waitForLoadState('networkidle');
 
-    await expect(page.getByText('Carlos García', { exact: false })).toBeVisible();
-    await expect(page.getByText('Laura Pérez', { exact: false })).toBeVisible();
+    await page.getByText('Seguimiento', { exact: true }).click();
+
+    const responsibilityEntry = page.locator('div').filter({
+      has: page.getByText('Cambio de responsable', { exact: true }),
+    }).first();
+
+    await expect(responsibilityEntry.getByText('Anterior: Carlos García', { exact: true })).toBeVisible();
+    await expect(responsibilityEntry.getByText('Nuevo rol: ADMIN', { exact: true })).toBeVisible();
   });
 
-  test('reasign button opens responsibility form', async ({ page }) => {
-    const mocks = await setupMocks(page);
+  test('reasignar responsable abre el formulario vigente', async ({ page }) => {
+    await setupMocks(page);
     await setAuthSession(page);
     await page.goto(`/dashboard/crm/expedientes/${mockExpedienteId}`);
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('button', { name: /reasignar/i }).click();
+    await page.getByText('Seguimiento', { exact: true }).click();
+    await page.getByRole('button', { name: /reasignar responsable/i }).click();
 
     await expect(page.getByLabel('Nuevo responsable')).toBeVisible();
     await expect(page.getByLabel('Notas (opcional)')).toBeVisible();
@@ -494,12 +573,17 @@ test.describe('CRM Gestion Comercial y Operativa — MOD05 Fase 01', () => {
     await page.goto(`/dashboard/crm/expedientes/${mockExpedienteId}`);
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('button', { name: /reasignar/i }).click();
-    await page.waitForTimeout(300);
+    await page.getByText('Seguimiento', { exact: true }).click();
+    await page.getByRole('button', { name: /reasignar responsable/i }).click();
 
-    await page.locator('#responsibility-user').selectOption('user-uuid-advisor-2');
-    await page.getByLabel('Notas (opcional)').fill('Caso reasignado a María');
-    await page.getByRole('button', { name: /guardar responsable/i }).click();
+    const responsibilityPanel = page.locator('div').filter({
+      has: page.getByText('Reasignar responsable', { exact: true }),
+    }).first();
+
+    await responsibilityPanel.getByRole('button', { name: /selecciona un usuario activo/i }).click();
+    await page.getByRole('option', { name: /María López/i }).click();
+    await responsibilityPanel.getByLabel('Notas (opcional)').fill('Caso reasignado a María');
+    await responsibilityPanel.getByRole('button', { name: /guardar responsable/i }).click();
 
     await expect(page.getByText(/responsable actualizado/i)).toBeVisible({ timeout: 5000 });
 
@@ -516,10 +600,14 @@ test.describe('CRM Gestion Comercial y Operativa — MOD05 Fase 01', () => {
     await page.goto(`/dashboard/crm/expedientes/${mockExpedienteId}`);
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('button', { name: /reasignar/i }).click();
-    await expect(page.getByLabel('Nuevo responsable')).toBeVisible();
+    await page.getByText('Seguimiento', { exact: true }).click();
+    await page.getByRole('button', { name: /reasignar responsable/i }).click();
+    const responsibilityPanel = page.locator('div').filter({
+      has: page.getByText('Reasignar responsable', { exact: true }),
+    }).first();
+    await expect(responsibilityPanel.getByLabel('Nuevo responsable')).toBeVisible();
 
-    await page.getByRole('button', { name: /cancelar/i }).click();
+    await responsibilityPanel.getByRole('button', { name: 'Cancelar' }).nth(1).click();
     await expect(page.getByLabel('Nuevo responsable')).not.toBeVisible();
   });
 
@@ -529,10 +617,14 @@ test.describe('CRM Gestion Comercial y Operativa — MOD05 Fase 01', () => {
     await page.goto(`/dashboard/crm/expedientes/${mockExpedienteId}`);
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('button', { name: /reasignar/i }).click();
-    await page.waitForTimeout(300);
-    await page.locator('#responsibility-user').selectOption('user-uuid-advisor-2');
-    await page.getByRole('button', { name: /guardar responsable/i }).click();
+    await page.getByText('Seguimiento', { exact: true }).click();
+    await page.getByRole('button', { name: /reasignar responsable/i }).click();
+    const responsibilityPanel = page.locator('div').filter({
+      has: page.getByText('Reasignar responsable', { exact: true }),
+    }).first();
+    await responsibilityPanel.getByRole('button', { name: /selecciona un usuario activo/i }).click();
+    await page.getByRole('option', { name: /María López/i }).click();
+    await responsibilityPanel.getByRole('button', { name: /guardar responsable/i }).click();
 
     await page.waitForLoadState('networkidle');
     const payload = mocks.getCapturedResponsibilityPayload();

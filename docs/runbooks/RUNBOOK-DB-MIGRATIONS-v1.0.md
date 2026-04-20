@@ -2,8 +2,8 @@
 
 **Tipo:** Runbook operativo
 **Módulo:** TRANSVERSAL — Base de datos / Tenancy
-**Versión:** 1.0
-**Fecha:** 2026-03-17
+**Versión:** 1.1
+**Fecha:** 2026-04-18
 **Autor:** AI-EM-ARCH
 **Referencia:** [ADR-017](../adrs/ADR-017-Provisioning-Schema-BullMQ.md) | [ADR-018](../adrs/ADR-018-Ciclo-Vida-Tenant.md)
 
@@ -72,29 +72,45 @@ pnpm --filter @iwana/db migration:revert
 pnpm --filter @iwana/db migration:tenant:run
 ```
 
+### Preflight recomendado
+
+Antes de ejecutar el runner tenant en una ventana productiva:
+
+```sql
+SELECT id, slug, schema_name, status
+FROM public.tenants
+WHERE status = 'ACTIVE'
+ORDER BY created_at ASC;
+```
+
+Esto define el alcance real del cambio, porque el runner opera sobre todos los tenants activos.
+
 ### Cómo funciona
 
-- El runner operativo vive en `packages/database/src/migrations/tenant/run-all.ts`.
-- En `dist`, descubre automáticamente archivos con convención `NNN_*.js`.
-- Ejecuta las migraciones tenant en orden lexicográfico ascendente por prefijo numérico.
-- Cada módulo debe exportar `runMigration(dataSource)`.
+- El CLI operativo vive en `packages/database/src/cli/tenant-migrate.ts`.
+- La orquestación tenant vive en `packages/database/src/migrations/tenant/runner.ts`.
+- El runner consulta `public.tenants` con `status = 'ACTIVE'` y migra cada `schema_name`.
+- Usa `pg_advisory_lock(42, 1001)` para evitar ejecuciones concurrentes del runner.
+- Para cada tenant crea un `DataSource` aislado con `search_path` forzado al schema objetivo.
+- La lista de migraciones tenant se registra explícitamente en `TENANT_MIGRATIONS` (no descubrimiento por glob).
 
 ### Señales esperadas en salida
 
 ```text
-[tenant-migration] Ejecutando N migracion(es) tenant...
-[tenant-migration] → 003_add_user_profile_fields.js
-[tenant-migration] ✓ tenant_xxx
-[tenant-migration] → 004_add_mfa_required_to_users.js
+[MIGRATOR] Global lock acquired
+[MIGRATOR] Starting migrations for N tenant(s)
+[MIGRATOR] Migrating tenant_xxx
+[MIGRATOR] Done tenant_xxx in 123ms
+[MIGRATOR] Global lock released
 ```
 
 ### Fallos esperables
 
 | Falla | Indicador | Acción |
 | --- | --- | --- |
-| Módulo sin `runMigration(dataSource)` | `no exporta runMigration(dataSource)` | Corregir el archivo de migración antes de reintentar. |
 | Schema inválido | `Schema name invalido` | Revisar datos en `public.tenants`; no forzar ejecución manual. |
 | Resultado parcial por tenant | logs `✗ tenant_xxx` y error final | Revisar schema afectado antes de reintentar globalmente. |
+| Migración no registrada en runner | no aparece en ejecución pese a existir archivo | Agregar la clase al array `TENANT_MIGRATIONS` en `runner.ts` y rebuild de `@iwana/db`. |
 
 ---
 
@@ -152,4 +168,5 @@ ORDER BY ordinal_position;
 - `packages/database/package.json`
 - `packages/database/src/data-source.ts`
 - `packages/database/src/migrations/public/`
-- `packages/database/src/migrations/tenant/run-all.ts`
+- `packages/database/src/migrations/tenant/runner.ts`
+- `packages/database/src/cli/tenant-migrate.ts`

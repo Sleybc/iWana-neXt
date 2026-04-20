@@ -1,13 +1,9 @@
 'use client';
 
 import { Select } from '@iwana/ui';
-import {
-  DEFAULT_PRODUCTS,
-  EMPTY_VALUE,
-  FIELD_LABELS,
-} from './constants';
+import { EMPTY_VALUE, FIELD_LABELS } from './constants';
 import type { DraftValues } from './types';
-import type { PlanCatalogItem } from '@/lib/api-client';
+import type { AdditionalProduct, PlanCatalogItem } from '@/lib/api-client';
 
 interface CommercialInterestSectionProps {
   draftValues: DraftValues;
@@ -15,12 +11,14 @@ interface CommercialInterestSectionProps {
   saving: boolean;
   onSave: () => void;
   planCatalog: PlanCatalogItem[];
+  additionalProducts: AdditionalProduct[];
 }
 
 export function CommercialInterestSection({
   draftValues,
   onChange,
   planCatalog,
+  additionalProducts,
 }: CommercialInterestSectionProps) {
   const selectedProductIds: string[] = (() => {
     try {
@@ -62,7 +60,7 @@ export function CommercialInterestSection({
           {FIELD_LABELS.additionalProductIds}
         </label>
         <div className="grid gap-2 rounded-[20px] border border-gray-100 bg-gray-50 p-4 shadow-[var(--shadow-iwana-card)] md:grid-cols-2 dark:border-dark-border dark:bg-dark-surface">
-          {DEFAULT_PRODUCTS.map((product) => (
+          {additionalProducts.map((product) => (
             <label
               key={product.id}
               className="flex cursor-pointer items-center gap-2 rounded-xl px-2 py-2 transition-colors hover:bg-white dark:hover:bg-dark-surface-3"
@@ -76,9 +74,13 @@ export function CommercialInterestSection({
               <span className="text-sm text-gray-700 dark:text-gray-200">{product.name}</span>
             </label>
           ))}
+          {additionalProducts.length === 0 && (
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              No hay productos comerciales activos para este tenant.
+            </p>
+          )}
         </div>
       </div>
-
     </div>
   );
 }

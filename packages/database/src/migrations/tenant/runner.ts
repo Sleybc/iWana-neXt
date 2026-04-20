@@ -11,6 +11,9 @@ import { ConsolidateExpedientePipeline1700000000013 } from './013_consolidate_ex
 import { AddSubscriberHashColumns1700000000014 } from './014_add_subscriber_hash_columns';
 import { AddSubscriberConversionFields1700000000015 } from './015_add_subscriber_conversion_fields';
 import { AddSubscriberAlternateContactFields1700000000016 } from './016_add_subscriber_alternate_contact_fields';
+import { CreateCommercialModule1700000000017 } from './017_create_commercial_module';
+import { MigrateCatalogData1700000000018 } from './018_migrate_catalog_data';
+import { SeedCommercialDefaultTaxRules1700000000019 } from './019_seed_commercial_default_tax_rules';
 
 const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   InitialTenantSchema1700000000000,
@@ -25,6 +28,9 @@ const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   AddSubscriberHashColumns1700000000014,
   AddSubscriberConversionFields1700000000015,
   AddSubscriberAlternateContactFields1700000000016,
+  CreateCommercialModule1700000000017,
+  MigrateCatalogData1700000000018,
+  SeedCommercialDefaultTaxRules1700000000019,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

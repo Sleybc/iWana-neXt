@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { CheckCircle2, CircleAlert, Layers3, Sparkles } from 'lucide-react';
+import { CheckCircle2, CircleAlert, Layers3, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -24,16 +24,16 @@ import {
 } from '@iwana/ui';
 import {
   ApiError,
-  tenantSelfApi,
+  commercialApi,
   type CreatePlanCatalogItemDto,
   type PlanCatalogItem,
   type PlanInstallationRule,
   type UpdatePlanCatalogItemDto,
 } from '@/lib/api-client';
+import { InstallationRule } from '@iwana/shared';
 
 interface PlanCatalogManagerProps {
   canEdit: boolean;
-  fiberThresholdMeters: number;
 }
 
 type SpeedMode = 'SYMMETRIC' | 'ASYMMETRIC';
@@ -56,7 +56,7 @@ const planFormSchema = z
     basePrice: z.number().min(0, 'El precio no puede ser negativo.'),
     installationEnabled: z.boolean(),
     installationFee: z.number().min(0, 'El valor no puede ser negativo.'),
-    installationRule: z.enum(['NONE', 'ALWAYS', 'FIBER_DROP_THRESHOLD']),
+    installationRule: z.nativeEnum(InstallationRule),
   })
   .superRefine((value, ctx) => {
     if (value.speedMode === 'SYMMETRIC' && value.downloadSpeedMbps !== value.uploadSpeedMbps) {
@@ -67,7 +67,7 @@ const planFormSchema = z
       });
     }
 
-    if (value.installationEnabled && value.installationRule === 'NONE') {
+    if (value.installationEnabled && value.installationRule === 'NEVER') {
       ctx.addIssue({
         path: ['installationRule'],
         code: z.ZodIssueCode.custom,
@@ -79,6 +79,43 @@ const planFormSchema = z
 type PlanFormValues = z.infer<typeof planFormSchema>;
 
 const TECHNOLOGY_SUGGESTIONS = ['FTTH', 'GPON', 'XGS-PON', 'HFC', 'WIFI6', 'WIFI5'];
+const TECHNOLOGY_OPTIONS_STORAGE_KEY = 'iwana.portal.commercial.plan-technology-options';
+
+/** Lee tecnologías del localStorage; retorna los defaults si no hay datos o están corruptos. */
+function loadPersistedTechnologies(): string[] {
+  if (typeof window === 'undefined') {
+    return mergeTechnologyOptions([], TECHNOLOGY_SUGGESTIONS);
+  }
+  try {
+    const stored = window.localStorage.getItem(TECHNOLOGY_OPTIONS_STORAGE_KEY);
+    if (stored) {
+      const parsed: unknown = JSON.parse(stored);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const valid = (parsed as unknown[]).filter(
+          (item): item is string => typeof item === 'string' && item.trim().length > 0,
+        );
+        if (valid.length > 0) {
+          return mergeTechnologyOptions([], valid);
+        }
+      }
+    }
+  } catch {
+    // localStorage no accesible — usar defaults.
+  }
+  return mergeTechnologyOptions([], TECHNOLOGY_SUGGESTIONS);
+}
+
+/** Escribe tecnologías al localStorage de forma síncrona. */
+function persistTechnologies(options: string[]): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    window.localStorage.setItem(TECHNOLOGY_OPTIONS_STORAGE_KEY, JSON.stringify(options));
+  } catch {
+    // localStorage no disponible (incógnito bloqueado, cuota llena, etc.).
+  }
+}
 
 const tableHeadClass =
   'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500';
@@ -102,8 +139,8 @@ function formatSpeed(plan: PlanCatalogItem): string {
   return `${plan.downloadSpeedMbps}↓ / ${plan.uploadSpeedMbps}↑ Mbps`;
 }
 
-function formatInstallationText(plan: PlanCatalogItem, fiberThresholdMeters: number): string {
-  if (plan.installationRule === 'NONE') {
+function formatInstallationText(plan: PlanCatalogItem): string {
+  if (plan.installationRule === 'NEVER') {
     return 'Sin instalación';
   }
 
@@ -111,7 +148,7 @@ function formatInstallationText(plan: PlanCatalogItem, fiberThresholdMeters: num
     return `Siempre ${formatMoney(parseMoneyFromApi(plan.installationFee))}`;
   }
 
-  return `Gratis hasta ${fiberThresholdMeters} m, luego ${formatMoney(parseMoneyFromApi(plan.installationFee))}`;
+  return `Bajo demanda (${formatMoney(parseMoneyFromApi(plan.installationFee))})`;
 }
 
 function mapLoadError(error: unknown): string {
@@ -131,6 +168,28 @@ function mapMutationError(error: unknown): string {
   return 'No fue posible guardar el plan. Intenta de nuevo.';
 }
 
+function normalizeTechnologyName(value: string): string {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
+function mergeTechnologyOptions(current: string[], incoming: string[]): string[] {
+  const unique = new Map<string, string>();
+
+  [...current, ...incoming].forEach((item) => {
+    const normalized = normalizeTechnologyName(item);
+    if (!normalized) {
+      return;
+    }
+
+    const key = normalized.toLowerCase();
+    if (!unique.has(key)) {
+      unique.set(key, normalized);
+    }
+  });
+
+  return [...unique.values()].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+}
+
 function toFormValues(plan: PlanCatalogItem): PlanFormValues {
   const symmetric = plan.downloadSpeedMbps === plan.uploadSpeedMbps;
   return {
@@ -140,21 +199,25 @@ function toFormValues(plan: PlanCatalogItem): PlanFormValues {
     downloadSpeedMbps: plan.downloadSpeedMbps,
     uploadSpeedMbps: plan.uploadSpeedMbps,
     basePrice: parseMoneyFromApi(plan.basePrice),
-    installationEnabled: plan.installationRule !== 'NONE',
+    installationEnabled: plan.installationRule !== 'NEVER',
     installationFee: parseMoneyFromApi(plan.installationFee),
     installationRule: plan.installationRule,
   };
 }
 
-export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalogManagerProps) {
+export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
   const [plans, setPlans] = useState<PlanCatalogItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [serverMessage, setServerMessage] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
-  const [busySwitchPlanId, setBusySwitchPlanId] = useState<string | null>(null);
   const [deletingPlanId, setDeletingPlanId] = useState<string | null>(null);
+  // Inicialmente vacío para evitar mismatch SSR/cliente. El useEffect de mount carga desde localStorage.
+  const [technologyOptions, setTechnologyOptions] = useState<string[]>([]);
+  const [technologyDraft, setTechnologyDraft] = useState('');
+  const [editingTechnologyOriginal, setEditingTechnologyOriginal] = useState<string | null>(null);
+  const [editingTechnologyDraft, setEditingTechnologyDraft] = useState('');
 
   const activePlansCount = useMemo(() => plans.filter((item) => item.isActive).length, [plans]);
 
@@ -165,7 +228,8 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
         return a.isActive ? -1 : 1;
       }
 
-      const createdAtDiff = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      const createdAtDiff =
+        new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
       if (createdAtDiff !== 0) {
         return createdAtDiff;
       }
@@ -178,6 +242,23 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
     () => plans.find((plan) => plan.id === editingPlanId) ?? null,
     [plans, editingPlanId],
   );
+
+  const technologiesInActivePlans = useMemo(() => {
+    const usedByActive = new Set<string>();
+
+    plans.forEach((plan) => {
+      if (!plan.isActive) {
+        return;
+      }
+
+      const normalized = normalizeTechnologyName(plan.technology).toLowerCase();
+      if (normalized) {
+        usedByActive.add(normalized);
+      }
+    });
+
+    return usedByActive;
+  }, [plans]);
 
   const {
     register,
@@ -197,7 +278,7 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
       basePrice: 120000,
       installationEnabled: true,
       installationFee: 120000,
-      installationRule: 'FIBER_DROP_THRESHOLD',
+      installationRule: InstallationRule.ON_DEMAND,
     },
   });
 
@@ -205,6 +286,21 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
   const installationEnabled = watch('installationEnabled');
   const installationRule = watch('installationRule');
   const downloadSpeed = watch('downloadSpeedMbps');
+  const selectedTechnology = watch('technology');
+
+  // Mientras el mount effect no ha cargado desde localStorage (estado vacío), usa suggestions de default.
+  const effectiveTechnologyOptions =
+    technologyOptions.length > 0
+      ? technologyOptions
+      : mergeTechnologyOptions([], TECHNOLOGY_SUGGESTIONS);
+
+  const selectTechnologyOptions = useMemo(() => {
+    if (!selectedTechnology) {
+      return effectiveTechnologyOptions;
+    }
+
+    return mergeTechnologyOptions(effectiveTechnologyOptions, [selectedTechnology]);
+  }, [effectiveTechnologyOptions, selectedTechnology]);
 
   useEffect(() => {
     if (speedMode === 'SYMMETRIC') {
@@ -214,15 +310,15 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
 
   useEffect(() => {
     if (!installationEnabled) {
-      setValue('installationRule', 'NONE', { shouldValidate: true });
+      setValue('installationRule', InstallationRule.NEVER, { shouldValidate: true });
       setValue('installationFee', 0, { shouldValidate: true });
     }
   }, [installationEnabled, setValue]);
 
   useEffect(() => {
-    if (installationEnabled && installationRule === 'NONE') {
+    if (installationEnabled && installationRule === 'NEVER') {
       // Cuando se habilita instalación, forzamos una regla válida para evitar estado inconsistente.
-      setValue('installationRule', 'FIBER_DROP_THRESHOLD', { shouldValidate: true });
+      setValue('installationRule', InstallationRule.ON_DEMAND, { shouldValidate: true });
     }
   }, [installationEnabled, installationRule, setValue]);
 
@@ -230,7 +326,7 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
     setIsLoading(true);
     setLoadError(null);
     try {
-      const data = await tenantSelfApi.getPlans();
+      const data = await commercialApi.getPlans();
       setPlans(data);
     } catch (error) {
       setLoadError(mapLoadError(error));
@@ -243,9 +339,18 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
     void loadPlans();
   }, []);
 
+  // Carga tecnologías desde localStorage una sola vez al montar. La escritura se hace de forma
+  // síncrona en cada handler (persistTechnologies) para evitar race conditions con React StrictMode.
+  useEffect(() => {
+    setTechnologyOptions(loadPersistedTechnologies());
+  }, []);
+
   const handleOpenCreateDialog = () => {
     setEditingPlanId(null);
     setServerMessage(null);
+    setTechnologyDraft('');
+    setEditingTechnologyOriginal(null);
+    setEditingTechnologyDraft('');
     reset({
       name: '',
       technology: 'FTTH',
@@ -255,7 +360,7 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
       basePrice: 120000,
       installationEnabled: true,
       installationFee: 120000,
-      installationRule: 'FIBER_DROP_THRESHOLD',
+      installationRule: InstallationRule.ON_DEMAND,
     });
     setIsDialogOpen(true);
   };
@@ -263,34 +368,83 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
   const handleOpenEditDialog = (plan: PlanCatalogItem) => {
     setEditingPlanId(plan.id);
     setServerMessage(null);
+    setTechnologyDraft('');
+    setEditingTechnologyOriginal(null);
+    setEditingTechnologyDraft('');
     reset(toFormValues(plan));
     setIsDialogOpen(true);
   };
 
-  const handleToggleActive = async (plan: PlanCatalogItem) => {
-    const isLastActivePlan = plan.isActive && activePlansCount <= 1;
-    if (!canEdit || isLastActivePlan) {
+  const handleAddTechnology = () => {
+    const normalized = normalizeTechnologyName(technologyDraft);
+    if (!normalized) {
       return;
     }
 
-    const previousPlans = plans;
-    const nextIsActive = !plan.isActive;
+    const next = mergeTechnologyOptions(technologyOptions, [normalized]);
+    setTechnologyOptions(next);
+    persistTechnologies(next);
+    setValue('technology', normalized, { shouldValidate: true, shouldDirty: true });
+    setTechnologyDraft('');
+  };
 
-    // Optimistic update para mantener feedback inmediato en la tabla.
-    setPlans((current) =>
-      current.map((item) => (item.id === plan.id ? { ...item, isActive: nextIsActive } : item)),
+  const handleStartEditTechnology = (technology: string) => {
+    setEditingTechnologyOriginal(technology);
+    setEditingTechnologyDraft(technology);
+  };
+
+  const handleSaveEditedTechnology = () => {
+    if (!editingTechnologyOriginal) {
+      return;
+    }
+
+    const normalized = normalizeTechnologyName(editingTechnologyDraft);
+    if (!normalized) {
+      return;
+    }
+
+    const currentTechnology = normalizeTechnologyName(watch('technology'));
+    const replaced = technologyOptions.map((item) =>
+      item.toLowerCase() === editingTechnologyOriginal.toLowerCase() ? normalized : item,
     );
-    setBusySwitchPlanId(plan.id);
-    setServerMessage(null);
+    const next = mergeTechnologyOptions([], replaced);
+    setTechnologyOptions(next);
+    persistTechnologies(next);
 
-    try {
-      await tenantSelfApi.updatePlan(plan.id, { isActive: nextIsActive });
-      void loadPlans();
-    } catch (error) {
-      setPlans(previousPlans);
-      setServerMessage(mapMutationError(error));
-    } finally {
-      setBusySwitchPlanId(null);
+    if (currentTechnology.toLowerCase() === editingTechnologyOriginal.toLowerCase()) {
+      setValue('technology', normalized, { shouldValidate: true, shouldDirty: true });
+    }
+
+    setEditingTechnologyOriginal(null);
+    setEditingTechnologyDraft('');
+  };
+
+  const handleDeleteTechnology = (technology: string) => {
+    const isUsedByActivePlan = technologiesInActivePlans.has(
+      normalizeTechnologyName(technology).toLowerCase(),
+    );
+
+    if (isUsedByActivePlan) {
+      setServerMessage(
+        'No puedes eliminar una tecnología asociada a planes activos. Desactiva o migra esos planes primero.',
+      );
+      return;
+    }
+
+    const next = technologyOptions.filter(
+      (item) => item.toLowerCase() !== technology.toLowerCase(),
+    );
+    setTechnologyOptions(next);
+    persistTechnologies(next);
+
+    const currentTechnology = normalizeTechnologyName(watch('technology'));
+    if (currentTechnology.toLowerCase() === technology.toLowerCase()) {
+      setValue('technology', '', { shouldValidate: true, shouldDirty: true });
+    }
+
+    if (editingTechnologyOriginal?.toLowerCase() === technology.toLowerCase()) {
+      setEditingTechnologyOriginal(null);
+      setEditingTechnologyDraft('');
     }
   };
 
@@ -298,7 +452,7 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
     setDeletingPlanId(plan.id);
     setServerMessage(null);
     try {
-      await tenantSelfApi.deletePlan(plan.id);
+      await commercialApi.deletePlan(plan.id);
       void loadPlans();
       setIsDialogOpen(false);
       setEditingPlanId(null);
@@ -314,11 +468,11 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
 
     const normalizedInstallationRule: PlanInstallationRule = values.installationEnabled
       ? values.installationRule
-      : 'NONE';
+      : InstallationRule.NEVER;
 
     const payload: CreatePlanCatalogItemDto = {
       name: values.name.trim(),
-      technology: values.technology.trim(),
+      technology: normalizeTechnologyName(values.technology),
       downloadSpeedMbps: values.downloadSpeedMbps,
       uploadSpeedMbps:
         values.speedMode === 'SYMMETRIC' ? values.downloadSpeedMbps : values.uploadSpeedMbps,
@@ -329,9 +483,55 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
 
     try {
       if (!editingPlanId) {
-        await tenantSelfApi.createPlan(payload);
+        await commercialApi.createPlan(payload);
       } else {
-        await tenantSelfApi.updatePlan(editingPlanId, payload as UpdatePlanCatalogItemDto);
+        const current = plans.find((plan) => plan.id === editingPlanId);
+
+        if (!current) {
+          throw new Error('No fue posible encontrar el plan a editar.');
+        }
+
+        const nextUploadSpeed =
+          values.speedMode === 'SYMMETRIC' ? values.downloadSpeedMbps : values.uploadSpeedMbps;
+        const nextInstallationFee = values.installationEnabled ? values.installationFee : 0;
+        const currentTechnology = normalizeTechnologyName(current.technology);
+
+        const updatePayload: UpdatePlanCatalogItemDto = {};
+
+        if (payload.name !== current.name) {
+          updatePayload.name = payload.name;
+        }
+
+        if (payload.technology !== currentTechnology) {
+          updatePayload.technology = payload.technology;
+        }
+
+        if (payload.downloadSpeedMbps !== current.downloadSpeedMbps) {
+          updatePayload.downloadSpeedMbps = payload.downloadSpeedMbps;
+        }
+
+        if (nextUploadSpeed !== current.uploadSpeedMbps) {
+          updatePayload.uploadSpeedMbps = nextUploadSpeed;
+        }
+
+        if (normalizedInstallationRule !== current.installationRule) {
+          updatePayload.installationRule = normalizedInstallationRule;
+        }
+
+        const currentBasePrice = parseMoneyFromApi(current.basePrice);
+        const currentInstallationFee = parseMoneyFromApi(current.installationFee);
+        const priceChanged =
+          payload.basePrice !== currentBasePrice || nextInstallationFee !== currentInstallationFee;
+
+        if (priceChanged) {
+          // El endpoint de precios requiere un snapshot completo; enviamos ambos campos juntos.
+          updatePayload.basePrice = payload.basePrice;
+          updatePayload.installationFee = nextInstallationFee;
+        }
+
+        if (Object.keys(updatePayload).length > 0) {
+          await commercialApi.updatePlan(editingPlanId, updatePayload);
+        }
       }
 
       void loadPlans();
@@ -382,7 +582,8 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
                 Reglas activas
               </p>
               <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                Mantén al menos un plan activo y define reglas de instalación coherentes con el umbral de acometida de {fiberThresholdMeters} m.
+                Mantén al menos un plan activo y define reglas comerciales de instalación como
+                siempre, bajo demanda o nunca.
               </p>
             </div>
           </div>
@@ -446,14 +647,6 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
                 )}
 
                 {orderedPlans.map((plan) => {
-                  const lastActivePlan = plan.isActive && activePlansCount <= 1;
-                  const switchDisabled = !canEdit || busySwitchPlanId === plan.id || lastActivePlan;
-                  const switchTitle = lastActivePlan
-                    ? 'Debe existir al menos un plan activo en el catálogo.'
-                    : canEdit
-                      ? 'Activar o desactivar plan'
-                      : 'Solo lectura para tu rol';
-
                   return (
                     <tr
                       key={plan.id}
@@ -472,9 +665,7 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
                       <td className={cellClass}>
                         {formatMoney(parseMoneyFromApi(plan.basePrice))}
                       </td>
-                      <td className={cellClass}>
-                        {formatInstallationText(plan, fiberThresholdMeters)}
-                      </td>
+                      <td className={cellClass}>{formatInstallationText(plan)}</td>
                       {canEdit && (
                         <>
                           <td className={cellClass}>
@@ -484,34 +675,6 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
                           </td>
                           <td className={cellClass}>
                             <div className="flex items-center gap-3">
-                              <label className="inline-flex items-center">
-                                <input
-                                  type="checkbox"
-                                  role="switch"
-                                  aria-label={`Cambiar estado activo del plan ${plan.name}`}
-                                  className="peer sr-only"
-                                  checked={plan.isActive}
-                                  disabled={switchDisabled}
-                                  title={switchTitle}
-                                  onChange={() => void handleToggleActive(plan)}
-                                />
-                                <span
-                                  aria-hidden="true"
-                                  className={cn(
-                                    'relative h-6 w-11 rounded-full bg-gray-300 transition peer-focus-visible:ring-2 peer-focus-visible:ring-iwana-primary peer-focus-visible:ring-offset-2 dark:bg-gray-600',
-                                    plan.isActive && 'bg-iwana-primary dark:bg-iwana-primary-400',
-                                    switchDisabled && 'cursor-not-allowed opacity-70',
-                                  )}
-                                >
-                                  <span
-                                    className={cn(
-                                      'absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform',
-                                      plan.isActive && 'translate-x-5',
-                                    )}
-                                  />
-                                </span>
-                              </label>
-
                               <Button
                                 variant="secondary"
                                 size="sm"
@@ -547,42 +710,180 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
           </DialogHeader>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-            <Input
-              id="plan-name"
-              label="Nombre del plan"
-              disabled={!canEdit || isSubmitting}
-              error={errors.name?.message}
-              {...register('name')}
-            />
-
-            <div className="space-y-1.5">
-              <label htmlFor="plan-technology" className="text-sm font-medium text-[#374151]">
-                Tecnología
-              </label>
-              <input
-                id="plan-technology"
-                list="plan-technology-options"
-                className={cn(
-                  'flex h-11 w-full rounded-2xl border bg-gray-50/80 px-4 py-2 text-sm text-[#111827] placeholder:text-[#9CA3AF] transition-all duration-200',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-secondary/35 focus-visible:border-iwana-secondary focus-visible:bg-white',
-                  errors.technology
-                    ? 'border-[#EF4444]'
-                    : 'border-[#D1D5DB] hover:border-[#9CA3AF]',
-                )}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Input
+                id="plan-name"
+                label="Nombre del plan"
                 disabled={!canEdit || isSubmitting}
-                {...register('technology')}
+                error={errors.name?.message}
+                {...register('name')}
               />
-              <datalist id="plan-technology-options">
-                {TECHNOLOGY_SUGGESTIONS.map((item) => (
-                  <option key={item} value={item} />
-                ))}
-              </datalist>
-              {errors.technology?.message && (
-                <p className="text-xs text-red-600 dark:text-red-400">
-                  {errors.technology.message}
+
+              <div className="space-y-1.5">
+                <Select
+                  id="plan-technology"
+                  label="Tecnología"
+                  className="h-11"
+                  disabled={!canEdit || isSubmitting}
+                  {...register('technology')}
+                >
+                  {selectTechnologyOptions.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </Select>
+                {errors.technology?.message && (
+                  <p className="text-xs text-red-600 dark:text-red-400">
+                    {errors.technology.message}
+                  </p>
+                )}
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Selecciona una tecnología de la lista desplegable.
                 </p>
-              )}
+              </div>
             </div>
+
+            <details className="group rounded-[20px] border border-gray-200 p-4 dark:border-dark-border">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Gestionar tecnologías disponibles
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {effectiveTechnologyOptions.length} tecnología
+                    {effectiveTechnologyOptions.length === 1 ? '' : 's'} en la lista desplegable.
+                  </p>
+                </div>
+                <span className="text-xs font-medium text-iwana-primary transition group-open:rotate-180">
+                  ▼
+                </span>
+              </summary>
+
+              <div className="mt-3 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  {effectiveTechnologyOptions.length === 0 && (
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      No hay tecnologías registradas.
+                    </span>
+                  )}
+
+                  {effectiveTechnologyOptions.map((technology) => {
+                    const isEditing =
+                      editingTechnologyOriginal?.toLowerCase() === technology.toLowerCase();
+                    const isUsedByActivePlan = technologiesInActivePlans.has(
+                      technology.toLowerCase(),
+                    );
+
+                    return (
+                      <div
+                        key={technology}
+                        className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-1 text-xs dark:border-dark-border dark:bg-dark-surface-3"
+                      >
+                        {isEditing ? (
+                          <>
+                            <input
+                              aria-label={`Editar tecnología ${technology}`}
+                              value={editingTechnologyDraft}
+                              onChange={(event) => setEditingTechnologyDraft(event.target.value)}
+                              disabled={!canEdit || isSubmitting}
+                              className="h-7 w-28 rounded-md border border-gray-300 px-2 text-xs text-gray-700 dark:border-gray-600 dark:bg-dark-surface-2 dark:text-gray-200"
+                            />
+                            <button
+                              type="button"
+                              aria-label={`Guardar tecnología ${technology}`}
+                              disabled={!canEdit || isSubmitting}
+                              onClick={handleSaveEditedTechnology}
+                              className="rounded-md p-1 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:text-emerald-300 dark:hover:bg-emerald-900/30"
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`Cancelar edición de tecnología ${technology}`}
+                              disabled={!canEdit || isSubmitting}
+                              onClick={() => {
+                                setEditingTechnologyOriginal(null);
+                                setEditingTechnologyDraft('');
+                              }}
+                              className="rounded-md px-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-dark-surface-2"
+                            >
+                              Cancelar
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              disabled={!canEdit || isSubmitting}
+                              onClick={() =>
+                                setValue('technology', technology, { shouldValidate: true })
+                              }
+                              className="font-medium text-gray-700 hover:text-iwana-primary disabled:opacity-50 dark:text-gray-200"
+                              aria-label={`Usar tecnología ${technology}`}
+                            >
+                              {technology}
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`Editar tecnología ${technology}`}
+                              disabled={!canEdit || isSubmitting}
+                              onClick={() => handleStartEditTechnology(technology)}
+                              className="rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-iwana-primary disabled:opacity-50 dark:text-gray-300 dark:hover:bg-dark-surface-2"
+                            >
+                              <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`Eliminar tecnología ${technology}`}
+                              title={
+                                isUsedByActivePlan
+                                  ? 'No se puede eliminar: hay planes activos usando esta tecnología.'
+                                  : 'Eliminar tecnología'
+                              }
+                              disabled={!canEdit || isSubmitting || isUsedByActivePlan}
+                              onClick={() => handleDeleteTechnology(technology)}
+                              className="rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-red-600 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-dark-surface-2"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="min-w-[220px] flex-1 space-y-1">
+                    <label
+                      htmlFor="technology-new"
+                      className="text-xs font-medium text-gray-600 dark:text-gray-300"
+                    >
+                      Nueva tecnología
+                    </label>
+                    <input
+                      id="technology-new"
+                      value={technologyDraft}
+                      onChange={(event) => setTechnologyDraft(event.target.value)}
+                      disabled={!canEdit || isSubmitting}
+                      placeholder="Ej: EPON"
+                      className="h-10 w-full rounded-xl border border-gray-300 bg-white px-3 text-sm text-gray-700 placeholder:text-gray-400 dark:border-gray-600 dark:bg-dark-surface-2 dark:text-gray-200"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={!canEdit || isSubmitting || !normalizeTechnologyName(technologyDraft)}
+                    onClick={handleAddTechnology}
+                  >
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    Agregar
+                  </Button>
+                </div>
+              </div>
+            </details>
 
             <div className="space-y-1.5">
               <p className="text-sm font-medium text-[#374151]">Modalidad de velocidad</p>
@@ -663,9 +964,8 @@ export function PlanCatalogManager({ canEdit, fiberThresholdMeters }: PlanCatalo
                       {...register('installationRule')}
                     >
                       <option value="ALWAYS">Siempre cobrar instalación</option>
-                      <option value="FIBER_DROP_THRESHOLD">
-                        Cobrar solo sobre {fiberThresholdMeters} m de acometida
-                      </option>
+                      <option value="ON_DEMAND">Cobrar instalación bajo demanda</option>
+                      <option value="NEVER">Nunca cobrar instalación</option>
                     </Select>
                   </div>
 

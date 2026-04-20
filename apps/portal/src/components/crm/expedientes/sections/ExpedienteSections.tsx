@@ -3,7 +3,12 @@
 import { useState } from 'react';
 import { Button, SectionAccordion } from '@iwana/ui';
 import { FolderOpen } from 'lucide-react';
-import type { CompletenessResult, ExpedienteRecord, PlanCatalogItem } from '@/lib/api-client';
+import type {
+  AdditionalProduct,
+  CompletenessResult,
+  ExpedienteRecord,
+  PlanCatalogItem,
+} from '@/lib/api-client';
 import {
   SECTIONS,
   calculateDocumentSupportCompletion,
@@ -35,6 +40,7 @@ interface ExpedienteSectionsProps {
   onUnlockIdentification: () => void;
   savingSection: SectionId | null;
   planCatalog: PlanCatalogItem[];
+  additionalProducts: AdditionalProduct[];
   actionMessage: string | null;
   actionMessageTone: 'success' | 'error' | 'info';
   onDocumentSupportSaved: () => Promise<void>;
@@ -51,6 +57,7 @@ export function ExpedienteSections({
   onUnlockIdentification,
   savingSection,
   planCatalog,
+  additionalProducts,
   actionMessage,
   actionMessageTone,
   onDocumentSupportSaved,
@@ -77,7 +84,7 @@ export function ExpedienteSections({
     (sectionId) =>
       (sectionId === 'document_support'
         ? documentSupportCompletion
-        : sectionCompletionById[sectionId] ?? 0) >= 100,
+        : (sectionCompletionById[sectionId] ?? 0)) >= 100,
   ).length;
 
   const totalSections = SECTIONS.length + 1;
@@ -123,6 +130,7 @@ export function ExpedienteSections({
             saving={savingSection === 'commercial_interest'}
             onSave={() => onSaveSection('commercial_interest')}
             planCatalog={planCatalog}
+            additionalProducts={additionalProducts}
           />
         );
       case 'technical_feasibility':
@@ -209,7 +217,10 @@ export function ExpedienteSections({
     const showSaveButton = true;
 
     return (
-      <div key={sectionId} className="rounded-[20px] border border-gray-100 bg-white shadow-[var(--shadow-iwana-soft)] dark:border-dark-border dark:bg-dark-surface-2">
+      <div
+        key={sectionId}
+        className="rounded-[20px] border border-gray-100 bg-white shadow-[var(--shadow-iwana-soft)] dark:border-dark-border dark:bg-dark-surface-2"
+      >
         <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-border">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-iwana-secondary/10 text-iwana-secondary-700 dark:bg-iwana-secondary/20 dark:text-iwana-secondary-300">
             <Icon className="h-5 w-5" aria-hidden="true" />

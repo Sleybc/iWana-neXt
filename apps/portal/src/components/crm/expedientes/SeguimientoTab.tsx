@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import {
   crmApi,
+  type AdditionalProduct,
   type ContactAttemptRecord,
   type CreateContactAttemptDto,
   type CreateAttributionDto,
@@ -56,7 +57,12 @@ interface TimelineEntry {
   id: string;
   kind: TimelineKind;
   sortAt: Date;
-  data: ContactAttemptRecord | OperationalHistoryItem | SalesAttributionRecord | ExpedienteActivityItem | ExpedienteTimelineChange;
+  data:
+    | ContactAttemptRecord
+    | OperationalHistoryItem
+    | SalesAttributionRecord
+    | ExpedienteActivityItem
+    | ExpedienteTimelineChange;
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -75,6 +81,7 @@ interface SeguimientoTabProps {
   sortedAttributionUsers: InternalUser[];
   loadingAttributionUsers: boolean;
   planCatalog?: PlanCatalogItem[];
+  additionalProducts?: AdditionalProduct[];
   /** Actividad del sistema (guardado de secciones, creación, etc.) */
   recentActivity?: ExpedienteActivityItem[];
   /** Cambios de estado del pipeline */
@@ -176,7 +183,9 @@ function AttributionEntry({ item }: { item: SalesAttributionRecord }) {
         {item.actorRole} · {formatAcquisitionChannel(item.acquisitionChannel)}
       </p>
       {item.revokedAt && (
-        <p className="mt-1 text-[10px] text-red-400">Revocado · {item.revokedReason || 'Sin motivo'}</p>
+        <p className="mt-1 text-[10px] text-red-400">
+          Revocado · {item.revokedReason || 'Sin motivo'}
+        </p>
       )}
     </div>
   );
@@ -236,15 +245,18 @@ function SystemActivityEntry({ activity }: { activity: ExpedienteActivityItem })
         </div>
       )}
       {activity.type === 'CREATED' && (
-        <p className="text-xs leading-tight text-gray-600 dark:text-gray-300">Registro inicial del expediente.</p>
+        <p className="text-xs leading-tight text-gray-600 dark:text-gray-300">
+          Registro inicial del expediente.
+        </p>
       )}
       {actorName && (
-        <p className="text-[10px] leading-tight text-gray-400 dark:text-gray-500">por {actorName}</p>
+        <p className="text-[10px] leading-tight text-gray-400 dark:text-gray-500">
+          por {actorName}
+        </p>
       )}
     </div>
   );
 }
-
 
 function TimelineItem({ entry }: { entry: TimelineEntry }) {
   const iconNode =
@@ -263,8 +275,10 @@ function TimelineItem({ entry }: { entry: TimelineEntry }) {
       // system: ícono según tipo de actividad
       (() => {
         const act = entry.data as ExpedienteActivityItem;
-        if (act.type === 'CREATED') return <FileText className="h-3.5 w-3.5 text-iwana-secondary-700" aria-hidden="true" />;
-        if (act.type === 'SECTION_UPDATED') return <Edit className="h-3.5 w-3.5 text-gray-400" aria-hidden="true" />;
+        if (act.type === 'CREATED')
+          return <FileText className="h-3.5 w-3.5 text-iwana-secondary-700" aria-hidden="true" />;
+        if (act.type === 'SECTION_UPDATED')
+          return <Edit className="h-3.5 w-3.5 text-gray-400" aria-hidden="true" />;
         return <ArrowRightLeft className="h-3.5 w-3.5 text-iwana-primary" aria-hidden="true" />;
       })()
     );
@@ -296,9 +310,7 @@ function TimelineItem({ entry }: { entry: TimelineEntry }) {
         <p className="text-[10px] font-bold uppercase tracking-wide leading-tight text-gray-400 dark:text-gray-500">
           {kindLabel}
         </p>
-        {entry.kind === 'contact' && (
-          <ContactEntry attempt={entry.data as ContactAttemptRecord} />
-        )}
+        {entry.kind === 'contact' && <ContactEntry attempt={entry.data as ContactAttemptRecord} />}
         {entry.kind === 'responsibility' && (
           <ResponsibilityEntry item={entry.data as OperationalHistoryItem} />
         )}
@@ -332,6 +344,7 @@ export function SeguimientoTab({
   sortedAttributionUsers,
   loadingAttributionUsers,
   planCatalog = [],
+  additionalProducts = [],
   recentActivity = [],
   pipelineChanges = [],
   onSaved,
@@ -339,7 +352,9 @@ export function SeguimientoTab({
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(true);
   const [activeFilter, setActiveFilter] = useState<TimelineFilter>('all');
-  const [timelinePageSize, setTimelinePageSize] = useState<TimelinePageSize>(TIMELINE_DEFAULT_PAGE_SIZE);
+  const [timelinePageSize, setTimelinePageSize] = useState<TimelinePageSize>(
+    TIMELINE_DEFAULT_PAGE_SIZE,
+  );
   const [timelinePage, setTimelinePage] = useState(1);
 
   const [contactAttempts, setContactAttempts] = useState<ContactAttemptRecord[]>([]);
@@ -451,12 +466,12 @@ export function SeguimientoTab({
 
   const timelineEntries = useMemo<TimelineEntry[]>(() => {
     if (activeFilter === 'all') return allTimelineEntries;
-    if (activeFilter === 'contact')
-      return allTimelineEntries.filter((e) => e.kind === 'contact');
+    if (activeFilter === 'contact') return allTimelineEntries.filter((e) => e.kind === 'contact');
     if (activeFilter === 'asignaciones')
-      return allTimelineEntries.filter((e) => e.kind === 'responsibility' || e.kind === 'attribution');
-    if (activeFilter === 'pipeline')
-      return allTimelineEntries.filter((e) => e.kind === 'pipeline');
+      return allTimelineEntries.filter(
+        (e) => e.kind === 'responsibility' || e.kind === 'attribution',
+      );
+    if (activeFilter === 'pipeline') return allTimelineEntries.filter((e) => e.kind === 'pipeline');
     return allTimelineEntries.filter((e) => e.kind === 'system');
   }, [allTimelineEntries, activeFilter]);
 
@@ -465,7 +480,10 @@ export function SeguimientoTab({
   const showTimelinePagination =
     timelinePageSize !== 'all' && timelineEntries.length > effectiveTimelinePageSize;
 
-  const timelineTotalPages = Math.max(1, Math.ceil(timelineEntries.length / effectiveTimelinePageSize));
+  const timelineTotalPages = Math.max(
+    1,
+    Math.ceil(timelineEntries.length / effectiveTimelinePageSize),
+  );
   const paginatedTimelineEntries = useMemo<TimelineEntry[]>(() => {
     const start = (timelinePage - 1) * effectiveTimelinePageSize;
     return timelineEntries.slice(start, start + effectiveTimelinePageSize);
@@ -510,10 +528,7 @@ export function SeguimientoTab({
       });
       showMsg('Intento de contacto registrado correctamente.', 'success');
     } catch (err) {
-      showMsg(
-        err instanceof Error ? err.message : 'No fue posible registrar el intento.',
-        'error',
-      );
+      showMsg(err instanceof Error ? err.message : 'No fue posible registrar el intento.', 'error');
     } finally {
       setSubmittingContact(false);
     }
@@ -856,8 +871,8 @@ export function SeguimientoTab({
                   onChange={(e) =>
                     setAttributionForm((curr) => ({
                       ...curr,
-                      acquisitionChannel:
-                        e.target.value as CreateAttributionDto['acquisitionChannel'],
+                      acquisitionChannel: e.target
+                        .value as CreateAttributionDto['acquisitionChannel'],
                     }))
                   }
                 >
@@ -1239,7 +1254,7 @@ export function SeguimientoTab({
                       key={id}
                       className="rounded-full bg-blue-50/50 px-2 py-0.5 text-[10px] font-medium text-blue-600 dark:bg-blue-900/10 dark:text-blue-400"
                     >
-                      {planCatalog.find((p) => p.id === id)?.name || id}
+                      {additionalProducts.find((product) => product.id === id)?.name || id}
                     </span>
                   ))}
                 </div>

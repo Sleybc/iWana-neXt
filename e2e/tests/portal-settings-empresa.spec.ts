@@ -511,6 +511,11 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
   return { requestLog };
 }
 
+async function pickCustomSelectOption(page: Page, selectId: string, optionLabel: string) {
+  await page.locator(`#${selectId}`).locator('xpath=following-sibling::button').click();
+  await page.getByRole('option', { name: optionLabel, exact: true }).click();
+}
+
 test.describe('Configuración empresarial del portal', () => {
   test('ADMIN puede editar perfil, settings y política MFA sin llamar endpoints de plataforma', async ({
     page,
@@ -541,9 +546,9 @@ test.describe('Configuración empresarial del portal', () => {
     expect(requestLog.profilePatches[0]).not.toHaveProperty('name');
 
     await page.getByRole('tab', { name: 'Operación', exact: true }).click();
-    await page.getByLabel('Zona horaria', { exact: true }).selectOption('America/Guayaquil');
-    await page.getByLabel('Moneda', { exact: true }).selectOption('USD');
-    await page.getByLabel('País operativo', { exact: true }).selectOption('EC');
+    await pickCustomSelectOption(page, 'timezone', 'America/Guayaquil');
+    await pickCustomSelectOption(page, 'currency', 'USD');
+    await pickCustomSelectOption(page, 'country', 'EC');
     await page.getByRole('button', { name: 'Guardar configuración operativa' }).click();
 
     await expect(
@@ -616,156 +621,19 @@ test.describe('Configuración empresarial del portal', () => {
     expect(requestLog.platformCalls).toHaveLength(0);
   });
 
-  test('ADMIN crea nodo de cobertura desde dialogo', async ({ page }) => {
-    const { requestLog } = await setupSettingsMocks(page, 'ADMIN');
-    await setAuthSession(page, 'ADMIN');
-
-    await page.goto('/dashboard/settings');
-    await page.waitForLoadState('networkidle');
-    await page.getByRole('tab', { name: 'Comercial', exact: true }).click();
-
-    await page.getByTestId('add-node-btn').click();
-    await page.getByTestId('node-dialog').getByLabel('Nombre').fill('Nodo Sur');
-    await page.getByTestId('node-dialog').getByLabel('Latitud').fill('4.55');
-    await page.getByTestId('node-dialog').getByLabel('Longitud').fill('-74.12');
-    await page.getByTestId('node-dialog').getByRole('button', { name: 'Crear nodo' }).click();
-
-    await expect(page.getByTestId('coverage-node-table')).toContainText('Nodo Sur');
-    expect(requestLog.coverageNodePosts).toBe(1);
-  });
-
-  test('ADMIN edita y desactiva nodo de cobertura', async ({ page }) => {
-    const { requestLog } = await setupSettingsMocks(page, 'ADMIN');
-    await setAuthSession(page, 'ADMIN');
-
-    await page.goto('/dashboard/settings');
-    await page.waitForLoadState('networkidle');
-    await page.getByRole('tab', { name: 'Comercial', exact: true }).click();
-
-    await page.getByTestId('node-edit-btn-node-1').click();
-    await page.getByTestId('node-dialog').getByLabel('Nombre').fill('Nodo Centro Editado');
-    await page.getByTestId('node-dialog').getByRole('button', { name: 'Guardar cambios' }).click();
-
-    await expect(page.getByTestId('coverage-node-table')).toContainText('Nodo Centro Editado');
-    await page.getByLabel('Cambiar estado de Nodo Centro Editado').click({ force: true });
-
-    expect(requestLog.coverageNodePatches).toBeGreaterThanOrEqual(2);
-  });
-
-  test('ADMIN elimina nodo de cobertura', async ({ page }) => {
-    const { requestLog } = await setupSettingsMocks(page, 'ADMIN');
-    await setAuthSession(page, 'ADMIN');
-
-    await page.goto('/dashboard/settings');
-    await page.waitForLoadState('networkidle');
-    await page.getByRole('tab', { name: 'Comercial', exact: true }).click();
-
-    await expect(page.getByTestId('coverage-node-table')).toContainText('Nodo Centro');
-    await page.getByTestId('node-delete-btn-node-1').click();
-    await expect(page.getByTestId('coverage-node-table')).not.toContainText('Nodo Centro');
-
-    expect(requestLog.coverageNodeDeletes).toBe(1);
-  });
-
-  test('ADMIN ejecuta CRUD de zonas de cobertura', async ({ page }) => {
-    const { requestLog } = await setupSettingsMocks(page, 'ADMIN');
-    await setAuthSession(page, 'ADMIN');
-
-    await page.goto('/dashboard/settings');
-    await page.waitForLoadState('networkidle');
-    await page.getByRole('tab', { name: 'Comercial', exact: true }).click();
-
-    await page.getByTestId('add-zone-btn').click();
-    await page.getByTestId('zone-dialog').getByLabel('Nombre').fill('Zona Sur');
-    await page.getByTestId('zone-dialog').getByLabel('Latitud centro').fill('4.58');
-    await page.getByTestId('zone-dialog').getByLabel('Longitud centro').fill('-74.10');
-    await page.getByTestId('zone-dialog').getByLabel('Radio (km)').fill('8');
-    await page.getByTestId('zone-dialog').getByRole('button', { name: 'Crear zona' }).click();
-
-    await expect(page.getByTestId('coverage-zone-table')).toContainText('Zona Sur');
-
-    await page.getByTestId('zone-edit-btn-zone-1').click();
-    await page.getByTestId('zone-dialog').getByLabel('Nombre').fill('Zona Norte Editada');
-    await page.getByTestId('zone-dialog').getByRole('button', { name: 'Guardar cambios' }).click();
-
-    await expect(page.getByTestId('coverage-zone-table')).toContainText('Zona Norte Editada');
-    await page.getByTestId('zone-delete-btn-zone-1').click();
-    await expect(page.getByTestId('coverage-zone-table')).not.toContainText('Zona Norte Editada');
-
-    expect(requestLog.coverageZonePosts).toBe(1);
-    expect(requestLog.coverageZonePatches).toBeGreaterThanOrEqual(1);
-    expect(requestLog.coverageZoneDeletes).toBe(1);
-  });
-
-  test('ADMIN ejecuta CRUD de planes en catalogo', async ({ page }) => {
-    const { requestLog } = await setupSettingsMocks(page, 'ADMIN');
-    await setAuthSession(page, 'ADMIN');
-
-    await page.goto('/dashboard/settings');
-    await page.waitForLoadState('networkidle');
-    await page.getByRole('tab', { name: 'Comercial', exact: true }).click();
-    await page.getByRole('button', { name: 'Planes' }).click();
-
-    await page.getByRole('button', { name: 'Nuevo plan' }).click();
-    await page.getByLabel('Nombre del plan').fill('Plan Oficina 500');
-    await page.getByLabel('Velocidad de bajada (Mbps)').fill('500');
-    await page.getByRole('radio', { name: 'Asimétrica' }).click();
-    await page.getByLabel('Velocidad de subida (Mbps)').fill('250');
-    await page.getByLabel('Precio base (COP)').fill('220000');
-    await page.getByRole('button', { name: 'Crear plan' }).click();
-
-    await expect(page.getByText('Plan Oficina 500')).toBeVisible();
-
-    await page.getByRole('button', { name: 'Editar' }).first().click();
-    await page.getByLabel('Nombre del plan').fill('Plan Oficina 500 Editado');
-    await page.getByRole('button', { name: 'Guardar cambios' }).click();
-    await expect(page.getByText('Plan Oficina 500 Editado')).toBeVisible();
-
-    await page.getByRole('button', { name: 'Editar' }).first().click();
-    await page.getByRole('button', { name: 'Eliminar este plan' }).click();
-
-    expect(requestLog.planPosts).toBe(1);
-    expect(requestLog.planPatches).toBeGreaterThanOrEqual(1);
-    expect(requestLog.planDeletes).toBe(1);
-  });
-
-  test('NOC ve cobertura y planes en solo lectura sin acciones', async ({ page }) => {
-    await setupSettingsMocks(page, 'NOC');
-    await setAuthSession(page, 'NOC');
-
-    await page.goto('/dashboard/settings');
-    await page.waitForLoadState('networkidle');
-    await page.getByRole('tab', { name: 'Comercial', exact: true }).click();
-
-    await expect(page.getByTestId('add-node-btn')).toHaveCount(0);
-    await expect(page.getByTestId('add-zone-btn')).toHaveCount(0);
-    await expect(page.getByTestId('coverage-node-table')).toBeVisible();
-    await expect(page.getByTestId('coverage-zone-table')).toBeVisible();
-    await expect(page.getByTestId('coverage-map')).toBeVisible();
-    await expect(page.getByTestId('node-edit-btn-node-1')).toHaveCount(0);
-    await expect(page.getByTestId('node-delete-btn-node-1')).toHaveCount(0);
-
-    await page.getByRole('button', { name: 'Planes' }).click();
-    await expect(page.getByRole('button', { name: 'Nuevo plan' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Editar' })).toHaveCount(0);
-  });
-
-  test('Validador de factibilidad muestra resultados esperados', async ({ page }) => {
+  test('El módulo comercial vive en ruta dedicada y no en tabs de Settings', async ({ page }) => {
     await setupSettingsMocks(page, 'ADMIN');
     await setAuthSession(page, 'ADMIN');
 
     await page.goto('/dashboard/settings');
     await page.waitForLoadState('networkidle');
-    await page.getByRole('tab', { name: 'Comercial', exact: true }).click();
 
-    const section = page.getByTestId('coverage-check-section');
-    await section.getByLabel('Direccion a validar').fill('Calle 123 #45-67, Bogota');
-    await section.getByLabel('Latitud').fill('4.60971');
-    await section.getByLabel('Longitud').fill('-74.08175');
-    await section.getByRole('button', { name: 'Validar' }).click();
+    await expect(page.getByRole('tab', { name: 'Comercial', exact: true })).toHaveCount(0);
 
-    await expect(section).toContainText('Cobertura disponible');
-    await expect(section).toContainText('Nodo Centro');
+    await expect(page.getByRole('link', { name: 'Comercial' })).toHaveAttribute(
+      'href',
+      '/dashboard/commercial',
+    );
   });
 
   test('Configuracion usa tabs accesibles y restablece datos al cambiar de seccion', async ({
@@ -779,7 +647,6 @@ test.describe('Configuración empresarial del portal', () => {
 
     await expect(page.getByRole('tab', { name: 'General', exact: true })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Operación', exact: true })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'Comercial', exact: true })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Seguridad', exact: true })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Marca', exact: true })).toBeVisible();
 
@@ -802,21 +669,14 @@ test.describe('Configuración empresarial del portal', () => {
     await expect(page.getByRole('tab', { name: 'General', exact: true })).toBeFocused();
 
     await page.getByLabel('Correo de contacto').fill('draft-tabs@test-isp.co');
-    await page.getByRole('tab', { name: 'Comercial', exact: true }).click();
+    await page.getByRole('tab', { name: 'Operación', exact: true }).click();
 
-    await expect(page.getByRole('tab', { name: 'Comercial', exact: true })).toHaveAttribute(
+    await expect(page.getByRole('tab', { name: 'Operación', exact: true })).toHaveAttribute(
       'aria-selected',
       'true',
     );
-    await expect(page.getByRole('tabpanel', { name: 'Comercial' })).toBeVisible();
-    // Por defecto se muestra Cobertura; Catálogo no está visible aún
-    await expect(page.getByRole('heading', { name: 'Cobertura comercial' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Catálogo de planes' })).toHaveCount(0);
-
-    // Navegar a Planes mediante el sidebar interno
-    await page.getByRole('button', { name: 'Planes' }).click();
-    await expect(page.getByRole('heading', { name: 'Catálogo de planes' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Cobertura comercial' })).toHaveCount(0);
+    await expect(page.getByRole('tabpanel', { name: 'Operación' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Configuración operativa' })).toBeVisible();
 
     await page.getByRole('tab', { name: 'General', exact: true }).click();
     await expect(page.getByLabel('Correo de contacto')).toHaveValue('contacto@test-isp.co');
