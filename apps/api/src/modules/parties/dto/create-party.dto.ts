@@ -1,0 +1,68 @@
+import { IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength, IsDateString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { PartyType, DocumentTypeParty } from '@iwana/shared';
+import { z } from 'zod';
+
+export const CreatePartySchema = z.object({
+  partyType: z.nativeEnum(PartyType),
+  documentType: z.nativeEnum(DocumentTypeParty),
+  documentNumber: z.string().min(1).max(32),
+  verificationDigit: z.string().max(2).nullable().optional(),
+  displayName: z.string().min(1).max(160),
+  legalName: z.string().max(200).nullable().optional(),
+  birthDate: z.string().datetime({ offset: true }).nullable().optional(),
+  incorporationDate: z.string().datetime({ offset: true }).nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+});
+
+export type CreatePartyInput = z.infer<typeof CreatePartySchema>;
+
+export class CreatePartyDto {
+  @ApiProperty({ enum: PartyType })
+  @IsEnum(PartyType)
+  partyType: PartyType;
+
+  @ApiProperty({ enum: DocumentTypeParty })
+  @IsEnum(DocumentTypeParty)
+  documentType: DocumentTypeParty;
+
+  @ApiProperty({ maxLength: 32 })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(32)
+  documentNumber: string;
+
+  @ApiPropertyOptional({ maxLength: 2 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2)
+  verificationDigit?: string;
+
+  @ApiProperty({ maxLength: 160 })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(160)
+  displayName: string;
+
+  @ApiPropertyOptional({ maxLength: 200 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  legalName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  birthDate?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  incorporationDate?: string;
+
+  @ApiPropertyOptional({ maxLength: 2000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  notes?: string;
+}
