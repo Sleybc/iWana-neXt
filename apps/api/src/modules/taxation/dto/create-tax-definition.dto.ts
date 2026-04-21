@@ -8,6 +8,7 @@ import {
   IsString,
   Length,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 import { z } from 'zod';
@@ -23,7 +24,7 @@ export const CreateTaxDefinitionSchema = z.object({
   name: z.string().min(1).max(120),
   category: z.nativeEnum(TaxCategory),
   jurisdictionLevel: z.nativeEnum(JurisdictionLevel),
-  municipalityCode: z.string().max(8).optional().nullable(),
+  municipalityCode: z.string().min(1).max(8).optional().nullable(),
   baseRate: z.number().min(0).max(999.9999).optional().nullable(),
   treatment: z.nativeEnum(TaxTreatment),
   context: z.nativeEnum(TaxContext),
@@ -84,5 +85,6 @@ export class CreateTaxDefinitionDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
   notes?: string | null;
 }

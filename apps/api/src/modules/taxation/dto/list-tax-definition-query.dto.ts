@@ -1,9 +1,9 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsBoolean, IsEnum, IsOptional } from 'class-validator';
-import { TaxCategory, TaxContext } from '@iwana/shared';
+import { TaxCategory, TaxContext, TaxOrigin } from '@iwana/shared';
 
-export class ListTaxDefinitionsDto {
+export class ListTaxDefinitionQueryDto {
   @ApiPropertyOptional({ enum: TaxCategory })
   @IsOptional()
   @IsEnum(TaxCategory)
@@ -14,9 +14,18 @@ export class ListTaxDefinitionsDto {
   @IsEnum(TaxContext)
   context?: TaxContext;
 
+  @ApiPropertyOptional({ enum: TaxOrigin, description: 'Filtrar por origen SYSTEM|CUSTOM' })
+  @IsOptional()
+  @IsEnum(TaxOrigin)
+  origin?: TaxOrigin;
+
   @ApiPropertyOptional({ default: true })
   @IsOptional()
   @IsBoolean()
-  @Transform(({ value }) => value === 'true' || value === true)
+  @Transform(({ value }) => {
+    if (value === 'true' || value === true) return true;
+    if (value === 'false' || value === false) return false;
+    return value;
+  })
   isActive?: boolean;
 }
