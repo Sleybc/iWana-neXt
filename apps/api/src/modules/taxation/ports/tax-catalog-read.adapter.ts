@@ -1,33 +1,74 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { TaxContext } from '@iwana/shared';
+import { runInTenantSchema, TenantContext } from '@iwana/db';
+import { DataSource, IsNull } from 'typeorm';
 import { TaxDefinition } from '../entities/tax-definition.entity';
-import { ITaxCatalogReadPort } from './tax-catalog-read.port';
+import { TaxCatalogReadPort, TaxDefinitionSnapshot } from './tax-catalog-read.port';
 
 /**
  * Adaptador de lectura del catálogo de impuestos.
- * Implementa ITaxCatalogReadPort con TypeORM; el tenant se resuelve
- * via search_path establecido por runInTenantSchema() antes de este punto.
+ * Implementa TaxCatalogReadPort con TypeORM y runInTenantSchema para
+ * aislamiento de tenant autónomo — no depende de search_path del llamador.
+ * Ref: HLD-MOD07 §5, ADR-029
  */
 @Injectable()
-export class TaxCatalogReadAdapter extends ITaxCatalogReadPort {
+export class TaxCatalogReadAdapter extends TaxCatalogReadPort {
   constructor(
-    @InjectRepository(TaxDefinition)
-    private readonly repo: Repository<TaxDefinition>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {
     super();
   }
 
-  async findActiveByCode(code: string): Promise<TaxDefinition | null> {
-    return this.repo.findOne({
-      where: { code, isActive: true, deletedAt: IsNull() },
+  private toSnapshot(entity: TaxDefinition): TaxDefinitionSnapshot {
+    return {
+      id: entity.id,
+      code: entity.code,
+      name: entity.name,
+      category: entity.category,
+      jurisdictionLevel: entity.jurisdictionLevel,
+      municipalityCode: entity.municipalityCode,
+      baseRate: entity.baseRate,
+      treatment: entity.treatment,
+      context: entity.context,
+      origin: entity.origin,
+      isActive: entity.isActive,
+      notes: entity.notes,
+    };
+  }
+
+  async findActiveByCode(code: string): Promise<TaxDefinitionSnapshot | null> {
+    const { schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const entity = await qr.manager.findOne(TaxDefinition, {
+        where: { code, isActive: true, deletedAt: IsNull() },
+      });
+      return entity ? this.toSnapshot(entity) : null;
     });
   }
 
-  async findAllActive(): Promise<TaxDefinition[]> {
-    return this.repo.find({
-      where: { isActive: true, deletedAt: IsNull() },
-      order: { category: 'ASC', code: 'ASC' },
+  async listByContext(context: TaxContext): Promise<TaxDefinitionSnapshot[]> {
+    const { schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const entities = await qr.manager.find(TaxDefinition, {
+        where: [
+          { context, isActive: true, deletedAt: IsNull() },
+          { context: TaxContext.BOTH, isActive: true, deletedAt: IsNull() },
+        ],
+        order: { category: 'ASC', code: 'ASC' },
+      });
+      return entities.map((e) => this.toSnapshot(e));
+    });
+  }
+
+  async resolveSystemPreset(code: string): Promise<TaxDefinitionSnapshot | null> {
+    const { schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const entity = await qr.manager.findOne(TaxDefinition, {
+        where: { code, deletedAt: IsNull() },
+      });
+      return entity ? this.toSnapshot(entity) : null;
     });
   }
 }
