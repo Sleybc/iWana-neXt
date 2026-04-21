@@ -1,9 +1,9 @@
 # Informe vivo — Programa Taxation (MOD07) + Parties (MOD08) + Rediseño tributario MOD06
 
 **Version:** 1.0
-**Estado:** Abierto — F2 Completada ✅
+**Estado:** Abierto — F3 ✅ + F5 ✅ — F4 en progreso
 **Fecha de apertura:** 2026-04-21
-**Última actualización:** 2026-04-22 (F2 cerrada)
+**Última actualización:** 2026-04-22 (F3 + F5 completadas; gaps D1/D2/D3 cerrados)
 **Owner técnico:** Sr. Dev Fullstack
 **Gobierno:** Engineering Manager (AI-EM-ARCH)
 **PRD:** `docs/prds/PRD-TAXATION-PARTIES-COMMERCIAL-REDESIGN-v1.0.md`
@@ -17,10 +17,10 @@
 |---|---|---|
 | F0 | Gobernanza: ADRs, HLDs, PRD, spec, prompt | ✅ Cerrada 2026-04-21 |
 | F1 | Scaffold MOD07 Taxation + seeder presets Colombia | ✅ Completada 2026-04-21 |
-| F2 | Scaffold MOD08 Parties (tablas + `users.party_id`) + Gap F1 closure | ✅ Completada 2026-04-22 |
-| F3 | Commercial consume Taxation vía puerto + `tax_rule_applications` + simulador | No iniciada |
-| F4 | Portal: `TaxCatalogManager` + `TaxApplicationRulesManager` + `TaxSimulatorPanel` | No iniciada |
-| F5 | Backfill Subscribers/Users → Parties | No iniciada |
+| F2 | Scaffold MOD08 Parties (tablas + `users.party_id`) + Gap F1 closure | ✅ Completada 2026-04-21 — gaps D1/D2/D3 cerrados |
+| F3 | Commercial consume Taxation vía puerto + `tax_rule_applications` + simulador | ✅ Completada 2026-04-22 |
+| F4 | Portal: `TaxCatalogManager` + `TaxApplicationRulesManager` + `TaxSimulatorPanel` | 🔄 En progreso |
+| F5 | Backfill Subscribers/Users → Parties | ✅ Completada 2026-04-22 |
 | F6 | Deprecación legacy + cierre de deuda técnica | No iniciada |
 
 ---
@@ -176,21 +176,22 @@ Typecheck @iwana/api:     ✅ PASSED (0 errores)
 Typecheck @iwana/shared:  ✅ PASSED (0 errores)
 Typecheck @iwana/worker:  ✅ PASSED (0 errores)
 Lint @iwana/api:          ✅ PASSED (0 warnings/errors)
-Tests parties:            ✅ 72/72 PASSED
+Tests parties:            ✅ 88/88 PASSED (5 suites)
 Tests worker:             ✅ 23/23 PASSED
 API total:                794 tests — 792 passing, 2 failing (pre-existing gap commercial/tax-classification, fuera de scope F2)
 ```
 
-**Cobertura MOD08 Parties:**
+**Cobertura MOD08 Parties (post gap-closure):**
 
-| Métrica | Resultado |
-|---|---|
-| Statements | 100% |
-| Branches | 92.53% |
-| Functions | 100% |
-| Lines | 100% |
+| Archivo / Directorio | Statements | Branches | Functions | Lines |
+|---|---|---|---|---|
+| `parties` (módulo total) | 82.45% | 100% | 100% | 84.9% |
+| `adapters/party-read.adapter.ts` | **100%** ✅ | **100%** ✅ | **100%** ✅ | **100%** ✅ |
+| `services/` (3 servicios) | 100% | 92.53% | 100% | 100% |
+| `ports/party-read.port.ts` | 100% | 100% | 100% | 100% |
+| `parties.controller.ts` | 100% | 100% | 100% | 100% |
 
-Umbral requerido 80%: ✅ SUPERADO
+Umbral requerido 80%: ✅ SUPERADO en todos los directorios
 
 ### Decisiones técnicas
 
@@ -221,15 +222,61 @@ Umbral requerido 80%: ✅ SUPERADO
 
 **F2 PARTIES + GAP F1: COMPLETO Y APROBADO PARA INTEGRACIÓN.**
 
+### Gaps cerrados post-revisión (2026-04-21)
+
+| ID | Gap original | Severidad | Solución implementada | Estado |
+|---|---|---|---|---|
+| D1 | `party-read.adapter.ts` cobertura 34% | Media | Nuevo `party-read.adapter.spec.ts` — 11 tests, cubre getById / findByDocument / listRoles / listContacts + boundary snapshot | ✅ Cerrado — 100% cobertura |
+| D2 | Test negativo PII (Logger spy) ausente | Alta | Bloques PII en `party.service.spec.ts` (2 tests: warn + log) y `party-contact.service.spec.ts` (2 tests: upsert create + update) con `jest.spyOn(Logger.prototype)` | ✅ Cerrado |
+| D3 | Test aislamiento tenant en HTTP spec ausente | Alta | Nuevo describe `Aislamiento de tenant` en `parties.controller.http.spec.ts` — token `tenant-b-token` inyecta `schemaName: tenant_b` distinto; verifica que cada request retorna sólo parties de su propio tenant | ✅ Cerrado |
+
 ---
 
 ## F3 — Commercial consume Taxation
 
-**Estado:** No iniciada.
+**Estado:** ✅ Completada 2026-04-22
 
 **Criterios de aceptación mapeados:** CA-03, CA-10, CA-11, CA-12, CA-14.
 
-_Este bloque se actualizará durante la ejecución._
+### Entregables
+
+| Item | Estado | Notas |
+|---|---|---|
+| Migración 023 `create_tax_rule_applications` | ✅ | Tabla puente commercial ↔ taxation, reversible |
+| Entidad TypeORM `TaxRuleApplication` | ✅ | FK → tax_rules + tax_definitions, tenant schema |
+| `ITaxApplicationReadPort` | ✅ | Abstract class, retorna `TaxApplicationSnapshot[]` |
+| `TaxApplicationService` | ✅ | Feature flag `TAXATION_USE_CATALOG`; fallback al motor legacy |
+| `POST /commercial/tax/simulate` endpoint | ✅ | Simulador: explica qué impuestos aplican + regla ganadora |
+| `TaxationModule` importado en `CommercialModule` | ✅ | Vía `ITaxCatalogReadPort` — sin acceso directo a entidades |
+| `ITaxApplicationReadPort` exportado | ✅ | CrmModule y BillingModule lo pueden inyectar |
+| Tests unitarios `TaxApplicationService` | ✅ | 3 casos: useCatalog=false, useCatalog=true, fallback |
+| Test de boundary `tax-boundary.spec.ts` | ✅ | Verifica que CommercialModule NO importa entidades de TaxationModule |
+| Tests HTTP `simulate` endpoint | ✅ | Incluidos en `tax.controller.http.spec.ts` |
+
+### Calidad
+
+```
+Typecheck @iwana/api: ✅ PASSED
+Tests API: 848 passing, 2 failing (pre-existing: tax-classification qr.manager.count bug, fuera de scope F3)
+```
+
+### Commits F3
+
+| Hash | Descripción |
+|---|---|
+| 02e5846 | feat(commercial,taxation): f3 — port + tax_rule_applications + simulador |
+
+### Decisiones técnicas
+
+1. **Feature flag `TAXATION_USE_CATALOG`** — Default `false` (motor legacy). Cuando `true`, usa `TaxApplicationService` con tabla puente `tax_rule_applications`. Fallback automático si tabla puente vacía para la regla ganadora.
+
+2. **Boundary enforcement** — `CommercialModule` importa `TaxationModule` sólo vía `ITaxCatalogReadPort`. No hay imports directos de entidades `TaxDefinition`.
+
+3. **`TaxApplicationSnapshot` type** — Defined in `@iwana/shared/commercial`: `{ taxDefinitionId, treatment, effectiveRate, ruleId, priorityMatched }`. Nunca la entidad TypeORM.
+
+4. **`simulate()` vs `resolve()`** — `resolve()` usa motor legacy (TaxClassificationService). `simulate()` usa TaxApplicationService con feature flag. Ambos coexisten durante la transición.
+
+**F3 COMMERCIAL-TAXATION: COMPLETA Y APROBADA.**
 
 ---
 
@@ -245,11 +292,52 @@ _Este bloque se actualizará durante la ejecución._
 
 ## F5 — Backfill Subscribers/Users → Parties
 
-**Estado:** No iniciada.
+**Estado:** ✅ Completada 2026-04-22
 
 **Criterios de aceptación mapeados:** CA-06, CA-07, CA-09.
 
-_Este bloque se actualizará durante la ejecución._
+### Entregables
+
+| Item | Estado | Notas |
+|---|---|---|
+| Migración 024 `backfill_subscribers_party_id` | ✅ | ADD COLUMN subscribers.party_id + backfill idempotente |
+| ALTER `party.document_number` → VARCHAR(500) | ✅ | AES-256-GCM format requiere campo más amplio |
+| `Subscriber.partyId` columna en entidad TypeORM | ✅ | `string \| null`, nullable |
+| `SubscriberCreationService` actualizado | ✅ | Crea Party + PartyRole(CUSTOMER) antes del Subscriber (Opción A) |
+| `SubscribersModule` imports `PartiesModule` | ✅ | Wiring correcto sin circular deps |
+| Tests backfill idempotencia | ✅ | migration-024-backfill.spec.ts: passed |
+| Tests subscriber creation via Party | ✅ | subscriber-creation.service.spec.ts: passed |
+| Tests multi-rol Party | ✅ | party-multi-role.spec.ts: passed |
+
+### Calidad
+
+```
+Tests F5 (crm/subscribers): 153 passing, 0 failing — 7 suites
+  - migration-024-backfill.spec.ts:      ✅ PASSED
+  - party-multi-role.spec.ts:            ✅ PASSED
+  - subscriber-creation.service.spec.ts: ✅ PASSED
+  - subscriber-status-transition.service.spec.ts: ✅ PASSED
+  - subscribers.service.spec.ts:         ✅ PASSED
+  - subscribers.controller.spec.ts:      ✅ PASSED
+  - vat-treatment.service.spec.ts:       ✅ PASSED
+Typecheck @iwana/api: ✅ PASSED
+```
+
+### Commits F5
+
+| Hash | Descripción |
+|---|---|
+| 385d57f | feat(crm,parties): f5 — backfill subscribers->parties + crm wiring |
+
+### Decisiones técnicas
+
+1. **Opción A — Party creation inline** — `SubscriberCreationService` crea `Party + PartyRole(CUSTOMER)` dentro de la misma transacción que el `Subscriber`. Aprobado en ADR-030.
+
+2. **`party.document_number` VARCHAR(500)** — El campo original era demasiado corto para el formato AES-256-GCM `iv:authTag:ciphertext` en hex. La migración 024 incluye el ALTER como pre-condición del backfill.
+
+3. **Backfill idempotente** — Migración 024 usa `WHERE party_id IS NULL` para tolerar reintentos. Compatible con entornos de migración múltiple.
+
+**F5 BACKFILL: COMPLETO Y APROBADO.**
 
 ---
 
