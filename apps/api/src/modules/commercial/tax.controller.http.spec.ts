@@ -1,4 +1,4 @@
-import {
+﻿import {
   ForbiddenException,
   INestApplication,
   UnauthorizedException,
@@ -6,13 +6,12 @@ import {
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-import { TaxType, UserRole } from '@iwana/shared';
+import { UserRole } from '@iwana/shared';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { IS_PUBLIC_KEY } from '../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { TaxController } from './controllers/tax.controller';
-import { TaxClassificationService } from './services/tax-classification.service';
 import { TaxApplicationService } from './services/tax-application.service';
 
 jest.mock('../auth/guards/jwt-auth.guard', () => ({
@@ -102,30 +101,20 @@ jest.mock('../auth/guards/roles.guard', () => ({
 describe('TaxController HTTP', () => {
   let app: INestApplication;
 
-  const taxClassificationServiceMock = {
-    findAllClassifications: jest.fn(),
-    findOneClassification: jest.fn(),
-    createClassification: jest.fn(),
-    updateClassification: jest.fn(),
-    findRulesByClassification: jest.fn(),
-    findAllRules: jest.fn(),
-    createRule: jest.fn(),
-    updateRule: jest.fn(),
-    deactivateRule: jest.fn(),
-    resolveClassification: jest.fn(),
-    deactivateClassification: jest.fn(),
-  };
-
   const taxApplicationServiceMock = {
     resolve: jest.fn(),
     simulate: jest.fn(),
+    listApplications: jest.fn(),
+    createApplication: jest.fn(),
+    updateApplication: jest.fn(),
+    deleteApplication: jest.fn(),
+    listRules: jest.fn(),
   };
 
   beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       controllers: [TaxController],
       providers: [
-        { provide: TaxClassificationService, useValue: taxClassificationServiceMock },
         { provide: TaxApplicationService, useValue: taxApplicationServiceMock },
         JwtAuthGuard,
         RolesGuard,
@@ -153,20 +142,20 @@ describe('TaxController HTTP', () => {
     jest.clearAllMocks();
   });
 
-  it('GET /api/v1/commercial/tax-rules retorna 200 y propaga filtro taxClassificationId', async () => {
-    taxClassificationServiceMock.findAllRules.mockResolvedValue([]);
+  // ─── GET /commercial/tax-rules ────────────────────────────────────────────
+
+  it('GET /api/v1/commercial/tax-rules retorna 200 con lista de reglas', async () => {
+    taxApplicationServiceMock.listRules.mockResolvedValue([]);
 
     await request(app.getHttpServer())
-      .get('/api/v1/commercial/tax-rules?taxClassificationId=11111111-1111-1111-1111-111111111111')
+      .get('/api/v1/commercial/tax-rules')
       .set('Authorization', 'Bearer accountant-token')
       .expect(200)
       .expect(({ body }) => {
         expect(body.data).toEqual([]);
       });
 
-    expect(taxClassificationServiceMock.findAllRules).toHaveBeenCalledWith(
-      '11111111-1111-1111-1111-111111111111',
-    );
+    expect(taxApplicationServiceMock.listRules).toHaveBeenCalled();
   });
 
   it('GET /api/v1/commercial/tax-rules retorna 403 con rol no permitido', async () => {
@@ -174,84 +163,6 @@ describe('TaxController HTTP', () => {
       .get('/api/v1/commercial/tax-rules')
       .set('Authorization', 'Bearer sales-token')
       .expect(403);
-  });
-
-  it('POST /api/v1/commercial/tax-rules crea regla con actor autenticado', async () => {
-    taxClassificationServiceMock.createRule.mockResolvedValue({ id: 'tax-rule-1' });
-
-    await request(app.getHttpServer())
-      .post('/api/v1/commercial/tax-rules')
-      .set('Authorization', 'Bearer accountant-token')
-      .send({
-        taxClassificationId: '11111111-1111-1111-1111-111111111111',
-        taxType: TaxType.IVA,
-        ratePercentage: '19.00',
-      })
-      .expect(201);
-
-    expect(taxClassificationServiceMock.createRule).toHaveBeenCalledWith(
-      {
-        taxClassificationId: '11111111-1111-1111-1111-111111111111',
-        taxType: TaxType.IVA,
-        ratePercentage: '19.00',
-      },
-      'usr-accountant-sub',
-    );
-  });
-
-  it('PATCH /api/v1/commercial/tax-rules/:id actualiza regla tributaria', async () => {
-    taxClassificationServiceMock.updateRule.mockResolvedValue({ id: 'tax-rule-1' });
-
-    await request(app.getHttpServer())
-      .patch('/api/v1/commercial/tax-rules/11111111-1111-1111-1111-111111111111')
-      .set('Authorization', 'Bearer accountant-token')
-      .send({
-        ratePercentage: '5.00',
-        isActive: false,
-      })
-      .expect(200);
-
-    expect(taxClassificationServiceMock.updateRule).toHaveBeenCalledWith(
-      '11111111-1111-1111-1111-111111111111',
-      {
-        ratePercentage: '5.00',
-        isActive: false,
-      },
-    );
-  });
-
-  it('POST /api/v1/commercial/tax/resolve resuelve clasificación tributaria', async () => {
-    taxClassificationServiceMock.resolveClassification.mockResolvedValue({
-      id: 'cls-exempt',
-      name: 'Exento',
-      appliesIva: false,
-      appliesRetefuente: false,
-      appliesReteIca: false,
-      appliesEstampillas: false,
-    });
-
-    await request(app.getHttpServer())
-      .post('/api/v1/commercial/tax/resolve')
-      .set('Authorization', 'Bearer accountant-token')
-      .send({ segment: 'RESIDENTIAL', stratum: 2 })
-      .expect(201)
-      .expect(({ body }) => {
-        expect(body.data.name).toBe('Exento');
-        expect(body.data.appliesIva).toBe(false);
-      });
-
-    expect(taxClassificationServiceMock.resolveClassification).toHaveBeenCalledWith(
-      'RESIDENTIAL',
-      2,
-    );
-  });
-
-  it('POST /api/v1/commercial/tax/resolve retorna 400 con segmento inválido', async () => {
-    await request(app.getHttpServer())
-      .post('/api/v1/commercial/tax/resolve')
-      .set('Authorization', 'Bearer accountant-token')
-      .send({ segment: 'INVALIDO' })
-      .expect(400);
   });
 
   // ─── POST /commercial/tax/simulate ──────────────────────────────────────
@@ -320,12 +231,17 @@ describe('TaxController HTTP', () => {
       .expect(400);
   });
 
-  it('POST /api/v1/commercial/tax/simulate retorna 403 con rol no permitido', async () => {
+  it('POST /api/v1/commercial/tax/simulate retorna 201 con rol SALES', async () => {
+    taxApplicationServiceMock.simulate.mockResolvedValue({
+      applications: [],
+      winnerRuleId: null,
+      reason: 'No se encontró regla tributaria.',
+    });
+
     await request(app.getHttpServer())
       .post('/api/v1/commercial/tax/simulate')
       .set('Authorization', 'Bearer sales-token')
       .send({ segment: 'RESIDENTIAL' })
-      // SALES tiene permiso para simulate (igual que resolve)
       .expect(201);
   });
 });
