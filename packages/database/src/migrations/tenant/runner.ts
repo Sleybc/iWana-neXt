@@ -16,6 +16,7 @@ import { MigrateCatalogData1700000000018 } from './018_migrate_catalog_data';
 import { SeedCommercialDefaultTaxRules1700000000019 } from './019_seed_commercial_default_tax_rules';
 import { AddCommercialRulesFields1700000000020 } from './020_add_commercial_rules_fields';
 import { CreateTaxationModule1700000000021 } from './021_create_taxation_module';
+import { CreatePartiesModule1700000000022 } from './022_create_parties_module';
 
 const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   InitialTenantSchema1700000000000,
@@ -35,6 +36,7 @@ const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   SeedCommercialDefaultTaxRules1700000000019,
   AddCommercialRulesFields1700000000020,
   CreateTaxationModule1700000000021,
+  CreatePartiesModule1700000000022,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;
