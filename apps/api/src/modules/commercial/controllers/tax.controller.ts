@@ -17,9 +17,12 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { TaxClassificationService } from '../services/tax-classification.service';
+import { TaxApplicationService } from '../services/tax-application.service';
 import {
   CreateTaxClassificationDto,
   CreateTaxRuleDto,
+  ResolveTaxDto,
+  SimulateTaxDto,
   UpdateTaxRuleDto,
   UpdateTaxClassificationDto,
 } from '../dto/tax.dto';
@@ -30,7 +33,10 @@ import { Query } from '@nestjs/common';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('commercial')
 export class TaxController {
-  constructor(private readonly taxClassificationService: TaxClassificationService) {}
+  constructor(
+    private readonly taxClassificationService: TaxClassificationService,
+    private readonly taxApplicationService: TaxApplicationService,
+  ) {}
 
   // ─── Clasificaciones tributarias ──────────────────────────────────────────
 
@@ -70,6 +76,14 @@ export class TaxController {
     return { data };
   }
 
+  @Delete('tax-classifications/:id')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Eliminar clasificación tributaria' })
+  async deactivateClassification(@Param('id', ParseUUIDPipe) id: string) {
+    await this.taxClassificationService.deactivateClassification(id);
+    return { message: 'Clasificación eliminada' };
+  }
+
   // ─── Reglas tributarias ───────────────────────────────────────────────────
 
   @Get('tax-classifications/:classificationId/rules')
@@ -84,7 +98,7 @@ export class TaxController {
 
   @Get('tax-rules')
   @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
-  @ApiOperation({ summary: 'Listar reglas tributarias activas del tenant' })
+  @ApiOperation({ summary: 'Listar reglas tributarias del tenant (activas e inactivas)' })
   async findAllRules(@Query('taxClassificationId') taxClassificationId?: string) {
     const data = await this.taxClassificationService.findAllRules(taxClassificationId);
     return { data };
@@ -112,5 +126,32 @@ export class TaxController {
   async deactivateRule(@Param('id', ParseUUIDPipe) id: string) {
     await this.taxClassificationService.deactivateRule(id);
     return { message: 'Regla tributaria desactivada' };
+  }
+
+  @Post('tax/resolve')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SALES, UserRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Resolver clasificación tributaria dado un segmento y estrato' })
+  @ApiResponse({ status: 201, description: 'Clasificación tributaria resuelta' })
+  async resolveClassification(@Body() dto: ResolveTaxDto) {
+    const data = await this.taxClassificationService.resolveClassification(
+      dto.segment,
+      dto.stratum,
+    );
+    return { data };
+  }
+
+  @Post('tax/simulate')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SALES, UserRole.SYSTEM_ADMIN)
+  @ApiOperation({
+    summary: 'Simulador tributario: explica qué impuestos aplican a un cliente y qué regla ganó',
+  })
+  @ApiResponse({ status: 201, description: 'Resultado de simulación tributaria' })
+  async simulateTax(@Body() dto: SimulateTaxDto) {
+    const data = await this.taxApplicationService.simulate(
+      dto.segment,
+      dto.stratum,
+      dto.municipalityCode,
+    );
+    return { data };
   }
 }

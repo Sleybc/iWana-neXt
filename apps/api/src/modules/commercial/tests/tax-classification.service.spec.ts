@@ -215,4 +215,85 @@ describe('TaxClassificationService', () => {
       await expect(service.updateRule('non-existent', {})).rejects.toThrow(NotFoundException);
     });
   });
+
+  describe('deactivateClassification', () => {
+    it('desactiva clasificación exitosamente cuando no es del sistema', async () => {
+      const cls = { id: 'cls-1', isSystem: false, isActive: true };
+      const saveMock = jest.fn().mockResolvedValue({ ...cls, isActive: false });
+
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { findOne: async () => cls, save: saveMock } }),
+      );
+
+      await service.deactivateClassification('cls-1');
+      expect(saveMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ isActive: false }),
+      );
+    });
+
+    it('lanza BadRequestException al intentar eliminar clasificación del sistema', async () => {
+      const cls = { id: 'cls-sys', isSystem: true, isActive: true };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { findOne: async () => cls } }),
+      );
+
+      await expect(service.deactivateClassification('cls-sys')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('lanza NotFoundException si clasificación no existe', async () => {
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { findOne: async () => null } }),
+      );
+
+      await expect(service.deactivateClassification('non-existent')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('resolveClassification', () => {
+    it('retorna la clasificación con mayor prioridad para el segmento y estrato dados', async () => {
+      const classification = { id: 'cls-1', name: 'Exento', appliesIva: false };
+      const rule = { id: 'rule-1', priority: 10, taxClassification: classification };
+
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) => {
+        const manager = {
+          createQueryBuilder: () => ({
+            innerJoinAndSelect: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            andWhere: jest.fn().mockReturnThis(),
+            orderBy: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(rule),
+          }),
+        };
+        return cb({ manager });
+      });
+
+      const result = await service.resolveClassification('RESIDENTIAL' as any, 2);
+      expect(result.id).toBe('cls-1');
+      expect(result.name).toBe('Exento');
+    });
+
+    it('lanza NotFoundException si no hay regla que aplique', async () => {
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) => {
+        const manager = {
+          createQueryBuilder: () => ({
+            innerJoinAndSelect: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            andWhere: jest.fn().mockReturnThis(),
+            orderBy: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(null),
+          }),
+        };
+        return cb({ manager });
+      });
+
+      await expect(service.resolveClassification('SOHO' as any, 5)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
 });

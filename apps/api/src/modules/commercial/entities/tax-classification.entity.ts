@@ -39,4 +39,19 @@ export class TaxClassification {
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
+
+  @Column({ type: 'boolean', name: 'applies_iva', default: false })
+  appliesIva: boolean;
+
+  @Column({ type: 'boolean', name: 'applies_retefuente', default: false })
+  appliesRetefuente: boolean;
+
+  @Column({ type: 'boolean', name: 'applies_rete_ica', default: false })
+  appliesReteIca: boolean;
+
+  @Column({ type: 'boolean', name: 'applies_estampillas', default: false })
+  appliesEstampillas: boolean;
+
+  @Column({ type: 'boolean', name: 'is_system', default: false })
+  isSystem: boolean;
 }

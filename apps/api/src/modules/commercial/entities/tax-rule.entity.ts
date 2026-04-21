@@ -72,6 +72,17 @@ export class TaxRule {
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 
+  // Estrato socioeconómico mínimo y máximo del nuevo modelo (1-6, null = sin restricción)
+  @Column({ type: 'smallint', name: 'stratum_from', nullable: true })
+  stratumFrom: number | null;
+
+  @Column({ type: 'smallint', name: 'stratum_to', nullable: true })
+  stratumTo: number | null;
+
+  // Mayor número = mayor precedencia al resolver solapamientos entre reglas
+  @Column({ type: 'smallint', name: 'priority', default: 0 })
+  priority: number;
+
   @ManyToOne(() => TaxClassification)
   @JoinColumn({ name: 'tax_classification_id' })
   taxClassification: TaxClassification;

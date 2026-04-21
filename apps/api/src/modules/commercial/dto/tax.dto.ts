@@ -11,7 +11,7 @@ import {
   Max,
   Min,
 } from 'class-validator';
-import { TaxType } from '@iwana/shared';
+import { CustomerSegment, TaxType } from '@iwana/shared';
 
 export class CreateTaxClassificationDto {
   @ApiProperty({ maxLength: 50, description: 'Código único por tenant (ej: IVA_FULL)' })
@@ -28,6 +28,26 @@ export class CreateTaxClassificationDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @ApiPropertyOptional({ default: false, description: 'El ítem está sujeto a IVA' })
+  @IsOptional()
+  @IsBoolean()
+  appliesIva?: boolean;
+
+  @ApiPropertyOptional({ default: false, description: 'Aplica retención en la fuente' })
+  @IsOptional()
+  @IsBoolean()
+  appliesRetefuente?: boolean;
+
+  @ApiPropertyOptional({ default: false, description: 'Aplica ReteICA' })
+  @IsOptional()
+  @IsBoolean()
+  appliesReteIca?: boolean;
+
+  @ApiPropertyOptional({ default: false, description: 'Aplica estampillas' })
+  @IsOptional()
+  @IsBoolean()
+  appliesEstampillas?: boolean;
 }
 
 export class UpdateTaxClassificationDto {
@@ -46,6 +66,26 @@ export class UpdateTaxClassificationDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ description: 'El ítem está sujeto a IVA' })
+  @IsOptional()
+  @IsBoolean()
+  appliesIva?: boolean;
+
+  @ApiPropertyOptional({ description: 'Aplica retención en la fuente' })
+  @IsOptional()
+  @IsBoolean()
+  appliesRetefuente?: boolean;
+
+  @ApiPropertyOptional({ description: 'Aplica ReteICA' })
+  @IsOptional()
+  @IsBoolean()
+  appliesReteIca?: boolean;
+
+  @ApiPropertyOptional({ description: 'Aplica estampillas' })
+  @IsOptional()
+  @IsBoolean()
+  appliesEstampillas?: boolean;
 }
 
 export class CreateTaxRuleDto {
@@ -72,6 +112,31 @@ export class CreateTaxRuleDto {
   @Min(1)
   @Max(6)
   estratoMax?: number;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 6, description: 'Estrato mínimo (nuevo modelo)' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(6)
+  stratumFrom?: number;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 6, description: 'Estrato máximo (nuevo modelo)' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(6)
+  stratumTo?: number;
+
+  @ApiPropertyOptional({
+    minimum: 0,
+    maximum: 100,
+    description: 'Prioridad al resolver solapamientos',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  priority?: number;
 
   @ApiPropertyOptional({ maxLength: 10, description: 'Código DANE del municipio' })
   @IsOptional()
@@ -125,6 +190,31 @@ export class UpdateTaxRuleDto {
   @Max(6)
   estratoMax?: number;
 
+  @ApiPropertyOptional({ minimum: 1, maximum: 6, description: 'Estrato mínimo (nuevo modelo)' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(6)
+  stratumFrom?: number;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 6, description: 'Estrato máximo (nuevo modelo)' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(6)
+  stratumTo?: number;
+
+  @ApiPropertyOptional({
+    minimum: 0,
+    maximum: 100,
+    description: 'Prioridad al resolver solapamientos',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  priority?: number;
+
   @ApiPropertyOptional({ maxLength: 10, description: 'Código DANE del municipio' })
   @IsOptional()
   @IsString()
@@ -156,4 +246,36 @@ export class UpdateTaxRuleDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+}
+
+export class ResolveTaxDto {
+  @ApiProperty({ enum: CustomerSegment })
+  @IsEnum(CustomerSegment)
+  segment: CustomerSegment;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 6 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(6)
+  stratum?: number;
+}
+
+export class SimulateTaxDto {
+  @ApiProperty({ enum: CustomerSegment, description: 'Segmento del cliente a simular' })
+  @IsEnum(CustomerSegment)
+  segment: CustomerSegment;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 6, description: 'Estrato socioeconómico (1-6)' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(6)
+  stratum?: number;
+
+  @ApiPropertyOptional({ maxLength: 10, description: 'Código DANE del municipio' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  municipalityCode?: string;
 }

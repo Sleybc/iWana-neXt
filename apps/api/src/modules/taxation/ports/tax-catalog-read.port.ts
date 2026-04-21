@@ -40,4 +40,12 @@ export abstract class TaxCatalogReadPort {
 
   /** Resuelve un preset SYSTEM por código (sin filtro isActive). */
   abstract resolveSystemPreset(code: string): Promise<TaxDefinitionSnapshot | null>;
+
+  /**
+   * Busca una definición activa por UUID.
+   * Usado por TaxApplicationService para enriquecer los snapshots
+   * de tax_rule_applications sin cruzar el boundary de entidades.
+   * Retorna null si no existe o está inactiva.
+   */
+  abstract findById(id: string): Promise<TaxDefinitionSnapshot | null>;
 }

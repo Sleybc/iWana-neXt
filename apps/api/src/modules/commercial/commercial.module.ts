@@ -2,6 +2,9 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PlanCatalogReadPort } from '../crm/ports/plan-catalog-read.port';
 import { CommercialCatalogReadPort } from './ports/commercial-catalog-read.port';
+import { CommercialCompatibilityReadPort } from './ports/commercial-compatibility-read.port';
+import { TaxRuleReadPort } from './ports/tax-rule-read.port';
+import { ITaxApplicationReadPort } from './ports/tax-application-read.port';
 
 // ─── Entidades ────────────────────────────────────────────────────────────────
 import { CatalogItem } from './entities/catalog-item.entity';
@@ -15,6 +18,7 @@ import { CatalogPromotion } from './entities/catalog-promotion.entity';
 import { CompatibilityRule } from './entities/compatibility-rule.entity';
 import { TaxClassification } from './entities/tax-classification.entity';
 import { TaxRule } from './entities/tax-rule.entity';
+import { TaxRuleApplication } from './entities/tax-rule-application.entity';
 
 // ─── Servicios ────────────────────────────────────────────────────────────────
 import { CatalogService } from './services/catalog.service';
@@ -23,6 +27,7 @@ import { BundleService } from './services/bundle.service';
 import { PromotionService } from './services/promotion.service';
 import { CompatibilityService } from './services/compatibility.service';
 import { TaxClassificationService } from './services/tax-classification.service';
+import { TaxApplicationService } from './services/tax-application.service';
 
 // ─── Controllers ──────────────────────────────────────────────────────────────
 import { CatalogController } from './controllers/catalog.controller';
@@ -31,8 +36,13 @@ import { PromotionController } from './controllers/promotion.controller';
 import { CompatibilityController } from './controllers/compatibility.controller';
 import { TaxController } from './controllers/tax.controller';
 
-// ─── Puerto y adaptador ───────────────────────────────────────────────────────
+// ─── Puertos y adaptadores ────────────────────────────────────────────────────
 import { CommercialCatalogReadAdapter } from './ports/commercial-catalog-read.adapter';
+import { CommercialCompatibilityReadAdapter } from './ports/commercial-compatibility-read.adapter';
+import { TaxRuleReadAdapter } from './ports/tax-rule-read.adapter';
+
+// ─── Módulos externos ─────────────────────────────────────────────────────────
+import { TaxationModule } from '../taxation/taxation.module';
 
 @Module({
   imports: [
@@ -48,7 +58,10 @@ import { CommercialCatalogReadAdapter } from './ports/commercial-catalog-read.ad
       CompatibilityRule,
       TaxClassification,
       TaxRule,
+      TaxRuleApplication,
     ]),
+    // TaxationModule exporta TaxCatalogReadPort para que TaxApplicationService lo inyecte
+    TaxationModule,
   ],
   controllers: [
     CatalogController,
@@ -64,6 +77,11 @@ import { CommercialCatalogReadAdapter } from './ports/commercial-catalog-read.ad
     PromotionService,
     CompatibilityService,
     TaxClassificationService,
+    TaxApplicationService,
+    {
+      provide: ITaxApplicationReadPort,
+      useExisting: TaxApplicationService,
+    },
     CommercialCatalogReadAdapter,
     {
       provide: CommercialCatalogReadPort,
@@ -73,7 +91,25 @@ import { CommercialCatalogReadAdapter } from './ports/commercial-catalog-read.ad
       provide: PlanCatalogReadPort,
       useExisting: CommercialCatalogReadPort,
     },
+    CommercialCompatibilityReadAdapter,
+    {
+      provide: CommercialCompatibilityReadPort,
+      useExisting: CommercialCompatibilityReadAdapter,
+    },
+    TaxRuleReadAdapter,
+    {
+      provide: TaxRuleReadPort,
+      useExisting: TaxRuleReadAdapter,
+    },
   ],
-  exports: [CommercialCatalogReadPort, PlanCatalogReadPort, CatalogService, PriceHistoryService],
+  exports: [
+    CommercialCatalogReadPort,
+    PlanCatalogReadPort,
+    CatalogService,
+    PriceHistoryService,
+    CommercialCompatibilityReadPort,
+    TaxRuleReadPort,
+    ITaxApplicationReadPort,
+  ],
 })
 export class CommercialModule {}

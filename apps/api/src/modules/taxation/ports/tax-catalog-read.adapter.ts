@@ -71,4 +71,14 @@ export class TaxCatalogReadAdapter extends TaxCatalogReadPort {
       return entity ? this.toSnapshot(entity) : null;
     });
   }
+
+  async findById(id: string): Promise<TaxDefinitionSnapshot | null> {
+    const { schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const entity = await qr.manager.findOne(TaxDefinition, {
+        where: { id, isActive: true, deletedAt: IsNull() },
+      });
+      return entity ? this.toSnapshot(entity) : null;
+    });
+  }
 }

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
+import { CustomerSegment } from '@iwana/shared';
 import { TaxClassification } from '../entities/tax-classification.entity';
 import { TaxRule } from '../entities/tax-rule.entity';
 import {
@@ -90,7 +91,6 @@ export class TaxClassificationService {
       qr.manager.find(TaxRule, {
         where: {
           tenantId,
-          isActive: true,
           ...(taxClassificationId ? { taxClassificationId } : {}),
         },
         order: { createdAt: 'DESC' },
@@ -116,6 +116,10 @@ export class TaxClassificationService {
         customerSegment: (dto.customerSegment as TaxRule['customerSegment']) ?? null,
         estratoMin: dto.estratoMin ?? null,
         estratoMax: dto.estratoMax ?? null,
+        // Nuevo modelo de estrato (migration 020)
+        stratumFrom: dto.stratumFrom ?? null,
+        stratumTo: dto.stratumTo ?? null,
+        priority: dto.priority ?? 0,
         municipalityCode: dto.municipalityCode ?? null,
         taxType: dto.taxType,
         ratePercentage: dto.ratePercentage,
@@ -171,6 +175,64 @@ export class TaxClassificationService {
       });
 
       return qr.manager.save(TaxRule, rule);
+    });
+  }
+
+  /**
+   * Elimina físicamente una clasificación tributaria.
+   * Rechaza la operación si existen reglas tributarias asociadas.
+   */
+  async deactivateClassification(id: string): Promise<void> {
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const entity = await qr.manager.findOne(TaxClassification, { where: { id, tenantId } });
+      if (!entity) throw new NotFoundException(`TaxClassification ${id} no encontrada`);
+      const relatedRulesCount = await qr.manager.count(TaxRule, {
+        where: { tenantId, taxClassificationId: id },
+      });
+      if (relatedRulesCount > 0) {
+        throw new BadRequestException(
+          'No se puede eliminar la clasificación porque tiene reglas tributarias asociadas.',
+        );
+      }
+      await qr.manager.remove(TaxClassification, entity);
+    });
+  }
+
+  /**
+   * Resuelve la clasificación tributaria aplicable dado un segmento y estrato.
+   * Lógica: filtrar reglas activas por segmento y rango de estrato,
+   * ordenar por priority DESC y retornar la clasificación de la primera regla.
+   */
+  async resolveClassification(
+    segment: CustomerSegment,
+    stratum?: number,
+  ): Promise<TaxClassification> {
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      let qb = qr.manager
+        .createQueryBuilder(TaxRule, 'tr')
+        .innerJoinAndSelect('tr.taxClassification', 'tc')
+        .where('tr.tenantId = :tenantId', { tenantId })
+        .andWhere('tr.isActive = true')
+        .andWhere('(tr.customerSegment = :segment OR tr.customerSegment IS NULL)', { segment });
+
+      if (stratum !== undefined) {
+        qb = qb.andWhere(
+          '((tr.stratumFrom IS NULL AND tr.stratumTo IS NULL) OR (:stratum BETWEEN tr.stratumFrom AND tr.stratumTo))',
+          { stratum },
+        );
+      } else {
+        qb = qb.andWhere('tr.stratumFrom IS NULL AND tr.stratumTo IS NULL');
+      }
+
+      const rule = await qb.orderBy('tr.priority', 'DESC').getOne();
+      if (!rule?.taxClassification) {
+        throw new NotFoundException(
+          `No se encontró clasificación tributaria para segmento=${segment}${stratum !== undefined ? `, estrato=${stratum}` : ''}`,
+        );
+      }
+      return rule.taxClassification;
     });
   }
 }
