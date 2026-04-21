@@ -141,6 +141,7 @@ export const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps
           aria-modal="true"
           className={cn(
             'relative z-[1001] max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-xl dark:border-dark-border dark:bg-dark-surface-2',
+
             className,
           )}
           onMouseDown={(event) => {

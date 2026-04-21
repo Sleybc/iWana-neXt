@@ -27,6 +27,10 @@ export * from './components/OtpInput';
 export * from './components/Dialog';
 export * from './components/SectionAccordion';
 export * from './components/ProgressMeter';
+export * from './components/Popover';
+export * from './components/Calendar';
+export * from './components/DatePicker';
+export * from './components/MultiSelect';
 
 // Providers
 export * from './components/ThemeProvider';

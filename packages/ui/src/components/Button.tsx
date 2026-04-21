@@ -24,6 +24,8 @@ const buttonVariants = cva(
         // Dark: borde+texto violeta claro (#7E7BDF, primary-300) — contraste 5.1:1 sobre #222.
         secondary:
           'border-2 border-iwana-primary text-iwana-primary bg-transparent hover:bg-iwana-primary hover:text-white focus-visible:ring-iwana-primary dark:border-iwana-primary-300 dark:text-iwana-primary-300 dark:hover:bg-iwana-primary-400 dark:hover:border-iwana-primary-400 dark:hover:text-white',
+        outline:
+          'border border-gray-300 bg-white hover:bg-gray-100 hover:text-gray-900 border-gray-300 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:hover:bg-dark-surface-2 dark:text-white dark:hover:text-gray-50 focus-visible:ring-iwana-primary',
         // Dark: texto e icono en gris claro visible.
         ghost:
           'text-gray-700 hover:bg-gray-100 focus-visible:ring-iwana-primary dark:text-gray-300 dark:hover:bg-dark-surface-3',
