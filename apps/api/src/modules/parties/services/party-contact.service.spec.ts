@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { Logger, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { PartyContactType } from '@iwana/shared';
 import { PartyContactService } from './party-contact.service';
@@ -221,6 +221,57 @@ describe('PartyContactService', () => {
       );
 
       expect(mockQr.manager.remove).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // D2 — Guardia PII: verificar que contact.value no aparece en logs
+  // ---------------------------------------------------------------------------
+  describe('PII — value de contacto no aparece en logs', () => {
+    it('logger.log en upsert (creación) NO incluye el value del contacto', async () => {
+      const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+      const newContact = buildContact({ value: 'VALOR-SECRETO-PII@example.invalid' });
+      mockQr.manager.update.mockResolvedValue(undefined);
+      mockQr.manager.findOne.mockResolvedValue(null);
+      mockQr.manager.create.mockReturnValue(newContact);
+      mockQr.manager.save.mockResolvedValue(newContact);
+
+      await service.upsert('party-uuid-001', {
+        type: PartyContactType.EMAIL,
+        value: 'VALOR-SECRETO-PII@example.invalid',
+        isPrimary: false,
+      });
+
+      const logCalls = logSpy.mock.calls.map((args) => args.join(' '));
+      for (const call of logCalls) {
+        expect(call).not.toContain('VALOR-SECRETO-PII');
+      }
+
+      logSpy.mockRestore();
+    });
+
+    it('logger.log en upsert (actualización) NO incluye el value del contacto', async () => {
+      const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+      const existing = buildContact({ value: 'VALOR-VIEJO-PII@example.invalid' });
+      mockQr.manager.update.mockResolvedValue(undefined);
+      mockQr.manager.findOne.mockResolvedValue(existing);
+      mockQr.manager.save.mockResolvedValue(existing);
+
+      await service.upsert('party-uuid-001', {
+        type: PartyContactType.EMAIL,
+        value: 'VALOR-NUEVO-PII@example.invalid',
+        isPrimary: false,
+      });
+
+      const logCalls = logSpy.mock.calls.map((args) => args.join(' '));
+      for (const call of logCalls) {
+        expect(call).not.toContain('VALOR-NUEVO-PII');
+        expect(call).not.toContain('VALOR-VIEJO-PII');
+      }
+
+      logSpy.mockRestore();
     });
   });
 });

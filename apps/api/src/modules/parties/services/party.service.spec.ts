@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
 import { DataSource, IsNull } from 'typeorm';
 import {
   PartyType,
@@ -466,6 +466,59 @@ describe('PartyService', () => {
       await expect(service.softDelete('nonexistent-id')).rejects.toThrow('nonexistent-id');
 
       expect(mockQr.manager.save).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // D2 — Guardia PII: verificar que documentNumber no aparece en logs
+  // ---------------------------------------------------------------------------
+  describe('PII — documentNumber no aparece en logs', () => {
+    it('logger.warn de conflicto NO incluye documentNumber', async () => {
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      mockQr.manager.findOne.mockResolvedValueOnce({ id: 'existing-party' }); // Simula duplicado
+
+      const dto: CreatePartyDto = {
+        partyType: 'NATURAL' as any,
+        documentType: DocumentTypeParty.CC,
+        documentNumber: 'NUMERO-SECRETO-PII',
+        displayName: 'Nombre Ficticio',
+      };
+
+      await expect(service.create(dto)).rejects.toThrow(ConflictException);
+
+      // El warn no debe filtrar el valor del documento
+      const warnCalls = warnSpy.mock.calls.map((args) => args.join(' '));
+      for (const call of warnCalls) {
+        expect(call).not.toContain('NUMERO-SECRETO-PII');
+      }
+
+      warnSpy.mockRestore();
+    });
+
+    it('logger.log de creación exitosa NO incluye documentNumber', async () => {
+      const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+      const newParty = buildParty({ id: 'party-nuevo', documentNumber: 'NUMERO-SECRETO-PII' });
+      mockQr.manager.findOne.mockResolvedValueOnce(null); // Sin duplicado
+      mockQr.manager.create.mockReturnValue(newParty);
+      mockQr.manager.save.mockResolvedValue(newParty);
+
+      const dto: CreatePartyDto = {
+        partyType: 'NATURAL' as any,
+        documentType: DocumentTypeParty.CC,
+        documentNumber: 'NUMERO-SECRETO-PII',
+        displayName: 'Nombre Ficticio',
+      };
+
+      await service.create(dto);
+
+      const logCalls = logSpy.mock.calls.map((args) => args.join(' '));
+      for (const call of logCalls) {
+        expect(call).not.toContain('NUMERO-SECRETO-PII');
+      }
+
+      logSpy.mockRestore();
     });
   });
 });

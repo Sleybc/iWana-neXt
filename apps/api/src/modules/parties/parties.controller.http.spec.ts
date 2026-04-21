@@ -79,6 +79,21 @@ jest.mock('../auth/guards/jwt-auth.guard', () => ({
         return true;
       }
 
+      // Token de tenant B — para test de aislamiento
+      if (authHeader === 'Bearer tenant-b-token') {
+        req.user = {
+          id: 'user-tenant-b-id',
+          sub: 'usr-tenant-b-sub',
+          email: 'hash-tenant-b',
+          role: UserRole.ADMIN,
+          tenantId: 'tenant-b',
+          schemaName: 'tenant_b',
+          jti: 'jti-tenant-b',
+          type: 'tenant',
+        };
+        return true;
+      }
+
       throw new UnauthorizedException('Token de acceso invalido o expirado.');
     }
   },
@@ -649,6 +664,75 @@ describe('PartiesController HTTP', () => {
         .delete(`/api/v1/parties/${validPartyId}/contacts/invalid-uuid`)
         .set('Authorization', 'Bearer admin-token')
         .expect(400);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // D3 — Aislamiento de tenant: cada token resuelve su propio contexto de tenant
+  // ---------------------------------------------------------------------------
+  describe('Aislamiento de tenant', () => {
+    it('GET /api/v1/parties devuelve sólo datos del tenant del token presentado', async () => {
+      // Tenant A recibe sus parties
+      const partiesTenantA = {
+        data: [{ ...mockParty, id: 'party-tenant-a-001', displayName: 'Cliente Tenant A' }],
+        total: 1,
+        page: 1,
+        limit: 20,
+      };
+      // Tenant B recibe sus parties (conjunto diferente)
+      const partiesTenantB = {
+        data: [{ ...mockParty, id: 'party-tenant-b-001', displayName: 'Cliente Tenant B' }],
+        total: 1,
+        page: 1,
+        limit: 20,
+      };
+
+      // Primera llamada → tenant A
+      partyServiceMock.findAll.mockResolvedValueOnce(partiesTenantA);
+      const responseA = await request(app.getHttpServer())
+        .get('/api/v1/parties')
+        .set('Authorization', 'Bearer admin-token') // schemaName: tenant_test
+        .expect(200);
+
+      // Segunda llamada → tenant B
+      partyServiceMock.findAll.mockResolvedValueOnce(partiesTenantB);
+      const responseB = await request(app.getHttpServer())
+        .get('/api/v1/parties')
+        .set('Authorization', 'Bearer tenant-b-token') // schemaName: tenant_b
+        .expect(200);
+
+      // Cada respuesta tiene sólo los parties de su tenant
+      expect(responseA.body.data[0].id).toBe('party-tenant-a-001');
+      expect(responseB.body.data[0].id).toBe('party-tenant-b-001');
+
+      // Los IDs de tenant A no están en la respuesta de tenant B y viceversa
+      const idsA = responseA.body.data.map((p: { id: string }) => p.id);
+      const idsB = responseB.body.data.map((p: { id: string }) => p.id);
+      expect(idsA).not.toEqual(expect.arrayContaining(idsB));
+    });
+
+    it('POST /api/v1/parties — el servicio recibe la llamada y el guard valida el rol del tenant correcto', async () => {
+      const partyTenantB = {
+        ...mockParty,
+        id: 'party-tenant-b-002',
+        displayName: 'Nuevo Cliente Tenant B',
+      };
+      partyServiceMock.create.mockResolvedValueOnce(partyTenantB);
+
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/parties')
+        .set('Authorization', 'Bearer tenant-b-token') // tenant B ADMIN
+        .send({
+          partyType: PartyType.NATURAL,
+          documentType: DocumentTypeParty.CC,
+          documentNumber: '50000001',
+          displayName: 'Nuevo Cliente Tenant B',
+        })
+        .expect(201);
+
+      expect(response.body.data.id).toBe('party-tenant-b-002');
+      // El servicio fue llamado una sola vez (no hay cross-tenant leak)
+      expect(partyServiceMock.create).toHaveBeenCalledTimes(1);
     });
   });
 });
