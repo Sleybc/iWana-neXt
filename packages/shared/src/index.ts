@@ -18,6 +18,7 @@ export * from './enums/tax-regime.enum';
 export * from './enums/subscriber-status.enum';
 export * from './enums/crm';
 export * from './enums/commercial';
+export * from './enums/taxation';
 
 // Interfaces
 export * from './interfaces/api-response.interface';
