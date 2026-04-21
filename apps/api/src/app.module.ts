@@ -21,6 +21,7 @@ import { TenantMiddleware } from './modules/tenant/tenant.middleware';
 import { CrmModule } from './modules/crm/crm.module';
 import { CommercialModule } from './modules/commercial/commercial.module';
 import { TaxationModule } from './modules/taxation/taxation.module';
+import { PartiesModule } from './modules/parties/parties.module';
 
 const runtimeEnv = process.env['NODE_ENV'];
 const apiDevelopmentLocalEnvPath = resolve(__dirname, '../../../.env.development.local');
@@ -225,6 +226,9 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
 
     // Modulo Taxation (MOD07): catálogo de impuestos unificado, presets DIAN, CRUD tenant-aware
     TaxationModule,
+
+    // Modulo Parties (MOD08): gestión unificada de terceros — parties, roles, contactos
+    PartiesModule,
   ],
   controllers: [],
   providers: [
