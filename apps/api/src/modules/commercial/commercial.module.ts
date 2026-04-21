@@ -1,9 +1,8 @@
-import { Module } from '@nestjs/common';
+﻿import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PlanCatalogReadPort } from '../crm/ports/plan-catalog-read.port';
 import { CommercialCatalogReadPort } from './ports/commercial-catalog-read.port';
 import { CommercialCompatibilityReadPort } from './ports/commercial-compatibility-read.port';
-import { TaxRuleReadPort } from './ports/tax-rule-read.port';
 import { ITaxApplicationReadPort } from './ports/tax-application-read.port';
 
 // ─── Entidades ────────────────────────────────────────────────────────────────
@@ -16,7 +15,6 @@ import { CatalogBundle } from './entities/catalog-bundle.entity';
 import { CatalogBundleItem } from './entities/catalog-bundle-item.entity';
 import { CatalogPromotion } from './entities/catalog-promotion.entity';
 import { CompatibilityRule } from './entities/compatibility-rule.entity';
-import { TaxClassification } from './entities/tax-classification.entity';
 import { TaxRule } from './entities/tax-rule.entity';
 import { TaxRuleApplication } from './entities/tax-rule-application.entity';
 
@@ -26,7 +24,6 @@ import { PriceHistoryService } from './services/price-history.service';
 import { BundleService } from './services/bundle.service';
 import { PromotionService } from './services/promotion.service';
 import { CompatibilityService } from './services/compatibility.service';
-import { TaxClassificationService } from './services/tax-classification.service';
 import { TaxApplicationService } from './services/tax-application.service';
 
 // ─── Controllers ──────────────────────────────────────────────────────────────
@@ -39,7 +36,6 @@ import { TaxController } from './controllers/tax.controller';
 // ─── Puertos y adaptadores ────────────────────────────────────────────────────
 import { CommercialCatalogReadAdapter } from './ports/commercial-catalog-read.adapter';
 import { CommercialCompatibilityReadAdapter } from './ports/commercial-compatibility-read.adapter';
-import { TaxRuleReadAdapter } from './ports/tax-rule-read.adapter';
 
 // ─── Módulos externos ─────────────────────────────────────────────────────────
 import { TaxationModule } from '../taxation/taxation.module';
@@ -56,7 +52,6 @@ import { TaxationModule } from '../taxation/taxation.module';
       CatalogBundleItem,
       CatalogPromotion,
       CompatibilityRule,
-      TaxClassification,
       TaxRule,
       TaxRuleApplication,
     ]),
@@ -76,7 +71,6 @@ import { TaxationModule } from '../taxation/taxation.module';
     BundleService,
     PromotionService,
     CompatibilityService,
-    TaxClassificationService,
     TaxApplicationService,
     {
       provide: ITaxApplicationReadPort,
@@ -96,11 +90,6 @@ import { TaxationModule } from '../taxation/taxation.module';
       provide: CommercialCompatibilityReadPort,
       useExisting: CommercialCompatibilityReadAdapter,
     },
-    TaxRuleReadAdapter,
-    {
-      provide: TaxRuleReadPort,
-      useExisting: TaxRuleReadAdapter,
-    },
   ],
   exports: [
     CommercialCatalogReadPort,
@@ -108,7 +97,6 @@ import { TaxationModule } from '../taxation/taxation.module';
     CatalogService,
     PriceHistoryService,
     CommercialCompatibilityReadPort,
-    TaxRuleReadPort,
     ITaxApplicationReadPort,
   ],
 })

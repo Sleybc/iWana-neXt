@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+﻿import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsDateString,
@@ -16,81 +16,6 @@ import {
 } from 'class-validator';
 import { CustomerSegment, TaxType } from '@iwana/shared';
 
-export class CreateTaxClassificationDto {
-  @ApiProperty({ maxLength: 50, description: 'Código único por tenant (ej: IVA_FULL)' })
-  @IsString()
-  @MaxLength(50)
-  code: string;
-
-  @ApiProperty({ maxLength: 150 })
-  @IsString()
-  @MaxLength(150)
-  name: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  description?: string;
-
-  @ApiPropertyOptional({ default: false, description: 'El ítem está sujeto a IVA' })
-  @IsOptional()
-  @IsBoolean()
-  appliesIva?: boolean;
-
-  @ApiPropertyOptional({ default: false, description: 'Aplica retención en la fuente' })
-  @IsOptional()
-  @IsBoolean()
-  appliesRetefuente?: boolean;
-
-  @ApiPropertyOptional({ default: false, description: 'Aplica ReteICA' })
-  @IsOptional()
-  @IsBoolean()
-  appliesReteIca?: boolean;
-
-  @ApiPropertyOptional({ default: false, description: 'Aplica estampillas' })
-  @IsOptional()
-  @IsBoolean()
-  appliesEstampillas?: boolean;
-}
-
-export class UpdateTaxClassificationDto {
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @MaxLength(150)
-  name?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  description?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsBoolean()
-  isActive?: boolean;
-
-  @ApiPropertyOptional({ description: 'El ítem está sujeto a IVA' })
-  @IsOptional()
-  @IsBoolean()
-  appliesIva?: boolean;
-
-  @ApiPropertyOptional({ description: 'Aplica retención en la fuente' })
-  @IsOptional()
-  @IsBoolean()
-  appliesRetefuente?: boolean;
-
-  @ApiPropertyOptional({ description: 'Aplica ReteICA' })
-  @IsOptional()
-  @IsBoolean()
-  appliesReteIca?: boolean;
-
-  @ApiPropertyOptional({ description: 'Aplica estampillas' })
-  @IsOptional()
-  @IsBoolean()
-  appliesEstampillas?: boolean;
-}
-
 export class CreateTaxRuleDto {
   @ApiProperty({ description: 'UUID de la clasificación tributaria' })
   @IsString()
@@ -101,20 +26,6 @@ export class CreateTaxRuleDto {
   @IsOptional()
   @IsString()
   customerSegment?: string;
-
-  @ApiPropertyOptional({ minimum: 1, maximum: 6 })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(6)
-  estratoMin?: number;
-
-  @ApiPropertyOptional({ minimum: 1, maximum: 6 })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(6)
-  estratoMax?: number;
 
   @ApiPropertyOptional({ minimum: 1, maximum: 6, description: 'Estrato mínimo (nuevo modelo)' })
   @IsOptional()
@@ -179,20 +90,6 @@ export class UpdateTaxRuleDto {
   @IsString()
   customerSegment?: string;
 
-  @ApiPropertyOptional({ minimum: 1, maximum: 6 })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(6)
-  estratoMin?: number;
-
-  @ApiPropertyOptional({ minimum: 1, maximum: 6 })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(6)
-  estratoMax?: number;
-
   @ApiPropertyOptional({ minimum: 1, maximum: 6, description: 'Estrato mínimo (nuevo modelo)' })
   @IsOptional()
   @IsInt()
@@ -249,19 +146,6 @@ export class UpdateTaxRuleDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
-}
-
-export class ResolveTaxDto {
-  @ApiProperty({ enum: CustomerSegment })
-  @IsEnum(CustomerSegment)
-  segment: CustomerSegment;
-
-  @ApiPropertyOptional({ minimum: 1, maximum: 6 })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(6)
-  stratum?: number;
 }
 
 export class SimulateTaxDto {

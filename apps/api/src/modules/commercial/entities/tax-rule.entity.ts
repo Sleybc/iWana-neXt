@@ -3,23 +3,23 @@ import {
   CreateDateColumn,
   Entity,
   Index,
-  JoinColumn,
-  ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { CustomerSegment, TaxType } from '@iwana/shared';
-import { TaxClassification } from './tax-classification.entity';
 
 /**
  * Regla tributaria configurable por el administrador del tenant.
  * Permite definir tasas de IVA, retención e ICA según:
  * - segmento de cliente
- * - rango de estrato socioeconómico
+ * - rango de estrato socioeconómico (stratum_from/stratum_to — modelo vigente)
  * - municipio (código DANE)
  *
  * Vigente desde valid_from hasta valid_to (null = sin vencimiento).
  * Las tasas deben ser configurables por UI: no hardcodear aquí.
+ *
+ * Nota: la columna tax_classification_id persiste en DB (relación histórica)
+ * pero la FK fue eliminada en migration 025 junto con la tabla tax_classifications.
  */
 @Entity({ name: 'tax_rules' })
 @Index('idx_tax_rules_lookup', ['tenantId', 'taxClassificationId', 'isActive'])
@@ -30,19 +30,12 @@ export class TaxRule {
   @Column({ type: 'uuid', name: 'tenant_id' })
   tenantId: string;
 
-  @Column({ type: 'uuid', name: 'tax_classification_id' })
-  taxClassificationId: string;
+  @Column({ type: 'uuid', name: 'tax_classification_id', nullable: true })
+  taxClassificationId: string | null;
 
   // null = aplica a cualquier segmento
   @Column({ type: 'varchar', length: 30, name: 'customer_segment', nullable: true })
   customerSegment: CustomerSegment | null;
-
-  // Estrato socioeconómico mínimo y máximo del suscriptor (1-6, null = sin restricción)
-  @Column({ type: 'integer', name: 'estrato_min', nullable: true })
-  estratoMin: number | null;
-
-  @Column({ type: 'integer', name: 'estrato_max', nullable: true })
-  estratoMax: number | null;
 
   // Código DANE del municipio; null = aplica a todos los municipios
   @Column({ type: 'varchar', length: 10, name: 'municipality_code', nullable: true })
@@ -82,8 +75,4 @@ export class TaxRule {
   // Mayor número = mayor precedencia al resolver solapamientos entre reglas
   @Column({ type: 'smallint', name: 'priority', default: 0 })
   priority: number;
-
-  @ManyToOne(() => TaxClassification)
-  @JoinColumn({ name: 'tax_classification_id' })
-  taxClassification: TaxClassification;
 }

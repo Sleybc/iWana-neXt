@@ -1,10 +1,8 @@
-import { Test, TestingModule } from '@nestjs/testing';
+﻿import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
-import { ConfigService } from '@nestjs/config';
 import { CustomerSegment } from '@iwana/shared';
 import { TaxCatalogReadPort } from '../../taxation/ports/tax-catalog-read.port';
 import { TaxApplicationService } from '../services/tax-application.service';
-import { TaxClassificationService } from '../services/tax-classification.service';
 import { ITaxApplicationReadPort } from '../ports/tax-application-read.port';
 
 // ─── Mocks de módulos ────────────────────────────────────────────────────────
@@ -69,27 +67,15 @@ describe('TaxApplicationService', () => {
     resolveSystemPreset: jest.fn(),
   };
 
-  const mockConfigService = {
-    get: jest.fn().mockReturnValue('true'), // useCatalog=true por defecto en tests
-  };
-
-  const mockTaxClassificationService = {
-    resolveClassification: jest.fn(),
-  };
-
   beforeEach(async () => {
     mockTenantContextGetOrThrow.mockReturnValue(tenantCtx);
     jest.clearAllMocks();
-    // useCatalog=true para cubrir el motor de catálogo en todos los tests
-    mockConfigService.get.mockReturnValue('true');
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TaxApplicationService,
         { provide: DataSource, useValue: {} },
-        { provide: ConfigService, useValue: mockConfigService },
         { provide: TaxCatalogReadPort, useValue: mockTaxCatalogPort },
-        { provide: TaxClassificationService, useValue: mockTaxClassificationService },
       ],
     }).compile();
 
@@ -294,7 +280,6 @@ describe('TaxApplicationService', () => {
       mockRunInTenantSchema.mockImplementation(
         async (_ds: unknown, schema: string, cb: (m: unknown) => unknown) => {
           capturedSchema = schema;
-          // Usamos let + asignación posterior para evitar ciclo de referencia en el tipo
           let qb!: { where: jest.Mock; andWhere: jest.Mock; orderBy: jest.Mock; getOne: jest.Mock };
           qb = {
             where: jest.fn((_q: string, params: Record<string, string>) => {
@@ -303,18 +288,13 @@ describe('TaxApplicationService', () => {
             }),
             andWhere: jest.fn().mockReturnThis(),
             orderBy: jest.fn().mockReturnThis(),
-            // Sin regla → cae al legacy
+            // Sin regla → retorna [] directamente (motor catálogo, sin legacy)
             getOne: jest.fn().mockResolvedValue(null),
           };
           return cb({
             manager: { createQueryBuilder: () => qb, find: jest.fn().mockResolvedValue([]) },
           });
         },
-      );
-
-      // Legacy fallback → resolveClassification falla → retorna []
-      mockTaxClassificationService.resolveClassification.mockRejectedValue(
-        new Error('no encontrada'),
       );
 
       const result = await service.resolve(CustomerSegment.RESIDENTIAL);
@@ -360,7 +340,6 @@ describe('TaxApplicationService', () => {
 
       expect(result.winnerRuleId).toBe('rule-sim-id');
       expect(result.applications).toHaveLength(1);
-      // noUncheckedIndexedAccess: assert before accessing
       const firstApp = result.applications[0];
       expect(firstApp).toBeDefined();
       expect(firstApp?.effectiveRate).toBe(19);

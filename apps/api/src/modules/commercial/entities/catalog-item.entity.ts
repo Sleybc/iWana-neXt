@@ -4,19 +4,19 @@ import {
   DeleteDateColumn,
   Entity,
   Index,
-  JoinColumn,
-  ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { CatalogItemType } from '@iwana/shared';
-import { TaxClassification } from './tax-classification.entity';
 
 /**
  * Tabla base del catálogo comercial (Class Table Inheritance manual).
  * El discriminante 'type' indica si es PLAN, PRODUCT o SERVICE.
  * El detalle específico por tipo se almacena en tablas de extensión
  * (plan_details, product_details, service_details) con FK a esta tabla.
+ *
+ * Nota: la columna tax_classification_id persiste en DB para compatibilidad,
+ * pero la tabla tax_classifications fue eliminada en migration 025.
  */
 @Entity({ name: 'catalog_items' })
 @Index('idx_catalog_items_tenant_type_active', ['tenantId', 'type', 'isActive'])
@@ -54,8 +54,4 @@ export class CatalogItem {
 
   @DeleteDateColumn({ name: 'deleted_at', type: 'timestamptz' })
   deletedAt: Date | null;
-
-  @ManyToOne(() => TaxClassification, { nullable: true, eager: false })
-  @JoinColumn({ name: 'tax_classification_id' })
-  taxClassification: TaxClassification | null;
 }
