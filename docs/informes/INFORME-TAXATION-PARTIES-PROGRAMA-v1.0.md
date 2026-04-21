@@ -1,9 +1,9 @@
 # Informe vivo — Programa Taxation (MOD07) + Parties (MOD08) + Rediseño tributario MOD06
 
 **Version:** 1.0
-**Estado:** Abierto — F1 Completada ✅
+**Estado:** Abierto — F2 Completada ✅
 **Fecha de apertura:** 2026-04-21
-**Última actualización:** 2026-04-21 (F1 cerrada)
+**Última actualización:** 2026-04-22 (F2 cerrada)
 **Owner técnico:** Sr. Dev Fullstack
 **Gobierno:** Engineering Manager (AI-EM-ARCH)
 **PRD:** `docs/prds/PRD-TAXATION-PARTIES-COMMERCIAL-REDESIGN-v1.0.md`
@@ -17,7 +17,7 @@
 |---|---|---|
 | F0 | Gobernanza: ADRs, HLDs, PRD, spec, prompt | ✅ Cerrada 2026-04-21 |
 | F1 | Scaffold MOD07 Taxation + seeder presets Colombia | ✅ Completada 2026-04-21 |
-| F2 | Scaffold MOD08 Parties (tablas + `users.party_id`) | No iniciada |
+| F2 | Scaffold MOD08 Parties (tablas + `users.party_id`) + Gap F1 closure | ✅ Completada 2026-04-22 |
 | F3 | Commercial consume Taxation vía puerto + `tax_rule_applications` + simulador | No iniciada |
 | F4 | Portal: `TaxCatalogManager` + `TaxApplicationRulesManager` + `TaxSimulatorPanel` | No iniciada |
 | F5 | Backfill Subscribers/Users → Parties | No iniciada |
@@ -133,13 +133,93 @@ Tests:     ✅ 34/34 PASSED (4.123s)
 
 ---
 
-## F2 — Scaffold MOD08 Parties
+## F2 — Scaffold MOD08 Parties + Gap F1 Closure
 
-**Estado:** No iniciada.
+**Estado:** ✅ Completada 2026-04-22
 
-**Criterios de aceptación mapeados:** CA-04, CA-05, CA-11, CA-12.
+**Criterios de aceptación:** CA-04, CA-05, CA-11, CA-12.
 
-_Este bloque se actualizará durante la ejecución._
+### Gap F1 cerrado
+
+| Item | Estado | Notas |
+|---|---|---|
+| `TAX_COLOMBIA_PRESETS` → `@iwana/shared` | ✅ | `packages/shared/src/taxation/` — 6 presets Colombia |
+| `TaxPresetsSeeder` refactorizado | ✅ | Importa desde `@iwana/shared`, sin lógica duplicada |
+| `TenantSeedService.seedTaxPresets()` | ✅ | SQL raw + `schemaName` explícito (compatible BullMQ sin AsyncLocalStorage) |
+| `TenantProvisioningProcessor` wiring | ✅ | Llama `seedTaxPresets()` tras `runMigrationsForSchema()` por tenant |
+| Worker tests | ✅ | 23/23 pasando |
+
+### MOD08 Parties — Entregables
+
+| Item | Estado | Notas |
+|---|---|---|
+| Enums `@iwana/shared` | ✅ | PartyType, DocumentTypeParty, PartyStatus, PartyRoleType, PartyRoleStatus, PartyContactType |
+| Migración 022 `create_parties_module` | ✅ | 6 ENUMs PostgreSQL, tablas `party`, `party_contact`, `party_role`, `ALTER TABLE users ADD COLUMN party_id` |
+| Entidad TypeORM `Party` | ✅ | Soft-delete, unicidad doc tipo+número por tenant, partial unique index |
+| Entidad TypeORM `PartyContact` | ✅ | `isPrimary` por tipo, partial unique index WHERE `deleted_at IS NULL` |
+| Entidad TypeORM `PartyRole` | ✅ | `PartyRoleStatus`, partial unique index por contexto |
+| DTOs | ✅ | CreatePartyDto, UpdatePartyDto, AssignRoleDto, UpsertContactDto, ListPartiesDto (Zod + class-validator) |
+| `IPartyReadPort` + snapshots | ✅ | PartySnapshot / PartyRoleSnapshot / PartyContactSnapshot (ADR-030 §D4) |
+| `PartyReadAdapter` | ✅ | `TenantContext.getOrThrow()` — válido en HTTP context |
+| `PartyService` | ✅ | CRUD + unicidad de documento por tenant + soft-delete |
+| `PartyRoleService` | ✅ | assign / deactivate |
+| `PartyContactService` | ✅ | upsert / list / delete + `isPrimary` cleanup automático |
+| `PartiesController` | ✅ | 10 endpoints REST bajo `/api/v1/parties`, `JwtAuthGuard` + `RolesGuard(ADMIN)` |
+| `PartiesModule` registrado en `AppModule` | ✅ | — |
+| Tests unitarios (servicios) | ✅ | 72 tests: 0 fallidos |
+| Tests HTTP (controller) | ✅ | Incluidos en los 72 |
+
+### Calidad
+
+```
+Typecheck @iwana/api:     ✅ PASSED (0 errores)
+Typecheck @iwana/shared:  ✅ PASSED (0 errores)
+Typecheck @iwana/worker:  ✅ PASSED (0 errores)
+Lint @iwana/api:          ✅ PASSED (0 warnings/errors)
+Tests parties:            ✅ 72/72 PASSED
+Tests worker:             ✅ 23/23 PASSED
+API total:                794 tests — 792 passing, 2 failing (pre-existing gap commercial/tax-classification, fuera de scope F2)
+```
+
+**Cobertura MOD08 Parties:**
+
+| Métrica | Resultado |
+|---|---|
+| Statements | 100% |
+| Branches | 92.53% |
+| Functions | 100% |
+| Lines | 100% |
+
+Umbral requerido 80%: ✅ SUPERADO
+
+### Decisiones técnicas
+
+1. **Servicios usan `TenantContext.getOrThrow()`** — Válido exclusivamente en HTTP context (guard chain). No usar desde worker o BullMQ.
+
+2. **`seedTaxPresets()` usa SQL raw + `schemaName` explícito** — Compatible con context BullMQ donde `AsyncLocalStorage` no se propaga. Patrón documentado en gotchas `CLAUDE.md`.
+
+3. **`UserRole.ADMIN` para parties** — No existe `TENANT_ADMIN` en el enum `UserRole`. El rol correcto es `ADMIN` según enum real del proyecto.
+
+4. **Migración 022 aditiva** — Consistente con patrón ADR-024. `ALTER TABLE users ADD COLUMN party_id UUID NULL` no rompe esquema existente.
+
+5. **Partial unique indexes** — Declarados en entidades TypeORM con `WHERE` clause para `deleted_at IS NULL`. Compatible con soft-delete y multiplex de documentos históricos.
+
+### Commits F2 (10 commits)
+
+| Hash | Descripción |
+|---|---|
+| `65f639b` | feat(shared): extraer TAX_COLOMBIA_PRESETS a @iwana/shared — gap F1 |
+| `3a0ad47` | feat(shared): enums MOD08 Parties |
+| `79c5d1f` | feat(db): migración 022 — create_parties_module |
+| `84638f7` | feat(parties): entidades TypeORM Party, PartyContact, PartyRole |
+| `bc25363` | feat(worker): seedTaxPresets en TenantSeedService — gap F1 cerrado |
+| `d527bf9` | feat(parties): DTOs + IPartyReadPort + PartyReadAdapter |
+| `83c66c4` | feat(parties): PartyService + PartyRoleService + PartyContactService |
+| `f9bbd03` | feat(parties): controller 10 endpoints + module — MOD08 |
+| `e9b4bea` | feat(api): registrar PartiesModule en AppModule |
+| `af59b9c` | test(parties): unit + HTTP tests MOD08 — coverage ≥80% |
+
+**F2 PARTIES + GAP F1: COMPLETO Y APROBADO PARA INTEGRACIÓN.**
 
 ---
 

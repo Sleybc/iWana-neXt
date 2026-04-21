@@ -828,7 +828,77 @@ Impacto:
 - La ruta `/dashboard/commercial` deja de depender de placeholder para ofertas y habilita operación real de combos/promociones desde portal.
 - Se mantiene coherencia con el boundary de MOD06 (consumo exclusivo de `commercialApi`) y con gating por rol del tenant autenticado.
 
-### 8.29 Cierre de gap: unit tests portal para Ofertas (2026-04-20)
+### 8.30 Implementacion de reglas comerciales: Compatibilidad y Tributarias (2026-04-20)
+
+Se ejecuto la especificacion de diseño `docs/superpowers/specs/2026-04-20-reglas-comerciales-design.md` completa, implementando las dos subsecciones de `Reglas comerciales` en el modulo Comercial: compatibilidad entre items del catalogo y clasificaciones tributarias con resolucion por estrato y segmento.
+
+#### Alcance implementado — Backend
+
+**Migracion tenant 020 (`020_add_commercial_rules_fields.ts`):**
+- `compatibility_rules`: nuevas columnas `effective_from DATE`, `note TEXT`, `updated_at TIMESTAMPTZ`.
+- `tax_classifications`: 5 flags booleanos (`applies_iva`, `applies_retefuente`, `applies_reteica`, `applies_estampillas`, `is_system`).
+- `tax_rules`: columnas `stratum_from SMALLINT`, `stratum_to SMALLINT`, `priority SMALLINT DEFAULT 0`.
+- Seed idempotente de `is_system=true` y flags booleanos para las 4 clasificaciones base: `IVA_EXEMPT`, `IVA_EXCLUDED`, `IVA_FULL`, `GOV_FULL`.
+- Indice unico parcial `idx_compat_one_active_successor` sobre `source_item_id WHERE is_active=true`.
+- Registrada en `runner.ts` como migracion 020.
+
+**Ports y adapters nuevos:**
+- `CommercialCompatibilityReadPort` / `CommercialCompatibilityReadAdapter`: expone `getReplacementFor(sourceItemId)` para consumo en CRM/Billing.
+- `TaxRuleReadPort` / `TaxRuleReadAdapter`: expone `resolve(segment, stratum?)` con logica de prioridad y fallback.
+
+**Entidades actualizadas:**
+- `CompatibilityRule`: `effectiveFrom`, `note`, `updatedAt`.
+- `TaxClassification`: `appliesIva`, `appliesRetefuente`, `appliesReteIca`, `appliesEstampillas`, `isSystem`.
+- `TaxRule`: `stratumFrom`, `stratumTo`, `priority`.
+
+**DTOs actualizados (`compatibility.dto.ts`, `tax.dto.ts`):**
+- `UpdateCompatibilityRuleDto`: `effectiveFrom`, `note`, `isActive`.
+- `CreateTaxClassificationDto` / `UpdateTaxClassificationDto`: 5 flags booleanos.
+- `CreateTaxRuleDto` / `UpdateTaxRuleDto`: `stratumFrom`, `stratumTo`, `priority`, `taxType`, `ratePercentage`.
+- `ResolveTaxDto`: `segment`, `stratum?`.
+
+**Servicios:**
+- `CompatibilityService.update()`: actualiza `effectiveFrom`, `note`, `isActive`; retorna regla actualizada.
+- `CompatibilityService.getReplacementFor()`: devuelve el item sucesor activo de un item dado.
+- `TaxClassificationService.deactivateClassification()`: protege clasificaciones `is_system=true` con `BadRequestException` (400).
+- `TaxClassificationService.resolveClassification()`: resolucion por `segment` + `stratum` (opcional) con prioridad; usa `SET LOCAL search_path` compatible con pgBouncer. QueryBuilder con propiedades TypeScript `tr.stratumFrom`, `tr.stratumTo`.
+
+**Controllers:**
+- `PATCH /commercial/compatibility-rules/:id`: delegacion a `CompatibilityService.update()`.
+- `DELETE /commercial/tax-classifications/:id`: delegacion a `deactivateClassification()` con guard `is_system`.
+- `POST /commercial/tax/resolve`: delegacion a `resolveClassification()` con `ResolveTaxDto`.
+
+**CommercialModule:**
+- Registra y exporta los 4 tokens de puerto nuevos con patron `useExisting` consistente con `CommercialCatalogReadPort`.
+
+#### Alcance implementado — Portal (Frontend)
+
+**`apps/portal/src/lib/api-client.ts`:**
+- Nuevos tipos: `CompatibilityRule`, `TaxClassification` (5 flags + `isSystem`), `TaxRule` (`stratumFrom`, `stratumTo`, `priority`, `taxType`, `ratePercentage`).
+- Nuevos DTOs: `CreateCompatibilityRuleDto`, `UpdateCompatibilityRuleDto`, `CreateTaxClassificationDto` (con `code`), `CreateTaxRuleDto`.
+- 11 nuevos metodos de `commercialApi` para compatibilidad y tributos.
+- Rutas con guion: `/commercial/tax-classifications`, `/commercial/tax-rules`.
+
+**`apps/portal/src/components/commercial/CompatibilityRulesManager.tsx`:**
+- Tabla filtrable por tipo (`REPLACES`, `REQUIRES`, `EXCLUDES`) con dialogo de creacion y edicion via `PATCH`.
+
+**`apps/portal/src/components/commercial/TaxRulesManager.tsx`:**
+- Clasificaciones con 5 indicadores de flag, badge `is_system`, creacion con `code` auto-derivado en `UPPER_SNAKE_CASE`.
+- Panel de reglas por clasificacion con `stratumFrom/To`, `taxType`, `ratePercentage`.
+- Simulador de resolucion via `POST /commercial/tax/resolve`.
+
+**`apps/portal/src/components/commercial/CommercialTabLayout.tsx`:**
+- Subseccion `Reglas comerciales` renderiza `<CompatibilityRulesManager>` + `<TaxRulesManager>`.
+
+#### Correcciones de typecheck (`exactOptionalPropertyTypes`)
+
+- `CompatibilityRulesManager.tsx:197`: spread condicional para `note` en `UpdateCompatibilityRuleDto`.
+- `CompatibilityRulesManager.tsx:397,410` y `TaxRulesManager.tsx:785`: spread condicional para prop `error` de `Select`.
+
+#### Validacion de salida
+
+- `pnpm --filter @iwana/api typecheck` — verde.
+- `pnpm --filter @iwana/portal typecheck` — verde (0 errores).
 
 Se cerró el gap de calidad identificado para la entrega de `Combos y promociones` en portal, habilitando test runner unitario en `apps/portal` y agregando pruebas focalizadas sobre navegación de tabs e integración de panel de Ofertas.
 
@@ -856,3 +926,146 @@ Impacto:
 
 - La entrega de Ofertas queda con cobertura unitaria básica y reproducible en portal.
 - Se evita regresión silenciosa de accesibilidad y navegación en tabs comerciales.
+
+### 8.31 Corrección 500s en endpoints de reglas comerciales y fix QueryBuilder (2026-04-21)
+
+#### Diagnóstico de errores HTTP 500
+
+Los tres endpoints de reglas comerciales retornaban 500 al accederse desde el portal:
+
+| Endpoint | Causa raíz |
+|---|---|
+| `GET /commercial/compatibility-rules` | Columnas `effective_from`, `note`, `updated_at` faltantes en tabla |
+| `GET /commercial/tax-classifications` | Columnas `applies_iva`, `applies_retefuente`, `applies_reteica`, `applies_estampillas`, `is_system` faltantes |
+| `GET /commercial/tax-rules` | Columnas `stratum_from`, `stratum_to`, `priority` faltantes |
+
+**Causa raíz confirmada:** migración `020_add_commercial_rules_fields` compilada en dist pero no ejecutada contra los schemas activos de tenant.
+
+Verificación de presencia del código compilado: archivos del módulo commercial en `apps/api/dist` con timestamp 20/04/2026 3:44 PM confirmaron que el código nuevo SÍ estaba desplegado. El API retornaba 401 en ausencia de token (routing correcto), pero 500 tras autenticación (error en SELECT de columnas inexistentes).
+
+#### Ejecución de migración 020
+
+Se ejecutó usando `.env.development` (que apunta `DB_HOST=localhost` para acceso host-side al contenedor Docker):
+
+```bash
+pnpm --filter @iwana/db migration:tenant:run
+```
+
+Resultado:
+- `tenant_iwana`: migración 020 aplicada en ~50 ms.
+- `tenant_test_company`: migración 020 aplicada en ~50 ms.
+- Tabla `typeorm_migrations` actualizada en ambos schemas.
+
+#### Verificación post-migración de columnas
+
+| Tabla | Columnas antes | Columnas después |
+|---|---|---|
+| `catalog_compatibility_rules` | 8 | 11 (+`effective_from`, `note`, `updated_at`) |
+| `tax_classifications` | 8 | 13 (+5 flags + `is_system`) |
+| `tax_rules` | 15 | 18 (+`stratum_from`, `stratum_to`, `priority`) |
+
+Seed verificado: `IVA_EXEMPT`, `IVA_EXCLUDED`, `IVA_FULL`, `GOV_FULL` con `is_system=true` y flags booleanos correctos.
+
+Endpoints post-migración: retornan 401 (sin token) en lugar de 500 — prueba de que el error era exclusivamente de esquema DB.
+
+#### Fix bug en `resolveClassification` — QueryBuilder nombres de columna
+
+En `tax-classification.service.ts` función `resolveClassification`, el `andWhere` de rango de estrato usaba nombres de columna DB (`tr.stratum_from`, `tr.stratum_to`) en lugar de los nombres de propiedad TypeScript que TypeORM requiere para el mapeo en QueryBuilder:
+
+**Antes (incorrecto):**
+```typescript
+'((tr.stratum_from IS NULL AND tr.stratum_to IS NULL) OR (:stratum BETWEEN tr.stratum_from AND tr.stratum_to))'
+```
+
+**Después (correcto):**
+```typescript
+'((tr.stratumFrom IS NULL AND tr.stratumTo IS NULL) OR (:stratum BETWEEN tr.stratumFrom AND tr.stratumTo))'
+```
+
+TypeORM `replacePropertyNames()` busca en los metadatos del alias `tr` (→ `TaxRule`) la propiedad TypeScript y la convierte al nombre de columna DB. Usar el nombre de columna raw causaría error de resolución en runtime al invocar `POST /commercial/tax/resolve`.
+
+#### Validación final
+
+- `pnpm --filter @iwana/api test -- --testPathPattern="commercial"` → **123/123 tests pass** (14 suites).
+- `pnpm --filter @iwana/api typecheck` → **0 errores**.
+- Endpoints retornan **401** (no 500) para requests no autenticadas — DB layer operativo.
+
+**Estado al cierre:** migración 020 ejecutada en ambos tenant schemas, bug de QueryBuilder corregido, cobertura de tests del módulo commercial intacta.
+
+### 8.32 Ajuste normativo: permitir edición y desactivación de clasificaciones base del sistema (2026-04-21)
+
+Se aplicó un cambio de política funcional para permitir que las clasificaciones tributarias marcadas como `is_system=true` también puedan ajustarse cuando la legislación cambie.
+
+Cambios implementados:
+
+- `apps/api/src/modules/commercial/services/tax-classification.service.ts`:
+  - se eliminó la restricción que bloqueaba `deactivateClassification()` para registros `isSystem`.
+- `apps/api/src/modules/commercial/controllers/tax.controller.ts`:
+  - se actualizó la documentación del endpoint `DELETE /commercial/tax-classifications/:id` removiendo la semántica de bloqueo por sistema.
+- `apps/portal/src/components/commercial/TaxRulesManager.tsx`:
+  - en la sección `Clasificaciones tributarias`, el botón de **Editar** (lápiz) y **Desactivar** ahora aparece para cualquier clasificación activa, incluyendo bases del sistema.
+
+Validación ejecutada:
+
+- `pnpm --filter @iwana/api typecheck` — verde.
+- `pnpm --filter @iwana/portal typecheck` — verde.
+
+### 8.33 CRUD tributario: iconografía en tabla y eliminación real desde modal (2026-04-21)
+
+Ajuste aplicado según lineamiento UX y operación:
+
+- En la grilla de `Clasificaciones tributarias` se dejó solo el ícono de lápiz para edición (sin texto y sin botón de eliminar en la tabla).
+- La acción de eliminación se movió al modal de edición con advertencia explícita y confirmación previa.
+- La eliminación de clasificación pasó a ser física (delete), no desactivación lógica.
+
+Cambios técnicos:
+
+- `apps/portal/src/components/commercial/TaxRulesManager.tsx`:
+  - acción de tabla reducida a ícono `Pencil`.
+  - nuevo `handleDeleteClassification()` invocado desde modal.
+  - botón de eliminar con ícono `Trash2` dentro del modal y aviso de irreversibilidad.
+- `apps/portal/src/lib/api-client.ts`:
+  - nuevo método `deleteTaxClassification()`.
+- `apps/api/src/modules/commercial/services/tax-classification.service.ts`:
+  - `DELETE` elimina registro con `remove()`.
+  - guard de integridad: bloquea eliminación si existen reglas tributarias asociadas.
+- `apps/api/src/modules/commercial/controllers/tax.controller.ts`:
+  - contrato/documentación ajustados a semántica de eliminación.
+
+Validación:
+
+- `pnpm --filter @iwana/api typecheck` — verde.
+- `pnpm --filter @iwana/portal typecheck` — verde.
+
+### 8.34 Recuperación de reglas tributarias inactivas (2026-04-21)
+
+Se corrigió el comportamiento donde una regla quedaba oculta después de desactivarse, impidiendo reactivarla desde portal.
+
+Cambios:
+
+- `apps/api/src/modules/commercial/services/tax-classification.service.ts`:
+  - `findAllRules()` ahora retorna reglas activas e inactivas (sin filtro fijo `isActive=true`).
+- `apps/api/src/modules/commercial/controllers/tax.controller.ts`:
+  - resumen OpenAPI actualizado para reflejar listado de activas e inactivas.
+- `apps/portal/src/components/commercial/TaxRulesManager.tsx`:
+  - para reglas inactivas, se agregó acción `Activar` (usa `PATCH /commercial/tax-rules/:id` con `isActive=true`).
+
+Validación:
+
+- `pnpm --filter @iwana/api typecheck` — verde.
+- `pnpm --filter @iwana/portal typecheck` — verde.
+
+### 8.35 Reactivación visible de clasificaciones tributarias inactivas (2026-04-21)
+
+Se corrigió la UX en `Clasificaciones tributarias` para que los registros inactivos no queden sin acción.
+
+Cambios:
+
+- `apps/portal/src/components/commercial/TaxRulesManager.tsx`:
+  - se agregó acción de **activar** (ícono `RotateCcw`) para filas con `isActive=false`.
+  - la acción llama `updateTaxClassification(id, { isActive: true })` y refresca la tabla.
+  - se mantiene el lápiz únicamente para filas activas.
+
+Validación:
+
+- `pnpm --filter @iwana/portal typecheck` — verde.
