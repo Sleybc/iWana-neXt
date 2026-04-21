@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
@@ -251,6 +251,68 @@ export class TaxApplicationService extends ITaxApplicationReadPort {
       return null;
     }
     return baseRate !== null ? parseFloat(baseRate) : null;
+  }
+
+  // ─── CRUD de TaxRuleApplication ──────────────────────────────────────────
+
+  async listApplications(): Promise<TaxRuleApplication[]> {
+    const { schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      return qr.manager.find(TaxRuleApplication, {
+        order: { priority: 'ASC', createdAt: 'DESC' },
+      });
+    });
+  }
+
+  async createApplication(dto: {
+    taxRuleId: string;
+    taxDefinitionId: string;
+    treatment: 'STANDARD' | 'EXEMPT' | 'EXCLUDED' | 'FIXED';
+    rateOverride?: number | null;
+    priority?: number;
+  }): Promise<TaxRuleApplication> {
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const app = qr.manager.create(TaxRuleApplication, {
+        tenantId,
+        taxRuleId: dto.taxRuleId,
+        taxDefinitionId: dto.taxDefinitionId,
+        treatment: dto.treatment,
+        rateOverride: dto.rateOverride != null ? String(dto.rateOverride) : null,
+        priority: dto.priority ?? 0,
+        isActive: true,
+      });
+      return qr.manager.save(TaxRuleApplication, app);
+    });
+  }
+
+  async updateApplication(
+    id: string,
+    dto: {
+      treatment?: 'STANDARD' | 'EXEMPT' | 'EXCLUDED' | 'FIXED';
+      rateOverride?: number | null;
+      priority?: number;
+      isActive?: boolean;
+    },
+  ): Promise<TaxRuleApplication> {
+    const { schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const existing = await qr.manager.findOne(TaxRuleApplication, { where: { id } });
+      if (!existing) throw new NotFoundException(`TaxRuleApplication ${id} no encontrada`);
+      if (dto.treatment !== undefined) existing.treatment = dto.treatment;
+      if (dto.rateOverride !== undefined)
+        existing.rateOverride = dto.rateOverride != null ? String(dto.rateOverride) : null;
+      if (dto.priority !== undefined) existing.priority = dto.priority;
+      if (dto.isActive !== undefined) existing.isActive = dto.isActive;
+      return qr.manager.save(TaxRuleApplication, existing);
+    });
+  }
+
+  async deleteApplication(id: string): Promise<void> {
+    const { schemaName } = TenantContext.getOrThrow();
+    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await qr.manager.delete(TaxRuleApplication, { id });
+    });
   }
 
   // ─── Motor legacy (useCatalog=false o fallback) ─────────────────────────

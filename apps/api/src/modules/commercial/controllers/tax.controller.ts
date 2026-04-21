@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -20,9 +22,11 @@ import { TaxClassificationService } from '../services/tax-classification.service
 import { TaxApplicationService } from '../services/tax-application.service';
 import {
   CreateTaxClassificationDto,
+  CreateTaxRuleApplicationDto,
   CreateTaxRuleDto,
   ResolveTaxDto,
   SimulateTaxDto,
+  UpdateTaxRuleApplicationDto,
   UpdateTaxRuleDto,
   UpdateTaxClassificationDto,
 } from '../dto/tax.dto';
@@ -153,5 +157,42 @@ export class TaxController {
       dto.municipalityCode,
     );
     return { data };
+  }
+
+  // ─── Aplicaciones tributarias (tabla puente) ─────────────────────────────
+
+  @Get('tax-rule-applications')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Listar aplicaciones tributarias (tabla puente reglas ↔ catálogo)' })
+  async listApplications() {
+    const data = await this.taxApplicationService.listApplications();
+    return { data };
+  }
+
+  @Post('tax-rule-applications')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Crear aplicación tributaria (vincular regla con definición)' })
+  async createApplication(@Body() dto: CreateTaxRuleApplicationDto) {
+    const data = await this.taxApplicationService.createApplication(dto);
+    return { data };
+  }
+
+  @Patch('tax-rule-applications/:id')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Actualizar aplicación tributaria' })
+  async updateApplication(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateTaxRuleApplicationDto,
+  ) {
+    const data = await this.taxApplicationService.updateApplication(id, dto);
+    return { data };
+  }
+
+  @Delete('tax-rule-applications/:id')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Eliminar aplicación tributaria' })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteApplication(@Param('id', ParseUUIDPipe) id: string) {
+    await this.taxApplicationService.deleteApplication(id);
   }
 }

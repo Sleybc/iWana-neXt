@@ -3,10 +3,13 @@ import {
   IsBoolean,
   IsDateString,
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   Max,
   Min,
@@ -278,4 +281,50 @@ export class SimulateTaxDto {
   @IsString()
   @MaxLength(10)
   municipalityCode?: string;
+}
+
+export class CreateTaxRuleApplicationDto {
+  @ApiProperty({ description: 'UUID de la regla tributaria (TaxRule)' })
+  @IsUUID()
+  taxRuleId: string;
+
+  @ApiProperty({ description: 'UUID de la definición tributaria en catálogo MOD07' })
+  @IsUUID()
+  taxDefinitionId: string;
+
+  @ApiProperty({ enum: ['STANDARD', 'EXEMPT', 'EXCLUDED', 'FIXED'] })
+  @IsIn(['STANDARD', 'EXEMPT', 'EXCLUDED', 'FIXED'])
+  treatment: 'STANDARD' | 'EXEMPT' | 'EXCLUDED' | 'FIXED';
+
+  @ApiPropertyOptional({ description: 'Tasa override que sobreescribe baseRate del catálogo' })
+  @IsOptional()
+  @IsNumber()
+  rateOverride?: number | null;
+
+  @ApiPropertyOptional({ minimum: 0, description: 'Prioridad de la aplicación' })
+  @IsOptional()
+  @IsInt()
+  priority?: number;
+}
+
+export class UpdateTaxRuleApplicationDto {
+  @ApiPropertyOptional({ enum: ['STANDARD', 'EXEMPT', 'EXCLUDED', 'FIXED'] })
+  @IsOptional()
+  @IsIn(['STANDARD', 'EXEMPT', 'EXCLUDED', 'FIXED'])
+  treatment?: 'STANDARD' | 'EXEMPT' | 'EXCLUDED' | 'FIXED';
+
+  @ApiPropertyOptional({ description: 'Tasa override (null = usar baseRate del catálogo)' })
+  @IsOptional()
+  @IsNumber()
+  rateOverride?: number | null;
+
+  @ApiPropertyOptional({ minimum: 0 })
+  @IsOptional()
+  @IsInt()
+  priority?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }
