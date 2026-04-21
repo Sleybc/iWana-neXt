@@ -1,5 +1,4 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+﻿import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
@@ -7,22 +6,16 @@ import { CustomerSegment, TaxApplicationSnapshot } from '@iwana/shared';
 import { TaxCatalogReadPort } from '../../taxation/ports/tax-catalog-read.port';
 import { TaxRule } from '../entities/tax-rule.entity';
 import { TaxRuleApplication } from '../entities/tax-rule-application.entity';
-import { TaxClassification } from '../entities/tax-classification.entity';
-import { TaxClassificationService } from './tax-classification.service';
 import { ITaxApplicationReadPort } from '../ports/tax-application-read.port';
 
 /**
  * Servicio de resolución de aplicaciones tributarias.
  * Implementa ITaxApplicationReadPort para ser consumido por CrmModule y BillingModule.
  *
- * Feature flag TAXATION_USE_CATALOG:
- *  - 'false' (default): motor legacy vía TaxClassificationService.
- *  - 'true': nuevo motor con tabla puente tax_rule_applications + catálogo de TaxationModule.
+ * Motor único: catálogo de TaxationModule + tabla puente tax_rule_applications.
+ * El motor legacy (TaxClassificationService) fue eliminado en F6 (ADR-032).
  *
- * Cuando useCatalog=true y la tabla puente está vacía para la regla ganadora,
- * cae automáticamente al motor legacy (compatibilidad durante backfill).
- *
- * Ref: HLD-MOD06-TAXATION-DEPENDENCY-v1.1-addendum §5, ADR-031
+ * Ref: HLD-MOD06-TAXATION-DEPENDENCY-v1.1-addendum §5, ADR-031, ADR-032
  */
 @Injectable()
 export class TaxApplicationService extends ITaxApplicationReadPort {
@@ -30,9 +23,7 @@ export class TaxApplicationService extends ITaxApplicationReadPort {
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
-    private readonly configService: ConfigService,
     @Inject(TaxCatalogReadPort) private readonly taxCatalogPort: TaxCatalogReadPort,
-    private readonly taxClassificationService: TaxClassificationService,
   ) {
     super();
   }
@@ -44,12 +35,6 @@ export class TaxApplicationService extends ITaxApplicationReadPort {
     stratum?: number,
     municipalityCode?: string,
   ): Promise<TaxApplicationSnapshot[]> {
-    const useCatalog = this.configService.get<string>('TAXATION_USE_CATALOG', 'false') === 'true';
-
-    if (!useCatalog) {
-      return this._legacyResolve(segment, stratum);
-    }
-
     return this._catalogResolve(segment, stratum, municipalityCode);
   }
 
@@ -68,18 +53,6 @@ export class TaxApplicationService extends ITaxApplicationReadPort {
     winnerRuleId: string | null;
     reason: string;
   }> {
-    const useCatalog = this.configService.get<string>('TAXATION_USE_CATALOG', 'false') === 'true';
-
-    if (!useCatalog) {
-      const applications = await this._legacyResolve(segment, stratum);
-      return {
-        applications,
-        winnerRuleId: null,
-        reason:
-          'Motor legacy activo (TAXATION_USE_CATALOG=false). Clasificaciones tributarias existentes aplicadas.',
-      };
-    }
-
     const { schemaName, tenantId } = TenantContext.getOrThrow();
 
     const { rule, bridgeApps } = await runInTenantSchema(
@@ -111,15 +84,10 @@ export class TaxApplicationService extends ITaxApplicationReadPort {
     }
 
     if (bridgeApps.length === 0) {
-      // Sin aplicaciones en la tabla puente → fallback legacy durante backfill
-      this.logger.warn(
-        `[TaxApplicationService] Regla ${rule.id} sin aplicaciones en catálogo — usando motor legacy`,
-      );
-      const legacyApps = await this._legacyResolve(segment, stratum);
       return {
-        applications: legacyApps,
+        applications: [],
         winnerRuleId: rule.id,
-        reason: `Regla de prioridad ${rule.priority} encontrada pero sin aplicaciones en catálogo. Resultado del motor legacy aplicado.`,
+        reason: `Regla de prioridad ${rule.priority} encontrada pero sin aplicaciones en catálogo. Configure aplicaciones tributarias para esta regla.`,
       };
     }
 
@@ -132,7 +100,7 @@ export class TaxApplicationService extends ITaxApplicationReadPort {
     };
   }
 
-  // ─── Motor de catálogo (useCatalog=true) ───────────────────────────────
+  // ─── Motor de catálogo ──────────────────────────────────────────────────
 
   private async _catalogResolve(
     segment: CustomerSegment,
@@ -161,8 +129,8 @@ export class TaxApplicationService extends ITaxApplicationReadPort {
       },
     );
 
-    if (!rule) return this._legacyResolve(segment, stratum);
-    if (bridgeApps.length === 0) return this._legacyResolve(segment, stratum);
+    if (!rule) return [];
+    if (bridgeApps.length === 0) return [];
 
     return this._buildSnapshots(rule, bridgeApps);
   }
@@ -315,72 +283,19 @@ export class TaxApplicationService extends ITaxApplicationReadPort {
     });
   }
 
-  // ─── Motor legacy (useCatalog=false o fallback) ─────────────────────────
+  // ─── Listado de TaxRule (para selección en TaxApplicationRulesManager) ───
 
   /**
-   * Resolución legacy: usa TaxClassificationService y adapta el resultado
-   * al formato TaxApplicationSnapshot para compatibilidad durante el backfill.
+   * Lista las reglas tributarias del tenant para ser usadas en la UI
+   * del gestor de aplicaciones tributarias (TaxApplicationRulesManager).
    */
-  private async _legacyResolve(
-    segment: CustomerSegment,
-    stratum?: number,
-  ): Promise<TaxApplicationSnapshot[]> {
-    try {
-      const classification = await this.taxClassificationService.resolveClassification(
-        segment,
-        stratum,
-      );
-      return this._adaptClassificationToSnapshots(classification);
-    } catch {
-      return [];
-    }
-  }
-
-  /** Convierte una TaxClassification legacy a una lista de TaxApplicationSnapshot. */
-  private _adaptClassificationToSnapshots(
-    classification: TaxClassification,
-  ): TaxApplicationSnapshot[] {
-    const snapshots: TaxApplicationSnapshot[] = [];
-    const ruleId = classification.id;
-
-    // Cada flag "applies*" se traduce como un impuesto STANDARD sintético
-    if (classification.appliesIva) {
-      snapshots.push({
-        taxDefinitionId: classification.id,
-        treatment: 'STANDARD',
-        effectiveRate: null,
-        ruleId,
-        priorityMatched: 0,
+  async listRules(): Promise<TaxRule[]> {
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      return qr.manager.find(TaxRule, {
+        where: { tenantId },
+        order: { createdAt: 'DESC' },
       });
-    }
-    if (classification.appliesRetefuente) {
-      snapshots.push({
-        taxDefinitionId: classification.id,
-        treatment: 'STANDARD',
-        effectiveRate: null,
-        ruleId,
-        priorityMatched: 0,
-      });
-    }
-    if (classification.appliesReteIca) {
-      snapshots.push({
-        taxDefinitionId: classification.id,
-        treatment: 'STANDARD',
-        effectiveRate: null,
-        ruleId,
-        priorityMatched: 0,
-      });
-    }
-    if (classification.appliesEstampillas) {
-      snapshots.push({
-        taxDefinitionId: classification.id,
-        treatment: 'STANDARD',
-        effectiveRate: null,
-        ruleId,
-        priorityMatched: 0,
-      });
-    }
-
-    return snapshots;
+    });
   }
 }
