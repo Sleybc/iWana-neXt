@@ -43,14 +43,7 @@ export function TaxSimulatorPanel() {
         ...(municipalityCode ? { municipalityCode } : {}),
       };
       const data = await commercialApi.simulateTax(dto);
-      // El endpoint simulate devuelve { applications, winnerRuleId, reason } — extraemos applications
-      const snapshotsRaw = data as unknown as
-        | { applications?: TaxApplicationSnapshot[] }
-        | TaxApplicationSnapshot[];
-      const snapshots = Array.isArray(snapshotsRaw)
-        ? snapshotsRaw
-        : ((snapshotsRaw as { applications?: TaxApplicationSnapshot[] }).applications ?? []);
-      setResults(snapshots);
+      setResults(data.applications);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Error al ejecutar simulación');
     } finally {

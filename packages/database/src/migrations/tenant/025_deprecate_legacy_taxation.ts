@@ -28,7 +28,12 @@ export class DeprecateLegacyTaxation1700000000025 implements MigrationInterface 
     `);
 
     // Eliminar tabla tax_classifications (motor legacy)
-    // CASCADE elimina el constraint FK en tax_rules.tax_classification_id
+    // CASCADE elimina cualquier constraint FK que referencie tax_classifications.id
+    // (incluyendo tax_rules.tax_classification_id si existe como FK explícita).
+    // NOTA: las columnas tax_classification_id en tax_rules y catalog_items quedan
+    // como columnas plain UUID sin FK — retención intencional para auditoría de datos
+    // históricos. Normalizar a tax_definition_id en sprint futuro si se requiere.
+    // Ref: ADR-032, revisión AI-EM-ARCH O2.
     await queryRunner.query(`
       DROP TABLE IF EXISTS tax_classifications CASCADE
     `);

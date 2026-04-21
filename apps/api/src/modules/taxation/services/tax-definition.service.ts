@@ -32,11 +32,12 @@ export class TaxDefinitionService {
     const { schemaName } = TenantContext.getOrThrow();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      let qb = qr.manager.createQueryBuilder(TaxDefinition, 'td').where('td.deletedAt IS NULL');
+      // En expresiones SQL string del QueryBuilder se deben usar nombres físicos de columnas.
+      let qb = qr.manager.createQueryBuilder(TaxDefinition, 'td').where('td.deleted_at IS NULL');
 
       // Si isActive no se proporciona o es true, filtrar solo activos
       if (query.isActive !== false) {
-        qb = qb.andWhere('td.isActive = :isActive', { isActive: true });
+        qb = qb.andWhere('td.is_active = :isActive', { isActive: true });
       }
 
       if (query.context) {

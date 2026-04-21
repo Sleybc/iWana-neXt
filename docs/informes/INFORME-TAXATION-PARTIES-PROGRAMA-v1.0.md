@@ -1,9 +1,9 @@
 # Informe vivo — Programa Taxation (MOD07) + Parties (MOD08) + Rediseño tributario MOD06
 
 **Version:** 1.0
-**Estado:** Abierto — F3 ✅ + F4 ✅ + F5 ✅ — F6 pendiente
+**Estado:** Cerrado ✅ — F0-F6 completadas
 **Fecha de apertura:** 2026-04-21
-**Última actualización:** 2026-04-22 (F4 portal tributario completada)
+**Última actualización:** 2026-04-21 (Ajuste post-cierre UX tributaria + saneamiento de migraciones tenant)
 **Owner técnico:** Sr. Dev Fullstack
 **Gobierno:** Engineering Manager (AI-EM-ARCH)
 **PRD:** `docs/prds/PRD-TAXATION-PARTIES-COMMERCIAL-REDESIGN-v1.0.md`
@@ -21,7 +21,23 @@
 | F3 | Commercial consume Taxation vía puerto + `tax_rule_applications` + simulador | ✅ Completada 2026-04-22 |
 | F4 | Portal: `TaxCatalogManager` + `TaxApplicationRulesManager` + `TaxSimulatorPanel` | ✅ Completada 2026-04-22 |
 | F5 | Backfill Subscribers/Users → Parties | ✅ Completada 2026-04-22 |
-| F6 | Deprecación legacy + cierre de deuda técnica | No iniciada |
+| F6 | Deprecación legacy + cierre de deuda técnica | ✅ Completada 2026-04-21 |
+
+---
+
+## Corrección post-cierre (2026-04-21)
+
+- **Portal Comercial — navegación tributaria refinada:** `Reglas de aplicación` y `Simulador tributario` pasan a ser subtabs internas dentro de `Catálogo de impuestos` (ya no tabs de primer nivel).
+- **Incidente operativo corregido (500 en `/taxation/definitions?isActive=true`):** se ejecutó saneamiento de base local con `pnpm db:migrate:all`, aplicando migraciones tenant pendientes en `tenant_test_company` y `tenant_iwana`.
+- **Causa raíz técnica del 500 y corrección de código:**
+  - `TaxationModule` no registraba `TaxDefinition` en TypeORM (`EntityMetadataNotFoundError`).
+  - `TaxDefinitionService.findAll()` usaba columnas camelCase en SQL string (`deletedAt`, `isActive`) en lugar de nombres físicos (`deleted_at`, `is_active`).
+  - Se corrigió el wiring del módulo y la consulta SQL; además se ajustaron tests unitarios del servicio.
+- **Validación en vivo posterior al fix:** login automático exitoso de usuario ADMIN tenant-aware y `GET /api/v1/taxation/definitions?isActive=true` respondió `200` tanto por API (`:3000`) como por portal (`:3002`).
+- **Validación técnica:**
+  - Portal tests: `2/2 suites`, `8/8 tests` ✅
+  - Portal typecheck: ✅
+  - API tests tributarios/commercial: `3/3 suites`, `41/41 tests` ✅
 
 ---
 

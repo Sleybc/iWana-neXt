@@ -985,6 +985,13 @@ export interface SimulateTaxDto {
   municipalityCode?: string;
 }
 
+/** Resultado del endpoint POST /commercial/tax/simulate. */
+export interface SimulateTaxResult {
+  applications: TaxApplicationSnapshot[];
+  winnerRuleId: string | null;
+  reason: string;
+}
+
 export interface CreateAdditionalProductDto {
   name: string;
   description?: string | undefined;
@@ -1808,7 +1815,7 @@ export const commercialApi = {
 
   /** Simula los impuestos que aplican a un cliente dado segmento, estrato y municipio. */
   simulateTax: (dto: SimulateTaxDto, tenantSlug?: string) =>
-    request<TaxApplicationSnapshot[]>(
+    request<SimulateTaxResult>(
       '/commercial/tax/simulate',
       { method: 'POST', body: JSON.stringify(dto) },
       tenantSlug,

@@ -66,7 +66,7 @@ describe('CommercialTabLayout', () => {
     expect(screen.getByTestId('offers-panel')).toBeInTheDocument();
   });
 
-  it('renderiza Catálogo de impuestos al seleccionar el tab', () => {
+  it('renderiza Catálogo de impuestos al seleccionar el tab principal', () => {
     render(<CommercialTabLayout canEdit />);
 
     fireEvent.click(screen.getByRole('tab', { name: 'Catálogo de impuestos' }));
@@ -78,9 +78,10 @@ describe('CommercialTabLayout', () => {
     expect(screen.getByTestId('tax-catalog-panel')).toBeInTheDocument();
   });
 
-  it('renderiza Simulador tributario al seleccionar el tab', () => {
+  it('renderiza Simulador tributario al seleccionar el subtab tributario', () => {
     render(<CommercialTabLayout canEdit />);
 
+    fireEvent.click(screen.getByRole('tab', { name: 'Catálogo de impuestos' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Simulador tributario' }));
 
     expect(screen.getByRole('tab', { name: 'Simulador tributario' })).toHaveAttribute(
@@ -88,5 +89,18 @@ describe('CommercialTabLayout', () => {
       'true',
     );
     expect(screen.getByTestId('tax-simulator-panel')).toBeInTheDocument();
+  });
+
+  it('renderiza Reglas de aplicación al seleccionar el subtab tributario', () => {
+    render(<CommercialTabLayout canEdit />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Catálogo de impuestos' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Reglas de aplicación' }));
+
+    expect(screen.getByRole('tab', { name: 'Reglas de aplicación' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByTestId('tax-rules-app-panel')).toBeInTheDocument();
   });
 });

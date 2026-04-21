@@ -354,8 +354,10 @@ describe('TaxDefinitionService', () => {
       expect(TenantContext.getOrThrow).toHaveBeenCalled();
       expect(runInTenantSchema).toHaveBeenCalled();
       expect(mockQr.manager.createQueryBuilder).toHaveBeenCalledWith(TaxDefinition, 'td');
-      expect(mockQb.where).toHaveBeenCalledWith('td.deletedAt IS NULL');
-      expect(mockQb.andWhere).toHaveBeenCalledWith('td.isActive = :isActive', { isActive: true });
+      expect(mockQb.where).toHaveBeenCalledWith('td.deleted_at IS NULL');
+      expect(mockQb.andWhere).toHaveBeenCalledWith('td.is_active = :isActive', {
+        isActive: true,
+      });
       expect(mockQb.orderBy).toHaveBeenCalledWith('td.code', 'ASC');
       expect(result).toEqual([]);
     });
@@ -397,7 +399,7 @@ describe('TaxDefinitionService', () => {
       await service.findAll(query);
 
       // Cuando isActive=false, no se debe filtrar por isActive
-      expect(mockQb.andWhere).not.toHaveBeenCalledWith('td.isActive = :isActive', {
+      expect(mockQb.andWhere).not.toHaveBeenCalledWith('td.is_active = :isActive', {
         isActive: true,
       });
     });
