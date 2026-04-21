@@ -387,15 +387,79 @@ Typecheck @iwana/api: ✅ PASSED
 
 ## F6 — Deprecación legacy
 
-**Estado:** No iniciada.
+**Estado:** ✅ Completada 2026-04-21
 
 **Criterios de aceptación mapeados:** CA-13.
 
-_Este bloque se actualizará durante la ejecución._
+### Entregables
+
+| Item | Estado | Notas |
+|---|---|---|
+| Migración 025 `deprecate_legacy_taxation` | ✅ | DROP estrato_min/max + DROP tax_classifications CASCADE; down() reversible recrea tabla con estructura M017 |
+| `TaxClassificationService` eliminado | ✅ | Archivo `services/tax-classification.service.ts` eliminado |
+| `TaxClassification` entity eliminada | ✅ | Archivo `entities/tax-classification.entity.ts` eliminado |
+| `TaxRuleReadAdapter` + `TaxRuleReadPort` eliminados | ✅ | Sin consumidores externos; dependían de TaxClassificationService |
+| `TaxApplicationService` simplificado | ✅ | Removidos: feature flag, `_legacyResolve()`, `_adaptClassificationToSnapshots()`, ConfigService, TaxClassificationService; agregado `listRules()` |
+| `TaxController` simplificado | ✅ | Removidos: 11 endpoints CRUD legacy tax-classifications + tax-rules + POST /resolve; mantenidos: GET /tax-rules, POST /simulate, 4 endpoints tax-rule-applications |
+| DTOs legacy removidos | ✅ | Eliminados: `CreateTaxClassificationDto`, `UpdateTaxClassificationDto`, `ResolveTaxDto` |
+| `commercial.module.ts` actualizado | ✅ | Removidos: TaxClassification de TypeORM, TaxClassificationService, TaxRuleReadAdapter/Port |
+| Entidades `TaxRule` + `CatalogItem` actualizadas | ✅ | Removidas relaciones ManyToOne a TaxClassification; taxClassificationId queda como columna plain |
+| Tests `tax-classification.service.spec.ts` eliminados | ✅ | 18 tests (16 passing + 2 failing pre-existentes) eliminados con el servicio |
+| Test `tax.controller.http.spec.ts` actualizado | ✅ | Removidos tests de endpoints legacy; conservados tests de GET /tax-rules + POST /simulate |
+| Test `tax-application.service.spec.ts` actualizado | ✅ | Removidos ConfigService + TaxClassificationService del módulo de test |
+| Portal `api-client.ts` limpiado | ✅ | Removidos: 9 métodos legacy (getTaxClassifications, createTaxClassification, updateTaxClassification, deleteTaxClassification, createTaxRule, updateTaxRule, deactivateTaxRule, resolveTaxClassification, deactivateTaxClassification); mantenido: getTaxRules (compatibilidad TaxApplicationRulesManager) |
+| `TaxRulesManager.tsx` eliminado | ✅ | Componente legacy del portal; ningún archivo lo importa |
+| `TaxApplicationRulesManager.tsx` verificado | ✅ | Solo usa métodos F4; usa getTaxRules() (compatibilidad mantenida) |
+| ADR-032 creado | ✅ | `docs/adrs/ADR-032-Retiro-Feature-Flag-TAXATION-USE-CATALOG.md` |
+
+### Calidad
+
+```
+pnpm --filter @iwana/api typecheck:    ✅ 0 errores
+pnpm --filter @iwana/portal typecheck: ✅ 0 errores
+API tests:    828 passing, 0 failing, 75 suites (los 2 tests pre-existentes + 16 del servicio legacy eliminados junto con el spec)
+Portal tests: 7 passing, 0 failing, 2 suites
+```
+
+### Commits F6
+
+| Hash | Descripción |
+|---|---|
+| (ver git log) | refactor(commercial): f6 — retiro feature flag + engine legacy removido de TaxApplicationService |
+| (ver git log) | refactor(commercial): f6 — endpoints CRUD legacy tax-classifications/tax-rules removidos |
+| (ver git log) | chore(commercial): f6 — TaxClassificationService y entity eliminados + DTOs legacy removidos |
+| (ver git log) | feat(db): migration 025 — DROP estrato_min/max + DROP tax_classifications (reversible) |
+| (ver git log) | refactor(portal): f6 — api-client legacy methods removidos + TaxRulesManager eliminado |
+| (ver git log) | docs(adrs): ADR-032 — retiro feature flag TAXATION_USE_CATALOG |
+| (ver git log) | docs(informe): f6 cierre del programa TAXATION-PARTIES-PROGRAMA |
+
+### Decisiones técnicas
+
+1. **Motor único: catálogo** — `TaxApplicationService.resolve()` ya no tiene feature flag. Siempre usa `_catalogResolve()`. El motor legacy (`_legacyResolve`, `_adaptClassificationToSnapshots`) fue eliminado por completo.
+
+2. **`GET /commercial/tax-rules` reimplementado** — El endpoint se mantiene (requerido por `TaxApplicationRulesManager`), pero ahora delega a `TaxApplicationService.listRules()` que consulta `TaxRule` directamente sin pasar por `TaxClassificationService`.
+
+3. **Entidades sin FK** — La columna `tax_classification_id` persiste en `tax_rules` y `catalog_items` como columna plain (sin `@ManyToOne`), ya que la tabla referenciada fue eliminada por migration 025 con CASCADE.
+
+4. **`TaxRuleReadAdapter/Port` eliminados** — Sólo existían dentro de `CommercialModule` sin consumidores externos; su dependencia de `TaxClassificationService` los hacía inviables en F6.
+
+5. **Portal `getTaxRules()` como método de compatibilidad** — Mantenido en `api-client.ts` para que `TaxApplicationRulesManager` siga funcionando. El endpoint backend ahora es limpio.
 
 ---
 
-## Registro de escalaciones
+## Estado global del programa
+
+**Estado:** ✅ CERRADO
+**Fecha de cierre:** 2026-04-21
+
+| Fase | Estado |
+|---|---|
+| F1 — Taxation MOD07 | ✅ Completada |
+| F2 — Parties MOD08 | ✅ Completada |
+| F3 — Commercial consume Taxation | ✅ Completada |
+| F4 — Frontend Portal tributario | ✅ Completada |
+| F5 — Backfill Subscribers → Parties | ✅ Completada |
+| F6 — Deprecación legacy | ✅ Completada |
 
 _Vacío._
 
