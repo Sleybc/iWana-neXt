@@ -142,4 +142,59 @@ describe('TenantSeedService', () => {
       'TENANT_INITIAL_ADMIN_PASSWORD no cumple la política mínima',
     );
   });
+
+  describe('seedTaxPresets', () => {
+    it('siembra los 6 presets Colombia si no existen', async () => {
+      const manager = {
+        query: jest
+          .fn()
+          .mockResolvedValueOnce([]) // primer preset no existe
+          .mockResolvedValueOnce(undefined) // insert
+          .mockResolvedValueOnce([]) // segundo preset no existe
+          .mockResolvedValueOnce(undefined) // insert
+          .mockResolvedValueOnce([]) // tercer preset no existe
+          .mockResolvedValueOnce(undefined) // insert
+          .mockResolvedValueOnce([]) // cuarto preset no existe
+          .mockResolvedValueOnce(undefined) // insert
+          .mockResolvedValueOnce([]) // quinto preset no existe
+          .mockResolvedValueOnce(undefined) // insert
+          .mockResolvedValueOnce([]) // sexto preset no existe
+          .mockResolvedValueOnce(undefined), // insert
+      };
+
+      mockRunInTenantSchema.mockImplementation(
+        async (
+          _ds: unknown,
+          _schema: string,
+          cb: (qr: { manager: typeof manager }) => Promise<unknown>,
+        ) => cb({ manager }),
+      );
+
+      await service.seedTaxPresets('tenant_test_schema');
+
+      // Se hacen 12 llamadas: 6 SELECT (check) + 6 INSERT
+      expect(manager.query).toHaveBeenCalledTimes(12);
+      // Primer SELECT verifica 'IVA_19'
+      expect(manager.query.mock.calls[0][1]).toContain('IVA_19');
+    });
+
+    it('omite presets que ya existen (idempotencia)', async () => {
+      const manager = {
+        query: jest.fn().mockResolvedValue([{ id: 'existing-uuid' }]), // todos existen
+      };
+
+      mockRunInTenantSchema.mockImplementation(
+        async (
+          _ds: unknown,
+          _schema: string,
+          cb: (qr: { manager: typeof manager }) => Promise<unknown>,
+        ) => cb({ manager }),
+      );
+
+      await service.seedTaxPresets('tenant_test_schema');
+
+      // Solo SELECTs, ningún INSERT
+      expect(manager.query).toHaveBeenCalledTimes(6); // 6 checks, 0 inserts
+    });
+  });
 });

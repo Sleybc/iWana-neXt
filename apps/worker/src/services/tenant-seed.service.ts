@@ -4,7 +4,7 @@ import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { DataSource } from 'typeorm';
 import { User, runInTenantSchema } from '@iwana/db';
-import { UserRole, UserStatus } from '@iwana/shared';
+import { TAX_COLOMBIA_PRESETS, UserRole, UserStatus } from '@iwana/shared';
 
 const TEMPORARY_PASSWORD_TTL_MS = 24 * 60 * 60 * 1000;
 export const INITIAL_TENANT_ADMIN_EMAIL = 'admin@iwana.co';
@@ -92,6 +92,50 @@ export class TenantSeedService {
 
       return { created: true };
     });
+  }
+
+  async seedTaxPresets(schemaName: string): Promise<void> {
+    this.logger.log(`[TenantSeedService] Sembrando tax presets en schema ${schemaName}`);
+
+    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      for (const preset of TAX_COLOMBIA_PRESETS) {
+        // Verificar existencia por code
+        const rows = await qr.manager.query(
+          `SELECT id FROM tax_definitions WHERE code = $1 AND deleted_at IS NULL LIMIT 1`,
+          [preset.code],
+        );
+
+        if (rows.length > 0) {
+          this.logger.debug(`[TenantSeedService] Tax preset ${preset.code} ya existe — omitiendo`);
+          continue;
+        }
+
+        // Insertar preset
+        await qr.manager.query(
+          `INSERT INTO tax_definitions
+            (code, name, category, jurisdiction_level, municipality_code, base_rate,
+             treatment, context, origin, is_active, notes, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())`,
+          [
+            preset.code,
+            preset.name,
+            preset.category,
+            preset.jurisdictionLevel,
+            preset.municipalityCode,
+            preset.baseRate !== null ? String(preset.baseRate) : null,
+            preset.treatment,
+            preset.context,
+            preset.origin,
+            preset.isActive,
+            preset.notes,
+          ],
+        );
+
+        this.logger.debug(`[TenantSeedService] Tax preset ${preset.code} sembrado`);
+      }
+    });
+
+    this.logger.log(`[TenantSeedService] Tax presets completados para schema ${schemaName}`);
   }
 
   private hashEmail(email: string): string {

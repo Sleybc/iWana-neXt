@@ -74,6 +74,7 @@ describe('TenantProvisioningProcessor', () => {
     } as unknown as DataSource;
     const tenantSeedService = {
       seedInitialAdmin: jest.fn().mockResolvedValue({ created: true }),
+      seedTaxPresets: jest.fn().mockResolvedValue(undefined),
     } as unknown as TenantSeedService;
 
     (fs.readFileSync as jest.Mock).mockReturnValue(
@@ -100,6 +101,7 @@ describe('TenantProvisioningProcessor', () => {
       tenantSlug: 'isp-test',
       schemaName: 'tenant_isp_test',
     });
+    expect(tenantSeedService.seedTaxPresets).toHaveBeenCalledWith('tenant_isp_test');
     expect(updateBuilder.execute).toHaveBeenCalledTimes(1);
     expect(mockClient.release).toHaveBeenCalledTimes(1);
   });
@@ -122,6 +124,7 @@ describe('TenantProvisioningProcessor', () => {
     } as unknown as DataSource;
     const tenantSeedService = {
       seedInitialAdmin: jest.fn(),
+      seedTaxPresets: jest.fn(),
     } as unknown as TenantSeedService;
 
     const processor = new TenantProvisioningProcessor(dataSource, tenantSeedService);

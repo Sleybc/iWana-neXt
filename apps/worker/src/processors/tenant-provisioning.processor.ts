@@ -145,6 +145,9 @@ export class TenantProvisioningProcessor extends WorkerHost {
       await this.runMigrationsForSchema(schemaName);
       this.logger.log(`[provisioning] Migraciones ejecutadas para schema "${schemaName}"`);
 
+      await this.tenantSeedService.seedTaxPresets(schemaName);
+      this.logger.log(`[provisioning] Tax presets sembrados para schema "${schemaName}"`);
+
       // Actualizar status del tenant a ACTIVE en el schema publico
       await this.dataSource
         .createQueryBuilder()

@@ -68,6 +68,7 @@ function createProcessor(): TenantProvisioningProcessor {
 
   const tenantSeedService = {
     seedInitialAdmin: jest.fn().mockResolvedValue({ created: true }),
+    seedTaxPresets: jest.fn().mockResolvedValue(undefined),
   } as unknown as TenantSeedService;
 
   return new TenantProvisioningProcessor(dataSource, tenantSeedService);
@@ -161,6 +162,7 @@ describe('TenantProvisioningProcessor - Migration Features', () => {
 
       const tenantSeedService = {
         seedInitialAdmin: jest.fn(),
+        seedTaxPresets: jest.fn(),
       } as unknown as TenantSeedService;
 
       const processor = new TenantProvisioningProcessor(dataSource, tenantSeedService);
@@ -200,6 +202,7 @@ describe('TenantProvisioningProcessor - Migration Features', () => {
 
       const tenantSeedService = {
         seedInitialAdmin: jest.fn().mockResolvedValue({ created: true }),
+        seedTaxPresets: jest.fn().mockResolvedValue(undefined),
       } as unknown as TenantSeedService;
 
       (fs.readFileSync as jest.Mock).mockReturnValue(
@@ -242,6 +245,7 @@ describe('TenantProvisioningProcessor - Migration Features', () => {
 
       const tenantSeedService = {
         seedInitialAdmin: jest.fn().mockResolvedValue({ created: true }),
+        seedTaxPresets: jest.fn().mockResolvedValue(undefined),
       } as unknown as TenantSeedService;
 
       (fs.readFileSync as jest.Mock).mockReturnValue(
