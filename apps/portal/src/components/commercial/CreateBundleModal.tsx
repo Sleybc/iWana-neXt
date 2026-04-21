@@ -1,11 +1,10 @@
 'use client';
 
 import { useMemo } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
-  Badge,
   Button,
   Dialog,
   DialogClose,
@@ -15,6 +14,9 @@ import {
   DialogTitle,
   Input,
   Select,
+  DatePicker,
+  MultiSelect,
+  type MultiSelectOption,
 } from '@iwana/ui';
 import { CatalogItemType, DiscountType } from '@iwana/shared';
 import type { CreateBundleDto } from '@/lib/api-client';
@@ -88,6 +90,7 @@ export function CreateBundleModal({
     watch,
     setValue,
     reset,
+    control,
     formState: { errors },
   } = useForm<BundleFormValues>({
     resolver: zodResolver(bundleFormSchema),
@@ -111,14 +114,9 @@ export function CreateBundleModal({
     [availableItems, selectedItemIds],
   );
 
-  const handleToggleItem = (itemId: string) => {
-    const current = watch('itemIds');
-    const next = current.includes(itemId)
-      ? current.filter((id) => id !== itemId)
-      : [...current, itemId];
-
+  // Sincroniza opcionales al cambiar items seleccionados
+  const handleItemsChange = (next: string[]) => {
     setValue('itemIds', next, { shouldDirty: true, shouldValidate: true });
-
     const nextOptional = watch('optionalItemIds').filter((id) => next.includes(id));
     setValue('optionalItemIds', nextOptional, { shouldDirty: true, shouldValidate: true });
   };
@@ -151,17 +149,17 @@ export function CreateBundleModal({
     reset();
   };
 
-  const groupedItems = useMemo(() => {
-    const plans = availableItems.filter((item) => item.type === CatalogItemType.PLAN);
-    const products = availableItems.filter((item) => item.type === CatalogItemType.PRODUCT);
-    const services = availableItems.filter((item) => item.type === CatalogItemType.SERVICE);
-
-    return [
-      { label: 'Planes', items: plans },
-      { label: 'Productos', items: products },
-      { label: 'Servicios', items: services },
-    ];
-  }, [availableItems]);
+  // Opciones para el MultiSelect agrupadas por tipo
+  const itemOptions = useMemo<MultiSelectOption[]>(
+    () =>
+      availableItems.map((item) => ({
+        value: item.id,
+        label: item.name,
+        group: getTypeLabel(item.type),
+        disabled: !item.isActive,
+      })),
+    [availableItems],
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -206,8 +204,30 @@ export function CreateBundleModal({
               <option value={DiscountType.PERCENTAGE}>Porcentaje</option>
               <option value={DiscountType.FIXED_AMOUNT}>Monto fijo</option>
             </Select>
-            <Input label="Vigencia desde" type="date" {...register('validFrom')} />
-            <Input label="Vigencia hasta" type="date" {...register('validTo')} />
+            <Controller
+              name="validFrom"
+              control={control}
+              render={({ field: { value, onChange }, fieldState: { error } }) => (
+                <DatePicker
+                  label="Vigencia desde"
+                  value={value ? new Date(`${value}T00:00:00`) : undefined}
+                  onChange={(date) => onChange(date ? date.toISOString().slice(0, 10) : '')}
+                  error={error?.message}
+                />
+              )}
+            />
+            <Controller
+              name="validTo"
+              control={control}
+              render={({ field: { value, onChange }, fieldState: { error } }) => (
+                <DatePicker
+                  label="Vigencia hasta"
+                  value={value ? new Date(`${value}T00:00:00`) : undefined}
+                  onChange={(date) => onChange(date ? date.toISOString().slice(0, 10) : '')}
+                  error={error?.message}
+                />
+              )}
+            />
           </div>
 
           {errors.name && <p className="text-xs text-red-600">{errors.name.message}</p>}
@@ -216,56 +236,16 @@ export function CreateBundleModal({
           )}
           {errors.validTo && <p className="text-xs text-red-600">{errors.validTo.message}</p>}
 
-          <section className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-                Items del combo
-              </h3>
-              <Badge variant="neutral" className="rounded-full px-2 py-0.5 text-[11px]">
-                {selectedItemIds.length} seleccionados
-              </Badge>
-            </div>
-
-            {groupedItems.map((group) => (
-              <div key={group.label} className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
-                  {group.label}
-                </p>
-                {group.items.length === 0 ? (
-                  <p className="text-sm text-gray-500">Sin items disponibles.</p>
-                ) : (
-                  <div className="grid gap-2 md:grid-cols-2">
-                    {group.items.map((item) => {
-                      const checked = selectedItemIds.includes(item.id);
-
-                      return (
-                        <label
-                          key={item.id}
-                          className="flex cursor-pointer items-start gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm transition-colors hover:border-gray-300 dark:border-dark-border"
-                        >
-                          <input
-                            type="checkbox"
-                            className="mt-1"
-                            checked={checked}
-                            onChange={() => handleToggleItem(item.id)}
-                            disabled={!canEdit || isSubmitting}
-                          />
-                          <span className="min-w-0">
-                            <span className="block truncate font-medium text-gray-800 dark:text-gray-100">
-                              {item.name}
-                            </span>
-                            <span className="text-xs text-gray-500">{getTypeLabel(item.type)}</span>
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {errors.itemIds && <p className="text-xs text-red-600">{errors.itemIds.message}</p>}
-          </section>
+          <MultiSelect
+            label="Items del combo"
+            options={itemOptions}
+            value={selectedItemIds}
+            onChange={handleItemsChange}
+            placeholder="Selecciona planes, productos o servicios..."
+            searchPlaceholder="Buscar item..."
+            disabled={!canEdit || isSubmitting}
+            error={errors.itemIds?.message}
+          />
 
           {selectedItems.length > 0 && (
             <section className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border">

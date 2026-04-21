@@ -1,9 +1,9 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { ReceiptText } from 'lucide-react';
 import { cn } from '@iwana/ui';
-import { CommercialPlaceholderPanel } from '@/components/commercial/CommercialPlaceholderPanel';
+import { CompatibilityRulesManager } from '@/components/commercial/CompatibilityRulesManager';
+import { TaxRulesManager } from '@/components/commercial/TaxRulesManager';
 import { OffersManager } from '@/components/commercial/OffersManager';
 import { AdditionalProductsManager } from '@/components/settings/AdditionalProductsManager';
 import { AdditionalServicesManager } from '@/components/settings/AdditionalServicesManager';
@@ -108,26 +108,10 @@ export function CommercialTabLayout({ canEdit }: CommercialTabLayoutProps) {
         {activeSubItem === 'services' && <AdditionalServicesManager canEdit={canEdit} />}
         {activeSubItem === 'offers' && <OffersManager canEdit={canEdit} />}
         {activeSubItem === 'rules' && (
-          <CommercialPlaceholderPanel
-            eyebrow="Gobierno comercial"
-            title="Reglas comerciales"
-            description="Esta sección agrupará la compatibilidad entre ítems y las reglas tributarias configurables que afectan la oferta comercial del tenant."
-            icon={ReceiptText}
-            sections={[
-              {
-                title: 'Compatibilidad',
-                description:
-                  'Aquí se configurarán reglas de negocio como Requiere, Excluye y Reemplaza para prevenir combinaciones inválidas en los flujos comerciales.',
-                status: 'Diseñado',
-              },
-              {
-                title: 'Tributarias',
-                description:
-                  'Aquí se administrarán clasificaciones fiscales y reglas por segmento, estrato o municipio, sin mezclar cálculo de factura ni procesos de Billing.',
-                status: 'Diseñado',
-              },
-            ]}
-          />
+          <div className="space-y-8">
+            <CompatibilityRulesManager canEdit={canEdit} />
+            <TaxRulesManager canEdit={canEdit} />
+          </div>
         )}
       </div>
     </div>

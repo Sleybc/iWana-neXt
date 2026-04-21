@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
@@ -14,6 +14,7 @@ import {
   DialogTitle,
   Input,
   Select,
+  DatePicker,
 } from '@iwana/ui';
 import { CatalogItemType, CustomerSegment, DiscountType, PromotionScope } from '@iwana/shared';
 import type { CommercialBundle, CreatePromotionDto } from '@/lib/api-client';
@@ -125,6 +126,7 @@ export function CreatePromotionModal({
     handleSubmit,
     reset,
     setValue,
+    control,
     formState: { errors },
   } = useForm<PromotionFormValues>({
     resolver: zodResolver(promotionFormSchema),
@@ -243,9 +245,37 @@ export function CreatePromotionModal({
               <option value={PromotionScope.BUNDLE}>Combo especifico</option>
               <option value={PromotionScope.INSTALLATION}>Instalacion</option>
             </Select>
-            <Input label="Maximo de usos" type="number" min={1} step={1} {...register('maxUses')} />
-            <Input label="Vigencia desde" type="date" {...register('validFrom')} />
-            <Input label="Vigencia hasta" type="date" {...register('validTo')} />
+            <Input
+              label="Maximo de usos"
+              type="number"
+              min={1}
+              step={1}
+              {...register('maxUses', { valueAsNumber: true })}
+            />
+            <Controller
+              name="validFrom"
+              control={control}
+              render={({ field: { value, onChange }, fieldState: { error } }) => (
+                <DatePicker
+                  label="Vigencia desde"
+                  value={value ? new Date(`${value}T00:00:00`) : undefined}
+                  onChange={(date) => onChange(date ? date.toISOString().slice(0, 10) : '')}
+                  error={error?.message}
+                />
+              )}
+            />
+            <Controller
+              name="validTo"
+              control={control}
+              render={({ field: { value, onChange }, fieldState: { error } }) => (
+                <DatePicker
+                  label="Vigencia hasta"
+                  value={value ? new Date(`${value}T00:00:00`) : undefined}
+                  onChange={(date) => onChange(date ? date.toISOString().slice(0, 10) : '')}
+                  error={error?.message}
+                />
+              )}
+            />
           </div>
 
           {appliesTo === PromotionScope.ITEM && (

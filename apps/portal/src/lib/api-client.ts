@@ -6,6 +6,7 @@ import {
   AttributionRole,
   CatalogItemType,
   ChargeType,
+  CompatibilityRuleType,
   InstallationRule,
   CreateSubscriberPayload,
   CustomerSegment,
@@ -16,6 +17,7 @@ import {
   PromotionScope,
   ProductCategory,
   SubscriberStatus,
+  TaxType,
   TechnicalConfidence,
   TechnicalViabilityResult,
   TaxRegime,
@@ -842,6 +844,115 @@ export interface CreatePromotionDto {
   validTo: string;
 }
 
+// ── Compatibilidad ────────────────────────────────────────────────────────────
+
+export interface CompatibilityRule {
+  id: string;
+  tenantId: string;
+  ruleType: 'REQUIRES' | 'EXCLUDES' | 'REPLACES';
+  sourceItemId: string;
+  targetItemId: string;
+  isActive: boolean;
+  effectiveFrom: string | null;
+  note: string | null;
+  updatedAt: string;
+  createdAt: string;
+  sourceItem?: { id: string; name: string } | null;
+  targetItem?: { id: string; name: string } | null;
+}
+
+export interface CreateCompatibilityRuleDto {
+  ruleType: 'REPLACES';
+  sourceItemId: string;
+  targetItemId: string;
+  effectiveFrom?: string;
+  note?: string;
+}
+
+export interface UpdateCompatibilityRuleDto {
+  note?: string;
+  effectiveFrom?: string;
+  isActive?: boolean;
+}
+
+// ── Tributarias ───────────────────────────────────────────────────────────────
+
+export interface TaxClassification {
+  id: string;
+  tenantId: string;
+  name: string;
+  code: string;
+  description: string | null;
+  isActive: boolean;
+  isSystem: boolean;
+  appliesIva: boolean;
+  appliesRetefuente: boolean;
+  appliesReteIca: boolean;
+  appliesEstampillas: boolean;
+  createdAt: string;
+}
+
+export interface CreateTaxClassificationDto {
+  code: string;
+  name: string;
+  description?: string;
+  appliesIva?: boolean;
+  appliesRetefuente?: boolean;
+  appliesReteIca?: boolean;
+  appliesEstampillas?: boolean;
+}
+
+export interface UpdateTaxClassificationDto {
+  name?: string;
+  description?: string;
+  isActive?: boolean;
+  appliesIva?: boolean;
+  appliesRetefuente?: boolean;
+  appliesReteIca?: boolean;
+  appliesEstampillas?: boolean;
+}
+
+export interface TaxRule {
+  id: string;
+  tenantId: string;
+  taxClassificationId: string;
+  taxClassification?: TaxClassification | null;
+  customerSegment: string | null;
+  taxType: string;
+  ratePercentage: string;
+  stratumFrom: number | null;
+  stratumTo: number | null;
+  priority: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface CreateTaxRuleDto {
+  taxClassificationId: string;
+  taxType: string;
+  ratePercentage: string;
+  customerSegment?: string;
+  stratumFrom?: number;
+  stratumTo?: number;
+  priority?: number;
+}
+
+export interface UpdateTaxRuleDto {
+  taxClassificationId?: string;
+  taxType?: string;
+  ratePercentage?: string;
+  customerSegment?: string;
+  stratumFrom?: number;
+  stratumTo?: number;
+  priority?: number;
+  isActive?: boolean;
+}
+
+export interface ResolveTaxDto {
+  segment: string;
+  stratum?: number;
+}
+
 export interface CreateAdditionalProductDto {
   name: string;
   description?: string | undefined;
@@ -1562,6 +1673,94 @@ export const commercialApi = {
   deactivatePromotion: (promotionId: string, tenantSlug?: string) =>
     request(`/commercial/promotions/${promotionId}`, { method: 'DELETE' }, tenantSlug).then(() =>
       commercialApi.getPromotions(tenantSlug),
+    ),
+
+  // ── Compatibilidad ────────────────────────────────────────────────────────
+
+  /** Lista reglas de compatibilidad del tenant (incluye REPLACES, REQUIRES, EXCLUDES). */
+  getCompatibilityRules: (tenantSlug?: string) =>
+    request<CompatibilityRule[]>('/commercial/compatibility-rules', undefined, tenantSlug),
+
+  /** Crea regla de compatibilidad. Solo REPLACES está en scope del diseño inicial. */
+  createCompatibilityRule: (dto: CreateCompatibilityRuleDto, tenantSlug?: string) =>
+    request<CompatibilityRule>(
+      '/commercial/compatibility-rules',
+      { method: 'POST', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  /** Actualiza nota, vigencia o estado activo de una regla de compatibilidad. */
+  updateCompatibilityRule: (id: string, dto: UpdateCompatibilityRuleDto, tenantSlug?: string) =>
+    request<CompatibilityRule>(
+      `/commercial/compatibility-rules/${id}`,
+      { method: 'PATCH', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  /** Desactiva una regla de compatibilidad. */
+  deactivateCompatibilityRule: (id: string, tenantSlug?: string) =>
+    request<void>(`/commercial/compatibility-rules/${id}`, { method: 'DELETE' }, tenantSlug),
+
+  // ── Tributarias ───────────────────────────────────────────────────────────
+
+  /** Lista clasificaciones tributarias del tenant. */
+  getTaxClassifications: (tenantSlug?: string) =>
+    request<TaxClassification[]>('/commercial/tax-classifications', undefined, tenantSlug),
+
+  /** Crea clasificación tributaria. */
+  createTaxClassification: (dto: CreateTaxClassificationDto, tenantSlug?: string) =>
+    request<TaxClassification>(
+      '/commercial/tax-classifications',
+      { method: 'POST', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  /** Actualiza clasificación tributaria. */
+  updateTaxClassification: (id: string, dto: UpdateTaxClassificationDto, tenantSlug?: string) =>
+    request<TaxClassification>(
+      `/commercial/tax-classifications/${id}`,
+      { method: 'PATCH', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  /** Elimina clasificación tributaria. */
+  deleteTaxClassification: (id: string, tenantSlug?: string) =>
+    request<void>(`/commercial/tax-classifications/${id}`, { method: 'DELETE' }, tenantSlug),
+
+  /** @deprecated Usar deleteTaxClassification. */
+  deactivateTaxClassification: (id: string, tenantSlug?: string) =>
+    request<void>(`/commercial/tax-classifications/${id}`, { method: 'DELETE' }, tenantSlug),
+
+  /** Lista reglas tributarias del tenant. */
+  getTaxRules: (tenantSlug?: string) =>
+    request<TaxRule[]>('/commercial/tax-rules', undefined, tenantSlug),
+
+  /** Crea regla tributaria. */
+  createTaxRule: (dto: CreateTaxRuleDto, tenantSlug?: string) =>
+    request<TaxRule>(
+      '/commercial/tax-rules',
+      { method: 'POST', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  /** Actualiza regla tributaria. */
+  updateTaxRule: (id: string, dto: UpdateTaxRuleDto, tenantSlug?: string) =>
+    request<TaxRule>(
+      `/commercial/tax-rules/${id}`,
+      { method: 'PATCH', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  /** Desactiva regla tributaria. */
+  deactivateTaxRule: (id: string, tenantSlug?: string) =>
+    request<void>(`/commercial/tax-rules/${id}`, { method: 'DELETE' }, tenantSlug),
+
+  /** Resuelve la clasificación tributaria dado un segmento de cliente y estrato (opcional). */
+  resolveTaxClassification: (dto: ResolveTaxDto, tenantSlug?: string) =>
+    request<TaxClassification>(
+      '/commercial/tax/resolve',
+      { method: 'POST', body: JSON.stringify(dto) },
+      tenantSlug,
     ),
 };
 
