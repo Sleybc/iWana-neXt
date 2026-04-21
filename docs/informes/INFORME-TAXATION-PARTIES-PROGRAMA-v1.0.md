@@ -1,9 +1,9 @@
 # Informe vivo — Programa Taxation (MOD07) + Parties (MOD08) + Rediseño tributario MOD06
 
 **Version:** 1.0
-**Estado:** Abierto — F3 ✅ + F5 ✅ — F4 en progreso
+**Estado:** Abierto — F3 ✅ + F4 ✅ + F5 ✅ — F6 pendiente
 **Fecha de apertura:** 2026-04-21
-**Última actualización:** 2026-04-22 (F3 + F5 completadas; gaps D1/D2/D3 cerrados)
+**Última actualización:** 2026-04-22 (F4 portal tributario completada)
 **Owner técnico:** Sr. Dev Fullstack
 **Gobierno:** Engineering Manager (AI-EM-ARCH)
 **PRD:** `docs/prds/PRD-TAXATION-PARTIES-COMMERCIAL-REDESIGN-v1.0.md`
@@ -19,7 +19,7 @@
 | F1 | Scaffold MOD07 Taxation + seeder presets Colombia | ✅ Completada 2026-04-21 |
 | F2 | Scaffold MOD08 Parties (tablas + `users.party_id`) + Gap F1 closure | ✅ Completada 2026-04-21 — gaps D1/D2/D3 cerrados |
 | F3 | Commercial consume Taxation vía puerto + `tax_rule_applications` + simulador | ✅ Completada 2026-04-22 |
-| F4 | Portal: `TaxCatalogManager` + `TaxApplicationRulesManager` + `TaxSimulatorPanel` | 🔄 En progreso |
+| F4 | Portal: `TaxCatalogManager` + `TaxApplicationRulesManager` + `TaxSimulatorPanel` | ✅ Completada 2026-04-22 |
 | F5 | Backfill Subscribers/Users → Parties | ✅ Completada 2026-04-22 |
 | F6 | Deprecación legacy + cierre de deuda técnica | No iniciada |
 
@@ -282,11 +282,55 @@ Tests API: 848 passing, 2 failing (pre-existing: tax-classification qr.manager.c
 
 ## F4 — Frontend Portal tributario
 
-**Estado:** No iniciada.
+**Estado:** ✅ Completada 2026-04-22
 
 **Criterios de aceptación mapeados:** CA-08.
 
-_Este bloque se actualizará durante la ejecución._
+### Entregables
+
+| Item | Estado | Notas |
+|---|---|---|
+| Backend: CRUD `/commercial/tax-rule-applications` | ✅ | 4 endpoints: GET, POST, PATCH/:id, DELETE/:id |
+| `TaxCatalogManager.tsx` | ✅ | CRUD definiciones MOD07 con lock en presets SYSTEM |
+| `TaxApplicationRulesManager.tsx` | ✅ | Vincula reglas comerciales con definiciones catálogo |
+| `TaxSimulatorPanel.tsx` | ✅ | Inputs: segmento + estrato + municipio; output: regla ganadora |
+| `CommercialTabLayout.tsx` actualizado | ✅ | 3 nuevas pestañas: Catálogo, Reglas de aplicación, Simulador |
+| `api-client.ts` nuevos métodos F4 | ✅ | listTaxDefinitions, createTaxDefinition, update, delete, listTaxRuleApplications, CRUD aplicaciones, simulateTax |
+| Test E2E Playwright | ✅ | `portal-tax-simulator.spec.ts` — catálogo + reglas + simulador |
+| Typecheck portal | ✅ | 0 errores TypeScript |
+| Typecheck API | ✅ | 0 errores TypeScript |
+| Copy español, sentence case, WCAG AA | ✅ | Badge variants válidos (`success`, `neutral`, `primary`); `iwana-secondary-700` para texto |
+
+### Commits F4
+
+| Hash | Descripción |
+|---|---|
+| c4e3dd1 | feat(commercial): f4 backend — CRUD tax-rule-applications endpoints |
+| 793f2f6 | feat(portal): f4 — TaxCatalogManager + TaxApplicationRulesManager + TaxSimulatorPanel + layout |
+| 194c55d | test(e2e): portal tax simulator — catálogo + aplicaciones + simulador |
+
+### Calidad
+
+```
+API tests:    848 passing, 2 failing (mismos pre-existentes, sin regresión)
+Portal tests: 7 passing, 0 failing (4 nuevos en CommercialTabLayout.spec.tsx)
+pnpm --filter @iwana/api typecheck:    0 errores
+pnpm --filter @iwana/portal typecheck: 0 errores
+```
+
+### Decisiones técnicas
+
+1. **TaxCatalogManager** lee de `/api/v1/taxation/definitions` (MOD07). Los presets SYSTEM muestran icono de candado (`Lock`) y no tienen botones de edición — el backend también rechaza con 403.
+
+2. **TaxApplicationRulesManager** consume los nuevos endpoints `/commercial/tax-rule-applications`. Carga en paralelo las listas de reglas y definiciones para resolver nombres en la UI (`Promise.all`).
+
+3. **TaxSimulatorPanel** usa `POST /commercial/tax/simulate`. El endpoint devuelve `{ applications, winnerRuleId, reason }` — el panel extrae `applications` y resalta el primero como regla ganadora. Estado vacío controlado con mensaje explicativo en amber.
+
+4. **Feature flag no visible en UI** — La UI siempre muestra el simulador. Si `TAXATION_USE_CATALOG=false`, el backend aplica el motor legacy transparentemente sin exponer ese estado al panel.
+
+5. **exactOptionalPropertyTypes** — Con el flag estricto activo en el portal, los formularios usan interfaces locales con `prop?: Type | undefined` (explicit undefined union) para permitir spread seguro en setForm callbacks. Los DTOs de API se construyen explícitamente sin propiedades undefined.
+
+**F4 PORTAL TRIBUTARIO: COMPLETO Y APROBADO.**
 
 ---
 
