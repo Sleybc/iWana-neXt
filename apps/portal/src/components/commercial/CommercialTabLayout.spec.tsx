@@ -26,8 +26,24 @@ jest.mock('@/components/commercial/OffersManager', () => ({
   OffersManager: () => <div data-testid="offers-panel">Ofertas panel</div>,
 }));
 
-jest.mock('@/components/commercial/CommercialPlaceholderPanel', () => ({
-  CommercialPlaceholderPanel: () => <div data-testid="rules-panel">Reglas panel</div>,
+jest.mock('@/components/commercial/CompatibilityRulesManager', () => ({
+  CompatibilityRulesManager: () => (
+    <div data-testid="compatibility-panel">Compatibilidad panel</div>
+  ),
+}));
+
+jest.mock('@/components/commercial/TaxCatalogManager', () => ({
+  TaxCatalogManager: () => <div data-testid="tax-catalog-panel">Catálogo de impuestos panel</div>,
+}));
+
+jest.mock('@/components/commercial/TaxApplicationRulesManager', () => ({
+  TaxApplicationRulesManager: () => (
+    <div data-testid="tax-rules-app-panel">Reglas de aplicación panel</div>
+  ),
+}));
+
+jest.mock('@/components/commercial/TaxSimulatorPanel', () => ({
+  TaxSimulatorPanel: () => <div data-testid="tax-simulator-panel">Simulador tributario panel</div>,
 }));
 
 describe('CommercialTabLayout', () => {
@@ -48,5 +64,29 @@ describe('CommercialTabLayout', () => {
       'true',
     );
     expect(screen.getByTestId('offers-panel')).toBeInTheDocument();
+  });
+
+  it('renderiza Catálogo de impuestos al seleccionar el tab', () => {
+    render(<CommercialTabLayout canEdit />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Catálogo de impuestos' }));
+
+    expect(screen.getByRole('tab', { name: 'Catálogo de impuestos' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByTestId('tax-catalog-panel')).toBeInTheDocument();
+  });
+
+  it('renderiza Simulador tributario al seleccionar el tab', () => {
+    render(<CommercialTabLayout canEdit />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Simulador tributario' }));
+
+    expect(screen.getByRole('tab', { name: 'Simulador tributario' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByTestId('tax-simulator-panel')).toBeInTheDocument();
   });
 });

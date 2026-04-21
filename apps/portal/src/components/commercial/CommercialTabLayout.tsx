@@ -3,20 +3,33 @@
 import { useRef, useState } from 'react';
 import { cn } from '@iwana/ui';
 import { CompatibilityRulesManager } from '@/components/commercial/CompatibilityRulesManager';
-import { TaxRulesManager } from '@/components/commercial/TaxRulesManager';
+import { TaxCatalogManager } from '@/components/commercial/TaxCatalogManager';
+import { TaxApplicationRulesManager } from '@/components/commercial/TaxApplicationRulesManager';
+import { TaxSimulatorPanel } from '@/components/commercial/TaxSimulatorPanel';
 import { OffersManager } from '@/components/commercial/OffersManager';
 import { AdditionalProductsManager } from '@/components/settings/AdditionalProductsManager';
 import { AdditionalServicesManager } from '@/components/settings/AdditionalServicesManager';
 import { PlanCatalogManager } from '@/components/settings/PlanCatalogManager';
 
-export type CommercialSubItem = 'plans' | 'products' | 'services' | 'offers' | 'rules';
+export type CommercialSubItem =
+  | 'plans'
+  | 'products'
+  | 'services'
+  | 'offers'
+  | 'compatibility'
+  | 'tax-catalog'
+  | 'tax-rules-app'
+  | 'tax-simulator';
 
 const COMMERCIAL_SUBNAV: Array<{ id: CommercialSubItem; label: string }> = [
   { id: 'plans', label: 'Planes' },
   { id: 'products', label: 'Productos' },
   { id: 'services', label: 'Servicios' },
   { id: 'offers', label: 'Combos y promociones' },
-  { id: 'rules', label: 'Reglas comerciales' },
+  { id: 'compatibility', label: 'Compatibilidad' },
+  { id: 'tax-catalog', label: 'Catálogo de impuestos' },
+  { id: 'tax-rules-app', label: 'Reglas de aplicación' },
+  { id: 'tax-simulator', label: 'Simulador tributario' },
 ];
 
 interface CommercialTabLayoutProps {
@@ -107,12 +120,10 @@ export function CommercialTabLayout({ canEdit }: CommercialTabLayoutProps) {
         {activeSubItem === 'products' && <AdditionalProductsManager canEdit={canEdit} />}
         {activeSubItem === 'services' && <AdditionalServicesManager canEdit={canEdit} />}
         {activeSubItem === 'offers' && <OffersManager canEdit={canEdit} />}
-        {activeSubItem === 'rules' && (
-          <div className="space-y-8">
-            <CompatibilityRulesManager canEdit={canEdit} />
-            <TaxRulesManager canEdit={canEdit} />
-          </div>
-        )}
+        {activeSubItem === 'compatibility' && <CompatibilityRulesManager canEdit={canEdit} />}
+        {activeSubItem === 'tax-catalog' && <TaxCatalogManager canEdit={canEdit} />}
+        {activeSubItem === 'tax-rules-app' && <TaxApplicationRulesManager canEdit={canEdit} />}
+        {activeSubItem === 'tax-simulator' && <TaxSimulatorPanel />}
       </div>
     </div>
   );

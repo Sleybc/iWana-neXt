@@ -953,6 +953,90 @@ export interface ResolveTaxDto {
   stratum?: number;
 }
 
+// ── Catálogo tributario MOD07 ────────────────────────────────────────────
+export interface TaxDefinition {
+  id: string;
+  tenantId: string;
+  code: string;
+  name: string;
+  category: 'VAT' | 'RETENTION' | 'STAMP' | 'MUNICIPAL' | 'OTHER';
+  jurisdictionLevel: 'NATIONAL' | 'DEPARTMENTAL' | 'MUNICIPAL';
+  municipalityCode: string | null;
+  baseRate: string | null;
+  treatment: 'STANDARD' | 'EXEMPT' | 'EXCLUDED' | 'FIXED';
+  context: 'RESIDENTIAL' | 'COMMERCIAL' | 'BOTH';
+  origin: 'SYSTEM' | 'CUSTOM';
+  isActive: boolean;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTaxDefinitionDto {
+  code: string;
+  name: string;
+  category: 'VAT' | 'RETENTION' | 'STAMP' | 'MUNICIPAL' | 'OTHER';
+  jurisdictionLevel?: 'NATIONAL' | 'DEPARTMENTAL' | 'MUNICIPAL';
+  municipalityCode?: string;
+  baseRate?: number;
+  treatment?: 'STANDARD' | 'EXEMPT' | 'EXCLUDED' | 'FIXED';
+  context?: 'RESIDENTIAL' | 'COMMERCIAL' | 'BOTH';
+  notes?: string;
+}
+
+export interface UpdateTaxDefinitionDto {
+  name?: string;
+  baseRate?: number;
+  treatment?: 'STANDARD' | 'EXEMPT' | 'EXCLUDED' | 'FIXED';
+  context?: 'RESIDENTIAL' | 'COMMERCIAL' | 'BOTH';
+  isActive?: boolean;
+  notes?: string;
+}
+
+// ── Aplicaciones tributarias (tabla puente) ──────────────────────────────
+export interface TaxRuleApplication {
+  id: string;
+  tenantId: string;
+  taxRuleId: string;
+  taxDefinitionId: string;
+  treatment: 'STANDARD' | 'EXEMPT' | 'EXCLUDED' | 'FIXED';
+  rateOverride: string | null;
+  priority: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTaxRuleApplicationDto {
+  taxRuleId: string;
+  taxDefinitionId: string;
+  treatment: 'STANDARD' | 'EXEMPT' | 'EXCLUDED' | 'FIXED';
+  rateOverride?: number | null;
+  priority?: number;
+}
+
+export interface UpdateTaxRuleApplicationDto {
+  treatment?: 'STANDARD' | 'EXEMPT' | 'EXCLUDED' | 'FIXED';
+  rateOverride?: number | null;
+  priority?: number;
+  isActive?: boolean;
+}
+
+// ── Simulador tributario ─────────────────────────────────────────────────
+export interface TaxApplicationSnapshot {
+  taxDefinitionId: string;
+  treatment: 'STANDARD' | 'EXEMPT' | 'EXCLUDED' | 'FIXED';
+  effectiveRate: number | null;
+  ruleId: string;
+  priorityMatched: number;
+}
+
+export interface SimulateTaxDto {
+  segment: 'RESIDENTIAL' | 'SOHO' | 'PYME' | 'CORPORATE';
+  stratum?: number;
+  municipalityCode?: string;
+}
+
 export interface CreateAdditionalProductDto {
   name: string;
   description?: string | undefined;
@@ -1759,6 +1843,81 @@ export const commercialApi = {
   resolveTaxClassification: (dto: ResolveTaxDto, tenantSlug?: string) =>
     request<TaxClassification>(
       '/commercial/tax/resolve',
+      { method: 'POST', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  // ── Catálogo MOD07 ───────────────────────────────────────────────────────
+
+  /** Lista definiciones tributarias del catálogo MOD07 (filtros opcionales). */
+  listTaxDefinitions: (
+    params?: { isActive?: boolean; category?: string; context?: string },
+    tenantSlug?: string,
+  ) => {
+    const qs =
+      params && Object.keys(params).length > 0
+        ? '?' +
+          new URLSearchParams(
+            Object.entries(params)
+              .filter(([, v]) => v !== undefined)
+              .map(([k, v]) => [k, String(v)]),
+          ).toString()
+        : '';
+    return request<TaxDefinition[]>(`/taxation/definitions${qs}`, undefined, tenantSlug);
+  },
+
+  /** Crea definición tributaria en el catálogo MOD07. */
+  createTaxDefinition: (dto: CreateTaxDefinitionDto, tenantSlug?: string) =>
+    request<TaxDefinition>(
+      '/taxation/definitions',
+      { method: 'POST', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  /** Actualiza definición tributaria. Presets SYSTEM son inmutables (403 del backend). */
+  updateTaxDefinition: (id: string, dto: UpdateTaxDefinitionDto, tenantSlug?: string) =>
+    request<TaxDefinition>(
+      `/taxation/definitions/${id}`,
+      { method: 'PATCH', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  /** Elimina (soft-delete) definición tributaria. Presets SYSTEM son inmutables (403 del backend). */
+  deleteTaxDefinition: (id: string, tenantSlug?: string) =>
+    request<void>(`/taxation/definitions/${id}`, { method: 'DELETE' }, tenantSlug),
+
+  // ── Aplicaciones tributarias ─────────────────────────────────────────────
+
+  /** Lista aplicaciones tributarias (tabla puente reglas ↔ catálogo). */
+  listTaxRuleApplications: (tenantSlug?: string) =>
+    request<TaxRuleApplication[]>('/commercial/tax-rule-applications', undefined, tenantSlug),
+
+  /** Crea aplicación tributaria (vincula regla con definición del catálogo). */
+  createTaxRuleApplication: (dto: CreateTaxRuleApplicationDto, tenantSlug?: string) =>
+    request<TaxRuleApplication>(
+      '/commercial/tax-rule-applications',
+      { method: 'POST', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  /** Actualiza aplicación tributaria (tratamiento, tasa override, prioridad). */
+  updateTaxRuleApplication: (id: string, dto: UpdateTaxRuleApplicationDto, tenantSlug?: string) =>
+    request<TaxRuleApplication>(
+      `/commercial/tax-rule-applications/${id}`,
+      { method: 'PATCH', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  /** Elimina aplicación tributaria. */
+  deleteTaxRuleApplication: (id: string, tenantSlug?: string) =>
+    request<void>(`/commercial/tax-rule-applications/${id}`, { method: 'DELETE' }, tenantSlug),
+
+  // ── Simulador ────────────────────────────────────────────────────────────
+
+  /** Simula los impuestos que aplican a un cliente dado segmento, estrato y municipio. */
+  simulateTax: (dto: SimulateTaxDto, tenantSlug?: string) =>
+    request<TaxApplicationSnapshot[]>(
+      '/commercial/tax/simulate',
       { method: 'POST', body: JSON.stringify(dto) },
       tenantSlug,
     ),
