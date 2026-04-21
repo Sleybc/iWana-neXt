@@ -98,6 +98,7 @@ describe('CompatibilityController HTTP', () => {
     create: jest.fn(),
     deactivate: jest.fn(),
     validateCombination: jest.fn(),
+    update: jest.fn(),
   };
 
   const RULE_ID = '55555555-5555-4555-8555-555555555555';
@@ -255,5 +256,36 @@ describe('CompatibilityController HTTP', () => {
         expect(body.data.valid).toBe(false);
         expect(body.data.errors).toHaveLength(1);
       });
+  });
+
+  it('PATCH /api/v1/commercial/compatibility-rules/:id actualiza regla', async () => {
+    const RULE_ID = '55555555-5555-4555-8555-555555555555';
+    compatibilityServiceMock.update.mockResolvedValue({
+      id: RULE_ID,
+      note: 'Migrado por cambio de velocidades',
+      isActive: true,
+    });
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/commercial/compatibility-rules/${RULE_ID}`)
+      .set('Authorization', 'Bearer admin-token')
+      .send({ note: 'Migrado por cambio de velocidades' })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data.note).toBe('Migrado por cambio de velocidades');
+      });
+
+    expect(compatibilityServiceMock.update).toHaveBeenCalledWith(
+      RULE_ID,
+      expect.objectContaining({ note: 'Migrado por cambio de velocidades' }),
+    );
+  });
+
+  it('PATCH /api/v1/commercial/compatibility-rules/:id retorna 403 con rol SALES', async () => {
+    await request(app.getHttpServer())
+      .patch(`/api/v1/commercial/compatibility-rules/55555555-5555-4555-8555-555555555555`)
+      .set('Authorization', 'Bearer sales-token')
+      .send({ note: 'intento sin permisos' })
+      .expect(403);
   });
 });

@@ -4,7 +4,7 @@ import { DataSource } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
 import { CompatibilityRuleType } from '@iwana/shared';
 import { CompatibilityRule } from '../entities/compatibility-rule.entity';
-import { CreateCompatibilityRuleDto } from '../dto/compatibility.dto';
+import { CreateCompatibilityRuleDto, UpdateCompatibilityRuleDto } from '../dto/compatibility.dto';
 
 export interface CompatibilityValidationResult {
   valid: boolean;
@@ -108,5 +108,51 @@ export class CompatibilityService {
     }
 
     return { valid: errors.length === 0, errors, warnings };
+  }
+
+  /**
+   * Actualiza nota, vigencia o estado activo de una regla de compatibilidad.
+   */
+  async update(id: string, dto: UpdateCompatibilityRuleDto): Promise<CompatibilityRule> {
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const rule = await qr.manager.findOne(CompatibilityRule, { where: { id, tenantId } });
+      if (!rule) throw new NotFoundException(`CompatibilityRule ${id} no encontrada`);
+      if (dto.note !== undefined) rule.note = dto.note ?? null;
+      if (dto.effectiveFrom !== undefined)
+        rule.effectiveFrom = dto.effectiveFrom ? new Date(dto.effectiveFrom) : null;
+      if (dto.isActive !== undefined) rule.isActive = dto.isActive;
+      return qr.manager.save(CompatibilityRule, rule);
+    });
+  }
+
+  /**
+   * Puerto de lectura: retorna el sucesor activo de un ítem obsoleto (tipo REPLACES).
+   * CRM lo consume para mostrar el banner de sustitución al cotizar.
+   */
+  async getReplacementFor(sourceItemId: string): Promise<{
+    targetItemId: string;
+    targetItemName: string;
+    effectiveFrom: Date | null;
+    note: string | null;
+  } | null> {
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const rule = await qr.manager
+        .createQueryBuilder(CompatibilityRule, 'cr')
+        .leftJoinAndSelect('cr.targetItem', 'target')
+        .where('cr.tenantId = :tenantId', { tenantId })
+        .andWhere('cr.sourceItemId = :sourceItemId', { sourceItemId })
+        .andWhere('cr.ruleType = :type', { type: 'REPLACES' })
+        .andWhere('cr.isActive = true')
+        .getOne();
+      if (!rule) return null;
+      return {
+        targetItemId: rule.targetItemId,
+        targetItemName: rule.targetItem?.name ?? rule.targetItemId,
+        effectiveFrom: rule.effectiveFrom ?? null,
+        note: rule.note ?? null,
+      };
+    });
   }
 }

@@ -3,8 +3,11 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -14,7 +17,11 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { CompatibilityService } from '../services/compatibility.service';
-import { CreateCompatibilityRuleDto, ValidateCombinationDto } from '../dto/compatibility.dto';
+import {
+  CreateCompatibilityRuleDto,
+  UpdateCompatibilityRuleDto,
+  ValidateCombinationDto,
+} from '../dto/compatibility.dto';
 
 @ApiTags('commercial-compatibility')
 @ApiBearerAuth('access-token')
@@ -55,6 +62,16 @@ export class CompatibilityController {
   @ApiResponse({ status: 200, description: 'Resultado de validación con errores y warnings' })
   async validateCombination(@Body() dto: ValidateCombinationDto) {
     const data = await this.compatibilityService.validateCombination(dto.itemIds);
+    return { data };
+  }
+
+  @Patch('compatibility-rules/:id')
+  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Actualizar nota, vigencia o estado de regla de compatibilidad' })
+  @ApiResponse({ status: 200, description: 'Regla actualizada' })
+  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateCompatibilityRuleDto) {
+    const data = await this.compatibilityService.update(id, dto);
     return { data };
   }
 }

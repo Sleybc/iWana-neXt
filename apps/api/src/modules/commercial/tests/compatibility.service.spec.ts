@@ -202,4 +202,76 @@ describe('CompatibilityService', () => {
       await expect(service.deactivate('non-existent')).rejects.toThrow(NotFoundException);
     });
   });
+
+  describe('update', () => {
+    it('actualiza nota y efectividad de regla existente', async () => {
+      const rule = { id: 'rule-1', isActive: true, note: null, effectiveFrom: null };
+      const saveMock = jest.fn().mockResolvedValue({ ...rule, note: 'Actualizado' });
+
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { findOne: async () => rule, save: saveMock } }),
+      );
+
+      const result = await service.update('rule-1', { note: 'Actualizado' });
+      expect(saveMock).toHaveBeenCalled();
+      expect(result.note).toBe('Actualizado');
+    });
+
+    it('lanza NotFoundException si regla no existe en update', async () => {
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { findOne: async () => null } }),
+      );
+
+      await expect(service.update('non-existent', { note: 'x' })).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('getReplacementFor', () => {
+    it('retorna null cuando no hay regla REPLACES activa para el ítem', async () => {
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) => {
+        const manager = {
+          createQueryBuilder: () => ({
+            leftJoinAndSelect: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            andWhere: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(null),
+          }),
+        };
+        return cb({ manager });
+      });
+
+      const result = await service.getReplacementFor('item-old');
+      expect(result).toBeNull();
+    });
+
+    it('retorna datos del sucesor cuando existe regla REPLACES activa', async () => {
+      const rule = {
+        id: 'rule-1',
+        targetItemId: 'item-new',
+        targetItem: { name: 'Plan Nuevo 100Mb' },
+        effectiveFrom: new Date('2025-01-01'),
+        note: 'Velocidad actualizada',
+      };
+
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) => {
+        const manager = {
+          createQueryBuilder: () => ({
+            leftJoinAndSelect: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            andWhere: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(rule),
+          }),
+        };
+        return cb({ manager });
+      });
+
+      const result = await service.getReplacementFor('item-old');
+      expect(result).not.toBeNull();
+      expect(result?.targetItemId).toBe('item-new');
+      expect(result?.targetItemName).toBe('Plan Nuevo 100Mb');
+      expect(result?.note).toBe('Velocidad actualizada');
+    });
+  });
 });

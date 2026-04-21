@@ -6,6 +6,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { CompatibilityRuleType } from '@iwana/shared';
 import { CatalogItem } from './catalog-item.entity';
@@ -42,8 +43,17 @@ export class CompatibilityRule {
   @Column({ type: 'boolean', name: 'is_active', default: true })
   isActive: boolean;
 
+  @Column({ type: 'date', name: 'effective_from', nullable: true })
+  effectiveFrom: Date | null;
+
+  @Column({ type: 'text', nullable: true })
+  note: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt: Date;
 
   @ManyToOne(() => CatalogItem)
   @JoinColumn({ name: 'source_item_id' })
