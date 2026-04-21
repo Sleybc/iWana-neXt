@@ -875,7 +875,7 @@ export interface UpdateCompatibilityRuleDto {
   isActive?: boolean;
 }
 
-// ── Tributarias ───────────────────────────────────────────────────────────────
+// ── Tributarias legacy (tipos de compatibilidad) ──────────────────────────────
 
 export interface TaxClassification {
   id: string;
@@ -884,39 +884,13 @@ export interface TaxClassification {
   code: string;
   description: string | null;
   isActive: boolean;
-  isSystem: boolean;
-  appliesIva: boolean;
-  appliesRetefuente: boolean;
-  appliesReteIca: boolean;
-  appliesEstampillas: boolean;
   createdAt: string;
-}
-
-export interface CreateTaxClassificationDto {
-  code: string;
-  name: string;
-  description?: string;
-  appliesIva?: boolean;
-  appliesRetefuente?: boolean;
-  appliesReteIca?: boolean;
-  appliesEstampillas?: boolean;
-}
-
-export interface UpdateTaxClassificationDto {
-  name?: string;
-  description?: string;
-  isActive?: boolean;
-  appliesIva?: boolean;
-  appliesRetefuente?: boolean;
-  appliesReteIca?: boolean;
-  appliesEstampillas?: boolean;
 }
 
 export interface TaxRule {
   id: string;
   tenantId: string;
-  taxClassificationId: string;
-  taxClassification?: TaxClassification | null;
+  taxClassificationId: string | null;
   customerSegment: string | null;
   taxType: string;
   ratePercentage: string;
@@ -925,32 +899,6 @@ export interface TaxRule {
   priority: number;
   isActive: boolean;
   createdAt: string;
-}
-
-export interface CreateTaxRuleDto {
-  taxClassificationId: string;
-  taxType: string;
-  ratePercentage: string;
-  customerSegment?: string;
-  stratumFrom?: number;
-  stratumTo?: number;
-  priority?: number;
-}
-
-export interface UpdateTaxRuleDto {
-  taxClassificationId?: string;
-  taxType?: string;
-  ratePercentage?: string;
-  customerSegment?: string;
-  stratumFrom?: number;
-  stratumTo?: number;
-  priority?: number;
-  isActive?: boolean;
-}
-
-export interface ResolveTaxDto {
-  segment: string;
-  stratum?: number;
 }
 
 // ── Catálogo tributario MOD07 ────────────────────────────────────────────
@@ -1785,67 +1733,11 @@ export const commercialApi = {
   deactivateCompatibilityRule: (id: string, tenantSlug?: string) =>
     request<void>(`/commercial/compatibility-rules/${id}`, { method: 'DELETE' }, tenantSlug),
 
-  // ── Tributarias ───────────────────────────────────────────────────────────
+  // ── Tributarias (compatibilidad: GET listado de reglas para TaxApplicationRulesManager) ─
 
-  /** Lista clasificaciones tributarias del tenant. */
-  getTaxClassifications: (tenantSlug?: string) =>
-    request<TaxClassification[]>('/commercial/tax-classifications', undefined, tenantSlug),
-
-  /** Crea clasificación tributaria. */
-  createTaxClassification: (dto: CreateTaxClassificationDto, tenantSlug?: string) =>
-    request<TaxClassification>(
-      '/commercial/tax-classifications',
-      { method: 'POST', body: JSON.stringify(dto) },
-      tenantSlug,
-    ),
-
-  /** Actualiza clasificación tributaria. */
-  updateTaxClassification: (id: string, dto: UpdateTaxClassificationDto, tenantSlug?: string) =>
-    request<TaxClassification>(
-      `/commercial/tax-classifications/${id}`,
-      { method: 'PATCH', body: JSON.stringify(dto) },
-      tenantSlug,
-    ),
-
-  /** Elimina clasificación tributaria. */
-  deleteTaxClassification: (id: string, tenantSlug?: string) =>
-    request<void>(`/commercial/tax-classifications/${id}`, { method: 'DELETE' }, tenantSlug),
-
-  /** @deprecated Usar deleteTaxClassification. */
-  deactivateTaxClassification: (id: string, tenantSlug?: string) =>
-    request<void>(`/commercial/tax-classifications/${id}`, { method: 'DELETE' }, tenantSlug),
-
-  /** Lista reglas tributarias del tenant. */
+  /** Lista reglas tributarias del tenant. Usado por TaxApplicationRulesManager para selección. */
   getTaxRules: (tenantSlug?: string) =>
     request<TaxRule[]>('/commercial/tax-rules', undefined, tenantSlug),
-
-  /** Crea regla tributaria. */
-  createTaxRule: (dto: CreateTaxRuleDto, tenantSlug?: string) =>
-    request<TaxRule>(
-      '/commercial/tax-rules',
-      { method: 'POST', body: JSON.stringify(dto) },
-      tenantSlug,
-    ),
-
-  /** Actualiza regla tributaria. */
-  updateTaxRule: (id: string, dto: UpdateTaxRuleDto, tenantSlug?: string) =>
-    request<TaxRule>(
-      `/commercial/tax-rules/${id}`,
-      { method: 'PATCH', body: JSON.stringify(dto) },
-      tenantSlug,
-    ),
-
-  /** Desactiva regla tributaria. */
-  deactivateTaxRule: (id: string, tenantSlug?: string) =>
-    request<void>(`/commercial/tax-rules/${id}`, { method: 'DELETE' }, tenantSlug),
-
-  /** Resuelve la clasificación tributaria dado un segmento de cliente y estrato (opcional). */
-  resolveTaxClassification: (dto: ResolveTaxDto, tenantSlug?: string) =>
-    request<TaxClassification>(
-      '/commercial/tax/resolve',
-      { method: 'POST', body: JSON.stringify(dto) },
-      tenantSlug,
-    ),
 
   // ── Catálogo MOD07 ───────────────────────────────────────────────────────
 
