@@ -16,26 +16,26 @@ import { JurisdictionLevel, TaxCategory, TaxContext, TaxOrigin, TaxTreatment } f
  * Ref: HLD-MOD07 §3, §4
  */
 @Entity({ name: 'tax_definitions' })
+@Index('uq_tax_definitions_code', ['code'], { unique: true })
 @Index('idx_tax_definitions_context_active', ['context', 'isActive'])
 @Index('idx_tax_definitions_category', ['category'])
 export class TaxDefinition {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'code', type: 'varchar', length: 32, unique: true })
+  @Column({ name: 'code', type: 'varchar', length: 32 })
   code: string;
 
   @Column({ name: 'name', type: 'varchar', length: 120 })
   name: string;
 
-  @Column({ name: 'category', type: 'varchar', length: 20, enum: TaxCategory })
+  @Column({ name: 'category', type: 'varchar', length: 20 })
   category: TaxCategory;
 
   @Column({
     name: 'jurisdiction_level',
     type: 'varchar',
     length: 20,
-    enum: JurisdictionLevel,
   })
   jurisdictionLevel: JurisdictionLevel;
 
@@ -43,19 +43,18 @@ export class TaxDefinition {
   municipalityCode: string | null;
 
   @Column({ name: 'base_rate', type: 'numeric', precision: 7, scale: 4, nullable: true })
-  baseRate: number | null;
+  baseRate: string | null;
 
-  @Column({ name: 'treatment', type: 'varchar', length: 20, enum: TaxTreatment })
+  @Column({ name: 'treatment', type: 'varchar', length: 20 })
   treatment: TaxTreatment;
 
-  @Column({ name: 'context', type: 'varchar', length: 10, enum: TaxContext })
+  @Column({ name: 'context', type: 'varchar', length: 10 })
   context: TaxContext;
 
   @Column({
     name: 'origin',
     type: 'varchar',
     length: 10,
-    enum: TaxOrigin,
     default: TaxOrigin.CUSTOM,
   })
   origin: TaxOrigin;
