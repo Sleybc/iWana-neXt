@@ -2,10 +2,14 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ConflictException } from '@nestjs/common';
 import { PersonType, CustomerSegment, SubscriberStatus, ExpedienteStatus } from '@iwana/shared';
 import { SubscriberCreationService } from '../subscriber-creation.service';
 import { SubscribersService } from '../subscribers.service';
 import { AuditService } from '../../../audit/audit.service';
+import { PartyService } from '../../../parties/services/party.service';
+import { PartyRoleService } from '../../../parties/services/party-role.service';
+import { IPartyReadPort } from '../../../parties/ports/party-read.port';
 
 // Mocks para multi-tenant
 const mockRunInTenantSchema = jest.fn();
@@ -26,6 +30,7 @@ jest.mock('@iwana/db', () => {
 /**
  * Tests unitarios del SubscriberCreationService.
  * Valida la creación automática de Subscriber a partir de Expediente CLIENTE_ACTIVO.
+ * FASE 5: incluye tests de Party creation + PartyRole(CUSTOMER) wiring (ADR-030).
  */
 describe('SubscriberCreationService', () => {
   let service: SubscriberCreationService;
@@ -33,6 +38,9 @@ describe('SubscriberCreationService', () => {
     createFromExpediente: jest.Mock;
     findByExpedienteId: jest.Mock;
   };
+  let partyServiceMock: { create: jest.Mock };
+  let partyRoleServiceMock: { assign: jest.Mock };
+  let partyReadPortMock: { findByDocument: jest.Mock };
 
   // Clave de cifrado de prueba (32 bytes hex = 256 bits)
   const TEST_ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
@@ -61,6 +69,9 @@ describe('SubscriberCreationService', () => {
     neighborhood: 'Centro',
     latitude: 4.711,
     longitude: -74.0721,
+    fullName: 'Juan Pérez',
+    createdAt: new Date('2024-01-01T00:00:00Z'),
+    updatedAt: new Date('2024-01-01T00:00:00Z'),
   };
 
   // Expediente de prueba — persona jurídica
@@ -87,6 +98,9 @@ describe('SubscriberCreationService', () => {
     neighborhood: null,
     latitude: null,
     longitude: null,
+    fullName: 'Empresa XYZ S.A.S.',
+    createdAt: new Date('2024-01-01T00:00:00Z'),
+    updatedAt: new Date('2024-01-01T00:00:00Z'),
   };
 
   beforeEach(async () => {
@@ -101,6 +115,17 @@ describe('SubscriberCreationService', () => {
       findByExpedienteId: jest.fn().mockResolvedValue(null),
     };
 
+    // Mocks de Party services — FASE 5 (ADR-030)
+    partyServiceMock = {
+      create: jest.fn().mockResolvedValue({ id: 'party-test-uuid' }),
+    };
+    partyRoleServiceMock = {
+      assign: jest.fn().mockResolvedValue({ id: 'role-test-uuid' }),
+    };
+    partyReadPortMock = {
+      findByDocument: jest.fn().mockResolvedValue(null),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SubscriberCreationService,
@@ -108,6 +133,9 @@ describe('SubscriberCreationService', () => {
         { provide: SubscribersService, useValue: subscribersServiceMock },
         { provide: AuditService, useValue: { log: jest.fn() } },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: PartyService, useValue: partyServiceMock },
+        { provide: PartyRoleService, useValue: partyRoleServiceMock },
+        { provide: IPartyReadPort, useValue: partyReadPortMock },
         {
           provide: ConfigService,
           useValue: {
@@ -309,10 +337,10 @@ describe('SubscriberCreationService', () => {
     });
   });
 
-  // ── createFromExpediente (flujo completo) ──
+  // ── createFromExpediente (flujo completo) ── FASE 5: incluye Party wiring
 
   describe('createFromExpediente', () => {
-    it('crea subscriber a partir de expediente persona natural', async () => {
+    it('crea subscriber a partir de expediente persona natural y vincula Party', async () => {
       // Mock: expediente encontrado
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
         callback({
@@ -333,6 +361,22 @@ describe('SubscriberCreationService', () => {
       const subscriberId = await service.createFromExpediente('exp-001', 'actor-1');
 
       expect(subscriberId).toBe('sub-new-001');
+
+      // Verificar que se creó un Party
+      expect(partyServiceMock.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          partyType: 'NATURAL',
+          documentType: 'CC',
+        }),
+      );
+
+      // Verificar que se asignó rol CUSTOMER
+      expect(partyRoleServiceMock.assign).toHaveBeenCalledWith(
+        'party-test-uuid',
+        expect.objectContaining({ role: 'CUSTOMER' }),
+      );
+
+      // Verificar que el subscriber fue creado con partyId
       expect(subscribersServiceMock.createFromExpediente).toHaveBeenCalledWith(
         'exp-001',
         expect.objectContaining({
@@ -349,12 +393,13 @@ describe('SubscriberCreationService', () => {
           neighborhood: 'Centro',
           latitude: 4.711,
           longitude: -74.0721,
+          partyId: 'party-test-uuid',
         }),
         'actor-1',
       );
     });
 
-    it('crea subscriber a partir de expediente persona jurídica', async () => {
+    it('crea subscriber a partir de expediente persona jurídica y vincula Party ORGANIZATION', async () => {
       // Mock: expediente encontrado
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
         callback({
@@ -375,6 +420,12 @@ describe('SubscriberCreationService', () => {
       const subscriberId = await service.createFromExpediente('exp-002', 'actor-1');
 
       expect(subscriberId).toBe('sub-new-002');
+
+      // Verificar Party ORGANIZATION
+      expect(partyServiceMock.create).toHaveBeenCalledWith(
+        expect.objectContaining({ partyType: 'ORGANIZATION' }),
+      );
+
       expect(subscribersServiceMock.createFromExpediente).toHaveBeenCalledWith(
         'exp-002',
         expect.objectContaining({
@@ -385,6 +436,7 @@ describe('SubscriberCreationService', () => {
           email: 'contacto@empresa.co',
           address: 'Av. El Dorado #50-20',
           postalCode: '110211',
+          partyId: 'party-test-uuid',
         }),
         'actor-1',
       );
@@ -469,6 +521,76 @@ describe('SubscriberCreationService', () => {
         }),
         'actor-1',
       );
+    });
+
+    // ── FASE 5: Party creation tests ──
+
+    it('reutiliza Party existente si PartyService lanza ConflictException', async () => {
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: async () => mockExpedienteNatural,
+          },
+        }),
+      );
+
+      // PartyService lanza ConflictException (Party ya existe)
+      partyServiceMock.create.mockRejectedValue(
+        new ConflictException('Ya existe un party activo con ese documento'),
+      );
+
+      // IPartyReadPort devuelve el party existente
+      partyReadPortMock.findByDocument.mockResolvedValue({ id: 'existing-party-id' });
+
+      subscribersServiceMock.createFromExpediente.mockResolvedValue({ id: 'sub-new-005' });
+
+      const subscriberId = await service.createFromExpediente('exp-005', 'actor-1');
+
+      expect(subscriberId).toBe('sub-new-005');
+
+      // Verificar que se intentó buscar el Party existente
+      expect(partyReadPortMock.findByDocument).toHaveBeenCalled();
+
+      // Verificar que el subscriber fue creado con el partyId existente
+      expect(subscribersServiceMock.createFromExpediente).toHaveBeenCalledWith(
+        'exp-005',
+        expect.objectContaining({ partyId: 'existing-party-id' }),
+        'actor-1',
+      );
+    });
+
+    it('ignora ConflictException al asignar rol CUSTOMER si ya existe', async () => {
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: async () => mockExpedienteNatural,
+          },
+        }),
+      );
+
+      // PartyRoleService lanza ConflictException (rol ya existe)
+      partyRoleServiceMock.assign.mockRejectedValue(
+        new ConflictException('El party ya tiene el rol CUSTOMER activo'),
+      );
+
+      subscribersServiceMock.createFromExpediente.mockResolvedValue({ id: 'sub-new-006' });
+
+      // No debe lanzar excepción — ConflictException del rol es ignorada
+      const subscriberId = await service.createFromExpediente('exp-006', 'actor-1');
+      expect(subscriberId).toBe('sub-new-006');
+    });
+
+    it('es idempotente: no crea subscriber si ya existe uno para el expediente', async () => {
+      // Subscriber ya existe
+      subscribersServiceMock.findByExpedienteId.mockResolvedValue({
+        id: 'sub-existing-001',
+      });
+
+      const subscriberId = await service.createFromExpediente('exp-existing', 'actor-1');
+
+      expect(subscriberId).toBe('sub-existing-001');
+      expect(partyServiceMock.create).not.toHaveBeenCalled();
+      expect(subscribersServiceMock.createFromExpediente).not.toHaveBeenCalled();
     });
   });
 });

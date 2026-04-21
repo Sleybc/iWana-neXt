@@ -6,7 +6,8 @@ import { z } from 'zod';
 export const CreatePartySchema = z.object({
   partyType: z.nativeEnum(PartyType),
   documentType: z.nativeEnum(DocumentTypeParty),
-  documentNumber: z.string().min(1).max(32),
+  // Longitud 500: acomoda valores cifrados AES-256-GCM usados en backfill (migración 024)
+  documentNumber: z.string().min(1).max(500),
   verificationDigit: z.string().max(2).nullable().optional(),
   displayName: z.string().min(1).max(160),
   legalName: z.string().max(200).nullable().optional(),
@@ -26,10 +27,10 @@ export class CreatePartyDto {
   @IsEnum(DocumentTypeParty)
   documentType: DocumentTypeParty;
 
-  @ApiProperty({ maxLength: 32 })
+  @ApiProperty({ maxLength: 500 })
   @IsString()
   @IsNotEmpty()
-  @MaxLength(32)
+  @MaxLength(500)
   documentNumber: string;
 
   @ApiPropertyOptional({ maxLength: 2 })

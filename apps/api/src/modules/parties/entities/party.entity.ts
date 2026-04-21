@@ -33,7 +33,8 @@ export class Party {
   @Column({ name: 'document_type', type: 'varchar' })
   documentType: DocumentTypeParty;
 
-  @Column({ name: 'document_number', type: 'varchar', length: 32 })
+  // Longitud 500: acomoda valores cifrados AES-256-GCM (migración 024 — ADR-030)
+  @Column({ name: 'document_number', type: 'varchar', length: 500 })
   documentNumber: string;
 
   @Column({ name: 'verification_digit', type: 'varchar', length: 2, nullable: true })

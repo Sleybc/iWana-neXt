@@ -34,6 +34,7 @@ import {
 @Index('idx_subscribers_tenant_stratum', ['tenantId', 'stratum'])
 @Index('idx_subscribers_tenant_segment', ['tenantId', 'customerSegment'])
 @Index('idx_subscribers_tenant_expediente', ['tenantId', 'expedienteId'])
+@Index('idx_subscribers_party_id', ['tenantId', 'partyId'], { where: 'party_id IS NOT NULL' })
 export class Subscriber {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -45,6 +46,10 @@ export class Subscriber {
   // ── Relación 1:1 con USER (nullable: el subscriber existe antes del portal) ──
   @Column({ type: 'uuid', name: 'user_id', nullable: true })
   userId: string | null;
+
+  // ── Vínculo a Party (MOD08 — ADR-030) ──
+  @Column({ type: 'uuid', name: 'party_id', nullable: true })
+  partyId: string | null;
 
   // ── Dimensión fiscal (régimen tributario colombiano) ──
   @Column({ type: 'varchar', length: 20, name: 'person_type' })

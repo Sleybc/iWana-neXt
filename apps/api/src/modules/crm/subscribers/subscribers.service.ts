@@ -136,6 +136,8 @@ export class SubscribersService {
       initialStatus?: SubscriberStatus | undefined;
       convertedAt?: Date | undefined;
       activatedAt?: Date | undefined;
+      // Vínculo a Party (MOD08 — ADR-030 F4/F5)
+      partyId?: string | null | undefined;
     },
     actorId: string,
   ): Promise<Subscriber> {
@@ -210,6 +212,8 @@ export class SubscribersService {
     entity.status = dto.initialStatus ?? SubscriberStatus.LEAD;
     entity.externalId = dto.externalId ?? null;
     entity.createdBy = actorId;
+    // Vínculo a Party (MOD08 — ADR-030)
+    entity.partyId = dto.partyId ?? null;
 
     const saved = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
       qr.manager.save(Subscriber, entity),
@@ -543,6 +547,9 @@ export class SubscribersService {
   /**
    * Crear suscriptor PROSPECT a partir de un expediente en LISTO_PARA_INSTALACION.
    * Invocado por SubscriberCreationService.
+   *
+   * Paso 5 — Guard: requiere partyId válido (ADR-030 F5).
+   * Un Subscriber siempre debe tener un Party asociado al crearse.
    */
   async createFromExpediente(
     expedienteId: string,
@@ -565,9 +572,16 @@ export class SubscribersService {
       postalCode?: string | undefined;
       latitude?: number | undefined;
       longitude?: number | undefined;
+      // Vínculo obligatorio a Party (MOD08 — ADR-030 F4/F5)
+      partyId: string;
     },
     actorId: string,
   ): Promise<Subscriber> {
+    // Guard: Subscriber requiere partyId — regla de negocio ADR-030
+    if (!overrides.partyId) {
+      throw new BadRequestException('Subscriber requiere un partyId válido (Party MOD08)');
+    }
+
     const subscriber = await this.create(
       {
         personType: overrides.personType,
@@ -591,6 +605,7 @@ export class SubscribersService {
         expedienteId,
         initialStatus: SubscriberStatus.PROSPECT,
         convertedAt: new Date(),
+        partyId: overrides.partyId,
       },
       actorId,
     );

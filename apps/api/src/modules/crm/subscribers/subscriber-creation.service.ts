@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -6,12 +6,23 @@ import { OnEvent } from '@nestjs/event-emitter';
 import * as crypto from 'crypto';
 import { DataSource } from 'typeorm';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
-import { PersonType, CustomerSegment, SubscriberStatus, AuditAction } from '@iwana/shared';
+import {
+  PersonType,
+  CustomerSegment,
+  SubscriberStatus,
+  AuditAction,
+  PartyType,
+  DocumentTypeParty,
+  PartyRoleType,
+} from '@iwana/shared';
 import { ExpedienteRecord } from '../expedientes/entities/expediente-record.entity';
 import { SubscribersService } from './subscribers.service';
 import { SubscriberConvertedEvent } from './events/subscriber-converted.event';
 import { AuditService } from '../../audit/audit.service';
 import { ExpedienteReadyForInstallationEvent } from '../expedientes/events/expediente-pipeline.events';
+import { PartyService } from '../../parties/services/party.service';
+import { PartyRoleService } from '../../parties/services/party-role.service';
+import { IPartyReadPort } from '../../parties/ports/party-read.port';
 
 /**
  * Listener que crea un Subscriber automáticamente cuando un expediente
@@ -38,6 +49,9 @@ export class SubscriberCreationService {
     private readonly subscribersService: SubscribersService,
     private readonly eventEmitter: EventEmitter2,
     private readonly auditService: AuditService,
+    private readonly partyService: PartyService,
+    private readonly partyRoleService: PartyRoleService,
+    private readonly partyReadPort: IPartyReadPort,
   ) {
     // Reutilizar la misma clave de cifrado que ExpedienteService y SubscribersService
     const keyHex = this.configService.getOrThrow<string>('MFA_ENCRYPTION_KEY');
@@ -54,6 +68,9 @@ export class SubscriberCreationService {
   /**
    * Crea (o reutiliza) un subscriber PROSPECT a partir de un expediente listo.
    * Determina personType y customerSegment según los datos del expediente.
+   *
+   * FASE 5 (ADR-030): crea Party + PartyRole(CUSTOMER) antes del subscriber.
+   * El partyId queda vinculado al subscriber desde su creación.
    */
   async createFromExpediente(expedienteId: string, actorId: string): Promise<string> {
     const { schemaName } = TenantContext.getOrThrow();
@@ -86,7 +103,10 @@ export class SubscriberCreationService {
     const phone = this.resolvePhone(expediente);
     const documentNumber = this.resolveDocumentNumber(expediente);
 
-    // 5. Crear subscriber PROSPECT con trazabilidad del expediente
+    // 5. Crear Party + PartyRole(CUSTOMER) — ADR-030 F5
+    const partyId = await this.createPartyForSubscriber(expediente, personType);
+
+    // 6. Crear subscriber PROSPECT con trazabilidad del expediente y vínculo a Party
     const subscriber = await this.subscribersService.createFromExpediente(
       expedienteId,
       {
@@ -108,13 +128,14 @@ export class SubscriberCreationService {
         postalCode: expediente.postalCode ?? undefined,
         latitude: expediente.latitude ?? undefined,
         longitude: expediente.longitude ?? undefined,
+        partyId,
       },
       actorId,
     );
 
     this.logger.log(
       `Subscriber ${subscriber.id} creado desde expediente ${expedienteId} ` +
-        `[${personType}/${customerSegment}]`,
+        `[${personType}/${customerSegment}] → party=${partyId}`,
     );
 
     // Emitir evento para que otros módulos reaccionen (Billing, Provisioning, etc.)
@@ -142,10 +163,134 @@ export class SubscriberCreationService {
         personType,
         customerSegment,
         status: 'PROSPECT',
+        partyId,
       },
     });
 
     return subscriber.id;
+  }
+
+  /**
+   * Crea un Party + PartyRole(CUSTOMER) para un subscriber nuevo.
+   * Si el Party ya existe con el mismo documentNumber (ConflictException), reutiliza el existente.
+   *
+   * PII: documentNumber se almacena en el formato cifrado del expediente (AES-256-GCM)
+   * para mantener confidencialidad en la tabla party (ADR-030 §PII).
+   *
+   * Ref: ADR-030, HLD-MOD08-PARTIES-v1.0 §4
+   */
+  private async createPartyForSubscriber(
+    expediente: ExpedienteRecord,
+    personType: PersonType,
+  ): Promise<string> {
+    const partyType =
+      personType === PersonType.NATURAL ? PartyType.NATURAL : PartyType.ORGANIZATION;
+    const documentType = this.mapDocumentTypeToParty(expediente.documentType, personType);
+
+    // Almacenar documentNumber cifrado para mantener PII — mismo formato que subscribers
+    const documentNumber = expediente.documentNumberEncrypted ?? `NODATA-${expediente.id}`;
+
+    const displayName = this.buildDisplayName(expediente, personType);
+    const legalName = this.buildLegalName(expediente, personType);
+
+    let partyId: string;
+
+    try {
+      const party = await this.partyService.create({
+        partyType,
+        documentType,
+        documentNumber,
+        displayName,
+        ...(legalName ? { legalName } : {}),
+      });
+      partyId = party.id;
+      this.logger.log(`[SubscriberCreationService] Party creado id=${partyId} tipo=${partyType}`);
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        // Party ya existe con este documentNumber — reutilizar (ADR-030)
+        const existing = await this.partyReadPort.findByDocument(documentType, documentNumber);
+        if (!existing) {
+          throw new Error(
+            `[SubscriberCreationService] Party en conflicto pero no encontrado tipo=${documentType}`,
+          );
+        }
+        partyId = existing.id;
+        this.logger.warn(`[SubscriberCreationService] Party existente reutilizado id=${partyId}`);
+      } else {
+        throw error;
+      }
+    }
+
+    // Asignar rol CUSTOMER al party (idempotente si ya existe)
+    try {
+      await this.partyRoleService.assign(partyId, {
+        role: PartyRoleType.CUSTOMER,
+        validFrom: expediente.createdAt?.toISOString(),
+      });
+    } catch (error) {
+      // Rol CUSTOMER ya activo — ignorar (ConflictException es aceptable aquí)
+      if (!(error instanceof ConflictException)) {
+        throw error;
+      }
+      this.logger.warn(`[SubscriberCreationService] Rol CUSTOMER ya activo en party=${partyId}`);
+    }
+
+    return partyId;
+  }
+
+  /**
+   * Mapea DocumentType de CRM a DocumentTypeParty de MOD08.
+   * Si el tipo no coincide, infiere por personType.
+   */
+  private mapDocumentTypeToParty(
+    docType: string | null | undefined,
+    personType: PersonType,
+  ): DocumentTypeParty {
+    const mapping: Record<string, DocumentTypeParty> = {
+      CC: DocumentTypeParty.CC,
+      CE: DocumentTypeParty.CE,
+      PASAPORTE: DocumentTypeParty.PASAPORTE,
+      TI: DocumentTypeParty.TI,
+      RUT: DocumentTypeParty.RUT,
+      NIT: DocumentTypeParty.NIT,
+      NIT_PERSONA: DocumentTypeParty.NIT,
+      PEP: DocumentTypeParty.OTHER,
+      PTP: DocumentTypeParty.OTHER,
+    };
+
+    if (docType && mapping[docType]) {
+      return mapping[docType]!;
+    }
+
+    return personType === PersonType.NATURAL ? DocumentTypeParty.CC : DocumentTypeParty.NIT;
+  }
+
+  /**
+   * Construye el displayName del Party desde los datos del expediente.
+   */
+  private buildDisplayName(expediente: ExpedienteRecord, personType: PersonType): string {
+    if (personType === PersonType.NATURAL) {
+      if (expediente.firstName && expediente.lastName) {
+        return `${expediente.firstName} ${expediente.lastName}`.substring(0, 160);
+      }
+      if (expediente.firstName) return expediente.firstName.substring(0, 160);
+    }
+    if (expediente.companyName) return expediente.companyName.substring(0, 160);
+    if (expediente.fullName) return expediente.fullName.substring(0, 160);
+    return 'Sin nombre';
+  }
+
+  /**
+   * Construye el legalName del Party desde los datos del expediente.
+   */
+  private buildLegalName(expediente: ExpedienteRecord, personType: PersonType): string | null {
+    if (personType === PersonType.JURIDICA) {
+      return expediente.companyName?.substring(0, 200) ?? null;
+    }
+    if (expediente.firstName && expediente.lastName) {
+      return `${expediente.firstName} ${expediente.lastName}`.substring(0, 200);
+    }
+    return null;
   }
 
   /**

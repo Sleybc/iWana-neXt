@@ -483,6 +483,7 @@ describe('SubscribersService', () => {
           email: 'juan@expediente.co',
           phone: '3001234567',
           address: 'Calle 1 #2-3',
+          partyId: 'party-test-uuid',
         },
         'actor-1',
       );

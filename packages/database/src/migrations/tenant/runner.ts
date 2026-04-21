@@ -17,6 +17,8 @@ import { SeedCommercialDefaultTaxRules1700000000019 } from './019_seed_commercia
 import { AddCommercialRulesFields1700000000020 } from './020_add_commercial_rules_fields';
 import { CreateTaxationModule1700000000021 } from './021_create_taxation_module';
 import { CreatePartiesModule1700000000022 } from './022_create_parties_module';
+import { CreateTaxRuleApplications1700000000023 } from './023_create_tax_rule_applications';
+import { BackfillSubscribersPartyId1700000000024 } from './024_backfill_subscribers_party_id';
 
 const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   InitialTenantSchema1700000000000,
@@ -37,6 +39,8 @@ const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   AddCommercialRulesFields1700000000020,
   CreateTaxationModule1700000000021,
   CreatePartiesModule1700000000022,
+  CreateTaxRuleApplications1700000000023,
+  BackfillSubscribersPartyId1700000000024,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

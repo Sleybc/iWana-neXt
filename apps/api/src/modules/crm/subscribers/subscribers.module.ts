@@ -9,9 +9,10 @@ import { SubscriberCreationService } from './subscriber-creation.service';
 import { AuditModule } from '../../audit/audit.module';
 import { SubscriberActivationListener } from './listeners/subscriber-activation.listener';
 import { SubscriberCancellationListener } from './listeners/subscriber-cancellation.listener';
+import { PartiesModule } from '../../parties/parties.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Subscriber]), AuditModule],
+  imports: [TypeOrmModule.forFeature([Subscriber]), AuditModule, PartiesModule],
   controllers: [SubscribersController],
   providers: [
     VatTreatmentService,
