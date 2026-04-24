@@ -172,6 +172,7 @@ function buildExpediente(overrides: Partial<ExpedienteRecord>): ExpedienteRecord
     sourceDetail: null,
     interestedPlanId: null,
     additionalProductIds: null,
+    additionalServiceIds: [],
     campaign: null,
     casePriority: null,
     estimatedBudget: null,

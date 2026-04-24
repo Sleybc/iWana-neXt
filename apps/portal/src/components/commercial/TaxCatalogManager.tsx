@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Plus, Pencil, Trash2, RotateCcw, Lock } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Plus, Pencil, Trash2, RotateCcw, Lock, HelpCircle } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -13,7 +13,11 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  FormField,
   Input,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   Select,
 } from '@iwana/ui';
 import {
@@ -24,6 +28,27 @@ import {
   type UpdateTaxDefinitionDto,
 } from '@/lib/api-client';
 
+// ── Tooltip de ayuda reutilizable ─────────────────────────────────────────────
+
+function HelpPopover({ children }: { children: React.ReactNode }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="Ayuda"
+          className="ml-1 inline-flex items-center text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+        >
+          <HelpCircle className="h-3.5 w-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 text-sm leading-relaxed text-gray-700 dark:text-gray-200">
+        {children}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 interface TaxCatalogManagerProps {
   canEdit: boolean;
 }
@@ -32,17 +57,22 @@ interface TaxCatalogManagerProps {
 interface TaxDefFormState {
   code?: string | undefined;
   name?: string | undefined;
-  category?: ('VAT' | 'RETENTION' | 'STAMP' | 'MUNICIPAL' | 'OTHER') | undefined;
-  jurisdictionLevel?: ('NATIONAL' | 'DEPARTMENTAL' | 'MUNICIPAL') | undefined;
+  category?: ('VAT' | 'WITHHOLDING' | 'STAMP' | 'MUNICIPAL' | 'OTHER') | undefined;
+  jurisdictionLevel?: ('NATIONAL' | 'DEPARTMENT' | 'MUNICIPAL') | undefined;
   baseRate?: number | undefined;
   treatment?: ('STANDARD' | 'EXEMPT' | 'EXCLUDED' | 'FIXED') | undefined;
-  context?: ('RESIDENTIAL' | 'COMMERCIAL' | 'BOTH') | undefined;
+  context?: ('SALES' | 'PURCHASE' | 'BOTH') | undefined;
   notes?: string | undefined;
+}
+
+interface FormErrors {
+  code?: string;
+  name?: string;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
   VAT: 'IVA',
-  RETENTION: 'Retención',
+  WITHHOLDING: 'Retención',
   STAMP: 'Estampilla',
   MUNICIPAL: 'Municipal',
   OTHER: 'Otro',
@@ -57,13 +87,13 @@ const TREATMENT_LABELS: Record<string, string> = {
 
 const JURISDICTION_LABELS: Record<string, string> = {
   NATIONAL: 'Nacional',
-  DEPARTMENTAL: 'Departamental',
+  DEPARTMENT: 'Departamental',
   MUNICIPAL: 'Municipal',
 };
 
 const CONTEXT_LABELS: Record<string, string> = {
-  RESIDENTIAL: 'Residencial',
-  COMMERCIAL: 'Comercial',
+  SALES: 'Ventas',
+  PURCHASE: 'Compras',
   BOTH: 'Ambos',
 };
 
@@ -74,15 +104,31 @@ const INITIAL_FORM: TaxDefFormState = {
   context: 'BOTH',
 };
 
+const TAX_CODE_ALLOWED_PATTERN = /^[A-Z0-9_]+$/;
+
+function normalizeTaxCode(value: string): string {
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_]/g, '_')
+    .replace(/_+/g, '_');
+}
+
 export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
   const [definitions, setDefinitions] = useState<TaxDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<TaxDefinition | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TaxDefinition | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState<TaxDefFormState>(INITIAL_FORM);
+  const [formErrors, setFormErrors] = useState<FormErrors>({});
+
+  // true = código generado automáticamente desde el nombre; false = editado manualmente
+  const codeAutoRef = useRef(true);
 
   const loadDefinitions = useCallback(async () => {
     setLoading(true);
@@ -102,15 +148,42 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
   }, [loadDefinitions]);
 
   const handleCreate = async () => {
-    if (!form.code || !form.name) return;
+    const code = form.code ? normalizeTaxCode(form.code) : '';
+    const name = form.name?.trim() ?? '';
+
+    // Validación inline
+    const errors: FormErrors = {};
+    if (!name) errors.name = 'El nombre es obligatorio.';
+    if (!code) errors.code = 'El código es obligatorio.';
+    else if (!TAX_CODE_ALLOWED_PATTERN.test(code))
+      errors.code = 'Solo mayúsculas, dígitos y guion bajo (ej: ICA_BOGOTA).';
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+
     setSubmitting(true);
+    setCreateError(null);
     try {
-      await commercialApi.createTaxDefinition(form as CreateTaxDefinitionDto);
+      const payload: CreateTaxDefinitionDto = {
+        code,
+        name,
+        category: form.category ?? 'VAT',
+        jurisdictionLevel: form.jurisdictionLevel ?? 'NATIONAL',
+        treatment: form.treatment ?? 'STANDARD',
+        context: form.context ?? 'BOTH',
+        ...(form.baseRate !== undefined && !Number.isNaN(form.baseRate)
+          ? { baseRate: form.baseRate }
+          : {}),
+        ...(form.notes?.trim() ? { notes: form.notes.trim() } : {}),
+      };
+
+      await commercialApi.createTaxDefinition(payload);
       setCreateOpen(false);
       setForm(INITIAL_FORM);
       await loadDefinitions();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Error al crear definición');
+      setCreateError(err instanceof ApiError ? err.message : 'Error al crear la definición.');
     } finally {
       setSubmitting(false);
     }
@@ -119,6 +192,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
   const handleUpdate = async () => {
     if (!editTarget) return;
     setSubmitting(true);
+    setEditError(null);
     try {
       const patch: UpdateTaxDefinitionDto = {};
       if (form.name !== undefined) patch.name = form.name;
@@ -130,7 +204,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
       setEditTarget(null);
       await loadDefinitions();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Error al actualizar definición');
+      setEditError(err instanceof ApiError ? err.message : 'Error al actualizar la definición.');
     } finally {
       setSubmitting(false);
     }
@@ -144,7 +218,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
       setDeleteTarget(null);
       await loadDefinitions();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Error al eliminar definición');
+      setError(err instanceof ApiError ? err.message : 'Error al eliminar la definición.');
     } finally {
       setSubmitting(false);
     }
@@ -166,7 +240,16 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
             <RotateCcw className="h-4 w-4" />
           </Button>
           {canEdit && (
-            <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Button
+              size="sm"
+              onClick={() => {
+                setCreateError(null);
+                setFormErrors({});
+                codeAutoRef.current = true;
+                setForm(INITIAL_FORM);
+                setCreateOpen(true);
+              }}
+            >
               <Plus className="mr-1.5 h-4 w-4" />
               Nueva definición
             </Button>
@@ -261,108 +344,295 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
       )}
 
       {/* Diálogo: crear definición */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
+      <Dialog
+        open={createOpen}
+        onOpenChange={(o) => {
+          if (!o) {
+            setCreateOpen(false);
+            setFormErrors({});
+            setCreateError(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Nueva definición tributaria</DialogTitle>
             <DialogDescription>
-              Define un impuesto personalizado para este tenant.
+              Crea un impuesto o contribución personalizada para este tenant. Los campos marcados
+              con <span className="text-iwana-error">*</span> son obligatorios.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-3">
-            <Input
-              placeholder="Código (ej: ICA_BOGOTA)"
-              value={form.code ?? ''}
-              onChange={(e) => {
-                const v = e.target.value;
-                setForm((f) => ({ ...f, code: v }));
-              }}
-            />
-            <Input
-              placeholder="Nombre"
-              value={form.name ?? ''}
-              onChange={(e) => {
-                const v = e.target.value;
-                setForm((f) => ({ ...f, name: v }));
-              }}
-            />
-            <Select
-              value={form.category}
-              onChange={(e) => {
-                const v = e.target.value as TaxDefFormState['category'];
-                setForm((f) => ({ ...f, category: v }));
-              }}
+
+          {/* ── Sección 1: Identificación ── */}
+          <div className="mt-2 flex flex-col gap-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+              Identificación
+            </p>
+
+            <FormField
+              label="Nombre"
+              required
+              hint="Nombre legible del tributo, p. ej. «ICA Bogotá» o «IVA estándar 19%»."
+              {...(formErrors.name ? { error: formErrors.name } : {})}
             >
-              <option value="VAT">IVA</option>
-              <option value="RETENTION">Retención</option>
-              <option value="STAMP">Estampilla</option>
-              <option value="MUNICIPAL">Municipal</option>
-              <option value="OTHER">Otro</option>
-            </Select>
-            <Select
-              value={form.jurisdictionLevel}
-              onChange={(e) => {
-                const v = e.target.value as TaxDefFormState['jurisdictionLevel'];
-                setForm((f) => ({ ...f, jurisdictionLevel: v }));
-              }}
+              <Input
+                placeholder="Ej: ICA Bogotá"
+                value={form.name ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setForm((f) => {
+                    const next: TaxDefFormState = { ...f, name: v };
+                    // Auto-generar código mientras no haya sido editado manualmente
+                    if (codeAutoRef.current) {
+                      next.code = normalizeTaxCode(v);
+                    }
+                    return next;
+                  });
+                  if (formErrors.name) setFormErrors(({ name: _n, ...rest }) => rest);
+                }}
+              />
+            </FormField>
+
+            <FormField
+              label="Código interno"
+              required
+              hint={
+                codeAutoRef.current
+                  ? 'Generado automáticamente desde el nombre. Puedes editarlo si necesitas un código específico.'
+                  : 'Identificador único en MAYÚSCULAS. Solo letras, números y guion bajo.'
+              }
+              {...(formErrors.code ? { error: formErrors.code } : {})}
             >
-              <option value="NATIONAL">Nacional</option>
-              <option value="DEPARTMENTAL">Departamental</option>
-              <option value="MUNICIPAL">Municipal</option>
-            </Select>
-            <Input
-              placeholder="Tasa base (%)"
-              type="number"
-              step="0.01"
-              value={form.baseRate ?? ''}
-              onChange={(e) => {
-                const v = e.target.value ? Number(e.target.value) : undefined;
-                setForm((f) => ({ ...f, baseRate: v }));
-              }}
-            />
-            <Select
-              value={form.treatment}
-              onChange={(e) => {
-                const v = e.target.value as TaxDefFormState['treatment'];
-                setForm((f) => ({ ...f, treatment: v }));
-              }}
-            >
-              <option value="STANDARD">Estándar</option>
-              <option value="EXEMPT">Exento</option>
-              <option value="EXCLUDED">Excluido</option>
-              <option value="FIXED">Fija</option>
-            </Select>
-            <Select
-              value={form.context}
-              onChange={(e) => {
-                const v = e.target.value as TaxDefFormState['context'];
-                setForm((f) => ({ ...f, context: v }));
-              }}
-            >
-              <option value="BOTH">Ambos</option>
-              <option value="RESIDENTIAL">Residencial</option>
-              <option value="COMMERCIAL">Comercial</option>
-            </Select>
-            <Input
-              placeholder="Notas (opcional)"
-              value={form.notes ?? ''}
-              onChange={(e) => {
-                const v = e.target.value || undefined;
-                setForm((f) => ({ ...f, notes: v }));
-              }}
-            />
+              <div className="relative">
+                <Input
+                  placeholder="Ej: ICA_BOGOTA"
+                  value={form.code ?? ''}
+                  onChange={(e) => {
+                    codeAutoRef.current = false;
+                    const v = normalizeTaxCode(e.target.value);
+                    setForm((f) => ({ ...f, code: v }));
+                    if (formErrors.code) setFormErrors(({ code: _c, ...rest }) => rest);
+                  }}
+                  className="pr-16"
+                />
+                {codeAutoRef.current && (form.code ?? '').length > 0 && (
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-iwana-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-iwana-primary">
+                    Auto
+                  </span>
+                )}
+              </div>
+            </FormField>
           </div>
-          <div className="mt-4 flex justify-end gap-2">
+
+          {/* ── Divider ── */}
+          <div className="my-1 border-t border-gray-100 dark:border-dark-border" />
+
+          {/* ── Sección 2: Configuración fiscal ── */}
+          <div className="flex flex-col gap-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+              Configuración fiscal
+            </p>
+
+            {/* Categoría */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                  Categoría
+                </span>
+                <HelpPopover>
+                  <p className="font-semibold mb-1">Tipos de categoría</p>
+                  <ul className="list-disc pl-4 space-y-1 text-xs">
+                    <li>
+                      <strong>IVA</strong> — Impuesto al Valor Agregado (ventas de servicios y
+                      bienes)
+                    </li>
+                    <li>
+                      <strong>Retención</strong> — Retención en la fuente sobre pagos
+                    </li>
+                    <li>
+                      <strong>Estampilla</strong> — Gravamen departamental o municipal sobre
+                      contratos
+                    </li>
+                    <li>
+                      <strong>Municipal</strong> — ICA u otro impuesto de industria y comercio local
+                    </li>
+                    <li>
+                      <strong>Otro</strong> — Contribuciones no clasificadas en las categorías
+                      anteriores
+                    </li>
+                  </ul>
+                </HelpPopover>
+              </div>
+              <Select
+                value={form.category}
+                onChange={(e) => {
+                  const v = e.target.value as TaxDefFormState['category'];
+                  setForm((f) => ({ ...f, category: v }));
+                }}
+              >
+                <option value="VAT">IVA</option>
+                <option value="WITHHOLDING">Retención</option>
+                <option value="STAMP">Estampilla</option>
+                <option value="MUNICIPAL">Municipal</option>
+                <option value="OTHER">Otro</option>
+              </Select>
+            </div>
+
+            {/* Jurisdicción */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                  Jurisdicción
+                </span>
+                <HelpPopover>
+                  <p className="font-semibold mb-1">¿Dónde aplica este tributo?</p>
+                  <ul className="list-disc pl-4 space-y-1 text-xs">
+                    <li>
+                      <strong>Nacional</strong> — Aplica en todo el territorio (ej: IVA 19%)
+                    </li>
+                    <li>
+                      <strong>Departamental</strong> — Aplica en un departamento específico
+                    </li>
+                    <li>
+                      <strong>Municipal</strong> — Aplica en un municipio concreto (ej: ICA Bogotá)
+                    </li>
+                  </ul>
+                </HelpPopover>
+              </div>
+              <Select
+                value={form.jurisdictionLevel}
+                onChange={(e) => {
+                  const v = e.target.value as TaxDefFormState['jurisdictionLevel'];
+                  setForm((f) => ({ ...f, jurisdictionLevel: v }));
+                }}
+              >
+                <option value="NATIONAL">Nacional</option>
+                <option value="DEPARTMENT">Departamental</option>
+                <option value="MUNICIPAL">Municipal</option>
+              </Select>
+            </div>
+
+            {/* Tasa base */}
+            <FormField
+              label="Tasa base (%)"
+              hint="Porcentaje estándar del tributo. Déjalo vacío si la tasa varía por suscriptor o se define caso a caso."
+            >
+              <Input
+                placeholder="Ej: 19"
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                value={form.baseRate ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value ? Number(e.target.value) : undefined;
+                  setForm((f) => ({ ...f, baseRate: v }));
+                }}
+              />
+            </FormField>
+
+            {/* Tratamiento */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                  Tratamiento
+                </span>
+                <HelpPopover>
+                  <p className="font-semibold mb-1">¿Cómo se aplica este tributo?</p>
+                  <ul className="list-disc pl-4 space-y-1 text-xs">
+                    <li>
+                      <strong>Estándar</strong> — Se cobra sobre la base gravable a la tasa definida
+                    </li>
+                    <li>
+                      <strong>Exento</strong> — La operación existe pero tiene tasa cero (debe
+                      declararse)
+                    </li>
+                    <li>
+                      <strong>Excluido</strong> — La operación no está en el hecho generador; no
+                      aplica
+                    </li>
+                    <li>
+                      <strong>Fija</strong> — Monto fijo sin importar la base (ej: estampilla por
+                      contrato)
+                    </li>
+                  </ul>
+                </HelpPopover>
+              </div>
+              <Select
+                value={form.treatment}
+                onChange={(e) => {
+                  const v = e.target.value as TaxDefFormState['treatment'];
+                  setForm((f) => ({ ...f, treatment: v }));
+                }}
+              >
+                <option value="STANDARD">Estándar</option>
+                <option value="EXEMPT">Exento</option>
+                <option value="EXCLUDED">Excluido</option>
+                <option value="FIXED">Fija</option>
+              </Select>
+            </div>
+
+            {/* Contexto */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                  Contexto de aplicación
+                </span>
+                <HelpPopover>
+                  <p className="text-xs">
+                    Define si el tributo aplica a facturas de <strong>ventas</strong> (emitidas al
+                    cliente), de <strong>compras</strong> (recibidas de proveedores) o en{' '}
+                    <strong>ambos</strong> flujos.
+                  </p>
+                </HelpPopover>
+              </div>
+              <Select
+                value={form.context}
+                onChange={(e) => {
+                  const v = e.target.value as TaxDefFormState['context'];
+                  setForm((f) => ({ ...f, context: v }));
+                }}
+              >
+                <option value="BOTH">Ambos (ventas y compras)</option>
+                <option value="SALES">Solo ventas</option>
+                <option value="PURCHASE">Solo compras</option>
+              </Select>
+            </div>
+
+            {/* Notas */}
+            <FormField
+              label="Notas"
+              hint="Información adicional visible en el catálogo, p. ej. «Aplica a estratos 3 y 4»."
+            >
+              <Input
+                placeholder="Opcional"
+                value={form.notes ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value || undefined;
+                  setForm((f) => ({ ...f, notes: v }));
+                }}
+              />
+            </FormField>
+          </div>
+
+          {/* Error de API */}
+          {createError && (
+            <div
+              role="alert"
+              className="rounded-lg bg-red-50 px-4 py-2.5 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400"
+            >
+              {createError}
+            </div>
+          )}
+
+          <div className="mt-2 flex justify-end gap-2">
             <DialogClose asChild>
               <Button variant="ghost" disabled={submitting}>
                 Cancelar
               </Button>
             </DialogClose>
-            <Button
-              onClick={() => void handleCreate()}
-              disabled={submitting || !form.code || !form.name}
-            >
-              {submitting ? 'Creando&hellip;' : 'Crear definición'}
+            <Button onClick={() => void handleCreate()} disabled={submitting}>
+              {submitting ? 'Creando…' : 'Crear definición'}
             </Button>
           </div>
         </DialogContent>
@@ -372,71 +642,145 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
       <Dialog
         open={!!editTarget}
         onOpenChange={(o) => {
-          if (!o) setEditTarget(null);
+          if (!o) {
+            setEditTarget(null);
+            setEditError(null);
+          }
         }}
       >
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Editar definición tributaria</DialogTitle>
-            <DialogDescription>{editTarget?.name}</DialogDescription>
+            <DialogDescription>
+              Modifica los campos editables de <strong>{editTarget?.name}</strong>. El código y la
+              categoría no se pueden cambiar.
+            </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3">
-            <Input
-              placeholder="Nombre"
-              value={form.name ?? ''}
-              onChange={(e) => {
-                const v = e.target.value;
-                setForm((f) => ({ ...f, name: v }));
-              }}
-            />
-            <Input
-              placeholder="Tasa base (%)"
-              type="number"
-              step="0.01"
-              value={form.baseRate ?? ''}
-              onChange={(e) => {
-                const v = e.target.value ? Number(e.target.value) : undefined;
-                setForm((f) => ({ ...f, baseRate: v }));
-              }}
-            />
-            <Select
-              value={form.treatment}
-              onChange={(e) => {
-                const v = e.target.value as TaxDefFormState['treatment'];
-                setForm((f) => ({ ...f, treatment: v }));
-              }}
+            <FormField label="Nombre" hint="Nombre legible del tributo.">
+              <Input
+                placeholder="Nombre"
+                value={form.name ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setForm((f) => ({ ...f, name: v }));
+                }}
+              />
+            </FormField>
+
+            <FormField
+              label="Tasa base (%)"
+              hint="Porcentaje estándar. Déjalo vacío si varía por suscriptor."
             >
-              <option value="STANDARD">Estándar</option>
-              <option value="EXEMPT">Exento</option>
-              <option value="EXCLUDED">Excluido</option>
-              <option value="FIXED">Fija</option>
-            </Select>
-            <Select
-              value={form.context}
-              onChange={(e) => {
-                const v = e.target.value as TaxDefFormState['context'];
-                setForm((f) => ({ ...f, context: v }));
-              }}
-            >
-              <option value="BOTH">Ambos</option>
-              <option value="RESIDENTIAL">Residencial</option>
-              <option value="COMMERCIAL">Comercial</option>
-            </Select>
-            <Input
-              placeholder="Notas"
-              value={form.notes ?? ''}
-              onChange={(e) => {
-                const v = e.target.value || undefined;
-                setForm((f) => ({ ...f, notes: v }));
-              }}
-            />
+              <Input
+                placeholder="Ej: 19"
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                value={form.baseRate ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value ? Number(e.target.value) : undefined;
+                  setForm((f) => ({ ...f, baseRate: v }));
+                }}
+              />
+            </FormField>
+
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                  Tratamiento
+                </span>
+                <HelpPopover>
+                  <ul className="list-disc pl-4 space-y-1 text-xs">
+                    <li>
+                      <strong>Estándar</strong> — Se cobra sobre la base gravable
+                    </li>
+                    <li>
+                      <strong>Exento</strong> — Tasa cero; debe declararse
+                    </li>
+                    <li>
+                      <strong>Excluido</strong> — No genera el hecho gravable
+                    </li>
+                    <li>
+                      <strong>Fija</strong> — Monto fijo sin importar la base
+                    </li>
+                  </ul>
+                </HelpPopover>
+              </div>
+              <Select
+                value={form.treatment}
+                onChange={(e) => {
+                  const v = e.target.value as TaxDefFormState['treatment'];
+                  setForm((f) => ({ ...f, treatment: v }));
+                }}
+              >
+                <option value="STANDARD">Estándar</option>
+                <option value="EXEMPT">Exento</option>
+                <option value="EXCLUDED">Excluido</option>
+                <option value="FIXED">Fija</option>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                  Contexto de aplicación
+                </span>
+                <HelpPopover>
+                  <p className="text-xs">
+                    <strong>Ventas</strong>: facturas emitidas al cliente. <strong>Compras</strong>:
+                    facturas de proveedores. <strong>Ambos</strong>: ambos flujos.
+                  </p>
+                </HelpPopover>
+              </div>
+              <Select
+                value={form.context}
+                onChange={(e) => {
+                  const v = e.target.value as TaxDefFormState['context'];
+                  setForm((f) => ({ ...f, context: v }));
+                }}
+              >
+                <option value="BOTH">Ambos (ventas y compras)</option>
+                <option value="SALES">Solo ventas</option>
+                <option value="PURCHASE">Solo compras</option>
+              </Select>
+            </div>
+
+            <FormField label="Notas" hint="Información adicional visible en el catálogo.">
+              <Input
+                placeholder="Opcional"
+                value={form.notes ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value || undefined;
+                  setForm((f) => ({ ...f, notes: v }));
+                }}
+              />
+            </FormField>
           </div>
+
+          {editError && (
+            <div
+              role="alert"
+              className="rounded-lg bg-red-50 px-4 py-2.5 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400"
+            >
+              {editError}
+            </div>
+          )}
+
           <div className="mt-4 flex justify-end gap-2">
-            <Button variant="ghost" disabled={submitting} onClick={() => setEditTarget(null)}>
+            <Button
+              variant="ghost"
+              disabled={submitting}
+              onClick={() => {
+                setEditTarget(null);
+                setEditError(null);
+              }}
+            >
               Cancelar
             </Button>
             <Button onClick={() => void handleUpdate()} disabled={submitting}>
-              {submitting ? 'Guardando&hellip;' : 'Guardar cambios'}
+              {submitting ? 'Guardando…' : 'Guardar cambios'}
             </Button>
           </div>
         </DialogContent>

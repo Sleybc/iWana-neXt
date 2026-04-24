@@ -154,6 +154,45 @@ describe('TaxDefinitionService', () => {
       expect(mockQr.manager.save).not.toHaveBeenCalled();
     });
 
+    it('should normalize lowercase code to uppercase before validation and persistence', async () => {
+      const input: CreateTaxDefinitionInput = {
+        code: 'iva_19',
+        name: '  IVA 19%  ',
+        category: TaxCategory.VAT,
+        jurisdictionLevel: JurisdictionLevel.NATIONAL,
+        baseRate: 19.0,
+        treatment: TaxTreatment.STANDARD,
+        context: TaxContext.BOTH,
+        isActive: true,
+      };
+
+      const expectedEntity = buildTaxDef({
+        code: 'IVA_19',
+        name: 'IVA 19%',
+        baseRate: '19',
+        origin: TaxOrigin.CUSTOM,
+      });
+
+      mockQr.manager.findOne.mockResolvedValue(null);
+      mockQr.manager.create.mockReturnValue(expectedEntity);
+      mockQr.manager.save.mockResolvedValue(expectedEntity);
+
+      const result = await service.create(input);
+
+      expect(mockQr.manager.findOne).toHaveBeenCalledWith(TaxDefinition, {
+        where: { code: 'IVA_19', deletedAt: IsNull() },
+      });
+      expect(mockQr.manager.create).toHaveBeenCalledWith(
+        TaxDefinition,
+        expect.objectContaining({
+          code: 'IVA_19',
+          name: 'IVA 19%',
+        }),
+      );
+      expect(result.code).toBe('IVA_19');
+      expect(result.name).toBe('IVA 19%');
+    });
+
     it('should throw BadRequestException if code contains invalid characters', async () => {
       const input: CreateTaxDefinitionInput = {
         code: 'IVA-19%',

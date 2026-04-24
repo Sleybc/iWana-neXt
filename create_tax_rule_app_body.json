@@ -1,0 +1,14 @@
+{
+  "data": {
+    "id": "22a3750b-709d-49f8-add9-bc2938ebbb34",
+    "tenantId": "b490de24-f04e-4684-b1c6-ccb60920f4ad",
+    "taxRuleId": "69bb174c-6340-4480-aaf1-513840bed6ac",
+    "taxDefinitionId": "724398da-bf75-4a1c-a6c0-b0549fcd7d24",
+    "treatment": "EXEMPT",
+    "rateOverride": null,
+    "priority": 0,
+    "isActive": true,
+    "createdAt": "2026-04-21T22:33:41.080Z",
+    "updatedAt": "2026-04-21T22:33:41.080Z"
+  }
+}

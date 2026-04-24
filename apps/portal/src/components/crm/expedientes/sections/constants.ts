@@ -110,6 +110,7 @@ export const FIELD_LABELS: Record<string, string> = {
   longitude: 'Longitud',
   interestedPlanId: 'Plan de interés',
   additionalProductIds: 'Productos adicionales',
+  additionalServiceIds: 'Servicios adicionales',
   acquisitionChannel: 'Canal de captación',
   sourceDetail: 'Detalle de origen',
   coverageResult: 'Referencia de cobertura',
@@ -147,6 +148,7 @@ export const FIELD_PLACEHOLDERS: Record<string, string> = {
   longitude: '-74.0721',
   interestedPlanId: 'Plan o referencia comercial',
   additionalProductIds: 'Productos adicionales',
+  additionalServiceIds: 'Servicios adicionales',
   acquisitionChannel: 'Canal de adquisición',
   sourceDetail: 'Detalle de campaña u observación',
   coverageResult: 'Contexto de cobertura (opcional)',
@@ -249,12 +251,14 @@ export const SECTIONS: SectionConfig[] = [
     renderFields: [
       'interestedPlanId',
       'additionalProductIds',
+      'additionalServiceIds',
       'acquisitionChannel',
       'sourceDetail',
     ],
     payloadFields: [
       'interestedPlanId',
       'additionalProductIds',
+      'additionalServiceIds',
       'acquisitionChannel',
       'sourceDetail',
     ],
@@ -375,6 +379,9 @@ export function buildDraftValues(
     interestedPlanId: expediente.interestedPlanId ?? EMPTY_VALUE,
     additionalProductIds: expediente.additionalProductIds
       ? JSON.stringify(expediente.additionalProductIds)
+      : '[]',
+    additionalServiceIds: expediente.additionalServiceIds
+      ? JSON.stringify(expediente.additionalServiceIds)
       : '[]',
     acquisitionChannel: expediente.acquisitionChannel ?? 'OTRO',
     sourceDetail: expediente.sourceDetail ?? EMPTY_VALUE,

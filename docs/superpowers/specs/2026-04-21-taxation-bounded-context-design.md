@@ -8,6 +8,23 @@
 
 ---
 
+## Addendum 2026-04-22 — Refinamiento MVP: tributos por cliente
+
+Este documento se mantiene vigente para el ownership del catálogo dentro de `TaxationModule`, pero se ajusta el modelo visible del MVP con estas precisiones:
+
+1. `TaxationModule` sigue siendo dueño del catálogo maestro de tributos, pero el MVP ya no expone al usuario promedio un motor visible de reglas tributarias.
+2. En el MVP, el flujo visible pasa a ser: catálogo de tributos -> asignación al cliente -> visualización en Suscriptor 360.
+3. Los tratamientos de IVA `EXEMPT` y `EXCLUDED` no deben modelarse como presets separados visibles en el catálogo para el MVP. El catálogo conserva el tributo base `IVA`; el tratamiento se sugiere y confirma en el perfil tributario del cliente.
+4. Los tributos territoriales siguen existiendo como `TaxDefinition` del catálogo, pero no se disparan por municipio de residencia de forma general.
+5. Los tributos territoriales se asignan solo cuando el tipo de cliente y la operación lo justifican, especialmente entidades públicas en Colombia, que son personas jurídicas con tributos propios.
+6. El municipio en `TaxDefinition` o en la operación sirve como referencia de jurisdicción del tributo territorial, no como regla universal de aplicación a cualquier cliente ubicado allí.
+
+Implicación arquitectónica del MVP:
+
+- `TaxationModule` mantiene `tax_definitions` como fuente maestra.
+- El perfil tributario por cliente y la sugerencia de tratamiento de IVA viven fuera del catálogo, en el bounded context dueño del cliente.
+- Billing futuro consume el perfil tributario confirmado; no lo deduce directamente del catálogo.
+
 ## Resumen ejecutivo
 
 Se extrae el catálogo de impuestos del `CommercialModule` (MOD06) a un bounded context propio llamado `TaxationModule` (MOD07). El cambio resuelve tres problemas concretos:
@@ -36,7 +53,7 @@ Taxation es dueño solo del catálogo y sus presets. Las reglas de aplicación y
 
 Tabla única `tax_definitions` en el schema del tenant (ver HLD-MOD07 §4). Campos clave: `code`, `name`, `category`, `jurisdictionLevel`, `municipalityCode`, `baseRate`, `treatment`, `context`, `origin`, `isActive`.
 
-Presets obligatorios sembrados en provisioning: IVA 19%, IVA exento, IVA excluido, Retefuente servicios, ReteICA, estampilla departamental.
+Presets obligatorios sembrados en provisioning: IVA, Retefuente servicios, ReteICA y estampillas genéricas. Los tratamientos de IVA por cliente se resuelven fuera del catálogo para el MVP.
 
 ## Contrato externo
 

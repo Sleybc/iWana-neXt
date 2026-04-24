@@ -24,6 +24,27 @@ Esta spec se mantiene vigente, con los siguientes cambios derivados de la sesió
 
 Las referencias a `tax_classifications` y `tax_rules` en las secciones siguientes aplican al modelo legacy. Durante la migración coexistirán con la nueva estructura (`tax_application_rules` + `tax_rule_applications`). La sección de Compatibilidad (Reemplaza) no se ve afectada por este addendum.
 
+## Addendum 2026-04-22 — MVP simplificado: tributos por cliente
+
+Esta spec se mantiene como referencia histórica del modelo amplio, pero el MVP visible se simplifica con estos ajustes:
+
+1. La experiencia principal deja de ser `Impuestos + Reglas de aplicación + Simulador` como flujo operativo para el usuario promedio.
+2. El flujo visible del MVP pasa a ser:
+  - alta o instalación del cliente
+  - configuración tributaria por el área de facturación
+  - consulta del perfil tributario en Suscriptor 360
+3. El usuario promedio ya no debe operar reglas abstractas. La operación se centra en un checklist de tributos por cliente.
+4. La sugerencia automática del sistema en el MVP se limita al tratamiento de IVA por estrato y siempre es editable por facturación.
+5. Los tributos territoriales no se asignan por municipio de residencia de forma general. Aplican en casos específicos, sobre todo entidades públicas colombianas, que son personas jurídicas con tributos propios.
+6. El municipio solo aporta contexto jurisdiccional cuando el tipo de cliente y la operación tributaria lo justifican; no debe producir ReteICA o estampillas automáticamente para clientes residenciales.
+7. Las reglas visibles y el simulador quedan postergados como una iteración futura del programa.
+
+Consecuencia de diseño MVP:
+
+- `TaxationModule` mantiene el catálogo maestro.
+- El perfil tributario por cliente se vuelve el centro de la experiencia.
+- Suscriptor 360 debe mostrar el resultado tributario final en lenguaje de negocio.
+
 ---
 
 ## Resumen ejecutivo

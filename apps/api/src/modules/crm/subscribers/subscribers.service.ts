@@ -17,6 +17,7 @@ import { VatTreatmentService } from './vat-treatment.service';
 import { SubscriberStatusTransitionService } from './subscriber-status-transition.service';
 import { AuditService } from '../../audit/audit.service';
 import { ExpedienteRecord } from '../expedientes/entities/expediente-record.entity';
+import { Contract } from '../contracts/entities/contract.entity';
 
 const SUBSCRIBER_SECTION_SCHEMAS = {
   identification: z
@@ -677,7 +678,7 @@ export class SubscribersService {
   async get360View(id: string): Promise<{
     subscriber: Subscriber;
     contacts: unknown[];
-    contracts: unknown[];
+    contracts: Contract[];
     quotes: unknown[];
     habeasData: unknown[];
     arcoRequests: unknown[];
@@ -711,14 +712,28 @@ export class SubscribersService {
           paymentMethod: expediente.paymentMethod,
           billingCycle: expediente.billingCycle,
           fiscalName: expediente.fiscalName,
+          // Interés comercial capturado durante el proceso CRM
+          interestedPlanId: expediente.interestedPlanId,
+          additionalProductIds: expediente.additionalProductIds ?? [],
+          additionalServiceIds: expediente.additionalServiceIds ?? [],
+          commercialNotes: expediente.commercialNotes ?? null,
         };
       }
     }
 
+    // Cargar contratos/servicios contratados del subscriber
+    const { schemaName } = TenantContext.getOrThrow();
+    const contracts = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      qr.manager.find(Contract, {
+        where: { subscriberId: id },
+        order: { createdAt: 'DESC' },
+      }),
+    );
+
     return {
       subscriber,
       contacts: [],
-      contracts: [],
+      contracts,
       quotes: [],
       habeasData: [],
       arcoRequests: [],

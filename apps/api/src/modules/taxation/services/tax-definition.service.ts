@@ -86,27 +86,33 @@ export class TaxDefinitionService {
   async create(input: CreateTaxDefinitionInput): Promise<TaxDefinition> {
     const { schemaName } = TenantContext.getOrThrow();
 
+    // Normalizar campos antes de validar para mejorar UX en códigos ingresados en minúsculas.
+    const normalizedInput = {
+      ...input,
+      code: input.code?.trim().toUpperCase(),
+      name: input.name?.trim(),
+    };
+
     // Validación Zod en boundary de servicio
-    const parseResult = CreateTaxDefinitionSchema.safeParse(input);
+    const parseResult = CreateTaxDefinitionSchema.safeParse(normalizedInput);
     if (!parseResult.success) {
       throw new BadRequestException(parseResult.error.format());
     }
 
     const data = parseResult.data;
-    const codeUpper = data.code.toUpperCase();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       // Verificar unicidad del código (excluir soft-deleted)
       const existing = await qr.manager.findOne(TaxDefinition, {
-        where: { code: codeUpper, deletedAt: IsNull() },
+        where: { code: data.code, deletedAt: IsNull() },
       });
       if (existing) {
-        throw new BadRequestException(`Ya existe una definición con código '${codeUpper}'`);
+        throw new BadRequestException(`Ya existe una definición con código '${data.code}'`);
       }
 
       // Crear entidad con origin forzado a CUSTOM
       const entity = qr.manager.create(TaxDefinition, {
-        code: codeUpper,
+        code: data.code,
         name: data.name,
         category: data.category,
         jurisdictionLevel: data.jurisdictionLevel,

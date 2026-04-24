@@ -5,6 +5,7 @@ import { Button, SectionAccordion } from '@iwana/ui';
 import { FolderOpen } from 'lucide-react';
 import type {
   AdditionalProduct,
+  AdditionalService,
   CompletenessResult,
   ExpedienteRecord,
   PlanCatalogItem,
@@ -41,6 +42,7 @@ interface ExpedienteSectionsProps {
   savingSection: SectionId | null;
   planCatalog: PlanCatalogItem[];
   additionalProducts: AdditionalProduct[];
+  additionalServices: AdditionalService[];
   actionMessage: string | null;
   actionMessageTone: 'success' | 'error' | 'info';
   onDocumentSupportSaved: () => Promise<void>;
@@ -58,6 +60,7 @@ export function ExpedienteSections({
   savingSection,
   planCatalog,
   additionalProducts,
+  additionalServices,
   actionMessage,
   actionMessageTone,
   onDocumentSupportSaved,
@@ -131,6 +134,7 @@ export function ExpedienteSections({
             onSave={() => onSaveSection('commercial_interest')}
             planCatalog={planCatalog}
             additionalProducts={additionalProducts}
+            additionalServices={additionalServices}
           />
         );
       case 'technical_feasibility':

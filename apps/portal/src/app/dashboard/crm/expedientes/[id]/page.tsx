@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import {
   AdditionalProduct,
+  AdditionalService,
   commercialApi,
   CompletenessResult,
   crmApi,
@@ -179,6 +180,7 @@ export default function ExpedienteDetailPage() {
   const [responsibilityHistory, setResponsibilityHistory] = useState<OperationalHistoryItem[]>([]);
   const [planCatalog, setPlanCatalog] = useState<PlanCatalogItem[]>([]);
   const [additionalProducts, setAdditionalProducts] = useState<AdditionalProduct[]>([]);
+  const [additionalServices, setAdditionalServices] = useState<AdditionalService[]>([]);
 
   // Controla que el spinner de carga full-page solo se muestre en la carga inicial.
   // Las recargas posteriores (después de guardar) son silenciosas para no resetear el tab activo.
@@ -291,7 +293,16 @@ export default function ExpedienteDetailPage() {
         setAdditionalProducts(items.filter((item) => item.isActive));
       })
       .catch(() => {
-        // Si falla, los checkboxes quedan vacíos; no es bloqueante
+        // Si falla, el selector queda vacío; no es bloqueante
+      });
+
+    commercialApi
+      .getAdditionalServices()
+      .then((items) => {
+        setAdditionalServices(items.filter((item) => item.isActive));
+      })
+      .catch(() => {
+        // Si falla, el selector queda vacío; no es bloqueante
       });
   }, [id]);
 
@@ -489,7 +500,7 @@ export default function ExpedienteDetailPage() {
     const payload = fieldsToSend.reduce<Record<string, unknown>>((accumulator, field) => {
       const value = draftValues[field]?.trim();
 
-      if (field === 'additionalProductIds') {
+      if (field === 'additionalProductIds' || field === 'additionalServiceIds') {
         try {
           const parsed = JSON.parse(value || '[]');
           accumulator[field] = Array.isArray(parsed) ? parsed : [];
@@ -987,6 +998,7 @@ export default function ExpedienteDetailPage() {
       savingSection={savingSection}
       planCatalog={planCatalog}
       additionalProducts={additionalProducts}
+      additionalServices={additionalServices}
       actionMessage={actionMessage}
       actionMessageTone={actionMessageTone}
       onDocumentSupportSaved={loadExpediente}

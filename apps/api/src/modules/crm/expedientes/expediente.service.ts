@@ -1353,6 +1353,10 @@ export class ExpedienteService {
           const parsedAdditionalProducts = this.parseStringArray(data.additionalProductIds);
           result.additionalProductIds = parsedAdditionalProducts ?? [];
         }
+        if ('additionalServiceIds' in data) {
+          const parsedAdditionalServices = this.parseStringArray(data.additionalServiceIds);
+          result.additionalServiceIds = parsedAdditionalServices ?? [];
+        }
         if (data.campaign) result.campaign = String(data.campaign);
         if (data.casePriority) result.casePriority = String(data.casePriority);
         if (data.estimatedBudget) result.estimatedBudget = Number(data.estimatedBudget);

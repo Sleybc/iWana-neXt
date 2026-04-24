@@ -3,7 +3,7 @@
 **Version:** 1.0
 **Estado:** Cerrado ✅ — F0-F6 completadas
 **Fecha de apertura:** 2026-04-21
-**Última actualización:** 2026-04-21 (Ajuste post-cierre UX tributaria + saneamiento de migraciones tenant)
+**Última actualización:** 2026-04-22 (Refinamiento arquitectónico MVP: tributos por cliente + prompt de ejecución)
 **Owner técnico:** Sr. Dev Fullstack
 **Gobierno:** Engineering Manager (AI-EM-ARCH)
 **PRD:** `docs/prds/PRD-TAXATION-PARTIES-COMMERCIAL-REDESIGN-v1.0.md`
@@ -38,6 +38,52 @@
   - Portal tests: `2/2 suites`, `8/8 tests` ✅
   - Portal typecheck: ✅
   - API tests tributarios/commercial: `3/3 suites`, `41/41 tests` ✅
+
+### Fix adicional (2026-04-21) — 400 en "Nueva definición tributaria"
+
+- **Síntoma reportado:** `POST /api/v1/taxation/definitions` respondía `400` al crear desde portal cuando el código venía en minúsculas (ej. `iva_test_400`).
+- **Causa raíz:** validación Zod de `CreateTaxDefinitionSchema` exigía regex en mayúsculas **antes** de la normalización a uppercase en servicio.
+- **Corrección backend:** `TaxDefinitionService.create()` ahora normaliza (`trim + uppercase`) antes de `safeParse`, manteniendo la regla de formato sin penalizar entradas válidas en minúscula.
+- **Corrección frontend portal:** `TaxCatalogManager` normaliza el código en tiempo real, resetea el formulario al abrir "Nueva definición" y envía payload completo con defaults requeridos (`category`, `jurisdictionLevel`, `treatment`, `context`).
+- **Alineación de contrato:** `CreateTaxDefinitionDto` en `apps/portal/src/lib/api-client.ts` actualiza esos campos como obligatorios para reflejar el contrato real del backend.
+- **Evidencia de validación en vivo:** creación exitosa con `code` de entrada en minúsculas (`iva_fix_1776811664`) persistida como `IVA_FIX_1776811664`.
+
+### Fix adicional 2 — 400 persistente por mismatch de enums (portal vs backend)
+
+- **Síntoma:** `POST /api/v1/taxation/definitions` seguía respondiendo `400` al seleccionar ciertas opciones del formulario incluso después del fix de normalización.
+- **Causa raíz:** Los tipos y opciones de select en el portal usaban valores de enum incorrectos vs los enums reales del paquete `@iwana/shared`:
+  - `category: 'RETENTION'` → backend exige `'WITHHOLDING'`
+  - `jurisdictionLevel: 'DEPARTMENTAL'` → backend exige `'DEPARTMENT'`
+  - `context: 'RESIDENTIAL' | 'COMMERCIAL'` → backend exige `'SALES' | 'PURCHASE'`
+- **Archivos corregidos:**
+  - `apps/portal/src/lib/api-client.ts` — interfaces `TaxDefinition`, `CreateTaxDefinitionDto` y `UpdateTaxDefinitionDto` alineadas con enums reales.
+  - `apps/portal/src/components/commercial/TaxCatalogManager.tsx` — `TaxDefFormState`, `CATEGORY_LABELS`, `JURISDICTION_LABELS`, `CONTEXT_LABELS` y opciones de ambos diálogos (crear y editar) actualizadas.
+- **Evidencia de validación:**
+  - `context=SALES` → 201 ✅ | `context=PURCHASE` → 201 ✅
+  - `jurisdictionLevel=DEPARTMENT` → 201 ✅ | `category=WITHHOLDING` → 201 ✅
+  - `context=RESIDENTIAL` → 400 (rechazado correctamente) ✅
+  - `jurisdictionLevel=DEPARTMENTAL` → 400 (rechazado correctamente) ✅
+  - Portal typecheck: ✅
+
+### Addendum arquitectónico (2026-04-22) — MVP tributos por cliente
+
+- **Decisión arquitectónica:** para el MVP se simplifica la experiencia visible. El sistema deja en segundo plano las reglas tributarias como objeto operativo para el usuario promedio.
+- **Nuevo flujo visible:** catálogo maestro de tributos en `Taxation` → asignación de tributos por cliente → visualización del perfil tributario en Suscriptor 360.
+- **Tratamiento de IVA:** el sistema puede sugerir tratamiento por estrato, pero la confirmación final queda en el área de facturación.
+- **Tributos territoriales:** no se disparan por municipio de residencia de forma general. Se configuran para casos específicos, en especial entidades públicas colombianas, que son personas jurídicas con tributos propios.
+- **Artefactos actualizados:**
+  - `docs/superpowers/specs/2026-04-21-taxation-bounded-context-design.md` (addendum MVP)
+  - `docs/superpowers/specs/2026-04-20-reglas-comerciales-design.md` (addendum MVP)
+  - `docs/superpowers/specs/2026-04-22-taxation-mvp-tributos-por-cliente-design.md` (nuevo)
+  - `docs/prompts/PROMPT-TAXATION-MVP-TRIBUTOS-CLIENTE-v1.0.md` (nuevo)
+  - `docs/sprints/PLAN-TAXATION-MVP-TRIBUTOS-CLIENTE-v1.0.md` (nuevo)
+- **Aprobación de gobierno:** CTO aprueba el spec MVP 2026-04-22 y habilita transición a ejecución.
+
+**Estado de ejecución:** aún no implementado. Este addendum habilita la siguiente iteración operativa para Fullstack.
+
+**Entregable adicional emitido:** sprint plan operativo para backend, frontend, DB, QA y documentación del MVP tributario por cliente.
+
+---
 
 ---
 

@@ -1,7 +1,7 @@
 # INFORME — MOD05 Subscribers Fase 03
 
-**Version:** 1.0  
-**Estado:** En revisión  
+**Version:** 1.1  
+**Estado:** Completado  
 **Fecha:** 2026-04-17
 
 ## Alcance ejecutado
@@ -181,3 +181,51 @@
 
 - **Validación ejecutada:**
   - `pnpm --filter @iwana/portal typecheck` ✅
+
+## Ajuste UI aplicado — Interés del cliente con productos y servicios adicionales
+
+**Fecha:** 2026-04-24
+
+- **Solicitud funcional:** reemplazar el checklist de productos adicionales en `/dashboard/crm/expedientes/:id` por una experiencia más clara, y agregar selección de servicios adicionales en la sección `Interés del cliente`.
+- **Implementación:** se reutilizó `MultiCatalogPicker` para productos y servicios adicionales, con búsqueda local y chips de selección. La sección conserva `additionalProductIds` y agrega `additionalServiceIds` como arrays persistidos vía `crmApi.updateExpedienteSection`.
+- **Archivos impactados:**
+  - `apps/portal/src/components/crm/expedientes/sections/CommercialInterestSection.tsx`
+  - `apps/portal/src/components/crm/expedientes/sections/constants.ts`
+  - `apps/portal/src/components/crm/expedientes/sections/ExpedienteSections.tsx`
+  - `apps/portal/src/app/dashboard/crm/expedientes/[id]/page.tsx`
+- **Validación ejecutada:**
+  - `npx tsc --noEmit` en `apps/portal` ✅
+
+## Feature completada — Fase 3 UI: CatalogPicker, ContractDetailDrawer, CreateContractDialog
+
+**Fecha:** 2026-04-24
+
+### Componentes creados
+
+1. **CatalogPicker<T> y MultiCatalogPicker<T>** (pps/portal/src/components/shared/CatalogPicker.tsx):
+   - Selectores genéricos reutilizables con búsqueda local, overlay click-outside, soporte dark mode.
+   - CatalogPicker (selección simple) y MultiCatalogPicker (multi-selección con tags).
+
+2. **ContractDetailDrawer** (pps/portal/src/components/crm/subscribers/ContractDetailDrawer.tsx):
+   - Drawer lateral de lectura + edición inline de contratos.
+   - Secciones: plan contratado, instalación, facturación, datos fiscales, metadatos.
+   - Botones de transición de estado (activar/suspender/reactivar/terminar/archivar) con confirmación por variante.
+   - Modo edición con formularios completos y guardado vía contractsApi.update.
+
+3. **CreateContractDialog** (pps/portal/src/components/crm/subscribers/CreateContractDialog.tsx):
+   - Modal completo para crear nuevo contrato desde cero.
+   - Selector de plan (CatalogPicker), productos y servicios adicionales (MultiCatalogPicker).
+   - Carga catálogo vía commercialApi en montaje.
+   - Snapshot del plan capturado en planSnapshotJson.
+
+### Componentes actualizados
+
+4. **ConvertExpedienteToContractDialog**: plan de interés pre-seleccionado con picker visual.
+5. **ContractCard**: nuevo prop onViewDetail + botón "Ver detalle →".
+6. **ServiciosTab**: wiring completo — importa y renderiza drawer + diálogo crear contrato; reemplaza TODOs.
+
+### Validación
+
+- 
+px tsc --noEmit en pps/portal ✅ (sin errores)
+- Corregido xactOptionalPropertyTypes en payloads con spread condicional.

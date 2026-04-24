@@ -14,7 +14,7 @@ services:
       POSTGRES_PASSWORD: Iwana102+
       POSTGRES_DB: dbiw
     ports:
-      - '5432:5432'
+      - '5433:5432'
     volumes:
       - iwana_postgres_data_dev:/var/lib/postgresql/data
     healthcheck:
@@ -33,7 +33,7 @@ services:
     container_name: iwana_redis_dev
     command: redis-server --save 60 1 --loglevel warning
     ports:
-      - '6379:6379'
+      - '6380:6379'
     volumes:
       - iwana_redis_data_dev:/data
     healthcheck:
@@ -82,7 +82,7 @@ services:
       MAX_CLIENT_CONN: 200
       DEFAULT_POOL_SIZE: 20
     ports:
-      - '6432:6432'
+      - '6433:6432'
     depends_on:
       postgres:
         condition: service_healthy
@@ -99,8 +99,8 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin123
     ports:
-      - '9000:9000' # API S3
-      - '9001:9001' # Consola web
+      - '9002:9000' # API S3
+      - '9003:9001' # Consola web
     volumes:
       - iwana_minio_data_dev:/data
     healthcheck:
@@ -130,7 +130,7 @@ services:
     image: adminer:latest
     container_name: iwana_adminer_dev
     ports:
-      - '8080:8080'
+      - '8081:8080'
     environment:
       ADMINER_DEFAULT_SERVER: postgres
     depends_on:

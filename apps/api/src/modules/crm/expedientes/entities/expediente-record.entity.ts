@@ -178,6 +178,9 @@ export class ExpedienteRecord {
   @Column({ type: 'jsonb', name: 'additional_product_ids', nullable: true })
   additionalProductIds: string[] | null;
 
+  @Column({ type: 'jsonb', name: 'additional_service_ids', default: [] })
+  additionalServiceIds: string[];
+
   @Column({ type: 'varchar', length: 120, name: 'campaign', nullable: true })
   campaign: string | null;
 

@@ -907,12 +907,12 @@ export interface TaxDefinition {
   tenantId: string;
   code: string;
   name: string;
-  category: 'VAT' | 'RETENTION' | 'STAMP' | 'MUNICIPAL' | 'OTHER';
-  jurisdictionLevel: 'NATIONAL' | 'DEPARTMENTAL' | 'MUNICIPAL';
+  category: 'VAT' | 'WITHHOLDING' | 'STAMP' | 'MUNICIPAL' | 'OTHER';
+  jurisdictionLevel: 'NATIONAL' | 'DEPARTMENT' | 'MUNICIPAL';
   municipalityCode: string | null;
   baseRate: string | null;
   treatment: 'STANDARD' | 'EXEMPT' | 'EXCLUDED' | 'FIXED';
-  context: 'RESIDENTIAL' | 'COMMERCIAL' | 'BOTH';
+  context: 'SALES' | 'PURCHASE' | 'BOTH';
   origin: 'SYSTEM' | 'CUSTOM';
   isActive: boolean;
   notes: string | null;
@@ -923,12 +923,12 @@ export interface TaxDefinition {
 export interface CreateTaxDefinitionDto {
   code: string;
   name: string;
-  category: 'VAT' | 'RETENTION' | 'STAMP' | 'MUNICIPAL' | 'OTHER';
-  jurisdictionLevel?: 'NATIONAL' | 'DEPARTMENTAL' | 'MUNICIPAL';
+  category: 'VAT' | 'WITHHOLDING' | 'STAMP' | 'MUNICIPAL' | 'OTHER';
+  jurisdictionLevel: 'NATIONAL' | 'DEPARTMENT' | 'MUNICIPAL';
   municipalityCode?: string;
   baseRate?: number;
-  treatment?: 'STANDARD' | 'EXEMPT' | 'EXCLUDED' | 'FIXED';
-  context?: 'RESIDENTIAL' | 'COMMERCIAL' | 'BOTH';
+  treatment: 'STANDARD' | 'EXEMPT' | 'EXCLUDED' | 'FIXED';
+  context: 'SALES' | 'PURCHASE' | 'BOTH';
   notes?: string;
 }
 
@@ -936,7 +936,7 @@ export interface UpdateTaxDefinitionDto {
   name?: string;
   baseRate?: number;
   treatment?: 'STANDARD' | 'EXEMPT' | 'EXCLUDED' | 'FIXED';
-  context?: 'RESIDENTIAL' | 'COMMERCIAL' | 'BOTH';
+  context?: 'SALES' | 'PURCHASE' | 'BOTH';
   isActive?: boolean;
   notes?: string;
 }
@@ -2116,6 +2116,7 @@ export interface ExpedienteRecord {
   sourceDetail?: string | null;
   interestedPlanId: string | null;
   additionalProductIds?: string[] | null;
+  additionalServiceIds?: string[] | null;
   campaign?: string | null;
   casePriority?: string | null;
   estimatedBudget?: number | null;
@@ -2246,10 +2247,80 @@ export interface SearchSubscribersParams {
   phone?: string;
 }
 
+// ── Contratos / Servicios contratados ────────────────────────────────────────
+
+export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'SUSPENDED' | 'TERMINATED' | 'ARCHIVED';
+
+/** Contrato de servicio contratado (un subscriber puede tener N contratos). */
+export interface Contract {
+  id: string;
+  tenantId: string;
+  quoteId: string | null;
+  subscriberId: string;
+  planId: string;
+  planSnapshotJson: Record<string, unknown>;
+  status: ContractStatus;
+  alias: string;
+  installationAddress: string | null;
+  installationCity: string | null;
+  installationDepartment: string | null;
+  installationPostalCode: string | null;
+  installationNotes: string | null;
+  customerSegment: string | null;
+  additionalProductIds: string[];
+  additionalServiceIds: string[];
+  paymentMethod: string | null;
+  billingCycle: string | null;
+  fiscalName: string | null;
+  fiscalDocument: string | null;
+  fiscalAddress: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface CreateContractPayload {
+  subscriberId?: string;
+  quoteId?: string;
+  planId: string;
+  planSnapshotJson: Record<string, unknown>;
+  alias?: string;
+  installationAddress?: string;
+  installationCity?: string;
+  installationDepartment?: string;
+  installationPostalCode?: string;
+  installationNotes?: string;
+  customerSegment?: string;
+  additionalProductIds?: string[];
+  additionalServiceIds?: string[];
+  paymentMethod?: string;
+  billingCycle?: string;
+  fiscalName?: string;
+  fiscalDocument?: string;
+  fiscalAddress?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface CreateContractFromExpedientePayload {
+  expedienteId?: string;
+  alias?: string;
+  installationAddress?: string;
+  installationCity?: string;
+  installationDepartment?: string;
+  installationPostalCode?: string;
+  installationNotes?: string;
+  customerSegment?: string;
+  paymentMethod?: string;
+  billingCycle?: string;
+}
+
 export interface Subscriber360Response {
   subscriber: SubscriberRecord;
   contacts: unknown[];
-  contracts: unknown[];
+  contracts: Contract[];
   quotes: unknown[];
   habeasData: unknown[];
   arcoRequests: unknown[];
@@ -2263,12 +2334,72 @@ export interface Subscriber360Response {
     paymentMethod: string | null;
     billingCycle: string | null;
     fiscalName: string | null;
+    /** Interés comercial capturado en el expediente CRM */
+    interestedPlanId: string | null;
+    additionalProductIds: string[];
+    additionalServiceIds: string[];
+    commercialNotes: string | null;
   } | null;
   timelineSeed: Array<{
     type: string;
     occurredAt: string;
     expedienteId: string | null;
   }>;
+}
+
+// ── Perfil tributario por suscriptor (Taxation MVP por cliente) ───────────────
+
+/** Estado de una asignación tributaria individual. */
+export type TaxAssignmentStatus = 'SUGGESTED' | 'CONFIRMED' | 'MANUAL_ADJUSTMENT';
+
+/** Origen de la tasa efectiva: del catálogo o ingresada manualmente. */
+export type TaxAssignmentRateSource = 'CATALOG' | 'MANUAL';
+
+/** Tratamiento tributario efectivo de la asignación. */
+export type TaxTreatmentPortal = 'STANDARD' | 'EXEMPT' | 'EXCLUDED' | 'FIXED';
+
+/** Estado del perfil tributario del suscriptor. */
+export type TaxProfileStatus = 'PENDING_REVIEW' | 'CONFIGURED';
+
+/** Snapshot de una asignación tributaria individual. */
+export interface TaxAssignmentSnapshot {
+  id: string;
+  taxDefinitionId: string;
+  taxName: string;
+  effectiveRate: string | null;
+  rateSource: TaxAssignmentRateSource;
+  treatment: TaxTreatmentPortal | null;
+  status: TaxAssignmentStatus;
+  reason: string | null;
+  updatedAt: string;
+}
+
+/** Snapshot del perfil tributario completo del suscriptor. */
+export interface SubscriberTaxProfileSnapshot {
+  id: string;
+  subscriberId: string;
+  segment: string | null;
+  stratum: number | null;
+  profileStatus: TaxProfileStatus;
+  confirmedAt: string | null;
+  confirmedBy: string | null;
+  assignments: TaxAssignmentSnapshot[];
+  updatedAt: string;
+}
+
+/** Payload para crear o actualizar una asignación tributaria. */
+export interface UpsertTaxAssignmentPayload {
+  taxDefinitionId: string;
+  effectiveRate?: number | null;
+  rateSource?: TaxAssignmentRateSource;
+  treatment?: TaxTreatmentPortal | null;
+  status?: TaxAssignmentStatus;
+  reason?: string | null;
+}
+
+/** Payload bulk para guardar lista de asignaciones. */
+export interface SaveTaxAssignmentsPayload {
+  assignments: UpsertTaxAssignmentPayload[];
 }
 
 export interface CreateExpedienteDto {
@@ -2773,4 +2904,155 @@ export const subscribersApi = {
 
   get360: (id: string, tenantSlug?: string) =>
     request<Subscriber360Response>(`/crm/subscribers/${id}/360`, undefined, tenantSlug),
+};
+
+// ── API: perfil tributario por suscriptor ─────────────────────────────────────
+export const subscriberTaxApi = {
+  /**
+   * Obtiene el perfil tributario del suscriptor.
+   * Si no existe, el backend lo crea y sugiere IVA por estrato automáticamente.
+   * Usado por Suscriptor 360 y el flujo de configuración de facturación.
+   */
+  getProfile: (subscriberId: string, tenantSlug?: string) =>
+    request<SubscriberTaxProfileSnapshot>(
+      `/crm/subscribers/${subscriberId}/tax-profile`,
+      undefined,
+      tenantSlug,
+    ),
+
+  /**
+   * Guarda (upsert) la lista completa de asignaciones tributarias.
+   * El área de facturación usa este endpoint para confirmar o ajustar el checklist.
+   */
+  saveAssignments: (
+    subscriberId: string,
+    payload: SaveTaxAssignmentsPayload,
+    tenantSlug?: string,
+  ) =>
+    request<SubscriberTaxProfileSnapshot>(
+      `/crm/subscribers/${subscriberId}/tax-profile/assignments`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      },
+      tenantSlug,
+    ),
+
+  /**
+   * Actualiza una asignación tributaria individual.
+   * Permite confirmar o ajustar manualmente un tributo específico.
+   */
+  updateAssignment: (
+    subscriberId: string,
+    assignmentId: string,
+    payload: Partial<UpsertTaxAssignmentPayload>,
+    tenantSlug?: string,
+  ) =>
+    request<SubscriberTaxProfileSnapshot>(
+      `/crm/subscribers/${subscriberId}/tax-profile/assignments/${assignmentId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      },
+      tenantSlug,
+    ),
+
+  /**
+   * Recalcula la sugerencia de IVA del suscriptor según el estrato actual.
+   * Solo actualiza asignaciones en estado SUGGESTED; no sobreescribe confirmadas.
+   */
+  suggestVat: (subscriberId: string, tenantSlug?: string) =>
+    request<SubscriberTaxProfileSnapshot>(
+      `/crm/subscribers/${subscriberId}/tax-profile/suggest-vat`,
+      { method: 'POST' },
+      tenantSlug,
+    ),
+};
+
+// ── API: contratos / servicios contratados ────────────────────────────────────
+
+export const contractsApi = {
+  /** Lista todos los contratos de un subscriber, ordenados por createdAt DESC. */
+  listBySubscriber: (subscriberId: string, tenantSlug?: string) =>
+    request<Contract[]>(`/crm/subscribers/${subscriberId}/contracts`, undefined, tenantSlug),
+
+  /** Crea un contrato directo para un subscriber. */
+  createForSubscriber: (
+    subscriberId: string,
+    payload: CreateContractPayload,
+    tenantSlug?: string,
+  ) =>
+    request<Contract>(
+      `/crm/subscribers/${subscriberId}/contracts`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      tenantSlug,
+    ),
+
+  /**
+   * Crea un contrato DRAFT pre-poblado desde el expediente del subscriber.
+   * Requiere que el expediente tenga interestedPlanId.
+   */
+  createFromExpediente: (
+    subscriberId: string,
+    payload: CreateContractFromExpedientePayload,
+    tenantSlug?: string,
+  ) =>
+    request<Contract>(
+      `/crm/subscribers/${subscriberId}/contracts/from-expediente`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      tenantSlug,
+    ),
+
+  /** Crea un contrato de forma directa (sin pasar por subscriber en la ruta). */
+  create: (payload: CreateContractPayload, tenantSlug?: string) =>
+    request<Contract>(
+      '/crm/contracts',
+      { method: 'POST', body: JSON.stringify(payload) },
+      tenantSlug,
+    ),
+
+  /** Lista todos los contratos (con filtros opcionales ?status=&planId=). */
+  findAll: (params?: { status?: ContractStatus; planId?: string }, tenantSlug?: string) => {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set('status', params.status);
+    if (params?.planId) qs.set('planId', params.planId);
+    const query = qs.toString();
+    return request<Contract[]>(`/crm/contracts${query ? `?${query}` : ''}`, undefined, tenantSlug);
+  },
+
+  /** Obtiene un contrato por ID. */
+  getById: (id: string, tenantSlug?: string) =>
+    request<Contract>(`/crm/contracts/${id}`, undefined, tenantSlug),
+
+  /** Actualiza campos editables de un contrato (no incluye status). */
+  update: (id: string, payload: Partial<CreateContractPayload>, tenantSlug?: string) =>
+    request<Contract>(
+      `/crm/contracts/${id}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      tenantSlug,
+    ),
+
+  /** Elimina (soft-delete) un contrato en estado DRAFT. */
+  remove: (id: string, tenantSlug?: string) =>
+    request<void>(`/crm/contracts/${id}`, { method: 'DELETE' }, tenantSlug),
+
+  /** Transiciona DRAFT → ACTIVE. */
+  activate: (id: string, tenantSlug?: string) =>
+    request<Contract>(`/crm/contracts/${id}/activate`, { method: 'POST' }, tenantSlug),
+
+  /** Transiciona ACTIVE → SUSPENDED. */
+  suspend: (id: string, tenantSlug?: string) =>
+    request<Contract>(`/crm/contracts/${id}/suspend`, { method: 'POST' }, tenantSlug),
+
+  /** Transiciona SUSPENDED → ACTIVE. */
+  reactivate: (id: string, tenantSlug?: string) =>
+    request<Contract>(`/crm/contracts/${id}/reactivate`, { method: 'POST' }, tenantSlug),
+
+  /** Transiciona ACTIVE|SUSPENDED → TERMINATED. */
+  terminate: (id: string, tenantSlug?: string) =>
+    request<Contract>(`/crm/contracts/${id}/terminate`, { method: 'POST' }, tenantSlug),
+
+  /** Transiciona TERMINATED|SUSPENDED → ARCHIVED. */
+  archive: (id: string, tenantSlug?: string) =>
+    request<Contract>(`/crm/contracts/${id}/archive`, { method: 'POST' }, tenantSlug),
 };

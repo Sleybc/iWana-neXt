@@ -6,7 +6,6 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@iwana/ui';
 import {
   AlertTriangle,
-  Briefcase,
   BriefcaseBusiness,
   FileCheck2,
   Loader2,
@@ -23,6 +22,8 @@ import { SubscriberHeader } from './SubscriberHeader';
 import { SubscriberSections } from './SubscriberSections';
 import { SubscriberStatusTransitionDialog } from './SubscriberStatusTransitionDialog';
 import { SubscriberTabsContainer } from './SubscriberTabsContainer';
+import { TaxProfileBlock } from './TaxProfileBlock';
+import { ServiciosTab } from './ServiciosTab';
 import { CUSTOMER_SEGMENT_META, PERSON_TYPE_META, SUBSCRIBER_STATUS_META } from './subscriber-ui';
 
 interface SubscriberDetailClientProps {
@@ -330,15 +331,16 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
         ),
       },
       {
+        id: 'tributario',
+        label: 'Tributario',
+        content: <TaxProfileBlock subscriberId={subscriber.id} />,
+      },
+      {
         id: 'servicios',
         label: 'Servicios',
-        content: (
-          <StubCard
-            title="Servicios"
-            description="Contratos y cotizaciones disponibles en este tenant. Equipos y provisioning no disponibles en esta fase."
-            icon={Briefcase}
-          />
-        ),
+        content: subscriber360 ? (
+          <ServiciosTab subscriber360={subscriber360} onReload={loadSubscriber} />
+        ) : null,
       },
       {
         id: 'financiero',

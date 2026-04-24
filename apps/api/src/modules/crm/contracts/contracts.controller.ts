@@ -20,27 +20,66 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { ContractStatus } from '../enums/contract-status.enum';
 import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
+import { CreateContractFromExpedienteDto } from './dto/create-contract-from-expediente.dto';
 import { ContractsService } from './contracts.service';
 import { Contract } from './entities/contract.entity';
 
 @ApiTags('contracts')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Controller('contracts')
+@Controller()
 export class ContractsController {
   constructor(private readonly contractsService: ContractsService) {}
 
-  @Post()
+  // ── Endpoints anidados bajo /crm/subscribers/:subscriberId ─────────────────
+
+  @Post('crm/subscribers/:subscriberId/contracts')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
-  @ApiOperation({ summary: 'Crear contrato desde cotizacion aceptada' })
+  @ApiOperation({ summary: 'Crear servicio contratado para un suscriptor (estado DRAFT)' })
+  async createForSubscriber(
+    @Param('subscriberId', ParseUUIDPipe) subscriberId: string,
+    @Body() dto: CreateContractDto,
+  ): Promise<{ data: Contract }> {
+    const data = await this.contractsService.create({ ...dto, subscriberId });
+    return { data };
+  }
+
+  @Get('crm/subscribers/:subscriberId/contracts')
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Listar servicios contratados de un suscriptor' })
+  async findAllBySubscriber(
+    @Param('subscriberId', ParseUUIDPipe) subscriberId: string,
+  ): Promise<{ data: Contract[] }> {
+    const data = await this.contractsService.findAllBySubscriber(subscriberId);
+    return { data };
+  }
+
+  @Post('crm/subscribers/:subscriberId/contracts/from-expediente')
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @ApiOperation({
+    summary: 'Crear contrato DRAFT a partir del interés comercial en el expediente',
+  })
+  async createFromExpediente(
+    @Param('subscriberId', ParseUUIDPipe) subscriberId: string,
+    @Body() dto: CreateContractFromExpedienteDto,
+  ): Promise<{ data: Contract }> {
+    const data = await this.contractsService.createFromExpediente(subscriberId, dto);
+    return { data };
+  }
+
+  // ── Endpoints de recurso /crm/contracts ────────────────────────────────────
+
+  @Post('crm/contracts')
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Crear contrato (uso directo sin subscriber en path)' })
   async create(@Body() dto: CreateContractDto): Promise<{ data: Contract }> {
     const data = await this.contractsService.create(dto);
     return { data };
   }
 
-  @Get()
+  @Get('crm/contracts')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
-  @ApiOperation({ summary: 'Listar contratos' })
+  @ApiOperation({ summary: 'Listar contratos con filtros opcionales' })
   @ApiQuery({ name: 'status', required: false, enum: ContractStatus })
   @ApiQuery({ name: 'planId', required: false })
   async findAll(
@@ -48,18 +87,14 @@ export class ContractsController {
     @Query('planId') planId?: string,
   ): Promise<{ data: Contract[] }> {
     const filters: { status?: ContractStatus; planId?: string } = {};
-    if (status !== undefined) {
-      filters.status = status;
-    }
-    if (planId !== undefined) {
-      filters.planId = planId;
-    }
+    if (status !== undefined) filters.status = status;
+    if (planId !== undefined) filters.planId = planId;
 
     const data = await this.contractsService.findAll(filters);
     return { data };
   }
 
-  @Get(':id')
+  @Get('crm/contracts/:id')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Consultar contrato por id' })
   async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: Contract }> {
@@ -67,9 +102,9 @@ export class ContractsController {
     return { data };
   }
 
-  @Patch(':id')
+  @Patch('crm/contracts/:id')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
-  @ApiOperation({ summary: 'Actualizar contrato' })
+  @ApiOperation({ summary: 'Actualizar datos del contrato (no cambia estado)' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateContractDto,
@@ -78,11 +113,58 @@ export class ContractsController {
     return { data };
   }
 
-  @Delete(':id')
+  @Delete('crm/contracts/:id')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Eliminar contrato (soft delete)' })
+  @ApiOperation({ summary: 'Eliminar contrato (solo en estado DRAFT)' })
   async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     await this.contractsService.remove(id);
+  }
+
+  // ── Transiciones de estado ──────────────────────────────────────────────────
+
+  @Post('crm/contracts/:id/activate')
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Activar contrato (DRAFT → ACTIVE — firma del cliente)' })
+  async activate(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: Contract }> {
+    const data = await this.contractsService.activate(id);
+    return { data };
+  }
+
+  @Post('crm/contracts/:id/suspend')
+  @Roles(UserRole.ADMIN, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Suspender contrato (ACTIVE → SUSPENDED)' })
+  async suspend(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: Contract }> {
+    const data = await this.contractsService.suspend(id);
+    return { data };
+  }
+
+  @Post('crm/contracts/:id/reactivate')
+  @Roles(UserRole.ADMIN, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reactivar contrato (SUSPENDED → ACTIVE)' })
+  async reactivate(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: Contract }> {
+    const data = await this.contractsService.reactivate(id);
+    return { data };
+  }
+
+  @Post('crm/contracts/:id/terminate')
+  @Roles(UserRole.ADMIN, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Terminar contrato (ACTIVE | SUSPENDED → TERMINATED)' })
+  async terminate(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: Contract }> {
+    const data = await this.contractsService.terminate(id);
+    return { data };
+  }
+
+  @Post('crm/contracts/:id/archive')
+  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Archivar contrato (SUSPENDED | TERMINATED → ARCHIVED)' })
+  async archive(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: Contract }> {
+    const data = await this.contractsService.archive(id);
+    return { data };
   }
 }
