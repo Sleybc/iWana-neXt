@@ -20,6 +20,10 @@ import { CreatePartiesModule1700000000022 } from './022_create_parties_module';
 import { CreateTaxRuleApplications1700000000023 } from './023_create_tax_rule_applications';
 import { BackfillSubscribersPartyId1700000000024 } from './024_backfill_subscribers_party_id';
 import { DeprecateLegacyTaxation1700000000025 } from './025_deprecate_legacy_taxation';
+import { CreateSubscriberTaxProfiles1700000000026 } from './026_create_subscriber_tax_profiles';
+import { AddAdditionalServiceIdsToExpediente1700000000027 } from './027_add_additional_service_ids_to_expediente';
+import { CreateCrmQuotesAndContracts1700000000028 } from './028_create_crm_quotes_and_contracts';
+import { ExtendContractsForServices1700000000029 } from './029_extend_contracts_for_services';
 
 const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   InitialTenantSchema1700000000000,
@@ -43,6 +47,10 @@ const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   CreateTaxRuleApplications1700000000023,
   BackfillSubscribersPartyId1700000000024,
   DeprecateLegacyTaxation1700000000025,
+  CreateSubscriberTaxProfiles1700000000026,
+  AddAdditionalServiceIdsToExpediente1700000000027,
+  CreateCrmQuotesAndContracts1700000000028,
+  ExtendContractsForServices1700000000029,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;
