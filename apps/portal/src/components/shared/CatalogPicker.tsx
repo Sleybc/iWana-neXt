@@ -223,15 +223,30 @@ export function MultiCatalogPicker<T>({
 
   return (
     <div className={['relative', className].join(' ')}>
-      {/* Trigger */}
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen((o) => !o)}
+      {/* Trigger — div en lugar de button para evitar <button> anidados (chips de quitar) */}
+      <div
+        role="combobox"
+        tabIndex={disabled ? -1 : 0}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-multiselectable="true"
-        className="flex min-h-[42px] w-full flex-wrap items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-sm transition hover:border-iwana-secondary-700 focus:outline-none focus:ring-2 focus:ring-iwana-secondary-700/30 disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface dark:text-white"
+        aria-disabled={disabled}
+        onClick={() => !disabled && setOpen((o) => !o)}
+        onKeyDown={(e) => {
+          if (disabled) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setOpen((o) => !o);
+          }
+          if (e.key === 'Escape') close();
+        }}
+        className={[
+          'flex min-h-[42px] w-full cursor-pointer flex-wrap items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-sm transition hover:border-iwana-secondary-700 focus:outline-none focus:ring-2 focus:ring-iwana-secondary-700/30',
+          disabled ? 'pointer-events-none opacity-50' : '',
+          'dark:border-dark-border dark:bg-dark-surface dark:text-white',
+        ]
+          .join(' ')
+          .trim()}
       >
         {selectedItems.length === 0 ? (
           <span className="flex-1 text-gray-400">{placeholder}</span>
@@ -268,7 +283,7 @@ export function MultiCatalogPicker<T>({
           ].join(' ')}
           aria-hidden
         />
-      </button>
+      </div>
 
       {/* Dropdown */}
       {open && (
