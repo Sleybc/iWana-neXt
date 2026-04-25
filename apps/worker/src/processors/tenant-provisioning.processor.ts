@@ -3,9 +3,10 @@ import { Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Job, UnrecoverableError } from 'bullmq';
 import * as fs from 'fs';
+import { createRequire } from 'module';
 import * as path from 'path';
 import { Pool } from 'pg';
-import { DataSource } from 'typeorm';
+import { DataSource, MigrationInterface } from 'typeorm';
 import { Tenant, isValidSchemaName } from '@iwana/db';
 import { TENANT_PROVISIONING_QUEUE } from '@iwana/shared';
 import { TenantSeedService } from '../services/tenant-seed.service';
@@ -19,30 +20,29 @@ interface ProvisioningJobPayload {
   tenantSlug: string;
 }
 
+type MigrationConstructor = new () => MigrationInterface;
+
+const requireTenantMigration = createRequire(__filename);
+
 /**
  * Processor BullMQ para el provisioning de schemas de tenant.
  *
  * Responsabilidad:
- * 1. Leer tenant_template.sql del disco.
- * 2. Reemplazar __SCHEMA_NAME__ con el schemaName validado.
- * 3. Ejecutar el DDL via pg.Pool directamente (NO via TypeORM — el DDL
- *    de CREATE SCHEMA/TABLE no puede ejecutarse en migraciones de TypeORM
- *    facilmente para este patron).
- * 4. Actualizar tenant.status → ACTIVE en el schema PUBLIC via TypeORM.
- * 5. En caso de fallo: actualizar tenant.status → PROVISIONING_FAILED.
+ * 1. Validar el schemaName del payload (previene SQL injection en DDL).
+ * 2. Crear el schema PostgreSQL con CREATE SCHEMA IF NOT EXISTS via pg.Pool.
+ * 3. Ejecutar migraciones TypeORM de tenant (runMigrationsForSchema) para crear tablas.
+ * 4. Ejecutar TenantSeedService.seedInitialAdmin para sembrar el admin del tenant.
+ * 5. Actualizar tenant.status → ACTIVE en el schema PUBLIC via TypeORM.
+ * 6. En caso de fallo: actualizar tenant.status → PROVISIONING_FAILED.
  *
  * SEGURIDAD:
  * - schemaName DEBE pasar isValidSchemaName() antes de la interpolacion.
  *   Si no pasa, el job falla de inmediato sin ejecutar SQL.
  * - Nunca interpolar user input sin validar (previene SQL injection en DDL).
  *
- * TRANSACCIONALIDAD (Risk R1):
- * - tenant_template.sql ya incluye BEGIN/COMMIT.
- * - Se ejecuta como un unico pool.query(sql) para respetar la transaccion del template.
- *
  * PGBOUNCER (Risk R2):
- * - SET LOCAL en el template revierte al final de la transaccion.
  * - Compatible con pgBouncer en transaction pooling mode.
+ * - Las tablas se crean via migraciones TypeORM, no via template SQL monolítico.
  *
  * RISK R3 (AsyncLocalStorage):
  * - Este worker NO usa TenantContext.getOrThrow().
@@ -102,7 +102,30 @@ export class TenantProvisioningProcessor extends WorkerHost {
     try {
       const schemaExists = await this.checkSchemaExists(schemaName);
       if (schemaExists) {
-        this.logger.warn(`[provisioning] Schema "${schemaName}" ya existe, omitiendo creacion`);
+        this.logger.warn(
+          `[provisioning] Schema "${schemaName}" ya existe — verificando status del tenant ${tenantSlug}`,
+        );
+        // Si el schema ya existe pero el tenant sigue en PROVISIONING, lo activamos.
+        // Cubre el caso donde el job falló después de crear el schema pero antes de
+        // actualizar el status (worker crash, restart, etc.). Idempotencia garantizada.
+        const existing = await this.dataSource.getRepository(Tenant).findOne({
+          where: { id: tenantId },
+        });
+        if (existing && existing.status !== 'ACTIVE') {
+          await this.dataSource
+            .createQueryBuilder()
+            .update('public.tenants')
+            .set({ status: 'ACTIVE' })
+            .where('id = :id', { id: tenantId })
+            .execute();
+          this.logger.log(
+            `[provisioning] Tenant ${tenantSlug} activado (schema ya existía, status corregido a ACTIVE)`,
+          );
+        } else {
+          this.logger.log(
+            `[provisioning] Tenant ${tenantSlug} ya estaba ACTIVE — nada que hacer`,
+          );
+        }
         return;
       }
       const tenant = await this.dataSource.getRepository(Tenant).findOne({
@@ -113,26 +136,22 @@ export class TenantProvisioningProcessor extends WorkerHost {
         throw new UnrecoverableError(`Tenant ${tenantId} no encontrado en public.tenants.`);
       }
 
-      // Leer el template SQL desde el paquete @iwana/db
-      const templatePath = path.resolve(
-        __dirname,
-        '../../../../packages/database/src/templates/tenant_template.sql',
-      );
-      const templateSql = fs.readFileSync(templatePath, 'utf-8');
-
-      // Interpolar schemaName validado (ya paso regex — seguro)
-      const ddlSql = templateSql.replaceAll('__SCHEMA_NAME__', schemaName);
-
-      // Ejecutar el DDL como una sola query para honrar el BEGIN/COMMIT del template
+      // Crear el schema de PostgreSQL para el tenant.
+      // La creación de tablas se delega completamente a las migraciones TypeORM
+      // (incluyendo 000_initial_tenant_schema). Este enfoque reemplaza el patrón
+      // anterior basado en tenant_template.sql (eliminado en el ciclo de vida de migraciones).
       const client = await this.pgPool.connect();
       try {
-        await client.query(ddlSql);
+        await client.query(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`);
         this.logger.log(
           `[provisioning] Schema "${schemaName}" creado exitosamente para tenant ${tenantSlug}`,
         );
       } finally {
         client.release();
       }
+
+      await this.runMigrationsForSchema(schemaName);
+      this.logger.log(`[provisioning] Migraciones ejecutadas para schema "${schemaName}"`);
 
       await this.tenantSeedService.seedInitialAdmin({
         tenantId,
@@ -141,9 +160,6 @@ export class TenantProvisioningProcessor extends WorkerHost {
       });
 
       this.logger.log(`[provisioning] Seed inicial del ADMIN completado para tenant ${tenantSlug}`);
-
-      await this.runMigrationsForSchema(schemaName);
-      this.logger.log(`[provisioning] Migraciones ejecutadas para schema "${schemaName}"`);
 
       await this.tenantSeedService.seedTaxPresets(schemaName);
       this.logger.log(`[provisioning] Tax presets sembrados para schema "${schemaName}"`);
@@ -216,6 +232,12 @@ export class TenantProvisioningProcessor extends WorkerHost {
   private async runMigrationsForSchema(schemaName: string): Promise<void> {
     let tenantDs: DataSource | null = null;
     try {
+      const migrationsDirectory = path.join(
+        __dirname,
+        '../../../../packages/database/dist/migrations/tenant',
+      );
+      const migrations = await this.loadTenantMigrationClasses(migrationsDirectory);
+
       tenantDs = new DataSource({
         type: 'postgres',
         host: process.env['DB_HOST'] ?? 'localhost',
@@ -226,8 +248,9 @@ export class TenantProvisioningProcessor extends WorkerHost {
         schema: schemaName,
         name: `tenant-${schemaName}`,
         migrationsTableName: 'typeorm_migrations',
-        migrations: ['dist/migrations/tenant/*.js'],
+        migrations,
         synchronize: false,
+        extra: { options: `-c search_path="${schemaName}"` },
       });
       await tenantDs.initialize();
       await tenantDs.runMigrations();
@@ -238,21 +261,50 @@ export class TenantProvisioningProcessor extends WorkerHost {
     }
   }
 
+  private async loadTenantMigrationClasses(
+    migrationsDirectory: string,
+  ): Promise<MigrationConstructor[]> {
+    const fileNames = fs
+      .readdirSync(migrationsDirectory)
+      .filter((fileName) => fileName.endsWith('.js') && fileName !== 'runner.js')
+      .sort();
+
+    const migrations: MigrationConstructor[] = [];
+
+    for (const fileName of fileNames) {
+      const modulePath = path.join(migrationsDirectory, fileName);
+      const migrationModule = requireTenantMigration(modulePath) as Record<string, unknown>;
+
+      for (const exportedValue of Object.values(migrationModule)) {
+        if (this.isMigrationConstructor(exportedValue)) {
+          migrations.push(exportedValue);
+        }
+      }
+    }
+
+    return migrations;
+  }
+
+  private isMigrationConstructor(value: unknown): value is MigrationConstructor {
+    if (typeof value !== 'function') {
+      return false;
+    }
+
+    const prototype = (value as { prototype?: { up?: unknown; down?: unknown } }).prototype;
+    return typeof prototype?.up === 'function' && typeof prototype?.down === 'function';
+  }
+
   private async rollbackProvisioning(
     schemaName: string,
     tenantId: string,
     error: Error,
   ): Promise<void> {
+    this.logger.error(
+      `[provisioning] Rollback iniciado para schema "${schemaName}": ${error.message}`,
+    );
+    // Eliminar el schema parcialmente creado para que un reintento parta de cero
     await this.pgPool.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
-    await this.dataSource
-      .createQueryBuilder()
-      .update('public.tenants')
-      .set({
-        status: 'PROVISIONING_FAILED',
-        provisioning_error: error.message,
-        provisioning_failed_at: () => 'NOW()',
-      })
-      .where('id = :id', { id: tenantId })
-      .execute();
+    // Actualizar status a PROVISIONING_FAILED con solo columnas existentes en la entidad
+    await this.markFailed(tenantId);
   }
 }

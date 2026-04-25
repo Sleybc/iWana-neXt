@@ -3,7 +3,7 @@
 **Version:** 1.0
 **Estado:** Dark Mode Surface #181818 Ejecutado
 **Fecha creacion:** 2026-03-13
-**Fecha ultima actualizacion:** 2026-04-10
+**Fecha ultima actualizacion:** 2026-04-25
 **Modo activo:** Mixto
 **Agente responsable:** AI-EM-ARCH / Sr. Dev Fullstack
 **Referencia al prompt de ejecucion:** `docs/prompts/PROMPT-TRANSVERSAL-ADOPCION-TAILADMIN-FASE-01-v1.0.md`
@@ -219,6 +219,53 @@ Se ejecutó un ajuste de consistencia visual adicional en `apps/portal` para cer
 - Los diagnósticos de accesibilidad reportados por Edge Tools sobre `aria-expanded`, `aria-selected`, `aria-pressed`, `aria-invalid`, `progressbar` y controles sin nombre visible quedaron corregidos o reestructurados sobre componentes y prototipos afectados.
 - La barra de completitud vuelve a renderizarse con geometría y colores de marca, y el `Select` compartido deja de depender del dropdown nativo del navegador para usar un listbox visualmente coherente con el sistema iWana.
 
+---
+
+## Addendum correctivo — 2026-04-25
+
+Se ejecutó un ajuste visual menor en el shell de `apps/web` para retirar la prominencia de los divisores del header/sidebar sin alterar la estructura, alturas ni comportamiento del colapso lateral.
+
+### Artefactos ajustados
+
+| Artefacto | Archivo | Cambio |
+| --- | --- | --- |
+| Sidebar web | `apps/web/src/components/layout/Sidebar.tsx` | Divisor derecho y divisor inferior del header convertidos a `border-transparent`, preservando `border-r`/`border-b` para no modificar layout |
+| TopHeader web | `apps/web/src/components/layout/TopHeader.tsx` | Divisor inferior convertido a `border-transparent` para evitar líneas visibles desalineadas contra el bloque lateral |
+
+### Verificación ejecutada
+
+- `get_errors` sobre `apps/web/src/components/layout/Sidebar.tsx` ✅ sin errores antes del ajuste correctivo.
+
+### Resultado
+
+- El shell web mantiene la alineación de 64px entre sidebar y top header.
+- Las líneas divisorias del bloque superior quedan invisibles y dejan de competir visualmente con el logo y el botón de menú.
+- El fondo del área principal del dashboard (debajo del header) ahora usa un redondeo superior izquierdo suave en desktop (`lg:rounded-tl-3xl`) para eliminar la esquina en punta reportada en UI.
+- Ajuste final de visibilidad: el redondeo se aplicó al wrapper scrollable de contenido (no al `main`) y el contenedor raíz pasó a `bg-white` para que la curva se perciba con contraste frente al panel lateral.
+
+---
+
+## Addendum correctivo — 2026-04-25 (bugs UI y provisioning)
+
+### Artefactos ajustados
+
+| Artefacto | Archivo | Cambio |
+| --- | --- | --- |
+| TenantsTable web | `apps/web/src/components/dashboard/TenantsTable.tsx` | `ActionsDropdown` refactorizado con `position:fixed` calculado desde `getBoundingClientRect()` — escapa del `overflow:hidden` del wrapper de tabla y elimina clipping del menú |
+| Processor worker | `apps/worker/src/processors/tenant-provisioning.processor.ts` | Elimina lectura de `tenant_template.sql` (archivo eliminado en ciclo de vida de migraciones); reemplaza por `CREATE SCHEMA IF NOT EXISTS` directo vía `pgPool`; las tablas las crean las migraciones TypeORM (`000_initial_tenant_schema` y siguientes) |
+
+### Causa raíz — provisioning PROVISIONING sin transición
+
+1. El `tenant_template.sql` fue eliminado del repo como parte del plan de migración lifecycle.
+2. El procesador del worker seguía intentando `fs.readFileSync` del template → lanzaba `ENOENT`.
+3. El worker Docker no estaba corriendo, por lo que los jobs BullMQ quedan encolados sin consumidor y el tenant permanece en `PROVISIONING` indefinidamente.
+4. El fix desacopla la creación de schema del template SQL y delega la creación de tablas a TypeORM.
+
+### Pasos adicionales para activar el fix en Docker
+
+- Reconstruir la imagen del worker: `docker compose -f docker-compose.dev.yml up -d --build worker`
+- El job BullMQ reintentará automáticamente al levantar el worker; si el schema ya existe, el path de idempotencia activará el tenant a `ACTIVE`.
+
 | Criterio | Estado |
 | --- | --- |
 | CA-TA-012: login y sesion usan endpoints reales (`/auth/platform/login`, `/auth/login`, `/auth/me`, `/auth/logout`) | CUMPLIDO |
@@ -294,6 +341,46 @@ Se ejecutó un ajuste de consistencia visual adicional en `apps/portal` para cer
 | CA-TA-028: busqueda del portal suscriptor conectada a router con query param `q` (comportamiento identico al admin) | CUMPLIDO |
 | CA-TA-029: 14 violaciones WCAG 2.1 AA corregidas — contraste insuficiente (ratio < 4.5:1 texto normal) y atributos ARIA invalidos | CUMPLIDO |
 | CA-TA-030: `@axe-core/playwright` integrado en ambas suites E2E; `pnpm test:e2e:all` pasa con 0 violaciones reportadas por axe | CUMPLIDO |
+
+---
+
+## 3h. Artefactos generados — Refinamiento web post-portal
+
+| Artefacto | Archivo | Cambio |
+| --- | --- | --- |
+| Plan de refinamiento web | `docs/plans/PLAN-WEB-REFINAMIENTO-UI-v1.0.md` | Nuevo — brechas entre manual de identidad, portal y consola web; fases de ejecución definidas |
+| Brand assets web | `apps/web/public/brand/iwiso6.png`, `apps/web/public/brand/favicon-gecko.svg` | Nuevo — assets copiados desde portal para favicon e identidad local |
+| Root layout web | `apps/web/src/app/layout.tsx` | Actualizado — `next/font/google` con Exo 2 + JetBrains Mono, favicon iWana, `Suspense` alrededor de `AuthProvider` |
+| Tipografia web | `apps/web/src/app/web-typography.css` | Nuevo — refuerzo de herencia tipografica alineado al portal |
+| TopHeader web | `apps/web/src/components/layout/TopHeader.tsx` | Refactorizado — `SearchBar` aislado con `Suspense`, input premium con shadow tokens y placeholder propio de plataforma |
+| Dashboard page web | `apps/web/src/app/(protected)/dashboard/page.tsx` | Actualizado — `Suspense` para el cliente que usa `useSearchParams()` |
+| Sidebar web | `apps/web/src/components/layout/Sidebar.tsx` | Refactorizado — iconos inline reemplazados por `lucide-react`, `NavItems` aislado con `Suspense` |
+| DropdownUser web | `apps/web/src/components/layout/DropdownUser.tsx` | Actualizado — helper `platformRoleToLabel` para labels de plataforma en español |
+| Tests DropdownUser | `apps/web/src/components/layout/DropdownUser.spec.tsx` | Actualizado — cobertura del helper de roles de plataforma |
+| MetricCard web | `apps/web/src/components/dashboard/MetricCard.tsx` | Refactorizado — API con `LucideIcon` y tonos semanticos; se elimina switch sobre strings de color |
+| DashboardClient web | `apps/web/src/components/dashboard/DashboardClient.tsx` | Actualizado — consume la nueva API de `MetricCard` sin hardcodes de color |
+| LoginBrandPanel web | `apps/web/src/components/auth/LoginBrandPanel.tsx` | Refactorizado — elimina imagen externa, usa assets locales y microcopy de plataforma |
+
+---
+
+## 5g. Criterios de aceptacion — Refinamiento web post-portal
+
+| Criterio | Estado |
+| --- | --- |
+| CA-TA-031: `@iwana/web` aplica tipografia Exo 2 desde layout raiz y conserva fuente mono para codigo | CUMPLIDO |
+| CA-TA-032: favicon e isotipo de marca estan disponibles desde assets locales en `apps/web/public/brand` | CUMPLIDO |
+| CA-TA-033: `useSearchParams()` queda cubierto por `Suspense` en header y dashboard admin | CUMPLIDO |
+| CA-TA-034: Sidebar web usa `lucide-react` exclusivamente para navegacion | CUMPLIDO |
+| CA-TA-035: DropdownUser web muestra roles de plataforma con labels de negocio en español | CUMPLIDO |
+| CA-TA-036: MetricCard web deja de depender de colores hardcodeados y usa tonos semanticos | CUMPLIDO |
+| CA-TA-037: LoginBrandPanel web no depende de URLs externas para imagen de fondo o marca | CUMPLIDO |
+
+### Verificacion ejecutada
+
+- `pnpm --filter @iwana/web typecheck` ✅
+- `pnpm --filter @iwana/web test -- DropdownUser.spec.tsx` ✅ (4 tests)
+- `pnpm --filter @iwana/web build` ✅
+- `pnpm --filter @iwana/web lint` ✅
 
 ---
 

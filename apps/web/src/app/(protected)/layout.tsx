@@ -36,7 +36,7 @@ export default function ProtectedLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-dark-surface">
+    <div className="flex h-screen overflow-hidden bg-white dark:bg-dark-surface-2">
       {sidebarMobileOpen && (
         <div
           className="fixed inset-0 z-[9998] bg-black/50 lg:hidden"
@@ -52,7 +52,7 @@ export default function ProtectedLayout({ children }: { children: ReactNode }) {
         setMobileOpen={setSidebarMobileOpen}
       />
 
-      <div className="relative flex flex-1 flex-col overflow-y-auto overflow-x-hidden">
+      <div className="relative flex flex-1 flex-col overflow-x-hidden">
         <TopHeader
           desktopCollapsed={sidebarDesktopCollapsed}
           setDesktopCollapsed={setSidebarDesktopCollapsed}
@@ -60,7 +60,8 @@ export default function ProtectedLayout({ children }: { children: ReactNode }) {
           setMobileOpen={setSidebarMobileOpen}
         />
 
-        <main>
+        {/* Área de contenido gris — redondeada en su esquina superior izquierda para separarse visualmente del sidebar */}
+        <main className="flex-1 overflow-y-auto bg-slate-50 dark:bg-dark-surface lg:rounded-3xl">
           <div className="mx-auto max-w-screen-2xl p-4 md:p-6 2xl:p-10">{children}</div>
         </main>
       </div>

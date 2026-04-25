@@ -16,7 +16,7 @@
 
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { UserAvatar } from './DropdownUser';
+import { platformRoleToLabel, UserAvatar } from './DropdownUser';
 
 // ---------------------------------------------------------------------------
 // Mocks de dependencias externas requeridas por el módulo DropdownUser
@@ -58,5 +58,16 @@ describe('UserAvatar', () => {
   it('muestra "U" como fallback cuando displayName está vacío', () => {
     render(<UserAvatar displayName="" />);
     expect(screen.getByText('U')).toBeInTheDocument();
+  });
+});
+
+describe('platformRoleToLabel', () => {
+  it('mapea roles de plataforma a labels visibles en español', () => {
+    expect(platformRoleToLabel('SYSTEM_ADMIN')).toBe('Administrador de plataforma');
+    expect(platformRoleToLabel('IWANA_SUPPORT')).toBe('Soporte iWana');
+  });
+
+  it('conserva roles desconocidos para no ocultar datos inesperados', () => {
+    expect(platformRoleToLabel('CUSTOM_ROLE')).toBe('CUSTOM_ROLE');
   });
 });

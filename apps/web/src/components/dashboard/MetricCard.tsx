@@ -1,6 +1,6 @@
 // apps/web/src/components/dashboard/MetricCard.tsx
-import type { ReactNode } from 'react';
 import { Card, CardContent } from '@iwana/ui';
+import type { LucideIcon } from 'lucide-react';
 
 /** Datos del badge de tendencia que se muestra al pie de la card. */
 interface TrendBadge {
@@ -13,23 +13,20 @@ interface MetricCardProps {
   title: string;
   value: string | number;
   change?: string;
-  icon: ReactNode;
-  iconColor?: string;
-  iconBg?: string;
+  icon: LucideIcon;
+  tone?: 'primary' | 'secondary' | 'success' | 'danger';
   trend?: TrendBadge;
 }
 
-function resolveIconTone(iconBg: string, iconColor: string) {
-  const toneKey = `${iconBg.toUpperCase()}|${iconColor.toUpperCase()}`;
-
-  switch (toneKey) {
-    case '#EAF5CC|#6A7A1C':
+function resolveIconTone(tone: NonNullable<MetricCardProps['tone']>) {
+  switch (tone) {
+    case 'secondary':
       return 'bg-iwana-secondary-100 text-iwana-secondary-700 dark:bg-iwana-secondary-700/20 dark:text-iwana-secondary-400';
-    case '#DCFCE7|#22C55E':
+    case 'success':
       return 'bg-green-100 text-green-500 dark:bg-green-900/30 dark:text-green-400';
-    case '#FEF2F2|#EF4444':
+    case 'danger':
       return 'bg-red-50 text-red-500 dark:bg-red-900/30 dark:text-red-400';
-    case '#EEEEFA|#17163A':
+    case 'primary':
     default:
       return 'bg-iwana-primary-50 text-iwana-primary dark:bg-iwana-primary-800/40 dark:text-iwana-primary-300';
   }
@@ -63,12 +60,11 @@ export function MetricCard({
   title,
   value,
   change,
-  icon,
-  iconColor = '#17163A',
-  iconBg = '#EEEEFA',
+  icon: Icon,
+  tone = 'primary',
   trend,
 }: MetricCardProps) {
-  const iconToneClassName = resolveIconTone(iconBg, iconColor);
+  const iconToneClassName = resolveIconTone(tone);
 
   return (
     <Card>
@@ -83,7 +79,7 @@ export function MetricCard({
             className={`flex h-10 w-10 items-center justify-center rounded-xl flex-shrink-0 ${iconToneClassName}`}
             aria-hidden="true"
           >
-            {icon}
+            <Icon className="h-5 w-5" />
           </div>
         </div>
 

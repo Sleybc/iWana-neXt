@@ -1,0 +1,29 @@
+/* Fuerza de tipografia para la consola administrativa.
+   Se carga despues del design system para ganar precedencia. */
+
+html,
+body {
+  font-family: inherit;
+}
+
+/* Mantiene consistencia en textos renderizados por componentes externos */
+body *:not(code):not(pre):not(kbd):not(samp):not(textarea):not(input) {
+  font-family: inherit;
+}
+
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--font-jetbrains-mono), 'JetBrains Mono', 'Fira Code', ui-monospace, monospace !important;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: inherit;
+  letter-spacing: 0;
+}

@@ -7,6 +7,17 @@ import { ChevronDown, LogOut, Settings, User as UserIcon } from 'lucide-react';
 import { cn } from '@iwana/ui';
 import { useAuth } from '@/components/auth/AuthProvider';
 
+export function platformRoleToLabel(role: string): string {
+  const labels: Record<string, string> = {
+    system_admin: 'Administrador de plataforma',
+    SYSTEM_ADMIN: 'Administrador de plataforma',
+    iwana_support: 'Soporte iWana',
+    IWANA_SUPPORT: 'Soporte iWana',
+  };
+
+  return labels[role] ?? role;
+}
+
 /** Avatar circular con la inicial del nombre del usuario */
 export function UserAvatar({ displayName }: { displayName: string }) {
   const initial = displayName[0]?.toUpperCase() ?? 'U';
@@ -74,7 +85,7 @@ export const DropdownUser = () => {
   };
 
   const displayName = user?.displayName ?? 'Usuario';
-  const subtitle = user?.subtitle ?? 'Sesión no inicializada';
+  const subtitle = user?.role ? platformRoleToLabel(user.role) : 'Sesión no inicializada';
 
   return (
     <div className="relative">

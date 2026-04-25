@@ -2,6 +2,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
+import type { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
@@ -36,7 +37,36 @@ async function bootstrap(): Promise<void> {
 
   // Helmet: headers HTTP de seguridad — debe aplicarse antes de cualquier otro middleware
   // Configura: Content-Security-Policy, HSTS, X-Frame-Options, X-Content-Type-Options, etc.
-  app.use(helmet());
+  // En desarrollo se relaja crossOriginResourcePolicy a 'same-site' para que el visor
+  // JSON de Firefox pueda cargar recursos (favicon, etc.) sin error CORP.
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: {
+        policy: process.env['NODE_ENV'] === 'production' ? 'same-origin' : 'same-site',
+      },
+    }),
+  );
+
+  app.use((request: Request, response: Response, next: NextFunction) => {
+    if (request.method === 'GET' && request.path === '/') {
+      response
+        .type('text/plain; charset=utf-8')
+        .setHeader('Cross-Origin-Resource-Policy', 'same-site')
+        .send('iWana neXt API. Health: /api/v1/health. Docs: /api/v1/docs');
+      return;
+    }
+
+    if (request.method === 'GET' && request.path === '/favicon.ico') {
+      response
+        .status(204)
+        .setHeader('Cache-Control', 'public, max-age=86400')
+        .setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
+        .end();
+      return;
+    }
+
+    next();
+  });
 
   // Habilitar lectura de cookies (refresh token llega como cookie httpOnly)
   app.use(cookieParser());

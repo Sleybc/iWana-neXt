@@ -1,5 +1,6 @@
 import { DataSource, MigrationInterface } from 'typeorm';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
+import { CreateExpedienteRecords1700000000001 } from './001_create_expediente_records';
 import { AddExpedienteTechnicalViabilityFields1700000000006 } from './006_add_expediente_technical_viability_fields';
 import { AddAcquisitionChannelAndSalesAttributions1700000000007 } from './007_add_acquisition_channel_and_sales_attributions';
 import { AddAdditionalProducts1700000000008 } from './008_add_additional_products';
@@ -27,6 +28,7 @@ import { ExtendContractsForServices1700000000029 } from './029_extend_contracts_
 
 const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   InitialTenantSchema1700000000000,
+  CreateExpedienteRecords1700000000001,
   AddExpedienteTechnicalViabilityFields1700000000006,
   AddAcquisitionChannelAndSalesAttributions1700000000007,
   AddAdditionalProducts1700000000008,

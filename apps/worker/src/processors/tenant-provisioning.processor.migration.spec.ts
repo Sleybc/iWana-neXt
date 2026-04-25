@@ -1,4 +1,3 @@
-import * as fs from 'fs';
 import { UnrecoverableError } from 'bullmq';
 import { Pool } from 'pg';
 import { DataSource } from 'typeorm';
@@ -9,10 +8,12 @@ jest.mock('@nestjs/typeorm', () => ({
   InjectDataSource: () => () => undefined,
 }));
 
+const mockRunMigrations = jest.fn().mockResolvedValue([]);
+
 jest.mock('typeorm', () => ({
   DataSource: jest.fn().mockImplementation(() => ({
     initialize: jest.fn().mockResolvedValue(undefined),
-    runMigrations: jest.fn().mockResolvedValue([]),
+    runMigrations: mockRunMigrations,
     destroy: jest.fn().mockResolvedValue(undefined),
     isInitialized: true,
   })),
@@ -21,10 +22,6 @@ jest.mock('typeorm', () => ({
 jest.mock('@iwana/db', () => ({
   Tenant: class Tenant {},
   isValidSchemaName: jest.fn().mockReturnValue(true),
-}));
-
-jest.mock('fs', () => ({
-  readFileSync: jest.fn(),
 }));
 
 const mockClient = {
@@ -37,6 +34,11 @@ const mockPool = {
   connect: jest.fn().mockResolvedValue(mockClient),
   end: jest.fn(),
 };
+
+class MockTenantMigration {
+  async up(): Promise<void> {}
+  async down(): Promise<void> {}
+}
 
 jest.mock('pg', () => ({
   Pool: jest.fn().mockImplementation(() => mockPool),
@@ -140,9 +142,37 @@ describe('TenantProvisioningProcessor - Migration Features', () => {
   describe('runMigrationsForSchema', () => {
     it('runs migrations successfully for a schema', async () => {
       const processor = createProcessor();
+      (processor as any).loadTenantMigrationClasses = jest
+        .fn()
+        .mockResolvedValue([MockTenantMigration]);
+
       await expect(
         (processor as any).runMigrationsForSchema('tenant_isp_test'),
       ).resolves.toBeUndefined();
+
+      expect(DataSource).toHaveBeenCalledWith(
+        expect.objectContaining({
+          schema: 'tenant_isp_test',
+          extra: { options: '-c search_path="tenant_isp_test"' },
+        }),
+      );
+    });
+
+    it('recognizes only TypeORM migration classes as constructors', () => {
+      const processor = createProcessor();
+
+      class ValidMigration {
+        async up(): Promise<void> {}
+        async down(): Promise<void> {}
+      }
+
+      function runMigration(): void {}
+
+      expect((processor as any).isMigrationConstructor(ValidMigration)).toBe(true);
+      expect((processor as any).isMigrationConstructor(runMigration)).toBe(false);
+      expect((processor as any).isMigrationConstructor({ runTenantMigrations: jest.fn() })).toBe(
+        false,
+      );
     });
   });
 
@@ -175,8 +205,6 @@ describe('TenantProvisioningProcessor - Migration Features', () => {
       );
       expect(updateBuilder.set).toHaveBeenCalledWith({
         status: 'PROVISIONING_FAILED',
-        provisioning_error: 'Provisioning failed',
-        provisioning_failed_at: expect.any(Function),
       });
       expect(updateBuilder.execute).toHaveBeenCalled();
     });
@@ -205,11 +233,10 @@ describe('TenantProvisioningProcessor - Migration Features', () => {
         seedTaxPresets: jest.fn().mockResolvedValue(undefined),
       } as unknown as TenantSeedService;
 
-      (fs.readFileSync as jest.Mock).mockReturnValue(
-        'BEGIN; CREATE SCHEMA IF NOT EXISTS "__SCHEMA_NAME__"; COMMIT;',
-      );
-
       const processor = new TenantProvisioningProcessor(dataSource, tenantSeedService);
+      (processor as any).loadTenantMigrationClasses = jest
+        .fn()
+        .mockResolvedValue([MockTenantMigration]);
 
       await processor.process({
         data: {
@@ -248,11 +275,10 @@ describe('TenantProvisioningProcessor - Migration Features', () => {
         seedTaxPresets: jest.fn().mockResolvedValue(undefined),
       } as unknown as TenantSeedService;
 
-      (fs.readFileSync as jest.Mock).mockReturnValue(
-        'BEGIN; CREATE SCHEMA IF NOT EXISTS "__SCHEMA_NAME__"; COMMIT;',
-      );
-
       const processor = new TenantProvisioningProcessor(dataSource, tenantSeedService);
+      (processor as any).loadTenantMigrationClasses = jest
+        .fn()
+        .mockResolvedValue([MockTenantMigration]);
 
       await processor.process({
         data: {

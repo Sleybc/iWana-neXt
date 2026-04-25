@@ -3,7 +3,7 @@
     "target": "ESNext",
     "module": "CommonJS",
     "lib": ["ESNext", "DOM"],
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "types": ["node", "@playwright/test"],
     "strict": true,
     "forceConsistentCasingInFileNames": true

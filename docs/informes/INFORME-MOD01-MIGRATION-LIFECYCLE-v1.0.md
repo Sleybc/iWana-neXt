@@ -163,3 +163,76 @@ Segun el PRD (seccion 13.3):
 - [x] Typecheck, build, lint pasan
 - [ ] Tests unitarios para nuevas funcionalidades del processor (pendiente)
 - [ ] Tests de integracion con PostgreSQL multi-tenant (pendiente)
+
+---
+
+## 8. Addendum correctivo: recuperacion de provisioning tenant iWana
+
+### 8.1 Contexto operativo
+
+Durante la verificacion del dashboard de plataforma se detecto estado degradado asociado a BullMQ/Redis y un tenant bloqueado en provisioning:
+
+- tenant: `iWana`
+- tenant id: `6af2528c-0d2b-4306-b922-4bb22cf18e7b`
+- slug: `iwana`
+- schema: `tenant_iwana`
+
+El objetivo correctivo fue recuperar el tenant mediante el flujo real del worker y del endpoint de reintento, sin activacion manual del estado en base de datos.
+
+### 8.2 Causas encadenadas encontradas
+
+La investigacion identifico varias derivas acumuladas en el provisioning tenant:
+
+- el rollback intentaba persistir una propiedad/columna inexistente (`provisioning_error`) en `Tenant`;
+- el worker ejecutaba seeds antes de migraciones, por lo que el seed de admin podia fallar con tablas tenant inexistentes;
+- el loader de migraciones cargaba exports auxiliares y archivos no ejecutables como migracion;
+- el loader usaba import dinamico con file URL en un runtime CommonJS, generando fallos de resolucion de modulo;
+- faltaba una migracion base tenant para `expediente_records` requerida por migraciones CRM posteriores;
+- faltaba la tabla `status_changes`, requerida por la consolidacion del pipeline de expediente;
+- la causa raiz final fue que el `DataSource` de migraciones tenant del worker configuraba `schema`, pero no fijaba `search_path`; como las migraciones usan SQL raw sin schema calificado, algunas ejecuciones apuntaron accidentalmente a `public`.
+
+### 8.3 Correcciones aplicadas
+
+Se aplicaron correcciones en el worker y en migraciones tenant:
+
+- `apps/worker/src/processors/tenant-provisioning.processor.ts`
+	- rollback simplificado a `markFailed(tenantId)` y `DROP SCHEMA IF EXISTS ... CASCADE`;
+	- orden de provisioning corregido a migraciones -> seed admin -> tax presets -> `ACTIVE`;
+	- loader de migraciones endurecido con `createRequire(__filename)`, exclusion de `runner.js` y filtro de constructores TypeORM por metodos `up`/`down`;
+	- `DataSource` tenant alineado con `packages/database/src/migrations/tenant/runner.ts` usando `extra.options` para fijar `search_path` al schema tenant.
+- `packages/database/src/migrations/tenant/001_create_expediente_records.ts`
+	- migracion base CRM tenant agregada para `expediente_records`;
+	- incluye `status_changes`, `contact_attempts`, `coverage_checks` y `consent_records` como base compatible con las migraciones posteriores.
+- `packages/database/src/migrations/tenant/runner.ts`
+	- registro de `CreateExpedienteRecords1700000000001` para mantener paridad entre migrator/runner y worker.
+
+### 8.4 Evidencia de calidad
+
+Validaciones ejecutadas durante el correctivo:
+
+- `pnpm --filter @iwana/db typecheck`: OK;
+- `pnpm --filter @iwana/worker test -- tenant-provisioning.processor.spec.ts tenant-provisioning.processor.migration.spec.ts`: OK, 2 suites / 14 tests;
+- `pnpm --filter @iwana/worker typecheck`: OK;
+- rebuild real de Docker worker con `docker compose -f docker-compose.dev.yml build --no-cache worker` y recreacion del servicio worker;
+- artefacto compilado del contenedor activo verificado con presencia de `search_path` y `requireTenantMigration`, y ausencia de `pathToFileURL`.
+
+### 8.5 Recuperacion operativa validada
+
+El reintento se ejecuto usando el flujo de plataforma vigente:
+
+- login plataforma mediante `POST /api/v1/auth/platform/login`;
+- retry mediante `PATCH /api/v1/tenants/:id/retry-provisioning`.
+
+Verificacion final contra Docker y PostgreSQL dev:
+
+- contenedor worker activo: `iwana_worker_dev`, imagen `appiw-worker`, estado `Up`;
+- tenant `iWana` quedo en `ACTIVE`;
+- schema `tenant_iwana` existe;
+- tablas requeridas presentes: `users`, `expediente_records`, `status_changes`, `tax_definitions`, `typeorm_migrations`;
+- total observado en `tenant_iwana`: 35 tablas.
+
+### 8.6 Riesgos remanentes y seguimiento
+
+- Se observo contaminacion previa de `public` con tablas tenant-like causada por ejecuciones anteriores sin `search_path` correcto. No se elimino nada automaticamente para evitar borrar objetos legitimos o evidencia de diagnostico.
+- Se recomienda una tarea separada de saneamiento controlado del schema `public`, comparando contra las migraciones publicas legitimas antes de cualquier `DROP`.
+- La politica efectiva queda reforzada: cualquier ejecucion de migraciones tenant con SQL raw debe fijar `search_path` de forma explicita, no depender solo de `schema` en TypeORM.

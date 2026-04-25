@@ -1,5 +1,6 @@
 // apps/web/src/components/dashboard/TenantsTable.tsx
 'use client';
+import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@iwana/ui';
 import { Search, ChevronUp, ChevronDown, ChevronsUpDown, MoreHorizontal } from 'lucide-react';
@@ -78,7 +79,9 @@ function SortIcon({
   );
 }
 
-/** Dropdown de acciones por fila (3 puntos). Implementado con estado local sin librerías extra. */
+/** Dropdown de acciones por fila (3 puntos). Implementado con estado local sin librerías extra.
+ *  Usa position:fixed calculado desde getBoundingClientRect para escapar de contenedores
+ *  con overflow:hidden (como el wrapper de la tabla con bordes redondeados). */
 function ActionsDropdown({
   tenantId,
   tenantStatus,
@@ -93,18 +96,21 @@ function ActionsDropdown({
   onRetryProvisioning?: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  /** true = abrir hacia arriba, false = abrir hacia abajo */
-  const [openUpward, setOpenUpward] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
-  // Calcular dirección de apertura al abrir el dropdown
+  // Calcular posición fixed del menú relativa al viewport al momento de abrirlo
   const handleToggle = () => {
-    if (!open && dropdownRef.current) {
-      const rect = dropdownRef.current.getBoundingClientRect();
-      // Si hay menos de 160px debajo del botón hasta el borde inferior de la ventana, abrir hacia arriba
+    if (!open && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const menuWidth = 192; // w-48
+      const menuHeight = 160; // estimado para 3-4 items
       const spaceBelow = window.innerHeight - rect.bottom;
-      setOpenUpward(spaceBelow < 160);
+      const top = spaceBelow < menuHeight ? rect.top - menuHeight - 4 : rect.bottom + 4;
+      const left = rect.right - menuWidth;
+      setMenuStyle({ position: 'fixed', top, left, zIndex: 9999 });
     }
     setOpen((prev) => !prev);
   };
@@ -113,7 +119,12 @@ function ActionsDropdown({
   useEffect(() => {
     if (!open) return;
     const handleOutsideClick = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(e.target as Node) &&
+        buttonRef.current &&
+        !buttonRef.current.contains(e.target as Node)
+      ) {
         setOpen(false);
       }
     };
@@ -138,8 +149,9 @@ function ActionsDropdown({
     !!onRetryProvisioning;
 
   return (
-    <div ref={dropdownRef} className="relative inline-block text-left">
+    <div className="inline-block text-left">
       <button
+        ref={buttonRef}
         type="button"
         aria-label="Abrir menú de acciones"
         aria-haspopup="true"
@@ -151,10 +163,10 @@ function ActionsDropdown({
 
       {open && (
         <div
+          ref={menuRef}
           role="menu"
-          className={`absolute right-0 z-20 w-48 rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-dark-surface-2 ${
-            openUpward ? 'bottom-full mb-1' : 'top-full mt-1'
-          }`}
+          style={menuStyle}
+          className="w-48 rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-dark-surface-2"
         >
           {/* Ver configuración — siempre disponible */}
           <button

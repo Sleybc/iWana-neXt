@@ -9,6 +9,25 @@
 
 Se ejecutó la implementación transversal de enablement operativo para habilitar perfil de plataforma, settings funcionales de tenant, flujo de alta de primera empresa y gestión operativa de usuarios internos. El cierre incluyó la corrección del flujo MFA de plataforma en web, la activación real de acciones de usuarios por tenant y la ampliación del E2E de bootstrap administrativo.
 
+### Addendum correctivo 2026-04-25 — Stack Docker dev estabilizado en Linux + dropdown y comentarios del processor
+
+Se cerraron tres deudas operativas detectadas al levantar el stack Docker dev en Linux.
+
+**1. nginx — host.docker.internal no resuelve en Linux**
+`host.docker.internal` solo se resuelve automáticamente en Docker Desktop (macOS/Windows). En Linux el contenedor nginx caía en restart loop con `host not found in upstream "host.docker.internal:3000"`. Se añadió `extra_hosts: - "host.docker.internal:host-gateway"` al servicio nginx en `docker-compose.dev.yml`, que mapea el gateway del bridge de Docker al nombre del host. nginx quedó estable.
+
+**2. Dockerfile.migrator — incompatibilidad musl/glibc con Node 24**
+El migrator usaba `node:20-alpine` (musl libc) pero pnpm intentaba descargar binarios de Node 24 (solo disponibles para glibc), provocando un build roto. La imagen se migró a `node:24-bookworm-slim` (Debian, glibc), alineándose con el Dockerfile del worker. Adicionalmente, `pnpm --filter @iwana/config build` fallaba con `ERR_PNPM_RECURSIVE_RUN_NO_SCRIPT` porque `@iwana/config` es un paquete de configuración pura sin script `build`. Se reemplazó por `pnpm exec tsc --project` explícito, compilando solo `@iwana/shared` y `@iwana/db`.
+
+**3. Worker — variables de entorno faltantes en docker-compose.dev.yml**
+El worker arrancaba en crash loop por dos variables ausentes en su bloque `environment`: `MFA_ENCRYPTION_KEY` (requerida por `TenantSeedService` en el constructor) y `TENANT_INITIAL_ADMIN_PASSWORD` (validada en bootstrap contra la política de contraseñas). Se añadieron ambas al servicio worker con valores de desarrollo seguros para entorno local.
+
+**4. Processor — comentario stale + import huérfano**
+El bloque de documentación de `TenantProvisioningProcessor` describía el enfoque antiguo basado en `tenant_template.sql`. El código ya usaba `CREATE SCHEMA IF NOT EXISTS` + migraciones TypeORM, pero el comentario creaba confusión. Se actualizó el JSDoc para reflejar el flujo real y se eliminó el import `* as path` que quedó huérfano tras eliminar la lectura de archivos SQL.
+
+**5. Dropdown — clipping por overflow:hidden**
+El componente `ActionsDropdown` de `TenantsTable` (web/dashboard) quedaba cortado por el contenedor de la tabla que tiene `overflow:hidden`. Se reimplementó usando `position:fixed` calculado desde `getBoundingClientRect()` al momento de apertura, escapando correctamente del stack de apilamiento del contenedor.
+
 ### Addendum correctivo 2026-03-18 — Bootstrap genérico del admin principal y cambio de email de acceso
 
 Se corrigió una deuda de diseño en el onboarding de empresas: el login inicial del ADMIN del tenant estaba acoplado al `contactEmail` empresarial. El flujo quedó desacoplado en tres frentes. Primero, el worker ahora siembra siempre un usuario principal genérico `admin@iwana.co` con contraseña inicial fija controlada por entorno mediante `TENANT_INITIAL_ADMIN_PASSWORD` y `passwordResetRequired=true`, sin depender del correo comercial de la empresa ni hardcodear secretos en código versionado. Segundo, `POST /api/v1/tenants/:id/regenerate-admin-credentials` dejó de buscar por `contactEmail` y pasó a regenerar sobre el ADMIN principal vigente del tenant. Tercero, tanto portal como web incorporaron cambio de email de acceso desde Perfil con validación de contraseña actual; en el caso del ADMIN principal del tenant, ese cambio sincroniza también `public.tenants.contact_email`.

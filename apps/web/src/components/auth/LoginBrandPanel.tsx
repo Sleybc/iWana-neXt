@@ -1,4 +1,5 @@
 // apps/web/src/components/auth/LoginBrandPanel.tsx
+import Image from 'next/image';
 import type { ReactNode } from 'react';
 
 /**
@@ -13,47 +14,36 @@ interface LoginBrandPanelProps {
 
 export function LoginBrandPanel({
   title = 'iWana neXt',
-  subtitle = 'Autenticación segura e identidad centralizada. Accede a tu portal con encriptación de grado militar.',
+  subtitle = 'Autenticación segura, trazabilidad activa y gobierno centralizado para la operación de plataforma.',
   children,
 }: LoginBrandPanelProps) {
   return (
-    <div className="relative hidden lg:flex lg:w-1/2 bg-[#181818] flex-col justify-between p-8 lg:p-16 text-white overflow-hidden border-r border-white/5">
-      {/* Background Image pattern from prototype */}
-      <img
-        src="https://lh3.googleusercontent.com/aida-public/AB6AXuCHI4LM_NAHCAJ3MNL4M6WPHz31HVbomoUOssE0eZhErv0MfuccPw3aYms_n07IkyuNbSK8q4lhZv16uyobCgB864Jf6HadYfLg7hqx2yc1ARQ1j8mx_EStoaUUmAApxfoKQIHR4nZO7mR8En5Bp2Tgnf2h-WWUDetkSZEoVPCCogfOk-Z_nPm8fYodWf7jD5O2wdDrlp_1f4LaAxuPqfe7MLGnHphIwaXrd9JzKmrDSt2qAei9pHcZ2_z7hM8gO-jxpEWa9woXrIZY"
+    <div className="relative hidden overflow-hidden border-r border-white/5 bg-[#181818] p-8 text-white lg:flex lg:w-1/2 lg:flex-col lg:justify-between lg:p-16">
+      <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_20%_20%,rgba(165,195,48,0.22),transparent_32%),linear-gradient(135deg,#181818_0%,#17163A_58%,#0F0E24_100%)]" />
+      <Image
+        src="/brand/favicon-gecko.svg"
         alt=""
         aria-hidden="true"
-        className="absolute inset-0 z-0 h-full w-full object-cover opacity-30 mix-blend-lighten"
+        width={560}
+        height={560}
+        priority
+        className="absolute -right-24 top-1/2 z-0 h-auto w-[560px] -translate-y-1/2 opacity-[0.08]"
       />
-      <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#181818] via-[#181818]/80 to-transparent" />
 
       {/* Top Header */}
       <div className="relative z-10 flex items-center gap-3">
-        <div className="h-10 w-10 bg-[#A5C330] rounded-lg flex items-center justify-center text-[#181818]">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M12 2L2 7l10 5 10-5-10-5z" fill="currentColor" />
-            <path
-              d="M2 17l10 5 10-5"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path
-              d="M2 12l10 5 10-5"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#A5C330] text-[#181818]">
+          <Image src="/brand/iwiso6.png" alt="" width={28} height={28} className="h-7 w-7" aria-hidden="true" />
         </div>
         <span className="text-2xl font-bold tracking-tight text-white">iWana neXt</span>
       </div>
 
       {/* Center Content */}
       <div className="relative z-10 my-auto">
-        <h1 className="text-4xl lg:text-6xl font-bold leading-tight tracking-tight mb-6 max-w-xl text-white">
+        <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.26em] text-[#A5C330]">
+          Gobierno de plataforma
+        </p>
+        <h1 className="mb-6 max-w-xl text-4xl font-bold leading-tight tracking-tight text-white lg:text-6xl">
           {title}
           <br />
           <span className="text-[#A5C330]">Sistema Integrado</span>
@@ -61,7 +51,7 @@ export function LoginBrandPanel({
         <p className="text-lg text-slate-400 max-w-md leading-relaxed">{subtitle}</p>
         {children ?? (
           <div className="mt-8 flex gap-4">
-            <div className="flex items-center gap-2 bg-white/5 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 text-slate-300">
+            <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-slate-300 backdrop-blur-md">
               <svg
                 className="w-4 h-4 text-[#A5C330]"
                 fill="none"
@@ -75,9 +65,9 @@ export function LoginBrandPanel({
                   d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
                 />
               </svg>
-              <span className="text-sm font-medium">Cifrado AES-256</span>
+              <span className="text-sm font-medium">Acceso seguro</span>
             </div>
-            <div className="flex items-center gap-2 bg-white/5 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 text-slate-300">
+            <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-slate-300 backdrop-blur-md">
               <svg
                 className="w-4 h-4 text-[#A5C330]"
                 fill="none"
@@ -91,10 +81,29 @@ export function LoginBrandPanel({
                   d="M13 10V3L4 14h7v7l9-11h-7z"
                 />
               </svg>
-              <span className="text-sm font-medium">Baja Latencia</span>
+              <span className="text-sm font-medium">Operación interna</span>
             </div>
           </div>
         )}
+
+        <div className="mt-10 grid max-w-xl grid-cols-2 gap-3">
+          <div className="rounded-[22px] border border-white/10 bg-white/5 p-4 backdrop-blur-md">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#A5C330]">
+              Velocidad
+            </p>
+            <p className="mt-2 text-sm text-slate-300">
+              Navegación rápida para tenants, usuarios y auditoría global.
+            </p>
+          </div>
+          <div className="rounded-[22px] border border-white/10 bg-white/5 p-4 backdrop-blur-md">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#A5C330]">
+              Expertos
+            </p>
+            <p className="mt-2 text-sm text-slate-300">
+              Flujo pensado para soporte, gobierno y control de plataforma.
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Footer */}

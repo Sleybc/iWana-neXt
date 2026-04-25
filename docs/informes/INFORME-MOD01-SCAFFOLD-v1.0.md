@@ -206,6 +206,7 @@ TypeScript strict en todos los workspaces — 0 errores ✓
 | FIX-10 | `apps/api/src/modules/auth/strategies/jwt.strategy.ts` | La verificacion RS256 fallaba con PEM cargado desde variable de entorno porque `JWT_PUBLIC_KEY` no normalizaba `\\n` | Agregado `.replace(/\\n/g, '\n')` en `secretOrKey` para que los Bearer tokens validos sean aceptados |
 | FIX-11 | `apps/worker/src/processors/tenant-provisioning.processor.ts` | El worker resolvia `tenant_template.sql` hacia `apps/packages/...` y el provisioning fallaba con `ENOENT` | Corregida la ruta relativa a `../../../../packages/database/src/templates/tenant_template.sql`; provisioning validado con tenant `demoisp2` en estado `ACTIVE` |
 | FIX-12 | `apps/api/src/modules/auth/*` | No existia un flujo formal de login de plataforma ni bootstrap del primer SYSTEM_ADMIN, lo que obligaba a firmar tokens manualmente para operar `/tenants` | Agregado `POST /api/v1/auth/platform/login` y bootstrap opcional del superusuario de plataforma desde variables locales de entorno |
+| FIX-13 | `apps/api/src/main.ts` | Acceder a `http://localhost:3000/` devolvia 404 JSON y Firefox intentaba cargar `/favicon.ico`, generando `NS_ERROR_DOM_CORP_FAILED` por politica CORP | Agregadas respuestas explicitas para `GET /` (`200 text/plain`) y `GET /favicon.ico` (`204` con `Cross-Origin-Resource-Policy: cross-origin`); Helmet mantiene CORP restrictivo en produccion |
 
 ### 8.2 Migraciones ejecutadas
 

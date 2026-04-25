@@ -140,17 +140,15 @@ export function DashboardClient() {
                   title="Total empresas"
                   value={isLoading ? '...' : String(summary.total)}
                   change="Desde el sistema"
-                  icon={<Building2 className="w-5 h-5" />}
-                  iconBg="#EAF5CC"
-                  iconColor="#6A7A1C"
+                  icon={Building2}
+                  tone="secondary"
                 />
                 <MetricCard
                   title="Activos"
                   value={isLoading ? '...' : String(summary.active)}
                   change="Empresas activas"
-                  icon={<Users className="w-5 h-5" />}
-                  iconBg="#EEEEFA"
-                  iconColor="#17163A"
+                  icon={Users}
+                  tone="primary"
                   {...(!isLoading && {
                     trend: {
                       value: summary.total > 0 ? (summary.active / summary.total) * 100 : 0,
@@ -163,9 +161,8 @@ export function DashboardClient() {
                   title="Provisionando"
                   value={isLoading ? '...' : String(summary.provisioning)}
                   change="Empresas en provisioning"
-                  icon={<BriefcaseBusiness className="w-5 h-5" />}
-                  iconBg="#DCFCE7"
-                  iconColor="#22C55E"
+                  icon={BriefcaseBusiness}
+                  tone="success"
                   {...(!isLoading && {
                     trend: {
                       value: summary.total > 0 ? (summary.provisioning / summary.total) * 100 : 0,
@@ -178,9 +175,8 @@ export function DashboardClient() {
                   title="Suspendidos"
                   value={isLoading ? '...' : String(summary.suspended)}
                   change="Cuentas suspendidas"
-                  icon={<AlertTriangle className="w-5 h-5" />}
-                  iconBg="#FEF2F2"
-                  iconColor="#EF4444"
+                  icon={AlertTriangle}
+                  tone="danger"
                   {...(!isLoading && {
                     trend: {
                       value: summary.total > 0 ? (summary.suspended / summary.total) * 100 : 0,
