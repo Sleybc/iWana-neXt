@@ -136,9 +136,7 @@ export default function ChangePasswordPage() {
             {/* Icono de advertencia */}
             <div className={`${FORM_ALERT_WARNING_CLASS} mb-4`}>
               <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-              <p className="font-medium">
-                Accion requerida: cambia tu contrasena temporal
-              </p>
+              <p className="font-medium">Accion requerida: cambia tu contrasena temporal</p>
             </div>
 
             <h2 className="mb-2 text-3xl font-bold text-iwana-primary dark:text-white">
@@ -166,9 +164,7 @@ export default function ChangePasswordPage() {
                   autoComplete="current-password"
                   className={cn(
                     FORM_INPUT_WITH_BOTH_ICONS_CLASS,
-                    errors.currentPassword
-                      ? 'border-red-400 focus:ring-red-500/20'
-                      : '',
+                    errors.currentPassword ? 'border-red-400 focus:ring-red-500/20' : '',
                   )}
                   {...register('currentPassword')}
                 />
@@ -201,9 +197,7 @@ export default function ChangePasswordPage() {
                   autoComplete="new-password"
                   className={cn(
                     FORM_INPUT_WITH_BOTH_ICONS_CLASS,
-                    errors.newPassword
-                      ? 'border-red-400 focus:ring-red-500/20'
-                      : '',
+                    errors.newPassword ? 'border-red-400 focus:ring-red-500/20' : '',
                   )}
                   {...register('newPassword')}
                 />
@@ -233,7 +227,10 @@ export default function ChangePasswordPage() {
                   'Caracter especial',
                 ].map((req) => (
                   <li key={req} className={helperListItemClass}>
-                    <ShieldCheck className="h-3.5 w-3.5 text-iwana-secondary-700 dark:text-iwana-secondary-400" aria-hidden="true" />
+                    <ShieldCheck
+                      className="h-3.5 w-3.5 text-iwana-secondary-700 dark:text-iwana-secondary-400"
+                      aria-hidden="true"
+                    />
                     <span>{req}</span>
                   </li>
                 ))}
@@ -251,9 +248,7 @@ export default function ChangePasswordPage() {
                   autoComplete="new-password"
                   className={cn(
                     FORM_INPUT_WITH_BOTH_ICONS_CLASS,
-                    errors.confirmPassword
-                      ? 'border-red-400 focus:ring-red-500/20'
-                      : '',
+                    errors.confirmPassword ? 'border-red-400 focus:ring-red-500/20' : '',
                   )}
                   {...register('confirmPassword')}
                 />
@@ -283,13 +278,10 @@ export default function ChangePasswordPage() {
               </div>
             )}
 
-            <Button
-              type="submit"
-              size="lg"
-              className="mt-2 w-full"
-              loading={isSubmitting}
-            >
-              {isSubmitting ? 'Guardando cambios' : (
+            <Button type="submit" size="lg" className="mt-2 w-full" loading={isSubmitting}>
+              {isSubmitting ? (
+                'Guardando cambios'
+              ) : (
                 <>
                   <span>Establecer nueva contrasena</span>
                   <ArrowRight className="h-4 w-4" aria-hidden="true" />
@@ -299,7 +291,10 @@ export default function ChangePasswordPage() {
 
             <div className={`${FORM_SECTION_CARD_CLASS} mt-2`}>
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-gray-600 dark:text-gray-400">
-                <ShieldCheck className="h-4 w-4 text-iwana-secondary-700 dark:text-iwana-secondary-400" aria-hidden="true" />
+                <ShieldCheck
+                  className="h-4 w-4 text-iwana-secondary-700 dark:text-iwana-secondary-400"
+                  aria-hidden="true"
+                />
                 <span>Politica NIST SP 800-63B</span>
               </div>
               <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">

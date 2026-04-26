@@ -144,7 +144,8 @@ export function SecuritySettings() {
               Cambiar contraseña
             </h2>
             <p className={`mt-1 ${FORM_HELP_CLASS}`}>
-              Actualiza la credencial principal del administrador de plataforma con la misma política aplicada en el flujo de primer ingreso.
+              Actualiza la credencial principal del administrador de plataforma con la misma
+              política aplicada en el flujo de primer ingreso.
             </p>
           </div>
         </div>
@@ -177,9 +178,7 @@ export function SecuritySettings() {
               className={FORM_INPUT_CLASS}
               {...register('newPassword')}
             />
-            {errors.newPassword && (
-              <p className={FORM_ERROR_CLASS}>{errors.newPassword.message}</p>
-            )}
+            {errors.newPassword && <p className={FORM_ERROR_CLASS}>{errors.newPassword.message}</p>}
           </div>
 
           <div>
@@ -214,7 +213,8 @@ export function SecuritySettings() {
           <div>
             <h2 className="text-lg font-semibold text-iwana-primary dark:text-white">MFA</h2>
             <p className={`mt-1 ${FORM_HELP_CLASS}`}>
-              Gestiona el segundo factor del acceso administrativo y confirma la activación con un código TOTP válido.
+              Gestiona el segundo factor del acceso administrativo y confirma la activación con un
+              código TOTP válido.
             </p>
           </div>
         </div>
@@ -242,16 +242,14 @@ export function SecuritySettings() {
               <QrCode className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
               <div className="space-y-3">
                 <p className="font-semibold">Código QR para configuración MFA</p>
-              <img
-                src={qrCodeSrc}
-                alt="QR de configuración MFA"
-                className="h-44 w-44 rounded-2xl border border-gray-200 bg-white"
-              />
-              {mfaState.otpauthUri && (
-                <p className={`break-all ${FORM_MICROCOPY_CLASS}`}>
-                  {mfaState.otpauthUri}
-                </p>
-              )}
+                <img
+                  src={qrCodeSrc}
+                  alt="QR de configuración MFA"
+                  className="h-44 w-44 rounded-2xl border border-gray-200 bg-white"
+                />
+                {mfaState.otpauthUri && (
+                  <p className={`break-all ${FORM_MICROCOPY_CLASS}`}>{mfaState.otpauthUri}</p>
+                )}
               </div>
             </div>
           )}
@@ -262,7 +260,8 @@ export function SecuritySettings() {
                 Confirmar configuración inicial
               </h3>
               <p className={FORM_MICROCOPY_CLASS}>
-                Ingresa el primer código generado por tu app autenticadora para completar la activación.
+                Ingresa el primer código generado por tu app autenticadora para completar la
+                activación.
               </p>
               <input
                 type="text"
@@ -290,11 +289,15 @@ export function SecuritySettings() {
                 Deshabilitar MFA
               </h3>
               <p className={FORM_MICROCOPY_CLASS}>
-                Para deshabilitar MFA debes confirmar tu contraseña actual y un código activo de tu autenticador.
+                Para deshabilitar MFA debes confirmar tu contraseña actual y un código activo de tu
+                autenticador.
               </p>
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
-                  <label className={`block ${FORM_LABEL_CLASS}`} htmlFor="security-mfa-disable-password">
+                  <label
+                    className={`block ${FORM_LABEL_CLASS}`}
+                    htmlFor="security-mfa-disable-password"
+                  >
                     Contraseña actual
                   </label>
                   <input
@@ -307,7 +310,10 @@ export function SecuritySettings() {
                   />
                 </div>
                 <div>
-                  <label className={`block ${FORM_LABEL_CLASS}`} htmlFor="security-mfa-disable-code">
+                  <label
+                    className={`block ${FORM_LABEL_CLASS}`}
+                    htmlFor="security-mfa-disable-code"
+                  >
                     Código MFA
                   </label>
                   <input

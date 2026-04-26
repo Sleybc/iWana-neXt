@@ -6,14 +6,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Button, Select } from '@iwana/ui';
 import { ApiError, usersApi, type UpdateUserPayload, type UserListItem } from '@/lib/api-client';
-import {
-  BadgePlus,
-  CheckCircle2,
-  CircleAlert,
-  Clock3,
-  ShieldCheck,
-  Trash2,
-} from 'lucide-react';
+import { BadgePlus, CheckCircle2, CircleAlert, Clock3, ShieldCheck, Trash2 } from 'lucide-react';
 import {
   FORM_ALERT_ERROR_CLASS,
   FORM_ALERT_SUCCESS_CLASS,
@@ -233,7 +226,10 @@ export function UserManagementModal({
               <BadgePlus className="h-4 w-4" aria-hidden="true" />
               <span>Gestión operativa</span>
             </div>
-            <h3 id="user-management-modal-title" className="mt-2 text-xl font-semibold text-iwana-primary dark:text-white">
+            <h3
+              id="user-management-modal-title"
+              className="mt-2 text-xl font-semibold text-iwana-primary dark:text-white"
+            >
               {fullName ?? 'Gestión de usuario'}
             </h3>
             <p className="mt-1 font-mono text-xs text-gray-400">{user.id}</p>
@@ -356,7 +352,11 @@ export function UserManagementModal({
                 Seguridad
               </p>
               <label className="mt-3 flex items-center gap-3 text-sm font-medium text-gray-700 dark:text-gray-300">
-                <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-iwana-primary focus:ring-iwana-primary/30 dark:border-dark-border dark:bg-dark-surface-3" {...register('mfaRequired')} />
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-gray-300 text-iwana-primary focus:ring-iwana-primary/30 dark:border-dark-border dark:bg-dark-surface-3"
+                  {...register('mfaRequired')}
+                />
                 Requerir verificación en dos pasos (MFA)
               </label>
               {detail?.mfaEnabled && (
@@ -371,10 +371,11 @@ export function UserManagementModal({
             <div className={`${FORM_SECTION_CARD_CLASS} space-y-3`}>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-                Datos de perfil
+                  Datos de perfil
                 </p>
                 <p className={`mt-1 ${FORM_HELP_CLASS}`}>
-                  Edita la información visible y operativa del usuario sin tocar credenciales directas.
+                  Edita la información visible y operativa del usuario sin tocar credenciales
+                  directas.
                 </p>
               </div>
 
@@ -389,7 +390,9 @@ export function UserManagementModal({
                     placeholder="Carlos"
                     {...register('firstName')}
                   />
-                  {errors.firstName && <p className={FORM_ERROR_CLASS}>{errors.firstName.message}</p>}
+                  {errors.firstName && (
+                    <p className={FORM_ERROR_CLASS}>{errors.firstName.message}</p>
+                  )}
                 </div>
                 <div>
                   <label htmlFor="um-lastname" className={`block ${FORM_LABEL_CLASS}`}>
@@ -456,8 +459,7 @@ export function UserManagementModal({
                 </div>
                 <div>
                   <label htmlFor="um-docnum" className={`block ${FORM_LABEL_CLASS}`}>
-                    N.° de documento{' '}
-                    <span className={FORM_MICROCOPY_CLASS}>(se cifra)</span>
+                    N.° de documento <span className={FORM_MICROCOPY_CLASS}>(se cifra)</span>
                   </label>
                   <input
                     id="um-docnum"
@@ -465,7 +467,9 @@ export function UserManagementModal({
                     placeholder="Dejar vacío para no modificar"
                     {...register('documentNumber')}
                   />
-                  {errors.documentNumber && <p className={FORM_ERROR_CLASS}>{errors.documentNumber.message}</p>}
+                  {errors.documentNumber && (
+                    <p className={FORM_ERROR_CLASS}>{errors.documentNumber.message}</p>
+                  )}
                 </div>
               </div>
 
@@ -522,7 +526,9 @@ function mapUserToForm(user: UserListItem): UpdateUserFormValues {
   };
 }
 
-function normalizeDocumentType(value: string | null | undefined): UpdateUserFormValues['documentType'] {
+function normalizeDocumentType(
+  value: string | null | undefined,
+): UpdateUserFormValues['documentType'] {
   switch (value) {
     case 'CC':
     case 'CE':

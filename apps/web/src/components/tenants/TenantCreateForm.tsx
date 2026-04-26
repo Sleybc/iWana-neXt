@@ -299,7 +299,14 @@ export function TenantCreateForm() {
       return val != null && val !== false;
     };
     const esencialRequired = ['name', 'slug', 'contactEmail'] as const;
-    const empresaTracked = ['legalName', 'nit', 'companyType', 'address', 'city', 'department'] as const;
+    const empresaTracked = [
+      'legalName',
+      'nit',
+      'companyType',
+      'address',
+      'city',
+      'department',
+    ] as const;
     const contactoTracked = ['phone', 'website', 'economicSector'] as const;
     return [
       {
@@ -323,15 +330,16 @@ export function TenantCreateForm() {
     ];
   }, [allValues]);
 
-  const provisioningStatus = useMemo(
-    (): 'idle' | 'PROVISIONING' | 'ACTIVE' | 'PROVISIONING_FAILED' => {
-      if (!createdTenant) return 'idle';
-      if (createdTenant.status === 'ACTIVE') return 'ACTIVE';
-      if (createdTenant.status === 'PROVISIONING_FAILED') return 'PROVISIONING_FAILED';
-      return 'PROVISIONING';
-    },
-    [createdTenant],
-  );
+  const provisioningStatus = useMemo(():
+    | 'idle'
+    | 'PROVISIONING'
+    | 'ACTIVE'
+    | 'PROVISIONING_FAILED' => {
+    if (!createdTenant) return 'idle';
+    if (createdTenant.status === 'ACTIVE') return 'ACTIVE';
+    if (createdTenant.status === 'PROVISIONING_FAILED') return 'PROVISIONING_FAILED';
+    return 'PROVISIONING';
+  }, [createdTenant]);
 
   const onSubmit = async (values: TenantCreateFormValues) => {
     setError(null);
@@ -964,5 +972,3 @@ export function TenantCreateForm() {
     </div>
   );
 }
-
-

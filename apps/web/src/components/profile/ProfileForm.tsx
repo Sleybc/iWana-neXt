@@ -1,6 +1,14 @@
 'use client';
 
-import { CheckCircle2, ChevronDown, ChevronUp, CircleAlert, Lock, Mail, UserRound } from 'lucide-react';
+import {
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  CircleAlert,
+  Lock,
+  Mail,
+  UserRound,
+} from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
@@ -236,9 +244,12 @@ export function ProfileForm() {
           <UserRound className="h-5 w-5" aria-hidden="true" />
         </div>
         <div>
-          <h2 className="text-lg font-semibold text-iwana-primary dark:text-white">Datos de perfil</h2>
+          <h2 className="text-lg font-semibold text-iwana-primary dark:text-white">
+            Datos de perfil
+          </h2>
           <p className={`mt-1 ${FORM_HELP_CLASS}`}>
-            Actualiza tu información operativa y los datos base del usuario de plataforma sin cambiar el correo de acceso ni la contraseña desde este primer bloque.
+            Actualiza tu información operativa y los datos base del usuario de plataforma sin
+            cambiar el correo de acceso ni la contraseña desde este primer bloque.
           </p>
         </div>
       </div>
@@ -269,9 +280,7 @@ export function ProfileForm() {
               className={FORM_INPUT_CLASS}
               {...register('firstName')}
             />
-            {errors.firstName && (
-              <p className={FORM_ERROR_CLASS}>{errors.firstName.message}</p>
-            )}
+            {errors.firstName && <p className={FORM_ERROR_CLASS}>{errors.firstName.message}</p>}
           </div>
 
           <div>
@@ -285,9 +294,7 @@ export function ProfileForm() {
               className={FORM_INPUT_CLASS}
               {...register('lastName')}
             />
-            {errors.lastName && (
-              <p className={FORM_ERROR_CLASS}>{errors.lastName.message}</p>
-            )}
+            {errors.lastName && <p className={FORM_ERROR_CLASS}>{errors.lastName.message}</p>}
           </div>
         </div>
 
@@ -363,7 +370,8 @@ export function ProfileForm() {
           Seguridad de la cuenta
         </h3>
         <p className={`mb-6 ${FORM_HELP_CLASS}`}>
-          Separa el mantenimiento del perfil operativo de los cambios sensibles de acceso para reducir errores y hacer más clara cada acción administrativa.
+          Separa el mantenimiento del perfil operativo de los cambios sensibles de acceso para
+          reducir errores y hacer más clara cada acción administrativa.
         </p>
 
         <div className="space-y-6">
@@ -539,7 +547,8 @@ export function ProfileForm() {
                 </div>
 
                 <p className={FORM_MICROCOPY_CLASS}>
-                  Tras un cambio exitoso de contraseña, la sesión se cerrará automáticamente para forzar reautenticación segura.
+                  Tras un cambio exitoso de contraseña, la sesión se cerrará automáticamente para
+                  forzar reautenticación segura.
                 </p>
 
                 {passwordError && (

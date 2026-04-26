@@ -137,7 +137,10 @@ export function MfaVerifyForm() {
 
       <div className={`${FORM_SECTION_CARD_CLASS} w-full`}>
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-gray-600 dark:text-gray-400">
-          <ShieldCheck className="h-4 w-4 text-iwana-secondary-700 dark:text-iwana-secondary-400" aria-hidden="true" />
+          <ShieldCheck
+            className="h-4 w-4 text-iwana-secondary-700 dark:text-iwana-secondary-400"
+            aria-hidden="true"
+          />
           <span>Verificación segura</span>
         </div>
         <p className={`mt-2 ${FORM_HELP_CLASS}`}>

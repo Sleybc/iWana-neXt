@@ -197,9 +197,7 @@ export function LoginForm() {
               autoComplete="email"
               className={cn(
                 FORM_INPUT_WITH_LEADING_ICON_CLASS,
-                emailForm.formState.errors.email
-                  ? 'border-red-400 focus:ring-red-500/20'
-                  : '',
+                emailForm.formState.errors.email ? 'border-red-400 focus:ring-red-500/20' : '',
               )}
               placeholder="admin@iwana.co"
               {...emailForm.register('email')}
@@ -223,7 +221,9 @@ export function LoginForm() {
           className="mt-2 w-full"
           loading={emailForm.formState.isSubmitting}
         >
-          {emailForm.formState.isSubmitting ? 'Validando correo' : (
+          {emailForm.formState.isSubmitting ? (
+            'Validando correo'
+          ) : (
             <>
               <span>Continuar</span>
               <ArrowRight className="h-4 w-4" aria-hidden="true" />
@@ -255,7 +255,9 @@ export function LoginForm() {
 
         <div className={FORM_SECTION_CARD_CLASS}>
           <p className={FORM_MICROCOPY_CLASS}>Usuario principal de plataforma</p>
-          <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{bootstrapEmail}</p>
+          <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+            {bootstrapEmail}
+          </p>
         </div>
 
         <label className="flex flex-col gap-2">
@@ -288,7 +290,9 @@ export function LoginForm() {
             </button>
           </div>
           {passwordForm.formState.errors.password && (
-            <span className={FORM_ERROR_CLASS}>{passwordForm.formState.errors.password.message}</span>
+            <span className={FORM_ERROR_CLASS}>
+              {passwordForm.formState.errors.password.message}
+            </span>
           )}
         </label>
 
@@ -336,7 +340,13 @@ export function LoginForm() {
         )}
 
         <div className="mt-2 flex gap-3">
-          <Button type="button" variant="secondary" size="lg" onClick={handleBackToEmail} className="flex-1">
+          <Button
+            type="button"
+            variant="secondary"
+            size="lg"
+            onClick={handleBackToEmail}
+            className="flex-1"
+          >
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             Atrás
           </Button>
@@ -355,12 +365,17 @@ export function LoginForm() {
             Requisitos mínimos
           </p>
           <ul className="mt-3 flex flex-wrap gap-2">
-            {['Min. 10 caracteres', 'Mayúscula', 'Minúscula', 'Número', 'Especial'].map((requirement) => (
-              <li key={requirement} className={helperListItemClass}>
-                <CheckCircle2 className="h-3.5 w-3.5 text-iwana-secondary-700 dark:text-iwana-secondary-400" aria-hidden="true" />
-                <span>{requirement}</span>
-              </li>
-            ))}
+            {['Min. 10 caracteres', 'Mayúscula', 'Minúscula', 'Número', 'Especial'].map(
+              (requirement) => (
+                <li key={requirement} className={helperListItemClass}>
+                  <CheckCircle2
+                    className="h-3.5 w-3.5 text-iwana-secondary-700 dark:text-iwana-secondary-400"
+                    aria-hidden="true"
+                  />
+                  <span>{requirement}</span>
+                </li>
+              ),
+            )}
           </ul>
         </div>
       </form>
@@ -385,9 +400,7 @@ export function LoginForm() {
             autoComplete="email"
             className={cn(
               FORM_INPUT_WITH_LEADING_ICON_CLASS,
-              loginForm.formState.errors.email
-                ? 'border-red-400 focus:ring-red-500/20'
-                : '',
+              loginForm.formState.errors.email ? 'border-red-400 focus:ring-red-500/20' : '',
             )}
             {...loginForm.register('email')}
           />
@@ -415,9 +428,7 @@ export function LoginForm() {
             autoComplete="current-password"
             className={cn(
               FORM_INPUT_WITH_BOTH_ICONS_CLASS,
-              loginForm.formState.errors.password
-                ? 'border-red-400 focus:ring-red-500/20'
-                : '',
+              loginForm.formState.errors.password ? 'border-red-400 focus:ring-red-500/20' : '',
             )}
             {...loginForm.register('password')}
           />
@@ -452,7 +463,9 @@ export function LoginForm() {
         className="mt-2 w-full"
         loading={loginForm.formState.isSubmitting}
       >
-        {loginForm.formState.isSubmitting ? 'Ingresando' : (
+        {loginForm.formState.isSubmitting ? (
+          'Ingresando'
+        ) : (
           <>
             <span>Ingresar</span>
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
@@ -462,11 +475,15 @@ export function LoginForm() {
 
       <div className={footerCardClass}>
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-gray-600 dark:text-gray-400">
-          <ShieldCheck className="h-4 w-4 text-iwana-secondary-700 dark:text-iwana-secondary-400" aria-hidden="true" />
+          <ShieldCheck
+            className="h-4 w-4 text-iwana-secondary-700 dark:text-iwana-secondary-400"
+            aria-hidden="true"
+          />
           <span>Sesión segura vía JWT</span>
         </div>
         <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-          Auditoría de IP activa, MFA condicional y recuperación controlada desde el flujo de plataforma.
+          Auditoría de IP activa, MFA condicional y recuperación controlada desde el flujo de
+          plataforma.
         </p>
       </div>
     </form>

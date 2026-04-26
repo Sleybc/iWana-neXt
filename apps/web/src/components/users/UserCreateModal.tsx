@@ -1,6 +1,13 @@
 'use client';
 
-import { BadgePlus, CheckCircle2, ChevronDown, ChevronUp, CircleAlert, KeyRound } from 'lucide-react';
+import {
+  BadgePlus,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  CircleAlert,
+  KeyRound,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
@@ -176,7 +183,8 @@ export function UserCreateModal({
               Crear usuario
             </h3>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Registra un nuevo operador de plataforma y define si usará contraseña temporal o una credencial asignada manualmente.
+              Registra un nuevo operador de plataforma y define si usará contraseña temporal o una
+              credencial asignada manualmente.
             </p>
           </div>
           <Button type="button" variant="secondary" onClick={onClose}>
@@ -192,7 +200,7 @@ export function UserCreateModal({
               <div>
                 <p className="font-semibold">Usuario creado exitosamente</p>
                 <p className="mt-1">
-                <strong>Email:</strong> {createdResult.email}
+                  <strong>Email:</strong> {createdResult.email}
                 </p>
               </div>
             </div>
@@ -201,7 +209,7 @@ export function UserCreateModal({
               <KeyRound className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
               <div className="w-full">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em]">
-                Contraseña temporal — copia esta clave antes de cerrar
+                  Contraseña temporal — copia esta clave antes de cerrar
                 </p>
                 {/* select-all permite seleccionar y copiar con un solo clic */}
                 <p
@@ -237,7 +245,8 @@ export function UserCreateModal({
                   Credenciales
                 </p>
                 <p className={`mt-1 ${FORM_HELP_CLASS}`}>
-                  Define acceso, rol operativo y si el usuario deberá completar MFA en su primer ingreso.
+                  Define acceso, rol operativo y si el usuario deberá completar MFA en su primer
+                  ingreso.
                 </p>
 
                 <div className="mt-4">
@@ -323,13 +332,20 @@ export function UserCreateModal({
                       Datos de perfil
                     </p>
                     <p className={`mt-1 ${FORM_MICROCOPY_CLASS}`}>
-                      Información complementaria para identificar al usuario en la operación interna.
+                      Información complementaria para identificar al usuario en la operación
+                      interna.
                     </p>
                   </div>
                   {showProfile ? (
-                    <ChevronUp className="h-4 w-4 text-gray-500 dark:text-gray-400" aria-hidden="true" />
+                    <ChevronUp
+                      className="h-4 w-4 text-gray-500 dark:text-gray-400"
+                      aria-hidden="true"
+                    />
                   ) : (
-                    <ChevronDown className="h-4 w-4 text-gray-500 dark:text-gray-400" aria-hidden="true" />
+                    <ChevronDown
+                      className="h-4 w-4 text-gray-500 dark:text-gray-400"
+                      aria-hidden="true"
+                    />
                   )}
                 </button>
 

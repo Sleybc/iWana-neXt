@@ -10,7 +10,10 @@ export const metadata: Metadata = {
 
 export default function MfaVerifyPage() {
   return (
-    <main className="relative min-h-screen flex flex-col overflow-hidden bg-[#181818] lg:flex-row" aria-label="Verificación en dos pasos">
+    <main
+      className="relative min-h-screen flex flex-col overflow-hidden bg-[#181818] lg:flex-row"
+      aria-label="Verificación en dos pasos"
+    >
       <LoginBrandPanel
         title="Verificación en dos pasos"
         subtitle="Tu cuenta está protegida con autenticación de dos factores"
@@ -37,7 +40,9 @@ export default function MfaVerifyPage() {
                 />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold text-iwana-primary dark:text-white">Verificación en dos pasos</h2>
+            <h2 className="text-2xl font-bold text-iwana-primary dark:text-white">
+              Verificación en dos pasos
+            </h2>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               Ingresa el código de 6 dígitos de tu app autenticadora
             </p>
