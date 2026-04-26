@@ -1,11 +1,11 @@
 'use client';
 
+import { CheckCircle2, ChevronDown, ChevronUp, CircleAlert, Lock, Mail, UserRound } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Button } from '@iwana/ui';
-import { Mail, Lock } from 'lucide-react';
+import { Button, Select } from '@iwana/ui';
 import {
   ApiError,
   authApi,
@@ -15,6 +15,16 @@ import {
   type UpdatePlatformUserPayload,
 } from '@/lib/api-client';
 import { useAuth } from '@/components/auth/AuthProvider';
+import {
+  FORM_ALERT_ERROR_CLASS,
+  FORM_ALERT_SUCCESS_CLASS,
+  FORM_ERROR_CLASS,
+  FORM_HELP_CLASS,
+  FORM_INPUT_CLASS,
+  FORM_LABEL_CLASS,
+  FORM_MICROCOPY_CLASS,
+  FORM_SECTION_CARD_CLASS,
+} from '@/lib/form-styles';
 
 export const profileSchema = z.object({
   firstName: z.string().max(100).optional().or(z.literal('')),
@@ -46,6 +56,16 @@ type ChangePasswordFormValues = z.infer<typeof changePasswordSchema>;
 
 const TIMEZONES = ['America/Bogota', 'America/Lima', 'America/Mexico_City', 'UTC'];
 
+const TIMEZONE_OPTIONS = TIMEZONES.map((timezone) => ({ value: timezone, label: timezone }));
+
+const LANGUAGE_OPTIONS = [
+  { value: 'es-CO', label: 'es-CO' },
+  { value: 'en-US', label: 'en-US' },
+];
+
+const accountSectionClass =
+  'rounded-2xl border border-gray-100 bg-white/70 p-4 dark:border-dark-border dark:bg-dark-surface-2/70';
+
 export function ProfileForm() {
   const { refreshProfile, logout } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
@@ -64,6 +84,7 @@ export function ProfileForm() {
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors },
@@ -201,139 +222,156 @@ export function ProfileForm() {
   };
 
   if (isLoading) {
-    return <p className="text-sm text-gray-500 dark:text-gray-300">Cargando perfil...</p>;
+    return (
+      <div className={FORM_SECTION_CARD_CLASS}>
+        <p className="text-sm text-gray-500 dark:text-gray-300">Cargando perfil...</p>
+      </div>
+    );
   }
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-dark-border dark:bg-dark-surface-2">
-      <h2 className="mb-6 text-lg font-semibold text-iwana-primary dark:text-white">
-        Datos de perfil
-      </h2>
+    <div className={FORM_SECTION_CARD_CLASS}>
+      <div className="mb-6 flex items-start gap-3">
+        <div className="rounded-2xl bg-white p-2 text-iwana-primary shadow-sm dark:bg-dark-surface-2 dark:text-white">
+          <UserRound className="h-5 w-5" aria-hidden="true" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-iwana-primary dark:text-white">Datos de perfil</h2>
+          <p className={`mt-1 ${FORM_HELP_CLASS}`}>
+            Actualiza tu información operativa y los datos base del usuario de plataforma sin cambiar el correo de acceso ni la contraseña desde este primer bloque.
+          </p>
+        </div>
+      </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         {serverError && (
-          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{serverError}</p>
+          <div role="alert" className={FORM_ALERT_ERROR_CLASS}>
+            <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+            <p>{serverError}</p>
+          </div>
         )}
         {successMessage && (
-          <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
-            {successMessage}
-          </p>
+          <div className={FORM_ALERT_SUCCESS_CLASS}>
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+            <p>{successMessage}</p>
+          </div>
         )}
 
         <div className="grid gap-4 md:grid-cols-2">
           <div>
-            <label
-              htmlFor="profile-first-name"
-              className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-            >
+            <label htmlFor="profile-first-name" className={`block ${FORM_LABEL_CLASS}`}>
               Nombres
             </label>
             <input
               id="profile-first-name"
               type="text"
               maxLength={100}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
+              className={FORM_INPUT_CLASS}
               {...register('firstName')}
             />
             {errors.firstName && (
-              <p className="mt-1 text-xs text-red-600">{errors.firstName.message}</p>
+              <p className={FORM_ERROR_CLASS}>{errors.firstName.message}</p>
             )}
           </div>
 
           <div>
-            <label
-              htmlFor="profile-last-name"
-              className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-            >
+            <label htmlFor="profile-last-name" className={`block ${FORM_LABEL_CLASS}`}>
               Apellidos
             </label>
             <input
               id="profile-last-name"
               type="text"
               maxLength={100}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
+              className={FORM_INPUT_CLASS}
               {...register('lastName')}
             />
             {errors.lastName && (
-              <p className="mt-1 text-xs text-red-600">{errors.lastName.message}</p>
+              <p className={FORM_ERROR_CLASS}>{errors.lastName.message}</p>
             )}
           </div>
         </div>
 
         <div>
-          <label
-            htmlFor="profile-phone"
-            className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-          >
+          <label htmlFor="profile-phone" className={`block ${FORM_LABEL_CLASS}`}>
             Teléfono
           </label>
           <input
             id="profile-phone"
             type="text"
             placeholder="+573001112233"
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
+            className={FORM_INPUT_CLASS}
             {...register('phone')}
           />
-          {errors.phone && <p className="mt-1 text-xs text-red-600">{errors.phone.message}</p>}
+          {errors.phone && <p className={FORM_ERROR_CLASS}>{errors.phone.message}</p>}
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
           <div>
-            <label
-              htmlFor="profile-timezone"
-              className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-            >
+            <label htmlFor="profile-timezone" className={`block ${FORM_LABEL_CLASS}`}>
               Zona horaria
             </label>
-            <select
-              id="profile-timezone"
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
-              {...register('timezone')}
-            >
-              {TIMEZONES.map((timezone) => (
-                <option key={timezone} value={timezone}>
-                  {timezone}
-                </option>
-              ))}
-            </select>
+            <Controller
+              control={control}
+              name="timezone"
+              render={({ field, fieldState }) => (
+                <Select
+                  id="profile-timezone"
+                  options={TIMEZONE_OPTIONS}
+                  value={field.value ?? ''}
+                  name={field.name}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  ref={field.ref}
+                  {...(fieldState.error ? { error: fieldState.error.message } : {})}
+                />
+              )}
+            />
           </div>
 
           <div>
-            <label
-              htmlFor="profile-language"
-              className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-            >
+            <label htmlFor="profile-language" className={`block ${FORM_LABEL_CLASS}`}>
               Idioma
             </label>
-            <select
-              id="profile-language"
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
-              {...register('language')}
-            >
-              <option value="es-CO">es-CO</option>
-              <option value="en-US">en-US</option>
-            </select>
+            <Controller
+              control={control}
+              name="language"
+              render={({ field, fieldState }) => (
+                <Select
+                  id="profile-language"
+                  options={LANGUAGE_OPTIONS}
+                  value={field.value ?? ''}
+                  name={field.name}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  ref={field.ref}
+                  {...(fieldState.error ? { error: fieldState.error.message } : {})}
+                />
+              )}
+            />
           </div>
         </div>
 
-        <div className="flex justify-end border-t border-gray-200 pt-6 dark:border-dark-border">
-          <Button type="submit" loading={isSaving}>
+        <div className="flex justify-end border-t border-gray-100 pt-6 dark:border-dark-border">
+          <Button type="submit" size="lg" loading={isSaving}>
             Guardar cambios
           </Button>
         </div>
       </form>
 
-      <div className="mt-8 border-t border-gray-200 pt-6 dark:border-dark-border">
-        <h3 className="mb-6 text-lg font-semibold text-iwana-primary dark:text-white">
+      <div className="mt-8 border-t border-gray-100 pt-6 dark:border-dark-border">
+        <h3 className="mb-2 text-lg font-semibold text-iwana-primary dark:text-white">
           Seguridad de la cuenta
         </h3>
+        <p className={`mb-6 ${FORM_HELP_CLASS}`}>
+          Separa el mantenimiento del perfil operativo de los cambios sensibles de acceso para reducir errores y hacer más clara cada acción administrativa.
+        </p>
 
         <div className="space-y-6">
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-surface-3">
+          <div className={accountSectionClass}>
             <div className="flex items-center justify-between">
               <div>
                 <h4 className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
-                  <Mail className="h-4 w-4" /> Email de acceso
+                  <Mail className="h-4 w-4" aria-hidden="true" /> Email de acceso
                 </h4>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{currentEmail}</p>
               </div>
@@ -356,55 +394,52 @@ export function ProfileForm() {
             {isEmailSectionExpanded && (
               <form
                 onSubmit={handleSubmitEmail(onSubmitLoginEmail)}
-                className="mt-4 space-y-4 border-t border-gray-200 pt-4 dark:border-dark-border"
+                className="mt-4 space-y-4 border-t border-gray-100 pt-4 dark:border-dark-border"
               >
                 <div>
-                  <label
-                    htmlFor="profile-login-email"
-                    className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-                  >
+                  <label htmlFor="profile-login-email" className={`block ${FORM_LABEL_CLASS}`}>
                     Nuevo email de acceso
                   </label>
                   <input
                     id="profile-login-email"
                     type="email"
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
+                    className={FORM_INPUT_CLASS}
                     {...registerEmail('email')}
                   />
                   {emailErrors.email && (
-                    <p className="mt-1 text-xs text-red-600">{emailErrors.email.message}</p>
+                    <p className={FORM_ERROR_CLASS}>{emailErrors.email.message}</p>
                   )}
                 </div>
 
                 <div>
                   <label
                     htmlFor="profile-login-current-password"
-                    className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                    className={`block ${FORM_LABEL_CLASS}`}
                   >
                     Contraseña actual
                   </label>
                   <input
                     id="profile-login-current-password"
                     type="password"
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
+                    className={FORM_INPUT_CLASS}
                     {...registerEmail('currentPassword')}
                   />
                   {emailErrors.currentPassword && (
-                    <p className="mt-1 text-xs text-red-600">
-                      {emailErrors.currentPassword.message}
-                    </p>
+                    <p className={FORM_ERROR_CLASS}>{emailErrors.currentPassword.message}</p>
                   )}
                 </div>
 
                 {emailError && (
-                  <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-                    {emailError}
-                  </p>
+                  <div role="alert" className={FORM_ALERT_ERROR_CLASS}>
+                    <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+                    <p>{emailError}</p>
+                  </div>
                 )}
                 {emailSuccessMessage && (
-                  <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
-                    {emailSuccessMessage}
-                  </p>
+                  <div className={FORM_ALERT_SUCCESS_CLASS}>
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+                    <p>{emailSuccessMessage}</p>
+                  </div>
                 )}
 
                 <div className="flex justify-end gap-3">
@@ -419,7 +454,7 @@ export function ProfileForm() {
                   >
                     Cancelar
                   </Button>
-                  <Button type="submit" loading={isSavingEmail}>
+                  <Button type="submit" size="lg" loading={isSavingEmail}>
                     Actualizar email
                   </Button>
                 </div>
@@ -427,11 +462,11 @@ export function ProfileForm() {
             )}
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-surface-3">
+          <div className={accountSectionClass}>
             <div className="flex items-center justify-between">
               <div>
                 <h4 className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
-                  <Lock className="h-4 w-4" /> Cambiar contraseña
+                  <Lock className="h-4 w-4" aria-hidden="true" /> Cambiar contraseña
                 </h4>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                   Requiere contraseña actual para confirmar
@@ -456,77 +491,68 @@ export function ProfileForm() {
             {isPasswordSectionExpanded && (
               <form
                 onSubmit={handleSubmitPassword(onSubmitPassword)}
-                className="mt-4 space-y-4 border-t border-gray-200 pt-4 dark:border-dark-border"
+                className="mt-4 space-y-4 border-t border-gray-100 pt-4 dark:border-dark-border"
               >
                 <div>
-                  <label
-                    htmlFor="profile-password-current"
-                    className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-                  >
+                  <label htmlFor="profile-password-current" className={`block ${FORM_LABEL_CLASS}`}>
                     Contraseña actual
                   </label>
                   <input
                     id="profile-password-current"
                     type="password"
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
+                    className={FORM_INPUT_CLASS}
                     {...registerPassword('currentPassword')}
                   />
                   {passwordErrors.currentPassword && (
-                    <p className="mt-1 text-xs text-red-600">
-                      {passwordErrors.currentPassword.message}
-                    </p>
+                    <p className={FORM_ERROR_CLASS}>{passwordErrors.currentPassword.message}</p>
                   )}
                 </div>
 
                 <div>
-                  <label
-                    htmlFor="profile-password-new"
-                    className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-                  >
+                  <label htmlFor="profile-password-new" className={`block ${FORM_LABEL_CLASS}`}>
                     Nueva contraseña
                   </label>
                   <input
                     id="profile-password-new"
                     type="password"
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
+                    className={FORM_INPUT_CLASS}
                     {...registerPassword('newPassword')}
                   />
                   {passwordErrors.newPassword && (
-                    <p className="mt-1 text-xs text-red-600">
-                      {passwordErrors.newPassword.message}
-                    </p>
+                    <p className={FORM_ERROR_CLASS}>{passwordErrors.newPassword.message}</p>
                   )}
                 </div>
 
                 <div>
-                  <label
-                    htmlFor="profile-password-confirm"
-                    className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-                  >
+                  <label htmlFor="profile-password-confirm" className={`block ${FORM_LABEL_CLASS}`}>
                     Confirmar nueva contraseña
                   </label>
                   <input
                     id="profile-password-confirm"
                     type="password"
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
+                    className={FORM_INPUT_CLASS}
                     {...registerPassword('confirmPassword')}
                   />
                   {passwordErrors.confirmPassword && (
-                    <p className="mt-1 text-xs text-red-600">
-                      {passwordErrors.confirmPassword.message}
-                    </p>
+                    <p className={FORM_ERROR_CLASS}>{passwordErrors.confirmPassword.message}</p>
                   )}
                 </div>
 
+                <p className={FORM_MICROCOPY_CLASS}>
+                  Tras un cambio exitoso de contraseña, la sesión se cerrará automáticamente para forzar reautenticación segura.
+                </p>
+
                 {passwordError && (
-                  <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-                    {passwordError}
-                  </p>
+                  <div role="alert" className={FORM_ALERT_ERROR_CLASS}>
+                    <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+                    <p>{passwordError}</p>
+                  </div>
                 )}
                 {passwordSuccessMessage && (
-                  <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
-                    {passwordSuccessMessage}
-                  </p>
+                  <div className={FORM_ALERT_SUCCESS_CLASS}>
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+                    <p>{passwordSuccessMessage}</p>
+                  </div>
                 )}
 
                 <div className="flex justify-end gap-3">
@@ -541,7 +567,7 @@ export function ProfileForm() {
                   >
                     Cancelar
                   </Button>
-                  <Button type="submit" loading={isSavingPassword}>
+                  <Button type="submit" size="lg" loading={isSavingPassword}>
                     Cambiar contraseña
                   </Button>
                 </div>

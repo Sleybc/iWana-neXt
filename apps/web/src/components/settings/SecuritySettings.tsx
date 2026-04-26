@@ -1,11 +1,23 @@
 'use client';
 
+import { CheckCircle2, CircleAlert, KeyRound, QrCode, ShieldCheck } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { changePasswordSchema, type ChangePasswordFormValues } from '@iwana/shared';
 import { Button } from '@iwana/ui';
 import { ApiError, authApi, platformUsersApi } from '@/lib/api-client';
+import {
+  FORM_ALERT_ERROR_CLASS,
+  FORM_ALERT_INFO_CLASS,
+  FORM_ALERT_SUCCESS_CLASS,
+  FORM_ERROR_CLASS,
+  FORM_HELP_CLASS,
+  FORM_INPUT_CLASS,
+  FORM_LABEL_CLASS,
+  FORM_MICROCOPY_CLASS,
+  FORM_SECTION_CARD_CLASS,
+} from '@/lib/form-styles';
 
 interface MfaState {
   enabled: boolean;
@@ -109,57 +121,103 @@ export function SecuritySettings() {
 
   return (
     <div className="space-y-6">
-      {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      {error && (
+        <div role="alert" className={FORM_ALERT_ERROR_CLASS}>
+          <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+          <p>{error}</p>
+        </div>
+      )}
       {message && (
-        <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">{message}</p>
+        <div className={FORM_ALERT_SUCCESS_CLASS}>
+          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+          <p>{message}</p>
+        </div>
       )}
 
-      <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-dark-border dark:bg-dark-surface-2">
-        <h2 className="mb-6 text-lg font-semibold text-iwana-primary dark:text-white">
-          Cambiar contraseña
-        </h2>
+      <div className={FORM_SECTION_CARD_CLASS}>
+        <div className="mb-6 flex items-start gap-3">
+          <div className="rounded-2xl bg-white p-2 text-iwana-primary shadow-sm dark:bg-dark-surface-2 dark:text-white">
+            <KeyRound className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-iwana-primary dark:text-white">
+              Cambiar contraseña
+            </h2>
+            <p className={`mt-1 ${FORM_HELP_CLASS}`}>
+              Actualiza la credencial principal del administrador de plataforma con la misma política aplicada en el flujo de primer ingreso.
+            </p>
+          </div>
+        </div>
 
         <form onSubmit={handleSubmit(onChangePassword)} className="space-y-6">
-          <input
-            type="password"
-            placeholder="Contraseña actual"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
-            {...register('currentPassword')}
-          />
-          {errors.currentPassword && (
-            <p className="text-xs text-red-600">{errors.currentPassword.message}</p>
-          )}
+          <div>
+            <label className={`block ${FORM_LABEL_CLASS}`} htmlFor="security-current-password">
+              Contraseña actual
+            </label>
+            <input
+              id="security-current-password"
+              type="password"
+              placeholder="Contraseña actual"
+              className={FORM_INPUT_CLASS}
+              {...register('currentPassword')}
+            />
+            {errors.currentPassword && (
+              <p className={FORM_ERROR_CLASS}>{errors.currentPassword.message}</p>
+            )}
+          </div>
 
-          <input
-            type="password"
-            placeholder="Nueva contraseña"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
-            {...register('newPassword')}
-          />
-          {errors.newPassword && (
-            <p className="text-xs text-red-600">{errors.newPassword.message}</p>
-          )}
+          <div>
+            <label className={`block ${FORM_LABEL_CLASS}`} htmlFor="security-new-password">
+              Nueva contraseña
+            </label>
+            <input
+              id="security-new-password"
+              type="password"
+              placeholder="Nueva contraseña"
+              className={FORM_INPUT_CLASS}
+              {...register('newPassword')}
+            />
+            {errors.newPassword && (
+              <p className={FORM_ERROR_CLASS}>{errors.newPassword.message}</p>
+            )}
+          </div>
 
-          <input
-            type="password"
-            placeholder="Confirmar nueva contraseña"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
-            {...register('confirmPassword')}
-          />
-          {errors.confirmPassword && (
-            <p className="text-xs text-red-600">{errors.confirmPassword.message}</p>
-          )}
+          <div>
+            <label className={`block ${FORM_LABEL_CLASS}`} htmlFor="security-confirm-password">
+              Confirmar nueva contraseña
+            </label>
+            <input
+              id="security-confirm-password"
+              type="password"
+              placeholder="Confirmar nueva contraseña"
+              className={FORM_INPUT_CLASS}
+              {...register('confirmPassword')}
+            />
+            {errors.confirmPassword && (
+              <p className={FORM_ERROR_CLASS}>{errors.confirmPassword.message}</p>
+            )}
+          </div>
 
-          <div className="flex justify-end border-t border-gray-200 pt-6 dark:border-dark-border">
-            <Button type="submit" loading={isSubmitting}>
+          <div className="flex justify-end border-t border-gray-100 pt-6 dark:border-dark-border">
+            <Button type="submit" size="lg" loading={isSubmitting}>
               Actualizar contraseña
             </Button>
           </div>
         </form>
       </div>
 
-      <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-dark-border dark:bg-dark-surface-2">
-        <h2 className="mb-6 text-lg font-semibold text-iwana-primary dark:text-white">MFA</h2>
+      <div className={FORM_SECTION_CARD_CLASS}>
+        <div className="mb-6 flex items-start gap-3">
+          <div className="rounded-2xl bg-white p-2 text-iwana-primary shadow-sm dark:bg-dark-surface-2 dark:text-white">
+            <ShieldCheck className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-iwana-primary dark:text-white">MFA</h2>
+            <p className={`mt-1 ${FORM_HELP_CLASS}`}>
+              Gestiona el segundo factor del acceso administrativo y confirma la activación con un código TOTP válido.
+            </p>
+          </div>
+        </div>
 
         <div className="space-y-6">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -173,42 +231,50 @@ export function SecuritySettings() {
             </div>
 
             {!mfaState.enabled && !mfaState.pendingVerification && (
-              <Button type="button" onClick={onMfaSetup}>
+              <Button type="button" size="lg" onClick={onMfaSetup}>
                 Configurar MFA
               </Button>
             )}
           </div>
 
           {qrCodeSrc && (
-            <div className="space-y-3 rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-surface">
+            <div className={FORM_ALERT_INFO_CLASS}>
+              <QrCode className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+              <div className="space-y-3">
+                <p className="font-semibold">Código QR para configuración MFA</p>
               <img
                 src={qrCodeSrc}
                 alt="QR de configuración MFA"
-                className="h-44 w-44 rounded-lg border border-gray-200 bg-white"
+                className="h-44 w-44 rounded-2xl border border-gray-200 bg-white"
               />
               {mfaState.otpauthUri && (
-                <p className="break-all text-xs text-gray-500 dark:text-gray-300">
+                <p className={`break-all ${FORM_MICROCOPY_CLASS}`}>
                   {mfaState.otpauthUri}
                 </p>
               )}
+              </div>
             </div>
           )}
 
           {mfaState.pendingVerification && (
-            <div className="space-y-3 rounded-xl border border-gray-100 p-4 dark:border-dark-border">
+            <div className="space-y-4 rounded-2xl border border-gray-100 bg-white/70 p-4 dark:border-dark-border dark:bg-dark-surface-2/70">
               <h3 className="text-sm font-semibold text-iwana-primary dark:text-white">
                 Confirmar configuración inicial
               </h3>
+              <p className={FORM_MICROCOPY_CLASS}>
+                Ingresa el primer código generado por tu app autenticadora para completar la activación.
+              </p>
               <input
                 type="text"
                 placeholder="Código TOTP de 6 dígitos"
                 value={mfaSetupCode}
                 onChange={(event) => setMfaSetupCode(event.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
+                className={FORM_INPUT_CLASS}
               />
               <div className="flex justify-end">
                 <Button
                   type="button"
+                  size="lg"
                   onClick={onMfaVerifySetup}
                   disabled={mfaSetupCode.length !== 6}
                 >
@@ -219,28 +285,43 @@ export function SecuritySettings() {
           )}
 
           {mfaState.enabled && (
-            <div className="space-y-3 rounded-xl border border-gray-100 p-4 dark:border-dark-border">
+            <div className="space-y-4 rounded-2xl border border-gray-100 bg-white/70 p-4 dark:border-dark-border dark:bg-dark-surface-2/70">
               <h3 className="text-sm font-semibold text-iwana-primary dark:text-white">
                 Deshabilitar MFA
               </h3>
+              <p className={FORM_MICROCOPY_CLASS}>
+                Para deshabilitar MFA debes confirmar tu contraseña actual y un código activo de tu autenticador.
+              </p>
               <div className="grid gap-3 md:grid-cols-2">
-                <input
-                  type="password"
-                  placeholder="Contraseña actual"
-                  value={mfaDisablePassword}
-                  onChange={(event) => setMfaDisablePassword(event.target.value)}
-                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
-                />
-                <input
-                  type="text"
-                  placeholder="Código MFA"
-                  value={mfaDisableCode}
-                  onChange={(event) => setMfaDisableCode(event.target.value)}
-                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-dark-border-2 dark:bg-dark-surface-2"
-                />
+                <div>
+                  <label className={`block ${FORM_LABEL_CLASS}`} htmlFor="security-mfa-disable-password">
+                    Contraseña actual
+                  </label>
+                  <input
+                    id="security-mfa-disable-password"
+                    type="password"
+                    placeholder="Contraseña actual"
+                    value={mfaDisablePassword}
+                    onChange={(event) => setMfaDisablePassword(event.target.value)}
+                    className={FORM_INPUT_CLASS}
+                  />
+                </div>
+                <div>
+                  <label className={`block ${FORM_LABEL_CLASS}`} htmlFor="security-mfa-disable-code">
+                    Código MFA
+                  </label>
+                  <input
+                    id="security-mfa-disable-code"
+                    type="text"
+                    placeholder="Código MFA"
+                    value={mfaDisableCode}
+                    onChange={(event) => setMfaDisableCode(event.target.value)}
+                    className={FORM_INPUT_CLASS}
+                  />
+                </div>
               </div>
               <div className="flex justify-end">
-                <Button type="button" variant="destructive" onClick={onMfaDisable}>
+                <Button type="button" size="lg" variant="destructive" onClick={onMfaDisable}>
                   Deshabilitar MFA
                 </Button>
               </div>

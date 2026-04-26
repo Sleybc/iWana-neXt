@@ -1,4 +1,10 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
+
+async function selectCustomOption(scope: Page | Locator, selectId: string, optionName: string) {
+  const trigger = scope.locator(`#${selectId}`).locator('xpath=following-sibling::button[1]');
+  await trigger.click();
+  await scope.getByRole('option', { name: optionName, exact: true }).click();
+}
 
 function buildMockJwt(expirationSecondsFromNow = 3600): string {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
@@ -63,6 +69,19 @@ function setupAdminBootstrapMocks() {
       const request = route.request();
       const url = request.url();
       const method = request.method();
+
+      if (url.endsWith('/platform-users/bootstrap/status') && method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              hasUsers: true,
+            },
+          }),
+        });
+        return;
+      }
 
       if (url.endsWith('/auth/platform/login') && method === 'POST') {
         await route.fulfill({
@@ -378,7 +397,10 @@ test.describe('Bootstrap operativo admin', () => {
 
   test('SYSTEM_ADMIN puede completar bootstrap operativo', async ({ page }) => {
     await page.goto('/auth/login');
-    await page.getByLabel('Correo Electrónico / Identidad').fill('admin@iwana.local');
+    await expect(page.getByRole('form', { name: 'Formulario de inicio de sesión' })).toBeVisible();
+    await page
+      .getByRole('textbox', { name: /correo electrónico o identidad/i })
+      .fill('admin@iwana.local');
     await page.getByPlaceholder('••••••••').fill('Password123!');
     await page.getByRole('button', { name: 'Ingresar' }).click();
 
@@ -412,15 +434,15 @@ test.describe('Bootstrap operativo admin', () => {
     await page.locator('#tenant-max-subscribers').fill('100');
     await page.getByRole('button', { name: 'Crear empresa' }).click();
     await expect(page.getByText('Provisioning completado.')).toBeVisible();
-    await page.getByRole('button', { name: 'Regenerar credenciales temporales' }).click();
+    await page.getByRole('button', { name: 'Regenerar credenciales' }).click();
     await expect(page.getByText('admin@empresa-demo.test')).toBeVisible();
     await expect(page.getByText('TempPass123!')).toBeVisible();
     await page.getByRole('button', { name: 'Cerrar' }).click();
     await page.getByRole('button', { name: 'Configurar empresa' }).click();
 
     await expect(page).toHaveURL(/\/tenants\/tenant-1\/settings/);
-    await page.getByPlaceholder('America/Bogota').fill('America/Lima');
-    await page.getByPlaceholder('COP').fill('USD');
+  await selectCustomOption(page, 'cfg-timezone', 'America/Lima (Perú)');
+  await selectCustomOption(page, 'cfg-currency', 'USD — Dólar estadounidense');
     await page.getByLabel('Requerir MFA a todos los usuarios').check();
     await page.getByRole('button', { name: 'Guardar configuración' }).click();
     await expect(page.getByText('Configuración operativa actualizada.')).toBeVisible();
@@ -430,7 +452,7 @@ test.describe('Bootstrap operativo admin', () => {
     await page.getByRole('button', { name: 'Crear usuario' }).click();
     const createUserDialog = page.getByRole('dialog', { name: 'Crear usuario' });
     await createUserDialog.locator('#uc-email').fill('noc@empresa-demo.test');
-    await createUserDialog.locator('#uc-role').selectOption('SUPPORT');
+    await selectCustomOption(createUserDialog, 'uc-role', 'SUPPORT');
     await createUserDialog.getByRole('button', { name: 'Crear' }).click();
     await expect(page.getByText('Usuario creado exitosamente')).toBeVisible();
     await expect(page.getByLabel('Contraseña temporal')).toContainText('TempUser123!');
@@ -441,8 +463,8 @@ test.describe('Bootstrap operativo admin', () => {
     await page.getByRole('button', { name: 'Gestionar' }).first().click();
     const manageUserDialog = page.getByRole('dialog', { name: 'Gestión de usuario' });
     await expect(manageUserDialog).toBeVisible();
-    await manageUserDialog.locator('#um-role').selectOption('NOC');
-    await manageUserDialog.locator('#um-status').selectOption('ACTIVE');
+    await selectCustomOption(manageUserDialog, 'um-role', 'NOC');
+    await selectCustomOption(manageUserDialog, 'um-status', 'ACTIVE');
     await manageUserDialog.getByRole('button', { name: 'Guardar cambios' }).click();
     await expect(page.getByText('Usuario actualizado correctamente.')).toBeVisible();
     await manageUserDialog.getByRole('button', { name: 'Eliminar usuario' }).click();

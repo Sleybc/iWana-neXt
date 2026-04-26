@@ -2,7 +2,7 @@
 'use client';
 import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from '@iwana/ui';
+import { Card, CardHeader, CardTitle, CardContent, Select } from '@iwana/ui';
 import { Search, ChevronUp, ChevronDown, ChevronsUpDown, MoreHorizontal } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -53,6 +53,14 @@ const statusLabels: Record<TenantStatus, string> = {
 };
 
 const ALL_STATUSES = 'TODAS' as const;
+
+const STATUS_FILTER_OPTIONS = [
+  { value: ALL_STATUSES, label: 'Todos los estados' },
+  ...((Object.keys(statusLabels) as TenantStatus[]).map((key) => ({
+    value: key,
+    label: statusLabels[key],
+  })) satisfies Array<{ value: TenantStatus; label: string }>),
+];
 
 /** Icono de ordenamiento para cabecera de columna. */
 function SortIcon({
@@ -309,19 +317,16 @@ export function TenantsTable({
           </div>
 
           {/* Filtro de estado */}
-          <select
-            aria-label="Filtrar por estado"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as TenantStatus | typeof ALL_STATUSES)}
-            className="h-9 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-700 focus:outline-none focus:border-iwana-primary focus:ring-2 focus:ring-iwana-primary/20 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-200"
-          >
-            <option value={ALL_STATUSES}>Todos los estados</option>
-            {(Object.keys(statusLabels) as TenantStatus[]).map((key) => (
-              <option key={key} value={key}>
-                {statusLabels[key]}
-              </option>
-            ))}
-          </select>
+          <div className="w-full sm:w-[210px]">
+            <Select
+              id="tenant-status-filter"
+              options={STATUS_FILTER_OPTIONS}
+              value={statusFilter}
+              onChange={(e) =>
+                setStatusFilter(e.target.value as TenantStatus | typeof ALL_STATUSES)
+              }
+            />
+          </div>
         </div>
       </CardHeader>
 

@@ -3,9 +3,9 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Button } from '@iwana/ui';
+import { Button, Select } from '@iwana/ui';
 import { ApiError, tenantApi, type AdminCredentials, type TenantListItem } from '@/lib/api-client';
 import { CredentialsModal } from './CredentialsModal';
 import { TenantCreateSummary } from './TenantCreateSummary';
@@ -37,7 +37,10 @@ export const tenantCreateSchema = z.object({
     .regex(/^\d$/, 'Dígito verificador debe ser un único dígito')
     .optional()
     .or(z.literal('')),
-  companyType: z.enum(['SAS', 'LTDA', 'SA', 'PERSONA_NATURAL', 'COOPERATIVA', 'OTRO']).optional(),
+  companyType: z
+    .enum(['SAS', 'LTDA', 'SA', 'PERSONA_NATURAL', 'COOPERATIVA', 'OTRO'])
+    .optional()
+    .or(z.literal('')),
   // Dirección — opcionales
   address: z.string().max(500).optional().or(z.literal('')),
   city: z.string().max(100).optional().or(z.literal('')),
@@ -83,6 +86,57 @@ const ERROR_CLASS = 'mt-1 text-xs text-red-600 dark:text-red-400';
 const SUBSECTION_LABEL =
   'text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400';
 
+const TIMEZONE_OPTIONS = [
+  { value: 'America/Bogota', label: 'America/Bogota (Colombia)' },
+  { value: 'America/Guayaquil', label: 'America/Guayaquil (Ecuador)' },
+  { value: 'America/Lima', label: 'America/Lima (Perú)' },
+  { value: 'America/Mexico_City', label: 'America/Mexico_City (México)' },
+  { value: 'America/New_York', label: 'America/New_York (EE.UU.)' },
+  { value: 'America/Santiago', label: 'America/Santiago (Chile)' },
+  { value: 'America/Buenos_Aires', label: 'America/Buenos_Aires (Argentina)' },
+  { value: 'Europe/Madrid', label: 'Europe/Madrid (España)' },
+  { value: 'UTC', label: 'UTC' },
+];
+
+const CURRENCY_OPTIONS = [
+  { value: 'COP', label: 'COP — Peso colombiano' },
+  { value: 'USD', label: 'USD — Dólar estadounidense' },
+  { value: 'EUR', label: 'EUR — Euro' },
+  { value: 'MXN', label: 'MXN — Peso mexicano' },
+  { value: 'PEN', label: 'PEN — Sol peruano' },
+  { value: 'CLP', label: 'CLP — Peso chileno' },
+  { value: 'ARS', label: 'ARS — Peso argentino' },
+];
+
+const LANGUAGE_OPTIONS = [
+  { value: 'es-CO', label: 'Español — Colombia' },
+  { value: 'es-MX', label: 'Español — México' },
+  { value: 'es-PE', label: 'Español — Perú' },
+  { value: 'es-ES', label: 'Español — España' },
+  { value: 'en-US', label: 'English (en-US)' },
+];
+
+const COUNTRY_OPTIONS = [
+  { value: 'CO', label: 'Colombia' },
+  { value: 'EC', label: 'Ecuador' },
+  { value: 'MX', label: 'México' },
+  { value: 'PE', label: 'Perú' },
+  { value: 'US', label: 'Estados Unidos' },
+  { value: 'CL', label: 'Chile' },
+  { value: 'AR', label: 'Argentina' },
+  { value: 'ES', label: 'España' },
+];
+
+const COMPANY_TYPE_OPTIONS = [
+  { value: '', label: 'Sin definir' },
+  { value: 'SAS', label: 'Sociedad por Acciones Simplificada (SAS)' },
+  { value: 'LTDA', label: 'Sociedad de Responsabilidad Limitada (LTDA)' },
+  { value: 'SA', label: 'Sociedad Anónima (SA)' },
+  { value: 'PERSONA_NATURAL', label: 'Persona natural' },
+  { value: 'COOPERATIVA', label: 'Cooperativa' },
+  { value: 'OTRO', label: 'Otro' },
+];
+
 export function TenantCreateForm() {
   const router = useRouter();
   const [createdTenant, setCreatedTenant] = useState<TenantListItem | null>(null);
@@ -108,6 +162,7 @@ export function TenantCreateForm() {
 
   const {
     register,
+    control,
     setValue,
     watch,
     handleSubmit,
@@ -528,34 +583,44 @@ export function TenantCreateForm() {
                     <label htmlFor="tenant-timezone" className={LABEL_CLASS}>
                       Zona horaria
                     </label>
-                    <select id="tenant-timezone" className={INPUT_CLASS} {...register('timezone')}>
-                      <option value="America/Bogota">America/Bogota (Colombia)</option>
-                      <option value="America/Guayaquil">America/Guayaquil (Ecuador)</option>
-                      <option value="America/Lima">America/Lima (Perú)</option>
-                      <option value="America/Mexico_City">America/Mexico_City (México)</option>
-                      <option value="America/New_York">America/New_York (EE.UU.)</option>
-                      <option value="America/Santiago">America/Santiago (Chile)</option>
-                      <option value="America/Buenos_Aires">America/Buenos_Aires (Argentina)</option>
-                      <option value="Europe/Madrid">Europe/Madrid (España)</option>
-                      <option value="UTC">UTC</option>
-                    </select>
-                    {errors.timezone && <p className={ERROR_CLASS}>{errors.timezone.message}</p>}
+                    <Controller
+                      control={control}
+                      name="timezone"
+                      render={({ field, fieldState }) => (
+                        <Select
+                          id="tenant-timezone"
+                          options={TIMEZONE_OPTIONS}
+                          value={field.value}
+                          name={field.name}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          ref={field.ref}
+                          {...(fieldState.error ? { error: fieldState.error.message } : {})}
+                        />
+                      )}
+                    />
                   </div>
 
                   <div>
                     <label htmlFor="tenant-currency" className={LABEL_CLASS}>
                       Moneda
                     </label>
-                    <select id="tenant-currency" className={INPUT_CLASS} {...register('currency')}>
-                      <option value="COP">COP — Peso colombiano</option>
-                      <option value="USD">USD — Dólar estadounidense</option>
-                      <option value="EUR">EUR — Euro</option>
-                      <option value="MXN">MXN — Peso mexicano</option>
-                      <option value="PEN">PEN — Sol peruano</option>
-                      <option value="CLP">CLP — Peso chileno</option>
-                      <option value="ARS">ARS — Peso argentino</option>
-                    </select>
-                    {errors.currency && <p className={ERROR_CLASS}>{errors.currency.message}</p>}
+                    <Controller
+                      control={control}
+                      name="currency"
+                      render={({ field, fieldState }) => (
+                        <Select
+                          id="tenant-currency"
+                          options={CURRENCY_OPTIONS}
+                          value={field.value}
+                          name={field.name}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          ref={field.ref}
+                          {...(fieldState.error ? { error: fieldState.error.message } : {})}
+                        />
+                      )}
+                    />
                   </div>
                 </div>
 
@@ -564,31 +629,44 @@ export function TenantCreateForm() {
                     <label htmlFor="tenant-language" className={LABEL_CLASS}>
                       Idioma
                     </label>
-                    <select id="tenant-language" className={INPUT_CLASS} {...register('language')}>
-                      <option value="es-CO">Español — Colombia</option>
-                      <option value="es-MX">Español — México</option>
-                      <option value="es-PE">Español — Perú</option>
-                      <option value="es-ES">Español — España</option>
-                      <option value="en-US">English (en-US)</option>
-                    </select>
-                    {errors.language && <p className={ERROR_CLASS}>{errors.language.message}</p>}
+                    <Controller
+                      control={control}
+                      name="language"
+                      render={({ field, fieldState }) => (
+                        <Select
+                          id="tenant-language"
+                          options={LANGUAGE_OPTIONS}
+                          value={field.value}
+                          name={field.name}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          ref={field.ref}
+                          {...(fieldState.error ? { error: fieldState.error.message } : {})}
+                        />
+                      )}
+                    />
                   </div>
 
                   <div>
                     <label htmlFor="tenant-country" className={LABEL_CLASS}>
                       País operativo
                     </label>
-                    <select id="tenant-country" className={INPUT_CLASS} {...register('country')}>
-                      <option value="CO">Colombia</option>
-                      <option value="EC">Ecuador</option>
-                      <option value="MX">México</option>
-                      <option value="PE">Perú</option>
-                      <option value="US">Estados Unidos</option>
-                      <option value="CL">Chile</option>
-                      <option value="AR">Argentina</option>
-                      <option value="ES">España</option>
-                    </select>
-                    {errors.country && <p className={ERROR_CLASS}>{errors.country.message}</p>}
+                    <Controller
+                      control={control}
+                      name="country"
+                      render={({ field, fieldState }) => (
+                        <Select
+                          id="tenant-country"
+                          options={COUNTRY_OPTIONS}
+                          value={field.value}
+                          name={field.name}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          ref={field.ref}
+                          {...(fieldState.error ? { error: fieldState.error.message } : {})}
+                        />
+                      )}
+                    />
                   </div>
                 </div>
 
@@ -665,22 +743,22 @@ export function TenantCreateForm() {
                   <label htmlFor="tenant-company-type" className={LABEL_CLASS}>
                     Tipo de empresa
                   </label>
-                  <select
-                    id="tenant-company-type"
-                    className={INPUT_CLASS}
-                    {...register('companyType')}
-                  >
-                    <option value="">-- Seleccionar --</option>
-                    <option value="SAS">Sociedad por Acciones Simplificada (SAS)</option>
-                    <option value="LTDA">Sociedad de Responsabilidad Limitada (LTDA)</option>
-                    <option value="SA">Sociedad Anónima (SA)</option>
-                    <option value="PERSONA_NATURAL">Persona natural</option>
-                    <option value="COOPERATIVA">Cooperativa</option>
-                    <option value="OTRO">Otro</option>
-                  </select>
-                  {errors.companyType && (
-                    <p className={ERROR_CLASS}>{errors.companyType.message}</p>
-                  )}
+                  <Controller
+                    control={control}
+                    name="companyType"
+                    render={({ field, fieldState }) => (
+                      <Select
+                        id="tenant-company-type"
+                        options={COMPANY_TYPE_OPTIONS}
+                        value={field.value ?? ''}
+                        name={field.name}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        ref={field.ref}
+                        {...(fieldState.error ? { error: fieldState.error.message } : {})}
+                      />
+                    )}
+                  />
                 </div>
 
                 <hr className="border-gray-100 dark:border-dark-border" />

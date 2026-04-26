@@ -2,6 +2,7 @@
 import type { Metadata } from 'next';
 import { LoginBrandPanel } from '@/components/auth/LoginBrandPanel';
 import { MfaVerifyForm } from '@/components/auth/MfaVerifyForm';
+import { FORM_PANEL_CLASS } from '@/lib/form-styles';
 
 export const metadata: Metadata = {
   title: 'Verificación MFA — iWana neXt Admin',
@@ -9,14 +10,16 @@ export const metadata: Metadata = {
 
 export default function MfaVerifyPage() {
   return (
-    <main className="min-h-screen flex" aria-label="Verificación en dos pasos">
+    <main className="relative min-h-screen flex flex-col overflow-hidden bg-[#181818] lg:flex-row" aria-label="Verificación en dos pasos">
       <LoginBrandPanel
         title="Verificación en dos pasos"
         subtitle="Tu cuenta está protegida con autenticación de dos factores"
       />
 
-      <div className="flex-1 flex items-center justify-center px-6 py-12 bg-white">
-        <div className="w-full max-w-sm">
+      <div className="relative flex flex-1 items-center justify-center bg-[#181818] px-6 py-12">
+        <div className="absolute inset-0 opacity-5 bg-[radial-gradient(#A5C330_1px,transparent_1px)] bg-[length:32px_32px]" />
+
+        <div className={`${FORM_PANEL_CLASS} relative z-10 w-full max-w-sm`}>
           <div className="mb-8 text-center">
             <div className="mx-auto w-14 h-14 rounded-2xl bg-[#EEEEFA] flex items-center justify-center mb-4">
               <svg
@@ -34,8 +37,8 @@ export default function MfaVerifyPage() {
                 />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold text-[#17163A]">Verificación en dos pasos</h2>
-            <p className="mt-1 text-sm text-[#6B7280]">
+            <h2 className="text-2xl font-bold text-iwana-primary dark:text-white">Verificación en dos pasos</h2>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               Ingresa el código de 6 dígitos de tu app autenticadora
             </p>
           </div>

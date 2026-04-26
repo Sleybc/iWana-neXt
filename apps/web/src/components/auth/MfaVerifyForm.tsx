@@ -1,10 +1,16 @@
 // apps/web/src/components/auth/MfaVerifyForm.tsx
 'use client';
 
+import { CircleAlert, ShieldCheck } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { OtpInput, Button } from '@iwana/ui';
 import { ApiError } from '@/lib/api-client';
+import {
+  FORM_ALERT_ERROR_CLASS,
+  FORM_HELP_CLASS,
+  FORM_SECTION_CARD_CLASS,
+} from '@/lib/form-styles';
 import { useAuth } from './AuthProvider';
 
 /**
@@ -95,13 +101,17 @@ export function MfaVerifyForm() {
               ? '[&::-webkit-progress-value]:bg-red-500 [&::-moz-progress-bar]:bg-red-500'
               : secondsLeft <= 10
                 ? '[&::-webkit-progress-value]:bg-amber-500 [&::-moz-progress-bar]:bg-amber-500'
-                : '[&::-webkit-progress-value]:bg-[#A5C330] [&::-moz-progress-bar]:bg-[#A5C330]'
+                : '[&::-webkit-progress-value]:bg-[#6A7A1C] [&::-moz-progress-bar]:bg-[#6A7A1C] dark:[&::-webkit-progress-value]:bg-[#A5C330] dark:[&::-moz-progress-bar]:bg-[#A5C330]'
           }`}
           value={secondsLeft}
           max={TOTP_INTERVAL}
           aria-label="Tiempo restante del código"
         />
-        <p className={`text-xs text-center ${isUrgent ? 'text-red-500' : 'text-gray-500'}`}>
+        <p
+          className={`text-center text-xs ${
+            isUrgent ? 'text-red-500 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'
+          }`}
+        >
           {isUrgent
             ? `El código expira en ${secondsLeft}s. Genera uno nuevo si vence.`
             : `El código expira en ${secondsLeft}s`}
@@ -109,23 +119,9 @@ export function MfaVerifyForm() {
       </div>
 
       {error && (
-        <div
-          role="alert"
-          className="w-full flex items-start gap-2 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"
-        >
-          <svg
-            className="h-4 w-4 mt-0.5 flex-shrink-0"
-            fill="currentColor"
-            viewBox="0 0 20 20"
-            aria-hidden="true"
-          >
-            <path
-              fillRule="evenodd"
-              d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-              clipRule="evenodd"
-            />
-          </svg>
-          {error}
+        <div role="alert" className={`${FORM_ALERT_ERROR_CLASS} w-full`}>
+          <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+          <p>{error}</p>
         </div>
       )}
 
@@ -139,13 +135,20 @@ export function MfaVerifyForm() {
         {loading ? 'Verificando...' : 'Verificar código'}
       </Button>
 
-      <button
-        type="button"
-        className="text-sm text-[#6B7280] hover:text-[#374151] underline-offset-4 hover:underline"
-        onClick={() => router.push('/auth/login')}
-      >
+      <div className={`${FORM_SECTION_CARD_CLASS} w-full`}>
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-gray-600 dark:text-gray-400">
+          <ShieldCheck className="h-4 w-4 text-iwana-secondary-700 dark:text-iwana-secondary-400" aria-hidden="true" />
+          <span>Verificación segura</span>
+        </div>
+        <p className={`mt-2 ${FORM_HELP_CLASS}`}>
+          El código se valida en tiempo real y respeta la misma política de acceso segura de la
+          plataforma.
+        </p>
+      </div>
+
+      <Button type="button" variant="link" onClick={() => router.push('/auth/login')}>
         Volver al login
-      </button>
+      </Button>
     </form>
   );
 }

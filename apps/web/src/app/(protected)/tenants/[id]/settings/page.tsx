@@ -13,15 +13,17 @@ export default async function TenantSettingsPage({ params }: { params: Promise<{
   const { id } = await params;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader title="Configuración de empresa" subtitle={`Tenant: ${id}`} />
-      <Card>
-        <CardHeader>
+      <Card className="overflow-hidden border border-gray-100/90 dark:border-dark-border">
+        <CardHeader className="px-5 pb-4 pt-5">
           <CardTitle>Parámetros base</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-5 pb-5 pt-0">
           <Suspense fallback={<p className="text-sm text-gray-500">Cargando configuración...</p>}>
-            <TenantSettingsForm tenantId={id} />
+            <div className="max-w-[1180px]">
+              <TenantSettingsForm tenantId={id} />
+            </div>
           </Suspense>
         </CardContent>
       </Card>

@@ -2,6 +2,7 @@
 
 // Tabla de registros de auditoría con paginación cursor-based, filtros client-side y export CSV
 import React, { useMemo, useState } from 'react';
+import { Select } from '@iwana/ui';
 
 import type { AuditLogEntry, PlatformAuditLogEntry } from '@/lib/api-client';
 
@@ -29,6 +30,15 @@ interface AuditLogsTableProps {
   onNext: () => void;
   onPrev: () => void;
 }
+
+const ACTION_FILTER_OPTIONS = [
+  { value: '', label: 'Todas las acciones' },
+  { value: 'CREATE', label: 'CREATE' },
+  { value: 'UPDATE', label: 'UPDATE' },
+  { value: 'DELETE', label: 'DELETE' },
+  { value: 'LOGIN', label: 'LOGIN' },
+  { value: 'LOGOUT', label: 'LOGOUT' },
+];
 
 // Campos esenciales para mostrar en auditoría resumida
 const ESSENTIAL_FIELDS = [
@@ -206,20 +216,15 @@ export function AuditLogsTable({
       {/* Barra de filtros y acciones */}
       <div className="flex flex-wrap items-center gap-3 p-4 border-b border-gray-200 dark:border-gray-800">
         {/* Filtro por acción */}
-        <select
-          value={actionFilter}
-          onChange={(e) => setActionFilter(e.target.value)}
-          aria-label="Filtrar por acción"
-          title="Filtrar por acción"
-          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-dark-surface-3 dark:text-gray-300 focus:outline-none"
-        >
-          <option value="">Todas las acciones</option>
-          <option value="CREATE">CREATE</option>
-          <option value="UPDATE">UPDATE</option>
-          <option value="DELETE">DELETE</option>
-          <option value="LOGIN">LOGIN</option>
-          <option value="LOGOUT">LOGOUT</option>
-        </select>
+        <div className="w-full sm:w-[220px]">
+          <Select
+            id="audit-action-filter"
+            options={ACTION_FILTER_OPTIONS}
+            value={actionFilter}
+            onChange={(e) => setActionFilter(e.target.value)}
+            title="Filtrar por acción"
+          />
+        </div>
 
         {/* Filtro por fecha desde */}
         <input
