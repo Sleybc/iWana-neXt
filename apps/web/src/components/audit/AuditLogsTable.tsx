@@ -222,6 +222,7 @@ export function AuditLogsTable({
             options={ACTION_FILTER_OPTIONS}
             value={actionFilter}
             onChange={(e) => setActionFilter(e.target.value)}
+            aria-label="Filtrar por acción"
             title="Filtrar por acción"
           />
         </div>

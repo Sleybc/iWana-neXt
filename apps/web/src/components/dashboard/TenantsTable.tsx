@@ -322,6 +322,7 @@ export function TenantsTable({
               id="tenant-status-filter"
               options={STATUS_FILTER_OPTIONS}
               value={statusFilter}
+              aria-label="Filtrar por estado"
               onChange={(e) =>
                 setStatusFilter(e.target.value as TenantStatus | typeof ALL_STATUSES)
               }

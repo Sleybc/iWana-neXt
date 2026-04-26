@@ -79,11 +79,16 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
       name,
       required,
       autoComplete,
+      title,
+      'aria-label': ariaLabel,
+      'aria-labelledby': ariaLabelledBy,
       ...props
     },
     ref,
   ) => {
     const selectId = id ?? React.useId();
+    const nativeSelectId = `${selectId}-native`;
+    const labelId = `${selectId}-label`;
     const invalidState = error ? ({ 'aria-invalid': 'true' } as const) : {};
     const describedBy = error ? `${selectId}-error` : helperText ? `${selectId}-helper` : undefined;
     const normalizedOptions = React.useMemo(() => {
@@ -240,6 +245,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
       >
         {label && (
           <label
+            id={labelId}
             htmlFor={selectId}
             className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500"
           >
@@ -249,7 +255,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
 
         <div className="relative">
           <select
-            id={selectId}
+            id={nativeSelectId}
             ref={(element) => {
               hiddenSelectRef.current = element;
               if (typeof ref === 'function') {
@@ -258,8 +264,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
                 ref.current = element;
               }
             }}
-            className="sr-only"
-            tabIndex={-1}
+            hidden
             aria-hidden="true"
             name={name}
             value={currentValue}
@@ -283,13 +288,19 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           </select>
 
           <button
+            id={selectId}
             ref={triggerRef}
             type="button"
+            role="combobox"
             aria-haspopup="listbox"
             aria-controls={`${selectId}-listbox`}
             aria-describedby={describedBy}
+            aria-labelledby={ariaLabelledBy}
+            aria-label={ariaLabel}
+            title={title}
             disabled={disabled}
             {...expandedState}
+            {...invalidState}
             className={cn(
               'flex h-11 w-full items-center justify-between rounded-[24px] border border-gray-200 bg-white px-4 py-2.5 text-left text-sm text-iwana-primary shadow-iwana-soft transition-all duration-200',
               'focus:border-iwana-secondary focus:outline-none focus:ring-2 focus:ring-iwana-secondary/50',
@@ -345,6 +356,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
             <div
               id={`${selectId}-listbox`}
               role="listbox"
+              aria-labelledby={label ? labelId : ariaLabelledBy}
               aria-label={label ?? placeholder ?? 'Opciones'}
               className="absolute left-0 top-full z-[70] mt-2 max-h-[38vh] w-full overflow-y-auto overscroll-contain rounded-[28px] border border-white/90 bg-white/98 p-2 shadow-[var(--shadow-iwana-lg)] ring-1 ring-black/5 backdrop-blur-md sm:max-h-72 dark:border-dark-border dark:bg-dark-surface-2/98 dark:ring-white/10"
             >

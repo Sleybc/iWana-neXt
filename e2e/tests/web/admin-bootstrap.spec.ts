@@ -1,7 +1,9 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
-async function selectCustomOption(scope: Page | Locator, selectId: string, optionName: string) {
-  const trigger = scope.locator(`#${selectId}`).locator('xpath=following-sibling::button[1]');
+async function selectCustomOption(scope: Page | Locator, labelText: string, optionName: string) {
+  const trigger = scope.getByRole('combobox', {
+    name: new RegExp(labelText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
+  });
   await trigger.click();
   await scope.getByRole('option', { name: optionName, exact: true }).click();
 }
@@ -156,7 +158,8 @@ function setupAdminBootstrapMocks() {
           contentType: 'application/json',
           body: JSON.stringify({
             data: {
-              qrCodeBase64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl7Vj8AAAAASUVORK5CYII=',
+              qrCodeBase64:
+                'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl7Vj8AAAAASUVORK5CYII=',
               otpauthUri: 'otpauth://totp/iwana?secret=ABC123&issuer=iwana',
             },
           }),
@@ -441,10 +444,14 @@ test.describe('Bootstrap operativo admin', () => {
     await page.getByRole('button', { name: 'Configurar empresa' }).click();
 
     await expect(page).toHaveURL(/\/tenants\/tenant-1\/settings/);
-  await selectCustomOption(page, 'cfg-timezone', 'America/Lima (Perú)');
-  await selectCustomOption(page, 'cfg-currency', 'USD — Dólar estadounidense');
-    await page.getByLabel('Requerir MFA a todos los usuarios').check();
-    await page.getByRole('button', { name: 'Guardar configuración' }).click();
+    const operationalSettingsForm = page
+      .locator('form')
+      .filter({ has: page.getByRole('button', { name: 'Guardar configuración' }) })
+      .first();
+    await selectCustomOption(operationalSettingsForm, 'Zona horaria', 'America/Lima (Perú)');
+    await selectCustomOption(operationalSettingsForm, 'Moneda', 'USD — Dólar estadounidense');
+    await operationalSettingsForm.getByLabel('Requerir MFA a todos los usuarios').check();
+    await operationalSettingsForm.getByRole('button', { name: 'Guardar configuración' }).click();
     await expect(page.getByText('Configuración operativa actualizada.')).toBeVisible();
 
     await page.getByRole('link', { name: 'Usuarios' }).click();
@@ -452,7 +459,7 @@ test.describe('Bootstrap operativo admin', () => {
     await page.getByRole('button', { name: 'Crear usuario' }).click();
     const createUserDialog = page.getByRole('dialog', { name: 'Crear usuario' });
     await createUserDialog.locator('#uc-email').fill('noc@empresa-demo.test');
-    await selectCustomOption(createUserDialog, 'uc-role', 'SUPPORT');
+    await selectCustomOption(createUserDialog, 'Rol', 'SUPPORT');
     await createUserDialog.getByRole('button', { name: 'Crear' }).click();
     await expect(page.getByText('Usuario creado exitosamente')).toBeVisible();
     await expect(page.getByLabel('Contraseña temporal')).toContainText('TempUser123!');
@@ -463,8 +470,8 @@ test.describe('Bootstrap operativo admin', () => {
     await page.getByRole('button', { name: 'Gestionar' }).first().click();
     const manageUserDialog = page.getByRole('dialog', { name: 'Gestión de usuario' });
     await expect(manageUserDialog).toBeVisible();
-    await selectCustomOption(manageUserDialog, 'um-role', 'NOC');
-    await selectCustomOption(manageUserDialog, 'um-status', 'ACTIVE');
+    await selectCustomOption(manageUserDialog, 'Rol', 'NOC');
+    await selectCustomOption(manageUserDialog, 'Estado', 'ACTIVE');
     await manageUserDialog.getByRole('button', { name: 'Guardar cambios' }).click();
     await expect(page.getByText('Usuario actualizado correctamente.')).toBeVisible();
     await manageUserDialog.getByRole('button', { name: 'Eliminar usuario' }).click();
