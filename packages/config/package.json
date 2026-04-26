@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "exports": {
-    "./tsconfig/base": "./tsconfig.base.json",
-    "./tsconfig/nestjs": "./tsconfig.nestjs.json",
-    "./tsconfig/nextjs": "./tsconfig.nextjs.json",
+    "./tsconfig/base": "./tsconfig/base.json",
+    "./tsconfig/nestjs": "./tsconfig/nestjs.json",
+    "./tsconfig/nextjs": "./tsconfig/nextjs.json",
     "./eslint/base": "./.eslintrc.base.js",
     "./prettier": "./prettier.config.js"
   },
