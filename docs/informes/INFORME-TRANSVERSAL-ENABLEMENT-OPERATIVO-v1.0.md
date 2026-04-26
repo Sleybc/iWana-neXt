@@ -9,6 +9,10 @@
 
 Se ejecutó la implementación transversal de enablement operativo para habilitar perfil de plataforma, settings funcionales de tenant, flujo de alta de primera empresa y gestión operativa de usuarios internos. El cierre incluyó la corrección del flujo MFA de plataforma en web, la activación real de acciones de usuarios por tenant y la ampliación del E2E de bootstrap administrativo.
 
+### Addendum correctivo 2026-04-25 — Resolución estable del preset TypeScript compartido en portal
+
+Se corrigió un falso positivo del editor sobre `apps/portal/tsconfig.json` que reportaba `Archivo '@iwana/config/tsconfig/nextjs' no encontrado` pese a que `tsc` sí resolvía el preset vía `pnpm`. La causa práctica era una divergencia entre la resolución del compilador y la del editor sobre `extends` en el monorepo. El ajuste dejó dos defensas complementarias: en `packages/config` se añadieron rutas físicas de compatibilidad bajo `tsconfig/`, y `apps/portal/tsconfig.json` pasó a extender el preset compartido mediante ruta relativa al workspace (`../../packages/config/tsconfig.nextjs.json`). Como validación, `get_errors` dejó de reportar el problema y `pnpm --filter @iwana/portal exec tsc --noEmit` continuó en verde.
+
 ### Addendum correctivo 2026-04-25 — Stack Docker dev estabilizado en Linux + dropdown y comentarios del processor
 
 Se cerraron tres deudas operativas detectadas al levantar el stack Docker dev en Linux.
