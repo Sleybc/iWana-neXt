@@ -302,7 +302,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
             {...expandedState}
             {...invalidState}
             className={cn(
-              'flex h-11 w-full items-center justify-between rounded-[24px] border border-gray-200 bg-white px-4 py-2.5 text-left text-sm text-iwana-primary shadow-iwana-soft transition-all duration-200',
+              'flex h-11 w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-left text-sm text-iwana-primary shadow-iwana-soft transition-all duration-200',
               'focus:border-iwana-secondary focus:outline-none focus:ring-2 focus:ring-iwana-secondary/50',
               'disabled:cursor-not-allowed disabled:opacity-50',
               'dark:border-dark-border dark:bg-dark-surface-3 dark:text-white/90',
