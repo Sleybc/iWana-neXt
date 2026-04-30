@@ -29,11 +29,6 @@ import { ApiError, persistAccessToken, platformUsersApi } from '@/lib/api-client
 import {
   FORM_ALERT_ERROR_CLASS,
   FORM_ALERT_INFO_CLASS,
-  FORM_ICON_LEADING_CLASS,
-  FORM_ICON_TRAILING_BUTTON_CLASS,
-  FORM_INPUT_WITH_BOTH_ICONS_CLASS,
-  FORM_INPUT_WITH_LEADING_ICON_CLASS,
-  FORM_LABEL_CLASS,
   FORM_MICROCOPY_CLASS,
   FORM_SECTION_CARD_CLASS,
   FORM_ERROR_CLASS,
@@ -55,6 +50,24 @@ const footerCardClass =
 
 const helperListItemClass =
   'flex items-center gap-1.5 rounded-full bg-white/80 px-2.5 py-1 text-xs text-gray-500 dark:bg-dark-surface-2 dark:text-gray-400';
+
+const portalLabelClass = 'text-sm font-bold text-[#181818] dark:text-white';
+const portalInputBaseClass =
+  'h-14 w-full rounded-2xl border bg-[#f8faf5] pl-12 text-base text-slate-900 placeholder:text-slate-400 transition-all focus:border-transparent focus:outline-none focus:ring-2 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-500';
+const portalInputWithLeadingIconClass = `${portalInputBaseClass} pr-4`;
+const portalInputWithBothIconsClass = `${portalInputBaseClass} pr-12`;
+const portalIconLeadingClass =
+  'absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-gray-500';
+const portalIconTrailingButtonClass =
+  'absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-slate-600 dark:text-gray-500 dark:hover:text-gray-300';
+const portalFocusClass = 'border-slate-200 focus:ring-[#A5C330]';
+const portalErrorClass = 'border-red-500 focus:ring-red-500';
+const portalPrimaryButtonClass =
+  'mt-4 flex !h-14 w-full items-center justify-center gap-2 rounded-2xl !bg-[#A5C330] text-lg font-bold !text-[#181818] shadow-lg shadow-[#A5C330]/20 transition-all hover:!bg-[#94b126] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70';
+const platformInfoBoxClass =
+  'rounded-[24px] border border-[#E8E7F0] bg-[linear-gradient(135deg,rgba(248,250,245,0.96),rgba(255,255,255,0.92))] p-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3 dark:shadow-none';
+const secureFooterClass =
+  'mt-8 flex flex-col items-center gap-2 border-t border-slate-100 pt-6 text-center dark:border-dark-border';
 
 export function LoginForm() {
   const router = useRouter();
@@ -189,15 +202,15 @@ export function LoginForm() {
         </div>
 
         <label className="flex flex-col gap-2">
-          <span className={FORM_LABEL_CLASS}>Correo del administrador</span>
+          <span className={portalLabelClass}>Correo del administrador</span>
           <div className="relative">
-            <Mail className={FORM_ICON_LEADING_CLASS} aria-hidden="true" />
+            <Mail className={portalIconLeadingClass} aria-hidden="true" />
             <input
               type="email"
               autoComplete="email"
               className={cn(
-                FORM_INPUT_WITH_LEADING_ICON_CLASS,
-                emailForm.formState.errors.email ? 'border-red-400 focus:ring-red-500/20' : '',
+                portalInputWithLeadingIconClass,
+                emailForm.formState.errors.email ? portalErrorClass : portalFocusClass,
               )}
               placeholder="admin@iwana.co"
               {...emailForm.register('email')}
@@ -218,7 +231,7 @@ export function LoginForm() {
         <Button
           type="submit"
           size="lg"
-          className="mt-2 w-full"
+          className={portalPrimaryButtonClass}
           loading={emailForm.formState.isSubmitting}
         >
           {emailForm.formState.isSubmitting ? (
@@ -261,25 +274,23 @@ export function LoginForm() {
         </div>
 
         <label className="flex flex-col gap-2">
-          <span className={FORM_LABEL_CLASS}>Nueva contraseña</span>
+          <span className={portalLabelClass}>Nueva contraseña</span>
           <div className="relative">
-            <LockKeyhole className={FORM_ICON_LEADING_CLASS} aria-hidden="true" />
+            <LockKeyhole className={portalIconLeadingClass} aria-hidden="true" />
             <input
               type={showPassword ? 'text' : 'password'}
               placeholder="••••••••••"
               autoComplete="new-password"
               className={cn(
-                FORM_INPUT_WITH_BOTH_ICONS_CLASS,
-                passwordForm.formState.errors.password
-                  ? 'border-red-400 focus:ring-red-500/20'
-                  : '',
+                portalInputWithBothIconsClass,
+                passwordForm.formState.errors.password ? portalErrorClass : portalFocusClass,
               )}
               {...passwordForm.register('password')}
             />
             <button
               type="button"
               onClick={() => setShowPassword((p) => !p)}
-              className={FORM_ICON_TRAILING_BUTTON_CLASS}
+              className={portalIconTrailingButtonClass}
               aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
             >
               {showPassword ? (
@@ -297,25 +308,23 @@ export function LoginForm() {
         </label>
 
         <label className="flex flex-col gap-2">
-          <span className={FORM_LABEL_CLASS}>Confirmar contraseña</span>
+          <span className={portalLabelClass}>Confirmar contraseña</span>
           <div className="relative">
-            <LockKeyhole className={FORM_ICON_LEADING_CLASS} aria-hidden="true" />
+            <LockKeyhole className={portalIconLeadingClass} aria-hidden="true" />
             <input
               type={showConfirmPassword ? 'text' : 'password'}
               placeholder="••••••••••"
               autoComplete="new-password"
               className={cn(
-                FORM_INPUT_WITH_BOTH_ICONS_CLASS,
-                passwordForm.formState.errors.confirmPassword
-                  ? 'border-red-400 focus:ring-red-500/20'
-                  : '',
+                portalInputWithBothIconsClass,
+                passwordForm.formState.errors.confirmPassword ? portalErrorClass : portalFocusClass,
               )}
               {...passwordForm.register('confirmPassword')}
             />
             <button
               type="button"
               onClick={() => setShowConfirmPassword((p) => !p)}
-              className={FORM_ICON_TRAILING_BUTTON_CLASS}
+              className={portalIconTrailingButtonClass}
               aria-label={showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
             >
               {showConfirmPassword ? (
@@ -353,7 +362,7 @@ export function LoginForm() {
           <Button
             type="submit"
             size="lg"
-            className="flex-[2]"
+            className="flex-[2] rounded-2xl"
             loading={passwordForm.formState.isSubmitting}
           >
             {passwordForm.formState.isSubmitting ? 'Creando cuenta' : 'Crear cuenta'}
@@ -390,17 +399,26 @@ export function LoginForm() {
       noValidate
       aria-label="Formulario de inicio de sesión"
     >
+      <div className={platformInfoBoxClass}>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+          Acceso administrativo
+        </p>
+        <p className="mt-1 text-sm text-slate-600 dark:text-gray-400">
+          Autenticación segura, trazabilidad centralizada y gobierno operativo de plataforma.
+        </p>
+      </div>
+
       <label className="flex flex-col gap-2">
-        <span className={FORM_LABEL_CLASS}>Correo electrónico o identidad</span>
+        <span className={portalLabelClass}>Correo electrónico o identidad</span>
         <div className="relative">
-          <UserRound className={FORM_ICON_LEADING_CLASS} aria-hidden="true" />
+          <UserRound className={portalIconLeadingClass} aria-hidden="true" />
           <input
             type="email"
             placeholder="usuario@iwananetwork.com"
             autoComplete="email"
             className={cn(
-              FORM_INPUT_WITH_LEADING_ICON_CLASS,
-              loginForm.formState.errors.email ? 'border-red-400 focus:ring-red-500/20' : '',
+              portalInputWithLeadingIconClass,
+              loginForm.formState.errors.email ? portalErrorClass : portalFocusClass,
             )}
             {...loginForm.register('email')}
           />
@@ -412,30 +430,30 @@ export function LoginForm() {
 
       <label className="flex flex-col gap-2">
         <div className="flex justify-between items-center">
-          <span className={FORM_LABEL_CLASS}>Contraseña</span>
+          <span className={portalLabelClass}>Contraseña</span>
           <a
-            className="text-sm font-medium text-gray-500 transition-colors hover:text-iwana-secondary-700 dark:text-gray-400 dark:hover:text-iwana-secondary-400"
+            className="text-sm font-medium text-slate-500 transition-colors hover:text-[#A5C330] dark:text-gray-400 dark:hover:text-iwana-secondary-400"
             href="/auth/forgot-password"
           >
             ¿Necesitas recuperar tu acceso?
           </a>
         </div>
         <div className="relative">
-          <LockKeyhole className={FORM_ICON_LEADING_CLASS} aria-hidden="true" />
+          <LockKeyhole className={portalIconLeadingClass} aria-hidden="true" />
           <input
             type={showPassword ? 'text' : 'password'}
             placeholder="••••••••"
             autoComplete="current-password"
             className={cn(
-              FORM_INPUT_WITH_BOTH_ICONS_CLASS,
-              loginForm.formState.errors.password ? 'border-red-400 focus:ring-red-500/20' : '',
+              portalInputWithBothIconsClass,
+              loginForm.formState.errors.password ? portalErrorClass : portalFocusClass,
             )}
             {...loginForm.register('password')}
           />
           <button
             type="button"
             onClick={() => setShowPassword((p) => !p)}
-            className={FORM_ICON_TRAILING_BUTTON_CLASS}
+            className={portalIconTrailingButtonClass}
             aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
           >
             {showPassword ? (
@@ -460,7 +478,7 @@ export function LoginForm() {
       <Button
         type="submit"
         size="lg"
-        className="mt-2 w-full"
+        className={portalPrimaryButtonClass}
         loading={loginForm.formState.isSubmitting}
       >
         {loginForm.formState.isSubmitting ? (
@@ -468,22 +486,21 @@ export function LoginForm() {
         ) : (
           <>
             <span>Ingresar</span>
-            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            <ArrowRight className="h-5 w-5" aria-hidden="true" />
           </>
         )}
       </Button>
 
-      <div className={footerCardClass}>
-        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-gray-600 dark:text-gray-400">
+      <div className={secureFooterClass}>
+        <div className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-gray-400">
           <ShieldCheck
-            className="h-4 w-4 text-iwana-secondary-700 dark:text-iwana-secondary-400"
+            className="h-4 w-4 text-[#A5C330] dark:text-iwana-secondary-400"
             aria-hidden="true"
           />
           <span>Sesión segura vía JWT</span>
         </div>
-        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-          Auditoría de IP activa, MFA condicional y recuperación controlada desde el flujo de
-          plataforma.
+        <p className="text-xs text-slate-600 dark:text-gray-400">
+          Auditoría de acceso centralizada, MFA condicional y rotación de refresh tokens.
         </p>
       </div>
     </form>

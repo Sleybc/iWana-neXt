@@ -3,6 +3,7 @@ import { APP_INTERCEPTOR } from '@nestjs/core';
 import { AuditService } from './audit.service';
 import { PlatformAuditService } from './platform-audit.service';
 import { AuditQueryService } from './audit-query.service';
+import { AuditActorResolver } from './audit-actor.resolver';
 import { AuditController } from './audit.controller';
 import { PlatformAuditController } from './platform-audit.controller';
 import { AuditInterceptor } from './audit.interceptor';
@@ -28,7 +29,7 @@ import { AuditInterceptor } from './audit.interceptor';
  */
 @Module({
   controllers: [AuditController, PlatformAuditController],
-  providers: [AuditService, PlatformAuditService, AuditQueryService],
+  providers: [AuditService, PlatformAuditService, AuditQueryService, AuditActorResolver],
   exports: [AuditService, PlatformAuditService, AuditQueryService],
 })
 export class AuditModule {}

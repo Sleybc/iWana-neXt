@@ -6,6 +6,12 @@ import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Button, Select } from '@iwana/ui';
 import { ApiError, usersApi, type UpdateUserPayload, type UserListItem } from '@/lib/api-client';
+import {
+  getWebUserRoleLabel,
+  getWebUserStatusLabel,
+  WEB_USER_ROLE_OPTIONS,
+  WEB_USER_STATUS_OPTIONS,
+} from '@/lib/user-labels';
 import { BadgePlus, CheckCircle2, CircleAlert, Clock3, ShieldCheck, Trash2 } from 'lucide-react';
 import {
   FORM_ALERT_ERROR_CLASS,
@@ -17,23 +23,6 @@ import {
   FORM_MICROCOPY_CLASS,
   FORM_SECTION_CARD_CLASS,
 } from '@/lib/form-styles';
-
-const USER_ROLES = [
-  'ADMIN',
-  'NOC',
-  'SUPPORT',
-  'TECHNICIAN',
-  'SALES',
-  'ACCOUNTANT',
-  'HR',
-  'SUBSCRIBER',
-  'CONTRACTOR',
-  'PARTNER',
-  'AUDITOR',
-  'INVESTOR',
-];
-
-const USER_STATUSES = ['PENDING_VERIFICATION', 'ACTIVE', 'SUSPENDED', 'INACTIVE'];
 
 const DOCUMENT_TYPES = [
   { value: 'CC', label: 'Cédula de Ciudadanía (CC)' },
@@ -62,8 +51,6 @@ type UpdateUserFormValues = z.infer<typeof updateUserSchema>;
 const MODAL_PANEL_CLASS =
   'w-full max-w-3xl overflow-y-auto rounded-[28px] border border-gray-100 bg-white p-5 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2 dark:shadow-none max-h-[90vh] sm:p-6';
 
-const ROLE_OPTIONS = USER_ROLES.map((role) => ({ value: role, label: role }));
-const STATUS_OPTIONS = USER_STATUSES.map((status) => ({ value: status, label: status }));
 const DOCUMENT_TYPE_OPTIONS = [
   { value: '', label: 'Sin definir' },
   ...DOCUMENT_TYPES.map((dt) => ({ value: dt.value, label: dt.label })),
@@ -72,6 +59,7 @@ const DOCUMENT_TYPE_OPTIONS = [
 export function UserManagementModal({
   open,
   tenantSlug,
+  tenantName,
   user,
   onClose,
   onSaved,
@@ -79,6 +67,7 @@ export function UserManagementModal({
 }: {
   open: boolean;
   tenantSlug: string;
+  tenantName?: string;
   user: UserListItem | null;
   onClose: () => void;
   onSaved: (user: UserListItem) => void;
@@ -166,6 +155,8 @@ export function UserManagementModal({
   const firstName = watch('firstName');
   const lastName = watch('lastName');
   const fullName = firstName || lastName ? [firstName, lastName].filter(Boolean).join(' ') : null;
+  const currentRole = detail?.role ?? user.role;
+  const currentStatus = detail?.status ?? user.status;
 
   const handleSave = handleSubmit(async (values) => {
     setError(null);
@@ -232,7 +223,10 @@ export function UserManagementModal({
             >
               {fullName ?? 'Gestión de usuario'}
             </h3>
-            <p className="mt-1 font-mono text-xs text-gray-400">{user.id}</p>
+            <p className={`mt-1 ${FORM_MICROCOPY_CLASS}`}>
+              Rol actual: {getWebUserRoleLabel(currentRole)} · Estado:{' '}
+              {getWebUserStatusLabel(currentStatus)}
+            </p>
           </div>
           <Button type="button" variant="secondary" onClick={onClose}>
             Cerrar
@@ -266,17 +260,17 @@ export function UserManagementModal({
                   <span>Seguridad y acceso</span>
                 </div>
                 <p>
-                  <strong>Tenant:</strong>{' '}
-                  <span className="font-mono text-xs">{detail.tenantId.slice(0, 12)}…</span>
+                  <strong>Empresa:</strong>{' '}
+                  <span>{tenantName?.trim() || 'Empresa sin nombre'}</span>
                 </p>
                 <p>
                   <strong>MFA:</strong> {detail.mfaEnabled ? 'Activo' : 'Inactivo'}
                 </p>
                 <p>
-                  <strong>Email verificado:</strong> {detail.emailVerified ? 'Sí' : 'No'}
+                  <strong>Correo verificado:</strong> {detail.emailVerified ? 'Sí' : 'No'}
                 </p>
                 <p>
-                  <strong>Reset de clave:</strong>{' '}
+                  <strong>Restablecimiento de clave:</strong>{' '}
                   {detail.passwordResetRequired ? 'Pendiente' : 'No'}
                 </p>
               </div>
@@ -292,7 +286,7 @@ export function UserManagementModal({
                   <strong>Actualizado:</strong> {new Date(detail.updatedAt).toLocaleString('es-CO')}
                 </p>
                 <p>
-                  <strong>Último login:</strong>{' '}
+                  <strong>Último acceso:</strong>{' '}
                   {detail.lastLoginAt
                     ? new Date(detail.lastLoginAt).toLocaleString('es-CO')
                     : 'Nunca'}
@@ -312,7 +306,7 @@ export function UserManagementModal({
                   render={({ field, fieldState }) => (
                     <Select
                       id="um-role"
-                      options={ROLE_OPTIONS}
+                      options={WEB_USER_ROLE_OPTIONS}
                       value={field.value}
                       name={field.name}
                       onChange={field.onChange}
@@ -333,7 +327,7 @@ export function UserManagementModal({
                   render={({ field, fieldState }) => (
                     <Select
                       id="um-status"
-                      options={STATUS_OPTIONS}
+                      options={WEB_USER_STATUS_OPTIONS}
                       value={field.value}
                       name={field.name}
                       onChange={field.onChange}

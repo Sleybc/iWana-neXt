@@ -21,7 +21,7 @@ const passwordSchema = z
 
 const resetPasswordSchema = z
   .object({
-    tenantSlug: z.string().trim().min(1, 'Ingresa el slug del tenant.'),
+    tenantSlug: z.string().trim().min(1, 'Ingresa el identificador de la empresa.'),
     token: z.string().trim().min(1, 'Ingresa el token de recuperación.'),
     email: z.string().trim().email('Ingresa un correo válido.').optional().or(z.literal('')),
     newPassword: passwordSchema,
@@ -85,7 +85,7 @@ function ResetPasswordContent() {
     <main className="relative min-h-screen w-full flex flex-col lg:flex-row overflow-hidden bg-[#181818]">
       <LoginBrandPanel
         title="Restablece tu contraseña"
-        subtitle="Completa el token de recuperación y define una nueva clave alineada con la política de seguridad del tenant."
+        subtitle="Completa el token de recuperación y define una nueva clave alineada con la política de seguridad empresarial."
       />
 
       <div className="w-full lg:w-1/2 bg-[#181818] flex items-center justify-center p-6 lg:p-12 relative">
@@ -95,7 +95,7 @@ function ResetPasswordContent() {
           <div className="mb-8 space-y-2">
             <h1 className="text-3xl font-bold text-[#181818]">Nueva contraseña</h1>
             <p className="text-slate-500">
-              Este formulario consume el token emitido por el backend del tenant y deja la sesión
+              Este formulario consume el token emitido por el backend de la empresa y deja la sesión
               lista para volver a autenticarse.
             </p>
           </div>
@@ -103,7 +103,7 @@ function ResetPasswordContent() {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
             <div className="grid gap-5 md:grid-cols-2">
               <label className="flex flex-col gap-2">
-                <span className="text-sm font-bold text-[#181818]">Tenant</span>
+                <span className="text-sm font-bold text-[#181818]">Empresa</span>
                 <input
                   type="text"
                   placeholder="isp-demo"
@@ -124,7 +124,7 @@ function ResetPasswordContent() {
                 <span className="text-sm font-bold text-[#181818]">Correo opcional</span>
                 <input
                   type="email"
-                  placeholder="usuario@tenant.co"
+                  placeholder="usuario@empresa.co"
                   className={cn(
                     'w-full h-14 px-4 bg-slate-50 border rounded-xl text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all',
                     errors.email

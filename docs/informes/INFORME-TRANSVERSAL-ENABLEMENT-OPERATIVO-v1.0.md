@@ -9,6 +9,93 @@
 
 Se ejecutó la implementación transversal de enablement operativo para habilitar perfil de plataforma, settings funcionales de tenant, flujo de alta de primera empresa y gestión operativa de usuarios internos. El cierre incluyó la corrección del flujo MFA de plataforma en web, la activación real de acciones de usuarios por tenant y la ampliación del E2E de bootstrap administrativo.
 
+### Addendum correctivo 2026-04-30 — Actor legible en Audit Logs
+
+Se cerró la deuda de legibilidad del actor en `/audit-logs`: la API ahora conserva `userId` como dato canónico, pero agrega `actor` enriquecido en las respuestas de auditoría tenant y plataforma. El resolver trabaja por lote, evita N+1 y usa un read-model mínimo con `id`, `displayName`, `role`, `status` e indicador de soft-delete. En plataforma no se selecciona ni expone email porque `PlatformUser.email` está cifrado.
+
+El frontend web consume `actor` en modo Básico, modo Técnico, resumen superior y export CSV, manteniendo fallback a ID corto para logs antiguos o actores no resolubles. Con esto, la columna `Actor` y el top de actores dejan de depender de UUIDs como contenido principal.
+
+Validación focalizada: `pnpm --filter @iwana/api exec tsc --noEmit`, `pnpm --filter @iwana/web exec tsc --noEmit` y `pnpm --filter @iwana/api test -- audit-actor.resolver.spec.ts audit-query.service.spec.ts platform-audit.service.spec.ts` en verde.
+
+### Addendum 2026-04-29 — Rediseño de Audit Logs web (modo Básico / Técnico + panel de resumen)
+
+Se rediseñó por completo la pantalla `/audit-logs` de `apps/web` para soportar dos modos de lectura operativa (Básico narrativo y Técnico tabular), un panel de resumen con 4 tarjetas de métricas y filtros bidireccionales resumen ↔ tabla.
+
+**Componentes y helpers creados:**
+
+- `helpers/actionLabel.ts` — verbos en pasado y etiquetas legibles para cada `AuditAction`.
+- `helpers/entityLabel.ts` — nombres de entidades en español de negocio.
+- `helpers/formatActor.ts` — actor humanizado (Sistema / Usuario + primeros 8 chars del UUID).
+- `helpers/pickKeyChange.ts` — extrae el cambio más relevante de un diff para la frase narrativa.
+- `helpers/deriveSeverity.ts` — clasifica eventos en `critical / medium / info` con clases Tailwind.
+- `helpers/computeDiff.ts` — genera tabla de diff entre `oldValue` / `newValue`.
+- `helpers/timeAgo.ts` — tiempo relativo en español.
+- `AuditExpandedDetails.tsx` — panel expandible con tabla de diff (UPDATE) y metadatos técnicos con copia.
+- `AuditRowBasic.tsx` — fila narrativa: punto de severidad + frase actor/acción/entidad + cambio clave + badges + footer compacto.
+- `AuditRowTechnical.tsx` — fila tabular: 9 columnas con celdas copiables y expansión de detalles.
+- `AuditSummary.tsx` — 4 tarjetas operativas (Eventos críticos, Accesos, Seguridad/Permisos, Empresas activas / Top actores); delta 24h/7d; `onFilterApply` para conectar con la tabla.
+
+**Archivos modificados:**
+
+- `AuditLogsTable.tsx` — reescrito: conmutador Básico/Técnico (segmented control), `BaseAuditEntry` incluye `requestId`, `TableFilters` con `actionSet` y `severity`, fusión de filtros externos + internos, `EmptyState`, contador "N registros · Página X", CSV incluye `Request ID`.
+- `audit-logs/page.tsx` — reescrito: estado `viewMode` compartido entre tablas, cargas separadas (`limit=200`) para resumen, `pageIndex` por tabla, `externalFilters` bidireccionados desde el resumen con botón "Limpiar filtro", `AuditSummary` montado sobre cada sección.
+
+**Typecheck:** sin errores tras corrección de `exactOptionalPropertyTypes` en interfaces de props opcionales.
+
+### Addendum correctivo 2026-04-28 — Modo técnico de Audit Logs sin tabla cruda de IDs
+
+Se refinó el modo `Técnico` de `/audit-logs` para que conserve trazabilidad sin exponer UUIDs como contenido principal. La tabla pasó de columnas crudas (`Entity ID`, `Actor ID`, `User-Agent`, `Request ID`) a una jerarquía operativa: `Fecha`, `Evento`, `Registro afectado`, `Actor`, `Origen`, `Cliente` y `Trazabilidad`. Los nombres del registro afectado se resuelven desde `newValue/oldValue` (`name`, `legalName`, `email`, `slug`, etc.) y los identificadores quedan como metadatos copiables secundarios.
+
+Se agregó `helpers/auditDisplay.ts` para centralizar la presentación de sujeto afectado, actor, IP y trazabilidad. También se normalizó `localhost` para evitar ruido visual con direcciones `::1` / `::ffff:127.0.0.1`, y el panel expandido conserva los IDs completos con copia para diagnóstico.
+
+### Addendum correctivo 2026-04-28 — Localización de roles y estados en portal
+
+Se corrigió la exposición de enums técnicos en `apps/portal` para la gestión de usuarios internos. Los filtros `Rol` y `Estado`, la tabla de usuarios, los modales de creación/edición, el header de perfil y el shell autenticado ahora consumen un mapa centralizado de etiquetas en español (`apps/portal/src/lib/user-labels.ts`), preservando los valores técnicos solo para contratos de API. El estado `PENDING_VERIFICATION` se muestra como `Pendiente de verificación` y los roles tenant-aware se presentan con etiquetas de negocio (`Administrador`, `Técnico`, `Talento humano`, `Aliado`, etc.).
+
+Como parte del barrido de copy visible, se sustituyeron usos de `Tenant`/`tenant` en flujos públicos de acceso y paneles operativos por lenguaje funcional de negocio (`Empresa`, `portal empresarial`, `identificador de la empresa`) sin modificar variables, headers ni payloads tenant-aware.
+
+### Addendum correctivo 2026-04-28 — Localización de roles y estados en usuarios web
+
+Se corrigió la exposición de enums técnicos en `apps/web` para la pantalla `/users` de la consola de plataforma. La tabla de usuarios, el modal `Gestionar`, el modal `Crear usuario` y los selects de rol/estado ahora consumen etiquetas centralizadas en español desde `apps/web/src/lib/user-labels.ts`, preservando los valores técnicos únicamente para payloads y comparaciones de API. Los valores `ADMIN` y `ACTIVE` se presentan como `Administrador` y `Activo`, y estados como `PENDING_VERIFICATION` se muestran como `Pendiente de verificación`.
+
+En el mismo barrido se normalizó copy visible del flujo: `tenant` pasó a lenguaje de negocio (`empresa`), `Prev/Next` se reemplazó por `Anterior/Siguiente`, `Último login` por `Último acceso`, `Reset clave` por `Restablecimiento` y `Email` por `Correo electrónico` donde aplicaba en formularios y mensajes de validación.
+
+### Addendum correctivo 2026-04-28 — Ajuste de layout en parámetros regionales (web)
+
+Se ajustó la distribución visual de los dropdowns en `Configuración de empresa -> Parámetros base -> Configuración operativa -> Parámetros regionales` para mantener consistencia de lectura en escritorio y tablet. El bloque dejó de usar distribución en cuatro columnas a breakpoint `xl` y pasó a una grilla de dos columnas, forzando dos filas en el orden solicitado por operación: `Zona horaria` + `Moneda` en la primera fila y `Idioma` + `País operativo` en la segunda.
+
+### Addendum correctivo 2026-04-28 — Header de configuración de empresa con nombre legible
+
+Se corrigió el subtítulo de `Configuración de empresa` en la vista `tenants/[id]/settings` para evitar exponer el UUID técnico del tenant como identificador visible (`Tenant: <uuid>`). El encabezado ahora resuelve y muestra el nombre de la empresa en formato de negocio (`Empresa: <nombre>`), manteniendo el `tenantId` solo como parámetro interno de ruta.
+
+### Addendum correctivo 2026-04-28 — Manejo de sesión expirada sin overlay de runtime
+
+Se corrigió el manejo de expiración de sesión en `apps/web` cuando una petición protegida recibía `401` y también fallaba el refresh. Antes, el flujo podía terminar en `Runtime ApiError` visible en pantalla (`La sesión expiró. Inicia sesión de nuevo.`) por rechazos no controlados durante cargas automáticas. El cliente HTTP ahora redirige de forma controlada a login con `next` y evita overlay durante la transición. En paralelo, la carga inicial de tenants en `Usuarios` quedó protegida con `try/catch` para eliminar rechazos no controlados en montaje.
+
+### Addendum correctivo 2026-04-28 — Modal de gestión de usuarios sin UUIDs en UI
+
+Se ajustó el modal de `Usuarios -> Gestionar` para retirar identificadores técnicos visibles que no aportaban contexto operativo. Debajo del nombre del usuario se eliminó la exposición de `user.id` (UUID) y se reemplazó por resumen legible de `rol` y `estado`. En el bloque `Seguridad y acceso`, la línea `Tenant` dejó de mostrar `tenantId` truncado y ahora presenta el nombre de empresa seleccionado (con fallback a slug), alineado con copy de negocio.
+
+Complemento de copy (2026-04-28): la etiqueta visible `Tenant` se renombró a `Empresa` para mantener lenguaje funcional en español y reducir ambigüedad para operación.
+
+Complemento de accesibilidad visual (2026-04-28): en la tabla de `Usuarios`, el botón de acción `Gestionar` se ajustó para modo oscuro con tokens de color explícitos, evitando pérdida de contraste sobre fondos dark y manteniendo legibilidad del CTA.
+
+### Addendum correctivo 2026-04-28 — Homologación visual de Profile y Configuración/Seguridad
+
+Se normalizó la composición visual de formularios en `apps/web` para alinear `Mi perfil` y `Configuración -> Seguridad` con el patrón de `Configuración de empresa` (paneles `rounded-[24px]`, borde `gray-100`, fondo blanco, sombra suave y densidad de spacing consistente). También se actualizaron las pestañas de `Configuración` al patrón de tabs en cápsula y se ajustaron las acciones `Cambiar email` y `Cambiar contraseña` en `Mi perfil` para usar botones primarios del sistema, eliminando la apariencia de controles secundarios ad hoc.
+
+Complemento de densidad de formulario (2026-04-28): se compactaron los anchos efectivos de campos en `Mi perfil` y `Configuración -> Seguridad` para evitar inputs excesivamente largos cuando el dato esperado es corto o medio (teléfono, email de acceso, contraseñas, código TOTP). El cambio se implementó con columnas internas `max-w-*`, preservando paneles amplios pero controlando mejor la longitud visual de cada control.
+
+Complemento estructural (2026-04-28): `Mi perfil` y `Configuración` adoptaron la misma jerarquía visual de `Configuración de empresa`: encabezado de página, card contenedora con título, contenido interno con ancho controlado y paneles funcionales. En `Configuración -> Seguridad`, las secciones de contraseña y MFA quedaron consolidadas en un único panel con divisor interno, igualando el modelo visual de secciones usado en `Configuración operativa`.
+
+Complemento de alineación (2026-04-28): en `Mi perfil`, la tarjeta de identidad del usuario quedó dentro del mismo wrapper `max-w-[1180px]` que el panel `Datos de perfil`, evitando que el nombre/avatar ocupen más ancho que el formulario y manteniendo alineación visual entre ambos bloques.
+
+Complemento dashboard (2026-04-28): se corrigió la alineación de `/dashboard` retirando el padding interno adicional del `main` que desplazaba métricas, tabla y paneles laterales respecto al `PageHeader`. La pantalla quedó con el mismo gutter estructural usado por `Configuración de empresa` y el resto de vistas normalizadas.
+
+### Addendum correctivo 2026-04-28 — Login web alineado visualmente al portal corporativo
+
+Se aplicó en `apps/web` el lenguaje visual del login de `apps/portal` sin copiar su comportamiento tenant-aware. La consola de plataforma conserva su flujo propio de bootstrap inicial, autenticación de plataforma, MFA y cambio obligatorio de contraseña, pero adopta el panel premium de 520px, inputs altos `h-14` con radio `rounded-2xl`, botón principal verde de 56px, info-box superior de acceso administrativo y footer de sesión segura vía JWT. No se agregó campo `Tenant (slug)` en web, porque ese control pertenece exclusivamente al portal empresarial.
+
 ### Addendum correctivo 2026-04-25 — Resolución estable del preset TypeScript compartido en portal
 
 Se corrigió un falso positivo del editor sobre `apps/portal/tsconfig.json` que reportaba `Archivo '@iwana/config/tsconfig/nextjs' no encontrado` pese a que `tsc` sí resolvía el preset vía `pnpm`. La causa práctica era una divergencia entre la resolución del compilador y la del editor sobre `extends` en el monorepo. El ajuste dejó dos defensas complementarias: en `packages/config` se añadieron rutas físicas de compatibilidad bajo `tsconfig/`, y `apps/portal/tsconfig.json` pasó a extender el preset compartido mediante ruta relativa al workspace (`../../packages/config/tsconfig.nextjs.json`). Como validación, `get_errors` dejó de reportar el problema y `pnpm --filter @iwana/portal exec tsc --noEmit` continuó en verde.

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { cn } from '@iwana/ui';
+import { Card, CardContent, CardHeader, CardTitle, cn } from '@iwana/ui';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { SecuritySettings } from '@/components/settings/SecuritySettings';
 
@@ -17,47 +17,56 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabId>('general');
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader
         title="Configuración"
         subtitle="Gestiona la configuración de tu cuenta y preferencias"
       />
 
-      {/* Navegación por tabs */}
-      <div className="border-b border-gray-200 dark:border-gray-700">
-        <nav className="-mb-px flex gap-6" aria-label="Pestañas de configuración">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                'border-b-2 py-4 text-sm font-medium transition-colors',
-                activeTab === tab.id
-                  ? 'border-iwana-primary text-iwana-primary dark:border-iwana-primary-400 dark:text-iwana-primary-400'
-                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200',
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-      </div>
+      <Card className="overflow-hidden border border-gray-100/90 dark:border-dark-border">
+        <CardHeader className="px-5 pb-4 pt-5">
+          <CardTitle>Parámetros de cuenta</CardTitle>
+        </CardHeader>
+        <CardContent className="px-5 pb-5 pt-0">
+          {/* Navegación por tabs */}
+          <div className="overflow-x-auto pb-4">
+            <div className="inline-flex min-w-full gap-1 rounded-xl bg-gray-100/80 p-1 dark:bg-dark-surface-3 md:min-w-0">
+              {TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all md:min-w-[160px] md:flex-none',
+                    activeTab === tab.id
+                      ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-surface-2 dark:text-white'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200',
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-      {/* Contenido del tab activo */}
-      {activeTab === 'general' && (
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-dark-border dark:bg-dark-surface-2">
-          <h2 className="mb-4 text-lg font-semibold text-iwana-primary dark:text-white">
-            Preferencias generales
-          </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            La configuración operativa y los datos de empresa se gestionan desde el detalle de cada
-            tenant en la sección <strong>Empresas</strong>.
-          </p>
-        </div>
-      )}
+          <div className="max-w-[1180px]">
+            {/* Contenido del tab activo */}
+            {activeTab === 'general' && (
+              <div className="rounded-[24px] border border-gray-100 bg-white p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)] dark:border-dark-border dark:bg-dark-surface-2 dark:shadow-none">
+                <h2 className="mb-4 text-lg font-semibold text-iwana-primary dark:text-white">
+                  Preferencias generales
+                </h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  La configuración operativa y los datos de empresa se gestionan desde el detalle de
+                  cada empresa en la sección <strong>Empresas</strong>.
+                </p>
+              </div>
+            )}
 
-      {activeTab === 'seguridad' && <SecuritySettings />}
+            {activeTab === 'seguridad' && <SecuritySettings />}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

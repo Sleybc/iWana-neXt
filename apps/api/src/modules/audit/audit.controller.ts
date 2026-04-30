@@ -6,8 +6,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { SkipAudit } from './decorators/skip-audit.decorator';
-import { AuditLog } from '@iwana/db';
 import { UserRole } from '@iwana/shared';
+import { AuditLogListResponseDto, AuditLogResponseDto } from './dto/audit-log-response.dto';
 
 /**
  * Controlador de consulta del audit log del tenant.
@@ -37,10 +37,12 @@ export class AuditController {
    */
   @Get()
   @ApiOperation({ summary: 'Consultar audit log del tenant con filtros y paginacion cursor-based' })
-  @ApiResponse({ status: 200, description: 'Lista de entradas de audit.' })
-  async findAll(
-    @Query() dto: QueryAuditLogsDto,
-  ): Promise<{ data: AuditLog[]; meta: { nextCursor: string | null; total: number } }> {
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de entradas de audit.',
+    type: AuditLogListResponseDto,
+  })
+  async findAll(@Query() dto: QueryAuditLogsDto): Promise<AuditLogListResponseDto> {
     return this.auditQueryService.query(dto);
   }
 }

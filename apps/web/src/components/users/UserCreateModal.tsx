@@ -14,6 +14,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Button, Select } from '@iwana/ui';
 import { ApiError, usersApi, type CreateUserPayload, type UserListItem } from '@/lib/api-client';
+import { WEB_USER_ROLE_OPTIONS } from '@/lib/user-labels';
 import {
   FORM_ALERT_ERROR_CLASS,
   FORM_ALERT_SUCCESS_CLASS,
@@ -28,7 +29,7 @@ import {
 
 const createUserSchema = z.object({
   // Credenciales
-  email: z.string().email('Email inválido'),
+  email: z.string().email('Correo electrónico inválido'),
   role: z.string().min(1),
   password: z.string().min(10, 'Mínimo 10 caracteres').optional().or(z.literal('')),
   // Perfil (opcionales)
@@ -43,21 +44,6 @@ const createUserSchema = z.object({
 });
 
 type CreateUserFormValues = z.infer<typeof createUserSchema>;
-
-const USER_ROLES = [
-  'ADMIN',
-  'NOC',
-  'SUPPORT',
-  'TECHNICIAN',
-  'SALES',
-  'ACCOUNTANT',
-  'HR',
-  'SUBSCRIBER',
-  'CONTRACTOR',
-  'PARTNER',
-  'AUDITOR',
-  'INVESTOR',
-];
 
 const MODAL_PANEL_CLASS =
   'w-full max-w-2xl overflow-y-auto rounded-[28px] border border-gray-100 bg-white p-5 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2 dark:shadow-none max-h-[90vh] sm:p-6';
@@ -200,7 +186,7 @@ export function UserCreateModal({
               <div>
                 <p className="font-semibold">Usuario creado exitosamente</p>
                 <p className="mt-1">
-                  <strong>Email:</strong> {createdResult.email}
+                  <strong>Correo electrónico:</strong> {createdResult.email}
                 </p>
               </div>
             </div>
@@ -251,7 +237,7 @@ export function UserCreateModal({
 
                 <div className="mt-4">
                   <label htmlFor="uc-email" className={`block ${FORM_LABEL_CLASS}`}>
-                    Email <span className="text-red-500">*</span>
+                    Correo electrónico <span className="text-red-500">*</span>
                   </label>
                   <input
                     id="uc-email"
@@ -274,7 +260,7 @@ export function UserCreateModal({
                     render={({ field, fieldState }) => (
                       <Select
                         id="uc-role"
-                        options={USER_ROLES.map((role) => ({ value: role, label: role }))}
+                        options={WEB_USER_ROLE_OPTIONS}
                         value={field.value}
                         name={field.name}
                         onChange={field.onChange}
@@ -314,7 +300,8 @@ export function UserCreateModal({
                     Requerir verificación en dos pasos (MFA)
                   </label>
                   <p className={`mt-2 ${FORM_MICROCOPY_CLASS}`}>
-                    Si se activa, el usuario será redirigido al setup de MFA en su primer ingreso.
+                    Si se activa, el usuario será redirigido a la configuración de MFA en su primer
+                    ingreso.
                   </p>
                 </div>
               </div>

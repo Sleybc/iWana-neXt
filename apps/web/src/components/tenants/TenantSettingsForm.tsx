@@ -356,7 +356,7 @@ Esta acción no se puede deshacer. ¿Está absolutamente seguro?
                 <fieldset className={FIELDSET_CLASS}>
                   <legend className={FIELDSET_LEGEND}>Parámetros regionales</legend>
                   <p className={FIELDSET_TITLE}>Parámetros regionales</p>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
                       <label htmlFor="cfg-timezone" className={MINI_LABEL}>
                         Zona horaria

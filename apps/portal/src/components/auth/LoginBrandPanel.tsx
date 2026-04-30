@@ -105,7 +105,7 @@ export function LoginBrandPanel({
               Velocidad
             </p>
             <p className="mt-2 text-sm text-slate-300">
-              Inicio rápido con políticas activas y rutas seguras por tenant.
+              Inicio rápido con políticas activas y rutas seguras por empresa.
             </p>
           </div>
           <div className="rounded-[22px] border border-white/10 bg-white/5 p-4 backdrop-blur-md">

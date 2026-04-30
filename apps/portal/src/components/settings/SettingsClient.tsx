@@ -153,7 +153,7 @@ export function SettingsClient() {
                   {error ?? 'No se pudo cargar la configuración empresarial.'}
                 </p>
                 <p className="mt-1 text-sm text-red-700/80 dark:text-red-200/80">
-                  Reintenta para recuperar el perfil del tenant, sus parámetros operativos y la
+                  Reintenta para recuperar el perfil empresarial, sus parámetros operativos y la
                   política base de seguridad.
                 </p>
                 <button
@@ -175,7 +175,7 @@ export function SettingsClient() {
     <div className="flex flex-1 flex-col">
       <PageHeader
         title="Configuración empresarial"
-        subtitle="Administra el perfil, la operación base y la seguridad del tenant autenticado"
+        subtitle="Administra el perfil, la operación base y la seguridad de la empresa autenticada"
       />
 
       <main className="flex-1 p-6">
@@ -185,8 +185,8 @@ export function SettingsClient() {
               Centro de control
             </p>
             <p className="mt-1 max-w-3xl text-sm text-gray-600 dark:text-gray-400">
-              Aquí se consolidan perfil empresarial, parámetros operativos, seguridad base y
-              branding del tenant autenticado.
+              Aquí se consolidan perfil empresarial, parámetros operativos, seguridad base y marca
+              de la empresa autenticada.
             </p>
           </div>
 

@@ -10,7 +10,7 @@ import { LoginBrandPanel } from '@/components/auth/LoginBrandPanel';
 import { ApiError, authApi } from '@/lib/api-client';
 
 const forgotPasswordSchema = z.object({
-  tenantSlug: z.string().trim().min(1, 'Ingresa el slug del tenant.'),
+  tenantSlug: z.string().trim().min(1, 'Ingresa el identificador de la empresa.'),
   email: z.string().trim().email('Ingresa un correo válido.'),
 });
 
@@ -54,7 +54,7 @@ export default function ForgotPasswordPage() {
     <main className="relative min-h-screen w-full flex flex-col lg:flex-row overflow-hidden bg-[#181818]">
       <LoginBrandPanel
         title="Recupera tu acceso"
-        subtitle="Solicita un enlace temporal para restablecer la contraseña del portal del tenant."
+        subtitle="Solicita un enlace temporal para restablecer la contraseña del portal empresarial."
       />
 
       <div className="w-full lg:w-1/2 bg-[#181818] flex items-center justify-center p-6 lg:p-12 relative">
@@ -64,14 +64,14 @@ export default function ForgotPasswordPage() {
           <div className="mb-8 space-y-2">
             <h1 className="text-3xl font-bold text-[#181818]">Recuperar contraseña</h1>
             <p className="text-slate-500">
-              Ingresa tu correo y el slug del tenant. Si la cuenta existe, recibirás el enlace de
-              recuperación.
+              Ingresa tu correo y el identificador de la empresa. Si la cuenta existe, recibirás el
+              enlace de recuperación.
             </p>
           </div>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
             <label className="flex flex-col gap-2">
-              <span className="text-sm font-bold text-[#181818]">Tenant</span>
+              <span className="text-sm font-bold text-[#181818]">Empresa</span>
               <input
                 type="text"
                 placeholder="isp-demo"
@@ -93,7 +93,7 @@ export default function ForgotPasswordPage() {
               <span className="text-sm font-bold text-[#181818]">Correo electrónico</span>
               <input
                 type="email"
-                placeholder="usuario@tenant.co"
+                placeholder="usuario@empresa.co"
                 autoComplete="email"
                 className={cn(
                   'w-full h-14 px-4 bg-slate-50 border rounded-xl text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all',

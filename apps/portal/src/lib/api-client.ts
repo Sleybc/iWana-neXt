@@ -279,7 +279,7 @@ function getTenantSlug(tenantSlugOverride?: string): string {
   throw new ApiError(
     400,
     'TENANT_SLUG_REQUIRED',
-    'Falta el tenant. Ingresa el slug del tenant en el login o configura NEXT_PUBLIC_TENANT_SLUG.',
+    'Falta la empresa. Ingresa el identificador de la empresa en el login o configura NEXT_PUBLIC_TENANT_SLUG.',
   );
 }
 

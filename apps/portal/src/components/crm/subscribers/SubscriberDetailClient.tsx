@@ -383,7 +383,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
       <div className="space-y-6 pb-6">
         <PageHeader
           title="Nuevo suscriptor"
-          subtitle="Registra un nuevo suscriptor para el tenant autenticado."
+          subtitle="Registra un nuevo suscriptor para la empresa autenticada."
         />
         <div className="mx-6">
           <SubscriberForm

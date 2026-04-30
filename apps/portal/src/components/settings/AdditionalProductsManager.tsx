@@ -318,8 +318,8 @@ export function AdditionalProductsManager({ canEdit }: AdditionalProductsManager
               </p>
               <CardTitle className="mt-1 text-lg font-semibold">Catalogo de productos</CardTitle>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Administra el catalogo maestro del tenant en una sola vista con busqueda, filtros y
-                edicion rapida.
+                Administra el catálogo maestro de la empresa en una sola vista con búsqueda, filtros
+                y edicion rapida.
               </p>
             </div>
           </div>

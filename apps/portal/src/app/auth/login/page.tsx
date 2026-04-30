@@ -49,7 +49,7 @@ export default function LoginPage() {
             </p>
             <h2 className="mb-2 text-3xl font-bold text-[#181818]">Bienvenido al Portal</h2>
             <p className="text-slate-500 text-base">
-              Ingresa tus credenciales para acceder a tus servicios y a la operación del tenant.
+              Ingresa tus credenciales para acceder a tus servicios y a la operación de la empresa.
             </p>
           </div>
 

@@ -1,25 +1,10 @@
 import { Badge } from '@iwana/ui';
 import type { UserProfile } from '@/lib/api-client';
+import { getPortalUserStatusLabel, getPortalUserStatusVariant } from '@/lib/user-labels';
 
 interface ProfileHeaderProps {
   profile: UserProfile;
   roleLabel: string;
-}
-
-function statusVariant(status: string): 'success' | 'warning' | 'error' | 'neutral' {
-  if (status === 'ACTIVE') return 'success';
-  if (status === 'SUSPENDED') return 'error';
-  if (status === 'INACTIVE') return 'warning';
-  return 'neutral';
-}
-
-function statusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    ACTIVE: 'Activo',
-    SUSPENDED: 'Suspendido',
-    INACTIVE: 'Inactivo',
-  };
-  return labels[status] ?? status;
 }
 
 /**
@@ -52,7 +37,9 @@ export function ProfileHeader({ profile, roleLabel }: ProfileHeaderProps) {
         )}
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <Badge variant="primary">{roleLabel}</Badge>
-          <Badge variant={statusVariant(profile.status)}>{statusLabel(profile.status)}</Badge>
+          <Badge variant={getPortalUserStatusVariant(profile.status)}>
+            {getPortalUserStatusLabel(profile.status)}
+          </Badge>
         </div>
       </div>
     </div>

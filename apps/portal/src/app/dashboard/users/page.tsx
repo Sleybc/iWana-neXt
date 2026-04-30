@@ -3,7 +3,7 @@ import { UsersClient } from '@/components/users/UsersClient';
 
 export const metadata = {
   title: 'Usuarios | Portal Empresarial',
-  description: 'Gestión de usuarios internos del tenant',
+  description: 'Gestión de usuarios internos de la empresa',
 };
 
 export default function UsersPage() {

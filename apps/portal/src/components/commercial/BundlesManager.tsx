@@ -57,7 +57,7 @@ function mapLoadError(error: unknown): string {
     return error.message;
   }
 
-  return 'No fue posible cargar los combos del tenant.';
+  return 'No fue posible cargar los combos de la empresa.';
 }
 
 export function BundlesManager({ canEdit }: BundlesManagerProps) {

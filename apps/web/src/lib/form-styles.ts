@@ -1,6 +1,9 @@
 export const FORM_PANEL_CLASS =
   'rounded-[28px] border border-gray-100 bg-white p-8 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2 dark:shadow-none';
 
+export const FORM_PANEL_PREMIUM_CLASS =
+  'rounded-[30px] border border-white/70 bg-white/95 p-8 shadow-iwana-lg lg:p-12 dark:border-dark-border dark:bg-dark-surface-2 dark:shadow-none';
+
 export const FORM_INPUT_CLASS =
   'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 transition placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-iwana-primary/30 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-500';
 

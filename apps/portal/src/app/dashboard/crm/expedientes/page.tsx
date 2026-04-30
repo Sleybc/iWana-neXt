@@ -120,7 +120,7 @@ export default function ExpedientesPage() {
       setTotal(response.total);
     } catch (err) {
       console.error('Error loading expedientes:', err);
-      setError('No fue posible cargar las oportunidades del tenant.');
+      setError('No fue posible cargar las oportunidades de la empresa.');
     } finally {
       if (!silent) {
         setLoading(false);
@@ -189,7 +189,7 @@ export default function ExpedientesPage() {
     <div className="space-y-6 pb-6">
       <PageHeader
         title="CRM operativo"
-        subtitle="Oportunidades comerciales para captación, calificación y cierre comercial del tenant."
+        subtitle="Oportunidades comerciales para captación, calificación y cierre comercial de la empresa."
         actions={<Badge variant="primary">{total} oportunidades</Badge>}
       />
 
@@ -381,7 +381,7 @@ export default function ExpedientesPage() {
             {loading ? (
               <div className="flex items-center justify-center gap-3 px-6 py-14 text-sm text-gray-600 dark:text-gray-300">
                 <Loader2 className="h-5 w-5 animate-spin text-iwana-primary" aria-hidden="true" />
-                Estamos consolidando el pipeline comercial del tenant.
+                Estamos consolidando el pipeline comercial de la empresa.
               </div>
             ) : expedientes.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">

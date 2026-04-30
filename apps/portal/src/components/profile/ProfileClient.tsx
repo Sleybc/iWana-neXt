@@ -6,25 +6,11 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { OnboardingAlerts } from '@/components/dashboard/OnboardingAlerts';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { userApi, dashboardApi, type UserProfile, type DashboardAlert } from '@/lib/api-client';
+import { getPortalUserRoleLabel } from '@/lib/user-labels';
 import { ChangePasswordForm } from './ChangePasswordForm';
 import { MfaRequiredToggle } from './MfaRequiredToggle';
 import { PersonalInfoForm } from './PersonalInfoForm';
 import { ProfileHeader } from './ProfileHeader';
-
-function roleToLabel(role: string): string {
-  const labels: Record<string, string> = {
-    ADMIN: 'Administrador',
-    NOC: 'Operador NOC',
-    ACCOUNTANT: 'Contabilidad',
-    SUPPORT: 'Soporte',
-    SALES: 'Ventas',
-    TECHNICIAN: 'Técnico',
-    HR: 'Recursos Humanos',
-    AUDITOR: 'Auditor',
-    SUBSCRIBER: 'Suscriptor',
-  };
-  return labels[role] ?? role;
-}
 
 /**
  * Orquesta la vista de perfil del usuario autenticado.
@@ -146,7 +132,7 @@ export function ProfileClient() {
       <main className="flex-1 p-6">
         <div className="w-full space-y-6">
           {/* Header con avatar Gravatar, nombre, rol y estado — ancho completo */}
-          <ProfileHeader profile={profile} roleLabel={roleToLabel(user.role)} />
+          <ProfileHeader profile={profile} roleLabel={getPortalUserRoleLabel(user.role)} />
 
           {/* Contenido principal — dos columnas en pantallas grandes */}
           <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] lg:items-start">

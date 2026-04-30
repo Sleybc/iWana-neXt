@@ -24,7 +24,7 @@ export function CommercialClient() {
       <div className="flex flex-1 flex-col">
         <PageHeader
           title="Comercial"
-          subtitle="Cargando catálogo comercial y reglas operativas del tenant autenticado"
+          subtitle="Cargando catálogo comercial y reglas operativas de la empresa autenticada"
         />
         <main className="flex-1 p-6">
           <CommercialSkeleton />
@@ -51,8 +51,8 @@ export function CommercialClient() {
                   No fue posible resolver la sesión del portal para cargar el módulo Comercial.
                 </p>
                 <p className="mt-1 text-sm text-red-700/80 dark:text-red-200/80">
-                  Inicia sesión nuevamente para recuperar el acceso al catálogo comercial del
-                  tenant.
+                  Inicia sesión nuevamente para recuperar el acceso al catálogo comercial del portal
+                  empresarial.
                 </p>
               </div>
             </div>
@@ -66,7 +66,7 @@ export function CommercialClient() {
     <div className="flex flex-1 flex-col">
       <PageHeader
         title="Comercial"
-        subtitle="Gestiona catálogo, precios vigentes y reglas operativas del tenant autenticado"
+        subtitle="Gestiona catálogo, precios vigentes y reglas operativas de la empresa autenticada"
       />
 
       <main className="flex-1 p-6">
@@ -77,7 +77,7 @@ export function CommercialClient() {
             </p>
             <p className="mt-1 max-w-3xl text-sm text-gray-600 dark:text-gray-400">
               Aquí se concentra la definición de la oferta comercial sin mezclarla con cobertura ni
-              con la configuración general del tenant.
+              con la configuración general de la empresa.
             </p>
           </div>
 

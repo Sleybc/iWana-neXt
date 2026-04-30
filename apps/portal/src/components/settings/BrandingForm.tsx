@@ -177,7 +177,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
           </div>
         </div>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Configura la identidad visual del tenant. Las imágenes deben estar publicadas en HTTPS.
+          Configura la identidad visual de la empresa. Las imágenes deben estar publicadas en HTTPS.
           Formatos recomendados: SVG o PNG con fondo transparente.
         </p>
       </CardHeader>
@@ -191,7 +191,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
               </h3>
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 Proporción 1:1. Se usa en el menú lateral, como favicon del navegador y en futuras
-                superficies compactas del tenant.
+                superficies compactas de la empresa.
               </p>
             </div>
 
@@ -248,7 +248,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                   </h4>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
                     El portal reutiliza este sello como icono de la pestaña. Si cambias las URLs del
-                    sello, el favicon se actualiza en caliente para el tenant autenticado.
+                    sello, el favicon se actualiza en caliente para la empresa autenticada.
                   </p>
                 </div>
                 <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">

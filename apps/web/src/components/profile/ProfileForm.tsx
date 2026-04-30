@@ -72,7 +72,10 @@ const LANGUAGE_OPTIONS = [
 ];
 
 const accountSectionClass =
-  'rounded-2xl border border-gray-100 bg-white/70 p-4 dark:border-dark-border dark:bg-dark-surface-2/70';
+  'rounded-2xl border border-gray-100 bg-gray-50/60 p-4 dark:border-dark-border dark:bg-dark-surface-3/60';
+
+const profilePanelClass =
+  'rounded-[24px] border border-gray-100 bg-white p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)] dark:border-dark-border dark:bg-dark-surface-2 dark:shadow-none';
 
 export function ProfileForm() {
   const { refreshProfile, logout } = useAuth();
@@ -238,7 +241,7 @@ export function ProfileForm() {
   }
 
   return (
-    <div className={FORM_SECTION_CARD_CLASS}>
+    <div className={profilePanelClass}>
       <div className="mb-6 flex items-start gap-3">
         <div className="rounded-2xl bg-white p-2 text-iwana-primary shadow-sm dark:bg-dark-surface-2 dark:text-white">
           <UserRound className="h-5 w-5" aria-hidden="true" />
@@ -254,7 +257,7 @@ export function ProfileForm() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
         {serverError && (
           <div role="alert" className={FORM_ALERT_ERROR_CLASS}>
             <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
@@ -268,97 +271,99 @@ export function ProfileForm() {
           </div>
         )}
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <label htmlFor="profile-first-name" className={`block ${FORM_LABEL_CLASS}`}>
-              Nombres
+        <div className="max-w-4xl space-y-5">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <label htmlFor="profile-first-name" className={`block ${FORM_LABEL_CLASS}`}>
+                Nombres
+              </label>
+              <input
+                id="profile-first-name"
+                type="text"
+                maxLength={100}
+                className={FORM_INPUT_CLASS}
+                {...register('firstName')}
+              />
+              {errors.firstName && <p className={FORM_ERROR_CLASS}>{errors.firstName.message}</p>}
+            </div>
+
+            <div>
+              <label htmlFor="profile-last-name" className={`block ${FORM_LABEL_CLASS}`}>
+                Apellidos
+              </label>
+              <input
+                id="profile-last-name"
+                type="text"
+                maxLength={100}
+                className={FORM_INPUT_CLASS}
+                {...register('lastName')}
+              />
+              {errors.lastName && <p className={FORM_ERROR_CLASS}>{errors.lastName.message}</p>}
+            </div>
+          </div>
+
+          <div className="max-w-xl">
+            <label htmlFor="profile-phone" className={`block ${FORM_LABEL_CLASS}`}>
+              Teléfono
             </label>
             <input
-              id="profile-first-name"
+              id="profile-phone"
               type="text"
-              maxLength={100}
+              placeholder="+573001112233"
               className={FORM_INPUT_CLASS}
-              {...register('firstName')}
+              {...register('phone')}
             />
-            {errors.firstName && <p className={FORM_ERROR_CLASS}>{errors.firstName.message}</p>}
+            {errors.phone && <p className={FORM_ERROR_CLASS}>{errors.phone.message}</p>}
           </div>
 
-          <div>
-            <label htmlFor="profile-last-name" className={`block ${FORM_LABEL_CLASS}`}>
-              Apellidos
-            </label>
-            <input
-              id="profile-last-name"
-              type="text"
-              maxLength={100}
-              className={FORM_INPUT_CLASS}
-              {...register('lastName')}
-            />
-            {errors.lastName && <p className={FORM_ERROR_CLASS}>{errors.lastName.message}</p>}
-          </div>
-        </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <label htmlFor="profile-timezone" className={`block ${FORM_LABEL_CLASS}`}>
+                Zona horaria
+              </label>
+              <Controller
+                control={control}
+                name="timezone"
+                render={({ field, fieldState }) => (
+                  <Select
+                    id="profile-timezone"
+                    options={TIMEZONE_OPTIONS}
+                    value={field.value ?? ''}
+                    name={field.name}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    ref={field.ref}
+                    {...(fieldState.error ? { error: fieldState.error.message } : {})}
+                  />
+                )}
+              />
+            </div>
 
-        <div>
-          <label htmlFor="profile-phone" className={`block ${FORM_LABEL_CLASS}`}>
-            Teléfono
-          </label>
-          <input
-            id="profile-phone"
-            type="text"
-            placeholder="+573001112233"
-            className={FORM_INPUT_CLASS}
-            {...register('phone')}
-          />
-          {errors.phone && <p className={FORM_ERROR_CLASS}>{errors.phone.message}</p>}
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <label htmlFor="profile-timezone" className={`block ${FORM_LABEL_CLASS}`}>
-              Zona horaria
-            </label>
-            <Controller
-              control={control}
-              name="timezone"
-              render={({ field, fieldState }) => (
-                <Select
-                  id="profile-timezone"
-                  options={TIMEZONE_OPTIONS}
-                  value={field.value ?? ''}
-                  name={field.name}
-                  onChange={field.onChange}
-                  onBlur={field.onBlur}
-                  ref={field.ref}
-                  {...(fieldState.error ? { error: fieldState.error.message } : {})}
-                />
-              )}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="profile-language" className={`block ${FORM_LABEL_CLASS}`}>
-              Idioma
-            </label>
-            <Controller
-              control={control}
-              name="language"
-              render={({ field, fieldState }) => (
-                <Select
-                  id="profile-language"
-                  options={LANGUAGE_OPTIONS}
-                  value={field.value ?? ''}
-                  name={field.name}
-                  onChange={field.onChange}
-                  onBlur={field.onBlur}
-                  ref={field.ref}
-                  {...(fieldState.error ? { error: fieldState.error.message } : {})}
-                />
-              )}
-            />
+            <div>
+              <label htmlFor="profile-language" className={`block ${FORM_LABEL_CLASS}`}>
+                Idioma
+              </label>
+              <Controller
+                control={control}
+                name="language"
+                render={({ field, fieldState }) => (
+                  <Select
+                    id="profile-language"
+                    options={LANGUAGE_OPTIONS}
+                    value={field.value ?? ''}
+                    name={field.name}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    ref={field.ref}
+                    {...(fieldState.error ? { error: fieldState.error.message } : {})}
+                  />
+                )}
+              />
+            </div>
           </div>
         </div>
 
-        <div className="flex justify-end border-t border-gray-100 pt-6 dark:border-dark-border">
+        <div className="flex justify-end">
           <Button type="submit" size="lg" loading={isSaving}>
             Guardar cambios
           </Button>
@@ -385,8 +390,7 @@ export function ProfileForm() {
               </div>
               <Button
                 type="button"
-                variant="secondary"
-                size="sm"
+                size="lg"
                 onClick={() => {
                   setIsEmailSectionExpanded(!isEmailSectionExpanded);
                   setIsPasswordSectionExpanded(false);
@@ -404,51 +408,53 @@ export function ProfileForm() {
                 onSubmit={handleSubmitEmail(onSubmitLoginEmail)}
                 className="mt-4 space-y-4 border-t border-gray-100 pt-4 dark:border-dark-border"
               >
-                <div>
-                  <label htmlFor="profile-login-email" className={`block ${FORM_LABEL_CLASS}`}>
-                    Nuevo email de acceso
-                  </label>
-                  <input
-                    id="profile-login-email"
-                    type="email"
-                    className={FORM_INPUT_CLASS}
-                    {...registerEmail('email')}
-                  />
-                  {emailErrors.email && (
-                    <p className={FORM_ERROR_CLASS}>{emailErrors.email.message}</p>
+                <div className="max-w-2xl space-y-4">
+                  <div>
+                    <label htmlFor="profile-login-email" className={`block ${FORM_LABEL_CLASS}`}>
+                      Nuevo email de acceso
+                    </label>
+                    <input
+                      id="profile-login-email"
+                      type="email"
+                      className={FORM_INPUT_CLASS}
+                      {...registerEmail('email')}
+                    />
+                    {emailErrors.email && (
+                      <p className={FORM_ERROR_CLASS}>{emailErrors.email.message}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="profile-login-current-password"
+                      className={`block ${FORM_LABEL_CLASS}`}
+                    >
+                      Contraseña actual
+                    </label>
+                    <input
+                      id="profile-login-current-password"
+                      type="password"
+                      className={FORM_INPUT_CLASS}
+                      {...registerEmail('currentPassword')}
+                    />
+                    {emailErrors.currentPassword && (
+                      <p className={FORM_ERROR_CLASS}>{emailErrors.currentPassword.message}</p>
+                    )}
+                  </div>
+
+                  {emailError && (
+                    <div role="alert" className={FORM_ALERT_ERROR_CLASS}>
+                      <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+                      <p>{emailError}</p>
+                    </div>
+                  )}
+                  {emailSuccessMessage && (
+                    <div className={FORM_ALERT_SUCCESS_CLASS}>
+                      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+                      <p>{emailSuccessMessage}</p>
+                    </div>
                   )}
                 </div>
-
-                <div>
-                  <label
-                    htmlFor="profile-login-current-password"
-                    className={`block ${FORM_LABEL_CLASS}`}
-                  >
-                    Contraseña actual
-                  </label>
-                  <input
-                    id="profile-login-current-password"
-                    type="password"
-                    className={FORM_INPUT_CLASS}
-                    {...registerEmail('currentPassword')}
-                  />
-                  {emailErrors.currentPassword && (
-                    <p className={FORM_ERROR_CLASS}>{emailErrors.currentPassword.message}</p>
-                  )}
-                </div>
-
-                {emailError && (
-                  <div role="alert" className={FORM_ALERT_ERROR_CLASS}>
-                    <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-                    <p>{emailError}</p>
-                  </div>
-                )}
-                {emailSuccessMessage && (
-                  <div className={FORM_ALERT_SUCCESS_CLASS}>
-                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-                    <p>{emailSuccessMessage}</p>
-                  </div>
-                )}
 
                 <div className="flex justify-end gap-3">
                   <Button
@@ -482,8 +488,7 @@ export function ProfileForm() {
               </div>
               <Button
                 type="button"
-                variant="secondary"
-                size="sm"
+                size="lg"
                 onClick={() => {
                   setIsPasswordSectionExpanded(!isPasswordSectionExpanded);
                   setIsEmailSectionExpanded(false);
@@ -501,68 +506,76 @@ export function ProfileForm() {
                 onSubmit={handleSubmitPassword(onSubmitPassword)}
                 className="mt-4 space-y-4 border-t border-gray-100 pt-4 dark:border-dark-border"
               >
-                <div>
-                  <label htmlFor="profile-password-current" className={`block ${FORM_LABEL_CLASS}`}>
-                    Contraseña actual
-                  </label>
-                  <input
-                    id="profile-password-current"
-                    type="password"
-                    className={FORM_INPUT_CLASS}
-                    {...registerPassword('currentPassword')}
-                  />
-                  {passwordErrors.currentPassword && (
-                    <p className={FORM_ERROR_CLASS}>{passwordErrors.currentPassword.message}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label htmlFor="profile-password-new" className={`block ${FORM_LABEL_CLASS}`}>
-                    Nueva contraseña
-                  </label>
-                  <input
-                    id="profile-password-new"
-                    type="password"
-                    className={FORM_INPUT_CLASS}
-                    {...registerPassword('newPassword')}
-                  />
-                  {passwordErrors.newPassword && (
-                    <p className={FORM_ERROR_CLASS}>{passwordErrors.newPassword.message}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label htmlFor="profile-password-confirm" className={`block ${FORM_LABEL_CLASS}`}>
-                    Confirmar nueva contraseña
-                  </label>
-                  <input
-                    id="profile-password-confirm"
-                    type="password"
-                    className={FORM_INPUT_CLASS}
-                    {...registerPassword('confirmPassword')}
-                  />
-                  {passwordErrors.confirmPassword && (
-                    <p className={FORM_ERROR_CLASS}>{passwordErrors.confirmPassword.message}</p>
-                  )}
-                </div>
-
-                <p className={FORM_MICROCOPY_CLASS}>
-                  Tras un cambio exitoso de contraseña, la sesión se cerrará automáticamente para
-                  forzar reautenticación segura.
-                </p>
-
-                {passwordError && (
-                  <div role="alert" className={FORM_ALERT_ERROR_CLASS}>
-                    <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-                    <p>{passwordError}</p>
+                <div className="max-w-2xl space-y-4">
+                  <div>
+                    <label
+                      htmlFor="profile-password-current"
+                      className={`block ${FORM_LABEL_CLASS}`}
+                    >
+                      Contraseña actual
+                    </label>
+                    <input
+                      id="profile-password-current"
+                      type="password"
+                      className={FORM_INPUT_CLASS}
+                      {...registerPassword('currentPassword')}
+                    />
+                    {passwordErrors.currentPassword && (
+                      <p className={FORM_ERROR_CLASS}>{passwordErrors.currentPassword.message}</p>
+                    )}
                   </div>
-                )}
-                {passwordSuccessMessage && (
-                  <div className={FORM_ALERT_SUCCESS_CLASS}>
-                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-                    <p>{passwordSuccessMessage}</p>
+
+                  <div>
+                    <label htmlFor="profile-password-new" className={`block ${FORM_LABEL_CLASS}`}>
+                      Nueva contraseña
+                    </label>
+                    <input
+                      id="profile-password-new"
+                      type="password"
+                      className={FORM_INPUT_CLASS}
+                      {...registerPassword('newPassword')}
+                    />
+                    {passwordErrors.newPassword && (
+                      <p className={FORM_ERROR_CLASS}>{passwordErrors.newPassword.message}</p>
+                    )}
                   </div>
-                )}
+
+                  <div>
+                    <label
+                      htmlFor="profile-password-confirm"
+                      className={`block ${FORM_LABEL_CLASS}`}
+                    >
+                      Confirmar nueva contraseña
+                    </label>
+                    <input
+                      id="profile-password-confirm"
+                      type="password"
+                      className={FORM_INPUT_CLASS}
+                      {...registerPassword('confirmPassword')}
+                    />
+                    {passwordErrors.confirmPassword && (
+                      <p className={FORM_ERROR_CLASS}>{passwordErrors.confirmPassword.message}</p>
+                    )}
+                  </div>
+
+                  <p className={FORM_MICROCOPY_CLASS}>
+                    Tras un cambio exitoso de contraseña, la sesión se cerrará automáticamente para
+                    forzar reautenticación segura.
+                  </p>
+
+                  {passwordError && (
+                    <div role="alert" className={FORM_ALERT_ERROR_CLASS}>
+                      <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+                      <p>{passwordError}</p>
+                    </div>
+                  )}
+                  {passwordSuccessMessage && (
+                    <div className={FORM_ALERT_SUCCESS_CLASS}>
+                      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+                      <p>{passwordSuccessMessage}</p>
+                    </div>
+                  )}
+                </div>
 
                 <div className="flex justify-end gap-3">
                   <Button

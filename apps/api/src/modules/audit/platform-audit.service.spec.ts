@@ -15,6 +15,7 @@ import { DataSource } from 'typeorm';
 import { AuditAction } from '@iwana/shared';
 import { PlatformAuditService } from './platform-audit.service';
 import { AuditEntryInput } from './interfaces/audit-entry.interface';
+import { AuditActorResolver } from './audit-actor.resolver';
 
 // ---------------------------------------------------------------------------
 // Helpers de mock para DataSource.getRepository
@@ -53,15 +54,39 @@ describe('PlatformAuditService', () => {
   let save: jest.Mock;
   let create: jest.Mock;
   let findAndCount: jest.Mock;
+  let resolver: jest.Mocked<AuditActorResolver>;
 
   beforeEach(async () => {
     const { dataSource, save: s, create: c, findAndCount: fc } = buildMockDataSource();
     save = s;
     create = c;
     findAndCount = fc;
+    resolver = {
+      resolveMany: jest.fn().mockResolvedValue(
+        new Map([
+          [
+            'user-uuid-1',
+            {
+              id: 'user-uuid-1',
+              type: 'platform',
+              displayName: 'Admin Plataforma',
+              role: 'SYSTEM_ADMIN',
+              status: 'ACTIVE',
+              isDeleted: false,
+            },
+          ],
+        ]),
+      ),
+      systemActor: jest.fn().mockReturnValue({ id: null, type: 'system', displayName: 'Sistema' }),
+      unknownActor: jest.fn((id: string) => ({ id, type: 'unknown', displayName: `Actor ${id}` })),
+    } as unknown as jest.Mocked<AuditActorResolver>;
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PlatformAuditService, { provide: DataSource, useValue: dataSource }],
+      providers: [
+        PlatformAuditService,
+        { provide: DataSource, useValue: dataSource },
+        { provide: AuditActorResolver, useValue: resolver },
+      ],
     }).compile();
 
     service = module.get<PlatformAuditService>(PlatformAuditService);
@@ -170,7 +195,16 @@ describe('PlatformAuditService', () => {
     it('retorna datos y nextCursor=null cuando hay resultados', async () => {
       const result = await service.query({ limit: 50 });
       expect(result.data).toHaveLength(1);
+      expect(result.data[0]?.actor).toEqual({
+        id: 'user-uuid-1',
+        type: 'platform',
+        displayName: 'Admin Plataforma',
+        role: 'SYSTEM_ADMIN',
+        status: 'ACTIVE',
+        isDeleted: false,
+      });
       expect(result.nextCursor).toBeNull();
+      expect(resolver.resolveMany).toHaveBeenCalledWith(['user-uuid-1'], { source: 'platform' });
       expect(findAndCount).toHaveBeenCalledWith({
         where: {},
         order: { createdAt: 'DESC', id: 'DESC' },

@@ -6,7 +6,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { SkipAudit } from './decorators/skip-audit.decorator';
 import { PlatformRole } from '@iwana/shared';
-import { PlatformAuditLog } from '@iwana/db';
+import { PlatformAuditLogListResponseDto } from './dto/audit-log-response.dto';
 
 @Controller('platform-audit-logs')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -21,13 +21,17 @@ export class PlatformAuditController {
   @ApiOperation({
     summary: 'Consultar audit log de plataforma con filtros y paginación cursor-based',
   })
-  @ApiResponse({ status: 200, description: 'Lista de entradas de audit de plataforma.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de entradas de audit de plataforma.',
+    type: PlatformAuditLogListResponseDto,
+  })
   async findAll(
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
     @Query('action') action?: string,
     @Query('entityType') entityType?: string,
-  ): Promise<{ data: PlatformAuditLog[]; nextCursor: string | null }> {
+  ): Promise<PlatformAuditLogListResponseDto> {
     const queryParams: {
       limit: number;
       cursor?: string;

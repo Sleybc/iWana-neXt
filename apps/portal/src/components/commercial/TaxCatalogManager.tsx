@@ -232,7 +232,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
             Catálogo de impuestos
           </h3>
           <p className="mt-0.5 text-sm text-gray-500 dark:text-dark-text-secondary">
-            Definiciones tributarias del tenant. Los presets del sistema son inmutables.
+            Definiciones tributarias de la empresa. Los presets del sistema son inmutables.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -358,7 +358,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
           <DialogHeader>
             <DialogTitle>Nueva definición tributaria</DialogTitle>
             <DialogDescription>
-              Crea un impuesto o contribución personalizada para este tenant. Los campos marcados
+              Crea un impuesto o contribución personalizada para esta empresa. Los campos marcados
               con <span className="text-iwana-error">*</span> son obligatorios.
             </DialogDescription>
           </DialogHeader>

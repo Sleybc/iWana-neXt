@@ -128,7 +128,7 @@ export function OperationalSettingsForm({
           </div>
         </div>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Define la región operativa base que usa el portal del tenant autenticado.
+          Define la región operativa base que usa el portal de la empresa autenticada.
         </p>
       </CardHeader>
 

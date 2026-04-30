@@ -105,10 +105,13 @@ export function RecentActivityPanel() {
 
         {!isLoading && !error && entries.length === 0 && (
           <div className="flex items-start gap-3 rounded-[24px] border border-emerald-200/60 bg-[linear-gradient(135deg,rgba(248,250,245,0.96),rgba(255,255,255,0.94))] px-4 py-4 text-sm text-gray-600 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
-            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+            <CheckCircle2
+              className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"
+              aria-hidden="true"
+            />
             <div>
               <p className="font-medium text-gray-800 dark:text-white">Actividad bajo control</p>
-              <p className="mt-1">No hay actividad registrada en este tenant todavía.</p>
+              <p className="mt-1">No hay actividad registrada en esta empresa todavía.</p>
             </div>
           </div>
         )}

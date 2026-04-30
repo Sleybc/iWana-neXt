@@ -2,7 +2,7 @@
 import type { Metadata } from 'next';
 import { LoginBrandPanel } from '@/components/auth/LoginBrandPanel';
 import { LoginForm } from '@/components/auth/LoginForm';
-import { FORM_PANEL_CLASS } from '@/lib/form-styles';
+import { FORM_PANEL_PREMIUM_CLASS } from '@/lib/form-styles';
 
 export const metadata: Metadata = {
   title: 'Iniciar sesión — iWana neXt',
@@ -26,7 +26,7 @@ export default function LoginPage() {
         {/* Patrón de puntos */}
         <div className="absolute inset-0 opacity-5 bg-[radial-gradient(#A5C330_1px,transparent_1px)] bg-[length:32px_32px]" />
 
-        <div className={`${FORM_PANEL_CLASS} relative z-10 w-full max-w-[480px] lg:p-10`}>
+        <div className={`${FORM_PANEL_PREMIUM_CLASS} relative z-10 w-full max-w-[520px]`}>
           <div className="mb-10">
             {/* Title / welcome message */}
             <div className="flex lg:hidden items-center gap-2 mb-6">
@@ -45,11 +45,14 @@ export default function LoginPage() {
               <span className="font-bold text-[#181818]">iWana neXt</span>
             </div>
 
-            <h2 className="mb-2 text-3xl font-bold text-iwana-primary dark:text-white">
-              Bienvenido
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+              Consola de plataforma
+            </p>
+            <h2 className="mb-2 text-3xl font-bold text-[#181818] dark:text-white">
+              Bienvenido a iWana neXt
             </h2>
-            <p className="text-base text-gray-500 dark:text-gray-400">
-              Ingresa tus credenciales para acceder al portal
+            <p className="text-base text-slate-500 dark:text-gray-400">
+              Ingresa tus credenciales para administrar empresas, usuarios y operación interna.
             </p>
           </div>
 

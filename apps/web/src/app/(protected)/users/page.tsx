@@ -64,7 +64,7 @@ function TenantSelect({
       {/* Botón disparador */}
       <button
         type="button"
-        aria-label="Seleccionar tenant"
+        aria-label="Seleccionar empresa"
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={handleToggle}
@@ -81,7 +81,7 @@ function TenantSelect({
       {open && tenants.length > 0 && (
         <ul
           role="listbox"
-          aria-label="Seleccionar tenant"
+          aria-label="Seleccionar empresa"
           className={`absolute left-0 z-20 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-dark-surface-2 ${
             openUpward ? 'bottom-full mb-1' : 'top-full mt-1'
           }`}
@@ -128,15 +128,20 @@ export default function UsersPage() {
 
   useEffect(() => {
     const loadTenants = async () => {
-      const list = await tenantApi.list({ limit: 100, offset: 0 });
-      const active = list.filter((item) => item.status === 'ACTIVE');
-      setTenants(active);
-      if (active[0]) {
-        setTenantSlug(active[0].slug);
+      try {
+        const list = await tenantApi.list({ limit: 100, offset: 0 });
+        const active = list.filter((item) => item.status === 'ACTIVE');
+        setTenants(active);
+        if (active[0]) {
+          setTenantSlug(active[0].slug);
+        }
+      } catch {
+        setTenants([]);
+        setTenantSlug('');
       }
     };
 
-    loadTenants();
+    void loadTenants();
   }, []);
 
   const loadUsers = useCallback(async () => {
@@ -171,7 +176,7 @@ export default function UsersPage() {
   }, [loadUsers]);
 
   const selectedTenantName = useMemo(() => {
-    return tenants.find((tenant) => tenant.slug === tenantSlug)?.name ?? 'Sin tenant';
+    return tenants.find((tenant) => tenant.slug === tenantSlug)?.name ?? 'Sin empresa';
   }, [tenantSlug, tenants]);
 
   return (
@@ -245,6 +250,7 @@ export default function UsersPage() {
       <UserManagementModal
         open={Boolean(selectedUser)}
         tenantSlug={tenantSlug}
+        tenantName={selectedTenantName}
         user={selectedUser}
         onClose={() => setSelectedUser(null)}
         onSaved={(updatedUser) => {

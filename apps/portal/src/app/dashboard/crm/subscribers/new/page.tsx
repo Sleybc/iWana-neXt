@@ -2,7 +2,7 @@ import { SubscriberDetailClient } from '@/components/crm/subscribers/SubscriberD
 
 export const metadata = {
   title: 'Nuevo suscriptor | Portal Empresarial',
-  description: 'Alta de nuevo suscriptor CRM del tenant',
+  description: 'Alta de nuevo suscriptor CRM de la empresa',
 };
 
 export default function NewSubscriberPage() {

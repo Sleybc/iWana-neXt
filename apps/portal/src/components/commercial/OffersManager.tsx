@@ -41,7 +41,8 @@ export function OffersManager({ canEdit }: OffersManagerProps) {
           Ofertas
         </p>
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-          Construye combos y promociones temporales para mejorar la conversión comercial del tenant.
+          Construye combos y promociones temporales para mejorar la conversión comercial de la
+          empresa.
         </p>
 
         <nav

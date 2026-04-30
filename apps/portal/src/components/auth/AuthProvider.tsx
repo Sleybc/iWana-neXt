@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import { usePathname } from 'next/navigation';
+import { getPortalUserRoleLabel } from '@/lib/user-labels';
 import {
   authApi,
   userApi,
@@ -61,29 +62,6 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-/**
- * Mapea el rol del usuario a etiqueta legible para el panel empresarial.
- * Alineado con UserRole enum del backend (valores en UPPER_CASE).
- * Gotcha: los roles vienen como 'ADMIN', 'NOC', etc. — nunca como 'tenant_admin'.
- * CLAUDE.md §Gotchas conocidos — Auth / MFA
- */
-function roleToDisplayName(role: string): string {
-  const labels: Record<string, string> = {
-    ADMIN: 'Administrador',
-    NOC: 'Operador NOC',
-    ACCOUNTANT: 'Contabilidad',
-    SUPPORT: 'Soporte',
-    SALES: 'Ventas',
-    TECHNICIAN: 'Técnico',
-    HR: 'Recursos Humanos',
-    AUDITOR: 'Auditor',
-    SUBSCRIBER: 'Suscriptor',
-    SYSTEM_ADMIN: 'Admin de plataforma',
-    IWANA_SUPPORT: 'Soporte iWana',
-  };
-  return labels[role] ?? role;
-}
-
 function toAuthUser(
   profile: JwtProfile,
   firstName: string | null = null,
@@ -97,8 +75,8 @@ function toAuthUser(
     type: profile.type,
     tenantId: profile.tenantId,
     // displayName: nombre real si existe, si no el rol
-    displayName: fullName ?? roleToDisplayName(profile.role),
-    subtitle: roleToDisplayName(profile.role),
+    displayName: fullName ?? getPortalUserRoleLabel(profile.role),
+    subtitle: getPortalUserRoleLabel(profile.role),
     firstName,
     lastName,
   };

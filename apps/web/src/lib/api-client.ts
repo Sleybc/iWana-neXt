@@ -166,6 +166,22 @@ async function request<T>(path: string, options?: RequestOptions): Promise<T> {
         skipRefreshRetry: true,
       });
     } catch (refreshError) {
+      if (
+        isBrowser() &&
+        refreshError instanceof ApiError &&
+        refreshError.code === 'SESSION_EXPIRED'
+      ) {
+        const nextPath = `${window.location.pathname}${window.location.search}`;
+        const loginUrl = `/auth/login?next=${encodeURIComponent(nextPath)}&reason=session-expired`;
+        window.location.replace(loginUrl);
+
+        // Devolvemos una promesa pendiente para evitar que React muestre
+        // un overlay de runtime mientras se completa la redirección.
+        return new Promise<T>(() => {
+          // Intencionalmente vacío.
+        });
+      }
+
       // El refresh falló: re-lanzamos para que el llamador reciba un error claro
       // en vez de caer en el bloque `if (!res.ok)` de la respuesta original.
       throw refreshError;
@@ -595,10 +611,20 @@ export interface UpdateUserPayload {
 }
 
 // Entrada de audit log — registro de una operación CUD en el sistema
+export interface AuditActorInfo {
+  id: string | null;
+  type: 'tenant' | 'platform' | 'system' | 'unknown';
+  displayName: string;
+  role?: string;
+  status?: string;
+  isDeleted?: boolean;
+}
+
 export interface AuditLogEntry {
   id: string;
   tenantId: string;
   userId: string | null;
+  actor?: AuditActorInfo | null;
   action: string;
   entityType: string;
   entityId: string | null;
@@ -654,6 +680,7 @@ export const auditApi = {
 export interface PlatformAuditLogEntry {
   id: string;
   userId: string | null;
+  actor?: AuditActorInfo | null;
   action: string;
   entityType: string;
   entityId: string | null;

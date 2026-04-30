@@ -98,7 +98,7 @@ export function SubscribersListClient() {
     <div className="space-y-6 pb-6">
       <PageHeader
         title="Suscriptores"
-        subtitle="Consulta, filtra y gestiona el ciclo de vida comercial de los suscriptores del tenant."
+        subtitle="Consulta, filtra y gestiona el ciclo de vida comercial de los suscriptores de la empresa."
         actions={
           <Button asChild>
             <Link href="/dashboard/crm/subscribers/new">
@@ -258,7 +258,7 @@ export function SubscribersListClient() {
                           No hay suscriptores para mostrar.
                         </p>
                         <p className="text-sm">
-                          Ajusta filtros o crea el primer registro del tenant.
+                          Ajusta filtros o crea el primer registro de la empresa.
                         </p>
                       </div>
                     </div>

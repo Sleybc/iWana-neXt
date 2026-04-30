@@ -3,6 +3,8 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, LessThan, MoreThanOrEqual } from 'typeorm';
 import { AuditLog, runInTenantSchema, TenantContext } from '@iwana/db';
 import { QueryAuditLogsDto } from './dto/query-audit-logs.dto';
+import { AuditActorResolver } from './audit-actor.resolver';
+import { AuditLogListResponseDto, AuditLogResponseDto } from './dto/audit-log-response.dto';
 
 /**
  * Servicio de consulta de audit logs del tenant.
@@ -19,6 +21,7 @@ export class AuditQueryService {
   constructor(
     @InjectDataSource()
     private readonly dataSource: DataSource,
+    private readonly auditActorResolver: AuditActorResolver,
   ) {}
 
   /**
@@ -26,10 +29,7 @@ export class AuditQueryService {
    *
    * Estrategia cursor: se buscan registros con `id < cursor` ordenados por `created_at DESC, id DESC`.
    */
-  async query(dto: QueryAuditLogsDto): Promise<{
-    data: AuditLog[];
-    meta: { nextCursor: string | null; total: number };
-  }> {
+  async query(dto: QueryAuditLogsDto): Promise<AuditLogListResponseDto> {
     const { schemaName } = TenantContext.getOrThrow();
     const limit = dto.limit ?? 50;
 
@@ -60,11 +60,40 @@ export class AuditQueryService {
       const hasNext = data.length > limit;
       const items = hasNext ? data.slice(0, limit) : data;
       const nextCursor = hasNext ? (items[items.length - 1]?.id ?? null) : null;
+      const actors = await this.auditActorResolver.resolveMany(
+        items.map((entry) => entry.userId),
+        { source: 'tenant', queryRunner: qr },
+      );
 
       return {
-        data: items,
+        data: items.map((entry) => this.toResponseDto(entry, actors)),
         meta: { nextCursor, total },
       };
     });
+  }
+
+  private toResponseDto(
+    entry: AuditLog,
+    actors: Map<string, AuditLogResponseDto['actor']>,
+  ): AuditLogResponseDto {
+    const actor = entry.userId
+      ? (actors.get(entry.userId) ?? this.auditActorResolver.unknownActor(entry.userId))
+      : this.auditActorResolver.systemActor();
+
+    return {
+      id: entry.id,
+      tenantId: entry.tenantId,
+      userId: entry.userId,
+      actor,
+      action: entry.action,
+      entityType: entry.entityType,
+      entityId: entry.entityId,
+      oldValue: entry.oldValue,
+      newValue: entry.newValue,
+      ipAddress: entry.ipAddress,
+      userAgent: entry.userAgent,
+      requestId: entry.requestId,
+      createdAt: entry.createdAt,
+    };
   }
 }

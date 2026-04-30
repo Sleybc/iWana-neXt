@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import type { InternalUser, ListUsersParams, UsersPaginationMeta } from '@/lib/api-client';
-import { UserRole, UserStatus } from '@iwana/shared';
+import { UserRole } from '@iwana/shared';
 import {
   Pencil,
   Trash2,
@@ -14,6 +14,13 @@ import {
   Search,
 } from 'lucide-react';
 import { Badge, Select } from '@iwana/ui';
+import {
+  getPortalUserRoleLabel,
+  getPortalUserStatusLabel,
+  getPortalUserStatusVariant,
+  PORTAL_TENANT_ROLE_FILTER_OPTIONS,
+  PORTAL_USER_STATUS_FILTER_OPTIONS,
+} from '@/lib/user-labels';
 
 interface UsersTableProps {
   users: InternalUser[];
@@ -30,52 +37,6 @@ interface UsersTableProps {
   onSearchChange: (value: string) => void;
   currentUserId?: string;
 }
-
-const ROLE_LABELS: Record<string, string> = {
-  ADMIN: 'Administrador',
-  NOC: 'Operador NOC',
-  SUPPORT: 'Soporte',
-  SALES: 'Ventas',
-  TECHNICIAN: 'Técnico',
-  ACCOUNTANT: 'Contabilidad',
-  HR: 'Recursos Humanos',
-  SUBSCRIBER: 'Suscriptor',
-  CONTRACTOR: 'Contratista',
-  PARTNER: 'Socio',
-  AUDITOR: 'Auditor',
-  INVESTOR: 'Inversionista',
-  SYSTEM_ADMIN: 'Admin Plataforma',
-  IWANA_SUPPORT: 'Soporte iWana',
-};
-
-/** Roles de plataforma excluidos del filtro de tenant. */
-const PLATFORM_ROLES = new Set([UserRole.SYSTEM_ADMIN, UserRole.IWANA_SUPPORT]);
-
-const STATUS_VARIANTS: Record<string, 'success' | 'warning' | 'error' | 'info' | 'neutral'> = {
-  ACTIVE: 'success',
-  PENDING_VERIFICATION: 'warning',
-  SUSPENDED: 'error',
-  INACTIVE: 'neutral',
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  ACTIVE: 'Activo',
-  PENDING_VERIFICATION: 'Pendiente',
-  SUSPENDED: 'Suspendido',
-  INACTIVE: 'Inactivo',
-};
-
-const STATUS_OPTIONS = Object.values(UserStatus).map((status) => ({
-  value: status,
-  label: STATUS_LABELS[status] ?? status,
-}));
-
-const ROLE_OPTIONS = Object.values(UserRole)
-  .filter((role) => !PLATFORM_ROLES.has(role))
-  .map((role) => ({
-    value: role,
-    label: ROLE_LABELS[role] ?? role,
-  }));
 
 function formatDate(value: string | null): string {
   if (!value) return '-';
@@ -133,79 +94,78 @@ export function UsersTable({
               Directorio interno
             </p>
             <h2 className="text-lg font-semibold text-iwana-primary dark:text-white">
-              Gestión de accesos del tenant
+              Gestión de accesos de la empresa
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">
               Filtra por estado, rol o búsqueda libre para operar usuarios sin salir del panel.
             </p>
           </div>
-          <Badge variant="neutral" className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]">
+          <Badge
+            variant="neutral"
+            className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]"
+          >
             {meta?.total ?? users.length} registros
           </Badge>
         </div>
 
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_220px_220px_auto] lg:items-end">
-        {/* Input de búsqueda — debounce gestionado en UsersClient */}
-        <div className="flex min-w-[200px] items-center gap-2">
-          <label htmlFor="search-filter" className="sr-only">
-            Buscar usuario
-          </label>
-          <div className="relative flex-1">
-            <Search
-              className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
-              aria-hidden="true"
-            />
-            <input
-              id="search-filter"
-              type="search"
-              placeholder="Buscar por nombre o correo…"
-              value={searchValue}
-              onChange={(e) => onSearchChange(e.target.value)}
-              className="h-12 w-full rounded-2xl border border-gray-200 bg-gray-50/70 pl-11 pr-4 text-sm text-iwana-primary shadow-sm transition-all duration-200 placeholder:text-gray-400 focus:border-iwana-secondary focus:bg-white focus:outline-none focus:ring-2 focus:ring-iwana-secondary/35 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100 dark:placeholder-gray-500"
+          {/* Input de búsqueda — debounce gestionado en UsersClient */}
+          <div className="flex min-w-[200px] items-center gap-2">
+            <label htmlFor="search-filter" className="sr-only">
+              Buscar usuario
+            </label>
+            <div className="relative flex-1">
+              <Search
+                className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+                aria-hidden="true"
+              />
+              <input
+                id="search-filter"
+                type="search"
+                placeholder="Buscar por nombre o correo…"
+                value={searchValue}
+                onChange={(e) => onSearchChange(e.target.value)}
+                className="h-12 w-full rounded-2xl border border-gray-200 bg-gray-50/70 pl-11 pr-4 text-sm text-iwana-primary shadow-sm transition-all duration-200 placeholder:text-gray-400 focus:border-iwana-secondary focus:bg-white focus:outline-none focus:ring-2 focus:ring-iwana-secondary/35 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100 dark:placeholder-gray-500"
+              />
+            </div>
+          </div>
+
+          <div>
+            <Select
+              id="status-filter"
+              label="Estado"
+              value={statusFilter}
+              onChange={(e) => handleStatusChange(e.target.value)}
+              className="h-12"
+              options={PORTAL_USER_STATUS_FILTER_OPTIONS}
             />
           </div>
-        </div>
 
-        <div>
-          <Select
-            id="status-filter"
-            label="Estado"
-            value={statusFilter}
-            onChange={(e) => handleStatusChange(e.target.value)}
-            className="h-12"
-            options={STATUS_OPTIONS}
-          >
-            <option value="">Todos</option>
-          </Select>
-        </div>
+          <div>
+            <Select
+              id="role-filter"
+              label="Rol"
+              value={roleFilter}
+              onChange={(e) => handleRoleChange(e.target.value)}
+              className="h-12"
+              options={PORTAL_TENANT_ROLE_FILTER_OPTIONS}
+            />
+          </div>
 
-        <div>
-          <Select
-            id="role-filter"
-            label="Rol"
-            value={roleFilter}
-            onChange={(e) => handleRoleChange(e.target.value)}
-            className="h-12"
-            options={ROLE_OPTIONS}
-          >
-            <option value="">Todos</option>
-          </Select>
-        </div>
-
-        {(statusFilter || roleFilter || searchValue) && (
-          <button
-            type="button"
-            onClick={() => {
-              setStatusFilter('');
-              setRoleFilter('');
-              onSearchChange('');
-              onFilterChange({});
-            }}
-            className="inline-flex h-12 items-center justify-center rounded-2xl border border-gray-200 px-4 text-sm font-semibold text-iwana-primary transition-colors hover:border-iwana-secondary/40 hover:bg-iwana-secondary-50 dark:border-dark-border dark:text-gray-100 dark:hover:bg-dark-surface-3"
-          >
-            Limpiar filtros
-          </button>
-        )}
+          {(statusFilter || roleFilter || searchValue) && (
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter('');
+                setRoleFilter('');
+                onSearchChange('');
+                onFilterChange({});
+              }}
+              className="inline-flex h-12 items-center justify-center rounded-2xl border border-gray-200 px-4 text-sm font-semibold text-iwana-primary transition-colors hover:border-iwana-secondary/40 hover:bg-iwana-secondary-50 dark:border-dark-border dark:text-gray-100 dark:hover:bg-dark-surface-3"
+            >
+              Limpiar filtros
+            </button>
+          )}
         </div>
       </div>
 
@@ -297,12 +257,12 @@ export function UsersTable({
                         aria-hidden="true"
                       />
                     )}
-                    {ROLE_LABELS[user.role] ?? user.role}
+                    {getPortalUserRoleLabel(user.role)}
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <Badge variant={STATUS_VARIANTS[user.status] ?? 'neutral'}>
-                    {STATUS_LABELS[user.status] ?? user.status}
+                  <Badge variant={getPortalUserStatusVariant(user.status)}>
+                    {getPortalUserStatusLabel(user.status)}
                   </Badge>
                 </td>
                 <td className="px-4 py-3">

@@ -1,21 +1,24 @@
 'use client';
 
-// Página de registros de auditoría — lista paginada de operaciones CUD del sistema
+// Página de registros de auditoría — resumen operativo + tabla con modo Básico/Técnico
 import { ApiError } from '@/lib/api-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { AuditLogsTable } from '@/components/audit/AuditLogsTable';
+import type { TableFilters } from '@/components/audit/AuditLogsTable';
+import { AuditSummary } from '@/components/audit/AuditSummary';
+import type { SummaryEntry, AppliedFilter, TenantInfo } from '@/components/audit/AuditSummary';
 import {
   auditApi,
   platformAuditApi,
   tenantApi,
   type AuditLogEntry,
   type TenantListItem,
-  type PlatformAuditLogEntry,
 } from '@/lib/api-client';
 
 const PAGE_LIMIT = 50;
+const SUMMARY_LIMIT = 200;
 
 function TenantSelect({
   tenants,
@@ -43,9 +46,7 @@ function TenantSelect({
   useEffect(() => {
     if (!open) return;
     const handleOutsideClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
@@ -64,7 +65,7 @@ function TenantSelect({
     <div ref={ref} className="relative inline-block text-left">
       <button
         type="button"
-        aria-label="Seleccionar tenant"
+        aria-label="Seleccionar empresa"
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={handleToggle}
@@ -80,7 +81,7 @@ function TenantSelect({
       {open && tenants.length > 0 && (
         <ul
           role="listbox"
-          aria-label="Seleccionar tenant"
+          aria-label="Seleccionar empresa"
           className={`absolute left-0 z-20 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-dark-surface-2 ${
             openUpward ? 'bottom-full mb-1' : 'top-full mt-1'
           }`}
@@ -118,6 +119,7 @@ type BaseAuditEntry = Pick<
   | 'userId'
   | 'ipAddress'
   | 'userAgent'
+  | 'requestId'
   | 'oldValue'
   | 'newValue'
   | 'createdAt'
@@ -193,27 +195,45 @@ export default function AuditLogsPage() {
   const [tenants, setTenants] = useState<TenantListItem[]>([]);
   const [tenantSlug, setTenantSlug] = useState('');
 
-  const platformTable = useAuditTable();
+  // Modo de vista compartido entre ambas tablas
+  const [viewMode, setViewMode] = useState<'basic' | 'technical'>('basic');
 
+  // Ventana temporal para resúmenes
+  const [summaryWindow, setSummaryWindow] = useState<'24h' | '7d'>('24h');
+
+  // Datos del resumen (carga separada con limit=200)
+  const [platformSummaryEntries, setPlatformSummaryEntries] = useState<SummaryEntry[]>([]);
+  const [tenantSummaryEntries, setTenantSummaryEntries] = useState<SummaryEntry[]>([]);
+  const [platformSummaryLoading, setPlatformSummaryLoading] = useState(false);
+  const [tenantSummaryLoading, setTenantSummaryLoading] = useState(false);
+
+  // Filtros externos para cada tabla (desde los resúmenes)
+  const [platformFilters, setPlatformFilters] = useState<TableFilters | undefined>(undefined);
+  const [tenantFilters, setTenantFilters] = useState<TableFilters | undefined>(undefined);
+
+  // Índice de página para mostrar en paginación
+  const [platformPageIndex, setPlatformPageIndex] = useState(1);
+  const [tenantPageIndex, setTenantPageIndex] = useState(1);
+
+  const platformTable = useAuditTable();
   const tenantTable = useAuditTable();
 
+  // Carga lista de tenants activos
   useEffect(() => {
     const loadTenants = async () => {
       try {
         const list = await tenantApi.list({ limit: 100, offset: 0 });
         const active = list.filter((item) => item.status === 'ACTIVE');
         setTenants(active);
-        if (active[0]) {
-          setTenantSlug(active[0].slug);
-        }
+        if (active[0]) setTenantSlug(active[0].slug);
       } catch {
-        // Si no hay tenants, queda vacío
+        // Si no hay tenants accesibles, queda vacío
       }
     };
-
     void loadTenants();
   }, []);
 
+  // Carga datos para la tabla de plataforma (paginada)
   useEffect(() => {
     const fetchPlatform = () => {
       const params: { limit: number; cursor?: string } = { limit: PAGE_LIMIT };
@@ -226,6 +246,23 @@ export default function AuditLogsPage() {
     void platformTable.loadEntries(fetchPlatform);
   }, [platformTable.cursor]);
 
+  // Carga datos para el resumen de plataforma (limit=200, sin cursor)
+  useEffect(() => {
+    const loadPlatformSummary = async () => {
+      setPlatformSummaryLoading(true);
+      try {
+        const r = await platformAuditApi.list({ limit: SUMMARY_LIMIT });
+        setPlatformSummaryEntries(r.data as SummaryEntry[]);
+      } catch {
+        setPlatformSummaryEntries([]);
+      } finally {
+        setPlatformSummaryLoading(false);
+      }
+    };
+    void loadPlatformSummary();
+  }, []);
+
+  // Carga datos para la tabla de tenant (paginada)
   useEffect(() => {
     if (!tenantSlug) return;
     const fetchTenant = () => {
@@ -239,32 +276,112 @@ export default function AuditLogsPage() {
     void tenantTable.loadEntries(fetchTenant);
   }, [tenantSlug, tenantTable.cursor]);
 
+  // Carga datos para el resumen de tenant (limit=200, sin cursor)
+  useEffect(() => {
+    if (!tenantSlug) return;
+    const loadTenantSummary = async () => {
+      setTenantSummaryLoading(true);
+      try {
+        const r = await auditApi.list({ limit: SUMMARY_LIMIT }, tenantSlug);
+        setTenantSummaryEntries(r as unknown as SummaryEntry[]);
+      } catch {
+        setTenantSummaryEntries([]);
+      } finally {
+        setTenantSummaryLoading(false);
+      }
+    };
+    void loadTenantSummary();
+  }, [tenantSlug]);
+
   const handleTenantChange = (slug: string) => {
     setTenantSlug(slug);
     tenantTable.reset();
     tenantTable.setEntries([]);
     tenantTable.setNextCursor(undefined);
+    setTenantFilters(undefined);
+    setTenantPageIndex(1);
   };
+
+  const handlePlatformNext = () => {
+    platformTable.handleNext();
+    setPlatformPageIndex((p) => p + 1);
+  };
+  const handlePlatformPrev = () => {
+    platformTable.handlePrev();
+    setPlatformPageIndex((p) => Math.max(1, p - 1));
+  };
+  const handleTenantNext = () => {
+    tenantTable.handleNext();
+    setTenantPageIndex((p) => p + 1);
+  };
+  const handleTenantPrev = () => {
+    tenantTable.handlePrev();
+    setTenantPageIndex((p) => Math.max(1, p - 1));
+  };
+
+  // Convierte el AppliedFilter del resumen a TableFilters para la tabla
+  const applyPlatformFilter = (filter: AppliedFilter) => {
+    const f: TableFilters = {};
+    if (filter.severity !== undefined) f.severity = filter.severity;
+    if (filter.actionSet !== undefined) f.actionSet = filter.actionSet;
+    setPlatformFilters(f);
+  };
+  const applyTenantFilter = (filter: AppliedFilter) => {
+    const f: TableFilters = {};
+    if (filter.severity !== undefined) f.severity = filter.severity;
+    if (filter.actionSet !== undefined) f.actionSet = filter.actionSet;
+    setTenantFilters(f);
+  };
+
+  // Mapa de tenants para el resumen de plataforma
+  const tenantInfoList: TenantInfo[] = tenants.map((t) => ({
+    id: t.id,
+    slug: t.slug,
+    name: t.name,
+  }));
+
+  const selectedTenantName = tenants.find((t) => t.slug === tenantSlug)?.name;
 
   return (
     <div className="space-y-10">
-      <PageHeader
-        title="Registros de Auditoría"
-        subtitle="Historial de operaciones CUD del sistema"
-      />
+      <PageHeader title="Registros de auditoría" subtitle="Historial de operaciones del sistema" />
 
       {/* --- Sección: Auditoría de Plataforma --- */}
       <section aria-labelledby="platform-audit-heading">
         <h2
           id="platform-audit-heading"
-          className="text-lg font-bold text-[#181818] dark:text-white mb-3"
+          className="text-lg font-bold text-[#181818] dark:text-white mb-1"
         >
-          Auditoría de Plataforma
+          Plataforma
         </h2>
         <p className="text-sm text-slate-500 mb-4">
-          Operaciones de administradores de plataforma (SYSTEM_ADMIN, IWANA_SUPPORT) sobre empresas y
-          usuarios de plataforma.
+          Operaciones de administradores de plataforma sobre empresas y usuarios del sistema.
         </p>
+
+        {/* Resumen de plataforma */}
+        <AuditSummary
+          entries={platformSummaryEntries}
+          isLoading={platformSummaryLoading}
+          mode="platform"
+          tenants={tenantInfoList}
+          window={summaryWindow}
+          onWindowChange={setSummaryWindow}
+          onFilterApply={applyPlatformFilter}
+        />
+
+        {/* Indicador de filtro activo + limpieza */}
+        {platformFilters && (
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xs text-gray-500">Filtro activo desde el resumen.</span>
+            <button
+              type="button"
+              onClick={() => setPlatformFilters(undefined)}
+              className="text-xs font-medium text-iwana-primary hover:underline"
+            >
+              Limpiar filtro
+            </button>
+          </div>
+        )}
 
         {platformTable.loadError && (
           <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
@@ -277,29 +394,55 @@ export default function AuditLogsPage() {
           isLoading={platformTable.isLoading}
           hasNextPage={Boolean(platformTable.nextCursor)}
           hasPrevPage={platformTable.cursorHistory.length > 0}
-          onNext={platformTable.handleNext}
-          onPrev={platformTable.handlePrev}
+          onNext={handlePlatformNext}
+          onPrev={handlePlatformPrev}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          externalFilters={platformFilters}
+          pageIndex={platformPageIndex}
         />
       </section>
 
-      {/* --- Sección: Auditoría por Tenant --- */}
+      {/* --- Sección: Auditoría por Empresa --- */}
       <section aria-labelledby="tenant-audit-heading">
-        <h2
-          id="tenant-audit-heading"
-          className="text-lg font-bold text-[#181818] dark:text-white mb-3"
-        >
-          Auditoría por Empresa
-        </h2>
-
-        <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="flex flex-wrap items-center gap-3 mb-1">
+          <h2
+            id="tenant-audit-heading"
+            className="text-lg font-bold text-[#181818] dark:text-white"
+          >
+            Por empresa
+          </h2>
           <TenantSelect tenants={tenants} value={tenantSlug} onChange={handleTenantChange} />
-          {tenantSlug && (
-            <span className="text-sm text-slate-500">
-              Mostrando registros de{' '}
-              <strong>{tenants.find((t) => t.slug === tenantSlug)?.name ?? tenantSlug}</strong>
-            </span>
-          )}
         </div>
+        <p className="text-sm text-slate-500 mb-4">
+          Operaciones realizadas por usuarios dentro de la empresa seleccionada.
+        </p>
+
+        {/* Resumen de tenant */}
+        {tenantSlug && (
+          <AuditSummary
+            entries={tenantSummaryEntries}
+            isLoading={tenantSummaryLoading}
+            mode="tenant"
+            tenantName={selectedTenantName}
+            window={summaryWindow}
+            onWindowChange={setSummaryWindow}
+            onFilterApply={applyTenantFilter}
+          />
+        )}
+
+        {tenantFilters && (
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xs text-gray-500">Filtro activo desde el resumen.</span>
+            <button
+              type="button"
+              onClick={() => setTenantFilters(undefined)}
+              className="text-xs font-medium text-iwana-primary hover:underline"
+            >
+              Limpiar filtro
+            </button>
+          </div>
+        )}
 
         {tenantTable.loadError && (
           <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
@@ -307,20 +450,19 @@ export default function AuditLogsPage() {
           </div>
         )}
 
-        {tenantSlug ? (
-          <AuditLogsTable
-            entries={tenantTable.entries}
-            isLoading={tenantTable.isLoading}
-            hasNextPage={Boolean(tenantTable.nextCursor)}
-            hasPrevPage={tenantTable.cursorHistory.length > 0}
-            onNext={tenantTable.handleNext}
-            onPrev={tenantTable.handlePrev}
-          />
-        ) : (
-          <div className="rounded-xl border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-slate-500 dark:border-gray-700 dark:text-slate-400">
-            Selecciona una empresa para ver sus registros de auditoría.
-          </div>
-        )}
+        <AuditLogsTable
+          entries={tenantTable.entries}
+          isLoading={tenantTable.isLoading}
+          hasNextPage={Boolean(tenantTable.nextCursor)}
+          hasPrevPage={tenantTable.cursorHistory.length > 0}
+          onNext={handleTenantNext}
+          onPrev={handleTenantPrev}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          externalFilters={tenantFilters}
+          companyName={selectedTenantName}
+          pageIndex={tenantPageIndex}
+        />
       </section>
     </div>
   );

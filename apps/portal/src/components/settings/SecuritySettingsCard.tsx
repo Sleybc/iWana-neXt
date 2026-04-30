@@ -57,7 +57,7 @@ export function SecuritySettingsCard({ settings, canEdit, onUpdated }: SecurityS
           </div>
         </div>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Define la política organizacional editable del tenant y separa flags administrados por
+          Define la política organizacional editable de la empresa y separa flags administrados por
           plataforma.
         </p>
       </CardHeader>
@@ -138,7 +138,7 @@ export function SecuritySettingsCard({ settings, canEdit, onUpdated }: SecurityS
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs text-gray-500 dark:text-gray-400">
             {canEdit
-              ? 'Solo el rol ADMIN puede actualizar la política MFA del tenant.'
+              ? 'Solo el rol ADMIN puede actualizar la política MFA de la empresa.'
               : 'Tu rol puede consultar esta política, pero no modificarla.'}
           </p>
           {canEdit && (

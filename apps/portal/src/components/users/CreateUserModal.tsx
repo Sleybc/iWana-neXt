@@ -6,8 +6,9 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { CheckCircle2, Copy, UserPlus, X } from 'lucide-react';
-import { UserRole, DocumentType } from '@iwana/shared';
+import { DocumentType } from '@iwana/shared';
 import type { CreateInternalUserDto } from '@/lib/api-client';
+import { getPortalUserRoleLabel, PORTAL_TENANT_ASSIGNABLE_ROLES } from '@/lib/user-labels';
 
 const createUserSchema = z.object({
   email: z.string().trim().email('Ingresa un correo valido.'),
@@ -27,27 +28,6 @@ const createUserSchema = z.object({
 });
 
 type CreateUserFormValues = z.infer<typeof createUserSchema>;
-
-// Roles asignables por un administrador de tenant. Se excluyen los roles de
-// plataforma (SYSTEM_ADMIN, IWANA_SUPPORT) porque el backend los rechaza con
-// 403 y exponerlos en la UI genera una UX que induce a error.
-const TENANT_ROLE_LABELS: Record<string, string> = {
-  ADMIN: 'Administrador',
-  NOC: 'Operador NOC',
-  SUPPORT: 'Soporte',
-  SALES: 'Ventas',
-  TECHNICIAN: 'Tecnico',
-  ACCOUNTANT: 'Contabilidad',
-  HR: 'Recursos Humanos',
-  SUBSCRIBER: 'Suscriptor',
-  CONTRACTOR: 'Contratista',
-  PARTNER: 'Socio',
-  AUDITOR: 'Auditor',
-  INVESTOR: 'Inversionista',
-};
-
-/** Roles reservados para operación interna de la plataforma. Nunca asignables por tenants. */
-const PLATFORM_ROLES = new Set([UserRole.SYSTEM_ADMIN, UserRole.IWANA_SUPPORT]);
 
 interface CreateUserModalProps {
   isOpen: boolean;
@@ -200,7 +180,10 @@ export function CreateUserModal({
           <div className="space-y-4">
             <div className="rounded-[24px] border border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.98),rgba(209,250,229,0.82))] p-5 shadow-iwana-soft dark:border-emerald-800 dark:bg-emerald-900/20">
               <div className="flex items-center gap-2 mb-2">
-                <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                <CheckCircle2
+                  className="h-5 w-5 text-emerald-600 dark:text-emerald-400"
+                  aria-hidden="true"
+                />
                 <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
                   Usuario creado exitosamente
                 </p>
@@ -260,7 +243,8 @@ export function CreateUserModal({
                   Alta controlada
                 </p>
                 <p className="text-sm text-gray-600 dark:text-gray-300">
-                  Los campos marcados como obligatorios definen identidad de acceso. Los demás enriquecen el perfil operativo del colaborador.
+                  Los campos marcados como obligatorios definen identidad de acceso. Los demás
+                  enriquecen el perfil operativo del colaborador.
                 </p>
               </div>
             </div>
@@ -322,13 +306,11 @@ export function CreateUserModal({
                     aria-invalid="true"
                   >
                     <option value="">Selecciona un rol</option>
-                    {Object.values(UserRole)
-                      .filter((r) => !PLATFORM_ROLES.has(r))
-                      .map((r) => (
-                        <option key={r} value={r}>
-                          {TENANT_ROLE_LABELS[r] ?? r}
-                        </option>
-                      ))}
+                    {PORTAL_TENANT_ASSIGNABLE_ROLES.map((role) => (
+                      <option key={role} value={role}>
+                        {getPortalUserRoleLabel(role)}
+                      </option>
+                    ))}
                   </select>
                 ) : (
                   <select
@@ -338,13 +320,11 @@ export function CreateUserModal({
                     className="flex h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition-colors focus:outline-none focus:ring-2 focus:ring-iwana-primary focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white dark:focus:ring-iwana-primary"
                   >
                     <option value="">Selecciona un rol</option>
-                    {Object.values(UserRole)
-                      .filter((r) => !PLATFORM_ROLES.has(r))
-                      .map((r) => (
-                        <option key={r} value={r}>
-                          {TENANT_ROLE_LABELS[r] ?? r}
-                        </option>
-                      ))}
+                    {PORTAL_TENANT_ASSIGNABLE_ROLES.map((role) => (
+                      <option key={role} value={role}>
+                        {getPortalUserRoleLabel(role)}
+                      </option>
+                    ))}
                   </select>
                 )}
                 {errors.role && (

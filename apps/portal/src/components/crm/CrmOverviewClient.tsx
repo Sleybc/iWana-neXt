@@ -154,7 +154,7 @@ export function CrmOverviewClient() {
                     Radar comercial
                   </p>
                   <h2 className="mt-2 text-2xl font-bold tracking-tight md:text-3xl">
-                    Panorama inmediato del pipeline del tenant
+                    Panorama inmediato del pipeline de la empresa
                   </h2>
                   <p className="mt-2 text-sm text-white/72 md:text-base">
                     Vista ejecutiva para identificar carga operativa, oportunidades recientes y
@@ -317,7 +317,7 @@ export function CrmOverviewClient() {
               Suscriptores
             </CardTitle>
             <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
-              Acceso directo al listado operativo de suscriptores del tenant, con alta, detalle y
+              Acceso directo al listado operativo de suscriptores de la empresa, con alta, detalle y
               transición de estado.
             </p>
           </CardHeader>

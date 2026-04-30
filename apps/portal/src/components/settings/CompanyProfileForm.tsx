@@ -137,7 +137,7 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
           </div>
         </div>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Gestiona los datos legales y de contacto del tenant autenticado.
+          Gestiona los datos legales y de contacto de la empresa autenticada.
         </p>
       </CardHeader>
       <CardContent className="space-y-5">

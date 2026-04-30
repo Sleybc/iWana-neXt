@@ -3,6 +3,8 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, LessThan } from 'typeorm';
 import { PlatformAuditLog } from '@iwana/db';
 import { AuditEntryInput } from './interfaces/audit-entry.interface';
+import { AuditActorResolver } from './audit-actor.resolver';
+import { AuditLogResponseDto, PlatformAuditLogListResponseDto } from './dto/audit-log-response.dto';
 
 /**
  * Servicio de audit trail para operaciones de plataforma.
@@ -26,6 +28,7 @@ export class PlatformAuditService {
   constructor(
     @InjectDataSource()
     private readonly dataSource: DataSource,
+    private readonly auditActorResolver: AuditActorResolver,
   ) {}
 
   /**
@@ -67,7 +70,7 @@ export class PlatformAuditService {
       entityType?: string;
       userId?: string;
     } = {},
-  ): Promise<{ data: PlatformAuditLog[]; nextCursor: string | null }> {
+  ): Promise<PlatformAuditLogListResponseDto> {
     const limit = params.limit ?? 50;
     const repo = this.dataSource.getRepository(PlatformAuditLog);
 
@@ -83,10 +86,38 @@ export class PlatformAuditService {
       take: limit + 1,
     });
 
-    const hasNext = total > limit;
+    const hasNext = data.length > limit;
     const slice = hasNext ? data.slice(0, limit) : data;
     const nextCursor = hasNext ? (slice[slice.length - 1]?.id ?? null) : null;
+    const actors = await this.auditActorResolver.resolveMany(
+      slice.map((entry) => entry.userId),
+      { source: 'platform' },
+    );
 
-    return { data: slice, nextCursor };
+    return { data: slice.map((entry) => this.toResponseDto(entry, actors)), nextCursor };
+  }
+
+  private toResponseDto(
+    entry: PlatformAuditLog,
+    actors: Map<string, AuditLogResponseDto['actor']>,
+  ): AuditLogResponseDto {
+    const actor = entry.userId
+      ? (actors.get(entry.userId) ?? this.auditActorResolver.unknownActor(entry.userId))
+      : this.auditActorResolver.systemActor();
+
+    return {
+      id: entry.id,
+      userId: entry.userId,
+      actor,
+      action: entry.action,
+      entityType: entry.entityType,
+      entityId: entry.entityId,
+      oldValue: entry.oldValue,
+      newValue: entry.newValue,
+      ipAddress: entry.ipAddress,
+      userAgent: entry.userAgent,
+      requestId: entry.requestId,
+      createdAt: entry.createdAt,
+    };
   }
 }

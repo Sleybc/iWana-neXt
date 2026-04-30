@@ -12,12 +12,12 @@ import { LoginBrandPanel } from '@/components/auth/LoginBrandPanel';
 import { ApiError, authApi } from '@/lib/api-client';
 
 const verifyEmailSchema = z.object({
-  tenantSlug: z.string().trim().min(1, 'Ingresa el slug del tenant.'),
+  tenantSlug: z.string().trim().min(1, 'Ingresa el identificador de la empresa.'),
   token: z.string().trim().min(1, 'Ingresa el token de verificación.'),
 });
 
 const resendSchema = z.object({
-  tenantSlug: z.string().trim().min(1, 'Ingresa el slug del tenant.'),
+  tenantSlug: z.string().trim().min(1, 'Ingresa el identificador de la empresa.'),
   email: z.string().trim().email('Ingresa un correo válido.'),
 });
 
@@ -89,7 +89,7 @@ function VerifyEmailContent() {
     <main className="relative min-h-screen w-full flex flex-col lg:flex-row overflow-hidden bg-[#181818]">
       <LoginBrandPanel
         title="Verifica tu correo"
-        subtitle="Confirma la identidad del usuario tenant antes del primer acceso operativo al portal."
+        subtitle="Confirma la identidad del usuario antes del primer acceso operativo al portal empresarial."
       />
 
       <div className="w-full lg:w-1/2 bg-[#181818] flex items-center justify-center p-6 lg:p-12 relative">
@@ -100,13 +100,13 @@ function VerifyEmailContent() {
             <div className="space-y-2">
               <h1 className="text-3xl font-bold text-[#181818]">Confirmar correo</h1>
               <p className="text-slate-500">
-                Usa el token recibido en el mensaje de alta para activar la cuenta del tenant.
+                Usa el token recibido en el mensaje de alta para activar la cuenta de la empresa.
               </p>
             </div>
 
             <form onSubmit={verifyForm.handleSubmit(onVerify)} className="space-y-4" noValidate>
               <label className="flex flex-col gap-2">
-                <span className="text-sm font-bold text-[#181818]">Tenant</span>
+                <span className="text-sm font-bold text-[#181818]">Empresa</span>
                 <input
                   type="text"
                   placeholder="isp-demo"
@@ -179,7 +179,7 @@ function VerifyEmailContent() {
             <form onSubmit={resendForm.handleSubmit(onResend)} className="space-y-4" noValidate>
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="flex flex-col gap-2">
-                  <span className="text-sm font-bold text-[#181818]">Tenant</span>
+                  <span className="text-sm font-bold text-[#181818]">Empresa</span>
                   <input
                     type="text"
                     placeholder="isp-demo"
@@ -202,7 +202,7 @@ function VerifyEmailContent() {
                   <span className="text-sm font-bold text-[#181818]">Correo electrónico</span>
                   <input
                     type="email"
-                    placeholder="usuario@tenant.co"
+                    placeholder="usuario@empresa.co"
                     className={cn(
                       'w-full h-14 px-4 bg-slate-50 border rounded-xl text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all',
                       resendForm.formState.errors.email

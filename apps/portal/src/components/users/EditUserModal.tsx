@@ -6,13 +6,20 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { CheckCircle2, Copy, PencilLine, ShieldAlert, X } from 'lucide-react';
-import { UserRole, UserStatus, DocumentType } from '@iwana/shared';
+import { UserRole, DocumentType } from '@iwana/shared';
 import {
   usersApi,
   type InternalUser,
   type UpdateInternalUserDto,
   ApiError,
 } from '@/lib/api-client';
+import {
+  getPortalUserRoleLabel,
+  getPortalUserStatusLabel,
+  PORTAL_PLATFORM_ROLES,
+  PORTAL_TENANT_ASSIGNABLE_ROLES,
+  PORTAL_USER_STATUSES,
+} from '@/lib/user-labels';
 
 const editUserSchema = z.object({
   email: z.string().trim().email('Ingresa un correo valido.'),
@@ -33,31 +40,6 @@ const editUserSchema = z.object({
 });
 
 type EditUserFormValues = z.infer<typeof editUserSchema>;
-
-const ROLE_LABELS: Record<string, string> = {
-  ADMIN: 'Administrador',
-  NOC: 'Operador NOC',
-  SUPPORT: 'Soporte',
-  SALES: 'Ventas',
-  TECHNICIAN: 'Tecnico',
-  ACCOUNTANT: 'Contabilidad',
-  HR: 'Recursos Humanos',
-  SUBSCRIBER: 'Suscriptor',
-  CONTRACTOR: 'Contratista',
-  PARTNER: 'Socio',
-  AUDITOR: 'Auditor',
-  INVESTOR: 'Inversionista',
-};
-
-/** Roles reservados para la plataforma. No asignables por administradores de tenant. */
-const PLATFORM_ROLES = new Set([UserRole.SYSTEM_ADMIN, UserRole.IWANA_SUPPORT]);
-
-const STATUS_LABELS: Record<string, string> = {
-  ACTIVE: 'Activo',
-  PENDING_VERIFICATION: 'Pendiente',
-  SUSPENDED: 'Suspendido',
-  INACTIVE: 'Inactivo',
-};
 
 interface EditUserModalProps {
   isOpen: boolean;
@@ -228,14 +210,8 @@ export function EditUserModal({
   if (!isOpen) return null;
 
   const isAdmin = user.role === UserRole.ADMIN || user.role === UserRole.SYSTEM_ADMIN;
-  const hasPlatformRole = PLATFORM_ROLES.has(user.role as UserRole);
+  const hasPlatformRole = PORTAL_PLATFORM_ROLES.has(user.role as UserRole);
   const isProtectedRole = isAdmin || hasPlatformRole;
-  const tenantAssignableRoles = Object.values(UserRole).filter((r) => !PLATFORM_ROLES.has(r));
-  const getRoleLabel = (role: string) => {
-    if (role === UserRole.SYSTEM_ADMIN) return 'Admin Plataforma';
-    if (role === UserRole.IWANA_SUPPORT) return 'Soporte iWana';
-    return ROLE_LABELS[role] ?? role;
-  };
 
   return (
     <div
@@ -281,7 +257,8 @@ export function EditUserModal({
                 Ajustes del colaborador
               </p>
               <p className="text-sm text-gray-600 dark:text-gray-300">
-                Puedes modificar perfil, permisos y restablecer credenciales desde una sola vista controlada.
+                Puedes modificar perfil, permisos y restablecer credenciales desde una sola vista
+                controlada.
               </p>
             </div>
           </div>
@@ -346,7 +323,10 @@ export function EditUserModal({
             {emailToConfirm && (
               <div className="col-span-full rounded-[24px] border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(254,243,199,0.78))] p-4 shadow-iwana-soft dark:border-amber-800 dark:bg-amber-900/20">
                 <div className="flex items-center gap-2 mb-2">
-                  <ShieldAlert className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+                  <ShieldAlert
+                    className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400"
+                    aria-hidden="true"
+                  />
                   <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
                     Confirmar restablecimiento de email
                   </p>
@@ -398,9 +378,9 @@ export function EditUserModal({
                   isProtectedRole ? 'No puedes cambiar el estado de usuarios protegidos' : undefined
                 }
               >
-                {Object.values(UserStatus).map((s) => (
-                  <option key={s} value={s}>
-                    {STATUS_LABELS[s] ?? s}
+                {PORTAL_USER_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {getPortalUserStatusLabel(status)}
                   </option>
                 ))}
               </select>
@@ -427,12 +407,12 @@ export function EditUserModal({
                   isProtectedRole ? 'No puedes cambiar el rol de usuarios protegidos' : undefined
                 }
               >
-                {PLATFORM_ROLES.has(user.role as UserRole) && (
-                  <option value={user.role}>{getRoleLabel(user.role)}</option>
+                {PORTAL_PLATFORM_ROLES.has(user.role as UserRole) && (
+                  <option value={user.role}>{getPortalUserRoleLabel(user.role)}</option>
                 )}
-                {tenantAssignableRoles.map((r) => (
-                  <option key={r} value={r}>
-                    {getRoleLabel(r)}
+                {PORTAL_TENANT_ASSIGNABLE_ROLES.map((role) => (
+                  <option key={role} value={role}>
+                    {getPortalUserRoleLabel(role)}
                   </option>
                 ))}
               </select>

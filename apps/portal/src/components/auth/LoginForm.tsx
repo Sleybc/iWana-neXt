@@ -21,9 +21,9 @@ import { useAuth } from './AuthProvider';
 import { cn } from '@iwana/ui';
 
 const errorMessages: Record<number, string> = {
-  400: 'Falta o es invalido el slug del tenant.',
+  400: 'Falta o es inválido el identificador de la empresa.',
   401: 'Correo o contraseña incorrectos.',
-  404: 'Tenant no encontrado o cuenta inexistente.',
+  404: 'Empresa no encontrada o cuenta inexistente.',
   429: 'Demasiados intentos. Espera 1 minuto.',
   500: 'El servicio de autenticación no está disponible en este momento.',
   503: 'El servicio de autenticación no está disponible en este momento.',
@@ -81,12 +81,12 @@ export function LoginForm() {
           Acceso empresarial
         </p>
         <p className="mt-1 text-sm text-slate-600">
-          Conecta tu operación con acceso seguro, trazabilidad y políticas activas por tenant.
+          Conecta tu operación con acceso seguro, trazabilidad y políticas activas por empresa.
         </p>
       </div>
 
       <label className="flex flex-col gap-2">
-        <span className="text-sm font-bold text-[#181818]">Tenant (slug)</span>
+        <span className="text-sm font-bold text-[#181818]">Empresa</span>
         <div className="relative group">
           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
             <Building2 className="h-5 w-5" aria-hidden="true" />
@@ -157,7 +157,11 @@ export function LoginForm() {
             className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
             aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
           >
-            {showPassword ? <EyeOff className="h-5 w-5" aria-hidden="true" /> : <Eye className="h-5 w-5" aria-hidden="true" />}
+            {showPassword ? (
+              <EyeOff className="h-5 w-5" aria-hidden="true" />
+            ) : (
+              <Eye className="h-5 w-5" aria-hidden="true" />
+            )}
           </button>
         </div>
         {errors.password && <span className="text-sm text-red-500">{errors.password.message}</span>}
@@ -187,7 +191,9 @@ export function LoginForm() {
           <ShieldCheck className="h-4 w-4 text-[#A5C330]" aria-hidden="true" />
           <span>Sesión segura vía JWT</span>
         </div>
-        <p className="text-xs text-slate-600">Auditoría de acceso y validaciones activas por tenant</p>
+        <p className="text-xs text-slate-600">
+          Auditoría de acceso y validaciones activas por empresa
+        </p>
       </div>
     </form>
   );

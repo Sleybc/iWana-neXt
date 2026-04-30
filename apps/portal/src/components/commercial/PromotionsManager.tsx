@@ -69,7 +69,7 @@ function mapLoadError(error: unknown): string {
     return error.message;
   }
 
-  return 'No fue posible cargar las promociones del tenant.';
+  return 'No fue posible cargar las promociones de la empresa.';
 }
 
 export function PromotionsManager({ canEdit }: PromotionsManagerProps) {

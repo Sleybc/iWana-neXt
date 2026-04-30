@@ -1,6 +1,7 @@
 'use client';
 
 import type { UserListItem } from '@/lib/api-client';
+import { getWebUserRoleLabel, getWebUserStatusLabel } from '@/lib/user-labels';
 
 /** Retorna las clases pill para el badge de rol */
 function roleBadgeClasses(role: string): string {
@@ -78,8 +79,8 @@ export function UsersTable({
               <th className="px-3 py-2 text-left">Rol</th>
               <th className="px-3 py-2 text-left">Estado</th>
               <th className="px-3 py-2 text-left">MFA</th>
-              <th className="px-3 py-2 text-left">Reset clave</th>
-              <th className="px-3 py-2 text-left">Último login</th>
+              <th className="px-3 py-2 text-left">Restablecimiento</th>
+              <th className="px-3 py-2 text-left">Último acceso</th>
               <th className="px-3 py-2 text-left">Acciones</th>
             </tr>
           </thead>
@@ -93,7 +94,7 @@ export function UsersTable({
             ) : (users ?? []).length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-3 py-6 text-center text-gray-500">
-                  No hay usuarios para el tenant seleccionado.
+                  No hay usuarios para la empresa seleccionada.
                 </td>
               </tr>
             ) : (
@@ -127,12 +128,16 @@ export function UsersTable({
 
                   {/* Columna: rol con pill badge */}
                   <td className="px-3 py-2">
-                    <span className={roleBadgeClasses(user.role)}>{user.role}</span>
+                    <span className={roleBadgeClasses(user.role)}>
+                      {getWebUserRoleLabel(user.role)}
+                    </span>
                   </td>
 
                   {/* Columna: estado con pill badge */}
                   <td className="px-3 py-2">
-                    <span className={statusBadgeClasses(user.status)}>{user.status}</span>
+                    <span className={statusBadgeClasses(user.status)}>
+                      {getWebUserStatusLabel(user.status)}
+                    </span>
                   </td>
 
                   <td className="px-3 py-2">{user.mfaEnabled ? 'Sí' : 'No'}</td>
@@ -148,7 +153,7 @@ export function UsersTable({
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        className="text-xs font-medium text-iwana-primary hover:underline"
+                        className="text-xs font-medium text-iwana-primary hover:underline dark:text-iwana-primary-300 dark:hover:text-iwana-primary-200"
                         onClick={() => onManage(user)}
                       >
                         Gestionar
@@ -174,7 +179,7 @@ export function UsersTable({
             onClick={onPrev}
             disabled={!hasPrevPage || isLoading}
           >
-            Prev
+            Anterior
           </button>
           <button
             type="button"
@@ -182,7 +187,7 @@ export function UsersTable({
             onClick={onNext}
             disabled={!hasNextPage || isLoading}
           >
-            Next
+            Siguiente
           </button>
         </div>
       </div>

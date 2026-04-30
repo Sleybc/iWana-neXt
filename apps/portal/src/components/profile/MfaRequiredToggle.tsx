@@ -62,7 +62,7 @@ export function MfaRequiredToggle({ mfaRequiredAll, onUpdated }: MfaRequiredTogg
             Seguridad — MFA obligatorio
           </h2>
           <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
-            Exige autenticación de dos factores a todos los usuarios del tenant.
+            Exige autenticación de dos factores a todos los usuarios de la empresa.
           </p>
         </div>
       </div>

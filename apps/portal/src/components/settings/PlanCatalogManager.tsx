@@ -559,7 +559,7 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
               </div>
             </div>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Gestiona los planes comercializables del tenant autenticado.
+              Gestiona los planes comercializables de la empresa autenticada.
             </p>
           </div>
           <div className="flex items-center gap-2">

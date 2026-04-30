@@ -528,7 +528,7 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
             <DialogDescription>
               {editingServiceId
                 ? 'Actualiza la informacion basica y la configuracion comercial del servicio.'
-                : 'Agrega un servicio comercial al catalogo maestro del tenant.'}
+                : 'Agrega un servicio comercial al catálogo maestro de la empresa.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -588,7 +588,7 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
                 </p>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   Define precio vigente para cotizacion y disponibilidad en nuevas operaciones del
-                  tenant.
+                  empresa.
                 </p>
               </div>
 

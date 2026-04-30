@@ -195,7 +195,7 @@ export function NotificationBell() {
                     Sin actividad reciente
                   </p>
                   <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
-                    Cuando existan cambios relevantes del tenant aparecerán aquí.
+                    Cuando existan cambios relevantes de la empresa aparecerán aquí.
                   </p>
                 </div>
               </div>
