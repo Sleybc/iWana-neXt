@@ -8,5 +8,7 @@ export enum TenantStatus {
   /** El tenant esta suspendido — todos los endpoints retornan HTTP 403 */
   SUSPENDED = 'SUSPENDED',
   INACTIVE = 'INACTIVE',
+  /** Eliminacion solicitada; datos retenidos hasta purga fisica diferida */
+  MARKED_FOR_DELETION = 'MARKED_FOR_DELETION',
   PROVISIONING_FAILED = 'PROVISIONING_FAILED',
 }

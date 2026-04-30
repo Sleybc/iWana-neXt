@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Headers,
   HttpCode,
   HttpStatus,
@@ -12,18 +13,32 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
-import { ApiBearerAuth, ApiHeader, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiHeader,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { AbacGuard } from '../auth/guards/abac.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { AuthService } from '../auth/auth.service';
-import { PlatformRole, UserRole } from '@iwana/shared';
+import { PlatformRole, TenantStatus, UserRole } from '@iwana/shared';
 import { TenantService } from './tenant.service';
 import { TenantProvisioningService } from './tenant-provisioning.service';
 import { DashboardSummaryService } from './dashboard-summary.service';
@@ -31,9 +46,11 @@ import { CreateTenantDto, TenantResponseDto, UpdateTenantDto } from './dto/tenan
 import { TenantSettingsResponseDto, UpdateTenantSettingsDto } from './dto/tenant-settings.dto';
 import {
   DashboardSummaryResponseDto,
+  TenantPublicBrandingResponseDto,
   TenantSelfResponseDto,
   TenantSelfSettingsResponseDto,
 } from './dto/tenant-self.dto';
+import { UploadTenantBrandingAssetDto } from './dto/tenant-branding.dto';
 import {
   UpdateTenantSelfBrandingDto,
   UpdateTenantSelfProfileDto,
@@ -58,6 +75,7 @@ import {
   UpdateAdditionalProductDto,
   AdditionalProductResponseDto,
 } from './dto/tenant-additional-products.dto';
+import { MediaAssetResponseDto } from '../media/dto/media-asset-response.dto';
 
 /**
  * Controlador de gestion de tenants.
@@ -96,6 +114,29 @@ export class TenantController {
   // Declarados antes de /:id para que Express no interprete "me" como UUID.
   // HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §3.2
   // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * GET /api/v1/tenants/public-branding?slug=
+   * Resuelve branding público del tenant para el login no autenticado del portal.
+   */
+  @Get('public-branding')
+  @Public()
+  @Header('Cache-Control', 'public, max-age=60')
+  @Throttle({ default: { ttl: 60000, limit: 60 } })
+  @ApiOperation({ summary: 'Obtener branding público por slug para el login del portal' })
+  @ApiQuery({ name: 'slug', required: true, type: String })
+  @ApiResponse({ status: 200, description: 'Branding público resuelto.' })
+  @ApiResponse({ status: 404, description: 'Tenant no encontrado o inactivo.' })
+  async getPublicBranding(
+    @Query('slug') slug: string | undefined,
+  ): Promise<{ data: TenantPublicBrandingResponseDto }> {
+    if (!slug) {
+      throw new BadRequestException('slug es requerido.');
+    }
+
+    const data = await this.tenantService.getTenantPublicBranding(slug);
+    return { data };
+  }
 
   /**
    * GET /api/v1/tenants/me
@@ -181,6 +222,52 @@ export class TenantController {
     @Body() dto: UpdateTenantSelfBrandingDto,
   ): Promise<{ data: TenantSelfResponseDto }> {
     const data = await this.tenantService.updateTenantSelfBranding(user.tenantId!, dto, user.sub);
+    return { data };
+  }
+
+  /**
+   * POST /api/v1/tenants/me/branding/assets
+   * Sube un archivo de branding y lo asigna al tenant autenticado.
+   */
+  @Post('me/branding/assets')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.CREATED)
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file', 'usage', 'themeVariant'],
+      properties: {
+        file: { type: 'string', format: 'binary', description: 'Archivo de branding a subir' },
+        usage: { type: 'string', enum: ['logo', 'seal', 'favicon', 'login_background'] },
+        themeVariant: { type: 'string', enum: ['light', 'dark'] },
+      },
+    },
+  })
+  @ApiOperation({ summary: 'Subir y asignar un asset de branding al tenant autenticado' })
+  @ApiResponse({ status: 201, description: 'Asset subido y asignado.' })
+  async uploadMeBrandingAsset(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: UploadTenantBrandingAssetDto,
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ): Promise<{ data: MediaAssetResponseDto }> {
+    if (!file) {
+      throw new BadRequestException('Se requiere el campo "file" con el archivo a subir.');
+    }
+
+    const data = await this.tenantService.uploadTenantBrandingAsset(
+      user.tenantId!,
+      dto,
+      file,
+      user.sub,
+    );
     return { data };
   }
 
@@ -516,16 +603,26 @@ export class TenantController {
    */
   @Get()
   @Roles(PlatformRole.SYSTEM_ADMIN, PlatformRole.IWANA_SUPPORT)
-  @ApiOperation({ summary: 'Listar tenants con paginacion' })
+  @ApiOperation({ summary: 'Listar tenants con paginación y filtros operativos' })
+  @ApiQuery({ name: 'limit', required: false, example: 50 })
+  @ApiQuery({ name: 'offset', required: false, example: 0 })
+  @ApiQuery({ name: 'status', required: false, enum: TenantStatus })
+  @ApiQuery({ name: 'search', required: false, description: 'Busca por nombre, slug o email.' })
   @ApiResponse({ status: 200, description: 'Lista de tenants.' })
   async findAll(
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
+    @Query('status') status?: string,
+    @Query('search') search?: string,
   ): Promise<{ data: TenantResponseDto[]; meta: { total: number } }> {
     const parsedLimit = Math.min(parseInt(limit ?? '50', 10) || 50, 100);
     const parsedOffset = parseInt(offset ?? '0', 10) || 0;
+    const parsedStatus = status?.trim() ? this.parseTenantStatus(status) : undefined;
 
-    const result = await this.tenantService.findAll(parsedLimit, parsedOffset);
+    const result = await this.tenantService.findAll(parsedLimit, parsedOffset, {
+      ...(parsedStatus ? { status: parsedStatus } : {}),
+      ...(search?.trim() ? { search: search.trim() } : {}),
+    });
     return {
       data: result.data,
       meta: { total: result.total },
@@ -545,6 +642,65 @@ export class TenantController {
   async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: TenantResponseDto }> {
     const tenant = await this.tenantService.findOne(id);
     return { data: tenant };
+  }
+
+  /**
+   * PATCH /api/v1/tenants/:id/branding
+   * Actualiza branding híbrido del tenant desde consola de plataforma.
+   */
+  @Patch(':id/branding')
+  @Roles(PlatformRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Actualizar branding de un tenant desde plataforma' })
+  @ApiResponse({ status: 200, description: 'Branding actualizado.' })
+  async updateBranding(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateTenantSelfBrandingDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ data: TenantResponseDto }> {
+    const data = await this.tenantService.updateTenantBranding(id, dto, user.sub);
+    return { data };
+  }
+
+  /**
+   * POST /api/v1/tenants/:id/branding/assets
+   * Sube y asigna un asset de branding sobre un tenant objetivo desde plataforma.
+   */
+  @Post(':id/branding/assets')
+  @Roles(PlatformRole.SYSTEM_ADMIN)
+  @HttpCode(HttpStatus.CREATED)
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file', 'usage', 'themeVariant'],
+      properties: {
+        file: { type: 'string', format: 'binary', description: 'Archivo de branding a subir' },
+        usage: { type: 'string', enum: ['logo', 'seal', 'favicon', 'login_background'] },
+        themeVariant: { type: 'string', enum: ['light', 'dark'] },
+      },
+    },
+  })
+  @ApiOperation({ summary: 'Subir y asignar un asset de branding a un tenant desde plataforma' })
+  @ApiResponse({ status: 201, description: 'Asset subido y asignado.' })
+  async uploadBrandingAsset(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UploadTenantBrandingAssetDto,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ data: MediaAssetResponseDto }> {
+    if (!file) {
+      throw new BadRequestException('Se requiere el campo "file" con el archivo a subir.');
+    }
+
+    const data = await this.tenantService.uploadTenantBrandingAsset(id, dto, file, user.sub);
+    return { data };
   }
 
   /**
@@ -709,16 +865,24 @@ export class TenantController {
 
   /**
    * DELETE /api/v1/tenants/:id
-   * Elimina un tenant y su schema PostgreSQL.
-   * OPERACION DESTRUCTIVA - solo SYSTEM_ADMIN.
+   * Marca el tenant como inactivo y eliminado logicamente.
+   * El schema PostgreSQL queda retenido para recuperación/auditoría.
    */
   @Delete(':id')
   @Roles(PlatformRole.SYSTEM_ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Eliminar tenant y su schema PostgreSQL' })
-  @ApiResponse({ status: 204, description: 'Tenant eliminado.' })
+  @ApiOperation({ summary: 'Eliminar lógicamente un tenant' })
+  @ApiResponse({ status: 204, description: 'Tenant marcado como eliminado.' })
   @ApiResponse({ status: 404, description: 'Tenant no encontrado.' })
   async delete(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     await this.tenantService.delete(id);
+  }
+
+  private parseTenantStatus(status: string): TenantStatus {
+    if (Object.values(TenantStatus).includes(status as TenantStatus)) {
+      return status as TenantStatus;
+    }
+
+    throw new BadRequestException('status inválido para listado de tenants.');
   }
 }

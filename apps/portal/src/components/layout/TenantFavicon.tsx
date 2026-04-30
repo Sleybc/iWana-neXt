@@ -7,7 +7,10 @@ import { useAuth } from '@/components/auth/AuthProvider';
 const DEFAULT_FAVICON_PATH = '/brand/iwiso6.png';
 const BRANDING_EVENT_NAME = 'tenant-branding-updated';
 
-type BrandingSnapshot = Pick<TenantSelf, 'name' | 'sealLightUrl' | 'sealDarkUrl'>;
+type BrandingSnapshot = Pick<
+  TenantSelf,
+  'name' | 'sealLightUrl' | 'sealDarkUrl' | 'faviconLightUrl' | 'faviconDarkUrl'
+>;
 
 function isBrowser(): boolean {
   return typeof window !== 'undefined' && typeof document !== 'undefined';
@@ -18,11 +21,19 @@ function resolveFaviconUrl(branding: BrandingSnapshot | null, isDark: boolean): 
     return DEFAULT_FAVICON_PATH;
   }
 
-  const themedUrl = isDark
+  const themedFavicon = isDark
+    ? (branding.faviconDarkUrl ?? branding.faviconLightUrl)
+    : (branding.faviconLightUrl ?? branding.faviconDarkUrl);
+
+  if (themedFavicon) {
+    return themedFavicon;
+  }
+
+  const themedSeal = isDark
     ? (branding.sealDarkUrl ?? branding.sealLightUrl)
     : (branding.sealLightUrl ?? branding.sealDarkUrl);
 
-  return themedUrl ?? DEFAULT_FAVICON_PATH;
+  return themedSeal ?? DEFAULT_FAVICON_PATH;
 }
 
 function upsertFaviconLink(kind: string, rel: string, href: string): void {
@@ -89,6 +100,8 @@ export function TenantFavicon() {
             name: profile.name,
             sealLightUrl: profile.sealLightUrl,
             sealDarkUrl: profile.sealDarkUrl,
+            faviconLightUrl: profile.faviconLightUrl,
+            faviconDarkUrl: profile.faviconDarkUrl,
           });
         }
       } catch {

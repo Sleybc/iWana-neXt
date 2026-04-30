@@ -5,7 +5,7 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "strictPropertyInitialization": false,
-    "types": ["jest", "node"],
+    "types": ["jest", "node", "multer"],
     "paths": {
       "@iwana/api": ["./src/index.ts"]
     }

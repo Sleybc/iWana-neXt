@@ -19,12 +19,17 @@ export * from './lib/utils';
 // Componentes
 export * from './components/Button';
 export * from './components/Input';
+export * from './components/CheckboxCard';
 export * from './components/Select';
 export * from './components/FormField';
+export * from './components/FormSection';
 export * from './components/Card';
 export * from './components/Badge';
+export * from './components/Alert';
 export * from './components/OtpInput';
 export * from './components/Dialog';
+export * from './components/Tabs';
+export * from './components/DropdownMenu';
 export * from './components/SectionAccordion';
 export * from './components/ProgressMeter';
 export * from './components/Popover';

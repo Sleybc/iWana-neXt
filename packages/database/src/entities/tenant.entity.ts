@@ -60,9 +60,9 @@ export class Tenant {
   @Column({ name: 'contact_email', length: 255 })
   contactEmail: string;
 
-  /** Limite de suscriptores contratado. 0 = sin limite definido */
-  @Column({ name: 'max_subscribers', default: 0 })
-  maxSubscribers: number;
+  /** Limite de suscriptores contratado. null = sin limite; 0 = bloqueado */
+  @Column({ name: 'max_subscribers', nullable: true, type: 'integer' })
+  maxSubscribers: number | null;
 
   // ── Datos legales ────────────────────────────────────────────────────────────
 
@@ -109,7 +109,7 @@ export class Tenant {
   // ── Contacto adicional ───────────────────────────────────────────────────────
 
   /** Teléfono principal en formato E.164 (ej: "+573001234567") */
-  @Column({ name: 'phone', length: 20, nullable: true, type: 'varchar' })
+  @Column({ name: 'phone', length: 50, nullable: true, type: 'varchar' })
   phone: string | null;
 
   /** Sitio web corporativo */
@@ -138,6 +138,54 @@ export class Tenant {
   @Column({ name: 'seal_dark_url', length: 500, nullable: true, type: 'varchar' })
   sealDarkUrl: string | null;
 
+  /** URL pública HTTPS del favicon — variante clara */
+  @Column({ name: 'favicon_light_url', length: 500, nullable: true, type: 'varchar' })
+  faviconLightUrl: string | null;
+
+  /** URL pública HTTPS del favicon — variante oscura */
+  @Column({ name: 'favicon_dark_url', length: 500, nullable: true, type: 'varchar' })
+  faviconDarkUrl: string | null;
+
+  /** URL pública HTTPS del fondo de login — variante clara */
+  @Column({ name: 'login_background_light_url', length: 500, nullable: true, type: 'varchar' })
+  loginBackgroundLightUrl: string | null;
+
+  /** URL pública HTTPS del fondo de login — variante oscura */
+  @Column({ name: 'login_background_dark_url', length: 500, nullable: true, type: 'varchar' })
+  loginBackgroundDarkUrl: string | null;
+
+  /** FK opcional al asset subido para el logo claro */
+  @Column({ name: 'logo_light_asset_id', nullable: true, type: 'uuid' })
+  logoLightAssetId: string | null;
+
+  /** FK opcional al asset subido para el logo oscuro */
+  @Column({ name: 'logo_dark_asset_id', nullable: true, type: 'uuid' })
+  logoDarkAssetId: string | null;
+
+  /** FK opcional al asset subido para el sello claro */
+  @Column({ name: 'seal_light_asset_id', nullable: true, type: 'uuid' })
+  sealLightAssetId: string | null;
+
+  /** FK opcional al asset subido para el sello oscuro */
+  @Column({ name: 'seal_dark_asset_id', nullable: true, type: 'uuid' })
+  sealDarkAssetId: string | null;
+
+  /** FK opcional al asset subido para el favicon claro */
+  @Column({ name: 'favicon_light_asset_id', nullable: true, type: 'uuid' })
+  faviconLightAssetId: string | null;
+
+  /** FK opcional al asset subido para el favicon oscuro */
+  @Column({ name: 'favicon_dark_asset_id', nullable: true, type: 'uuid' })
+  faviconDarkAssetId: string | null;
+
+  /** FK opcional al asset subido para el fondo de login claro */
+  @Column({ name: 'login_background_light_asset_id', nullable: true, type: 'uuid' })
+  loginBackgroundLightAssetId: string | null;
+
+  /** FK opcional al asset subido para el fondo de login oscuro */
+  @Column({ name: 'login_background_dark_asset_id', nullable: true, type: 'uuid' })
+  loginBackgroundDarkAssetId: string | null;
+
   /** Si el tenant elige mostrar su nombre comercial junto al sello en el sidebar */
   @Column({ name: 'show_tenant_name', type: 'boolean', default: true })
   showTenantName: boolean;
@@ -147,4 +195,7 @@ export class Tenant {
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
+
+  @Column({ name: 'deleted_at', nullable: true, type: 'timestamptz' })
+  deletedAt: Date | null;
 }

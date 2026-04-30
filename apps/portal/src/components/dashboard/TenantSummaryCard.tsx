@@ -14,6 +14,7 @@ function statusVariant(status: TenantSelf['status']): 'success' | 'warning' | 'e
   if (status === 'SUSPENDED') return 'error';
   if (status === 'PROVISIONING') return 'warning';
   if (status === 'PROVISIONING_FAILED') return 'error';
+  if (status === 'MARKED_FOR_DELETION') return 'error';
   return 'neutral';
 }
 
@@ -21,8 +22,10 @@ function statusLabel(status: TenantSelf['status']): string {
   const labels: Record<TenantSelf['status'], string> = {
     ACTIVE: 'Activo',
     SUSPENDED: 'Suspendido',
+    INACTIVE: 'Inactivo',
     PROVISIONING: 'Aprovisionando',
     PROVISIONING_FAILED: 'Error de aprovisionamiento',
+    MARKED_FOR_DELETION: 'En eliminación',
   };
   return labels[status] ?? status;
 }

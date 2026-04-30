@@ -623,7 +623,13 @@ export const auditApi = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Estado del tenant — alineado con TenantStatus del backend */
-export type TenantStatus = 'ACTIVE' | 'SUSPENDED' | 'PROVISIONING' | 'PROVISIONING_FAILED';
+export type TenantStatus =
+  | 'ACTIVE'
+  | 'SUSPENDED'
+  | 'INACTIVE'
+  | 'MARKED_FOR_DELETION'
+  | 'PROVISIONING'
+  | 'PROVISIONING_FAILED';
 
 /** Datos base del tenant autenticado para el dashboard empresarial */
 export interface TenantSelf {
@@ -642,10 +648,48 @@ export interface TenantSelf {
   website: string | null;
   createdAt: string;
   logoLightUrl: string | null;
+  logoLightAssetId: string | null;
+  logoDarkUrl: string | null;
+  logoDarkAssetId: string | null;
+  sealLightUrl: string | null;
+  sealLightAssetId: string | null;
+  sealDarkUrl: string | null;
+  sealDarkAssetId: string | null;
+  faviconLightUrl: string | null;
+  faviconLightAssetId: string | null;
+  faviconDarkUrl: string | null;
+  faviconDarkAssetId: string | null;
+  loginBackgroundLightUrl: string | null;
+  loginBackgroundLightAssetId: string | null;
+  loginBackgroundDarkUrl: string | null;
+  loginBackgroundDarkAssetId: string | null;
+  showTenantName: boolean;
+}
+
+export interface TenantPublicBranding {
+  displayName: string;
+  showTenantName: boolean;
+  logoLightUrl: string | null;
   logoDarkUrl: string | null;
   sealLightUrl: string | null;
   sealDarkUrl: string | null;
-  showTenantName: boolean;
+  faviconLightUrl: string | null;
+  faviconDarkUrl: string | null;
+  loginBackgroundLightUrl: string | null;
+  loginBackgroundDarkUrl: string | null;
+}
+
+export type BrandingUsage = 'logo' | 'seal' | 'favicon' | 'login_background';
+export type BrandingThemeVariant = 'light' | 'dark';
+
+export interface MediaAsset {
+  id: string;
+  usage: BrandingUsage | 'general';
+  themeVariant: BrandingThemeVariant | null;
+  mimeType: string;
+  sizeBytes: number;
+  publicUrl: string | null;
+  createdAt: string;
 }
 
 export interface UpdateTenantSelfProfileDto {
@@ -662,10 +706,28 @@ export interface UpdateTenantSelfProfileDto {
 
 export interface UpdateTenantSelfBrandingDto {
   logoLightUrl?: string | null;
+  logoLightAssetId?: string | null;
   logoDarkUrl?: string | null;
+  logoDarkAssetId?: string | null;
   sealLightUrl?: string | null;
+  sealLightAssetId?: string | null;
   sealDarkUrl?: string | null;
+  sealDarkAssetId?: string | null;
+  faviconLightUrl?: string | null;
+  faviconLightAssetId?: string | null;
+  faviconDarkUrl?: string | null;
+  faviconDarkAssetId?: string | null;
+  loginBackgroundLightUrl?: string | null;
+  loginBackgroundLightAssetId?: string | null;
+  loginBackgroundDarkUrl?: string | null;
+  loginBackgroundDarkAssetId?: string | null;
   showTenantName?: boolean;
+}
+
+export interface UploadTenantBrandingAssetDto {
+  usage: BrandingUsage;
+  themeVariant: BrandingThemeVariant;
+  file: File;
 }
 
 /** Configuración operativa del tenant autenticado */
@@ -1277,6 +1339,26 @@ export const tenantSelfApi = {
       '/tenants/me/branding',
       { method: 'PATCH', body: JSON.stringify(dto) },
       tenantSlug,
+    ),
+
+  uploadBrandingAsset: (dto: UploadTenantBrandingAssetDto, tenantSlug?: string) => {
+    const formData = new FormData();
+    formData.append('usage', dto.usage);
+    formData.append('themeVariant', dto.themeVariant);
+    formData.append('file', dto.file);
+
+    return request<MediaAsset>(
+      '/tenants/me/branding/assets',
+      { method: 'POST', body: formData },
+      tenantSlug,
+    );
+  },
+
+  getPublicBranding: (slug: string) =>
+    request<TenantPublicBranding>(
+      `/tenants/public-branding?slug=${encodeURIComponent(slug)}`,
+      { skipAuth: true, skipRefreshRetry: true },
+      slug,
     ),
 
   /** Retorna la configuración operativa del tenant autenticado. */

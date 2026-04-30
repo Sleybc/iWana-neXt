@@ -9,6 +9,40 @@
 
 Se ejecutó la implementación transversal de enablement operativo para habilitar perfil de plataforma, settings funcionales de tenant, flujo de alta de primera empresa y gestión operativa de usuarios internos. El cierre incluyó la corrección del flujo MFA de plataforma en web, la activación real de acciones de usuarios por tenant y la ampliación del E2E de bootstrap administrativo.
 
+### Addendum correctivo 2026-04-30 — Habilitación de MCPs en OpenCode
+
+Se actualizó `.opencode/opencode.json` para dejar habilitados tres servidores MCP de uso operativo en el workspace: `chrome-devtools`, `context7` y `playwright`. La configuración quedó declarada como MCPs `local` con ejecución vía `npx`, lo que evita acoplar el repo a instalaciones globales manuales y permite resolver la versión publicada más reciente al iniciar el cliente.
+
+Como parte del ajuste, `context7` dejó de apuntar al endpoint remoto directo y pasó a consumir el paquete oficial `@upstash/context7-mcp`, alineando los tres MCPs bajo el mismo mecanismo de arranque. Si operación requiere elevar cuota o autenticación para Context7, el paso posterior queda limitado a inyectar variables de entorno del cliente sin volver a tocar la estructura de configuración.
+
+### Addendum correctivo 2026-04-30 — Favicon web alineado al portal
+
+Se eliminó el `favicon.ico` especial de Next.js en `apps/web/src/app`, que podía prevalecer sobre el favicon declarado por metadata. La consola web, incluyendo creación de empresas, queda alineada con el portal corporativo usando `/brand/iwiso6.png` como `icon` y `shortcut icon`.
+
+### Addendum correctivo 2026-04-30 — Ajuste final de settings y notificaciones web
+
+Se refinó `Configuración -> Seguridad` en `apps/web` para corregir campos de contraseña visualmente sobredimensionados. El bloque de cambio de contraseña ahora limita el ancho efectivo a 440px y alinea el CTA con los campos, evitando que el botón flote al extremo derecho del panel.
+
+También se corrigió la campana de notificaciones del header: deja de mostrar vacío cuando todas las empresas están activas y ahora lista los registros operativos recientes derivados de `tenantApi.list`, priorizando estados de error/provisioning/suspensión y usando empresas activas como señales informativas. El copy visible cambia de `tenants` a `empresas`.
+
+### Addendum correctivo 2026-04-30 — Jerarquía de botones en sistema de empresas
+
+Se inició la normalización visual del flujo de creación, listado y configuración de empresas en `apps/web`. La decisión base queda registrada: la consistencia de botones se define por escala y rol, no por tamaño único. Las acciones primarias de formulario y destructivas usan `size="lg"`; las acciones secundarias mantienen variante secundaria; los cierres de modal pasan a acciones terciarias para no competir con guardados o eliminaciones.
+
+Primera fase aplicada: `CredentialsModal` usa cierre `ghost sm` en header; `Crear empresa`, `Guardar configuración`, `Guardar datos de empresa` y `Eliminar empresa permanentemente` usan `lg`; el trigger de menú de `TenantsTable` usa la primitive `Button` como `ghost icon`. El plan quedó registrado en `docs/plans/PLAN-WEB-EMPRESAS-UI-v1.0.md` como semilla del futuro manual de diseño UI.
+
+### Addendum correctivo 2026-04-30 — Fase 2 primitives UI empresas
+
+Se implementó la segunda fase del sistema visual de empresas con primitives compartidas en `@iwana/ui`: `Alert`, `Tabs` y `DropdownMenu`. `DropdownMenu` renderiza su contenido en portal con posición fija para evitar recortes dentro de tablas con overflow; `Tabs` soporta uso controlado/no controlado e indicador de error; `Alert` centraliza mensajes `neutral`, `info`, `success`, `warning` y `error` con rol accesible por defecto.
+
+El flujo de empresas fue migrado para consumir esas primitives: `TenantsTable` eliminó el menú contextual manual; `TenantCreateForm` y `TenantSettingsForm` reemplazaron tabs y alertas ad hoc; `CredentialsModal` pasó a usar `Dialog` existente junto con `Alert` para mensajes de acceso inicial. La deuda restante queda acotada a consolidación de formularios (`Input`, `FormField`, fieldsets y `TabsContent`) y pruebas visuales/E2E de interacción.
+
+### Addendum correctivo 2026-04-30 — Fase 3 formularios empresas
+
+Se ejecutó la tercera fase del sistema visual de empresas consolidando formularios en `@iwana/ui`. `Input` ahora soporta `label`, `helperText`, `error`, `requiredIndicator` y `containerClassName`; se agregó `FormSection` con `FormPanel`, `FormSectionTitle` y `FormFieldset` para paneles, subtítulos y agrupaciones internas accesibles.
+
+`TenantCreateForm` y `TenantSettingsForm` fueron migrados para eliminar constantes locales de input, label, error y fieldset. La deuda natural posterior también quedó resuelta: se implementó `CheckboxCard`, se migraron los booleanos con descripción, se integró `TabsContent` para completar la semántica accesible de tabs y se extendió `Input` con `startIcon` para reemplazar el buscador manual de `TenantsTable`. El cierre de código queda completo; para merge solo resta evidencia visual/E2E si se exige en la revisión.
+
 ### Addendum correctivo 2026-04-30 — Actor legible en Audit Logs
 
 Se cerró la deuda de legibilidad del actor en `/audit-logs`: la API ahora conserva `userId` como dato canónico, pero agrega `actor` enriquecido en las respuestas de auditoría tenant y plataforma. El resolver trabaja por lote, evita N+1 y usa un read-model mínimo con `id`, `displayName`, `role`, `status` e indicador de soft-delete. En plataforma no se selecciona ni expone email porque `PlatformUser.email` está cifrado.

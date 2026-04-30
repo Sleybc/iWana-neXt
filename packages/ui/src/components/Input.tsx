@@ -9,26 +9,61 @@ import { cn } from '../lib/utils';
  * Con soporte para label, helper text, error message y password toggle.
  */
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
-  label?: string;
-  helperText?: string;
-  error?: string | undefined;
+  label?: React.ReactNode;
+  helperText?: React.ReactNode;
+  error?: React.ReactNode | undefined;
+  requiredIndicator?: boolean;
+  containerClassName?: string;
+  startIcon?: React.ReactNode;
+  startIconClassName?: string;
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, label, helperText, error, id, type, ...props }, ref) => {
+  (
+    {
+      className,
+      containerClassName,
+      label,
+      helperText,
+      error,
+      id,
+      type,
+      requiredIndicator = false,
+      startIcon,
+      startIconClassName,
+      ...props
+    },
+    ref,
+  ) => {
     const [showPassword, setShowPassword] = React.useState(false);
     const inputId = id || React.useId();
     const isPassword = type === 'password';
     const inputType = isPassword ? (showPassword ? 'text' : 'password') : type;
 
     return (
-      <div className="flex flex-col gap-1.5 w-full">
+      <div className={cn('flex flex-col gap-1.5 w-full', containerClassName)}>
         {label && (
           <label htmlFor={inputId} className="text-sm font-medium text-gray-700 dark:text-gray-300">
             {label}
+            {requiredIndicator && (
+              <span className="ml-1 text-red-500" aria-hidden="true">
+                *
+              </span>
+            )}
           </label>
         )}
         <div className="relative">
+          {startIcon && (
+            <span
+              className={cn(
+                'pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400',
+                startIconClassName,
+              )}
+              aria-hidden="true"
+            >
+              {startIcon}
+            </span>
+          )}
           <input
             id={inputId}
             type={inputType}
@@ -41,6 +76,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
               error
                 ? 'border-red-500 dark:border-red-500 focus-visible:ring-red-500'
                 : 'border-gray-300 dark:border-dark-border-2 hover:border-gray-400 dark:hover:border-gray-500',
+              startIcon && 'pl-9',
               isPassword && 'pr-10',
               className,
             )}
@@ -97,7 +133,11 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           )}
         </div>
         {error && (
-          <p id={`${inputId}-error`} className="text-xs text-[#EF4444] flex items-center gap-1">
+          <p
+            id={`${inputId}-error`}
+            role="alert"
+            className="text-xs text-[#EF4444] flex items-center gap-1"
+          >
             <svg
               className="h-3 w-3 flex-shrink-0"
               fill="currentColor"

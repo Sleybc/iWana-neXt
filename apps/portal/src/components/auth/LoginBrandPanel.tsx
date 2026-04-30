@@ -1,67 +1,90 @@
-// apps/web/src/components/auth/LoginBrandPanel.tsx
+'use client';
+
 import type { ReactNode } from 'react';
+import { type TenantPublicBranding } from '@/lib/api-client';
 
 /**
  * Panel izquierdo del login — identidad iWana neXt.
  * Adaptado del prototipo de identidad visual.
  */
 interface LoginBrandPanelProps {
+  branding?: TenantPublicBranding | null;
+  isLoadingBranding?: boolean;
   title?: string;
   subtitle?: string;
   children?: ReactNode;
 }
 
 export function LoginBrandPanel({
-  title = 'iWana neXt',
-  subtitle = 'Autenticación segura, trazabilidad activa y una experiencia premium para la operación empresarial.',
+  branding,
+  isLoadingBranding = false,
+  title,
+  subtitle,
   children,
 }: LoginBrandPanelProps) {
+  const backgroundImage = branding?.loginBackgroundDarkUrl ?? branding?.loginBackgroundLightUrl;
+  const headerLogo = branding?.logoDarkUrl ?? branding?.logoLightUrl;
+  const resolvedTitle = title ?? (branding?.showTenantName ? branding.displayName : 'iWana neXt');
+  const resolvedSubtitle =
+    subtitle ??
+    (branding?.showTenantName
+      ? `Acceso seguro al portal de ${branding.displayName} con políticas activas y trazabilidad por empresa.`
+      : 'Autenticación segura, trazabilidad activa y una experiencia premium para la operación empresarial.');
+
   return (
     <div className="relative hidden overflow-hidden border-r border-white/5 bg-[#181818] p-8 text-white lg:flex lg:w-1/2 lg:flex-col lg:justify-between lg:p-16">
-      {/* Background Image pattern from prototype */}
       <img
-        src="https://lh3.googleusercontent.com/aida-public/AB6AXuCHI4LM_NAHCAJ3MNL4M6WPHz31HVbomoUOssE0eZhErv0MfuccPw3aYms_n07IkyuNbSK8q4lhZv16uyobCgB864Jf6HadYfLg7hqx2yc1ARQ1j8mx_EStoaUUmAApxfoKQIHR4nZO7mR8En5Bp2Tgnf2h-WWUDetkSZEoVPCCogfOk-Z_nPm8fYodWf7jD5O2wdDrlp_1f4LaAxuPqfe7MLGnHphIwaXrd9JzKmrDSt2qAei9pHcZ2_z7hM8gO-jxpEWa9woXrIZY"
+        src={
+          backgroundImage ??
+          'https://lh3.googleusercontent.com/aida-public/AB6AXuCHI4LM_NAHCAJ3MNL4M6WPHz31HVbomoUOssE0eZhErv0MfuccPw3aYms_n07IkyuNbSK8q4lhZv16uyobCgB864Jf6HadYfLg7hqx2yc1ARQ1j8mx_EStoaUUmAApxfoKQIHR4nZO7mR8En5Bp2Tgnf2h-WWUDetkSZEoVPCCogfOk-Z_nPm8fYodWf7jD5O2wdDrlp_1f4LaAxuPqfe7MLGnHphIwaXrd9JzKmrDSt2qAei9pHcZ2_z7hM8gO-jxpEWa9woXrIZY'
+        }
         alt=""
         aria-hidden="true"
         className="absolute inset-0 z-0 h-full w-full object-cover opacity-30 mix-blend-lighten"
       />
       <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#181818] via-[#181818]/80 to-transparent" />
 
-      {/* Top Header */}
       <div className="relative z-10 flex items-center gap-3">
-        <div className="h-10 w-10 bg-[#A5C330] rounded-lg flex items-center justify-center text-[#181818]">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M12 2L2 7l10 5 10-5-10-5z" fill="currentColor" />
-            <path
-              d="M2 17l10 5 10-5"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path
-              d="M2 12l10 5 10-5"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-        <span className="text-2xl font-bold tracking-tight text-white">iWana neXt</span>
+        {headerLogo ? (
+          <div className="flex h-12 min-w-[140px] items-center rounded-2xl bg-white/8 px-4 backdrop-blur-md">
+            <img src={headerLogo} alt={resolvedTitle} className="max-h-7 w-auto object-contain" />
+          </div>
+        ) : (
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#A5C330] text-[#181818]">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 2L2 7l10 5 10-5-10-5z" fill="currentColor" />
+              <path
+                d="M2 17l10 5 10-5"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M2 12l10 5 10-5"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+        )}
+        <span className="text-2xl font-bold tracking-tight text-white">{resolvedTitle}</span>
       </div>
 
-      {/* Center Content */}
       <div className="relative z-10 my-auto">
         <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.26em] text-[#A5C330]">
-          Conectividad premium
+          {isLoadingBranding ? 'Resolviendo identidad' : 'Conectividad premium'}
         </p>
         <h1 className="mb-6 max-w-xl text-4xl font-bold leading-tight tracking-tight text-white lg:text-6xl">
-          {title}
+          {resolvedTitle}
           <br />
-          <span className="text-[#A5C330]">Sistema Integrado</span>
+          <span className="text-[#A5C330]">
+            {branding?.showTenantName ? 'Portal empresarial' : 'Sistema Integrado'}
+          </span>
         </h1>
-        <p className="text-lg text-slate-400 max-w-md leading-relaxed">{subtitle}</p>
+        <p className="text-lg text-slate-400 max-w-md leading-relaxed">{resolvedSubtitle}</p>
         {children ?? (
           <div className="mt-8 flex gap-4">
             <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-slate-300 backdrop-blur-md">
@@ -119,7 +142,6 @@ export function LoginBrandPanel({
         </div>
       </div>
 
-      {/* Footer */}
       <div className="relative z-10 text-sm text-slate-500">
         © 2026 iWana Network Inc. Todos los derechos reservados.
       </div>

@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const chromiumExecutablePath = process.env['PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH'];
+
 export default defineConfig({
   testDir: './tests',
   // Incluye specs legados con prefijo web- y nuevos specs organizados por carpeta.
@@ -14,7 +16,10 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:3001',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video: chromiumExecutablePath ? 'off' : 'retain-on-failure',
+    ...(chromiumExecutablePath
+      ? { launchOptions: { executablePath: chromiumExecutablePath } }
+      : {}),
   },
   webServer: {
     command: 'pnpm --filter @iwana/web dev',

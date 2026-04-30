@@ -17,6 +17,10 @@ function resolveTenantStatusLabel(status: TenantSelf['status']): string {
       return 'Activo';
     case 'SUSPENDED':
       return 'Suspendido';
+    case 'INACTIVE':
+      return 'Inactivo';
+    case 'MARKED_FOR_DELETION':
+      return 'En eliminación';
     case 'PROVISIONING':
       return 'Provisionando';
     case 'PROVISIONING_FAILED':
@@ -55,9 +59,11 @@ export function SettingsOverviewPanel({
               variant={
                 profile.status === 'ACTIVE'
                   ? 'success'
-                  : profile.status === 'SUSPENDED'
+                  : profile.status === 'SUSPENDED' || profile.status === 'MARKED_FOR_DELETION'
                     ? 'error'
-                    : 'warning'
+                    : profile.status === 'INACTIVE'
+                      ? 'neutral'
+                      : 'warning'
               }
             >
               {resolveTenantStatusLabel(profile.status)}
@@ -84,7 +90,9 @@ export function SettingsOverviewPanel({
               <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
                 Contacto
               </span>
-              <span className="font-medium text-gray-900 dark:text-white">{profile.contactEmail}</span>
+              <span className="font-medium text-gray-900 dark:text-white">
+                {profile.contactEmail}
+              </span>
             </div>
           </div>
         </div>

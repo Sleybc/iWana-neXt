@@ -1,7 +1,7 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Queue } from 'bullmq';
-import { REFRESH_TOKEN_PURGE_QUEUE } from '@iwana/shared';
+import { REFRESH_TOKEN_PURGE_QUEUE, TENANT_SCHEMA_PURGE_QUEUE } from '@iwana/shared';
 
 /**
  * Servicio responsable de registrar jobs repetibles (cron) en BullMQ al iniciar el worker.
@@ -19,7 +19,10 @@ import { REFRESH_TOKEN_PURGE_QUEUE } from '@iwana/shared';
 export class SchedulerService implements OnApplicationBootstrap {
   private readonly logger = new Logger(SchedulerService.name);
 
-  constructor(@InjectQueue(REFRESH_TOKEN_PURGE_QUEUE) private readonly purgeQueue: Queue) {}
+  constructor(
+    @InjectQueue(REFRESH_TOKEN_PURGE_QUEUE) private readonly purgeQueue: Queue,
+    @InjectQueue(TENANT_SCHEMA_PURGE_QUEUE) private readonly tenantSchemaPurgeQueue: Queue,
+  ) {}
 
   /**
    * Registra los jobs repetibles al iniciar el worker.
@@ -38,6 +41,19 @@ export class SchedulerService implements OnApplicationBootstrap {
 
     this.logger.log(
       '[scheduler] Job repetible de purga de refresh tokens registrado (cron: 0 3 * * * — 3am UTC / 10pm Colombia)',
+    );
+
+    await this.tenantSchemaPurgeQueue.add(
+      'purge-marked-tenant-schemas',
+      {},
+      {
+        repeat: { pattern: '30 3 * * *' },
+        jobId: 'tenant-schema-purge-daily',
+      },
+    );
+
+    this.logger.log(
+      '[scheduler] Job repetible de purga de schemas tenant registrado (cron: 30 3 * * * — 3:30am UTC / 10:30pm Colombia)',
     );
   }
 }

@@ -7,7 +7,12 @@ import {
   IsUrl,
   Matches,
   MaxLength,
+  Validate,
   ValidateNested,
+  ValidationArguments,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
+  IsUUID,
 } from 'class-validator';
 
 function trimString({ value }: { value: unknown }): unknown {
@@ -31,6 +36,47 @@ class UpdateTenantSelfFeaturesDto {
   @IsOptional()
   @IsBoolean()
   mfa_required_all?: boolean;
+}
+
+@ValidatorConstraint({ name: 'brandingSourceXor', async: false })
+class BrandingSourceXorConstraint implements ValidatorConstraintInterface {
+  validate(_: unknown, args: ValidationArguments): boolean {
+    const dto = args.object as UpdateTenantSelfBrandingDto;
+
+    return !this.getConflictingPair(dto);
+  }
+
+  defaultMessage(args: ValidationArguments): string {
+    const dto = args.object as UpdateTenantSelfBrandingDto;
+    const conflictingPair = this.getConflictingPair(dto);
+
+    if (!conflictingPair) {
+      return 'No se puede enviar simultáneamente URL y assetId para el mismo slot de branding.';
+    }
+
+    return `No se puede enviar simultáneamente ${conflictingPair[0]} y ${conflictingPair[1]}.`;
+  }
+
+  private getConflictingPair(dto: UpdateTenantSelfBrandingDto): [string, string] | null {
+    const pairs: Array<[keyof UpdateTenantSelfBrandingDto, keyof UpdateTenantSelfBrandingDto]> = [
+      ['logoLightUrl', 'logoLightAssetId'],
+      ['logoDarkUrl', 'logoDarkAssetId'],
+      ['sealLightUrl', 'sealLightAssetId'],
+      ['sealDarkUrl', 'sealDarkAssetId'],
+      ['faviconLightUrl', 'faviconLightAssetId'],
+      ['faviconDarkUrl', 'faviconDarkAssetId'],
+      ['loginBackgroundLightUrl', 'loginBackgroundLightAssetId'],
+      ['loginBackgroundDarkUrl', 'loginBackgroundDarkAssetId'],
+    ];
+
+    for (const [urlKey, assetKey] of pairs) {
+      if (dto[urlKey] !== undefined && dto[assetKey] !== undefined) {
+        return [urlKey, assetKey];
+      }
+    }
+
+    return null;
+  }
 }
 
 export class UpdateTenantSelfProfileDto {
@@ -104,6 +150,9 @@ export class UpdateTenantSelfProfileDto {
  * Todos los campos son opcionales para permitir actualizaciones parciales.
  */
 export class UpdateTenantSelfBrandingDto {
+  @Validate(BrandingSourceXorConstraint)
+  private readonly _brandingSourceXor?: true;
+
   @IsOptional()
   @Transform(trimNullableString)
   @IsUrl(
@@ -113,6 +162,11 @@ export class UpdateTenantSelfBrandingDto {
   @Matches(/^https:\/\//, { message: 'logoLightUrl debe usar HTTPS.' })
   @MaxLength(500)
   logoLightUrl?: string | null;
+
+  @IsOptional()
+  @Transform(trimNullableString)
+  @IsUUID('4', { message: 'logoLightAssetId debe ser un UUID válido.' })
+  logoLightAssetId?: string | null;
 
   @IsOptional()
   @Transform(trimNullableString)
@@ -126,6 +180,11 @@ export class UpdateTenantSelfBrandingDto {
 
   @IsOptional()
   @Transform(trimNullableString)
+  @IsUUID('4', { message: 'logoDarkAssetId debe ser un UUID válido.' })
+  logoDarkAssetId?: string | null;
+
+  @IsOptional()
+  @Transform(trimNullableString)
   @IsUrl(
     { require_protocol: true, require_tld: true },
     { message: 'sealLightUrl debe ser una URL válida.' },
@@ -136,6 +195,11 @@ export class UpdateTenantSelfBrandingDto {
 
   @IsOptional()
   @Transform(trimNullableString)
+  @IsUUID('4', { message: 'sealLightAssetId debe ser un UUID válido.' })
+  sealLightAssetId?: string | null;
+
+  @IsOptional()
+  @Transform(trimNullableString)
   @IsUrl(
     { require_protocol: true, require_tld: true },
     { message: 'sealDarkUrl debe ser una URL válida.' },
@@ -143,6 +207,71 @@ export class UpdateTenantSelfBrandingDto {
   @Matches(/^https:\/\//, { message: 'sealDarkUrl debe usar HTTPS.' })
   @MaxLength(500)
   sealDarkUrl?: string | null;
+
+  @IsOptional()
+  @Transform(trimNullableString)
+  @IsUUID('4', { message: 'sealDarkAssetId debe ser un UUID válido.' })
+  sealDarkAssetId?: string | null;
+
+  @IsOptional()
+  @Transform(trimNullableString)
+  @IsUrl(
+    { require_protocol: true, require_tld: true },
+    { message: 'faviconLightUrl debe ser una URL válida.' },
+  )
+  @Matches(/^https:\/\//, { message: 'faviconLightUrl debe usar HTTPS.' })
+  @MaxLength(500)
+  faviconLightUrl?: string | null;
+
+  @IsOptional()
+  @Transform(trimNullableString)
+  @IsUUID('4', { message: 'faviconLightAssetId debe ser un UUID válido.' })
+  faviconLightAssetId?: string | null;
+
+  @IsOptional()
+  @Transform(trimNullableString)
+  @IsUrl(
+    { require_protocol: true, require_tld: true },
+    { message: 'faviconDarkUrl debe ser una URL válida.' },
+  )
+  @Matches(/^https:\/\//, { message: 'faviconDarkUrl debe usar HTTPS.' })
+  @MaxLength(500)
+  faviconDarkUrl?: string | null;
+
+  @IsOptional()
+  @Transform(trimNullableString)
+  @IsUUID('4', { message: 'faviconDarkAssetId debe ser un UUID válido.' })
+  faviconDarkAssetId?: string | null;
+
+  @IsOptional()
+  @Transform(trimNullableString)
+  @IsUrl(
+    { require_protocol: true, require_tld: true },
+    { message: 'loginBackgroundLightUrl debe ser una URL válida.' },
+  )
+  @Matches(/^https:\/\//, { message: 'loginBackgroundLightUrl debe usar HTTPS.' })
+  @MaxLength(500)
+  loginBackgroundLightUrl?: string | null;
+
+  @IsOptional()
+  @Transform(trimNullableString)
+  @IsUUID('4', { message: 'loginBackgroundLightAssetId debe ser un UUID válido.' })
+  loginBackgroundLightAssetId?: string | null;
+
+  @IsOptional()
+  @Transform(trimNullableString)
+  @IsUrl(
+    { require_protocol: true, require_tld: true },
+    { message: 'loginBackgroundDarkUrl debe ser una URL válida.' },
+  )
+  @Matches(/^https:\/\//, { message: 'loginBackgroundDarkUrl debe usar HTTPS.' })
+  @MaxLength(500)
+  loginBackgroundDarkUrl?: string | null;
+
+  @IsOptional()
+  @Transform(trimNullableString)
+  @IsUUID('4', { message: 'loginBackgroundDarkAssetId debe ser un UUID válido.' })
+  loginBackgroundDarkAssetId?: string | null;
 
   @IsOptional()
   @IsBoolean()

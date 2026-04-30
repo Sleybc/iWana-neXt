@@ -1,18 +1,22 @@
-// apps/portal/src/components/settings/BrandingForm.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { CheckCircle2, CircleAlert, ImageIcon } from 'lucide-react';
+import { CheckCircle2, CircleAlert, ImageIcon, Trash2, UploadCloud } from 'lucide-react';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '@iwana/ui';
-import { tenantSelfApi, type TenantSelf } from '@/lib/api-client';
+import {
+  tenantSelfApi,
+  type BrandingThemeVariant,
+  type BrandingUsage,
+  type TenantSelf,
+  type UpdateTenantSelfBrandingDto,
+} from '@/lib/api-client';
 import { TenantSeal } from '@/components/layout/TenantSeal';
 
 const BRANDING_EVENT_NAME = 'tenant-branding-updated';
 
-// Validación: string HTTPS de hasta 500 caracteres, o vacío para borrar
 const httpsUrl = z
   .string()
   .trim()
@@ -25,10 +29,33 @@ const brandingSchema = z.object({
   logoDarkUrl: httpsUrl.optional().or(z.literal('')),
   sealLightUrl: httpsUrl.optional().or(z.literal('')),
   sealDarkUrl: httpsUrl.optional().or(z.literal('')),
+  faviconLightUrl: httpsUrl.optional().or(z.literal('')),
+  faviconDarkUrl: httpsUrl.optional().or(z.literal('')),
+  loginBackgroundLightUrl: httpsUrl.optional().or(z.literal('')),
+  loginBackgroundDarkUrl: httpsUrl.optional().or(z.literal('')),
   showTenantName: z.boolean(),
 });
 
 type BrandingFormValues = z.infer<typeof brandingSchema>;
+type BrandingUrlField = Exclude<keyof BrandingFormValues, 'showTenantName'>;
+type BrandingAssetField =
+  | 'logoLightAssetId'
+  | 'logoDarkAssetId'
+  | 'sealLightAssetId'
+  | 'sealDarkAssetId'
+  | 'faviconLightAssetId'
+  | 'faviconDarkAssetId'
+  | 'loginBackgroundLightAssetId'
+  | 'loginBackgroundDarkAssetId';
+type BrandingResolvedUrlField =
+  | 'logoLightUrl'
+  | 'logoDarkUrl'
+  | 'sealLightUrl'
+  | 'sealDarkUrl'
+  | 'faviconLightUrl'
+  | 'faviconDarkUrl'
+  | 'loginBackgroundLightUrl'
+  | 'loginBackgroundDarkUrl';
 
 interface BrandingFormProps {
   profile: TenantSelf;
@@ -36,129 +63,361 @@ interface BrandingFormProps {
   onUpdated: (updated: TenantSelf) => void;
 }
 
-/** Convierte string vacío a null para el backend; string no vacío lo devuelve tal cual */
-function nullable(value: string | undefined): string | null {
-  const v = value?.trim();
-  return v ? v : null;
+interface BrandingVariantConfig {
+  themeVariant: BrandingThemeVariant;
+  label: string;
+  urlField: BrandingUrlField;
+  assetField: BrandingAssetField;
+  resolvedUrlField: BrandingResolvedUrlField;
+  placeholder: string;
 }
 
-/** Preview inline de una imagen con fallback de error — se oculta si la URL está vacía */
-function ImagePreview({ url, label }: { url: string; label: string }) {
+interface BrandingGroupConfig {
+  usage: BrandingUsage;
+  title: string;
+  description: string;
+  guidance: string;
+  widePreview?: boolean;
+  variants: [BrandingVariantConfig, BrandingVariantConfig];
+}
+
+type BrandingEventDetail = Pick<
+  TenantSelf,
+  | 'name'
+  | 'showTenantName'
+  | 'logoLightUrl'
+  | 'logoDarkUrl'
+  | 'sealLightUrl'
+  | 'sealDarkUrl'
+  | 'faviconLightUrl'
+  | 'faviconDarkUrl'
+  | 'loginBackgroundLightUrl'
+  | 'loginBackgroundDarkUrl'
+>;
+
+const BRANDING_GROUPS: BrandingGroupConfig[] = [
+  {
+    usage: 'seal',
+    title: 'Sello compacto',
+    description:
+      'Se usa en el menú lateral, superficies compactas del portal y como respaldo visual cuando no se muestra el nombre.',
+    guidance: 'Formato recomendado: SVG o PNG cuadrado con fondo transparente.',
+    variants: [
+      {
+        themeVariant: 'light',
+        label: 'Variante clara',
+        urlField: 'sealLightUrl',
+        assetField: 'sealLightAssetId',
+        resolvedUrlField: 'sealLightUrl',
+        placeholder: 'https://cdn.tuempresa.co/seal-light.svg',
+      },
+      {
+        themeVariant: 'dark',
+        label: 'Variante oscura',
+        urlField: 'sealDarkUrl',
+        assetField: 'sealDarkAssetId',
+        resolvedUrlField: 'sealDarkUrl',
+        placeholder: 'https://cdn.tuempresa.co/seal-dark.svg',
+      },
+    ],
+  },
+  {
+    usage: 'logo',
+    title: 'Logo horizontal',
+    description:
+      'Se usa en la autenticación pública y en superficies de identificación extendida del tenant.',
+    guidance: 'Formato recomendado: SVG o PNG horizontal con proporción 3:1 a 5:1.',
+    variants: [
+      {
+        themeVariant: 'light',
+        label: 'Variante clara',
+        urlField: 'logoLightUrl',
+        assetField: 'logoLightAssetId',
+        resolvedUrlField: 'logoLightUrl',
+        placeholder: 'https://cdn.tuempresa.co/logo-light.svg',
+      },
+      {
+        themeVariant: 'dark',
+        label: 'Variante oscura',
+        urlField: 'logoDarkUrl',
+        assetField: 'logoDarkAssetId',
+        resolvedUrlField: 'logoDarkUrl',
+        placeholder: 'https://cdn.tuempresa.co/logo-dark.svg',
+      },
+    ],
+  },
+  {
+    usage: 'favicon',
+    title: 'Favicon',
+    description:
+      'Se usa en la pestaña del navegador y se resuelve por tema claro u oscuro en tiempo real.',
+    guidance: 'Formato recomendado: SVG, PNG o ICO. Mantén buena legibilidad a 16x16 y 32x32.',
+    variants: [
+      {
+        themeVariant: 'light',
+        label: 'Variante clara',
+        urlField: 'faviconLightUrl',
+        assetField: 'faviconLightAssetId',
+        resolvedUrlField: 'faviconLightUrl',
+        placeholder: 'https://cdn.tuempresa.co/favicon-light.svg',
+      },
+      {
+        themeVariant: 'dark',
+        label: 'Variante oscura',
+        urlField: 'faviconDarkUrl',
+        assetField: 'faviconDarkAssetId',
+        resolvedUrlField: 'faviconDarkUrl',
+        placeholder: 'https://cdn.tuempresa.co/favicon-dark.svg',
+      },
+    ],
+  },
+  {
+    usage: 'login_background',
+    title: 'Fondo del login',
+    description:
+      'Se usa como acento visual del acceso público del portal para reforzar la identidad del tenant.',
+    guidance:
+      'Formato recomendado: JPG, PNG o WebP horizontal con buena lectura para overlays oscuros.',
+    widePreview: true,
+    variants: [
+      {
+        themeVariant: 'light',
+        label: 'Variante clara',
+        urlField: 'loginBackgroundLightUrl',
+        assetField: 'loginBackgroundLightAssetId',
+        resolvedUrlField: 'loginBackgroundLightUrl',
+        placeholder: 'https://cdn.tuempresa.co/login-bg-light.jpg',
+      },
+      {
+        themeVariant: 'dark',
+        label: 'Variante oscura',
+        urlField: 'loginBackgroundDarkUrl',
+        assetField: 'loginBackgroundDarkAssetId',
+        resolvedUrlField: 'loginBackgroundDarkUrl',
+        placeholder: 'https://cdn.tuempresa.co/login-bg-dark.jpg',
+      },
+    ],
+  },
+];
+
+function buildDefaultValues(profile: TenantSelf): BrandingFormValues {
+  return {
+    logoLightUrl: profile.logoLightAssetId ? '' : (profile.logoLightUrl ?? ''),
+    logoDarkUrl: profile.logoDarkAssetId ? '' : (profile.logoDarkUrl ?? ''),
+    sealLightUrl: profile.sealLightAssetId ? '' : (profile.sealLightUrl ?? ''),
+    sealDarkUrl: profile.sealDarkAssetId ? '' : (profile.sealDarkUrl ?? ''),
+    faviconLightUrl: profile.faviconLightAssetId ? '' : (profile.faviconLightUrl ?? ''),
+    faviconDarkUrl: profile.faviconDarkAssetId ? '' : (profile.faviconDarkUrl ?? ''),
+    loginBackgroundLightUrl: profile.loginBackgroundLightAssetId
+      ? ''
+      : (profile.loginBackgroundLightUrl ?? ''),
+    loginBackgroundDarkUrl: profile.loginBackgroundDarkAssetId
+      ? ''
+      : (profile.loginBackgroundDarkUrl ?? ''),
+    showTenantName: profile.showTenantName,
+  };
+}
+
+function emitBrandingUpdated(updated: TenantSelf): void {
+  window.dispatchEvent(
+    new CustomEvent<BrandingEventDetail>(BRANDING_EVENT_NAME, {
+      detail: {
+        name: updated.name,
+        showTenantName: updated.showTenantName,
+        logoLightUrl: updated.logoLightUrl,
+        logoDarkUrl: updated.logoDarkUrl,
+        sealLightUrl: updated.sealLightUrl,
+        sealDarkUrl: updated.sealDarkUrl,
+        faviconLightUrl: updated.faviconLightUrl,
+        faviconDarkUrl: updated.faviconDarkUrl,
+        loginBackgroundLightUrl: updated.loginBackgroundLightUrl,
+        loginBackgroundDarkUrl: updated.loginBackgroundDarkUrl,
+      },
+    }),
+  );
+}
+
+function ImagePreview({
+  url,
+  label,
+  wide = false,
+}: {
+  url: string;
+  label: string;
+  wide?: boolean;
+}) {
   const [error, setError] = useState(false);
 
-  // Resetear error al cambiar la URL
   useEffect(() => setError(false), [url]);
 
-  if (!url.trim()) return null;
+  if (!url.trim()) {
+    return (
+      <div className="mt-2 rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center text-xs text-gray-500 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-400">
+        Sin preview configurado todavía.
+      </div>
+    );
+  }
 
   return (
-    <div className="mt-2 flex items-center gap-3">
-      {error ? (
-        <p className="text-xs text-red-600 dark:text-red-400">
-          No se pudo cargar — verifica la URL y que sea HTTPS.
-        </p>
-      ) : (
-        <>
-          {/* Fondo claro */}
-          <div className="h-10 w-10 shrink-0 rounded-md border border-gray-200 bg-white p-1 dark:border-dark-border dark:bg-dark-surface-3">
-            <img
-              src={url}
-              alt={label}
-              onError={() => setError(true)}
-              className="h-full w-full object-contain"
-            />
+    <div className="mt-2 space-y-2">
+      <div
+        className={[
+          'overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 dark:border-dark-border dark:bg-dark-surface-3',
+          wide ? 'aspect-[16/6]' : 'aspect-square max-w-[140px]',
+        ].join(' ')}
+      >
+        {error ? (
+          <div className="flex h-full items-center justify-center px-4 text-center text-xs text-red-600 dark:text-red-400">
+            No se pudo cargar la imagen.
           </div>
-          {/* Fondo oscuro */}
-          <div className="h-10 w-10 shrink-0 rounded-md border border-gray-700 bg-gray-900 p-1">
-            <img
-              src={url}
-              alt={`${label} dark`}
-              onError={() => setError(true)}
-              className="h-full w-full object-contain"
-            />
-          </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Vista previa claro / oscuro</p>
-        </>
-      )}
+        ) : (
+          <img
+            src={url}
+            alt={label}
+            onError={() => setError(true)}
+            className="h-full w-full object-contain"
+          />
+        )}
+      </div>
+      <p className="text-xs text-gray-500 dark:text-gray-400">Vista previa actual del slot.</p>
     </div>
   );
 }
 
-/**
- * Formulario para configurar el branding del tenant: logo horizontal y sello compacto.
- *
- * - Valida que las URLs sean HTTPS y máximo 500 caracteres (mismo criterio que el backend).
- * - Muestra un preview de cada imagen en fondo claro y oscuro.
- * - Incluye un panel de preview del sidebar para ver cómo queda el sello con el nombre.
- * - Campo vacío = borrar la URL existente (se envía null al backend).
- * - HLD-MOD03-CONFIGURACION-EMPRESA-v1.0
- */
+function resolveSourceLabel(profile: TenantSelf, variant: BrandingVariantConfig): string {
+  if (profile[variant.assetField]) {
+    return 'Activo subido';
+  }
+
+  if (profile[variant.resolvedUrlField]) {
+    return 'URL externa';
+  }
+
+  return 'Sin configurar';
+}
+
 export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps) {
   const [serverError, setServerError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [uploadingSlot, setUploadingSlot] = useState<string | null>(null);
+  const [clearingSlot, setClearingSlot] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
     watch,
     reset,
-    formState: { errors, isDirty, isSubmitting },
+    formState: { dirtyFields, errors, isDirty, isSubmitting },
   } = useForm<BrandingFormValues>({
     resolver: zodResolver(brandingSchema),
-    defaultValues: {
-      logoLightUrl: profile.logoLightUrl ?? '',
-      logoDarkUrl: profile.logoDarkUrl ?? '',
-      sealLightUrl: profile.sealLightUrl ?? '',
-      sealDarkUrl: profile.sealDarkUrl ?? '',
-      showTenantName: profile.showTenantName,
-    },
+    defaultValues: buildDefaultValues(profile),
   });
 
-  // Sincronizar formulario cuando el perfil cambia desde el exterior (e.g. recarga)
   useEffect(() => {
-    reset({
-      logoLightUrl: profile.logoLightUrl ?? '',
-      logoDarkUrl: profile.logoDarkUrl ?? '',
-      sealLightUrl: profile.sealLightUrl ?? '',
-      sealDarkUrl: profile.sealDarkUrl ?? '',
-      showTenantName: profile.showTenantName,
-    });
+    reset(buildDefaultValues(profile));
   }, [profile, reset]);
 
-  // Valores observados para los previews en tiempo real
-  const watchedSealLight = watch('sealLightUrl') ?? '';
-  const watchedSealDark = watch('sealDarkUrl') ?? '';
-  const watchedLogoLight = watch('logoLightUrl') ?? '';
-  const watchedLogoDark = watch('logoDarkUrl') ?? '';
-  const watchedShowName = watch('showTenantName');
+  const watchedValues = watch();
+  const watchedShowTenantName = watchedValues.showTenantName;
+
+  const applyUpdatedProfile = (updated: TenantSelf, successMessage: string) => {
+    reset(buildDefaultValues(updated));
+    onUpdated(updated);
+    emitBrandingUpdated(updated);
+    setServerError(null);
+    setSuccess(successMessage);
+  };
 
   const onSubmit = async (values: BrandingFormValues) => {
     setServerError(null);
     setSuccess(null);
 
+    const payload: UpdateTenantSelfBrandingDto = {};
+
+    if (dirtyFields.showTenantName) {
+      payload.showTenantName = values.showTenantName;
+    }
+
+    for (const group of BRANDING_GROUPS) {
+      for (const variant of group.variants) {
+        const isFieldDirty = Boolean(dirtyFields[variant.urlField]);
+        if (!isFieldDirty) {
+          continue;
+        }
+
+        const nextValue = values[variant.urlField]?.trim() ?? '';
+        const hasCurrentAsset = Boolean(profile[variant.assetField]);
+        const hasCurrentResolvedUrl = Boolean(profile[variant.resolvedUrlField]);
+
+        if (nextValue) {
+          payload[variant.urlField] = nextValue;
+          payload[variant.assetField] = null;
+          continue;
+        }
+
+        if (!hasCurrentAsset && hasCurrentResolvedUrl) {
+          payload[variant.urlField] = null;
+          payload[variant.assetField] = null;
+        }
+      }
+    }
+
+    if (Object.keys(payload).length === 0) {
+      setSuccess('No hay cambios pendientes por guardar.');
+      return;
+    }
+
     try {
-      const updated = await tenantSelfApi.updateBranding({
-        logoLightUrl: nullable(values.logoLightUrl),
-        logoDarkUrl: nullable(values.logoDarkUrl),
-        sealLightUrl: nullable(values.sealLightUrl),
-        sealDarkUrl: nullable(values.sealDarkUrl),
-        showTenantName: values.showTenantName,
-      });
-
-      window.dispatchEvent(
-        new CustomEvent(BRANDING_EVENT_NAME, {
-          detail: {
-            name: updated.name,
-            sealLightUrl: updated.sealLightUrl,
-            sealDarkUrl: updated.sealDarkUrl,
-          },
-        }),
-      );
-
-      onUpdated(updated);
-      setSuccess('Logo, sello y favicon actualizados correctamente.');
+      const updated = await tenantSelfApi.updateBranding(payload);
+      applyUpdatedProfile(updated, 'Branding empresarial actualizado correctamente.');
     } catch {
       setServerError('No fue posible guardar el branding. Intenta de nuevo.');
+    }
+  };
+
+  const handleUpload = async (
+    usage: BrandingUsage,
+    themeVariant: BrandingThemeVariant,
+    file: File | undefined,
+  ) => {
+    if (!file) {
+      return;
+    }
+
+    const slotKey = `${usage}-${themeVariant}`;
+    setServerError(null);
+    setSuccess(null);
+    setUploadingSlot(slotKey);
+
+    try {
+      await tenantSelfApi.uploadBrandingAsset({ usage, themeVariant, file });
+      const updated = await tenantSelfApi.getProfile();
+      applyUpdatedProfile(updated, 'Activo subido y asignado correctamente.');
+    } catch {
+      setServerError(
+        'No fue posible subir el activo. Verifica formato, tamaño y vuelve a intentar.',
+      );
+    } finally {
+      setUploadingSlot(null);
+    }
+  };
+
+  const handleClearSlot = async (variant: BrandingVariantConfig) => {
+    const slotKey = `${variant.urlField}-clear`;
+    setServerError(null);
+    setSuccess(null);
+    setClearingSlot(slotKey);
+
+    try {
+      const updated = await tenantSelfApi.updateBranding({
+        [variant.urlField]: null,
+        [variant.assetField]: null,
+      } as UpdateTenantSelfBrandingDto);
+      applyUpdatedProfile(updated, `${variant.label} eliminada del branding.`);
+    } catch {
+      setServerError('No fue posible limpiar este slot de branding.');
+    } finally {
+      setClearingSlot(null);
     }
   };
 
@@ -173,95 +432,174 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
               Activos de marca
             </p>
-            <CardTitle className="mt-1">Logo y Sello</CardTitle>
+            <CardTitle className="mt-1">Marca empresarial</CardTitle>
           </div>
         </div>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Configura la identidad visual de la empresa. Las imágenes deben estar publicadas en HTTPS.
-          Formatos recomendados: SVG o PNG con fondo transparente.
+          Cada slot puede resolverse con una URL HTTPS externa o con un activo subido al sistema. Si
+          escribes una URL y la guardas, reemplazas el asset asignado para ese slot.
         </p>
       </CardHeader>
       <CardContent className="space-y-6">
-        <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-6">
-          {/* ── Sello compacto ─────────────────────────────────────────────────────── */}
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                Sello (ícono compacto)
-              </h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Proporción 1:1. Se usa en el menú lateral, como favicon del navegador y en futuras
-                superficies compactas de la empresa.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-8">
+          {BRANDING_GROUPS.map((group) => (
+            <section key={group.usage} className="space-y-4">
               <div>
-                <Input
-                  id="sealLightUrl"
-                  label="URL variante clara"
-                  placeholder="https://cdn.tuempresa.co/seal-light.svg"
-                  disabled={!canEdit}
-                  error={errors.sealLightUrl?.message}
-                  {...register('sealLightUrl')}
-                />
-                <ImagePreview url={watchedSealLight} label="Sello claro" />
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                  {group.title}
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{group.description}</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{group.guidance}</p>
               </div>
+
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                {group.variants.map((variant) => {
+                  const slotKey = `${group.usage}-${variant.themeVariant}`;
+                  const fieldError = errors[variant.urlField];
+                  const previewUrl =
+                    watchedValues[variant.urlField]?.trim() ||
+                    profile[variant.resolvedUrlField] ||
+                    '';
+                  const hasConfiguredValue = Boolean(
+                    profile[variant.assetField] || profile[variant.resolvedUrlField],
+                  );
+
+                  return (
+                    <div
+                      key={slotKey}
+                      className="rounded-[24px] border border-gray-100 bg-white p-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                            {variant.label}
+                          </p>
+                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Fuente actual: {resolveSourceLabel(profile, variant)}
+                          </p>
+                        </div>
+                        {hasConfiguredValue && canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => void handleClearSlot(variant)}
+                            disabled={clearingSlot === `${variant.urlField}-clear` || isSubmitting}
+                            className="inline-flex items-center gap-2 rounded-full border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                            Limpiar
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="mt-4 space-y-3">
+                        <Input
+                          id={variant.urlField}
+                          label="URL HTTPS externa"
+                          placeholder={variant.placeholder}
+                          disabled={!canEdit || isSubmitting || uploadingSlot === slotKey}
+                          error={
+                            typeof fieldError?.message === 'string' ? fieldError.message : undefined
+                          }
+                          helperText="Déjalo vacío para mantener el asset actual. Guarda cambios para aplicar URLs externas."
+                          {...register(variant.urlField)}
+                        />
+
+                        <div>
+                          <label
+                            htmlFor={`${slotKey}-file`}
+                            className="mb-1 block text-sm font-medium text-gray-900 dark:text-white"
+                          >
+                            Subir activo
+                          </label>
+                          <div className="flex items-center gap-3">
+                            <label
+                              htmlFor={`${slotKey}-file`}
+                              className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 transition hover:bg-gray-50 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-surface-4"
+                            >
+                              <UploadCloud className="h-4 w-4" aria-hidden="true" />
+                              {uploadingSlot === slotKey ? 'Subiendo...' : 'Seleccionar archivo'}
+                            </label>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              La subida asigna el slot inmediatamente.
+                            </span>
+                          </div>
+                          <input
+                            id={`${slotKey}-file`}
+                            type="file"
+                            accept="image/*,.svg,.ico,.webp"
+                            disabled={!canEdit || isSubmitting || uploadingSlot === slotKey}
+                            className="sr-only"
+                            onChange={(event) => {
+                              const selectedFile = event.target.files?.[0];
+                              void handleUpload(group.usage, variant.themeVariant, selectedFile);
+                              event.currentTarget.value = '';
+                            }}
+                          />
+                        </div>
+
+                        <ImagePreview
+                          url={previewUrl}
+                          label={`${group.title} ${variant.label}`}
+                          {...(group.widePreview ? { wide: true } : {})}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+
+          <div className="rounded-[24px] border border-gray-100 bg-[#f8faf5] px-4 py-4 dark:border-dark-border dark:bg-dark-surface-3">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div>
-                <Input
-                  id="sealDarkUrl"
-                  label="URL variante oscura"
-                  placeholder="https://cdn.tuempresa.co/seal-dark.svg"
-                  disabled={!canEdit}
-                  error={errors.sealDarkUrl?.message}
-                  {...register('sealDarkUrl')}
-                />
-                <ImagePreview url={watchedSealDark} label="Sello oscuro" />
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                  Preview del menú lateral y favicon
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  El portal refleja el sello y el favicon en caliente cuando guardas o subes un
+                  activo.
+                </p>
               </div>
-            </div>
 
-            {/* Preview del sidebar en tiempo real */}
-            <div className="rounded-[24px] border border-gray-100 bg-[#f8faf5] px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
-              <p className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">
-                Así quedaría en el menú lateral:
-              </p>
-              <div className="flex items-center gap-3 rounded-lg bg-iwana-primary px-3 py-2 w-fit">
-                <TenantSeal
-                  sealLightUrl={watchedSealLight || null}
-                  sealDarkUrl={watchedSealDark || null}
-                  name={profile.name}
-                  size="sm"
-                />
-                {watchedShowName && (
-                  <span className="text-sm font-bold text-white truncate max-w-[140px]">
-                    {profile.name}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-[24px] border border-gray-100 bg-white px-4 py-4 dark:border-dark-border dark:bg-dark-surface-2">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
-                    Favicon del navegador
-                  </h4>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    El portal reutiliza este sello como icono de la pestaña. Si cambias las URLs del
-                    sello, el favicon se actualiza en caliente para la empresa autenticada.
-                  </p>
+              <div className="space-y-3">
+                <div className="flex w-fit items-center gap-3 rounded-lg bg-iwana-primary px-3 py-2">
+                  <TenantSeal
+                    sealLightUrl={watchedValues.sealLightUrl?.trim() || profile.sealLightUrl}
+                    sealDarkUrl={watchedValues.sealDarkUrl?.trim() || profile.sealDarkUrl}
+                    name={profile.name}
+                    size="sm"
+                  />
+                  {watchedShowTenantName && (
+                    <span className="max-w-[180px] truncate text-sm font-bold text-white">
+                      {profile.name}
+                    </span>
+                  )}
                 </div>
-                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
+
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
                   <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
                     Vista previa de pestaña
                   </p>
                   <div className="flex items-center gap-2 rounded-md bg-white px-2 py-1.5 dark:bg-dark-surface-4">
-                    <TenantSeal
-                      sealLightUrl={watchedSealLight || null}
-                      sealDarkUrl={watchedSealDark || null}
-                      name={profile.name}
-                      size="sm"
-                    />
+                    <div className="h-5 w-5 overflow-hidden rounded-sm bg-white dark:bg-dark-surface-3">
+                      {watchedValues.faviconLightUrl?.trim() || profile.faviconLightUrl ? (
+                        <img
+                          src={
+                            watchedValues.faviconLightUrl?.trim() || profile.faviconLightUrl || ''
+                          }
+                          alt="Favicon del tenant"
+                          className="h-full w-full object-contain"
+                        />
+                      ) : (
+                        <TenantSeal
+                          sealLightUrl={watchedValues.sealLightUrl?.trim() || profile.sealLightUrl}
+                          sealDarkUrl={watchedValues.sealDarkUrl?.trim() || profile.sealDarkUrl}
+                          name={profile.name}
+                          size="sm"
+                        />
+                      )}
+                    </div>
                     <span className="max-w-[180px] truncate text-xs font-medium text-gray-700 dark:text-gray-200">
                       Portal de {profile.name}
                     </span>
@@ -271,47 +609,8 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
             </div>
           </div>
 
-          {/* ── Logo horizontal ─────────────────────────────────────────────────────── */}
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                Logo horizontal
-              </h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Proporción 3:1 a 5:1. Se usará próximamente en documentos y en la página de acceso
-                del portal.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <div>
-                <Input
-                  id="logoLightUrl"
-                  label="URL variante clara"
-                  placeholder="https://cdn.tuempresa.co/logo-light.svg"
-                  disabled={!canEdit}
-                  error={errors.logoLightUrl?.message}
-                  {...register('logoLightUrl')}
-                />
-                <ImagePreview url={watchedLogoLight} label="Logo claro" />
-              </div>
-              <div>
-                <Input
-                  id="logoDarkUrl"
-                  label="URL variante oscura"
-                  placeholder="https://cdn.tuempresa.co/logo-dark.svg"
-                  disabled={!canEdit}
-                  error={errors.logoDarkUrl?.message}
-                  {...register('logoDarkUrl')}
-                />
-                <ImagePreview url={watchedLogoDark} label="Logo oscuro" />
-              </div>
-            </div>
-          </div>
-
-          {/* ── Opciones de visualización ───────────────────────────────────────────── */}
           <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-surface-3">
-            <label className="flex items-start gap-3 cursor-pointer">
+            <label className="flex cursor-pointer items-start gap-3">
               <input
                 type="checkbox"
                 disabled={!canEdit}
@@ -323,19 +622,20 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                   Mostrar nombre comercial junto al sello en el menú lateral
                 </p>
                 <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                  Si se desactiva, el menú solo muestra el sello (o las iniciales) sin texto.
+                  Si se desactiva, el menú solo muestra el sello sin texto. El login público siempre
+                  sigue la política configurada por `showTenantName`.
                 </p>
               </div>
             </label>
           </div>
 
-          {/* Mensajes de feedback */}
           {serverError && (
             <div className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
               <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
               <p>{serverError}</p>
             </div>
           )}
+
           {success && !serverError && (
             <div className="flex items-start gap-3 rounded-[24px] border border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.98),rgba(209,250,229,0.82))] px-4 py-3 text-sm text-emerald-700 shadow-iwana-soft dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400">
               <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
@@ -346,7 +646,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-gray-500 dark:text-gray-400">
               {canEdit
-                ? 'Solo se guardan URLs HTTPS válidas. Deja el campo vacío para eliminar una imagen.'
+                ? 'Los uploads asignan el slot al instante. Las URLs externas se aplican al guardar el formulario.'
                 : 'Tu rol puede consultar la configuración de branding, pero no modificarla.'}
             </p>
             {canEdit && (

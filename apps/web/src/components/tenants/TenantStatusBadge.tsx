@@ -2,7 +2,13 @@
 
 import { Badge } from '@iwana/ui';
 
-type TenantStatus = 'ACTIVE' | 'PROVISIONING' | 'PROVISIONING_FAILED' | 'SUSPENDED' | 'INACTIVE';
+type TenantStatus =
+  | 'ACTIVE'
+  | 'PROVISIONING'
+  | 'PROVISIONING_FAILED'
+  | 'SUSPENDED'
+  | 'INACTIVE'
+  | 'MARKED_FOR_DELETION';
 
 const statusConfig: Record<
   TenantStatus,
@@ -13,6 +19,7 @@ const statusConfig: Record<
   PROVISIONING_FAILED: { label: 'Error', variant: 'error' },
   SUSPENDED: { label: 'Suspendido', variant: 'warning' },
   INACTIVE: { label: 'Inactivo', variant: 'neutral' },
+  MARKED_FOR_DELETION: { label: 'En eliminación', variant: 'error' },
 };
 
 export function TenantStatusBadge({ status }: { status: TenantStatus }) {

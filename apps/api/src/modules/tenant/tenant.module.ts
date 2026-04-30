@@ -5,6 +5,7 @@ import { Tenant } from '@iwana/db';
 import { TENANT_PROVISIONING_QUEUE } from '@iwana/shared';
 import { AuthModule } from '../auth/auth.module';
 import { AuditModule } from '../audit/audit.module';
+import { MediaModule } from '../media/media.module';
 import { TenantController } from './tenant.controller';
 import { TenantProvisioningService } from './tenant-provisioning.service';
 import { TenantMiddleware } from './tenant.middleware';
@@ -36,6 +37,9 @@ import { PlanCatalogItem } from './entities/plan-catalog-item.entity';
 
     // AuditModule exporta AuditService (escritura) y AuditQueryService (lectura dashboard)
     AuditModule,
+
+    // Branding v2 consume MediaService para uploads y soft delete de assets.
+    MediaModule,
 
     // Registra entidades del módulo tenant en el DataSource (requerido para autoLoadEntities y qr.manager)
     TypeOrmModule.forFeature([

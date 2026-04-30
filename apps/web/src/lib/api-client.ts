@@ -27,6 +27,7 @@ interface PendingPlatformMfaLogin {
 }
 
 let pendingPlatformMfaLogin: PendingPlatformMfaLogin | null = null;
+let refreshAccessTokenPromise: Promise<string> | null = null;
 
 export class ApiError extends Error {
   constructor(
@@ -119,7 +120,7 @@ export function persistAccessToken(token: string): void {
   window.localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, token);
 }
 
-async function refreshAccessToken(): Promise<string> {
+async function executeRefreshAccessToken(): Promise<string> {
   const res = await fetch(`${API_BASE}/auth/refresh`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -136,11 +137,37 @@ async function refreshAccessToken(): Promise<string> {
   return body.data.accessToken;
 }
 
+async function refreshAccessToken(): Promise<string> {
+  refreshAccessTokenPromise ??= executeRefreshAccessToken().finally(() => {
+    refreshAccessTokenPromise = null;
+  });
+
+  return refreshAccessTokenPromise;
+}
+
+function wait(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(new DOMException('Operación cancelada.', 'AbortError'));
+  }
+
+  return new Promise((resolve, reject) => {
+    const timeoutId = globalThis.setTimeout(resolve, ms);
+
+    const abort = () => {
+      globalThis.clearTimeout(timeoutId);
+      reject(new DOMException('Operación cancelada.', 'AbortError'));
+    };
+
+    signal?.addEventListener('abort', abort, { once: true });
+  });
+}
+
 async function request<T>(path: string, options?: RequestOptions): Promise<T> {
   const token = getStoredAccessToken();
   const headers = new Headers(options?.headers);
+  const isFormDataBody = typeof FormData !== 'undefined' && options?.body instanceof FormData;
 
-  if (!headers.has('Content-Type') && options?.body !== undefined) {
+  if (!headers.has('Content-Type') && options?.body !== undefined && !isFormDataBody) {
     headers.set('Content-Type', 'application/json');
   }
 
@@ -379,9 +406,15 @@ export interface TenantListItem {
   name: string;
   slug: string;
   schemaName: string;
-  status: 'ACTIVE' | 'PROVISIONING' | 'PROVISIONING_FAILED' | 'SUSPENDED' | 'INACTIVE';
+  status:
+    | 'ACTIVE'
+    | 'PROVISIONING'
+    | 'PROVISIONING_FAILED'
+    | 'SUSPENDED'
+    | 'INACTIVE'
+    | 'MARKED_FOR_DELETION';
   contactEmail: string;
-  maxSubscribers: number;
+  maxSubscribers: number | null;
   settings: Record<string, unknown>;
   // Datos legales
   legalName?: string | null;
@@ -399,12 +432,75 @@ export interface TenantListItem {
   phone?: string | null;
   website?: string | null;
   economicSector?: string | null;
+  logoLightUrl?: string | null;
+  logoLightAssetId?: string | null;
+  logoDarkUrl?: string | null;
+  logoDarkAssetId?: string | null;
+  sealLightUrl?: string | null;
+  sealLightAssetId?: string | null;
+  sealDarkUrl?: string | null;
+  sealDarkAssetId?: string | null;
+  faviconLightUrl?: string | null;
+  faviconLightAssetId?: string | null;
+  faviconDarkUrl?: string | null;
+  faviconDarkAssetId?: string | null;
+  loginBackgroundLightUrl?: string | null;
+  loginBackgroundLightAssetId?: string | null;
+  loginBackgroundDarkUrl?: string | null;
+  loginBackgroundDarkAssetId?: string | null;
+  showTenantName?: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
+export type BrandingUsage = 'logo' | 'seal' | 'favicon' | 'login_background';
+export type BrandingThemeVariant = 'light' | 'dark';
+
+export interface UpdateTenantBrandingPayload {
+  logoLightUrl?: string | null;
+  logoLightAssetId?: string | null;
+  logoDarkUrl?: string | null;
+  logoDarkAssetId?: string | null;
+  sealLightUrl?: string | null;
+  sealLightAssetId?: string | null;
+  sealDarkUrl?: string | null;
+  sealDarkAssetId?: string | null;
+  faviconLightUrl?: string | null;
+  faviconLightAssetId?: string | null;
+  faviconDarkUrl?: string | null;
+  faviconDarkAssetId?: string | null;
+  loginBackgroundLightUrl?: string | null;
+  loginBackgroundLightAssetId?: string | null;
+  loginBackgroundDarkUrl?: string | null;
+  loginBackgroundDarkAssetId?: string | null;
+  showTenantName?: boolean;
+}
+
+export interface MediaAsset {
+  id: string;
+  usage: BrandingUsage | 'general';
+  themeVariant: BrandingThemeVariant | null;
+  mimeType: string;
+  sizeBytes: number;
+  publicUrl: string | null;
+  createdAt: string;
+}
+
+interface TenantListParams {
+  limit?: number;
+  offset?: number;
+  status?: TenantListItem['status'];
+  search?: string;
+}
+
+interface TenantProvisioningWaitOptions {
+  signal?: AbortSignal;
+  maxAttempts?: number;
+  onTick?: (tenant: TenantListItem) => void;
+}
+
 export const tenantApi = {
-  list: (params?: { limit?: number; offset?: number }) => {
+  list: (params?: TenantListParams) => {
     const searchParams = new URLSearchParams();
     if (params?.limit !== undefined) {
       searchParams.set('limit', String(params.limit));
@@ -412,12 +508,22 @@ export const tenantApi = {
     if (params?.offset !== undefined) {
       searchParams.set('offset', String(params.offset));
     }
+    if (params?.status) {
+      searchParams.set('status', params.status);
+    }
+    if (params?.search?.trim()) {
+      searchParams.set('search', params.search.trim());
+    }
 
     const query = searchParams.toString();
     return request<TenantListItem[]>(`/tenants${query ? `?${query}` : ''}`);
   },
 
-  getOne: (id: string) => request<TenantListItem>(`/tenants/${encodeURIComponent(id)}`),
+  getOne: (id: string, options?: { signal?: AbortSignal }) =>
+    request<TenantListItem>(
+      `/tenants/${encodeURIComponent(id)}`,
+      options?.signal ? { signal: options.signal } : undefined,
+    ),
 
   create: (data: CreateTenantPayload) =>
     request<TenantListItem>('/tenants', {
@@ -445,11 +551,52 @@ export const tenantApi = {
       body: JSON.stringify(data),
     }),
 
+  updateBranding: (id: string, data: UpdateTenantBrandingPayload) =>
+    request<TenantListItem>(`/tenants/${encodeURIComponent(id)}/branding`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  uploadBrandingAsset: (
+    id: string,
+    payload: { usage: BrandingUsage; themeVariant: BrandingThemeVariant; file: File },
+  ) => {
+    const formData = new FormData();
+    formData.append('usage', payload.usage);
+    formData.append('themeVariant', payload.themeVariant);
+    formData.append('file', payload.file);
+
+    return request<MediaAsset>(`/tenants/${encodeURIComponent(id)}/branding/assets`, {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
   regenerateCredentials: (id: string, idempotencyKey: string) =>
     request<AdminCredentials>(`/tenants/${encodeURIComponent(id)}/regenerate-admin-credentials`, {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey },
     }),
+
+  waitForProvisioning: async (id: string, options: TenantProvisioningWaitOptions = {}) => {
+    const maxAttempts = options.maxAttempts ?? 24;
+    const delaysMs = [2000, 3000, 5000, 8000];
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      await wait(delaysMs[Math.min(attempt, delaysMs.length - 1)] ?? 8000, options.signal);
+      const tenant = await tenantApi.getOne(
+        id,
+        options.signal ? { signal: options.signal } : undefined,
+      );
+      options.onTick?.(tenant);
+
+      if (tenant.status === 'ACTIVE' || tenant.status === 'PROVISIONING_FAILED') {
+        return tenant;
+      }
+    }
+
+    return tenantApi.getOne(id, options.signal ? { signal: options.signal } : undefined);
+  },
 
   suspend: (id: string) =>
     request<TenantListItem>(`/tenants/${encodeURIComponent(id)}/suspend`, {
@@ -476,8 +623,17 @@ export interface CreateTenantPayload {
   name: string;
   slug: string;
   contactEmail: string;
-  maxSubscribers?: number;
-  settings?: Record<string, unknown>;
+  maxSubscribers?: number | null;
+  settings?: {
+    timezone?: string;
+    currency?: string;
+    language?: string;
+    country?: string;
+    features?: {
+      billing?: boolean;
+      mfa_required_all?: boolean;
+    };
+  };
   // Datos legales opcionales
   legalName?: string;
   nit?: string;
@@ -499,7 +655,7 @@ export interface CreateTenantPayload {
 export interface UpdateTenantPayload {
   name?: string;
   contactEmail?: string;
-  maxSubscribers?: number;
+  maxSubscribers?: number | null;
   settings?: Record<string, unknown>;
   // Datos legales opcionales
   legalName?: string;
@@ -525,7 +681,7 @@ export interface TenantSettings {
   currency: string;
   language: string;
   country: string;
-  maxSubscribers: number;
+  maxSubscribers: number | null;
   features: {
     billing: boolean;
     mfa_required_all: boolean;
@@ -537,7 +693,7 @@ export interface UpdateTenantSettingsPayload {
   currency?: string;
   language?: string;
   country?: string;
-  maxSubscribers?: number;
+  maxSubscribers?: number | null;
   features?: {
     billing?: boolean;
     mfa_required_all?: boolean;

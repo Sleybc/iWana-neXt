@@ -122,9 +122,7 @@ export class TenantProvisioningProcessor extends WorkerHost {
             `[provisioning] Tenant ${tenantSlug} activado (schema ya existía, status corregido a ACTIVE)`,
           );
         } else {
-          this.logger.log(
-            `[provisioning] Tenant ${tenantSlug} ya estaba ACTIVE — nada que hacer`,
-          );
+          this.logger.log(`[provisioning] Tenant ${tenantSlug} ya estaba ACTIVE — nada que hacer`);
         }
         return;
       }
@@ -210,7 +208,7 @@ export class TenantProvisioningProcessor extends WorkerHost {
       hash ^= schemaName.charCodeAt(i);
       hash = (hash * 16777619) >>> 0;
     }
-    return hash;
+    return hash | 0;
   }
 
   private async acquireTenantLock(resource: number): Promise<void> {

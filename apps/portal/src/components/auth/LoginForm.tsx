@@ -29,12 +29,16 @@ const errorMessages: Record<number, string> = {
   503: 'El servicio de autenticación no está disponible en este momento.',
 };
 
-export function LoginForm() {
+interface LoginFormProps {
+  tenantSlug: string;
+  onTenantSlugChange: (value: string) => void;
+}
+
+export function LoginForm({ tenantSlug, onTenantSlugChange }: LoginFormProps) {
   const router = useRouter();
   const { login } = useAuth();
   const [serverError, setServerError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [tenantSlug, setTenantSlug] = useState(process.env.NEXT_PUBLIC_TENANT_SLUG ?? '');
 
   const {
     register,
@@ -96,7 +100,7 @@ export function LoginForm() {
             placeholder="ejemplo: isp-demo"
             autoComplete="organization"
             value={tenantSlug}
-            onChange={(event) => setTenantSlug(event.target.value)}
+            onChange={(event) => onTenantSlugChange(event.target.value)}
             className="h-14 w-full rounded-2xl border border-slate-200 bg-[#f8faf5] pl-12 pr-4 text-base text-slate-900 placeholder:text-slate-400 transition-all focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#A5C330]"
             required
           />

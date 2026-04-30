@@ -49,7 +49,7 @@ export class UpdateTenantSettingsDto {
   @IsOptional()
   @IsInt()
   @Min(0)
-  maxSubscribers?: number;
+  maxSubscribers?: number | null;
 
   @IsOptional()
   @IsInt()
@@ -69,7 +69,7 @@ export class TenantSettingsResponseDto {
   currency: string;
   language: string;
   country: string;
-  maxSubscribers: number;
+  maxSubscribers: number | null;
   fiberInstallationThresholdMeters: number;
   features: {
     billing: boolean;

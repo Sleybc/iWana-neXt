@@ -147,6 +147,25 @@ export class DashboardSummaryService {
       });
     }
 
+    if (tenant.status === TenantStatus.INACTIVE) {
+      alerts.push({
+        id: 'tenant-inactive',
+        severity: 'error',
+        title: 'Empresa inactiva',
+        description: 'El contrato de la empresa está finalizado y el acceso operativo bloqueado.',
+      });
+    }
+
+    if (tenant.status === TenantStatus.MARKED_FOR_DELETION) {
+      alerts.push({
+        id: 'tenant-marked-for-deletion',
+        severity: 'error',
+        title: 'Empresa en ventana de eliminación',
+        description:
+          'La empresa está marcada para eliminación diferida. Contacta soporte si requiere restauración.',
+      });
+    }
+
     // Alerta si MFA obligatorio no está habilitado
     if (!features['mfa_required_all']) {
       alerts.push({

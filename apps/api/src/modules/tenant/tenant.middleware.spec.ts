@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { BadRequestException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { TenantContext, Tenant } from '@iwana/db';
 import { TenantStatus } from '@iwana/shared';
@@ -161,6 +157,28 @@ describe('TenantMiddleware', () => {
       tenantId: tenant.id,
       schemaName: tenant.schemaName,
       jti: 'jwt-jti-3',
+      type: 'tenant',
+    });
+    tenantService.findById.mockResolvedValue(tenant);
+
+    const request = buildRequest({
+      headers: { authorization: 'Bearer valid.jwt.token' },
+    });
+
+    await expect(middleware.use(request, {} as Response, jest.fn())).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('rechaza tenants marcados para eliminacion aunque el JWT sea valido', async () => {
+    const tenant = buildTenant({ status: TenantStatus.MARKED_FOR_DELETION });
+    jwtService.verify.mockReturnValue({
+      sub: 'user-uuid-1',
+      email: 'hash-email-123',
+      role: 'tenant_admin',
+      tenantId: tenant.id,
+      schemaName: tenant.schemaName,
+      jti: 'jwt-jti-4',
       type: 'tenant',
     });
     tenantService.findById.mockResolvedValue(tenant);

@@ -1,27 +1,29 @@
 import {
   BadRequestException,
   ConflictException,
-  Inject,
   Injectable,
+  Inject,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import Redis from 'ioredis';
 import { DataSource, Repository } from 'typeorm';
-import { validateSync } from 'class-validator';
-import { Tenant, isValidSchemaName, runInTenantSchema } from '@iwana/db';
+import { MediaUsage, Tenant, runInTenantSchema } from '@iwana/db';
+import type { MediaThemeVariant } from '@iwana/db';
 import { AuditAction, TenantStatus } from '@iwana/shared';
 import { AuditService } from '../audit/audit.service';
+import { MediaService } from '../media/media.service';
+import type { MediaAssetResponseDto } from '../media/dto/media-asset-response.dto';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { CreateTenantDto, TenantResponseDto, UpdateTenantDto } from './dto/tenant.dto';
+import { TenantSettingsResponseDto, UpdateTenantSettingsDto } from './dto/tenant-settings.dto';
 import {
-  CreateTenantSettingsDto,
-  TenantFeaturesDto,
-  TenantSettingsResponseDto,
-  UpdateTenantSettingsDto,
-} from './dto/tenant-settings.dto';
-import { TenantSelfResponseDto, TenantSelfSettingsResponseDto } from './dto/tenant-self.dto';
+  TenantPublicBrandingResponseDto,
+  TenantSelfResponseDto,
+  TenantSelfSettingsResponseDto,
+} from './dto/tenant-self.dto';
+import { TenantPublicBrandingDto, UploadTenantBrandingAssetDto } from './dto/tenant-branding.dto';
 import {
   UpdateTenantSelfBrandingDto,
   UpdateTenantSelfProfileDto,
@@ -52,6 +54,84 @@ import { PlanCatalogItem } from './entities/plan-catalog-item.entity';
 
 const TENANT_CACHE_TTL_SECONDS = 5 * 60;
 
+type BrandingUrlKey =
+  | 'logoLightUrl'
+  | 'logoDarkUrl'
+  | 'sealLightUrl'
+  | 'sealDarkUrl'
+  | 'faviconLightUrl'
+  | 'faviconDarkUrl'
+  | 'loginBackgroundLightUrl'
+  | 'loginBackgroundDarkUrl';
+
+type BrandingAssetKey =
+  | 'logoLightAssetId'
+  | 'logoDarkAssetId'
+  | 'sealLightAssetId'
+  | 'sealDarkAssetId'
+  | 'faviconLightAssetId'
+  | 'faviconDarkAssetId'
+  | 'loginBackgroundLightAssetId'
+  | 'loginBackgroundDarkAssetId';
+
+interface BrandingSlotConfig {
+  usage: MediaUsage;
+  themeVariant: NonNullable<MediaThemeVariant>;
+  urlKey: BrandingUrlKey;
+  assetKey: BrandingAssetKey;
+}
+
+const BRANDING_SLOT_CONFIGS: BrandingSlotConfig[] = [
+  {
+    usage: MediaUsage.LOGO,
+    themeVariant: 'light',
+    urlKey: 'logoLightUrl',
+    assetKey: 'logoLightAssetId',
+  },
+  {
+    usage: MediaUsage.LOGO,
+    themeVariant: 'dark',
+    urlKey: 'logoDarkUrl',
+    assetKey: 'logoDarkAssetId',
+  },
+  {
+    usage: MediaUsage.SEAL,
+    themeVariant: 'light',
+    urlKey: 'sealLightUrl',
+    assetKey: 'sealLightAssetId',
+  },
+  {
+    usage: MediaUsage.SEAL,
+    themeVariant: 'dark',
+    urlKey: 'sealDarkUrl',
+    assetKey: 'sealDarkAssetId',
+  },
+  {
+    usage: MediaUsage.FAVICON,
+    themeVariant: 'light',
+    urlKey: 'faviconLightUrl',
+    assetKey: 'faviconLightAssetId',
+  },
+  {
+    usage: MediaUsage.FAVICON,
+    themeVariant: 'dark',
+    urlKey: 'faviconDarkUrl',
+    assetKey: 'faviconDarkAssetId',
+  },
+  {
+    usage: MediaUsage.LOGIN_BACKGROUND,
+    themeVariant: 'light',
+    urlKey: 'loginBackgroundLightUrl',
+    assetKey: 'loginBackgroundLightAssetId',
+  },
+  {
+    usage: MediaUsage.LOGIN_BACKGROUND,
+    themeVariant: 'dark',
+    urlKey: 'loginBackgroundDarkUrl',
+    assetKey: 'loginBackgroundDarkAssetId',
+  },
+];
+
 const DEFAULT_TENANT_SETTINGS = {
   timezone: 'America/Bogota',
   currency: 'COP',
@@ -62,6 +142,11 @@ const DEFAULT_TENANT_SETTINGS = {
     mfa_required_all: false,
   },
 };
+
+interface TenantListFilters {
+  status?: TenantStatus;
+  search?: string;
+}
 
 /**
  * Servicio de gestion de tenants (ISPs clientes).
@@ -91,6 +176,7 @@ export class TenantService {
     @Inject(REDIS_CLIENT)
     private readonly redis: Redis,
     private readonly auditService: AuditService,
+    private readonly mediaService: MediaService,
   ) {}
 
   /**
@@ -113,31 +199,26 @@ export class TenantService {
       );
     }
 
-    let validatedSettings: Record<string, unknown> = {
-      timezone: 'America/Bogota',
-      currency: 'COP',
+    const requestedSettings = dto.settings ?? {};
+    const requestedFeatures = requestedSettings.features ?? {};
+    const validatedSettings: Record<string, unknown> = {
+      timezone: requestedSettings.timezone ?? DEFAULT_TENANT_SETTINGS.timezone,
+      currency: requestedSettings.currency ?? DEFAULT_TENANT_SETTINGS.currency,
+      language: requestedSettings.language ?? DEFAULT_TENANT_SETTINGS.language,
+      country: requestedSettings.country ?? DEFAULT_TENANT_SETTINGS.country,
+      features: {
+        billing: requestedFeatures.billing ?? DEFAULT_TENANT_SETTINGS.features.billing,
+        mfa_required_all:
+          requestedFeatures.mfa_required_all ?? DEFAULT_TENANT_SETTINGS.features.mfa_required_all,
+      },
     };
-    if (dto.settings) {
-      const settingsDto = Object.assign(new CreateTenantSettingsDto(), dto.settings);
-      if (settingsDto.features) {
-        settingsDto.features = Object.assign(new TenantFeaturesDto(), settingsDto.features);
-      }
-      const errors = validateSync(settingsDto, { whitelist: true });
-      if (errors.length > 0) {
-        const messages = errors
-          .map((e) => Object.values(e.constraints ?? {}).join(', '))
-          .join('; ');
-        throw new BadRequestException(`Configuración regional inválida: ${messages}`);
-      }
-      validatedSettings = dto.settings;
-    }
 
     const tenant = this.tenantRepo.create({
       name: dto.name,
       slug: dto.slug,
       schemaName,
       contactEmail: dto.contactEmail,
-      maxSubscribers: dto.maxSubscribers ?? 0,
+      maxSubscribers: dto.maxSubscribers ?? null,
       settings: validatedSettings,
       status: TenantStatus.PROVISIONING, // El worker lo activa a ACTIVE post-provisioning
       // Datos legales opcionales
@@ -165,8 +246,38 @@ export class TenantService {
     return this.toResponseDto(saved);
   }
 
-  /** Lista todos los tenants con paginacion basica por offset */
-  async findAll(limit = 50, offset = 0): Promise<{ data: TenantResponseDto[]; total: number }> {
+  /** Lista tenants con paginación y filtros operativos de plataforma. */
+  async findAll(
+    limit = 50,
+    offset = 0,
+    filters: TenantListFilters = {},
+  ): Promise<{ data: TenantResponseDto[]; total: number }> {
+    if (filters.status || filters.search?.trim()) {
+      const queryBuilder = this.tenantRepo
+        .createQueryBuilder('tenant')
+        .orderBy('tenant.createdAt', 'DESC')
+        .take(limit)
+        .skip(offset);
+
+      if (filters.status) {
+        queryBuilder.andWhere('tenant.status = :status', { status: filters.status });
+      }
+
+      if (filters.search?.trim()) {
+        queryBuilder.andWhere(
+          '(tenant.name ILIKE :search OR tenant.slug ILIKE :search OR tenant.contactEmail ILIKE :search)',
+          { search: `%${filters.search.trim()}%` },
+        );
+      }
+
+      const [tenants, total] = await queryBuilder.getManyAndCount();
+
+      return {
+        data: tenants.map((t) => this.toResponseDto(t)),
+        total,
+      };
+    }
+
     const [tenants, total] = await this.tenantRepo.findAndCount({
       order: { createdAt: 'DESC' },
       take: limit,
@@ -203,6 +314,24 @@ export class TenantService {
       throw new NotFoundException(`Tenant con id "${tenantId}" no encontrado.`);
     }
     return this.toSelfResponseDto(tenant);
+  }
+
+  /**
+   * Retorna el branding público consumido por el login del portal.
+   * Solo expone URLs resolubles y el nombre comercial del tenant activo.
+   */
+  async getTenantPublicBranding(slug: string): Promise<TenantPublicBrandingResponseDto> {
+    const normalizedSlug = slug.trim();
+    if (!normalizedSlug) {
+      throw new BadRequestException('slug es requerido.');
+    }
+
+    const tenant = await this.findBySlug(normalizedSlug);
+    if (!tenant || tenant.status !== TenantStatus.ACTIVE) {
+      throw new NotFoundException(`Tenant con slug "${normalizedSlug}" no encontrado.`);
+    }
+
+    return this.toPublicBrandingDto(tenant);
   }
 
   /**
@@ -331,24 +460,51 @@ export class TenantService {
     dto: UpdateTenantSelfBrandingDto,
     actorUserId?: string,
   ): Promise<TenantSelfResponseDto> {
+    const saved = await this.updateBrandingState(tenantId, dto, actorUserId);
+    return this.toSelfResponseDto(saved);
+  }
+
+  /**
+   * Actualiza branding de un tenant desde la consola de plataforma.
+   * Reutiliza el mismo contrato híbrido URL/assetId del endpoint self-service.
+   */
+  async updateTenantBranding(
+    tenantId: string,
+    dto: UpdateTenantSelfBrandingDto,
+    actorUserId?: string,
+  ): Promise<TenantResponseDto> {
+    const saved = await this.updateBrandingState(tenantId, dto, actorUserId);
+    return this.toResponseDto(saved);
+  }
+
+  /**
+   * Sube un asset de branding y lo asigna inmediatamente al slot correspondiente.
+   */
+  async uploadTenantBrandingAsset(
+    tenantId: string,
+    dto: UploadTenantBrandingAssetDto,
+    file: Express.Multer.File,
+    actorUserId?: string,
+  ): Promise<MediaAssetResponseDto> {
     const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
     if (!tenant) {
       throw new NotFoundException(`Tenant con id "${tenantId}" no encontrado.`);
     }
 
-    const oldValue = this.toSelfResponseDto(tenant);
+    const oldValue = this.toBrandingAuditPayload(tenant);
+    const asset = await this.mediaService.upload(
+      tenant.schemaName,
+      { usage: dto.usage, themeVariant: dto.themeVariant },
+      file,
+      actorUserId,
+    );
 
-    if (dto.logoLightUrl !== undefined) tenant.logoLightUrl = dto.logoLightUrl ?? null;
-    if (dto.logoDarkUrl !== undefined) tenant.logoDarkUrl = dto.logoDarkUrl ?? null;
-    if (dto.sealLightUrl !== undefined) tenant.sealLightUrl = dto.sealLightUrl ?? null;
-    if (dto.sealDarkUrl !== undefined) tenant.sealDarkUrl = dto.sealDarkUrl ?? null;
-    if (dto.showTenantName !== undefined) tenant.showTenantName = dto.showTenantName;
+    const slotConfig = this.getBrandingSlotConfig(dto.usage, dto.themeVariant);
+    await this.assignBrandingAssetToSlot(tenant, slotConfig, asset);
 
     const saved = await this.tenantRepo.save(tenant);
     await this.invalidateTenantCache(saved.id, saved.slug);
     await this.cacheTenant(saved);
-
-    const newValue = this.toSelfResponseDto(saved);
 
     await this.auditService.log({
       tenantId: saved.id,
@@ -358,10 +514,10 @@ export class TenantService {
       entityType: 'TenantBranding',
       entityId: saved.id,
       oldValue: oldValue as unknown as Record<string, unknown>,
-      newValue: newValue as unknown as Record<string, unknown>,
+      newValue: this.toBrandingAuditPayload(saved) as unknown as Record<string, unknown>,
     });
 
-    return newValue;
+    return asset;
   }
 
   /**
@@ -1053,11 +1209,38 @@ export class TenantService {
     dto.createdAt = tenant.createdAt;
     // Branding
     dto.logoLightUrl = tenant.logoLightUrl ?? null;
+    dto.logoLightAssetId = tenant.logoLightAssetId ?? null;
     dto.logoDarkUrl = tenant.logoDarkUrl ?? null;
+    dto.logoDarkAssetId = tenant.logoDarkAssetId ?? null;
     dto.sealLightUrl = tenant.sealLightUrl ?? null;
+    dto.sealLightAssetId = tenant.sealLightAssetId ?? null;
     dto.sealDarkUrl = tenant.sealDarkUrl ?? null;
+    dto.sealDarkAssetId = tenant.sealDarkAssetId ?? null;
+    dto.faviconLightUrl = tenant.faviconLightUrl ?? null;
+    dto.faviconLightAssetId = tenant.faviconLightAssetId ?? null;
+    dto.faviconDarkUrl = tenant.faviconDarkUrl ?? null;
+    dto.faviconDarkAssetId = tenant.faviconDarkAssetId ?? null;
+    dto.loginBackgroundLightUrl = tenant.loginBackgroundLightUrl ?? null;
+    dto.loginBackgroundLightAssetId = tenant.loginBackgroundLightAssetId ?? null;
+    dto.loginBackgroundDarkUrl = tenant.loginBackgroundDarkUrl ?? null;
+    dto.loginBackgroundDarkAssetId = tenant.loginBackgroundDarkAssetId ?? null;
     dto.showTenantName = tenant.showTenantName ?? true;
     return dto;
+  }
+
+  private toPublicBrandingDto(tenant: Tenant): TenantPublicBrandingDto {
+    return {
+      displayName: tenant.name,
+      showTenantName: tenant.showTenantName ?? true,
+      logoLightUrl: tenant.logoLightUrl ?? null,
+      logoDarkUrl: tenant.logoDarkUrl ?? null,
+      sealLightUrl: tenant.sealLightUrl ?? null,
+      sealDarkUrl: tenant.sealDarkUrl ?? null,
+      faviconLightUrl: tenant.faviconLightUrl ?? null,
+      faviconDarkUrl: tenant.faviconDarkUrl ?? null,
+      loginBackgroundLightUrl: tenant.loginBackgroundLightUrl ?? null,
+      loginBackgroundDarkUrl: tenant.loginBackgroundDarkUrl ?? null,
+    };
   }
 
   private toCommercialNodeDto(entity: CommercialNode) {
@@ -1215,7 +1398,7 @@ export class TenantService {
     if (dto.name !== undefined) tenant.name = dto.name;
     if (dto.status !== undefined) tenant.status = dto.status;
     if (dto.contactEmail !== undefined) tenant.contactEmail = dto.contactEmail;
-    if (dto.maxSubscribers !== undefined) tenant.maxSubscribers = dto.maxSubscribers;
+    if (dto.maxSubscribers !== undefined) tenant.maxSubscribers = dto.maxSubscribers ?? null;
     if (dto.settings !== undefined) tenant.settings = dto.settings;
     // Datos legales
     if (dto.legalName !== undefined) tenant.legalName = dto.legalName ?? null;
@@ -1309,7 +1492,7 @@ export class TenantService {
     };
 
     if (dto.maxSubscribers !== undefined) {
-      tenant.maxSubscribers = dto.maxSubscribers;
+      tenant.maxSubscribers = dto.maxSubscribers ?? null;
     }
 
     const saved = await this.tenantRepo.save(tenant);
@@ -1375,9 +1558,198 @@ export class TenantService {
     dto.phone = tenant.phone ?? null;
     dto.website = tenant.website ?? null;
     dto.economicSector = tenant.economicSector ?? null;
+    // Branding
+    dto.logoLightUrl = tenant.logoLightUrl ?? null;
+    dto.logoLightAssetId = tenant.logoLightAssetId ?? null;
+    dto.logoDarkUrl = tenant.logoDarkUrl ?? null;
+    dto.logoDarkAssetId = tenant.logoDarkAssetId ?? null;
+    dto.sealLightUrl = tenant.sealLightUrl ?? null;
+    dto.sealLightAssetId = tenant.sealLightAssetId ?? null;
+    dto.sealDarkUrl = tenant.sealDarkUrl ?? null;
+    dto.sealDarkAssetId = tenant.sealDarkAssetId ?? null;
+    dto.faviconLightUrl = tenant.faviconLightUrl ?? null;
+    dto.faviconLightAssetId = tenant.faviconLightAssetId ?? null;
+    dto.faviconDarkUrl = tenant.faviconDarkUrl ?? null;
+    dto.faviconDarkAssetId = tenant.faviconDarkAssetId ?? null;
+    dto.loginBackgroundLightUrl = tenant.loginBackgroundLightUrl ?? null;
+    dto.loginBackgroundLightAssetId = tenant.loginBackgroundLightAssetId ?? null;
+    dto.loginBackgroundDarkUrl = tenant.loginBackgroundDarkUrl ?? null;
+    dto.loginBackgroundDarkAssetId = tenant.loginBackgroundDarkAssetId ?? null;
+    dto.showTenantName = tenant.showTenantName ?? true;
     dto.createdAt = tenant.createdAt;
     dto.updatedAt = tenant.updatedAt;
     return dto;
+  }
+
+  private async updateBrandingState(
+    tenantId: string,
+    dto: UpdateTenantSelfBrandingDto,
+    actorUserId?: string,
+  ): Promise<Tenant> {
+    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new NotFoundException(`Tenant con id "${tenantId}" no encontrado.`);
+    }
+
+    const oldValue = this.toBrandingAuditPayload(tenant);
+
+    await this.applyBrandingUpdate(tenant, dto);
+    if (dto.showTenantName !== undefined) {
+      tenant.showTenantName = dto.showTenantName;
+    }
+
+    const saved = await this.tenantRepo.save(tenant);
+    await this.invalidateTenantCache(saved.id, saved.slug);
+    await this.cacheTenant(saved);
+
+    await this.auditService.log({
+      tenantId: saved.id,
+      schemaName: saved.schemaName,
+      userId: actorUserId ?? null,
+      action: AuditAction.UPDATE,
+      entityType: 'TenantBranding',
+      entityId: saved.id,
+      oldValue: oldValue as unknown as Record<string, unknown>,
+      newValue: this.toBrandingAuditPayload(saved) as unknown as Record<string, unknown>,
+    });
+
+    return saved;
+  }
+
+  private async applyBrandingUpdate(
+    tenant: Tenant,
+    dto: UpdateTenantSelfBrandingDto,
+  ): Promise<void> {
+    for (const config of BRANDING_SLOT_CONFIGS) {
+      const nextUrl = dto[config.urlKey];
+      const nextAssetId = dto[config.assetKey];
+
+      if (nextUrl === undefined && nextAssetId === undefined) {
+        continue;
+      }
+
+      const previousAssetId = tenant[config.assetKey];
+
+      if (nextAssetId !== undefined) {
+        if (nextAssetId === null) {
+          await this.softDeletePreviousBrandingAsset(tenant.schemaName, previousAssetId, null);
+          tenant[config.assetKey] = null;
+          tenant[config.urlKey] = null;
+          continue;
+        }
+
+        const asset = await this.assertBrandingAssetMatchesSlot(
+          nextAssetId,
+          tenant.schemaName,
+          config,
+        );
+        await this.softDeletePreviousBrandingAsset(tenant.schemaName, previousAssetId, asset.id);
+        tenant[config.assetKey] = asset.id;
+        tenant[config.urlKey] = this.requireBrandingPublicUrl(asset, config);
+        continue;
+      }
+
+      await this.softDeletePreviousBrandingAsset(tenant.schemaName, previousAssetId, null);
+      tenant[config.assetKey] = null;
+      tenant[config.urlKey] = nextUrl ?? null;
+    }
+  }
+
+  private async assignBrandingAssetToSlot(
+    tenant: Tenant,
+    config: BrandingSlotConfig,
+    asset: MediaAssetResponseDto,
+  ): Promise<void> {
+    const previousAssetId = tenant[config.assetKey];
+    await this.softDeletePreviousBrandingAsset(tenant.schemaName, previousAssetId, asset.id);
+    tenant[config.assetKey] = asset.id;
+    tenant[config.urlKey] = this.requireBrandingPublicUrl(asset, config);
+  }
+
+  private getBrandingSlotConfig(
+    usage: MediaUsage,
+    themeVariant: NonNullable<MediaThemeVariant>,
+  ): BrandingSlotConfig {
+    const config = BRANDING_SLOT_CONFIGS.find(
+      (item) => item.usage === usage && item.themeVariant === themeVariant,
+    );
+
+    if (!config) {
+      throw new BadRequestException(
+        `No existe un slot de branding para usage='${usage}' y themeVariant='${themeVariant}'.`,
+      );
+    }
+
+    return config;
+  }
+
+  private async assertBrandingAssetMatchesSlot(
+    assetId: string,
+    tenantSchema: string,
+    config: BrandingSlotConfig,
+  ): Promise<MediaAssetResponseDto> {
+    const asset = await this.mediaService.findOne(assetId, tenantSchema);
+
+    if (asset.usage !== config.usage) {
+      throw new BadRequestException(
+        `El asset ${assetId} no corresponde al usage esperado para el slot ${config.urlKey}.`,
+      );
+    }
+
+    if (asset.themeVariant !== config.themeVariant) {
+      throw new BadRequestException(
+        `El asset ${assetId} no corresponde a la variante ${config.themeVariant}.`,
+      );
+    }
+
+    return asset;
+  }
+
+  private requireBrandingPublicUrl(
+    asset: MediaAssetResponseDto,
+    config: BrandingSlotConfig,
+  ): string {
+    if (!asset.publicUrl) {
+      throw new BadRequestException(
+        `El asset asignado al slot ${config.urlKey} no tiene una URL pública resoluble.`,
+      );
+    }
+
+    return asset.publicUrl;
+  }
+
+  private async softDeletePreviousBrandingAsset(
+    tenantSchema: string,
+    previousAssetId: string | null,
+    nextAssetId: string | null,
+  ): Promise<void> {
+    if (!previousAssetId || previousAssetId === nextAssetId) {
+      return;
+    }
+
+    await this.mediaService.softDelete(previousAssetId, tenantSchema);
+  }
+
+  private toBrandingAuditPayload(tenant: Tenant): Record<string, unknown> {
+    return {
+      logoLightUrl: tenant.logoLightUrl ?? null,
+      logoLightAssetId: tenant.logoLightAssetId ?? null,
+      logoDarkUrl: tenant.logoDarkUrl ?? null,
+      logoDarkAssetId: tenant.logoDarkAssetId ?? null,
+      sealLightUrl: tenant.sealLightUrl ?? null,
+      sealLightAssetId: tenant.sealLightAssetId ?? null,
+      sealDarkUrl: tenant.sealDarkUrl ?? null,
+      sealDarkAssetId: tenant.sealDarkAssetId ?? null,
+      faviconLightUrl: tenant.faviconLightUrl ?? null,
+      faviconLightAssetId: tenant.faviconLightAssetId ?? null,
+      faviconDarkUrl: tenant.faviconDarkUrl ?? null,
+      faviconDarkAssetId: tenant.faviconDarkAssetId ?? null,
+      loginBackgroundLightUrl: tenant.loginBackgroundLightUrl ?? null,
+      loginBackgroundLightAssetId: tenant.loginBackgroundLightAssetId ?? null,
+      loginBackgroundDarkUrl: tenant.loginBackgroundDarkUrl ?? null,
+      loginBackgroundDarkAssetId: tenant.loginBackgroundDarkAssetId ?? null,
+      showTenantName: tenant.showTenantName ?? true,
+    };
   }
 
   /** Busca un tenant por id con cache Redis para evitar lecturas repetidas al schema publico. */
@@ -1498,6 +1870,9 @@ export class TenantService {
     }
 
     tenant.status = status;
+    if (status === TenantStatus.ACTIVE) {
+      tenant.deletedAt = null;
+    }
     const updated = await this.tenantRepo.save(tenant);
     await this.invalidateTenantCache(tenant.id, tenant.slug);
     await this.cacheTenant(updated);
@@ -1506,31 +1881,31 @@ export class TenantService {
     return this.toResponseDto(updated);
   }
 
-  /**
-   * Elimina un tenant y su schema PostgreSQL asociado.
-   * OPERACION DESTRUCTIVA - debe usarse con extrema precaución.
-   */
+  /** Marca el tenant para eliminacion diferida; el schema queda retenido hasta la purga. */
   async delete(id: string): Promise<void> {
     const tenant = await this.tenantRepo.findOne({ where: { id } });
     if (!tenant) {
       throw new NotFoundException(`Tenant con id "${id}" no encontrado.`);
     }
 
-    if (!isValidSchemaName(tenant.schemaName)) {
-      throw new BadRequestException(
-        `Schema name invalido para eliminacion: "${tenant.schemaName}". Operacion abortada.`,
-      );
-    }
+    const oldValue = this.toResponseDto(tenant) as unknown as Record<string, unknown>;
+    tenant.status = TenantStatus.MARKED_FOR_DELETION;
+    tenant.deletedAt = new Date();
 
-    await this.dataSource.transaction(async (manager) => {
-      // El schemaName ya fue validado con la regla canonica tenant_*.
-      await manager.query(`DROP SCHEMA IF EXISTS "${tenant.schemaName}" CASCADE`);
-      await manager.delete(Tenant, { id: tenant.id });
+    const saved = await this.tenantRepo.save(tenant);
+    await this.invalidateTenantCache(saved.id, saved.slug);
+
+    await this.auditService.log({
+      tenantId: saved.id,
+      schemaName: saved.schemaName,
+      userId: null,
+      action: AuditAction.DELETE,
+      entityType: 'Tenant',
+      entityId: saved.id,
+      oldValue,
+      newValue: this.toResponseDto(saved) as unknown as Record<string, unknown>,
     });
 
-    // Eliminar de cache
-    await this.invalidateTenantCache(tenant.id, tenant.slug);
-
-    this.logger.log(`Tenant eliminado: id=${id} schema=${tenant.schemaName}`);
+    this.logger.log(`Tenant marcado para eliminacion: id=${id} schema=${tenant.schemaName}`);
   }
 }

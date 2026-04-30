@@ -5,8 +5,13 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { dataSourceOptions } from '@iwana/db';
-import { REFRESH_TOKEN_PURGE_QUEUE, TENANT_PROVISIONING_QUEUE } from '@iwana/shared';
+import {
+  REFRESH_TOKEN_PURGE_QUEUE,
+  TENANT_PROVISIONING_QUEUE,
+  TENANT_SCHEMA_PURGE_QUEUE,
+} from '@iwana/shared';
 import { RefreshTokenPurgeProcessor } from './processors/refresh-token-purge.processor';
+import { TenantSchemaPurgeProcessor } from './processors/tenant-schema-purge.processor';
 import { TenantProvisioningProcessor } from './processors/tenant-provisioning.processor';
 import { SchedulerService } from './services/scheduler.service';
 import { TenantSeedService } from './services/tenant-seed.service';
@@ -130,11 +135,17 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
     BullModule.registerQueue({
       name: REFRESH_TOKEN_PURGE_QUEUE,
     }),
+
+    // Cola de purga fisica diferida de schemas tenant marcados para eliminacion
+    BullModule.registerQueue({
+      name: TENANT_SCHEMA_PURGE_QUEUE,
+    }),
   ],
   providers: [
     TenantProvisioningProcessor,
     TenantSeedService,
     RefreshTokenPurgeProcessor,
+    TenantSchemaPurgeProcessor,
     SchedulerService,
   ],
 })

@@ -1,7 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Card, CardContent, CardHeader, CardTitle } from '@iwana/ui';
+import {
+  Alert,
+  Button,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@iwana/ui';
 import type { AdminCredentials } from '@/lib/api-client';
 
 interface CredentialsModalProps {
@@ -27,30 +35,30 @@ export function CredentialsModal({ credentials, onClose }: CredentialsModalProps
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="tenant-credentials-modal-title"
-    >
-      <Card className="w-full max-w-lg">
-        <CardHeader>
-          <CardTitle id="tenant-credentials-modal-title">
+    <Dialog open={Boolean(credentials)} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-lg p-0" aria-labelledby="tenant-credentials-modal-title">
+        <DialogHeader className="mb-0 flex flex-row items-start justify-between gap-4 p-6 pb-4">
+          <DialogTitle id="tenant-credentials-modal-title">
             Acceso del administrador inicial
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+          </DialogTitle>
+          <DialogClose asChild>
+            <Button type="button" variant="ghost" size="sm">
+              Cerrar
+            </Button>
+          </DialogClose>
+        </DialogHeader>
+        <div className="space-y-4 p-6 pt-0">
+          <Alert variant="neutral" className="rounded-lg shadow-none">
             {credentials.message}
-          </p>
-          <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          </Alert>
+          <Alert variant="warning" className="rounded-lg shadow-none">
             Usa este acceso solo para el primer ingreso. Apenas el usuario entre, deberá cambiar la
             contraseña.
-          </p>
-          <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+          </Alert>
+          <Alert variant="info" className="rounded-lg shadow-none">
             El correo de acceso inicial es independiente del email de contacto empresarial y puede
             cambiarse luego desde la sección de perfil del usuario principal.
-          </p>
+          </Alert>
 
           <div className="space-y-2 text-sm text-gray-700 dark:text-gray-200">
             <p>
@@ -64,16 +72,13 @@ export function CredentialsModal({ credentials, onClose }: CredentialsModalProps
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-end gap-2 border-t border-gray-100 pt-4 dark:border-dark-border">
             <Button type="button" variant="secondary" onClick={copyPassword}>
               {copied ? 'Copiado' : 'Copiar contraseña'}
             </Button>
-            <Button type="button" onClick={onClose}>
-              Cerrar
-            </Button>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

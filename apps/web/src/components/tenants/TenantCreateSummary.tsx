@@ -1,6 +1,7 @@
 'use client';
 
 import { AlertTriangle, CheckCircle2, Clock, Loader2 } from 'lucide-react';
+import { FormPanel, FormSectionTitle } from '@iwana/ui';
 
 export interface SectionCompleteness {
   label: string;
@@ -29,7 +30,7 @@ function getInitials(name: string): string {
 const PROV_CONFIG = {
   idle: {
     label: 'En espera',
-    detail: 'El schema del tenant se creará al confirmar.',
+    detail: 'El schema de la empresa se creará al confirmar.',
     Icon: Clock,
     colorClass: 'text-gray-500 dark:text-gray-400',
     borderClass: 'border-gray-100 dark:border-dark-border',
@@ -80,10 +81,8 @@ export function TenantCreateSummary({
   return (
     <aside className="space-y-4 lg:sticky lg:top-6">
       {/* Vista previa de la empresa */}
-      <div className="rounded-[24px] border border-gray-100 bg-white p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)] dark:border-dark-border dark:bg-dark-surface-2">
-        <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-          Vista previa
-        </p>
+      <FormPanel>
+        <FormSectionTitle className="mb-4">Vista previa</FormSectionTitle>
         <div className="flex items-start gap-3">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-iwana-primary text-base font-bold text-white">
             {initials}
@@ -109,20 +108,20 @@ export function TenantCreateSummary({
             </p>
             <p
               className={`mt-0.5 truncate text-xs ${
-                contactEmail ? 'text-gray-500 dark:text-gray-400' : 'text-gray-300 dark:text-gray-600'
+                contactEmail
+                  ? 'text-gray-500 dark:text-gray-400'
+                  : 'text-gray-300 dark:text-gray-600'
               }`}
             >
               {contactEmail || 'email@empresa.com'}
             </p>
           </div>
         </div>
-      </div>
+      </FormPanel>
 
       {/* Completitud por sección */}
-      <div className="rounded-[24px] border border-gray-100 bg-white p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)] dark:border-dark-border dark:bg-dark-surface-2">
-        <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-          Completitud
-        </p>
+      <FormPanel>
+        <FormSectionTitle className="mb-4">Completitud</FormSectionTitle>
         <div className="space-y-3.5">
           {sections.map((section) => {
             const pct = section.total > 0 ? (section.completed / section.total) * 100 : 0;
@@ -170,21 +169,17 @@ export function TenantCreateSummary({
             );
           })}
         </div>
-      </div>
+      </FormPanel>
 
       {/* Estado de provisioning */}
-      <div
-        className={`rounded-[24px] border p-5 shadow-[0_4px_24px_rgba(0,0,0,0.04)] ${borderClass} ${bgClass}`}
-      >
-        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-          Provisioning
-        </p>
+      <FormPanel className={`${borderClass} ${bgClass}`}>
+        <FormSectionTitle className="mb-3">Provisioning</FormSectionTitle>
         <div className={`flex items-center gap-2 ${colorClass}`}>
           <Icon className={`h-4 w-4 ${spin ? 'animate-spin' : ''}`} />
           <span className="text-sm font-semibold">{label}</span>
         </div>
         <p className={`mt-1.5 text-xs opacity-80 ${colorClass}`}>{detail}</p>
-      </div>
+      </FormPanel>
     </aside>
   );
 }

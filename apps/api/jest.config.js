@@ -12,6 +12,7 @@ module.exports = {
           paths: {
             '@iwana/db': ['<rootDir>/../../../packages/database/src/index.ts'],
             '@iwana/shared': ['<rootDir>/../../../packages/shared/src/index.ts'],
+            '@iwana/storage': ['<rootDir>/../../../packages/storage/src/index.ts'],
           },
         },
       },
@@ -22,6 +23,8 @@ module.exports = {
     '^@iwana/db/(.*)$': '<rootDir>/../../../packages/database/src/$1',
     '^@iwana/shared$': '<rootDir>/../../../packages/shared/src/index.ts',
     '^@iwana/shared/(.*)$': '<rootDir>/../../../packages/shared/src/$1',
+    '^@iwana/storage$': '<rootDir>/../../../packages/storage/src/index.ts',
+    '^@iwana/storage/(.*)$': '<rootDir>/../../../packages/storage/src/$1',
   },
   collectCoverageFrom: ['**/*.(t|j)s'],
   coverageDirectory: '../coverage',

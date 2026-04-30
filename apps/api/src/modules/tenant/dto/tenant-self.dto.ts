@@ -32,10 +32,36 @@ export class TenantSelfResponseDto {
 
   // Branding del tenant
   logoLightUrl: string | null;
+  logoLightAssetId: string | null;
+  logoDarkUrl: string | null;
+  logoDarkAssetId: string | null;
+  sealLightUrl: string | null;
+  sealLightAssetId: string | null;
+  sealDarkUrl: string | null;
+  sealDarkAssetId: string | null;
+  faviconLightUrl: string | null;
+  faviconLightAssetId: string | null;
+  faviconDarkUrl: string | null;
+  faviconDarkAssetId: string | null;
+  loginBackgroundLightUrl: string | null;
+  loginBackgroundLightAssetId: string | null;
+  loginBackgroundDarkUrl: string | null;
+  loginBackgroundDarkAssetId: string | null;
+  showTenantName: boolean;
+}
+
+/** Respuesta pública mínima para aplicar branding en el login del portal. */
+export class TenantPublicBrandingResponseDto {
+  displayName: string;
+  showTenantName: boolean;
+  logoLightUrl: string | null;
   logoDarkUrl: string | null;
   sealLightUrl: string | null;
   sealDarkUrl: string | null;
-  showTenantName: boolean;
+  faviconLightUrl: string | null;
+  faviconDarkUrl: string | null;
+  loginBackgroundLightUrl: string | null;
+  loginBackgroundDarkUrl: string | null;
 }
 
 /**

@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Tenant } from '@iwana/db';
 import { DataSource, Repository } from 'typeorm';
 import { AuditService } from '../audit/audit.service';
+import { MediaService } from '../media/media.service';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { TenantService } from './tenant.service';
 
@@ -36,9 +37,22 @@ function buildTenant(overrides: Partial<Tenant> = {}): Tenant {
     logoDarkUrl: null,
     sealLightUrl: null,
     sealDarkUrl: null,
+    faviconLightUrl: null,
+    faviconDarkUrl: null,
+    loginBackgroundLightUrl: null,
+    loginBackgroundDarkUrl: null,
+    logoLightAssetId: null,
+    logoDarkAssetId: null,
+    sealLightAssetId: null,
+    sealDarkAssetId: null,
+    faviconLightAssetId: null,
+    faviconDarkAssetId: null,
+    loginBackgroundLightAssetId: null,
+    loginBackgroundDarkAssetId: null,
     showTenantName: true,
     createdAt: new Date('2026-03-01T00:00:00.000Z'),
     updatedAt: new Date('2026-03-01T00:00:00.000Z'),
+    deletedAt: null,
     ...overrides,
   };
 }
@@ -55,6 +69,12 @@ describe('Tenant settings', () => {
 
   const auditServiceMock = {
     log: jest.fn(),
+  };
+
+  const mediaServiceMock = {
+    findOne: jest.fn(),
+    softDelete: jest.fn(),
+    upload: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -78,6 +98,7 @@ describe('Tenant settings', () => {
         },
         { provide: REDIS_CLIENT, useValue: redisMock },
         { provide: AuditService, useValue: auditServiceMock },
+        { provide: MediaService, useValue: mediaServiceMock },
       ],
     }).compile();
 
@@ -242,6 +263,63 @@ describe('Tenant settings', () => {
     expect(data.slug).toBe('isp-test');
     expect(auditServiceMock.log).toHaveBeenCalledWith(
       expect.objectContaining({ entityType: 'TenantProfile', userId: 'actor-1' }),
+    );
+  });
+
+  it('updateTenantSelfBranding asigna URL externa y limpia assetId previo del slot', async () => {
+    const tenant = buildTenant({
+      logoLightUrl: 'https://cdn.example.test/logo-viejo.png',
+      logoLightAssetId: '11111111-1111-4111-8111-111111111111',
+    });
+    repo.findOne.mockResolvedValue(tenant);
+    repo.save.mockImplementation(async (entity) => entity as Tenant);
+
+    const data = await service.updateTenantSelfBranding(
+      tenant.id,
+      {
+        logoLightUrl: 'https://cdn.example.test/logo-nuevo.png',
+      },
+      'actor-1',
+    );
+
+    expect(data.logoLightUrl).toBe('https://cdn.example.test/logo-nuevo.png');
+    expect(data.logoLightAssetId).toBeNull();
+    expect(mediaServiceMock.softDelete).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      tenant.schemaName,
+    );
+    expect(auditServiceMock.log).toHaveBeenCalledWith(
+      expect.objectContaining({ entityType: 'TenantBranding', userId: 'actor-1' }),
+    );
+  });
+
+  it('updateTenantSelfBranding asigna assetId válido y persiste su URL pública', async () => {
+    const tenant = buildTenant();
+    repo.findOne.mockResolvedValue(tenant);
+    repo.save.mockImplementation(async (entity) => entity as Tenant);
+    mediaServiceMock.findOne.mockResolvedValue({
+      id: '22222222-2222-4222-8222-222222222222',
+      usage: 'logo',
+      themeVariant: 'light',
+      mimeType: 'image/png',
+      sizeBytes: 1234,
+      publicUrl: 'https://media.example.test/logo-light.png',
+      createdAt: new Date('2026-04-30T00:00:00.000Z'),
+    });
+
+    const data = await service.updateTenantSelfBranding(
+      tenant.id,
+      {
+        logoLightAssetId: '22222222-2222-4222-8222-222222222222',
+      },
+      'actor-2',
+    );
+
+    expect(data.logoLightAssetId).toBe('22222222-2222-4222-8222-222222222222');
+    expect(data.logoLightUrl).toBe('https://media.example.test/logo-light.png');
+    expect(mediaServiceMock.findOne).toHaveBeenCalledWith(
+      '22222222-2222-4222-8222-222222222222',
+      tenant.schemaName,
     );
   });
 });

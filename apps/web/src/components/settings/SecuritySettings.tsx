@@ -158,8 +158,8 @@ export function SecuritySettings() {
             </div>
           </div>
 
-          <form onSubmit={handleSubmit(onChangePassword)} className="space-y-5">
-            <div className="max-w-3xl space-y-5">
+          <form onSubmit={handleSubmit(onChangePassword)} className="space-y-4">
+            <div className="max-w-[440px] space-y-4">
               <div>
                 <label className={`block ${FORM_LABEL_CLASS}`} htmlFor="security-current-password">
                   Contraseña actual
@@ -209,8 +209,8 @@ export function SecuritySettings() {
               </div>
             </div>
 
-            <div className="flex justify-end">
-              <Button type="submit" size="lg" loading={isSubmitting}>
+            <div className="flex max-w-[440px] justify-end">
+              <Button type="submit" loading={isSubmitting}>
                 Actualizar contraseña
               </Button>
             </div>
@@ -313,7 +313,7 @@ export function SecuritySettings() {
                   Para deshabilitar MFA debes confirmar tu contraseña actual y un código activo de
                   tu autenticador.
                 </p>
-                <div className="grid max-w-3xl gap-3 md:grid-cols-2">
+                <div className="grid max-w-[640px] gap-3 md:grid-cols-2">
                   <div>
                     <label
                       className={`block ${FORM_LABEL_CLASS}`}

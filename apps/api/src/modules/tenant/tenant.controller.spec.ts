@@ -4,6 +4,7 @@ jest.mock('../auth/auth.service', () => ({
 
 import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { MediaUsage } from '@iwana/db';
 import { AuthService } from '../auth/auth.service';
 import { TenantController } from './tenant.controller';
 import { TenantProvisioningService } from './tenant-provisioning.service';
@@ -22,6 +23,10 @@ describe('TenantController', () => {
     activate: jest.fn(),
     getTenantSelf: jest.fn(),
     getTenantSelfSettings: jest.fn(),
+    getTenantPublicBranding: jest.fn(),
+    updateTenantSelfBranding: jest.fn(),
+    updateTenantBranding: jest.fn(),
+    uploadTenantBrandingAsset: jest.fn(),
   };
 
   const provisioningService = {
@@ -71,6 +76,27 @@ describe('TenantController', () => {
 
     expect(tenantService.suspend).toHaveBeenCalledWith('tenant-uuid-1');
     expect(result.data.status).toBe('SUSPENDED');
+  });
+
+  it('lista tenants pasando paginación y filtros operativos al servicio', async () => {
+    tenantService.findAll.mockResolvedValue({
+      data: [{ id: 'tenant-uuid-1', status: 'ACTIVE' }],
+      total: 1,
+    });
+
+    const result = await controller.findAll('25', '10', 'ACTIVE', 'isp-test');
+
+    expect(tenantService.findAll).toHaveBeenCalledWith(25, 10, {
+      status: 'ACTIVE',
+      search: 'isp-test',
+    });
+    expect(result.meta.total).toBe(1);
+  });
+
+  it('rechaza status inválidos al listar tenants', async () => {
+    await expect(controller.findAll('25', '0', 'BROKEN', undefined)).rejects.toThrow(
+      BadRequestException,
+    );
   });
 
   it('activa un tenant usando el servicio de tenant', async () => {
@@ -128,5 +154,47 @@ describe('TenantController', () => {
       idempotencyKey: 'idem-1',
     });
     expect(result.data.temporaryPassword).toBe('IwN!a9-newpass');
+  });
+
+  it('resuelve branding público por slug', async () => {
+    tenantService.getTenantPublicBranding.mockResolvedValue({
+      displayName: 'ISP Test Colombia',
+      showTenantName: true,
+      logoLightUrl: 'https://cdn.example.test/logo.png',
+    });
+
+    const result = await controller.getPublicBranding('isp-test');
+
+    expect(tenantService.getTenantPublicBranding).toHaveBeenCalledWith('isp-test');
+    expect(result.data.displayName).toBe('ISP Test Colombia');
+  });
+
+  it('actualiza branding self-service delegando al servicio', async () => {
+    tenantService.updateTenantSelfBranding.mockResolvedValue({
+      id: 'tenant-uuid-1',
+      logoLightUrl: 'https://cdn.example.test/logo.png',
+    });
+
+    const result = await controller.patchMeBranding(
+      { tenantId: 'tenant-uuid-1', sub: 'user-1' } as never,
+      { logoLightUrl: 'https://cdn.example.test/logo.png' },
+    );
+
+    expect(tenantService.updateTenantSelfBranding).toHaveBeenCalledWith(
+      'tenant-uuid-1',
+      { logoLightUrl: 'https://cdn.example.test/logo.png' },
+      'user-1',
+    );
+    expect(result.data.logoLightUrl).toBe('https://cdn.example.test/logo.png');
+  });
+
+  it('rechaza upload de branding self-service si falta file', async () => {
+    await expect(
+      controller.uploadMeBrandingAsset(
+        { tenantId: 'tenant-uuid-1', sub: 'user-1' } as never,
+        { usage: MediaUsage.LOGO, themeVariant: 'light' },
+        undefined,
+      ),
+    ).rejects.toThrow(BadRequestException);
   });
 });

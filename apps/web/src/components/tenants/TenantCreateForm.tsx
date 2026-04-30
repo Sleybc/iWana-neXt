@@ -1,19 +1,49 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Controller, useForm } from 'react-hook-form';
+import { Controller, type FieldErrors, useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Button, Select } from '@iwana/ui';
+import {
+  Alert,
+  Button,
+  CheckboxCard,
+  FormPanel,
+  FormSectionTitle,
+  Input,
+  Select,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@iwana/ui';
 import { ApiError, tenantApi, type AdminCredentials, type TenantListItem } from '@/lib/api-client';
+import {
+  COMPANY_TYPE_OPTIONS,
+  COUNTRY_OPTIONS,
+  CURRENCY_OPTIONS,
+  LANGUAGE_OPTIONS,
+  TIMEZONE_OPTIONS,
+} from '@/lib/tenant-form-options';
+import {
+  fieldError,
+  optionalCompanyTypeSchema,
+  optionalEconomicSectorSchema,
+  optionalMaxSubscribersSchema,
+  optionalNitDvSchema,
+  optionalNitSchema,
+  optionalPhoneSchema,
+  optionalUrlSchema,
+  numberOrNull,
+  slugify,
+} from '@/lib/tenant-form-validation';
+import {
+  getTenantCredentialIdempotencyKey,
+  type TenantCredentialIdempotencyState,
+} from '@/lib/tenant-idempotency';
 import { CredentialsModal } from './CredentialsModal';
 import { TenantCreateSummary } from './TenantCreateSummary';
-
-// Validaciones opcionales compartidas entre secciones
-const optionalPhone = z.string().max(50, 'Máximo 50 caracteres').optional().or(z.literal(''));
-
-const optionalUrl = z.string().url('URL inválida (incluye https://)').optional().or(z.literal(''));
 
 export const tenantCreateSchema = z.object({
   // Datos básicos — obligatorios
@@ -24,23 +54,12 @@ export const tenantCreateSchema = z.object({
     .max(55)
     .regex(/^[a-z][a-z0-9-]{0,54}$/, 'Solo letras minúsculas, números y guiones'),
   contactEmail: z.string().email('Email inválido').max(255),
-  maxSubscribers: z.number().int().min(0).optional(),
+  maxSubscribers: optionalMaxSubscribersSchema,
   // Datos legales — opcionales
   legalName: z.string().max(300).optional().or(z.literal('')),
-  nit: z
-    .string()
-    .regex(/^\d{1,10}$/, 'NIT debe contener solo dígitos (máx. 10)')
-    .optional()
-    .or(z.literal('')),
-  nitDv: z
-    .string()
-    .regex(/^\d$/, 'Dígito verificador debe ser un único dígito')
-    .optional()
-    .or(z.literal('')),
-  companyType: z
-    .enum(['SAS', 'LTDA', 'SA', 'PERSONA_NATURAL', 'COOPERATIVA', 'OTRO'])
-    .optional()
-    .or(z.literal('')),
+  nit: optionalNitSchema,
+  nitDv: optionalNitDvSchema,
+  companyType: optionalCompanyTypeSchema,
   // Dirección — opcionales
   address: z.string().max(500).optional().or(z.literal('')),
   city: z.string().max(100).optional().or(z.literal('')),
@@ -54,9 +73,9 @@ export const tenantCreateSchema = z.object({
   postalCode: z.string().max(10).optional().or(z.literal('')),
   coordinates: z.string().max(50).optional().or(z.literal('')),
   // Contacto adicional — opcionales
-  phone: optionalPhone,
-  website: optionalUrl,
-  economicSector: z.string().max(10).optional().or(z.literal('')),
+  phone: optionalPhoneSchema,
+  website: optionalUrlSchema,
+  economicSector: optionalEconomicSectorSchema,
   // Seguridad
   mfaRequiredAll: z.boolean().default(false),
   // Configuración regional
@@ -68,74 +87,7 @@ export const tenantCreateSchema = z.object({
 
 type TenantCreateFormValues = z.infer<typeof tenantCreateSchema>;
 
-function slugify(input: string): string {
-  return input
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s-]/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .slice(0, 55);
-}
-
-const INPUT_CLASS =
-  'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 transition focus:outline-none focus:ring-2 focus:ring-iwana-primary/30 focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-white';
-const LABEL_CLASS = 'mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300';
-const ERROR_CLASS = 'mt-1 text-xs text-red-600 dark:text-red-400';
-const SUBSECTION_LABEL =
-  'text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400';
-
-const TIMEZONE_OPTIONS = [
-  { value: 'America/Bogota', label: 'America/Bogota (Colombia)' },
-  { value: 'America/Guayaquil', label: 'America/Guayaquil (Ecuador)' },
-  { value: 'America/Lima', label: 'America/Lima (Perú)' },
-  { value: 'America/Mexico_City', label: 'America/Mexico_City (México)' },
-  { value: 'America/New_York', label: 'America/New_York (EE.UU.)' },
-  { value: 'America/Santiago', label: 'America/Santiago (Chile)' },
-  { value: 'America/Buenos_Aires', label: 'America/Buenos_Aires (Argentina)' },
-  { value: 'Europe/Madrid', label: 'Europe/Madrid (España)' },
-  { value: 'UTC', label: 'UTC' },
-];
-
-const CURRENCY_OPTIONS = [
-  { value: 'COP', label: 'COP — Peso colombiano' },
-  { value: 'USD', label: 'USD — Dólar estadounidense' },
-  { value: 'EUR', label: 'EUR — Euro' },
-  { value: 'MXN', label: 'MXN — Peso mexicano' },
-  { value: 'PEN', label: 'PEN — Sol peruano' },
-  { value: 'CLP', label: 'CLP — Peso chileno' },
-  { value: 'ARS', label: 'ARS — Peso argentino' },
-];
-
-const LANGUAGE_OPTIONS = [
-  { value: 'es-CO', label: 'Español — Colombia' },
-  { value: 'es-MX', label: 'Español — México' },
-  { value: 'es-PE', label: 'Español — Perú' },
-  { value: 'es-ES', label: 'Español — España' },
-  { value: 'en-US', label: 'English (en-US)' },
-];
-
-const COUNTRY_OPTIONS = [
-  { value: 'CO', label: 'Colombia' },
-  { value: 'EC', label: 'Ecuador' },
-  { value: 'MX', label: 'México' },
-  { value: 'PE', label: 'Perú' },
-  { value: 'US', label: 'Estados Unidos' },
-  { value: 'CL', label: 'Chile' },
-  { value: 'AR', label: 'Argentina' },
-  { value: 'ES', label: 'España' },
-];
-
-const COMPANY_TYPE_OPTIONS = [
-  { value: '', label: 'Sin definir' },
-  { value: 'SAS', label: 'Sociedad por Acciones Simplificada (SAS)' },
-  { value: 'LTDA', label: 'Sociedad de Responsabilidad Limitada (LTDA)' },
-  { value: 'SA', label: 'Sociedad Anónima (SA)' },
-  { value: 'PERSONA_NATURAL', label: 'Persona natural' },
-  { value: 'COOPERATIVA', label: 'Cooperativa' },
-  { value: 'OTRO', label: 'Otro' },
-];
+type TenantCreateSection = 'esencial' | 'empresa' | 'contacto';
 
 export function TenantCreateForm() {
   const router = useRouter();
@@ -144,21 +96,13 @@ export function TenantCreateForm() {
   const [credentials, setCredentials] = useState<AdminCredentials | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [activeSection, setActiveSection] = useState<'esencial' | 'empresa' | 'contacto'>(
-    'esencial',
-  );
-  const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
+  const [activeSection, setActiveSection] = useState<TenantCreateSection>('esencial');
+  const provisioningAbortRef = useRef<AbortController | null>(null);
+  const credentialIdempotencyRef = useRef<TenantCredentialIdempotencyState | null>(null);
 
   useEffect(() => {
-    if (Object.keys(validationErrors).length > 0) {
-      setTimeout(() => {
-        const firstErrorSection = getFirstErrorSectionFromFormState();
-        if (firstErrorSection) {
-          setActiveSection(firstErrorSection);
-        }
-      }, 0);
-    }
-  }, [validationErrors]);
+    return () => provisioningAbortRef.current?.abort();
+  }, []);
 
   const {
     register,
@@ -166,12 +110,10 @@ export function TenantCreateForm() {
     setValue,
     watch,
     handleSubmit,
-    trigger,
     formState: { errors, isSubmitting },
   } = useForm<TenantCreateFormValues>({
     resolver: zodResolver(tenantCreateSchema) as never,
     defaultValues: {
-      maxSubscribers: 0,
       countryCode: 'CO',
       mfaRequiredAll: false,
       timezone: 'America/Bogota',
@@ -215,14 +157,23 @@ export function TenantCreateForm() {
     return FIELDS_BY_SECTION[section].some((field) => errs[field]);
   };
 
-  const getFirstErrorSectionFromFormState = (): typeof activeSection | null => {
-    const sectionOrder: (typeof activeSection)[] = ['esencial', 'empresa', 'contacto'];
+  const getFirstErrorSection = (
+    errs: FieldErrors<TenantCreateFormValues>,
+  ): TenantCreateSection | null => {
+    const sectionOrder: TenantCreateSection[] = ['esencial', 'empresa', 'contacto'];
     for (const section of sectionOrder) {
-      if (hasErrorsInSection(section, errors as Record<string, unknown>)) {
+      if (hasErrorsInSection(section, errs as Record<string, unknown>)) {
         return section;
       }
     }
     return null;
+  };
+
+  const onInvalid = (errs: FieldErrors<TenantCreateFormValues>) => {
+    const firstErrorSection = getFirstErrorSection(errs);
+    if (firstErrorSection) {
+      setActiveSection(firstErrorSection);
+    }
   };
 
   const sectionsWithFormStateErrors = Object.keys(FIELDS_BY_SECTION).filter((section) =>
@@ -232,63 +183,11 @@ export function TenantCreateForm() {
     ),
   ) as (keyof typeof FIELDS_BY_SECTION)[];
 
-  const handleFormSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await trigger();
-    const fieldNames = [
-      'name',
-      'slug',
-      'contactEmail',
-      'maxSubscribers',
-      'mfaRequiredAll',
-      'timezone',
-      'currency',
-      'language',
-      'country',
-      'legalName',
-      'nit',
-      'nitDv',
-      'companyType',
-      'address',
-      'city',
-      'department',
-      'countryCode',
-      'postalCode',
-      'coordinates',
-      'phone',
-      'website',
-      'economicSector',
-    ] as const;
-    const newValidationErrors: Record<string, boolean> = {};
-    for (const field of fieldNames) {
-      if (errors[field as keyof typeof errors]) {
-        newValidationErrors[field] = true;
-      }
-    }
-    setValidationErrors(newValidationErrors);
-    if (Object.keys(newValidationErrors).length > 0) {
-      return;
-    }
-    await handleSubmit(onSubmit)(e);
-  };
-
-  const getFirstErrorSectionFromErrors = (
-    errs: Record<string, boolean>,
-  ): typeof activeSection | null => {
-    const sectionOrder: (typeof activeSection)[] = ['esencial', 'empresa', 'contacto'];
-    for (const section of sectionOrder) {
-      if (FIELDS_BY_SECTION[section].some((field) => errs[field])) {
-        return section;
-      }
-    }
-    return null;
-  };
-
   const statusLabel = useMemo(() => {
     if (!createdTenant) return null;
     if (createdTenant.status === 'ACTIVE') return 'Provisioning completado.';
     if (createdTenant.status === 'PROVISIONING_FAILED') return 'El provisioning falló.';
-    return 'Provisionando tenant...';
+    return 'Provisionando empresa...';
   }, [createdTenant]);
 
   const allValues = watch();
@@ -345,13 +244,16 @@ export function TenantCreateForm() {
     setError(null);
     setSuccessMessage(null);
     setCreatedTenant(null);
+    provisioningAbortRef.current?.abort();
+    const provisioningAbortController = new AbortController();
+    provisioningAbortRef.current = provisioningAbortController;
 
     try {
       const payload = {
         name: values.name,
         slug: values.slug,
         contactEmail: values.contactEmail,
-        ...(values.maxSubscribers != null ? { maxSubscribers: values.maxSubscribers } : {}),
+        maxSubscribers: values.maxSubscribers ?? null,
         ...(values.legalName ? { legalName: values.legalName } : {}),
         ...(values.nit ? { nit: values.nit } : {}),
         ...(values.nitDv ? { nitDv: values.nitDv } : {}),
@@ -383,41 +285,48 @@ export function TenantCreateForm() {
 
       if (created.status === 'PROVISIONING') {
         setIsPolling(true);
-        await pollProvisioning(created.id);
+        const finalTenant = await tenantApi.waitForProvisioning(created.id, {
+          signal: provisioningAbortController.signal,
+          onTick: setCreatedTenant,
+        });
+
+        if (finalTenant.status === 'ACTIVE') {
+          setSuccessMessage(`Empresa "${finalTenant.name}" activa y lista para usar.`);
+        } else if (finalTenant.status === 'PROVISIONING_FAILED') {
+          setSuccessMessage(null);
+          setError(`El provisioning de "${finalTenant.name}" falló. Revisa los logs del worker.`);
+        } else {
+          setSuccessMessage(
+            `Empresa creada. El provisioning está tomando más tiempo del esperado.`,
+          );
+        }
       }
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return;
+      }
       setError(err instanceof ApiError ? err.message : 'No fue posible crear la empresa.');
     } finally {
       setIsPolling(false);
-    }
-  };
-
-  const pollProvisioning = async (tenantId: string) => {
-    let attempts = 0;
-    while (attempts < 20) {
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-      const current = await tenantApi.getOne(tenantId);
-      setCreatedTenant(current);
-      if (current.status === 'ACTIVE') {
-        setSuccessMessage(`Empresa "${current.name}" activa y lista para usar.`);
-        return;
+      if (provisioningAbortRef.current === provisioningAbortController) {
+        provisioningAbortRef.current = null;
       }
-      if (current.status === 'PROVISIONING_FAILED') {
-        setSuccessMessage(null);
-        setError(`El provisioning de "${current.name}" falló. Revisa los logs del worker.`);
-        return;
-      }
-      attempts += 1;
     }
-    setIsPolling(false);
-    setSuccessMessage(`Empresa creada. El provisioning está tomando más tiempo del esperado.`);
   };
 
   const getCredentials = async () => {
     if (!createdTenant) return;
 
     try {
-      const creds = await tenantApi.regenerateCredentials(createdTenant.id, crypto.randomUUID());
+      credentialIdempotencyRef.current = getTenantCredentialIdempotencyKey(
+        credentialIdempotencyRef.current,
+        createdTenant.id,
+        () => crypto.randomUUID(),
+      );
+      const creds = await tenantApi.regenerateCredentials(
+        createdTenant.id,
+        credentialIdempotencyRef.current.key,
+      );
       setCredentials(creds);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No fue posible regenerar credenciales.');
@@ -435,7 +344,7 @@ export function TenantCreateForm() {
       setError(
         err instanceof ApiError
           ? err.message
-          : 'No fue posible consultar el acceso inicial fijo del tenant.',
+          : 'No fue posible consultar el acceso inicial fijo de la empresa.',
       );
     }
   };
@@ -451,20 +360,12 @@ export function TenantCreateForm() {
       {/* ── Panel izquierdo: formulario ────────────────────────────── */}
       <div className="space-y-4">
         {/* Alertas */}
-        {error && (
-          <div className="rounded-[20px] border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-400">
-            {error}
-          </div>
-        )}
-        {successMessage && (
-          <div className="rounded-[20px] border border-emerald-200/80 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-400">
-            {successMessage}
-          </div>
-        )}
+        {error && <Alert variant="error">{error}</Alert>}
+        {successMessage && <Alert variant="success">{successMessage}</Alert>}
 
         {/* Resumen de errores por sección */}
         {sectionsWithFormStateErrors.length > 0 && (
-          <div className="rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900 dark:bg-red-900/20">
+          <Alert variant="error">
             <p className="flex items-center gap-2 text-sm font-medium text-red-700 dark:text-red-400">
               <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white">
                 {sectionsWithFormStateErrors.length}
@@ -474,50 +375,39 @@ export function TenantCreateForm() {
                 .map((s) => `"${tabs.find((t) => t.key === s)?.label}"`)
                 .join(', ')}
             </p>
-          </div>
+          </Alert>
         )}
 
         {/* Navegación por tabs */}
-        <div className="flex gap-1 rounded-xl bg-gray-100/80 p-1 dark:bg-dark-surface-3">
-          {tabs.map((tab) => {
-            const hasError = hasErrorsInSection(tab.key, errors as Record<string, unknown>);
-            return (
-              <button
+        <Tabs
+          value={activeSection}
+          onValueChange={(value) => setActiveSection(value as typeof activeSection)}
+        >
+          <TabsList>
+            {tabs.map((tab) => (
+              <TabsTrigger
                 key={tab.key}
-                type="button"
-                onClick={() => setActiveSection(tab.key)}
-                className={`relative flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                  activeSection === tab.key
-                    ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-surface-2 dark:text-white'
-                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-                }`}
+                value={tab.key}
+                className="flex-1"
+                hasIndicator={hasErrorsInSection(tab.key, errors as Record<string, unknown>)}
               >
                 {tab.label}
-                {hasError && (
-                  <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-                    !
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+              </TabsTrigger>
+            ))}
+          </TabsList>
 
-        <form className="space-y-4" onSubmit={handleFormSubmit}>
-          {/* ── ESENCIAL: Datos básicos + Regional ──────────────────── */}
-          {activeSection === 'esencial' && (
-            <div className="rounded-[24px] border border-gray-100 bg-white p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)] dark:border-dark-border dark:bg-dark-surface-2">
-              <p className={`mb-4 ${SUBSECTION_LABEL}`}>Datos de la empresa</p>
+          <form className="mt-4 space-y-4" onSubmit={handleSubmit(onSubmit, onInvalid)}>
+            {/* ── ESENCIAL: Datos básicos + Regional ──────────────────── */}
+            <TabsContent value="esencial" className="mt-0">
+              <FormPanel>
+                <FormSectionTitle className="mb-4">Datos de la empresa</FormSectionTitle>
 
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="tenant-name" className={LABEL_CLASS}>
-                      Nombre comercial <span className="text-red-500">*</span>
-                    </label>
-                    <input
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Input
                       id="tenant-name"
-                      className={INPUT_CLASS}
+                      label="Nombre comercial"
+                      requiredIndicator
                       placeholder="ISP Colombia S.A.S"
                       {...register('name')}
                       onChange={(event) => {
@@ -527,76 +417,53 @@ export function TenantCreateForm() {
                           setValue('slug', slugify(value));
                         }
                       }}
+                      {...fieldError(errors.name?.message)}
                     />
-                    {errors.name && <p className={ERROR_CLASS}>{errors.name.message}</p>}
-                  </div>
 
-                  <div>
-                    <label htmlFor="tenant-slug" className={LABEL_CLASS}>
-                      Identificador (slug) <span className="text-red-500">*</span>
-                    </label>
-                    <input
+                    <Input
                       id="tenant-slug"
-                      className={INPUT_CLASS}
+                      label="Identificador (slug)"
+                      requiredIndicator
                       placeholder="isp-colombia"
+                      helperText="Solo minúsculas, números y guiones. Permanente."
                       {...register('slug')}
+                      {...fieldError(errors.slug?.message)}
                     />
-                    <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                      Solo minúsculas, números y guiones. Permanente.
-                    </p>
-                    {errors.slug && <p className={ERROR_CLASS}>{errors.slug.message}</p>}
                   </div>
-                </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="tenant-contact-email" className={LABEL_CLASS}>
-                      Email de contacto <span className="text-red-500">*</span>
-                    </label>
-                    <input
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Input
                       id="tenant-contact-email"
                       type="email"
-                      className={INPUT_CLASS}
+                      label="Email de contacto"
+                      requiredIndicator
                       placeholder="admin@empresa.co"
+                      helperText="Contacto empresarial principal."
                       {...register('contactEmail')}
+                      {...fieldError(errors.contactEmail?.message)}
                     />
-                    <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                      Contacto empresarial principal.
-                    </p>
-                    {errors.contactEmail && (
-                      <p className={ERROR_CLASS}>{errors.contactEmail.message}</p>
-                    )}
-                  </div>
 
-                  <div>
-                    <label htmlFor="tenant-max-subscribers" className={LABEL_CLASS}>
-                      Máximo suscriptores
-                    </label>
-                    <input
+                    <Input
                       id="tenant-max-subscribers"
                       type="number"
                       min={0}
-                      className={INPUT_CLASS}
-                      {...register('maxSubscribers', { valueAsNumber: true })}
+                      label="Máximo suscriptores"
+                      helperText="Déjalo en blanco para no aplicar límite. Usa 0 para bloquear nuevos suscriptores."
+                      {...register('maxSubscribers', { setValueAs: numberOrNull })}
                     />
-                    <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">0 = sin límite.</p>
                   </div>
-                </div>
 
-                <hr className="border-gray-100 dark:border-dark-border" />
-                <p className={SUBSECTION_LABEL}>Configuración regional</p>
+                  <hr className="border-gray-100 dark:border-dark-border" />
+                  <FormSectionTitle>Configuración regional</FormSectionTitle>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="tenant-timezone" className={LABEL_CLASS}>
-                      Zona horaria
-                    </label>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <Controller
                       control={control}
                       name="timezone"
                       render={({ field, fieldState }) => (
                         <Select
                           id="tenant-timezone"
+                          label="Zona horaria"
                           options={TIMEZONE_OPTIONS}
                           value={field.value}
                           name={field.name}
@@ -607,18 +474,14 @@ export function TenantCreateForm() {
                         />
                       )}
                     />
-                  </div>
 
-                  <div>
-                    <label htmlFor="tenant-currency" className={LABEL_CLASS}>
-                      Moneda
-                    </label>
                     <Controller
                       control={control}
                       name="currency"
                       render={({ field, fieldState }) => (
                         <Select
                           id="tenant-currency"
+                          label="Moneda"
                           options={CURRENCY_OPTIONS}
                           value={field.value}
                           name={field.name}
@@ -630,19 +493,15 @@ export function TenantCreateForm() {
                       )}
                     />
                   </div>
-                </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="tenant-language" className={LABEL_CLASS}>
-                      Idioma
-                    </label>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <Controller
                       control={control}
                       name="language"
                       render={({ field, fieldState }) => (
                         <Select
                           id="tenant-language"
+                          label="Idioma"
                           options={LANGUAGE_OPTIONS}
                           value={field.value}
                           name={field.name}
@@ -653,18 +512,14 @@ export function TenantCreateForm() {
                         />
                       )}
                     />
-                  </div>
 
-                  <div>
-                    <label htmlFor="tenant-country" className={LABEL_CLASS}>
-                      País operativo
-                    </label>
                     <Controller
                       control={control}
                       name="country"
                       render={({ field, fieldState }) => (
                         <Select
                           id="tenant-country"
+                          label="País operativo"
                           options={COUNTRY_OPTIONS}
                           value={field.value}
                           name={field.name}
@@ -676,87 +531,58 @@ export function TenantCreateForm() {
                       )}
                     />
                   </div>
-                </div>
 
-                <hr className="border-gray-100 dark:border-dark-border" />
-                <p className={SUBSECTION_LABEL}>Seguridad</p>
+                  <hr className="border-gray-100 dark:border-dark-border" />
+                  <FormSectionTitle>Seguridad</FormSectionTitle>
 
-                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-3 dark:border-dark-border dark:bg-dark-surface-3">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5 h-4 w-4 rounded border-gray-300 accent-iwana-primary"
+                  <CheckboxCard
+                    label="Requerir verificación en dos pasos (MFA) a todos los usuarios"
+                    description="Cada usuario será redirigido al setup MFA en su primer ingreso."
                     {...register('mfaRequiredAll')}
                   />
-                  <div>
-                    <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
-                      Requerir verificación en dos pasos (MFA) a todos los usuarios
-                    </p>
-                    <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
-                      Cada usuario será redirigido al setup MFA en su primer ingreso.
-                    </p>
-                  </div>
-                </label>
-              </div>
-            </div>
-          )}
+                </div>
+              </FormPanel>
+            </TabsContent>
 
-          {/* ── EMPRESA: Datos legales + Dirección ──────────────────── */}
-          {activeSection === 'empresa' && (
-            <div className="rounded-[24px] border border-gray-100 bg-white p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)] dark:border-dark-border dark:bg-dark-surface-2">
-              <p className={`mb-4 ${SUBSECTION_LABEL}`}>Datos legales</p>
+            {/* ── EMPRESA: Datos legales + Dirección ──────────────────── */}
+            <TabsContent value="empresa" className="mt-0">
+              <FormPanel>
+                <FormSectionTitle className="mb-4">Datos legales</FormSectionTitle>
 
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="tenant-legal-name" className={LABEL_CLASS}>
-                    Razón social (Cámara de Comercio)
-                  </label>
-                  <input
+                <div className="space-y-4">
+                  <Input
                     id="tenant-legal-name"
-                    className={INPUT_CLASS}
+                    label="Razón social (Cámara de Comercio)"
                     placeholder="ISP Colombia S.A.S"
                     {...register('legalName')}
+                    {...fieldError(errors.legalName?.message)}
                   />
-                  {errors.legalName && <p className={ERROR_CLASS}>{errors.legalName.message}</p>}
-                </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-[2fr_1fr]">
-                  <div>
-                    <label htmlFor="tenant-nit" className={LABEL_CLASS}>
-                      NIT
-                    </label>
-                    <input
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-[2fr_1fr]">
+                    <Input
                       id="tenant-nit"
-                      className={INPUT_CLASS}
+                      label="NIT"
                       placeholder="900123456"
                       {...register('nit')}
+                      {...fieldError(errors.nit?.message)}
                     />
-                    {errors.nit && <p className={ERROR_CLASS}>{errors.nit.message}</p>}
-                  </div>
-                  <div>
-                    <label htmlFor="tenant-nit-dv" className={LABEL_CLASS}>
-                      DV
-                    </label>
-                    <input
+                    <Input
                       id="tenant-nit-dv"
-                      className={INPUT_CLASS}
+                      label="DV"
                       maxLength={1}
                       placeholder="0"
                       {...register('nitDv')}
+                      {...fieldError(errors.nitDv?.message)}
                     />
-                    {errors.nitDv && <p className={ERROR_CLASS}>{errors.nitDv.message}</p>}
                   </div>
-                </div>
 
-                <div>
-                  <label htmlFor="tenant-company-type" className={LABEL_CLASS}>
-                    Tipo de empresa
-                  </label>
                   <Controller
                     control={control}
                     name="companyType"
                     render={({ field, fieldState }) => (
                       <Select
                         id="tenant-company-type"
+                        label="Tipo de empresa"
                         options={COMPANY_TYPE_OPTIONS}
                         value={field.value ?? ''}
                         name={field.name}
@@ -767,166 +593,122 @@ export function TenantCreateForm() {
                       />
                     )}
                   />
-                </div>
 
-                <hr className="border-gray-100 dark:border-dark-border" />
-                <p className={SUBSECTION_LABEL}>Dirección física</p>
+                  <hr className="border-gray-100 dark:border-dark-border" />
+                  <FormSectionTitle>Dirección física</FormSectionTitle>
 
-                <div>
-                  <label htmlFor="tenant-address" className={LABEL_CLASS}>
-                    Dirección completa
-                  </label>
-                  <input
+                  <Input
                     id="tenant-address"
-                    className={INPUT_CLASS}
+                    label="Dirección completa"
                     placeholder="Calle 100 # 50-20"
                     {...register('address')}
+                    {...fieldError(errors.address?.message)}
                   />
-                  {errors.address && <p className={ERROR_CLASS}>{errors.address.message}</p>}
-                </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="tenant-city" className={LABEL_CLASS}>
-                      Ciudad
-                    </label>
-                    <input
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Input
                       id="tenant-city"
-                      className={INPUT_CLASS}
+                      label="Ciudad"
                       placeholder="Bogotá"
                       {...register('city')}
+                      {...fieldError(errors.city?.message)}
                     />
-                    {errors.city && <p className={ERROR_CLASS}>{errors.city.message}</p>}
-                  </div>
-                  <div>
-                    <label htmlFor="tenant-department" className={LABEL_CLASS}>
-                      Departamento
-                    </label>
-                    <input
+                    <Input
                       id="tenant-department"
-                      className={INPUT_CLASS}
+                      label="Departamento"
                       placeholder="Cundinamarca"
                       {...register('department')}
+                      {...fieldError(errors.department?.message)}
                     />
-                    {errors.department && (
-                      <p className={ERROR_CLASS}>{errors.department.message}</p>
-                    )}
                   </div>
-                </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_2fr]">
-                  <div>
-                    <label htmlFor="tenant-country-code" className={LABEL_CLASS}>
-                      País (ISO)
-                    </label>
-                    <input
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_2fr]">
+                    <Input
                       id="tenant-country-code"
-                      className={INPUT_CLASS}
+                      label="País (ISO)"
                       maxLength={2}
                       placeholder="CO"
                       {...register('countryCode')}
+                      {...fieldError(errors.countryCode?.message)}
                     />
-                    {errors.countryCode && (
-                      <p className={ERROR_CLASS}>{errors.countryCode.message}</p>
-                    )}
-                  </div>
-                  <div>
-                    <label htmlFor="tenant-postal-code" className={LABEL_CLASS}>
-                      Código postal
-                    </label>
-                    <input
+                    <Input
                       id="tenant-postal-code"
-                      className={INPUT_CLASS}
+                      label="Código postal"
                       placeholder="110111"
                       {...register('postalCode')}
+                      {...fieldError(errors.postalCode?.message)}
                     />
-                    {errors.postalCode && (
-                      <p className={ERROR_CLASS}>{errors.postalCode.message}</p>
-                    )}
                   </div>
-                </div>
 
-                <div>
-                  <label htmlFor="tenant-coordinates" className={LABEL_CLASS}>
-                    Coordenadas GPS{' '}
-                    <span className="text-xs font-normal text-gray-400">(lat,lng)</span>
-                  </label>
-                  <input
+                  <Input
                     id="tenant-coordinates"
-                    className={INPUT_CLASS}
+                    label={
+                      <>
+                        Coordenadas GPS{' '}
+                        <span className="text-xs font-normal text-gray-400">(lat,lng)</span>
+                      </>
+                    }
                     placeholder="4.6097,-74.0817"
                     {...register('coordinates')}
+                    {...fieldError(errors.coordinates?.message)}
                   />
-                  {errors.coordinates && (
-                    <p className={ERROR_CLASS}>{errors.coordinates.message}</p>
-                  )}
                 </div>
-              </div>
-            </div>
-          )}
+              </FormPanel>
+            </TabsContent>
 
-          {/* ── CONTACTO ────────────────────────────────────────────── */}
-          {activeSection === 'contacto' && (
-            <div className="rounded-[24px] border border-gray-100 bg-white p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)] dark:border-dark-border dark:bg-dark-surface-2">
-              <p className={`mb-4 ${SUBSECTION_LABEL}`}>Contacto adicional</p>
+            {/* ── CONTACTO ────────────────────────────────────────────── */}
+            <TabsContent value="contacto" className="mt-0">
+              <FormPanel>
+                <FormSectionTitle className="mb-4">Contacto adicional</FormSectionTitle>
 
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="tenant-phone" className={LABEL_CLASS}>
-                      Teléfono principal
-                    </label>
-                    <input
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Input
                       id="tenant-phone"
                       type="tel"
-                      className={INPUT_CLASS}
+                      label="Teléfono principal"
                       placeholder="3001234567"
                       {...register('phone')}
+                      {...fieldError(errors.phone?.message)}
                     />
-                    {errors.phone && <p className={ERROR_CLASS}>{errors.phone.message}</p>}
-                  </div>
-                  <div>
-                    <label htmlFor="tenant-website" className={LABEL_CLASS}>
-                      Sitio web
-                    </label>
-                    <input
+                    <Input
                       id="tenant-website"
                       type="url"
-                      className={INPUT_CLASS}
+                      label="Sitio web"
                       placeholder="https://mi-isp.com"
                       {...register('website')}
+                      {...fieldError(errors.website?.message)}
                     />
-                    {errors.website && <p className={ERROR_CLASS}>{errors.website.message}</p>}
                   </div>
-                </div>
 
-                <div className="sm:w-1/2">
-                  <label htmlFor="tenant-economic-sector" className={LABEL_CLASS}>
-                    Código CIIU{' '}
-                    <span className="text-xs font-normal text-gray-400">(sector económico)</span>
-                  </label>
-                  <input
+                  <Input
                     id="tenant-economic-sector"
-                    className={INPUT_CLASS}
+                    containerClassName="sm:w-1/2"
+                    label={
+                      <>
+                        Código CIIU{' '}
+                        <span className="text-xs font-normal text-gray-400">
+                          (sector económico)
+                        </span>
+                      </>
+                    }
                     placeholder="6110"
                     {...register('economicSector')}
+                    {...fieldError(errors.economicSector?.message)}
                   />
-                  {errors.economicSector && (
-                    <p className={ERROR_CLASS}>{errors.economicSector.message}</p>
-                  )}
                 </div>
-              </div>
-            </div>
-          )}
+              </FormPanel>
+            </TabsContent>
 
-          <Button type="submit" className="w-full" loading={isSubmitting || isPolling}>
-            Crear empresa
-          </Button>
-        </form>
+            <Button type="submit" size="lg" className="w-full" loading={isSubmitting || isPolling}>
+              Crear empresa
+            </Button>
+          </form>
+        </Tabs>
 
         {/* Acciones post-creación */}
         {createdTenant && (
-          <div className="rounded-[24px] border border-gray-100 bg-white p-4 shadow-[0_4px_24px_rgba(0,0,0,0.04)] dark:border-dark-border dark:bg-dark-surface-2">
+          <FormPanel className="p-4">
             <p className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-200">
               <strong className="text-gray-900 dark:text-white">{createdTenant.name}</strong>
               {' — '}
@@ -955,7 +737,7 @@ export function TenantCreateForm() {
                 El provisioning falló. Revisa logs del worker.
               </p>
             )}
-          </div>
+          </FormPanel>
         )}
       </div>
 

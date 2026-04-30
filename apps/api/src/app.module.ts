@@ -22,6 +22,7 @@ import { CrmModule } from './modules/crm/crm.module';
 import { CommercialModule } from './modules/commercial/commercial.module';
 import { TaxationModule } from './modules/taxation/taxation.module';
 import { PartiesModule } from './modules/parties/parties.module';
+import { MediaModule } from './modules/media/media.module';
 
 const runtimeEnv = process.env['NODE_ENV'];
 const apiDevelopmentLocalEnvPath = resolve(__dirname, '../../../.env.development.local');
@@ -137,6 +138,17 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
           SMTP_SECURE: Joi.boolean().optional(),
           // URL del frontend — usada para construir enlaces en correos (forgot password, etc.)
           FRONTEND_URL: Joi.string().uri().optional(),
+          // Storage (ADR-033): driver 'minio' en prod, 'local' solo en dev
+          STORAGE_DRIVER: Joi.string().valid('minio', 'local').default('local'),
+          S3_ENDPOINT: Joi.string().uri().optional(),
+          S3_REGION: Joi.string().default('us-east-1'),
+          S3_ACCESS_KEY_ID: Joi.string().allow('').optional(),
+          S3_SECRET_ACCESS_KEY: Joi.string().allow('').optional(),
+          S3_BUCKET: Joi.string().default('iwana-media'),
+          S3_FORCE_PATH_STYLE: Joi.boolean().default(true),
+          S3_USE_SSL: Joi.boolean().default(false),
+          S3_PUBLIC_BASE_URL: Joi.string().uri().optional(),
+          S3_BUCKET_PUBLIC: Joi.boolean().default(false),
         }),
         validationOptions: { abortEarly: false },
       }),
@@ -229,6 +241,9 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
 
     // Modulo Parties (MOD08): gestión unificada de terceros — parties, roles, contactos
     PartiesModule,
+
+    // Módulo Media (MOD03): subida, almacenamiento y gestión de assets de branding
+    MediaModule,
   ],
   controllers: [],
   providers: [

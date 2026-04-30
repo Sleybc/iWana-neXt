@@ -1,12 +1,28 @@
 // apps/web/src/components/dashboard/TenantsTable.tsx
 'use client';
-import type React from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Card, CardHeader, CardTitle, CardContent, Select } from '@iwana/ui';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  Input,
+  Select,
+} from '@iwana/ui';
 import { Search, ChevronUp, ChevronDown, ChevronsUpDown, MoreHorizontal } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
-type TenantStatus = 'ACTIVE' | 'PROVISIONING' | 'PROVISIONING_FAILED' | 'SUSPENDED' | 'INACTIVE';
+type TenantStatus =
+  | 'ACTIVE'
+  | 'PROVISIONING'
+  | 'PROVISIONING_FAILED'
+  | 'SUSPENDED'
+  | 'INACTIVE'
+  | 'MARKED_FOR_DELETION';
 type SortField = 'name' | 'status' | 'createdAt';
 type SortDir = 'asc' | 'desc';
 
@@ -41,6 +57,8 @@ const statusPillClasses: Record<TenantStatus, string> = {
     'rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 dark:bg-white/[0.03] dark:text-gray-400',
   INACTIVE:
     'rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 dark:bg-white/[0.03] dark:text-gray-400',
+  MARKED_FOR_DELETION:
+    'rounded-full px-2.5 py-0.5 text-xs font-medium bg-error-50 text-error-700 dark:bg-error-500/15 dark:text-error-400',
 };
 
 /** Etiquetas legibles por estado de tenant. */
@@ -50,6 +68,7 @@ const statusLabels: Record<TenantStatus, string> = {
   PROVISIONING_FAILED: 'Error provisión',
   SUSPENDED: 'Suspendido',
   INACTIVE: 'Inactivo',
+  MARKED_FOR_DELETION: 'En eliminación',
 };
 
 const ALL_STATUSES = 'TODAS' as const;
@@ -87,9 +106,6 @@ function SortIcon({
   );
 }
 
-/** Dropdown de acciones por fila (3 puntos). Implementado con estado local sin librerías extra.
- *  Usa position:fixed calculado desde getBoundingClientRect para escapar de contenedores
- *  con overflow:hidden (como el wrapper de la tabla con bordes redondeados). */
 function ActionsDropdown({
   tenantId,
   tenantStatus,
@@ -103,139 +119,48 @@ function ActionsDropdown({
   onActivate?: (id: string) => void;
   onRetryProvisioning?: (id: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
-  // Calcular posición fixed del menú relativa al viewport al momento de abrirlo
-  const handleToggle = () => {
-    if (!open && buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      const menuWidth = 192; // w-48
-      const menuHeight = 160; // estimado para 3-4 items
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const top = spaceBelow < menuHeight ? rect.top - menuHeight - 4 : rect.bottom + 4;
-      const left = rect.right - menuWidth;
-      setMenuStyle({ position: 'fixed', top, left, zIndex: 9999 });
-    }
-    setOpen((prev) => !prev);
-  };
-
-  // Cerrar el dropdown al hacer clic fuera
-  useEffect(() => {
-    if (!open) return;
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (
-        menuRef.current &&
-        !menuRef.current.contains(e.target as Node) &&
-        buttonRef.current &&
-        !buttonRef.current.contains(e.target as Node)
-      ) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, [open]);
-
-  // Cerrar al presionar Escape
-  useEffect(() => {
-    if (!open) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [open]);
-
   const canSuspend = tenantStatus === 'ACTIVE' && !!onSuspend;
-  const canActivate = (tenantStatus === 'SUSPENDED' || tenantStatus === 'INACTIVE') && !!onActivate;
+  const canActivate =
+    (tenantStatus === 'SUSPENDED' ||
+      tenantStatus === 'INACTIVE' ||
+      tenantStatus === 'MARKED_FOR_DELETION') &&
+    !!onActivate;
   const canRetry =
     (tenantStatus === 'PROVISIONING_FAILED' || tenantStatus === 'PROVISIONING') &&
     !!onRetryProvisioning;
 
   return (
-    <div className="inline-block text-left">
-      <button
-        ref={buttonRef}
-        type="button"
-        aria-label="Abrir menú de acciones"
-        aria-haspopup="true"
-        onClick={handleToggle}
-        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:text-gray-300 dark:hover:bg-dark-surface-4 transition-colors"
-      >
+    <DropdownMenu>
+      <DropdownMenuTrigger aria-label="Abrir menú de acciones">
         <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
-      </button>
+      </DropdownMenuTrigger>
 
-      {open && (
-        <div
-          ref={menuRef}
-          role="menu"
-          style={menuStyle}
-          className="w-48 rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-dark-surface-2"
-        >
-          {/* Ver configuración — siempre disponible */}
-          <button
-            role="menuitem"
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              router.push(`/tenants/${tenantId}/settings`);
-            }}
-            className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-dark-surface-3 rounded-t-xl last:rounded-b-xl transition-colors"
-          >
-            Ver configuración
-          </button>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => router.push(`/tenants/${tenantId}/settings`)}>
+          Ver configuración
+        </DropdownMenuItem>
 
-          {/* Suspender — solo si está ACTIVE */}
-          {canSuspend && (
-            <button
-              role="menuitem"
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                onSuspend!(tenantId);
-              }}
-              className="w-full px-4 py-2.5 text-left text-sm text-error-700 hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10 last:rounded-b-xl transition-colors"
-            >
-              Suspender
-            </button>
-          )}
+        {canSuspend && (
+          <DropdownMenuItem variant="danger" onClick={() => onSuspend!(tenantId)}>
+            Suspender
+          </DropdownMenuItem>
+        )}
 
-          {/* Reactivar — solo si está SUSPENDED o INACTIVE */}
-          {canActivate && (
-            <button
-              role="menuitem"
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                onActivate!(tenantId);
-              }}
-              className="w-full px-4 py-2.5 text-left text-sm text-success-700 hover:bg-success-50 dark:text-success-400 dark:hover:bg-success-500/10 last:rounded-b-xl transition-colors"
-            >
-              Reactivar
-            </button>
-          )}
+        {canActivate && (
+          <DropdownMenuItem variant="success" onClick={() => onActivate!(tenantId)}>
+            {tenantStatus === 'MARKED_FOR_DELETION' ? 'Restaurar' : 'Reactivar'}
+          </DropdownMenuItem>
+        )}
 
-          {/* Reintentar — solo si está FAILED o PROVISIONING */}
-          {canRetry && (
-            <button
-              role="menuitem"
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                onRetryProvisioning!(tenantId);
-              }}
-              className="w-full px-4 py-2.5 text-left text-sm text-warning-700 hover:bg-warning-50 dark:text-warning-400 dark:hover:bg-warning-500/10 last:rounded-b-xl transition-colors"
-            >
-              Reintentar provisioning
-            </button>
-          )}
-        </div>
-      )}
-    </div>
+        {canRetry && (
+          <DropdownMenuItem variant="warning" onClick={() => onRetryProvisioning!(tenantId)}>
+            Reintentar provisioning
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -301,20 +226,16 @@ export function TenantsTable({
         {/* Toolbar: búsqueda + filtro */}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           {/* Buscador */}
-          <div className="relative">
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
-              aria-hidden="true"
-            />
-            <input
-              type="search"
-              aria-label="Buscar tenant"
-              placeholder="Buscar por nombre o slug..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-9 w-full sm:w-56 rounded-lg border border-gray-200 bg-gray-50 pl-9 pr-3 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:border-iwana-primary focus:ring-2 focus:ring-iwana-primary/20 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-200 dark:placeholder:text-gray-500"
-            />
-          </div>
+          <Input
+            type="search"
+            aria-label="Buscar empresa"
+            placeholder="Buscar por nombre o slug..."
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            containerClassName="sm:w-56"
+            className="h-9 rounded-lg bg-gray-50 text-gray-700 dark:text-gray-200"
+            startIcon={<Search className="h-4 w-4" />}
+          />
 
           {/* Filtro de estado */}
           <div className="w-full sm:w-[210px]">

@@ -96,10 +96,18 @@ describe('TenantProvisioningProcessor - Migration Features', () => {
       expect(hash1).not.toBe(hash2);
     });
 
-    it('returns positive number', () => {
+    it('returns a signed int4-compatible number', () => {
       const processor = createProcessor();
       const hash = (processor as any).hashSchemaName('tenant_test');
-      expect(hash).toBeGreaterThan(0);
+      expect(hash).toBeGreaterThanOrEqual(-2147483648);
+      expect(hash).toBeLessThanOrEqual(2147483647);
+    });
+
+    it('keeps large unsigned hashes inside PostgreSQL int4 range', () => {
+      const processor = createProcessor();
+      const hash = (processor as any).hashSchemaName('tenant_empresa_e2e_mcp_20260430_1153');
+      expect(hash).toBeGreaterThanOrEqual(-2147483648);
+      expect(hash).toBeLessThanOrEqual(2147483647);
     });
   });
 

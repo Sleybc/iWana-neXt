@@ -45,15 +45,17 @@ export class CreateTenantDto {
   @IsInt()
   @Min(0)
   @IsOptional()
-  maxSubscribers?: number;
+  maxSubscribers?: number | null;
 
   /**
    * Configuracion inicial del tenant.
    * Ejemplo: { timezone: 'America/Bogota', currency: 'COP' }
-   * Los campos se validan via CreateTenantSettingsDto en el servicio.
+   * Se valida en el boundary HTTP para impedir claves arbitrarias en settings.
    */
   @IsOptional()
-  settings?: Record<string, unknown>;
+  @ValidateNested()
+  @Type(() => CreateTenantSettingsDto)
+  settings?: CreateTenantSettingsDto;
 
   // ── Datos legales (opcionales) ────────────────────────────────────────────
 
@@ -160,7 +162,7 @@ export class UpdateTenantDto {
   @IsInt()
   @Min(0)
   @IsOptional()
-  maxSubscribers?: number;
+  maxSubscribers?: number | null;
 
   @IsOptional()
   settings?: Record<string, unknown>;
@@ -247,7 +249,7 @@ export class TenantResponseDto {
   schemaName: string;
   status: TenantStatus;
   contactEmail: string;
-  maxSubscribers: number;
+  maxSubscribers: number | null;
   settings: Record<string, unknown>;
   // Datos legales
   legalName: string | null;
@@ -265,6 +267,24 @@ export class TenantResponseDto {
   phone: string | null;
   website: string | null;
   economicSector: string | null;
+  // Branding
+  logoLightUrl: string | null;
+  logoLightAssetId: string | null;
+  logoDarkUrl: string | null;
+  logoDarkAssetId: string | null;
+  sealLightUrl: string | null;
+  sealLightAssetId: string | null;
+  sealDarkUrl: string | null;
+  sealDarkAssetId: string | null;
+  faviconLightUrl: string | null;
+  faviconLightAssetId: string | null;
+  faviconDarkUrl: string | null;
+  faviconDarkAssetId: string | null;
+  loginBackgroundLightUrl: string | null;
+  loginBackgroundLightAssetId: string | null;
+  loginBackgroundDarkUrl: string | null;
+  loginBackgroundDarkAssetId: string | null;
+  showTenantName: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

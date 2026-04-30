@@ -27,7 +27,7 @@ import { TenantService } from './tenant.service';
  * - Fallback transitorio para auth publico → header X-Tenant-Slug
  *
  * Rechaza con 404 si el tenant no existe.
- * Rechaza con 403 si el tenant esta SUSPENDED o INACTIVE.
+ * Rechaza con 403 si el tenant esta SUSPENDED, INACTIVE o MARKED_FOR_DELETION.
  *
  * NOTA: Este middleware NO debe aplicarse a los endpoints de administracion
  * de tenants (/api/v1/tenants) ya que esos operan en el schema publico
@@ -103,12 +103,12 @@ export class TenantMiddleware implements NestMiddleware {
     const requestPath = (req.originalUrl || req.url || '').split('?')[0] ?? '';
     const normalizedPath = requestPath.replace(/^\/api\/v1/, '');
 
-    return req.method === 'POST' && [
-      '/auth/login',
-      '/auth/refresh',
-      '/auth/forgot-password',
-      '/auth/reset-password',
-    ].includes(normalizedPath);
+    return (
+      req.method === 'POST' &&
+      ['/auth/login', '/auth/refresh', '/auth/forgot-password', '/auth/reset-password'].includes(
+        normalizedPath,
+      )
+    );
   }
 
   private runWithTenantContext(
@@ -137,6 +137,10 @@ export class TenantMiddleware implements NestMiddleware {
 
     if (tenantStatus === TenantStatus.INACTIVE) {
       throw new ForbiddenException(`El tenant "${tenantSlug}" esta inactivo.`);
+    }
+
+    if (tenantStatus === TenantStatus.MARKED_FOR_DELETION) {
+      throw new ForbiddenException(`El tenant "${tenantSlug}" esta marcado para eliminacion.`);
     }
   }
 }

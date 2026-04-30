@@ -6,6 +6,7 @@ import { Tenant } from '@iwana/db';
 import { CompanyType, TenantStatus } from '@iwana/shared';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { AuditService } from '../audit/audit.service';
+import { MediaService } from '../media/media.service';
 import { TenantService } from './tenant.service';
 import { CreateTenantDto, UpdateTenantDto } from './dto/tenant.dto';
 
@@ -46,9 +47,22 @@ function buildTenant(overrides: Partial<Tenant> = {}): Tenant {
     logoDarkUrl: null,
     sealLightUrl: null,
     sealDarkUrl: null,
+    faviconLightUrl: null,
+    faviconDarkUrl: null,
+    loginBackgroundLightUrl: null,
+    loginBackgroundDarkUrl: null,
+    logoLightAssetId: null,
+    logoDarkAssetId: null,
+    sealLightAssetId: null,
+    sealDarkAssetId: null,
+    faviconLightAssetId: null,
+    faviconDarkAssetId: null,
+    loginBackgroundLightAssetId: null,
+    loginBackgroundDarkAssetId: null,
     showTenantName: true,
     createdAt: new Date('2026-03-12T00:00:00Z'),
     updatedAt: new Date('2026-03-12T00:00:00Z'),
+    deletedAt: null,
   };
   return { ...base, ...overrides };
 }
@@ -82,13 +96,33 @@ describe('TenantService', () => {
   let auditServiceMock: {
     log: jest.Mock;
   };
+  let mediaServiceMock: {
+    findOne: jest.Mock;
+    softDelete: jest.Mock;
+    upload: jest.Mock;
+  };
+  let queryBuilder: {
+    orderBy: jest.Mock;
+    take: jest.Mock;
+    skip: jest.Mock;
+    andWhere: jest.Mock;
+    getManyAndCount: jest.Mock;
+  };
 
   beforeEach(async () => {
+    queryBuilder = {
+      orderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getManyAndCount: jest.fn(),
+    };
     const mockRepo = {
       create: jest.fn(),
       save: jest.fn(),
       findOne: jest.fn(),
       findAndCount: jest.fn(),
+      createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
     };
     queryRunner = {
       connect: jest.fn().mockResolvedValue(undefined),
@@ -116,6 +150,11 @@ describe('TenantService', () => {
     auditServiceMock = {
       log: jest.fn().mockResolvedValue(undefined),
     };
+    mediaServiceMock = {
+      findOne: jest.fn(),
+      softDelete: jest.fn(),
+      upload: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -135,6 +174,10 @@ describe('TenantService', () => {
         {
           provide: AuditService,
           useValue: auditServiceMock,
+        },
+        {
+          provide: MediaService,
+          useValue: mediaServiceMock,
         },
       ],
     }).compile();
@@ -210,7 +253,14 @@ describe('TenantService', () => {
 
       expect(repo.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          settings: { timezone: 'America/Bogota', currency: 'COP' },
+          maxSubscribers: null,
+          settings: {
+            timezone: 'America/Bogota',
+            currency: 'COP',
+            language: 'es-CO',
+            country: 'CO',
+            features: { billing: false, mfa_required_all: false },
+          },
         }),
       );
     });
@@ -300,6 +350,27 @@ describe('TenantService', () => {
       expect(repo.findAndCount).toHaveBeenCalledWith(
         expect.objectContaining({ take: 10, skip: 20 }),
       );
+    });
+
+    it('aplica filtros operativos de status y busqueda cuando se proporcionan', async () => {
+      const tenant = buildTenant({ status: TenantStatus.ACTIVE });
+      queryBuilder.getManyAndCount.mockResolvedValue([[tenant], 1]);
+
+      const result = await service.findAll(25, 0, {
+        status: TenantStatus.ACTIVE,
+        search: 'isp-test',
+      });
+
+      expect(repo.createQueryBuilder).toHaveBeenCalledWith('tenant');
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith('tenant.status = :status', {
+        status: TenantStatus.ACTIVE,
+      });
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+        '(tenant.name ILIKE :search OR tenant.slug ILIKE :search OR tenant.contactEmail ILIKE :search)',
+        { search: '%isp-test%' },
+      );
+      expect(result.total).toBe(1);
+      expect(result.data[0]?.status).toBe(TenantStatus.ACTIVE);
     });
   });
 
@@ -419,33 +490,42 @@ describe('TenantService', () => {
 
   describe('activate()', () => {
     it('marca el tenant como ACTIVE e invalida el cache', async () => {
-      const tenant = buildTenant({ status: TenantStatus.SUSPENDED });
+      const tenant = buildTenant({
+        status: TenantStatus.MARKED_FOR_DELETION,
+        deletedAt: new Date(),
+      });
       repo.findOne.mockResolvedValue(tenant);
-      repo.save.mockResolvedValue({ ...tenant, status: TenantStatus.ACTIVE });
+      repo.save.mockResolvedValue({ ...tenant, status: TenantStatus.ACTIVE, deletedAt: null });
 
       const result = await service.activate('tenant-uuid-001');
 
       expect(result.status).toBe(TenantStatus.ACTIVE);
+      expect(repo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ status: TenantStatus.ACTIVE, deletedAt: null }),
+      );
       expect(redis.del).toHaveBeenCalledWith('tenant:id:tenant-uuid-001', 'tenant:slug:isp-test');
     });
   });
 
   describe('delete()', () => {
-    it('elimina el schema y el registro del tenant en una transaccion', async () => {
+    it('marca el tenant como MARKED_FOR_DELETION con deletedAt e invalida cache', async () => {
       const tenant = buildTenant({ status: TenantStatus.PROVISIONING_FAILED });
-      const manager = {
-        query: jest.fn().mockResolvedValue(undefined),
-        delete: jest.fn().mockResolvedValue({ affected: 1 }),
-      };
-
-      repo.findOne.mockResolvedValue(tenant);
-      dataSource.transaction.mockImplementation(async (callback) => callback(manager));
+      repo.findOne.mockResolvedValue({ ...tenant });
+      repo.save.mockImplementation(async (updated) => updated as Tenant);
 
       await service.delete(tenant.id);
 
-      expect(manager.query).toHaveBeenCalledWith('DROP SCHEMA IF EXISTS "tenant_isp_test" CASCADE');
-      expect(manager.delete).toHaveBeenCalledWith(Tenant, { id: tenant.id });
+      expect(repo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: TenantStatus.MARKED_FOR_DELETION,
+          deletedAt: expect.any(Date),
+        }),
+      );
+      expect(dataSource.transaction).not.toHaveBeenCalled();
       expect(redis.del).toHaveBeenCalledWith('tenant:id:tenant-uuid-001', 'tenant:slug:isp-test');
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'DELETE', entityType: 'Tenant' }),
+      );
     });
 
     it('lanza NotFoundException si el tenant no existe', async () => {
