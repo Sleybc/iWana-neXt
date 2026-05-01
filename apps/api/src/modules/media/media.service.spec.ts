@@ -4,7 +4,12 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { MediaAsset, MediaUsage } from '@iwana/db';
 import { STORAGE_PORT } from '@iwana/storage';
+import { imageSize } from 'image-size';
 import { MediaService } from './media.service';
+
+jest.mock('image-size', () => ({
+  imageSize: jest.fn(),
+}));
 
 /**
  * Factoría de MediaAsset para pruebas — sin PII real.
@@ -63,6 +68,11 @@ function buildMulterFile(overrides: Partial<MockMulterFile> = {}): Express.Multe
 
 describe('MediaService', () => {
   let service: MediaService;
+  const configMap: Record<string, unknown> = {
+    STORAGE_DRIVER: 'local',
+    S3_BUCKET_PUBLIC: 'false',
+    S3_PUBLIC_BASE_URL: undefined,
+  };
 
   const mockRepo = {
     create: jest.fn(),
@@ -82,15 +92,16 @@ describe('MediaService', () => {
 
   const mockConfig = {
     get: jest.fn((key: string, fallback?: unknown) => {
-      const map: Record<string, unknown> = {
-        S3_BUCKET_PUBLIC: 'false',
-      };
-      return map[key] ?? fallback;
+      return configMap[key] ?? fallback;
     }),
   };
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    (imageSize as jest.Mock).mockReturnValue({ width: 1600, height: 900 });
+    configMap.STORAGE_DRIVER = 'local';
+    configMap.S3_BUCKET_PUBLIC = 'false';
+    configMap.S3_PUBLIC_BASE_URL = undefined;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -111,6 +122,9 @@ describe('MediaService', () => {
       mockRepo.save.mockResolvedValue(saved);
       mockRepo.update.mockResolvedValue(undefined);
       mockStorage.putObject.mockResolvedValue(undefined);
+      mockStorage.getPublicUrl.mockReturnValue(
+        'http://localhost:3000/storage/tenant_test_isp/logo/00000000-0000-0000-0000-000000000001.png',
+      );
 
       const file = buildMulterFile();
       const result = await service.upload(
@@ -124,6 +138,38 @@ describe('MediaService', () => {
       expect(result.id).toBe(saved.id);
       expect(result.usage).toBe(MediaUsage.LOGO);
       expect(result.mimeType).toBe('image/png');
+      expect(result.publicUrl).toBe(
+        'http://localhost:3000/storage/tenant_test_isp/logo/00000000-0000-0000-0000-000000000001.png',
+      );
+    });
+
+    it('debe asignar publicUrl cuando existe S3_PUBLIC_BASE_URL aunque el bucket no sea público', async () => {
+      const saved = buildMediaAsset();
+      mockRepo.create.mockReturnValue(saved);
+      mockRepo.save.mockResolvedValue(saved);
+      mockRepo.update.mockResolvedValue(undefined);
+      mockStorage.putObject.mockResolvedValue(undefined);
+      mockStorage.getPublicUrl.mockReturnValue(
+        'https://cdn.example.test/tenant_test_isp/logo/00000000-0000-0000-0000-000000000001.png',
+      );
+      configMap.S3_BUCKET_PUBLIC = 'false';
+      configMap.S3_PUBLIC_BASE_URL = 'https://cdn.example.test';
+      configMap.STORAGE_DRIVER = 'minio';
+
+      const file = buildMulterFile();
+      const result = await service.upload(
+        'tenant_test_isp',
+        { usage: MediaUsage.LOGO, themeVariant: 'light' },
+        file,
+        'user-001',
+      );
+
+      expect(mockStorage.getPublicUrl).toHaveBeenCalledWith(
+        'tenant_test_isp/logo/00000000-0000-0000-0000-000000000001.png',
+      );
+      expect(result.publicUrl).toBe(
+        'https://cdn.example.test/tenant_test_isp/logo/00000000-0000-0000-0000-000000000001.png',
+      );
     });
 
     it('debe lanzar BadRequestException si el MIME type no es permitido para el uso', async () => {
@@ -146,6 +192,41 @@ describe('MediaService', () => {
       await expect(
         service.upload('tenant_test_isp', { usage: MediaUsage.LOGO }, file, 'user-001'),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('debe rechazar logo cuando la proporción no cumple las reglas de diseño', async () => {
+      const saved = buildMediaAsset();
+      mockRepo.create.mockReturnValue(saved);
+      mockRepo.save.mockResolvedValue(saved);
+      (imageSize as jest.Mock).mockReturnValue({ width: 300, height: 300 });
+
+      const file = buildMulterFile({ mimetype: 'image/png', size: 1024 });
+
+      await expect(
+        service.upload('tenant_test_isp', { usage: MediaUsage.LOGO }, file, 'user-001'),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockStorage.putObject).not.toHaveBeenCalled();
+    });
+
+    it('debe rechazar fondo de login con resolución menor a la mínima', async () => {
+      const saved = buildMediaAsset({ usage: MediaUsage.LOGIN_BACKGROUND });
+      mockRepo.create.mockReturnValue(saved);
+      mockRepo.save.mockResolvedValue(saved);
+      (imageSize as jest.Mock).mockReturnValue({ width: 1024, height: 600 });
+
+      const file = buildMulterFile({ mimetype: 'image/png', size: 4096 });
+
+      await expect(
+        service.upload(
+          'tenant_test_isp',
+          { usage: MediaUsage.LOGIN_BACKGROUND, themeVariant: 'light' },
+          file,
+          'user-001',
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockStorage.putObject).not.toHaveBeenCalled();
     });
 
     it('debe hacer rollback en BD si falla el storage', async () => {

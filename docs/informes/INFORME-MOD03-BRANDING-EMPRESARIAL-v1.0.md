@@ -2,8 +2,8 @@
 
 ## iWana neXt Platform — ISP/OSS/BSS Colombia
 
-**Version:** 1.4
-**Estado:** Vivo — Fase 03A cerrada, Fase 03B backend validada y Fase 03C frontend + QA focalizada ejecutada
+**Version:** 2.4
+**Estado:** Cerrado — alcance v2.1 ejecutado para branding propio de plataforma
 **Fecha de apertura:** 2026-04-30
 **Ultima actualización:** 2026-04-30
 **Modo activo:** Mixto
@@ -17,11 +17,11 @@
 
 | Artefacto | Referencia | Estado |
 |-----------|-----------|--------|
-| PRD v2 | [PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md](../prds/PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md) | **Aprobado** |
+| PRD v2.1 | [PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md](../prds/PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md) | **En revisión** |
 | HLD Media | [HLD-TRANSVERSAL-MEDIA-ASSETS-v1.0.md](../hlds/HLD-TRANSVERSAL-MEDIA-ASSETS-v1.0.md) | **Aprobado** |
-| ADR-033 Storage | [ADR-033-Storage-MinIO-StoragePort.md](../adrs/ADR-033-Storage-MinIO-StoragePort.md) | **Aprobado** |
+| ADR-035 Storage | [ADR-035-Storage-MinIO-StoragePort.md](../adrs/ADR-035-Storage-MinIO-StoragePort.md) | **Aprobado** |
 | ADR-034 Bounded Context | [ADR-034-Bounded-Context-Media-Assets.md](../adrs/ADR-034-Bounded-Context-Media-Assets.md) | **Aprobado** |
-| Plan | [PLAN-MOD03-BRANDING-EMPRESARIAL-FASE-03-v1.0.md](../plans/PLAN-MOD03-BRANDING-EMPRESARIAL-FASE-03-v1.0.md) | Vigente |
+| Plan | [PLAN-MOD03-BRANDING-EMPRESARIAL-FASE-03-v1.0.md](../plans/PLAN-MOD03-BRANDING-EMPRESARIAL-FASE-03-v1.0.md) | **v1.1 en revisión — agrega 03D** |
 | Runbook MinIO | [RUNBOOK-MEDIA-MINIO-v1.0.md](../runbooks/RUNBOOK-MEDIA-MINIO-v1.0.md) | **Creado** |
 | PROMPT 03A | [PROMPT-MOD03-BRANDING-FASE-03A-v1.0.md](../prompts/PROMPT-MOD03-BRANDING-FASE-03A-v1.0.md) | **Ejecutado** |
 | PROMPT 03B | [PROMPT-MOD03-BRANDING-FASE-03B-v1.0.md](../prompts/PROMPT-MOD03-BRANDING-FASE-03B-v1.0.md) | **Ejecutado (backend)** |
@@ -35,9 +35,10 @@
 |------|--------|-------|
 | Definicion | **Completa** | Brainstorming cerrado; 6 artefactos formales emitidos; ADRs y PRD aprobados |
 | 03A — Cimientos Media/Assets | **Cerrada** | Todos los entregables y DoD superados |
-| 03B — Backend Branding v2 | **Implementada** | Migración 009, DTOs híbridos, endpoints públicos y upload tenant-aware validados en dev |
-| 03C — Frontend web + portal | **Implementada** | Portal y web alineados al contrato híbrido; typecheck limpio; E2E pendiente |
-| Cierre | Pendiente | Tras DoD del modulo y gates de salida |
+| 03B — Backend Branding v2 | **Cerrada** | OpenAPI con ejemplos explícitos, unit tests y suites HTTP en verde |
+| 03C — Frontend web + portal | **Cerrada** | Portal y web alineados al contrato híbrido; typecheck limpio; E2E focalizada en verde |
+| 03D — Branding propio de plataforma | **Cerrada** | Persistencia real, API pública/admin, UI `/settings`, login administrativo y shell de `apps/web` conectados a backend |
+| Cierre | **Completo** | 03A-03D cerradas; alcance v2.1 ejecutado y validado con pruebas focalizadas + typecheck |
 
 ## 2. Hallazgos previos relevantes
 
@@ -60,20 +61,294 @@
 
 | Riesgo | Severidad | Estado |
 |--------|-----------|--------|
-| MOD03 podria estar cerrado y requerir excepcion | Media | Verificar con CTO antes de fase 03B |
-| MinIO no disponible en infra on-premise del cliente | Alta | Runbook de bootstrap + adapter local solo dev |
+| MOD03 podria estar cerrado y requerir excepcion | Media | Resuelto: CTO confirmó continuidad del módulo |
+| MinIO no disponible en infra on-premise del cliente | Alta | Mitigado con runbook de bootstrap + adapter local solo dev |
 | CRM expedientes en filesystem local | Baja (no en scope v1) | Deuda registrada, migracion futura a `MediaService` |
 | SVG malicioso | Alta | Mitigado por sanitization y restriccion a `branding.logo` |
 | Fuga cross-tenant en storage | Alta | Mitigado por prefijo `tenantSchema/` + AbacGuard + tests aislamiento |
+| Corridas focalizadas de cobertura en `apps/api` requieren rutas relativas a `rootDir=src` para evitar resúmenes `0/0` | Baja | Mitigado con scripts dedicados en `apps/api/package.json` |
 
-## 5. Decisiones que requieren CTO
+## 5. Estado de aprobaciones CTO
 
-- Aprobar ADR-033 (adopcion MinIO + StoragePort).
-- Aprobar ADR-034 (bounded context Media/Assets transversal).
-- Aprobar PRD Branding v2 como extension de MOD03.
-- Confirmar que MOD03 sigue abierto para extension (de lo contrario, escalacion para excepcion ADR-016).
+- ADR-035 Storage MinIO + StoragePort: **Aprobado**.
+- ADR-034 Bounded Context Media/Assets: **Aprobado**.
+- PRD Branding v2 como extension de MOD03: **Aprobado**.
+- Continuidad de MOD03 para esta extensión: **Confirmada**.
 
 ## 6. Bitacora
+
+### 2026-04-30 — Refinamiento UX login administrativo (contenedor único)
+
+**Solicitud funcional:**
+- Mantener el fondo de branding aplicado, pero reemplazar la composición visual por un único contenedor central que agrupe narrativa de plataforma y formulario.
+
+**Implementación realizada (apps/web):**
+- `PlatformLoginExperience` migra de layout split-screen a shell único central con efecto vidrio oscuro.
+- Desktop (`lg+`): dos zonas internas dentro del mismo contenedor (izquierda branding textual, derecha formulario).
+- Móvil: se prioriza solo el formulario dentro del mismo shell (sin bloque lateral de texto).
+- Se conserva la carga del fondo desde branding público (`loginBackgroundDarkUrl || loginBackgroundLightUrl`) en el `<main>`.
+
+**Validación ejecutada:**
+- `npx jest src/components/auth/PlatformLoginExperience.spec.tsx` → **PASS (2/2)**.
+- `npx tsc --noEmit` en `apps/web` → **limpio**.
+
+**Estado:**
+- Refinamiento visual completado sin cambios en backend ni en flujo funcional de autenticación.
+
+### 2026-04-30 — Variantes visuales login plataforma (premium/sobria)
+
+**Objetivo:**
+- Habilitar iteración de look & feel sin reescribir el layout de auth ni tocar backend.
+
+**Implementación:**
+- `apps/web/src/components/auth/PlatformLoginExperience.tsx` ahora expone variante visual tipada:
+	- `premium` (default)
+	- `sobria`
+- `apps/web/src/app/auth/login/page.tsx` resuelve variante por query param:
+	- `/auth/login` → `premium`
+	- `/auth/login?variant=sobria` → `sobria`
+- Se mantiene el mismo shell central, mismo flujo de login y mismo origen de fondo dinámico desde branding público.
+
+**Validación:**
+- `npx jest src/components/auth/PlatformLoginExperience.spec.tsx` → **PASS (2/2)**.
+- `npx tsc --noEmit` en `apps/web` → **limpio**.
+
+**Estado:**
+- Variantes visuales habilitadas para refinamiento rápido de UI sin impacto funcional.
+
+### 2026-04-30 — Revisión tipográfica contra manual de identidad
+
+**Fuente normativa revisada:**
+- `docs/identity/Manual_Implementacion_Identidad_Iwana.md` (sección 2.2 Tipografía Sistemática).
+
+**Alineación aplicada:**
+- `apps/web/src/app/layout.tsx` actualiza `Exo_2` para incluir peso `800` y fallback explícito conforme al manual:
+	- `Inter`, `SF Pro Display`, `system-ui`, `sans-serif`.
+
+**Validación técnica:**
+- `npx tsc --noEmit` en `apps/web` → **limpio**.
+- Verificación runtime en `/auth/login`: `body`, `h2`, `input` y `button` renderizan
+	`"Exo 2", Inter, "SF Pro Display", system-ui, sans-serif`.
+
+**Estado:**
+- Tipografía del login administrativo alineada con el manual de diseño vigente.
+
+### 2026-04-30 — Configuración de imágenes: eliminar slot + reglas anti-distorsión
+
+**Objetivo atendido:**
+- En configuración de branding de plataforma, habilitar eliminación explícita de imagen por slot.
+- Definir y aplicar reglas estrictas de tipo, tamaño y proporción para bloquear activos que distorsionen la UI.
+
+**Implementación realizada:**
+- `apps/web/src/components/settings/PlatformBrandingSettings.tsx`
+	- Nuevo botón **Eliminar imagen** por slot (logo, favicon, fondo claro, fondo oscuro).
+	- Eliminación por slot con `PATCH /platform/branding` enviando `url: null` y `assetId: null`.
+	- Reglas visibles en UI por slot (formatos permitidos, tamaño máximo y proporción/dimensiones).
+	- Prevalidación en cliente antes de subir archivo: tipo, tamaño y dimensiones/proporción.
+- `apps/api/src/modules/platform-branding/platform-branding.service.ts`
+	- Si un `*Url` llega en `null`, limpia también el `*AssetId` correspondiente para mantener consistencia.
+- `apps/api/src/modules/media/media.service.ts`
+	- Validación estricta de dimensiones/proporción para `logo`, `seal`, `favicon` y `login_background`.
+	- Se incorpora `image-size` para inspeccionar `width/height` en backend.
+
+**Reglas aplicadas:**
+- `logo`: PNG/JPG/WEBP, max 1 MB, mínimo 240x60 px, proporción 1.60–5.00.
+- `favicon`: PNG/ICO, max 256 KB, cuadrado, entre 32x32 y 512x512 px.
+- `login_background`: PNG/JPG/WEBP, max 5 MB, mínimo 1280x720 px, proporción 1.60–1.90.
+
+**Validación técnica:**
+- `apps/api`: `npx jest src/modules/media/media.service.spec.ts src/modules/platform-branding/platform-branding.service.spec.ts --runInBand` → **PASS (2 suites, 19 tests)**.
+- `apps/web`: `npx jest --runInBand --runTestsByPath .../src/app/(protected)/settings/page.spec.tsx` → **PASS (1 suite, 3 tests)**.
+- `apps/api`: `npx tsc --noEmit` → **limpio**.
+- `apps/web`: `npx tsc --noEmit` → **limpio**.
+
+**Estado:**
+- Ajuste fullstack completado: eliminación por slot operativa y reglas anti-distorsión activas en frontend + backend.
+
+### 2026-04-30 — Portal tenant-aware: reglas estrictas por slot + umbrales configurables
+
+**Objetivo atendido:**
+- Replicar en `apps/portal` la misma experiencia de validación previa de imágenes por slot.
+- Dejar umbrales por slot centralizados para ajuste rápido sin tocar arquitectura ni contratos API.
+
+**Implementación realizada:**
+- `apps/portal/src/lib/branding-validation.ts`
+	- Nuevo módulo reusable con `BRANDING_SLOT_RULES` para `logo`, `seal`, `favicon`, `login_background`.
+	- Validación previa de MIME, tamaño, dimensiones mín/máx y proporción (incluye regla cuadrada).
+- `apps/portal/src/components/settings/BrandingForm.tsx`
+	- Integración de validación antes de subir (`validateBrandingFileForUpload`).
+	- Bloqueo de upload cuando el archivo no cumple reglas del slot.
+	- Reglas visibles por slot en la UI y `accept` dinámico alineado a reglas.
+	- Cambio de copy de acción por slot a **Eliminar imagen** para consistencia con `apps/web`.
+- `apps/portal/src/components/settings/BrandingForm.spec.tsx`
+	- Nuevo test de bloqueo por validación previa (no debe llamar upload API).
+- `apps/portal/src/lib/branding-validation.spec.ts`
+	- Suite nueva para validar umbrales por slot y rechazos por MIME/tamaño.
+
+**Umbrales activos en portal:**
+- `logo`: PNG/JPG/WEBP, máximo 1 MB, mínimo 240x60 px, proporción 1.60–5.00.
+- `seal`: PNG/JPG/WEBP, máximo 512 KB, cuadrado, entre 128x128 y 1024x1024 px.
+- `favicon`: PNG/ICO, máximo 256 KB, cuadrado, entre 32x32 y 512x512 px.
+- `login_background`: PNG/JPG/WEBP, máximo 5 MB, mínimo 1280x720 px, proporción 1.60–1.90.
+
+**Validación técnica:**
+- `apps/portal`: `npx jest src/components/settings/BrandingForm.spec.tsx src/lib/branding-validation.spec.ts --runInBand` → **PASS (2 suites, 7 tests)**.
+- `apps/portal`: `npx tsc --noEmit` → **limpio**.
+
+**Estado:**
+- Portal alineado con la política anti-distorsión: feedback temprano en frontend y reglas ajustables por slot en un punto único de configuración.
+
+### 2026-04-30 — Consola web: paridad de reglas estrictas en branding tenant
+
+**Objetivo atendido:**
+- Aplicar en `apps/web` (formulario de branding tenant administrado desde plataforma) la misma política de validación estricta que ya opera en `apps/portal`.
+- Mantener umbrales por slot configurables en un módulo dedicado para ajustes futuros.
+
+**Implementación realizada:**
+- `apps/web/src/lib/branding-validation.ts`
+	- Nuevo módulo de reglas por slot (`logo`, `seal`, `favicon`, `login_background`).
+	- Validación previa de MIME, tamaño, dimensiones y proporción.
+- `apps/web/src/components/tenants/TenantBrandingForm.tsx`
+	- Integración de validación previa al upload.
+	- Reglas visibles por slot en UI y `accept` dinámico por whitelist.
+	- Acción renombrada a **Eliminar imagen** para consistencia de UX entre superficies.
+- `apps/web/src/components/tenants/TenantBrandingForm.spec.tsx`
+	- Nuevo test que asegura bloqueo de upload cuando falla validación previa.
+- `apps/web/src/lib/branding-validation.spec.ts`
+	- Suite unitaria para umbrales por slot y escenarios de rechazo clave.
+
+**Umbrales activos en apps/web (tenant branding):**
+- `logo`: PNG/JPG/WEBP, máximo 1 MB, mínimo 240x60 px, proporción 1.60–5.00.
+- `seal`: PNG/JPG/WEBP, máximo 512 KB, cuadrado, entre 128x128 y 1024x1024 px.
+- `favicon`: PNG/ICO, máximo 256 KB, cuadrado, entre 32x32 y 512x512 px.
+- `login_background`: PNG/JPG/WEBP, máximo 5 MB, mínimo 1280x720 px, proporción 1.60–1.90.
+
+**Validación técnica:**
+- `apps/web`: `npx jest src/components/tenants/TenantBrandingForm.spec.tsx src/lib/branding-validation.spec.ts --runInBand` → **PASS (2 suites, 7 tests)**.
+- `apps/web`: `npx tsc --noEmit` → **limpio**.
+
+**Estado:**
+- `apps/web` y `apps/portal` quedan alineados en política anti-distorsión para branding tenant, con validación temprana y configuración de reglas centralizada.
+
+### 2026-04-30 — Corrección upload local + fondo visible en login plataforma
+
+**Incidencia corregida:**
+- El upload de assets de branding de plataforma ya almacenaba el archivo, pero en `STORAGE_DRIVER=local` no generaba una URL pública usable para el slot de branding.
+- Después de habilitar la URL pública, el login administrativo recibía `loginBackgroundLightUrl`, pero el layout visual lo ocultaba detrás de overlays y paneles opacos.
+
+**Corrección aplicada:**
+- `apps/api` genera `publicUrl` para storage local y expone `/storage/*` como assets estáticos de desarrollo.
+- `apps/api` usa `API_PUBLIC_BASE_URL`/`PORT` para construir URLs locales desde el API, no desde `CORS_ORIGIN`.
+- `apps/web` ajustó `PlatformLoginExperience` y `LoginBrandPanel` para que el fondo subido sea visible en el login público de plataforma, con overlay más liviano y panel derecho translúcido cuando existe imagen.
+- Se ignoró `apps/api/storage/` en git para evitar versionar uploads locales generados por pruebas manuales.
+
+**Validación ejecutada:**
+- `npx jest src/modules/media/media.service.spec.ts src/modules/platform-branding/platform-branding.service.spec.ts` en `apps/api` → **PASS (2 suites, 16 tests)**.
+- `npx tsc --noEmit` en `apps/api` → **limpio**.
+- `npx jest src/components/auth/PlatformLoginExperience.spec.tsx` en `apps/web` → **PASS (1/1)**.
+- `npx tsc --noEmit` en `apps/web` → **limpio**.
+- Verificación manual en `http://localhost:3001/auth/login`: `background-image` usa `http://localhost:3000/storage/platform/login_background/...jpg`.
+
+**Estado:**
+- Corregido. El flujo esperado queda: seleccionar imagen → subir asset → asignar slot → refrescar branding público → login usa el fondo configurado.
+
+### 2026-04-30 — Cierre Fase 03D — Branding propio de plataforma
+
+**Entregables implementados:**
+
+| Entregable | Path | Estado |
+|---|---|---|
+| Entidad singleton | `packages/database/src/entities/platform-branding-settings.entity.ts` | **Creada** |
+| Migración pública 010 | `packages/database/src/migrations/public/010_create_platform_branding_settings.ts` | **Creada, reversible** |
+| Módulo API plataforma | `apps/api/src/modules/platform-branding/` | **Creado** |
+| Cliente API web | `apps/web/src/lib/api-client.ts` | **Extendido con `platformBrandingApi`** |
+| Provider branding público | `apps/web/src/components/branding/PlatformBrandingProvider.tsx` | **Creado** |
+| Settings persistente | `apps/web/src/components/settings/PlatformBrandingSettings.tsx` | **Reemplaza borrador local** |
+| Login administrativo dinámico | `apps/web/src/components/auth/PlatformLoginExperience.tsx`, `LoginBrandPanel.tsx` | **Conectado** |
+| Shell administrativo dinámico | `apps/web/src/components/layout/Sidebar.tsx`, `TopHeader.tsx` | **Conectado** |
+
+**Rutas backend disponibles:**
+- `GET /api/v1/platform/branding/public` — público, cache 60s, usado por login/shell/favicons.
+- `GET /api/v1/platform/branding` — `SYSTEM_ADMIN` e `IWANA_SUPPORT`.
+- `PATCH /api/v1/platform/branding` — `SYSTEM_ADMIN`.
+- `POST /api/v1/platform/branding/assets` — `SYSTEM_ADMIN`, upload + asignación de slot.
+- `POST /api/v1/platform/branding/reset` — `SYSTEM_ADMIN`, restaura defaults base.
+
+**Resultados de validación:**
+- `pnpm --filter @iwana/api test -- platform-branding.service.spec.ts` → **PASS (4/4)**.
+- `pnpm --filter @iwana/web test -- settings/page.spec.tsx` → **PASS (2/2)**.
+- `pnpm --filter @iwana/db typecheck` → **limpio**.
+- `pnpm --filter @iwana/api typecheck` → **limpio**.
+- `pnpm --filter @iwana/web typecheck` → **limpio**.
+
+**Veredicto:**
+- El alcance omitido de branding propio de plataforma queda ejecutado: `apps/web` ya no depende de `localStorage` como fuente autoritativa para producto, logo, favicon, metadata ni fondos de login.
+- El branding de plataforma permanece separado del branding de tenants y opera en schema público con assets `tenantSchema='platform'`.
+- `IWANA_SUPPORT` puede consultar la configuración; solo `SYSTEM_ADMIN` puede modificarla.
+
+### 2026-04-30 — Reapertura parcial por alcance v2.1
+
+**Hallazgo ejecutivo:**
+- El PRD v2.0 cubria correctamente el branding de tenants y su administracion desde `apps/web`, pero no dejaba suficientemente explicito que la consola administrativa `apps/web` tambien requiere branding propio productivo.
+- El codigo actual de `/settings` en `apps/web` funciona como borrador local (`localStorage`) para producto, isotipo, favicon y metadata, pero no es una fuente autoritativa backend ni aplica fondo de login administrativo.
+
+**Correccion documental aplicada:**
+- El PRD se actualizo a v2.1 en el mismo archivo existente para separar dos superficies: branding de tenants y branding propio de plataforma.
+- El plan vigente se actualizo a v1.1 con fase 03D: migracion `platform_branding_settings`, endpoints `platform/branding`, UI persistente en `/settings`, login administrativo dinamico y QA focalizada.
+- No se crearon documentos nuevos por instruccion operativa; se mantiene este informe como documento vivo.
+
+**Estado:**
+- 03A-03C permanecen cerradas para branding tenant.
+- 03D queda pendiente para cerrar branding propio de plataforma.
+
+### 2026-04-30 — Corrección UI consola web `/settings`
+
+**Incidencia corregida:**
+- La ruta de configuración de plataforma en `apps/web` (`/settings`) no mostraba el branding propio de la consola web.
+- La primera corrección mezclaba acceso a branding de empresas dentro de la configuración global; se corrigió la separación de ownership.
+- La vista resultante era informativa y no ofrecía acciones de configuración al administrador.
+
+**Corrección aplicada:**
+- Se mantuvo la pestaña **Branding** en la página de configuración de plataforma.
+- La pestaña ahora muestra únicamente el branding de `apps/web`: producto, superficie, isotipo, favicon y metadata pública.
+- Se agregó edición de borrador local para producto, superficie, título público, descripción pública, isotipo y favicon, con previsualización inmediata.
+- El borrador se guarda en `localStorage` bajo `iwana.web.platform-branding-draft` y puede restaurarse a los valores base de la consola.
+- El branding de cada empresa permanece dentro de su propia configuración (`/tenants/:id/settings`).
+- Se actualizó la prueba de regresión para garantizar que `/settings` no liste empresas tenant ni enlaces `Abrir branding`, y que permita guardar el borrador local.
+
+**Validación ejecutada:**
+- `pnpm exec tsc --noEmit` en `apps/web` → **sin errores**.
+- `npx jest --runInBand --runTestsByPath /home/sley/Documentos/appiw/apps/web/src/app/(protected)/settings/page.spec.tsx` → **PASS**.
+- Verificación manual autenticada en `http://localhost:3001/settings` → pestaña **Branding** muestra campos editables, previsualización, acción **Guardar borrador** y acción **Restaurar base**.
+
+### 2026-04-30 — Cierre ejecutivo final
+
+**Hallazgos cerrados en esta actualización:**
+
+| Hallazgo | Evidencia | Estado |
+|---|---|---|
+| Sidebar del portal no reaccionaba al branding actualizado | `apps/portal/src/app/dashboard/layout.tsx` escucha `tenant-branding-updated` y fusiona snapshot en estado local | **Cerrado** |
+| Faltaban ejemplos ejecutables de OpenAPI para branding | `apps/api/src/modules/tenant/tenant.swagger.spec.ts` valida request/response examples de branding público, patch híbrido y upload multipart | **Cerrado** |
+| Faltaba E2E del upload de branding | `e2e/tests/portal-branding-upload.spec.ts` valida upload de sello light y reflejo en sidebar | **Cerrado** |
+| Cobertura del spec de branding no ejecutaba el helper real | `apps/api/src/modules/tenant/tenant.service.spec.ts` ahora deja correr `updateBrandingState` y mockea `applyBrandingUpdate` | **Cerrado** |
+| Inconsistencia documental por colisión ADR-033 | ADR storage renumerado a ADR-035 y referencias alineadas | **Cerrado** |
+
+**Validaciones ejecutables finales:**
+- `npx jest src/modules/tenant/tenant.service.spec.ts --runInBand` → **PASS (39/39)**
+- `npx jest src/modules/tenant/tenant.swagger.spec.ts --runInBand` → **PASS**
+- Suite backend focalizada (`media.service.spec.ts`, `tenant.service.spec.ts`, `tenant.controller.spec.ts`, `tenant.controller.http.spec.ts`, `tenant.swagger.spec.ts`) → **PASS (5 suites, 69 tests)**
+- `pnpm exec playwright test --config e2e/playwright.portal.local.config.ts e2e/tests/portal-branding-upload.spec.ts` → **PASS**
+
+**Cobertura y evidencia técnica:**
+- Corrida focalizada establecida con rutas relativas a `rootDir=src` en `apps/api`.
+- `tenant.service` → **56.09% statements (345/615)**, **60.1% lines (339/564)**.
+- `tenant.controller` → **63.41% statements (104/164)**, **62.96% lines (102/162)**.
+- `media.service` → **96.61% statements (57/59)**, **96.49% lines (55/57)**.
+- La causa del falso `0/0` no era un fallo del reporter global, sino la invocación de `collectCoverageFrom` con paths fuera del `rootDir` efectivo de Jest (`src`).
+
+**Veredicto de cierre:**
+- Branding empresarial MOD03 v2 queda **cerrado en verde** para backend, frontend, OpenAPI y QA focalizada.
+- No quedan hallazgos funcionales abiertos dentro del alcance de este módulo.
 
 ### 2026-04-30 — QA puntos 1/2/3 (E2E + RTL + lint)
 
@@ -204,12 +479,10 @@
 ### 2026-04-30 — Cierre de definicion
 
 - Brainstorming completado con 7 decisiones cerradas.
-- Emitidos: ADR-033, ADR-034, HLD Media/Assets, PRD Branding v2, PLAN fase 03, PROMPTs 03A/03B/03C.
+- Emitidos: ADR-035, ADR-034, HLD Media/Assets, PRD Branding v2, PLAN fase 03, PROMPTs 03A/03B/03C.
 - Informe vivo creado.
-- ADR-033, ADR-034 y PRD v2 aprobados por CTO. MOD03 confirmado abierto.
+- ADR-035, ADR-034 y PRD v2 aprobados por CTO. MOD03 confirmado abierto.
 
 ## 7. Proximas acciones
 
-1. Ejecutar validación visual y E2E del flujo completo de branding público y autenticado.
-2. Añadir cobertura automatizada del login tenant-aware con branding por slug y favicon dinámico.
-3. Cerrar DoD del módulo con evidencia final de upload, render y fallback por tema.
+1. Mantener como estándar los scripts focalizados de cobertura de `apps/api` para futuros cierres de módulo.

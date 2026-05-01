@@ -1,6 +1,8 @@
+'use client';
+
 // apps/web/src/components/auth/LoginBrandPanel.tsx
-import Image from 'next/image';
 import type { ReactNode } from 'react';
+import { usePlatformBrandingAssets } from '@/components/branding/PlatformBrandingProvider';
 
 /**
  * Panel izquierdo del login — identidad iWana neXt.
@@ -17,25 +19,40 @@ export function LoginBrandPanel({
   subtitle = 'Autenticación segura, trazabilidad activa y gobierno centralizado para la operación de plataforma.',
   children,
 }: LoginBrandPanelProps) {
+  const { branding, logoUrl, faviconUrl, loginBackgroundLightUrl, loginBackgroundDarkUrl } =
+    usePlatformBrandingAssets();
+  const backgroundUrl = loginBackgroundDarkUrl || loginBackgroundLightUrl;
+  const showBrandWatermark = !backgroundUrl;
+
   return (
     <div className="relative hidden overflow-hidden border-r border-white/5 bg-[#181818] p-8 text-white lg:flex lg:w-1/2 lg:flex-col lg:justify-between lg:p-16">
-      <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_20%_20%,rgba(165,195,48,0.22),transparent_32%),linear-gradient(135deg,#181818_0%,#17163A_58%,#0F0E24_100%)]" />
-      <Image
-        src="/brand/favicon-gecko.svg"
-        alt=""
-        aria-hidden="true"
-        width={560}
-        height={560}
-        priority
-        className="absolute -right-24 top-1/2 z-0 h-auto w-[560px] -translate-y-1/2 opacity-[0.08]"
+      <div
+        className="absolute inset-0 z-0 bg-[linear-gradient(135deg,#181818_0%,#17163A_58%,#0F0E24_100%)]"
+        style={
+          backgroundUrl
+            ? {
+                backgroundImage: `linear-gradient(135deg, rgba(24,24,24,0.58), rgba(23,22,58,0.36), rgba(15,14,36,0.5)), url(${backgroundUrl})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+              }
+            : undefined
+        }
       />
+      {showBrandWatermark ? (
+        <img
+          src={faviconUrl}
+          alt=""
+          aria-hidden="true"
+          className="absolute -right-24 top-1/2 z-0 h-auto w-[560px] -translate-y-1/2 opacity-[0.08]"
+        />
+      ) : null}
 
       {/* Top Header */}
       <div className="relative z-10 flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#A5C330] text-[#181818]">
-          <Image src="/brand/iwiso6.png" alt="" width={28} height={28} className="h-7 w-7" aria-hidden="true" />
+          <img src={logoUrl} alt="" className="h-7 w-7 object-contain" aria-hidden="true" />
         </div>
-        <span className="text-2xl font-bold tracking-tight text-white">iWana neXt</span>
+        <span className="text-2xl font-bold tracking-tight text-white">{branding.productName}</span>
       </div>
 
       {/* Center Content */}
@@ -108,7 +125,7 @@ export function LoginBrandPanel({
 
       {/* Footer */}
       <div className="relative z-10 text-sm text-slate-500">
-        © 2026 iWana Network Inc. Todos los derechos reservados.
+        © 2026 {branding.productName}. Todos los derechos reservados.
       </div>
     </div>
   );

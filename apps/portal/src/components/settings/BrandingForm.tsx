@@ -13,6 +13,7 @@ import {
   type TenantSelf,
   type UpdateTenantSelfBrandingDto,
 } from '@/lib/api-client';
+import { BRANDING_SLOT_RULES, validateBrandingFileForUpload } from '@/lib/branding-validation';
 import { TenantSeal } from '@/components/layout/TenantSeal';
 
 const BRANDING_EVENT_NAME = 'tenant-branding-updated';
@@ -101,7 +102,7 @@ const BRANDING_GROUPS: BrandingGroupConfig[] = [
     title: 'Sello compacto',
     description:
       'Se usa en el menú lateral, superficies compactas del portal y como respaldo visual cuando no se muestra el nombre.',
-    guidance: 'Formato recomendado: SVG o PNG cuadrado con fondo transparente.',
+    guidance: BRANDING_SLOT_RULES.seal.helpText,
     variants: [
       {
         themeVariant: 'light',
@@ -126,7 +127,7 @@ const BRANDING_GROUPS: BrandingGroupConfig[] = [
     title: 'Logo horizontal',
     description:
       'Se usa en la autenticación pública y en superficies de identificación extendida del tenant.',
-    guidance: 'Formato recomendado: SVG o PNG horizontal con proporción 3:1 a 5:1.',
+    guidance: BRANDING_SLOT_RULES.logo.helpText,
     variants: [
       {
         themeVariant: 'light',
@@ -151,7 +152,7 @@ const BRANDING_GROUPS: BrandingGroupConfig[] = [
     title: 'Favicon',
     description:
       'Se usa en la pestaña del navegador y se resuelve por tema claro u oscuro en tiempo real.',
-    guidance: 'Formato recomendado: SVG, PNG o ICO. Mantén buena legibilidad a 16x16 y 32x32.',
+    guidance: BRANDING_SLOT_RULES.favicon.helpText,
     variants: [
       {
         themeVariant: 'light',
@@ -176,8 +177,7 @@ const BRANDING_GROUPS: BrandingGroupConfig[] = [
     title: 'Fondo del login',
     description:
       'Se usa como acento visual del acceso público del portal para reforzar la identidad del tenant.',
-    guidance:
-      'Formato recomendado: JPG, PNG o WebP horizontal con buena lectura para overlays oscuros.',
+    guidance: BRANDING_SLOT_RULES.login_background.helpText,
     widePreview: true,
     variants: [
       {
@@ -387,6 +387,13 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
     const slotKey = `${usage}-${themeVariant}`;
     setServerError(null);
     setSuccess(null);
+
+    const validationError = await validateBrandingFileForUpload(file, usage);
+    if (validationError) {
+      setServerError(validationError);
+      return;
+    }
+
     setUploadingSlot(slotKey);
 
     try {
@@ -395,7 +402,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
       applyUpdatedProfile(updated, 'Activo subido y asignado correctamente.');
     } catch {
       setServerError(
-        'No fue posible subir el activo. Verifica formato, tamaño y vuelve a intentar.',
+        'No fue posible subir el activo. Verifica las reglas del slot y vuelve a intentar.',
       );
     } finally {
       setUploadingSlot(null);
@@ -486,7 +493,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                             className="inline-flex items-center gap-2 rounded-full border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20"
                           >
                             <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                            Limpiar
+                            Eliminar imagen
                           </button>
                         )}
                       </div>
@@ -511,6 +518,9 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                           >
                             Subir activo
                           </label>
+                          <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                            Reglas: {BRANDING_SLOT_RULES[group.usage].helpText}
+                          </p>
                           <div className="flex items-center gap-3">
                             <label
                               htmlFor={`${slotKey}-file`}
@@ -526,7 +536,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                           <input
                             id={`${slotKey}-file`}
                             type="file"
-                            accept="image/*,.svg,.ico,.webp"
+                            accept={BRANDING_SLOT_RULES[group.usage].allowedMimes.join(',')}
                             disabled={!canEdit || isSubmitting || uploadingSlot === slotKey}
                             className="sr-only"
                             onChange={(event) => {

@@ -2,6 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { TenantBrandingForm } from './TenantBrandingForm';
 import { tenantApi, type TenantListItem } from '@/lib/api-client';
+import { validateBrandingFileForUpload } from '@/lib/branding-validation';
 
 jest.mock('@/lib/api-client', () => ({
   tenantApi: {
@@ -11,11 +12,35 @@ jest.mock('@/lib/api-client', () => ({
   },
 }));
 
+jest.mock('@/lib/branding-validation', () => ({
+  BRANDING_SLOT_RULES: {
+    logo: {
+      allowedMimes: ['image/png', 'image/jpeg', 'image/webp'],
+      helpText: 'regla logo',
+    },
+    seal: {
+      allowedMimes: ['image/png', 'image/jpeg', 'image/webp'],
+      helpText: 'regla seal',
+    },
+    favicon: {
+      allowedMimes: ['image/png', 'image/x-icon', 'image/vnd.microsoft.icon'],
+      helpText: 'regla favicon',
+    },
+    login_background: {
+      allowedMimes: ['image/png', 'image/jpeg', 'image/webp'],
+      helpText: 'regla login_background',
+    },
+  },
+  validateBrandingFileForUpload: jest.fn(async () => null),
+}));
+
 const tenantApiMock = tenantApi as unknown as {
   updateBranding: jest.Mock;
   uploadBrandingAsset: jest.Mock;
   getOne: jest.Mock;
 };
+
+const validateBrandingFileForUploadMock = validateBrandingFileForUpload as jest.Mock;
 
 function buildTenant(overrides: Partial<TenantListItem> = {}): TenantListItem {
   return {
@@ -66,6 +91,7 @@ function buildTenant(overrides: Partial<TenantListItem> = {}): TenantListItem {
 describe('TenantBrandingForm', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    validateBrandingFileForUploadMock.mockResolvedValue(null);
   });
 
   it('guarda URL externa de branding con payload incremental', async () => {
@@ -131,5 +157,26 @@ describe('TenantBrandingForm', () => {
 
     expect(onUpdated).toHaveBeenCalledWith(updatedTenant);
     expect(screen.getByText('Activo subido y asignado correctamente.')).toBeInTheDocument();
+  });
+
+  it('bloquea upload cuando la validación previa del slot falla', async () => {
+    validateBrandingFileForUploadMock.mockResolvedValueOnce(
+      'La imagen debe ser al menos de 1280x720 px.',
+    );
+
+    render(<TenantBrandingForm tenantId="tenant-1" tenant={buildTenant()} onUpdated={jest.fn()} />);
+
+    const fileInput = document.getElementById('seal-light-file') as HTMLInputElement;
+    const file = new File(['invalid-content'], 'seal-light.svg', { type: 'image/svg+xml' });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(validateBrandingFileForUploadMock).toHaveBeenCalledWith(file, 'seal');
+    });
+
+    expect(tenantApiMock.uploadBrandingAsset).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.getByText((text) => text.includes('1280x720'))).toBeInTheDocument();
+    });
   });
 });

@@ -5,11 +5,13 @@ import './web-typography.css';
 import { ThemeProvider } from '@iwana/ui';
 import { Exo_2, JetBrains_Mono } from 'next/font/google';
 import { AuthProvider } from '@/components/auth/AuthProvider';
+import { PlatformBrandingProvider } from '@/components/branding/PlatformBrandingProvider';
 
 const exo2 = Exo_2({
   subsets: ['latin'],
-  weight: ['100', '300', '400', '500', '600', '700'],
+  weight: ['100', '300', '400', '500', '600', '700', '800'],
   display: 'swap',
+  fallback: ['Inter', 'SF Pro Display', 'system-ui', 'sans-serif'],
 });
 
 const jetbrainsMono = JetBrains_Mono({
@@ -38,7 +40,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${exo2.className} ${jetbrainsMono.variable} antialiased`}>
         <ThemeProvider>
           <Suspense fallback={null}>
-            <AuthProvider>{children}</AuthProvider>
+            <PlatformBrandingProvider>
+              <AuthProvider>{children}</AuthProvider>
+            </PlatformBrandingProvider>
           </Suspense>
         </ThemeProvider>
       </body>

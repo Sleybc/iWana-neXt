@@ -3,7 +3,7 @@
 ## iWana neXt Platform — ISP/OSS/BSS Colombia
 
 **Version:** 1.0
-**Estado:** Borrador — pendiente aprobacion CTO
+**Estado:** Aprobado
 **Fecha:** 2026-04-30
 **Modo activo:** Architect
 **Autor:** AI-EM-ARCH
@@ -15,7 +15,7 @@
 
 | Artefacto | Referencia |
 |-----------|-----------|
-| ADR Storage MinIO | [docs/adrs/ADR-033-Storage-MinIO-StoragePort.md](../adrs/ADR-033-Storage-MinIO-StoragePort.md) |
+| ADR Storage MinIO | [docs/adrs/ADR-035-Storage-MinIO-StoragePort.md](../adrs/ADR-035-Storage-MinIO-StoragePort.md) |
 | ADR Bounded Context Media | [docs/adrs/ADR-034-Bounded-Context-Media-Assets.md](../adrs/ADR-034-Bounded-Context-Media-Assets.md) |
 | PRD Branding v2 (consumidor v1) | [docs/prds/PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md](../prds/PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md) |
 | PRD MOD03 origen | [docs/prds/PRD-MOD03-CONFIGURACION-EMPRESA-v1.0.md](../prds/PRD-MOD03-CONFIGURACION-EMPRESA-v1.0.md) |

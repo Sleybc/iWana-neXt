@@ -5,6 +5,7 @@ import { DataSource, DataSourceOptions, QueryRunner } from 'typeorm';
 import { AuditLog } from './entities/audit-log.entity';
 import { MediaAsset } from './entities/media-asset.entity';
 import { PlatformAuditLog } from './entities/platform-audit-log.entity';
+import { PlatformBrandingSettings } from './entities/platform-branding-settings.entity';
 import { PlatformUser } from './entities/platform-user.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { Tenant } from './entities/tenant.entity';
@@ -74,7 +75,16 @@ export const dataSourceOptions: DataSourceOptions = {
   database: process.env['DB_NAME'] ?? 'iwana',
   // Sin 'schema' aqui: las entidades publicas lo tienen en @Entity(),
   // las de tenant usan search_path por transaccion.
-  entities: [Tenant, PlatformUser, PlatformAuditLog, MediaAsset, User, RefreshToken, AuditLog],
+  entities: [
+    Tenant,
+    PlatformUser,
+    PlatformAuditLog,
+    PlatformBrandingSettings,
+    MediaAsset,
+    User,
+    RefreshToken,
+    AuditLog,
+  ],
   migrations: ['dist/migrations/public/*.js'],
   migrationsTableName: 'typeorm_migrations',
   migrationsRun: false,

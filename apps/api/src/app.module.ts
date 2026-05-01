@@ -23,6 +23,7 @@ import { CommercialModule } from './modules/commercial/commercial.module';
 import { TaxationModule } from './modules/taxation/taxation.module';
 import { PartiesModule } from './modules/parties/parties.module';
 import { MediaModule } from './modules/media/media.module';
+import { PlatformBrandingModule } from './modules/platform-branding/platform-branding.module';
 
 const runtimeEnv = process.env['NODE_ENV'];
 const apiDevelopmentLocalEnvPath = resolve(__dirname, '../../../.env.development.local');
@@ -138,6 +139,8 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
           SMTP_SECURE: Joi.boolean().optional(),
           // URL del frontend — usada para construir enlaces en correos (forgot password, etc.)
           FRONTEND_URL: Joi.string().uri().optional(),
+          // URL pública del API — usada para exponer assets locales en desarrollo.
+          API_PUBLIC_BASE_URL: Joi.string().uri().optional(),
           // Storage (ADR-033): driver 'minio' en prod, 'local' solo en dev
           STORAGE_DRIVER: Joi.string().valid('minio', 'local').default('local'),
           S3_ENDPOINT: Joi.string().uri().optional(),
@@ -244,6 +247,9 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
 
     // Módulo Media (MOD03): subida, almacenamiento y gestión de assets de branding
     MediaModule,
+
+    // Branding propio de la plataforma: identidad visual global de apps/web
+    PlatformBrandingModule,
   ],
   controllers: [],
   providers: [

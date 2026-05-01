@@ -3,13 +3,15 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, cn } from '@iwana/ui';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { PlatformBrandingSettings } from '@/components/settings/PlatformBrandingSettings';
 import { SecuritySettings } from '@/components/settings/SecuritySettings';
 
 // Identificadores de tabs disponibles en la página de configuración
-type TabId = 'general' | 'seguridad';
+type TabId = 'general' | 'branding' | 'seguridad';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'general', label: 'General' },
+  { id: 'branding', label: 'Branding' },
   { id: 'seguridad', label: 'Seguridad' },
 ];
 
@@ -64,6 +66,8 @@ export default function SettingsPage() {
             )}
 
             {activeTab === 'seguridad' && <SecuritySettings />}
+
+            {activeTab === 'branding' && <PlatformBrandingSettings />}
           </div>
         </CardContent>
       </Card>

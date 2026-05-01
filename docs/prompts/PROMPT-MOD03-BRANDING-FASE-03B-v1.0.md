@@ -39,7 +39,7 @@
 
 - PRD: [docs/prds/PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md](../prds/PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md)
 - HLD: [docs/hlds/HLD-TRANSVERSAL-MEDIA-ASSETS-v1.0.md](../hlds/HLD-TRANSVERSAL-MEDIA-ASSETS-v1.0.md)
-- ADRs: [ADR-033](../adrs/ADR-033-Storage-MinIO-StoragePort.md), [ADR-034](../adrs/ADR-034-Bounded-Context-Media-Assets.md)
+- ADRs: [ADR-035](../adrs/ADR-035-Storage-MinIO-StoragePort.md), [ADR-034](../adrs/ADR-034-Bounded-Context-Media-Assets.md)
 - Plan: [docs/plans/PLAN-MOD03-BRANDING-EMPRESARIAL-FASE-03-v1.0.md](../plans/PLAN-MOD03-BRANDING-EMPRESARIAL-FASE-03-v1.0.md)
 - Cierre 03A: informe vivo y `MediaModule` operativo.
 - Skills: `nestjs-expert`, `auth-implementation-patterns`, `postgresql`, `database-migration`, `openapi-spec-generation`, `backend-security-coder`, `testing-patterns`.

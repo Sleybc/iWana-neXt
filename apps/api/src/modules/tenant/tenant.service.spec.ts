@@ -436,6 +436,148 @@ describe('TenantService', () => {
     });
   });
 
+  describe('branding', () => {
+    it('getTenantPublicBranding retorna branding público para un tenant activo', async () => {
+      redis.get.mockResolvedValueOnce(null);
+      repo.findOne.mockResolvedValue(
+        buildTenant({
+          status: TenantStatus.ACTIVE,
+          logoLightUrl: 'https://cdn.demo.co/logo-light.svg',
+          sealLightUrl: 'https://cdn.demo.co/seal-light.svg',
+          faviconLightUrl: 'https://cdn.demo.co/favicon-light.svg',
+        }),
+      );
+
+      const result = await service.getTenantPublicBranding('isp-test');
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          displayName: 'ISP Test Colombia',
+          logoLightUrl: 'https://cdn.demo.co/logo-light.svg',
+          sealLightUrl: 'https://cdn.demo.co/seal-light.svg',
+          faviconLightUrl: 'https://cdn.demo.co/favicon-light.svg',
+        }),
+      );
+    });
+
+    it('getTenantPublicBranding lanza NotFoundException si el tenant no existe o no está activo', async () => {
+      redis.get.mockResolvedValueOnce(null);
+      repo.findOne.mockResolvedValue(buildTenant({ status: TenantStatus.SUSPENDED }));
+
+      await expect(service.getTenantPublicBranding('isp-test')).rejects.toThrow(NotFoundException);
+    });
+
+    it('updateTenantSelfBranding y updateTenantBranding reutilizan el estado híbrido y mapean el DTO correcto', async () => {
+      repo.findOne.mockImplementation(async () =>
+        buildTenant({
+          status: TenantStatus.ACTIVE,
+          logoLightUrl: 'https://cdn.demo.co/logo-light.svg',
+        }),
+      );
+      repo.save.mockImplementation(async (value) => value as Tenant);
+
+      const brandingUpdate = {
+        logoLightUrl: 'https://cdn.demo.co/logo-light-actualizado.svg',
+        showTenantName: false,
+      };
+
+      const selfResult = await service.updateTenantSelfBranding(
+        'tenant-uuid-001',
+        brandingUpdate,
+        'actor-1',
+      );
+      const platformResult = await service.updateTenantBranding(
+        'tenant-uuid-001',
+        brandingUpdate,
+        'actor-1',
+      );
+
+      expect(repo.save).toHaveBeenCalledTimes(2);
+      expect(repo.save).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          logoLightUrl: 'https://cdn.demo.co/logo-light-actualizado.svg',
+          showTenantName: false,
+        }),
+      );
+      expect(repo.save).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          logoLightUrl: 'https://cdn.demo.co/logo-light-actualizado.svg',
+          showTenantName: false,
+        }),
+      );
+      expect(auditServiceMock.log).toHaveBeenCalledTimes(2);
+      expect(selfResult).toEqual(
+        expect.objectContaining({
+          slug: 'isp-test',
+          logoLightUrl: 'https://cdn.demo.co/logo-light-actualizado.svg',
+          showTenantName: false,
+        }),
+      );
+      expect(platformResult).toEqual(
+        expect.objectContaining({
+          schemaName: 'tenant_isp_test',
+          logoLightUrl: 'https://cdn.demo.co/logo-light-actualizado.svg',
+          showTenantName: false,
+        }),
+      );
+    });
+
+    it('uploadTenantBrandingAsset sube, asigna el slot y audita el cambio', async () => {
+      const tenant = buildTenant({ status: TenantStatus.ACTIVE });
+      const asset = {
+        id: 'asset-1',
+        usage: 'seal',
+        themeVariant: 'light',
+        mimeType: 'image/svg+xml',
+        sizeBytes: 24831,
+        publicUrl: 'https://cdn.demo.co/branding/seal-light.svg',
+        createdAt: new Date('2026-04-30T12:00:00Z'),
+      };
+
+      repo.findOne.mockResolvedValue(tenant);
+      repo.save.mockImplementation(async (value) => value as Tenant);
+      mediaServiceMock.upload.mockResolvedValue(asset);
+
+      const result = await service.uploadTenantBrandingAsset(
+        tenant.id,
+        { usage: 'seal' as never, themeVariant: 'light' },
+        {
+          fieldname: 'file',
+          originalname: 'seal-light.svg',
+          encoding: '7bit',
+          mimetype: 'image/svg+xml',
+          size: 24831,
+          buffer: Buffer.from('<svg></svg>'),
+          stream: undefined as never,
+          destination: '',
+          filename: '',
+          path: '',
+        },
+        'actor-1',
+      );
+
+      expect(mediaServiceMock.upload).toHaveBeenCalledWith(
+        tenant.schemaName,
+        { usage: 'seal', themeVariant: 'light' },
+        expect.objectContaining({ originalname: 'seal-light.svg' }),
+        'actor-1',
+      );
+      expect(repo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sealLightUrl: 'https://cdn.demo.co/branding/seal-light.svg',
+          sealLightAssetId: 'asset-1',
+        }),
+      );
+      expect(mediaServiceMock.softDelete).not.toHaveBeenCalled();
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({ entityType: 'TenantBranding', entityId: tenant.id }),
+      );
+      expect(result).toBe(asset);
+    });
+  });
+
   // ---------------------------------------------------------------------------
   // update
   // ---------------------------------------------------------------------------

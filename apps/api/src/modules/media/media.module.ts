@@ -53,7 +53,7 @@ import { MediaController } from './media.controller';
         return createStorageAdapter({
           driver: 'local',
           localBasePath: join(process.cwd(), 'storage', 'media'),
-          localPublicBaseUrl: `${config.get('CORS_ORIGIN', 'http://localhost:3000').split(',')[0]}/storage`,
+          localPublicBaseUrl: `${config.get('API_PUBLIC_BASE_URL', `http://localhost:${config.get('PORT', 3000)}`)}/storage`,
         });
       },
       inject: [ConfigService],

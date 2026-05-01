@@ -1,5 +1,7 @@
+import { join } from 'node:path';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import type { NextFunction, Request, Response } from 'express';
@@ -20,10 +22,22 @@ import { AppModule } from './app.module';
  * Puerto: process.env.PORT ?? 3000
  */
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // Prefijo global de la API — todos los endpoints quedan en /api/v1/*
   app.setGlobalPrefix('api/v1');
+
+  // Storage local de desarrollo: expone /storage/* para que los assets subidos
+  // puedan usarse como imágenes públicas en branding sin depender de MinIO público.
+  if (process.env['STORAGE_DRIVER'] !== 'minio') {
+    app.useStaticAssets(join(process.cwd(), 'storage', 'media'), {
+      prefix: '/storage/',
+      setHeaders: (response: Response) => {
+        response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        response.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      },
+    });
+  }
 
   // Validacion global de DTOs: rechaza propiedades desconocidas y transforma tipos
   app.useGlobalPipes(

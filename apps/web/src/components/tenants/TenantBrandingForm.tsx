@@ -13,6 +13,7 @@ import {
   type TenantListItem,
   type UpdateTenantBrandingPayload,
 } from '@/lib/api-client';
+import { BRANDING_SLOT_RULES, validateBrandingFileForUpload } from '@/lib/branding-validation';
 
 const httpsUrl = z
   .string()
@@ -83,7 +84,7 @@ const BRANDING_GROUPS: BrandingGroupConfig[] = [
     usage: 'seal',
     title: 'Sello compacto',
     description: 'Se usa en superficies compactas del portal y como fallback del branding.',
-    guidance: 'Formato recomendado: SVG o PNG cuadrado con fondo transparente.',
+    guidance: BRANDING_SLOT_RULES.seal.helpText,
     variants: [
       {
         themeVariant: 'light',
@@ -107,7 +108,7 @@ const BRANDING_GROUPS: BrandingGroupConfig[] = [
     usage: 'logo',
     title: 'Logo horizontal',
     description: 'Se usa en login, documentos y superficies de identificación extendida.',
-    guidance: 'Formato recomendado: SVG o PNG horizontal con proporción 3:1 a 5:1.',
+    guidance: BRANDING_SLOT_RULES.logo.helpText,
     variants: [
       {
         themeVariant: 'light',
@@ -131,7 +132,7 @@ const BRANDING_GROUPS: BrandingGroupConfig[] = [
     usage: 'favicon',
     title: 'Favicon',
     description: 'Se usa en la pestaña del navegador del portal y respeta tema claro u oscuro.',
-    guidance: 'Formato recomendado: SVG, PNG o ICO con legibilidad a 16x16 y 32x32.',
+    guidance: BRANDING_SLOT_RULES.favicon.helpText,
     variants: [
       {
         themeVariant: 'light',
@@ -155,7 +156,7 @@ const BRANDING_GROUPS: BrandingGroupConfig[] = [
     usage: 'login_background',
     title: 'Fondo del login',
     description: 'Se usa como imagen ambiental del acceso público al portal empresarial.',
-    guidance: 'Formato recomendado: JPG, PNG o WebP horizontal con overlay oscuro legible.',
+    guidance: BRANDING_SLOT_RULES.login_background.helpText,
     widePreview: true,
     variants: [
       {
@@ -344,6 +345,13 @@ export function TenantBrandingForm({ tenantId, tenant, onUpdated }: TenantBrandi
     const slotKey = `${usage}-${themeVariant}`;
     setServerError(null);
     setSuccess(null);
+
+    const validationError = await validateBrandingFileForUpload(file, usage);
+    if (validationError) {
+      setServerError(validationError);
+      return;
+    }
+
     setUploadingSlot(slotKey);
 
     try {
@@ -352,7 +360,7 @@ export function TenantBrandingForm({ tenantId, tenant, onUpdated }: TenantBrandi
       applyUpdatedTenant(updated, 'Activo subido y asignado correctamente.');
     } catch {
       setServerError(
-        'No fue posible subir el activo. Verifica formato, tamaño y vuelve a intentar.',
+        'No fue posible subir el activo. Verifica las reglas del slot y vuelve a intentar.',
       );
     } finally {
       setUploadingSlot(null);
@@ -444,7 +452,7 @@ export function TenantBrandingForm({ tenantId, tenant, onUpdated }: TenantBrandi
                             className="inline-flex items-center gap-2 rounded-full border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20"
                           >
                             <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                            Limpiar
+                            Eliminar imagen
                           </button>
                         )}
                       </div>
@@ -469,6 +477,9 @@ export function TenantBrandingForm({ tenantId, tenant, onUpdated }: TenantBrandi
                           >
                             Subir activo
                           </label>
+                          <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                            Reglas: {BRANDING_SLOT_RULES[group.usage].helpText}
+                          </p>
                           <div className="flex items-center gap-3">
                             <label
                               htmlFor={`${slotKey}-file`}
@@ -484,7 +495,7 @@ export function TenantBrandingForm({ tenantId, tenant, onUpdated }: TenantBrandi
                           <input
                             id={`${slotKey}-file`}
                             type="file"
-                            accept="image/*,.svg,.ico,.webp"
+                            accept={BRANDING_SLOT_RULES[group.usage].allowedMimes.join(',')}
                             disabled={isSubmitting || uploadingSlot === slotKey}
                             className="sr-only"
                             onChange={(event) => {

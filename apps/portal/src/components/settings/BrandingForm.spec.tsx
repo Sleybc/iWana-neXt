@@ -2,6 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { BrandingForm } from './BrandingForm';
 import { tenantSelfApi, type TenantSelf } from '@/lib/api-client';
+import { validateBrandingFileForUpload } from '@/lib/branding-validation';
 
 jest.mock('@/lib/api-client', () => ({
   tenantSelfApi: {
@@ -15,11 +16,35 @@ jest.mock('@/components/layout/TenantSeal', () => ({
   TenantSeal: ({ name }: { name: string }) => <div data-testid="tenant-seal">{name}</div>,
 }));
 
+jest.mock('@/lib/branding-validation', () => ({
+  BRANDING_SLOT_RULES: {
+    logo: {
+      allowedMimes: ['image/png', 'image/jpeg', 'image/webp'],
+      helpText: 'regla logo',
+    },
+    seal: {
+      allowedMimes: ['image/png', 'image/jpeg', 'image/webp'],
+      helpText: 'regla seal',
+    },
+    favicon: {
+      allowedMimes: ['image/png', 'image/x-icon', 'image/vnd.microsoft.icon'],
+      helpText: 'regla favicon',
+    },
+    login_background: {
+      allowedMimes: ['image/png', 'image/jpeg', 'image/webp'],
+      helpText: 'regla login_background',
+    },
+  },
+  validateBrandingFileForUpload: jest.fn(async () => null),
+}));
+
 const tenantSelfApiMock = tenantSelfApi as unknown as {
   updateBranding: jest.Mock;
   uploadBrandingAsset: jest.Mock;
   getProfile: jest.Mock;
 };
+
+const validateBrandingFileForUploadMock = validateBrandingFileForUpload as jest.Mock;
 
 function buildProfile(overrides: Partial<TenantSelf> = {}): TenantSelf {
   return {
@@ -61,6 +86,7 @@ function buildProfile(overrides: Partial<TenantSelf> = {}): TenantSelf {
 describe('BrandingForm', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    validateBrandingFileForUploadMock.mockResolvedValue(null);
   });
 
   it('envia payload incremental de URL externa al guardar branding', async () => {
@@ -126,5 +152,26 @@ describe('BrandingForm', () => {
 
     expect(onUpdated).toHaveBeenCalledWith(updatedProfile);
     expect(screen.getByText('Activo subido y asignado correctamente.')).toBeInTheDocument();
+  });
+
+  it('bloquea upload cuando la validación del slot falla', async () => {
+    validateBrandingFileForUploadMock.mockResolvedValueOnce(
+      'La imagen debe ser al menos de 1280x720 px.',
+    );
+
+    render(<BrandingForm profile={buildProfile()} canEdit onUpdated={jest.fn()} />);
+
+    const fileInput = document.getElementById('seal-light-file') as HTMLInputElement;
+    const file = new File(['invalid-content'], 'seal-light.svg', { type: 'image/svg+xml' });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(validateBrandingFileForUploadMock).toHaveBeenCalledWith(file, 'seal');
+    });
+
+    expect(tenantSelfApiMock.uploadBrandingAsset).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.getByText((text) => text.includes('1280x720'))).toBeInTheDocument();
+    });
   });
 });

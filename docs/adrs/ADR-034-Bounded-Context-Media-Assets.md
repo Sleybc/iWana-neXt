@@ -1,11 +1,11 @@
 # ADR-034 — Bounded Context Media/Assets transversal
 
-**Estado:** Propuesto — requiere aprobacion CTO
+**Estado:** Aprobado
 **Fecha:** 2026-04-30
 **Modo activo:** Architect
 **Autor:** AI-EM-ARCH
 **Aprobador requerido:** CTO Humano
-**Trazabilidad:** [ADR-033](ADR-033-Storage-MinIO-StoragePort.md) · [ADR-021](ADR-021-Perfil-Unificado-EM-Architect.md) · [ADR-016](ADR-016-Cierre-MOD01-Produccion.md)
+**Trazabilidad:** [ADR-035](ADR-035-Storage-MinIO-StoragePort.md) · [ADR-021](ADR-021-Perfil-Unificado-EM-Architect.md) · [ADR-016](ADR-016-Cierre-MOD01-Produccion.md)
 
 ---
 
@@ -29,7 +29,7 @@ Se crea el bounded context **Media/Assets** como modulo transversal en `apps/api
 - Validar MIME real (magic bytes), tamano, dimensiones (cuando aplique).
 - Sanitizar nombre de archivo y SVG (cuando aplique).
 - Persistir metadata en tabla publica `media_assets`.
-- Delegar el almacenamiento fisico al `StoragePort` (ADR-033).
+- Delegar el almacenamiento fisico al `StoragePort` (ADR-035).
 - Exponer interfaz tipada `MediaService` para consumidores internos.
 - Exponer endpoints REST `/api/v1/media/*` solo para casos donde el cliente sube directo.
 - Auditar todas las operaciones de mutacion via `AuditService`.
@@ -68,7 +68,7 @@ Indices: `(tenant_schema, usage)`, `(checksum_sha256)`, `(created_at)`.
 
 - Toda lectura/escritura desde `MediaService` exige `tenantSchema` explicito (o flag `platformGlobal: true` para SYSTEM_ADMIN).
 - AbacGuard valida que el caller no acceda a `media_assets` de otro tenant cuando no sea rol de plataforma.
-- El object key en MinIO incluye `tenantSchema` como prefijo (ADR-033).
+- El object key en MinIO incluye `tenantSchema` como prefijo (ADR-035).
 
 ### Contratos tipados para consumidores
 

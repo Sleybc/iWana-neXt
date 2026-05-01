@@ -1,7 +1,7 @@
 # PLAN — Branding Empresarial v2 (MOD03 Fase 03)
 
-**Version:** 1.0
-**Estado:** Borrador — pendiente aprobacion CTO
+**Version:** 1.1
+**Estado:** En revisión
 **Fecha:** 2026-04-30
 **Modo activo:** EM (planificacion) + Architect (gates)
 **Autor:** AI-EM-ARCH
@@ -9,7 +9,7 @@
 **Trazabilidad:**
 - PRD: [PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md](../prds/PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md)
 - HLD: [HLD-TRANSVERSAL-MEDIA-ASSETS-v1.0.md](../hlds/HLD-TRANSVERSAL-MEDIA-ASSETS-v1.0.md)
-- ADRs: [ADR-033](../adrs/ADR-033-Storage-MinIO-StoragePort.md), [ADR-034](../adrs/ADR-034-Bounded-Context-Media-Assets.md)
+- ADRs: [ADR-035](../adrs/ADR-035-Storage-MinIO-StoragePort.md), [ADR-034](../adrs/ADR-034-Bounded-Context-Media-Assets.md)
 - Perfil: [Perfil_IA_EM_Architect_Unificado_v1.md](../roles/Perfil_IA_EM_Architect_Unificado_v1.md)
 
 ---
@@ -18,9 +18,11 @@
 
 Llevar el branding empresarial a estado productivo completo: upload propio + URL externa, favicon dedicado, fondo de login, consola web para SYSTEM_ADMIN, sobre un nuevo bounded context Media/Assets transversal con MinIO.
 
+Actualizacion v1.1: se agrega fase 03D para branding propio de `apps/web`. Esta fase corrige la ambiguedad entre administrar branding de tenants desde la plataforma y administrar la identidad institucional de la plataforma misma.
+
 ## Asunciones bloqueantes
 
-- ADR-033 y ADR-034 aprobados por el CTO antes de iniciar fase 03A.
+- ADR-035 y ADR-034 aprobados por el CTO antes de iniciar fase 03A.
 - MOD03 sigue abierto para extension.
 - MinIO disponible en dev (ya en compose) y planeado para staging/prod.
 
@@ -33,6 +35,7 @@ Si alguna asuncion falla -> escalar al CTO antes de avanzar (regla operativa del
 | 03A | Cimientos Media/Assets | Sr. Dev Fullstack + Sr. Dev Data | 03B | 1 sprint |
 | 03B | Backend Branding v2 | Sr. Dev Fullstack | 03C | 1 sprint |
 | 03C | Frontend web + portal | Sr. Dev Fullstack | cierre | 1 sprint |
+| 03D | Branding propio de plataforma | Sr. Dev Fullstack | cierre v2.1 | 1 sprint corto |
 
 Paralelizacion limitada: 03C puede iniciar diseno UX en paralelo a 03B una vez fijados contratos OpenAPI.
 
@@ -161,7 +164,7 @@ Entregar consolas funcionales con upload, URL, previews, reset y aplicacion en l
 
 ## Gates de salida del modulo
 
-Aplicables al cierre de 03C:
+Aplicables al cierre de 03C para branding tenant y al cierre de 03D para branding propio de plataforma:
 
 - Sin vulnerabilidades criticas.
 - Tests >= 80% en backend core.
@@ -170,7 +173,48 @@ Aplicables al cierre de 03C:
 - Sin PII ni secretos en logs.
 - AbacGuard probado en aislamiento cross-tenant.
 - Bootstrap MinIO documentado y validado en runbook.
-- Informe de cierre con evidencia de las tres fases.
+- Informe de cierre con evidencia de 03A-03D.
+
+---
+
+## Fase 03D — Branding propio de plataforma
+
+### Objetivo
+
+Reemplazar el borrador local de branding en `apps/web/settings` por una capacidad productiva persistente para la identidad visual de la consola administrativa: logo/isotipo, favicon, fondo de login, metadata publica, nombre de producto y nombre de superficie.
+
+### Entregables
+
+- Migracion `CreatePlatformBrandingSettings` con tabla singleton `public.platform_branding_settings`, defaults iWana, FKs a `public.media_assets` y `down()` reversible.
+- Entidad y DTOs de plataforma: respuesta publica, respuesta admin, patch hibrido URL/assetId y upload multipart.
+- Modulo backend `PlatformBrandingModule` o equivalente dentro del bounded context plataforma, sin acoplarlo a `/tenants`.
+- Endpoints:
+	- `GET /api/v1/platform/branding/public`
+	- `GET /api/v1/platform/branding`
+	- `PATCH /api/v1/platform/branding`
+	- `POST /api/v1/platform/branding/assets`
+- Auditoria de cambios con `entityType='PlatformBranding'`, `oldValue/newValue`, actor y slot afectado.
+- UI `apps/web/settings` conectada al backend, sin `localStorage` como fuente autoritativa.
+- Aplicacion real en `apps/web/auth/login`: favicon, logo/isotipo, fondo de login y textos publicos.
+- Aplicacion real en shell autenticado: sidebar/header usan branding propio de plataforma.
+- Tests unitarios backend, HTTP focalizado, RTL de settings web y Playwright de login administrativo.
+
+### DoD
+
+- [ ] `pnpm --filter @iwana/api typecheck` verde.
+- [ ] `pnpm --filter @iwana/web typecheck` verde.
+- [ ] Tests backend de `PlatformBrandingModule` en verde, incluyendo roles SYSTEM_ADMIN/IWANA_SUPPORT.
+- [ ] Test HTTP valida que endpoint publico no expone datos sensibles y usa cache 60s.
+- [ ] RTL valida que `/settings` carga estado backend, guarda, resetea y no depende de `localStorage`.
+- [ ] Playwright valida favicon/logo/fondo del login administrativo con fallback iWana.
+- [ ] Migracion forward/reverse validada en BD limpia.
+- [ ] Sin afectacion al branding de tenants ni a `TenantBrandingForm`.
+
+### Riesgos
+
+- `apps/web` usa metadata de Next.js parcialmente estatica; si no puede hidratarse desde backend en SSR, aplicar favicon/logo/fondo en cliente y documentar metadata dinamica como limitacion temporal.
+- El endpoint publico de plataforma debe exponer solo identidad visual y metadata publica, nunca configuracion operativa ni usuarios.
+- Reusar `MediaService` con `tenantSchema='platform'` exige tests para no mezclar assets de tenants con assets institucionales.
 
 ## Asignacion sugerida
 
@@ -179,6 +223,7 @@ Aplicables al cierre de 03C:
 | 03A | Sr. Dev Fullstack | Sr. Dev Data | — | Sr. Dev QA (unit) |
 | 03B | Sr. Dev Fullstack | Sr. Dev Data (migracion) | — | Sr. Dev QA (integracion + aislamiento) |
 | 03C | Sr. Dev Fullstack (api-client) | — | Sr. Dev Fullstack (web/portal) | Sr. Dev QA (RTL + E2E) |
+| 03D | Sr. Dev Fullstack | Sr. Dev Data (migracion) | Sr. Dev Fullstack (web settings/login) | Sr. Dev QA (HTTP + RTL + E2E) |
 
 ## Documentos derivados (PROMPTs por fase)
 
@@ -189,3 +234,5 @@ Aplicables al cierre de 03C:
 ## Informe vivo
 
 `docs/informes/INFORME-MOD03-BRANDING-EMPRESARIAL-v1.0.md` se crea al iniciar fase 03A y se actualiza al cierre de cada fase. No se crean informes paralelos por fase para evitar duplicacion.
+
+La fase 03D tambien actualiza el mismo informe vivo; no se crea un informe paralelo.

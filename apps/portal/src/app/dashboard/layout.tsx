@@ -7,6 +7,22 @@ import { TopHeader } from '@/components/layout/TopHeader';
 import { tenantSelfApi, type TenantSelf } from '@/lib/api-client';
 import { useAuth } from '@/components/auth/AuthProvider';
 
+const BRANDING_EVENT_NAME = 'tenant-branding-updated';
+
+type BrandingSnapshot = Pick<
+  TenantSelf,
+  | 'name'
+  | 'showTenantName'
+  | 'logoLightUrl'
+  | 'logoDarkUrl'
+  | 'sealLightUrl'
+  | 'sealDarkUrl'
+  | 'faviconLightUrl'
+  | 'faviconDarkUrl'
+  | 'loginBackgroundLightUrl'
+  | 'loginBackgroundDarkUrl'
+>;
+
 /**
  * Layout Base del Portal Suscriptor.
  *
@@ -42,6 +58,32 @@ export default function PortalDashboardLayout({ children }: { children: ReactNod
       .then(setTenantProfile)
       .catch(() => null);
   }, [user]);
+
+  useEffect(() => {
+    const handleBrandingUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<BrandingSnapshot>).detail;
+      if (!detail) {
+        return;
+      }
+
+      setTenantProfile((currentProfile) => {
+        if (!currentProfile) {
+          return currentProfile;
+        }
+
+        return {
+          ...currentProfile,
+          ...detail,
+        };
+      });
+    };
+
+    window.addEventListener(BRANDING_EVENT_NAME, handleBrandingUpdated);
+
+    return () => {
+      window.removeEventListener(BRANDING_EVENT_NAME, handleBrandingUpdated);
+    };
+  }, []);
 
   if (authLoading || !user) {
     return (

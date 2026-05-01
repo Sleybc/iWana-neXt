@@ -77,6 +77,36 @@ import {
 } from './dto/tenant-additional-products.dto';
 import { MediaAssetResponseDto } from '../media/dto/media-asset-response.dto';
 
+const TENANT_PUBLIC_BRANDING_EXAMPLE = {
+  displayName: 'ISP Demo',
+  showTenantName: true,
+  logoLightUrl: 'https://cdn.demo.co/branding/logo-light.svg',
+  logoDarkUrl: 'https://cdn.demo.co/branding/logo-dark.svg',
+  sealLightUrl: 'https://cdn.demo.co/branding/seal-light.svg',
+  sealDarkUrl: 'https://cdn.demo.co/branding/seal-dark.svg',
+  faviconLightUrl: 'https://cdn.demo.co/branding/favicon-light.svg',
+  faviconDarkUrl: 'https://cdn.demo.co/branding/favicon-dark.svg',
+  loginBackgroundLightUrl: 'https://cdn.demo.co/branding/login-light.jpg',
+  loginBackgroundDarkUrl: 'https://cdn.demo.co/branding/login-dark.jpg',
+};
+
+const TENANT_BRANDING_PATCH_EXAMPLE = {
+  logoLightUrl: 'https://cdn.demo.co/branding/logo-light.svg',
+  logoLightAssetId: null,
+  faviconLightAssetId: '550e8400-e29b-41d4-a716-446655440000',
+  loginBackgroundDarkUrl: null,
+};
+
+const MEDIA_ASSET_RESPONSE_EXAMPLE = {
+  id: '550e8400-e29b-41d4-a716-446655440001',
+  usage: 'seal',
+  themeVariant: 'light',
+  mimeType: 'image/svg+xml',
+  sizeBytes: 24831,
+  publicUrl: 'https://cdn.demo.co/branding/seal-light.svg',
+  createdAt: '2026-04-30T12:00:00.000Z',
+};
+
 /**
  * Controlador de gestion de tenants.
  *
@@ -124,8 +154,16 @@ export class TenantController {
   @Header('Cache-Control', 'public, max-age=60')
   @Throttle({ default: { ttl: 60000, limit: 60 } })
   @ApiOperation({ summary: 'Obtener branding público por slug para el login del portal' })
-  @ApiQuery({ name: 'slug', required: true, type: String })
-  @ApiResponse({ status: 200, description: 'Branding público resuelto.' })
+  @ApiQuery({ name: 'slug', required: true, type: String, example: 'isp-demo' })
+  @ApiResponse({
+    status: 200,
+    description: 'Branding público resuelto.',
+    schema: {
+      example: {
+        data: TENANT_PUBLIC_BRANDING_EXAMPLE,
+      },
+    },
+  })
   @ApiResponse({ status: 404, description: 'Tenant no encontrado o inactivo.' })
   async getPublicBranding(
     @Query('slug') slug: string | undefined,
@@ -215,8 +253,51 @@ export class TenantController {
   @Patch('me/branding')
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
+  @ApiBody({
+    description: 'Actualización parcial del branding híbrido del tenant autenticado.',
+    schema: {
+      type: 'object',
+      example: TENANT_BRANDING_PATCH_EXAMPLE,
+    },
+  })
   @ApiOperation({ summary: 'Actualizar branding del tenant autenticado' })
-  @ApiResponse({ status: 200, description: 'Branding actualizado.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Branding actualizado.',
+    schema: {
+      example: {
+        data: {
+          id: '44444444-4444-4444-8444-444444444444',
+          name: 'ISP Demo',
+          slug: 'isp-demo',
+          status: 'ACTIVE',
+          contactEmail: 'contacto@ispdemo.co',
+          legalName: null,
+          nit: null,
+          nitDv: null,
+          city: 'Bogota',
+          department: 'Cundinamarca',
+          countryCode: 'CO',
+          phone: null,
+          website: null,
+          createdAt: '2026-01-15T00:00:00.000Z',
+          ...TENANT_BRANDING_PATCH_EXAMPLE,
+          logoDarkAssetId: null,
+          sealLightUrl: 'https://cdn.demo.co/branding/seal-light.svg',
+          sealLightAssetId: null,
+          sealDarkUrl: null,
+          sealDarkAssetId: null,
+          faviconLightUrl: 'https://cdn.demo.co/branding/favicon-light.svg',
+          faviconDarkUrl: null,
+          faviconDarkAssetId: null,
+          loginBackgroundLightUrl: 'https://cdn.demo.co/branding/login-light.jpg',
+          loginBackgroundLightAssetId: null,
+          loginBackgroundDarkAssetId: null,
+          showTenantName: true,
+        },
+      },
+    },
+  })
   async patchMeBranding(
     @CurrentUser() user: JwtPayload,
     @Body() dto: UpdateTenantSelfBrandingDto,
@@ -244,6 +325,10 @@ export class TenantController {
     schema: {
       type: 'object',
       required: ['file', 'usage', 'themeVariant'],
+      example: {
+        usage: 'seal',
+        themeVariant: 'light',
+      },
       properties: {
         file: { type: 'string', format: 'binary', description: 'Archivo de branding a subir' },
         usage: { type: 'string', enum: ['logo', 'seal', 'favicon', 'login_background'] },
@@ -252,7 +337,15 @@ export class TenantController {
     },
   })
   @ApiOperation({ summary: 'Subir y asignar un asset de branding al tenant autenticado' })
-  @ApiResponse({ status: 201, description: 'Asset subido y asignado.' })
+  @ApiResponse({
+    status: 201,
+    description: 'Asset subido y asignado.',
+    schema: {
+      example: {
+        data: MEDIA_ASSET_RESPONSE_EXAMPLE,
+      },
+    },
+  })
   async uploadMeBrandingAsset(
     @CurrentUser() user: JwtPayload,
     @Body() dto: UploadTenantBrandingAssetDto,
@@ -650,8 +743,48 @@ export class TenantController {
    */
   @Patch(':id/branding')
   @Roles(PlatformRole.SYSTEM_ADMIN)
+  @ApiBody({
+    description: 'Actualización parcial del branding del tenant objetivo desde la consola web.',
+    schema: {
+      type: 'object',
+      example: TENANT_BRANDING_PATCH_EXAMPLE,
+    },
+  })
   @ApiOperation({ summary: 'Actualizar branding de un tenant desde plataforma' })
-  @ApiResponse({ status: 200, description: 'Branding actualizado.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Branding actualizado.',
+    schema: {
+      example: {
+        data: {
+          id: '44444444-4444-4444-8444-444444444444',
+          name: 'ISP Demo',
+          slug: 'isp-demo',
+          schemaName: 'tenant_isp_demo',
+          status: 'ACTIVE',
+          contactEmail: 'contacto@ispdemo.co',
+          maxSubscribers: null,
+          provisioningError: null,
+          createdAt: '2026-01-15T00:00:00.000Z',
+          updatedAt: '2026-04-30T12:00:00.000Z',
+          ...TENANT_BRANDING_PATCH_EXAMPLE,
+          logoDarkUrl: null,
+          logoDarkAssetId: null,
+          sealLightUrl: 'https://cdn.demo.co/branding/seal-light.svg',
+          sealLightAssetId: null,
+          sealDarkUrl: null,
+          sealDarkAssetId: null,
+          faviconLightUrl: 'https://cdn.demo.co/branding/favicon-light.svg',
+          faviconDarkUrl: null,
+          faviconDarkAssetId: null,
+          loginBackgroundLightUrl: 'https://cdn.demo.co/branding/login-light.jpg',
+          loginBackgroundLightAssetId: null,
+          loginBackgroundDarkAssetId: null,
+          showTenantName: true,
+        },
+      },
+    },
+  })
   async updateBranding(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateTenantSelfBrandingDto,
@@ -680,6 +813,10 @@ export class TenantController {
     schema: {
       type: 'object',
       required: ['file', 'usage', 'themeVariant'],
+      example: {
+        usage: 'seal',
+        themeVariant: 'light',
+      },
       properties: {
         file: { type: 'string', format: 'binary', description: 'Archivo de branding a subir' },
         usage: { type: 'string', enum: ['logo', 'seal', 'favicon', 'login_background'] },
@@ -688,7 +825,15 @@ export class TenantController {
     },
   })
   @ApiOperation({ summary: 'Subir y asignar un asset de branding a un tenant desde plataforma' })
-  @ApiResponse({ status: 201, description: 'Asset subido y asignado.' })
+  @ApiResponse({
+    status: 201,
+    description: 'Asset subido y asignado.',
+    schema: {
+      example: {
+        data: MEDIA_ASSET_RESPONSE_EXAMPLE,
+      },
+    },
+  })
   async uploadBrandingAsset(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UploadTenantBrandingAssetDto,

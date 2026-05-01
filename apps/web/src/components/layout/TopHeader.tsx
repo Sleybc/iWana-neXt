@@ -7,6 +7,7 @@ import { Menu, Search } from 'lucide-react';
 import { DropdownUser } from './DropdownUser';
 import { ThemeToggle } from './ThemeToggle';
 import { NotificationBell } from './NotificationBell';
+import { usePlatformBrandingAssets } from '@/components/branding/PlatformBrandingProvider';
 
 interface TopHeaderProps {
   desktopCollapsed: boolean;
@@ -78,6 +79,7 @@ export const TopHeader = ({
   mobileOpen,
   setMobileOpen,
 }: TopHeaderProps) => {
+  const { logoUrl } = usePlatformBrandingAssets();
   const menuToggleAriaProps = {
     'aria-controls': 'sidebar',
     'aria-expanded': mobileOpen,
@@ -123,10 +125,8 @@ export const TopHeader = ({
 
           {/* Logo — solo mobile */}
           <Link className="flex shrink-0 lg:hidden" href="/dashboard" aria-label="Ir al dashboard">
-            <div className="w-8 h-8 rounded-md bg-iwana-secondary flex items-center justify-center">
-              <span className="text-[#17163a] font-bold text-base" aria-hidden="true">
-                iW
-              </span>
+            <div className="w-8 h-8 rounded-md bg-iwana-secondary flex items-center justify-center overflow-hidden">
+              <img src={logoUrl} alt="" className="h-6 w-6 object-contain" aria-hidden="true" />
             </div>
           </Link>
         </div>

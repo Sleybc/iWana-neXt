@@ -8,6 +8,9 @@ build/
 .next/
 .turbo/
 
+# Storage local de desarrollo — uploads generados por MediaService
+apps/api/storage/
+
 # Variables de entorno — NUNCA versionar secretos
 .env
 .env.local

@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { MediaAsset, MediaUsage } from '@iwana/db';
 import { STORAGE_PORT, type StoragePort } from '@iwana/storage';
+import { imageSize } from 'image-size';
 import type { UploadMediaDto } from './dto/upload-media.dto';
 import type { MediaAssetResponseDto } from './dto/media-asset-response.dto';
 
@@ -38,6 +39,45 @@ const MEDIA_CONSTRAINTS: Record<MediaUsage, { maxBytes: number; allowedMimes: st
       'image/x-icon',
       'image/vnd.microsoft.icon',
     ],
+  },
+};
+
+type DimensionConstraint = {
+  minWidth: number;
+  minHeight: number;
+  aspectRatioMin?: number;
+  aspectRatioMax?: number;
+  square?: boolean;
+  maxWidth?: number;
+  maxHeight?: number;
+};
+
+const MEDIA_DIMENSION_CONSTRAINTS: Partial<Record<MediaUsage, DimensionConstraint>> = {
+  [MediaUsage.LOGO]: {
+    minWidth: 240,
+    minHeight: 60,
+    aspectRatioMin: 1.6,
+    aspectRatioMax: 5,
+  },
+  [MediaUsage.SEAL]: {
+    minWidth: 128,
+    minHeight: 128,
+    square: true,
+    maxWidth: 1024,
+    maxHeight: 1024,
+  },
+  [MediaUsage.FAVICON]: {
+    minWidth: 32,
+    minHeight: 32,
+    square: true,
+    maxWidth: 512,
+    maxHeight: 512,
+  },
+  [MediaUsage.LOGIN_BACKGROUND]: {
+    minWidth: 1280,
+    minHeight: 720,
+    aspectRatioMin: 1.6,
+    aspectRatioMax: 1.9,
   },
 };
 
@@ -126,8 +166,16 @@ export class MediaService {
     }
 
     // Actualizar objectKey y publicUrl
-    const bucketPublic = this.config.get<string>('S3_BUCKET_PUBLIC') === 'true';
-    const publicUrl = bucketPublic ? this.storage.getPublicUrl(objectKey) : null;
+    // La URL pública aplica si el bucket es público o si existe una base pública explícita.
+    const bucketPublicConfig = this.config.get<string | boolean>('S3_BUCKET_PUBLIC');
+    const bucketPublic = bucketPublicConfig === true || bucketPublicConfig === 'true';
+    const publicBaseUrl = this.config.get<string>('S3_PUBLIC_BASE_URL');
+    const hasPublicBaseUrl = typeof publicBaseUrl === 'string' && publicBaseUrl.trim().length > 0;
+    const storageDriver = this.config.get<string>('STORAGE_DRIVER', 'local');
+    const publicUrl =
+      storageDriver === 'local' || bucketPublic || hasPublicBaseUrl
+        ? this.storage.getPublicUrl(objectKey)
+        : null;
 
     await this.mediaRepo.update(saved.id, { objectKey, publicUrl });
     saved.objectKey = objectKey;
@@ -218,6 +266,69 @@ export class MediaService {
       throw new BadRequestException(
         `El archivo supera el tamaño máximo de ${maxKb} KB para usage '${usage}'.`,
       );
+    }
+
+    this.validateImageDimensions(file, usage);
+  }
+
+  /**
+   * Valida dimensiones y proporción para evitar distorsión en UI.
+   * La validación es obligatoria para usos de branding y no aplica a usage GENERAL.
+   */
+  private validateImageDimensions(file: Express.Multer.File, usage: MediaUsage): void {
+    const dimensionConstraint = MEDIA_DIMENSION_CONSTRAINTS[usage];
+    if (!dimensionConstraint || !file.mimetype.startsWith('image/')) {
+      return;
+    }
+
+    const dimensions = imageSize(file.buffer);
+    const width = dimensions.width ?? 0;
+    const height = dimensions.height ?? 0;
+
+    if (width <= 0 || height <= 0) {
+      throw new BadRequestException(
+        `No se pudieron validar las dimensiones de la imagen para usage '${usage}'.`,
+      );
+    }
+
+    if (width < dimensionConstraint.minWidth || height < dimensionConstraint.minHeight) {
+      throw new BadRequestException(
+        `La imagen para usage '${usage}' debe ser al menos ${dimensionConstraint.minWidth}x${dimensionConstraint.minHeight}px.`,
+      );
+    }
+
+    if (
+      typeof dimensionConstraint.maxWidth === 'number' &&
+      typeof dimensionConstraint.maxHeight === 'number' &&
+      (width > dimensionConstraint.maxWidth || height > dimensionConstraint.maxHeight)
+    ) {
+      throw new BadRequestException(
+        `La imagen para usage '${usage}' no puede superar ${dimensionConstraint.maxWidth}x${dimensionConstraint.maxHeight}px.`,
+      );
+    }
+
+    if (dimensionConstraint.square) {
+      const squareTolerance = Math.max(1, Math.round(width * 0.02));
+      if (Math.abs(width - height) > squareTolerance) {
+        throw new BadRequestException(
+          `La imagen para usage '${usage}' debe tener proporción 1:1 (cuadrada).`,
+        );
+      }
+    }
+
+    if (
+      typeof dimensionConstraint.aspectRatioMin === 'number' &&
+      typeof dimensionConstraint.aspectRatioMax === 'number'
+    ) {
+      const aspectRatio = width / height;
+      if (
+        aspectRatio < dimensionConstraint.aspectRatioMin ||
+        aspectRatio > dimensionConstraint.aspectRatioMax
+      ) {
+        throw new BadRequestException(
+          `La imagen para usage '${usage}' debe tener proporción entre ${dimensionConstraint.aspectRatioMin.toFixed(2)} y ${dimensionConstraint.aspectRatioMax.toFixed(2)}.`,
+        );
+      }
     }
   }
 

@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Building2, ClipboardList, LayoutDashboard, Settings, Users, X } from 'lucide-react';
 import { cn } from '@iwana/ui';
+import { usePlatformBrandingAssets } from '@/components/branding/PlatformBrandingProvider';
 
 interface SidebarProps {
   desktopCollapsed: boolean;
@@ -122,6 +123,7 @@ export const Sidebar = ({
   setMobileOpen,
 }: SidebarProps) => {
   const sidebar = useRef<HTMLElement>(null);
+  const { branding, logoUrl } = usePlatformBrandingAssets();
 
   // Persistir estado desktop en localStorage
   useEffect(() => {
@@ -175,13 +177,11 @@ export const Sidebar = ({
           href="/dashboard"
           className={cn('flex items-center gap-3 min-w-0', desktopCollapsed && 'lg:hidden')}
         >
-          <div className="w-8 h-8 shrink-0 rounded-md bg-iwana-primary flex items-center justify-center">
-            <span className="text-iwana-secondary font-bold text-base" aria-hidden="true">
-              iW
-            </span>
+          <div className="w-8 h-8 shrink-0 rounded-md bg-iwana-primary flex items-center justify-center overflow-hidden">
+            <img src={logoUrl} alt="" className="h-6 w-6 object-contain" aria-hidden="true" />
           </div>
           <span className="text-lg font-bold tracking-tight text-iwana-primary dark:text-white truncate">
-            iWana neXt
+            {branding.productName}
           </span>
         </Link>
 
@@ -190,12 +190,10 @@ export const Sidebar = ({
           href="/dashboard"
           className={cn('hidden items-center justify-center', desktopCollapsed && 'lg:flex')}
           aria-label="Ir al dashboard"
-          title="iWana neXt — Dashboard"
+          title={`${branding.productName} — Dashboard`}
         >
-          <div className="w-8 h-8 rounded-md bg-iwana-primary flex items-center justify-center">
-            <span className="text-iwana-secondary font-bold text-base" aria-hidden="true">
-              iW
-            </span>
+          <div className="w-8 h-8 rounded-md bg-iwana-primary flex items-center justify-center overflow-hidden">
+            <img src={logoUrl} alt="" className="h-6 w-6 object-contain" aria-hidden="true" />
           </div>
         </Link>
 

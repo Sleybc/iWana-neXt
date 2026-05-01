@@ -1,6 +1,6 @@
-# ADR-033 — Adopcion de MinIO/S3-compatible y patron StoragePort
+# ADR-035 — Adopcion de MinIO/S3-compatible y patron StoragePort
 
-**Estado:** Propuesto — requiere aprobacion CTO
+**Estado:** Aprobado
 **Fecha:** 2026-04-30
 **Modo activo:** Architect
 **Autor:** AI-EM-ARCH

@@ -401,6 +401,82 @@ export const platformUsersApi = {
     }),
 };
 
+export type PlatformBrandingUsage = 'logo' | 'favicon' | 'login_background';
+export type PlatformBrandingThemeVariant = 'light' | 'dark';
+
+export interface PlatformPublicBranding {
+  productName: string;
+  surfaceName: string;
+  metadataTitle: string;
+  metadataDescription: string;
+  logoUrl: string | null;
+  faviconUrl: string | null;
+  loginBackgroundLightUrl: string | null;
+  loginBackgroundDarkUrl: string | null;
+}
+
+export interface PlatformBranding extends PlatformPublicBranding {
+  logoAssetId: string | null;
+  faviconAssetId: string | null;
+  loginBackgroundLightAssetId: string | null;
+  loginBackgroundDarkAssetId: string | null;
+  updatedAt: string;
+}
+
+export interface UpdatePlatformBrandingPayload {
+  productName?: string;
+  surfaceName?: string;
+  metadataTitle?: string;
+  metadataDescription?: string;
+  logoUrl?: string | null;
+  logoAssetId?: string | null;
+  faviconUrl?: string | null;
+  faviconAssetId?: string | null;
+  loginBackgroundLightUrl?: string | null;
+  loginBackgroundLightAssetId?: string | null;
+  loginBackgroundDarkUrl?: string | null;
+  loginBackgroundDarkAssetId?: string | null;
+}
+
+export const platformBrandingApi = {
+  getPublic: () =>
+    request<PlatformPublicBranding>('/platform/branding/public', {
+      skipAuth: true,
+      skipRefreshRetry: true,
+    }),
+
+  get: () => request<PlatformBranding>('/platform/branding'),
+
+  update: (data: UpdatePlatformBrandingPayload) =>
+    request<PlatformBranding>('/platform/branding', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  reset: () =>
+    request<PlatformBranding>('/platform/branding/reset', {
+      method: 'POST',
+    }),
+
+  uploadAsset: (payload: {
+    usage: PlatformBrandingUsage;
+    themeVariant?: PlatformBrandingThemeVariant;
+    file: File;
+  }) => {
+    const formData = new FormData();
+    formData.append('usage', payload.usage);
+    if (payload.themeVariant) {
+      formData.append('themeVariant', payload.themeVariant);
+    }
+    formData.append('file', payload.file);
+
+    return request<MediaAsset>('/platform/branding/assets', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+};
+
 export interface TenantListItem {
   id: string;
   name: string;
