@@ -17,6 +17,7 @@ import { DocumentType, UserRole, UserStatus, AuditAction } from '@iwana/shared';
 import { AuditService } from '../audit/audit.service';
 import { TenantService } from '../tenant/tenant.service';
 import {
+  AdminChangeUserLoginEmailDto,
   ChangeUserLoginEmailDto,
   CreateUserDto,
   ResetPasswordDto,
@@ -398,6 +399,79 @@ export class UsersService {
         oldValue: { loginEmailChanged: false },
         newValue: {
           loginEmailChanged: true,
+          companyContactEmailSynced: shouldUpdateTenantContactEmail,
+        },
+      });
+
+      return this.toDto(user);
+    });
+  }
+
+  /**
+   * Cambia el email de acceso de un usuario por acción administrativa.
+   * No requiere contraseña actual, pero mantiene controles RBAC y auditoría.
+   */
+  async changeLoginEmailAsAdmin(
+    id: string,
+    dto: AdminChangeUserLoginEmailDto,
+    actorUserId: string,
+    actorRole: UserRole,
+  ): Promise<UserResponseDto> {
+    const { schemaName } = TenantContext.getOrThrow();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const user = await qr.manager.findOne(User, { where: { id } });
+      if (!user) {
+        throw new NotFoundException(`Usuario ${id} no encontrado.`);
+      }
+
+      if (user.role === UserRole.SYSTEM_ADMIN && actorRole !== UserRole.SYSTEM_ADMIN) {
+        throw new ForbiddenException(
+          'No tienes permisos para cambiar el email de un SYSTEM_ADMIN.',
+        );
+      }
+
+      const normalizedEmail = dto.email.toLowerCase().trim();
+      const nextEmailHash = this.hashEmail(normalizedEmail);
+      const emailChanged = nextEmailHash !== user.emailHash;
+
+      if (emailChanged) {
+        const existingUser = await qr.manager.findOne(User, {
+          where: { email: normalizedEmail },
+          withDeleted: false,
+        });
+
+        if (existingUser && existingUser.id !== user.id) {
+          throw new ConflictException('Ya existe un usuario con ese email en este tenant.');
+        }
+
+        user.email = normalizedEmail;
+        user.emailHash = nextEmailHash;
+        await qr.manager.save(User, user);
+      }
+
+      const shouldSyncContactEmail = dto.syncCompanyContactEmail !== false;
+      const shouldUpdateTenantContactEmail =
+        shouldSyncContactEmail && emailChanged
+          ? await this.isPrincipalAdminUser(qr.manager, user.id)
+          : false;
+
+      if (shouldUpdateTenantContactEmail) {
+        await this.tenantService.updateTenantSelfProfile(
+          user.tenantId,
+          { contactEmail: normalizedEmail },
+          actorUserId,
+        );
+      }
+
+      await this.auditService.log({
+        action: AuditAction.UPDATE,
+        entityType: 'UserLoginEmailAdmin',
+        entityId: user.id,
+        userId: actorUserId,
+        oldValue: { loginEmailChanged: false },
+        newValue: {
+          loginEmailChanged: emailChanged,
           companyContactEmailSynced: shouldUpdateTenantContactEmail,
         },
       });

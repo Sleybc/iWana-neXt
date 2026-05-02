@@ -12,7 +12,15 @@ import {
   WEB_USER_ROLE_OPTIONS,
   WEB_USER_STATUS_OPTIONS,
 } from '@/lib/user-labels';
-import { BadgePlus, CheckCircle2, CircleAlert, Clock3, ShieldCheck, Trash2 } from 'lucide-react';
+import {
+  BadgePlus,
+  CheckCircle2,
+  CircleAlert,
+  Clock3,
+  KeyRound,
+  ShieldCheck,
+  Trash2,
+} from 'lucide-react';
 import {
   FORM_ALERT_ERROR_CLASS,
   FORM_ALERT_SUCCESS_CLASS,
@@ -79,6 +87,10 @@ export function UserManagementModal({
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isSavingLoginEmail, setIsSavingLoginEmail] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [loginEmailDraft, setLoginEmailDraft] = useState('');
+  const [generatedTemporaryPassword, setGeneratedTemporaryPassword] = useState<string | null>(null);
 
   const {
     register,
@@ -116,6 +128,8 @@ export function UserManagementModal({
       try {
         const current = await usersApi.getOne(tenantSlug, user.id);
         setDetail(current);
+        setLoginEmailDraft(current.email);
+        setGeneratedTemporaryPassword(null);
         reset(mapUserToForm(current));
         // documentNumber nunca retorna del backend (PII sensible — Ley 1581)
       } catch (err) {
@@ -147,6 +161,8 @@ export function UserManagementModal({
       });
       setError(null);
       setSuccess(null);
+      setLoginEmailDraft('');
+      setGeneratedTemporaryPassword(null);
     }
   }, [open, reset]);
 
@@ -199,6 +215,80 @@ export function UserManagementModal({
       setError(err instanceof ApiError ? err.message : 'No fue posible eliminar el usuario.');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleSaveLoginEmail = async () => {
+    if (!detail) {
+      return;
+    }
+
+    const normalizedEmail = loginEmailDraft.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setError('El correo de acceso es obligatorio.');
+      return;
+    }
+
+    if (normalizedEmail === detail.email.toLowerCase().trim()) {
+      setSuccess('El correo de acceso no tuvo cambios.');
+      setError(null);
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+    setIsSavingLoginEmail(true);
+
+    try {
+      const updated = await usersApi.changeLoginEmailAsAdmin(
+        tenantSlug,
+        user.id,
+        {
+          email: normalizedEmail,
+          syncCompanyContactEmail: true,
+        },
+        crypto.randomUUID(),
+      );
+
+      setDetail(updated);
+      setLoginEmailDraft(updated.email);
+      setSuccess('Correo de acceso actualizado correctamente.');
+      onSaved(updated);
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : 'No fue posible actualizar el correo de acceso.',
+      );
+    } finally {
+      setIsSavingLoginEmail(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!detail) {
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+    setGeneratedTemporaryPassword(null);
+    setIsResettingPassword(true);
+
+    try {
+      const result = await usersApi.resetPassword(tenantSlug, user.id, {}, crypto.randomUUID());
+
+      const updated: UserListItem = {
+        ...detail,
+        passwordResetRequired: true,
+      };
+
+      setDetail(updated);
+      setGeneratedTemporaryPassword(result.temporaryPassword);
+      setSuccess('Se generó una contraseña temporal para el usuario.');
+      onSaved(updated);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'No fue posible reiniciar la contraseña.');
+    } finally {
+      setIsResettingPassword(false);
     }
   };
 
@@ -368,8 +458,7 @@ export function UserManagementModal({
                   Datos de perfil
                 </p>
                 <p className={`mt-1 ${FORM_HELP_CLASS}`}>
-                  Edita la información visible y operativa del usuario sin tocar credenciales
-                  directas.
+                  Edita la información visible y operativa del usuario.
                 </p>
               </div>
 
@@ -480,6 +569,74 @@ export function UserManagementModal({
                 />
                 {errors.avatarUrl && <p className={FORM_ERROR_CLASS}>{errors.avatarUrl.message}</p>}
               </div>
+            </div>
+
+            {/* Credenciales de acceso */}
+            <div className={`${FORM_SECTION_CARD_CLASS} space-y-3`}>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                  Credenciales de acceso
+                </p>
+                <p className={`mt-1 ${FORM_HELP_CLASS}`}>
+                  Gestiona el correo de ingreso y genera una contraseña temporal cuando sea
+                  necesario.
+                </p>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+                <div>
+                  <label htmlFor="um-login-email" className={`block ${FORM_LABEL_CLASS}`}>
+                    Correo de acceso
+                  </label>
+                  <input
+                    id="um-login-email"
+                    type="email"
+                    className={FORM_INPUT_CLASS}
+                    value={loginEmailDraft}
+                    onChange={(event) => setLoginEmailDraft(event.target.value)}
+                    placeholder="usuario@empresa.com"
+                    autoComplete="off"
+                  />
+                </div>
+
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleSaveLoginEmail}
+                  loading={isSavingLoginEmail}
+                >
+                  Actualizar correo de acceso
+                </Button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleResetPassword}
+                  loading={isResettingPassword}
+                >
+                  <KeyRound className="h-4 w-4" aria-hidden="true" />
+                  Generar contraseña temporal
+                </Button>
+                <p className={FORM_MICROCOPY_CLASS}>
+                  El usuario deberá cambiarla en su siguiente ingreso.
+                </p>
+              </div>
+
+              {generatedTemporaryPassword && (
+                <div className="rounded-2xl border border-amber-300/80 bg-amber-50/80 p-4 dark:border-amber-700/70 dark:bg-amber-950/20">
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-800 dark:text-amber-200">
+                    Contraseña temporal generada
+                  </p>
+                  <p
+                    className="mt-2 select-all rounded-xl border border-amber-300/80 bg-white/90 px-4 py-3 font-mono text-base font-semibold tracking-[0.2em] text-amber-900 dark:border-amber-700 dark:bg-dark-surface-3 dark:text-amber-200"
+                    aria-label="Contraseña temporal generada"
+                  >
+                    {generatedTemporaryPassword}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Acciones */}

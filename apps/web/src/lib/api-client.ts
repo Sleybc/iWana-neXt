@@ -842,6 +842,19 @@ export interface UpdateUserPayload {
   mfaRequired?: boolean;
 }
 
+export interface ChangeLoginEmailAsAdminPayload {
+  email: string;
+  syncCompanyContactEmail?: boolean;
+}
+
+export interface ResetUserPasswordPayload {
+  password?: string;
+}
+
+export interface ResetUserPasswordResponse {
+  temporaryPassword: string;
+}
+
 // Entrada de audit log — registro de una operación CUD en el sistema
 export interface AuditActorInfo {
   id: string | null;
@@ -998,6 +1011,36 @@ export const usersApi = {
 
   update: (tenantSlug: string, userId: string, data: UpdateUserPayload, idempotencyKey: string) =>
     request<UserListItem>(`/users/${encodeURIComponent(userId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+      headers: {
+        'X-Tenant-Slug': tenantSlug,
+        'Idempotency-Key': idempotencyKey,
+      },
+    }),
+
+  changeLoginEmailAsAdmin: (
+    tenantSlug: string,
+    userId: string,
+    data: ChangeLoginEmailAsAdminPayload,
+    idempotencyKey: string,
+  ) =>
+    request<UserListItem>(`/users/${encodeURIComponent(userId)}/login-email/admin`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+      headers: {
+        'X-Tenant-Slug': tenantSlug,
+        'Idempotency-Key': idempotencyKey,
+      },
+    }),
+
+  resetPassword: (
+    tenantSlug: string,
+    userId: string,
+    data: ResetUserPasswordPayload,
+    idempotencyKey: string,
+  ) =>
+    request<ResetUserPasswordResponse>(`/users/${encodeURIComponent(userId)}/password`, {
       method: 'PATCH',
       body: JSON.stringify(data),
       headers: {

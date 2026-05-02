@@ -30,6 +30,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { UsersService } from './users.service';
 import {
+  AdminChangeUserLoginEmailDto,
   ChangeUserLoginEmailDto,
   CreateUserDto,
   ResetPasswordDto,
@@ -230,6 +231,42 @@ export class UsersController {
     }
 
     const result = await this.usersService.update(id, updateUserDto, actor.sub, actor.role);
+    return { data: result };
+  }
+
+  /**
+   * Cambia el email de acceso de un usuario por acción administrativa.
+   * Requiere Idempotency-Key para soportar reintentos seguros en la UI.
+   */
+  @Patch(':id/login-email/admin')
+  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Cambiar el email de acceso de un usuario (admin)' })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    description: 'Clave de idempotencia obligatoria',
+    required: true,
+  })
+  @ApiResponse({ status: 200, description: 'Email de acceso actualizado.' })
+  @ApiResponse({ status: 400, description: 'Datos invalidos o Idempotency-Key faltante.' })
+  @ApiResponse({ status: 403, description: 'Sin permisos para modificar este usuario.' })
+  @ApiResponse({ status: 409, description: 'El nuevo email ya está en uso.' })
+  async changeLoginEmailAsAdmin(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AdminChangeUserLoginEmailDto,
+    @CurrentUser() actor: JwtPayload,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<{ data: UserResponseDto }> {
+    if (!idempotencyKey?.trim()) {
+      throw new BadRequestException('El header Idempotency-Key es obligatorio.');
+    }
+
+    const result = await this.usersService.changeLoginEmailAsAdmin(
+      id,
+      dto,
+      actor.sub,
+      actor.role as UserRole,
+    );
+
     return { data: result };
   }
 

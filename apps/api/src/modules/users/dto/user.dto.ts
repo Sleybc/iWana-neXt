@@ -189,6 +189,22 @@ export class ChangeUserLoginEmailDto {
   syncCompanyContactEmail?: boolean;
 }
 
+export class AdminChangeUserLoginEmailDto {
+  @ApiProperty({ example: 'nuevo.acceso@empresa.com', description: 'Nuevo email de acceso' })
+  @IsEmail()
+  @MaxLength(255)
+  email: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Si el usuario objetivo es el administrador principal, sincroniza también el email de contacto del tenant.',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  syncCompanyContactEmail?: boolean;
+}
+
 export class ResetPasswordDto {
   @ApiPropertyOptional({
     description: 'Password nuevo. Si se omite, el backend genera uno temporal.',

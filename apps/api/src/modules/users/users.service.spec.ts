@@ -301,9 +301,9 @@ describe('UsersService', () => {
 
     it('tolera coincidencias aproximadas en nombres', async () => {
       setupRunInTenantSchema({
-        find: jest.fn().mockResolvedValue([
-          buildUserEntity({ firstName: 'Liliana', lastName: 'Gomez' }),
-        ]),
+        find: jest
+          .fn()
+          .mockResolvedValue([buildUserEntity({ firstName: 'Liliana', lastName: 'Gomez' })]),
       });
 
       const result = await service.findAll({ search: 'lilina', limit: 10 });
@@ -517,6 +517,77 @@ describe('UsersService', () => {
           actorId,
         ),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('changeLoginEmailAsAdmin()', () => {
+    it('actualiza el email de un tercero sin contraseña actual y sincroniza contacto si es admin principal', async () => {
+      const targetUser = buildUserEntity({
+        id: 'usr-admin-principal',
+        role: UserRole.ADMIN,
+        emailHash: 'hash-viejo',
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+      });
+      const mgr = setupRunInTenantSchema({
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(targetUser)
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(targetUser),
+      });
+
+      const result = await service.changeLoginEmailAsAdmin(
+        'usr-admin-principal',
+        { email: 'admin.principal.nuevo@empresa.com' },
+        'usr-admin-operador',
+        UserRole.ADMIN,
+      );
+
+      expect(result.email).toBe('admin.principal.nuevo@empresa.com');
+      expect(mgr.save).toHaveBeenCalled();
+      expect(tenantServiceMock.updateTenantSelfProfile).toHaveBeenCalledWith(
+        MOCK_TENANT_CTX.tenantId,
+        { contactEmail: 'admin.principal.nuevo@empresa.com' },
+        'usr-admin-operador',
+      );
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.UPDATE,
+          entityType: 'UserLoginEmailAdmin',
+          entityId: 'usr-admin-principal',
+        }),
+      );
+    });
+
+    it('rechaza cuando ADMIN intenta cambiar email de SYSTEM_ADMIN', async () => {
+      const targetUser = buildUserEntity({ id: 'usr-platform', role: UserRole.SYSTEM_ADMIN });
+      setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(targetUser) });
+
+      await expect(
+        service.changeLoginEmailAsAdmin(
+          'usr-platform',
+          { email: 'sadmin.nuevo@empresa.com' },
+          'usr-admin',
+          UserRole.ADMIN,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rechaza cuando el nuevo email ya está en uso por otro usuario', async () => {
+      const targetUser = buildUserEntity({ id: 'usr-target', role: UserRole.SUPPORT });
+      const existingUser = buildUserEntity({ id: 'usr-other', email: 'ocupado@empresa.com' });
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValueOnce(targetUser).mockResolvedValueOnce(existingUser),
+      });
+
+      await expect(
+        service.changeLoginEmailAsAdmin(
+          'usr-target',
+          { email: 'ocupado@empresa.com' },
+          'usr-admin',
+          UserRole.ADMIN,
+        ),
+      ).rejects.toThrow(ConflictException);
     });
   });
 

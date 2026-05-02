@@ -106,6 +106,7 @@ describe('UsersController HTTP', () => {
     findOne: jest.fn(),
     update: jest.fn(),
     changeLoginEmail: jest.fn(),
+    changeLoginEmailAsAdmin: jest.fn(),
     resetPassword: jest.fn(),
     remove: jest.fn(),
   };
@@ -286,6 +287,42 @@ describe('UsersController HTTP', () => {
       .set('Authorization', 'Bearer admin-token')
       .send({ email: 'nuevo@empresa.com', currentPassword: 'Passw0rd!Segura' })
       .expect(400);
+  });
+
+  it('PATCH /api/v1/users/:id/login-email/admin retorna 200 en cambio administrativo exitoso', async () => {
+    usersServiceMock.changeLoginEmailAsAdmin.mockResolvedValue({
+      id: '00000000-0000-4000-a000-000000000001',
+      email: 'nuevo.admin@empresa.com',
+    });
+
+    await request(app.getHttpServer())
+      .patch('/api/v1/users/00000000-0000-4000-a000-000000000001/login-email/admin')
+      .set('Authorization', 'Bearer admin-token')
+      .set('Idempotency-Key', 'idem-login-email-admin-1')
+      .send({ email: 'nuevo.admin@empresa.com' })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data.email).toBe('nuevo.admin@empresa.com');
+      });
+  });
+
+  it('PATCH /api/v1/users/:id/login-email/admin retorna 400 sin Idempotency-Key', async () => {
+    await request(app.getHttpServer())
+      .patch('/api/v1/users/00000000-0000-4000-a000-000000000001/login-email/admin')
+      .set('Authorization', 'Bearer admin-token')
+      .send({ email: 'nuevo.admin@empresa.com' })
+      .expect(400);
+  });
+
+  it('PATCH /api/v1/users/:id/login-email/admin retorna 403 cuando el servicio rechaza el cambio', async () => {
+    usersServiceMock.changeLoginEmailAsAdmin.mockRejectedValue(new ForbiddenException('forbidden'));
+
+    await request(app.getHttpServer())
+      .patch('/api/v1/users/00000000-0000-4000-a000-000000000001/login-email/admin')
+      .set('Authorization', 'Bearer admin-token')
+      .set('Idempotency-Key', 'idem-login-email-admin-2')
+      .send({ email: 'nuevo.admin@empresa.com' })
+      .expect(403);
   });
 
   it('PATCH /api/v1/users/:id/password retorna 200 con password temporal', async () => {

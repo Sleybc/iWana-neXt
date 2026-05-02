@@ -256,6 +256,43 @@ Checklist del DoD del PRD §10 verificado al cierre del BLOQUE 8.
 | Checklist OWASP ASVS L2 MOD01 | `docs/quality/CHECKLIST-OWASP-ASVS-L2-MOD01-v1.0.md` |
 | Este informe de cierre | `docs/informes/INFORME-MOD01-CIERRE-v1.0.md` |
 
+## 9. Actualización 2026-05-01 — Gestión de credenciales en `/users`
+
+### Alcance implementado
+
+- Backend (`apps/api`):
+	- Nuevo contrato DTO administrativo para cambio de email de acceso sin `currentPassword`: `AdminChangeUserLoginEmailDto`.
+	- Nuevo endpoint protegido por rol e idempotencia: `PATCH /api/v1/users/:id/login-email/admin`.
+	- Nueva operación de servicio `changeLoginEmailAsAdmin(...)` con validaciones de unicidad, restricciones de rol (`ADMIN` no puede modificar `SYSTEM_ADMIN`), sincronización opcional de `contactEmail` para admin principal y auditoría `UserLoginEmailAdmin`.
+
+- Frontend (`apps/web`):
+	- Extensión de `usersApi` con:
+		- `changeLoginEmailAsAdmin(...)`
+		- `resetPassword(...)`
+	- Ampliación de `UserManagementModal` para:
+		- editar correo de acceso del usuario objetivo,
+		- generar contraseña temporal,
+		- visualizar contraseña temporal generada para entrega controlada por operador.
+
+### Evidencia de calidad
+
+- Pruebas backend (users):
+	- `pnpm --filter @iwana/api test -- src/modules/users/users.service.spec.ts src/modules/users/users.controller.http.spec.ts src/modules/users/dto/users.dto.spec.ts`
+	- Resultado: **3 suites, 87 tests, todos en verde**.
+
+- Pruebas frontend (modal gestión):
+	- `pnpm --filter @iwana/web test -- src/components/users/UserManagementModal.spec.tsx`
+	- Resultado: **1 suite, 3 tests, todos en verde**.
+
+- Typecheck:
+	- `pnpm --filter @iwana/api typecheck` ✅
+	- `pnpm --filter @iwana/web typecheck` ✅
+
+### Riesgos y notas
+
+- El endpoint self-service `PATCH /api/v1/users/:id/login-email` se mantiene sin cambios semánticos para no romper flujos de usuario final.
+- El nuevo endpoint admin queda explícitamente separado para evitar mezclar self-service con operaciones de administración de terceros.
+
 ---
 
 *Documento de cierre formal MOD01 — BLOQUE 8 — 2026-03-15*

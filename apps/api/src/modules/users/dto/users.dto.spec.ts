@@ -1,7 +1,12 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { DocumentType, UserRole } from '@iwana/shared';
-import { CreateUserDto, ResetPasswordDto, UpdateProfileDto } from './user.dto';
+import {
+  AdminChangeUserLoginEmailDto,
+  CreateUserDto,
+  ResetPasswordDto,
+  UpdateProfileDto,
+} from './user.dto';
 
 describe('Users DTO validation', () => {
   describe('CreateUserDto', () => {
@@ -54,6 +59,22 @@ describe('Users DTO validation', () => {
       const dto = plainToInstance(ResetPasswordDto, { password: 'short' });
       const errors = await validate(dto);
       expect(errors.some((error) => error.property === 'password')).toBe(true);
+    });
+  });
+
+  describe('AdminChangeUserLoginEmailDto', () => {
+    it('acepta email válido sin contraseña actual', async () => {
+      const dto = plainToInstance(AdminChangeUserLoginEmailDto, {
+        email: 'nuevo.acceso@empresa.com',
+      });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('rechaza email inválido', async () => {
+      const dto = plainToInstance(AdminChangeUserLoginEmailDto, { email: 'correo-invalido' });
+      const errors = await validate(dto);
+      expect(errors.some((error) => error.property === 'email')).toBe(true);
     });
   });
 
