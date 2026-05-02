@@ -409,7 +409,7 @@ export function LoginForm() {
       </div>
 
       <label className="flex flex-col gap-2">
-        <span className={portalLabelClass}>Correo electrónico o identidad</span>
+        <span className={portalLabelClass}>Correo electrónico</span>
         <div className="relative">
           <UserRound className={portalIconLeadingClass} aria-hidden="true" />
           <input

@@ -48,11 +48,19 @@ export class TenantSelfResponseDto {
   loginBackgroundDarkUrl: string | null;
   loginBackgroundDarkAssetId: string | null;
   showTenantName: boolean;
+  brandingProductName: string | null;
+  brandingSurfaceName: string | null;
+  brandingMetadataTitle: string | null;
+  brandingMetadataDescription: string | null;
 }
 
 /** Respuesta pública mínima para aplicar branding en el login del portal. */
 export class TenantPublicBrandingResponseDto {
   displayName: string;
+  productName: string;
+  surfaceName: string;
+  metadataTitle: string;
+  metadataDescription: string;
   showTenantName: boolean;
   logoLightUrl: string | null;
   logoDarkUrl: string | null;

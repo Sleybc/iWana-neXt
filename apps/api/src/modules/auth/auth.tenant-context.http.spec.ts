@@ -185,6 +185,39 @@ describe('Auth HTTP tenant context integration', () => {
     expect(tenantService.findBySlug).toHaveBeenCalledWith('isp-test');
   });
 
+  it('normaliza X-Tenant-Slug (trim + lowercase) antes de resolver TenantContext en login publico', async () => {
+    tenantService.findBySlug.mockResolvedValue(tenantFixture);
+    authService.login.mockResolvedValue({
+      accessToken: 'jwt-access-tenant',
+      refreshToken: 'refresh-token-tenant',
+    });
+
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .set('X-Tenant-Slug', '  ISP-TEST  ')
+      .send({
+        email: 'admin@isptest.co',
+        password: 'Passw0rd!!',
+      })
+      .expect(200);
+
+    expect(tenantService.findBySlug).toHaveBeenCalledWith('isp-test');
+  });
+
+  it('retorna 400 cuando X-Tenant-Slug contiene solo espacios en login publico', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .set('X-Tenant-Slug', '   ')
+      .send({
+        email: 'admin@isptest.co',
+        password: 'Passw0rd!!',
+      })
+      .expect(400);
+
+    expect(tenantService.findBySlug).not.toHaveBeenCalled();
+    expect(authService.login).not.toHaveBeenCalled();
+  });
+
   it('propaga TenantContext en rutas protegidas usando claims verificados del JWT', async () => {
     jwtService.verify.mockReturnValue({
       sub: 'user-uuid-1',

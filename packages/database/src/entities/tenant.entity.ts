@@ -190,6 +190,22 @@ export class Tenant {
   @Column({ name: 'show_tenant_name', type: 'boolean', default: true })
   showTenantName: boolean;
 
+  /** Nombre de producto visible del tenant en superficies públicas del portal */
+  @Column({ name: 'branding_product_name', length: 120, nullable: true, type: 'varchar' })
+  brandingProductName: string | null;
+
+  /** Nombre de la superficie de acceso (ej: Portal empresarial) */
+  @Column({ name: 'branding_surface_name', length: 120, nullable: true, type: 'varchar' })
+  brandingSurfaceName: string | null;
+
+  /** Título público efectivo para pestaña/narrativa en login */
+  @Column({ name: 'branding_metadata_title', length: 180, nullable: true, type: 'varchar' })
+  brandingMetadataTitle: string | null;
+
+  /** Descripción pública efectiva para el login del portal */
+  @Column({ name: 'branding_metadata_description', length: 300, nullable: true, type: 'varchar' })
+  brandingMetadataDescription: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

@@ -26,6 +26,7 @@ import {
   UpdateSubscriberPayload,
   VatTreatment,
 } from '@iwana/shared';
+import { persistTenantSlug, resolveTenantSlug } from './tenant-resolution';
 
 /**
  * Cliente HTTP para @iwana/portal — Portal de Suscriptores.
@@ -45,10 +46,7 @@ function resolveApiBase(): string {
 }
 
 const API_BASE = resolveApiBase();
-const TENANT_SLUG_STORAGE_KEY = 'iwana.portal.tenant-slug';
 const ACCESS_TOKEN_STORAGE_KEY = 'iwana.portal.access-token';
-const TEST_TENANT_SLUG = 'test-isp';
-const DEFAULT_DEV_TENANT_SLUG = 'iwana';
 
 /**
  * Clave localStorage para el token de alcance limitado emitido cuando un rol critico
@@ -76,50 +74,6 @@ export class ApiError extends Error {
     super(message);
     this.name = 'ApiError';
   }
-}
-
-function normalizeTenantSlug(value: string | null | undefined): string {
-  return value?.trim().toLowerCase() ?? '';
-}
-
-function readStoredTenantSlug(): string {
-  if (typeof window === 'undefined') {
-    return '';
-  }
-
-  const storedSlug = normalizeTenantSlug(window.localStorage.getItem(TENANT_SLUG_STORAGE_KEY));
-
-  // En entorno local algunos flujos E2E antiguos pudieron persistir "test-isp"
-  // en el mismo navegador de desarrollo. Ese tenant no existe en la instalación
-  // real y genera requests inconsistentes. Lo descartamos para forzar resolución
-  // por tenant real (env/login) y evitar errores operativos.
-  if (storedSlug === TEST_TENANT_SLUG) {
-    return '';
-  }
-
-  return storedSlug;
-}
-
-function persistTenantSlug(tenantSlug: string): void {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  if (!tenantSlug) {
-    window.localStorage.removeItem(TENANT_SLUG_STORAGE_KEY);
-    return;
-  }
-
-  window.localStorage.setItem(TENANT_SLUG_STORAGE_KEY, tenantSlug);
-}
-
-/** Limpia el tenant slug del localStorage — usado en logout y en flujos de error. */
-function clearTenantSlugFromStorage(): void {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  window.localStorage.removeItem(TENANT_SLUG_STORAGE_KEY);
 }
 
 function readStoredAccessToken(): string {
@@ -255,25 +209,9 @@ interface RequestOptions extends RequestInit {
 }
 
 function getTenantSlug(tenantSlugOverride?: string): string {
-  const overrideSlug = normalizeTenantSlug(tenantSlugOverride);
-  if (overrideSlug) {
-    return overrideSlug;
-  }
-
-  const envSlug = normalizeTenantSlug(process.env.NEXT_PUBLIC_TENANT_SLUG);
-  if (envSlug) {
-    return envSlug;
-  }
-
-  const storedSlug = readStoredTenantSlug();
-  if (storedSlug) {
-    return storedSlug;
-  }
-
-  // Fallback local para no depender de un tenant temporal de pruebas.
-  // En producción se exige configuración explícita o selección en login.
-  if (process.env.NODE_ENV !== 'production') {
-    return DEFAULT_DEV_TENANT_SLUG;
+  const resolution = resolveTenantSlug(tenantSlugOverride);
+  if (resolution.slug) {
+    return resolution.slug;
   }
 
   throw new ApiError(
@@ -664,10 +602,18 @@ export interface TenantSelf {
   loginBackgroundDarkUrl: string | null;
   loginBackgroundDarkAssetId: string | null;
   showTenantName: boolean;
+  brandingProductName: string | null;
+  brandingSurfaceName: string | null;
+  brandingMetadataTitle: string | null;
+  brandingMetadataDescription: string | null;
 }
 
 export interface TenantPublicBranding {
   displayName: string;
+  productName: string;
+  surfaceName: string;
+  metadataTitle: string;
+  metadataDescription: string;
   showTenantName: boolean;
   logoLightUrl: string | null;
   logoDarkUrl: string | null;
@@ -722,6 +668,10 @@ export interface UpdateTenantSelfBrandingDto {
   loginBackgroundDarkUrl?: string | null;
   loginBackgroundDarkAssetId?: string | null;
   showTenantName?: boolean;
+  brandingProductName?: string | null;
+  brandingSurfaceName?: string | null;
+  brandingMetadataTitle?: string | null;
+  brandingMetadataDescription?: string | null;
 }
 
 export interface UploadTenantBrandingAssetDto {

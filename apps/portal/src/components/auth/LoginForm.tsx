@@ -17,8 +17,23 @@ import {
 } from 'lucide-react';
 import { loginSchema, type LoginFormValues } from '@iwana/shared';
 import { ApiError } from '@/lib/api-client';
+import { resolveTenantSlug } from '@/lib/tenant-resolution';
 import { useAuth } from './AuthProvider';
-import { cn } from '@iwana/ui';
+import {
+  AUTH_FORM_ALERT_ERROR_CLASS,
+  AUTH_FORM_ERROR_CLASS,
+  AUTH_FORM_ICON_LEADING_CLASS,
+  AUTH_FORM_ICON_TRAILING_BUTTON_CLASS,
+  AUTH_FORM_INFO_BOX_CLASS,
+  AUTH_FORM_INPUT_ERROR_CLASS,
+  AUTH_FORM_INPUT_FOCUS_CLASS,
+  AUTH_FORM_INPUT_WITH_BOTH_ICONS_CLASS,
+  AUTH_FORM_INPUT_WITH_LEADING_ICON_CLASS,
+  AUTH_FORM_LABEL_CLASS,
+  AUTH_FORM_PRIMARY_BUTTON_CLASS,
+  AUTH_FORM_SECURE_FOOTER_CLASS,
+  cn,
+} from '@iwana/ui';
 
 const errorMessages: Record<number, string> = {
   400: 'Falta o es inválido el identificador de la empresa.',
@@ -31,13 +46,15 @@ const errorMessages: Record<number, string> = {
 
 interface LoginFormProps {
   tenantSlug: string;
+  tenantLocked: boolean;
   onTenantSlugChange: (value: string) => void;
 }
 
-export function LoginForm({ tenantSlug, onTenantSlugChange }: LoginFormProps) {
+export function LoginForm({ tenantSlug, tenantLocked, onTenantSlugChange }: LoginFormProps) {
   const router = useRouter();
   const { login } = useAuth();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [tenantError, setTenantError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
   const {
@@ -50,8 +67,16 @@ export function LoginForm({ tenantSlug, onTenantSlugChange }: LoginFormProps) {
 
   const onSubmit = async (data: LoginFormValues) => {
     setServerError(null);
+    setTenantError(null);
+
+    const tenantResolution = resolveTenantSlug(tenantSlug);
+    if (!tenantResolution.slug) {
+      setTenantError('Ingresa el identificador de la empresa.');
+      return;
+    }
+
     try {
-      const result = await login(data.email, data.password, tenantSlug);
+      const result = await login(data.email, data.password, tenantResolution.slug);
 
       if (result === 'mfa_required') {
         router.push('/auth/mfa/verify');
@@ -80,7 +105,7 @@ export function LoginForm({ tenantSlug, onTenantSlugChange }: LoginFormProps) {
       noValidate
       aria-label="Formulario de inicio de sesión"
     >
-      <div className="rounded-[24px] border border-[#E8E7F0] bg-[linear-gradient(135deg,rgba(248,250,245,0.96),rgba(255,255,255,0.92))] p-4 shadow-iwana-soft">
+      <div className={AUTH_FORM_INFO_BOX_CLASS}>
         <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700">
           Acceso empresarial
         </p>
@@ -90,48 +115,56 @@ export function LoginForm({ tenantSlug, onTenantSlugChange }: LoginFormProps) {
       </div>
 
       <label className="flex flex-col gap-2">
-        <span className="text-sm font-bold text-[#181818]">Empresa</span>
+        <span className={AUTH_FORM_LABEL_CLASS}>Empresa</span>
         <div className="relative group">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-            <Building2 className="h-5 w-5" aria-hidden="true" />
-          </span>
+          <Building2 className={AUTH_FORM_ICON_LEADING_CLASS} aria-hidden="true" />
           <input
             type="text"
             placeholder="ejemplo: isp-demo"
             autoComplete="organization"
             value={tenantSlug}
-            onChange={(event) => onTenantSlugChange(event.target.value)}
-            className="h-14 w-full rounded-2xl border border-slate-200 bg-[#f8faf5] pl-12 pr-4 text-base text-slate-900 placeholder:text-slate-400 transition-all focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#A5C330]"
+            onChange={(event) => {
+              setTenantError(null);
+              onTenantSlugChange(event.target.value);
+            }}
+            className={cn(
+              AUTH_FORM_INPUT_WITH_LEADING_ICON_CLASS,
+              tenantError ? AUTH_FORM_INPUT_ERROR_CLASS : AUTH_FORM_INPUT_FOCUS_CLASS,
+            )}
+            readOnly={tenantLocked}
+            disabled={tenantLocked}
             required
           />
         </div>
+        {tenantLocked && (
+          <p className="text-xs text-slate-500 dark:text-gray-400">
+            Empresa bloqueada por configuración de entorno (`NEXT_PUBLIC_TENANT_SLUG`).
+          </p>
+        )}
+        {tenantError && <span className={AUTH_FORM_ERROR_CLASS}>{tenantError}</span>}
       </label>
 
       <label className="flex flex-col gap-2">
-        <span className="text-sm font-bold text-[#181818]">Correo Electrónico / Identidad</span>
+        <span className={AUTH_FORM_LABEL_CLASS}>Correo electrónico</span>
         <div className="relative group">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-            <Mail className="h-5 w-5" aria-hidden="true" />
-          </span>
+          <Mail className={AUTH_FORM_ICON_LEADING_CLASS} aria-hidden="true" />
           <input
             type="email"
             placeholder="usuario@iwananetwork.com"
             autoComplete="email"
             className={cn(
-              'h-14 w-full rounded-2xl border bg-[#f8faf5] pl-12 pr-4 text-base text-slate-900 placeholder:text-slate-400 transition-all focus:outline-none focus:ring-2 focus:border-transparent',
-              errors.email
-                ? 'border-red-500 focus:ring-red-500'
-                : 'border-slate-200 focus:ring-[#A5C330]',
+              AUTH_FORM_INPUT_WITH_LEADING_ICON_CLASS,
+              errors.email ? AUTH_FORM_INPUT_ERROR_CLASS : AUTH_FORM_INPUT_FOCUS_CLASS,
             )}
             {...register('email')}
           />
         </div>
-        {errors.email && <span className="text-sm text-red-500">{errors.email.message}</span>}
+        {errors.email && <span className={AUTH_FORM_ERROR_CLASS}>{errors.email.message}</span>}
       </label>
 
       <label className="flex flex-col gap-2">
         <div className="flex justify-between items-center">
-          <span className="text-sm font-bold text-[#181818]">Contraseña</span>
+          <span className={AUTH_FORM_LABEL_CLASS}>Contraseña</span>
           <a
             className="text-sm font-medium text-slate-500 hover:text-[#A5C330] transition-colors"
             href="/auth/forgot-password"
@@ -140,25 +173,21 @@ export function LoginForm({ tenantSlug, onTenantSlugChange }: LoginFormProps) {
           </a>
         </div>
         <div className="relative group">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-            <LockKeyhole className="h-5 w-5" aria-hidden="true" />
-          </span>
+          <LockKeyhole className={AUTH_FORM_ICON_LEADING_CLASS} aria-hidden="true" />
           <input
             type={showPassword ? 'text' : 'password'}
             placeholder="••••••••"
             autoComplete="current-password"
             className={cn(
-              'h-14 w-full rounded-2xl border bg-[#f8faf5] pl-12 pr-12 text-base text-slate-900 placeholder:text-slate-400 transition-all focus:outline-none focus:ring-2 focus:border-transparent',
-              errors.password
-                ? 'border-red-500 focus:ring-red-500'
-                : 'border-slate-200 focus:ring-[#A5C330]',
+              AUTH_FORM_INPUT_WITH_BOTH_ICONS_CLASS,
+              errors.password ? AUTH_FORM_INPUT_ERROR_CLASS : AUTH_FORM_INPUT_FOCUS_CLASS,
             )}
             {...register('password')}
           />
           <button
             type="button"
             onClick={() => setShowPassword((prev) => !prev)}
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+            className={AUTH_FORM_ICON_TRAILING_BUTTON_CLASS}
             aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
           >
             {showPassword ? (
@@ -168,29 +197,24 @@ export function LoginForm({ tenantSlug, onTenantSlugChange }: LoginFormProps) {
             )}
           </button>
         </div>
-        {errors.password && <span className="text-sm text-red-500">{errors.password.message}</span>}
+        {errors.password && (
+          <span className={AUTH_FORM_ERROR_CLASS}>{errors.password.message}</span>
+        )}
       </label>
 
       {serverError && (
-        <div
-          role="alert"
-          className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft"
-        >
+        <div role="alert" className={AUTH_FORM_ALERT_ERROR_CLASS}>
           <AlertTriangle className="h-5 w-5 flex-shrink-0" aria-hidden="true" />
           <span>{serverError}</span>
         </div>
       )}
 
-      <button
-        type="submit"
-        disabled={isSubmitting}
-        className="mt-4 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-[#A5C330] text-lg font-bold text-[#181818] shadow-lg shadow-[#A5C330]/20 transition-all active:scale-[0.99] hover:bg-[#94b126] disabled:cursor-not-allowed disabled:opacity-70"
-      >
+      <button type="submit" disabled={isSubmitting} className={AUTH_FORM_PRIMARY_BUTTON_CLASS}>
         <span>{isSubmitting ? 'Ingresando...' : 'Ingresar'}</span>
         {!isSubmitting && <ArrowRight className="h-5 w-5" aria-hidden="true" />}
       </button>
 
-      <div className="mt-8 flex flex-col items-center gap-2 border-t border-slate-100 pt-6 text-center">
+      <div className={AUTH_FORM_SECURE_FOOTER_CLASS}>
         <div className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-slate-600">
           <ShieldCheck className="h-4 w-4 text-[#A5C330]" aria-hidden="true" />
           <span>Sesión segura vía JWT</span>

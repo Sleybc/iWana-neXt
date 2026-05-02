@@ -42,3 +42,8 @@ export * from './components/ThemeProvider';
 
 // Shell compartido
 export * from './components/ThemeToggle';
+
+// Auth premium compartido
+export * from './components/auth/AuthPremiumShell';
+export * from './components/auth/AuthBrandHeader';
+export * from './components/auth/auth-form-styles';

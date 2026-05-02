@@ -1,13 +1,13 @@
 # PLAN — Branding Empresarial v2 (MOD03 Fase 03)
 
-**Version:** 1.1
+**Version:** 1.2
 **Estado:** En revisión
-**Fecha:** 2026-04-30
+**Fecha:** 2026-05-02
 **Modo activo:** EM (planificacion) + Architect (gates)
 **Autor:** AI-EM-ARCH
 **Convencion documental:** PLAN-MOD03-BRANDING-EMPRESARIAL-FASE-03-v1.0.md
 **Trazabilidad:**
-- PRD: [PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md](../prds/PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md)
+- PRD: [PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md](../prds/PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md) (v2.2)
 - HLD: [HLD-TRANSVERSAL-MEDIA-ASSETS-v1.0.md](../hlds/HLD-TRANSVERSAL-MEDIA-ASSETS-v1.0.md)
 - ADRs: [ADR-035](../adrs/ADR-035-Storage-MinIO-StoragePort.md), [ADR-034](../adrs/ADR-034-Bounded-Context-Media-Assets.md)
 - Perfil: [Perfil_IA_EM_Architect_Unificado_v1.md](../roles/Perfil_IA_EM_Architect_Unificado_v1.md)
@@ -19,6 +19,8 @@
 Llevar el branding empresarial a estado productivo completo: upload propio + URL externa, favicon dedicado, fondo de login, consola web para SYSTEM_ADMIN, sobre un nuevo bounded context Media/Assets transversal con MinIO.
 
 Actualizacion v1.1: se agrega fase 03D para branding propio de `apps/web`. Esta fase corrige la ambiguedad entre administrar branding de tenants desde la plataforma y administrar la identidad institucional de la plataforma misma.
+
+Actualizacion v1.2: se agrega fase 03E para convertir la seccion `Nombres e identidad` del branding tenant en una capacidad persistente fullstack. Esta fase nace del hallazgo de paridad visual portal/web: la UI ya muestra las opciones, pero backend y contrato publico aun no persisten metadata tenant.
 
 ## Asunciones bloqueantes
 
@@ -36,6 +38,7 @@ Si alguna asuncion falla -> escalar al CTO antes de avanzar (regla operativa del
 | 03B | Backend Branding v2 | Sr. Dev Fullstack | 03C | 1 sprint |
 | 03C | Frontend web + portal | Sr. Dev Fullstack | cierre | 1 sprint |
 | 03D | Branding propio de plataforma | Sr. Dev Fullstack | cierre v2.1 | 1 sprint corto |
+| 03E | Metadata publica de branding tenant | Sr. Dev Fullstack | cierre v2.2 | 1 sprint corto |
 
 Paralelizacion limitada: 03C puede iniciar diseno UX en paralelo a 03B una vez fijados contratos OpenAPI.
 
@@ -175,6 +178,14 @@ Aplicables al cierre de 03C para branding tenant y al cierre de 03D para brandin
 - Bootstrap MinIO documentado y validado en runbook.
 - Informe de cierre con evidencia de 03A-03D.
 
+Para 03E se agregan gates especificos:
+
+- Migracion publica reversible para metadata tenant validada en BD limpia.
+- OpenAPI actualizada para `/tenants/me`, `/tenants/me/branding` y `/tenants/public-branding`.
+- Login publico de portal consume metadata con fallback sin exponer datos sensibles.
+- `BrandingForm` portal deja la seccion `Nombres e identidad` editable y persistente.
+- Auditoria `TenantBranding` incluye metadata publica en `oldValue/newValue`.
+
 ---
 
 ## Fase 03D — Branding propio de plataforma
@@ -236,3 +247,61 @@ Reemplazar el borrador local de branding en `apps/web/settings` por una capacida
 `docs/informes/INFORME-MOD03-BRANDING-EMPRESARIAL-v1.0.md` se crea al iniciar fase 03A y se actualiza al cierre de cada fase. No se crean informes paralelos por fase para evitar duplicacion.
 
 La fase 03D tambien actualiza el mismo informe vivo; no se crea un informe paralelo.
+
+---
+
+## Fase 03E — Metadata publica de branding tenant
+
+### Objetivo
+
+Persistir y aplicar la metadata publica de cada tenant (`producto`, `superficie`, `titulo publico`, `descripcion publica`) para que la seccion `Nombres e identidad` de `apps/portal/dashboard/settings/Marca` tenga las mismas opciones funcionales que el branding de plataforma en `apps/web/settings/Branding`.
+
+### Entregables
+
+- Migracion publica `011_add_tenant_branding_metadata` con columnas nullable en `public.tenants`:
+	- `branding_product_name varchar(120)`
+	- `branding_surface_name varchar(120)`
+	- `branding_metadata_title varchar(180)`
+	- `branding_metadata_description varchar(300)`
+- Extension de `Tenant` entity y DTOs:
+	- `TenantSelfResponseDto`
+	- `TenantPublicBrandingResponseDto`
+	- `TenantResponseDto` si `apps/web` administra branding de tenants
+	- `UpdateTenantSelfBrandingDto`
+- Extension de `TenantService`:
+	- defaults efectivos cuando los campos son null/vacios,
+	- persistencia parcial en `updateBrandingState`,
+	- auditoria en `toBrandingAuditPayload`,
+	- cache invalidation existente reutilizada.
+- Extension OpenAPI y tests backend/HTTP.
+- Extension de `apps/portal/src/lib/api-client.ts` con campos de metadata.
+- `BrandingForm` portal con campos editables para `Producto`, `Superficie`, `Titulo publico`, `Descripcion publica`.
+- `LoginExperience` y `LoginBrandPanel` consumen metadata publica desde `/tenants/public-branding`.
+- Evento `tenant-branding-updated` extendido para transportar metadata.
+
+### DoD
+
+- [ ] `pnpm --filter @iwana/db typecheck` verde.
+- [ ] `pnpm --filter @iwana/api typecheck` verde.
+- [ ] `pnpm --filter @iwana/portal typecheck` verde.
+- [ ] Tests backend focalizados en tenant branding metadata en verde.
+- [ ] Tests RTL de `BrandingForm` portal validan payload incremental de metadata.
+- [ ] Login portal usa `metadataTitle`, `surfaceName` y `displayName/productName` con fallback.
+- [ ] OpenAPI actualizada con ejemplos de metadata.
+- [ ] Informe vivo actualizado con evidencias de la fase.
+
+### Riesgos
+
+- Los campos son publicos: no deben aceptar PII ni textos sensibles. Mitigacion: copy UI y documentacion indican uso de identidad publica.
+- `displayName` actual usa `tenant.name`; cambiarlo puede impactar tests de login. Mitigacion: usar default efectivo `brandingProductName ?? tenant.name` y preservar fallback.
+- Metadata dinamica en Next.js puede no actualizar tags SSR en cliente. Mitigacion: en 03E minimo actualizar `document.title`; metadata SSR completa queda documentada si requiere refactor RSC.
+
+### Criterio stop/go
+
+- STOP si la migracion implica backfill destructivo o conflicto con ownership de `name/legalName`.
+- STOP si se detecta que metadata debe vivir fuera de `public.tenants`; en ese caso escalar para decidir si requiere ADR.
+- GO solo con contrato backend, UI editable y login publico validados.
+
+### Prompt operativo
+
+- [PROMPT-MOD03-BRANDING-FASE-03E-v1.0.md](../prompts/PROMPT-MOD03-BRANDING-FASE-03E-v1.0.md)

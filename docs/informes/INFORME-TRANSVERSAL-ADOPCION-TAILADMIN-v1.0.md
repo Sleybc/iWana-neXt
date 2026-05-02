@@ -1,12 +1,12 @@
 # INFORME — Adopcion Transversal de TailAdmin
 
 **Version:** 1.0
-**Estado:** Dark Mode Surface #181818 Ejecutado
+**Estado:** En revisión
 **Fecha creacion:** 2026-03-13
-**Fecha ultima actualizacion:** 2026-04-25
+**Fecha ultima actualizacion:** 2026-05-02
 **Modo activo:** Mixto
 **Agente responsable:** AI-EM-ARCH / Sr. Dev Fullstack
-**Referencia al prompt de ejecucion:** `docs/prompts/PROMPT-TRANSVERSAL-ADOPCION-TAILADMIN-FASE-01-v1.0.md`
+**Referencia al prompt de ejecucion:** `docs/prompts/PROMPT-TRANSVERSAL-AUTH-LOGIN-PREMIUM-FASE-01-v1.0.md`
 
 ---
 
@@ -592,11 +592,61 @@ Se ejecutó el cierre de release para la consola de plataforma con foco en dos b
 
 ---
 
+## Addendum preparatorio — 2026-05-02 (alineacion premium login web + portal)
+
+Se formalizó una fase correctiva transversal para alinear el login empresarial de `apps/portal` con la experiencia premium de `apps/web`, cubriendo frontend, cliente HTTP, backend auth/tenant y pruebas. Esta fase queda lista para ejecucion por Sr. Dev Fullstack; no se implemento codigo productivo en este corte.
+
+### Decision de gobierno
+
+| Aspecto                | Decision                                                                                             |
+| ---------------------- | ---------------------------------------------------------------------------------------------------- |
+| Modo activo            | Mixto                                                                                                |
+| Baseline objetivo      | Experiencia premium de `apps/web` en `/auth/login`                                                   |
+| Estrategia recomendada | Extraer baseline premium auth hacia `packages/ui` y mantener en cada app solo la logica especifica   |
+| Backend                | No crear endpoints nuevos; endurecer validacion/normalizacion de `X-Tenant-Slug` y `public-branding` |
+| ADR requerido          | No, mientras no cambien stack, boundary, JWT, MFA ni contrato de login                               |
+| Escalacion CTO         | Solo si se decide soportar login por username/identidad o cambiar el contrato auth tenant-aware      |
+
+### Artefactos generados
+
+| Artefacto           | Archivo                                                              | Estado                                         |
+| ------------------- | -------------------------------------------------------------------- | ---------------------------------------------- |
+| Plan de fase        | `docs/plans/PLAN-TRANSVERSAL-AUTH-LOGIN-PREMIUM-FASE-01-v1.0.md`     | Listo para ejecucion                           |
+| Prompt de ejecucion | `docs/prompts/PROMPT-TRANSVERSAL-AUTH-LOGIN-PREMIUM-FASE-01-v1.0.md` | Listo para Sr. Fullstack                       |
+| Nota repo           | `/memories/repo/portal-auth-tenant-slug-source.md`                   | Creada para evitar drift futuro en auth portal |
+
+### Brechas que debe cerrar la ejecucion
+
+| ID     | Brecha                                                                          | Accion requerida                                                                        |
+| ------ | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| ALP-01 | Tenant visible y tenant efectivo se resuelven desde fuentes distintas en portal | Crear helper unico de tenant resolution usado por UI y `api-client`                     |
+| ALP-02 | Portal puede autenticar con fallback local oculto cuando Empresa esta vacia     | Bloquear submit local si no hay empresa visible; eliminar login silencioso por fallback |
+| ALP-03 | Copy promete "identidad" aunque el contrato solo acepta email                   | Cambiar copy visible a correo electronico o escalar cambio de contrato                  |
+| ALP-04 | Web premium y portal auth no comparten base tecnica                             | Extraer shell/estilos premium a `packages/ui`                                           |
+| ALP-05 | E2E portal usa label `Tenant` y mocks sin envelope `{ data }`                   | Actualizar specs a UI y contrato reales                                                 |
+
+### Criterios de salida heredados al prompt
+
+- `apps/portal` iguala la experiencia premium de `apps/web` en shell, jerarquia, panel, inputs, alertas, CTA, loading y footer seguro.
+- `apps/web` conserva bootstrap inicial, login plataforma, MFA y password reset sin regresion.
+- Portal usa un unico tenant slug normalizado para input, branding, favicon, login, refresh y MFA.
+- Backend responde `400` para auth tenant publico sin slug o con slug vacio/whitespace.
+- E2E portal auth cubre login completo, MFA required, MFA setup required y password reset required con envelope `{ data }`.
+
+### Verificacion ejecutada
+
+- Revision read-only de `apps/web/src/components/auth/PlatformLoginExperience.tsx` y `LoginForm.tsx`.
+- Revision read-only de `apps/portal/src/components/auth/LoginExperience.tsx`, `LoginBrandPanel.tsx`, `LoginForm.tsx` y `apps/portal/src/lib/api-client.ts`.
+- Revision read-only de contratos backend en `apps/api/src/modules/auth/*` y `apps/api/src/modules/tenant/*`.
+- No se ejecutaron tests porque el corte solo genera plan/prompt para implementacion.
+
+---
+
 ## 7. Proxima accion recomendada
 
-FASE-07 ejecutada. Adopcion TailAdmin completada en todas las fases planificadas (FASE-01 a FASE-07).
+Ejecutar `docs/prompts/PROMPT-TRANSVERSAL-AUTH-LOGIN-PREMIUM-FASE-01-v1.0.md` con Sr. Dev Fullstack, cerrando primero la correccion de tenant resolution y baseline premium auth antes de abrir nuevas superficies visuales.
 
-Proxima accion recomendada: validacion manual QA desktop/mobile del shell (responsabilidad CTO / equipo QA), firma formal del ADR-023 y apertura del siguiente modulo segun ADR-016.
+La adopcion TailAdmin base permanece completada en FASE-01 a FASE-07; esta fase nueva es un correctivo transversal sobre autenticacion premium web + portal.
 
 ---
 
@@ -604,4 +654,69 @@ Proxima accion recomendada: validacion manual QA desktop/mobile del shell (respo
 
 - Validacion manual desktop/mobile del shell (responsabilidad del equipo de QA / CTO).
 - Firma formal del ADR-023 por CTO para cerrar la adopcion TailAdmin como decision arquitectonica aprobada.
-- Apertura de MOD-N+1 segun ADR-016 solo tras recibir el sign-off del CTO sobre esta adopcion.
+- Ejecucion de la fase correctiva Auth Login Premium con evidencia de pruebas y actualizacion documental de cierre.
+- Apertura de MOD-N+1 segun ADR-016 solo tras recibir el sign-off del CTO sobre esta adopcion y sus correctivos abiertos.
+
+---
+
+## Addendum correctivo — 2026-05-02 (ejecucion Auth Login Premium Fase 01)
+
+Se ejecutó la fase correctiva transversal de autenticación premium sobre backend (`apps/api`), consola de plataforma (`apps/web`) y portal empresarial (`apps/portal`) sin crear endpoints nuevos y manteniendo los contratos vigentes.
+
+### Artefactos ajustados
+
+| Artefacto                                | Archivo                                                                                                                                                                                          | Cambio                                                                                                                                                 |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Hardening de slug en middleware tenant   | `apps/api/src/modules/tenant/tenant.middleware.ts`                                                                                                                                               | Normalización `trim().toLowerCase()` de `X-Tenant-Slug` y rechazo de contexto ambiguo cuando el valor llega vacío/whitespace en rutas públicas de auth |
+| Hardening de branding público            | `apps/api/src/modules/tenant/tenant.controller.ts`, `apps/api/src/modules/tenant/tenant.service.ts`                                                                                              | Validación/normalización de `slug` delegada al servicio; rechazo explícito para `slug` vacío/whitespace                                                |
+| Cobertura HTTP backend                   | `apps/api/src/modules/auth/auth.tenant-context.http.spec.ts`, `apps/api/src/modules/tenant/tenant.controller.http.spec.ts`                                                                       | Nuevos casos para normalización de slug, whitespace y contrato de error 400                                                                            |
+| Baseline premium compartido auth         | `packages/ui/src/components/auth/AuthPremiumShell.tsx`, `packages/ui/src/components/auth/AuthBrandHeader.tsx`, `packages/ui/src/components/auth/auth-form-styles.ts`, `packages/ui/src/index.ts` | Nuevo shell visual reusable + estilos de formulario premium compartidos para web/portal                                                                |
+| Login premium web sobre baseline común   | `apps/web/src/components/auth/PlatformLoginExperience.tsx`, `apps/web/src/components/auth/LoginForm.tsx`                                                                                         | Migración de shell a `@iwana/ui`; copy alineado a email-only (`Correo electrónico`)                                                                    |
+| Resolución única de tenant en portal     | `apps/portal/src/lib/tenant-resolution.ts`, `apps/portal/src/lib/api-client.ts`, `apps/portal/src/components/auth/AuthProvider.tsx`                                                              | Fuente única env/input/storage sin fallback silencioso `iwana`; reutilizada por login, branding y llamadas auth                                        |
+| Login premium portal tenant-aware        | `apps/portal/src/components/auth/LoginExperience.tsx`, `apps/portal/src/components/auth/LoginForm.tsx`                                                                                           | Uso de shell compartido, bloqueo explícito de empresa por env, validación local de empresa vacía y copy email-only                                     |
+| Unit tests portal auth                   | `apps/portal/src/components/auth/LoginExperience.spec.tsx`, `apps/portal/src/components/auth/LoginForm.spec.tsx`                                                                                 | Cobertura para tenant env bloqueado, tenant desde storage, bloqueo local sin empresa y normalización de tenant                                         |
+| E2E portal auth alineado a contrato real | `apps/portal/tests/e2e/auth-tenant.spec.ts`                                                                                                                                                      | Selectores actualizados (`Empresa`, `Correo electrónico`), envelope `{ data }` y aserción de header `X-Tenant-Slug` normalizado                        |
+
+### Verificación ejecutada
+
+- `pnpm --filter @iwana/api test -- auth.tenant-context.http.spec.ts tenant.controller.http.spec.ts tenant.swagger.spec.ts` ✅
+- `pnpm --filter @iwana/web test -- PlatformLoginExperience.spec.tsx` ✅
+- `pnpm --filter @iwana/portal test -- LoginExperience.spec.tsx LoginForm.spec.tsx` ✅
+- `pnpm --filter @iwana/web typecheck && pnpm --filter @iwana/portal typecheck && pnpm --filter @iwana/api typecheck` ✅
+- `pnpm test:e2e:portal -- auth-tenant.spec.ts` ⚠️ no ejecuta por patrón `testMatch` del config portal (`portal-*.spec.ts`)
+- `npx playwright test apps/portal/tests/e2e/auth-tenant.spec.ts` ⚠️ bloqueado por binario de navegador ausente (`npx playwright install` pendiente en entorno local)
+
+### Resultado del corte
+
+- Se elimina la deriva principal entre tenant visible y tenant efectivo en el login del portal.
+- La experiencia premium de login queda alineada entre `apps/web` y `apps/portal` sobre base técnica compartida en `@iwana/ui`.
+- El backend endurece la entrada de slug tenant para auth público y branding público sin cambios de contrato.
+- La cobertura automatizada de unit/HTTP queda en verde para los cambios ejecutados.
+- El gate E2E local queda pendiente solo por infraestructura del runner Playwright (instalación de navegadores), no por fallas funcionales del código modificado.
+
+---
+
+## Addendum correctivo — 2026-05-02 (paridad Branding settings web/portal)
+
+Se ejecutó un ajuste visual y de interacción en el tab de Marca de `apps/portal` para homologarlo con el patrón UX de Branding ya usado en `apps/web`, preservando contratos tenant-aware, payload incremental y flujo de subida inmediata.
+
+### Artefactos ajustados
+
+| Artefacto                | Archivo                                           | Cambio                                                                                                                                                                       |
+| ------------------------ | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Formulario Marca portal  | `apps/portal/src/components/settings/BrandingForm.tsx` | Refactor visual completo al patrón de cards por slot: preview clickeable para upload, overlay de reemplazo, URL HTTPS colapsable, ayudas de reglas y feedback superior      |
+| Identidad de marca       | `apps/portal/src/components/settings/BrandingForm.tsx` | Nueva sección `Nombres e identidad` con las mismas opciones visibles de web (`Producto`, `Superficie`, `Título público`, `Descripción pública`) y vista previa en vivo        |
+| Acciones de cierre       | `apps/portal/src/components/settings/BrandingForm.tsx` | Paridad de acciones con web: se añade `Restaurar base` (limpieza integral de slots de branding) y CTA principal renombrado a `Guardar cambios`                              |
+| Compatibilidad funcional | `apps/portal/src/components/settings/BrandingForm.tsx` | Se mantiene la lógica existente: uploads por slot (`usage` + `themeVariant`), limpieza de slot, guardado incremental por `dirtyFields`, evento `tenant-branding-updated` |
+
+### Verificación ejecutada
+
+- `pnpm --filter @iwana/portal test -- BrandingForm.spec.tsx` ✅
+- `pnpm --filter @iwana/portal typecheck` ✅
+
+### Resultado del corte
+
+- El tab Marca de portal queda visualmente consistente con el estándar de Branding en web.
+- Se mejora la legibilidad operativa: el usuario edita por slot con una única superficie (preview + upload + URL opcional).
+- Se incorpora la sección de identidad de marca con el mismo lenguaje visual y mismas opciones de web, adaptada a datos disponibles del tenant.
+- No se alteran endpoints ni contratos backend; el comportamiento funcional validado por tests se mantiene.

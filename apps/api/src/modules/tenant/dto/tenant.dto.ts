@@ -285,6 +285,10 @@ export class TenantResponseDto {
   loginBackgroundDarkUrl: string | null;
   loginBackgroundDarkAssetId: string | null;
   showTenantName: boolean;
+  brandingProductName: string | null;
+  brandingSurfaceName: string | null;
+  brandingMetadataTitle: string | null;
+  brandingMetadataDescription: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

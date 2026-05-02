@@ -60,6 +60,10 @@ function buildTenant(overrides: Partial<Tenant> = {}): Tenant {
     loginBackgroundLightAssetId: null,
     loginBackgroundDarkAssetId: null,
     showTenantName: true,
+    brandingProductName: null,
+    brandingSurfaceName: null,
+    brandingMetadataTitle: null,
+    brandingMetadataDescription: null,
     createdAt: new Date('2026-03-12T00:00:00Z'),
     updatedAt: new Date('2026-03-12T00:00:00Z'),
     deletedAt: null,
@@ -453,6 +457,11 @@ describe('TenantService', () => {
       expect(result).toEqual(
         expect.objectContaining({
           displayName: 'ISP Test Colombia',
+          productName: 'ISP Test Colombia',
+          surfaceName: 'Portal empresarial',
+          metadataTitle: 'ISP Test Colombia — Portal empresarial',
+          metadataDescription:
+            'Portal empresarial para la operación de ISP Test Colombia en iWana neXt.',
           logoLightUrl: 'https://cdn.demo.co/logo-light.svg',
           sealLightUrl: 'https://cdn.demo.co/seal-light.svg',
           faviconLightUrl: 'https://cdn.demo.co/favicon-light.svg',
@@ -479,6 +488,11 @@ describe('TenantService', () => {
       const brandingUpdate = {
         logoLightUrl: 'https://cdn.demo.co/logo-light-actualizado.svg',
         showTenantName: false,
+        brandingProductName: 'ISP Test Pro',
+        brandingSurfaceName: 'Portal empresarial',
+        brandingMetadataTitle: 'ISP Test Pro — Portal empresarial',
+        brandingMetadataDescription:
+          'Portal empresarial para la operación de ISP Test Pro en iWana neXt.',
       };
 
       const selfResult = await service.updateTenantSelfBranding(
@@ -498,6 +512,11 @@ describe('TenantService', () => {
         expect.objectContaining({
           logoLightUrl: 'https://cdn.demo.co/logo-light-actualizado.svg',
           showTenantName: false,
+          brandingProductName: 'ISP Test Pro',
+          brandingSurfaceName: 'Portal empresarial',
+          brandingMetadataTitle: 'ISP Test Pro — Portal empresarial',
+          brandingMetadataDescription:
+            'Portal empresarial para la operación de ISP Test Pro en iWana neXt.',
         }),
       );
       expect(repo.save).toHaveBeenNthCalledWith(
@@ -505,6 +524,11 @@ describe('TenantService', () => {
         expect.objectContaining({
           logoLightUrl: 'https://cdn.demo.co/logo-light-actualizado.svg',
           showTenantName: false,
+          brandingProductName: 'ISP Test Pro',
+          brandingSurfaceName: 'Portal empresarial',
+          brandingMetadataTitle: 'ISP Test Pro — Portal empresarial',
+          brandingMetadataDescription:
+            'Portal empresarial para la operación de ISP Test Pro en iWana neXt.',
         }),
       );
       expect(auditServiceMock.log).toHaveBeenCalledTimes(2);
@@ -513,6 +537,11 @@ describe('TenantService', () => {
           slug: 'isp-test',
           logoLightUrl: 'https://cdn.demo.co/logo-light-actualizado.svg',
           showTenantName: false,
+          brandingProductName: 'ISP Test Pro',
+          brandingSurfaceName: 'Portal empresarial',
+          brandingMetadataTitle: 'ISP Test Pro — Portal empresarial',
+          brandingMetadataDescription:
+            'Portal empresarial para la operación de ISP Test Pro en iWana neXt.',
         }),
       );
       expect(platformResult).toEqual(
@@ -520,6 +549,71 @@ describe('TenantService', () => {
           schemaName: 'tenant_isp_test',
           logoLightUrl: 'https://cdn.demo.co/logo-light-actualizado.svg',
           showTenantName: false,
+          brandingProductName: 'ISP Test Pro',
+          brandingSurfaceName: 'Portal empresarial',
+          brandingMetadataTitle: 'ISP Test Pro — Portal empresarial',
+          brandingMetadataDescription:
+            'Portal empresarial para la operación de ISP Test Pro en iWana neXt.',
+        }),
+      );
+    });
+
+    it('updateTenantSelfBranding conserva una URL externa cuando llega con assetId null', async () => {
+      repo.findOne.mockResolvedValue(
+        buildTenant({
+          status: TenantStatus.ACTIVE,
+          loginBackgroundLightUrl: 'https://cdn.demo.co/login-bg-uploaded.png',
+          loginBackgroundLightAssetId: '55555555-5555-4555-8555-555555555555',
+        }),
+      );
+      repo.save.mockImplementation(async (value) => value as Tenant);
+
+      const result = await service.updateTenantSelfBranding(
+        'tenant-uuid-001',
+        {
+          loginBackgroundLightUrl: 'https://cdn.demo.co/login-bg-external.png',
+          loginBackgroundLightAssetId: null,
+        },
+        'actor-1',
+      );
+
+      expect(repo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          loginBackgroundLightUrl: 'https://cdn.demo.co/login-bg-external.png',
+          loginBackgroundLightAssetId: null,
+        }),
+      );
+      expect(result).toEqual(
+        expect.objectContaining({
+          loginBackgroundLightUrl: 'https://cdn.demo.co/login-bg-external.png',
+          loginBackgroundLightAssetId: null,
+        }),
+      );
+    });
+
+    it('getTenantPublicBranding resuelve metadata efectiva cuando los campos branding* están vacíos', async () => {
+      redis.get.mockResolvedValueOnce(null);
+      repo.findOne.mockResolvedValue(
+        buildTenant({
+          status: TenantStatus.ACTIVE,
+          legalName: 'Empresa Demo SAS',
+          brandingProductName: null,
+          brandingSurfaceName: null,
+          brandingMetadataTitle: null,
+          brandingMetadataDescription: null,
+        }),
+      );
+
+      const result = await service.getTenantPublicBranding('isp-test');
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          displayName: 'Empresa Demo SAS',
+          productName: 'Empresa Demo SAS',
+          surfaceName: 'Portal empresarial',
+          metadataTitle: 'Empresa Demo SAS — Portal empresarial',
+          metadataDescription:
+            'Portal empresarial para la operación de Empresa Demo SAS en iWana neXt.',
         }),
       );
     });

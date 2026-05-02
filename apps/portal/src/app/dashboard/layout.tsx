@@ -21,7 +21,29 @@ type BrandingSnapshot = Pick<
   | 'faviconDarkUrl'
   | 'loginBackgroundLightUrl'
   | 'loginBackgroundDarkUrl'
+  | 'brandingProductName'
+  | 'brandingSurfaceName'
+  | 'brandingMetadataTitle'
+  | 'brandingMetadataDescription'
 >;
+
+function resolveDashboardTitle(profile: TenantSelf | null): string {
+  const metadataTitle = profile?.brandingMetadataTitle?.trim();
+  if (metadataTitle) {
+    return metadataTitle;
+  }
+
+  const brandingProductName = profile?.brandingProductName?.trim();
+  if (brandingProductName) {
+    return `${brandingProductName} — Portal empresarial`;
+  }
+
+  if (profile?.name) {
+    return `${profile.name} — Portal empresarial`;
+  }
+
+  return 'iWana neXt';
+}
 
 /**
  * Layout Base del Portal Suscriptor.
@@ -84,6 +106,14 @@ export default function PortalDashboardLayout({ children }: { children: ReactNod
       window.removeEventListener(BRANDING_EVENT_NAME, handleBrandingUpdated);
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    document.title = resolveDashboardTitle(tenantProfile);
+  }, [tenantProfile]);
 
   if (authLoading || !user) {
     return (

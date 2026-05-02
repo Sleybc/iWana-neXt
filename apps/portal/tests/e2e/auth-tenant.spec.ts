@@ -13,11 +13,15 @@ test.describe('Portal Tenant Auth E2E', () => {
   test('debe permitir login exitoso y navegar al dashboard', async ({ page }) => {
     // Registrar mocks ANTES de interactuar — buena práctica Playwright
     await page.route('**/api/v1/auth/login', async (route) => {
+      expect(route.request().headers()['x-tenant-slug']).toBe(TENANT_SLUG);
+
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          accessToken: 'fake-jwt-token',
+          data: {
+            accessToken: 'fake-jwt-token',
+          },
         }),
       });
     });
@@ -28,21 +32,21 @@ test.describe('Portal Tenant Auth E2E', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          id: 'usr-123',
-          emailHash: 'hash',
-          role: 'ADMIN',
-          type: 'tenant',
-          tenantId: 'tnt-123',
-          displayName: 'Admin User',
-          subtitle: 'Administrator',
-          passwordResetRequired: false,
+          data: {
+            sub: 'usr-123',
+            email: 'hash',
+            role: 'ADMIN',
+            type: 'tenant',
+            tenantId: 'tnt-123',
+            passwordResetRequired: false,
+          },
         }),
       });
     });
 
     // Llenar formulario y enviar
-    await page.getByLabel('Tenant').fill(TENANT_SLUG);
-    await page.getByLabel('Correo Electrónico / Identidad').fill('admin@isp-demo.com');
+    await page.getByLabel('Empresa').fill('  ISP-DEMO  ');
+    await page.getByLabel('Correo electrónico').fill('admin@isp-demo.com');
     await page.locator('input[name="password"]').fill('Admin123*');
     await page.getByRole('button', { name: 'Ingresar' }).click();
 
@@ -59,13 +63,15 @@ test.describe('Portal Tenant Auth E2E', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          mfaRequired: true,
+          data: {
+            mfaRequired: true,
+          },
         }),
       });
     });
 
-    await page.getByLabel('Tenant').fill(TENANT_SLUG);
-    await page.getByLabel('Correo Electrónico / Identidad').fill('admin@isp-demo.com');
+    await page.getByLabel('Empresa').fill(TENANT_SLUG);
+    await page.getByLabel('Correo electrónico').fill('admin@isp-demo.com');
     await page.locator('input[name="password"]').fill('Admin123*');
     await page.getByRole('button', { name: 'Ingresar' }).click();
 
@@ -83,14 +89,16 @@ test.describe('Portal Tenant Auth E2E', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          accessToken: 'limited-token',
-          mfaSetupRequired: true,
+          data: {
+            accessToken: 'limited-token',
+            mfaSetupRequired: true,
+          },
         }),
       });
     });
 
-    await page.getByLabel('Tenant').fill(TENANT_SLUG);
-    await page.getByLabel('Correo Electrónico / Identidad').fill('admin@isp-demo.com');
+    await page.getByLabel('Empresa').fill(TENANT_SLUG);
+    await page.getByLabel('Correo electrónico').fill('admin@isp-demo.com');
     await page.locator('input[name="password"]').fill('Admin123*');
     await page.getByRole('button', { name: 'Ingresar' }).click();
 
@@ -108,7 +116,9 @@ test.describe('Portal Tenant Auth E2E', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          accessToken: 'fake-jwt-token',
+          data: {
+            accessToken: 'fake-jwt-token',
+          },
         }),
       });
     });
@@ -119,13 +129,20 @@ test.describe('Portal Tenant Auth E2E', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          passwordResetRequired: true,
+          data: {
+            sub: 'usr-123',
+            email: 'hash',
+            role: 'ADMIN',
+            type: 'tenant',
+            tenantId: 'tnt-123',
+            passwordResetRequired: true,
+          },
         }),
       });
     });
 
-    await page.getByLabel('Tenant').fill(TENANT_SLUG);
-    await page.getByLabel('Correo Electrónico / Identidad').fill('admin@isp-demo.com');
+    await page.getByLabel('Empresa').fill(TENANT_SLUG);
+    await page.getByLabel('Correo electrónico').fill('admin@isp-demo.com');
     await page.locator('input[name="password"]').fill('Admin123*');
     await page.getByRole('button', { name: 'Ingresar' }).click();
 
@@ -146,7 +163,9 @@ test.describe('Portal Tenant Auth E2E', () => {
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({
-            mfaRequired: true,
+            data: {
+              mfaRequired: true,
+            },
           }),
         });
         return;
@@ -156,7 +175,9 @@ test.describe('Portal Tenant Auth E2E', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          accessToken: 'fake-jwt-token',
+          data: {
+            accessToken: 'fake-jwt-token',
+          },
         }),
       });
     });
@@ -166,18 +187,20 @@ test.describe('Portal Tenant Auth E2E', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          sub: 'usr-123',
-          email: 'hash',
-          role: 'ADMIN',
-          type: 'tenant',
-          tenantId: 'tnt-123',
-          passwordResetRequired: true,
+          data: {
+            sub: 'usr-123',
+            email: 'hash',
+            role: 'ADMIN',
+            type: 'tenant',
+            tenantId: 'tnt-123',
+            passwordResetRequired: true,
+          },
         }),
       });
     });
 
-    await page.getByLabel('Tenant').fill(TENANT_SLUG);
-    await page.getByLabel('Correo Electrónico / Identidad').fill('admin@isp-demo.com');
+    await page.getByLabel('Empresa').fill(TENANT_SLUG);
+    await page.getByLabel('Correo electrónico').fill('admin@isp-demo.com');
     await page.locator('input[name="password"]').fill('Admin123*');
     await page.getByRole('button', { name: 'Ingresar' }).click();
 

@@ -148,6 +148,14 @@ interface TenantListFilters {
   search?: string;
 }
 
+interface EffectiveTenantBrandingMetadata {
+  displayName: string;
+  productName: string;
+  surfaceName: string;
+  metadataTitle: string;
+  metadataDescription: string;
+}
+
 /**
  * Servicio de gestion de tenants (ISPs clientes).
  *
@@ -321,7 +329,7 @@ export class TenantService {
    * Solo expone URLs resolubles y el nombre comercial del tenant activo.
    */
   async getTenantPublicBranding(slug: string): Promise<TenantPublicBrandingResponseDto> {
-    const normalizedSlug = slug.trim();
+    const normalizedSlug = slug.trim().toLowerCase();
     if (!normalizedSlug) {
       throw new BadRequestException('slug es requerido.');
     }
@@ -1225,12 +1233,22 @@ export class TenantService {
     dto.loginBackgroundDarkUrl = tenant.loginBackgroundDarkUrl ?? null;
     dto.loginBackgroundDarkAssetId = tenant.loginBackgroundDarkAssetId ?? null;
     dto.showTenantName = tenant.showTenantName ?? true;
+    dto.brandingProductName = tenant.brandingProductName ?? null;
+    dto.brandingSurfaceName = tenant.brandingSurfaceName ?? null;
+    dto.brandingMetadataTitle = tenant.brandingMetadataTitle ?? null;
+    dto.brandingMetadataDescription = tenant.brandingMetadataDescription ?? null;
     return dto;
   }
 
   private toPublicBrandingDto(tenant: Tenant): TenantPublicBrandingDto {
+    const metadata = this.resolveEffectiveBrandingMetadata(tenant);
+
     return {
-      displayName: tenant.name,
+      displayName: metadata.displayName,
+      productName: metadata.productName,
+      surfaceName: metadata.surfaceName,
+      metadataTitle: metadata.metadataTitle,
+      metadataDescription: metadata.metadataDescription,
       showTenantName: tenant.showTenantName ?? true,
       logoLightUrl: tenant.logoLightUrl ?? null,
       logoDarkUrl: tenant.logoDarkUrl ?? null,
@@ -1576,6 +1594,10 @@ export class TenantService {
     dto.loginBackgroundDarkUrl = tenant.loginBackgroundDarkUrl ?? null;
     dto.loginBackgroundDarkAssetId = tenant.loginBackgroundDarkAssetId ?? null;
     dto.showTenantName = tenant.showTenantName ?? true;
+    dto.brandingProductName = tenant.brandingProductName ?? null;
+    dto.brandingSurfaceName = tenant.brandingSurfaceName ?? null;
+    dto.brandingMetadataTitle = tenant.brandingMetadataTitle ?? null;
+    dto.brandingMetadataDescription = tenant.brandingMetadataDescription ?? null;
     dto.createdAt = tenant.createdAt;
     dto.updatedAt = tenant.updatedAt;
     return dto;
@@ -1596,6 +1618,18 @@ export class TenantService {
     await this.applyBrandingUpdate(tenant, dto);
     if (dto.showTenantName !== undefined) {
       tenant.showTenantName = dto.showTenantName;
+    }
+    if (dto.brandingProductName !== undefined) {
+      tenant.brandingProductName = dto.brandingProductName ?? null;
+    }
+    if (dto.brandingSurfaceName !== undefined) {
+      tenant.brandingSurfaceName = dto.brandingSurfaceName ?? null;
+    }
+    if (dto.brandingMetadataTitle !== undefined) {
+      tenant.brandingMetadataTitle = dto.brandingMetadataTitle ?? null;
+    }
+    if (dto.brandingMetadataDescription !== undefined) {
+      tenant.brandingMetadataDescription = dto.brandingMetadataDescription ?? null;
     }
 
     const saved = await this.tenantRepo.save(tenant);
@@ -1634,7 +1668,7 @@ export class TenantService {
         if (nextAssetId === null) {
           await this.softDeletePreviousBrandingAsset(tenant.schemaName, previousAssetId, null);
           tenant[config.assetKey] = null;
-          tenant[config.urlKey] = null;
+          tenant[config.urlKey] = nextUrl ?? null;
           continue;
         }
 
@@ -1749,7 +1783,42 @@ export class TenantService {
       loginBackgroundDarkUrl: tenant.loginBackgroundDarkUrl ?? null,
       loginBackgroundDarkAssetId: tenant.loginBackgroundDarkAssetId ?? null,
       showTenantName: tenant.showTenantName ?? true,
+      brandingProductName: tenant.brandingProductName ?? null,
+      brandingSurfaceName: tenant.brandingSurfaceName ?? null,
+      brandingMetadataTitle: tenant.brandingMetadataTitle ?? null,
+      brandingMetadataDescription: tenant.brandingMetadataDescription ?? null,
     };
+  }
+
+  private resolveEffectiveBrandingMetadata(tenant: Tenant): EffectiveTenantBrandingMetadata {
+    const fallbackDisplayName = this.normalizeNullableBrandingText(tenant.legalName) ?? tenant.name;
+    const productName =
+      this.normalizeNullableBrandingText(tenant.brandingProductName) ?? fallbackDisplayName;
+    const surfaceName =
+      this.normalizeNullableBrandingText(tenant.brandingSurfaceName) ?? 'Portal empresarial';
+    const metadataTitle =
+      this.normalizeNullableBrandingText(tenant.brandingMetadataTitle) ??
+      `${productName} — Portal empresarial`;
+    const metadataDescription =
+      this.normalizeNullableBrandingText(tenant.brandingMetadataDescription) ??
+      `Portal empresarial para la operación de ${productName} en iWana neXt.`;
+
+    return {
+      displayName: productName,
+      productName,
+      surfaceName,
+      metadataTitle,
+      metadataDescription,
+    };
+  }
+
+  private normalizeNullableBrandingText(value: string | null | undefined): string | null {
+    if (!value) {
+      return null;
+    }
+
+    const normalized = value.trim();
+    return normalized === '' ? null : normalized;
   }
 
   /** Busca un tenant por id con cache Redis para evitar lecturas repetidas al schema publico. */

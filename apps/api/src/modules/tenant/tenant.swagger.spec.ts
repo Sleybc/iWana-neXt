@@ -91,6 +91,9 @@ describe('TenantController Swagger', () => {
         example: expect.objectContaining({
           data: expect.objectContaining({
             displayName: 'ISP Demo',
+            productName: 'ISP Demo',
+            surfaceName: 'Portal empresarial',
+            metadataTitle: 'ISP Demo — Portal empresarial',
             faviconLightUrl: 'https://cdn.demo.co/branding/favicon-light.svg',
           }),
         }),
@@ -103,6 +106,8 @@ describe('TenantController Swagger', () => {
       expect.objectContaining({
         example: expect.objectContaining({
           logoLightUrl: 'https://cdn.demo.co/branding/logo-light.svg',
+          brandingProductName: 'ISP Demo',
+          brandingSurfaceName: 'Portal empresarial',
           faviconLightAssetId: '550e8400-e29b-41d4-a716-446655440000',
         }),
       }),

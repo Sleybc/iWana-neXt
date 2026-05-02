@@ -28,6 +28,16 @@ interface SidebarProps {
 
 const DESKTOP_STORAGE_KEY = 'iwana-portal-sidebar-collapsed';
 
+function resolveTenantDisplayName(profile?: TenantSelf | null): string {
+  const brandingProductName = profile?.brandingProductName?.trim();
+
+  if (brandingProductName) {
+    return brandingProductName;
+  }
+
+  return profile?.name ?? 'iWana Empresa';
+}
+
 /**
  * Ítems de navegación del portal empresarial del tenant.
  *
@@ -135,6 +145,7 @@ export const Sidebar = ({
   profile,
 }: SidebarProps) => {
   const sidebar = useRef<HTMLElement>(null);
+  const tenantDisplayName = resolveTenantDisplayName(profile);
 
   // Persistir estado desktop en localStorage — solo al montar
   const setDesktopCollapsedRef = useRef(setDesktopCollapsed);
@@ -181,13 +192,13 @@ export const Sidebar = ({
           <TenantSeal
             sealLightUrl={profile?.sealLightUrl ?? null}
             sealDarkUrl={profile?.sealDarkUrl ?? null}
-            name={profile?.name ?? 'iW'}
+            name={tenantDisplayName}
             size="sm"
             className="shrink-0"
           />
           {(profile?.showTenantName ?? true) && (
             <span className="text-lg font-bold tracking-tight text-white truncate">
-              {profile?.name ?? 'iWana Empresa'}
+              {tenantDisplayName}
             </span>
           )}
         </Link>
@@ -201,7 +212,7 @@ export const Sidebar = ({
           <TenantSeal
             sealLightUrl={profile?.sealLightUrl ?? null}
             sealDarkUrl={profile?.sealDarkUrl ?? null}
-            name={profile?.name ?? 'iW'}
+            name={tenantDisplayName}
             size="sm"
           />
         </Link>

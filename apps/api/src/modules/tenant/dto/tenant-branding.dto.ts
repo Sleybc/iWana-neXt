@@ -33,6 +33,18 @@ export class TenantPublicBrandingDto {
   displayName: string;
 
   @ApiProperty()
+  productName: string;
+
+  @ApiProperty()
+  surfaceName: string;
+
+  @ApiProperty()
+  metadataTitle: string;
+
+  @ApiProperty()
+  metadataDescription: string;
+
+  @ApiProperty()
   showTenantName: boolean;
 
   @ApiPropertyOptional({ nullable: true })

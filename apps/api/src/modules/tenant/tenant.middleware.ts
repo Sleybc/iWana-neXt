@@ -57,7 +57,7 @@ export class TenantMiddleware implements NestMiddleware {
       return this.runWithTenantContext(tenant, next);
     }
 
-    const tenantSlug = req.headers['x-tenant-slug'] as string | undefined;
+    const tenantSlug = this.normalizeTenantSlug(req.headers['x-tenant-slug'] as string | undefined);
 
     if (!tenantSlug) {
       if (this.requiresTenantHeader(req)) {
@@ -97,6 +97,10 @@ export class TenantMiddleware implements NestMiddleware {
       // El guard JWT emitira el 401 correspondiente; aqui solo resolvemos contexto.
       return null;
     }
+  }
+
+  private normalizeTenantSlug(rawSlug: string | undefined): string {
+    return rawSlug?.trim().toLowerCase() ?? '';
   }
 
   private requiresTenantHeader(req: Request): boolean {

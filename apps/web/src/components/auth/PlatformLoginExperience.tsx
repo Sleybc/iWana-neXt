@@ -2,7 +2,7 @@
 
 import { LoginForm } from '@/components/auth/LoginForm';
 import { usePlatformBrandingAssets } from '@/components/branding/PlatformBrandingProvider';
-import { FORM_PANEL_PREMIUM_CLASS } from '@/lib/form-styles';
+import { AuthBrandHeader, AuthPremiumShell } from '@iwana/ui';
 
 export type PlatformLoginVisualVariant = 'premium' | 'sobria';
 
@@ -32,105 +32,78 @@ export function PlatformLoginExperience({ variant = 'premium' }: PlatformLoginEx
   const asideClassName = asideClassByVariant[variant];
 
   return (
-    <main
-      className="relative min-h-screen overflow-hidden bg-[#0F1325]"
-      aria-label="Página de inicio de sesión"
-      style={
-        backgroundUrl
-          ? {
-              backgroundImage: `linear-gradient(120deg, rgba(7,10,21,0.9), rgba(7,10,21,0.74) 45%, rgba(7,10,21,0.88)), url(${backgroundUrl})`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-            }
-          : undefined
-      }
-    >
-      <div className="absolute inset-0 opacity-[0.06] bg-[radial-gradient(#A5C330_1px,transparent_1px)] bg-[length:34px_34px]" />
+    <AuthPremiumShell
+      ariaLabel="Página de inicio de sesión"
+      backgroundUrl={backgroundUrl}
+      shellTestId="platform-login-shell"
+      shellDataVariant={variant}
+      shellClassName={shellClassName}
+      panelClassName="max-w-[560px] lg:max-w-[520px]"
+      aside={
+        <aside className={asideClassName}>
+          <AuthBrandHeader
+            name={branding.productName}
+            logoUrl={logoUrl ?? null}
+            textClassName="text-2xl text-white"
+          />
 
-      <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
-        <section
-          data-testid="platform-login-shell"
-          data-variant={variant}
-          className={shellClassName}
-        >
-          <div className="grid min-h-[650px] grid-cols-1 lg:grid-cols-[0.95fr_1.05fr]">
-            <aside className={asideClassName}>
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-[#A5C330] text-[#181818]">
-                  <img src={logoUrl} alt="" className="h-7 w-7 object-contain" aria-hidden="true" />
-                </div>
-                <span className="text-2xl font-bold tracking-tight">{branding.productName}</span>
-              </div>
+          <div className="my-auto">
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.28em] text-[#A5C330]">
+              Gobierno de plataforma
+            </p>
+            <h1
+              className={`${variant === 'premium' ? 'text-5xl' : 'text-[2.65rem]'} max-w-xl font-bold leading-tight tracking-tight text-white`}
+            >
+              {branding.productName}
+              <br />
+              <span className="text-[#A5C330]">Sistema integrado</span>
+            </h1>
+            <p className="mt-6 max-w-md text-base leading-relaxed text-slate-300">
+              Autenticación segura, trazabilidad activa y gobierno centralizado para la operación de
+              plataforma.
+            </p>
 
-              <div className="my-auto">
-                <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.28em] text-[#A5C330]">
-                  Gobierno de plataforma
-                </p>
-                <h1
-                  className={`${variant === 'premium' ? 'text-5xl' : 'text-[2.65rem]'} max-w-xl font-bold leading-tight tracking-tight`}
-                >
-                  {branding.productName}
-                  <br />
-                  <span className="text-[#A5C330]">Sistema integrado</span>
-                </h1>
-                <p className="mt-6 max-w-md text-base leading-relaxed text-slate-300">
-                  Autenticación segura, trazabilidad activa y gobierno centralizado para la
-                  operación de plataforma.
-                </p>
-
-                <div className="mt-8 flex flex-wrap gap-2">
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-200">
-                    Acceso seguro
-                  </span>
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-200">
-                    Operación interna
-                  </span>
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-200">
-                    Auditoría centralizada
-                  </span>
-                </div>
-              </div>
-
-              <p className="text-sm text-slate-400">
-                © 2026 {branding.productName}. Todos los derechos reservados.
-              </p>
-            </aside>
-
-            <div className="relative flex items-center justify-center p-4 sm:p-6 lg:p-10">
-              <div
-                className={`${FORM_PANEL_PREMIUM_CLASS} relative w-full max-w-[560px] lg:max-w-[520px]`}
-              >
-                <div className="mb-10">
-                  <div className="mb-6 flex items-center gap-2 lg:hidden">
-                    <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-[#A5C330]">
-                      <img
-                        src={logoUrl}
-                        alt=""
-                        className="h-6 w-6 object-contain"
-                        aria-hidden="true"
-                      />
-                    </div>
-                    <span className="font-bold text-[#181818]">{branding.productName}</span>
-                  </div>
-
-                  <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-                    {branding.surfaceName}
-                  </p>
-                  <h2 className="mb-2 text-3xl font-bold text-[#181818] dark:text-white">
-                    Bienvenido a {branding.productName}
-                  </h2>
-                  <p className="text-base text-slate-500 dark:text-gray-400">
-                    Ingresa tus credenciales para administrar empresas, usuarios y operación
-                    interna.
-                  </p>
-                </div>
-
-                <LoginForm />
-              </div>
+            <div className="mt-8 flex flex-wrap gap-2">
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-200">
+                Acceso seguro
+              </span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-200">
+                Operación interna
+              </span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-200">
+                Auditoría centralizada
+              </span>
             </div>
           </div>
-        </section>
-      </div>
-    </main>
+
+          <p className="text-sm text-slate-400">
+            © 2026 {branding.productName}. Todos los derechos reservados.
+          </p>
+        </aside>
+      }
+      mobileHeader={
+        <AuthBrandHeader
+          name={branding.productName}
+          logoUrl={logoUrl ?? null}
+          className="mb-6 lg:hidden"
+          logoContainerClassName="h-8 w-8"
+          textClassName="text-[#181818]"
+        />
+      }
+      intro={
+        <>
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+            {branding.surfaceName}
+          </p>
+          <h2 className="mb-2 text-3xl font-bold text-[#181818] dark:text-white">
+            Bienvenido a {branding.productName}
+          </h2>
+          <p className="text-base text-slate-500 dark:text-gray-400">
+            Ingresa tus credenciales para administrar empresas, usuarios y operación interna.
+          </p>
+        </>
+      }
+      form={<LoginForm />}
+    />
   );
 }

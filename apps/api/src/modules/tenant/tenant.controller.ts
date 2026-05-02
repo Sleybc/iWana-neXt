@@ -79,6 +79,10 @@ import { MediaAssetResponseDto } from '../media/dto/media-asset-response.dto';
 
 const TENANT_PUBLIC_BRANDING_EXAMPLE = {
   displayName: 'ISP Demo',
+  productName: 'ISP Demo',
+  surfaceName: 'Portal empresarial',
+  metadataTitle: 'ISP Demo — Portal empresarial',
+  metadataDescription: 'Portal empresarial para la operación de ISP Demo en iWana neXt.',
   showTenantName: true,
   logoLightUrl: 'https://cdn.demo.co/branding/logo-light.svg',
   logoDarkUrl: 'https://cdn.demo.co/branding/logo-dark.svg',
@@ -93,6 +97,10 @@ const TENANT_PUBLIC_BRANDING_EXAMPLE = {
 const TENANT_BRANDING_PATCH_EXAMPLE = {
   logoLightUrl: 'https://cdn.demo.co/branding/logo-light.svg',
   logoLightAssetId: null,
+  brandingProductName: 'ISP Demo',
+  brandingSurfaceName: 'Portal empresarial',
+  brandingMetadataTitle: 'ISP Demo — Portal empresarial',
+  brandingMetadataDescription: 'Portal empresarial para la operación de ISP Demo en iWana neXt.',
   faviconLightAssetId: '550e8400-e29b-41d4-a716-446655440000',
   loginBackgroundDarkUrl: null,
 };
@@ -168,11 +176,7 @@ export class TenantController {
   async getPublicBranding(
     @Query('slug') slug: string | undefined,
   ): Promise<{ data: TenantPublicBrandingResponseDto }> {
-    if (!slug) {
-      throw new BadRequestException('slug es requerido.');
-    }
-
-    const data = await this.tenantService.getTenantPublicBranding(slug);
+    const data = await this.tenantService.getTenantPublicBranding(slug ?? '');
     return { data };
   }
 

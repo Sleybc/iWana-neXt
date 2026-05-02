@@ -2,9 +2,9 @@
 
 ## iWana neXt Platform — ISP/OSS/BSS Colombia
 
-**Version:** 2.1
+**Version:** 2.2
 **Estado:** En revisión
-**Fecha:** 2026-04-30
+**Fecha:** 2026-05-02
 **Modo activo:** Architect
 **Autor:** AI-EM-ARCH
 **Aprobador requerido:** CTO Humano
@@ -13,6 +13,8 @@
 **HLD:** [HLD-TRANSVERSAL-MEDIA-ASSETS-v1.0.md](../hlds/HLD-TRANSVERSAL-MEDIA-ASSETS-v1.0.md)
 
 > Actualizacion v2.1: este mismo documento incorpora el alcance de branding propio de `apps/web` sin crear un PRD paralelo. La v2.0 cubria con claridad el branding de tenants administrado desde portal y plataforma; la v2.1 separa explicitamente esa capacidad del branding institucional de la consola de plataforma.
+
+> Actualizacion v2.2: se incorpora metadata publica editable por tenant para cerrar la paridad funcional entre `apps/web/settings/Branding` y `apps/portal/dashboard/settings/Marca`: producto, superficie, titulo publico y descripcion publica dejan de ser solo derivados visuales y pasan a ser contrato persistente del branding empresarial.
 
 ---
 
@@ -46,6 +48,7 @@ Ambas superficies son requeridas. El branding de plataforma no debe ser un borra
 - Branding propio de `apps/web`: logo/isotipo, favicon, imagen de fondo del login administrativo, titulo publico, descripcion publica, nombre de producto y nombre de superficie.
 - Configuracion persistente de branding de plataforma desde `apps/web/settings`, con preview, reset y aplicacion real en login administrativo, favicon, metadata y shell autenticado.
 - Endpoint publico de branding de plataforma para que el login administrativo no autenticado pueda cargar favicon, logo y fondo antes del login.
+- Metadata publica editable por tenant: producto, superficie, titulo publico y descripcion publica, persistida en `public.tenants` y expuesta en `/tenants/me`, `/tenants/me/branding` y `/tenants/public-branding`.
 - Previews claro/oscuro y reset por asset en ambas consolas.
 - Auditoria completa con `oldValue/newValue` (sin URL completa si la consideramos sensible? — registramos URL completa porque no es PII).
 - Migracion BD con nuevas columnas y tabla `media_assets` (ver ADR-034).
@@ -120,6 +123,23 @@ Reglas:
 - El estado no se guarda en `localStorage` salvo como cache efimera no autoritativa.
 - El reset restaura defaults iWana por slot o por configuracion completa.
 
+### RF-01C — Metadata publica de branding tenant
+
+Cada tenant puede definir textos publicos de identidad visual para su portal empresarial, independientes del branding global de plataforma y sin crear un bounded context nuevo.
+
+| Campo | Tipo | Default efectivo | Notas |
+|-------|------|------------------|-------|
+| `branding_product_name` | texto | `legal_name || name` | Nombre visible del tenant en superficies publicas. |
+| `branding_surface_name` | texto | `Portal empresarial` | Nombre de la superficie de acceso del tenant. |
+| `branding_metadata_title` | texto | `{displayName} — Portal empresarial` | Titulo del navegador y labels publicos cuando aplique. |
+| `branding_metadata_description` | texto | `Portal empresarial para la operacion de {displayName} en iWana neXt.` | Descripcion publica del portal. |
+
+Reglas:
+- Los campos son tenant-managed y editables solo por `UserRole.ADMIN` desde `apps/portal`.
+- La consola `apps/web` puede administrar estos campos para un tenant desde el flujo plataforma existente si el formulario de tenant branding lo expone.
+- Si un campo llega `null` o vacio normalizado, el backend retorna el default efectivo en respuestas publicas y self-service.
+- No se permite incluir PII ni datos sensibles en estos campos; son metadata publica.
+
 ### RF-02 — Endpoints backend
 
 | Metodo | Ruta | Auth | Roles | Proposito |
@@ -169,6 +189,17 @@ Si la request falla, fallback iWana sin error visible.
 `AuthProvider` y layout de `apps/portal` continuan resolviendo branding via `tenantSelfApi.me()` (existente). Se extiende para los nuevos slots.
 
 `apps/web` no hereda branding de tenant porque es consola de plataforma. Debe resolver su propio branding global desde `GET /api/v1/platform/branding/public` en superficies no autenticadas y desde `GET /api/v1/platform/branding` en superficies autenticadas. Si la carga falla, aplica fallback iWana.
+
+### RF-06B — Aplicacion de metadata publica tenant
+
+`apps/portal` debe consumir la metadata publica retornada por `/tenants/public-branding` antes de autenticacion para:
+
+- actualizar `document.title` con `metadataTitle` cuando exista,
+- usar `surfaceName` en la narrativa del panel de login,
+- usar `displayName`/`productName` como nombre visible de marca segun `showTenantName`,
+- mantener fallback iWana cuando el endpoint publico falle o el tenant no tenga metadata configurada.
+
+En sesion autenticada, el dashboard debe recibir metadata extendida desde `/tenants/me` y actualizar el sidebar/header si el diseño vigente la consume. El evento `tenant-branding-updated` debe transportar tambien la metadata para evitar recarga manual.
 
 ### RF-07 — Reset por slot
 
@@ -225,6 +256,18 @@ ALTER TABLE public.tenants
 
 Razon de doble columna `*_url` y `*_asset_id`: el slot puede provenir de upload (asset_id apunta) o URL externa (asset_id NULL, url poblada). Lectura combinada en service: `asset_id ? media_assets.publicUrl : url`.
 
+Extension v2.2 para metadata publica tenant:
+
+```sql
+ALTER TABLE public.tenants
+  ADD COLUMN branding_product_name varchar(120),
+  ADD COLUMN branding_surface_name varchar(120),
+  ADD COLUMN branding_metadata_title varchar(180),
+  ADD COLUMN branding_metadata_description varchar(300);
+```
+
+Las columnas son nullable para habilitar defaults efectivos desde `TenantService` sin backfill destructivo. El `down()` de la migracion debe eliminar las cuatro columnas en orden inverso.
+
 ### Tabla nueva `public.media_assets`
 
 Definida en ADR-034. Migracion `CreateMediaAssetsTable` precede a `ExtendTenantBrandingV2`.
@@ -267,6 +310,10 @@ GET /api/v1/tenants/public-branding?slug=acme HTTP/1.1
 Cache-Control: public, max-age=60
 {
   "displayName": "ACME Telecomunicaciones",
+  "productName": "ACME Telecomunicaciones",
+  "surfaceName": "Portal empresarial",
+  "metadataTitle": "ACME Telecomunicaciones — Portal empresarial",
+  "metadataDescription": "Portal empresarial para la operación de ACME Telecomunicaciones en iWana neXt.",
   "showTenantName": true,
   "logoLightUrl": "https://...",
   "logoDarkUrl": null,
@@ -289,6 +336,10 @@ Cache-Control: public, max-age=60
 {
   "logoLightUrl": "https://cdn.cliente.com/logo-light.png",
   "logoLightAssetId": null,
+  "brandingProductName": "ACME Telecomunicaciones",
+  "brandingSurfaceName": "Portal empresarial",
+  "brandingMetadataTitle": "ACME Telecomunicaciones — Portal empresarial",
+  "brandingMetadataDescription": "Portal empresarial para la operación de ACME Telecomunicaciones en iWana neXt.",
   "faviconLightAssetId": "01HZX...",
   "loginBackgroundDarkUrl": null   // reset explicito
 }
@@ -373,6 +424,10 @@ Validacion: HTTPS para URLs externas, XOR entre URL y assetId por slot, reset ex
 | CA-16 | Reset de un slot de plataforma restaura fallback iWana sin afectar branding de tenants |
 | CA-17 | IWANA_SUPPORT puede consultar branding de plataforma pero no modificarlo |
 | CA-18 | El borrador en `localStorage` deja de ser fuente autoritativa; la recarga obtiene estado desde backend |
+| CA-19 | TENANT_ADMIN edita producto, superficie, titulo publico y descripcion publica desde portal Marca; los cambios persisten en backend |
+| CA-20 | `GET /tenants/public-branding` expone metadata publica efectiva con fallback cuando campos tenant estan vacios |
+| CA-21 | Login portal usa `metadataTitle`, `surfaceName` y `displayName/productName` sin mostrar errores cuando la metadata no existe |
+| CA-22 | El evento `tenant-branding-updated` transporta metadata para refrescar superficies autenticadas sin recarga manual |
 
 ## 9. Dependencias y Riesgos
 
@@ -397,12 +452,14 @@ Validacion: HTTPS para URLs externas, XOR entre URL y assetId por slot, reset ex
 | Ambiguedad entre branding tenant y branding plataforma | Alta | Separar contratos, rutas, UI y modelo de datos; `apps/web/settings` administra solo branding propio de plataforma |
 | Login administrativo requiere branding antes de auth | Media | Endpoint publico cacheado con fallback iWana y sin datos sensibles |
 | Configuracion local no persistente en `apps/web/settings` | Media | Reemplazar `localStorage` por backend autoritativo y tests de regresion |
+| Metadata tenant solo visual en portal | Media | Persistir campos en `public.tenants`, extender DTOs/API y tests de contrato antes de habilitar inputs editables |
 
 ## 10. Definition of Done
 
 - [ ] Codigo backend (`MediaModule`, extensiones `BrandingService`, controllers) con tests >= 80%.
 - [ ] Codigo frontend (`apps/web` pestaña Marca, `apps/portal` seccion Marca extendida) con tests RTL.
 - [ ] Branding propio de `apps/web` persistente: backend, migracion, endpoints publicos/admin, UI `/settings`, login administrativo y shell autenticado.
+- [ ] Metadata publica tenant persistente: backend, migracion, DTOs, UI portal editable, login publico y evento runtime actualizados.
 - [ ] Migraciones forward y reverse aplicadas en dev sin errores.
 - [ ] OpenAPI actualizada con nuevos endpoints y ejemplos.
 - [ ] Validaciones HTTPS, MIME magic bytes, tamano, dimensiones, SVG sanitization implementadas.
@@ -415,6 +472,7 @@ Validacion: HTTPS para URLs externas, XOR entre URL y assetId por slot, reset ex
 - [ ] Sin violaciones de boundary Modulith.
 - [ ] Informe de cierre `INFORME-MOD03-BRANDING-EMPRESARIAL-v1.0.md` archivado en `docs/informes/`.
 - [ ] CTO aprueba ADR-035, ADR-034 y este PRD v2.1.
+- [ ] CTO aprueba ADR-035, ADR-034 y este PRD v2.2.
 
 ### Plan de ejecucion v2.1 — Fase 03D Branding propio de plataforma
 
@@ -429,3 +487,17 @@ Validacion: HTTPS para URLs externas, XOR entre URL y assetId por slot, reset ex
 | 03D-7 | QA focalizada | Unit/API + RTL + Playwright login administrativo; typecheck/lint verdes |
 
 No se crea PRD nuevo para 03D. La ejecucion queda gobernada por esta version 2.1 y por el plan vigente actualizado.
+
+### Plan de ejecucion v2.2 — Fase 03E Metadata publica de branding tenant
+
+| Paso | Entregable | Criterio de salida |
+|------|------------|--------------------|
+| 03E-1 | Migracion publica `011_add_tenant_branding_metadata` + entidad `Tenant` | Forward/reverse en BD limpia; columnas nullable agregadas |
+| 03E-2 | DTOs y servicios backend extendidos | `/tenants/me`, `/tenants/me/branding` y `/tenants/public-branding` devuelven metadata efectiva |
+| 03E-3 | OpenAPI y tests HTTP/backend | Casos de persistencia, defaults, validacion y auditoria en verde |
+| 03E-4 | Cliente portal/web actualizado | Tipos `TenantSelf`, `TenantPublicBranding` y `UpdateTenantSelfBrandingDto` incluyen metadata |
+| 03E-5 | `BrandingForm` portal editable | Seccion `Nombres e identidad` deja de ser read-only y guarda payload incremental |
+| 03E-6 | Login portal consume metadata | Titulo, narrativa y nombre visible usan contrato publico con fallback iWana |
+| 03E-7 | QA focalizada | Unit/API + RTL + typecheck; Playwright si el runner local esta disponible |
+
+No se requiere ADR nuevo para 03E porque no cambia stack, boundary ni patron de integracion; extiende el contrato self-service existente de Tenant Branding dentro de MOD03.

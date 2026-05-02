@@ -22,28 +22,18 @@ export function LoginBrandPanel({
   subtitle,
   children,
 }: LoginBrandPanelProps) {
-  const backgroundImage = branding?.loginBackgroundDarkUrl ?? branding?.loginBackgroundLightUrl;
   const headerLogo = branding?.logoDarkUrl ?? branding?.logoLightUrl;
-  const resolvedTitle = title ?? (branding?.showTenantName ? branding.displayName : 'iWana neXt');
+  const productName = branding?.productName ?? branding?.displayName ?? 'iWana neXt';
+  const surfaceName = branding?.surfaceName ?? 'Portal empresarial';
+  const resolvedTitle = title ?? (branding?.showTenantName ? productName : 'iWana neXt');
   const resolvedSubtitle =
     subtitle ??
     (branding?.showTenantName
-      ? `Acceso seguro al portal de ${branding.displayName} con políticas activas y trazabilidad por empresa.`
+      ? `Acceso seguro al portal de ${productName} con políticas activas y trazabilidad por empresa.`
       : 'Autenticación segura, trazabilidad activa y una experiencia premium para la operación empresarial.');
 
   return (
-    <div className="relative hidden overflow-hidden border-r border-white/5 bg-[#181818] p-8 text-white lg:flex lg:w-1/2 lg:flex-col lg:justify-between lg:p-16">
-      <img
-        src={
-          backgroundImage ??
-          'https://lh3.googleusercontent.com/aida-public/AB6AXuCHI4LM_NAHCAJ3MNL4M6WPHz31HVbomoUOssE0eZhErv0MfuccPw3aYms_n07IkyuNbSK8q4lhZv16uyobCgB864Jf6HadYfLg7hqx2yc1ARQ1j8mx_EStoaUUmAApxfoKQIHR4nZO7mR8En5Bp2Tgnf2h-WWUDetkSZEoVPCCogfOk-Z_nPm8fYodWf7jD5O2wdDrlp_1f4LaAxuPqfe7MLGnHphIwaXrd9JzKmrDSt2qAei9pHcZ2_z7hM8gO-jxpEWa9woXrIZY'
-        }
-        alt=""
-        aria-hidden="true"
-        className="absolute inset-0 z-0 h-full w-full object-cover opacity-30 mix-blend-lighten"
-      />
-      <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#181818] via-[#181818]/80 to-transparent" />
-
+    <div className="relative hidden border-r border-white/10 p-8 text-white lg:flex lg:flex-col lg:justify-between lg:p-16">
       <div className="relative z-10 flex items-center gap-3">
         {headerLogo ? (
           <div className="flex h-12 min-w-[140px] items-center rounded-2xl bg-white/8 px-4 backdrop-blur-md">
@@ -81,7 +71,7 @@ export function LoginBrandPanel({
           {resolvedTitle}
           <br />
           <span className="text-[#A5C330]">
-            {branding?.showTenantName ? 'Portal empresarial' : 'Sistema Integrado'}
+            {branding?.showTenantName ? surfaceName : 'Sistema Integrado'}
           </span>
         </h1>
         <p className="text-lg text-slate-400 max-w-md leading-relaxed">{resolvedSubtitle}</p>

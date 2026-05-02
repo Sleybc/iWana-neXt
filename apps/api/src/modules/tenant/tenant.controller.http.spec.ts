@@ -192,6 +192,11 @@ describe('TenantController HTTP', () => {
   it('GET /api/v1/tenants/public-branding retorna branding público sin autenticación', async () => {
     tenantService.getTenantPublicBranding.mockResolvedValue({
       displayName: 'Empresa Test ISP',
+      productName: 'Empresa Test ISP',
+      surfaceName: 'Portal empresarial',
+      metadataTitle: 'Empresa Test ISP — Portal empresarial',
+      metadataDescription:
+        'Portal empresarial para la operación de Empresa Test ISP en iWana neXt.',
       showTenantName: true,
       logoLightUrl: 'https://cdn.example.test/logo-light.png',
       logoDarkUrl: null,
@@ -210,13 +215,58 @@ describe('TenantController HTTP', () => {
 
     expect(response.headers['cache-control']).toBe('public, max-age=60');
     expect(response.body.data.displayName).toBe('Empresa Test ISP');
+    expect(response.body.data.metadataTitle).toBe('Empresa Test ISP — Portal empresarial');
     expect(tenantService.getTenantPublicBranding).toHaveBeenCalledWith('empresa-test');
   });
 
+  it('GET /api/v1/tenants/public-branding normaliza slug con trim y lowercase', async () => {
+    tenantService.getTenantPublicBranding.mockResolvedValue({
+      displayName: 'Empresa Test ISP',
+      productName: 'Empresa Test ISP',
+      surfaceName: 'Portal empresarial',
+      metadataTitle: 'Empresa Test ISP — Portal empresarial',
+      metadataDescription:
+        'Portal empresarial para la operación de Empresa Test ISP en iWana neXt.',
+      showTenantName: true,
+      logoLightUrl: 'https://cdn.example.test/logo-light.png',
+      logoDarkUrl: null,
+      sealLightUrl: null,
+      sealDarkUrl: null,
+      faviconLightUrl: null,
+      faviconDarkUrl: null,
+      loginBackgroundLightUrl: null,
+      loginBackgroundDarkUrl: null,
+    });
+
+    await request(app.getHttpServer())
+      .get('/api/v1/tenants/public-branding')
+      .query({ slug: '  EMPRESA-TEST  ' })
+      .expect(200);
+
+    expect(tenantService.getTenantPublicBranding).toHaveBeenCalledWith('  EMPRESA-TEST  ');
+  });
+
   it('GET /api/v1/tenants/public-branding retorna 400 si falta slug', async () => {
+    tenantService.getTenantPublicBranding.mockRejectedValueOnce(
+      new BadRequestException('slug es requerido.'),
+    );
+
     await request(app.getHttpServer()).get('/api/v1/tenants/public-branding').expect(400);
 
-    expect(tenantService.getTenantPublicBranding).not.toHaveBeenCalled();
+    expect(tenantService.getTenantPublicBranding).toHaveBeenCalledWith('');
+  });
+
+  it('GET /api/v1/tenants/public-branding retorna 400 si slug contiene solo espacios', async () => {
+    tenantService.getTenantPublicBranding.mockRejectedValue(
+      new BadRequestException('slug es requerido.'),
+    );
+
+    await request(app.getHttpServer())
+      .get('/api/v1/tenants/public-branding')
+      .query({ slug: '   ' })
+      .expect(400);
+
+    expect(tenantService.getTenantPublicBranding).toHaveBeenCalledWith('   ');
   });
 
   it('PATCH /api/v1/tenants/me/branding actualiza branding híbrido para ADMIN', async () => {
@@ -247,6 +297,74 @@ describe('TenantController HTTP', () => {
       .send({
         logoLightUrl: 'https://cdn.example.test/logo-light.png',
         logoLightAssetId: '55555555-5555-4555-8555-555555555555',
+      })
+      .expect(400);
+
+    expect(tenantService.updateTenantSelfBranding).not.toHaveBeenCalled();
+  });
+
+  it('PATCH /api/v1/tenants/me/branding permite limpiar un slot enviando url y assetId en null', async () => {
+    tenantService.updateTenantSelfBranding.mockResolvedValue({
+      id: 'tenant-uuid-1',
+      loginBackgroundLightUrl: null,
+      loginBackgroundLightAssetId: null,
+    });
+
+    const response = await request(app.getHttpServer())
+      .patch('/api/v1/tenants/me/branding')
+      .set('Authorization', 'Bearer tenant-admin-token')
+      .send({
+        loginBackgroundLightUrl: null,
+        loginBackgroundLightAssetId: null,
+      })
+      .expect(200);
+
+    expect(response.body.data.loginBackgroundLightUrl).toBeNull();
+    expect(tenantService.updateTenantSelfBranding).toHaveBeenCalledWith(
+      'tenant-uuid-1',
+      expect.objectContaining({
+        loginBackgroundLightUrl: null,
+        loginBackgroundLightAssetId: null,
+      }),
+      'tenant-admin-sub',
+    );
+  });
+
+  it('PATCH /api/v1/tenants/me/branding permite URL externa con assetId null para reemplazar un asset previo', async () => {
+    tenantService.updateTenantSelfBranding.mockResolvedValue({
+      id: 'tenant-uuid-1',
+      loginBackgroundLightUrl: 'https://cdn.example.test/login-bg-light.png',
+      loginBackgroundLightAssetId: null,
+    });
+
+    const response = await request(app.getHttpServer())
+      .patch('/api/v1/tenants/me/branding')
+      .set('Authorization', 'Bearer tenant-admin-token')
+      .send({
+        loginBackgroundLightUrl: 'https://cdn.example.test/login-bg-light.png',
+        loginBackgroundLightAssetId: null,
+      })
+      .expect(200);
+
+    expect(response.body.data.loginBackgroundLightUrl).toBe(
+      'https://cdn.example.test/login-bg-light.png',
+    );
+    expect(tenantService.updateTenantSelfBranding).toHaveBeenCalledWith(
+      'tenant-uuid-1',
+      expect.objectContaining({
+        loginBackgroundLightUrl: 'https://cdn.example.test/login-bg-light.png',
+        loginBackgroundLightAssetId: null,
+      }),
+      'tenant-admin-sub',
+    );
+  });
+
+  it('PATCH /api/v1/tenants/me/branding rechaza metadata inválida por longitud', async () => {
+    await request(app.getHttpServer())
+      .patch('/api/v1/tenants/me/branding')
+      .set('Authorization', 'Bearer tenant-admin-token')
+      .send({
+        brandingProductName: 'A',
       })
       .expect(400);
 

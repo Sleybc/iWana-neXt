@@ -7,6 +7,7 @@ import {
   IsUrl,
   Matches,
   MaxLength,
+  MinLength,
   Validate,
   ValidateNested,
   ValidationArguments,
@@ -70,12 +71,19 @@ class BrandingSourceXorConstraint implements ValidatorConstraintInterface {
     ];
 
     for (const [urlKey, assetKey] of pairs) {
-      if (dto[urlKey] !== undefined && dto[assetKey] !== undefined) {
+      if (
+        this.isExplicitBrandingValue(dto[urlKey]) &&
+        this.isExplicitBrandingValue(dto[assetKey])
+      ) {
         return [urlKey, assetKey];
       }
     }
 
     return null;
+  }
+
+  private isExplicitBrandingValue(value: unknown): boolean {
+    return value !== undefined && value !== null;
   }
 }
 
@@ -276,6 +284,34 @@ export class UpdateTenantSelfBrandingDto {
   @IsOptional()
   @IsBoolean()
   showTenantName?: boolean;
+
+  @IsOptional()
+  @Transform(trimNullableString)
+  @IsString()
+  @MinLength(2, { message: 'brandingProductName debe tener al menos 2 caracteres.' })
+  @MaxLength(120, { message: 'brandingProductName no puede exceder 120 caracteres.' })
+  brandingProductName?: string | null;
+
+  @IsOptional()
+  @Transform(trimNullableString)
+  @IsString()
+  @MinLength(2, { message: 'brandingSurfaceName debe tener al menos 2 caracteres.' })
+  @MaxLength(120, { message: 'brandingSurfaceName no puede exceder 120 caracteres.' })
+  brandingSurfaceName?: string | null;
+
+  @IsOptional()
+  @Transform(trimNullableString)
+  @IsString()
+  @MinLength(4, { message: 'brandingMetadataTitle debe tener al menos 4 caracteres.' })
+  @MaxLength(180, { message: 'brandingMetadataTitle no puede exceder 180 caracteres.' })
+  brandingMetadataTitle?: string | null;
+
+  @IsOptional()
+  @Transform(trimNullableString)
+  @IsString()
+  @MinLength(12, { message: 'brandingMetadataDescription debe tener al menos 12 caracteres.' })
+  @MaxLength(300, { message: 'brandingMetadataDescription no puede exceder 300 caracteres.' })
+  brandingMetadataDescription?: string | null;
 }
 
 export class UpdateTenantSelfSettingsDto {

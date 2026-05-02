@@ -2,10 +2,10 @@
 
 ## iWana neXt Platform — ISP/OSS/BSS Colombia
 
-**Version:** 2.4
-**Estado:** Cerrado — alcance v2.1 ejecutado para branding propio de plataforma
+**Version:** 2.9
+**Estado:** Aprobado — fase 03E ejecutada y validada
 **Fecha de apertura:** 2026-04-30
-**Ultima actualización:** 2026-04-30
+**Ultima actualización:** 2026-05-02
 **Modo activo:** Mixto
 **Autor:** AI-SR-FULL
 
@@ -17,15 +17,16 @@
 
 | Artefacto | Referencia | Estado |
 |-----------|-----------|--------|
-| PRD v2.1 | [PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md](../prds/PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md) | **En revisión** |
+| PRD v2.2 | [PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md](../prds/PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md) | **En revisión — agrega metadata publica tenant** |
 | HLD Media | [HLD-TRANSVERSAL-MEDIA-ASSETS-v1.0.md](../hlds/HLD-TRANSVERSAL-MEDIA-ASSETS-v1.0.md) | **Aprobado** |
 | ADR-035 Storage | [ADR-035-Storage-MinIO-StoragePort.md](../adrs/ADR-035-Storage-MinIO-StoragePort.md) | **Aprobado** |
 | ADR-034 Bounded Context | [ADR-034-Bounded-Context-Media-Assets.md](../adrs/ADR-034-Bounded-Context-Media-Assets.md) | **Aprobado** |
-| Plan | [PLAN-MOD03-BRANDING-EMPRESARIAL-FASE-03-v1.0.md](../plans/PLAN-MOD03-BRANDING-EMPRESARIAL-FASE-03-v1.0.md) | **v1.1 en revisión — agrega 03D** |
+| Plan | [PLAN-MOD03-BRANDING-EMPRESARIAL-FASE-03-v1.0.md](../plans/PLAN-MOD03-BRANDING-EMPRESARIAL-FASE-03-v1.0.md) | **v1.2 en revisión — agrega 03E** |
 | Runbook MinIO | [RUNBOOK-MEDIA-MINIO-v1.0.md](../runbooks/RUNBOOK-MEDIA-MINIO-v1.0.md) | **Creado** |
 | PROMPT 03A | [PROMPT-MOD03-BRANDING-FASE-03A-v1.0.md](../prompts/PROMPT-MOD03-BRANDING-FASE-03A-v1.0.md) | **Ejecutado** |
 | PROMPT 03B | [PROMPT-MOD03-BRANDING-FASE-03B-v1.0.md](../prompts/PROMPT-MOD03-BRANDING-FASE-03B-v1.0.md) | **Ejecutado (backend)** |
 | PROMPT 03C | [PROMPT-MOD03-BRANDING-FASE-03C-v1.0.md](../prompts/PROMPT-MOD03-BRANDING-FASE-03C-v1.0.md) | **Ejecutado (frontend)** |
+| PROMPT 03E | [PROMPT-MOD03-BRANDING-FASE-03E-v1.0.md](../prompts/PROMPT-MOD03-BRANDING-FASE-03E-v1.0.md) | **Ejecutado (fullstack)** |
 
 ---
 
@@ -38,7 +39,8 @@
 | 03B — Backend Branding v2 | **Cerrada** | OpenAPI con ejemplos explícitos, unit tests y suites HTTP en verde |
 | 03C — Frontend web + portal | **Cerrada** | Portal y web alineados al contrato híbrido; typecheck limpio; E2E focalizada en verde |
 | 03D — Branding propio de plataforma | **Cerrada** | Persistencia real, API pública/admin, UI `/settings`, login administrativo y shell de `apps/web` conectados a backend |
-| Cierre | **Completo** | 03A-03D cerradas; alcance v2.1 ejecutado y validado con pruebas focalizadas + typecheck |
+| 03E — Metadata publica tenant | **Cerrada** | Persistencia DB + contrato backend + portal editable + login público con metadata efectiva + pruebas focalizadas en verde |
+| Cierre | **Completo** | 03A-03E cerradas; alcance v2.2 ejecutado y validado |
 
 ## 2. Hallazgos previos relevantes
 
@@ -76,6 +78,114 @@
 - Continuidad de MOD03 para esta extensión: **Confirmada**.
 
 ## 6. Bitacora
+
+### 2026-05-02 — Ajuste visual post-correctivo — Fondo de login portal alineado a web
+
+**Incidente reportado:**
+- En `apps/portal`, la imagen configurada en `Fondo del login` no se mostraba como fondo del shell de autenticación al estilo de `apps/web`.
+- El panel izquierdo pintaba un fondo propio y la imagen quedaba encapsulada solo en ese bloque, en lugar de aplicarse al contenedor premium compartido.
+
+**Corrección aplicada:**
+- `apps/portal/src/components/auth/LoginExperience.tsx` ahora pasa `loginBackgroundDarkUrl || loginBackgroundLightUrl` como `backgroundUrl` a `AuthPremiumShell`.
+- `apps/portal/src/components/auth/LoginBrandPanel.tsx` deja de renderizar una capa de fondo propia para que el shell compartido muestre la imagen cargada igual que en `apps/web`.
+- `apps/portal/src/components/auth/LoginExperience.spec.tsx` agrega cobertura para verificar que el shell recibe la URL de fondo pública del branding.
+
+**Validación ejecutada:**
+- `pnpm --filter @iwana/portal test -- src/components/auth/LoginExperience.spec.tsx` → **PASS (1 suite, 4 tests)**.
+- `pnpm --filter @iwana/portal typecheck` → **PASS**.
+
+### 2026-05-02 — Correctivo post-ejecucion 03E — Branding self-service 100% funcional
+
+**Incidente reportado:**
+- `PATCH /api/v1/tenants/me/branding` respondía `400` al eliminar slots como `Fondo del login - Variante clara`.
+- Cuando el frontend enviaba una URL externa junto con `assetId: null`, el backend limpiaba el slot pero descartaba la URL.
+- En el portal autenticado, el cambio de `Producto` y `Título público` no se reflejaba de forma visible en sidebar y `document.title`.
+
+**Causa raíz:**
+- La validación XOR de `UpdateTenantSelfBrandingDto` trataba `null` como conflicto entre `url` y `assetId`.
+- `TenantService.applyBrandingUpdate()` interpretaba `assetId: null` como limpieza total del slot, incluso cuando llegaba `url` válida en el mismo payload.
+- El dashboard autenticado seguía renderizando `profile.name` en sidebar y no sincronizaba `document.title` con `brandingMetadataTitle`.
+
+**Corrección aplicada:**
+
+| Capa | Archivos principales | Estado |
+|---|---|---|
+| API validación | `apps/api/src/modules/tenant/dto/tenant-self-update.dto.ts` | Corregido |
+| API servicio | `apps/api/src/modules/tenant/tenant.service.ts` | Corregido |
+| API tests | `apps/api/src/modules/tenant/tenant.controller.http.spec.ts`, `apps/api/src/modules/tenant/tenant.service.spec.ts` | Cobertura agregada |
+| Portal sidebar | `apps/portal/src/components/layout/Sidebar.tsx` | Corregido |
+| Portal document.title | `apps/portal/src/app/dashboard/layout.tsx` | Corregido |
+| Portal tests | `apps/portal/src/components/layout/Sidebar.spec.tsx`, `apps/portal/src/app/dashboard/layout.spec.tsx` | Cobertura agregada |
+
+**Validación ejecutada:**
+- `pnpm --filter @iwana/api test -- src/modules/tenant/tenant.controller.http.spec.ts src/modules/tenant/tenant.service.spec.ts` → **PASS (2 suites, 54 tests)**.
+- `pnpm --filter @iwana/portal test -- src/components/layout/Sidebar.spec.tsx src/app/dashboard/layout.spec.tsx` → **PASS (2 suites, 2 tests)**.
+- `pnpm --filter @iwana/portal typecheck` → **PASS**.
+- `pnpm --filter @iwana/api typecheck` → **PASS**.
+
+**Resultado funcional esperado:**
+- Limpiar slots de branding con `null/null` ya no genera `400`.
+- Reemplazar un asset previo por URL externa funciona en el mismo PATCH.
+- `brandingProductName` se refleja en el sidebar del portal autenticado.
+- `brandingMetadataTitle` actualiza `document.title` dentro del dashboard autenticado.
+
+### 2026-05-02 — Ejecucion Fase 03E — Metadata publica tenant
+
+**Resultado:**
+- Se ejecutó la fase 03E de punta a punta (DB, backend, frontend portal y pruebas focalizadas).
+- La seccion `Nombres e identidad` en `apps/portal/dashboard/settings/Marca` ahora es editable y persistente.
+- El login publico del portal consume metadata efectiva (`productName`, `surfaceName`, `metadataTitle`, `metadataDescription`) con fallback iWana.
+
+**Implementacion aplicada:**
+
+| Capa | Archivos principales | Estado |
+|---|---|---|
+| DB | `packages/database/src/migrations/public/011_add_tenant_branding_metadata.ts`, `packages/database/src/entities/tenant.entity.ts` | Ejecutado |
+| API DTO/Service | `apps/api/src/modules/tenant/dto/tenant-self-update.dto.ts`, `apps/api/src/modules/tenant/dto/tenant-self.dto.ts`, `apps/api/src/modules/tenant/dto/tenant-branding.dto.ts`, `apps/api/src/modules/tenant/dto/tenant.dto.ts`, `apps/api/src/modules/tenant/tenant.service.ts`, `apps/api/src/modules/tenant/tenant.controller.ts` | Ejecutado |
+| Portal | `apps/portal/src/lib/api-client.ts`, `apps/portal/src/components/settings/BrandingForm.tsx`, `apps/portal/src/components/auth/LoginExperience.tsx`, `apps/portal/src/components/auth/LoginBrandPanel.tsx`, `apps/portal/src/app/dashboard/layout.tsx` | Ejecutado |
+| Tests | `apps/api/src/modules/tenant/tenant.service.spec.ts`, `apps/api/src/modules/tenant/tenant.controller.http.spec.ts`, `apps/api/src/modules/tenant/tenant.swagger.spec.ts`, `apps/api/src/modules/tenant/tenant-settings.spec.ts`, `apps/portal/src/components/settings/BrandingForm.spec.tsx`, `apps/portal/src/components/auth/LoginExperience.spec.tsx` | Ejecutado |
+
+**Validacion ejecutada:**
+- `pnpm --filter @iwana/db build && pnpm --filter @iwana/db migration:run` → **PASS** (migración `AddTenantBrandingMetadata1746164800000` aplicada y registrada en `typeorm_migrations`).
+- `pnpm --filter @iwana/api test -- src/modules/tenant/tenant.service.spec.ts src/modules/tenant/tenant.controller.http.spec.ts src/modules/tenant/tenant.swagger.spec.ts` → **PASS (3 suites, 52 tests)**.
+- `pnpm --filter @iwana/portal test -- src/components/settings/BrandingForm.spec.tsx src/components/auth/LoginExperience.spec.tsx` → **PASS (2 suites, 8 tests)**.
+- `pnpm --filter @iwana/db typecheck && pnpm --filter @iwana/api typecheck && pnpm --filter @iwana/portal typecheck` → **PASS**.
+
+**Criterios 03E:**
+- CA-03E-01 a CA-03E-08: **Cumplidos**.
+
+**Observaciones:**
+- No se requirió ADR nuevo; la metadata se mantiene en `public.tenants` dentro del contrato de branding existente.
+
+### 2026-05-02 — Planificacion Fase 03E — Metadata publica tenant
+
+**Hallazgo ejecutivo:**
+- La UI de `apps/portal/dashboard/settings/Marca` ya fue homologada visualmente con `apps/web/settings/Branding` e incluye la seccion `Nombres e identidad`.
+- Los activos visuales (`logo`, `seal`, `favicon`, `login_background`) y `showTenantName` funcionan fullstack.
+- La metadata de identidad tenant (`Producto`, `Superficie`, `Titulo publico`, `Descripcion publica`) todavia no existe como contrato persistente; actualmente solo puede derivarse de `Tenant.name`/`legalName` en frontend.
+
+**Decision de alcance:**
+- Reabrir MOD03 de forma parcial con fase 03E para persistir metadata publica tenant dentro del contrato existente de branding.
+- No se requiere ADR nuevo mientras la metadata viva en `public.tenants` y se reutilice `/tenants/me/branding`; no cambia stack, boundary ni patron de integracion.
+
+**Artefactos documentales actualizados/generados:**
+
+| Artefacto | Path | Estado |
+|---|---|---|
+| PRD Branding v2 | `docs/prds/PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md` | Actualizado a v2.2 |
+| Plan MOD03 Branding | `docs/plans/PLAN-MOD03-BRANDING-EMPRESARIAL-FASE-03-v1.0.md` | Actualizado a v1.2 con fase 03E |
+| Prompt de ejecucion | `docs/prompts/PROMPT-MOD03-BRANDING-FASE-03E-v1.0.md` | Creado, listo para Sr. Dev Fullstack |
+| Informe vivo | `docs/informes/INFORME-MOD03-BRANDING-EMPRESARIAL-v1.0.md` | Reabierto parcialmente |
+
+**Resultado esperado de 03E:**
+- Migracion publica reversible para metadata tenant.
+- DTOs, OpenAPI y servicio backend extendidos.
+- `BrandingForm` portal con campos editables y persistentes.
+- Login publico portal usando metadata efectiva con fallback iWana.
+- Tests backend/frontend focalizados y typecheck en verde.
+
+**Estado:**
+- Listo para ejecucion por Sr. Dev Fullstack usando `PROMPT-MOD03-BRANDING-FASE-03E-v1.0.md`.
 
 ### 2026-04-30 — Refinamiento UX login administrativo (contenedor único)
 

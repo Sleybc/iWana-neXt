@@ -4,15 +4,13 @@ import { startTransition, useDeferredValue, useEffect, useState } from 'react';
 import { LoginBrandPanel } from '@/components/auth/LoginBrandPanel';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { tenantSelfApi, type TenantPublicBranding } from '@/lib/api-client';
+import { resolveTenantSlug } from '@/lib/tenant-resolution';
+import { AuthBrandHeader, AuthPremiumShell } from '@iwana/ui';
 
 const DEFAULT_FAVICON_PATH = '/brand/iwiso6.png';
 
 function isBrowser(): boolean {
   return typeof window !== 'undefined' && typeof document !== 'undefined';
-}
-
-function normalizeTenantSlug(value: string): string {
-  return value.trim().toLowerCase();
 }
 
 function resolvePublicFaviconUrl(branding: TenantPublicBranding | null, isDark: boolean): string {
@@ -59,11 +57,19 @@ function applyFavicon(href: string): void {
 }
 
 export function LoginExperience() {
-  const [tenantSlug, setTenantSlug] = useState(process.env.NEXT_PUBLIC_TENANT_SLUG ?? '');
+  const [tenantSlug, setTenantSlug] = useState('');
   const [branding, setBranding] = useState<TenantPublicBranding | null>(null);
   const [isBrandingLoading, setIsBrandingLoading] = useState(false);
   const [isDark, setIsDark] = useState(false);
-  const deferredTenantSlug = useDeferredValue(tenantSlug);
+  const tenantResolution = resolveTenantSlug(tenantSlug);
+  const deferredTenantSlug = useDeferredValue(tenantResolution.slug);
+
+  useEffect(() => {
+    const initialResolution = resolveTenantSlug();
+    if (initialResolution.slug) {
+      setTenantSlug(initialResolution.slug);
+    }
+  }, []);
 
   useEffect(() => {
     if (!isBrowser()) {
@@ -82,9 +88,7 @@ export function LoginExperience() {
   }, []);
 
   useEffect(() => {
-    const normalizedSlug = normalizeTenantSlug(deferredTenantSlug);
-
-    if (!normalizedSlug) {
+    if (!deferredTenantSlug) {
       startTransition(() => setBranding(null));
       setIsBrandingLoading(false);
       return;
@@ -94,7 +98,7 @@ export function LoginExperience() {
     setIsBrandingLoading(true);
 
     void tenantSelfApi
-      .getPublicBranding(normalizedSlug)
+      .getPublicBranding(deferredTenantSlug)
       .then((result) => {
         if (!active) {
           return;
@@ -124,52 +128,59 @@ export function LoginExperience() {
     applyFavicon(resolvePublicFaviconUrl(branding, isDark));
   }, [branding, isDark]);
 
+  useEffect(() => {
+    if (!isBrowser()) {
+      return;
+    }
+
+    document.title = branding?.metadataTitle ?? 'iWana neXt';
+  }, [branding]);
+
+  const tenantProductName = branding?.productName ?? branding?.displayName ?? 'iWana neXt';
+  const tenantSurfaceName = branding?.surfaceName ?? 'Portal corporativo';
+  const tenantName = branding?.showTenantName ? tenantProductName : 'iWana neXt';
+  const tenantLogo = branding?.logoDarkUrl ?? branding?.logoLightUrl ?? null;
+  const backgroundUrl =
+    branding?.loginBackgroundDarkUrl ?? branding?.loginBackgroundLightUrl ?? null;
+
   return (
-    <main
-      className="group/login relative flex min-h-screen w-full flex-col overflow-hidden bg-[#181818] lg:flex-row"
-      aria-label="Página de inicio de sesión"
-    >
-      <LoginBrandPanel branding={branding} isLoadingBranding={isBrandingLoading} />
-
-      <div className="relative flex w-full items-center justify-center bg-[#181818] p-6 lg:w-1/2 lg:p-12">
-        <div className="absolute inset-0 opacity-5 bg-[radial-gradient(#A5C330_1px,transparent_1px)] bg-[length:32px_32px]" />
-
-        <div className="relative z-10 w-full max-w-[520px] rounded-[30px] border border-white/70 bg-white/95 p-8 shadow-iwana-lg lg:p-12">
-          <div className="mb-10">
-            <div className="mb-6 flex items-center gap-2 lg:hidden">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#A5C330]">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M12 2L2 7l10 5 10-5-10-5z" fill="#181818" />
-                  <path
-                    d="M2 17l10 5 10-5"
-                    stroke="#181818"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </div>
-              <span className="font-bold text-[#181818]">
-                {branding?.showTenantName ? branding.displayName : 'iWana neXt'}
-              </span>
-            </div>
-
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700">
-              Portal corporativo
-            </p>
-            <h2 className="mb-2 text-3xl font-bold text-[#181818]">
-              {branding?.showTenantName
-                ? `Bienvenido a ${branding.displayName}`
-                : 'Bienvenido al portal'}
-            </h2>
-            <p className="text-base text-slate-500">
-              Ingresa tus credenciales para acceder a tus servicios y a la operación de la empresa.
-            </p>
-          </div>
-
-          <LoginForm tenantSlug={tenantSlug} onTenantSlugChange={setTenantSlug} />
-        </div>
-      </div>
-    </main>
+    <AuthPremiumShell
+      ariaLabel="Página de inicio de sesión"
+      backgroundUrl={backgroundUrl}
+      shellClassName="w-full max-w-[1160px]"
+      panelClassName="max-w-[560px] lg:max-w-[520px]"
+      aside={<LoginBrandPanel branding={branding} isLoadingBranding={isBrandingLoading} />}
+      mobileHeader={
+        <AuthBrandHeader
+          name={tenantName}
+          logoUrl={tenantLogo}
+          className="mb-6 lg:hidden"
+          logoContainerClassName="h-8 w-8"
+          textClassName="text-[#181818]"
+        />
+      }
+      intro={
+        <>
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+            {tenantSurfaceName}
+          </p>
+          <h2 className="mb-2 text-3xl font-bold text-[#181818] dark:text-white">
+            {branding?.showTenantName
+              ? `Bienvenido a ${tenantProductName}`
+              : 'Bienvenido al portal'}
+          </h2>
+          <p className="text-base text-slate-500 dark:text-gray-400">
+            Ingresa tus credenciales para acceder a tus servicios y a la operación de la empresa.
+          </p>
+        </>
+      }
+      form={
+        <LoginForm
+          tenantSlug={tenantSlug}
+          tenantLocked={tenantResolution.isLocked}
+          onTenantSlugChange={setTenantSlug}
+        />
+      }
+    />
   );
 }

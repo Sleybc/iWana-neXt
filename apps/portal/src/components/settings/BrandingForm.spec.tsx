@@ -79,6 +79,10 @@ function buildProfile(overrides: Partial<TenantSelf> = {}): TenantSelf {
     loginBackgroundDarkUrl: null,
     loginBackgroundDarkAssetId: null,
     showTenantName: true,
+    brandingProductName: null,
+    brandingSurfaceName: null,
+    brandingMetadataTitle: null,
+    brandingMetadataDescription: null,
     ...overrides,
   };
 }
@@ -108,7 +112,7 @@ describe('BrandingForm', () => {
       target: { value: 'https://cdn.demo.co/branding/seal-light.svg' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar branding' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
 
     await waitFor(() => {
       expect(tenantSelfApiMock.updateBranding).toHaveBeenCalledWith({
@@ -172,6 +176,86 @@ describe('BrandingForm', () => {
     expect(tenantSelfApiMock.uploadBrandingAsset).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(screen.getByText((text) => text.includes('1280x720'))).toBeInTheDocument();
+    });
+  });
+
+  it('envia metadata de nombres e identidad en payload incremental', async () => {
+    const updatedProfile = buildProfile({
+      brandingProductName: 'ISP Demo Pro',
+      brandingSurfaceName: 'Portal empresarial',
+      brandingMetadataTitle: 'ISP Demo Pro — Portal empresarial',
+      brandingMetadataDescription:
+        'Portal empresarial para la operación de ISP Demo Pro en iWana neXt.',
+    });
+    tenantSelfApiMock.updateBranding.mockResolvedValue(updatedProfile);
+
+    const onUpdated = jest.fn();
+    render(<BrandingForm profile={buildProfile()} canEdit onUpdated={onUpdated} />);
+
+    fireEvent.change(screen.getByLabelText('Producto'), {
+      target: { value: 'ISP Demo Pro' },
+    });
+    fireEvent.change(screen.getByLabelText('Superficie'), {
+      target: { value: 'Portal empresarial' },
+    });
+    fireEvent.change(screen.getByLabelText('Título público'), {
+      target: { value: 'ISP Demo Pro — Portal empresarial' },
+    });
+    fireEvent.change(screen.getByLabelText('Descripción pública'), {
+      target: { value: 'Portal empresarial para la operación de ISP Demo Pro en iWana neXt.' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() => {
+      expect(tenantSelfApiMock.updateBranding).toHaveBeenCalledWith({
+        brandingProductName: 'ISP Demo Pro',
+        brandingSurfaceName: 'Portal empresarial',
+        brandingMetadataTitle: 'ISP Demo Pro — Portal empresarial',
+        brandingMetadataDescription:
+          'Portal empresarial para la operación de ISP Demo Pro en iWana neXt.',
+      });
+    });
+
+    expect(onUpdated).toHaveBeenCalledWith(updatedProfile);
+  });
+
+  it('restaura branding base limpiando assets y metadata tenant', async () => {
+    tenantSelfApiMock.updateBranding.mockResolvedValue(buildProfile());
+
+    render(
+      <BrandingForm
+        profile={buildProfile({
+          brandingProductName: 'ISP Demo Pro',
+          brandingSurfaceName: 'Portal empresarial',
+          brandingMetadataTitle: 'ISP Demo Pro — Portal empresarial',
+          brandingMetadataDescription:
+            'Portal empresarial para la operación de ISP Demo Pro en iWana neXt.',
+        })}
+        canEdit
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Restaurar base' }));
+
+    await waitFor(() => {
+      expect(tenantSelfApiMock.updateBranding).toHaveBeenCalledWith(
+        expect.objectContaining({
+          logoLightUrl: null,
+          logoDarkUrl: null,
+          sealLightUrl: null,
+          sealDarkUrl: null,
+          faviconLightUrl: null,
+          faviconDarkUrl: null,
+          loginBackgroundLightUrl: null,
+          loginBackgroundDarkUrl: null,
+          brandingProductName: null,
+          brandingSurfaceName: null,
+          brandingMetadataTitle: null,
+          brandingMetadataDescription: null,
+        }),
+      );
     });
   });
 });

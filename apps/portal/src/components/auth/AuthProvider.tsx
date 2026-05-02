@@ -22,6 +22,7 @@ import {
   setPendingTenantMfaLogin,
   type JwtProfile,
 } from '@/lib/api-client';
+import { resolveTenantSlug } from '@/lib/tenant-resolution';
 
 interface AuthUser {
   id: string;
@@ -163,8 +164,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (email: string, password: string, tenantSlug?: string): Promise<LoginResult> => {
-      const result = await authApi.tenantLogin(email, password, tenantSlug);
-      const resolvedTenantSlug = tenantSlug?.trim().toLowerCase();
+      const tenantResolution = resolveTenantSlug(tenantSlug);
+      const resolvedTenantSlug = tenantResolution.slug;
+
+      if (!resolvedTenantSlug) {
+        throw new ApiError(
+          400,
+          'TENANT_SLUG_REQUIRED',
+          'Ingresa el identificador de la empresa antes de iniciar sesión.',
+        );
+      }
+
+      const result = await authApi.tenantLogin(email, password, resolvedTenantSlug);
 
       // Rol critico sin MFA configurado: token de alcance limitado ya persistido en api-client
       // El usuario NO queda autenticado — user permanece null
@@ -190,7 +201,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return 'mfa_required';
       }
 
-      const profile = await authApi.me(tenantSlug);
+      const profile = await authApi.me(resolvedTenantSlug);
       clearPendingTenantMfaLogin();
 
       // Si el backend indica que se debe cambiar la contrasena, informar al formulario
