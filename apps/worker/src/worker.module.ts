@@ -7,12 +7,17 @@ import { resolve } from 'node:path';
 import { dataSourceOptions } from '@iwana/db';
 import {
   REFRESH_TOKEN_PURGE_QUEUE,
+  SEARCH_INDEX_QUEUE,
   TENANT_PROVISIONING_QUEUE,
   TENANT_SCHEMA_PURGE_QUEUE,
 } from '@iwana/shared';
 import { RefreshTokenPurgeProcessor } from './processors/refresh-token-purge.processor';
+import { SearchIndexProcessor } from './processors/search-index.processor';
 import { TenantSchemaPurgeProcessor } from './processors/tenant-schema-purge.processor';
 import { TenantProvisioningProcessor } from './processors/tenant-provisioning.processor';
+import { SearchIndexWorkerService } from './search/search-index.worker.service';
+import { SearchNavigationCatalogService } from './search/search-navigation-catalog.service';
+import { SearchTypesenseClient } from './search/search-typesense.client';
 import { SchedulerService } from './services/scheduler.service';
 import { TenantSeedService } from './services/tenant-seed.service';
 
@@ -140,12 +145,20 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
     BullModule.registerQueue({
       name: TENANT_SCHEMA_PURGE_QUEUE,
     }),
+
+    BullModule.registerQueue({
+      name: SEARCH_INDEX_QUEUE,
+    }),
   ],
   providers: [
     TenantProvisioningProcessor,
     TenantSeedService,
     RefreshTokenPurgeProcessor,
     TenantSchemaPurgeProcessor,
+    SearchIndexProcessor,
+    SearchIndexWorkerService,
+    SearchNavigationCatalogService,
+    SearchTypesenseClient,
     SchedulerService,
   ],
 })

@@ -1892,6 +1892,31 @@ export interface InternalUser {
   avatarUrl: string | null;
 }
 
+export type GlobalSearchItemType = 'module' | 'user' | 'subscriber' | 'expediente';
+
+export interface GlobalSearchItem {
+  id: string;
+  type: GlobalSearchItemType;
+  title: string;
+  subtitle: string;
+  meta: string;
+  route: string;
+  highlights: string[];
+}
+
+export interface GlobalSearchGroup {
+  type: 'modules' | 'users' | 'subscribers' | 'expedientes';
+  label: string;
+  total: number;
+  items: GlobalSearchItem[];
+}
+
+export interface GlobalSearchResponse {
+  query: string;
+  groups: GlobalSearchGroup[];
+  tookMs: number;
+}
+
 export interface ListUsersParams {
   cursor?: string;
   limit?: number;
@@ -1909,6 +1934,285 @@ export interface UsersPaginationMeta {
 export interface ListUsersResponse {
   data: InternalUser[];
   meta: UsersPaginationMeta;
+}
+
+interface PortalSearchModule {
+  id: string;
+  title: string;
+  description: string;
+  keywords: string[];
+  route: string;
+}
+
+const PORTAL_SEARCH_MODULES: PortalSearchModule[] = [
+  {
+    id: 'dashboard',
+    title: 'Inicio',
+    description: 'Resumen operativo del portal empresarial',
+    keywords: ['dashboard', 'inicio', 'panel', 'resumen'],
+    route: '/dashboard',
+  },
+  {
+    id: 'commercial',
+    title: 'Comercial',
+    description: 'Promociones, bundles, reglas y catálogo comercial',
+    keywords: ['comercial', 'ofertas', 'promociones', 'bundles', 'catalogo'],
+    route: '/dashboard/commercial',
+  },
+  {
+    id: 'crm',
+    title: 'CRM',
+    description: 'Pipeline y oportunidades comerciales de la empresa',
+    keywords: ['crm', 'oportunidades', 'pipeline', 'expedientes'],
+    route: '/dashboard/crm',
+  },
+  {
+    id: 'subscribers',
+    title: 'Suscriptores',
+    description: 'Gestión comercial y postventa de suscriptores',
+    keywords: ['suscriptores', 'clientes', 'postventa', 'subscriber'],
+    route: '/dashboard/crm/subscribers',
+  },
+  {
+    id: 'settings',
+    title: 'Configuración',
+    description: 'Branding, parámetros operativos y ajustes del tenant',
+    keywords: ['configuracion', 'branding', 'ajustes', 'parametros'],
+    route: '/dashboard/settings',
+  },
+  {
+    id: 'users',
+    title: 'Usuarios',
+    description: 'Gestión de accesos internos de la empresa',
+    keywords: ['usuarios', 'roles', 'accesos', 'mfa'],
+    route: '/dashboard/users',
+  },
+];
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function highlightMatch(value: string | null | undefined, query: string): string | null {
+  const source = value?.trim();
+  const normalizedQuery = query.trim();
+
+  if (!source || !normalizedQuery) {
+    return null;
+  }
+
+  const lowerSource = source.toLowerCase();
+  const lowerQuery = normalizedQuery.toLowerCase();
+  const index = lowerSource.indexOf(lowerQuery);
+
+  if (index < 0) {
+    return null;
+  }
+
+  const before = escapeHtml(source.slice(0, index));
+  const match = escapeHtml(source.slice(index, index + normalizedQuery.length));
+  const after = escapeHtml(source.slice(index + normalizedQuery.length));
+
+  return `${before}<mark>${match}</mark>${after}`;
+}
+
+function compactHighlights(values: Array<string | null | undefined>): string[] {
+  return values.filter((value): value is string => Boolean(value)).slice(0, 2);
+}
+
+function formatPortalUserTitle(user: InternalUser): string {
+  return [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.email;
+}
+
+function formatPortalSubscriberTitle(subscriber: SubscriberRecord): string {
+  return (
+    subscriber.commercialName?.trim() ||
+    subscriber.businessName?.trim() ||
+    [subscriber.firstName, subscriber.lastName].filter(Boolean).join(' ').trim() ||
+    subscriber.email?.trim() ||
+    subscriber.documentNumber?.trim() ||
+    'Suscriptor'
+  );
+}
+
+function formatPortalSubscriberSubtitle(subscriber: SubscriberRecord): string {
+  const parts = [
+    subscriber.city,
+    subscriber.email,
+    subscriber.documentNumber,
+    subscriber.phone,
+  ].filter((value): value is string => Boolean(value?.trim()));
+
+  return parts.join(' · ') || 'Registro comercial del suscriptor';
+}
+
+function formatPortalExpedienteSubtitle(expediente: ExpedienteRecord): string {
+  const parts = [
+    expediente.municipality,
+    expediente.emailPrimary,
+    expediente.documentNumber,
+    expediente.source,
+  ].filter((value): value is string => Boolean(value?.trim()));
+
+  return parts.join(' · ') || 'Oportunidad comercial';
+}
+
+function buildUsersSearchRoute(user: InternalUser): string {
+  return `/dashboard/users?search=${encodeURIComponent(user.email)}`;
+}
+
+function searchPortalModules(query: string, limit: number): GlobalSearchGroup | null {
+  const normalizedQuery = query.trim().toLowerCase();
+
+  const matches = PORTAL_SEARCH_MODULES.filter((item) => {
+    const haystack = [item.title, item.description, ...item.keywords].join(' ').toLowerCase();
+    return haystack.includes(normalizedQuery);
+  });
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  return {
+    type: 'modules',
+    label: 'Módulos',
+    total: matches.length,
+    items: matches.slice(0, limit).map((item) => ({
+      id: item.id,
+      type: 'module',
+      title: item.title,
+      subtitle: item.description,
+      meta: 'Navegación',
+      route: item.route,
+      highlights: compactHighlights([
+        highlightMatch(item.title, query),
+        highlightMatch(item.description, query),
+      ]),
+    })),
+  };
+}
+
+function emptyUsersResponse(): ListUsersResponse {
+  return {
+    data: [],
+    meta: { nextCursor: null, total: 0 },
+  };
+}
+
+function emptyCollectionResponse<TRecord>(): { data: TRecord[]; total: number } {
+  return {
+    data: [],
+    total: 0,
+  };
+}
+
+async function withSearchFallback<T>(executor: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await executor();
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw error;
+    }
+
+    if (error instanceof ApiError) {
+      return fallback;
+    }
+
+    return fallback;
+  }
+}
+
+function mapUsersGroup(
+  users: InternalUser[],
+  total: number,
+  query: string,
+): GlobalSearchGroup | null {
+  if (users.length === 0) {
+    return null;
+  }
+
+  return {
+    type: 'users',
+    label: 'Usuarios',
+    total,
+    items: users.map((user) => ({
+      id: user.id,
+      type: 'user',
+      title: formatPortalUserTitle(user),
+      subtitle: [user.email, user.jobTitle]
+        .filter((value): value is string => Boolean(value))
+        .join(' · '),
+      meta: user.role.replace(/_/g, ' '),
+      route: buildUsersSearchRoute(user),
+      highlights: compactHighlights([
+        highlightMatch(formatPortalUserTitle(user), query),
+        highlightMatch(user.email, query),
+      ]),
+    })),
+  };
+}
+
+function mapSubscribersGroup(
+  subscribers: SubscriberRecord[],
+  total: number,
+  query: string,
+): GlobalSearchGroup | null {
+  if (subscribers.length === 0) {
+    return null;
+  }
+
+  return {
+    type: 'subscribers',
+    label: 'Suscriptores',
+    total,
+    items: subscribers.map((subscriber) => ({
+      id: subscriber.id,
+      type: 'subscriber',
+      title: formatPortalSubscriberTitle(subscriber),
+      subtitle: formatPortalSubscriberSubtitle(subscriber),
+      meta: 'Suscriptor',
+      route: `/dashboard/crm/subscribers/${subscriber.id}`,
+      highlights: compactHighlights([
+        highlightMatch(formatPortalSubscriberTitle(subscriber), query),
+        highlightMatch(subscriber.email, query),
+        highlightMatch(subscriber.documentNumber, query),
+      ]),
+    })),
+  };
+}
+
+function mapExpedientesGroup(
+  expedientes: ExpedienteRecord[],
+  total: number,
+  query: string,
+): GlobalSearchGroup | null {
+  if (expedientes.length === 0) {
+    return null;
+  }
+
+  return {
+    type: 'expedientes',
+    label: 'Oportunidades',
+    total,
+    items: expedientes.map((expediente) => ({
+      id: expediente.id,
+      type: 'expediente',
+      title: expediente.fullName,
+      subtitle: formatPortalExpedienteSubtitle(expediente),
+      meta: 'CRM',
+      route: `/dashboard/crm/expedientes/${expediente.id}`,
+      highlights: compactHighlights([
+        highlightMatch(expediente.fullName, query),
+        highlightMatch(expediente.emailPrimary, query),
+        highlightMatch(expediente.documentNumber, query),
+      ]),
+    })),
+  };
 }
 
 export interface CreateInternalUserDto {
@@ -2021,6 +2325,74 @@ export const usersApi = {
       },
       tenantSlug,
     ),
+};
+
+export const globalSearchApi = {
+  search: async (
+    query: string,
+    limit = 5,
+    options?: Pick<RequestOptions, 'signal'>,
+    tenantSlug?: string,
+  ): Promise<GlobalSearchResponse> => {
+    const normalizedQuery = query.trim();
+    const startedAt = Date.now();
+
+    if (normalizedQuery.length < 2) {
+      return { query: normalizedQuery, groups: [], tookMs: 0 };
+    }
+
+    const [usersResponse, subscribersResponse, expedientesResponse] = await Promise.all([
+      withSearchFallback(() => {
+        const searchParams = new URLSearchParams();
+        searchParams.set('limit', String(limit));
+        searchParams.set('search', normalizedQuery);
+        return request<ListUsersResponse>(`/users?${searchParams.toString()}`, options, tenantSlug);
+      }, emptyUsersResponse()),
+      withSearchFallback(() => {
+        const searchParams = new URLSearchParams();
+        searchParams.set('search', normalizedQuery);
+        searchParams.set('page', '1');
+        searchParams.set('limit', String(limit));
+        return request<{ data: SubscriberRecord[]; total: number }>(
+          `/crm/subscribers?${searchParams.toString()}`,
+          { ...options, returnFullResponse: true },
+          tenantSlug,
+        );
+      }, emptyCollectionResponse<SubscriberRecord>()),
+      withSearchFallback(() => {
+        const searchParams = new URLSearchParams();
+        searchParams.set('search', normalizedQuery);
+        searchParams.set('page', '1');
+        searchParams.set('limit', String(limit));
+        return request<{ data: ExpedienteRecord[]; total: number }>(
+          `/crm/expedientes?${searchParams.toString()}`,
+          { ...options, returnFullResponse: true },
+          tenantSlug,
+        );
+      }, emptyCollectionResponse<ExpedienteRecord>()),
+    ]);
+
+    const groups = [
+      searchPortalModules(normalizedQuery, limit),
+      mapUsersGroup(usersResponse.data, usersResponse.meta.total, normalizedQuery),
+      mapSubscribersGroup(
+        subscribersResponse.data.slice(0, limit),
+        subscribersResponse.total,
+        normalizedQuery,
+      ),
+      mapExpedientesGroup(
+        expedientesResponse.data.slice(0, limit),
+        expedientesResponse.total,
+        normalizedQuery,
+      ),
+    ].filter((group): group is GlobalSearchGroup => Boolean(group));
+
+    return {
+      query: normalizedQuery,
+      groups,
+      tookMs: Date.now() - startedAt,
+    };
+  },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

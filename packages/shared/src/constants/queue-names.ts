@@ -17,3 +17,6 @@ export const REFRESH_TOKEN_PURGE_QUEUE = 'refresh-token-purge';
 
 /** Cola de purga fisica diferida de schemas de tenants marcados para eliminacion */
 export const TENANT_SCHEMA_PURGE_QUEUE = 'tenant-schema-purge';
+
+/** Cola transversal para indexación de búsqueda global en Typesense */
+export const SEARCH_INDEX_QUEUE = 'search-index';

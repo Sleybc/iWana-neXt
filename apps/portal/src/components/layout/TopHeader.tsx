@@ -1,12 +1,12 @@
 // apps/portal/src/components/layout/TopHeader.tsx
 'use client';
 import Link from 'next/link';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState, Suspense } from 'react';
-import { Menu, Search } from 'lucide-react';
+import { Suspense } from 'react';
+import { Menu } from 'lucide-react';
 import { DropdownUser } from './DropdownUser';
 import { ThemeToggle } from './ThemeToggle';
 import { NotificationBell } from './NotificationBell';
+import { GlobalSearch } from '@/components/search/GlobalSearch';
 
 interface TopHeaderProps {
   desktopCollapsed: boolean;
@@ -14,63 +14,6 @@ interface TopHeaderProps {
   mobileOpen: boolean;
   setMobileOpen: (v: boolean) => void;
 }
-
-// Componente interno aislado para useSearchParams (requiere Suspense boundary)
-const SearchBar = () => {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const [searchText, setSearchText] = useState('');
-
-  // Sincronizar texto visible con el parámetro ?q de la URL
-  useEffect(() => {
-    setSearchText(searchParams.get('q') ?? '');
-  }, [searchParams]);
-
-  // Enviar búsqueda: actualiza URL con ?q=valor para que las páginas reaccionen
-  const submitSearch = () => {
-    const params = new URLSearchParams(searchParams.toString());
-    const normalized = searchText.trim();
-
-    if (normalized) {
-      params.set('q', normalized);
-    } else {
-      params.delete('q');
-    }
-
-    const query = params.toString();
-    router.push(query ? `${pathname}?${query}` : pathname);
-  };
-
-  return (
-    <div className="relative">
-      <span
-        aria-hidden="true"
-        className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-500 dark:text-gray-400"
-      >
-        <Search className="w-4 h-4" />
-      </span>
-      <input
-        type="text"
-        value={searchText}
-        onChange={(e) => setSearchText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') submitSearch();
-        }}
-        placeholder="Buscar en el portal empresarial..."
-        aria-label="Buscar"
-        className="h-11 w-full rounded-2xl border border-gray-100 bg-gray-50 pl-10 pr-16 text-sm text-gray-700 shadow-[var(--shadow-iwana-card)] placeholder:text-gray-400 focus:border-iwana-primary focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-200 dark:placeholder:text-gray-500 dark:focus:border-iwana-primary-300"
-      />
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute top-1/2 right-2.5 flex -translate-y-1/2 items-center gap-0.5 rounded-lg border border-gray-100 bg-white px-1.5 py-0.5 text-xs text-gray-500 shadow-[var(--shadow-iwana-card)] dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400"
-      >
-        <span>⌘</span>
-        <span>K</span>
-      </span>
-    </div>
-  );
-};
 
 export const TopHeader = ({
   desktopCollapsed,
@@ -132,9 +75,11 @@ export const TopHeader = ({
         {/* CENTRO: buscador — Suspense requerido por useSearchParams */}
         <div className="hidden lg:block flex-1 max-w-lg mx-6">
           <Suspense
-            fallback={<div className="h-11 rounded-2xl border border-gray-100 bg-gray-50 shadow-[var(--shadow-iwana-card)]" />}
+            fallback={
+              <div className="h-11 rounded-2xl border border-gray-100 bg-gray-50 shadow-[var(--shadow-iwana-card)]" />
+            }
           >
-            <SearchBar />
+            <GlobalSearch />
           </Suspense>
         </div>
 

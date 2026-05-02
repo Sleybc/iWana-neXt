@@ -108,6 +108,7 @@ async function bootstrap(): Promise<void> {
       .addTag('tenants', 'Gestion de tenants (SYSTEM_ADMIN)')
       .addTag('users', 'Gestion de usuarios por tenant')
       .addTag('audit-logs', 'Consulta del audit trail del tenant')
+      .addTag('search', 'Busqueda global indexada de plataforma')
       .build();
 
     const document = SwaggerModule.createDocument(app, config);

@@ -2,6 +2,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { AlertTriangle, CheckCircle2, ShieldAlert } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { UsersTable } from './UsersTable';
@@ -39,6 +40,7 @@ interface UsersClientProps {
 }
 
 export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SYSTEM_ADMIN;
 
@@ -65,6 +67,7 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
   const [searchValue, setSearchValue] = useState('');
   /** Timer id para el debounce del input de búsqueda */
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchParam = searchParams.get('search')?.trim() ?? '';
 
   // append=true cuando el usuario pulsa "Cargar más"; en ese caso se concatenan los
   // resultados al final de la lista en lugar de reemplazarla.
@@ -84,10 +87,18 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
   }, []);
 
   useEffect(() => {
-    if (isAdmin) {
-      void loadUsers({ limit: PAGE_SIZE });
+    if (!isAdmin) {
+      return;
     }
-  }, [isAdmin, loadUsers]);
+
+    setSearchValue(searchParam);
+    const nextFilters: ListUsersParams = { limit: PAGE_SIZE };
+    if (searchParam) {
+      nextFilters.search = searchParam;
+    }
+
+    void loadUsers(nextFilters);
+  }, [isAdmin, loadUsers, searchParam]);
 
   const handleFilterChange = (newFilters: ListUsersParams) => {
     void loadUsers({ ...newFilters, limit: PAGE_SIZE });

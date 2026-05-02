@@ -14,6 +14,7 @@ import type { MediaThemeVariant } from '@iwana/db';
 import { AuditAction, TenantStatus } from '@iwana/shared';
 import { AuditService } from '../audit/audit.service';
 import { MediaService } from '../media/media.service';
+import { SearchQueueService } from '../search/search-queue.service';
 import type { MediaAssetResponseDto } from '../media/dto/media-asset-response.dto';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { CreateTenantDto, TenantResponseDto, UpdateTenantDto } from './dto/tenant.dto';
@@ -185,6 +186,7 @@ export class TenantService {
     private readonly redis: Redis,
     private readonly auditService: AuditService,
     private readonly mediaService: MediaService,
+    private readonly searchQueueService: SearchQueueService,
   ) {}
 
   /**
@@ -250,6 +252,8 @@ export class TenantService {
     const saved = await this.tenantRepo.save(tenant);
     await this.cacheTenant(saved);
     this.logger.log(`Tenant creado: id=${saved.id} slug=${saved.slug}`);
+    void this.searchQueueService.enqueueTenantUpsert(saved.id);
+    void this.searchQueueService.enqueueNavigationRebuild();
 
     return this.toResponseDto(saved);
   }
@@ -1439,6 +1443,7 @@ export class TenantService {
     await this.invalidateTenantCache(tenant.id, tenant.slug);
     await this.cacheTenant(updated);
     this.logger.log(`Tenant actualizado: id=${updated.id} status=${updated.status}`);
+    void this.searchQueueService.enqueueTenantUpsert(updated.id);
 
     return this.toResponseDto(updated);
   }

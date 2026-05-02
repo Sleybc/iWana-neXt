@@ -1,5 +1,6 @@
 'use client';
 
+import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { Button } from '@iwana/ui';
@@ -111,6 +112,7 @@ function TenantSelect({
 }
 
 export default function UsersPage() {
+  const searchParams = useSearchParams();
   const [tenants, setTenants] = useState<TenantListItem[]>([]);
   const [tenantSlug, setTenantSlug] = useState('');
   const [users, setUsers] = useState<UserListItem[]>([]);
@@ -126,14 +128,21 @@ export default function UsersPage() {
   /** Error visible al cargar usuarios — muestra el mensaje real del API. */
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const requestedTenantSlug = searchParams.get('tenant')?.trim() ?? '';
+  const requestedSearch = searchParams.get('search')?.trim() ?? '';
+  const requestedUserId = searchParams.get('openUser')?.trim() ?? '';
+
   useEffect(() => {
     const loadTenants = async () => {
       try {
         const list = await tenantApi.list({ limit: 100, offset: 0 });
         const active = list.filter((item) => item.status === 'ACTIVE');
         setTenants(active);
-        if (active[0]) {
-          setTenantSlug(active[0].slug);
+        const initialTenant =
+          active.find((item) => item.slug === requestedTenantSlug) ?? active[0] ?? null;
+
+        if (initialTenant) {
+          setTenantSlug(initialTenant.slug);
         }
       } catch {
         setTenants([]);
@@ -142,7 +151,7 @@ export default function UsersPage() {
     };
 
     void loadTenants();
-  }, []);
+  }, [requestedTenantSlug]);
 
   const loadUsers = useCallback(async () => {
     if (!tenantSlug) {
@@ -155,7 +164,9 @@ export default function UsersPage() {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const params = cursor ? { cursor, limit: 20 } : { limit: 20 };
+      const params = cursor
+        ? { cursor, limit: 20, ...(requestedSearch ? { search: requestedSearch } : {}) }
+        : { limit: 20, ...(requestedSearch ? { search: requestedSearch } : {}) };
       const response = await usersApi.list(tenantSlug, params);
       setUsers(response.data ?? []);
       setTotalUsers(response.meta?.total ?? 0);
@@ -169,11 +180,22 @@ export default function UsersPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [tenantSlug, cursor, refreshKey]);
+  }, [tenantSlug, cursor, refreshKey, requestedSearch]);
 
   useEffect(() => {
     void loadUsers();
   }, [loadUsers]);
+
+  useEffect(() => {
+    if (!requestedUserId) {
+      return;
+    }
+
+    const matchedUser = users.find((user) => user.id === requestedUserId);
+    if (matchedUser) {
+      setSelectedUser(matchedUser);
+    }
+  }, [requestedUserId, users]);
 
   const selectedTenantName = useMemo(() => {
     return tenants.find((tenant) => tenant.slug === tenantSlug)?.name ?? 'Sin empresa';

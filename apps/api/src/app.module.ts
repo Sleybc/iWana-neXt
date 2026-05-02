@@ -24,6 +24,8 @@ import { TaxationModule } from './modules/taxation/taxation.module';
 import { PartiesModule } from './modules/parties/parties.module';
 import { MediaModule } from './modules/media/media.module';
 import { PlatformBrandingModule } from './modules/platform-branding/platform-branding.module';
+import { SearchQueueModule } from './modules/search/search-queue.module';
+import { SearchModule } from './modules/search/search.module';
 
 const runtimeEnv = process.env['NODE_ENV'];
 const apiDevelopmentLocalEnvPath = resolve(__dirname, '../../../.env.development.local');
@@ -152,6 +154,11 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
           S3_USE_SSL: Joi.boolean().default(false),
           S3_PUBLIC_BASE_URL: Joi.string().uri().optional(),
           S3_BUCKET_PUBLIC: Joi.boolean().default(false),
+          TYPESENSE_HOST: Joi.string().default('localhost'),
+          TYPESENSE_PORT: Joi.number().default(8108),
+          TYPESENSE_PROTOCOL: Joi.string().valid('http', 'https').default('http'),
+          TYPESENSE_API_KEY: Joi.string().default('CHANGE_ME_TYPESENSE_DEV_KEY'),
+          TYPESENSE_TIMEOUT_MS: Joi.number().integer().min(100).default(3000),
         }),
         validationOptions: { abortEarly: false },
       }),
@@ -250,6 +257,12 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
 
     // Branding propio de la plataforma: identidad visual global de apps/web
     PlatformBrandingModule,
+
+    // Cola transversal de indexación para búsqueda global
+    SearchQueueModule,
+
+    // Búsqueda global indexada: consulta a Typesense protegida por backend
+    SearchModule,
   ],
   controllers: [],
   providers: [

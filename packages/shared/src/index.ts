@@ -31,6 +31,7 @@ export * from './dto/pagination.dto';
 
 // Constants
 export * from './constants/queue-names';
+export * from './constants/search-job-names';
 
 // Schemas Zod (frontend)
 export * from './schemas/auth.schema';

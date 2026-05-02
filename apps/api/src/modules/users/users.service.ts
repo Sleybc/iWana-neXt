@@ -15,6 +15,7 @@ import { User } from '@iwana/db';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { DocumentType, UserRole, UserStatus, AuditAction } from '@iwana/shared';
 import { AuditService } from '../audit/audit.service';
+import { SearchQueueService } from '../search/search-queue.service';
 import { TenantService } from '../tenant/tenant.service';
 import {
   AdminChangeUserLoginEmailDto,
@@ -31,6 +32,21 @@ const BCRYPT_ROUNDS = 12;
 
 /** Longitud del password temporal en bytes (16 bytes → 32 chars hex) */
 const TEMP_PASSWORD_BYTES = 16;
+
+export interface SearchIndexUserRecord {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  jobTitle: string | null;
+  role: UserRole;
+  status: UserStatus;
+  tenantId: string;
+  tenantSlug: string;
+  tenantName: string;
+  route: string;
+  updatedAt: number;
+}
 
 /**
  * Servicio de gestion de usuarios por tenant.
@@ -67,6 +83,7 @@ export class UsersService {
     private readonly auditService: AuditService,
     private readonly configService: ConfigService,
     private readonly tenantService: TenantService,
+    private readonly searchQueueService: SearchQueueService,
   ) {
     const keyHex = this.configService.getOrThrow<string>('MFA_ENCRYPTION_KEY');
     this.encryptionKey = Buffer.from(keyHex, 'hex');
@@ -274,6 +291,7 @@ export class UsersService {
       });
 
       const dto_result = this.toDto(user);
+      void this.searchQueueService.enqueueUserUpsert(user.tenantId, user.id);
       return temporaryPassword ? { ...dto_result, temporaryPassword } : dto_result;
     });
   }
@@ -329,6 +347,7 @@ export class UsersService {
         newValue: { status: user.status, role: user.role },
       });
 
+      void this.searchQueueService.enqueueUserUpsert(user.tenantId, user.id);
       return this.toDto(user);
     });
   }
@@ -403,6 +422,7 @@ export class UsersService {
         },
       });
 
+      void this.searchQueueService.enqueueUserUpsert(user.tenantId, user.id);
       return this.toDto(user);
     });
   }
@@ -476,6 +496,7 @@ export class UsersService {
         },
       });
 
+      void this.searchQueueService.enqueueUserUpsert(user.tenantId, user.id);
       return this.toDto(user);
     });
   }
@@ -510,6 +531,8 @@ export class UsersService {
         entityId: id,
         userId: actorUserId,
       });
+
+      void this.searchQueueService.enqueueUserDelete(id);
     });
   }
 
@@ -553,6 +576,48 @@ export class UsersService {
   /** Retorna el perfil del usuario autenticado. */
   async findMe(actorId: string): Promise<UserResponseDto> {
     return this.findOne(actorId);
+  }
+
+  /**
+   * Expone un read-model mínimo para indexación cross-tenant en búsqueda global.
+   * Mantiene el boundary de UsersModule: SearchModule no toca la tabla directamente.
+   */
+  async listForSearchIndex(params: {
+    schemaName: string;
+    tenantId: string;
+    tenantSlug: string;
+    tenantName: string;
+  }): Promise<SearchIndexUserRecord[]> {
+    return runInTenantSchema(this.dataSource, params.schemaName, async (qr) => {
+      const users = await qr.manager.find(User, {
+        where: { tenantId: params.tenantId },
+        order: { updatedAt: 'DESC' },
+      });
+
+      return users.map((user) => {
+        const dto = this.toDto(user);
+        const routeParams = new URLSearchParams({
+          tenant: params.tenantSlug,
+          search: dto.email,
+          openUser: dto.id,
+        });
+
+        return {
+          id: dto.id,
+          email: dto.email,
+          firstName: dto.firstName ?? null,
+          lastName: dto.lastName ?? null,
+          jobTitle: dto.jobTitle ?? null,
+          role: dto.role,
+          status: dto.status,
+          tenantId: params.tenantId,
+          tenantSlug: params.tenantSlug,
+          tenantName: params.tenantName,
+          route: `/users?${routeParams.toString()}`,
+          updatedAt: dto.updatedAt.getTime(),
+        } satisfies SearchIndexUserRecord;
+      });
+    });
   }
 
   /** Actualiza solo los campos de perfil del usuario autenticado. */

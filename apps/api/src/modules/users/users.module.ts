@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '@iwana/db';
 import { AuditModule } from '../audit/audit.module';
+import { SearchQueueModule } from '../search/search-queue.module';
 import { TenantModule } from '../tenant/tenant.module';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
@@ -18,7 +19,13 @@ import { UsersService } from './users.service';
  * HLD-MOD01-ARQUITECTURA-v1.0 — Seccion 4 (Capa de usuarios del tenant)
  */
 @Module({
-  imports: [ConfigModule, TypeOrmModule.forFeature([User]), AuditModule, TenantModule],
+  imports: [
+    ConfigModule,
+    TypeOrmModule.forFeature([User]),
+    AuditModule,
+    TenantModule,
+    SearchQueueModule,
+  ],
   controllers: [UsersController],
   providers: [UsersService],
   exports: [UsersService],

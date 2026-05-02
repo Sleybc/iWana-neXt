@@ -855,6 +855,29 @@ export interface ResetUserPasswordResponse {
   temporaryPassword: string;
 }
 
+export interface GlobalSearchItem {
+  id: string;
+  type: 'tenant' | 'user' | 'module';
+  title: string;
+  subtitle: string;
+  meta?: string;
+  route: string;
+  highlights: string[];
+}
+
+export interface GlobalSearchGroup {
+  type: 'tenants' | 'users' | 'modules';
+  label: string;
+  total: number;
+  items: GlobalSearchItem[];
+}
+
+export interface GlobalSearchResponse {
+  query: string;
+  groups: GlobalSearchGroup[];
+  tookMs: number;
+}
+
 // Entrada de audit log — registro de una operación CUD en el sistema
 export interface AuditActorInfo {
   id: string | null;
@@ -980,13 +1003,14 @@ export const platformAuditApi = {
 export const usersApi = {
   list: (
     tenantSlug: string,
-    params?: { cursor?: string; limit?: number; status?: string; role?: string },
+    params?: { cursor?: string; limit?: number; status?: string; role?: string; search?: string },
   ) => {
     const searchParams = new URLSearchParams();
     if (params?.cursor) searchParams.set('cursor', params.cursor);
     if (params?.limit) searchParams.set('limit', String(params.limit));
     if (params?.status) searchParams.set('status', params.status);
     if (params?.role) searchParams.set('role', params.role);
+    if (params?.search?.trim()) searchParams.set('search', params.search.trim());
     const query = searchParams.toString();
 
     return request<UserListResponse>(`/users${query ? `?${query}` : ''}`, {
@@ -1056,4 +1080,17 @@ export const usersApi = {
         'X-Tenant-Slug': tenantSlug,
       },
     }),
+};
+
+export const globalSearchApi = {
+  search: (query: string, limit = 5, options?: { signal?: AbortSignal }) => {
+    const searchParams = new URLSearchParams({
+      q: query.trim(),
+      limit: String(limit),
+    });
+
+    return request<GlobalSearchResponse>(`/search/global?${searchParams.toString()}`, {
+      ...(options?.signal ? { signal: options.signal } : {}),
+    });
+  },
 };

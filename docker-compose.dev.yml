@@ -112,6 +112,28 @@ services:
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
+  # Typesense — Motor dedicado de búsqueda global
+  # ---------------------------------------------------------------------------
+  typesense:
+    image: typesense/typesense:28.0
+    container_name: iwana_typesense_dev
+    command: >
+      --data-dir /data
+      --api-key=${TYPESENSE_API_KEY:-CHANGE_ME_TYPESENSE_DEV_KEY}
+      --enable-cors
+    ports:
+      - '8108:8108'
+    volumes:
+      - iwana_typesense_data_dev:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8108/health']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
   # Nginx — Proxy inverso de desarrollo
   # ---------------------------------------------------------------------------
   nginx:
@@ -160,6 +182,10 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_DB: 0
+      TYPESENSE_HOST: typesense
+      TYPESENSE_PORT: 8108
+      TYPESENSE_PROTOCOL: http
+      TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:-CHANGE_ME_TYPESENSE_DEV_KEY}
       # Clave de desarrollo (64 ceros hex = 32 bytes de ceros). No usar en producción.
       MFA_ENCRYPTION_KEY: '0000000000000000000000000000000000000000000000000000000000000000'
       TENANT_INITIAL_ADMIN_PASSWORD: 'IwT!enantDev2026$'
@@ -167,6 +193,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      typesense:
         condition: service_healthy
       migrator:
         condition: service_completed_successfully
@@ -182,3 +210,5 @@ volumes:
     name: iwana_redis_data_dev
   iwana_minio_data_dev:
     name: iwana_minio_data_dev
+  iwana_typesense_data_dev:
+    name: iwana_typesense_data_dev

@@ -6,6 +6,7 @@ import { TENANT_PROVISIONING_QUEUE } from '@iwana/shared';
 import { AuthModule } from '../auth/auth.module';
 import { AuditModule } from '../audit/audit.module';
 import { MediaModule } from '../media/media.module';
+import { SearchQueueModule } from '../search/search-queue.module';
 import { TenantController } from './tenant.controller';
 import { TenantProvisioningService } from './tenant-provisioning.service';
 import { TenantMiddleware } from './tenant.middleware';
@@ -40,6 +41,9 @@ import { PlanCatalogItem } from './entities/plan-catalog-item.entity';
 
     // Branding v2 consume MediaService para uploads y soft delete de assets.
     MediaModule,
+
+    // Cola de indexación de búsqueda global.
+    SearchQueueModule,
 
     // Registra entidades del módulo tenant en el DataSource (requerido para autoLoadEntities y qr.manager)
     TypeOrmModule.forFeature([

@@ -9,6 +9,92 @@
 
 Se ejecutó la implementación transversal de enablement operativo para habilitar perfil de plataforma, settings funcionales de tenant, flujo de alta de primera empresa y gestión operativa de usuarios internos. El cierre incluyó la corrección del flujo MFA de plataforma en web, la activación real de acciones de usuarios por tenant y la ampliación del E2E de bootstrap administrativo.
 
+### Addendum documental 2026-05-02 — Diseño de búsqueda global Typesense
+
+Se documentó la evolución del buscador de `apps/web` desde filtro local por `q` hacia una búsqueda global indexada tipo UISP. La decisión de producto define overlay flotante con resultados vivos mientras se escribe, alcance inicial sobre Empresas, Usuarios cross-tenant y Módulos/Navegación, ranking fuzzy y navegación por teclado.
+
+Como esta solución incorpora Typesense, un servicio nuevo fuera del stack aprobado vigente, la fase queda bloqueada por aprobación arquitectónica antes de cualquier cambio de infraestructura o código. Se creó el ADR correspondiente en estado `Propuesto` y se dejó explícita la escalación al CTO.
+
+Artefactos creados para ejecución fullstack:
+
+- `docs/adrs/ADR-036-Typesense-Busqueda-Global.md`
+- `docs/hlds/HLD-TRANSVERSAL-BUSQUEDA-GLOBAL-v1.0.md`
+- `docs/superpowers/specs/2026-05-02-busqueda-global-typesense-design.md`
+- `docs/plans/PLAN-TRANSVERSAL-BUSQUEDA-GLOBAL-TYPESENSE-v1.0.md`
+- `docs/prompts/PROMPT-TRANSVERSAL-BUSQUEDA-GLOBAL-TYPESENSE-v1.0.md`
+
+Estado operativo: listo para revisión de arquitectura. No se debe ejecutar implementación hasta que ADR-036 sea aprobado.
+
+### Addendum de implementación 2026-05-02 — Búsqueda global Typesense ejecutada
+
+Con ADR-036 ya aprobado, se ejecutó la fase fullstack de búsqueda global. El backend incorporó `SearchModule` con endpoint protegido `GET /api/v1/search/global`, reconstrucción manual de índices y cliente Typesense encapsulado. También se dejó la cadena operativa para indexación incremental: la API encola eventos de tenant/usuario en BullMQ y `apps/worker` consume la cola `search-index` para upserts y deletes básicos sobre Typesense.
+
+En frontend, `apps/web` reemplazó el comportamiento local del buscador del header por `GlobalSearch`, con overlay incremental, debounce, navegación por teclado (`Cmd/Ctrl + K`, flechas, Enter, Escape) y estados `loading`, `empty` y `error`. La navegación de resultados quedó operativa para Empresas, Usuarios y Módulos; en usuarios se agregó compatibilidad de deep-link mediante query params (`tenant`, `search`, `openUser`) para abrir el flujo correcto desde cualquier pantalla.
+
+Infraestructura dev aplicada:
+
+- `docker-compose.dev.yml` incorpora servicio `typesense` con health check y volumen dedicado.
+- `apps/worker` recibe variables `TYPESENSE_*` para procesar jobs de indexación.
+- `apps/api` valida `TYPESENSE_HOST`, `TYPESENSE_PORT`, `TYPESENSE_PROTOCOL`, `TYPESENSE_API_KEY` y `TYPESENSE_TIMEOUT_MS`.
+
+Validación ejecutada:
+
+- `pnpm --filter @iwana/api typecheck`
+- `pnpm --filter @iwana/worker typecheck`
+- `pnpm --filter @iwana/web typecheck`
+- `pnpm --filter @iwana/api test -- search.service.spec.ts search-indexer.service.spec.ts search.controller.http.spec.ts`
+- `pnpm --filter @iwana/web test -- GlobalSearch.spec.tsx`
+
+Resultado: typecheck en verde para API, worker y web; 10 pruebas focalizadas en verde para backend y frontend del buscador global.
+
+### Addendum correctivo 2026-05-02 — Hotfix del 503 en búsqueda global
+
+Se corrigió una falla operativa visible en `GET /api/v1/search/global` que devolvía `503 Service Unavailable` desde la consola web. El diagnóstico separó dos causas: en el entorno local Typesense no estaba levantado en `localhost:8108`, y además el backend trataba la ausencia inicial de colecciones como indisponibilidad total del buscador.
+
+El ajuste en `apps/api` endureció `SearchService`: cuando Typesense responde `404` por colecciones ausentes, la API ahora ejecuta auto-bootstrap del índice mediante `SearchIndexerService.rebuildAll(false)` y reintenta la consulta una vez, evitando error operativo en el primer uso después de levantar el motor. El `503` se preserva únicamente para caída real del servicio de búsqueda.
+
+Validación correctiva ejecutada:
+
+- `docker compose -f docker-compose.dev.yml up -d typesense`
+- `curl -si http://localhost:8108/health` → `200 OK`
+- `pnpm --filter @iwana/api test -- search.service.spec.ts search-indexer.service.spec.ts search.controller.http.spec.ts`
+- `pnpm --filter @iwana/api lint`
+
+Resultado: Typesense quedó disponible localmente y el slice backend de búsqueda quedó en verde con cobertura del flujo de auto-inicialización.
+
+### Addendum correctivo 2026-05-02 — Limpieza del buscador al navegar
+
+Se corrigió una inconsistencia de UX en `apps/web`: al seleccionar un resultado de búsqueda global o cambiar de página dentro del layout protegido, el texto escrito permanecía visible en la barra del header porque `GlobalSearch` conservaba su estado entre rutas.
+
+El componente ahora escucha cambios de ruta y query string mediante hooks de navegación de Next.js y resetea `query`, estado abierto y selección activa cuando cambia la ubicación. Adicionalmente, la navegación por selección limpia el input de forma inmediata antes del `router.push`, evitando que el usuario vea el término anterior mientras se monta la pantalla destino.
+
+Validación correctiva ejecutada:
+
+- `pnpm --filter @iwana/web test -- GlobalSearch.spec.tsx`
+- `pnpm --filter @iwana/web typecheck`
+
+Resultado: el buscador queda vacío después de navegar y la suite del componente quedó en verde con cobertura explícita del cambio de ruta.
+
+### Addendum correctivo 2026-05-02 — Búsqueda global tenant-aware en portal
+
+Se implementó en `apps/portal` el mismo modelo de búsqueda global incremental del header, adaptado al contexto tenant-aware del portal empresarial. A diferencia de `apps/web`, aquí no se reutiliza el endpoint de plataforma: el buscador agrega resultados desde contratos self-service ya existentes del tenant autenticado y los presenta en un overlay unificado con navegación por teclado y apertura inmediata de resultados.
+
+Alcance operativo implementado:
+
+- módulos del portal (`Inicio`, `Comercial`, `CRM`, `Suscriptores`, `Configuración`, `Usuarios`)
+- usuarios internos del tenant
+- suscriptores
+- oportunidades CRM (`expedientes`)
+
+La integración quedó montada en el header del portal y el aterrizaje de usuarios soporta deep-link por query param `search`, de modo que al seleccionar un resultado de usuario el listado se abre ya filtrado. El componente también limpia la búsqueda al cambiar de ruta, manteniendo consistencia con la consola web.
+
+Validación ejecutada:
+
+- `pnpm --filter @iwana/portal test -- GlobalSearch.spec.tsx`
+- `pnpm --filter @iwana/portal typecheck`
+
+Resultado: búsqueda global del portal operativa, con pruebas unitarias en verde para consulta, navegación, manejo de error y limpieza al navegar.
+
 ### Addendum correctivo 2026-04-30 — Habilitación de MCPs en OpenCode
 
 Se actualizó `.opencode/opencode.json` para dejar habilitados tres servidores MCP de uso operativo en el workspace: `chrome-devtools`, `context7` y `playwright`. La configuración quedó declarada como MCPs `local` con ejecución vía `npx`, lo que evita acoplar el repo a instalaciones globales manuales y permite resolver la versión publicada más reciente al iniciar el cliente.
