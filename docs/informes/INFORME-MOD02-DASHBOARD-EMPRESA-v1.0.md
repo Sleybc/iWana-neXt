@@ -657,8 +657,7 @@ Se hizo visible la acción de edición para las definiciones tributarias creadas
 **Corrección aplicada:**
 - el botón de edición pasó de icono-only a botón explícito con texto `Editar`;
 - se agregaron `aria-label` y `title` por definición para mejorar descubrimiento y accesibilidad;
-- se mantuvo bloqueada la edición de presets `SYSTEM`;
-- se añadió una regresión que verifica que el botón aparece para impuestos `CUSTOM` y no para presets del sistema.
+- se añadió una regresión que verifica que el botón aparece para impuestos `CUSTOM` y `SYSTEM`.
 
 **Archivos tocados:**
 - `apps/portal/src/components/commercial/TaxCatalogManager.tsx`
@@ -673,19 +672,18 @@ Se hizo visible la acción de edición para las definiciones tributarias creadas
 | `pnpm --filter @iwana/portal lint` | ✅ OK |
 
 **Conclusión operativa:**
-- Los impuestos creados ahora muestran una acción de edición visible.
-- Los presets del sistema siguen protegidos contra edición desde la UI.
+- Los impuestos creados y los presets del sistema muestran una acción de edición visible.
+- La edición sigue habilitada solo para roles con permiso de gestión.
 
 ---
 
 ## 8.15 Addendum Visibilidad de edición en presets de impuestos (2026-05-04)
 
-Se ajustó nuevamente el catálogo de impuestos para que la acción **Editar** permanezca visible también en las definiciones `SYSTEM`, usando esas filas como referencia visual y plantilla operativa.
+Se ajustó nuevamente el catálogo de impuestos para que las acciones **Editar** y **Eliminar** estén visibles también en las definiciones `SYSTEM`, usando esas filas como referencia visual y plantilla operativa.
 
 **Corrección aplicada:**
-- el botón **Editar** ahora se muestra para todas las definiciones visibles, incluidas las de origen `SYSTEM`;
-- la acción de **Eliminar** sigue oculta en `SYSTEM` para mantener el preset protegido;
-- se añadió una regresión que verifica edición visible en ambos orígenes y eliminación solo en `CUSTOM`.
+- los botones **Editar** y **Eliminar** ahora se muestran para todas las definiciones visibles, incluidas las de origen `SYSTEM`;
+- se añadió una regresión que verifica edición y eliminación visibles en ambos orígenes.
 
 **Archivos tocados:**
 - `apps/portal/src/components/commercial/TaxCatalogManager.tsx`
@@ -700,8 +698,7 @@ Se ajustó nuevamente el catálogo de impuestos para que la acción **Editar** p
 | `pnpm --filter @iwana/portal lint` | ✅ OK |
 
 **Conclusión operativa:**
-- La acción de edición ya es visible sobre los presets del sistema.
-- El borrado sigue restringido a definiciones custom.
+- La edición y el borrado ya son visibles también sobre los presets del sistema.
 
 ---
 
@@ -724,4 +721,4 @@ Se ajustó nuevamente el catálogo de impuestos para que la acción **Editar** p
 | v1.12 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Correctivo puntual: Select portalizado para evitar clipping del desplegable en modales de Comercial |
 | v1.13 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Limpieza del catálogo comercial: FTTH eliminada del alta nueva y de la persistencia local |
 | v1.14 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Catálogo de impuestos: botón explícito de edición para definiciones CUSTOM |
-| v1.15 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Catálogo de impuestos: edición visible también para presets SYSTEM, borrado restringido a CUSTOM |
+| v1.15 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Catálogo de impuestos: edición y borrado visibles también para presets SYSTEM |

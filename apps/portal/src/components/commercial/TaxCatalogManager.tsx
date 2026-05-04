@@ -331,18 +331,16 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
                       <Pencil className="h-4 w-4" aria-hidden="true" />
                       <span>Editar</span>
                     </Button>
-                    {def.origin !== 'SYSTEM' && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label={`Eliminar definición tributaria ${def.name}`}
-                        title={`Eliminar definición tributaria ${def.name}`}
-                        className="text-red-500 hover:text-red-600"
-                        onClick={() => setDeleteTarget(def)}
-                      >
-                        <Trash2 className="h-4 w-4" aria-hidden="true" />
-                      </Button>
-                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Eliminar definición tributaria ${def.name}`}
+                      title={`Eliminar definición tributaria ${def.name}`}
+                      className="text-red-500 hover:text-red-600"
+                      onClick={() => setDeleteTarget(def)}
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    </Button>
                   </div>
                 )}
               </CardContent>

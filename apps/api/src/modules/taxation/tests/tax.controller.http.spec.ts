@@ -357,18 +357,19 @@ describe('TaxationController HTTP', () => {
       );
     });
 
-    it('retorna 403 cuando el servicio lanza ForbiddenException para preset SYSTEM', async () => {
-      taxDefinitionServiceMock.update.mockRejectedValue(
-        new ForbiddenException(
-          'Los presets del sistema no son editables. Puede duplicarlos como CUSTOM.',
-        ),
-      );
+    it('retorna 200 cuando actualiza un preset SYSTEM', async () => {
+      const updated = { ...validTaxDef, id: systemPresetId, name: 'IVA 19% plantilla' };
+      taxDefinitionServiceMock.update.mockResolvedValue(updated);
 
       await request(app.getHttpServer())
         .patch(`/api/v1/taxation/definitions/${systemPresetId}`)
         .set('Authorization', 'Bearer accountant-token')
         .send(validUpdatePayload)
-        .expect(403);
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body.data.id).toBe(systemPresetId);
+          expect(body.data.name).toBe('IVA 19% plantilla');
+        });
     });
 
     it('retorna 404 cuando el servicio lanza NotFoundException', async () => {
@@ -407,15 +408,15 @@ describe('TaxationController HTTP', () => {
       expect(taxDefinitionServiceMock.softDelete).toHaveBeenCalledWith(validTaxDefId);
     });
 
-    it('retorna 403 cuando el servicio lanza ForbiddenException para preset SYSTEM', async () => {
-      taxDefinitionServiceMock.softDelete.mockRejectedValue(
-        new ForbiddenException('Los presets del sistema no pueden eliminarse.'),
-      );
+    it('retorna 200 cuando desactiva un preset SYSTEM', async () => {
+      taxDefinitionServiceMock.softDelete.mockResolvedValue(undefined);
 
       await request(app.getHttpServer())
         .delete(`/api/v1/taxation/definitions/${systemPresetId}`)
         .set('Authorization', 'Bearer admin-token')
-        .expect(403);
+        .expect(200);
+
+      expect(taxDefinitionServiceMock.softDelete).toHaveBeenCalledWith(systemPresetId);
     });
 
     it('retorna 404 cuando el servicio lanza NotFoundException', async () => {
