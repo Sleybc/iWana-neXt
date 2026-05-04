@@ -617,6 +617,39 @@ Se corrigió un bug puntual en el modal de creación/edición de planes comercia
 
 ---
 
+## 8.13 Addendum Limpieza FTTH en catálogo comercial (2026-05-04)
+
+Se corrigió el catálogo de planes comerciales para que **FTTH** deje de aparecer como tecnología disponible al crear un plan nuevo.
+
+**Causa raíz:**
+- FTTH seguía presente en las sugerencias por defecto del catálogo;
+- el formulario reutilizaba ese valor como fallback de creación;
+- el listado de opciones persistidas podía reintroducirlo al abrir el modal.
+
+**Corrección aplicada:**
+- se eliminó FTTH de las sugerencias por defecto;
+- se filtró FTTH al cargar tecnologías persistidas;
+- el alta nueva ahora usa la primera tecnología disponible como valor inicial;
+- se bloqueó FTTH en alta, edición y submit para evitar que vuelva a entrar por atajos o datos viejos.
+
+**Archivos tocados:**
+- `apps/portal/src/components/settings/PlanCatalogManager.tsx`
+- `apps/portal/src/components/settings/PlanCatalogManager.spec.tsx`
+
+**Validación ejecutada:**
+
+| Comando | Resultado |
+|---|---|
+| `pnpm --filter @iwana/portal test -- --runTestsByPath src/components/settings/PlanCatalogManager.spec.tsx` | ✅ OK |
+| `pnpm --filter @iwana/portal typecheck` | ✅ OK |
+| `pnpm --filter @iwana/portal lint` | ✅ OK |
+
+**Conclusión operativa:**
+- El selector de tecnología ya no muestra FTTH en el flujo de alta.
+- La restricción también evita que FTTH reaparezca desde persistencia o entradas manuales.
+
+---
+
 ## 9. Historial de Cambios
 
 | Versión | Fecha | Autor | Descripción |
@@ -634,3 +667,4 @@ Se corrigió un bug puntual en el modal de creación/edición de planes comercia
 | v1.10 | 2026-05-04 | GitHub Copilot | Spec, plan y prompt Fase 03: portal compacta operativa con header único + workspace |
 | v1.11 | 2026-05-04 | GitHub Copilot (GPT-5.4) | Ejecución Fase 03: compactación final de Comercial, Settings, CRM detalle, Perfil y Auth, con validación `63/63` en E2E |
 | v1.12 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Correctivo puntual: Select portalizado para evitar clipping del desplegable en modales de Comercial |
+| v1.13 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Limpieza del catálogo comercial: FTTH eliminada del alta nueva y de la persistencia local |
