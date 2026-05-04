@@ -650,6 +650,34 @@ Se corrigió el catálogo de planes comerciales para que **FTTH** deje de aparec
 
 ---
 
+## 8.14 Addendum Botón explícito de edición en catálogo de impuestos (2026-05-04)
+
+Se hizo visible la acción de edición para las definiciones tributarias creadas en `Catálogo de impuestos`, alineando el patrón con el resto de gestores comerciales.
+
+**Corrección aplicada:**
+- el botón de edición pasó de icono-only a botón explícito con texto `Editar`;
+- se agregaron `aria-label` y `title` por definición para mejorar descubrimiento y accesibilidad;
+- se mantuvo bloqueada la edición de presets `SYSTEM`;
+- se añadió una regresión que verifica que el botón aparece para impuestos `CUSTOM` y no para presets del sistema.
+
+**Archivos tocados:**
+- `apps/portal/src/components/commercial/TaxCatalogManager.tsx`
+- `apps/portal/src/components/commercial/TaxCatalogManager.spec.tsx`
+
+**Validación ejecutada:**
+
+| Comando | Resultado |
+|---|---|
+| `pnpm --filter @iwana/portal test -- --runTestsByPath src/components/commercial/TaxCatalogManager.spec.tsx` | ✅ OK |
+| `pnpm --filter @iwana/portal typecheck` | ✅ OK |
+| `pnpm --filter @iwana/portal lint` | ✅ OK |
+
+**Conclusión operativa:**
+- Los impuestos creados ahora muestran una acción de edición visible.
+- Los presets del sistema siguen protegidos contra edición desde la UI.
+
+---
+
 ## 9. Historial de Cambios
 
 | Versión | Fecha | Autor | Descripción |
@@ -668,3 +696,4 @@ Se corrigió el catálogo de planes comerciales para que **FTTH** deje de aparec
 | v1.11 | 2026-05-04 | GitHub Copilot (GPT-5.4) | Ejecución Fase 03: compactación final de Comercial, Settings, CRM detalle, Perfil y Auth, con validación `63/63` en E2E |
 | v1.12 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Correctivo puntual: Select portalizado para evitar clipping del desplegable en modales de Comercial |
 | v1.13 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Limpieza del catálogo comercial: FTTH eliminada del alta nueva y de la persistencia local |
+| v1.14 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Catálogo de impuestos: botón explícito de edición para definiciones CUSTOM |
