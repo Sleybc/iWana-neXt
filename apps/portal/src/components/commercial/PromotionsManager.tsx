@@ -18,6 +18,7 @@ import {
   CreatePromotionModal,
   type PromotionTargetItem,
 } from '@/components/commercial/CreatePromotionModal';
+import { PortalAlert, PortalEmptyState, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 
 interface PromotionsManagerProps {
   canEdit: boolean;
@@ -172,7 +173,7 @@ export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
   };
 
   return (
-    <Card className="rounded-[28px] border border-white/70 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
+    <Card className="rounded-2xl border border-white/70 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -204,18 +205,21 @@ export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
 
       <CardContent>
         {isLoading ? (
-          <div className="h-28 animate-pulse rounded-[24px] bg-gray-100 shadow-iwana-soft dark:bg-dark-surface-3" />
+          <PortalSkeletonBlock className="h-28" />
         ) : loadError ? (
-          <div className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
-            <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-            <p>{loadError}</p>
-          </div>
+          <PortalAlert
+            variant="error"
+            title="No fue posible cargar promociones"
+            description={loadError}
+            icon={CircleAlert}
+          />
         ) : promotions.length === 0 ? (
-          <div className="rounded-[24px] border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-600 dark:border-dark-border dark:text-gray-300">
-            No hay promociones creadas. Usa "Crear promocion" para iniciar una campana.
-          </div>
+          <PortalEmptyState
+            title="Sin promociones creadas"
+            description='Usa "Crear promoción" para iniciar una campaña.'
+          />
         ) : (
-          <div className="overflow-x-auto rounded-[24px] border border-gray-200 dark:border-dark-border">
+          <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-dark-border">
             <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
               <thead className="bg-[#f6f8f4] dark:bg-dark-surface-2">
                 <tr>

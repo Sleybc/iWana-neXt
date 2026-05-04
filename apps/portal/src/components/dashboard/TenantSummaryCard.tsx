@@ -30,6 +30,19 @@ function statusLabel(status: TenantSelf['status']): string {
   return labels[status] ?? status;
 }
 
+function resolveLocation(tenant: TenantSelf): string {
+  const parts = [tenant.city, tenant.department].filter(Boolean);
+  if (parts.length === 0) {
+    return tenant.countryCode ?? 'No disponible';
+  }
+
+  return `${parts.join(', ')}${tenant.countryCode ? ` · ${tenant.countryCode}` : ''}`;
+}
+
+function resolveWebsite(tenant: TenantSelf): string {
+  return tenant.website?.trim() || 'No disponible';
+}
+
 /**
  * Tarjeta de resumen de la empresa autenticada.
  * Muestra nombre, slug, estado, configuración operativa y datos de contacto.
@@ -39,44 +52,28 @@ function statusLabel(status: TenantSelf['status']): string {
  */
 export function TenantSummaryCard({ tenant, settings }: TenantSummaryCardProps) {
   return (
-    <Card className="border border-gray-100 shadow-[var(--shadow-iwana-soft)] dark:border-dark-border">
+    <Card className="border border-gray-200 dark:border-dark-border dark:bg-dark-surface-2">
       <CardContent className="p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-4 min-w-0">
-            {/* Ícono empresa */}
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gray-100 dark:bg-dark-surface-3">
+        <div className="flex items-start justify-between gap-4 border-b border-gray-100 pb-5 dark:border-dark-border-2">
+          <div className="min-w-0 flex items-start gap-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-iwana-primary-50 dark:bg-iwana-primary-800/30">
               <Building2
-                className="h-6 w-6 text-iwana-primary dark:text-iwana-primary-300"
+                className="h-5 w-5 text-iwana-primary dark:text-iwana-primary-300"
                 aria-hidden="true"
               />
             </div>
 
             <div className="min-w-0">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white truncate">
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Empresa actual</p>
+              <h2 className="mt-1 truncate text-xl font-semibold text-gray-900 dark:text-white">
                 {tenant.name}
               </h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                <span className="rounded-lg bg-gray-100 px-1.5 py-0.5 font-mono text-xs dark:bg-dark-surface-3">
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Identificador interno{' '}
+                <span className="rounded-lg bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] dark:bg-dark-surface-3">
                   {tenant.slug}
                 </span>
               </p>
-
-              {/* Ubicación */}
-              {(tenant.city || tenant.department) && (
-                <p className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 mt-2">
-                  <MapPin className="w-3 h-3 shrink-0" aria-hidden="true" />
-                  {[tenant.city, tenant.department].filter(Boolean).join(', ')}
-                  {tenant.countryCode && ` · ${tenant.countryCode}`}
-                </p>
-              )}
-
-              {/* Web */}
-              {tenant.website && (
-                <p className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  <Globe className="w-3 h-3 shrink-0" aria-hidden="true" />
-                  <span className="truncate">{tenant.website}</span>
-                </p>
-              )}
             </div>
           </div>
 
@@ -85,39 +82,63 @@ export function TenantSummaryCard({ tenant, settings }: TenantSummaryCardProps) 
           </Badge>
         </div>
 
-        {/* Configuración operativa */}
-        <div className="mt-6 grid grid-cols-2 gap-4 border-t border-gray-100 pt-5 sm:grid-cols-4 dark:border-dark-border-2">
+        <div className="mt-5 grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-              Zona horaria
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+              Perfil empresarial
             </p>
-            <p className="mt-1 text-sm font-semibold text-gray-800 dark:text-white">
-              {settings.timezone}
-            </p>
+            <div className="mt-3 overflow-hidden rounded-xl border border-gray-100 dark:border-dark-border-2">
+              <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-dark-border-2">
+                <span className="text-sm text-gray-600 dark:text-gray-400">Ubicación</span>
+                <span className="text-right text-sm font-medium text-gray-800 dark:text-white">
+                  {resolveLocation(tenant)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between px-4 py-3">
+                <span className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400">
+                  <Globe className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  Sitio web
+                </span>
+                <span className="max-w-[60%] truncate text-right text-sm font-medium text-gray-800 dark:text-white">
+                  {resolveWebsite(tenant)}
+                </span>
+              </div>
+            </div>
           </div>
+
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-              Moneda
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+              Configuración operativa
             </p>
-            <p className="mt-1 text-sm font-semibold text-gray-800 dark:text-white">
-              {settings.currency}
-            </p>
-          </div>
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-              Idioma
-            </p>
-            <p className="mt-1 text-sm font-semibold text-gray-800 dark:text-white">
-              {settings.language}
-            </p>
-          </div>
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-              País
-            </p>
-            <p className="mt-1 text-sm font-semibold text-gray-800 dark:text-white">
-              {settings.country}
-            </p>
+            <div className="mt-3 overflow-hidden rounded-xl border border-gray-100 dark:border-dark-border-2">
+              <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-dark-border-2">
+                <span className="text-sm text-gray-600 dark:text-gray-400">Zona horaria</span>
+                <span className="text-sm font-medium text-gray-800 dark:text-white">
+                  {settings.timezone}
+                </span>
+              </div>
+              <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-dark-border-2">
+                <span className="text-sm text-gray-600 dark:text-gray-400">Moneda</span>
+                <span className="text-sm font-medium text-gray-800 dark:text-white">
+                  {settings.currency}
+                </span>
+              </div>
+              <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-dark-border-2">
+                <span className="text-sm text-gray-600 dark:text-gray-400">Idioma</span>
+                <span className="text-sm font-medium text-gray-800 dark:text-white">
+                  {settings.language}
+                </span>
+              </div>
+              <div className="flex items-center justify-between px-4 py-3">
+                <span className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400">
+                  <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  País
+                </span>
+                <span className="text-sm font-medium text-gray-800 dark:text-white">
+                  {settings.country}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </CardContent>

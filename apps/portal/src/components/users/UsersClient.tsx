@@ -21,6 +21,7 @@ import {
 } from '@/lib/api-client';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { UserRole } from '@iwana/shared';
+import { PortalAlert } from '@/components/shared/portal-ui';
 
 const PAGE_SIZE = 20;
 
@@ -255,31 +256,20 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
 
   if (!isAdmin) {
     return (
-      <div className="flex flex-col flex-1">
+      <div className="space-y-6">
         <PageHeader title="Usuarios" subtitle="Acceso restringido" />
-        <main className="flex-1 p-6">
-          <div className="rounded-[24px] border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(254,243,199,0.72))] p-6 shadow-iwana-soft dark:border-amber-800 dark:bg-amber-900/20">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-                <ShieldAlert className="h-5 w-5" aria-hidden="true" />
-              </div>
-              <div className="space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700 dark:text-amber-300">
-                  Permisos insuficientes
-                </p>
-                <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
-                  Solo los administradores pueden gestionar usuarios internos.
-                </p>
-              </div>
-            </div>
-          </div>
-        </main>
+        <PortalAlert
+          variant="warning"
+          title="Permisos insuficientes"
+          description="Solo los administradores pueden gestionar usuarios internos."
+          icon={ShieldAlert}
+        />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col flex-1">
+    <div className="space-y-4">
       <PageHeader
         title="Usuarios internos"
         subtitle={`${meta?.total ?? 0} usuario${(meta?.total ?? 0) !== 1 ? 's' : ''} en total`}
@@ -314,46 +304,32 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
         }
       />
 
-      <main className="flex-1 p-6 space-y-4">
+      <div className="space-y-4">
         {actionSuccess && !actionError && !tempPassword && (
-          <div className="rounded-[24px] border border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.98),rgba(209,250,229,0.82))] p-4 shadow-iwana-soft dark:border-emerald-800 dark:bg-emerald-900/20">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
-              </div>
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-300">
-                  Operación completada
-                </p>
-                <p className="text-sm font-medium text-emerald-900 dark:text-emerald-200">
-                  {actionSuccess}
-                </p>
-              </div>
-            </div>
-          </div>
+          <PortalAlert
+            variant="success"
+            title="Operación completada"
+            description={actionSuccess}
+            icon={CheckCircle2}
+          />
         )}
 
         {error && (
-          <div className="rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] p-4 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
-                <AlertTriangle className="h-5 w-5" aria-hidden="true" />
-              </div>
-              <div className="flex-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-red-700 dark:text-red-300">
-                  Incidente en la carga
-                </p>
-                <p className="text-sm font-medium text-red-900 dark:text-red-200">{error}</p>
-                <button
-                  type="button"
-                  onClick={() => void loadUsers(filters)}
-                  className="mt-2 text-sm font-medium text-red-700 underline decoration-red-300 underline-offset-4 hover:no-underline dark:text-red-400"
-                >
-                  Reintentar
-                </button>
-              </div>
-            </div>
-          </div>
+          <PortalAlert
+            variant="error"
+            title="Incidente en la carga"
+            description={error}
+            action={
+              <button
+                type="button"
+                onClick={() => void loadUsers(filters)}
+                className="text-sm font-medium text-red-700 underline decoration-red-300 underline-offset-4 hover:no-underline dark:text-red-300"
+              >
+                Reintentar
+              </button>
+            }
+            icon={AlertTriangle}
+          />
         )}
 
         <UsersTable
@@ -369,7 +345,7 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
           onSearchChange={handleSearchChange}
           currentUserId={user?.id}
         />
-      </main>
+      </div>
 
       <CreateUserModal
         isOpen={isCreateOpen}
@@ -390,7 +366,7 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
           aria-labelledby="reset-success-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
         >
-          <div className="w-full max-w-sm rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-iwana-lg dark:border-dark-border dark:bg-dark-surface-2">
+          <div className="w-full max-w-sm rounded-2xl border border-white/70 bg-white/95 p-6 shadow-2xl dark:border-dark-border dark:bg-dark-surface-2">
             <h2
               id="reset-success-title"
               className="text-base font-semibold text-iwana-primary dark:text-white"

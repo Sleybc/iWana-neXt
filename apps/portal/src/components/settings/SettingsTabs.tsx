@@ -41,7 +41,7 @@ export function SettingsTabs({
     <div
       role="tablist"
       aria-label="Secciones de configuración empresarial"
-      className="flex gap-2 overflow-x-auto rounded-[24px] border border-white/70 bg-white/95 p-2 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95"
+      className="flex gap-2 overflow-x-auto rounded-2xl border border-white/70 bg-white/95 p-2 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95"
     >
       {items.map((item, index) => {
         const isActive = item.id === activeTab;

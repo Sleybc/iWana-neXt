@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -100,6 +101,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  useLayoutEffect(() => {
+    // Reinicia el estado de bootstrap de forma sincrona al cambiar de ruta para
+    // evitar redirects prematuros desde layouts protegidos mientras se recompone
+    // la sesion sembrada en localStorage en pruebas E2E o navegaciones cliente.
+    setIsLoading(true);
+  }, [pathname]);
+
   const refreshProfile = useCallback(async (tenantSlug?: string) => {
     try {
       const profile = await authApi.me(tenantSlug);
@@ -121,6 +129,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const isAuthRoute = pathname.startsWith('/auth');
 
     const bootstrap = async () => {
+      if (mounted) {
+        // Al cambiar de ruta debemos revalidar la sesion antes de que layouts protegidos
+        // reaccionen a un estado previo de user=null e isLoading=false.
+        setIsLoading(true);
+      }
+
       try {
         if (isAuthRoute) {
           setUser(null);

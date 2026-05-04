@@ -6,7 +6,7 @@ import type { CoverageNodeConfig, CoverageZoneConfig } from '@/lib/api-client';
 const CoverageMap = dynamic(() => import('./CoverageMap'), {
   ssr: false,
   loading: () => (
-    <div className="h-[400px] animate-pulse rounded-[24px] border border-gray-200 bg-gray-100 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3" />
+    <div className="h-[400px] animate-pulse rounded-2xl border border-gray-200 bg-gray-100 shadow-sm dark:border-dark-border dark:bg-dark-surface-3" />
   ),
 });
 

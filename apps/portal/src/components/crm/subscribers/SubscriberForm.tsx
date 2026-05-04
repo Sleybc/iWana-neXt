@@ -174,7 +174,7 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
   };
 
   return (
-    <Card className="rounded-[24px] border border-white/70 bg-white/95 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
+    <Card className="rounded-2xl border border-white/70 bg-white/95 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">
       <CardHeader>
         <CardTitle>{editing ? 'Editar suscriptor' : 'Crear suscriptor'}</CardTitle>
       </CardHeader>

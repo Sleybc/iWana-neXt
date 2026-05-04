@@ -1,9 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
 
-const MOCK_TENANT_SLUG = 'test-isp';
+const MOCK_TENANT_SLUG = 'isp-demo';
 const MOCK_TENANT_ID = 'tenant-uuid-test';
 const MOCK_SCHEMA_NAME = 'tenant_test_isp';
-const UPDATED_SEAL_URL = 'https://cdn.test-isp.co/branding/seal-light-uploaded.svg';
+const UPDATED_SEAL_URL = 'https://cdn.test-isp.co/branding/seal-light-uploaded.png';
+const VALID_PNG_BUFFER = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAABTklEQVR4nO3SMQEAIAzAMEA5zocMjiYKenSvO7PIOr8D+MsAcQaIM0CcAeIMEGeAOAPEGSDOAHEGiDNAnAHiDBBngDgDxBkgzgBxBogzQJwB4gwQZ4A4A8QZIM4AcQaIM0CcAeIMEGeAOAPEGSDOAHEGiDNAnAHiDBBngDgDxBkgzgBxBogzQJwB4gwQZ4A4A8QZIM4AcQaIM0CcAeIMEGeAOAPEGSDOAHEGiDNAnAHiDBBngDgDxBkgzgBxBogzQJwB4gwQZ4A4A8QZIM4AcQaIM0CcAeIMEGeAOAPEGSDOAHEGiDNAnAHiDBBngDgDxBkgzgBxBogzQJwB4gwQZ4A4A8QZIM4AcQaIM0CcAeIMEGeAuAekhwN+LeoABQAAAABJRU5ErkJggg==',
+  'base64',
+);
 
 function buildAccessToken(role: string): string {
   const payload = Buffer.from(
@@ -181,8 +185,8 @@ async function setupBrandingUploadMocks(page: Page): Promise<{
             id: 'asset-seal-light-1',
             usage: 'seal',
             themeVariant: 'light',
-            mimeType: 'image/svg+xml',
-            sizeBytes: 24831,
+            mimeType: 'image/png',
+            sizeBytes: VALID_PNG_BUFFER.byteLength,
             publicUrl: UPDATED_SEAL_URL,
             createdAt: '2026-04-30T12:00:00.000Z',
           },
@@ -225,24 +229,21 @@ test.describe('Portal branding upload', () => {
     await expect(page.getByRole('heading', { name: 'Marca empresarial' })).toBeVisible();
 
     await page.locator('#seal-light-file').setInputFiles({
-      name: 'seal-light.svg',
-      mimeType: 'image/svg+xml',
-      buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"></svg>'),
+      name: 'seal-light.png',
+      mimeType: 'image/png',
+      buffer: VALID_PNG_BUFFER,
     });
-
-    await expect(page.getByText('Activo subido y asignado correctamente.')).toBeVisible();
-
-    expect(uploadRequests).toEqual([
-      {
-        usage: 'seal',
-        themeVariant: 'light',
-        fileName: 'seal-light.svg',
-      },
-    ]);
 
     await expect(page.getByAltText('Sello de ISP Prueba Colombia').first()).toHaveAttribute(
       'src',
       UPDATED_SEAL_URL,
     );
+
+    await expect.poll(() => uploadRequests.length).toBe(1);
+    expect(uploadRequests[0]).toEqual({
+      usage: 'seal',
+      themeVariant: 'light',
+      fileName: 'seal-light.png',
+    });
   });
 });

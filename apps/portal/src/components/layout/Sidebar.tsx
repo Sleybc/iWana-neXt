@@ -1,6 +1,6 @@
 // apps/portal/src/components/layout/Sidebar.tsx
 'use client';
-import React, { useEffect, useRef, Suspense } from 'react';
+import React, { Suspense, useEffect, useRef, type ComponentType } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@iwana/ui';
 import { TenantSeal } from './TenantSeal';
+import { interactiveFocusClassName } from '@/components/shared/portal-ui';
 import type { TenantSelf } from '@/lib/api-client';
 
 interface SidebarProps {
@@ -24,6 +25,19 @@ interface SidebarProps {
   setMobileOpen: (v: boolean) => void;
   /** Datos del tenant autenticado — para mostrar sello y nombre en el header del sidebar */
   profile?: TenantSelf | null;
+}
+
+interface NavItem {
+  href: string;
+  label: string;
+  icon: ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
+  disabled?: boolean;
+  badge?: string;
+}
+
+interface NavGroup {
+  group: string;
+  items: NavItem[];
 }
 
 const DESKTOP_STORAGE_KEY = 'iwana-portal-sidebar-collapsed';
@@ -45,21 +59,37 @@ function resolveTenantDisplayName(profile?: TenantSelf | null): string {
  * Rutas futuras marcadas como disabled para no generar 404.
  * HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §4.3
  */
-const navItems = [
-  { href: '/dashboard', label: 'Inicio', icon: LayoutDashboard, disabled: false },
-  { href: '/dashboard/commercial', label: 'Comercial', icon: HandCoins, disabled: false },
-  { href: '/dashboard/crm', label: 'CRM', icon: BriefcaseBusiness, disabled: false },
-  { href: '/dashboard/crm/subscribers', label: 'Suscriptores', icon: Users, disabled: false },
-  { href: '/dashboard/settings', label: 'Configuración', icon: Settings, disabled: false },
-  { href: '/dashboard/users', label: 'Usuarios', icon: Users, disabled: false },
+const navGroups: NavGroup[] = [
   {
-    href: '/security',
-    label: 'Seguridad',
-    icon: ShieldCheck,
-    disabled: true,
-    badge: 'Siguiente fase',
+    group: 'MENÚ',
+    items: [
+      { href: '/dashboard', label: 'Inicio', icon: LayoutDashboard },
+      { href: '/dashboard/commercial', label: 'Comercial', icon: HandCoins },
+      { href: '/dashboard/crm', label: 'CRM', icon: BriefcaseBusiness },
+      { href: '/dashboard/crm/subscribers', label: 'Suscriptores', icon: Users },
+    ],
   },
-  { href: '/reports', label: 'Reportes', icon: BarChart3, disabled: true, badge: 'Siguiente fase' },
+  {
+    group: 'ADMINISTRACIÓN',
+    items: [
+      { href: '/dashboard/settings', label: 'Configuración', icon: Settings },
+      { href: '/dashboard/users', label: 'Usuarios', icon: Users },
+      {
+        href: '/security',
+        label: 'Seguridad',
+        icon: ShieldCheck,
+        disabled: true,
+        badge: 'Siguiente fase',
+      },
+      {
+        href: '/reports',
+        label: 'Reportes',
+        icon: BarChart3,
+        disabled: true,
+        badge: 'Siguiente fase',
+      },
+    ],
+  },
 ];
 
 interface NavItemsProps {
@@ -75,65 +105,94 @@ const NavItems = ({ desktopCollapsed }: NavItemsProps) => {
   const pathname = usePathname();
 
   return (
-    <ul className="flex flex-col gap-1 px-2">
-      {navItems.map((item) => {
-        const isActive =
-          !item.disabled && (pathname === item.href || pathname.startsWith(`${item.href}/`));
+    <>
+      {navGroups.map((navGroup, groupIndex) => (
+        <div key={navGroup.group} className="mb-2">
+          <p
+            className={cn(
+              'mt-6 mb-2 px-4 text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-300',
+              groupIndex === 0 && 'mt-0',
+              desktopCollapsed && 'lg:hidden',
+            )}
+          >
+            {navGroup.group}
+          </p>
 
-        // Ítems deshabilitados: no navegan para evitar 404
-        if (item.disabled) {
-          return (
-            <li key={item.href}>
-              <span
-                title={desktopCollapsed ? item.label : undefined}
-                className={cn(
-                  'flex cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium opacity-50',
-                  desktopCollapsed && 'lg:justify-center lg:px-2',
-                )}
-                aria-disabled="true"
-              >
-                <item.icon className="w-5 h-5 shrink-0 text-white/40" aria-hidden="true" />
-                <span className={cn('flex items-center gap-2', desktopCollapsed && 'lg:hidden')}>
-                  {item.label}
-                  {item.badge && (
-                    <span className="rounded-full border border-white/10 bg-white/8 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/65">
-                      {item.badge}
+          <ul className="flex flex-col gap-1 px-2">
+            {navGroup.items.map((item) => {
+              const isActive =
+                !item.disabled && (pathname === item.href || pathname.startsWith(`${item.href}/`));
+
+              if (item.disabled) {
+                return (
+                  <li key={item.href}>
+                    <span
+                      title={desktopCollapsed ? item.label : undefined}
+                      className={cn(
+                        'flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-400 opacity-60 dark:text-gray-500',
+                        desktopCollapsed && 'lg:justify-center lg:px-2',
+                      )}
+                      aria-disabled="true"
+                    >
+                      <item.icon
+                        className="h-5 w-5 shrink-0 text-gray-400 dark:text-gray-500"
+                        aria-hidden
+                      />
+                      <span
+                        className={cn('flex items-center gap-2', desktopCollapsed && 'lg:hidden')}
+                      >
+                        {item.label}
+                        {item.badge && (
+                          <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-400">
+                            {item.badge}
+                          </span>
+                        )}
+                      </span>
                     </span>
-                  )}
-                </span>
-              </span>
-            </li>
-          );
-        }
+                  </li>
+                );
+              }
 
-        return (
-          <li key={item.href}>
-            <Link
-              href={item.href}
-              title={desktopCollapsed ? item.label : undefined}
-              className={cn(
-                'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold duration-200 hover:bg-white/10 dark:hover:bg-dark-surface-3',
-                isActive
-                  ? 'bg-white/12 text-iwana-secondary shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)] dark:bg-dark-surface-3'
-                  : 'text-white/80 dark:text-gray-300',
-                desktopCollapsed && 'lg:justify-center lg:px-2',
-              )}
-            >
-              <item.icon
-                className={cn(
-                  'w-5 h-5 shrink-0',
-                  isActive
-                    ? 'text-iwana-secondary'
-                    : 'text-white/60 dark:text-gray-400 group-hover:text-white/90 dark:group-hover:text-white',
-                )}
-                aria-hidden="true"
-              />
-              <span className={cn(desktopCollapsed && 'lg:hidden')}>{item.label}</span>
-            </Link>
-          </li>
-        );
-      })}
-    </ul>
+              return (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    title={desktopCollapsed ? item.label : undefined}
+                    className={cn(
+                      'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150',
+                      isActive
+                        ? 'bg-iwana-primary-50 font-medium text-iwana-primary-700 dark:bg-iwana-primary-800/30 dark:text-iwana-primary-200'
+                        : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5',
+                      interactiveFocusClassName,
+                      desktopCollapsed && 'lg:justify-center lg:px-2',
+                    )}
+                    aria-current={isActive ? 'page' : undefined}
+                  >
+                    <item.icon
+                      className={cn(
+                        'h-5 w-5 shrink-0',
+                        isActive
+                          ? 'text-iwana-primary-600 dark:text-iwana-primary-300'
+                          : 'text-gray-400 group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300',
+                      )}
+                      aria-hidden
+                    />
+                    <span
+                      className={cn(
+                        'whitespace-nowrap overflow-hidden transition-all duration-200',
+                        desktopCollapsed ? 'lg:w-0 lg:opacity-0' : 'w-auto opacity-100',
+                      )}
+                    >
+                      {item.label}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </>
   );
 };
 
@@ -171,23 +230,27 @@ export const Sidebar = ({
       ref={sidebar}
       aria-label="Navegación principal"
       className={cn(
-        'fixed left-0 top-0 z-[9999] flex h-screen flex-col overflow-y-hidden bg-iwana-primary dark:bg-dark-surface-2 text-white duration-300 ease-linear',
+        'fixed left-0 top-0 z-[9999] flex h-screen flex-col overflow-y-hidden border-r border-transparent bg-white transition-all duration-200 ease-linear dark:border-transparent dark:bg-dark-surface-2',
         'lg:static lg:translate-x-0',
-        desktopCollapsed ? 'lg:w-[72px]' : 'lg:w-64',
-        mobileOpen ? 'translate-x-0 w-64' : '-translate-x-full w-64 lg:translate-x-0',
+        desktopCollapsed ? 'lg:w-[90px]' : 'lg:w-[290px]',
+        mobileOpen ? 'translate-x-0 w-[290px]' : '-translate-x-full w-[290px] lg:translate-x-0',
       )}
     >
       {/* SIDEBAR HEADER */}
       <div
         className={cn(
-          'flex min-h-[4.75rem] items-center gap-2 border-b border-white/8 px-4 py-5',
-          desktopCollapsed ? 'lg:justify-center' : 'justify-between',
+          'flex min-h-16 items-center gap-2 border-b border-transparent px-4 py-3 dark:border-transparent',
+          desktopCollapsed ? 'lg:justify-center lg:px-2' : 'justify-between',
         )}
       >
         {/* Marca del tenant — expandido */}
         <Link
           href="/dashboard"
-          className={cn('flex items-center gap-3 min-w-0', desktopCollapsed && 'lg:hidden')}
+          className={cn(
+            'flex min-w-0 items-center gap-3 rounded-lg',
+            interactiveFocusClassName,
+            desktopCollapsed && 'lg:hidden',
+          )}
         >
           <TenantSeal
             sealLightUrl={profile?.sealLightUrl ?? null}
@@ -197,7 +260,7 @@ export const Sidebar = ({
             className="shrink-0"
           />
           {(profile?.showTenantName ?? true) && (
-            <span className="text-lg font-bold tracking-tight text-white truncate">
+            <span className="truncate text-lg font-bold tracking-tight text-iwana-primary dark:text-white">
               {tenantDisplayName}
             </span>
           )}
@@ -206,7 +269,11 @@ export const Sidebar = ({
         {/* Sello solo — colapsado desktop */}
         <Link
           href="/dashboard"
-          className={cn('hidden items-center justify-center', desktopCollapsed && 'lg:flex')}
+          className={cn(
+            'hidden items-center justify-center rounded-lg',
+            interactiveFocusClassName,
+            desktopCollapsed && 'lg:flex',
+          )}
           aria-label="Ir al dashboard"
         >
           <TenantSeal
@@ -222,7 +289,10 @@ export const Sidebar = ({
           type="button"
           onClick={() => setMobileOpen(false)}
           aria-label="Cerrar menú"
-          className="lg:hidden text-white/70 hover:text-white shrink-0"
+          className={cn(
+            'shrink-0 rounded-lg p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white lg:hidden',
+            interactiveFocusClassName,
+          )}
         >
           <X className="w-5 h-5" />
         </button>
@@ -231,16 +301,6 @@ export const Sidebar = ({
       {/* MENÚ DE NAVEGACIÓN */}
       <div className="no-scrollbar flex flex-col overflow-y-auto flex-1 py-4">
         <nav aria-label="Menú principal">
-          <h3
-            className={cn(
-              'mb-3 px-4 text-[11px] font-bold uppercase tracking-[0.22em] text-white/55 dark:text-gray-500',
-              desktopCollapsed && 'lg:sr-only',
-            )}
-          >
-            EMPRESA
-          </h3>
-
-          {/* NavItems aislado en Suspense — usePathname() requiere boundary desde Next.js 15+ */}
           <Suspense fallback={null}>
             <NavItems desktopCollapsed={desktopCollapsed} />
           </Suspense>

@@ -26,6 +26,7 @@ import {
   type PlanCatalogItem,
   type UpdateCompatibilityRuleDto,
 } from '@/lib/api-client';
+import { PortalAlert, PortalEmptyState, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 
 interface CompatibilityRulesManagerProps {
   canEdit: boolean;
@@ -62,7 +63,7 @@ const cellClass = 'px-4 py-3 align-top text-sm text-gray-700 dark:text-gray-200'
 
 // Clase compartida para inputs de fecha y textarea dentro de los modales.
 const inputBaseClass =
-  'h-11 w-full rounded-[24px] border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-800 shadow-iwana-soft outline-none transition-colors focus:border-iwana-secondary focus:ring-2 focus:ring-iwana-secondary/30 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100';
+  'h-11 w-full rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-800 shadow-sm outline-none transition-colors focus:border-iwana-secondary focus:ring-2 focus:ring-iwana-secondary/30 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100';
 
 const textareaBaseClass =
   'w-full rounded-2xl border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none transition-colors focus:border-iwana-secondary focus:ring-2 focus:ring-iwana-secondary/30 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100';
@@ -233,7 +234,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
   const itemOptions = catalogItems.map((item) => ({ value: item.id, label: item.name }));
 
   return (
-    <Card className="rounded-[28px] border border-white/70 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
+    <Card className="rounded-2xl border border-white/70 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -271,25 +272,22 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
 
       <CardContent>
         {isLoading ? (
-          <div className="h-28 animate-pulse rounded-[24px] bg-gray-100 shadow-iwana-soft dark:bg-dark-surface-3" />
+          <PortalSkeletonBlock className="h-28" />
         ) : loadError ? (
-          <div className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
-            <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-            <p>{loadError}</p>
-          </div>
+          <PortalAlert
+            variant="error"
+            title="No fue posible cargar reglas"
+            description={loadError}
+            icon={CircleAlert}
+          />
         ) : replacesRules.length === 0 ? (
-          <div className="rounded-[24px] border border-dashed border-gray-300 px-4 py-8 text-center dark:border-dark-border">
-            <ArrowRight
-              className="mx-auto mb-3 h-8 w-8 text-gray-300 dark:text-gray-600"
-              aria-hidden="true"
-            />
-            <p className="text-sm text-gray-600 dark:text-gray-300">
-              No hay reglas de reemplazo configuradas. Crea la primera regla para guiar a los
-              agentes cuando sugieran ítems obsoletos.
-            </p>
-          </div>
+          <PortalEmptyState
+            title="Sin reglas de reemplazo"
+            description="Crea la primera regla para guiar a los agentes cuando sugieran ítems obsoletos."
+            icon={ArrowRight}
+          />
         ) : (
-          <div className="overflow-x-auto rounded-[24px] border border-gray-200 dark:border-dark-border">
+          <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-dark-border">
             <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
               <thead className="bg-[#f6f8f4] dark:bg-dark-surface-2">
                 <tr>

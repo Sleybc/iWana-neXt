@@ -223,7 +223,7 @@ export function ExpedienteSections({
     return (
       <div
         key={sectionId}
-        className="rounded-[20px] border border-gray-100 bg-white shadow-[var(--shadow-iwana-soft)] dark:border-dark-border dark:bg-dark-surface-2"
+        className="rounded-[20px] border border-gray-100 bg-white shadow-[var(--shadow-sm)] dark:border-dark-border dark:bg-dark-surface-2"
       >
         <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-border">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-iwana-secondary/10 text-iwana-secondary-700 dark:bg-iwana-secondary/20 dark:text-iwana-secondary-300">
@@ -266,10 +266,10 @@ export function ExpedienteSections({
           aria-live="polite"
           className={
             actionMessageTone === 'success'
-              ? 'rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 shadow-iwana-soft dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300'
+              ? 'rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 shadow-sm dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300'
               : actionMessageTone === 'error'
-                ? 'rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300'
-                : 'rounded-[20px] border border-iwana-primary/15 bg-iwana-primary/5 px-4 py-3 text-sm text-iwana-primary shadow-iwana-soft dark:border-iwana-primary-300/20 dark:bg-iwana-primary-400/10 dark:text-iwana-primary-200'
+                ? 'rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300'
+                : 'rounded-[20px] border border-iwana-primary/15 bg-iwana-primary/5 px-4 py-3 text-sm text-iwana-primary shadow-sm dark:border-iwana-primary-300/20 dark:bg-iwana-primary-400/10 dark:text-iwana-primary-200'
           }
         >
           {actionMessage}
@@ -277,7 +277,7 @@ export function ExpedienteSections({
       )}
 
       {/* Cabecera de progreso */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white rounded-[20px] border border-gray-50 px-6 py-5 shadow-[var(--shadow-iwana-soft)] dark:bg-dark-surface-2 dark:border-dark-border">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white rounded-[20px] border border-gray-50 px-6 py-5 shadow-[var(--shadow-sm)] dark:bg-dark-surface-2 dark:border-dark-border">
         <div>
           <h2 className="text-lg font-bold text-iwana-primary dark:text-white">
             Secciones de la oportunidad

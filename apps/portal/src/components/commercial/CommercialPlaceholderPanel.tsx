@@ -25,7 +25,7 @@ export function CommercialPlaceholderPanel({
   sections,
 }: CommercialPlaceholderPanelProps) {
   return (
-    <Card className="rounded-[28px] border border-white/70 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
+    <Card className="rounded-2xl border border-white/70 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">
       <CardHeader className="flex flex-row items-start justify-between gap-4">
         <div className="flex items-start gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300">
@@ -51,7 +51,7 @@ export function CommercialPlaceholderPanel({
             <div
               key={section.title}
               className={cn(
-                'rounded-[24px] border border-gray-200 bg-[#f8faf5] p-4 shadow-iwana-soft',
+                'rounded-2xl border border-gray-200 bg-[#f8faf5] p-4 shadow-sm',
                 'dark:border-dark-border dark:bg-dark-surface-3',
               )}
             >

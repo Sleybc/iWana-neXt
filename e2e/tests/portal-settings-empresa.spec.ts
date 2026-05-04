@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-const MOCK_TENANT_SLUG = 'test-isp';
+const MOCK_TENANT_SLUG = 'isp-demo';
 
 function buildAccessToken(role: string): string {
   const payload = Buffer.from(
@@ -94,7 +94,7 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
   const tenantProfile = {
     id: 'tenant-uuid-test',
     name: 'ISP Prueba Colombia',
-    slug: 'test-isp',
+    slug: 'isp-demo',
     status: 'ACTIVE',
     contactEmail: 'contacto@test-isp.co',
     legalName: null,
@@ -511,9 +511,8 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
   return { requestLog };
 }
 
-async function pickCustomSelectOption(page: Page, selectId: string, optionLabel: string) {
-  await page.locator(`#${selectId}`).locator('xpath=following-sibling::button').click();
-  await page.getByRole('option', { name: optionLabel, exact: true }).click();
+async function pickNativeSelectOption(page: Page, selectId: string, value: string) {
+  await page.locator(`#${selectId}`).selectOption(value);
 }
 
 test.describe('Configuración empresarial del portal', () => {
@@ -546,9 +545,9 @@ test.describe('Configuración empresarial del portal', () => {
     expect(requestLog.profilePatches[0]).not.toHaveProperty('name');
 
     await page.getByRole('tab', { name: 'Operación', exact: true }).click();
-    await pickCustomSelectOption(page, 'timezone', 'America/Guayaquil');
-    await pickCustomSelectOption(page, 'currency', 'USD');
-    await pickCustomSelectOption(page, 'country', 'EC');
+    await pickNativeSelectOption(page, 'timezone', 'America/Guayaquil');
+    await pickNativeSelectOption(page, 'currency', 'USD');
+    await pickNativeSelectOption(page, 'country', 'EC');
     await page.getByRole('button', { name: 'Guardar configuración operativa' }).click();
 
     await expect(
@@ -588,17 +587,15 @@ test.describe('Configuración empresarial del portal', () => {
     await page.waitForLoadState('networkidle');
 
     await page.getByRole('tab', { name: 'Marca', exact: true }).click();
-    await page.getByRole('heading', { name: 'Logo y Sello' }).scrollIntoViewIfNeeded();
-
-    // Llenar la URL del sello variante clara (primer campo con label "URL variante clara")
-    await page.getByLabel('URL variante clara').nth(0).fill('https://cdn.test-isp.co/seal.svg');
+    await page.getByRole('heading', { name: 'Marca empresarial' }).scrollIntoViewIfNeeded();
+    await page.getByText('o pega una URL HTTPS directamente').first().click();
+    await page.getByLabel('URL HTTPS externa').first().fill('https://cdn.test-isp.co/seal.png');
 
     // Desactivar nombre en sidebar
     await page.getByRole('checkbox', { name: /mostrar nombre comercial/i }).uncheck();
 
-    await page.getByRole('button', { name: 'Guardar branding' }).click();
-
-    await expect(page.getByText('Logo, sello y favicon actualizados correctamente.')).toBeVisible();
+    await page.getByRole('button', { name: 'Guardar cambios' }).click();
+    await expect(page.getByText('Branding empresarial actualizado correctamente.')).toBeVisible();
   });
 
   test('NOC ve la pantalla en modo solo lectura y no consume summary de ADMIN', async ({

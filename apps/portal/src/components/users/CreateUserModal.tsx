@@ -9,6 +9,7 @@ import { CheckCircle2, Copy, UserPlus, X } from 'lucide-react';
 import { DocumentType } from '@iwana/shared';
 import type { CreateInternalUserDto } from '@/lib/api-client';
 import { getPortalUserRoleLabel, PORTAL_TENANT_ASSIGNABLE_ROLES } from '@/lib/user-labels';
+import { PortalAlert, PortalSectionHeader } from '@/components/shared/portal-ui';
 
 const createUserSchema = z.object({
   email: z.string().trim().email('Ingresa un correo valido.'),
@@ -146,24 +147,21 @@ export function CreateUserModal({
       aria-modal="true"
       aria-labelledby="create-user-title"
     >
-      <div className="relative mx-4 max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-iwana-lg dark:border-dark-border dark:bg-dark-surface-2/95">
+      <div className="relative mx-4 max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-dark-border dark:bg-dark-surface-2">
+        <h2 id="create-user-title" className="sr-only">
+          {showSuccess ? 'Usuario creado' : 'Crear usuario interno'}
+        </h2>
         <div className="mb-6 flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-              Gestión de accesos
-            </p>
-            <h2
-              id="create-user-title"
-              className="mt-1 text-xl font-semibold text-iwana-primary dark:text-white"
-            >
-              {showSuccess ? 'Usuario creado' : 'Crear usuario interno'}
-            </h2>
-            {!showSuccess && (
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Registra un nuevo colaborador con su rol, datos base y política inicial de MFA.
-              </p>
-            )}
-          </div>
+          <PortalSectionHeader
+            className="flex-1 gap-0"
+            eyebrow="Gestión de accesos"
+            title={showSuccess ? 'Usuario creado' : 'Crear usuario interno'}
+            description={
+              showSuccess
+                ? undefined
+                : 'Registra un nuevo colaborador con su rol, datos base y política inicial de MFA.'
+            }
+          />
           {!showSuccess && (
             <button
               type="button"
@@ -178,23 +176,19 @@ export function CreateUserModal({
 
         {showSuccess && tempPassword ? (
           <div className="space-y-4">
-            <div className="rounded-[24px] border border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.98),rgba(209,250,229,0.82))] p-5 shadow-iwana-soft dark:border-emerald-800 dark:bg-emerald-900/20">
-              <div className="flex items-center gap-2 mb-2">
-                <CheckCircle2
-                  className="h-5 w-5 text-emerald-600 dark:text-emerald-400"
-                  aria-hidden="true"
-                />
-                <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
-                  Usuario creado exitosamente
-                </p>
-              </div>
-              <p className="text-sm text-emerald-700 dark:text-emerald-400">
-                Comparte la siguiente clave temporal con <strong>{tempPasswordEmail}</strong>. El
-                usuario debera cambiarla al primer inicio de sesion.
-              </p>
-            </div>
+            <PortalAlert
+              variant="success"
+              title="Usuario creado"
+              description={
+                <>
+                  Comparte la siguiente clave temporal con <strong>{tempPasswordEmail}</strong>. El
+                  usuario debera cambiarla al primer inicio de sesion.
+                </>
+              }
+              icon={CheckCircle2}
+            />
 
-            <div className="rounded-[24px] border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(254,243,199,0.78))] p-5 shadow-iwana-soft dark:border-amber-800 dark:bg-amber-900/20">
+            <div className="rounded-2xl border border-amber-200/80 bg-amber-50/90 p-5 dark:border-amber-800 dark:bg-amber-900/20">
               <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700 dark:text-amber-300">
                 Clave temporal
               </p>
@@ -234,7 +228,7 @@ export function CreateUserModal({
           </div>
         ) : (
           <form onSubmit={handleSubmit(onFormSubmit)} noValidate className="space-y-4">
-            <div className="flex items-start gap-3 rounded-[24px] border border-gray-200 bg-[#f8faf5] p-4 dark:border-dark-border dark:bg-dark-surface-3">
+            <div className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-[#f8faf5] p-4 dark:border-dark-border dark:bg-dark-surface-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300">
                 <UserPlus className="h-5 w-5" aria-hidden="true" />
               </div>

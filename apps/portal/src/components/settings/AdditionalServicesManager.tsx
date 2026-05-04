@@ -29,6 +29,7 @@ import {
   type UpdateAdditionalServiceDto,
 } from '@/lib/api-client';
 import { ChargeType } from '@iwana/shared';
+import { PortalAlert, PortalEmptyState, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 
 const SERVICE_CHARGE_TYPES = [
   ChargeType.ONE_TIME,
@@ -276,7 +277,7 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
       : `${filteredServices.length} de ${totalServices} registros`;
 
   return (
-    <Card className="rounded-[28px] border border-white/70 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
+    <Card className="rounded-2xl border border-white/70 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3">
@@ -325,25 +326,20 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
 
       <CardContent>
         {loading ? (
-          <div className="h-28 animate-pulse rounded-[24px] bg-gray-100 shadow-iwana-soft dark:bg-dark-surface-3" />
+          <PortalSkeletonBlock className="h-28" />
         ) : loadError ? (
-          <div className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
-            <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-            <p>{loadError}</p>
-          </div>
+          <PortalAlert
+            variant="error"
+            title="No fue posible cargar servicios"
+            description={loadError}
+            icon={CircleAlert}
+          />
         ) : services.length === 0 ? (
-          <div className="flex items-start gap-3 rounded-[24px] border border-emerald-200/60 bg-[linear-gradient(135deg,rgba(248,250,245,0.96),rgba(255,255,255,0.94))] px-4 py-4 text-sm text-gray-600 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
-            <CheckCircle2
-              className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"
-              aria-hidden="true"
-            />
-            <div>
-              <p className="font-medium text-gray-800 dark:text-white">
-                Catalogo listo para servicios
-              </p>
-              <p className="mt-1">No hay servicios adicionales. Crea uno para empezar.</p>
-            </div>
-          </div>
+          <PortalEmptyState
+            title="Catálogo listo para servicios"
+            description="No hay servicios adicionales. Crea uno para empezar."
+            icon={CheckCircle2}
+          />
         ) : (
           <div className="space-y-6">
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1.8fr)_220px_220px_auto] lg:items-end">
@@ -409,7 +405,7 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
               )}
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-gray-100 bg-[#f8faf5] px-4 py-3 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-[#f8faf5] px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
               <p className="text-sm text-gray-600 dark:text-gray-300">
                 Gestiona servicios del catalogo comercial con una vista operativa para ventas,
                 soporte y facturacion.
@@ -423,7 +419,7 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
             </div>
 
             {filteredServices.length === 0 ? (
-              <div className="flex items-start gap-3 rounded-[24px] border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(254,243,199,0.78))] px-4 py-4 text-sm text-amber-800 shadow-iwana-soft dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+              <div className="flex items-start gap-3 rounded-2xl border border-amber-200/80 bg-amber-50/90 px-4 py-4 text-sm text-amber-800 shadow-sm dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
                 <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
                 <div>
                   <p className="font-medium">No hay servicios para los filtros seleccionados.</p>
@@ -433,7 +429,7 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
                 </div>
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-[24px] border border-gray-200 dark:border-dark-border">
+              <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-dark-border">
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
                   <thead className="bg-[#f6f8f4] dark:bg-dark-surface-2">
                     <tr>
@@ -533,7 +529,7 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
           </DialogHeader>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-            <section className="space-y-4 rounded-[24px] border border-gray-100 bg-[#f8faf5] p-4 dark:border-dark-border dark:bg-dark-surface-3">
+            <section className="space-y-4 rounded-2xl border border-gray-100 bg-[#f8faf5] p-4 dark:border-dark-border dark:bg-dark-surface-3">
               <div>
                 <p className="text-sm font-semibold text-gray-900 dark:text-white">
                   Informacion basica
@@ -581,7 +577,7 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
               </div>
             </section>
 
-            <section className="space-y-4 rounded-[24px] border border-gray-100 p-4 dark:border-dark-border">
+            <section className="space-y-4 rounded-2xl border border-gray-100 p-4 dark:border-dark-border">
               <div>
                 <p className="text-sm font-semibold text-gray-900 dark:text-white">
                   Configuracion comercial
@@ -641,10 +637,12 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
             </section>
 
             {formError && (
-              <div className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
-                <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-                <p>{formError}</p>
-              </div>
+              <PortalAlert
+                variant="error"
+                title="No fue posible guardar el servicio"
+                description={formError}
+                icon={CircleAlert}
+              />
             )}
 
             <div className="flex justify-end gap-2">

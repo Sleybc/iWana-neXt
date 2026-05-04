@@ -1,9 +1,10 @@
 // apps/portal/src/components/dashboard/RecentActivityPanel.tsx
 'use client';
 import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@iwana/ui';
 import { Activity, CheckCircle2, CircleAlert, Clock } from 'lucide-react';
 import { auditApi, ApiError, type AuditLogEntry } from '@/lib/api-client';
+import { DashboardPanel } from './DashboardPanel';
+import { PortalAlert, PortalEmptyState, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 
 /**
  * Panel de actividad reciente del tenant autenticado.
@@ -77,43 +78,31 @@ export function RecentActivityPanel() {
   }, []);
 
   return (
-    <Card className="rounded-[28px] border border-white/70 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Activity className="w-4 h-4 text-iwana-secondary-700" aria-hidden="true" />
-          Actividad reciente
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
+    <DashboardPanel title="Actividad reciente">
+      <div>
         {isLoading && (
           <div className="space-y-3" aria-busy="true" aria-label="Cargando actividad">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-10 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3"
-              />
+              <PortalSkeletonBlock key={i} className="h-10 rounded-xl" />
             ))}
           </div>
         )}
 
         {!isLoading && error && (
-          <div className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
-            <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-            <p>{error}</p>
-          </div>
+          <PortalAlert
+            variant="error"
+            title="Actividad no disponible"
+            description={error}
+            icon={CircleAlert}
+          />
         )}
 
         {!isLoading && !error && entries.length === 0 && (
-          <div className="flex items-start gap-3 rounded-[24px] border border-emerald-200/60 bg-[linear-gradient(135deg,rgba(248,250,245,0.96),rgba(255,255,255,0.94))] px-4 py-4 text-sm text-gray-600 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
-            <CheckCircle2
-              className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"
-              aria-hidden="true"
-            />
-            <div>
-              <p className="font-medium text-gray-800 dark:text-white">Actividad bajo control</p>
-              <p className="mt-1">No hay actividad registrada en esta empresa todavía.</p>
-            </div>
-          </div>
+          <PortalEmptyState
+            title="Actividad bajo control"
+            description="No hay actividad registrada en esta empresa todavía."
+            icon={CheckCircle2}
+          />
         )}
 
         {!isLoading && !error && entries.length > 0 && (
@@ -140,7 +129,17 @@ export function RecentActivityPanel() {
             ))}
           </ul>
         )}
-      </CardContent>
-    </Card>
+
+        {!isLoading && !error && entries.length > 0 && (
+          <div className="mt-4 flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+            <Activity
+              className="h-3.5 w-3.5 text-iwana-secondary-700 dark:text-iwana-secondary-400"
+              aria-hidden="true"
+            />
+            {entries.length} eventos visibles en el corte actual
+          </div>
+        )}
+      </div>
+    </DashboardPanel>
   );
 }

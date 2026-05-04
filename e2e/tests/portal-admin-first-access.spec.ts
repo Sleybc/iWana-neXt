@@ -202,10 +202,10 @@ test.describe('Portal — primer acceso ADMIN (MOD02)', () => {
   test('paso 1: login con password temporal → redirect a change-password', async ({ page }) => {
     await page.goto('/auth/login');
 
-    await expect(page.getByText('Bienvenido al Portal')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /bienvenido al portal/i })).toBeVisible();
 
     await page.getByPlaceholder('ejemplo: isp-demo').fill('isp-demo');
-    await page.getByLabel('Correo Electrónico / Identidad').fill('admin@isp.co');
+    await page.getByLabel(/correo electrónico/i).fill('admin@isp.co');
     await page.getByPlaceholder('••••••••').fill('TempPass123!');
     await page.getByRole('button', { name: 'Ingresar' }).click();
 
@@ -220,7 +220,7 @@ test.describe('Portal — primer acceso ADMIN (MOD02)', () => {
     await page.waitForLoadState('networkidle');
 
     await page.getByPlaceholder('ejemplo: isp-demo').fill('isp-demo');
-    await page.getByLabel('Correo Electrónico / Identidad').fill('admin@isp.co');
+    await page.getByLabel(/correo electrónico/i).fill('admin@isp.co');
     await page.getByPlaceholder('••••••••').fill('TempPass123!');
     await page.getByRole('button', { name: 'Ingresar' }).click();
     // loginStep ahora es 1 — /auth/me retorna passwordResetRequired=true → /auth/change-password
@@ -231,7 +231,7 @@ test.describe('Portal — primer acceso ADMIN (MOD02)', () => {
     await page.waitForLoadState('networkidle');
 
     await page.getByPlaceholder('ejemplo: isp-demo').fill('isp-demo');
-    await page.getByLabel('Correo Electrónico / Identidad').fill('admin@isp.co');
+    await page.getByLabel(/correo electrónico/i).fill('admin@isp.co');
     await page.getByPlaceholder('••••••••').fill('NuevoPass456!');
     await page.getByRole('button', { name: 'Ingresar' }).click();
 
@@ -253,7 +253,9 @@ test.describe('Portal — primer acceso ADMIN (MOD02)', () => {
     ).toBeVisible();
 
     // Tras cargar el QR, debe aparecer el OTP input (6 cajas)
-    await expect(page.getByRole('heading', { name: 'Configurar autenticación segura' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Configurar autenticación segura' }),
+    ).toBeVisible();
   });
 
   test('página de MFA setup es accesible (WCAG 2.2 AA básico)', async ({ page }) => {

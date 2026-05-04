@@ -1,9 +1,9 @@
 # INFORME — Auditoria de Skills del Workspace
 
 **Modo activo:** Mixto
-**Version:** 1.0
+**Version:** 1.1
 **Estado:** Aprobado
-**Fecha:** 2026-03-12
+**Fecha:** 2026-05-04
 **Convencion documental:** {TIPO}-{MODULO}-{FASE}-v{VERSION}.md
 
 ## Vinculos de trazabilidad
@@ -485,3 +485,43 @@ Se revisaron las nueve skills activas que aun no habian pasado por una potencial
 
 `docs/plans/2026-03-14-skills-dispatch-design.md`
 `docs/plans/2026-03-14-skills-dispatch-integration.md`
+
+## Actualización 2026-05-04 — Activación de skill de dirección visual
+
+**Modo:** Mixto
+
+### Decisión ejecutada
+
+- Se evaluaron las skills activas del frente visual y se confirmó que cubrían implementacion, accesibilidad y tokens, pero no direccion visual SaaS ni propuestas esteticas fuertes para interfaces nuevas.
+- Se revisaron skills archivadas cercanas al problema, especialmente `ui-ux-designer`, `frontend-design` y `ui-visual-validator`.
+- Se descartó restaurarlas tal cual porque su alcance era demasiado amplio, generico o tensionaba la sobriedad operativa del producto.
+- Como accion correctiva se creó una nueva skill activa: `senior-ui-systems-designer`.
+
+### Alcance de la nueva skill
+
+- direccion visual de nuevas interfaces SaaS para `apps/web` y `apps/portal`
+- generacion de 2 o 3 propuestas esteticas viables antes de implementar
+- definicion de jerarquia, densidad, ritmo visual, estados y responsive behavior
+- review visual sistemico de pantallas, no solo revision tecnica de implementacion
+- integracion explicita con `core-components`, `frontend-dev-guidelines`, `tailwind-patterns` y `wcag-audit-patterns`
+
+### Guardrails incorporados
+
+- no usar la skill para marketing pages o interfaces decorativas sin utilidad operativa
+- no contradecir Tailwind v4, `@iwana/ui`, multi-tenancy, seguridad ni copy en espanol del repo
+- no permitir propuestas visuales genericas tipo SaaS template ni gestos esteticos que empeoren escaneo o mantenimiento
+- mantener accesibilidad WCAG 2.2 AA como baseline de salida
+
+### Sincronizacion documental ejecutada
+
+- Se creó `.agents/skills/senior-ui-systems-designer/SKILL.md`.
+- Se actualizó `.agents/skills/README.md` para reflejar 31 skills activas y su mapa de uso.
+- Se actualizó `.agents/skills/INDEX.md` para declarar la nueva skill como especializada por necesidad dentro de frontend y accesibilidad.
+- Se actualizó `.agents/skills/MANIFEST.json` para reflejar el nuevo inventario, prioridad de uso y referencias de trazabilidad.
+- Se actualizó este informe vivo como registro formal de la activacion.
+
+### Estado posterior
+
+- El catalogo activo pasa de 30 a 31 skills.
+- El set frontend gana una skill orientada a direccion visual y exploracion estetica, sin mezclar esa responsabilidad con implementacion o auditoria.
+- No se reabrió el archivo historico ni se restauró una skill generica que aumentara ruido de activacion.

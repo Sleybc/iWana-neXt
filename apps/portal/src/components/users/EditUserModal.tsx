@@ -20,6 +20,7 @@ import {
   PORTAL_TENANT_ASSIGNABLE_ROLES,
   PORTAL_USER_STATUSES,
 } from '@/lib/user-labels';
+import { PortalAlert, PortalSectionHeader } from '@/components/shared/portal-ui';
 
 const editUserSchema = z.object({
   email: z.string().trim().email('Ingresa un correo valido.'),
@@ -223,20 +224,17 @@ export function EditUserModal({
       aria-modal="true"
       aria-labelledby="edit-user-title"
     >
-      <div className="relative mx-4 max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-iwana-lg dark:border-dark-border dark:bg-dark-surface-2/95">
+      <div className="relative mx-4 max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-dark-border dark:bg-dark-surface-2">
+        <h2 id="edit-user-title" className="sr-only">
+          Editar usuario
+        </h2>
         <div className="mb-6 flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-              Perfil interno
-            </p>
-            <h2
-              id="edit-user-title"
-              className="mt-1 text-xl font-semibold text-iwana-primary dark:text-white"
-            >
-              Editar usuario
-            </h2>
-            <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">{user.email}</p>
-          </div>
+          <PortalSectionHeader
+            className="flex-1 gap-0"
+            eyebrow="Perfil interno"
+            title="Editar usuario"
+            description={user.email}
+          />
           <button
             type="button"
             onClick={onClose}
@@ -248,7 +246,7 @@ export function EditUserModal({
         </div>
 
         <form onSubmit={handleSubmit(onFormSubmit)} noValidate className="space-y-4">
-          <div className="flex items-start gap-3 rounded-[24px] border border-gray-200 bg-[#f8faf5] p-4 dark:border-dark-border dark:bg-dark-surface-3">
+          <div className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-[#f8faf5] p-4 dark:border-dark-border dark:bg-dark-surface-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300">
               <PencilLine className="h-5 w-5" aria-hidden="true" />
             </div>
@@ -321,42 +319,41 @@ export function EditUserModal({
               Confirmacion de cambio de email
             */}
             {emailToConfirm && (
-              <div className="col-span-full rounded-[24px] border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(254,243,199,0.78))] p-4 shadow-iwana-soft dark:border-amber-800 dark:bg-amber-900/20">
-                <div className="flex items-center gap-2 mb-2">
-                  <ShieldAlert
-                    className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400"
-                    aria-hidden="true"
-                  />
-                  <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
-                    Confirmar restablecimiento de email
-                  </p>
-                </div>
-                <p className="text-sm text-amber-700 dark:text-amber-300 mb-3">
-                  Estás a punto de cambiar el email de <strong>{user.email}</strong> a{' '}
-                  <strong>{emailToConfirm}</strong>. A partir de ahora, el inicio de sesion se hara
-                  con el nuevo email.
-                </p>
-                <div className="flex items-center justify-end gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setEmailToConfirm(null)}
-                    className="inline-flex items-center justify-center rounded-2xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-4"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void handleSaveEmail(emailToConfirm);
-                      setEmailToConfirm(null);
-                    }}
-                    disabled={isSavingEmail}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-amber-700 disabled:opacity-50 dark:bg-amber-500 dark:hover:bg-amber-400"
-                  >
-                    {isSavingEmail ? 'Guardando...' : 'Confirmar restablecimiento'}
-                  </button>
-                </div>
-              </div>
+              <PortalAlert
+                className="col-span-full"
+                variant="warning"
+                title="Confirmar restablecimiento de email"
+                description={
+                  <>
+                    Estás a punto de cambiar el email de <strong>{user.email}</strong> a{' '}
+                    <strong>{emailToConfirm}</strong>. A partir de ahora, el inicio de sesion se
+                    hara con el nuevo email.
+                  </>
+                }
+                icon={ShieldAlert}
+                action={
+                  <div className="flex items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setEmailToConfirm(null)}
+                      className="inline-flex items-center justify-center rounded-2xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-4"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleSaveEmail(emailToConfirm);
+                        setEmailToConfirm(null);
+                      }}
+                      disabled={isSavingEmail}
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-amber-700 disabled:opacity-50 dark:bg-amber-500 dark:hover:bg-amber-400"
+                    >
+                      {isSavingEmail ? 'Guardando...' : 'Confirmar restablecimiento'}
+                    </button>
+                  </div>
+                }
+              />
             )}
 
             {/*
@@ -638,7 +635,7 @@ export function EditUserModal({
               Resultado de contrasena
             */}
             {resetPasswordResult && (
-              <div className="col-span-full rounded-[24px] border border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.98),rgba(209,250,229,0.82))] p-4 shadow-iwana-soft dark:border-emerald-800 dark:bg-emerald-900/20">
+              <div className="col-span-full rounded-2xl border border-emerald-200/80 bg-emerald-50/90 p-4 dark:border-emerald-800 dark:bg-emerald-900/20">
                 <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-300">
                   Nueva contrasena
                 </p>
@@ -672,9 +669,11 @@ export function EditUserModal({
           </div>
 
           {serverError && (
-            <div className="rounded-2xl border border-red-200/80 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
-              <p className="text-sm text-red-700 dark:text-red-300">{serverError}</p>
-            </div>
+            <PortalAlert
+              variant="error"
+              title="No fue posible guardar los cambios"
+              description={serverError}
+            />
           )}
 
           <div className="flex items-center justify-end gap-3 pt-2">

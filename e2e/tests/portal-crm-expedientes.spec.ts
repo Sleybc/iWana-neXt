@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-const MOCK_TENANT_SLUG = 'test-isp';
+const MOCK_TENANT_SLUG = 'isp-demo';
 const MOCK_ACCESS_TOKEN =
   'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.' +
   btoa(
@@ -101,11 +101,11 @@ const mockUsers = [
 ];
 
 async function setAuthSession(page: import('@playwright/test').Page) {
-  await page.goto('http://127.0.0.1:3002/dashboard');
+  await page.goto('/auth/login');
   await page.evaluate(
     ({ token, slug }) => {
-      localStorage.setItem('iwana.portal.access-token', token);
-      localStorage.setItem('iwana.portal.tenant-slug', slug);
+      window.localStorage.setItem('iwana.portal.access-token', token);
+      window.localStorage.setItem('iwana.portal.tenant-slug', slug);
     },
     { token: MOCK_ACCESS_TOKEN, slug: MOCK_TENANT_SLUG },
   );
@@ -371,7 +371,10 @@ async function setupCrmMocks(page: import('@playwright/test').Page) {
       return;
     }
 
-    if (pathname.endsWith(`/crm/expedientes/${mockExpediente.id}/attribution`) && method === 'GET') {
+    if (
+      pathname.endsWith(`/crm/expedientes/${mockExpediente.id}/attribution`) &&
+      method === 'GET'
+    ) {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -520,7 +523,9 @@ async function setupCrmMocks(page: import('@playwright/test').Page) {
       pathname.includes(`/crm/expedientes/${mockExpediente.id}/sections/`) &&
       method === 'PATCH'
     ) {
-      if (pathname.endsWith(`/crm/expedientes/${mockExpediente.id}/sections/technical_feasibility`)) {
+      if (
+        pathname.endsWith(`/crm/expedientes/${mockExpediente.id}/sections/technical_feasibility`)
+      ) {
         const parsedBody = JSON.parse(route.request().postData() ?? '{}') as {
           data?: Record<string, unknown>;
         };
@@ -608,7 +613,9 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await expect(page.getByRole('heading', { name: /empresa demo sas/i })).toBeVisible();
     await page.getByRole('button', { name: 'Gestión' }).click();
     await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
-    await expect(page.getByLabel('Número de documento')).toHaveValue('1012345678');
+    await expect(page.getByRole('textbox', { name: 'Número de documento' })).toHaveValue(
+      '1012345678',
+    );
   });
 
   test('CRM oculta PII en listados y mantiene detalle operativo', async ({ page }) => {
@@ -621,14 +628,18 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await page.getByRole('link', { name: /empresa demo sas/i }).click();
     await page.getByRole('button', { name: 'Gestión' }).click();
     await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
-    await expect(page.getByLabel('Número de documento')).toHaveValue('1012345678');
+    await expect(page.getByRole('textbox', { name: 'Número de documento' })).toHaveValue(
+      '1012345678',
+    );
     await page.getByRole('button', { name: 'Vista general' }).click();
     await expect(
       page.getByText(/consentimiento de tratamiento de datos fue revocado/i),
     ).toBeVisible();
   });
 
-  test('CRM refleja el hardening visual cuando el consentimiento ya fue revocado', async ({ page }) => {
+  test('CRM refleja el hardening visual cuando el consentimiento ya fue revocado', async ({
+    page,
+  }) => {
     await setupCrmMocks(page);
     await setAuthSession(page);
     await page.goto(`/dashboard/crm/expedientes/${mockExpediente.id}`);
@@ -683,18 +694,21 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await page.getByRole('button', { name: 'Gestión' }).click();
     await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
     await page.getByText('Viabilidad técnica', { exact: true }).scrollIntoViewIfNeeded();
-    await page.getByRole('button', { name: 'Selecciona resultado' }).click();
+    await page.locator('#technical-feasibility').click();
     await page.getByRole('option', { name: 'Viable', exact: true }).click();
     await page.getByText('Fibra óptica', { exact: true }).click();
-    await page.getByRole('button', { name: 'Selecciona nivel' }).click();
+    await page.locator('#technical-technicalConfidence').click();
     await page.getByRole('option', { name: 'Alta', exact: true }).click();
-    await page.getByRole('button', { name: 'Selecciona fuente' }).click();
+    await page.locator('#technical-evaluationSource').click();
     await page.getByRole('option', { name: 'Visita técnica', exact: true }).click();
     await page
       .getByLabel('Observación técnica')
       .fill('Solución viable con ajuste menor de acometida.');
 
-    await page.getByRole('button', { name: /guardar cambios/i }).last().click();
+    await page
+      .getByRole('button', { name: /guardar cambios/i })
+      .last()
+      .click();
     await expect(page.getByText(/sección actualizada correctamente/i)).toBeVisible();
 
     expect(mocks.getCapturedTechnicalPayload()).toMatchObject({
@@ -707,7 +721,9 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     });
   });
 
-  test('CRM detalle carga plan y productos adicionales desde CommercialModule', async ({ page }) => {
+  test('CRM detalle carga plan y productos adicionales desde CommercialModule', async ({
+    page,
+  }) => {
     const mocks = await setupCrmMocks(page);
     await setAuthSession(page);
     await page.goto(`/dashboard/crm/expedientes/${mockExpediente.id}`);
@@ -737,7 +753,7 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await expect(page.getByLabel('Nombres')).toHaveValue('Laura');
     await expect(page.getByLabel('Apellidos')).toBeVisible();
     await expect(page.getByLabel('Apellidos')).toHaveValue('Perez');
-    await expect(page.getByLabel('Tipo de documento')).toHaveValue('NIT');
+    await expect(page.getByRole('combobox', { name: 'Tipo de documento' })).toContainText('NIT');
   });
 
   test('identificacion muestra campos correctos para persona juridica en modo lectura', async ({
@@ -758,7 +774,9 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
 
     await page.getByRole('button', { name: 'Gestión' }).click();
     await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
-    await expect(page.getByLabel('Tipo de persona')).toHaveValue('PERSONA_JURIDICA');
+    await expect(page.getByRole('combobox', { name: 'Tipo de persona' })).toContainText(
+      'Persona jurídica',
+    );
     await expect(page.getByLabel('Razón social')).toBeVisible();
     await expect(page.getByLabel('Nombre del contacto principal')).toBeVisible();
     await expect(page.getByLabel('Cargo del contacto')).toBeVisible();

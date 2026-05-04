@@ -53,7 +53,7 @@ export function ResetPasswordDialog({
       aria-modal="true"
       aria-labelledby="reset-password-dialog-title"
     >
-      <div className="relative mx-4 w-full max-w-md rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-iwana-lg dark:border-dark-border dark:bg-dark-surface-2/95">
+      <div className="relative mx-4 w-full max-w-md rounded-2xl border border-white/70 bg-white/95 p-6 shadow-2xl dark:border-dark-border dark:bg-dark-surface-2/95">
         <div className="mb-6 flex items-center gap-4">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-100 dark:bg-amber-900/30">
             <KeyRound className="h-6 w-6 text-amber-600 dark:text-amber-400" aria-hidden="true" />
@@ -75,7 +75,7 @@ export function ResetPasswordDialog({
         </div>
 
         {/* Información del usuario afectado */}
-        <div className="mb-6 rounded-[24px] border border-gray-100 bg-[#f8faf5] p-4 dark:border-dark-border dark:bg-dark-surface-3">
+        <div className="mb-6 rounded-2xl border border-gray-100 bg-[#f8faf5] p-4 dark:border-dark-border dark:bg-dark-surface-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-iwana-primary/10 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-400">
               <svg

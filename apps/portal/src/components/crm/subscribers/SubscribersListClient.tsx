@@ -109,7 +109,7 @@ export function SubscribersListClient() {
         }
       />
 
-      <div className="mx-6 overflow-hidden rounded-[24px] border border-white/70 bg-white/95 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
+      <div className="overflow-hidden rounded-2xl border border-white/70 bg-white/95 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">
         <div className="border-b border-gray-100/80 px-5 py-5 dark:border-dark-border">
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-1">
@@ -207,7 +207,7 @@ export function SubscribersListClient() {
         </div>
 
         {error && (
-          <div className="mx-5 mt-5 flex items-start gap-3 rounded-[24px] border border-red-200 bg-red-50/90 px-5 py-4 text-sm text-red-700 shadow-[var(--shadow-iwana-card)] dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+          <div className="mx-5 mt-5 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50/90 px-5 py-4 text-sm text-red-700 shadow-[var(--shadow-sm)] dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             <span>{error}</span>
           </div>

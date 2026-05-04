@@ -24,7 +24,6 @@ import {
   AUTH_FORM_ERROR_CLASS,
   AUTH_FORM_ICON_LEADING_CLASS,
   AUTH_FORM_ICON_TRAILING_BUTTON_CLASS,
-  AUTH_FORM_INFO_BOX_CLASS,
   AUTH_FORM_INPUT_ERROR_CLASS,
   AUTH_FORM_INPUT_FOCUS_CLASS,
   AUTH_FORM_INPUT_WITH_BOTH_ICONS_CLASS,
@@ -105,15 +104,6 @@ export function LoginForm({ tenantSlug, tenantLocked, onTenantSlugChange }: Logi
       noValidate
       aria-label="Formulario de inicio de sesión"
     >
-      <div className={AUTH_FORM_INFO_BOX_CLASS}>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700">
-          Acceso empresarial
-        </p>
-        <p className="mt-1 text-sm text-slate-600">
-          Conecta tu operación con acceso seguro, trazabilidad y políticas activas por empresa.
-        </p>
-      </div>
-
       <label className="flex flex-col gap-2">
         <span className={AUTH_FORM_LABEL_CLASS}>Empresa</span>
         <div className="relative group">
@@ -215,13 +205,10 @@ export function LoginForm({ tenantSlug, tenantLocked, onTenantSlugChange }: Logi
       </button>
 
       <div className={AUTH_FORM_SECURE_FOOTER_CLASS}>
-        <div className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-slate-600">
+        <div className="flex items-center gap-2 text-xs font-medium text-slate-600">
           <ShieldCheck className="h-4 w-4 text-[#A5C330]" aria-hidden="true" />
-          <span>Sesión segura vía JWT</span>
+          <span>MFA y políticas activas por empresa.</span>
         </div>
-        <p className="text-xs text-slate-600">
-          Auditoría de acceso y validaciones activas por empresa
-        </p>
       </div>
     </form>
   );

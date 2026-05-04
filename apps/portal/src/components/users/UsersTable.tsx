@@ -21,6 +21,7 @@ import {
   PORTAL_TENANT_ROLE_FILTER_OPTIONS,
   PORTAL_USER_STATUS_FILTER_OPTIONS,
 } from '@/lib/user-labels';
+import { PortalSectionHeader } from '@/components/shared/portal-ui';
 
 interface UsersTableProps {
   users: InternalUser[];
@@ -85,27 +86,24 @@ export function UsersTable({
   };
 
   return (
-    <div className="overflow-hidden rounded-[24px] border border-white/70 bg-white/95 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
+    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
       {/* Filtros */}
       <div className="border-b border-gray-100/80 px-5 py-5 dark:border-dark-border">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-              Directorio interno
-            </p>
-            <h2 className="text-lg font-semibold text-iwana-primary dark:text-white">
-              Gestión de accesos de la empresa
-            </h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Filtra por estado, rol o búsqueda libre para operar usuarios sin salir del panel.
-            </p>
-          </div>
-          <Badge
-            variant="neutral"
-            className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]"
-          >
-            {meta?.total ?? users.length} registros
-          </Badge>
+          <PortalSectionHeader
+            className="w-full gap-3"
+            eyebrow="Directorio interno"
+            title="Gestión de accesos de la empresa"
+            description="Filtra por estado, rol o búsqueda libre para operar usuarios sin salir del panel."
+            actions={
+              <Badge
+                variant="neutral"
+                className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]"
+              >
+                {meta?.total ?? users.length} registros
+              </Badge>
+            }
+          />
         </div>
 
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_220px_220px_auto] lg:items-end">

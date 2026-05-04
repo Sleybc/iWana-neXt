@@ -39,7 +39,7 @@ export function SettingsOverviewPanel({
   return (
     <div
       className={cn(
-        'rounded-[24px] border border-white/70 bg-white/95 p-5 shadow-iwana-card',
+        'rounded-2xl border border-white/70 bg-white/95 p-5 shadow-sm',
         'dark:border-dark-border dark:bg-dark-surface-2/95',
       )}
     >

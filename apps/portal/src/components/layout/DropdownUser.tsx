@@ -1,11 +1,12 @@
 // apps/portal/src/components/layout/DropdownUser.tsx
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, LogOut, Settings, User as UserIcon } from 'lucide-react';
 import { cn } from '@iwana/ui';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { interactiveFocusClassName } from '@/components/shared/portal-ui';
 
 /**
  * Mapea el rol interno del tenant a texto legible para el panel empresarial.
@@ -33,6 +34,7 @@ export const DropdownUser = () => {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const dropdown = useRef<HTMLDivElement>(null);
+  const menuItemRefs = useRef<Array<HTMLAnchorElement | HTMLButtonElement | null>>([]);
   const menuId = 'portal-user-menu';
   const triggerAriaProps = {
     'aria-controls': menuId,
@@ -40,6 +42,20 @@ export const DropdownUser = () => {
     'aria-haspopup': 'menu' as const,
     'aria-label': 'Menú de usuario',
   };
+  const closeDropdown = useCallback((focusTrigger = false) => {
+    setDropdownOpen(false);
+    if (focusTrigger) {
+      window.requestAnimationFrame(() => trigger.current?.focus());
+    }
+  }, []);
+  const focusMenuItemAt = useCallback((index: number) => {
+    const items = menuItemRefs.current.filter(Boolean);
+    if (items.length === 0) {
+      return;
+    }
+    const boundedIndex = (index + items.length) % items.length;
+    items[boundedIndex]?.focus();
+  }, []);
 
   // Cerrar al hacer click fuera del dropdown
   useEffect(() => {
@@ -52,21 +68,21 @@ export const DropdownUser = () => {
       ) {
         return;
       }
-      setDropdownOpen(false);
+      closeDropdown();
     };
     document.addEventListener('click', clickHandler);
     return () => document.removeEventListener('click', clickHandler);
-  });
+  }, [closeDropdown, dropdownOpen]);
 
   // Cerrar con tecla Escape
   useEffect(() => {
     const keyHandler = ({ key }: KeyboardEvent) => {
       if (!dropdownOpen || key !== 'Escape') return;
-      setDropdownOpen(false);
+      closeDropdown(true);
     };
     document.addEventListener('keydown', keyHandler);
     return () => document.removeEventListener('keydown', keyHandler);
-  });
+  }, [closeDropdown, dropdownOpen]);
 
   const handleLogout = async () => {
     try {
@@ -89,8 +105,19 @@ export const DropdownUser = () => {
         type="button"
         ref={trigger}
         onClick={() => setDropdownOpen(!dropdownOpen)}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            if (!dropdownOpen) {
+              setDropdownOpen(true);
+              window.requestAnimationFrame(() => focusMenuItemAt(0));
+              return;
+            }
+            focusMenuItemAt(0);
+          }
+        }}
         {...triggerAriaProps}
-        className="flex items-center gap-2"
+        className={cn('flex items-center gap-2 rounded-xl', interactiveFocusClassName)}
       >
         <span className="hidden text-right lg:block">
           <span className="block text-sm font-medium text-gray-800 dark:text-white">
@@ -137,8 +164,28 @@ export const DropdownUser = () => {
             <Link
               href="/dashboard/profile"
               role="menuitem"
-              onClick={() => setDropdownOpen(false)}
-              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-dark-surface-4 dark:hover:text-white"
+              ref={(element) => {
+                menuItemRefs.current[0] = element;
+              }}
+              onClick={() => closeDropdown()}
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault();
+                  focusMenuItemAt(1);
+                }
+                if (event.key === 'ArrowUp' || event.key === 'End') {
+                  event.preventDefault();
+                  focusMenuItemAt(2);
+                }
+                if (event.key === 'Home') {
+                  event.preventDefault();
+                  focusMenuItemAt(0);
+                }
+              }}
+              className={cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-dark-surface-4 dark:hover:text-white',
+                interactiveFocusClassName,
+              )}
             >
               <UserIcon className="w-4 h-4" aria-hidden="true" />
               Mi perfil
@@ -148,8 +195,28 @@ export const DropdownUser = () => {
             <Link
               href="/dashboard/settings"
               role="menuitem"
-              onClick={() => setDropdownOpen(false)}
-              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-dark-surface-4 dark:hover:text-white"
+              ref={(element) => {
+                menuItemRefs.current[1] = element;
+              }}
+              onClick={() => closeDropdown()}
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowDown' || event.key === 'End') {
+                  event.preventDefault();
+                  focusMenuItemAt(2);
+                }
+                if (event.key === 'ArrowUp') {
+                  event.preventDefault();
+                  focusMenuItemAt(0);
+                }
+                if (event.key === 'Home') {
+                  event.preventDefault();
+                  focusMenuItemAt(0);
+                }
+              }}
+              className={cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-dark-surface-4 dark:hover:text-white',
+                interactiveFocusClassName,
+              )}
             >
               <Settings className="w-4 h-4" aria-hidden="true" />
               Configuración
@@ -161,9 +228,29 @@ export const DropdownUser = () => {
           <button
             type="button"
             role="menuitem"
+            ref={(element) => {
+              menuItemRefs.current[2] = element;
+            }}
             disabled={isLoggingOut}
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-dark-surface-4 dark:hover:text-white"
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowDown' || event.key === 'Home') {
+                event.preventDefault();
+                focusMenuItemAt(0);
+              }
+              if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                focusMenuItemAt(1);
+              }
+              if (event.key === 'End') {
+                event.preventDefault();
+                focusMenuItemAt(2);
+              }
+            }}
+            className={cn(
+              'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-dark-surface-4 dark:hover:text-white',
+              interactiveFocusClassName,
+            )}
           >
             <LogOut className="w-4 h-4" aria-hidden="true" />
             {isLoggingOut ? 'Cerrando sesión...' : 'Cerrar sesión'}

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-const MOCK_TENANT_SLUG = 'test-isp';
+const MOCK_TENANT_SLUG = 'isp-demo';
 const MOCK_ACCESS_TOKEN =
   'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.' +
   btoa(
@@ -110,11 +110,11 @@ const mockUsers = [
 ];
 
 async function setAuthSession(page: import('@playwright/test').Page) {
-  await page.goto('http://127.0.0.1:3002/dashboard');
+  await page.goto('/auth/login');
   await page.evaluate(
     ({ token, slug }) => {
-      localStorage.setItem('iwana.portal.access-token', token);
-      localStorage.setItem('iwana.portal.tenant-slug', slug);
+      window.localStorage.setItem('iwana.portal.access-token', token);
+      window.localStorage.setItem('iwana.portal.tenant-slug', slug);
     },
     { token: MOCK_ACCESS_TOKEN, slug: MOCK_TENANT_SLUG },
   );
@@ -545,11 +545,16 @@ test.describe('CRM Gestion Comercial y Operativa — MOD05 Fase 01', () => {
 
     await page.getByText('Seguimiento', { exact: true }).click();
 
-    const responsibilityEntry = page.locator('div').filter({
-      has: page.getByText('Cambio de responsable', { exact: true }),
-    }).first();
+    const responsibilityEntry = page
+      .locator('div')
+      .filter({
+        has: page.getByText('Cambio de responsable', { exact: true }),
+      })
+      .first();
 
-    await expect(responsibilityEntry.getByText('Anterior: Carlos García', { exact: true })).toBeVisible();
+    await expect(
+      responsibilityEntry.getByText('Anterior: Carlos García', { exact: true }),
+    ).toBeVisible();
     await expect(responsibilityEntry.getByText('Nuevo rol: ADMIN', { exact: true })).toBeVisible();
   });
 
@@ -562,7 +567,7 @@ test.describe('CRM Gestion Comercial y Operativa — MOD05 Fase 01', () => {
     await page.getByText('Seguimiento', { exact: true }).click();
     await page.getByRole('button', { name: /reasignar responsable/i }).click();
 
-    await expect(page.getByLabel('Nuevo responsable')).toBeVisible();
+    await expect(page.locator('#rs-user')).toBeVisible();
     await expect(page.getByLabel('Notas (opcional)')).toBeVisible();
     await expect(page.getByRole('button', { name: /guardar responsable/i })).toBeVisible();
   });
@@ -576,11 +581,14 @@ test.describe('CRM Gestion Comercial y Operativa — MOD05 Fase 01', () => {
     await page.getByText('Seguimiento', { exact: true }).click();
     await page.getByRole('button', { name: /reasignar responsable/i }).click();
 
-    const responsibilityPanel = page.locator('div').filter({
-      has: page.getByText('Reasignar responsable', { exact: true }),
-    }).first();
+    const responsibilityPanel = page
+      .locator('div')
+      .filter({
+        has: page.getByText('Reasignar responsable', { exact: true }),
+      })
+      .first();
 
-    await responsibilityPanel.getByRole('button', { name: /selecciona un usuario activo/i }).click();
+    await responsibilityPanel.locator('#rs-user').click();
     await page.getByRole('option', { name: /María López/i }).click();
     await responsibilityPanel.getByLabel('Notas (opcional)').fill('Caso reasignado a María');
     await responsibilityPanel.getByRole('button', { name: /guardar responsable/i }).click();
@@ -602,13 +610,16 @@ test.describe('CRM Gestion Comercial y Operativa — MOD05 Fase 01', () => {
 
     await page.getByText('Seguimiento', { exact: true }).click();
     await page.getByRole('button', { name: /reasignar responsable/i }).click();
-    const responsibilityPanel = page.locator('div').filter({
-      has: page.getByText('Reasignar responsable', { exact: true }),
-    }).first();
-    await expect(responsibilityPanel.getByLabel('Nuevo responsable')).toBeVisible();
+    const responsibilityPanel = page
+      .locator('div')
+      .filter({
+        has: page.getByText('Reasignar responsable', { exact: true }),
+      })
+      .first();
+    await expect(responsibilityPanel.locator('#rs-user')).toBeVisible();
 
     await responsibilityPanel.getByRole('button', { name: 'Cancelar' }).nth(1).click();
-    await expect(page.getByLabel('Nuevo responsable')).not.toBeVisible();
+    await expect(page.locator('#rs-user')).not.toBeVisible();
   });
 
   test('no legacy assign endpoint is called — uses /responsibility instead', async ({ page }) => {
@@ -619,10 +630,13 @@ test.describe('CRM Gestion Comercial y Operativa — MOD05 Fase 01', () => {
 
     await page.getByText('Seguimiento', { exact: true }).click();
     await page.getByRole('button', { name: /reasignar responsable/i }).click();
-    const responsibilityPanel = page.locator('div').filter({
-      has: page.getByText('Reasignar responsable', { exact: true }),
-    }).first();
-    await responsibilityPanel.getByRole('button', { name: /selecciona un usuario activo/i }).click();
+    const responsibilityPanel = page
+      .locator('div')
+      .filter({
+        has: page.getByText('Reasignar responsable', { exact: true }),
+      })
+      .first();
+    await responsibilityPanel.locator('#rs-user').click();
     await page.getByRole('option', { name: /María López/i }).click();
     await responsibilityPanel.getByRole('button', { name: /guardar responsable/i }).click();
 

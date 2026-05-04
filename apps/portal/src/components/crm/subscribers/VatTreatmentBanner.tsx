@@ -15,7 +15,7 @@ export function VatTreatmentBanner({ vatTreatment, taxRegime }: VatTreatmentBann
   const regimeMeta = TAX_REGIME_META[taxRegime];
 
   return (
-    <Card className={`border-l-4 ${vatMeta.accentClass} rounded-[20px] shadow-iwana-soft`}>
+    <Card className={`border-l-4 ${vatMeta.accentClass} rounded-[20px] shadow-sm`}>
       <CardContent className="flex items-start gap-3 p-4">
         <div className="mt-0.5 rounded-2xl bg-iwana-primary/8 p-2 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300">
           <BadgeInfo className="h-4 w-4" aria-hidden="true" />

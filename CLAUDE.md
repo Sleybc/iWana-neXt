@@ -54,6 +54,7 @@ Anti-duplicación: si dos skills cubren el mismo dominio, usar la de mayor prior
 |---|---|---|
 | Páginas, layouts, rutas, RSC vs Client | `nextjs-app-router-patterns` | `frontend-dev-guidelines` |
 | Componentes UI, design system, tokens | `core-components` | `tailwind-patterns` |
+| Dirección visual, propuestas estéticas SaaS, jerarquía o densidad de pantalla | `senior-ui-systems-designer` | `core-components`, `tailwind-patterns`, `wcag-audit-patterns` |
 | Estilos Tailwind 4, CSS-first, `@theme` | `tailwind-patterns` | `core-components` |
 | Formularios, validación Zod, react-hook-form | `frontend-dev-guidelines` | `nextjs-app-router-patterns` |
 | Accesibilidad WCAG 2.2 AA | `wcag-audit-patterns` | `core-components` |
@@ -96,6 +97,7 @@ Anti-duplicación: si dos skills cubren el mismo dominio, usar la de mayor prior
 |---|---|
 | Nuevo endpoint backend completo | `nestjs-expert` → `openapi-spec-generation` → `testing-patterns` |
 | Nueva página frontend con formulario | `nextjs-app-router-patterns` → `frontend-dev-guidelines` → `core-components` |
+| Nueva interfaz SaaS con direccion visual fuerte | `senior-ui-systems-designer` → `nextjs-app-router-patterns` → `core-components` |
 | Inicio de módulo nuevo | `monorepo-architect` → `architect-review` → `architecture-decision-records` |
 | Bug con impacto en seguridad | `security-auditor` → skill capa afectada → `testing-patterns` |
 | Feature con auth multi-tenant | `auth-implementation-patterns` → `nestjs-expert` → `backend-security-coder` |

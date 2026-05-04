@@ -24,6 +24,7 @@ import {
 } from '@/lib/api-client';
 import { BRANDING_SLOT_RULES, validateBrandingFileForUpload } from '@/lib/branding-validation';
 import { TenantSeal } from '@/components/layout/TenantSeal';
+import { PortalAlert } from '@/components/shared/portal-ui';
 
 const BRANDING_EVENT_NAME = 'tenant-branding-updated';
 
@@ -511,26 +512,27 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
   return (
     <div className="space-y-6">
       {serverError && (
-        <div className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
-          <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-          <p>{serverError}</p>
-        </div>
+        <PortalAlert
+          variant="error"
+          title="No fue posible actualizar la marca"
+          description={serverError}
+          icon={CircleAlert}
+        />
       )}
 
       {success && !serverError && (
-        <div className="flex items-start gap-3 rounded-[24px] border border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.98),rgba(209,250,229,0.82))] px-4 py-3 text-sm text-emerald-700 shadow-iwana-soft dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400">
-          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-          <p>{success}</p>
-        </div>
+        <PortalAlert
+          variant="success"
+          title="Marca actualizada"
+          description={success}
+          icon={CheckCircle2}
+        />
       )}
 
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold text-iwana-primary dark:text-white">
-          Marca empresarial
-        </h2>
+        <h2 className="text-base font-semibold text-gray-900 dark:text-white">Marca empresarial</h2>
         <p className="max-w-2xl text-sm text-gray-500 dark:text-gray-400">
-          Configura logo, sello, favicon y fondos de autenticación del portal. Cada slot se puede
-          resolver por URL HTTPS o por activo subido al sistema.
+          Configura logo, sello, favicon y fondos de autenticacion del portal.
         </p>
       </div>
 
@@ -541,8 +543,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
               Activos visuales
             </h3>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Haz clic sobre cada tarjeta para subir o reemplazar una imagen. Si prefieres, también
-              puedes pegar una URL HTTPS directamente.
+              Sube un activo o pega una URL HTTPS por slot cuando lo necesites.
             </p>
           </div>
 

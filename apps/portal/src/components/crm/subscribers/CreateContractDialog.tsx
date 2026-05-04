@@ -228,7 +228,7 @@ export function CreateContractDialog({
         aria-labelledby="create-contract-title"
         className="fixed inset-x-4 inset-y-0 z-50 flex items-center justify-center sm:inset-0"
       >
-        <div className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl dark:bg-dark-surface-2">
+        <div className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-dark-surface-2">
           {/* Cabecera */}
           <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-5 dark:border-dark-border">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-iwana-secondary/15 text-iwana-secondary-700">

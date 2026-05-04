@@ -306,7 +306,7 @@ function TimelineItem({ entry }: { entry: TimelineEntry }) {
         {iconNode}
       </span>
       {/* Tarjeta */}
-      <div className="rounded-[14px] border border-gray-100 bg-white px-3 py-2.5 shadow-iwana-soft transition-shadow hover:shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2">
+      <div className="rounded-[14px] border border-gray-100 bg-white px-3 py-2.5 shadow-sm transition-shadow hover:shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
         <p className="text-[10px] font-bold uppercase tracking-wide leading-tight text-gray-400 dark:text-gray-500">
           {kindLabel}
         </p>
@@ -621,7 +621,7 @@ export function SeguimientoTab({
       {/* Feedback */}
       {msg && (
         <p
-          className={`rounded-[20px] border px-4 py-3 text-sm shadow-iwana-soft ${
+          className={`rounded-[20px] border px-4 py-3 text-sm shadow-sm ${
             msg.tone === 'success'
               ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300'
               : 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300'
@@ -672,7 +672,7 @@ export function SeguimientoTab({
 
           {/* Panel intento de contacto */}
           {activePanel === 'contact' && (
-            <div className="rounded-[24px] border border-gray-100 bg-white p-5 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2">
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
               <p className="mb-4 text-sm font-bold text-gray-900 dark:text-white">
                 Nuevo intento de contacto
               </p>
@@ -763,7 +763,7 @@ export function SeguimientoTab({
 
           {/* Panel reasignar responsable */}
           {activePanel === 'responsibility' && (
-            <div className="rounded-[24px] border border-gray-100 bg-white p-5 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2">
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
               <p className="mb-4 text-sm font-bold text-gray-900 dark:text-white">
                 Reasignar responsable
               </p>
@@ -833,7 +833,7 @@ export function SeguimientoTab({
 
           {/* Panel gestionar originador */}
           {activePanel === 'attribution' && (
-            <div className="rounded-[24px] border border-gray-100 bg-white p-5 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2">
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
               <p className="mb-4 text-sm font-bold text-gray-900 dark:text-white">
                 Gestionar originador comercial
               </p>
@@ -1163,7 +1163,7 @@ export function SeguimientoTab({
         {/* ── Columna derecha: Sidebar de estado ──────────────── */}
         <aside className="space-y-4">
           {/* Responsable actual */}
-          <div className="rounded-[20px] border border-gray-100 bg-white p-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2">
+          <div className="rounded-[20px] border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
             <div className="mb-3 flex items-center gap-2">
               <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-iwana-primary/10">
                 <UserCheck className="h-3.5 w-3.5 text-iwana-primary" aria-hidden="true" />
@@ -1192,7 +1192,7 @@ export function SeguimientoTab({
           </div>
 
           {/* Originador */}
-          <div className="rounded-[20px] border border-gray-100 bg-white p-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2">
+          <div className="rounded-[20px] border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
             <div className="mb-3 flex items-center gap-2">
               <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-iwana-secondary/15 dark:bg-iwana-secondary-700/20">
                 <TrendingUp className="h-3.5 w-3.5 text-iwana-secondary-700" aria-hidden="true" />
@@ -1229,7 +1229,7 @@ export function SeguimientoTab({
           </div>
 
           {/* Interés del cliente */}
-          <div className="rounded-[20px] border border-gray-100 bg-white p-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2">
+          <div className="rounded-[20px] border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
             <div className="mb-3 flex items-center gap-2">
               <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-900/20">
                 <User className="h-3.5 w-3.5 text-blue-500" aria-hidden="true" />
@@ -1263,7 +1263,7 @@ export function SeguimientoTab({
           </div>
 
           {/* Origen de la oportunidad */}
-          <div className="rounded-[20px] border border-gray-100 bg-white p-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2">
+          <div className="rounded-[20px] border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
             <div className="mb-3 flex items-center gap-2">
               <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-emerald-50 dark:bg-emerald-900/20">
                 <ArrowRightLeft className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />

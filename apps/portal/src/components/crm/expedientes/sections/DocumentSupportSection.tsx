@@ -243,7 +243,7 @@ export function DocumentSupportSection({
           return (
             <div
               key={document.key}
-              className="rounded-[18px] border border-gray-100 bg-white p-4 shadow-[var(--shadow-iwana-soft)] dark:border-dark-border dark:bg-dark-surface-2"
+              className="rounded-[18px] border border-gray-100 bg-white p-4 shadow-[var(--shadow-sm)] dark:border-dark-border dark:bg-dark-surface-2"
             >
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0 flex-1">

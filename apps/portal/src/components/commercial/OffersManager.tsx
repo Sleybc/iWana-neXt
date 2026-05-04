@@ -36,7 +36,7 @@ export function OffersManager({ canEdit }: OffersManagerProps) {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-[24px] border border-white/70 bg-[linear-gradient(135deg,rgba(248,250,245,0.96),rgba(255,255,255,0.94))] p-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3/60">
+      <div className="rounded-2xl border border-gray-200 bg-[#f8faf5] p-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
         <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
           Ofertas
         </p>

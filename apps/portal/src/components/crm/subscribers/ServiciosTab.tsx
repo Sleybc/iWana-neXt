@@ -262,7 +262,7 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
 
       {/* Panel colapsable — interés del expediente (solo lectura) */}
       {expedienteSummary && (
-        <div className="rounded-[20px] border border-gray-100 bg-white shadow-[var(--shadow-iwana-soft)] dark:border-dark-border dark:bg-dark-surface-2">
+        <div className="rounded-[20px] border border-gray-100 bg-white shadow-[var(--shadow-sm)] dark:border-dark-border dark:bg-dark-surface-2">
           <button
             type="button"
             onClick={() => setShowExpedientePanel((prev) => !prev)}

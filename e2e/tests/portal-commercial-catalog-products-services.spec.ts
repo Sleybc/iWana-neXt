@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-const MOCK_TENANT_SLUG = 'test-isp';
+const MOCK_TENANT_SLUG = 'isp-demo';
 const MOCK_ACCESS_TOKEN =
   'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.' +
   btoa(
@@ -34,13 +34,12 @@ type CatalogItem = {
 };
 
 async function setAuthSession(page: import('@playwright/test').Page) {
-  await page.addInitScript(
-    ({ token, slug }: { token: string; slug: string }) => {
-      localStorage.setItem('iwana.portal.access-token', token);
-      localStorage.setItem('iwana.portal.tenant-slug', slug);
-    },
-    { token: MOCK_ACCESS_TOKEN, slug: MOCK_TENANT_SLUG },
-  );
+  await page.goto('/auth/login');
+  await page.getByPlaceholder('ejemplo: isp-demo').fill(MOCK_TENANT_SLUG);
+  await page.getByLabel(/correo electrónico/i).fill('admin@test-isp.co');
+  await page.getByRole('textbox', { name: /^contraseña/i }).fill('PasswordSegura123!');
+  await page.getByRole('button', { name: /ingresar/i }).click();
+  await expect(page).toHaveURL(/\/dashboard/, { timeout: 10_000 });
 }
 
 async function setupCommercialMocks(page: import('@playwright/test').Page) {
@@ -101,6 +100,15 @@ async function setupCommercialMocks(page: import('@playwright/test').Page) {
       return;
     }
 
+    if (pathname.endsWith('/auth/login') && method === 'POST') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { accessToken: MOCK_ACCESS_TOKEN } }),
+      });
+      return;
+    }
+
     if (pathname.match(/\/users\/[^/]+$/) && method === 'GET') {
       await route.fulfill({
         status: 200,
@@ -135,6 +143,56 @@ async function setupCommercialMocks(page: import('@playwright/test').Page) {
             sealDarkUrl: null,
           },
         }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/tenants/me/summary') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            tenant: {
+              id: 'tenant-uuid-test',
+              name: 'ISP Prueba Colombia',
+              slug: MOCK_TENANT_SLUG,
+              status: 'ACTIVE',
+              contactEmail: 'contacto@test-isp.co',
+              legalName: null,
+              nit: null,
+              city: 'Medellin',
+              department: 'Antioquia',
+              countryCode: 'CO',
+              phone: null,
+              website: null,
+              createdAt: '2026-01-15T00:00:00.000Z',
+            },
+            settings: {
+              timezone: 'America/Bogota',
+              currency: 'COP',
+              language: 'es-CO',
+              country: 'CO',
+              features: { billing: false, mfa_required_all: false },
+            },
+            metrics: {
+              configuredUsers: 5,
+              mfaCoverage: null,
+              pendingAlerts: 0,
+              auditEventsLast7d: 4,
+            },
+            alerts: [],
+          },
+        }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/audit-logs') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [] }),
       });
       return;
     }
@@ -223,7 +281,9 @@ async function setupCommercialMocks(page: import('@playwright/test').Page) {
 }
 
 test.describe('Portal Comercial - Catalogo de productos y servicios', () => {
-  test('permite navegar productos/servicios y crear servicio con precio vigente', async ({ page }) => {
+  test('permite navegar productos/servicios y crear servicio con precio vigente', async ({
+    page,
+  }) => {
     const mocks = await setupCommercialMocks(page);
     await setAuthSession(page);
 
@@ -245,7 +305,8 @@ test.describe('Portal Comercial - Catalogo de productos y servicios', () => {
 
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('Nombre').fill('Visita tecnica prioritaria');
-    await dialog.getByLabel('Tipo de cobro').selectOption('ON_DEMAND');
+    await dialog.getByRole('combobox', { name: 'Tipo de cobro' }).click();
+    await page.getByRole('option', { name: 'Bajo demanda' }).click();
     await dialog.getByLabel('Precio base (COP)').fill('45000');
     await dialog.getByLabel('Cargo de instalacion (COP)').fill('5000');
     await dialog.getByRole('button', { name: 'Guardar' }).click();

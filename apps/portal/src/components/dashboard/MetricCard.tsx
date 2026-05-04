@@ -9,6 +9,19 @@ interface MetricCardProps {
   /** Texto a mostrar cuando value es null — nunca datos inventados */
   emptyLabel?: string;
   description?: string;
+  tone?: 'primary' | 'secondary' | 'warning';
+}
+
+function resolveIconTone(tone: NonNullable<MetricCardProps['tone']>) {
+  switch (tone) {
+    case 'secondary':
+      return 'bg-iwana-secondary-100 text-iwana-secondary-700 dark:bg-iwana-secondary-700/20 dark:text-iwana-secondary-400';
+    case 'warning':
+      return 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400';
+    case 'primary':
+    default:
+      return 'bg-iwana-primary-50 text-iwana-primary dark:bg-iwana-primary-800/40 dark:text-iwana-primary-300';
+  }
 }
 
 /**
@@ -23,16 +36,17 @@ export function MetricCard({
   icon: Icon,
   emptyLabel = 'En consolidación',
   description,
+  tone = 'primary',
 }: MetricCardProps) {
+  const iconToneClassName = resolveIconTone(tone);
+
   return (
-    <Card>
+    <Card className="border border-gray-200 dark:border-dark-border dark:bg-dark-surface-2">
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
-              {label}
-            </p>
-            <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</p>
+            <p className="mt-1 text-3xl font-bold text-[#17163A] dark:text-white/90">
               {value !== null ? (
                 value.toLocaleString('es-CO')
               ) : (
@@ -42,14 +56,14 @@ export function MetricCard({
               )}
             </p>
             {description && (
-              <p className="mt-1 text-xs leading-5 text-gray-400 dark:text-gray-500">{description}</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-500">{description}</p>
             )}
           </div>
           <div
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[18px] bg-iwana-primary/10 dark:bg-iwana-primary/20"
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconToneClassName}`}
             aria-hidden="true"
           >
-            <Icon className="h-5 w-5 text-iwana-primary dark:text-iwana-primary-300" />
+            <Icon className="h-5 w-5" />
           </div>
         </div>
       </CardContent>

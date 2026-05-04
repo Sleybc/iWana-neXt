@@ -184,9 +184,7 @@ export function ConsentsPanel({ expedienteId }: ConsentsPanelProps) {
   const consentsByType = consentTypes.reduce(
     (acc, type) => {
       const legacyType = legacyConsentTypeMap[type] ?? type;
-      acc[type] = consents.find(
-        (c) => c.consentType === type || c.consentType === legacyType,
-      );
+      acc[type] = consents.find((c) => c.consentType === type || c.consentType === legacyType);
       return acc;
     },
     {} as Record<string, ConsentRecordItem | undefined>,
@@ -210,13 +208,13 @@ export function ConsentsPanel({ expedienteId }: ConsentsPanelProps) {
       </div>
 
       {successMessage && (
-        <div className="rounded-[24px] border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 shadow-iwana-soft dark:border-green-900/40 dark:bg-green-900/20 dark:text-green-300">
+        <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 shadow-sm dark:border-green-900/40 dark:bg-green-900/20 dark:text-green-300">
           {successMessage}
         </div>
       )}
 
       {showForm && (
-        <Card className="rounded-[28px] border border-white/70 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
+        <Card className="rounded-2xl border border-white/70 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">
           <CardHeader>
             <CardTitle className="text-base">Nuevo consentimiento</CardTitle>
           </CardHeader>
@@ -280,7 +278,7 @@ export function ConsentsPanel({ expedienteId }: ConsentsPanelProps) {
               placeholder="Número de acta, URL, etc."
             />
             {error && (
-              <div className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+              <div className="flex items-start gap-3 rounded-2xl border border-red-200/80 bg-red-50/90 px-4 py-3 text-sm text-red-700 shadow-sm dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
                 <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
                 <p>{error}</p>
               </div>
@@ -321,7 +319,7 @@ export function ConsentsPanel({ expedienteId }: ConsentsPanelProps) {
             return (
               <div
                 key={type}
-                className="rounded-[24px] border border-gray-200 bg-white px-4 py-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3"
+                className="rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-3"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3">

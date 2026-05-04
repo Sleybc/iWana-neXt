@@ -19,11 +19,13 @@ export function ExpedienteTabsContainer({ tabs, defaultTab }: ExpedienteTabsCont
   const [activeTab, setActiveTab] = useState<string | null>(defaultTab ?? safeTabs[0]?.id ?? null);
 
   const resolvedActiveTab =
-    activeTab && safeTabs.some((tab) => tab.id === activeTab) ? activeTab : (safeTabs[0]?.id ?? null);
+    activeTab && safeTabs.some((tab) => tab.id === activeTab)
+      ? activeTab
+      : (safeTabs[0]?.id ?? null);
 
   if (safeTabs.length === 0) {
     return (
-      <div className="w-full flex-1 rounded-[24px] border border-dashed border-gray-200 bg-white/95 px-6 py-8 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
+      <div className="w-full flex-1 rounded-2xl border border-dashed border-gray-200 bg-white/95 px-6 py-8 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">
         <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
           Expediente en preparación
         </p>
@@ -31,14 +33,15 @@ export function ExpedienteTabsContainer({ tabs, defaultTab }: ExpedienteTabsCont
           No hay secciones disponibles para este expediente.
         </p>
         <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
-          Cuando el caso tenga información asociada, aquí aparecerán las pestañas operativas y su trazabilidad.
+          Cuando el caso tenga información asociada, aquí aparecerán las pestañas operativas y su
+          trazabilidad.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="flex w-full flex-1 flex-col overflow-x-hidden overflow-y-visible rounded-[24px] border border-white/70 bg-white/95 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
+    <div className="flex w-full flex-1 flex-col overflow-x-hidden overflow-y-visible rounded-2xl border border-white/70 bg-white/95 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">
       <div className="overflow-x-auto border-b border-gray-100 bg-[#f8faf5]/90 px-4 dark:border-dark-border dark:bg-dark-surface-3/40 md:px-6">
         <nav className="-mb-px flex min-w-max gap-5 md:gap-6" aria-label="Tabs">
           {safeTabs.map((tab) => (

@@ -21,7 +21,7 @@ import { expect, test } from '@playwright/test';
 // Fixtures de datos de prueba — ficticios, sin PII real
 // ─────────────────────────────────────────────────────────────────────────────
 
-const MOCK_TENANT_SLUG = 'test-isp';
+const MOCK_TENANT_SLUG = 'isp-demo';
 const MOCK_ACCESS_TOKEN =
   'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.' +
   btoa(
@@ -42,7 +42,7 @@ const mockTenantSummary = {
   tenant: {
     id: 'tenant-uuid-test',
     name: 'ISP Prueba Colombia',
-    slug: 'test-isp',
+    slug: 'isp-demo',
     status: 'ACTIVE',
     contactEmail: 'contacto@test-isp.co',
     legalName: null,
@@ -73,7 +73,7 @@ const mockTenantSummary = {
       severity: 'warning',
       title: 'MFA no obligatorio',
       description: 'Se recomienda habilitar MFA obligatorio.',
-        href: '/dashboard/settings',
+      href: '/dashboard/settings',
     },
   ],
 };
@@ -192,10 +192,11 @@ async function setupDashboardMocks(page: import('@playwright/test').Page) {
 
 /** Establece el estado de sesión en localStorage para simular usuario ya autenticado */
 async function setAuthSession(page: import('@playwright/test').Page) {
-  await page.addInitScript(
+  await page.goto('/auth/login');
+  await page.evaluate(
     ({ token, slug }: { token: string; slug: string }) => {
-      localStorage.setItem('iwana.portal.access-token', token);
-      localStorage.setItem('iwana.portal.tenant-slug', slug);
+      window.localStorage.setItem('iwana.portal.access-token', token);
+      window.localStorage.setItem('iwana.portal.tenant-slug', slug);
     },
     { token: MOCK_ACCESS_TOKEN, slug: MOCK_TENANT_SLUG },
   );

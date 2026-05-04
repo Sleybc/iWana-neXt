@@ -25,7 +25,7 @@ export function SubscriberHeader({ subscriber, onChangeStatus }: SubscriberHeade
   const personMeta = PERSON_TYPE_META[subscriber.personType as PersonType];
 
   return (
-    <div className="space-y-4 rounded-[20px] border border-gray-100 bg-white p-6 shadow-[var(--shadow-iwana-soft)] dark:border-dark-border dark:bg-dark-surface-2">
+    <div className="space-y-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-[var(--shadow-sm)] dark:border-dark-border dark:bg-dark-surface-2">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <button
@@ -37,9 +37,9 @@ export function SubscriberHeader({ subscriber, onChangeStatus }: SubscriberHeade
             Volver al listado
           </button>
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight text-iwana-primary dark:text-white md:text-3xl">
+            <h2 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-white md:text-2xl">
               {name}
-            </h1>
+            </h2>
             <Badge
               variant={statusMeta.variant}
               className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wide"
@@ -59,9 +59,7 @@ export function SubscriberHeader({ subscriber, onChangeStatus }: SubscriberHeade
               {CUSTOMER_SEGMENT_META[subscriber.customerSegment].label}
             </Badge>
           </div>
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-            CRM &gt; Suscriptores &gt; {name}
-          </p>
+          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">CRM · Suscriptores</p>
         </div>
 
         <Button type="button" variant="secondary" onClick={onChangeStatus}>

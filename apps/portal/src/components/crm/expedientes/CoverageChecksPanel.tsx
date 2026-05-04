@@ -141,7 +141,7 @@ export function CoverageChecksPanel({ expedienteId }: CoverageChecksPanelProps) 
       </div>
 
       {showForm && (
-        <Card className="rounded-[28px] border border-white/70 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
+        <Card className="rounded-2xl border border-white/70 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">
           <CardHeader>
             <div className="flex items-start gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300">
@@ -236,7 +236,7 @@ export function CoverageChecksPanel({ expedienteId }: CoverageChecksPanelProps) 
               />
             </div>
             {error && (
-              <div className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+              <div className="flex items-start gap-3 rounded-2xl border border-red-200/80 bg-red-50/90 px-4 py-3 text-sm text-red-700 shadow-sm dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
                 <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
                 <p>{error}</p>
               </div>
@@ -263,7 +263,7 @@ export function CoverageChecksPanel({ expedienteId }: CoverageChecksPanelProps) 
           <Loader2 className="h-6 w-6 animate-spin text-iwana-primary" aria-hidden="true" />
         </div>
       ) : checks.length === 0 ? (
-        <div className="rounded-[24px] border border-gray-200 bg-[#f8faf5] px-4 py-8 text-center shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3">
+        <div className="rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-8 text-center shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
           <MapPin className="mx-auto h-8 w-8 text-gray-400" aria-hidden="true" />
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
             No hay verificaciones de cobertura registradas.
@@ -276,7 +276,7 @@ export function CoverageChecksPanel({ expedienteId }: CoverageChecksPanelProps) 
             return (
               <div
                 key={check.id}
-                className="rounded-[24px] border border-gray-200 bg-white px-4 py-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3"
+                className="rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-3"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3">

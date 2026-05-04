@@ -37,9 +37,8 @@ export function ExpedienteHeader({
   const statusMeta = getStatusMeta(status);
 
   return (
-    <div className="bg-white rounded-[20px] p-6 shadow-[var(--shadow-iwana-soft)] border border-gray-100 dark:bg-dark-surface-2 dark:border-dark-border">
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-        {/* Info izquierda */}
+    <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-[var(--shadow-sm)] dark:border-dark-border dark:bg-dark-surface-2">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
           <button
             type="button"
@@ -51,9 +50,9 @@ export function ExpedienteHeader({
           </button>
 
           <div className="flex flex-wrap items-center gap-3 mb-1">
-            <h1 className="text-2xl font-bold tracking-tight text-iwana-primary dark:text-white md:text-3xl">
+            <h2 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-white md:text-2xl">
               {fullName}
-            </h1>
+            </h2>
             <Badge
               variant={statusMeta.variant}
               className="rounded-full px-3 py-1 text-[10px] font-bold tracking-wide uppercase"
@@ -64,7 +63,6 @@ export function ExpedienteHeader({
 
           {subtitle && <p className="text-sm text-gray-500 dark:text-gray-400">{subtitle}</p>}
 
-          {/* Metadata operativa inmutable — siempre visible */}
           {(createdAt || createdBy || acquisitionChannel) && (
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
               {createdAt && (
@@ -89,7 +87,6 @@ export function ExpedienteHeader({
           )}
         </div>
 
-        {/* Progreso derecha */}
         <div className="rounded-2xl border border-gray-100 bg-gray-50/50 px-5 py-4 dark:border-dark-border dark:bg-dark-surface-3 lg:min-w-[260px]">
           <ProgressMeter value={overallProgress} {...(dimensions ? { dimensions } : {})} />
         </div>

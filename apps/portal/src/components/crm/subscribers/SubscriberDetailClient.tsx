@@ -385,15 +385,13 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
           title="Nuevo suscriptor"
           subtitle="Registra un nuevo suscriptor para la empresa autenticada."
         />
-        <div className="mx-6">
-          <SubscriberForm
-            onCancel={() => router.push('/dashboard/crm/subscribers')}
-            onSave={async (payload) => {
-              const created = await subscribersApi.create(payload as CreateSubscriberPayload);
-              router.push(`/dashboard/crm/subscribers/${created.id}`);
-            }}
-          />
-        </div>
+        <SubscriberForm
+          onCancel={() => router.push('/dashboard/crm/subscribers')}
+          onSave={async (payload) => {
+            const created = await subscribersApi.create(payload as CreateSubscriberPayload);
+            router.push(`/dashboard/crm/subscribers/${created.id}`);
+          }}
+        />
       </div>
     );
   }
@@ -401,7 +399,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
   return (
     <div className="space-y-6 pb-6">
       {loading && (
-        <div className="mx-6 mt-6 flex items-center gap-3 rounded-[24px] border border-gray-100 bg-white px-6 py-5 shadow-[var(--shadow-iwana-soft)] dark:border-dark-border dark:bg-dark-surface-2">
+        <div className="mt-6 flex items-center gap-3 rounded-2xl border border-gray-100 bg-white px-6 py-5 shadow-[var(--shadow-sm)] dark:border-dark-border dark:bg-dark-surface-2">
           <Loader2 className="h-5 w-5 animate-spin text-iwana-primary" aria-hidden="true" />
           <span className="text-sm text-gray-500 dark:text-gray-400">
             Cargando ficha 360 del suscriptor...
@@ -410,7 +408,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
       )}
 
       {error && (
-        <div className="mx-6 mt-6 flex items-start gap-3 rounded-[24px] border border-red-200 bg-red-50/90 px-5 py-4 text-sm text-red-700 shadow-[var(--shadow-iwana-card)] dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+        <div className="mt-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50/90 px-5 py-4 text-sm text-red-700 shadow-[var(--shadow-sm)] dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <span>{error}</span>
         </div>
@@ -418,11 +416,11 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
 
       {!loading && subscriber && (
         <>
-          <div className="mx-6">
+          <div>
             <SubscriberHeader subscriber={subscriber} onChangeStatus={() => setDialogOpen(true)} />
           </div>
 
-          <div className="mx-6">
+          <div>
             <SubscriberTabsContainer tabs={tabs} />
           </div>
 

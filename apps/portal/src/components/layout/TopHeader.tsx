@@ -3,16 +3,30 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { Menu } from 'lucide-react';
+import { TenantSeal } from './TenantSeal';
 import { DropdownUser } from './DropdownUser';
 import { ThemeToggle } from './ThemeToggle';
 import { NotificationBell } from './NotificationBell';
 import { GlobalSearch } from '@/components/search/GlobalSearch';
+import { interactiveFocusClassName } from '@/components/shared/portal-ui';
+import type { TenantSelf } from '@/lib/api-client';
 
 interface TopHeaderProps {
   desktopCollapsed: boolean;
   setDesktopCollapsed: (v: boolean) => void;
   mobileOpen: boolean;
   setMobileOpen: (v: boolean) => void;
+  profile?: TenantSelf | null;
+}
+
+function resolveTenantDisplayName(profile?: TenantSelf | null): string {
+  const brandingProductName = profile?.brandingProductName?.trim();
+
+  if (brandingProductName) {
+    return brandingProductName;
+  }
+
+  return profile?.name ?? 'iWana Empresa';
 }
 
 export const TopHeader = ({
@@ -20,7 +34,9 @@ export const TopHeader = ({
   setDesktopCollapsed,
   mobileOpen,
   setMobileOpen,
+  profile,
 }: TopHeaderProps) => {
+  const tenantDisplayName = resolveTenantDisplayName(profile);
   const menuToggleAriaProps = {
     'aria-controls': 'sidebar',
     'aria-expanded': mobileOpen,
@@ -34,7 +50,7 @@ export const TopHeader = ({
   } as const;
 
   return (
-    <header className="sticky top-0 z-[999] flex w-full border-b border-gray-100 bg-white/90 backdrop-blur-sm dark:border-dark-border dark:bg-dark-surface-2/90">
+    <header className="sticky top-0 z-[999] flex w-full border-b border-transparent bg-white dark:border-transparent dark:bg-dark-surface-2">
       <div className="flex flex-grow items-center justify-between px-4 py-3 md:px-6">
         {/* IZQUIERDA: botón hamburger + logo mobile */}
         <div className="flex items-center gap-3">
@@ -46,7 +62,7 @@ export const TopHeader = ({
               e.stopPropagation();
               setDesktopCollapsed(!desktopCollapsed);
             }}
-            className="hidden h-11 w-11 items-center justify-center rounded-2xl border border-gray-100 bg-white text-gray-500 shadow-[var(--shadow-iwana-card)] hover:bg-gray-100 lg:flex dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-surface-4"
+            className={`hidden h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-100 lg:flex dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-surface-4 ${interactiveFocusClassName}`}
           >
             <Menu className="w-5 h-5" />
           </button>
@@ -58,17 +74,22 @@ export const TopHeader = ({
               e.stopPropagation();
               setMobileOpen(!mobileOpen);
             }}
-            className="flex h-11 w-11 items-center justify-center rounded-2xl border border-gray-100 bg-white text-gray-500 shadow-[var(--shadow-iwana-card)] hover:bg-gray-100 lg:hidden dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-surface-4"
+            className={`flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-100 lg:hidden dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-surface-4 ${interactiveFocusClassName}`}
           >
             <Menu className="w-5 h-5" />
           </button>
 
-          <Link className="flex shrink-0 lg:hidden" href="/dashboard" aria-label="Ir al dashboard">
-            <div className="w-8 h-8 rounded-md bg-iwana-secondary flex items-center justify-center">
-              <span className="text-[#17163a] font-bold text-base" aria-hidden="true">
-                iW
-              </span>
-            </div>
+          <Link
+            className={`flex shrink-0 items-center rounded-lg lg:hidden ${interactiveFocusClassName}`}
+            href="/dashboard"
+            aria-label={`Ir al dashboard de ${tenantDisplayName}`}
+          >
+            <TenantSeal
+              sealLightUrl={profile?.sealLightUrl ?? null}
+              sealDarkUrl={profile?.sealDarkUrl ?? null}
+              name={tenantDisplayName}
+              size="sm"
+            />
           </Link>
         </div>
 
@@ -76,7 +97,7 @@ export const TopHeader = ({
         <div className="hidden lg:block flex-1 max-w-lg mx-6">
           <Suspense
             fallback={
-              <div className="h-11 rounded-2xl border border-gray-100 bg-gray-50 shadow-[var(--shadow-iwana-card)]" />
+              <div className="h-10 rounded-lg border border-gray-200 bg-white dark:border-dark-border-2 dark:bg-dark-surface-3" />
             }
           >
             <GlobalSearch />

@@ -36,7 +36,7 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-[20px] border border-gray-100 bg-white shadow-[var(--shadow-iwana-soft)] dark:border-dark-border dark:bg-dark-surface-2">
+    <div className="rounded-[20px] border border-gray-100 bg-white shadow-[var(--shadow-sm)] dark:border-dark-border dark:bg-dark-surface-2">
       {/* Cabecera: icono + título + descripción */}
       <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-border">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-iwana-secondary/10 text-iwana-secondary-700 dark:bg-iwana-secondary/20 dark:text-iwana-secondary-300">
@@ -310,7 +310,7 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
   return (
     <div className="space-y-6">
       {/* Encabezado de secciones */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-gray-50 bg-white px-6 py-5 shadow-[var(--shadow-iwana-soft)] dark:border-dark-border dark:bg-dark-surface-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-gray-50 bg-white px-6 py-5 shadow-[var(--shadow-sm)] dark:border-dark-border dark:bg-dark-surface-2">
         <div>
           <h2 className="text-lg font-bold text-iwana-primary dark:text-white">
             Datos del suscriptor

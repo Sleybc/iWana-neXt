@@ -14,14 +14,14 @@
     "archiveDirectory": ".agents/skills-archive"
   },
   "summary": {
-    "coreCount": 30,
+    "coreCount": 31,
     "archivedItemCount": 683,
     "archivedDirectoryCount": 679,
     "archivedLegacyFileCount": 4,
     "candidateCount": 0,
     "reviewedArchivedCount": 6,
     "holdCount": 3,
-    "potentializedCoreCount": 30,
+    "potentializedCoreCount": 31,
     "potentializationPhase": 8
   },
   "usagePriority": {
@@ -53,6 +53,7 @@
       "mermaid-expert",
       "observability-engineer",
       "playwright-skill",
+      "senior-ui-systems-designer",
       "tailwind-patterns",
       "test-driven-development",
       "wcag-audit-patterns",
@@ -91,6 +92,7 @@
       "frontend-security-coder",
       "i18n-localization",
       "nextjs-app-router-patterns",
+      "senior-ui-systems-designer",
       "tailwind-patterns",
       "wcag-audit-patterns"
     ],
@@ -149,7 +151,8 @@
     ".github/copilot-instructions.md",
     ".agents/skills/INDEX.md",
     "docs/quality/CHECKLIST-SISTEMA-SKILLS-GOBERNANZA-v1.0.md",
-    "docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md"
+    "docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md",
+    "docs/roles/Perfil_IA_Senior_UI_Systems_Designer_v1.md"
   ],
   "potentializedCoreSkills": [
     "frontend-dev-guidelines",
@@ -173,6 +176,7 @@
     "typescript-expert",
     "wcag-audit-patterns",
     "i18n-localization",
+    "senior-ui-systems-designer",
     "tailwind-patterns",
     "test-driven-development",
     "docs-architect",

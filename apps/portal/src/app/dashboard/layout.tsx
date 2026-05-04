@@ -124,7 +124,7 @@ export default function PortalDashboardLayout({ children }: { children: ReactNod
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-dark-surface">
+    <div className="flex h-screen overflow-hidden bg-white dark:bg-dark-surface-2">
       {/* OVERLAY para mobile — cierra el drawer al hacer click externo */}
       {sidebarMobileOpen && (
         <div
@@ -144,17 +144,22 @@ export default function PortalDashboardLayout({ children }: { children: ReactNod
       />
 
       {/* ÁREA DE CONTENIDO PRINCIPAL */}
-      <div className="relative flex flex-1 flex-col overflow-y-auto overflow-x-hidden">
+      <div className="relative flex flex-1 flex-col overflow-x-hidden">
         {/* HEADER */}
         <TopHeader
           desktopCollapsed={sidebarDesktopCollapsed}
           setDesktopCollapsed={setSidebarDesktopCollapsed}
           mobileOpen={sidebarMobileOpen}
           setMobileOpen={setSidebarMobileOpen}
+          profile={tenantProfile}
         />
 
         {/* CONTENIDO DE LA PÁGINA */}
-        <main>
+        <main
+          className="flex-1 overflow-y-auto bg-slate-50 dark:bg-dark-surface lg:rounded-3xl"
+          tabIndex={0}
+          aria-label="Contenido principal del portal"
+        >
           <div className="mx-auto max-w-screen-2xl p-4 md:p-6 2xl:p-10">{children}</div>
         </main>
       </div>

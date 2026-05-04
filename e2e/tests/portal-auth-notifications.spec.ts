@@ -123,7 +123,7 @@ test.describe('Portal auth + notifications', () => {
     await page.goto('/auth/login');
 
     // Esperar que el formulario del portal sea visible antes de scanear
-    await expect(page.getByText('Bienvenido al Portal')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /bienvenido al portal/i })).toBeVisible();
     await page.waitForLoadState('networkidle');
 
     // Validación WCAG 2.1 AA en página de login del portal
@@ -131,7 +131,7 @@ test.describe('Portal auth + notifications', () => {
     expect(loginA11y.violations).toEqual([]);
 
     await page.getByPlaceholder('ejemplo: isp-demo').fill('isp-demo');
-    await page.getByLabel('Correo Electrónico / Identidad').fill('suscriptor@iwana.local');
+    await page.getByLabel(/correo electrónico/i).fill('suscriptor@iwana.local');
     await page.getByPlaceholder('••••••••').fill('Password123!');
     await page.getByRole('button', { name: 'Ingresar' }).click();
 
@@ -154,6 +154,6 @@ test.describe('Portal auth + notifications', () => {
     await page.getByRole('menuitem', { name: 'Cerrar sesión' }).click();
 
     await expect(page).toHaveURL(/\/auth\/login/);
-    await expect(page.getByText('Bienvenido al Portal')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /bienvenido al portal/i })).toBeVisible();
   });
 });

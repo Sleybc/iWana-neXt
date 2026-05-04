@@ -104,20 +104,20 @@ export function ContactAttemptsPanel({ expedienteId }: ContactAttemptsPanelProps
       </div>
 
       {successMessage && (
-        <div className="rounded-[24px] border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 shadow-iwana-soft dark:border-green-900/40 dark:bg-green-900/20 dark:text-green-300">
+        <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 shadow-sm dark:border-green-900/40 dark:bg-green-900/20 dark:text-green-300">
           {successMessage}
         </div>
       )}
 
       {error && (
-        <div className="flex items-start gap-3 rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+        <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
           <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
           <p>{error}</p>
         </div>
       )}
 
       {showForm && (
-        <Card className="rounded-[28px] border border-white/70 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
+        <Card className="rounded-2xl border border-white/70 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">
           <CardHeader>
             <CardTitle className="text-base">Nuevo intento de contacto</CardTitle>
           </CardHeader>
@@ -211,7 +211,7 @@ export function ContactAttemptsPanel({ expedienteId }: ContactAttemptsPanelProps
           <Loader2 className="h-6 w-6 animate-spin text-iwana-primary" aria-hidden="true" />
         </div>
       ) : attempts.length === 0 ? (
-        <div className="rounded-[24px] border border-gray-200 bg-[#f8faf5] px-4 py-8 text-center shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3">
+        <div className="rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-8 text-center shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
           <Phone className="mx-auto h-8 w-8 text-gray-400" aria-hidden="true" />
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
             No hay intentos de contacto registrados.
@@ -222,7 +222,7 @@ export function ContactAttemptsPanel({ expedienteId }: ContactAttemptsPanelProps
           {attempts.map((attempt) => (
             <div
               key={attempt.id}
-              className="rounded-[24px] border border-gray-200 bg-white px-4 py-3 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3"
+              className="rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3">

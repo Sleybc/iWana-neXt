@@ -4,7 +4,7 @@ Este directorio mantiene solo el set core de skills necesarias para el proyecto 
 
 ## Estado actual
 
-- Skills activas: 30
+- Skills activas: 31
 - Skills archivadas fuera del catalogo activo: 683 entradas no activas
 - Desglose del archivo: 679 directorios y 4 archivos legacy
 - Ruta de archivo: .agents/skills-archive/
@@ -55,6 +55,7 @@ Activarlas cuando el problema sea especifico del dominio o de una capa puntual:
 - mermaid-expert
 - observability-engineer
 - playwright-skill
+- senior-ui-systems-designer
 - tailwind-patterns
 - test-driven-development
 - wcag-audit-patterns
@@ -92,6 +93,7 @@ Activarlas cuando el problema sea especifico del dominio o de una capa puntual:
 - frontend-security-coder
 - i18n-localization
 - nextjs-app-router-patterns
+- senior-ui-systems-designer
 - tailwind-patterns
 - wcag-audit-patterns
 
@@ -110,6 +112,7 @@ Activarlas cuando el problema sea especifico del dominio o de una capa puntual:
 
 - Si la tarea es de NestJS o backend modular, comenzar por nestjs-expert y complementar con auth-implementation-patterns, postgresql, bullmq-specialist u openapi-spec-generation segun corresponda.
 - Si la tarea es de frontend Next.js, comenzar por nextjs-app-router-patterns y complementar con frontend-dev-guidelines, core-components, tailwind-patterns, wcag-audit-patterns e i18n-localization.
+- Si la tarea es de direccion visual, propuesta estetica o review sistemico de una interfaz SaaS, usar senior-ui-systems-designer y complementar con core-components, tailwind-patterns y wcag-audit-patterns segun corresponda.
 - Si la tarea es transversal de seguridad, usar security-auditor y los skills de seguridad por capa.
 - Si la tarea es de pruebas, usar testing-patterns, test-driven-development y playwright-skill.
 - Si la tarea es de migraciones TypeORM o schema multi-tenant, usar database-migration y complementar con postgresql.

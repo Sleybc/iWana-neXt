@@ -45,7 +45,7 @@ export function MfaRequiredToggle({ mfaRequiredAll, onUpdated }: MfaRequiredTogg
   return (
     <section
       aria-label="Configuración de MFA obligatorio"
-      className="rounded-[24px] border border-white/70 bg-white/95 p-5 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95"
+      className="rounded-2xl border border-white/70 bg-white/95 p-5 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95"
     >
       <div className="mb-4 flex items-center gap-3">
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] bg-iwana-primary/10 dark:bg-iwana-primary-900/20">

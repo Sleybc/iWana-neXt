@@ -86,6 +86,7 @@ Atajos utiles:
 - Auth, JWT, MFA: `auth-implementation-patterns`
 - PostgreSQL y TypeORM: `postgresql`
 - Frontend App Router: `nextjs-app-router-patterns`
+- Direccion visual y propuestas esteticas SaaS: `senior-ui-systems-designer`
 - Formularios y UI: `frontend-dev-guidelines`, `core-components`, `tailwind-patterns`
 - Testing: `testing-patterns`, `playwright-skill`, `e2e-testing-patterns`
 - Docs e informes: `docs-architect`

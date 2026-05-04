@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { CheckCircle2, CircleAlert, Globe2 } from 'lucide-react';
-import { Button, Card, CardContent, CardHeader, CardTitle } from '@iwana/ui';
+import { CheckCircle2, CircleAlert } from 'lucide-react';
+import { Button, Card, CardContent, CardHeader } from '@iwana/ui';
 import { tenantSelfApi, type TenantSelfSettings } from '@/lib/api-client';
+import { PortalAlert, PortalSectionHeader } from '@/components/shared/portal-ui';
 
 const operationalSettingsSchema = z.object({
   timezone: z.string().min(1, 'Selecciona una zona horaria.'),
@@ -114,29 +115,20 @@ export function OperationalSettingsForm({
   };
 
   return (
-    <Card className="rounded-[28px] border border-white/70 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
+    <Card className="rounded-2xl border border-gray-200 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
       <CardHeader>
-        <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300">
-            <Globe2 className="h-5 w-5" aria-hidden="true" />
-          </div>
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-              Región base
-            </p>
-            <CardTitle className="mt-1">Configuración operativa</CardTitle>
-          </div>
-        </div>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Define la región operativa base que usa el portal de la empresa autenticada.
-        </p>
+        <PortalSectionHeader
+          className="gap-0"
+          title="Configuración operativa"
+          description="Región, idioma y moneda base del portal."
+        />
       </CardHeader>
 
       <CardContent className="space-y-5">
         {/* Vista consulta: info-pills en lugar de selects deshabilitados */}
         {!canEdit ? (
           <div className="space-y-5">
-            <div className="rounded-[24px] border border-gray-100 bg-white p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)] dark:border-dark-border dark:bg-dark-surface-2">
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
               {/* Grupo Ubicación */}
               <p className={`mb-4 ${SUBSECTION_LABEL}`}>Ubicación</p>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -183,7 +175,7 @@ export function OperationalSettingsForm({
             </div>
 
             {/* Nota de plataforma */}
-            <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-500 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-400">
+            <div className="rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-3 text-sm text-gray-500 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-400">
               El límite de suscriptores y otros parámetros comerciales permanecen administrados por
               plataforma y no forman parte de este flujo self-service.
             </div>
@@ -195,7 +187,7 @@ export function OperationalSettingsForm({
         ) : (
           /* Vista edición: formulario con inner panel y grupos visuales */
           <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
-            <div className="rounded-[24px] border border-gray-100 bg-white p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)] dark:border-dark-border dark:bg-dark-surface-2">
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
               {/* Grupo: Ubicación */}
               <p className={`mb-4 ${SUBSECTION_LABEL}`}>Ubicación</p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -270,23 +262,27 @@ export function OperationalSettingsForm({
             </div>
 
             {/* Nota de plataforma */}
-            <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-500 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-400">
+            <div className="rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-3 text-sm text-gray-500 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-400">
               El límite de suscriptores y otros parámetros comerciales permanecen administrados por
               plataforma y no forman parte de este flujo self-service.
             </div>
 
             {/* Feedback de servidor */}
             {serverError && (
-              <div className="flex items-start gap-3 rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
-                <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-                <p>{serverError}</p>
-              </div>
+              <PortalAlert
+                variant="error"
+                title="No fue posible guardar la configuración"
+                description={serverError}
+                icon={CircleAlert}
+              />
             )}
             {success && !serverError && (
-              <div className="flex items-start gap-3 rounded-xl border border-emerald-200/80 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400">
-                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-                <p>{success}</p>
-              </div>
+              <PortalAlert
+                variant="success"
+                title="Configuración actualizada"
+                description={success}
+                icon={CheckCircle2}
+              />
             )}
 
             {/* Footer y CTA */}

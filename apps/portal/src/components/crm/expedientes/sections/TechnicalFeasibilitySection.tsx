@@ -273,7 +273,7 @@ export function TechnicalFeasibilitySection({
       </div>
 
       {/* ── Fila 3: Mapa full-width ─────────────────────────────────────── */}
-      <div className="overflow-hidden rounded-[20px] border border-gray-100 shadow-[var(--shadow-iwana-card)] dark:border-dark-border h-[240px] flex flex-col">
+      <div className="overflow-hidden rounded-[20px] border border-gray-100 shadow-[var(--shadow-sm)] dark:border-dark-border h-[240px] flex flex-col">
         {hasCoords ? (
           <>
             <div
@@ -420,7 +420,7 @@ export function TechnicalFeasibilitySection({
           onChange={(event) => onChange('technicalObservations', event.target.value)}
           rows={3}
           placeholder={FIELD_PLACEHOLDERS.technicalObservations}
-          className="w-full rounded-[20px] border border-gray-100 bg-white px-4 py-3 text-sm text-gray-700 shadow-[var(--shadow-iwana-card)] focus:border-iwana-primary focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200"
+          className="w-full rounded-[20px] border border-gray-100 bg-white px-4 py-3 text-sm text-gray-700 shadow-[var(--shadow-sm)] focus:border-iwana-primary focus:outline-none focus:ring-2 focus:ring-iwana-primary/20 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200"
         />
         {(draftValues.feasibility === 'VALIDATION_REQUIRED' ||
           draftValues.feasibility === 'NOT_VIABLE') && (

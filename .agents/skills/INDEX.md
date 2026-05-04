@@ -58,6 +58,7 @@ Estados admitidos:
 - mermaid-expert
 - observability-engineer
 - playwright-skill
+- senior-ui-systems-designer
 - tailwind-patterns
 - test-driven-development
 - wcag-audit-patterns
@@ -97,6 +98,7 @@ Estados admitidos:
 - frontend-security-coder
 - i18n-localization
 - nextjs-app-router-patterns
+- senior-ui-systems-designer
 - tailwind-patterns
 - wcag-audit-patterns
 

@@ -242,6 +242,16 @@ describe('UserService', () => {
 
 ---
 
+## Skills Dispatch
+
+- Frontend App Router y arquitectura de pantalla: `nextjs-app-router-patterns` + `frontend-dev-guidelines`
+- Componentes, design system y tokens: `core-components` + `tailwind-patterns`
+- Direccion visual SaaS, propuestas esteticas fuertes y review visual sistemico: `senior-ui-systems-designer`
+- Accesibilidad visual y validacion WCAG: `wcag-audit-patterns`
+- Formularios, i18n y UX de detalle: complementar con `i18n-localization` y la skill del dominio afectado
+
+---
+
 ## Project Structure
 
 ```

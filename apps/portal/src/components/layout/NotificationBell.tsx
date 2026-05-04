@@ -1,11 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
-import { AlertTriangle, Bell, BellRing } from 'lucide-react';
+import { Bell, BellRing } from 'lucide-react';
 import { auditApi, ApiError, type AuditLogEntry } from '@/lib/api-client';
 import { cn } from '@iwana/ui';
 import { useAuth } from '@/components/auth/AuthProvider';
+import {
+  PortalAlert,
+  PortalEmptyState,
+  interactiveFocusClassName,
+} from '@/components/shared/portal-ui';
 
 // Mapea el action crudo del audit log a texto español legible
 function formatAuditAction(action: string): string {
@@ -63,6 +67,12 @@ export function NotificationBell() {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const canViewAuditNotifications = new Set(['ADMIN', 'SYSTEM_ADMIN']).has(user?.role ?? '');
+  const closePopover = useCallback((focusTrigger = false) => {
+    setOpen(false);
+    if (focusTrigger) {
+      window.requestAnimationFrame(() => triggerRef.current?.focus());
+    }
+  }, []);
 
   const loadNotifications = useCallback(async () => {
     if (!canViewAuditNotifications) {
@@ -110,23 +120,23 @@ export function NotificationBell() {
         return;
       }
 
-      setOpen(false);
+      closePopover();
     };
 
     document.addEventListener('click', onClickOutside);
     return () => document.removeEventListener('click', onClickOutside);
-  }, [open]);
+  }, [closePopover, open]);
 
   useEffect(() => {
     const onEsc = (event: KeyboardEvent) => {
       if (open && event.key === 'Escape') {
-        setOpen(false);
+        closePopover(true);
       }
     };
 
     document.addEventListener('keydown', onEsc);
     return () => document.removeEventListener('keydown', onEsc);
-  }, [open]);
+  }, [closePopover, open]);
 
   const count = entries.length;
   const tone = useMemo(
@@ -140,10 +150,13 @@ export function NotificationBell() {
         ref={triggerRef}
         type="button"
         aria-label="Notificaciones"
-        aria-haspopup="dialog"
         aria-controls="portal-notifications-menu"
+        aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        className="relative flex h-10 w-10 items-center justify-center rounded-full border border-white/70 bg-white/95 text-gray-500 shadow-iwana-soft transition hover:-translate-y-0.5 hover:bg-[#f8faf5] hover:text-gray-700 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-400 dark:hover:bg-dark-surface-3 dark:hover:text-white"
+        className={cn(
+          'relative flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:bg-[#f8faf5] hover:text-gray-700 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-400 dark:hover:bg-dark-surface-3 dark:hover:text-white',
+          interactiveFocusClassName,
+        )}
       >
         {count > 0 && (
           <span className="absolute -top-1 -right-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-iwana-secondary px-1 text-[10px] font-bold text-iwana-primary">
@@ -156,10 +169,10 @@ export function NotificationBell() {
       <div
         id="portal-notifications-menu"
         ref={dropdownRef}
-        role="dialog"
-        aria-label="Notificaciones del portal"
+        role="region"
+        aria-label="Centro de actividad del portal"
         className={cn(
-          'absolute right-0 mt-3 w-80 overflow-hidden rounded-[24px] border border-white/70 bg-white/95 shadow-[var(--shadow-iwana-lg)] dark:border-dark-border dark:bg-dark-surface-2/95',
+          'absolute right-0 mt-3 w-80 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-2',
           open ? 'block' : 'hidden',
         )}
       >
@@ -178,35 +191,24 @@ export function NotificationBell() {
         <ul className="max-h-72 overflow-auto py-2">
           {error ? (
             <li className="px-4 py-3">
-              <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50/90 px-4 py-3 text-sm text-red-700 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-300">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>{error}</span>
-              </div>
+              <PortalAlert
+                variant="error"
+                title="No fue posible cargar la actividad"
+                description={error}
+              />
             </li>
           ) : count === 0 ? (
             <li className="px-4 py-3">
-              <div className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-3 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
-                <BellRing
-                  className="mt-0.5 h-4 w-4 shrink-0 text-iwana-secondary-700 dark:text-iwana-secondary-300"
-                  aria-hidden="true"
-                />
-                <div>
-                  <p className="font-medium text-gray-800 dark:text-white">
-                    Sin actividad reciente
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
-                    Cuando existan cambios relevantes de la empresa aparecerán aquí.
-                  </p>
-                </div>
-              </div>
+              <PortalEmptyState
+                title="Sin actividad reciente"
+                description="Cuando existan cambios relevantes de la empresa aparecerán aquí."
+                icon={BellRing}
+              />
             </li>
           ) : (
             entries.map((entry) => (
               <li key={entry.id} className="px-4 py-2">
-                <Link
-                  href="/support"
-                  className="block rounded-2xl border border-transparent px-3 py-3 transition hover:border-iwana-primary/10 hover:bg-[#f8faf5] dark:hover:border-iwana-primary/20 dark:hover:bg-dark-surface-3"
-                >
+                <div className="rounded-2xl border border-gray-200 bg-white px-3 py-3 dark:border-dark-border dark:bg-dark-surface-3">
                   <p className="text-sm font-semibold text-gray-800 dark:text-white">
                     {formatAuditAction(entry.action)} · {formatAuditEntity(entry.entityType)}
                   </p>
@@ -214,7 +216,7 @@ export function NotificationBell() {
                     {formatRelativeDate(entry.createdAt)} · ID:{' '}
                     {entry.entityId.slice(0, 8).toUpperCase()}
                   </p>
-                </Link>
+                </div>
               </li>
             ))
           )}

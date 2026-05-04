@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { AlertTriangle, Info, XCircle, ArrowRight } from 'lucide-react';
 import type { DashboardAlert } from '@/lib/api-client';
+import { DashboardPanel } from './DashboardPanel';
 
 interface OnboardingAlertsProps {
   alerts: DashboardAlert[];
@@ -44,7 +45,7 @@ const severityConfig = {
 export function OnboardingAlerts({ alerts }: OnboardingAlertsProps) {
   if (alerts.length === 0) {
     return (
-      <div className="rounded-[20px] border border-green-200 bg-green-50 p-4 shadow-[var(--shadow-iwana-card)] dark:border-green-800 dark:bg-green-900/20">
+      <DashboardPanel title="Estado de configuración">
         <div className="flex items-center gap-3">
           <Info
             className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0"
@@ -54,44 +55,48 @@ export function OnboardingAlerts({ alerts }: OnboardingAlertsProps) {
             Tu empresa está correctamente configurada. No hay alertas pendientes.
           </p>
         </div>
-      </div>
+      </DashboardPanel>
     );
   }
 
   return (
-    <div className="space-y-3" role="list" aria-label="Alertas de configuración">
-      {alerts.map((alert) => {
-        const config = severityConfig[alert.severity];
-        const AlertIcon = config.icon;
+    <DashboardPanel title="Configuración pendiente" contentClassName="space-y-3">
+      <div className="space-y-3" role="list" aria-label="Alertas de configuración">
+        {alerts.map((alert) => {
+          const config = severityConfig[alert.severity];
+          const AlertIcon = config.icon;
 
-        return (
-          <div
-            key={alert.id}
-            role="listitem"
-            className={`rounded-[20px] border p-4 shadow-[var(--shadow-iwana-card)] ${config.containerClass}`}
-          >
-            <div className="flex items-start gap-3">
-              <AlertIcon
-                className={`w-5 h-5 mt-0.5 shrink-0 ${config.iconClass}`}
-                aria-hidden="true"
-              />
-              <div className="min-w-0 flex-1">
-                <p className={`text-sm font-bold ${config.titleClass}`}>{alert.title}</p>
-                <p className={`mt-1 text-sm leading-6 ${config.textClass}`}>{alert.description}</p>
-                {alert.href && (
-                  <Link
-                    href={alert.href}
-                    className={`mt-3 inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide ${config.linkClass}`}
-                  >
-                    Ir a configuración
-                    <ArrowRight className="w-3 h-3" aria-hidden="true" />
-                  </Link>
-                )}
+          return (
+            <div
+              key={alert.id}
+              role="listitem"
+              className={`rounded-xl border p-4 ${config.containerClass}`}
+            >
+              <div className="flex items-start gap-3">
+                <AlertIcon
+                  className={`mt-0.5 h-5 w-5 shrink-0 ${config.iconClass}`}
+                  aria-hidden="true"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className={`text-sm font-semibold ${config.titleClass}`}>{alert.title}</p>
+                  <p className={`mt-1 text-sm leading-6 ${config.textClass}`}>
+                    {alert.description}
+                  </p>
+                  {alert.href && (
+                    <Link
+                      href={alert.href}
+                      className={`mt-3 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide ${config.linkClass}`}
+                    >
+                      Ir a configuración
+                      <ArrowRight className="h-3 w-3" aria-hidden="true" />
+                    </Link>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        );
-      })}
-    </div>
+          );
+        })}
+      </div>
+    </DashboardPanel>
   );
 }

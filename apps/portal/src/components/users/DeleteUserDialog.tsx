@@ -58,7 +58,7 @@ export function DeleteUserDialog({
       aria-modal="true"
       aria-labelledby="delete-user-title"
     >
-      <div className="relative mx-4 w-full max-w-md rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-iwana-lg dark:border-dark-border dark:bg-dark-surface-2/95">
+      <div className="relative mx-4 w-full max-w-md rounded-2xl border border-white/70 bg-white/95 p-6 shadow-2xl dark:border-dark-border dark:bg-dark-surface-2/95">
         <div className="mb-6 flex items-center gap-4">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">
             <AlertTriangle className="h-6 w-6" aria-hidden="true" />
@@ -79,7 +79,7 @@ export function DeleteUserDialog({
           </div>
         </div>
 
-        <div className="mb-6 rounded-[24px] border border-gray-100 bg-[#f8faf5] p-4 dark:border-dark-border dark:bg-dark-surface-3">
+        <div className="mb-6 rounded-2xl border border-gray-100 bg-[#f8faf5] p-4 dark:border-dark-border dark:bg-dark-surface-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-iwana-primary/10 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-400">
               <svg
@@ -105,7 +105,7 @@ export function DeleteUserDialog({
         </div>
 
         {isSelfDelete && (
-          <div className="mb-4 rounded-[24px] border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(254,243,199,0.78))] p-4 shadow-iwana-soft dark:border-amber-800 dark:bg-amber-900/20">
+          <div className="mb-4 rounded-2xl border border-amber-200/80 bg-amber-50/90 p-4 shadow-sm dark:border-amber-800 dark:bg-amber-900/20">
             <p className="text-sm text-amber-800 dark:text-amber-300">
               <strong>Advertencia:</strong> Estás a punto de eliminar tu propia cuenta. Perderás el
               acceso al portal y necesitarás que otro administrador restaure tu cuenta.

@@ -526,7 +526,7 @@ export function TaxProfileBlock({ subscriberId }: TaxProfileBlockProps) {
 
   return (
     <>
-      <Card className="rounded-[20px] shadow-iwana-soft">
+      <Card className="rounded-[20px] shadow-sm">
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 pb-3">
           <div className="flex flex-wrap items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-iwana-primary" aria-hidden="true" />

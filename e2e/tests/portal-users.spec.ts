@@ -120,11 +120,12 @@ async function setupAuthenticatedAdminMocks(
   page: import('@playwright/test').Page,
   opts?: { searchCapture?: (term: string) => void; statusCapture?: (status: string) => void },
 ) {
-  // Inyectar token y tenant en localStorage antes de cargar la página
-  await page.addInitScript(
+  // Sembrar sesion sobre un origen valido del portal para evitar carreras al navegar.
+  await page.goto('/auth/login');
+  await page.evaluate(
     ({ token, tenant }: { token: string; tenant: string }) => {
-      localStorage.setItem('iwana.portal.access-token', token);
-      localStorage.setItem('iwana.portal.tenant-slug', tenant);
+      window.localStorage.setItem('iwana.portal.access-token', token);
+      window.localStorage.setItem('iwana.portal.tenant-slug', tenant);
     },
     { token: MOCK_TOKEN, tenant: MOCK_TENANT },
   );
@@ -257,7 +258,7 @@ test('caso 4 — selector de estado envía ?status= al backend', async ({ page }
   await expect(page.getByText('Carlos López')).toBeVisible();
 
   // Cambiar el selector custom de estado a "Suspendido"
-  await page.locator('#status-filter').locator('xpath=following-sibling::button').click();
+  await page.locator('#status-filter').click();
   await page.getByRole('option', { name: 'Suspendido' }).click();
   await page.waitForTimeout(200);
 
@@ -334,6 +335,10 @@ test('caso 8 — /dashboard/profile muestra el formulario de información person
 
   // Debe mostrar el título del perfil y los campos del formulario
   await expect(page.getByText(/información personal/i)).toBeVisible();
-  // El nombre del usuario debe aparecer en el encabezado del perfil
-  await expect(page.getByRole('heading', { name: 'Administrador Prueba' })).toBeVisible();
+  // El nombre del usuario debe aparecer en el bloque de identidad del perfil
+  await expect(
+    page.getByLabel('Contenido principal del portal').getByText('Administrador Prueba', {
+      exact: true,
+    }),
+  ).toBeVisible();
 });

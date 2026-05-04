@@ -187,7 +187,7 @@ export default function CoverageMap({
 
   return (
     <div
-      className="overflow-hidden rounded-[24px] border border-white/70 bg-white/95 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95"
+      className="overflow-hidden rounded-2xl border border-white/70 bg-white/95 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95"
       data-testid="coverage-map"
     >
       <div className="flex flex-col gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-border sm:flex-row sm:items-center sm:justify-between">

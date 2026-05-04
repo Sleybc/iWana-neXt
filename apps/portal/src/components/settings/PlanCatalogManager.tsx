@@ -31,6 +31,7 @@ import {
   type UpdatePlanCatalogItemDto,
 } from '@/lib/api-client';
 import { InstallationRule } from '@iwana/shared';
+import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 
 interface PlanCatalogManagerProps {
   canEdit: boolean;
@@ -543,7 +544,7 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
   };
 
   return (
-    <Card className="rounded-[28px] border border-white/70 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2/95">
+    <Card className="rounded-2xl border border-white/70 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
@@ -572,7 +573,7 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
       </CardHeader>
 
       <CardContent className="space-y-4">
-        <div className="rounded-[24px] border border-gray-100 bg-[#f8faf5] p-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3">
+        <div className="rounded-2xl border border-gray-100 bg-[#f8faf5] p-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-iwana-secondary-700 shadow-sm dark:bg-dark-surface-2 dark:text-iwana-secondary-400">
               <Sparkles className="h-5 w-5" aria-hidden="true" />
@@ -590,23 +591,27 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
         </div>
 
         {loadError && (
-          <div className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
-            <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-            <p>{loadError}</p>
-          </div>
+          <PortalAlert
+            variant="error"
+            title="No fue posible cargar planes"
+            description={loadError}
+            icon={CircleAlert}
+          />
         )}
 
         {serverMessage && !loadError && (
-          <div className="flex items-start gap-3 rounded-[24px] border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(254,243,199,0.78))] px-4 py-3 text-sm text-amber-800 shadow-iwana-soft dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
-            <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-            <p>{serverMessage}</p>
-          </div>
+          <PortalAlert
+            variant="warning"
+            title="Revisión requerida"
+            description={serverMessage}
+            icon={CircleAlert}
+          />
         )}
 
         {isLoading ? (
-          <div className="h-44 animate-pulse rounded-[24px] bg-gray-100 shadow-iwana-soft dark:bg-dark-surface-3" />
+          <PortalSkeletonBlock className="h-44" />
         ) : (
-          <div className="overflow-x-auto rounded-[24px] border border-gray-200 dark:border-dark-border">
+          <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-dark-border">
             <table className="w-full min-w-[860px] border-collapse">
               <thead className="bg-[#f6f8f4] dark:bg-dark-surface-3">
                 <tr>
@@ -943,7 +948,7 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
               {...register('basePrice', { valueAsNumber: true })}
             />
 
-            <div className="space-y-3 rounded-[24px] border border-gray-200 p-4 dark:border-dark-border">
+            <div className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
               <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
                 <input
                   type="checkbox"
@@ -984,7 +989,7 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
             </div>
 
             {serverMessage && (
-              <div className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+              <div className="flex items-start gap-3 rounded-2xl border border-red-200/80 bg-red-50/90 px-4 py-3 text-sm text-red-700 shadow-sm dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
                 <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
                 <p>{serverMessage}</p>
               </div>
@@ -1006,7 +1011,7 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
             </div>
 
             {editingPlan && (
-              <div className="rounded-[24px] border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(254,243,199,0.78))] p-4 shadow-iwana-soft dark:border-amber-800 dark:bg-amber-900/20">
+              <div className="rounded-2xl border border-amber-200/80 bg-amber-50/90 p-4 shadow-sm dark:border-amber-800 dark:bg-amber-900/20">
                 <p className="mb-2 text-sm font-medium text-amber-800 dark:text-amber-300">
                   Zona de peligro
                 </p>

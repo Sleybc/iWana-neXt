@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-const MOCK_TENANT_SLUG = 'test-isp';
+const MOCK_TENANT_SLUG = 'isp-demo';
 const MOCK_ACCESS_TOKEN =
   'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.' +
   btoa(
@@ -96,11 +96,11 @@ const mockUsers = [
 ];
 
 async function setAuthSession(page: import('@playwright/test').Page) {
-  await page.goto('http://127.0.0.1:3002/dashboard');
+  await page.goto('/auth/login');
   await page.evaluate(
     ({ token, slug }) => {
-      localStorage.setItem('iwana.portal.access-token', token);
-      localStorage.setItem('iwana.portal.tenant-slug', slug);
+      window.localStorage.setItem('iwana.portal.access-token', token);
+      window.localStorage.setItem('iwana.portal.tenant-slug', slug);
     },
     { token: MOCK_ACCESS_TOKEN, slug: MOCK_TENANT_SLUG },
   );
@@ -354,7 +354,10 @@ async function setupContactSectionMocks(page: import('@playwright/test').Page) {
       return;
     }
 
-    if (pathname.endsWith(`/crm/expedientes/${mockExpediente.id}/attribution`) && method === 'GET') {
+    if (
+      pathname.endsWith(`/crm/expedientes/${mockExpediente.id}/attribution`) &&
+      method === 'GET'
+    ) {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -460,7 +463,10 @@ test.describe('CRM Expedientes - Sección Contacto: altContactName y altContactP
     await altContactNameInput.fill('Carlos Martinez');
     await altContactPhoneInput.fill('3001234567');
 
-    await page.getByRole('button', { name: /guardar cambios/i }).nth(1).click();
+    await page
+      .getByRole('button', { name: /guardar cambios/i })
+      .nth(1)
+      .click();
     await expect(page.getByText(/sección actualizada correctamente/i)).toBeVisible();
 
     const savedPayload = mocks.getSavedContactPayload();
@@ -480,7 +486,10 @@ test.describe('CRM Expedientes - Sección Contacto: altContactName y altContactP
     await altContactNameInput.clear();
     await altContactPhoneInput.clear();
 
-    await page.getByRole('button', { name: /guardar cambios/i }).nth(1).click();
+    await page
+      .getByRole('button', { name: /guardar cambios/i })
+      .nth(1)
+      .click();
     await expect(page.getByText(/sección actualizada correctamente/i)).toBeVisible();
 
     const clearedPayload = mocks.getSavedContactPayload();
