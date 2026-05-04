@@ -585,6 +585,38 @@ Se ejecutó el cierre operativo de la Fase 03 sobre el worktree actual de `apps/
 
 ---
 
+## 8.12 Addendum Correctivo del select en modal Comercial (2026-05-04)
+
+Se corrigió un bug puntual en el modal de creación/edición de planes comerciales (`/dashboard/commercial/planes/nuevo`) donde el desplegable de **Regla de instalación** quedaba recortado dentro del contenedor del diálogo al abrirse cerca del borde inferior.
+
+**Causa raíz:**
+- el `Select` compartido del design system renderizaba su lista en flujo normal dentro del propio contenedor del modal;
+- `DialogContent` usa scroll interno (`overflow-y-auto`), así que el menú podía quedar oculto por clipping.
+
+**Corrección aplicada:**
+- el menú del `Select` ahora se portaliza a `document.body`;
+- se calcula su posición con `position: fixed` para mantenerlo anclado al trigger;
+- se ajustó el `aria-labelledby` del trigger para usar el label visible cuando aplique;
+- se añadió una prueba de regresión que verifica que el listbox queda fuera del contenedor del modal.
+
+**Archivos tocados:**
+- `packages/ui/src/components/Select.tsx`
+- `apps/portal/src/components/shared/Select.spec.tsx`
+
+**Validación ejecutada:**
+
+| Comando | Resultado |
+|---|---|
+| `pnpm --filter @iwana/portal test -- --runTestsByPath src/components/shared/Select.spec.tsx` | ✅ OK |
+| `pnpm --filter @iwana/portal typecheck` | ✅ OK |
+| `pnpm --filter @iwana/portal lint` | ✅ OK |
+
+**Conclusión operativa:**
+- El menú de "Regla de instalación" ya no queda oculto dentro del modal.
+- La solución queda generalizada para cualquier `Select` del portal que se use dentro de diálogos con overflow.
+
+---
+
 ## 9. Historial de Cambios
 
 | Versión | Fecha | Autor | Descripción |
@@ -601,3 +633,4 @@ Se ejecutó el cierre operativo de la Fase 03 sobre el worktree actual de `apps/
 | v1.9 | 2026-05-04 | GitHub Copilot (GPT-5.4) | Normalización de gutter exterior en CRM y Suscriptores para igualarlo con el Dashboard base del portal |
 | v1.10 | 2026-05-04 | GitHub Copilot | Spec, plan y prompt Fase 03: portal compacta operativa con header único + workspace |
 | v1.11 | 2026-05-04 | GitHub Copilot (GPT-5.4) | Ejecución Fase 03: compactación final de Comercial, Settings, CRM detalle, Perfil y Auth, con validación `63/63` en E2E |
+| v1.12 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Correctivo puntual: Select portalizado para evitar clipping del desplegable en modales de Comercial |
