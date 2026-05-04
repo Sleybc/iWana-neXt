@@ -678,6 +678,33 @@ Se hizo visible la acción de edición para las definiciones tributarias creadas
 
 ---
 
+## 8.15 Addendum Visibilidad de edición en presets de impuestos (2026-05-04)
+
+Se ajustó nuevamente el catálogo de impuestos para que la acción **Editar** permanezca visible también en las definiciones `SYSTEM`, usando esas filas como referencia visual y plantilla operativa.
+
+**Corrección aplicada:**
+- el botón **Editar** ahora se muestra para todas las definiciones visibles, incluidas las de origen `SYSTEM`;
+- la acción de **Eliminar** sigue oculta en `SYSTEM` para mantener el preset protegido;
+- se añadió una regresión que verifica edición visible en ambos orígenes y eliminación solo en `CUSTOM`.
+
+**Archivos tocados:**
+- `apps/portal/src/components/commercial/TaxCatalogManager.tsx`
+- `apps/portal/src/components/commercial/TaxCatalogManager.spec.tsx`
+
+**Validación ejecutada:**
+
+| Comando | Resultado |
+|---|---|
+| `pnpm --filter @iwana/portal test -- --runTestsByPath src/components/commercial/TaxCatalogManager.spec.tsx` | ✅ OK |
+| `pnpm --filter @iwana/portal typecheck` | ✅ OK |
+| `pnpm --filter @iwana/portal lint` | ✅ OK |
+
+**Conclusión operativa:**
+- La acción de edición ya es visible sobre los presets del sistema.
+- El borrado sigue restringido a definiciones custom.
+
+---
+
 ## 9. Historial de Cambios
 
 | Versión | Fecha | Autor | Descripción |
@@ -697,3 +724,4 @@ Se hizo visible la acción de edición para las definiciones tributarias creadas
 | v1.12 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Correctivo puntual: Select portalizado para evitar clipping del desplegable en modales de Comercial |
 | v1.13 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Limpieza del catálogo comercial: FTTH eliminada del alta nueva y de la persistencia local |
 | v1.14 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Catálogo de impuestos: botón explícito de edición para definiciones CUSTOM |
+| v1.15 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Catálogo de impuestos: edición visible también para presets SYSTEM, borrado restringido a CUSTOM |

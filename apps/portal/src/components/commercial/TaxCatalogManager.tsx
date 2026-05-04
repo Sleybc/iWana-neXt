@@ -309,7 +309,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
                   </div>
                   {def.notes && <p className="text-xs text-gray-400">{def.notes}</p>}
                 </div>
-                {canEdit && def.origin !== 'SYSTEM' && (
+                {canEdit && (
                   <div className="flex shrink-0 items-center gap-2">
                     <Button
                       variant="ghost"
@@ -331,16 +331,18 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
                       <Pencil className="h-4 w-4" aria-hidden="true" />
                       <span>Editar</span>
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={`Eliminar definición tributaria ${def.name}`}
-                      title={`Eliminar definición tributaria ${def.name}`}
-                      className="text-red-500 hover:text-red-600"
-                      onClick={() => setDeleteTarget(def)}
-                    >
-                      <Trash2 className="h-4 w-4" aria-hidden="true" />
-                    </Button>
+                    {def.origin !== 'SYSTEM' && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Eliminar definición tributaria ${def.name}`}
+                        title={`Eliminar definición tributaria ${def.name}`}
+                        className="text-red-500 hover:text-red-600"
+                        onClick={() => setDeleteTarget(def)}
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </Button>
+                    )}
                   </div>
                 )}
               </CardContent>

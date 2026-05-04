@@ -54,7 +54,7 @@ describe('TaxCatalogManager', () => {
     mockDeleteTaxDefinition.mockResolvedValue(undefined);
   });
 
-  it('muestra el botón Editar para impuestos creados y lo oculta en presets del sistema', async () => {
+  it('muestra Editar en custom y system, y oculta Eliminar en system', async () => {
     render(<TaxCatalogManager canEdit />);
 
     await waitFor(() => {
@@ -65,7 +65,13 @@ describe('TaxCatalogManager', () => {
       await screen.findByRole('button', { name: 'Editar definición tributaria ICA Bogotá' }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Editar definición tributaria IVA 19%' }),
+      await screen.findByRole('button', { name: 'Editar definición tributaria IVA 19%' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Eliminar definición tributaria ICA Bogotá' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Eliminar definición tributaria IVA 19%' }),
     ).not.toBeInTheDocument();
   });
 
