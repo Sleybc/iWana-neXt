@@ -2897,6 +2897,47 @@ export interface CompletenessResult {
   technical: number;
   operational: number;
   overall: number;
+  sectionCompleteness?: SectionCompletenessItem[];
+  installationReadiness?: InstallationReadinessSummary;
+  missingRequirements?: CompletenessMissingRequirement[];
+}
+
+export interface CompletenessMissingRequirement {
+  sectionKey: string;
+  sectionLabel: string;
+  fieldKey: string;
+  fieldLabel: string;
+}
+
+export interface SectionCompletenessItem {
+  key: string;
+  label: string;
+  percentage: number;
+  completedFields: number;
+  totalFields: number;
+  missingFields: CompletenessMissingRequirement[];
+}
+
+export interface InstallationReadinessSummary {
+  status: 'NOT_READY' | 'READY_WITH_PENDING' | 'READY_COMPLETE';
+  canTransition: boolean;
+  title: string;
+  message: string;
+}
+
+export interface TransitionWarning {
+  title: string;
+  message: string;
+  missingRequirements: CompletenessMissingRequirement[];
+}
+
+export interface PipelineRecommendation {
+  currentStatus: string;
+  /** null si ya está en el estado óptimo recomendado */
+  suggestedStatus: string | null;
+  recommendationReason: string | null;
+  blockingRequirements: CompletenessMissingRequirement[];
+  informationalRequirements: CompletenessMissingRequirement[];
 }
 
 export interface ExpedienteTimelineChange {
@@ -3007,11 +3048,14 @@ export const crmApi = {
   },
 
   getExpediente: (id: string, tenantSlug?: string) =>
-    request<{ data: ExpedienteRecord; completeness: CompletenessResult }>(
-      `/crm/expedientes/${id}`,
-      { returnFullResponse: true },
-      tenantSlug,
-    ),
+    request<{
+      data: ExpedienteRecord;
+      completeness: CompletenessResult;
+      sectionCompleteness: SectionCompletenessItem[];
+      installationReadiness: InstallationReadinessSummary;
+      missingRequirements: CompletenessMissingRequirement[];
+      pipelineRecommendation: PipelineRecommendation;
+    }>(`/crm/expedientes/${id}`, { returnFullResponse: true }, tenantSlug),
 
   createExpediente: (dto: CreateExpedienteDto, tenantSlug?: string) =>
     request<{ data: ExpedienteRecord }>(
@@ -3033,7 +3077,15 @@ export const crmApi = {
     ),
 
   transitionExpedienteStatus: (id: string, dto: TransitionStatusDto, tenantSlug?: string) =>
-    request<{ data: ExpedienteRecord; completeness: CompletenessResult }>(
+    request<{
+      data: ExpedienteRecord;
+      completeness: CompletenessResult;
+      sectionCompleteness: SectionCompletenessItem[];
+      installationReadiness: InstallationReadinessSummary;
+      missingRequirements: CompletenessMissingRequirement[];
+      pipelineRecommendation: PipelineRecommendation;
+      transitionWarning: TransitionWarning | null;
+    }>(
       `/crm/expedientes/${id}/status`,
       { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
       tenantSlug,

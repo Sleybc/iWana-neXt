@@ -27,6 +27,7 @@ import { ZodBodyValidationPipe } from '../pipes/zod-body-validation.pipe';
 import { ExpedienteService } from './expediente.service';
 import { StatusTransitionService } from './status-transition.service';
 import { CompletenessCalculator } from './completeness-calculator.service';
+import { PipelineRecommendationService } from './pipeline-recommendation.service';
 import { CreateExpedienteDto, CreateExpedienteSchema } from './dto/create-expediente.dto';
 import {
   ExpedienteSection,
@@ -66,6 +67,7 @@ export class ExpedientesController {
     private readonly expedienteService: ExpedienteService,
     private readonly statusTransitionService: StatusTransitionService,
     private readonly completenessCalculator: CompletenessCalculator,
+    private readonly pipelineRecommendationService: PipelineRecommendationService,
   ) {}
 
   @Post()
@@ -111,7 +113,15 @@ export class ExpedientesController {
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     const data = await this.expedienteService.findById(id);
     const completeness = await this.completenessCalculator.calculate(id);
-    return { data, completeness };
+    const pipelineRecommendation = await this.pipelineRecommendationService.getRecommendation(id);
+    return {
+      data,
+      completeness,
+      sectionCompleteness: completeness.sectionCompleteness,
+      installationReadiness: completeness.installationReadiness,
+      missingRequirements: completeness.missingRequirements,
+      pipelineRecommendation,
+    };
   }
 
   @Patch(':id/sections/:section')
@@ -165,7 +175,23 @@ export class ExpedientesController {
 
     const data = await this.expedienteService.transitionStatus(id, dto, user.sub);
     const completeness = await this.completenessCalculator.calculate(id);
-    return { data, completeness };
+    const pipelineRecommendation = await this.pipelineRecommendationService.getRecommendation(id);
+    return {
+      data,
+      completeness,
+      sectionCompleteness: completeness.sectionCompleteness,
+      installationReadiness: completeness.installationReadiness,
+      missingRequirements: completeness.missingRequirements,
+      pipelineRecommendation,
+      transitionWarning:
+        validation.warningTitle && validation.warningMessage
+          ? {
+              title: validation.warningTitle,
+              message: validation.warningMessage,
+              missingRequirements: validation.missingRequirements ?? [],
+            }
+          : null,
+    };
   }
 
   @Post(':id/reactivate')

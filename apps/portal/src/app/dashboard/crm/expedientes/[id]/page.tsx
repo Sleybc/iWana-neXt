@@ -25,10 +25,12 @@ import {
   Loader2,
   Phone,
   RefreshCw,
+  Sparkles,
 } from 'lucide-react';
 import {
   AdditionalProduct,
   AdditionalService,
+  ApiError,
   commercialApi,
   CompletenessResult,
   crmApi,
@@ -37,6 +39,7 @@ import {
   ExpedienteOperationalMetadata,
   ExpedienteRecord,
   OperationalHistoryItem,
+  PipelineRecommendation,
   PlanCatalogItem,
   ResponsibilitySnapshot,
   SalesAttributionRecord,
@@ -56,17 +59,11 @@ import {
 import { ExpedienteTabsContainer } from '@/components/crm/expedientes/ExpedienteTabsContainer';
 import { useAuth } from '@/components/auth/AuthProvider';
 import {
-  SECTIONS,
-  DIMENSION_SECTION_GROUPS,
   ACQUISITION_CHANNEL_OPTIONS,
   hasPersistedIdentificationData,
-  getSectionCompletionFields,
   getSectionPayloadFields,
   buildDraftValues,
   getCandidateTechnologiesFromDraft,
-  calculateSectionCompletion,
-  calculateDocumentSupportCompletion,
-  calculateDimensionCompletion,
   getMunicipiosByDepartamento,
 } from '@/components/crm/expedientes/sections';
 import type { SectionId, DraftValues } from '@/components/crm/expedientes/sections';
@@ -159,6 +156,8 @@ export default function ExpedienteDetailPage() {
 
   const [expediente, setExpediente] = useState<ExpedienteRecord | null>(null);
   const [completeness, setCompleteness] = useState<CompletenessResult | null>(null);
+  const [pipelineRecommendation, setPipelineRecommendation] =
+    useState<PipelineRecommendation | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [draftValues, setDraftValues] = useState<DraftValues>({});
@@ -209,69 +208,13 @@ export default function ExpedienteDetailPage() {
     operationalMetadata?.lastEditedBy.name?.trim() ||
     currentUserDisplayName ||
     'Usuario no disponible';
-
-  const sectionCompletionById = SECTIONS.reduce<Record<string, number>>((accumulator, section) => {
-    const completionFields = getSectionCompletionFields(
-      section.id as SectionId,
-      effectivePersonType,
-    );
-    accumulator[section.id] = calculateSectionCompletion(completionFields, draftValues);
-    return accumulator;
-  }, {});
-
-  const documentSupportCompletion = calculateDocumentSupportCompletion(
-    effectivePersonType,
-    expediente?.documentSupports,
-  );
-
-  const sectionsOverallProgress =
-    SECTIONS.length > 0
-      ? Math.round(
-          (SECTIONS.reduce((sum, section) => sum + (sectionCompletionById[section.id] ?? 0), 0) +
-            documentSupportCompletion) /
-            (SECTIONS.length + 1),
-        )
-      : documentSupportCompletion;
-
-  const sectionDimensionSnapshot = {
-    commercial: calculateDimensionCompletion(
-      DIMENSION_SECTION_GROUPS.commercial!,
-      sectionCompletionById,
-    ),
-    legal: calculateDimensionCompletion(DIMENSION_SECTION_GROUPS.legal!, sectionCompletionById),
-    technical: calculateDimensionCompletion(
-      DIMENSION_SECTION_GROUPS.technical!,
-      sectionCompletionById,
-    ),
-    operational: calculateDimensionCompletion(
-      DIMENSION_SECTION_GROUPS.operational!,
-      sectionCompletionById,
-    ),
-  };
-
-  const legalWithDocumentSupport = Math.round(
-    (sectionDimensionSnapshot.legal + documentSupportCompletion) / 2,
-  );
-
-  const completenessSnapshot = {
-    commercial: Math.max(
-      completeness?.commercial ?? expediente?.completenessCommercial ?? 0,
-      sectionDimensionSnapshot.commercial,
-    ),
-    legal: Math.max(
-      completeness?.legal ?? expediente?.completenessLegal ?? 0,
-      legalWithDocumentSupport,
-    ),
-    technical: Math.max(
-      completeness?.technical ?? expediente?.completenessTechnical ?? 0,
-      sectionDimensionSnapshot.technical,
-    ),
-    operational: Math.max(
-      completeness?.operational ?? expediente?.completenessOperational ?? 0,
-      sectionDimensionSnapshot.operational,
-    ),
-    overall: completeness?.overall ?? 0,
-  };
+  const sectionCompleteness = completeness?.sectionCompleteness ?? [];
+  const overallProgress = completeness?.overall ?? expediente?.pipelineProgress ?? 0;
+  const completedSections = sectionCompleteness.filter(
+    (section) => section.percentage >= 100,
+  ).length;
+  const installationReadiness = completeness?.installationReadiness ?? null;
+  const missingRequirements = completeness?.missingRequirements ?? [];
 
   useEffect(() => {
     if (!id) return;
@@ -322,6 +265,7 @@ export default function ExpedienteDetailPage() {
 
       setExpediente(response.data);
       setCompleteness(response.completeness);
+      setPipelineRecommendation(response.pipelineRecommendation ?? null);
       if (refreshDraft) {
         setDraftValues((current) => {
           const nextDraft = buildDraftValues(response.data, current);
@@ -559,18 +503,43 @@ export default function ExpedienteDetailPage() {
       // No hay secciones con campos requeridos pre-transición que deban auto-persistirse.
       // Billing e instalación ya no son secciones del expediente.
 
-      await crmApi.transitionExpedienteStatus(id, {
+      const response = await crmApi.transitionExpedienteStatus(id, {
         targetStatus,
         ...(transitionReason.trim() ? { reason: transitionReason.trim() } : {}),
       });
-      await loadExpediente();
+      await loadExpediente({ clearActionMessage: false });
       setTransitionReason('');
-      setActionMessageTone('success');
-      setActionMessage('Transición aplicada correctamente.');
+      if (response.transitionWarning) {
+        setActionMessageTone('info');
+        setActionMessage(
+          `${response.transitionWarning.title}. ${response.transitionWarning.message}`,
+        );
+      } else {
+        setActionMessageTone('success');
+        setActionMessage('Transición aplicada correctamente.');
+      }
     } catch (err) {
       console.error(err);
       setActionMessageTone('error');
-      setActionMessage(err instanceof Error ? err.message : 'No fue posible cambiar el estado.');
+      if (err instanceof ApiError) {
+        const missing: string[] = Array.isArray(
+          (err as ApiError & { details?: { missingFields?: unknown[] } }).details?.missingFields,
+        )
+          ? ((err as ApiError & { details?: { missingFields?: string[] } }).details!
+              .missingFields ?? [])
+          : [];
+        if (missing.length > 0) {
+          const preview = missing.slice(0, 3).join(', ');
+          const extra = missing.length > 3 ? ` y ${missing.length - 3} más` : '';
+          setActionMessage(
+            `No es posible avanzar al estado seleccionado. Faltantes: ${preview}${extra}.`,
+          );
+        } else {
+          setActionMessage(err.message || 'No fue posible cambiar el estado.');
+        }
+      } else {
+        setActionMessage(err instanceof Error ? err.message : 'No fue posible cambiar el estado.');
+      }
     }
   };
 
@@ -668,28 +637,18 @@ export default function ExpedienteDetailPage() {
     );
   }
 
-  // Siempre calcular desde las dimensiones enriquecidas del frontend:
-  // completenessSnapshot.legal ya incorpora legalWithDocumentSupport (soportes documentales).
-  // No usar pipelineProgress del backend directamente porque ese valor calcula legal
-  // sin considerar el progreso de soportes documentales del formulario frontend.
-  const overallProgress = Math.round(
-    (completenessSnapshot.commercial +
-      completenessSnapshot.legal +
-      completenessSnapshot.technical) /
-      3,
-  );
-
-  const completedSections = [...SECTIONS.map((section) => section.id), 'document_support'].filter(
-    (sectionId) =>
-      (sectionId === 'document_support'
-        ? documentSupportCompletion
-        : (sectionCompletionById[sectionId] ?? 0)) >= 100,
-  ).length;
-
   const tabVistaGeneral = (
     <div className="space-y-6">
       {actionMessage && (
-        <p className="rounded-[20px] border border-iwana-primary/15 bg-iwana-primary/5 px-4 py-3 text-sm text-iwana-primary shadow-iwana-soft dark:border-iwana-primary-300/20 dark:bg-iwana-primary-400/10 dark:text-iwana-primary-200">
+        <p
+          className={`rounded-[20px] px-4 py-3 text-sm shadow-iwana-soft ${
+            actionMessageTone === 'error'
+              ? 'border border-red-200 bg-red-50 text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300'
+              : actionMessageTone === 'success'
+                ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300'
+                : 'border border-iwana-primary/15 bg-iwana-primary/5 text-iwana-primary dark:border-iwana-primary-300/20 dark:bg-iwana-primary-400/10 dark:text-iwana-primary-200'
+          }`}
+        >
           {actionMessage}
         </p>
       )}
@@ -698,149 +657,75 @@ export default function ExpedienteDetailPage() {
           El consentimiento de tratamiento de datos fue revocado.
         </p>
       )}
+      {installationReadiness && (
+        <div
+          className={`rounded-[20px] border px-4 py-4 shadow-iwana-soft ${
+            installationReadiness.status === 'NOT_READY'
+              ? 'border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-900/20'
+              : installationReadiness.status === 'READY_WITH_PENDING'
+                ? 'border-blue-200 bg-blue-50 dark:border-blue-900/40 dark:bg-blue-900/20'
+                : 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-900/20'
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle
+              className={`mt-0.5 h-4 w-4 shrink-0 ${
+                installationReadiness.status === 'READY_COMPLETE'
+                  ? 'text-emerald-600 dark:text-emerald-300'
+                  : installationReadiness.status === 'READY_WITH_PENDING'
+                    ? 'text-blue-600 dark:text-blue-300'
+                    : 'text-amber-600 dark:text-amber-300'
+              }`}
+              aria-hidden="true"
+            />
+            <div className="space-y-2">
+              <div>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                  {installationReadiness.title}
+                </p>
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  {installationReadiness.message}
+                </p>
+              </div>
+              {missingRequirements.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Pendientes principales
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {missingRequirements.slice(0, 6).map((requirement) => (
+                      <span
+                        key={`${requirement.sectionKey}-${requirement.fieldKey}`}
+                        className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-300"
+                      >
+                        {requirement.sectionLabel}: {requirement.fieldLabel}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {/* Progreso general */}
       <div className="rounded-[20px] border border-gray-50 bg-white p-6 shadow-[var(--shadow-iwana-soft)] dark:border-dark-border dark:bg-dark-surface-2">
         <div className="flex items-center space-x-2 mb-5 text-iwana-primary dark:text-white">
           <LayoutDashboard className="h-5 w-5 text-iwana-secondary-700" aria-hidden="true" />
-          <h2 className="text-base font-bold">Resumen de la oportunidad</h2>
+          <div>
+            <h2 className="text-base font-bold">Resumen de la oportunidad</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {completedSections}/{sectionCompleteness.length || 7} secciones completas
+            </p>
+          </div>
         </div>
         <ProgressMeter
           value={overallProgress}
-          dimensions={[
-            { label: 'Comercial', value: completenessSnapshot.commercial },
-            { label: 'Legal', value: completenessSnapshot.legal },
-            { label: 'Técnica', value: completenessSnapshot.technical },
-          ]}
+          dimensions={sectionCompleteness.map((section) => ({
+            label: section.label,
+            value: section.percentage,
+          }))}
         />
-      </div>
-      {/* Tarjetas de dimension */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <div className="rounded-2xl border border-gray-100 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2">
-          <div className="mb-3 flex items-center justify-between">
-            <p className="text-xs font-semibold tracking-wide text-gray-500 dark:text-gray-400">
-              Comercial
-            </p>
-            <Badge
-              variant={
-                completenessSnapshot.commercial >= 80
-                  ? 'success'
-                  : completenessSnapshot.commercial >= 40
-                    ? 'warning'
-                    : 'neutral'
-              }
-            >
-              {completenessSnapshot.commercial}%
-            </Badge>
-          </div>
-          <ul className="space-y-1.5 text-xs text-gray-600 dark:text-gray-400">
-            {DIMENSION_SECTION_GROUPS.commercial!.map((sId) => {
-              const sec = SECTIONS.find((s) => s.id === sId);
-              const pct = sectionCompletionById[sId] ?? 0;
-              return sec ? (
-                <li key={sId} className="flex items-center justify-between gap-2">
-                  <span className="truncate">{sec.label}</span>
-                  <span
-                    className={
-                      pct >= 100
-                        ? 'font-semibold text-emerald-600 dark:text-emerald-400'
-                        : 'text-gray-400'
-                    }
-                  >
-                    {pct}%
-                  </span>
-                </li>
-              ) : null;
-            })}
-          </ul>
-        </div>
-        <div className="rounded-2xl border border-gray-100 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2">
-          <div className="mb-3 flex items-center justify-between">
-            <p className="text-xs font-semibold tracking-wide text-gray-500 dark:text-gray-400">
-              Técnica
-            </p>
-            <Badge
-              variant={
-                completenessSnapshot.technical >= 80
-                  ? 'success'
-                  : completenessSnapshot.technical >= 40
-                    ? 'warning'
-                    : 'neutral'
-              }
-            >
-              {completenessSnapshot.technical}%
-            </Badge>
-          </div>
-          <ul className="space-y-1.5 text-xs text-gray-600 dark:text-gray-400">
-            {DIMENSION_SECTION_GROUPS.technical!.map((sId) => {
-              const sec = SECTIONS.find((s) => s.id === sId);
-              const pct = sectionCompletionById[sId] ?? 0;
-              return sec ? (
-                <li key={sId} className="flex items-center justify-between gap-2">
-                  <span className="truncate">{sec.label}</span>
-                  <span
-                    className={
-                      pct >= 100
-                        ? 'font-semibold text-emerald-600 dark:text-emerald-400'
-                        : 'text-gray-400'
-                    }
-                  >
-                    {pct}%
-                  </span>
-                </li>
-              ) : null;
-            })}
-          </ul>
-        </div>
-        <div className="rounded-2xl border border-gray-100 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2">
-          <div className="mb-3 flex items-center justify-between">
-            <p className="text-xs font-semibold tracking-wide text-gray-500 dark:text-gray-400">
-              Legal
-            </p>
-            <Badge
-              variant={
-                completenessSnapshot.legal >= 80
-                  ? 'success'
-                  : completenessSnapshot.legal >= 40
-                    ? 'warning'
-                    : 'neutral'
-              }
-            >
-              {completenessSnapshot.legal}%
-            </Badge>
-          </div>
-          <ul className="space-y-1.5 text-xs text-gray-600 dark:text-gray-400">
-            {DIMENSION_SECTION_GROUPS.legal!.map((sId) => {
-              const sec = SECTIONS.find((s) => s.id === sId);
-              const pct = sectionCompletionById[sId] ?? 0;
-              return sec ? (
-                <li key={sId} className="flex items-center justify-between gap-2">
-                  <span className="truncate">{sec.label}</span>
-                  <span
-                    className={
-                      pct >= 100
-                        ? 'font-semibold text-emerald-600 dark:text-emerald-400'
-                        : 'text-gray-400'
-                    }
-                  >
-                    {pct}%
-                  </span>
-                </li>
-              ) : null;
-            })}
-            <li className="flex items-center justify-between gap-2">
-              <span className="truncate">Soportes documentales</span>
-              <span
-                className={
-                  documentSupportCompletion >= 100
-                    ? 'font-semibold text-emerald-600 dark:text-emerald-400'
-                    : 'text-gray-400'
-                }
-              >
-                {documentSupportCompletion}%
-              </span>
-            </li>
-          </ul>
-        </div>
       </div>
       {/* Informacion del caso */}
       <div className="grid gap-4 rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-surface-3 md:grid-cols-2 xl:grid-cols-6">
@@ -918,6 +803,79 @@ export default function ExpedienteDetailPage() {
           )}
         </div>
       </div>
+      {/* Recomendación del pipeline asistido */}
+      {pipelineRecommendation?.suggestedStatus && (
+        <div className="rounded-[20px] border border-iwana-primary/20 bg-iwana-primary/5 p-4 shadow-iwana-soft dark:border-iwana-primary-300/20 dark:bg-iwana-primary-400/10">
+          <div className="flex items-start gap-3">
+            <Sparkles
+              className="mt-0.5 h-4 w-4 shrink-0 text-iwana-primary dark:text-iwana-primary-200"
+              aria-hidden="true"
+            />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div>
+                <p className="text-sm font-semibold text-iwana-primary dark:text-iwana-primary-200">
+                  Estado sugerido:{' '}
+                  <span className="font-bold">
+                    {getStatusMeta(pipelineRecommendation.suggestedStatus).label}
+                  </span>
+                </p>
+                {pipelineRecommendation.recommendationReason && (
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                    {pipelineRecommendation.recommendationReason}
+                  </p>
+                )}
+              </div>
+              {pipelineRecommendation.blockingRequirements.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
+                    Requerido para avanzar
+                  </p>
+                  <ul className="mt-1 space-y-0.5">
+                    {pipelineRecommendation.blockingRequirements.map((req) => (
+                      <li
+                        key={`${req.sectionKey}-${req.fieldKey}`}
+                        className="text-xs text-red-700 dark:text-red-300"
+                      >
+                        • {req.sectionLabel}: {req.fieldLabel}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {pipelineRecommendation.informationalRequirements.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                    Recomendado (no bloqueante)
+                  </p>
+                  <ul className="mt-1 space-y-0.5">
+                    {pipelineRecommendation.informationalRequirements.map((req) => (
+                      <li
+                        key={`${req.sectionKey}-${req.fieldKey}`}
+                        className="text-xs text-amber-700 dark:text-amber-300"
+                      >
+                        • {req.sectionLabel}: {req.fieldLabel}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {pipelineRecommendation.blockingRequirements.length === 0 && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="mt-1"
+                  onClick={() =>
+                    handleTransition(pipelineRecommendation.suggestedStatus as ExpedienteStatus)
+                  }
+                >
+                  <Sparkles className="h-4 w-4" aria-hidden="true" />
+                  Avanzar a {getStatusMeta(pipelineRecommendation.suggestedStatus).label}
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {/* Acciones de pipeline */}
       <div className="rounded-2xl border border-gray-100 bg-white p-5 dark:border-dark-border dark:bg-dark-surface-2">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -954,7 +912,14 @@ export default function ExpedienteDetailPage() {
             onChange={(event) => setTransitionReason(event.target.value)}
             placeholder="Registra contexto de la transición"
           />
-          <Button type="button" onClick={() => handleTransition()}>
+          <Button
+            type="button"
+            onClick={() => handleTransition()}
+            disabled={
+              transitionTarget === 'LISTO_PARA_INSTALACION' &&
+              installationReadiness?.canTransition === false
+            }
+          >
             Aplicar transición
           </Button>
           <Button
@@ -966,6 +931,16 @@ export default function ExpedienteDetailPage() {
             Cerrar como agendada
           </Button>
         </div>
+        {transitionTarget === 'LISTO_PARA_INSTALACION' && installationReadiness && (
+          <div className="mt-4 rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">
+              {installationReadiness.title}
+            </p>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+              {installationReadiness.message}
+            </p>
+          </div>
+        )}
 
         {expediente.status === 'DESCARTADO' && (
           <div className="mt-4 flex justify-start">
