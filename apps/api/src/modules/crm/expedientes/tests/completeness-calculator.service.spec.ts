@@ -82,7 +82,7 @@ describe('CompletenessCalculator', () => {
         legal: 0,
         technical: 0,
         operational: 0,
-        overall: 7,
+        overall: 11,
         installationReadiness: expect.objectContaining({
           status: 'NOT_READY',
           canTransition: false,
@@ -142,11 +142,11 @@ describe('CompletenessCalculator', () => {
         legal: 0,
         technical: 100,
         operational: 0,
-        overall: 18,
+        overall: 25,
         sectionCompleteness: expect.arrayContaining([
           expect.objectContaining({
             key: 'technicalFeasibility',
-            percentage: 75,
+            percentage: 100,
           }),
         ]),
       }),

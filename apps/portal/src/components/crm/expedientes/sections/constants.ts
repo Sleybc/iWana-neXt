@@ -313,9 +313,8 @@ export const SECTIONS: SectionConfig[] = [
     completionFields: [
       'feasibility',
       'candidateTechnologies',
-      'availableTechnology',
-      'technicalConfidence',
       'evaluationSource',
+      'technicalConfidence',
     ],
   },
   {

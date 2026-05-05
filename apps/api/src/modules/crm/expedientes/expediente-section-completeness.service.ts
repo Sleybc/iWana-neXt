@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { ConsentStatus, ConsentType } from '@iwana/shared';
 import { CoverageCheck } from './entities/coverage-check.entity';
 import { ConsentRecord } from './entities/consent-record-v2.entity';
 import { ExpedienteRecord } from './entities/expediente-record.entity';
@@ -141,41 +140,41 @@ export class ExpedienteSectionCompletenessService {
 
   private buildTechnicalSection(
     expediente: ExpedienteRecord,
-    coverageChecks: CoverageCheck[],
+    _coverageChecks: CoverageCheck[],
   ): SectionCompletenessItem {
+    // Los 4 campos del formulario de Viabilidad técnica en el portal.
+    // coverageResult no tiene campo propio en el formulario; se evalúa feasibility directamente.
     return this.buildSection('technicalFeasibility', 'Viabilidad técnica', [
       {
-        fieldKey: 'coverageResult',
-        fieldLabel: 'Resultado de cobertura',
-        fulfilled: coverageChecks.length > 0 || this.hasText(expediente.coverageResult),
-      },
-      {
         fieldKey: 'feasibility',
-        fieldLabel: 'Definición de viabilidad',
-        fulfilled: this.hasText(expediente.feasibility) || this.hasText(expediente.coverageResult),
+        fieldLabel: 'Resultado de viabilidad',
+        fulfilled: this.hasText(expediente.feasibility),
       },
       {
-        fieldKey: 'availableTechnology',
-        fieldLabel: 'Tecnología recomendada',
-        fulfilled:
-          this.hasText(expediente.availableTechnology) ||
-          (expediente.candidateTechnologies?.length ?? 0) > 0,
+        fieldKey: 'candidateTechnologies',
+        fieldLabel: 'Opciones viables',
+        fulfilled: (expediente.candidateTechnologies?.length ?? 0) > 0,
       },
       {
         fieldKey: 'evaluationSource',
-        fieldLabel: 'Fuente de evaluación técnica',
-        fulfilled:
-          this.hasText(expediente.evaluationSource) ||
-          this.hasText(expediente.technicalConfidence) ||
-          expediente.estimatedDistanceM != null,
+        fieldLabel: 'Fuente de evaluación',
+        fulfilled: this.hasText(expediente.evaluationSource),
+      },
+      {
+        fieldKey: 'technicalConfidence',
+        fieldLabel: 'Nivel de certeza',
+        fulfilled: this.hasText(expediente.technicalConfidence),
       },
     ]);
   }
 
   private buildCustomerInterestSection(
     expediente: ExpedienteRecord,
-    quotes: CrmQuoteSnapshot[],
+    _quotes: CrmQuoteSnapshot[],
   ): SectionCompletenessItem {
+    // El formulario de Interés del cliente expone: interestedPlanId y acquisitionChannel.
+    // casePriority y quotes no tienen campo en esta sección del formulario.
+    // Seleccionar un plan + tener canal de adquisición = 100%.
     return this.buildSection('customerInterest', 'Interés del cliente', [
       {
         fieldKey: 'acquisitionChannel',
@@ -187,52 +186,25 @@ export class ExpedienteSectionCompletenessService {
         fieldLabel: 'Plan de interés',
         fulfilled: this.hasText(expediente.interestedPlanId),
       },
-      {
-        fieldKey: 'casePriority',
-        fieldLabel: 'Prioridad o presupuesto estimado',
-        fulfilled: this.hasText(expediente.casePriority) || expediente.estimatedBudget != null,
-      },
-      {
-        fieldKey: 'quotes',
-        fieldLabel: 'Cotización o notas comerciales',
-        fulfilled:
-          quotes.length > 0 ||
-          this.hasText(expediente.commercialNotes) ||
-          (expediente.additionalProductIds?.length ?? 0) > 0 ||
-          expediente.additionalServiceIds.length > 0,
-      },
     ]);
   }
 
   private buildLegalComplianceSection(
     expediente: ExpedienteRecord,
-    consents: ConsentRecord[],
+    _consents: ConsentRecord[],
   ): SectionCompletenessItem {
+    // El formulario de Cumplimiento legal solo expone 2 campos: identityVerified y legalComplianceStatus.
+    // Los consentimientos se gestionan en el módulo Habeas Data y no bloquean esta sección.
     return this.buildSection('legalCompliance', 'Cumplimiento legal', [
       {
         fieldKey: 'identityVerified',
         fieldLabel: 'Verificación de identidad',
-        fulfilled: this.normalize(expediente.identityVerified) === 'VERIFICADO',
+        fulfilled: this.hasText(expediente.identityVerified),
       },
       {
         fieldKey: 'legalComplianceStatus',
         fieldLabel: 'Estado legal del expediente',
-        fulfilled: this.normalize(expediente.legalComplianceStatus) === 'AUTORIZADO',
-      },
-      {
-        fieldKey: 'dataTreatmentConsent',
-        fieldLabel: 'Consentimiento de tratamiento de datos',
-        fulfilled: this.hasAcceptedConsent(consents, ConsentType.TRATAMIENTO_DATOS),
-      },
-      {
-        fieldKey: 'commercialContactConsent',
-        fieldLabel: 'Consentimiento de contacto comercial',
-        fulfilled: this.hasAcceptedConsent(consents, ConsentType.CONTACTO_COMERCIAL),
-      },
-      {
-        fieldKey: 'operationalContactConsent',
-        fieldLabel: 'Consentimiento de contacto operativo',
-        fulfilled: this.hasAcceptedConsent(consents, ConsentType.CONTACTO_OPERATIVO),
+        fulfilled: this.hasText(expediente.legalComplianceStatus),
       },
     ]);
   }
@@ -322,21 +294,7 @@ export class ExpedienteSectionCompletenessService {
     };
   }
 
-  private hasAcceptedConsent(consents: ConsentRecord[], type: ConsentType): boolean {
-    return consents.some(
-      (consent) => consent.consentType === type && consent.status === ConsentStatus.ACEPTADO,
-    );
-  }
-
   private hasText(value: string | null | undefined): boolean {
     return Boolean(value?.trim());
-  }
-
-  private normalize(value: string | null | undefined): string {
-    return String(value ?? '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .trim()
-      .toUpperCase();
   }
 }
