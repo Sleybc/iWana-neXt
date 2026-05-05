@@ -271,7 +271,7 @@ export class ExpedienteSectionCompletenessService {
         canTransition: false,
         title: 'Información insuficiente para continuar a instalación',
         message:
-          'La oportunidad aún no supera el 75% de completitud general. Completa los pendientes críticos antes de avanzar.',
+          'La oportunidad aún no supera el 75% de avance general. Completa los pendientes críticos antes de avanzar.',
       };
     }
 
@@ -280,8 +280,7 @@ export class ExpedienteSectionCompletenessService {
         status: INSTALLATION_READINESS_STATUS.READY_COMPLETE,
         canTransition: true,
         title: 'Expediente completo para instalación',
-        message:
-          'La oportunidad cumple el 100% de completitud general y puede avanzar sin pendientes.',
+        message: 'La oportunidad tiene el 100% de avance general y puede avanzar sin pendientes.',
       };
     }
 
@@ -290,7 +289,7 @@ export class ExpedienteSectionCompletenessService {
       canTransition: true,
       title: 'Puedes continuar a instalación con información pendiente',
       message:
-        'La oportunidad ya supera el 75% de completitud general. Aún faltan datos por cerrar en algunas secciones. Recomendamos completarlos lo antes posible para evitar reprocesos en instalación.',
+        'La oportunidad ya supera el 75% de avance general. Aún faltan datos por cerrar en algunas secciones. Recomendamos completarlos lo antes posible para evitar reprocesos en instalación.',
     };
   }
 

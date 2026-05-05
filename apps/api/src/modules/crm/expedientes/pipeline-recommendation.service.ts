@@ -118,7 +118,7 @@ export class PipelineRecommendationService {
       return ExpedienteStatus.INSTALACION_AGENDADA;
     }
 
-    // Hito LISTO_PARA_INSTALACION: completitud funcional >= 75%
+    // Hito LISTO_PARA_INSTALACION: avance funcional >= 75%
     if (functionalOverall >= 75) {
       return ExpedienteStatus.LISTO_PARA_INSTALACION;
     }
@@ -162,7 +162,8 @@ export class PipelineRecommendationService {
         'La ubicación está disponible para verificar cobertura.',
       [ExpedienteStatus.EN_COTIZACION]:
         'El plan de interés fue seleccionado. La oportunidad puede avanzar a cotización.',
-      [ExpedienteStatus.LISTO_PARA_INSTALACION]: `La oportunidad superó el ${functionalOverall}% de completitud funcional. Puede avanzar a instalación.`,
+      [ExpedienteStatus.LISTO_PARA_INSTALACION]:
+        'Las secciones principales del expediente están completas. Puede avanzar a instalación.',
       [ExpedienteStatus.INSTALACION_AGENDADA]:
         'El ticket y la orden de trabajo están vinculados. La instalación puede ser agendada.',
       [ExpedienteStatus.CLIENTE_ACTIVO]:
