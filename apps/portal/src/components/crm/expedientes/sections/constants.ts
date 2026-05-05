@@ -1,5 +1,9 @@
 import { BriefcaseBusiness, MapPin, Phone, ShieldCheck, UserRound, Wrench } from 'lucide-react';
-import type { CompletenessResult, ExpedienteRecord } from '@/lib/api-client';
+import type {
+  CompletenessResult,
+  ExpedienteRecord,
+  SectionCompletenessItem,
+} from '@/lib/api-client';
 import {
   ACQUISITION_CHANNEL_OPTIONS,
   DEPARTAMENTO_DEFAULT,
@@ -26,6 +30,16 @@ export {
 };
 
 export const EMPTY_VALUE = '';
+
+export const BACKEND_SECTION_KEY_BY_UI_SECTION: Record<SectionId | 'document_support', string> = {
+  identification: 'identification',
+  contact: 'contact',
+  location: 'address',
+  commercial_interest: 'customerInterest',
+  technical_feasibility: 'technicalFeasibility',
+  legal_consent: 'legalCompliance',
+  document_support: 'documentSupport',
+};
 
 const NATURAL_PERSON_DOCUMENT_KEYS = ['identity_document', 'utility_bill'] as const;
 const LEGAL_ENTITY_DOCUMENT_KEYS = [
@@ -84,6 +98,15 @@ export function calculateDocumentSupportCompletion(
   }).length;
 
   return Math.round((uploadedCount / requiredDocumentKeys.length) * 100);
+}
+
+export function getBackendSectionCompletion(
+  sectionCompleteness: SectionCompletenessItem[] | null | undefined,
+  sectionId: SectionId | 'document_support',
+): number | null {
+  const backendKey = BACKEND_SECTION_KEY_BY_UI_SECTION[sectionId];
+  const match = sectionCompleteness?.find((section) => section.key === backendKey);
+  return typeof match?.percentage === 'number' ? match.percentage : null;
 }
 
 export const FIELD_LABELS: Record<string, string> = {
@@ -205,7 +228,7 @@ export const SECTIONS: SectionConfig[] = [
     icon: Phone,
     renderFields: ['phonePrimary', 'emailPrimary', 'altContactName', 'altContactPhone'],
     payloadFields: ['phonePrimary', 'emailPrimary', 'altContactName', 'altContactPhone'],
-    completionFields: ['phonePrimary', 'emailPrimary'],
+    completionFields: ['phonePrimary', 'emailPrimary', 'altContactName', 'altContactPhone'],
   },
   {
     id: 'location',

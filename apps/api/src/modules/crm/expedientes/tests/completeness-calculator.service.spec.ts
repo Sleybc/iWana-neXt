@@ -2,7 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { AcquisitionChannel } from '@iwana/shared';
 import { CompletenessCalculator } from '../completeness-calculator.service';
+import { ExpedienteSectionCompletenessService } from '../expediente-section-completeness.service';
 import { ExpedienteRecord } from '../entities/expediente-record.entity';
+import { CrmQuoteReadPort } from '../../ports/crm-quote-read.port';
 
 const mockRunInTenantSchema = jest.fn();
 const mockTenantContextGetOrThrow = jest.fn();
@@ -21,6 +23,9 @@ jest.mock('@iwana/db', () => {
 
 describe('CompletenessCalculator', () => {
   let service: CompletenessCalculator;
+  const crmQuoteReadPortMock = {
+    findByExpedienteId: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -29,8 +34,15 @@ describe('CompletenessCalculator', () => {
       schemaName: 'tenant_test',
     });
 
+    crmQuoteReadPortMock.findByExpedienteId.mockResolvedValue([]);
+
     const module: TestingModule = await Test.createTestingModule({
-      providers: [CompletenessCalculator, { provide: DataSource, useValue: {} }],
+      providers: [
+        CompletenessCalculator,
+        ExpedienteSectionCompletenessService,
+        { provide: CrmQuoteReadPort, useValue: crmQuoteReadPortMock },
+        { provide: DataSource, useValue: {} },
+      ],
     }).compile();
 
     service = module.get<CompletenessCalculator>(CompletenessCalculator);
@@ -64,13 +76,19 @@ describe('CompletenessCalculator', () => {
 
     // Con sub-tablas vacías el cálculo refleja solo los campos del expediente en memoria.
     // El expediente de prueba solo tiene fullName, lo que aporta ~20% en comercial.
-    await expect(service.calculate('exp-1')).resolves.toEqual({
-      commercial: 20,
-      legal: 0,
-      technical: 0,
-      operational: 0,
-      overall: 5,
-    });
+    await expect(service.calculate('exp-1')).resolves.toEqual(
+      expect.objectContaining({
+        commercial: 20,
+        legal: 0,
+        technical: 0,
+        operational: 0,
+        overall: 7,
+        installationReadiness: expect.objectContaining({
+          status: 'NOT_READY',
+          canTransition: false,
+        }),
+      }),
+    );
   });
 
   it('re-lanza errores no atribuibles a compatibilidad de esquema', async () => {
@@ -118,13 +136,21 @@ describe('CompletenessCalculator', () => {
         }),
       );
 
-    await expect(service.calculate('exp-1')).resolves.toEqual({
-      commercial: 20,
-      legal: 0,
-      technical: 100,
-      operational: 0,
-      overall: 30,
-    });
+    await expect(service.calculate('exp-1')).resolves.toEqual(
+      expect.objectContaining({
+        commercial: 20,
+        legal: 0,
+        technical: 100,
+        operational: 0,
+        overall: 18,
+        sectionCompleteness: expect.arrayContaining([
+          expect.objectContaining({
+            key: 'technicalFeasibility',
+            percentage: 75,
+          }),
+        ]),
+      }),
+    );
   });
 });
 
