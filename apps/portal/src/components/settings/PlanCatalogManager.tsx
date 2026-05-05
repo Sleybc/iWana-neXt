@@ -121,7 +121,7 @@ function persistTechnologies(options: string[]): void {
 
 const tableHeadClass =
   'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500';
-const cellClass = 'px-4 py-3 align-top text-sm text-gray-700 dark:text-gray-200';
+const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
 
 function formatMoney(value: number): string {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(value);
@@ -592,7 +592,12 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
             <Badge variant="primary">
               {activePlansCount} activo{activePlansCount === 1 ? '' : 's'}
             </Badge>
-            {canEdit && <Button onClick={handleOpenCreateDialog}>Nuevo plan</Button>}
+            {canEdit && (
+              <Button onClick={handleOpenCreateDialog}>
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                Nuevo plan
+              </Button>
+            )}
           </div>
         </div>
       </CardHeader>
@@ -704,13 +709,15 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
                             </Badge>
                           </td>
                           <td className={cellClass}>
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2">
                               <Button
                                 variant="secondary"
-                                size="sm"
+                                size="icon"
+                                aria-label={`Editar plan ${plan.name}`}
+                                title={`Editar plan ${plan.name}`}
                                 onClick={() => handleOpenEditDialog(plan)}
                               >
-                                Editar
+                                <Pencil className="h-4 w-4" aria-hidden="true" />
                               </Button>
                             </div>
                           </td>

@@ -143,6 +143,75 @@ describe('ExpedientesController', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('devuelve advertencia estructurada cuando la transición a instalación avanza con pendientes', async () => {
+    statusTransitionServiceMock.validateTransition.mockResolvedValue({
+      valid: true,
+      warningTitle: 'Puedes continuar a instalación con información pendiente',
+      warningMessage: 'Hay faltantes por cerrar.',
+      missingRequirements: [
+        {
+          sectionKey: 'documentSupport',
+          sectionLabel: 'Soportes documentales',
+          fieldKey: 'utility_bill',
+          fieldLabel: 'Recibo de servicio público',
+        },
+      ],
+    });
+    expedienteServiceMock.transitionStatus.mockResolvedValue({ id: 'exp-1' });
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 90,
+      legal: 70,
+      technical: 100,
+      operational: 60,
+      overall: 82,
+      sectionCompleteness: [],
+      installationReadiness: {
+        status: 'READY_WITH_PENDING',
+        canTransition: true,
+        title: 'Puedes continuar a instalación con información pendiente',
+        message: 'Hay faltantes por cerrar.',
+      },
+      missingRequirements: [
+        {
+          sectionKey: 'documentSupport',
+          sectionLabel: 'Soportes documentales',
+          fieldKey: 'utility_bill',
+          fieldLabel: 'Recibo de servicio público',
+        },
+      ],
+    });
+
+    const result = await controller.transitionStatus(
+      '00000000-0000-4000-a000-000000000001',
+      { targetStatus: ExpedienteStatus.LISTO_PARA_INSTALACION },
+      {
+        sub: 'user-1',
+        email: 'hash',
+        role: 'ADMIN',
+        tenantId: 'tenant-1',
+        schemaName: 'tenant_1',
+        jti: 'jti-1',
+        type: 'tenant',
+      },
+    );
+
+    expect(result.transitionWarning).toEqual({
+      title: 'Puedes continuar a instalación con información pendiente',
+      message: 'Hay faltantes por cerrar.',
+      missingRequirements: [
+        {
+          sectionKey: 'documentSupport',
+          sectionLabel: 'Soportes documentales',
+          fieldKey: 'utility_bill',
+          fieldLabel: 'Recibo de servicio público',
+        },
+      ],
+    });
+    expect(result.installationReadiness).toEqual(
+      expect.objectContaining({ status: 'READY_WITH_PENDING' }),
+    );
+  });
+
   it('rechaza secciones fuera del contrato del expediente', async () => {
     await expect(
       controller.updateSection(

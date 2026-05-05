@@ -72,6 +72,7 @@ Reglas estructurales no negociables:
 - Seguridad: cero PII real, secretos, tokens o connection strings en codigo, tests, docs o logs.
 - Comentarios: escribir en espanol cuando la logica no sea trivial.
 - Testing: Jest + Supertest en backend, Jest en unit frontend, Playwright en E2E. Mantener cobertura >= 80% en modulos core.
+- Tablas de datos: usar `align-middle` como alineacion vertical por defecto en celdas (`td`) para mantener consistencia de filas en web y portal; usar `align-top` solo cuando una celda requiera anclaje superior por decision visual explicita.
 - Informes: despues de cambios, actualizar el informe vigente en `docs/informes/`; si es correctivo, reutilizar el documento vivo.
 - Documentos nuevos: usar `{TIPO}-{MODULO}-{FASE}-v{VERSION}.md`.
 - Prompts de fase: derivar de `docs/prompts/TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md`.

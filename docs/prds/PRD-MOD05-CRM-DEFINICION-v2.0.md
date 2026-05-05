@@ -10,9 +10,11 @@
 **HLD relacionado:** docs/hlds/HLD-MOD05-ARQUITECTURA-v2.0.md  
 **Informe relacionado:** docs/informes/INFORME-MOD05-DEFINICION-v1.0.md  
 **Addendum de cierre Sprint 02:** docs/prds/PRD-MOD05-CRM-ADDENDUM-CIERRE-v2.1.md  
-**ADRs aplicables:** ADR-016, ADR-018, ADR-019, ADR-022, ADR-024
+**ADRs aplicables:** ADR-016, ADR-018, ADR-019, ADR-022, ADR-024, ADR-026
 
 > Nota de gobernanza: este PRD documenta la version vigente del modulo CRM. Las versiones v1.0 (CRM clasico) y v1.1 (lifecycle leads/prospects) fueron reemplazadas por el rediseno de Expediente Unico Progresivo aprobado en Sprint 02. Los documentos historicos no fueron preservados en disco; las decisiones se mantienen trazables via INFORME-MOD05-DEFINICION-v1.0.md y el addendum de cierre Sprint 02 emitido el 2026-03-26.
+>
+> **Nota correctiva 2026-05-05:** este PRD se alinea con `docs/adrs/ADR-026-Pipeline-CRM-8-Estados.md` y `docs/superpowers/specs/2026-05-05-crm-pipeline-completeness-read-model-design.md`. El pipeline oficial queda en 8 estados, la completitud general pasa a medirse por 7 secciones oficiales, la transicion a instalacion se habilita desde 75% con advertencia de faltantes, y CRM debe consumir actores/cotizaciones via ports o read models en vez de lecturas directas cross-module.
 
 ---
 
@@ -24,7 +26,7 @@ El CRM de iWana neXt atraveso tres iteraciones de diseno:
 
 1. **PRD v1.0 — CRM clasico:** leads, suscriptores, contratos como entidades planas separadas.
 2. **PRD v1.1 — Lifecycle comercial-operativo:** pipeline PotentialLead → ProspectCase → instalacion → cliente. Ejecutado en Sprint 01 con backend funcional (PotentialsModule, ProspectsModule, ReviewsModule) y portal basico.
-3. **PRD v2.0 — Expediente Unico Progresivo (actual):** un registro maestro (`ExpedienteRecord`) reemplaza las entidades separadas. 8 secciones de captura progresiva, 12 estados de pipeline, 4 dimensiones de completitud, consentimiento triple, entidades hijas para trazabilidad.
+3. **PRD v2.0 — Expediente Unico Progresivo (actual):** un registro maestro (`ExpedienteRecord`) reemplaza las entidades separadas. 8 secciones de captura progresiva, 8 estados de pipeline, completitud general por 7 secciones oficiales, consentimiento triple, entidades hijas para trazabilidad.
 
 ### 1.2 Problema resuelto
 
@@ -38,7 +40,7 @@ Un ISP colombiano necesita gestionar todo el ciclo de vida comercial desde la ca
 
 ### 1.3 Decision arquitectonica clave
 
-El modelo Expediente Unico Progresivo unifica en un solo registro toda la informacion del prospecto, evitando la fragmentacion de datos entre entidades separadas (PotentialLead, ProspectCase, Subscriber) y simplificando el pipeline de 12 estados.
+El modelo Expediente Unico Progresivo unifica en un solo registro toda la informacion del prospecto, evitando la fragmentacion de datos entre entidades separadas (PotentialLead, ProspectCase, Subscriber) y simplificando el pipeline operativo de 8 estados.
 
 ---
 
@@ -48,8 +50,8 @@ El modelo Expediente Unico Progresivo unifica en un solo registro toda la inform
 
 - Expediente Unico Progresivo como entidad maestra del pipeline comercial.
 - 8 secciones de captura progresiva: identificacion, contacto, ubicacion, interes comercial, viabilidad tecnica, consentimiento legal, facturacion, instalacion.
-- 12 estados de pipeline: NUEVO_POTENCIAL → CONTACTADO → PENDIENTE_DATOS → PRECALIFICADO → VALIDANDO_COBERTURA → VIABLE_COMERCIALMENTE → EN_COTIZACION → PENDIENTE_DECISION → LISTO_PARA_INSTALACION → INSTALACION_AGENDADA → CLIENTE_ACTIVO → DESCARTADO.
-- 4 dimensiones de completitud: comercial (10 campos), legal (3 campos), tecnica (4 campos), operativa (6 campos).
+- 8 estados de pipeline: NUEVO_POTENCIAL → PRECALIFICADO → VALIDANDO_COBERTURA → EN_COTIZACION → LISTO_PARA_INSTALACION → INSTALACION_AGENDADA → CLIENTE_ACTIVO → DESCARTADO.
+- Completitud general por 7 secciones oficiales: identificacion, direccion, contacto, viabilidad tecnica, interes del cliente, cumplimiento legal y soportes documentales.
 - Consentimiento triple conforme a Ley 1581: tratamiento de datos, contacto comercial, contacto operativo.
 - Entidades hijas: ContactAttempt, ConsentRecord v2, CoverageCheck, StatusChange.
 - Cifrado AES-256-GCM para PII: documentNumber, phones, emails, altContactPhone, siteContactPhone.
@@ -121,7 +123,7 @@ El modelo Expediente Unico Progresivo unifica en un solo registro toda la inform
 - POST /api/v1/crm/expedientes con `fullName` (1-160 chars) y `source` (1-120 chars).
 - Estado inicial: NUEVO_POTENCIAL.
 - `createdBy` = actor autenticado (JWT sub).
-- Completitud inicializada a 0% en 4 dimensiones.
+- Completitud inicializada a 0% en las 7 secciones oficiales.
 - Validacion Zod via `ZodBodyValidationPipe(CreateExpedienteSchema)`.
 
 ### RF-CRM-02: Listado con filtros y paginacion
@@ -131,7 +133,7 @@ El modelo Expediente Unico Progresivo unifica en un solo registro toda la inform
 
 ### RF-CRM-03: Detalle con completitud
 - GET /api/v1/crm/expedientes/:id
-- Retorna `{ data: ExpedienteRecord, completeness: { commercial, legal, technical, operational } }`.
+- Retorna `{ data: ExpedienteRecord, completeness, sectionCompleteness, installationReadiness, missingRequirements }`.
 - Incluye relaciones: contactAttempts, consents, coverageChecks, statusChanges.
 
 ### RF-CRM-04: Actualizacion por seccion
@@ -166,15 +168,12 @@ El modelo Expediente Unico Progresivo unifica en un solo registro toda la inform
 
 | Estado objetivo | Campos requeridos |
 | --- | --- |
-| CONTACTADO | Telefono o email |
 | PRECALIFICADO | Tipo documento, numero documento, telefono o email, direccion, municipio |
 | VALIDANDO_COBERTURA | Coordenadas (lat/lng) O direccion+municipio |
-| VIABLE_COMERCIALMENTE | Sin restriccion adicional |
 | EN_COTIZACION | Plan de interes seleccionado |
-| PENDIENTE_DECISION | Sin restriccion adicional |
-| LISTO_PARA_INSTALACION | Direccion instalacion, contacto en sitio |
+| LISTO_PARA_INSTALACION | Completitud general >= 75%; si es < 100%, avanza con advertencia de faltantes |
 | INSTALACION_AGENDADA | Ticket vinculado, orden de trabajo vinculada |
-| CLIENTE_ACTIVO | Completitud >= 90% en 4 dimensiones + checklist completo |
+| CLIENTE_ACTIVO | Completitud general = 100% en 7 secciones + checklist completo |
 | DESCARTADO | Siempre permitido |
 
 ---
@@ -232,21 +231,30 @@ Entidad maestra organizada en 8 secciones + referencias operativas + completitud
 
 ---
 
-## 7. Completitud 4 dimensiones
+## 7. Completitud general por 7 secciones
 
-### Comercial (10 campos, peso uniforme)
-fullName, documentType, documentNumberEncrypted, phonePrimaryEncrypted (x2), emailPrimaryEncrypted, source, interestedPlanId, casePriority, quotes.length > 0.
+La completitud general del expediente se calcula sobre estas 7 secciones oficiales:
 
-### Legal (3 campos)
-ConsentRecord tipo DATA_TREATMENT ACCEPTED, ConsentRecord tipo COMMERCIAL_CONTACT ACCEPTED, identityVerified === 'verified'.
+1. Identificacion
+2. Direccion
+3. Contacto
+4. Viabilidad tecnica
+5. Interes del cliente
+6. Cumplimiento legal
+7. Soportes documentales
 
-### Tecnica (4 campos)
-coverageChecks.length > 0, coverageCheck con result VIABLE o CONDITIONAL, availableTechnology, estimatedEquipment.
+Reglas:
 
-### Operativa (6 campos)
-installationAddress, siteContactName, siteContactPhoneEncrypted, paymentMethod, billingCycle, fiscalName.
+1. Cada seccion produce un porcentaje propio.
+2. Una seccion llega a 100% solo cuando todos sus campos requeridos estan completos.
+3. La completitud general es el promedio uniforme de las 7 secciones.
+4. El expediente llega a 100% general solo cuando las 7 secciones estan al 100%.
 
-Completitud total: promedio de las 4 dimensiones. Para CLIENTE_ACTIVO se requiere >= 90% en cada una.
+### 7.1 Readiness para instalacion
+
+1. Si la completitud general es menor a 75%, la transicion `EN_COTIZACION -> LISTO_PARA_INSTALACION` se bloquea.
+2. Si la completitud general es mayor o igual a 75% y menor a 100%, la transicion se permite con advertencia estructurada de faltantes.
+3. Si la completitud general es 100%, la transicion se permite sin advertencias pendientes.
 
 ---
 
@@ -268,6 +276,8 @@ Cada consentimiento registra: canal, fecha, IP, version del texto legal, referen
 | --- | --- | --- | --- |
 | CoverageReadPort | checkAvailability(tenantId, schema, address, coords?) | MOD03 | Adaptador real |
 | ExecutionPolicyReadPort | resolvePolicy(tenantId, schema) | MOD03 | Adaptador real |
+| CrmActorReadPort | resolveActor(userId) → { id, name, role } | Auth/Users (via read model) | Nuevo |
+| CrmQuoteReadPort | getExpedienteQuotes(expedienteId) | CRM quotes (via read model) | Nuevo |
 | PlanCatalogReadPort | getActivePlans(), createSnapshot() | MOD03 | Stub |
 | TicketReferencePort | ensureReference(tenantId, schema, ticketId) | MOD-Ticketing | Stub |
 | WorkOrderReferencePort | ensureReference(tenantId, schema, workOrderId) | MOD-WorkOrders | Stub |
@@ -291,7 +301,7 @@ Cada consentimiento registra: canal, fecha, IP, version del texto legal, referen
 - **Response 200:** `{ data: ExpedienteRecord[], total }`
 
 ### GET /api/v1/crm/expedientes/:id
-- **Response 200:** `{ data: ExpedienteRecord, completeness }`
+- **Response 200:** `{ data: ExpedienteRecord, completeness, sectionCompleteness, installationReadiness, missingRequirements }`
 
 ### PATCH /api/v1/crm/expedientes/:id/sections/:section
 - **Body:** `{ data: Record<string, unknown> }`
@@ -299,7 +309,7 @@ Cada consentimiento registra: canal, fecha, IP, version del texto legal, referen
 
 ### PATCH /api/v1/crm/expedientes/:id/status
 - **Body:** `{ targetStatus: ExpedienteStatus, reason?: string(max 255) }`
-- **Response 200:** `{ data, completeness }`
+- **Response 200:** `{ data, completeness, sectionCompleteness, installationReadiness, missingRequirements }`
 
 ### POST /api/v1/crm/expedientes/:id/reactivate
 - **Response 200:** `{ data: ExpedienteRecord }`
@@ -344,7 +354,7 @@ Cada consentimiento registra: canal, fecha, IP, version del texto legal, referen
 | CA-07 | PII cifrada at-rest; datos descifrados solo en respuesta API |
 | CA-08 | Descarte con motivo y reactivacion restauran previousStatus |
 | CA-09 | Portal: listado con filtros, detalle accordion 8 secciones, guardar por seccion |
-| CA-10 | CompletenessCalculator degrada sin crash ante errores DB |
+| CA-10 | El backend expone resumen de completitud por 7 secciones y readiness de instalacion sin recalculo primario en portal |
 
 ---
 
@@ -362,7 +372,7 @@ Cada consentimiento registra: canal, fecha, IP, version del texto legal, referen
 
 ## 14. Decision de salida
 
-**GO** — El modulo CRM con Expediente Unico Progresivo esta implementado, operativo en portal, con 8 secciones de captura, 12 estados, completitud 4D, consentimiento triple y 9 puertos de integracion. Riesgos residuales documentados para Sprint 03.
+**GO** — El modulo CRM con Expediente Unico Progresivo esta implementado, operativo en portal, con 8 secciones de captura, 8 estados, completitud general por 7 secciones, consentimiento triple y puertos/read models de integracion. Riesgos residuales documentados para Sprint 03.
 
 ---
 

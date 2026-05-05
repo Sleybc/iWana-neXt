@@ -14,6 +14,7 @@ import {
 } from '@iwana/shared';
 import { AuditService } from '../../../audit/audit.service';
 import { CompletenessCalculator } from '../completeness-calculator.service';
+import { CrmActorReadPort } from '../../ports/crm-actor-read.port';
 import { UpdateSectionDto, ExpedienteSection } from '../dto/update-section.dto';
 import { ExpedienteRecord } from '../entities/expediente-record.entity';
 import { StatusChange } from '../entities/status-change.entity';
@@ -51,6 +52,11 @@ describe('ExpedienteService', () => {
     calculate: jest.fn(),
   };
 
+  const crmActorReadPortMock = {
+    findById: jest.fn(),
+    findByIds: jest.fn(),
+  };
+
   const eventEmitterMock = {
     emitAsync: jest.fn().mockResolvedValue([]),
   };
@@ -61,6 +67,15 @@ describe('ExpedienteService', () => {
       tenantId: 'ten-1',
       schemaName: 'tenant_test',
     });
+    crmActorReadPortMock.findById.mockImplementation(async (_schemaName: string, actorId: string) =>
+      resolveActor(actorId),
+    );
+    crmActorReadPortMock.findByIds.mockImplementation(
+      async (_schemaName: string, actorIds: string[]) =>
+        actorIds
+          .map((actorId) => resolveActor(actorId))
+          .filter((actor): actor is NonNullable<typeof actor> => actor !== null),
+    );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -72,6 +87,7 @@ describe('ExpedienteService', () => {
         },
         { provide: AuditService, useValue: auditServiceMock },
         { provide: CompletenessCalculator, useValue: completenessCalculatorMock },
+        { provide: CrmActorReadPort, useValue: crmActorReadPortMock },
         { provide: EventEmitter2, useValue: eventEmitterMock },
       ],
     }).compile();
@@ -262,7 +278,7 @@ describe('ExpedienteService', () => {
 
     const result = await service.findById('exp-progress-detail');
 
-    expect((result as any).pipelineProgress).toBe(100);
+    expect((result as any).pipelineProgress).toBe(75);
   });
 
   it('audita acceso autorizado al Documento visible sin persistir el valor plano', async () => {
@@ -860,7 +876,7 @@ describe('ExpedienteService', () => {
 
     const result = await service.findAll({ page: 1, limit: 10 });
 
-    expect((result.data[0] as any).pipelineProgress).toBe(100);
+    expect((result.data[0] as any).pipelineProgress).toBe(75);
   });
 
   it('filtra por assignedTo y documentNumber exacto manteniendo PII oculta en listados', async () => {
@@ -1712,6 +1728,24 @@ describe('ExpedienteService', () => {
     );
   });
 });
+
+function resolveActor(actorId: string) {
+  const actorDirectory: Record<string, { id: string; name: string; role: string | null }> = {
+    'user-1': { id: 'user-1', name: 'Carlos Mejía', role: 'ADMIN' },
+    'user-2': { id: 'user-2', name: 'Ana Torres', role: 'ADMIN' },
+    'user-creator': { id: 'user-creator', name: 'Carlos Mejía', role: 'ADMIN' },
+    'user-editor': { id: 'user-editor', name: 'Ana Torres', role: 'ADMIN' },
+    'user-sales': { id: 'user-sales', name: 'Laura Pérez', role: 'SALES' },
+    'user-admin': { id: 'user-admin', name: 'Carlos Mejía', role: 'ADMIN' },
+    'user-liliana': {
+      id: 'user-liliana',
+      name: 'Liliana Paola Borda Ovalle',
+      role: 'ADMIN',
+    },
+  };
+
+  return actorDirectory[actorId] ?? null;
+}
 
 function buildExpediente(overrides: Partial<ExpedienteRecord>): ExpedienteRecord {
   return {

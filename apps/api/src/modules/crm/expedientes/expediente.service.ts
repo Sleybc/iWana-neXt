@@ -6,7 +6,7 @@ import * as crypto from 'crypto';
 import { access, mkdir, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 import { DataSource, In, Like } from 'typeorm';
-import { AuditLog, PlatformUser, runInTenantSchema, TenantContext, User } from '@iwana/db';
+import { AuditLog, runInTenantSchema, TenantContext } from '@iwana/db';
 import {
   AcquisitionChannel,
   AuditAction,
@@ -25,6 +25,7 @@ import { ConsentRecord } from './entities/consent-record-v2.entity';
 import { CoverageCheck } from './entities/coverage-check.entity';
 import { AuditService } from '../../audit/audit.service';
 import { CompletenessCalculator } from './completeness-calculator.service';
+import { CrmActorReadPort } from '../ports/crm-actor-read.port';
 import {
   ExpedienteActivatedEvent,
   ExpedienteDiscardedEvent,
@@ -182,6 +183,7 @@ export class ExpedienteService {
     private readonly configService: ConfigService,
     private readonly auditService: AuditService,
     private readonly completenessCalculator: CompletenessCalculator,
+    private readonly crmActorReadPort: CrmActorReadPort,
     private readonly eventEmitter: EventEmitter2,
   ) {
     const keyHex = this.configService.getOrThrow<string>('MFA_ENCRYPTION_KEY');
@@ -603,6 +605,9 @@ export class ExpedienteService {
       completenessTechnical: completeness.technical,
       completenessOperational: completeness.operational,
       completenessOverall: completeness.overall,
+      sectionCompleteness: completeness.sectionCompleteness,
+      installationReadiness: completeness.installationReadiness,
+      missingRequirements: completeness.missingRequirements,
       pipelineProgress: this.calculatePipelineProgress(completeness),
     });
 
@@ -1106,24 +1111,13 @@ export class ExpedienteService {
         }
       }
 
-      const users = actorIds.size
-        ? await qr.manager.find(User, { where: { id: In(Array.from(actorIds)) } })
-        : [];
-
-      // Para actores no encontrados en el schema tenant (p.ej. SYSTEM_ADMIN es PlatformUser),
-      // buscar en la tabla publica de usuarios de plataforma.
-      const foundTenantIds = new Set(users.map((u) => u.id));
-      const unmatchedIds = Array.from(actorIds).filter((id) => !foundTenantIds.has(id));
-      const platformUsers = unmatchedIds.length
-        ? await qr.manager.find(PlatformUser, { where: { id: In(unmatchedIds) } })
+      const actors = actorIds.size
+        ? await this.crmActorReadPort.findByIds(schemaName, Array.from(actorIds))
         : [];
 
       const actorMap = new Map<string, ExpedienteTimelineActor>();
-      for (const user of users) {
-        actorMap.set(user.id, { userId: user.id, name: this.formatActorName(user) });
-      }
-      for (const pu of platformUsers) {
-        actorMap.set(pu.id, { userId: pu.id, name: this.formatActorName(pu) });
+      for (const actor of actors) {
+        actorMap.set(actor.id, { userId: actor.id, name: actor.name });
       }
 
       const getActor = (userId: string | null | undefined): ExpedienteTimelineActor => {
@@ -1952,19 +1946,8 @@ export class ExpedienteService {
       return null;
     }
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const tenantUser = await qr.manager.findOne(User, { where: { id: userId } });
-      if (tenantUser) {
-        return this.formatActorName(tenantUser);
-      }
-
-      const platformUser = await qr.manager.findOne(PlatformUser, { where: { id: userId } });
-      if (platformUser) {
-        return this.formatActorName(platformUser);
-      }
-
-      return null;
-    });
+    const actor = await this.crmActorReadPort.findById(schemaName, userId);
+    return actor?.name ?? null;
   }
 
   private encryptValue(plaintext: string): string {
@@ -1973,22 +1956,6 @@ export class ExpedienteService {
     const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
     const authTag = cipher.getAuthTag();
     return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
-  }
-
-  private formatActorName(user: {
-    firstName: string | null;
-    lastName: string | null;
-    email: string;
-  }): string | null {
-    const firstName = this.decodeProfileValue(user.firstName);
-    const lastName = this.decodeProfileValue(user.lastName);
-    const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
-
-    if (fullName) {
-      return fullName;
-    }
-
-    return this.decodeProfileValue(user.email);
   }
 
   private decryptValue(encrypted: string): string {
@@ -2004,22 +1971,6 @@ export class ExpedienteService {
     decipher.setAuthTag(authTag);
 
     return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
-  }
-
-  private decodeProfileValue(value: string | null): string | null {
-    if (!value) {
-      return null;
-    }
-
-    if (!this.looksLikeEncryptedValue(value)) {
-      return value;
-    }
-
-    try {
-      return this.decryptValue(value);
-    } catch {
-      return null;
-    }
   }
 
   private looksLikeEncryptedValue(value: string): boolean {
@@ -2122,11 +2073,7 @@ export class ExpedienteService {
     }
   }
 
-  private calculatePipelineProgress(completeness: {
-    commercial: number;
-    legal: number;
-    technical: number;
-  }): number {
-    return Math.round((completeness.commercial + completeness.legal + completeness.technical) / 3);
+  private calculatePipelineProgress(completeness: { overall: number }): number {
+    return completeness.overall;
   }
 }

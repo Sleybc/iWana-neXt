@@ -2,6 +2,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Button,
   Card,
   CardHeader,
   CardTitle,
@@ -133,7 +134,11 @@ function ActionsDropdown({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger aria-label="Abrir menú de acciones">
+      <DropdownMenuTrigger
+        aria-label="Abrir menú de acciones"
+        title="Abrir menú de acciones"
+        className="border border-gray-200 bg-white text-gray-600 shadow-sm hover:bg-gray-50 hover:text-gray-900 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300 dark:hover:bg-dark-surface-4"
+      >
         <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
       </DropdownMenuTrigger>
 
@@ -314,13 +319,15 @@ export function TenantsTable({
                       >
                         <p>{error}</p>
                         {onRetry && (
-                          <button
+                          <Button
                             type="button"
                             onClick={onRetry}
-                            className="mt-2 text-xs text-iwana-primary underline dark:text-iwana-secondary"
+                            variant="link"
+                            size="sm"
+                            className="mt-2"
                           >
                             Reintentar
-                          </button>
+                          </Button>
                         )}
                       </td>
                     </tr>

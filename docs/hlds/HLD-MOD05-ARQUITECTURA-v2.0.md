@@ -9,13 +9,15 @@
 **PRD complementario:** docs/prds/PRD-MOD05-CRM-GESTION-COMERCIAL-OPERATIVA-v1.0.md  
 **ADR relacionado:** docs/adrs/ADR-024-Migracion-CRM-Expediente-Unico.md  
 **Informe relacionado:** docs/informes/INFORME-MOD05-DEFINICION-v1.0.md  
-**ADRs aplicables:** ADR-016, ADR-018, ADR-019, ADR-022, ADR-024
+**ADRs aplicables:** ADR-016, ADR-018, ADR-019, ADR-022, ADR-024, ADR-026
 
 ---
 
 ## 1. Contexto de negocio
 
-MOD05 implementa el CRM del ISP como bounded context propio (`CrmModule`). La arquitectura vigente usa el modelo Expediente Unico Progresivo: un registro maestro (`ExpedienteRecord`) con 8 secciones de captura progresiva, 12 estados de pipeline, 4 dimensiones de completitud y consentimiento triple Ley 1581.
+MOD05 implementa el CRM del ISP como bounded context propio (`CrmModule`). La arquitectura vigente usa el modelo Expediente Unico Progresivo: un registro maestro (`ExpedienteRecord`) con 8 secciones de captura progresiva, 8 estados de pipeline, completitud general por 7 secciones oficiales y consentimiento triple Ley 1581.
+
+> **Nota correctiva 2026-05-05:** este HLD se alinea con `docs/adrs/ADR-026-Pipeline-CRM-8-Estados.md` y `docs/superpowers/specs/2026-05-05-crm-pipeline-completeness-read-model-design.md`. El calculo de completitud por 4 dimensiones queda deprecado como fuente primaria de negocio y se reemplaza por una fuente de verdad basada en 7 secciones oficiales y readiness de instalacion.
 
 El diseño reemplaza el modelo dual PotentialLead/ProspectCase de Sprint 01 (ver ADR-024) con una migracion aditiva que preserva datos existentes.
 
@@ -35,6 +37,7 @@ El diseño reemplaza el modelo dual PotentialLead/ProspectCase de Sprint 01 (ver
 
 - CrmModule no accede a tablas de otros modulos directamente.
 - Consume cobertura y catalogo de MOD03 via puertos tipados (ICoverageReadPort, IPlanCatalogReadPort).
+- Resuelve actores y lecturas de cotizacion via `CrmActorReadPort` y `CrmQuoteReadPort`, sin consultas directas cross-module desde los servicios del expediente.
 - Facturacion, provisioning, inventario, ticketing → puertos con stubs hasta implementacion real.
 - Subscriber se crea solo al alcanzar CLIENTE_ACTIVO; no comparte ciclo de vida con expediente.
 
@@ -66,7 +69,8 @@ apps/api/src/modules/crm/
 │   ├── expedientes.controller.ts        # 8 endpoints REST
 │   ├── expedientes.service.ts           # Logica CRUD, cifrado, completitud
 │   ├── status-transition.service.ts     # Reglas de transicion, campos minimos
-│   ├── completeness-calculator.service.ts  # 4 dimensiones, degradacion segura
+│   ├── completeness-calculator.service.ts  # compatibilidad de calculo persistido
+│   ├── expediente-section-completeness.service.ts  # 7 secciones + readiness instalacion
 │   ├── dto/
 │   │   ├── create-expediente.dto.ts     # CreateExpedienteSchema (Zod)
 │   │   ├── update-section.dto.ts        # UpdateSectionBodySchema (Zod)
@@ -91,8 +95,8 @@ graph TB
     Portal["apps/portal<br/>CRM Pages"]
     ExpCtrl["ExpedientesController<br/>8 endpoints"]
     ExpSvc["ExpedienteService<br/>CRUD + cifrado"]
-    StatusSvc["StatusTransitionService<br/>12 estados, validacion"]
-    CompCalc["CompletenessCalculator<br/>4 dimensiones"]
+    StatusSvc["StatusTransitionService<br/>8 estados, validacion"]
+    CompCalc["ExpedienteSectionCompletenessService<br/>7 secciones"]
     Entity["ExpedienteRecord<br/>~60 columnas"]
     Children["Entidades hijas<br/>Contact, Consent, Coverage, StatusChange"]
     DB[("PostgreSQL<br/>tenant schema")]
@@ -101,6 +105,8 @@ graph TB
         CovPort["CoverageReadPort<br/>MOD03 real"]
         PolicyPort["ExecutionPolicyReadPort<br/>MOD03 real"]
         PlanPort["PlanCatalogReadPort<br/>stub"]
+        ActorPort["CrmActorReadPort<br/>read model"]
+        QuotePort["CrmQuoteReadPort<br/>read model"]
         TicketPort["TicketReferencePort<br/>stub"]
         WOPort["WorkOrderReferencePort<br/>stub"]
         InvPort["InventoryAssignmentPort<br/>stub"]
@@ -120,6 +126,8 @@ graph TB
     ExpSvc -.-> CovPort
     ExpSvc -.-> PolicyPort
     ExpSvc -.-> PlanPort
+    ExpSvc -.-> ActorPort
+    ExpSvc -.-> QuotePort
 ```
 
 ---
@@ -144,7 +152,7 @@ La unificacion es visual y funcional, pero no elimina la separacion semantica en
 
 | Seccion                   | Columnas clave                                                                                                                                                                                                                                                                                |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Core                      | id (uuid PK), tenantId, status (enum 12), previousStatus, statusChangedAt, discardReason                                                                                                                                                                                                      |
+| Core                      | id (uuid PK), tenantId, status (enum 8), previousStatus, statusChangedAt, discardReason                                                                                                                                                                                                       |
 | §1 Identificacion         | fullName, documentType, documentNumberEncrypted, gender, birthDate, personType, companyName                                                                                                                                                                                                   |
 | §2 Contacto               | phonePrimaryEncrypted, phoneSecondaryEncrypted, emailPrimaryEncrypted, emailSecondary, altContactName, altContactPhoneEncrypted, contactPreference, bestContactTime                                                                                                                           |
 | §3 Ubicacion              | address, municipality, department, stratum, neighborhood, latitude, longitude, coordinatesSource, coordinatesConfidence, accessReferences, zoneType                                                                                                                                           |
@@ -154,7 +162,7 @@ La unificacion es visual y funcional, pero no elimina la separacion semantica en
 | §7 Facturacion            | paymentMethod, billingCycle, fiscalName, fiscalDocument, fiscalAddress, rutReference                                                                                                                                                                                                          |
 | §8 Instalacion            | installationAddress, availabilityWindow, siteContactName, siteContactPhoneEncrypted, specialAccessNotes, requiredMaterials                                                                                                                                                                    |
 | Refs operativas           | currentResponsibleUserId (aprobado conceptual), currentResponsibleAssignedAt (aprobado conceptual), ticketId, workOrderId, inventoryAssignmentRef, expansionRequestId, executionPolicyRef, checklistCompleted, evidenceMode, conformityEvidenceRef, lastRescheduleReason, lastRescheduleNotes |
-| Completitud               | completenessCommercial, completenessLegal, completenessTechnical, completenessOperational (smallint)                                                                                                                                                                                          |
+| Completitud               | completenessCommercial, completenessLegal, completenessTechnical, completenessOperational (smallint, compatibilidad) y resumen de completitud por 7 secciones calculado por servicio                                                                                                         |
 | Metadatos                 | createdBy (uuid), createdAt, updatedAt, deletedAt                                                                                                                                                                                                                                             |
 
 **Indices:** idx_expediente_tenant_status, idx_expediente_tenant_created, idx_expediente_tenant_municipality.
@@ -295,16 +303,26 @@ Valida transiciones por estado objetivo. Cada transicion tiene:
 - Verificacion de existencia de datos en el expediente.
 - Errores descriptivos con codigo semantico si falta informacion.
 
-### 6.3 CompletenessCalculator
+### 6.3 ExpedienteSectionCompletenessService
 
-Calcula completitud en 4 dimensiones con peso uniforme por campo:
+Calcula completitud sobre 7 secciones oficiales:
 
-- **Comercial:** 10 campos → cada campo vale 10%.
-- **Legal:** 3 campos → cada campo vale ~33%.
-- **Tecnica:** 4 campos → cada campo vale 25%.
-- **Operativa:** 6 campos → cada campo vale ~17%.
+1. identificacion;
+2. direccion;
+3. contacto;
+4. viabilidad tecnica;
+5. interes del cliente;
+6. cumplimiento legal;
+7. soportes documentales.
 
-Degradacion segura: captura errores PostgreSQL 42P01 (tabla inexistente) y 42703 (columna inexistente) y retorna 0% sin propagar excepcion. Esto permite que el calculo funcione durante migraciones progresivas.
+Reglas:
+
+- la completitud general es el promedio uniforme de las 7 secciones;
+- `EN_COTIZACION -> LISTO_PARA_INSTALACION` se habilita desde 75%;
+- si el expediente esta entre 75% y 99%, el servicio devuelve faltantes estructurados;
+- `CLIENTE_ACTIVO` requiere 100% general y checklist.
+
+`CompletenessCalculator` puede mantenerse como wrapper de compatibilidad para campos persistidos, pero deja de ser la fuente primaria de verdad para la decision operativa.
 
 ---
 
@@ -335,6 +353,8 @@ Validacion via `ZodBodyValidationPipe` — pipe generico que lanza `BadRequestEx
 | ----------------------- | -------------------------------- | -------------------- |
 | CoverageReadPort        | TenantCoverageReadAdapter        | MOD03 (TenantModule) |
 | ExecutionPolicyReadPort | TenantExecutionPolicyReadAdapter | MOD03 (TenantModule) |
+| CrmActorReadPort        | CRM actor read adapter           | Auth/Users read model |
+| CrmQuoteReadPort        | CRM quote read adapter           | Quotes read model |
 
 ### 8.2 Puertos con stub
 
@@ -357,7 +377,7 @@ Validacion via `ZodBodyValidationPipe` — pipe generico que lanza `BadRequestEx
 | CrmOverviewClient | components/crm/CrmOverviewClient.tsx        | Overview: metricas pipeline, resumen por estado, recientes                                                                                               |
 | Expedientes list  | app/dashboard/crm/expedientes/page.tsx      | Listado: creacion inline, filtros, tabla con badges y completitud                                                                                        |
 | Expediente detail | app/dashboard/crm/expedientes/[id]/page.tsx | Detalle: resumen 3-col, seccion unificada `Gestion comercial y operativa`, guardar por seccion, transicion estado, reactivar, panel lateral con timeline |
-| expediente-ui.ts  | components/crm/expedientes/expediente-ui.ts | EXPEDIENTE_STATUS_META (12 labels+variants), formatters, labels de `Origen de la oportunidad`                                                            |
+| expediente-ui.ts  | components/crm/expedientes/expediente-ui.ts | EXPEDIENTE_STATUS_META (8 labels+variants), formatters, labels de `Origen de la oportunidad`                                                             |
 | crmApi            | lib/api-client.ts (lines 1120-1340)         | 8 metodos: createExpediente, listExpedientes, getExpediente, updateSection, transitionStatus, reactivateExpediente, getTimeline, getPipelineSummary      |
 
 ### Decision de UX v2.1
@@ -380,26 +400,18 @@ La vista detalle debe priorizar esta jerarquia:
 ```mermaid
 stateDiagram-v2
     [*] --> NUEVO_POTENCIAL
-    NUEVO_POTENCIAL --> CONTACTADO
-    CONTACTADO --> PENDIENTE_DATOS
-    PENDIENTE_DATOS --> PRECALIFICADO
+    NUEVO_POTENCIAL --> PRECALIFICADO
     PRECALIFICADO --> VALIDANDO_COBERTURA
-    VALIDANDO_COBERTURA --> VIABLE_COMERCIALMENTE
-    VIABLE_COMERCIALMENTE --> EN_COTIZACION
-    EN_COTIZACION --> PENDIENTE_DECISION
-    PENDIENTE_DECISION --> LISTO_PARA_INSTALACION
+    VALIDANDO_COBERTURA --> EN_COTIZACION
+    EN_COTIZACION --> LISTO_PARA_INSTALACION
     LISTO_PARA_INSTALACION --> INSTALACION_AGENDADA
     INSTALACION_AGENDADA --> CLIENTE_ACTIVO
     CLIENTE_ACTIVO --> [*]
 
     NUEVO_POTENCIAL --> DESCARTADO
-    CONTACTADO --> DESCARTADO
-    PENDIENTE_DATOS --> DESCARTADO
     PRECALIFICADO --> DESCARTADO
     VALIDANDO_COBERTURA --> DESCARTADO
-    VIABLE_COMERCIALMENTE --> DESCARTADO
     EN_COTIZACION --> DESCARTADO
-    PENDIENTE_DECISION --> DESCARTADO
     LISTO_PARA_INSTALACION --> DESCARTADO
     INSTALACION_AGENDADA --> DESCARTADO
 
@@ -428,13 +440,9 @@ Migracion aditiva: las tablas legacy (potential_leads, prospect_cases) se preser
 ```typescript
 enum ExpedienteStatus {
   NUEVO_POTENCIAL,
-  CONTACTADO,
-  PENDIENTE_DATOS,
   PRECALIFICADO,
   VALIDANDO_COBERTURA,
-  VIABLE_COMERCIALMENTE,
   EN_COTIZACION,
-  PENDIENTE_DECISION,
   LISTO_PARA_INSTALACION,
   INSTALACION_AGENDADA,
   CLIENTE_ACTIVO,

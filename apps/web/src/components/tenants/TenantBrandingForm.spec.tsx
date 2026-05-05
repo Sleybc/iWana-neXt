@@ -179,4 +179,32 @@ describe('TenantBrandingForm', () => {
       expect(screen.getByText((text) => text.includes('1280x720'))).toBeInTheDocument();
     });
   });
+
+  it('elimina un slot configurado con payload incremental', async () => {
+    const updatedTenant = buildTenant({
+      sealLightUrl: null,
+      sealLightAssetId: null,
+    });
+    tenantApiMock.updateBranding.mockResolvedValue(updatedTenant);
+
+    const tenant = buildTenant({
+      sealLightUrl: 'https://cdn.demo.co/branding/seal-light.svg',
+      sealLightAssetId: 'asset-1',
+    });
+
+    const onUpdated = jest.fn();
+    render(<TenantBrandingForm tenantId="tenant-1" tenant={tenant} onUpdated={onUpdated} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar imagen' }));
+
+    await waitFor(() => {
+      expect(tenantApiMock.updateBranding).toHaveBeenCalledWith('tenant-1', {
+        sealLightUrl: null,
+        sealLightAssetId: null,
+      });
+    });
+
+    expect(onUpdated).toHaveBeenCalledWith(updatedTenant);
+    expect(screen.getByText('Variante clara eliminada del branding.')).toBeInTheDocument();
+  });
 });

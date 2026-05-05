@@ -59,7 +59,7 @@ const EMPTY_CREATE_FORM: CreateFormState = {
 
 const tableHeadClass =
   'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500';
-const cellClass = 'px-4 py-3 align-top text-sm text-gray-700 dark:text-gray-200';
+const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
 
 // Clase compartida para inputs de fecha y textarea dentro de los modales.
 const inputBaseClass =

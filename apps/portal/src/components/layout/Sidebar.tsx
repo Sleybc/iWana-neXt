@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import { cn } from '@iwana/ui';
 import { TenantSeal } from './TenantSeal';
-import { interactiveFocusClassName } from '@/components/shared/portal-ui';
 import type { TenantSelf } from '@/lib/api-client';
 
 interface SidebarProps {
@@ -163,7 +162,6 @@ const NavItems = ({ desktopCollapsed }: NavItemsProps) => {
                       isActive
                         ? 'bg-iwana-primary-50 font-medium text-iwana-primary-700 dark:bg-iwana-primary-800/30 dark:text-iwana-primary-200'
                         : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5',
-                      interactiveFocusClassName,
                       desktopCollapsed && 'lg:justify-center lg:px-2',
                     )}
                     aria-current={isActive ? 'page' : undefined}
@@ -246,11 +244,7 @@ export const Sidebar = ({
         {/* Marca del tenant — expandido */}
         <Link
           href="/dashboard"
-          className={cn(
-            'flex min-w-0 items-center gap-3 rounded-lg',
-            interactiveFocusClassName,
-            desktopCollapsed && 'lg:hidden',
-          )}
+          className={cn('flex items-center gap-3 min-w-0', desktopCollapsed && 'lg:hidden')}
         >
           <TenantSeal
             sealLightUrl={profile?.sealLightUrl ?? null}
@@ -269,11 +263,7 @@ export const Sidebar = ({
         {/* Sello solo — colapsado desktop */}
         <Link
           href="/dashboard"
-          className={cn(
-            'hidden items-center justify-center rounded-lg',
-            interactiveFocusClassName,
-            desktopCollapsed && 'lg:flex',
-          )}
+          className={cn('hidden items-center justify-center', desktopCollapsed && 'lg:flex')}
           aria-label="Ir al dashboard"
         >
           <TenantSeal
@@ -289,10 +279,7 @@ export const Sidebar = ({
           type="button"
           onClick={() => setMobileOpen(false)}
           aria-label="Cerrar menú"
-          className={cn(
-            'shrink-0 rounded-lg p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white lg:hidden',
-            interactiveFocusClassName,
-          )}
+          className="shrink-0 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white lg:hidden"
         >
           <X className="w-5 h-5" />
         </button>

@@ -236,7 +236,13 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => void loadDefinitions()}>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Actualizar catálogo de impuestos"
+            title="Actualizar catálogo de impuestos"
+            onClick={() => void loadDefinitions()}
+          >
             <RotateCcw className="h-4 w-4" />
           </Button>
           {canEdit && (
@@ -250,7 +256,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
                 setCreateOpen(true);
               }}
             >
-              <Plus className="mr-1.5 h-4 w-4" />
+              <Plus className="h-4 w-4" />
               Nueva definición
             </Button>
           )}
@@ -312,11 +318,10 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
                 {canEdit && (
                   <div className="flex shrink-0 items-center gap-2">
                     <Button
-                      variant="ghost"
-                      size="sm"
+                      variant="secondary"
+                      size="icon"
                       aria-label={`Editar definición tributaria ${def.name}`}
                       title={`Editar definición tributaria ${def.name}`}
-                      className="gap-1.5"
                       onClick={() => {
                         setEditTarget(def);
                         setForm({
@@ -329,14 +334,12 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
                       }}
                     >
                       <Pencil className="h-4 w-4" aria-hidden="true" />
-                      <span>Editar</span>
                     </Button>
                     <Button
-                      variant="ghost"
-                      size="sm"
+                      variant="softDestructive"
+                      size="icon"
                       aria-label={`Eliminar definición tributaria ${def.name}`}
                       title={`Eliminar definición tributaria ${def.name}`}
-                      className="text-red-500 hover:text-red-600"
                       onClick={() => setDeleteTarget(def)}
                     >
                       <Trash2 className="h-4 w-4" aria-hidden="true" />

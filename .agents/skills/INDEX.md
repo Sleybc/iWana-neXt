@@ -109,6 +109,21 @@ Estados admitidos:
 - test-driven-development
 - testing-patterns
 
+### Flujos de trabajo (Superpowers)
+
+- brainstorming
+- dispatching-parallel-agents
+- executing-plans
+- finishing-a-development-branch
+- receiving-code-review
+- requesting-code-review
+- subagent-driven-development
+- systematic-debugging
+- using-git-worktrees
+- verification-before-completion
+- writing-plans
+- writing-skills
+
 ### Mantenimiento y dependencias
 
 - codebase-cleanup-deps-audit
