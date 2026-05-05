@@ -899,11 +899,13 @@ export default function ExpedienteDetailPage() {
             value={transitionTarget}
             onChange={(event) => setTransitionTarget(event.target.value as ExpedienteStatus)}
           >
-            {PIPELINE_STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
+            {PIPELINE_STATUS_OPTIONS.filter((option) => option.value !== expediente.status).map(
+              (option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ),
+            )}
           </Select>
           <Input
             id="transition-reason"
