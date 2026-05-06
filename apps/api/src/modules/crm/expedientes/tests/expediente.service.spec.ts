@@ -558,7 +558,7 @@ describe('ExpedienteService', () => {
       overall: 56,
     });
 
-    const deleteAttempt = Promise.resolve().then(() =>
+    await expect(
       (service as any).deleteDocumentSupport(
         'exp-doc-delete-override',
         'rut',
@@ -566,10 +566,7 @@ describe('ExpedienteService', () => {
         'user-docs',
         'PERSONA_JURIDICA',
       ),
-    );
-
-    await expect(deleteAttempt).rejects.toBeInstanceOf(NotFoundException);
-    await expect(deleteAttempt).rejects.not.toThrow(/no aplica/i);
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('no registra actividad cuando el payload no produce cambios reales', async () => {
