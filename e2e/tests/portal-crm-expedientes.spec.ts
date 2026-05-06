@@ -117,6 +117,87 @@ async function setupCrmMocks(page: import('@playwright/test').Page) {
   let contactAttemptCreated = false;
   let consentRevoked = false;
   const capturedCommercialCatalogRequests: string[] = [];
+  type MockDocumentSupportVersion = {
+    id: string;
+    fileName: string;
+    mimeType: string;
+    sizeBytes: number;
+    uploadedAt: string;
+    uploadedBy: string;
+    status: 'PENDING' | 'UPLOADED' | 'OBSERVED' | 'APPROVED' | 'REJECTED';
+    note: string | null;
+    downloadUrl: string;
+  };
+  type MockDocumentSupportItem = {
+    key: string;
+    label: string;
+    hint: string;
+    versions: MockDocumentSupportVersion[];
+  };
+
+  const buildDocumentSupportVersion = (
+    overrides: Partial<MockDocumentSupportVersion>,
+  ): MockDocumentSupportVersion => ({
+    id: overrides.id ?? 'version-1',
+    fileName: overrides.fileName ?? 'documento.pdf',
+    mimeType: overrides.mimeType ?? 'application/pdf',
+    sizeBytes: overrides.sizeBytes ?? 2048,
+    uploadedAt: overrides.uploadedAt ?? '2026-03-26T12:00:00.000Z',
+    uploadedBy: overrides.uploadedBy ?? 'Equipo operaciones',
+    status: overrides.status ?? 'UPLOADED',
+    note: overrides.note ?? null,
+    downloadUrl: overrides.downloadUrl ?? 'https://example.test/documento.pdf',
+  });
+
+  const buildDocumentSupportPayload = (items: MockDocumentSupportItem[]) => {
+    const uploadedCount = items.filter((item) => item.versions.length > 0).length;
+    const approvedCount = items.filter((item) => item.versions[0]?.status === 'APPROVED').length;
+    const blockStatus =
+      items.length > 0 && approvedCount === items.length
+        ? 'COMPLETO'
+        : items.some((item) => ['OBSERVED', 'REJECTED'].includes(item.versions[0]?.status ?? ''))
+          ? 'OBSERVADO'
+          : uploadedCount > 0
+            ? 'EN_REVISION'
+            : 'PENDIENTE';
+
+    return {
+      data: {
+        personType: mockExpediente.personType,
+        items,
+        summary: {
+          requiredCount: items.length,
+          uploadedCount,
+          approvedCount,
+          blockStatus,
+        },
+      },
+    };
+  };
+
+  let documentSupportItems: MockDocumentSupportItem[] = [
+    {
+      key: 'cedula_ciudadania',
+      label: 'Cédula de ciudadanía',
+      hint: 'Documento principal del titular',
+      versions: [
+        buildDocumentSupportVersion({
+          id: 'version-actual',
+          fileName: 'documento-vigente.pdf',
+          uploadedAt: '2026-03-26T12:00:00.000Z',
+          status: 'UPLOADED',
+          downloadUrl: 'https://example.test/documento-vigente.pdf',
+        }),
+        buildDocumentSupportVersion({
+          id: 'version-previa',
+          fileName: 'documento-anterior.pdf',
+          uploadedAt: '2026-03-25T09:30:00.000Z',
+          status: 'APPROVED',
+          downloadUrl: 'https://example.test/documento-anterior.pdf',
+        }),
+      ],
+    },
+  ];
 
   await page.route('**/api/v1/**', async (route) => {
     const url = route.request().url();
@@ -520,6 +601,43 @@ async function setupCrmMocks(page: import('@playwright/test').Page) {
     }
 
     if (
+      pathname.endsWith(`/crm/expedientes/${mockExpediente.id}/document-supports`) &&
+      method === 'GET'
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(buildDocumentSupportPayload(documentSupportItems)),
+      });
+      return;
+    }
+
+    if (
+      pathname.includes(`/crm/expedientes/${mockExpediente.id}/document-supports/`) &&
+      method === 'DELETE'
+    ) {
+      const segments = pathname.split('/');
+      const documentKey = decodeURIComponent(segments[segments.length - 2] ?? '');
+      const versionId = decodeURIComponent(segments[segments.length - 1] ?? '');
+
+      documentSupportItems = documentSupportItems.map((item) =>
+        item.key === documentKey
+          ? {
+              ...item,
+              versions: item.versions.filter((version) => version.id !== versionId),
+            }
+          : item,
+      );
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(buildDocumentSupportPayload(documentSupportItems)),
+      });
+      return;
+    }
+
+    if (
       pathname.includes(`/crm/expedientes/${mockExpediente.id}/sections/`) &&
       method === 'PATCH'
     ) {
@@ -719,6 +837,35 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
       evaluationSource: 'TECHNICAL_SITE_VISIT',
       technicalObservations: 'Solución viable con ajuste menor de acometida.',
     });
+  });
+
+  test('CRM permite eliminar un soporte cargado por error y reactivar la versión previa', async ({
+    page,
+  }) => {
+    await setupCrmMocks(page);
+    await setAuthSession(page);
+    await page.goto(`/dashboard/crm/expedientes/${mockExpediente.id}`);
+    await page.waitForLoadState('networkidle');
+
+    await page.getByRole('button', { name: 'Gestión' }).click();
+    await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
+
+    await page.getByRole('button', { name: /soportes documentales/i }).click();
+    await expect(page.getByText('Soportes requeridos para persona natural')).toBeVisible();
+    await expect(page.getByText('documento-vigente.pdf')).toBeVisible();
+
+    page.once('dialog', async (dialog) => {
+      expect(dialog.message()).toContain('documento-vigente.pdf');
+      await dialog.accept();
+    });
+
+    await page
+      .getByRole('button', { name: 'Eliminar versión actual de Cédula de ciudadanía' })
+      .click();
+
+    await expect(page.getByText('documento-anterior.pdf')).toBeVisible();
+    await expect(page.getByText('documento-vigente.pdf')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /ver historial \(1\)/i })).toBeVisible();
   });
 
   test('CRM detalle carga plan y productos adicionales desde CommercialModule', async ({
