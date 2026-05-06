@@ -45,7 +45,6 @@ import {
   type ExpedienteDocumentItemDto,
   type ExpedienteDocumentSupportResponseDto,
   getDocumentDefinitionsByPersonType,
-  resolveSupportedDocumentSupportPersonType,
   type StoredDocumentSupportMap,
   type StoredDocumentSupportVersion,
 } from './document-support.types';
@@ -167,6 +166,19 @@ const SECTION_FIELD_LABELS: Record<string, string> = {
   siteContactPhoneEncrypted: 'Teléfono en sitio',
   specialAccessNotes: 'Notas de acceso',
   requiredMaterials: 'Materiales requeridos',
+};
+
+const DOCUMENT_SUPPORT_PERSON_TYPE_ALIASES: Readonly<
+  Record<string, 'PERSONA_NATURAL' | 'PERSONA_JURIDICA'>
+> = {
+  PERSONA_NATURAL: 'PERSONA_NATURAL',
+  NATURAL: 'PERSONA_NATURAL',
+  PERSONANATURAL: 'PERSONA_NATURAL',
+  TIPO_PERSONA_NATURAL: 'PERSONA_NATURAL',
+  PERSONA_JURIDICA: 'PERSONA_JURIDICA',
+  JURIDICA: 'PERSONA_JURIDICA',
+  PERSONAJURIDICA: 'PERSONA_JURIDICA',
+  TIPO_PERSONA_JURIDICA: 'PERSONA_JURIDICA',
 };
 
 /**
@@ -1870,7 +1882,7 @@ export class ExpedienteService {
   ): string | null {
     return (
       this.resolveDocumentSupportPersonTypeOverride(personTypeOverride) ??
-      resolveSupportedDocumentSupportPersonType(persistedPersonType) ??
+      this.resolveSupportedDocumentSupportPersonType(persistedPersonType) ??
       persistedPersonType ??
       null
     );
@@ -1885,7 +1897,7 @@ export class ExpedienteService {
       return null;
     }
 
-    const resolvedOverride = resolveSupportedDocumentSupportPersonType(normalizedOverride);
+    const resolvedOverride = this.resolveSupportedDocumentSupportPersonType(normalizedOverride);
 
     if (!resolvedOverride) {
       throw new BadRequestException({
@@ -1896,6 +1908,23 @@ export class ExpedienteService {
     }
 
     return resolvedOverride;
+  }
+
+  private resolveSupportedDocumentSupportPersonType(
+    value: string | null | undefined,
+  ): 'PERSONA_NATURAL' | 'PERSONA_JURIDICA' | null {
+    const normalized = String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, '_');
+
+    if (!normalized) {
+      return null;
+    }
+
+    return DOCUMENT_SUPPORT_PERSON_TYPE_ALIASES[normalized] ?? null;
   }
 
   private getDocumentDefinitionsForOperation(

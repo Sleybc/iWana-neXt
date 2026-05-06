@@ -34,8 +34,6 @@ export interface DocumentSupportDefinition {
   hint: string;
 }
 
-export type SupportedDocumentSupportPersonType = 'PERSONA_NATURAL' | 'PERSONA_JURIDICA';
-
 export interface ExpedienteDocumentVersionDto {
   id: string;
   fileName: string;
@@ -99,20 +97,6 @@ export const LEGAL_ENTITY_DOCUMENTS: DocumentSupportDefinition[] = [
   },
 ];
 
-const SUPPORTED_DOCUMENT_SUPPORT_PERSON_TYPE_ALIASES: Record<
-  string,
-  SupportedDocumentSupportPersonType
-> = {
-  PERSONA_NATURAL: 'PERSONA_NATURAL',
-  NATURAL: 'PERSONA_NATURAL',
-  PERSONANATURAL: 'PERSONA_NATURAL',
-  TIPO_PERSONA_NATURAL: 'PERSONA_NATURAL',
-  PERSONA_JURIDICA: 'PERSONA_JURIDICA',
-  JURIDICA: 'PERSONA_JURIDICA',
-  PERSONAJURIDICA: 'PERSONA_JURIDICA',
-  TIPO_PERSONA_JURIDICA: 'PERSONA_JURIDICA',
-};
-
 function normalizePersonType(value: string | null | undefined): string {
   return String(value ?? '')
     .normalize('NFD')
@@ -123,18 +107,13 @@ function normalizePersonType(value: string | null | undefined): string {
 }
 
 function isLegalEntityPersonType(value: string | null | undefined): boolean {
-  return resolveSupportedDocumentSupportPersonType(value) === 'PERSONA_JURIDICA';
-}
-
-export function resolveSupportedDocumentSupportPersonType(
-  value: string | null | undefined,
-): SupportedDocumentSupportPersonType | null {
   const normalized = normalizePersonType(value);
-  if (!normalized) {
-    return null;
-  }
-
-  return SUPPORTED_DOCUMENT_SUPPORT_PERSON_TYPE_ALIASES[normalized] ?? null;
+  return (
+    normalized === 'PERSONA_JURIDICA' ||
+    normalized === 'JURIDICA' ||
+    normalized === 'PERSONAJURIDICA' ||
+    normalized === 'TIPO_PERSONA_JURIDICA'
+  );
 }
 
 export function getDocumentDefinitionsByPersonType(
