@@ -355,6 +355,77 @@ describe('ExpedienteService', () => {
     );
   });
 
+  it('lista soportes documentales canonicalizando aliases válidos del personType override', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-list-1',
+      personType: 'PERSONA_NATURAL',
+      documentSupports: {},
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    const result = await service.getDocumentSupports('exp-doc-list-1', 'tipo persona jurídica');
+
+    expect(result.personType).toBe('PERSONA_JURIDICA');
+    expect(result.items.map((item) => item.key)).toEqual([
+      'chamber_of_commerce',
+      'rut',
+      'legal_representative_id',
+    ]);
+  });
+
+  it('lista soportes documentales canonicalizando alias natural del personType override', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-list-natural',
+      personType: 'PERSONA_JURIDICA',
+      documentSupports: {},
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    const result = await service.getDocumentSupports('exp-doc-list-natural', 'natural');
+
+    expect(result.personType).toBe('PERSONA_NATURAL');
+    expect(result.items.map((item) => item.key)).toEqual(['identity_document', 'utility_bill']);
+  });
+
+  it('rechaza personType override inválido al listar soportes documentales', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-list-invalid',
+      personType: 'PERSONA_NATURAL',
+      documentSupports: {},
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    await expect(
+      service.getDocumentSupports('exp-doc-list-invalid', 'empresa_x'),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'INVALID_DOCUMENT_SUPPORT_PERSON_TYPE',
+        field: 'personType',
+      }),
+    });
+  });
+
   it('sube un soporte documental usando el personType efectivo cuando llega por override', async () => {
     const expediente = buildExpediente({
       id: 'exp-doc-1',
@@ -389,11 +460,12 @@ describe('ExpedienteService', () => {
         buffer: Buffer.from('pdf-demo'),
       },
       'user-docs',
-      'PERSONA_JURIDICA',
+      'jurídica',
     );
 
     expect(mkdir).toHaveBeenCalled();
     expect(writeFile).toHaveBeenCalled();
+    expect(result.personType).toBe('PERSONA_JURIDICA');
     expect(result.items).toHaveLength(3);
     expect(result.items.find((item) => item.key === 'rut')?.versions[0]).toEqual(
       expect.objectContaining({
@@ -409,6 +481,45 @@ describe('ExpedienteService', () => {
         }),
       }),
     );
+  });
+
+  it('rechaza personType override inválido al subir soportes documentales', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-upload-invalid',
+      personType: 'PERSONA_NATURAL',
+      documentSupports: {},
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    await expect(
+      service.uploadDocumentSupport(
+        'exp-doc-upload-invalid',
+        'rut',
+        {
+          originalname: 'rut.pdf',
+          mimetype: 'application/pdf',
+          size: 2048,
+          buffer: Buffer.from('pdf-demo'),
+        },
+        'user-docs',
+        'empresa_x',
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'INVALID_DOCUMENT_SUPPORT_PERSON_TYPE',
+        field: 'personType',
+      }),
+    });
+
+    expect(mkdir).not.toHaveBeenCalled();
+    expect(writeFile).not.toHaveBeenCalled();
   });
 
   it('actualiza el estado de una versión documental usando el personType efectivo y recalcula el resumen', async () => {
@@ -459,10 +570,11 @@ describe('ExpedienteService', () => {
       'APPROVED',
       'user-docs',
       undefined,
-      'PERSONA_JURIDICA',
+      'tipo persona juridica',
     );
 
     const rutItem = result.items.find((item) => item.key === 'rut');
+    expect(result.personType).toBe('PERSONA_JURIDICA');
     expect(rutItem?.versions[0]?.status).toBe('APPROVED');
     expect(result.summary.approvedCount).toBe(1);
     expect(auditServiceMock.log).toHaveBeenCalledWith(
@@ -472,6 +584,56 @@ describe('ExpedienteService', () => {
         }),
       }),
     );
+  });
+
+  it('rechaza personType override inválido al actualizar estado documental', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-status-invalid',
+      personType: 'PERSONA_NATURAL',
+      documentSupports: {
+        rut: {
+          versions: [
+            {
+              id: 'ver-1',
+              fileName: 'rut.pdf',
+              storedFileName: 'ver-1.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 1024,
+              uploadedAt: '2026-04-13T12:00:00.000Z',
+              uploadedByUserId: 'user-docs',
+              uploadedByName: 'Equipo interno',
+              status: 'UPLOADED',
+              note: null,
+            },
+          ],
+        },
+      },
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    await expect(
+      service.updateDocumentSupportStatus(
+        'exp-doc-status-invalid',
+        'rut',
+        'ver-1',
+        'APPROVED',
+        'user-docs',
+        undefined,
+        'empresa_x',
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'INVALID_DOCUMENT_SUPPORT_PERSON_TYPE',
+        field: 'personType',
+      }),
+    });
   });
 
   it('elimina la versión vigente y promueve la anterior como vigente', async () => {
@@ -531,10 +693,11 @@ describe('ExpedienteService', () => {
       'rut',
       'ver-2',
       'user-docs',
-      'PERSONA_JURIDICA',
+      'persona jurídica',
     );
 
     const rutItem = result.items.find((item: { key: string }) => item.key === 'rut');
+    expect(result.personType).toBe('PERSONA_JURIDICA');
     expect(rutItem?.versions.map((version: { id: string }) => version.id)).toEqual(['ver-1']);
     expect(rutItem?.versions[0]?.status).toBe('APPROVED');
   });
@@ -730,6 +893,56 @@ describe('ExpedienteService', () => {
         'PERSONA_JURIDICA',
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('rechaza personType override inválido al eliminar soportes documentales', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-delete-invalid',
+      personType: 'PERSONA_JURIDICA',
+      documentSupports: {
+        rut: {
+          versions: [
+            {
+              id: 'ver-2',
+              fileName: 'rut.pdf',
+              storedFileName: 'ver-2.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 1024,
+              uploadedAt: '2026-05-06T10:00:00.000Z',
+              uploadedByUserId: 'user-docs',
+              uploadedByName: 'Equipo interno',
+              status: 'UPLOADED',
+              note: null,
+            },
+          ],
+        },
+      },
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    await expect(
+      service.deleteDocumentSupport(
+        'exp-doc-delete-invalid',
+        'rut',
+        'ver-2',
+        'user-docs',
+        'empresa_x',
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'INVALID_DOCUMENT_SUPPORT_PERSON_TYPE',
+        field: 'personType',
+      }),
+    });
+
+    expect(rename).not.toHaveBeenCalled();
   });
 
   it('no registra actividad cuando el payload no produce cambios reales', async () => {

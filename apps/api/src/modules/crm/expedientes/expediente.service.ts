@@ -45,6 +45,7 @@ import {
   type ExpedienteDocumentItemDto,
   type ExpedienteDocumentSupportResponseDto,
   getDocumentDefinitionsByPersonType,
+  resolveSupportedDocumentSupportPersonType,
   type StoredDocumentSupportMap,
   type StoredDocumentSupportVersion,
 } from './document-support.types';
@@ -1867,7 +1868,34 @@ export class ExpedienteService {
     persistedPersonType: string | null | undefined,
     personTypeOverride?: string | null,
   ): string | null {
-    return this.normalizeOptionalText(personTypeOverride) ?? persistedPersonType ?? null;
+    return (
+      this.resolveDocumentSupportPersonTypeOverride(personTypeOverride) ??
+      resolveSupportedDocumentSupportPersonType(persistedPersonType) ??
+      persistedPersonType ??
+      null
+    );
+  }
+
+  private resolveDocumentSupportPersonTypeOverride(
+    personTypeOverride?: string | null,
+  ): string | null {
+    const normalizedOverride = this.normalizeOptionalText(personTypeOverride);
+
+    if (normalizedOverride === null) {
+      return null;
+    }
+
+    const resolvedOverride = resolveSupportedDocumentSupportPersonType(normalizedOverride);
+
+    if (!resolvedOverride) {
+      throw new BadRequestException({
+        code: 'INVALID_DOCUMENT_SUPPORT_PERSON_TYPE',
+        message: 'El personType indicado no es válido para soportes documentales.',
+        field: 'personType',
+      });
+    }
+
+    return resolvedOverride;
   }
 
   private getDocumentDefinitionsForOperation(
