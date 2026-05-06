@@ -3013,6 +3013,10 @@ export interface ExpedienteOperationalMetadata {
   lastActivityAt: string | null;
 }
 
+function buildDocumentSupportQuery(personType?: string | null): string {
+  return personType ? `?personType=${encodeURIComponent(personType)}` : '';
+}
+
 export const crmApi = {
   listExpedientes: (
     filters?: {
@@ -3232,7 +3236,7 @@ export const crmApi = {
   },
 
   getDocumentSupports: (id: string, tenantSlug?: string, personType?: string | null) => {
-    const query = personType ? `?personType=${encodeURIComponent(personType)}` : '';
+    const query = buildDocumentSupportQuery(personType);
     return request<{ data: ExpedienteDocumentSupportResponse }>(
       `/crm/expedientes/${id}/document-supports${query}`,
       { returnFullResponse: true },
@@ -3240,12 +3244,19 @@ export const crmApi = {
     );
   },
 
-  uploadDocumentSupport: (id: string, documentKey: string, file: File, tenantSlug?: string) => {
+  uploadDocumentSupport: (
+    id: string,
+    documentKey: string,
+    file: File,
+    tenantSlug?: string,
+    personType?: string | null,
+  ) => {
     const body = new FormData();
     body.append('file', file);
+    const query = buildDocumentSupportQuery(personType);
 
     return request<{ data: ExpedienteDocumentSupportResponse }>(
-      `/crm/expedientes/${id}/document-supports/${documentKey}/upload`,
+      `/crm/expedientes/${id}/document-supports/${documentKey}/upload${query}`,
       { method: 'POST', body, returnFullResponse: true },
       tenantSlug,
     );
@@ -3257,12 +3268,32 @@ export const crmApi = {
     versionId: string,
     dto: { status: DocumentReviewStatus; note?: string | null },
     tenantSlug?: string,
-  ) =>
-    request<{ data: ExpedienteDocumentSupportResponse }>(
-      `/crm/expedientes/${id}/document-supports/${documentKey}/${versionId}/status`,
+    personType?: string | null,
+  ) => {
+    const query = buildDocumentSupportQuery(personType);
+
+    return request<{ data: ExpedienteDocumentSupportResponse }>(
+      `/crm/expedientes/${id}/document-supports/${documentKey}/${versionId}/status${query}`,
       { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
       tenantSlug,
-    ),
+    );
+  },
+
+  deleteDocumentSupport: (
+    id: string,
+    documentKey: string,
+    versionId: string,
+    tenantSlug?: string,
+    personType?: string | null,
+  ) => {
+    const query = buildDocumentSupportQuery(personType);
+
+    return request<{ data: ExpedienteDocumentSupportResponse }>(
+      `/crm/expedientes/${id}/document-supports/${documentKey}/${versionId}${query}`,
+      { method: 'DELETE', returnFullResponse: true },
+      tenantSlug,
+    );
+  },
 };
 
 export const subscribersApi = {

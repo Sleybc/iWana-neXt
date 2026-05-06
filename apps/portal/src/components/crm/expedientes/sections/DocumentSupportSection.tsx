@@ -9,6 +9,7 @@ import {
   FileBadge2,
   FileText,
   Loader2,
+  Trash2,
   Upload,
 } from 'lucide-react';
 import {
@@ -105,18 +106,28 @@ export function DocumentSupportSection({
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const loadDocumentSupports = async () => {
+  const loadDocumentSupports = async ({
+    showLoader = true,
+  }: {
+    showLoader?: boolean;
+  } = {}) => {
     try {
-      setLoading(true);
+      if (showLoader) {
+        setLoading(true);
+      }
       const response = await crmApi.getDocumentSupports(expedienteId, undefined, personType);
       setPayload(response.data);
       setError(null);
+      return response.data;
     } catch (loadError) {
       setError(
         loadError instanceof Error ? loadError.message : 'No fue posible cargar los soportes.',
       );
+      return null;
     } finally {
-      setLoading(false);
+      if (showLoader) {
+        setLoading(false);
+      }
     }
   };
 
@@ -147,7 +158,13 @@ export function DocumentSupportSection({
   const handleUpload = async (documentKey: string, file: File) => {
     try {
       setSavingKey(documentKey);
-      const response = await crmApi.uploadDocumentSupport(expedienteId, documentKey, file);
+      const response = await crmApi.uploadDocumentSupport(
+        expedienteId,
+        documentKey,
+        file,
+        undefined,
+        personType,
+      );
       setPayload(response.data);
       setError(null);
       await onSaved?.();
@@ -174,6 +191,8 @@ export function DocumentSupportSection({
         {
           status,
         },
+        undefined,
+        personType,
       );
       setPayload(response.data);
       setError(null);
@@ -183,6 +202,45 @@ export function DocumentSupportSection({
         statusError instanceof Error
           ? statusError.message
           : 'No fue posible actualizar el estado del soporte.',
+      );
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const handleDeleteVersion = async (
+    documentKey: string,
+    documentLabel: string,
+    versionId: string,
+    fileName: string,
+  ) => {
+    if (
+      !window.confirm(
+        `¿Eliminar la versión "${fileName}" de ${documentLabel}? Si existe una versión previa, quedará activa de nuevo.`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setSavingKey(`delete:${documentKey}:${versionId}`);
+      await crmApi.deleteDocumentSupport(
+        expedienteId,
+        documentKey,
+        versionId,
+        undefined,
+        personType,
+      );
+      const refreshedPayload = await loadDocumentSupports({ showLoader: false });
+
+      if (refreshedPayload) {
+        await onSaved?.();
+      }
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : 'No fue posible eliminar la versión del soporte.',
       );
     } finally {
       setSavingKey(null);
@@ -331,6 +389,32 @@ export function DocumentSupportSection({
                     </Button>
                   ) : null}
 
+                  <Button
+                    type="button"
+                    variant="softDestructive"
+                    size="sm"
+                    loading={
+                      currentVersion
+                        ? savingKey === `delete:${document.key}:${currentVersion.id}`
+                        : false
+                    }
+                    disabled={!currentVersion}
+                    aria-label={`Eliminar versión actual de ${document.label}`}
+                    title={`Eliminar versión actual de ${document.label}`}
+                    onClick={() =>
+                      currentVersion &&
+                      void handleDeleteVersion(
+                        document.key,
+                        document.label,
+                        currentVersion.id,
+                        currentVersion.fileName,
+                      )
+                    }
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    Eliminar archivo
+                  </Button>
+
                   <div className="grid grid-cols-3 gap-2 pt-1">
                     <Button
                       type="button"
@@ -419,6 +503,24 @@ export function DocumentSupportSection({
                               Nota: {version.note}
                             </span>
                           ) : null}
+                          <Button
+                            type="button"
+                            variant="softDestructive"
+                            size="sm"
+                            loading={savingKey === `delete:${document.key}:${version.id}`}
+                            aria-label={`Eliminar versión ${versions.length - index} de ${document.label}`}
+                            title={`Eliminar versión ${versions.length - index} de ${document.label}`}
+                            onClick={() =>
+                              void handleDeleteVersion(
+                                document.key,
+                                document.label,
+                                version.id,
+                                version.fileName,
+                              )
+                            }
+                          >
+                            Eliminar
+                          </Button>
                         </div>
                       </div>
                     ))
