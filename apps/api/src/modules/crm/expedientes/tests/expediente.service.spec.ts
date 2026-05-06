@@ -24,6 +24,7 @@ jest.mock('node:fs/promises', () => ({
   mkdir: jest.fn().mockResolvedValue(undefined),
   writeFile: jest.fn().mockResolvedValue(undefined),
   access: jest.fn().mockResolvedValue(undefined),
+  rename: jest.fn().mockResolvedValue(undefined),
   unlink: jest.fn().mockResolvedValue(undefined),
 }));
 
@@ -354,7 +355,7 @@ describe('ExpedienteService', () => {
     );
   });
 
-  it('sube un soporte documental requerido y devuelve la versión registrada', async () => {
+  it('sube un soporte documental usando el personType efectivo cuando llega por override', async () => {
     const expediente = buildExpediente({
       id: 'exp-doc-1',
       personType: 'PERSONA_NATURAL',
@@ -380,22 +381,23 @@ describe('ExpedienteService', () => {
 
     const result = await service.uploadDocumentSupport(
       'exp-doc-1',
-      'identity_document',
+      'rut',
       {
-        originalname: 'cedula.pdf',
+        originalname: 'rut.pdf',
         mimetype: 'application/pdf',
         size: 2048,
         buffer: Buffer.from('pdf-demo'),
       },
       'user-docs',
+      'PERSONA_JURIDICA',
     );
 
     expect(mkdir).toHaveBeenCalled();
     expect(writeFile).toHaveBeenCalled();
-    expect(result.items).toHaveLength(2);
-    expect(result.items[0]?.versions[0]).toEqual(
+    expect(result.items).toHaveLength(3);
+    expect(result.items.find((item) => item.key === 'rut')?.versions[0]).toEqual(
       expect.objectContaining({
-        fileName: 'cedula.pdf',
+        fileName: 'rut.pdf',
         status: 'UPLOADED',
       }),
     );
@@ -403,16 +405,16 @@ describe('ExpedienteService', () => {
       expect.objectContaining({
         newValue: expect.objectContaining({
           section: 'document_support',
-          changedFields: ['identity_document'],
+          changedFields: ['rut'],
         }),
       }),
     );
   });
 
-  it('actualiza el estado de una versión documental y recalcula el resumen', async () => {
+  it('actualiza el estado de una versión documental usando el personType efectivo y recalcula el resumen', async () => {
     const expediente = buildExpediente({
       id: 'exp-doc-2',
-      personType: 'PERSONA_JURIDICA',
+      personType: 'PERSONA_NATURAL',
       documentSupports: {
         rut: {
           versions: [
@@ -456,6 +458,8 @@ describe('ExpedienteService', () => {
       'ver-1',
       'APPROVED',
       'user-docs',
+      undefined,
+      'PERSONA_JURIDICA',
     );
 
     const rutItem = result.items.find((item) => item.key === 'rut');
@@ -522,7 +526,7 @@ describe('ExpedienteService', () => {
       overall: 56,
     });
 
-    const result = await (service as any).deleteDocumentSupport(
+    const result = await service.deleteDocumentSupport(
       'exp-doc-delete-1',
       'rut',
       'ver-2',
@@ -559,7 +563,7 @@ describe('ExpedienteService', () => {
     });
 
     await expect(
-      (service as any).deleteDocumentSupport(
+      service.deleteDocumentSupport(
         'exp-doc-delete-override',
         'rut',
         'ver-9',

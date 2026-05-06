@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as crypto from 'crypto';
-import { access, mkdir, writeFile } from 'node:fs/promises';
+import { access, mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 import { DataSource, In, Like } from 'typeorm';
 import { AuditLog, runInTenantSchema, TenantContext } from '@iwana/db';
@@ -201,9 +201,11 @@ export class ExpedienteService {
     personTypeOverride?: string | null,
   ): Promise<ExpedienteDocumentSupportResponseDto> {
     const expediente = await this.findById(id);
-    // Usar el override si se envía desde el frontend (cuando identificación no ha sido guardada aún)
-    const resolvedPersonType = personTypeOverride || expediente.personType;
-    return this.buildDocumentSupportResponse(id, resolvedPersonType, expediente.documentSupports);
+    return this.buildDocumentSupportResponse(
+      id,
+      this.resolveEffectiveDocumentPersonType(expediente.personType, personTypeOverride),
+      expediente.documentSupports,
+    );
   }
 
   async uploadDocumentSupport(
@@ -211,10 +213,18 @@ export class ExpedienteService {
     documentKey: string,
     file: UploadedDocumentFile,
     actorUserId: string,
+    personTypeOverride?: string | null,
   ): Promise<ExpedienteDocumentSupportResponseDto> {
     const { schemaName } = TenantContext.getOrThrow();
     const expediente = await this.findById(id);
-    const definitions = getDocumentDefinitionsByPersonType(expediente.personType);
+    const effectivePersonType = this.resolveEffectiveDocumentPersonType(
+      expediente.personType,
+      personTypeOverride,
+    );
+    const definitions = this.getDocumentDefinitionsForOperation(
+      expediente.personType,
+      personTypeOverride,
+    );
     const documentDefinition = this.requireDocumentDefinition(definitions, documentKey);
     this.validateDocumentUpload(file);
 
@@ -262,7 +272,7 @@ export class ExpedienteService {
 
     await this.syncCompleteness(id, schemaName);
 
-    return this.buildDocumentSupportResponse(id, expediente.personType, supports);
+    return this.buildDocumentSupportResponse(id, effectivePersonType, supports);
   }
 
   async updateDocumentSupportStatus(
@@ -272,10 +282,18 @@ export class ExpedienteService {
     status: DocumentSupportStatus,
     actorUserId: string,
     note?: string | null,
+    personTypeOverride?: string | null,
   ): Promise<ExpedienteDocumentSupportResponseDto> {
     const { schemaName } = TenantContext.getOrThrow();
     const expediente = await this.findById(id);
-    const definitions = getDocumentDefinitionsByPersonType(expediente.personType);
+    const effectivePersonType = this.resolveEffectiveDocumentPersonType(
+      expediente.personType,
+      personTypeOverride,
+    );
+    const definitions = this.getDocumentDefinitionsForOperation(
+      expediente.personType,
+      personTypeOverride,
+    );
     const documentDefinition = this.requireDocumentDefinition(definitions, documentKey);
     const supports = this.getNormalizedDocumentSupports(expediente.documentSupports);
     const versions = supports[documentKey]?.versions ?? [];
@@ -316,7 +334,79 @@ export class ExpedienteService {
 
     await this.syncCompleteness(id, schemaName);
 
-    return this.buildDocumentSupportResponse(id, expediente.personType, supports);
+    return this.buildDocumentSupportResponse(id, effectivePersonType, supports);
+  }
+
+  async deleteDocumentSupport(
+    id: string,
+    documentKey: string,
+    versionId: string,
+    actorUserId: string,
+    personTypeOverride?: string | null,
+  ): Promise<ExpedienteDocumentSupportResponseDto> {
+    const { schemaName } = TenantContext.getOrThrow();
+    const expediente = await this.findById(id);
+    const effectivePersonType = this.resolveEffectiveDocumentPersonType(
+      expediente.personType,
+      personTypeOverride,
+    );
+    const definitions = this.getDocumentDefinitionsForOperation(
+      expediente.personType,
+      personTypeOverride,
+    );
+    const documentDefinition = this.requireDocumentDefinition(definitions, documentKey);
+    const supports = this.getNormalizedDocumentSupports(expediente.documentSupports);
+    const versions = supports[documentKey]?.versions ?? [];
+    const targetVersion = versions.find((version) => version.id === versionId);
+
+    if (!targetVersion) {
+      throw new NotFoundException('La versión documental solicitada no existe en este expediente.');
+    }
+
+    const targetFilePath = join(
+      this.documentSupportDir,
+      schemaName,
+      id,
+      documentKey,
+      targetVersion.storedFileName,
+    );
+    const pendingDeleteFilePath = `${targetFilePath}.pending-delete`;
+
+    await rename(targetFilePath, pendingDeleteFilePath);
+
+    const remainingVersions = versions.filter((version) => version.id !== versionId);
+
+    if (remainingVersions.length > 0) {
+      supports[documentKey] = { versions: remainingVersions };
+    } else {
+      delete supports[documentKey];
+    }
+
+    try {
+      await this.persistDocumentSupports(id, schemaName, supports);
+    } catch (error) {
+      await rename(pendingDeleteFilePath, targetFilePath);
+      throw error;
+    }
+
+    await unlink(pendingDeleteFilePath);
+
+    const actorName = await this.resolveActorName(schemaName, actorUserId);
+    await this.auditService.log({
+      action: AuditAction.UPDATE,
+      entityType: 'ExpedienteRecord',
+      entityId: id,
+      userId: actorUserId,
+      newValue: {
+        section: 'document_support',
+        actorName,
+        changedFields: [documentDefinition.key],
+      },
+    });
+
+    await this.syncCompleteness(id, schemaName);
+
+    return this.buildDocumentSupportResponse(id, effectivePersonType, supports);
   }
 
   async getDocumentSupportFile(
@@ -1754,6 +1844,22 @@ export class ExpedienteService {
     }
 
     return value as StoredDocumentSupportMap;
+  }
+
+  private resolveEffectiveDocumentPersonType(
+    persistedPersonType: string | null | undefined,
+    personTypeOverride?: string | null,
+  ): string | null {
+    return this.normalizeOptionalText(personTypeOverride) ?? persistedPersonType ?? null;
+  }
+
+  private getDocumentDefinitionsForOperation(
+    persistedPersonType: string | null | undefined,
+    personTypeOverride?: string | null,
+  ): DocumentSupportDefinition[] {
+    return getDocumentDefinitionsByPersonType(
+      this.resolveEffectiveDocumentPersonType(persistedPersonType, personTypeOverride),
+    );
   }
 
   private requireDocumentDefinition(

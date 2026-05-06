@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -237,12 +238,14 @@ export class ExpedientesController {
     @Param('documentKey') documentKey: string,
     @UploadedFile() file: UploadedDocumentFile,
     @CurrentUser() user: JwtPayload,
+    @Query('personType') personTypeOverride?: string,
   ) {
     const data = await this.expedienteService.uploadDocumentSupport(
       id,
       documentKey,
       file,
       user.sub,
+      personTypeOverride,
     );
     return { data };
   }
@@ -257,6 +260,7 @@ export class ExpedientesController {
     @Body(new ZodBodyValidationPipe(UpdateDocumentSupportStatusSchema))
     dto: UpdateDocumentSupportStatusBodyDto,
     @CurrentUser() user: JwtPayload,
+    @Query('personType') personTypeOverride?: string,
   ) {
     const data = await this.expedienteService.updateDocumentSupportStatus(
       id,
@@ -265,6 +269,27 @@ export class ExpedientesController {
       dto.status,
       user.sub,
       dto.note,
+      personTypeOverride,
+    );
+    return { data };
+  }
+
+  @Delete(':id/document-supports/:documentKey/:versionId')
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Eliminar una versión específica de soporte documental' })
+  async deleteDocumentSupport(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('documentKey') documentKey: string,
+    @Param('versionId') versionId: string,
+    @CurrentUser() user: JwtPayload,
+    @Query('personType') personTypeOverride?: string,
+  ) {
+    const data = await this.expedienteService.deleteDocumentSupport(
+      id,
+      documentKey,
+      versionId,
+      user.sub,
+      personTypeOverride,
     );
     return { data };
   }
