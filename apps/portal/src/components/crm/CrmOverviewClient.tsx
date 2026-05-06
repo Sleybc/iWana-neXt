@@ -174,7 +174,7 @@ export function CrmOverviewClient() {
               Casos recientes con acceso directo al detalle de la oportunidad.
             </p>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-3 pt-4">
             {loading ? (
               <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-4 dark:border-dark-border dark:bg-dark-surface-3">
                 <Loader2 className="h-4 w-4 animate-spin text-iwana-primary" aria-hidden="true" />
@@ -219,7 +219,7 @@ export function CrmOverviewClient() {
               Vista compacta para no recargar la entrada del módulo.
             </p>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-3 pt-4">
             {loading ? (
               <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-5 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
                 <Loader2 className="h-4 w-4 animate-spin text-iwana-primary" aria-hidden="true" />
@@ -267,7 +267,7 @@ export function CrmOverviewClient() {
             Acceso directo al listado operativo de suscriptores de la empresa.
           </p>
         </CardHeader>
-        <CardContent className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <CardContent className="flex flex-col gap-4 pt-4 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-sm font-semibold text-gray-900 dark:text-white">
               El módulo concentra seguimiento comercial y postventa.
