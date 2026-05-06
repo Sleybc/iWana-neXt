@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { DataSource } from 'typeorm';
 import {
   AcquisitionChannel,
@@ -537,6 +537,84 @@ describe('ExpedienteService', () => {
     const rutItem = result.items.find((item: { key: string }) => item.key === 'rut');
     expect(rutItem?.versions.map((version: { id: string }) => version.id)).toEqual(['ver-1']);
     expect(rutItem?.versions[0]?.status).toBe('APPROVED');
+  });
+
+  it('mantiene la eliminación persistida aunque falle la limpieza física final', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-delete-unlink',
+      personType: 'PERSONA_JURIDICA',
+      documentSupports: {
+        rut: {
+          versions: [
+            {
+              id: 'ver-2',
+              fileName: 'rut-correccion.pdf',
+              storedFileName: 'ver-2.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 1024,
+              uploadedAt: '2026-05-06T10:00:00.000Z',
+              uploadedByUserId: 'user-docs',
+              uploadedByName: 'Equipo interno',
+              status: 'UPLOADED',
+              note: null,
+            },
+            {
+              id: 'ver-1',
+              fileName: 'rut-base.pdf',
+              storedFileName: 'ver-1.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 900,
+              uploadedAt: '2026-05-05T10:00:00.000Z',
+              uploadedByUserId: 'user-docs',
+              uploadedByName: 'Equipo interno',
+              status: 'APPROVED',
+              note: null,
+            },
+          ],
+        },
+      },
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 80,
+      legal: 75,
+      technical: 40,
+      operational: 30,
+      overall: 56,
+    });
+    (unlink as jest.MockedFunction<typeof unlink>).mockRejectedValueOnce(
+      new Error('permiso denegado'),
+    );
+
+    const result = await service.deleteDocumentSupport(
+      'exp-doc-delete-unlink',
+      'rut',
+      'ver-2',
+      'user-docs',
+      'PERSONA_JURIDICA',
+    );
+
+    expect(result.items.find((item: { key: string }) => item.key === 'rut')?.versions).toEqual([
+      expect.objectContaining({ id: 'ver-1', status: 'APPROVED' }),
+    ]);
+    expect(auditServiceMock.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityId: 'exp-doc-delete-unlink',
+        newValue: expect.objectContaining({
+          section: 'document_support',
+          changedFields: ['rut'],
+        }),
+      }),
+    );
+    expect(completenessCalculatorMock.calculate).toHaveBeenCalledWith('exp-doc-delete-unlink');
   });
 
   it('permite operar el documento correcto cuando el personType efectivo llega por override', async () => {

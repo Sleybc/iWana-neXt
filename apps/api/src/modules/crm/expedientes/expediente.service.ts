@@ -389,7 +389,15 @@ export class ExpedienteService {
       throw error;
     }
 
-    await unlink(pendingDeleteFilePath);
+    try {
+      // Una vez persistida la eliminación, la limpieza física pasa a ser best-effort.
+      await unlink(pendingDeleteFilePath);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+      this.logger.warn(
+        `No se pudo limpiar el soporte documental ${pendingDeleteFilePath} tras persistir su eliminación: ${errorMessage}`,
+      );
+    }
 
     const actorName = await this.resolveActorName(schemaName, actorUserId);
     await this.auditService.log({
