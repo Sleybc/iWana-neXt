@@ -385,7 +385,16 @@ export class ExpedienteService {
     try {
       await this.persistDocumentSupports(id, schemaName, supports);
     } catch (error) {
-      await rename(pendingDeleteFilePath, targetFilePath);
+      try {
+        await rename(pendingDeleteFilePath, targetFilePath);
+      } catch (rollbackError) {
+        const rollbackMessage =
+          rollbackError instanceof Error ? rollbackError.message : 'Error desconocido';
+        this.logger.error(
+          `No se pudo revertir la eliminación física ${pendingDeleteFilePath} tras fallar la persistencia del soporte documental: ${rollbackMessage}`,
+          rollbackError instanceof Error ? rollbackError.stack : undefined,
+        );
+      }
       throw error;
     }
 

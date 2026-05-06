@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { mkdir, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { DataSource } from 'typeorm';
 import {
   AcquisitionChannel,
@@ -615,6 +615,87 @@ describe('ExpedienteService', () => {
       }),
     );
     expect(completenessCalculatorMock.calculate).toHaveBeenCalledWith('exp-doc-delete-unlink');
+  });
+
+  it('preserva el error de persistencia aunque falle el rollback físico', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-delete-rollback',
+      personType: 'PERSONA_JURIDICA',
+      documentSupports: {
+        rut: {
+          versions: [
+            {
+              id: 'ver-2',
+              fileName: 'rut-correccion.pdf',
+              storedFileName: 'ver-2.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 1024,
+              uploadedAt: '2026-05-06T10:00:00.000Z',
+              uploadedByUserId: 'user-docs',
+              uploadedByName: 'Equipo interno',
+              status: 'UPLOADED',
+              note: null,
+            },
+            {
+              id: 'ver-1',
+              fileName: 'rut-base.pdf',
+              storedFileName: 'ver-1.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 900,
+              uploadedAt: '2026-05-05T10:00:00.000Z',
+              uploadedByUserId: 'user-docs',
+              uploadedByName: 'Equipo interno',
+              status: 'APPROVED',
+              note: null,
+            },
+          ],
+        },
+      },
+    });
+    const persistError = new Error('falló persistencia documental');
+    const rollbackError = new Error('falló rollback físico');
+    const loggerErrorSpy = jest.spyOn((service as any).logger, 'error').mockImplementation();
+
+    mockRunInTenantSchema
+      .mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: async () => expediente,
+          },
+        }),
+      )
+      .mockRejectedValueOnce(persistError);
+
+    (rename as jest.MockedFunction<typeof rename>)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(rollbackError);
+
+    await expect(
+      service.deleteDocumentSupport(
+        'exp-doc-delete-rollback',
+        'rut',
+        'ver-2',
+        'user-docs',
+        'PERSONA_JURIDICA',
+      ),
+    ).rejects.toThrow('falló persistencia documental');
+
+    expect(rename).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining('/tenant_test/exp-doc-delete-rollback/rut/ver-2.pdf'),
+      expect.stringContaining('/tenant_test/exp-doc-delete-rollback/rut/ver-2.pdf.pending-delete'),
+    );
+    expect(rename).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('/tenant_test/exp-doc-delete-rollback/rut/ver-2.pdf.pending-delete'),
+      expect.stringContaining('/tenant_test/exp-doc-delete-rollback/rut/ver-2.pdf'),
+    );
+    expect(loggerErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('No se pudo revertir la eliminación física'),
+      rollbackError.stack,
+    );
+    expect(unlink).not.toHaveBeenCalled();
+    expect(auditServiceMock.log).not.toHaveBeenCalled();
   });
 
   it('permite operar el documento correcto cuando el personType efectivo llega por override', async () => {
