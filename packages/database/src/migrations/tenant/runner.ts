@@ -25,6 +25,7 @@ import { CreateSubscriberTaxProfiles1700000000026 } from './026_create_subscribe
 import { AddAdditionalServiceIdsToExpediente1700000000027 } from './027_add_additional_service_ids_to_expediente';
 import { CreateCrmQuotesAndContracts1700000000028 } from './028_create_crm_quotes_and_contracts';
 import { ExtendContractsForServices1700000000029 } from './029_extend_contracts_for_services';
+import { CreateWfmModule1700000000030 } from './030_create_wfm_module';
 
 const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   InitialTenantSchema1700000000000,
@@ -53,6 +54,7 @@ const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   AddAdditionalServiceIdsToExpediente1700000000027,
   CreateCrmQuotesAndContracts1700000000028,
   ExtendContractsForServices1700000000029,
+  CreateWfmModule1700000000030,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

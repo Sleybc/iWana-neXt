@@ -21,6 +21,7 @@ export * from './enums/commercial';
 export * from './commercial';
 export * from './enums/taxation';
 export * from './enums/parties';
+export * from './enums/wfm';
 export * from './taxation';
 
 // Interfaces

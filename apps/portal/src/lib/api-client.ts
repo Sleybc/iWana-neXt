@@ -16,15 +16,21 @@ import {
   PersonType,
   PromotionScope,
   ProductCategory,
+  ScheduleEventStatus,
   SubscriberStatus,
   TaxType,
   TechnicalConfidence,
   TechnicalViabilityResult,
   TaxRegime,
+  TechnicianAvailabilityType,
   TechnologyOption,
   TransitionStatusPayload,
   UpdateSubscriberPayload,
   VatTreatment,
+  WfmWorkType,
+  WorkOrderPriority,
+  WorkOrderSourceContext,
+  WorkOrderStatus,
 } from '@iwana/shared';
 import { persistTenantSlug, resolveTenantSlug } from './tenant-resolution';
 
@@ -1866,6 +1872,268 @@ export const dashboardApi = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// WFM / PROGRAMACION OPERATIVA DEL TENANT
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface WfmScheduleEvent {
+  id: string;
+  tenantId: string;
+  workOrderId: string | null;
+  type: WfmWorkType;
+  status: ScheduleEventStatus;
+  title: string;
+  description: string | null;
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  assignedUserId: string;
+  assignedTeamId: string | null;
+  address: string | null;
+  municipality: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  expedienteId: string | null;
+  subscriberId: string | null;
+  ticketId: string | null;
+  contractId: string | null;
+  createdBy: string;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface CreateWfmEmbeddedWorkOrderDto {
+  type?: WfmWorkType | undefined;
+  priority?: WorkOrderPriority | undefined;
+  sourceContext?: WorkOrderSourceContext | undefined;
+  sourceRef?: string | null | undefined;
+  summary: string;
+  notes?: string | null | undefined;
+}
+
+export interface CreateWfmScheduleEventDto {
+  type: WfmWorkType;
+  title: string;
+  description?: string | null | undefined;
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  assignedUserId: string;
+  address?: string | null | undefined;
+  municipality?: string | null | undefined;
+  latitude?: number | null | undefined;
+  longitude?: number | null | undefined;
+  expedienteId?: string | null | undefined;
+  subscriberId?: string | null | undefined;
+  ticketId?: string | null | undefined;
+  contractId?: string | null | undefined;
+  workOrder?: CreateWfmEmbeddedWorkOrderDto | undefined;
+}
+
+export interface UpdateWfmScheduleEventDto {
+  title?: string | undefined;
+  description?: string | null | undefined;
+  scheduledStartAt?: string | undefined;
+  scheduledEndAt?: string | undefined;
+  assignedUserId?: string | undefined;
+  address?: string | null | undefined;
+  municipality?: string | null | undefined;
+  latitude?: number | null | undefined;
+  longitude?: number | null | undefined;
+  expedienteId?: string | null | undefined;
+  subscriberId?: string | null | undefined;
+  ticketId?: string | null | undefined;
+  contractId?: string | null | undefined;
+}
+
+export interface TransitionWfmScheduleEventDto {
+  status: ScheduleEventStatus;
+}
+
+export interface RescheduleWfmEventDto {
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  reason: string;
+  notes?: string | null | undefined;
+}
+
+export interface ListWfmScheduleEventsParams {
+  from?: string | undefined;
+  to?: string | undefined;
+  assignedUserId?: string | undefined;
+  type?: WfmWorkType | undefined;
+  status?: ScheduleEventStatus | undefined;
+  municipality?: string | undefined;
+}
+
+export interface WfmWorkOrder {
+  id: string;
+  tenantId: string;
+  code: string;
+  type: WfmWorkType;
+  status: WorkOrderStatus;
+  priority: WorkOrderPriority;
+  assignedUserId: string;
+  scheduledEventId: string | null;
+  sourceContext: WorkOrderSourceContext;
+  sourceRef: string | null;
+  summary: string;
+  notes: string | null;
+  createdBy: string;
+  closedBy: string | null;
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface TransitionWfmWorkOrderDto {
+  status: WorkOrderStatus;
+}
+
+export interface WfmDashboardTechnicianLoad {
+  assignedUserId: string;
+  todayCount: number;
+}
+
+export interface WfmDashboardSummary {
+  todayCount: number;
+  overdueCount: number;
+  upcomingCount: number;
+  technicianLoad: WfmDashboardTechnicianLoad[];
+}
+
+export interface WfmTechnicianAvailability {
+  id: string;
+  tenantId: string;
+  userId: string;
+  type: TechnicianAvailabilityType;
+  startsAt: string;
+  endsAt: string;
+  reason: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ListWfmTechnicianAvailabilityParams {
+  userId?: string | undefined;
+  from?: string | undefined;
+  to?: string | undefined;
+  type?: TechnicianAvailabilityType | undefined;
+}
+
+export interface CreateWfmTechnicianAvailabilityDto {
+  userId: string;
+  type: TechnicianAvailabilityType;
+  startsAt: string;
+  endsAt: string;
+  reason?: string | null | undefined;
+}
+
+export const wfmApi = {
+  events: {
+    list: (params?: ListWfmScheduleEventsParams, tenantSlug?: string) => {
+      const searchParams = new URLSearchParams();
+      if (params?.from) searchParams.set('from', params.from);
+      if (params?.to) searchParams.set('to', params.to);
+      if (params?.assignedUserId) searchParams.set('assignedUserId', params.assignedUserId);
+      if (params?.type) searchParams.set('type', params.type);
+      if (params?.status) searchParams.set('status', params.status);
+      if (params?.municipality) searchParams.set('municipality', params.municipality);
+
+      const query = searchParams.toString();
+      return request<WfmScheduleEvent[]>(
+        `/wfm/events${query ? `?${query}` : ''}`,
+        { returnFullResponse: true },
+        tenantSlug,
+      );
+    },
+
+    get: (id: string, tenantSlug?: string) =>
+      request<WfmScheduleEvent>(`/wfm/events/${id}`, { returnFullResponse: true }, tenantSlug),
+
+    create: (dto: CreateWfmScheduleEventDto, tenantSlug?: string) =>
+      request<WfmScheduleEvent>(
+        '/wfm/events',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    update: (id: string, dto: UpdateWfmScheduleEventDto, tenantSlug?: string) =>
+      request<WfmScheduleEvent>(
+        `/wfm/events/${id}`,
+        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    transitionStatus: (id: string, dto: TransitionWfmScheduleEventDto, tenantSlug?: string) =>
+      request<WfmScheduleEvent>(
+        `/wfm/events/${id}/status`,
+        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    reschedule: (id: string, dto: RescheduleWfmEventDto, tenantSlug?: string) =>
+      request<WfmScheduleEvent>(
+        `/wfm/events/${id}/reschedule`,
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    remove: (id: string, tenantSlug?: string) =>
+      request<void>(`/wfm/events/${id}`, { method: 'DELETE' }, tenantSlug),
+  },
+
+  workOrders: {
+    list: (tenantSlug?: string) =>
+      request<WfmWorkOrder[]>('/wfm/work-orders', { returnFullResponse: true }, tenantSlug),
+
+    get: (id: string, tenantSlug?: string) =>
+      request<WfmWorkOrder>(`/wfm/work-orders/${id}`, { returnFullResponse: true }, tenantSlug),
+
+    transitionStatus: (id: string, dto: TransitionWfmWorkOrderDto, tenantSlug?: string) =>
+      request<WfmWorkOrder>(
+        `/wfm/work-orders/${id}/status`,
+        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+
+  dashboard: {
+    getSummary: (tenantSlug?: string) =>
+      request<WfmDashboardSummary>(
+        '/wfm/dashboard/summary',
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+
+  technicians: {
+    listAvailability: (params?: ListWfmTechnicianAvailabilityParams, tenantSlug?: string) => {
+      const searchParams = new URLSearchParams();
+      if (params?.userId) searchParams.set('userId', params.userId);
+      if (params?.from) searchParams.set('from', params.from);
+      if (params?.to) searchParams.set('to', params.to);
+      if (params?.type) searchParams.set('type', params.type);
+
+      const query = searchParams.toString();
+      return request<WfmTechnicianAvailability[]>(
+        `/wfm/technicians/availability${query ? `?${query}` : ''}`,
+        { returnFullResponse: true },
+        tenantSlug,
+      );
+    },
+
+    createAvailability: (dto: CreateWfmTechnicianAvailabilityDto, tenantSlug?: string) =>
+      request<WfmTechnicianAvailability>(
+        '/wfm/technicians/availability',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GESTION DE USUARIOS INTERNOS DEL TENANT
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1972,6 +2240,13 @@ const PORTAL_SEARCH_MODULES: PortalSearchModule[] = [
     description: 'Gestión comercial y postventa de suscriptores',
     keywords: ['suscriptores', 'clientes', 'postventa', 'subscriber'],
     route: '/dashboard/crm/subscribers',
+  },
+  {
+    id: 'scheduling',
+    title: 'Programacion',
+    description: 'Agenda operativa, eventos técnicos y work orders del tenant',
+    keywords: ['programacion', 'agenda', 'wfm', 'ordenes de trabajo', 'tecnicos'],
+    route: '/dashboard/scheduling',
   },
   {
     id: 'settings',

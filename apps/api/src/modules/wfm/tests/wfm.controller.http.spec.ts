@@ -1,0 +1,463 @@
+import {
+  BadRequestException,
+  ForbiddenException,
+  INestApplication,
+  NotFoundException,
+  UnauthorizedException,
+  ValidationPipe,
+} from '@nestjs/common';
+import { Test, TestingModule } from '@nestjs/testing';
+import request from 'supertest';
+import { UserRole, ScheduleEventStatus, WorkOrderStatus } from '@iwana/shared';
+import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
+import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { WfmController } from '../wfm.controller';
+import { ScheduleEventsService } from '../services/schedule-events.service';
+import { WorkOrdersService } from '../services/work-orders.service';
+import { TechnicianAvailabilityService } from '../services/technician-availability.service';
+import { WfmDashboardService } from '../services/wfm-dashboard.service';
+
+jest.mock('../../auth/guards/jwt-auth.guard', () => ({
+  JwtAuthGuard: class JwtAuthGuard {
+    canActivate(context: {
+      getHandler: () => unknown;
+      getClass: () => unknown;
+      switchToHttp: () => {
+        getRequest: () => {
+          headers: Record<string, string | undefined>;
+          user?: JwtPayload;
+        };
+      };
+    }): boolean {
+      const handler = context.getHandler() as object;
+      const classRef = context.getClass() as object;
+      const isPublic =
+        Reflect.getMetadata(IS_PUBLIC_KEY, handler) ?? Reflect.getMetadata(IS_PUBLIC_KEY, classRef);
+
+      if (isPublic) return true;
+
+      const req = context.switchToHttp().getRequest();
+      const authHeader = req.headers.authorization;
+
+      if (authHeader === 'Bearer admin-token') {
+        req.user = {
+          sub: 'admin-001',
+          email: 'admin@test.com',
+          role: UserRole.ADMIN,
+          tenantId: 'tenant-001',
+          schemaName: 'tenant_001',
+          jti: 'jti-admin',
+          type: 'tenant',
+        } as any;
+        return true;
+      }
+
+      if (authHeader === 'Bearer noc-token') {
+        req.user = {
+          sub: 'noc-001',
+          email: 'noc@test.com',
+          role: UserRole.NOC,
+          tenantId: 'tenant-001',
+          schemaName: 'tenant_001',
+          jti: 'jti-noc',
+          type: 'tenant',
+        } as any;
+        return true;
+      }
+
+      if (authHeader === 'Bearer tech-token') {
+        req.user = {
+          sub: 'tech-001',
+          email: 'tech@test.com',
+          role: UserRole.TECHNICIAN,
+          tenantId: 'tenant-001',
+          schemaName: 'tenant_001',
+          jti: 'jti-tech',
+          type: 'tenant',
+        } as any;
+        return true;
+      }
+
+      if (authHeader === 'Bearer contractor-token') {
+        req.user = {
+          sub: 'contractor-001',
+          email: 'contractor@test.com',
+          role: UserRole.CONTRACTOR,
+          tenantId: 'tenant-001',
+          schemaName: 'tenant_001',
+          jti: 'jti-contractor',
+          type: 'tenant',
+        } as any;
+        return true;
+      }
+
+      if (authHeader === 'Bearer sales-token') {
+        req.user = {
+          sub: 'sales-001',
+          email: 'sales@test.com',
+          role: UserRole.SALES,
+          tenantId: 'tenant-001',
+          schemaName: 'tenant_001',
+          jti: 'jti-sales',
+          type: 'tenant',
+        } as any;
+        return true;
+      }
+
+      throw new UnauthorizedException('Token de acceso invalido o expirado.');
+    }
+  },
+}));
+
+jest.mock('../../auth/guards/roles.guard', () => ({
+  RolesGuard: class RolesGuard {
+    canActivate(context: {
+      switchToHttp: () => { getRequest: () => { user?: JwtPayload } };
+      getHandler: () => unknown;
+      getClass: () => unknown;
+    }): boolean {
+      const req = context.switchToHttp().getRequest();
+      const user = req.user;
+      const requiredRoles: string[] =
+        Reflect.getMetadata('roles', context.getHandler() as object) ??
+        Reflect.getMetadata('roles', context.getClass() as object) ??
+        [];
+
+      if (requiredRoles.length === 0) return true;
+
+      if (!user || !requiredRoles.includes(user.role)) {
+        throw new ForbiddenException('No tiene permisos para ejecutar esta accion.');
+      }
+
+      return true;
+    }
+  },
+}));
+
+describe('WfmController HTTP', () => {
+  let app: INestApplication;
+
+  const scheduleEventsServiceMock = {
+    list: jest.fn(),
+    create: jest.fn(),
+    getById: jest.fn(),
+    update: jest.fn(),
+    transitionStatus: jest.fn(),
+    reschedule: jest.fn(),
+    cancel: jest.fn(),
+  };
+
+  const workOrdersServiceMock = {
+    list: jest.fn(),
+    getById: jest.fn(),
+    transitionStatus: jest.fn(),
+    create: jest.fn(),
+    generateCode: jest.fn(),
+  };
+
+  const technicianAvailabilityServiceMock = {
+    list: jest.fn(),
+    create: jest.fn(),
+  };
+
+  const dashboardServiceMock = {
+    getSummary: jest.fn(),
+  };
+
+  const EVENT_UUID = '11111111-1111-1111-1111-111111111111';
+
+  const mockEvent = {
+    id: EVENT_UUID,
+    tenantId: 'tenant-001',
+    type: 'INSTALLATION',
+    status: ScheduleEventStatus.DRAFT,
+    title: 'Instalacion fibra',
+    scheduledStartAt: new Date('2026-06-01T09:00:00Z'),
+    scheduledEndAt: new Date('2026-06-01T11:00:00Z'),
+    assignedUserId: 'tech-001',
+  };
+
+  beforeAll(async () => {
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      controllers: [WfmController],
+      providers: [
+        { provide: ScheduleEventsService, useValue: scheduleEventsServiceMock },
+        { provide: WorkOrdersService, useValue: workOrdersServiceMock },
+        { provide: TechnicianAvailabilityService, useValue: technicianAvailabilityServiceMock },
+        { provide: WfmDashboardService, useValue: dashboardServiceMock },
+        JwtAuthGuard,
+        RolesGuard,
+      ],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    app.setGlobalPrefix('api/v1');
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+        transformOptions: { enableImplicitConversion: true },
+      }),
+    );
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  // ─── GET /wfm/events ─────────────────────────────────────────────────────
+
+  describe('GET /api/v1/wfm/events', () => {
+    it('returns 401 when no token is provided', async () => {
+      await request(app.getHttpServer()).get('/api/v1/wfm/events').expect(401);
+    });
+
+    it('returns 200 with list of events for ADMIN', async () => {
+      scheduleEventsServiceMock.list.mockResolvedValue([mockEvent]);
+
+      await request(app.getHttpServer())
+        .get('/api/v1/wfm/events')
+        .set('Authorization', 'Bearer admin-token')
+        .expect(200)
+        .expect(({ body }) => {
+          expect(Array.isArray(body)).toBe(true);
+          expect(body).toHaveLength(1);
+        });
+    });
+
+    it('returns 200 for TECHNICIAN (restricted role)', async () => {
+      scheduleEventsServiceMock.list.mockResolvedValue([mockEvent]);
+
+      await request(app.getHttpServer())
+        .get('/api/v1/wfm/events')
+        .set('Authorization', 'Bearer tech-token')
+        .expect(200);
+    });
+
+    it('returns 200 for CONTRACTOR (restricted role)', async () => {
+      scheduleEventsServiceMock.list.mockResolvedValue([mockEvent]);
+
+      await request(app.getHttpServer())
+        .get('/api/v1/wfm/events')
+        .set('Authorization', 'Bearer contractor-token')
+        .expect(200);
+    });
+  });
+
+  // ─── POST /wfm/events ────────────────────────────────────────────────────
+
+  describe('POST /api/v1/wfm/events', () => {
+    const validPayload = {
+      type: 'INSTALLATION',
+      title: 'Instalacion fibra optica',
+      scheduledStartAt: '2026-06-01T09:00:00Z',
+      scheduledEndAt: '2026-06-01T11:00:00Z',
+      assignedUserId: 'a0a0a0a0-a0a0-4a0a-a0a0-a0a0a0a0a0a0',
+    };
+
+    it('returns 401 when no token is provided', async () => {
+      await request(app.getHttpServer()).post('/api/v1/wfm/events').send(validPayload).expect(401);
+    });
+
+    it('returns 403 when TECHNICIAN tries to create an event', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/wfm/events')
+        .set('Authorization', 'Bearer tech-token')
+        .send(validPayload)
+        .expect(403);
+    });
+
+    it('returns 403 when CONTRACTOR tries to create an event', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/wfm/events')
+        .set('Authorization', 'Bearer contractor-token')
+        .send(validPayload)
+        .expect(403);
+    });
+
+    it('returns 400 when required fields are missing', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/wfm/events')
+        .set('Authorization', 'Bearer admin-token')
+        .send({ title: 'Solo titulo sin horario' })
+        .expect(400);
+    });
+
+    it('returns 201 when ADMIN creates a valid event', async () => {
+      scheduleEventsServiceMock.create.mockResolvedValue({ ...mockEvent, id: EVENT_UUID });
+
+      await request(app.getHttpServer())
+        .post('/api/v1/wfm/events')
+        .set('Authorization', 'Bearer admin-token')
+        .send(validPayload)
+        .expect(201);
+    });
+
+    it('returns 400 when service detects a schedule conflict', async () => {
+      scheduleEventsServiceMock.create.mockRejectedValue(
+        new BadRequestException('El tecnico ya tiene un evento activo en ese rango horario'),
+      );
+
+      await request(app.getHttpServer())
+        .post('/api/v1/wfm/events')
+        .set('Authorization', 'Bearer admin-token')
+        .send(validPayload)
+        .expect(400);
+    });
+  });
+
+  // ─── PATCH /wfm/events/:id/status ─────────────────────────────────────────
+
+  describe('PATCH /api/v1/wfm/events/:id/status', () => {
+    it('returns 200 when ADMIN transitions event status', async () => {
+      scheduleEventsServiceMock.transitionStatus.mockResolvedValue({
+        ...mockEvent,
+        status: ScheduleEventStatus.SCHEDULED,
+      });
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/wfm/events/${EVENT_UUID}/status`)
+        .set('Authorization', 'Bearer admin-token')
+        .send({ status: ScheduleEventStatus.SCHEDULED })
+        .expect(200);
+    });
+
+    it('returns 404 when event does not exist', async () => {
+      scheduleEventsServiceMock.transitionStatus.mockRejectedValue(
+        new NotFoundException('Evento no encontrado'),
+      );
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/wfm/events/${EVENT_UUID}/status`)
+        .set('Authorization', 'Bearer admin-token')
+        .send({ status: ScheduleEventStatus.SCHEDULED })
+        .expect(404);
+    });
+  });
+
+  // ─── POST /wfm/events/:id/reschedule ──────────────────────────────────────
+
+  describe('POST /api/v1/wfm/events/:id/reschedule', () => {
+    it('returns 403 when TECHNICIAN tries to reschedule', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/wfm/events/${EVENT_UUID}/reschedule`)
+        .set('Authorization', 'Bearer tech-token')
+        .send({
+          scheduledStartAt: '2026-06-02T09:00:00Z',
+          scheduledEndAt: '2026-06-02T11:00:00Z',
+          reason: 'Solicitud del cliente',
+        })
+        .expect(403);
+    });
+
+    it('returns 400 when reason is missing', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/wfm/events/${EVENT_UUID}/reschedule`)
+        .set('Authorization', 'Bearer admin-token')
+        .send({
+          scheduledStartAt: '2026-06-02T09:00:00Z',
+          scheduledEndAt: '2026-06-02T11:00:00Z',
+          // reason ausente
+        })
+        .expect(400);
+    });
+
+    it('returns 200 when NOC reschedules with reason', async () => {
+      scheduleEventsServiceMock.reschedule.mockResolvedValue({
+        ...mockEvent,
+        status: ScheduleEventStatus.RESCHEDULED,
+        scheduledStartAt: new Date('2026-06-02T09:00:00Z'),
+        scheduledEndAt: new Date('2026-06-02T11:00:00Z'),
+      });
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/wfm/events/${EVENT_UUID}/reschedule`)
+        .set('Authorization', 'Bearer noc-token')
+        .send({
+          scheduledStartAt: '2026-06-02T09:00:00Z',
+          scheduledEndAt: '2026-06-02T11:00:00Z',
+          reason: 'Solicitud del cliente',
+        })
+        .expect(201);
+    });
+  });
+
+  // ─── GET /wfm/dashboard/summary ───────────────────────────────────────────
+
+  describe('GET /api/v1/wfm/dashboard/summary', () => {
+    it('returns 403 when TECHNICIAN requests dashboard', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/wfm/dashboard/summary')
+        .set('Authorization', 'Bearer tech-token')
+        .expect(403);
+    });
+
+    it('returns 200 with summary structure for NOC', async () => {
+      dashboardServiceMock.getSummary.mockResolvedValue({
+        todayCount: 10,
+        overdueCount: 2,
+        upcomingCount: 15,
+        technicianLoad: [{ assignedUserId: 'tech-001', todayCount: 5 }],
+      });
+
+      await request(app.getHttpServer())
+        .get('/api/v1/wfm/dashboard/summary')
+        .set('Authorization', 'Bearer noc-token')
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body).toHaveProperty('todayCount', 10);
+          expect(body).toHaveProperty('overdueCount', 2);
+          expect(body).toHaveProperty('upcomingCount', 15);
+          expect(Array.isArray(body.technicianLoad)).toBe(true);
+        });
+    });
+  });
+
+  // ─── PATCH /wfm/work-orders/:id/status ────────────────────────────────────
+
+  describe('PATCH /api/v1/wfm/work-orders/:id/status', () => {
+    const WO_UUID = '33333333-3333-3333-3333-333333333333';
+
+    it('returns 200 when TECHNICIAN transitions own WO to IN_PROGRESS', async () => {
+      workOrdersServiceMock.transitionStatus.mockResolvedValue({
+        id: WO_UUID,
+        status: WorkOrderStatus.IN_PROGRESS,
+      });
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/wfm/work-orders/${WO_UUID}/status`)
+        .set('Authorization', 'Bearer tech-token')
+        .send({ status: WorkOrderStatus.IN_PROGRESS })
+        .expect(200);
+    });
+
+    it('returns 200 when CONTRACTOR transitions own WO to IN_PROGRESS', async () => {
+      workOrdersServiceMock.transitionStatus.mockResolvedValue({
+        id: WO_UUID,
+        status: WorkOrderStatus.IN_PROGRESS,
+      });
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/wfm/work-orders/${WO_UUID}/status`)
+        .set('Authorization', 'Bearer contractor-token')
+        .send({ status: WorkOrderStatus.IN_PROGRESS })
+        .expect(200);
+    });
+
+    it('returns 400 when status is invalid', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/wfm/work-orders/${WO_UUID}/status`)
+        .set('Authorization', 'Bearer admin-token')
+        .send({ status: 'INVALID_STATUS' })
+        .expect(400);
+    });
+  });
+});

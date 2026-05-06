@@ -8,8 +8,13 @@ import { PlatformAuditLog } from './entities/platform-audit-log.entity';
 import { PlatformBrandingSettings } from './entities/platform-branding-settings.entity';
 import { PlatformUser } from './entities/platform-user.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
+import { ScheduleEvent } from './entities/schedule-event.entity';
+import { ScheduleRescheduleLog } from './entities/schedule-reschedule-log.entity';
+import { TechnicianAvailability } from './entities/technician-availability.entity';
 import { Tenant } from './entities/tenant.entity';
 import { User } from './entities/user.entity';
+import { WorkOrder } from './entities/work-order.entity';
+import { WorkOrderTask } from './entities/work-order-task.entity';
 
 /**
  * Carga variables de entorno cuando este archivo se ejecuta desde el runner
@@ -84,6 +89,12 @@ export const dataSourceOptions: DataSourceOptions = {
     User,
     RefreshToken,
     AuditLog,
+    // MOD09 — WFM / Programacion Fase 1
+    ScheduleEvent,
+    WorkOrder,
+    WorkOrderTask,
+    ScheduleRescheduleLog,
+    TechnicianAvailability,
   ],
   migrations: ['dist/migrations/public/*.js'],
   migrationsTableName: 'typeorm_migrations',

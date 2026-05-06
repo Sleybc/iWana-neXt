@@ -16,3 +16,10 @@ export type { MediaThemeVariant } from './media-asset.entity';
 export { User } from './user.entity';
 export { RefreshToken } from './refresh-token.entity';
 export { AuditLog } from './audit-log.entity';
+
+// MOD09 — WFM / Programacion Fase 1
+export { ScheduleEvent } from './schedule-event.entity';
+export { WorkOrder } from './work-order.entity';
+export { WorkOrderTask } from './work-order-task.entity';
+export { ScheduleRescheduleLog } from './schedule-reschedule-log.entity';
+export { TechnicianAvailability } from './technician-availability.entity';

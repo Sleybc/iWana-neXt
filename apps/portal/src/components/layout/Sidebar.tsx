@@ -4,6 +4,7 @@ import React, { Suspense, useEffect, useRef, type ComponentType } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
+  CalendarClock,
   LayoutDashboard,
   Settings,
   Users,
@@ -54,7 +55,7 @@ function resolveTenantDisplayName(profile?: TenantSelf | null): string {
 /**
  * Ítems de navegación del portal empresarial del tenant.
  *
- * Rutas activas en MVP: /dashboard, /settings.
+ * Rutas activas en MVP: /dashboard, /dashboard/scheduling, /dashboard/settings.
  * Rutas futuras marcadas como disabled para no generar 404.
  * HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §4.3
  */
@@ -66,6 +67,7 @@ const navGroups: NavGroup[] = [
       { href: '/dashboard/commercial', label: 'Comercial', icon: HandCoins },
       { href: '/dashboard/crm', label: 'CRM', icon: BriefcaseBusiness },
       { href: '/dashboard/crm/subscribers', label: 'Suscriptores', icon: Users },
+      { href: '/dashboard/scheduling', label: 'Programacion', icon: CalendarClock },
     ],
   },
   {
