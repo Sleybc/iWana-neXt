@@ -4,6 +4,7 @@ import { AcquisitionChannel, ContactChannel, ContactResult, ExpedienteStatus } f
 import { ExpedientesController, PipelineController } from '../expedientes.controller';
 import { CompletenessCalculator } from '../completeness-calculator.service';
 import { ExpedienteService } from '../expediente.service';
+import { PipelineRecommendationService } from '../pipeline-recommendation.service';
 import { StatusTransitionService } from '../status-transition.service';
 
 describe('ExpedientesController', () => {
@@ -34,6 +35,10 @@ describe('ExpedientesController', () => {
     calculate: jest.fn(),
   };
 
+  const pipelineRecommendationServiceMock = {
+    getRecommendation: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -43,6 +48,10 @@ describe('ExpedientesController', () => {
         { provide: ExpedienteService, useValue: expedienteServiceMock },
         { provide: StatusTransitionService, useValue: statusTransitionServiceMock },
         { provide: CompletenessCalculator, useValue: completenessCalculatorMock },
+        {
+          provide: PipelineRecommendationService,
+          useValue: pipelineRecommendationServiceMock,
+        },
       ],
     }).compile();
 
