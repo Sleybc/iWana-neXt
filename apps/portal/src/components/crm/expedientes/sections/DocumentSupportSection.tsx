@@ -22,7 +22,7 @@ import {
 interface DocumentSupportSectionProps {
   expedienteId: string;
   personType?: string | null;
-  onSaved?: () => void;
+  onSaved?: () => void | Promise<void>;
 }
 
 function isLegalEntityPersonType(value: string | null | undefined): boolean {
@@ -92,6 +92,57 @@ function getSummaryLabel(blockStatus: ExpedienteDocumentSupportResponse['summary
   if (blockStatus === 'OBSERVADO') return 'Observado';
   if (blockStatus === 'EN_REVISION') return 'En revisión';
   return 'Pendiente';
+}
+
+function buildLocalDocumentSummary(
+  items: ExpedienteDocumentItem[],
+): ExpedienteDocumentSupportResponse['summary'] {
+  const requiredCount = items.length;
+  const uploadedCount = items.filter((item) => item.versions.length > 0).length;
+  const approvedCount = items.filter((item) => item.versions[0]?.status === 'APPROVED').length;
+  const hasObservedVersion = items.some((item) => {
+    const currentVersion = item.versions[0];
+    return currentVersion?.status === 'OBSERVED' || currentVersion?.status === 'REJECTED';
+  });
+
+  if (requiredCount > 0 && approvedCount === requiredCount) {
+    return { requiredCount, uploadedCount, approvedCount, blockStatus: 'COMPLETO' };
+  }
+
+  if (hasObservedVersion) {
+    return { requiredCount, uploadedCount, approvedCount, blockStatus: 'OBSERVADO' };
+  }
+
+  if (uploadedCount > 0) {
+    return { requiredCount, uploadedCount, approvedCount, blockStatus: 'EN_REVISION' };
+  }
+
+  return { requiredCount, uploadedCount, approvedCount, blockStatus: 'PENDIENTE' };
+}
+
+function buildPayloadAfterDelete(
+  currentPayload: ExpedienteDocumentSupportResponse | null,
+  documentKey: string,
+  versionId: string,
+): ExpedienteDocumentSupportResponse | null {
+  if (!currentPayload) {
+    return null;
+  }
+
+  const items = currentPayload.items.map((item) =>
+    item.key === documentKey
+      ? {
+          ...item,
+          versions: item.versions.filter((version) => version.id !== versionId),
+        }
+      : item,
+  );
+
+  return {
+    ...currentPayload,
+    items,
+    summary: buildLocalDocumentSummary(items),
+  };
 }
 
 export function DocumentSupportSection({
@@ -224,18 +275,23 @@ export function DocumentSupportSection({
 
     try {
       setSavingKey(`delete:${documentKey}:${versionId}`);
-      await crmApi.deleteDocumentSupport(
+      const response = await crmApi.deleteDocumentSupport(
         expedienteId,
         documentKey,
         versionId,
         undefined,
         personType,
       );
-      const refreshedPayload = await loadDocumentSupports({ showLoader: false });
+      const nextPayload = response.data ?? buildPayloadAfterDelete(payload, documentKey, versionId);
 
-      if (refreshedPayload) {
-        await onSaved?.();
+      if (nextPayload) {
+        // Conserva el historial correcto aunque la recarga silenciosa falle después del borrado.
+        setPayload(nextPayload);
       }
+
+      setError(null);
+      await onSaved?.();
+      void loadDocumentSupports({ showLoader: false });
     } catch (deleteError) {
       setError(
         deleteError instanceof Error
