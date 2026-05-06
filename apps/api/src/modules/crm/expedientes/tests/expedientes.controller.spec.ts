@@ -19,6 +19,7 @@ describe('ExpedientesController', () => {
     getDocumentSupports: jest.fn(),
     uploadDocumentSupport: jest.fn(),
     updateDocumentSupportStatus: jest.fn(),
+    deleteDocumentSupport: jest.fn(),
     updateSection: jest.fn(),
     transitionStatus: jest.fn(),
     reactivate: jest.fn(),
@@ -416,6 +417,38 @@ describe('ExpedientesController', () => {
       'APPROVED',
       'user-1',
       null,
+    );
+  });
+
+  it('propaga eliminacion documental al servicio con actor y personType override', async () => {
+    expedienteServiceMock.deleteDocumentSupport.mockResolvedValue({
+      personType: 'PERSONA_JURIDICA',
+      items: [],
+      summary: { requiredCount: 3, uploadedCount: 1, approvedCount: 1, blockStatus: 'EN_REVISION' },
+    });
+
+    await (controller as any).deleteDocumentSupport(
+      '00000000-0000-4000-a000-000000000001',
+      'rut',
+      'ver-2',
+      'PERSONA_JURIDICA',
+      {
+        sub: 'user-1',
+        email: 'hash',
+        role: 'ADMIN',
+        tenantId: 'tenant-1',
+        schemaName: 'tenant_1',
+        jti: 'jti-1',
+        type: 'tenant',
+      },
+    );
+
+    expect(expedienteServiceMock.deleteDocumentSupport).toHaveBeenCalledWith(
+      '00000000-0000-4000-a000-000000000001',
+      'rut',
+      'ver-2',
+      'user-1',
+      'PERSONA_JURIDICA',
     );
   });
 });

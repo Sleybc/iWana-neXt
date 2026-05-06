@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -24,6 +24,7 @@ jest.mock('node:fs/promises', () => ({
   mkdir: jest.fn().mockResolvedValue(undefined),
   writeFile: jest.fn().mockResolvedValue(undefined),
   access: jest.fn().mockResolvedValue(undefined),
+  unlink: jest.fn().mockResolvedValue(undefined),
 }));
 
 const mockRunInTenantSchema = jest.fn();
@@ -467,6 +468,108 @@ describe('ExpedienteService', () => {
         }),
       }),
     );
+  });
+
+  it('elimina la versión vigente y promueve la anterior como vigente', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-delete-1',
+      personType: 'PERSONA_JURIDICA',
+      documentSupports: {
+        rut: {
+          versions: [
+            {
+              id: 'ver-2',
+              fileName: 'rut-correccion.pdf',
+              storedFileName: 'ver-2.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 1024,
+              uploadedAt: '2026-05-06T10:00:00.000Z',
+              uploadedByUserId: 'user-docs',
+              uploadedByName: 'Equipo interno',
+              status: 'UPLOADED',
+              note: null,
+            },
+            {
+              id: 'ver-1',
+              fileName: 'rut-base.pdf',
+              storedFileName: 'ver-1.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 900,
+              uploadedAt: '2026-05-05T10:00:00.000Z',
+              uploadedByUserId: 'user-docs',
+              uploadedByName: 'Equipo interno',
+              status: 'APPROVED',
+              note: null,
+            },
+          ],
+        },
+      },
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 80,
+      legal: 75,
+      technical: 40,
+      operational: 30,
+      overall: 56,
+    });
+
+    const result = await (service as any).deleteDocumentSupport(
+      'exp-doc-delete-1',
+      'rut',
+      'ver-2',
+      'user-docs',
+      'PERSONA_JURIDICA',
+    );
+
+    const rutItem = result.items.find((item: { key: string }) => item.key === 'rut');
+    expect(rutItem?.versions.map((version: { id: string }) => version.id)).toEqual(['ver-1']);
+    expect(rutItem?.versions[0]?.status).toBe('APPROVED');
+  });
+
+  it('permite operar el documento correcto cuando el personType efectivo llega por override', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-delete-override',
+      personType: 'PERSONA_NATURAL',
+      documentSupports: {},
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 80,
+      legal: 75,
+      technical: 40,
+      operational: 30,
+      overall: 56,
+    });
+
+    const deleteAttempt = Promise.resolve().then(() =>
+      (service as any).deleteDocumentSupport(
+        'exp-doc-delete-override',
+        'rut',
+        'ver-9',
+        'user-docs',
+        'PERSONA_JURIDICA',
+      ),
+    );
+
+    await expect(deleteAttempt).rejects.toBeInstanceOf(NotFoundException);
+    await expect(deleteAttempt).rejects.not.toThrow(/no aplica/i);
   });
 
   it('no registra actividad cuando el payload no produce cambios reales', async () => {
