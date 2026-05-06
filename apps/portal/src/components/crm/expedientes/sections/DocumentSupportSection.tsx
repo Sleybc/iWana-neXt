@@ -145,6 +145,20 @@ function buildPayloadAfterDelete(
   };
 }
 
+function getDocumentKeyFromSavingKey(savingKey: string | null): string | null {
+  if (!savingKey) {
+    return null;
+  }
+
+  if (savingKey.startsWith('delete:')) {
+    const [, documentKey] = savingKey.split(':');
+    return documentKey ?? null;
+  }
+
+  const [documentKey] = savingKey.split(':');
+  return documentKey ?? null;
+}
+
 export function DocumentSupportSection({
   expedienteId,
   personType,
@@ -285,13 +299,12 @@ export function DocumentSupportSection({
       const nextPayload = response.data ?? buildPayloadAfterDelete(payload, documentKey, versionId);
 
       if (nextPayload) {
-        // Conserva el historial correcto aunque la recarga silenciosa falle después del borrado.
+        // La respuesta del borrado pasa a ser la fuente de verdad inmediata para evitar reintroducir estado obsoleto.
         setPayload(nextPayload);
       }
 
       setError(null);
       await onSaved?.();
-      void loadDocumentSupports({ showLoader: false });
     } catch (deleteError) {
       setError(
         deleteError instanceof Error
@@ -353,6 +366,7 @@ export function DocumentSupportSection({
           const currentVersion = versions[0];
           const currentStatus = currentVersion?.status ?? 'PENDING';
           const isHistoryOpen = expandedHistoryIds.has(document.key);
+          const isDocumentBusy = getDocumentKeyFromSavingKey(savingKey) === document.key;
 
           return (
             <div
@@ -430,6 +444,7 @@ export function DocumentSupportSection({
                     variant="primary"
                     size="sm"
                     loading={savingKey === document.key}
+                    disabled={isDocumentBusy}
                     onClick={() => inputRefs.current[document.key]?.click()}
                   >
                     <Upload className="h-4 w-4" aria-hidden="true" />
@@ -454,7 +469,7 @@ export function DocumentSupportSection({
                         ? savingKey === `delete:${document.key}:${currentVersion.id}`
                         : false
                     }
-                    disabled={!currentVersion}
+                    disabled={!currentVersion || isDocumentBusy}
                     aria-label={`Eliminar versión actual de ${document.label}`}
                     title={`Eliminar versión actual de ${document.label}`}
                     onClick={() =>
@@ -477,7 +492,7 @@ export function DocumentSupportSection({
                       variant="ghost"
                       size="sm"
                       loading={savingKey === `${document.key}:OBSERVED`}
-                      disabled={!currentVersion}
+                      disabled={!currentVersion || isDocumentBusy}
                       onClick={() =>
                         currentVersion &&
                         void handleStatusChange(document.key, currentVersion.id, 'OBSERVED')
@@ -490,7 +505,7 @@ export function DocumentSupportSection({
                       variant="ghost"
                       size="sm"
                       loading={savingKey === `${document.key}:APPROVED`}
-                      disabled={!currentVersion}
+                      disabled={!currentVersion || isDocumentBusy}
                       onClick={() =>
                         currentVersion &&
                         void handleStatusChange(document.key, currentVersion.id, 'APPROVED')
@@ -503,7 +518,7 @@ export function DocumentSupportSection({
                       variant="destructive"
                       size="sm"
                       loading={savingKey === `${document.key}:REJECTED`}
-                      disabled={!currentVersion}
+                      disabled={!currentVersion || isDocumentBusy}
                       onClick={() =>
                         currentVersion &&
                         void handleStatusChange(document.key, currentVersion.id, 'REJECTED')
@@ -564,6 +579,7 @@ export function DocumentSupportSection({
                             variant="softDestructive"
                             size="sm"
                             loading={savingKey === `delete:${document.key}:${version.id}`}
+                            disabled={isDocumentBusy}
                             aria-label={`Eliminar versión ${versions.length - index} de ${document.label}`}
                             title={`Eliminar versión ${versions.length - index} de ${document.label}`}
                             onClick={() =>

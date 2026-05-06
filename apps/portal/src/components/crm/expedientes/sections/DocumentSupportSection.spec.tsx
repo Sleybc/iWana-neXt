@@ -8,6 +8,7 @@ type UpdateDocumentSupportStatus = CrmApi['updateDocumentSupportStatus'];
 type DeleteDocumentSupport = CrmApi['deleteDocumentSupport'];
 type DocumentSupportResponse = import('@/lib/api-client').ExpedienteDocumentSupportResponse;
 type DocumentVersion = import('@/lib/api-client').ExpedienteDocumentVersion;
+type DocumentItem = DocumentSupportResponse['items'][number];
 
 const mockGetDocumentSupports: jest.MockedFunction<GetDocumentSupports> = jest.fn();
 const mockUploadDocumentSupport: jest.MockedFunction<UploadDocumentSupport> = jest.fn();
@@ -80,9 +81,59 @@ function buildPayload(
   };
 }
 
+function buildItem(
+  versions = [buildVersion()],
+  overrides: Partial<{
+    key: string;
+    label: string;
+    hint: string;
+  }> = {},
+): DocumentItem {
+  return {
+    key: overrides.key ?? 'cedula_ciudadania',
+    label: overrides.label ?? 'Cédula de ciudadanía',
+    hint: overrides.hint ?? 'Documento principal del titular',
+    versions,
+  };
+}
+
+function buildPayloadFromItems(items: DocumentItem[]): { data: DocumentSupportResponse } {
+  return {
+    data: {
+      personType: 'PERSONA_NATURAL',
+      items,
+      summary: {
+        requiredCount: items.length,
+        uploadedCount: items.filter((item) => item.versions.length > 0).length,
+        approvedCount: items.filter((item) => item.versions[0]?.status === 'APPROVED').length,
+        blockStatus: items.some((item) => item.versions[0]?.status === 'OBSERVED')
+          ? 'OBSERVADO'
+          : items.some((item) => item.versions.length > 0)
+            ? 'EN_REVISION'
+            : 'PENDIENTE',
+      },
+    },
+  };
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, resolve, reject };
+}
+
 describe('DocumentSupportSection', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    mockGetDocumentSupports.mockReset();
+    mockUploadDocumentSupport.mockReset();
+    mockUpdateDocumentSupportStatus.mockReset();
+    mockDeleteDocumentSupport.mockReset();
     jest.spyOn(window, 'confirm').mockReturnValue(true);
     mockUploadDocumentSupport.mockResolvedValue(buildPayload());
     mockUpdateDocumentSupportStatus.mockResolvedValue(buildPayload());
@@ -109,6 +160,7 @@ describe('DocumentSupportSection', () => {
     mockGetDocumentSupports
       .mockResolvedValueOnce(buildPayload([currentVersion, previousVersion]))
       .mockResolvedValueOnce(buildPayload([previousVersion]));
+    mockDeleteDocumentSupport.mockResolvedValueOnce(buildPayload([previousVersion]));
 
     render(
       <DocumentSupportSection
@@ -141,7 +193,7 @@ describe('DocumentSupportSection', () => {
     });
 
     await waitFor(() => {
-      expect(mockGetDocumentSupports).toHaveBeenCalledTimes(2);
+      expect(mockGetDocumentSupports).toHaveBeenCalledTimes(1);
     });
 
     expect(await screen.findByText('documento-anterior.pdf')).toBeInTheDocument();
@@ -169,6 +221,7 @@ describe('DocumentSupportSection', () => {
     mockGetDocumentSupports
       .mockResolvedValueOnce(buildPayload([currentVersion, middleVersion, baseVersion]))
       .mockResolvedValueOnce(buildPayload([currentVersion, baseVersion]));
+    mockDeleteDocumentSupport.mockResolvedValueOnce(buildPayload([currentVersion, baseVersion]));
 
     render(<DocumentSupportSection expedienteId="expediente-1" personType="PERSONA_NATURAL" />);
 
@@ -190,14 +243,14 @@ describe('DocumentSupportSection', () => {
     });
 
     await waitFor(() => {
-      expect(mockGetDocumentSupports).toHaveBeenCalledTimes(2);
+      expect(mockGetDocumentSupports).toHaveBeenCalledTimes(1);
     });
 
     expect(screen.getByText('documento-vigente.pdf')).toBeInTheDocument();
     expect(screen.queryByText(/V2 · documento-anterior\.pdf/)).not.toBeInTheDocument();
   });
 
-  it('mantiene el estado correcto tras eliminar aunque falle el refetch posterior', async () => {
+  it('mantiene el estado correcto con la respuesta del borrado sin depender de un refetch adicional', async () => {
     const currentVersion = buildVersion({
       id: 'version-actual',
       fileName: 'documento-vigente.pdf',
@@ -210,9 +263,7 @@ describe('DocumentSupportSection', () => {
     });
     const onSaved = jest.fn();
 
-    mockGetDocumentSupports
-      .mockResolvedValueOnce(buildPayload([currentVersion, previousVersion]))
-      .mockRejectedValueOnce(new Error('No fue posible refrescar los soportes.'));
+    mockGetDocumentSupports.mockResolvedValueOnce(buildPayload([currentVersion, previousVersion]));
     mockDeleteDocumentSupport.mockResolvedValueOnce(buildPayload([previousVersion]));
 
     render(
@@ -233,10 +284,100 @@ describe('DocumentSupportSection', () => {
     expect(screen.queryByText('documento-vigente.pdf')).not.toBeInTheDocument();
 
     await waitFor(() => {
-      expect(mockGetDocumentSupports).toHaveBeenCalledTimes(2);
+      expect(mockGetDocumentSupports).toHaveBeenCalledTimes(1);
       expect(onSaved).toHaveBeenCalledTimes(1);
     });
+  });
 
-    expect(screen.getByText('No fue posible refrescar los soportes.')).toBeInTheDocument();
+  it('bloquea solo las acciones del mismo documento mientras una eliminación está en progreso', async () => {
+    const currentVersion = buildVersion({
+      id: 'version-actual',
+      fileName: 'documento-vigente.pdf',
+      uploadedAt: '2026-05-12T09:00:00.000Z',
+    });
+    const previousVersion = buildVersion({
+      id: 'version-previa',
+      fileName: 'documento-anterior.pdf',
+      uploadedAt: '2026-05-10T09:00:00.000Z',
+    });
+    const secondDocumentVersion = buildVersion({
+      id: 'version-rut',
+      fileName: 'rut.pdf',
+      uploadedAt: '2026-05-09T09:00:00.000Z',
+    });
+    const deleteDeferred = createDeferred<{ data: DocumentSupportResponse }>();
+
+    mockGetDocumentSupports.mockResolvedValueOnce(
+      buildPayloadFromItems([
+        buildItem([currentVersion, previousVersion]),
+        buildItem([secondDocumentVersion], {
+          key: 'rut',
+          label: 'RUT',
+          hint: 'Registro tributario',
+        }),
+      ]),
+    );
+    mockDeleteDocumentSupport.mockReturnValueOnce(deleteDeferred.promise);
+
+    render(<DocumentSupportSection expedienteId="expediente-1" personType="PERSONA_NATURAL" />);
+
+    expect(await screen.findByText('documento-vigente.pdf')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver historial (2)' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Eliminar versión actual de Cédula de ciudadanía' }),
+    );
+
+    await waitFor(() => {
+      expect(mockDeleteDocumentSupport).toHaveBeenCalledWith(
+        'expediente-1',
+        'cedula_ciudadania',
+        'version-actual',
+        undefined,
+        'PERSONA_NATURAL',
+      );
+    });
+
+    const [firstReplaceButton, secondReplaceButton] = screen.getAllByRole('button', {
+      name: 'Reemplazar archivo',
+    });
+    const [firstApproveButton, secondApproveButton] = screen.getAllByRole('button', {
+      name: 'Aprobar',
+    });
+
+    expect(
+      screen.getByRole('button', { name: 'Eliminar versión actual de Cédula de ciudadanía' }),
+    ).toBeDisabled();
+    expect(firstReplaceButton).toBeDisabled();
+    expect(firstApproveButton).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Eliminar versión 1 de Cédula de ciudadanía' }),
+    ).toBeDisabled();
+
+    fireEvent.click(firstApproveButton!);
+    expect(mockUpdateDocumentSupportStatus).not.toHaveBeenCalled();
+
+    expect(secondReplaceButton).not.toBeDisabled();
+    expect(secondApproveButton).not.toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Eliminar versión actual de RUT' }),
+    ).not.toBeDisabled();
+
+    deleteDeferred.resolve(
+      buildPayloadFromItems([
+        buildItem([previousVersion]),
+        buildItem([secondDocumentVersion], {
+          key: 'rut',
+          label: 'RUT',
+          hint: 'Registro tributario',
+        }),
+      ]),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Eliminar versión actual de Cédula de ciudadanía' }),
+      ).not.toBeDisabled();
+    });
   });
 });
