@@ -780,6 +780,88 @@ describe('ExpedienteService', () => {
     expect(completenessCalculatorMock.calculate).toHaveBeenCalledWith('exp-doc-delete-unlink');
   });
 
+  it('mantiene la eliminación lógica cuando el archivo físico ya no existe', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-delete-missing-file',
+      personType: 'PERSONA_JURIDICA',
+      documentSupports: {
+        rut: {
+          versions: [
+            {
+              id: 'ver-2',
+              fileName: 'rut-correccion.pdf',
+              storedFileName: 'ver-2.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 1024,
+              uploadedAt: '2026-05-06T10:00:00.000Z',
+              uploadedByUserId: 'user-docs',
+              uploadedByName: 'Equipo interno',
+              status: 'UPLOADED',
+              note: null,
+            },
+            {
+              id: 'ver-1',
+              fileName: 'rut-base.pdf',
+              storedFileName: 'ver-1.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 900,
+              uploadedAt: '2026-05-05T10:00:00.000Z',
+              uploadedByUserId: 'user-docs',
+              uploadedByName: 'Equipo interno',
+              status: 'APPROVED',
+              note: null,
+            },
+          ],
+        },
+      },
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 80,
+      legal: 75,
+      technical: 40,
+      operational: 30,
+      overall: 56,
+    });
+    (rename as jest.MockedFunction<typeof rename>).mockRejectedValueOnce(
+      Object.assign(new Error('archivo inexistente'), { code: 'ENOENT' }),
+    );
+
+    const result = await service.deleteDocumentSupport(
+      'exp-doc-delete-missing-file',
+      'rut',
+      'ver-2',
+      'user-docs',
+      'PERSONA_JURIDICA',
+    );
+
+    expect(result.items.find((item: { key: string }) => item.key === 'rut')?.versions).toEqual([
+      expect.objectContaining({ id: 'ver-1', status: 'APPROVED' }),
+    ]);
+    expect(rename).toHaveBeenCalledTimes(1);
+    expect(unlink).not.toHaveBeenCalled();
+    expect(auditServiceMock.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityId: 'exp-doc-delete-missing-file',
+        newValue: expect.objectContaining({
+          section: 'document_support',
+          changedFields: ['rut'],
+        }),
+      }),
+    );
+    expect(completenessCalculatorMock.calculate).toHaveBeenCalledWith(
+      'exp-doc-delete-missing-file',
+    );
+  });
+
   it('preserva el error de persistencia aunque falle el rollback físico', async () => {
     const expediente = buildExpediente({
       id: 'exp-doc-delete-rollback',

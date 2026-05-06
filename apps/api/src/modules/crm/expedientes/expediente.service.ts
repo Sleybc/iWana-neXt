@@ -384,8 +384,22 @@ export class ExpedienteService {
       targetVersion.storedFileName,
     );
     const pendingDeleteFilePath = `${targetFilePath}.pending-delete`;
+    let movedToPendingDelete = false;
 
-    await rename(targetFilePath, pendingDeleteFilePath);
+    try {
+      await rename(targetFilePath, pendingDeleteFilePath);
+      movedToPendingDelete = true;
+    } catch (error) {
+      const isMissingSourceFile =
+        error instanceof Error &&
+        'code' in error &&
+        typeof error.code === 'string' &&
+        error.code === 'ENOENT';
+
+      if (!isMissingSourceFile) {
+        throw error;
+      }
+    }
 
     const remainingVersions = versions.filter((version) => version.id !== versionId);
 
@@ -398,27 +412,31 @@ export class ExpedienteService {
     try {
       await this.persistDocumentSupports(id, schemaName, supports);
     } catch (error) {
-      try {
-        await rename(pendingDeleteFilePath, targetFilePath);
-      } catch (rollbackError) {
-        const rollbackMessage =
-          rollbackError instanceof Error ? rollbackError.message : 'Error desconocido';
-        this.logger.error(
-          `No se pudo revertir la eliminación física ${pendingDeleteFilePath} tras fallar la persistencia del soporte documental: ${rollbackMessage}`,
-          rollbackError instanceof Error ? rollbackError.stack : undefined,
-        );
+      if (movedToPendingDelete) {
+        try {
+          await rename(pendingDeleteFilePath, targetFilePath);
+        } catch (rollbackError) {
+          const rollbackMessage =
+            rollbackError instanceof Error ? rollbackError.message : 'Error desconocido';
+          this.logger.error(
+            `No se pudo revertir la eliminación física ${pendingDeleteFilePath} tras fallar la persistencia del soporte documental: ${rollbackMessage}`,
+            rollbackError instanceof Error ? rollbackError.stack : undefined,
+          );
+        }
       }
       throw error;
     }
 
-    try {
-      // Una vez persistida la eliminación, la limpieza física pasa a ser best-effort.
-      await unlink(pendingDeleteFilePath);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
-      this.logger.warn(
-        `No se pudo limpiar el soporte documental ${pendingDeleteFilePath} tras persistir su eliminación: ${errorMessage}`,
-      );
+    if (movedToPendingDelete) {
+      try {
+        // Una vez persistida la eliminación, la limpieza física pasa a ser best-effort.
+        await unlink(pendingDeleteFilePath);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+        this.logger.warn(
+          `No se pudo limpiar el soporte documental ${pendingDeleteFilePath} tras persistir su eliminación: ${errorMessage}`,
+        );
+      }
     }
 
     const actorName = await this.resolveActorName(schemaName, actorUserId);
