@@ -1,5 +1,36 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { UserRole } from '@iwana/shared';
 import { SettingsSubTabs } from './SettingsSubTabs';
+import { SettingsClient } from './SettingsClient';
+
+const useAuthMock = jest.fn();
+
+jest.mock('@/components/auth/AuthProvider', () => ({
+  useAuth: () => useAuthMock(),
+}));
+
+jest.mock('@/lib/api-client', () => ({
+  ApiError: class MockApiError extends Error {
+    status: number;
+    code: string;
+    details?: unknown;
+
+    constructor(status: number, code: string, message: string, details?: unknown) {
+      super(message);
+      this.name = 'ApiError';
+      this.status = status;
+      this.code = code;
+      this.details = details;
+    }
+  },
+  tenantSelfApi: {
+    getProfile: jest.fn(),
+    getSettings: jest.fn(),
+  },
+  dashboardApi: {
+    getSummary: jest.fn(),
+  },
+}));
 
 describe('SettingsSubTabs', () => {
   it('should render branding sub-sections and switch active item', () => {
@@ -20,5 +51,77 @@ describe('SettingsSubTabs', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'Planes' }));
     expect(onChange).toHaveBeenCalledWith('plans');
+  });
+});
+
+describe('SettingsClient', () => {
+  const mockProfile = {
+    id: 'tenant-1',
+    name: 'Test Company',
+    slug: 'test-company',
+    status: 'ACTIVE' as const,
+    contactEmail: 'test@test.com',
+    legalName: 'Test Company S.A.S.',
+    nit: '123456789',
+    nitDv: '1',
+    city: 'Bogotá',
+    department: 'Cundinamarca',
+    countryCode: 'CO',
+    phone: '+57300123456',
+    website: null,
+    createdAt: new Date().toISOString(),
+    logoLightUrl: null,
+    logoLightAssetId: null,
+    logoDarkUrl: null,
+    logoDarkAssetId: null,
+    sealLightUrl: null,
+    sealLightAssetId: null,
+    sealDarkUrl: null,
+    sealDarkAssetId: null,
+    faviconLightUrl: null,
+    faviconLightAssetId: null,
+    faviconDarkUrl: null,
+    faviconDarkAssetId: null,
+    loginBackgroundLightUrl: null,
+    loginBackgroundLightAssetId: null,
+    loginBackgroundDarkUrl: null,
+    loginBackgroundDarkAssetId: null,
+  };
+
+  const mockSettings = {
+    timezone: 'America/Bogota',
+    currency: 'COP',
+    language: 'es-CO',
+    country: 'Colombia',
+    fiberInstallationThresholdMeters: 100,
+    features: {
+      billing: false,
+      mfa_required_all: true,
+    },
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useAuthMock.mockReturnValue({
+      user: { id: 'user-1', name: 'Test User', email: 'user@test.com', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    const { tenantSelfApi, dashboardApi } = jest.requireMock('@/lib/api-client');
+    tenantSelfApi.getProfile.mockResolvedValue(mockProfile);
+    tenantSelfApi.getSettings.mockResolvedValue(mockSettings);
+    dashboardApi.getSummary.mockResolvedValue({ alerts: [] });
+  });
+
+  it('should show branding sub-tabs only when branding tab is active', async () => {
+    render(<SettingsClient />);
+
+    // Wait for loading to complete by waiting for the overview panel heading
+    await screen.findByRole('heading', { name: 'Test Company', level: 2 });
+
+    fireEvent.click(screen.getByRole('tab', { name: /Marca/i }));
+
+    expect(await screen.findByRole('tab', { name: 'Identidad visual' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Planes' })).toBeInTheDocument();
   });
 });

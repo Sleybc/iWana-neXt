@@ -19,7 +19,12 @@ import { SecuritySettingsCard } from './SecuritySettingsCard';
 import { SettingsOverviewPanel } from './SettingsOverviewPanel';
 import { SettingsTabPanel } from './SettingsTabPanel';
 import { SettingsTabs } from './SettingsTabs';
+import { SettingsSubTabs } from './SettingsSubTabs';
 import { SETTINGS_NAVIGATION, type SettingsTabId } from './settings-navigation';
+import {
+  SETTINGS_BRANDING_NAVIGATION,
+  type BrandingSettingsTabId,
+} from './settings-branding-navigation';
 import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 
 function mapError(error: unknown): string {
@@ -49,6 +54,7 @@ export function SettingsClient() {
   const [settings, setSettings] = useState<TenantSelfSettings | null>(null);
   const [alerts, setAlerts] = useState<DashboardAlert[]>([]);
   const [activeTab, setActiveTab] = useState<SettingsTabId>('general');
+  const [activeBrandingTab, setActiveBrandingTab] = useState<BrandingSettingsTabId>('identity');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -215,7 +221,17 @@ export function SettingsClient() {
             labelledBy={getTabId('branding')}
             isActive={activeTab === 'branding'}
           >
-            <BrandingForm profile={profile} canEdit={canEdit} onUpdated={setProfile} />
+            <div className="space-y-4">
+              <SettingsSubTabs
+                items={SETTINGS_BRANDING_NAVIGATION}
+                activeTab={activeBrandingTab}
+                onChange={(id) => setActiveBrandingTab(id as BrandingSettingsTabId)}
+              />
+
+              {activeBrandingTab === 'identity' ? (
+                <BrandingForm profile={profile} canEdit={canEdit} onUpdated={setProfile} />
+              ) : null}
+            </div>
           </SettingsTabPanel>
         </div>
       </div>
