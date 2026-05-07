@@ -95,6 +95,25 @@ Validación ejecutada:
 
 Resultado: búsqueda global del portal operativa, con pruebas unitarias en verde para consulta, navegación, manejo de error y limpieza al navegar.
 
+### Addendum documental 2026-05-07 — Diseño y plan de rediseño visual para settings del portal
+
+Se documentó la propuesta de rediseño visual integral para `apps/portal:/dashboard/settings`, asumiendo el rol operativo de Senior UI Systems Designer y priorizando claridad estructural, densidad operativa, navegación escalable y consistencia sistémica.
+
+Decisión de diseño registrada:
+
+- mantener tabs principales (`General`, `Operación`, `Seguridad`, `Marca`),
+- convertir el bloque superior en resumen ejecutivo del módulo,
+- introducir navegación secundaria explícita en `Marca` para separar `Identidad visual`, `Planes`, `Productos` y `Cobertura`,
+- refactorizar formularios y managers densos bajo una gramática visual más sobria y más escaneable.
+
+Artefactos creados para ejecución fullstack:
+
+- `docs/specs/2026-05-07-portal-settings-redesign-design.md`
+- `docs/plans/PLAN-TRANSVERSAL-PORTAL-SETTINGS-REDISENO-UI-v1.0.md`
+- `docs/prompts/PROMPT-TRANSVERSAL-PORTAL-SETTINGS-REDISENO-UI-v1.0.md`
+
+Estado operativo: listo para ejecución por Sr. Dev Fullstack. No se implementó código en esta fase; se dejó la ruta táctica, archivos objetivo, pruebas y validaciones requeridas.
+
 ### Addendum correctivo 2026-04-30 — Habilitación de MCPs en OpenCode
 
 Se actualizó `.opencode/opencode.json` para dejar habilitados tres servidores MCP de uso operativo en el workspace: `chrome-devtools`, `context7` y `playwright`. La configuración quedó declarada como MCPs `local` con ejecución vía `npx`, lo que evita acoplar el repo a instalaciones globales manuales y permite resolver la versión publicada más reciente al iniciar el cliente.
@@ -448,6 +467,62 @@ Se corrigió un `500 Internal Server Error` en `POST /api/v1/auth/login` que afe
   - Hotfix adicional 2026-03-18: se corrigió una deriva entre el template SQL de schemas tenant y la entidad `User`. El provisioning fallaba en `PROVISIONING_FAILED` porque `tenant_template.sql` no creaba la columna `mfa_required`, y el `TenantSeedService` consultaba `users` vía TypeORM con una metadata más nueva. Como refuerzo operativo, el template quedó idempotente para reintentos (tablas e índices con `IF NOT EXISTS`, recreación segura de la política RLS) y el script raíz `pnpm dev` ahora usa `docker compose -f docker-compose.dev.yml up -d --build` para evitar workers Docker con imágenes stale durante cambios de provisioning.
 - Estado global: validación funcional completa para cierre de fase.
 
+### Addendum correctivo 2026-05-07 — Dropdown de tipo de documento no visible en usuarios web
+
+Se corrigió el incidente en `apps/web` donde el campo `Tipo de documento` en los modales de creación y gestión de usuarios no mostraba opciones al hacer clic. La causa raíz estaba en la primitive compartida `Select` de `@iwana/ui`: el menú se renderiza por portal (`document.body`) con `position: fixed`, pero su `z-index` estaba en `1200`, por debajo del overlay/modal de usuarios (`z-[10000]`).
+
+Corrección aplicada:
+
+- Se elevó el `z-index` del menú portalizado de `Select` a `11000` para garantizar superposición por encima de overlays de modal en web y portal.
+- Se dejó comentario funcional en el código para evitar regresiones futuras del mismo patrón de apilamiento visual.
+
+Archivos impactados:
+
+- `packages/ui/src/components/Select.tsx`
+
+Validación ejecutada:
+
+- `pnpm --filter @iwana/ui typecheck` ✅
+- `pnpm --filter @iwana/web typecheck` ✅
+
+### Addendum correctivo 2026-05-07 — 404 de branding público durante digitación de slug en portal
+
+Se corrigió el ruido de red en el login de `apps/portal` donde la UI disparaba `GET /api/v1/tenants/public-branding?slug=...` por cada tecla (`i`, `iw`, `iwa`, etc.), generando `404` repetidos mientras el slug aún estaba incompleto.
+
+Causa raíz:
+
+- En `LoginExperience`, la consulta de branding se ejecutaba inmediatamente ante cada cambio del slug diferido, sin umbral mínimo ni debounce temporal.
+
+Corrección aplicada:
+
+- Se agregó guardia de formato para consultar branding público solo cuando el slug es válido (`^[a-z][a-z0-9-]*$`) y tiene al menos 3 caracteres.
+- Se agregó debounce de 350ms antes de invocar `tenantSelfApi.getPublicBranding` para evitar peticiones por cada pulsación.
+- Cuando el slug no cumple condiciones, se limpia branding y no se dispara request al backend.
+
+Archivo impactado:
+
+- `apps/portal/src/components/auth/LoginExperience.tsx`
+
+Validación ejecutada:
+
+- `pnpm --filter @iwana/portal typecheck` ✅
+
+Refuerzo adicional aplicado (mismo día):
+
+- Se separó el estado de `slug` en edición vs `slug` confirmado para branding (`tenantSlug` vs `tenantSlugCommitted`).
+- El lookup de branding ahora se dispara solo con slug confirmado (evento `onBlur` del campo Empresa), no durante cada `onChange`.
+- Con esto se elimina el patrón de `404` repetidos mientras el usuario aún está escribiendo el identificador del tenant.
+
+Archivos impactados en el refuerzo:
+
+- `apps/portal/src/components/auth/LoginExperience.tsx`
+- `apps/portal/src/components/auth/LoginForm.tsx`
+- `apps/portal/src/components/auth/LoginExperience.spec.tsx`
+
+Validación adicional del refuerzo:
+
+- `pnpm --filter @iwana/portal test -- src/components/auth/LoginExperience.spec.tsx src/components/auth/LoginForm.spec.tsx` ✅ (2 suites, 7 tests)
+
 ## Pendientes y Deuda Técnica
 
 - Se cerró la deuda preexistente de `auth.service.spec.ts` agregando el mock de `PlatformUserRepository` requerido por el constructor actual de `AuthService`; la suite quedó nuevamente estable en verde (20/20).
@@ -460,3 +535,23 @@ Se corrigió un `500 Internal Server Error` en `POST /api/v1/auth/login` que afe
 - HLD base: `docs/hlds/HLD-TRANSVERSAL-ENABLEMENT-OPERATIVO-v1.0.md`
 - PRD base: `docs/prds/PRD-MOD01-Auth-Tenant-Audit-v1.0.md`
 - ADRs de referencia: `docs/adrs/ADR-016-Cierre-MOD01-Produccion.md`, `docs/adrs/ADR-023-Referencia-TailAdmin-Shell-Dashboard.md`
+
+---
+
+### Addendum — Rediseño visual de configuración empresarial en portal
+
+Se ejecutó el rediseño visual de `/dashboard/settings` en `apps/portal` con foco en jerarquía, densidad operativa y navegación por subdominios. La pestaña `Marca` dejó de actuar como contenedor monolítico y ahora separa identidad visual, catálogo de planes, productos y cobertura mediante navegación secundaria explícita (`SettingsSubTabs`).
+
+**Cambios principales:**
+- `SettingsSubTabs.tsx` — Componente genérico de navegación secundaria (WCAG 2.2 AA, teclado)
+- `settings-branding-navigation.ts` — Constante de 4 ítems con tipado (`BrandingSettingsTabId`)
+- `SettingsSectionPanel.tsx` — Envoltorio reutilizable de sección con título, descripción y toolbar
+- `SettingsClient.tsx` — Orquestador con estado `activeBrandingTab` y renderizado condicional
+- `SettingsOverviewPanel.tsx` — Resumen ejecutivo en grid con señales operacionales
+- `BrandingForm.tsx` — Reorganizado con toolbar; label cambiado a 'Guardar identidad visual'
+- `PlanCatalogManager`, `AdditionalProductsManager`, `AdditionalServicesManager`, `CoverageCheckSection` — Aislados bajo su subdominio activo
+
+**Validación ejecutada:**
+- Todos los tests de settings: PASS
+- Typecheck: PASS
+- Lint: PASS
