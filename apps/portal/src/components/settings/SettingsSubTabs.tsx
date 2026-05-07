@@ -3,18 +3,22 @@
 import { useRef } from 'react';
 import { cn } from '@iwana/ui';
 
-interface SubTabItem {
-  id: string;
+interface SubTabItem<T extends string = string> {
+  id: T;
   label: string;
 }
 
-interface SettingsSubTabsProps {
-  items: readonly SubTabItem[];
-  activeTab: string;
-  onChange: (id: string) => void;
+interface SettingsSubTabsProps<T extends string = string> {
+  items: readonly SubTabItem<T>[];
+  activeTab: T;
+  onChange: (id: T) => void;
 }
 
-export function SettingsSubTabs({ items, activeTab, onChange }: SettingsSubTabsProps) {
+export function SettingsSubTabs<T extends string>({
+  items,
+  activeTab,
+  onChange,
+}: SettingsSubTabsProps<T>) {
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const activeIndex = items.findIndex((item) => item.id === activeTab);
 

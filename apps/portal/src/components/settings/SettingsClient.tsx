@@ -225,7 +225,7 @@ export function SettingsClient() {
               <SettingsSubTabs
                 items={SETTINGS_BRANDING_NAVIGATION}
                 activeTab={activeBrandingTab}
-                onChange={(id) => setActiveBrandingTab(id as BrandingSettingsTabId)}
+                onChange={setActiveBrandingTab}
               />
 
               {activeBrandingTab === 'identity' ? (
