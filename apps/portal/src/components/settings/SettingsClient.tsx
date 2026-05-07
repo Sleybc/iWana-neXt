@@ -12,11 +12,16 @@ import {
   type TenantSelf,
   type TenantSelfSettings,
 } from '@/lib/api-client';
+import { AdditionalProductsManager } from './AdditionalProductsManager';
+import { AdditionalServicesManager } from './AdditionalServicesManager';
 import { BrandingForm } from './BrandingForm';
 import { CompanyProfileForm } from './CompanyProfileForm';
+import { CoverageCheckSection } from './CoverageCheckSection';
 import { OperationalSettingsForm } from './OperationalSettingsForm';
+import { PlanCatalogManager } from './PlanCatalogManager';
 import { SecuritySettingsCard } from './SecuritySettingsCard';
 import { SettingsOverviewPanel } from './SettingsOverviewPanel';
+import { SettingsSectionPanel } from './SettingsSectionPanel';
 import { SettingsTabPanel } from './SettingsTabPanel';
 import { SettingsTabs } from './SettingsTabs';
 import { SettingsSubTabs } from './SettingsSubTabs';
@@ -230,6 +235,41 @@ export function SettingsClient() {
 
               {activeBrandingTab === 'identity' ? (
                 <BrandingForm profile={profile} canEdit={canEdit} onUpdated={setProfile} />
+              ) : null}
+
+              {activeBrandingTab === 'plans' ? (
+                <SettingsSectionPanel
+                  title="Catálogo de planes"
+                  description="Define la oferta base comercial visible para la empresa."
+                >
+                  <PlanCatalogManager canEdit={canEdit} />
+                </SettingsSectionPanel>
+              ) : null}
+
+              {activeBrandingTab === 'products' ? (
+                <div className="space-y-6">
+                  <SettingsSectionPanel
+                    title="Productos adicionales"
+                    description="Gestiona los productos que complementan los planes base."
+                  >
+                    <AdditionalProductsManager canEdit={canEdit} />
+                  </SettingsSectionPanel>
+                  <SettingsSectionPanel
+                    title="Servicios adicionales"
+                    description="Servicios de valor agregado disponibles para los clientes."
+                  >
+                    <AdditionalServicesManager canEdit={canEdit} />
+                  </SettingsSectionPanel>
+                </div>
+              ) : null}
+
+              {activeBrandingTab === 'coverage' ? (
+                <SettingsSectionPanel
+                  title="Verificador de cobertura"
+                  description="Consulta la disponibilidad del servicio por dirección o coordenadas."
+                >
+                  <CoverageCheckSection canEdit={canEdit} onCheck={tenantSelfApi.checkCoverage} />
+                </SettingsSectionPanel>
               ) : null}
             </div>
           </SettingsTabPanel>
