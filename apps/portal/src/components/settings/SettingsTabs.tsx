@@ -41,7 +41,7 @@ export function SettingsTabs({
     <div
       role="tablist"
       aria-label="Secciones de configuración empresarial"
-      className="flex gap-2 overflow-x-auto rounded-2xl border border-white/70 bg-white/95 p-2 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95"
+      className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] rounded-2xl border border-white/70 bg-white/95 p-2 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95"
     >
       {items.map((item, index) => {
         const isActive = item.id === activeTab;
@@ -64,7 +64,7 @@ export function SettingsTabs({
             {...selectedState}
             tabIndex={isActive ? 0 : -1}
             className={cn(
-              'flex min-w-fit items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2',
+              'flex min-w-fit items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-secondary focus-visible:ring-offset-2',
               isActive
                 ? 'bg-iwana-primary text-white shadow-iwana dark:bg-iwana-primary-400'
                 : 'text-gray-600 hover:bg-[#f8faf5] hover:text-gray-900 dark:text-gray-300 dark:hover:bg-dark-surface-3 dark:hover:text-white',

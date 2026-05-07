@@ -54,7 +54,7 @@ export function SettingsOverviewPanel({
   return (
     <section
       className={cn(
-        'grid gap-4 rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm',
+        'grid gap-4 md:gap-6 rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm',
         'lg:grid-cols-[1.4fr_1fr] lg:items-start',
         'dark:border-dark-border dark:bg-dark-surface-2',
       )}
@@ -120,7 +120,7 @@ export function SettingsOverviewPanel({
         )}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {overviewItems.map((item) => (
           <article
             key={item.id}

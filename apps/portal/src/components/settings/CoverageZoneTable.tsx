@@ -23,7 +23,7 @@ export function CoverageZoneTable({
   onToggle,
 }: CoverageZoneTableProps) {
   return (
-    <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-dark-border">
+    <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-dark-border">
       <table className="w-full min-w-[860px] border-collapse" data-testid="coverage-zone-table">
         <thead className="bg-[#f6f8f4] dark:bg-dark-surface-3">
           <tr>
