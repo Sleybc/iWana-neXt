@@ -25,6 +25,7 @@ import {
 import { BRANDING_SLOT_RULES, validateBrandingFileForUpload } from '@/lib/branding-validation';
 import { TenantSeal } from '@/components/layout/TenantSeal';
 import { PortalAlert } from '@/components/shared/portal-ui';
+import { SettingsSectionPanel } from './SettingsSectionPanel';
 
 const BRANDING_EVENT_NAME = 'tenant-branding-updated';
 
@@ -529,353 +530,363 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
         />
       )}
 
-      <div className="space-y-1">
-        <h2 className="text-base font-semibold text-gray-900 dark:text-white">Marca empresarial</h2>
-        <p className="max-w-2xl text-sm text-gray-500 dark:text-gray-400">
-          Configura logo, sello, favicon y fondos de autenticacion del portal.
-        </p>
-      </div>
-
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-8">
-        <section className="space-y-3">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-              Activos visuales
-            </h3>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Sube un activo o pega una URL HTTPS por slot cuando lo necesites.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            {BRANDING_GROUPS.flatMap((group) =>
-              group.variants.map((variant) => {
-                const slotKey = `${group.usage}-${variant.themeVariant}`;
-                const fieldError = errors[variant.urlField];
-                const previewUrl =
-                  watchedValues[variant.urlField]?.trim() ||
-                  profile[variant.resolvedUrlField] ||
-                  '';
-                const isSlotUploading = uploadingSlot === slotKey;
-                const isSlotClearing = clearingSlot === `${variant.urlField}-clear`;
-                const hasConfiguredValue = Boolean(
-                  previewUrl || profile[variant.assetField] || profile[variant.resolvedUrlField],
-                );
-                const assetDirectory =
-                  previewUrl.substring(0, previewUrl.lastIndexOf('/') + 1) || '/';
-
-                return (
-                  <div
-                    key={slotKey}
-                    className="space-y-3 rounded-lg border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-border dark:bg-dark-surface-3"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                        {group.title} - {variant.label}
-                      </p>
-                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        Fuente actual: {resolveSourceLabel(profile, variant)}
-                      </p>
-                    </div>
-
-                    <label
-                      htmlFor={`${slotKey}-file`}
-                      className="group relative block cursor-pointer overflow-hidden rounded-lg border-2 border-dashed border-gray-200 bg-white transition-colors hover:border-iwana-primary/40 dark:border-dark-border dark:bg-dark-surface-2"
-                    >
-                      {previewUrl ? (
-                        <div className={group.widePreview ? 'h-32 p-2' : 'h-32 p-4'}>
-                          <img
-                            src={previewUrl}
-                            alt={`${group.title} ${variant.label}`}
-                            className="h-full w-full object-contain"
-                          />
-                        </div>
-                      ) : (
-                        <div className="flex h-32 flex-col items-center justify-center gap-2 text-gray-400">
-                          <ImageUp className="h-8 w-8" aria-hidden="true" />
-                          <span className="text-xs">Subir imagen</span>
-                        </div>
-                      )}
-
-                      {canEdit && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-lg bg-black/45 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                          <Camera className="h-5 w-5 text-white" aria-hidden="true" />
-                          <span className="text-xs font-medium text-white">
-                            {previewUrl ? 'Cambiar imagen' : 'Seleccionar archivo'}
-                          </span>
-                        </div>
-                      )}
-
-                      {isSlotUploading && (
-                        <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-white/80 text-sm text-gray-500 dark:bg-dark-surface-2/80 dark:text-gray-300">
-                          Subiendo...
-                        </div>
-                      )}
-                    </label>
-
-                    <input
-                      id={`${slotKey}-file`}
-                      type="file"
-                      accept={BRANDING_SLOT_RULES[group.usage].allowedMimes.join(',')}
-                      disabled={!canEdit || isSubmitting || isSlotUploading || isSlotClearing}
-                      className="sr-only"
-                      onChange={(event) => {
-                        const selectedFile = event.target.files?.[0];
-                        void handleUpload(group.usage, variant.themeVariant, selectedFile);
-                        event.currentTarget.value = '';
-                      }}
-                    />
-
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{group.description}</p>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      Reglas: {BRANDING_SLOT_RULES[group.usage].helpText}
-                    </p>
-
-                    {previewUrl ? (
-                      <a
-                        href={assetDirectory}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 overflow-hidden rounded-md border border-gray-100 bg-white px-3 py-2 text-xs text-gray-500 transition-colors hover:text-iwana-primary dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-400 dark:hover:text-iwana-primary"
-                        title={`Abrir directorio: ${assetDirectory}`}
-                      >
-                        <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                        <span className="min-w-0 truncate font-mono">{assetDirectory}</span>
-                      </a>
-                    ) : null}
-
-                    <details className="text-sm">
-                      <summary className="cursor-pointer select-none text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">
-                        o pega una URL HTTPS directamente
-                      </summary>
-                      <div className="mt-2">
-                        <Input
-                          id={variant.urlField}
-                          label="URL HTTPS externa"
-                          placeholder={variant.placeholder}
-                          disabled={!canEdit || isSubmitting || isSlotUploading}
-                          error={
-                            typeof fieldError?.message === 'string' ? fieldError.message : undefined
-                          }
-                          helperText="Déjalo vacío para mantener el asset actual. Guarda cambios para aplicar URLs externas."
-                          {...register(variant.urlField)}
-                        />
-                      </div>
-                    </details>
-
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void handleClearSlot(variant)}
-                        disabled={!canEdit || !hasConfiguredValue || isSlotClearing || isSubmitting}
-                        loading={isSlotClearing}
-                      >
-                        <Trash2 className="h-4 w-4" aria-hidden="true" />
-                        Eliminar imagen
-                      </Button>
-                    </div>
-                  </div>
-                );
-              }),
-            )}
-          </div>
-        </section>
-
-        <section className="space-y-4 rounded-lg border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-border dark:bg-dark-surface-3">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-              Preview del menú lateral y favicon
-            </h3>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              El portal refleja sello y favicon en caliente cuando guardas o subes un activo.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-            <div className="space-y-3">
-              <div className="flex w-fit items-center gap-3 rounded-lg bg-iwana-primary px-3 py-2">
-                <TenantSeal
-                  sealLightUrl={watchedValues.sealLightUrl?.trim() || profile.sealLightUrl}
-                  sealDarkUrl={watchedValues.sealDarkUrl?.trim() || profile.sealDarkUrl}
-                  name={profile.name}
+        <SettingsSectionPanel
+          title="Identidad visual"
+          description="Administra los activos de marca y la metadata pública del portal empresarial."
+          toolbar={
+            canEdit ? (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
                   size="sm"
-                />
-                {watchedShowTenantName && (
-                  <span className="max-w-[180px] truncate text-sm font-bold text-white">
-                    {profile.name}
-                  </span>
+                  onClick={() => void handleRestoreBaseBranding()}
+                  loading={isResettingBase}
+                  disabled={!canEdit || isSubmitting || isResettingBase}
+                >
+                  <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                  Restaurar base
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  loading={isSubmitting}
+                  disabled={isSubmitting || !isDirty}
+                >
+                  <Save className="h-4 w-4" aria-hidden="true" />
+                  Guardar identidad visual
+                </Button>
+              </div>
+            ) : null
+          }
+        >
+          <div className="space-y-6">
+            <section className="space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                  Activos visuales
+                </h3>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  Sube un activo o pega una URL HTTPS por slot cuando lo necesites.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                {BRANDING_GROUPS.flatMap((group) =>
+                  group.variants.map((variant) => {
+                    const slotKey = `${group.usage}-${variant.themeVariant}`;
+                    const fieldError = errors[variant.urlField];
+                    const previewUrl =
+                      watchedValues[variant.urlField]?.trim() ||
+                      profile[variant.resolvedUrlField] ||
+                      '';
+                    const isSlotUploading = uploadingSlot === slotKey;
+                    const isSlotClearing = clearingSlot === `${variant.urlField}-clear`;
+                    const hasConfiguredValue = Boolean(
+                      previewUrl ||
+                      profile[variant.assetField] ||
+                      profile[variant.resolvedUrlField],
+                    );
+                    const assetDirectory =
+                      previewUrl.substring(0, previewUrl.lastIndexOf('/') + 1) || '/';
+
+                    return (
+                      <div
+                        key={slotKey}
+                        className="space-y-3 rounded-lg border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-border dark:bg-dark-surface-3"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                            {group.title} - {variant.label}
+                          </p>
+                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Fuente actual: {resolveSourceLabel(profile, variant)}
+                          </p>
+                        </div>
+
+                        <label
+                          htmlFor={`${slotKey}-file`}
+                          className="group relative block cursor-pointer overflow-hidden rounded-lg border-2 border-dashed border-gray-200 bg-white transition-colors hover:border-iwana-primary/40 dark:border-dark-border dark:bg-dark-surface-2"
+                        >
+                          {previewUrl ? (
+                            <div className={group.widePreview ? 'h-32 p-2' : 'h-32 p-4'}>
+                              <img
+                                src={previewUrl}
+                                alt={`${group.title} ${variant.label}`}
+                                className="h-full w-full object-contain"
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex h-32 flex-col items-center justify-center gap-2 text-gray-400">
+                              <ImageUp className="h-8 w-8" aria-hidden="true" />
+                              <span className="text-xs">Subir imagen</span>
+                            </div>
+                          )}
+
+                          {canEdit && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-lg bg-black/45 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                              <Camera className="h-5 w-5 text-white" aria-hidden="true" />
+                              <span className="text-xs font-medium text-white">
+                                {previewUrl ? 'Cambiar imagen' : 'Seleccionar archivo'}
+                              </span>
+                            </div>
+                          )}
+
+                          {isSlotUploading && (
+                            <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-white/80 text-sm text-gray-500 dark:bg-dark-surface-2/80 dark:text-gray-300">
+                              Subiendo...
+                            </div>
+                          )}
+                        </label>
+
+                        <input
+                          id={`${slotKey}-file`}
+                          type="file"
+                          accept={BRANDING_SLOT_RULES[group.usage].allowedMimes.join(',')}
+                          disabled={!canEdit || isSubmitting || isSlotUploading || isSlotClearing}
+                          className="sr-only"
+                          onChange={(event) => {
+                            const selectedFile = event.target.files?.[0];
+                            void handleUpload(group.usage, variant.themeVariant, selectedFile);
+                            event.currentTarget.value = '';
+                          }}
+                        />
+
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          {group.description}
+                        </p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          Reglas: {BRANDING_SLOT_RULES[group.usage].helpText}
+                        </p>
+
+                        {previewUrl ? (
+                          <a
+                            href={assetDirectory}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 overflow-hidden rounded-md border border-gray-100 bg-white px-3 py-2 text-xs text-gray-500 transition-colors hover:text-iwana-primary dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-400 dark:hover:text-iwana-primary"
+                            title={`Abrir directorio: ${assetDirectory}`}
+                          >
+                            <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                            <span className="min-w-0 truncate font-mono">{assetDirectory}</span>
+                          </a>
+                        ) : null}
+
+                        <details className="text-sm">
+                          <summary className="cursor-pointer select-none text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">
+                            o pega una URL HTTPS directamente
+                          </summary>
+                          <div className="mt-2">
+                            <Input
+                              id={variant.urlField}
+                              label="URL HTTPS externa"
+                              placeholder={variant.placeholder}
+                              disabled={!canEdit || isSubmitting || isSlotUploading}
+                              error={
+                                typeof fieldError?.message === 'string'
+                                  ? fieldError.message
+                                  : undefined
+                              }
+                              helperText="Déjalo vacío para mantener el asset actual. Guarda cambios para aplicar URLs externas."
+                              {...register(variant.urlField)}
+                            />
+                          </div>
+                        </details>
+
+                        <div className="flex justify-end">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void handleClearSlot(variant)}
+                            disabled={
+                              !canEdit || !hasConfiguredValue || isSlotClearing || isSubmitting
+                            }
+                            loading={isSlotClearing}
+                          >
+                            <Trash2 className="h-4 w-4" aria-hidden="true" />
+                            Eliminar imagen
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  }),
                 )}
               </div>
+            </section>
 
-              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
-                <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                  Vista previa de pestaña
+            <section className="space-y-4 rounded-lg border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-border dark:bg-dark-surface-3">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                  Preview del menú lateral y favicon
+                </h3>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  El portal refleja sello y favicon en caliente cuando guardas o subes un activo.
                 </p>
-                <div className="flex items-center gap-2 rounded-md bg-white px-2 py-1.5 dark:bg-dark-surface-4">
-                  <div className="h-5 w-5 overflow-hidden rounded-sm bg-white dark:bg-dark-surface-3">
-                    {watchedValues.faviconLightUrl?.trim() || profile.faviconLightUrl ? (
-                      <img
-                        src={watchedValues.faviconLightUrl?.trim() || profile.faviconLightUrl || ''}
-                        alt="Favicon del tenant"
-                        className="h-full w-full object-contain"
-                      />
-                    ) : (
-                      <TenantSeal
-                        sealLightUrl={watchedValues.sealLightUrl?.trim() || profile.sealLightUrl}
-                        sealDarkUrl={watchedValues.sealDarkUrl?.trim() || profile.sealDarkUrl}
-                        name={profile.name}
-                        size="sm"
-                      />
+              </div>
+
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div className="space-y-3">
+                  <div className="flex w-fit items-center gap-3 rounded-lg bg-iwana-primary px-3 py-2">
+                    <TenantSeal
+                      sealLightUrl={watchedValues.sealLightUrl?.trim() || profile.sealLightUrl}
+                      sealDarkUrl={watchedValues.sealDarkUrl?.trim() || profile.sealDarkUrl}
+                      name={profile.name}
+                      size="sm"
+                    />
+                    {watchedShowTenantName && (
+                      <span className="max-w-[180px] truncate text-sm font-bold text-white">
+                        {profile.name}
+                      </span>
                     )}
                   </div>
-                  <span className="max-w-[180px] truncate text-xs font-medium text-gray-700 dark:text-gray-200">
-                    Portal de {profile.name}
-                  </span>
+
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
+                    <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      Vista previa de pestaña
+                    </p>
+                    <div className="flex items-center gap-2 rounded-md bg-white px-2 py-1.5 dark:bg-dark-surface-4">
+                      <div className="h-5 w-5 overflow-hidden rounded-sm bg-white dark:bg-dark-surface-3">
+                        {watchedValues.faviconLightUrl?.trim() || profile.faviconLightUrl ? (
+                          <img
+                            src={
+                              watchedValues.faviconLightUrl?.trim() || profile.faviconLightUrl || ''
+                            }
+                            alt="Favicon del tenant"
+                            className="h-full w-full object-contain"
+                          />
+                        ) : (
+                          <TenantSeal
+                            sealLightUrl={
+                              watchedValues.sealLightUrl?.trim() || profile.sealLightUrl
+                            }
+                            sealDarkUrl={watchedValues.sealDarkUrl?.trim() || profile.sealDarkUrl}
+                            name={profile.name}
+                            size="sm"
+                          />
+                        )}
+                      </div>
+                      <span className="max-w-[180px] truncate text-xs font-medium text-gray-700 dark:text-gray-200">
+                        Portal de {profile.name}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
+
+              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-gray-100 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2">
+                <input
+                  type="checkbox"
+                  disabled={!canEdit}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-iwana-primary accent-iwana-primary disabled:cursor-not-allowed"
+                  {...register('showTenantName')}
+                />
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">
+                    Mostrar nombre comercial junto al sello en el menú lateral
+                  </p>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Si se desactiva, el menú mostrará solo el sello sin texto. El login público
+                    seguirá la política configurada por showTenantName.
+                  </p>
+                </div>
+              </label>
+            </section>
+
+            <section className="space-y-4 rounded-lg border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-border dark:bg-dark-surface-3">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                  Nombres e identidad
+                </h3>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  Definen cómo aparece tu empresa en el navegador y en la comunicación pública del
+                  portal.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Input
+                  label="Producto"
+                  placeholder="Ej: ISP Demo"
+                  disabled={!canEdit || isSubmitting}
+                  error={
+                    typeof errors.brandingProductName?.message === 'string'
+                      ? errors.brandingProductName.message
+                      : undefined
+                  }
+                  helperText="Nombre visible del tenant en el login público."
+                  {...register('brandingProductName')}
+                />
+                <Input
+                  label="Superficie"
+                  placeholder="Ej: Portal empresarial"
+                  disabled={!canEdit || isSubmitting}
+                  error={
+                    typeof errors.brandingSurfaceName?.message === 'string'
+                      ? errors.brandingSurfaceName.message
+                      : undefined
+                  }
+                  helperText="Nombre de la superficie pública del acceso."
+                  {...register('brandingSurfaceName')}
+                />
+                <Input
+                  label="Título público"
+                  placeholder="Ej: ISP Demo — Portal empresarial"
+                  disabled={!canEdit || isSubmitting}
+                  error={
+                    typeof errors.brandingMetadataTitle?.message === 'string'
+                      ? errors.brandingMetadataTitle.message
+                      : undefined
+                  }
+                  helperText="Se usa como título en login y pestaña del navegador."
+                  {...register('brandingMetadataTitle')}
+                />
+                <Input
+                  label="Descripción pública"
+                  placeholder="Ej: Portal empresarial para la operación de ISP Demo en iWana neXt."
+                  disabled={!canEdit || isSubmitting}
+                  error={
+                    typeof errors.brandingMetadataDescription?.message === 'string'
+                      ? errors.brandingMetadataDescription.message
+                      : undefined
+                  }
+                  helperText="Narrativa pública usada en el login del portal."
+                  {...register('brandingMetadataDescription')}
+                />
+              </div>
+
+              <dl className="grid grid-cols-1 gap-3 rounded-lg border border-gray-100 bg-white p-4 text-sm dark:border-dark-border dark:bg-dark-surface-2 md:grid-cols-2">
+                <div>
+                  <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">Producto</dt>
+                  <dd className="mt-1 font-semibold text-gray-900 dark:text-white">
+                    {identityPreview.productName}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">Superficie</dt>
+                  <dd className="mt-1 font-semibold text-gray-900 dark:text-white">
+                    {identityPreview.surfaceName}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">
+                    Título en navegador
+                  </dt>
+                  <dd className="mt-1 font-medium text-gray-900 dark:text-white">
+                    {identityPreview.metadataTitle}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">Descripción</dt>
+                  <dd className="mt-1 text-gray-600 dark:text-gray-300">
+                    {identityPreview.metadataDescription}
+                  </dd>
+                </div>
+              </dl>
+            </section>
           </div>
-
-          <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-gray-100 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2">
-            <input
-              type="checkbox"
-              disabled={!canEdit}
-              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-iwana-primary accent-iwana-primary disabled:cursor-not-allowed"
-              {...register('showTenantName')}
-            />
-            <div>
-              <p className="text-sm font-medium text-gray-900 dark:text-white">
-                Mostrar nombre comercial junto al sello en el menú lateral
-              </p>
-              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                Si se desactiva, el menú mostrará solo el sello sin texto. El login público seguirá
-                la política configurada por showTenantName.
-              </p>
-            </div>
-          </label>
-        </section>
-
-        <section className="space-y-4 rounded-lg border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-border dark:bg-dark-surface-3">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-              Nombres e identidad
-            </h3>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Definen cómo aparece tu empresa en el navegador y en la comunicación pública del
-              portal.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Input
-              label="Producto"
-              placeholder="Ej: ISP Demo"
-              disabled={!canEdit || isSubmitting}
-              error={
-                typeof errors.brandingProductName?.message === 'string'
-                  ? errors.brandingProductName.message
-                  : undefined
-              }
-              helperText="Nombre visible del tenant en el login público."
-              {...register('brandingProductName')}
-            />
-            <Input
-              label="Superficie"
-              placeholder="Ej: Portal empresarial"
-              disabled={!canEdit || isSubmitting}
-              error={
-                typeof errors.brandingSurfaceName?.message === 'string'
-                  ? errors.brandingSurfaceName.message
-                  : undefined
-              }
-              helperText="Nombre de la superficie pública del acceso."
-              {...register('brandingSurfaceName')}
-            />
-            <Input
-              label="Título público"
-              placeholder="Ej: ISP Demo — Portal empresarial"
-              disabled={!canEdit || isSubmitting}
-              error={
-                typeof errors.brandingMetadataTitle?.message === 'string'
-                  ? errors.brandingMetadataTitle.message
-                  : undefined
-              }
-              helperText="Se usa como título en login y pestaña del navegador."
-              {...register('brandingMetadataTitle')}
-            />
-            <Input
-              label="Descripción pública"
-              placeholder="Ej: Portal empresarial para la operación de ISP Demo en iWana neXt."
-              disabled={!canEdit || isSubmitting}
-              error={
-                typeof errors.brandingMetadataDescription?.message === 'string'
-                  ? errors.brandingMetadataDescription.message
-                  : undefined
-              }
-              helperText="Narrativa pública usada en el login del portal."
-              {...register('brandingMetadataDescription')}
-            />
-          </div>
-
-          <dl className="grid grid-cols-1 gap-3 rounded-lg border border-gray-100 bg-white p-4 text-sm dark:border-dark-border dark:bg-dark-surface-2 md:grid-cols-2">
-            <div>
-              <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">Producto</dt>
-              <dd className="mt-1 font-semibold text-gray-900 dark:text-white">
-                {identityPreview.productName}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">Superficie</dt>
-              <dd className="mt-1 font-semibold text-gray-900 dark:text-white">
-                {identityPreview.surfaceName}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">
-                Título en navegador
-              </dt>
-              <dd className="mt-1 font-medium text-gray-900 dark:text-white">
-                {identityPreview.metadataTitle}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">Descripción</dt>
-              <dd className="mt-1 text-gray-600 dark:text-gray-300">
-                {identityPreview.metadataDescription}
-              </dd>
-            </div>
-          </dl>
-        </section>
-
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {canEdit
-              ? 'Los uploads asignan el slot al instante. Las URLs externas se aplican al guardar el formulario.'
-              : 'Tu rol puede consultar la configuración de branding, pero no modificarla.'}
-          </p>
-          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                void handleRestoreBaseBranding();
-              }}
-              loading={isResettingBase}
-              disabled={!canEdit || isSubmitting || isResettingBase}
-            >
-              <RotateCcw className="h-4 w-4" aria-hidden="true" />
-              Restaurar base
-            </Button>
-            {canEdit && (
-              <Button type="submit" loading={isSubmitting} disabled={isSubmitting || !isDirty}>
-                <Save className="h-4 w-4" aria-hidden="true" />
-                Guardar cambios
-              </Button>
-            )}
-          </div>
-        </div>
+        </SettingsSectionPanel>
       </form>
     </div>
   );
