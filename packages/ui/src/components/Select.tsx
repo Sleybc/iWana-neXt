@@ -172,7 +172,8 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           position: 'fixed',
           left,
           width: menuWidth,
-          zIndex: 1200,
+          // Debe superar overlays/modales que usan z-index alto en apps web/portal.
+          zIndex: 11000,
           maxHeight: '38vh',
           ...(placeAbove
             ? {

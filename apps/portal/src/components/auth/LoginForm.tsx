@@ -47,9 +47,15 @@ interface LoginFormProps {
   tenantSlug: string;
   tenantLocked: boolean;
   onTenantSlugChange: (value: string) => void;
+  onTenantSlugCommit?: (value: string) => void;
 }
 
-export function LoginForm({ tenantSlug, tenantLocked, onTenantSlugChange }: LoginFormProps) {
+export function LoginForm({
+  tenantSlug,
+  tenantLocked,
+  onTenantSlugChange,
+  onTenantSlugCommit,
+}: LoginFormProps) {
   const router = useRouter();
   const { login } = useAuth();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -117,6 +123,7 @@ export function LoginForm({ tenantSlug, tenantLocked, onTenantSlugChange }: Logi
               setTenantError(null);
               onTenantSlugChange(event.target.value);
             }}
+            onBlur={(event) => onTenantSlugCommit?.(event.target.value)}
             className={cn(
               AUTH_FORM_INPUT_WITH_LEADING_ICON_CLASS,
               tenantError ? AUTH_FORM_INPUT_ERROR_CLASS : AUTH_FORM_INPUT_FOCUS_CLASS,

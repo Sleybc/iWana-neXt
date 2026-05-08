@@ -4,10 +4,12 @@ import { startTransition, useDeferredValue, useEffect, useState } from 'react';
 import { LoginBrandPanel } from '@/components/auth/LoginBrandPanel';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { tenantSelfApi, type TenantPublicBranding } from '@/lib/api-client';
-import { resolveTenantSlug } from '@/lib/tenant-resolution';
+import { normalizeTenantSlug, resolveTenantSlug } from '@/lib/tenant-resolution';
 import { AuthBrandHeader, AuthPremiumShell } from '@iwana/ui';
 
 const DEFAULT_FAVICON_PATH = '/brand/iwiso6.png';
+const BRANDING_LOOKUP_DEBOUNCE_MS = 350;
+const MIN_BRANDING_SLUG_LENGTH = 3;
 
 function isBrowser(): boolean {
   return typeof window !== 'undefined' && typeof document !== 'undefined';
@@ -56,18 +58,32 @@ function applyFavicon(href: string): void {
   upsertFaviconLink('shortcut', 'shortcut icon', href);
 }
 
+function canFetchPublicBranding(slug: string): boolean {
+  // Evita consultas en cada tecla para slugs demasiado cortos o con formato inválido.
+  if (slug.length < MIN_BRANDING_SLUG_LENGTH) {
+    return false;
+  }
+
+  return /^[a-z][a-z0-9-]*$/.test(slug);
+}
+
 export function LoginExperience() {
   const [tenantSlug, setTenantSlug] = useState('');
+  const [tenantSlugCommitted, setTenantSlugCommitted] = useState('');
   const [branding, setBranding] = useState<TenantPublicBranding | null>(null);
   const [isBrandingLoading, setIsBrandingLoading] = useState(false);
   const [isDark, setIsDark] = useState(false);
   const tenantResolution = resolveTenantSlug(tenantSlug);
-  const deferredTenantSlug = useDeferredValue(tenantResolution.slug);
+  const brandingLookupSlug = tenantResolution.isLocked
+    ? tenantResolution.slug
+    : normalizeTenantSlug(tenantSlugCommitted);
+  const deferredBrandingLookupSlug = useDeferredValue(brandingLookupSlug);
 
   useEffect(() => {
     const initialResolution = resolveTenantSlug();
     if (initialResolution.slug) {
       setTenantSlug(initialResolution.slug);
+      setTenantSlugCommitted(initialResolution.slug);
     }
   }, []);
 
@@ -88,7 +104,7 @@ export function LoginExperience() {
   }, []);
 
   useEffect(() => {
-    if (!deferredTenantSlug) {
+    if (!deferredBrandingLookupSlug || !canFetchPublicBranding(deferredBrandingLookupSlug)) {
       startTransition(() => setBranding(null));
       setIsBrandingLoading(false);
       return;
@@ -97,32 +113,35 @@ export function LoginExperience() {
     let active = true;
     setIsBrandingLoading(true);
 
-    void tenantSelfApi
-      .getPublicBranding(deferredTenantSlug)
-      .then((result) => {
-        if (!active) {
-          return;
-        }
+    const timerId = window.setTimeout(() => {
+      void tenantSelfApi
+        .getPublicBranding(deferredBrandingLookupSlug)
+        .then((result) => {
+          if (!active) {
+            return;
+          }
 
-        startTransition(() => setBranding(result));
-      })
-      .catch(() => {
-        if (!active) {
-          return;
-        }
+          startTransition(() => setBranding(result));
+        })
+        .catch(() => {
+          if (!active) {
+            return;
+          }
 
-        startTransition(() => setBranding(null));
-      })
-      .finally(() => {
-        if (active) {
-          setIsBrandingLoading(false);
-        }
-      });
+          startTransition(() => setBranding(null));
+        })
+        .finally(() => {
+          if (active) {
+            setIsBrandingLoading(false);
+          }
+        });
+    }, BRANDING_LOOKUP_DEBOUNCE_MS);
 
     return () => {
       active = false;
+      window.clearTimeout(timerId);
     };
-  }, [deferredTenantSlug]);
+  }, [deferredBrandingLookupSlug]);
 
   useEffect(() => {
     applyFavicon(resolvePublicFaviconUrl(branding, isDark));
@@ -179,6 +198,7 @@ export function LoginExperience() {
           tenantSlug={tenantSlug}
           tenantLocked={tenantResolution.isLocked}
           onTenantSlugChange={setTenantSlug}
+          onTenantSlugCommit={setTenantSlugCommitted}
         />
       }
     />
