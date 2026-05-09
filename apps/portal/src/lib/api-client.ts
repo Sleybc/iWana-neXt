@@ -17,6 +17,7 @@ import {
   PromotionScope,
   ProductCategory,
   ScheduleEventStatus,
+  SlaBreachStatus,
   SubscriberStatus,
   TaxType,
   TechnicalConfidence,
@@ -24,6 +25,15 @@ import {
   TaxRegime,
   TechnicianAvailabilityType,
   TechnologyOption,
+  TicketFieldDecision,
+  TicketPriority,
+  TicketQueue,
+  TicketRequesterType,
+  TicketSource,
+  TicketStatus,
+  TicketSubjectType,
+  TicketTimelineEventType,
+  TicketType,
   TransitionStatusPayload,
   UpdateSubscriberPayload,
   VatTreatment,
@@ -1872,6 +1882,309 @@ export const dashboardApi = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// MOD10 / SERVICE ASSURANCE / MESA DE AYUDA
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AssuranceTicket {
+  id: string;
+  tenantId: string;
+  ticketNumber: string;
+  type: TicketType;
+  status: TicketStatus;
+  priority: TicketPriority;
+  source: TicketSource;
+  subject: string;
+  description: string | null;
+  requesterType: TicketRequesterType;
+  requesterRefId: string | null;
+  subjectType: TicketSubjectType | null;
+  subjectRefId: string | null;
+  assignedUserId: string | null;
+  queueName: TicketQueue | null;
+  slaPolicyId: string | null;
+  slaFirstResponseAt: string | null;
+  slaResolveByAt: string | null;
+  firstRespondedAt: string | null;
+  resolvedAt: string | null;
+  closedAt: string | null;
+  slaBreachStatus: SlaBreachStatus;
+  fieldDecision: TicketFieldDecision;
+  workOrderId: string | null;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssuranceTicketComment {
+  id: string;
+  ticketId: string;
+  tenantId: string;
+  body: string;
+  isInternal: boolean;
+  authorUserId: string;
+  createdAt: string;
+}
+
+export interface AssuranceTimelineEvent {
+  id: string;
+  ticketId: string;
+  tenantId: string;
+  eventType: TicketTimelineEventType;
+  payload: Record<string, unknown>;
+  actorUserId: string | null;
+  occurredAt: string;
+}
+
+export interface AssuranceSlaPolicy {
+  id: string;
+  tenantId: string;
+  name: string;
+  appliesToType: string | null;
+  appliesToPriority: string | null;
+  firstResponseMinutes: number;
+  resolutionMinutes: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssuranceDashboardSummary {
+  openCount: number;
+  assignedCount: number;
+  inProgressCount: number;
+  atRiskCount: number;
+  breachedCount: number;
+  resolvedTodayCount: number;
+  fieldServicePendingCount: number;
+  byPriority: Record<string, number>;
+  byType: Record<string, number>;
+}
+
+export interface CreateAssuranceTicketDto {
+  type: TicketType;
+  priority?: TicketPriority | undefined;
+  source?: TicketSource | undefined;
+  subject: string;
+  description?: string | null | undefined;
+  requesterType: TicketRequesterType;
+  requesterRefId?: string | null | undefined;
+  subjectType?: TicketSubjectType | null | undefined;
+  subjectRefId?: string | null | undefined;
+  assignedUserId?: string | null | undefined;
+  queueName?: TicketQueue | null | undefined;
+  fieldDecision?: TicketFieldDecision | undefined;
+  slaPolicyId?: string | null | undefined;
+}
+
+export interface UpdateAssuranceTicketDto {
+  subject?: string | undefined;
+  description?: string | null | undefined;
+  priority?: TicketPriority | undefined;
+  source?: TicketSource | undefined;
+  requesterRefId?: string | null | undefined;
+  subjectType?: TicketSubjectType | null | undefined;
+  subjectRefId?: string | null | undefined;
+  assignedUserId?: string | null | undefined;
+  queueName?: TicketQueue | null | undefined;
+  fieldDecision?: TicketFieldDecision | undefined;
+}
+
+export interface TransitionAssuranceTicketDto {
+  status: TicketStatus;
+  notes?: string | null | undefined;
+}
+
+export interface AddAssuranceCommentDto {
+  body: string;
+  isInternal?: boolean | undefined;
+}
+
+export interface AssignAssuranceTicketDto {
+  assignedUserId?: string | null | undefined;
+  queueName?: TicketQueue | null | undefined;
+}
+
+export interface RequestAssuranceFieldServiceDto {
+  notes?: string | null | undefined;
+}
+
+export interface LinkAssuranceWorkOrderDto {
+  workOrderId: string;
+  notes?: string | null | undefined;
+}
+
+export interface CreateAssuranceSlaPolicyDto {
+  name: string;
+  appliesToType?: string | null | undefined;
+  appliesToPriority?: string | null | undefined;
+  firstResponseMinutes: number;
+  resolutionMinutes: number;
+  isActive?: boolean | undefined;
+}
+
+export interface ListAssuranceTicketsParams {
+  status?: TicketStatus | undefined;
+  type?: TicketType | undefined;
+  priority?: TicketPriority | undefined;
+  slaBreachStatus?: SlaBreachStatus | undefined;
+  queueName?: TicketQueue | undefined;
+  requesterRefId?: string | undefined;
+  assignedUserId?: string | undefined;
+  page?: number | undefined;
+  limit?: number | undefined;
+}
+
+export interface ListAssuranceTicketsResponse {
+  data: AssuranceTicket[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface FindOrCreateInstallationTicketDto {
+  expedienteId: string;
+  expedienteFullName: string;
+}
+
+export interface FindOrCreateInstallationTicketResponse {
+  ticket: AssuranceTicket;
+  created: boolean;
+}
+
+export interface LinkExpedienteInstallationRefsDto {
+  ticketId: string;
+  workOrderId: string;
+  lastRescheduleReason?: string | null;
+  lastRescheduleNotes?: string | null;
+}
+
+export const assuranceApi = {
+  tickets: {
+    list: (params?: ListAssuranceTicketsParams, tenantSlug?: string) => {
+      const searchParams = new URLSearchParams();
+      if (params?.status) searchParams.set('status', params.status);
+      if (params?.type) searchParams.set('type', params.type);
+      if (params?.priority) searchParams.set('priority', params.priority);
+      if (params?.slaBreachStatus) searchParams.set('slaBreachStatus', params.slaBreachStatus);
+      if (params?.queueName) searchParams.set('queueName', params.queueName);
+      if (params?.requesterRefId) searchParams.set('requesterRefId', params.requesterRefId);
+      if (params?.assignedUserId) searchParams.set('assignedUserId', params.assignedUserId);
+      if (params?.page) searchParams.set('page', String(params.page));
+      if (params?.limit) searchParams.set('limit', String(params.limit));
+
+      const query = searchParams.toString();
+      return request<ListAssuranceTicketsResponse>(
+        `/assurance/tickets${query ? `?${query}` : ''}`,
+        { returnFullResponse: true },
+        tenantSlug,
+      );
+    },
+
+    get: (id: string, tenantSlug?: string) =>
+      request<AssuranceTicket>(
+        `/assurance/tickets/${id}`,
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    create: (dto: CreateAssuranceTicketDto, tenantSlug?: string) =>
+      request<AssuranceTicket>(
+        '/assurance/tickets',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    update: (id: string, dto: UpdateAssuranceTicketDto, tenantSlug?: string) =>
+      request<AssuranceTicket>(
+        `/assurance/tickets/${id}`,
+        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    transitionStatus: (id: string, dto: TransitionAssuranceTicketDto, tenantSlug?: string) =>
+      request<AssuranceTicket>(
+        `/assurance/tickets/${id}/status`,
+        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    addComment: (id: string, dto: AddAssuranceCommentDto, tenantSlug?: string) =>
+      request<AssuranceTicketComment>(
+        `/assurance/tickets/${id}/comments`,
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    listComments: (id: string, tenantSlug?: string) =>
+      request<AssuranceTicketComment[]>(
+        `/assurance/tickets/${id}/comments`,
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    assign: (id: string, dto: AssignAssuranceTicketDto, tenantSlug?: string) =>
+      request<AssuranceTicket>(
+        `/assurance/tickets/${id}/assign`,
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    listTimeline: (id: string, tenantSlug?: string) =>
+      request<AssuranceTimelineEvent[]>(
+        `/assurance/tickets/${id}/timeline`,
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    requestFieldService: (id: string, dto: RequestAssuranceFieldServiceDto, tenantSlug?: string) =>
+      request<AssuranceTicket>(
+        `/assurance/tickets/${id}/request-field-service`,
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    linkWorkOrder: (id: string, dto: LinkAssuranceWorkOrderDto, tenantSlug?: string) =>
+      request<AssuranceTicket>(
+        `/assurance/tickets/${id}/link-work-order`,
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    findOrCreateInstallation: (dto: FindOrCreateInstallationTicketDto, tenantSlug?: string) =>
+      request<FindOrCreateInstallationTicketResponse>(
+        '/assurance/tickets/find-or-create-installation',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+
+  dashboard: {
+    getSummary: (tenantSlug?: string) =>
+      request<AssuranceDashboardSummary>(
+        '/assurance/dashboard/summary',
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+
+  slaPolicies: {
+    list: (tenantSlug?: string) =>
+      request<AssuranceSlaPolicy[]>(
+        '/assurance/sla-policies',
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    create: (dto: CreateAssuranceSlaPolicyDto, tenantSlug?: string) =>
+      request<AssuranceSlaPolicy>(
+        '/assurance/sla-policies',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // WFM / PROGRAMACION OPERATIVA DEL TENANT
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1960,6 +2273,7 @@ export interface ListWfmScheduleEventsParams {
   from?: string | undefined;
   to?: string | undefined;
   assignedUserId?: string | undefined;
+  expedienteId?: string | undefined;
   type?: WfmWorkType | undefined;
   status?: ScheduleEventStatus | undefined;
   municipality?: string | undefined;
@@ -2063,6 +2377,7 @@ export const wfmApi = {
       if (params?.from) searchParams.set('from', params.from);
       if (params?.to) searchParams.set('to', params.to);
       if (params?.assignedUserId) searchParams.set('assignedUserId', params.assignedUserId);
+      if (params?.expedienteId) searchParams.set('expedienteId', params.expedienteId);
       if (params?.type) searchParams.set('type', params.type);
       if (params?.status) searchParams.set('status', params.status);
       if (params?.municipality) searchParams.set('municipality', params.municipality);
@@ -3392,6 +3707,17 @@ export const crmApi = {
       transitionWarning: TransitionWarning | null;
     }>(
       `/crm/expedientes/${id}/status`,
+      { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  linkInstallationOperationalRefs: (
+    id: string,
+    dto: LinkExpedienteInstallationRefsDto,
+    tenantSlug?: string,
+  ) =>
+    request<{ data: ExpedienteRecord }>(
+      `/crm/expedientes/${id}/installation-operational-refs`,
       { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
       tenantSlug,
     ),
