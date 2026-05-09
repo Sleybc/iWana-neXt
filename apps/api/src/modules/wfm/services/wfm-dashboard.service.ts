@@ -56,6 +56,7 @@ const ACTIVE_STATUSES = [
 const EXPECTED_DAILY_MINUTES = 480;
 const STARTING_SOON_MINUTES = 60;
 const ALERT_LIMIT = 12;
+const ACTIVE_STATUS_FILTER = 'se.status = ANY(CAST(:statuses AS schedule_event_status[]))';
 
 function toCount(value: unknown): number {
   const parsed = Number.parseInt(String(value ?? '0'), 10);
@@ -94,7 +95,7 @@ export class WfmDashboardService {
         .select('COUNT(*)', 'todayCount')
         .from('schedule_events', 'se')
         .where('se.tenant_id = :tenantId', { tenantId })
-        .andWhere('se.status = ANY(:statuses)', { statuses: ACTIVE_STATUSES })
+        .andWhere(ACTIVE_STATUS_FILTER, { statuses: ACTIVE_STATUSES })
         .andWhere('se.deleted_at IS NULL')
         .andWhere('se.scheduled_start_at >= :todayStart', { todayStart })
         .andWhere('se.scheduled_start_at <= :todayEnd', { todayEnd })
@@ -107,7 +108,7 @@ export class WfmDashboardService {
         .select('COUNT(*)', 'overdueCount')
         .from('schedule_events', 'se')
         .where('se.tenant_id = :tenantId', { tenantId })
-        .andWhere('se.status = ANY(:statuses)', { statuses: ACTIVE_STATUSES })
+        .andWhere(ACTIVE_STATUS_FILTER, { statuses: ACTIVE_STATUSES })
         .andWhere('se.deleted_at IS NULL')
         .andWhere('se.scheduled_end_at < :now', { now })
         .getRawOne();
@@ -122,7 +123,7 @@ export class WfmDashboardService {
         .select('COUNT(*)', 'upcomingCount')
         .from('schedule_events', 'se')
         .where('se.tenant_id = :tenantId', { tenantId })
-        .andWhere('se.status = ANY(:statuses)', { statuses: ACTIVE_STATUSES })
+        .andWhere(ACTIVE_STATUS_FILTER, { statuses: ACTIVE_STATUSES })
         .andWhere('se.deleted_at IS NULL')
         .andWhere('se.scheduled_start_at > :now', { now })
         .andWhere('se.scheduled_start_at <= :sevenDaysLater', { sevenDaysLater })
@@ -134,7 +135,7 @@ export class WfmDashboardService {
         .select('COUNT(*)', 'activeCount')
         .from('schedule_events', 'se')
         .where('se.tenant_id = :tenantId', { tenantId })
-        .andWhere('se.status = ANY(:statuses)', { statuses: ACTIVE_STATUSES })
+        .andWhere(ACTIVE_STATUS_FILTER, { statuses: ACTIVE_STATUSES })
         .andWhere('se.deleted_at IS NULL')
         .getRawOne();
 
@@ -177,9 +178,10 @@ export class WfmDashboardService {
           'COALESCE(SUM(EXTRACT(EPOCH FROM (se.scheduled_end_at - se.scheduled_start_at)) / 60), 0)',
           'total_minutes',
         )
+        .setParameter('now', now)
         .from('schedule_events', 'se')
         .where('se.tenant_id = :tenantId', { tenantId })
-        .andWhere('se.status = ANY(:statuses)', { statuses: ACTIVE_STATUSES })
+        .andWhere(ACTIVE_STATUS_FILTER, { statuses: ACTIVE_STATUSES })
         .andWhere('se.deleted_at IS NULL')
         .andWhere('se.scheduled_start_at >= :todayStart', { todayStart })
         .andWhere('se.scheduled_start_at <= :todayEnd', { todayEnd })
@@ -217,7 +219,7 @@ export class WfmDashboardService {
         .addSelect('se.scheduled_start_at', 'scheduled_start_at')
         .from('schedule_events', 'se')
         .where('se.tenant_id = :tenantId', { tenantId })
-        .andWhere('se.status = ANY(:statuses)', { statuses: ACTIVE_STATUSES })
+        .andWhere(ACTIVE_STATUS_FILTER, { statuses: ACTIVE_STATUSES })
         .andWhere('se.deleted_at IS NULL')
         .andWhere('se.scheduled_end_at < :now', { now })
         .orderBy('se.scheduled_end_at', 'ASC')

@@ -38,6 +38,7 @@ describe('WfmDashboardService', () => {
             createQueryBuilder: () => ({
               select: jest.fn().mockReturnThis(),
               addSelect: jest.fn().mockReturnThis(),
+              setParameter: jest.fn().mockReturnThis(),
               from: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               andWhere: jest.fn().mockReturnThis(),
@@ -81,6 +82,7 @@ describe('WfmDashboardService', () => {
             createQueryBuilder: () => ({
               select: jest.fn().mockReturnThis(),
               addSelect: jest.fn().mockReturnThis(),
+              setParameter: jest.fn().mockReturnThis(),
               from: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               andWhere: jest.fn().mockReturnThis(),
@@ -144,6 +146,7 @@ describe('WfmDashboardService', () => {
             createQueryBuilder: () => ({
               select: jest.fn().mockReturnThis(),
               addSelect: jest.fn().mockReturnThis(),
+              setParameter: jest.fn().mockReturnThis(),
               from: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               andWhere: jest.fn().mockReturnThis(),
@@ -206,6 +209,94 @@ describe('WfmDashboardService', () => {
           }),
         ]),
       );
+    });
+
+    it('should cast active status arrays to the tenant enum type for PostgreSQL', async () => {
+      const andWhereMock = jest.fn().mockReturnThis();
+
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
+        const rawOneResponses = [
+          { todayCount: '0' },
+          { overdueCount: '0' },
+          { upcomingCount: '0' },
+          { activeCount: '0' },
+          { enRouteCount: '0' },
+          { atRiskCount: '0' },
+        ];
+        const mockQr = {
+          manager: {
+            createQueryBuilder: () => ({
+              select: jest.fn().mockReturnThis(),
+              addSelect: jest.fn().mockReturnThis(),
+              setParameter: jest.fn().mockReturnThis(),
+              from: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              andWhere: andWhereMock,
+              groupBy: jest.fn().mockReturnThis(),
+              orderBy: jest.fn().mockReturnThis(),
+              limit: jest.fn().mockReturnThis(),
+              getRawOne: jest
+                .fn()
+                .mockImplementation(() => Promise.resolve(rawOneResponses.shift() ?? null)),
+              getRawMany: jest.fn().mockResolvedValue([]),
+            }),
+          },
+        };
+        return fn(mockQr as any);
+      });
+
+      await service.getSummary();
+
+      const activeStatusCalls = andWhereMock.mock.calls.filter((call) =>
+        String(call[0]).includes(':statuses'),
+      );
+      expect(activeStatusCalls).toHaveLength(6);
+      expect(activeStatusCalls).toEqual(
+        expect.arrayContaining([
+          expect.arrayContaining([
+            expect.stringContaining('CAST(:statuses AS schedule_event_status[])'),
+          ]),
+        ]),
+      );
+    });
+
+    it('should bind now when computing technician overdue load in SELECT expressions', async () => {
+      const setParameterMock = jest.fn().mockReturnThis();
+
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
+        const rawOneResponses = [
+          { todayCount: '0' },
+          { overdueCount: '0' },
+          { upcomingCount: '0' },
+          { activeCount: '0' },
+          { enRouteCount: '0' },
+          { atRiskCount: '0' },
+        ];
+        const mockQr = {
+          manager: {
+            createQueryBuilder: () => ({
+              select: jest.fn().mockReturnThis(),
+              addSelect: jest.fn().mockReturnThis(),
+              setParameter: setParameterMock,
+              from: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              andWhere: jest.fn().mockReturnThis(),
+              groupBy: jest.fn().mockReturnThis(),
+              orderBy: jest.fn().mockReturnThis(),
+              limit: jest.fn().mockReturnThis(),
+              getRawOne: jest
+                .fn()
+                .mockImplementation(() => Promise.resolve(rawOneResponses.shift() ?? null)),
+              getRawMany: jest.fn().mockResolvedValue([]),
+            }),
+          },
+        };
+        return fn(mockQr as any);
+      });
+
+      await service.getSummary();
+
+      expect(setParameterMock).toHaveBeenCalledWith('now', expect.any(Date));
     });
   });
 });

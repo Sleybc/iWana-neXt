@@ -12,6 +12,7 @@ const ACTIVE_STATUSES: ScheduleEventStatus[] = [
   ScheduleEventStatus.EN_ROUTE,
   ScheduleEventStatus.IN_PROGRESS,
 ];
+const ACTIVE_STATUS_FILTER = 'se.status = ANY(CAST(:statuses AS schedule_event_status[]))';
 
 export interface ConflictCheckParams {
   tenantId: string;
@@ -39,7 +40,7 @@ export class ScheduleConflictService {
       .from('schedule_events', 'se')
       .where('se.tenant_id = :tenantId', { tenantId })
       .andWhere('se.assigned_user_id = :uid', { uid: assignedUserId })
-      .andWhere('se.status = ANY(:statuses)', { statuses: ACTIVE_STATUSES })
+      .andWhere(ACTIVE_STATUS_FILTER, { statuses: ACTIVE_STATUSES })
       .andWhere('se.deleted_at IS NULL')
       .andWhere('se.scheduled_start_at < :endAt', { endAt: scheduledEndAt })
       .andWhere('se.scheduled_end_at > :startAt', { startAt: scheduledStartAt });

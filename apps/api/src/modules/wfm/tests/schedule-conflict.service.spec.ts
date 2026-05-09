@@ -105,6 +105,36 @@ describe('ScheduleConflictService', () => {
       expect(excludeCall).toBeDefined();
     });
 
+    it('should cast active status arrays to the tenant enum type for PostgreSQL', async () => {
+      const andWhereMock = jest.fn().mockReturnThis();
+
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
+        const mockQr = {
+          manager: {
+            createQueryBuilder: () => ({
+              select: jest.fn().mockReturnThis(),
+              from: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              andWhere: andWhereMock,
+              getRawOne: jest.fn().mockResolvedValue(undefined),
+            }),
+          },
+        };
+        return fn(mockQr as any);
+      });
+
+      await service.hasConflict(baseParams);
+
+      const statusCall = andWhereMock.mock.calls.find((call) =>
+        String(call[0]).includes(':statuses'),
+      );
+      expect(statusCall).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('CAST(:statuses AS schedule_event_status[])'),
+        ]),
+      );
+    });
+
     it('should not query when COMPLETED/CANCELLED/NO_SHOW statuses — non-conflicting by design', async () => {
       // El servicio usa ACTIVE_STATUSES internamente; este test valida que la lista excluye terminales
       // probando indirectamente: si el mock devuelve undefined, hasConflict = false
