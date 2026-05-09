@@ -166,6 +166,10 @@ describe('SchedulingClient', () => {
       todayCount: 1,
       overdueCount: 0,
       upcomingCount: 3,
+      activeCount: 1,
+      enRouteCount: 0,
+      atRiskCount: 0,
+      alerts: [],
       technicianLoad: [{ assignedUserId: 'tech-1', todayCount: 1 }],
     });
     wfmApiMock.technicians.listAvailability.mockResolvedValue([]);
@@ -226,14 +230,73 @@ describe('SchedulingClient', () => {
 
     render(<SchedulingClient />);
 
-    await waitFor(() => {
-      expect(screen.getByText('Instalación GPON barrio norte')).toBeInTheDocument();
-    });
-
     fireEvent.click(screen.getByRole('button', { name: 'Lista' }));
 
+    expect(await screen.findByText('Instalación GPON barrio norte')).toBeInTheDocument();
     expect((await screen.findAllByText('Instalación')).length).toBeGreaterThan(0);
     expect(screen.getAllByText('Programado').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Luisa Campos').length).toBeGreaterThan(0);
+  });
+
+  it('muestra command center por defecto para ADMIN y abre detalle desde una alerta', async () => {
+    wfmApiMock.dashboard.getSummary.mockResolvedValue({
+      todayCount: 1,
+      overdueCount: 1,
+      upcomingCount: 2,
+      activeCount: 1,
+      enRouteCount: 0,
+      atRiskCount: 1,
+      alerts: [
+        {
+          id: 'overdue-evt-1',
+          type: 'OVERDUE_EVENT',
+          severity: 'critical',
+          title: 'Evento atrasado',
+          description: 'Instalación GPON barrio norte',
+          eventId: 'evt-1',
+          assignedUserId: 'tech-1',
+          scheduledStartAt: '2026-05-07T13:00:00.000Z',
+        },
+      ],
+      technicianLoad: [
+        {
+          assignedUserId: 'tech-1',
+          todayCount: 1,
+          overdueCount: 1,
+          totalScheduledMinutes: 420,
+          utilizationPercent: 88,
+          riskLevel: 'HIGH',
+        },
+      ],
+    });
+    wfmApiMock.events.list.mockResolvedValue([buildEvent()]);
+    wfmApiMock.events.get.mockResolvedValue(buildEvent());
+
+    render(<SchedulingClient />);
+
+    expect(await screen.findByText('Command center')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /Abrir alerta Evento atrasado/i }));
+
+    await waitFor(() => {
+      expect(wfmApiMock.events.get).toHaveBeenCalledWith('evt-1');
+    });
+  });
+
+  it('no solicita summary global ni muestra command center para TECHNICIAN', async () => {
+    useAuthMock.mockReturnValue({
+      user: buildAuthUser(UserRole.TECHNICIAN),
+      isLoading: false,
+    });
+    wfmApiMock.events.list.mockResolvedValue([buildEvent()]);
+
+    render(<SchedulingClient />);
+
+    await waitFor(() => {
+      expect(wfmApiMock.events.list).toHaveBeenCalledTimes(1);
+    });
+
+    expect(wfmApiMock.dashboard.getSummary).not.toHaveBeenCalled();
+    expect(wfmApiMock.technicians.listAvailability).not.toHaveBeenCalled();
+    expect(screen.queryByText('Command center')).not.toBeInTheDocument();
   });
 });

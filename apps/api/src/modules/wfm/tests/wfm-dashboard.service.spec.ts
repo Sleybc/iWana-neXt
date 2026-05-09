@@ -43,6 +43,7 @@ describe('WfmDashboardService', () => {
               andWhere: jest.fn().mockReturnThis(),
               groupBy: jest.fn().mockReturnThis(),
               orderBy: jest.fn().mockReturnThis(),
+              limit: jest.fn().mockReturnThis(),
               getRawOne: jest.fn().mockImplementation(() => {
                 callCount++;
                 if (callCount === 1) return Promise.resolve({ todayCount: '5' });
@@ -67,8 +68,8 @@ describe('WfmDashboardService', () => {
         overdueCount: 2,
         upcomingCount: 12,
         technicianLoad: expect.arrayContaining([
-          { assignedUserId: 'tech-001', todayCount: 3 },
-          { assignedUserId: 'tech-002', todayCount: 2 },
+          expect.objectContaining({ assignedUserId: 'tech-001', todayCount: 3 }),
+          expect.objectContaining({ assignedUserId: 'tech-002', todayCount: 2 }),
         ]),
       });
     });
@@ -85,6 +86,7 @@ describe('WfmDashboardService', () => {
               andWhere: jest.fn().mockReturnThis(),
               groupBy: jest.fn().mockReturnThis(),
               orderBy: jest.fn().mockReturnThis(),
+              limit: jest.fn().mockReturnThis(),
               getRawOne: jest.fn().mockResolvedValue(null),
               getRawMany: jest.fn().mockResolvedValue([]),
             }),
@@ -99,6 +101,111 @@ describe('WfmDashboardService', () => {
       expect(summary.overdueCount).toBe(0);
       expect(summary.upcomingCount).toBe(0);
       expect(summary.technicianLoad).toHaveLength(0);
+    });
+
+    it('should return additive command center metrics without removing legacy fields', async () => {
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
+        const rawOneResponses = [
+          { todayCount: '6' },
+          { overdueCount: '2' },
+          { upcomingCount: '9' },
+          { activeCount: '4' },
+          { enRouteCount: '1' },
+          { atRiskCount: '2' },
+        ];
+        const rawManyResponses = [
+          [
+            {
+              assigned_user_id: 'tech-001',
+              today_count: '4',
+              overdue_count: '1',
+              total_minutes: '390',
+            },
+          ],
+          [
+            {
+              id: 'evt-overdue-001',
+              title: 'Instalacion pendiente',
+              assigned_user_id: 'tech-001',
+              scheduled_start_at: new Date('2026-05-09T08:00:00.000Z'),
+            },
+          ],
+          [
+            {
+              id: 'evt-draft-001',
+              title: 'Visita en borrador',
+              assigned_user_id: 'tech-002',
+              scheduled_start_at: new Date('2026-05-09T10:00:00.000Z'),
+            },
+          ],
+        ];
+        const mockQr = {
+          manager: {
+            createQueryBuilder: () => ({
+              select: jest.fn().mockReturnThis(),
+              addSelect: jest.fn().mockReturnThis(),
+              from: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              andWhere: jest.fn().mockReturnThis(),
+              groupBy: jest.fn().mockReturnThis(),
+              orderBy: jest.fn().mockReturnThis(),
+              limit: jest.fn().mockReturnThis(),
+              getRawOne: jest
+                .fn()
+                .mockImplementation(() => Promise.resolve(rawOneResponses.shift() ?? null)),
+              getRawMany: jest
+                .fn()
+                .mockImplementation(() => Promise.resolve(rawManyResponses.shift() ?? [])),
+            }),
+          },
+        };
+        return fn(mockQr as any);
+      });
+
+      const summary = await service.getSummary();
+
+      expect(summary).toMatchObject({
+        todayCount: 6,
+        overdueCount: 2,
+        upcomingCount: 9,
+        activeCount: 4,
+        enRouteCount: 1,
+        atRiskCount: 2,
+        technicianLoad: [
+          {
+            assignedUserId: 'tech-001',
+            todayCount: 4,
+            overdueCount: 1,
+            totalScheduledMinutes: 390,
+            utilizationPercent: 81,
+            riskLevel: 'HIGH',
+          },
+        ],
+      });
+      expect(summary.alerts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'overdue-evt-overdue-001',
+            type: 'OVERDUE_EVENT',
+            severity: 'critical',
+            eventId: 'evt-overdue-001',
+            assignedUserId: 'tech-001',
+          }),
+          expect.objectContaining({
+            id: 'draft-soon-evt-draft-001',
+            type: 'DRAFT_STARTING_SOON',
+            severity: 'warning',
+            eventId: 'evt-draft-001',
+            assignedUserId: 'tech-002',
+          }),
+          expect.objectContaining({
+            id: 'high-load-tech-001',
+            type: 'HIGH_TECHNICIAN_LOAD',
+            severity: 'warning',
+            assignedUserId: 'tech-001',
+          }),
+        ]),
+      );
     });
   });
 });

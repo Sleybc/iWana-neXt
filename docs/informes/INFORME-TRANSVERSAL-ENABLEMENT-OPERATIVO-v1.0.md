@@ -555,3 +555,59 @@ Se ejecutó el rediseño visual de `/dashboard/settings` en `apps/portal` con fo
 - Todos los tests de settings: PASS
 - Typecheck: PASS
 - Lint: PASS
+
+### Addendum documental 2026-05-08 — Plan de refinamiento de inputs en General y Operación
+
+Se documentó un frente específico para que Sr. Dev Fullstack ejecute el refinamiento visual de inputs en `apps/portal:/dashboard/settings`, acotado a las tabs `General` y `Operación`.
+
+Decisión de diseño registrada:
+
+- `General` y `Operación` **no** se fusionan en una sola tab ni en un solo submit.
+- El objetivo ya no es rediseñar todo el módulo, sino mejorar la distribución interna de inputs y la densidad útil de formularios.
+- El patrón aprobado es una grilla flexible de 12 columnas con spans variables.
+- Máximo 3 campos cortos por fila en desktop amplio; campos largos mantienen spans de 6 o 12 columnas.
+- `CompanyProfileForm` debe reorganizarse por grupos temáticos (`Perfil y contacto`, `Identificación y ubicación`).
+- `OperationalSettingsForm` mantiene sus grupos (`Ubicación`, `Preferencias`), pero mejora proporción entre `Zona horaria` y campos cortos.
+
+Artefactos creados para ejecución fullstack:
+
+- `docs/plans/PLAN-TRANSVERSAL-PORTAL-SETTINGS-LAYOUT-INPUTS-v1.0.md`
+- `docs/prompts/PROMPT-TRANSVERSAL-PORTAL-SETTINGS-LAYOUT-INPUTS-v1.0.md`
+
+Relación con el rediseño previo:
+
+- Este frente **no reemplaza** el histórico documental del rediseño amplio de settings.
+- Sí lo **acota operativamente** para la siguiente ejecución, dejando fuera nuevas iteraciones sobre overview, `Marca` o cambios de navegación adicional.
+
+Estado operativo: listo para ejecución por Sr. Dev Fullstack. En esta fase no se implementó código; se dejó trazado el alcance exacto, archivos objetivo, restricciones, validaciones y criterio de salida.
+
+### Addendum correctivo 2026-05-08 — Ejecución del refinamiento de inputs en settings portal
+
+Se ejecutó el plan de refinamiento visual sobre `apps/portal:/dashboard/settings`, limitado a las tabs `General` y `Operación`, manteniendo tabs separadas, submits independientes y contratos backend intactos.
+
+Cambios implementados:
+
+- `apps/portal/src/components/settings/CompanyProfileForm.tsx`
+  - la grilla editable dejó de ser plana y pasó a organizarse por dos bloques temáticos: `Perfil y contacto` y `Identificación y ubicación`;
+  - se adoptó una grilla flexible con spans variables para separar campos largos (`Correo`, `Razón social`, `Sitio web`) de campos cortos (`NIT`, `DV`, `País legal`).
+- `apps/portal/src/components/settings/OperationalSettingsForm.tsx`
+  - se mantuvieron los grupos `Ubicación` y `Preferencias`;
+  - `Zona horaria` pasó a ocupar mayor ancho visual que `País operativo`, `Idioma` y `Moneda`, tanto en edición como en lectura.
+- `apps/portal/src/components/settings/SettingsClient.spec.tsx`
+  - se agregó una prueba ancla para verificar que `General` y `Operación` siguen exponiendo sus acciones primarias visibles tras el refactor.
+
+Validación ejecutada:
+
+- `pnpm --filter @iwana/portal test -- "src/components/settings" --no-coverage` ✅
+- `pnpm --filter @iwana/portal typecheck` ✅
+- `pnpm --filter @iwana/portal lint` ✅
+
+Resultado:
+
+- `General` conserva su alcance funcional, pero ahora se percibe como formulario empresarial más escaneable y menos lineal.
+- `Operación` mejora proporción visual sin cambiar comportamiento.
+- No se tocaron DTOs, endpoints, permisos ni ownership de campos.
+
+Deuda residual:
+
+- Validación visual manual recomendada en `1440x900`, `1024x768` y `390x844` para afinar spans si operación considera que `NIT/DV/País legal` aún puede compactarse o soltarse un poco más según datos reales.

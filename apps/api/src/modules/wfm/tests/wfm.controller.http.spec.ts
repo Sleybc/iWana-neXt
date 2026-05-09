@@ -400,6 +400,13 @@ describe('WfmController HTTP', () => {
         .expect(403);
     });
 
+    it('returns 403 when CONTRACTOR requests dashboard', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/wfm/dashboard/summary')
+        .set('Authorization', 'Bearer contractor-token')
+        .expect(403);
+    });
+
     it('returns 200 with summary structure for NOC', async () => {
       dashboardServiceMock.getSummary.mockResolvedValue({
         todayCount: 10,
@@ -417,6 +424,51 @@ describe('WfmController HTTP', () => {
           expect(body).toHaveProperty('overdueCount', 2);
           expect(body).toHaveProperty('upcomingCount', 15);
           expect(Array.isArray(body.technicianLoad)).toBe(true);
+        });
+    });
+
+    it('returns command center additive fields for ADMIN', async () => {
+      dashboardServiceMock.getSummary.mockResolvedValue({
+        todayCount: 10,
+        overdueCount: 2,
+        upcomingCount: 15,
+        activeCount: 8,
+        enRouteCount: 3,
+        atRiskCount: 4,
+        alerts: [
+          {
+            id: 'overdue-evt-001',
+            type: 'OVERDUE_EVENT',
+            severity: 'critical',
+            title: 'Evento atrasado',
+            description: 'Instalacion pendiente',
+            eventId: 'evt-001',
+            assignedUserId: 'tech-001',
+            scheduledStartAt: '2026-05-09T08:00:00.000Z',
+          },
+        ],
+        technicianLoad: [
+          {
+            assignedUserId: 'tech-001',
+            todayCount: 5,
+            overdueCount: 1,
+            totalScheduledMinutes: 420,
+            utilizationPercent: 88,
+            riskLevel: 'HIGH',
+          },
+        ],
+      });
+
+      await request(app.getHttpServer())
+        .get('/api/v1/wfm/dashboard/summary')
+        .set('Authorization', 'Bearer admin-token')
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body).toHaveProperty('activeCount', 8);
+          expect(body).toHaveProperty('enRouteCount', 3);
+          expect(body).toHaveProperty('atRiskCount', 4);
+          expect(body.alerts[0]).toHaveProperty('severity', 'critical');
+          expect(body.technicianLoad[0]).toHaveProperty('riskLevel', 'HIGH');
         });
     });
   });

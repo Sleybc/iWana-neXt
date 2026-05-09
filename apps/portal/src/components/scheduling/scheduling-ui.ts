@@ -17,7 +17,7 @@ import type {
 } from '@/lib/api-client';
 import { getPortalUserRoleLabel } from '@/lib/user-labels';
 
-export type SchedulingView = 'calendar' | 'list';
+export type SchedulingView = 'command-center' | 'calendar' | 'list';
 
 type BadgeVariant = NonNullable<BadgeProps['variant']>;
 
@@ -40,6 +40,12 @@ export interface SchedulingCalendarDay {
   date: Date;
   label: string;
   shortLabel: string;
+  events: WfmScheduleEvent[];
+}
+
+export interface SchedulingTimelineGroup {
+  technicianId: string;
+  technicianName: string;
   events: WfmScheduleEvent[];
 }
 
@@ -209,6 +215,12 @@ const SCHEDULING_VIEW_ROLES = new Set<string>([
 
 const SCHEDULING_MANAGE_ROLES = new Set<string>([UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT]);
 
+const SCHEDULING_COMMAND_CENTER_ROLES = new Set<string>([
+  UserRole.ADMIN,
+  UserRole.NOC,
+  UserRole.SUPPORT,
+]);
+
 export const SCHEDULE_EVENT_STATUS_OPTIONS: SelectOption<ScheduleEventStatus>[] = Object.entries(
   eventStatusMeta,
 ).map(([value, meta]) => ({ value: value as ScheduleEventStatus, label: meta.label }));
@@ -351,6 +363,10 @@ export function canManageScheduling(role: string | null | undefined): boolean {
   return Boolean(role && SCHEDULING_MANAGE_ROLES.has(role));
 }
 
+export function canViewSchedulingCommandCenter(role: string | null | undefined): boolean {
+  return Boolean(role && SCHEDULING_COMMAND_CENTER_ROLES.has(role));
+}
+
 export function filterOperationalTechnicians(users: InternalUser[]): InternalUser[] {
   return users
     .filter((user) => user.role === UserRole.TECHNICIAN || user.role === UserRole.CONTRACTOR)
@@ -377,7 +393,9 @@ export function buildTechnicianOptions(users: InternalUser[]): SelectOption[] {
   }));
 }
 
-export function buildDefaultSchedulingFilters(): SchedulingFilters {
+export function buildDefaultSchedulingFilters(
+  view: SchedulingView = 'calendar',
+): SchedulingFilters {
   const today = new Date();
   const start = startOfDay(today);
   const end = addDays(start, 6);
@@ -388,7 +406,7 @@ export function buildDefaultSchedulingFilters(): SchedulingFilters {
     technicianId: '',
     type: '',
     status: '',
-    view: 'calendar',
+    view,
   };
 }
 
@@ -450,6 +468,43 @@ export function buildCalendarDays(
   return days;
 }
 
+export function getEventsForLocalDay(
+  events: WfmScheduleEvent[],
+  dayKey: string,
+): WfmScheduleEvent[] {
+  return events
+    .filter((event) => toLocalDayKey(new Date(event.scheduledStartAt)) === dayKey)
+    .sort(
+      (left, right) =>
+        new Date(left.scheduledStartAt).getTime() - new Date(right.scheduledStartAt).getTime(),
+    );
+}
+
+export function buildTimelineGroups(
+  events: WfmScheduleEvent[],
+  techniciansById: Map<string, InternalUser>,
+  dayKey: string,
+): SchedulingTimelineGroup[] {
+  const grouped = new Map<string, WfmScheduleEvent[]>();
+
+  getEventsForLocalDay(events, dayKey).forEach((event) => {
+    const bucket = grouped.get(event.assignedUserId) ?? [];
+    bucket.push(event);
+    grouped.set(event.assignedUserId, bucket);
+  });
+
+  return Array.from(grouped.entries())
+    .map(([technicianId, technicianEvents]) => {
+      const technician = techniciansById.get(technicianId);
+      return {
+        technicianId,
+        technicianName: technician ? getTechnicianDisplayName(technician) : 'Técnico no disponible',
+        events: technicianEvents,
+      };
+    })
+    .sort((left, right) => left.technicianName.localeCompare(right.technicianName, 'es'));
+}
+
 export function toDatetimeLocalValue(value: string | Date): string {
   const date = new Date(value);
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
@@ -468,6 +523,44 @@ export function getTechnicianLoadCount(
   }
 
   return summary.technicianLoad.find((item) => item.assignedUserId === userId)?.todayCount ?? 0;
+}
+
+export function getTechnicianLoadRiskLabel(
+  riskLevel: WfmDashboardSummary['technicianLoad'][number]['riskLevel'],
+): string {
+  if (riskLevel === 'HIGH') return 'Alta';
+  if (riskLevel === 'MEDIUM') return 'Media';
+  return 'Baja';
+}
+
+export function getTechnicianLoadRiskVariant(
+  riskLevel: WfmDashboardSummary['technicianLoad'][number]['riskLevel'],
+): BadgeVariant {
+  if (riskLevel === 'HIGH') return 'error';
+  if (riskLevel === 'MEDIUM') return 'warning';
+  return 'success';
+}
+
+export function getTechnicianLoadRiskTitle(
+  riskLevel: WfmDashboardSummary['technicianLoad'][number]['riskLevel'],
+): string {
+  return `Saturación ${getTechnicianLoadRiskLabel(riskLevel).toLowerCase()}`;
+}
+
+export function getDashboardAlertVariant(
+  severity: WfmDashboardSummary['alerts'][number]['severity'],
+): BadgeVariant {
+  if (severity === 'critical') return 'error';
+  if (severity === 'warning') return 'warning';
+  return 'info';
+}
+
+export function getDashboardAlertSeverityLabel(
+  severity: WfmDashboardSummary['alerts'][number]['severity'],
+): string {
+  if (severity === 'critical') return 'Crítica';
+  if (severity === 'warning') return 'Advertencia';
+  return 'Informativa';
 }
 
 export function getActiveWorkOrdersForTechnician(

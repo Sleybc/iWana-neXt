@@ -30,6 +30,7 @@ import { ScheduleCalendar } from './ScheduleCalendar';
 import { ScheduleEventDrawer } from './ScheduleEventDrawer';
 import { ScheduleEventForm } from './ScheduleEventForm';
 import { ScheduleList } from './ScheduleList';
+import { SchedulingOverview } from './SchedulingOverview';
 import { SchedulingToolbar } from './SchedulingToolbar';
 import { TechnicianWorkList } from './TechnicianWorkList';
 import { RescheduleEventDialog } from './RescheduleEventDialog';
@@ -39,6 +40,7 @@ import {
   buildTechnicianOptions,
   canManageScheduling,
   canViewScheduling,
+  canViewSchedulingCommandCenter,
   formatWfmDayLabel,
   getScheduleEventStatusLabel,
   getWfmWorkTypeLabel,
@@ -153,6 +155,7 @@ export function SchedulingClient() {
   const loadSequenceRef = useRef(0);
   const canView = canViewScheduling(user?.role);
   const canManage = canManageScheduling(user?.role);
+  const canViewCommandCenter = canViewSchedulingCommandCenter(user?.role);
   const techniciansById = useMemo(
     () => new Map(technicians.map((technician) => [technician.id, technician])),
     [technicians],
@@ -219,11 +222,18 @@ export function SchedulingClient() {
       ...(filters.technicianId ? { userId: filters.technicianId } : {}),
     };
 
+    const summaryPromise = canViewCommandCenter
+      ? wfmApi.dashboard.getSummary()
+      : Promise.resolve<WfmDashboardSummary | null>(null);
+    const availabilityPromise = canViewCommandCenter
+      ? wfmApi.technicians.listAvailability(availabilityParams)
+      : Promise.resolve<WfmTechnicianAvailability[]>([]);
+
     const [eventsResult, summaryResult, availabilityResult, techniciansResult, workOrdersResult] =
       await Promise.allSettled([
         wfmApi.events.list(eventParams),
-        wfmApi.dashboard.getSummary(),
-        wfmApi.technicians.listAvailability(availabilityParams),
+        summaryPromise,
+        availabilityPromise,
         loadOperationalUsers(),
         wfmApi.workOrders.list(),
       ]);
@@ -271,15 +281,39 @@ export function SchedulingClient() {
 
     setInfoMessage(warnings.length > 0 ? warnings.join(' ') : null);
     setIsLoading(false);
-  }, [filters]);
+  }, [canViewCommandCenter, filters]);
+
+  useEffect(() => {
+    if (authLoading || !user) {
+      return;
+    }
+
+    setFilters((current) => {
+      if (canViewCommandCenter && current.view === 'calendar') {
+        return { ...current, view: 'command-center' };
+      }
+      if (!canViewCommandCenter && current.view === 'command-center') {
+        return { ...current, view: 'calendar' };
+      }
+      return current;
+    });
+  }, [authLoading, canViewCommandCenter, user]);
 
   useEffect(() => {
     if (authLoading || !user || !canView) {
       return;
     }
 
+    if (canViewCommandCenter && filters.view !== 'command-center') {
+      return;
+    }
+
+    if (!canViewCommandCenter && filters.view === 'command-center') {
+      return;
+    }
+
     void loadData();
-  }, [authLoading, canView, loadData, user]);
+  }, [authLoading, canView, canViewCommandCenter, filters.view, loadData, user]);
 
   if (authLoading) {
     return (
@@ -365,32 +399,34 @@ export function SchedulingClient() {
         />
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <MetricCard
-              eyebrow="Agenda"
-              title="Eventos hoy"
-              value={todayLoad}
-              description="Eventos activos proyectados para la jornada actual."
-            />
-            <MetricCard
-              eyebrow="Backlog"
-              title="Eventos vencidos"
-              value={overdueLoad}
-              description="Pendientes cuyo cierre ya superó la franja comprometida."
-            />
-            <MetricCard
-              eyebrow="Horizonte"
-              title="Próximos 7 días"
-              value={upcomingLoad}
-              description="Carga operativa futura dentro de la ventana seleccionada."
-            />
-            <MetricCard
-              eyebrow="Capacidad"
-              title="Técnicos con carga"
-              value={activeTechnicians}
-              description="Técnicos con eventos activos reportados por el dashboard WFM."
-            />
-          </div>
+          {filters.view !== 'command-center' && (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <MetricCard
+                eyebrow="Agenda"
+                title="Eventos hoy"
+                value={todayLoad}
+                description="Eventos activos proyectados para la jornada actual."
+              />
+              <MetricCard
+                eyebrow="Backlog"
+                title="Eventos vencidos"
+                value={overdueLoad}
+                description="Pendientes cuyo cierre ya superó la franja comprometida."
+              />
+              <MetricCard
+                eyebrow="Horizonte"
+                title="Próximos 7 días"
+                value={upcomingLoad}
+                description="Carga operativa futura dentro de la ventana seleccionada."
+              />
+              <MetricCard
+                eyebrow="Capacidad"
+                title="Técnicos con carga"
+                value={activeTechnicians}
+                description="Técnicos con eventos activos reportados por el dashboard WFM."
+              />
+            </div>
+          )}
 
           <SchedulingToolbar
             filters={filters}
@@ -409,6 +445,7 @@ export function SchedulingClient() {
             }}
             isRefreshing={isLoading}
             canManage={canManage}
+            canViewCommandCenter={canViewCommandCenter}
           />
 
           {isLoading && events.length === 0 ? (
@@ -416,7 +453,20 @@ export function SchedulingClient() {
           ) : (
             <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
               <div className="space-y-6">
-                {filters.view === 'calendar' ? (
+                {filters.view === 'command-center' && canViewCommandCenter ? (
+                  <SchedulingOverview
+                    summary={summary}
+                    events={events}
+                    techniciansById={techniciansById}
+                    selectedDayKey={filters.fromDate}
+                    selectedTechnicianId={filters.technicianId}
+                    onSelectEvent={(event) => void loadEventDetails(event.id)}
+                    onFilterTechnician={(technicianId) => {
+                      setFeedback(null);
+                      setFilters((current) => ({ ...current, technicianId }));
+                    }}
+                  />
+                ) : filters.view === 'calendar' ? (
                   <ScheduleCalendar
                     days={calendarDays}
                     techniciansById={techniciansById}

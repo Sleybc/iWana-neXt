@@ -49,6 +49,9 @@ interface CompanyProfileFormProps {
   onUpdated: (updated: TenantSelf) => void;
 }
 
+const SECTION_LABEL =
+  'text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400';
+
 function nullable(value: string | undefined): string | null {
   const normalized = value?.trim();
   return normalized ? normalized : null;
@@ -175,76 +178,105 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
           icon={CircleAlert}
         />
 
-        <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <Input
-              id="contactEmail"
-              label="Correo de contacto"
-              autoComplete="email"
-              disabled={!canEdit}
-              error={errors.contactEmail?.message}
-              {...register('contactEmail')}
-            />
-            <Input
-              id="legalName"
-              label="Razón social"
-              disabled={!canEdit}
-              error={errors.legalName?.message}
-              {...register('legalName')}
-            />
-            <Input
-              id="nit"
-              label="NIT"
-              disabled={!canEdit}
-              error={errors.nit?.message}
-              {...register('nit')}
-            />
-            <Input
-              id="nitDv"
-              label="Dígito de verificación"
-              disabled={!canEdit}
-              placeholder="7"
-              error={errors.nitDv?.message}
-              {...register('nitDv')}
-            />
-            <Input
-              id="phone"
-              label="Teléfono"
-              disabled={!canEdit}
-              placeholder="+573001234567"
-              error={errors.phone?.message}
-              {...register('phone')}
-            />
-            <Input
-              id="city"
-              label="Ciudad"
-              disabled={!canEdit}
-              error={errors.city?.message}
-              {...register('city')}
-            />
-            <Input
-              id="department"
-              label="Departamento"
-              disabled={!canEdit}
-              error={errors.department?.message}
-              {...register('department')}
-            />
-            <Input
-              id="countryCode"
-              label="País legal"
-              disabled={!canEdit}
-              placeholder="CO"
-              error={errors.countryCode?.message}
-              {...register('countryCode')}
-            />
-            <Input
-              id="website"
-              label="Sitio web"
-              disabled={!canEdit}
-              placeholder="https://empresa.co"
-              error={errors.website?.message}
-              {...register('website')}
-            />
+        <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-6">
+          <div className="space-y-6">
+            <section className="space-y-4">
+              <p className={SECTION_LABEL}>Perfil y contacto</p>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12">
+                <div className="xl:col-span-6">
+                  <Input
+                    id="contactEmail"
+                    label="Correo de contacto"
+                    autoComplete="email"
+                    disabled={!canEdit}
+                    error={errors.contactEmail?.message}
+                    {...register('contactEmail')}
+                  />
+                </div>
+                <div className="xl:col-span-6">
+                  <Input
+                    id="legalName"
+                    label="Razón social"
+                    disabled={!canEdit}
+                    error={errors.legalName?.message}
+                    {...register('legalName')}
+                  />
+                </div>
+                <div className="xl:col-span-4">
+                  <Input
+                    id="phone"
+                    label="Teléfono"
+                    disabled={!canEdit}
+                    placeholder="+573001234567"
+                    error={errors.phone?.message}
+                    {...register('phone')}
+                  />
+                </div>
+                <div className="xl:col-span-8">
+                  <Input
+                    id="website"
+                    label="Sitio web"
+                    disabled={!canEdit}
+                    placeholder="https://empresa.co"
+                    error={errors.website?.message}
+                    {...register('website')}
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section className="space-y-4">
+              <p className={SECTION_LABEL}>Identificación y ubicación</p>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12">
+                <div className="xl:col-span-4">
+                  <Input
+                    id="nit"
+                    label="NIT"
+                    disabled={!canEdit}
+                    error={errors.nit?.message}
+                    {...register('nit')}
+                  />
+                </div>
+                <div className="xl:col-span-2">
+                  <Input
+                    id="nitDv"
+                    label="Dígito de verificación"
+                    disabled={!canEdit}
+                    placeholder="7"
+                    error={errors.nitDv?.message}
+                    {...register('nitDv')}
+                  />
+                </div>
+                <div className="xl:col-span-3">
+                  <Input
+                    id="countryCode"
+                    label="País legal"
+                    disabled={!canEdit}
+                    placeholder="CO"
+                    error={errors.countryCode?.message}
+                    {...register('countryCode')}
+                  />
+                </div>
+                <div className="xl:col-span-6">
+                  <Input
+                    id="city"
+                    label="Ciudad"
+                    disabled={!canEdit}
+                    error={errors.city?.message}
+                    {...register('city')}
+                  />
+                </div>
+                <div className="xl:col-span-6">
+                  <Input
+                    id="department"
+                    label="Departamento"
+                    disabled={!canEdit}
+                    error={errors.department?.message}
+                    {...register('department')}
+                  />
+                </div>
+              </div>
+            </section>
           </div>
 
           {serverError && (

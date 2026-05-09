@@ -1990,15 +1990,41 @@ export interface TransitionWfmWorkOrderDto {
   status: WorkOrderStatus;
 }
 
+export type WfmTechnicianLoadRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
+export type WfmDashboardAlertSeverity = 'critical' | 'warning' | 'info';
+export type WfmDashboardAlertType =
+  | 'OVERDUE_EVENT'
+  | 'DRAFT_STARTING_SOON'
+  | 'HIGH_TECHNICIAN_LOAD';
+
 export interface WfmDashboardTechnicianLoad {
   assignedUserId: string;
   todayCount: number;
+  overdueCount: number;
+  totalScheduledMinutes: number;
+  utilizationPercent: number;
+  riskLevel: WfmTechnicianLoadRiskLevel;
+}
+
+export interface WfmDashboardAlert {
+  id: string;
+  type: WfmDashboardAlertType;
+  severity: WfmDashboardAlertSeverity;
+  title: string;
+  description: string;
+  eventId: string | null;
+  assignedUserId: string | null;
+  scheduledStartAt: string | null;
 }
 
 export interface WfmDashboardSummary {
   todayCount: number;
   overdueCount: number;
   upcomingCount: number;
+  activeCount: number;
+  enRouteCount: number;
+  atRiskCount: number;
+  alerts: WfmDashboardAlert[];
   technicianLoad: WfmDashboardTechnicianLoad[];
 }
 

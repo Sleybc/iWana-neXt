@@ -131,8 +131,8 @@ export function OperationalSettingsForm({
             <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
               {/* Grupo Ubicación */}
               <p className={`mb-4 ${SUBSECTION_LABEL}`}>Ubicación</p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3 xl:col-span-7">
                   <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
                     Zona horaria
                   </span>
@@ -140,7 +140,7 @@ export function OperationalSettingsForm({
                     {labelFor(TIMEZONE_OPTIONS, settings.timezone)}
                   </span>
                 </div>
-                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3 xl:col-span-5">
                   <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
                     País operativo
                   </span>
@@ -154,8 +154,8 @@ export function OperationalSettingsForm({
 
               {/* Grupo Preferencias */}
               <p className={`mb-4 ${SUBSECTION_LABEL}`}>Preferencias</p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3 xl:col-span-6">
                   <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
                     Idioma
                   </span>
@@ -163,7 +163,7 @@ export function OperationalSettingsForm({
                     {labelFor(LANGUAGE_OPTIONS, settings.language)}
                   </span>
                 </div>
-                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3 xl:col-span-6">
                   <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
                     Moneda
                   </span>
@@ -190,8 +190,8 @@ export function OperationalSettingsForm({
             <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
               {/* Grupo: Ubicación */}
               <p className={`mb-4 ${SUBSECTION_LABEL}`}>Ubicación</p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12">
+                <div className="xl:col-span-7">
                   <label htmlFor="timezone" className={LABEL_CLASS}>
                     Zona horaria
                   </label>
@@ -206,7 +206,7 @@ export function OperationalSettingsForm({
                     <p className={ERROR_CLASS}>{errors.timezone.message}</p>
                   )}
                 </div>
-                <div>
+                <div className="xl:col-span-5">
                   <label htmlFor="country" className={LABEL_CLASS}>
                     País operativo
                   </label>
@@ -227,8 +227,8 @@ export function OperationalSettingsForm({
 
               {/* Grupo: Preferencias */}
               <p className={`mb-4 ${SUBSECTION_LABEL}`}>Preferencias</p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12">
+                <div className="xl:col-span-6">
                   <label htmlFor="language" className={LABEL_CLASS}>
                     Idioma
                   </label>
@@ -243,7 +243,7 @@ export function OperationalSettingsForm({
                     <p className={ERROR_CLASS}>{errors.language.message}</p>
                   )}
                 </div>
-                <div>
+                <div className="xl:col-span-6">
                   <label htmlFor="currency" className={LABEL_CLASS}>
                     Moneda
                   </label>

@@ -226,7 +226,22 @@ async function setupSchedulingMocks(
     ).length,
     overdueCount: 0,
     upcomingCount: events.length,
-    technicianLoad: [{ assignedUserId: TECHNICIAN_ID, todayCount: events.length }],
+    activeCount: events.filter((event) =>
+      ['DRAFT', 'SCHEDULED', 'EN_ROUTE', 'IN_PROGRESS'].includes(event.status),
+    ).length,
+    enRouteCount: events.filter((event) => event.status === 'EN_ROUTE').length,
+    atRiskCount: 0,
+    alerts: [],
+    technicianLoad: [
+      {
+        assignedUserId: TECHNICIAN_ID,
+        todayCount: events.length,
+        overdueCount: 0,
+        totalScheduledMinutes: events.length * 120,
+        utilizationPercent: Math.min(100, Math.round((events.length * 120 * 100) / 480)),
+        riskLevel: events.length >= 4 ? 'HIGH' : 'LOW',
+      },
+    ],
   });
 
   await page.route('**/api/v1/**', async (route) => {
@@ -380,7 +395,7 @@ async function setupSchedulingMocks(
         contentType: 'application/json',
         body:
           role === 'ADMIN'
-            ? JSON.stringify({ data: buildSummary() })
+            ? JSON.stringify(buildSummary())
             : JSON.stringify({ code: 'FORBIDDEN', message: 'No autorizado' }),
       });
       return;
@@ -392,7 +407,7 @@ async function setupSchedulingMocks(
         contentType: 'application/json',
         body:
           role === 'ADMIN'
-            ? JSON.stringify({ data: availability })
+            ? JSON.stringify(availability)
             : JSON.stringify({ code: 'FORBIDDEN', message: 'No autorizado' }),
       });
       return;
@@ -407,7 +422,7 @@ async function setupSchedulingMocks(
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: visibleWorkOrders }),
+        body: JSON.stringify(visibleWorkOrders),
       });
       return;
     }
@@ -436,7 +451,7 @@ async function setupSchedulingMocks(
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: workOrder }),
+        body: JSON.stringify(workOrder),
       });
       return;
     }
@@ -448,9 +463,7 @@ async function setupSchedulingMocks(
       await route.fulfill({
         status: workOrder ? 200 : 404,
         contentType: 'application/json',
-        body: JSON.stringify(
-          workOrder ? { data: workOrder } : { code: 'NOT_FOUND', message: 'OT no encontrada' },
-        ),
+        body: JSON.stringify(workOrder ?? { code: 'NOT_FOUND', message: 'OT no encontrada' }),
       });
       return;
     }
@@ -476,7 +489,7 @@ async function setupSchedulingMocks(
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: event }),
+        body: JSON.stringify(event),
       });
       return;
     }
@@ -508,7 +521,7 @@ async function setupSchedulingMocks(
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: event }),
+        body: JSON.stringify(event),
       });
       return;
     }
@@ -520,9 +533,7 @@ async function setupSchedulingMocks(
       await route.fulfill({
         status: event ? 200 : 404,
         contentType: 'application/json',
-        body: JSON.stringify(
-          event ? { data: event } : { code: 'NOT_FOUND', message: 'Evento no encontrado' },
-        ),
+        body: JSON.stringify(event ?? { code: 'NOT_FOUND', message: 'Evento no encontrado' }),
       });
       return;
     }
@@ -559,7 +570,7 @@ async function setupSchedulingMocks(
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: visibleEvents }),
+        body: JSON.stringify(visibleEvents),
       });
       return;
     }
@@ -639,7 +650,7 @@ async function setupSchedulingMocks(
       await route.fulfill({
         status: 201,
         contentType: 'application/json',
-        body: JSON.stringify({ data: createdEvent }),
+        body: JSON.stringify(createdEvent),
       });
       return;
     }
@@ -657,6 +668,7 @@ test('admin crea, reagenda y completa un evento con work order desde Programacio
   await page.goto('/dashboard/scheduling');
 
   await expect(page.getByRole('heading', { name: 'Programacion' })).toBeVisible();
+  await page.getByRole('button', { name: 'Calendario' }).click();
   await expect(page.getByRole('button', { name: 'Instalacion inicial de fibra' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Crear evento' }).click();
@@ -710,7 +722,7 @@ test('technician solo visualiza trabajos asignados en su agenda', async ({ page 
   await page.goto('/dashboard/scheduling');
 
   await expect(page.getByRole('heading', { name: 'Programacion' })).toBeVisible();
-  await expect(page.getByText('Cobertura parcial')).toBeVisible();
+  await expect(page.getByText('Command center')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Instalacion inicial de fibra' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Crear evento' })).toHaveCount(0);
 
@@ -734,6 +746,28 @@ test('admin conserva una agenda operativa usable en viewport movil', async ({ pa
   await expect(page.getByRole('button', { name: 'Ver detalle' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Ver detalle' }).click();
+  await expect(
+    page
+      .getByRole('dialog')
+      .filter({ has: page.getByRole('heading', { name: 'Instalacion inicial de fibra' }) }),
+  ).toBeVisible();
+});
+
+test('admin visualiza command center y abre detalle desde timeline', async ({ page }) => {
+  await seedPortalSession(page, 'ADMIN', 'admin-001');
+  await setupSchedulingMocks(page, 'ADMIN');
+
+  await page.goto('/dashboard/scheduling');
+
+  await expect(page.getByText('Command center')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Calendario' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Lista' })).toBeVisible();
+
+  await page.getByLabel('Desde').fill(buildDateInput(1));
+  await page.getByLabel('Hasta').fill(buildDateInput(1));
+  await page.getByRole('button', { name: 'Actualizar' }).click();
+
+  await page.getByRole('button', { name: 'Abrir evento Instalacion inicial de fibra' }).click();
   await expect(
     page
       .getByRole('dialog')

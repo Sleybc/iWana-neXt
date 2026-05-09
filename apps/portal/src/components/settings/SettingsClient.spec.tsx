@@ -113,15 +113,22 @@ describe('SettingsClient', () => {
     dashboardApi.getSummary.mockResolvedValue({ alerts: [] });
   });
 
-  it('should show branding sub-tabs only when branding tab is active', async () => {
+  it('should render branding form when marca tab is active', async () => {
     render(<SettingsClient />);
-
-    // Wait for loading to complete by waiting for the overview panel heading
-    await screen.findByRole('heading', { name: 'Test Company', level: 2 });
+    await screen.findByText('Guardar perfil empresarial');
 
     fireEvent.click(screen.getByRole('tab', { name: /Marca/i }));
 
-    expect(await screen.findByRole('tab', { name: 'Identidad visual' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Planes' })).toBeInTheDocument();
+    expect(await screen.findByText('Guardar identidad visual')).toBeInTheDocument();
+  });
+
+  it('should render general and operations sections with their primary actions', async () => {
+    render(<SettingsClient />);
+
+    expect(await screen.findByText('Guardar perfil empresarial')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: /Operación/i }));
+
+    expect(await screen.findByText('Guardar configuración operativa')).toBeInTheDocument();
   });
 });

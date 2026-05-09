@@ -1,6 +1,6 @@
 'use client';
 
-import { CalendarDays, List, Plus, RefreshCcw } from 'lucide-react';
+import { CalendarDays, LayoutDashboard, List, Plus, RefreshCcw } from 'lucide-react';
 import { Button, Input, Select } from '@iwana/ui';
 import { PortalPanel } from '@/components/shared/portal-ui';
 import type { SchedulingFilters } from './scheduling-ui';
@@ -23,6 +23,7 @@ interface SchedulingToolbarProps {
   onOpenCreate: () => void;
   isRefreshing: boolean;
   canManage: boolean;
+  canViewCommandCenter: boolean;
 }
 
 export function SchedulingToolbar({
@@ -33,6 +34,7 @@ export function SchedulingToolbar({
   onOpenCreate,
   isRefreshing,
   canManage,
+  canViewCommandCenter,
 }: SchedulingToolbarProps) {
   const update = <TKey extends keyof SchedulingFilters>(
     key: TKey,
@@ -106,6 +108,17 @@ export function SchedulingToolbar({
         />
 
         <div className="flex items-center gap-2 lg:justify-end">
+          {canViewCommandCenter && (
+            <Button
+              type="button"
+              variant={filters.view === 'command-center' ? 'primary' : 'secondary'}
+              onClick={() => setView('command-center')}
+              aria-pressed={filters.view === 'command-center'}
+            >
+              <LayoutDashboard className="h-4 w-4" aria-hidden="true" />
+              Command center
+            </Button>
+          )}
           <Button
             type="button"
             variant={filters.view === 'calendar' ? 'primary' : 'secondary'}

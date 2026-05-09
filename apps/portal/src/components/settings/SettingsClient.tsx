@@ -6,30 +6,17 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { useAuth } from '@/components/auth/AuthProvider';
 import {
   ApiError,
-  dashboardApi,
   tenantSelfApi,
-  type DashboardAlert,
   type TenantSelf,
   type TenantSelfSettings,
 } from '@/lib/api-client';
-import { AdditionalProductsManager } from './AdditionalProductsManager';
-import { AdditionalServicesManager } from './AdditionalServicesManager';
 import { BrandingForm } from './BrandingForm';
 import { CompanyProfileForm } from './CompanyProfileForm';
-import { CoverageCheckSection } from './CoverageCheckSection';
 import { OperationalSettingsForm } from './OperationalSettingsForm';
-import { PlanCatalogManager } from './PlanCatalogManager';
 import { SecuritySettingsCard } from './SecuritySettingsCard';
-import { SettingsOverviewPanel } from './SettingsOverviewPanel';
-import { SettingsSectionPanel } from './SettingsSectionPanel';
 import { SettingsTabPanel } from './SettingsTabPanel';
 import { SettingsTabs } from './SettingsTabs';
-import { SettingsSubTabs } from './SettingsSubTabs';
 import { SETTINGS_NAVIGATION, type SettingsTabId } from './settings-navigation';
-import {
-  SETTINGS_BRANDING_NAVIGATION,
-  type BrandingSettingsTabId,
-} from './settings-branding-navigation';
 import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 
 function mapError(error: unknown): string {
@@ -57,9 +44,7 @@ export function SettingsClient() {
   const tabNamespace = useId();
   const [profile, setProfile] = useState<TenantSelf | null>(null);
   const [settings, setSettings] = useState<TenantSelfSettings | null>(null);
-  const [alerts, setAlerts] = useState<DashboardAlert[]>([]);
   const [activeTab, setActiveTab] = useState<SettingsTabId>('general');
-  const [activeBrandingTab, setActiveBrandingTab] = useState<BrandingSettingsTabId>('identity');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -97,10 +82,9 @@ export function SettingsClient() {
     setError(null);
 
     try {
-      const [profileResult, settingsResult, summaryResult] = await Promise.allSettled([
+      const [profileResult, settingsResult] = await Promise.allSettled([
         tenantSelfApi.getProfile(),
         tenantSelfApi.getSettings(),
-        canEdit ? dashboardApi.getSummary() : Promise.resolve(null),
       ]);
 
       if (profileResult.status !== 'fulfilled') {
@@ -112,12 +96,6 @@ export function SettingsClient() {
 
       setProfile(profileResult.value);
       setSettings(settingsResult.value);
-
-      if (summaryResult.status === 'fulfilled' && summaryResult.value) {
-        setAlerts(summaryResult.value.alerts);
-      } else {
-        setAlerts([]);
-      }
     } catch (loadError) {
       setError(mapError(loadError));
     } finally {
@@ -175,7 +153,7 @@ export function SettingsClient() {
         subtitle="Administra perfil, operación base, seguridad y marca."
       />
 
-      <div className="w-full space-y-6">
+      <div className="w-full overflow-hidden rounded-2xl border border-white/70 bg-white/95 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">
         <SettingsTabs
           items={SETTINGS_NAVIGATION}
           activeTab={activeTab}
@@ -185,94 +163,44 @@ export function SettingsClient() {
           getBadge={(tabId) => tabBadgeMap[tabId]}
         />
 
-        <SettingsOverviewPanel
-          profile={profile}
-          settings={settings}
-          alerts={alerts}
-          canEdit={canEdit}
-        />
+        <div className="p-4 md:p-6">
+          <div className="space-y-6">
+            <SettingsTabPanel
+              id={getPanelId('general')}
+              labelledBy={getTabId('general')}
+              isActive={activeTab === 'general'}
+            >
+              <CompanyProfileForm profile={profile} canEdit={canEdit} onUpdated={setProfile} />
+            </SettingsTabPanel>
 
-        <div className="space-y-6">
-          <SettingsTabPanel
-            id={getPanelId('general')}
-            labelledBy={getTabId('general')}
-            isActive={activeTab === 'general'}
-          >
-            <CompanyProfileForm profile={profile} canEdit={canEdit} onUpdated={setProfile} />
-          </SettingsTabPanel>
-
-          <SettingsTabPanel
-            id={getPanelId('operations')}
-            labelledBy={getTabId('operations')}
-            isActive={activeTab === 'operations'}
-          >
-            <OperationalSettingsForm
-              settings={settings}
-              canEdit={canEdit}
-              onUpdated={setSettings}
-            />
-          </SettingsTabPanel>
-
-          <SettingsTabPanel
-            id={getPanelId('security')}
-            labelledBy={getTabId('security')}
-            isActive={activeTab === 'security'}
-          >
-            <SecuritySettingsCard settings={settings} canEdit={canEdit} onUpdated={setSettings} />
-          </SettingsTabPanel>
-
-          <SettingsTabPanel
-            id={getPanelId('branding')}
-            labelledBy={getTabId('branding')}
-            isActive={activeTab === 'branding'}
-          >
-            <div className="space-y-4">
-              <SettingsSubTabs
-                items={SETTINGS_BRANDING_NAVIGATION}
-                activeTab={activeBrandingTab}
-                onChange={setActiveBrandingTab}
+            <SettingsTabPanel
+              id={getPanelId('operations')}
+              labelledBy={getTabId('operations')}
+              isActive={activeTab === 'operations'}
+            >
+              <OperationalSettingsForm
+                settings={settings}
+                canEdit={canEdit}
+                onUpdated={setSettings}
               />
+            </SettingsTabPanel>
 
-              {activeBrandingTab === 'identity' ? (
-                <BrandingForm profile={profile} canEdit={canEdit} onUpdated={setProfile} />
-              ) : null}
+            <SettingsTabPanel
+              id={getPanelId('security')}
+              labelledBy={getTabId('security')}
+              isActive={activeTab === 'security'}
+            >
+              <SecuritySettingsCard settings={settings} canEdit={canEdit} onUpdated={setSettings} />
+            </SettingsTabPanel>
 
-              {activeBrandingTab === 'plans' ? (
-                <SettingsSectionPanel
-                  title="Catálogo de planes"
-                  description="Define la oferta base comercial visible para la empresa."
-                >
-                  <PlanCatalogManager canEdit={canEdit} />
-                </SettingsSectionPanel>
-              ) : null}
-
-              {activeBrandingTab === 'products' ? (
-                <div className="space-y-6">
-                  <SettingsSectionPanel
-                    title="Productos adicionales"
-                    description="Gestiona los productos que complementan los planes base."
-                  >
-                    <AdditionalProductsManager canEdit={canEdit} />
-                  </SettingsSectionPanel>
-                  <SettingsSectionPanel
-                    title="Servicios adicionales"
-                    description="Servicios de valor agregado disponibles para los clientes."
-                  >
-                    <AdditionalServicesManager canEdit={canEdit} />
-                  </SettingsSectionPanel>
-                </div>
-              ) : null}
-
-              {activeBrandingTab === 'coverage' ? (
-                <SettingsSectionPanel
-                  title="Verificador de cobertura"
-                  description="Consulta la disponibilidad del servicio por dirección o coordenadas."
-                >
-                  <CoverageCheckSection canEdit={canEdit} onCheck={tenantSelfApi.checkCoverage} />
-                </SettingsSectionPanel>
-              ) : null}
-            </div>
-          </SettingsTabPanel>
+            <SettingsTabPanel
+              id={getPanelId('branding')}
+              labelledBy={getTabId('branding')}
+              isActive={activeTab === 'branding'}
+            >
+              <BrandingForm profile={profile} canEdit={canEdit} onUpdated={setProfile} />
+            </SettingsTabPanel>
+          </div>
         </div>
       </div>
     </div>
