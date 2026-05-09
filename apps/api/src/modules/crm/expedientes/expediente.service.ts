@@ -37,6 +37,10 @@ import { TransitionStatusDto } from './dto/transition-status.dto';
 import { CreateContactAttemptDto } from './dto/create-contact-attempt.dto';
 import { CreateConsentDto, CONSENT_LEGAL_VERSION } from './dto/create-consent.dto';
 import { CreateCoverageCheckDto } from './dto/create-coverage-check.dto';
+import {
+  LinkInstallationOperationalRefsDto,
+  LinkInstallationOperationalRefsSchema,
+} from './dto/link-installation-operational-refs.dto';
 import { OperationalResponsibilityHistory } from '../responsibilities/entities/operational-responsibility-history.entity';
 import {
   DOCUMENT_SUPPORT_STATUS,
@@ -696,7 +700,7 @@ export class ExpedienteService {
     );
 
     if (!entity) {
-      throw new NotFoundException(`Expediente ${id} no encontrado`);
+      throw new NotFoundException('Expediente no encontrado');
     }
 
     if (entity.documentNumberEncrypted) {
@@ -1202,6 +1206,51 @@ export class ExpedienteService {
         order: { checkedAt: 'DESC' },
       }),
     );
+  }
+
+  /**
+   * Vincular ticket y orden de trabajo operativos al expediente de instalación
+   */
+  async linkInstallationOperationalRefs(
+    expedienteId: string,
+    dto: LinkInstallationOperationalRefsDto,
+    actorUserId: string,
+  ): Promise<ExpedienteRecord> {
+    // Valida estructura del DTO en la frontera del servicio
+    LinkInstallationOperationalRefsSchema.parse(dto);
+
+    const { schemaName } = TenantContext.getOrThrow();
+    const entity = await this.findById(expedienteId);
+
+    const prevTicketId = entity.ticketId;
+    const prevWorkOrderId = entity.workOrderId;
+
+    entity.ticketId = dto.ticketId;
+    entity.workOrderId = dto.workOrderId;
+
+    if (dto.lastRescheduleReason !== undefined) {
+      entity.lastRescheduleReason = dto.lastRescheduleReason ?? null;
+    }
+    if (dto.lastRescheduleNotes !== undefined) {
+      entity.lastRescheduleNotes = dto.lastRescheduleNotes ?? null;
+    }
+
+    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await qr.manager.save(ExpedienteRecord, entity);
+    });
+
+    await this.auditService.log({
+      action: AuditAction.UPDATE,
+      entityType: 'ExpedienteRecord',
+      entityId: expedienteId,
+      userId: actorUserId,
+      newValue: {
+        ticketId: { from: prevTicketId, to: dto.ticketId },
+        workOrderId: { from: prevWorkOrderId, to: dto.workOrderId },
+      },
+    });
+
+    return this.findById(expedienteId);
   }
 
   async getTimelineSummary(id: string): Promise<{

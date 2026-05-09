@@ -51,6 +51,10 @@ import {
   UpdateDocumentSupportStatusBodyDto,
   UpdateDocumentSupportStatusSchema,
 } from './dto/update-document-support-status.dto';
+import {
+  LinkInstallationOperationalRefsDto,
+  LinkInstallationOperationalRefsSchema,
+} from './dto/link-installation-operational-refs.dto';
 
 interface UploadedDocumentFile {
   originalname: string;
@@ -399,6 +403,19 @@ export class ExpedientesController {
   @ApiOperation({ summary: 'Listar verificaciones de cobertura del expediente' })
   async listCoverageChecks(@Param('id', ParseUUIDPipe) id: string) {
     const data = await this.expedienteService.listCoverageChecks(id);
+    return { data };
+  }
+
+  @Patch(':id/installation-operational-refs')
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Vincular referencias operativas de instalación al expediente' })
+  async linkInstallationOperationalRefs(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodBodyValidationPipe(LinkInstallationOperationalRefsSchema))
+    dto: LinkInstallationOperationalRefsDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const data = await this.expedienteService.linkInstallationOperationalRefs(id, dto, user.sub);
     return { data };
   }
 }

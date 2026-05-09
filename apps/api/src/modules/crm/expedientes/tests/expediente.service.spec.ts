@@ -2285,6 +2285,114 @@ describe('ExpedienteService', () => {
       }),
     );
   });
+
+  describe('linkInstallationOperationalRefs', () => {
+    const TICKET_UUID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+    const WORK_ORDER_UUID = 'b2c3d4e5-f6a7-8901-bcde-f12345678901';
+
+    it('debe persistir ticketId y workOrderId en el expediente', async () => {
+      const expediente = buildExpediente({ id: 'exp-link-refs' });
+      const saveSpy = jest.fn(async (_entity: unknown, data: unknown) => data);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: async () => expediente,
+            save: saveSpy,
+          },
+        }),
+      );
+      completenessCalculatorMock.calculate.mockResolvedValue({
+        commercial: 80,
+        legal: 50,
+        technical: 40,
+        operational: 60,
+        overall: 57,
+      });
+
+      await service.linkInstallationOperationalRefs(
+        'exp-link-refs',
+        { ticketId: TICKET_UUID, workOrderId: WORK_ORDER_UUID },
+        'user-1',
+      );
+
+      expect(saveSpy).toHaveBeenCalledWith(
+        ExpedienteRecord,
+        expect.objectContaining({ ticketId: TICKET_UUID, workOrderId: WORK_ORDER_UUID }),
+      );
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.UPDATE,
+          entityId: 'exp-link-refs',
+          userId: 'user-1',
+          newValue: expect.objectContaining({
+            ticketId: { from: null, to: TICKET_UUID },
+            workOrderId: { from: null, to: WORK_ORDER_UUID },
+          }),
+        }),
+      );
+    });
+
+    it('debe persistir lastRescheduleReason y lastRescheduleNotes cuando se proveen', async () => {
+      const expediente = buildExpediente({ id: 'exp-link-reschedule' });
+      const saveSpy = jest.fn(async (_entity: unknown, data: unknown) => data);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: async () => expediente,
+            save: saveSpy,
+          },
+        }),
+      );
+      completenessCalculatorMock.calculate.mockResolvedValue({
+        commercial: 80,
+        legal: 50,
+        technical: 40,
+        operational: 60,
+        overall: 57,
+      });
+
+      await service.linkInstallationOperationalRefs(
+        'exp-link-reschedule',
+        {
+          ticketId: TICKET_UUID,
+          workOrderId: WORK_ORDER_UUID,
+          lastRescheduleReason: 'Clima adverso',
+          lastRescheduleNotes: 'Se reprogramó para la próxima semana',
+        },
+        'user-1',
+      );
+
+      expect(saveSpy).toHaveBeenCalledWith(
+        ExpedienteRecord,
+        expect.objectContaining({
+          lastRescheduleReason: 'Clima adverso',
+          lastRescheduleNotes: 'Se reprogramó para la próxima semana',
+        }),
+      );
+    });
+
+    it('debe lanzar NotFoundException si el expediente no existe', async () => {
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: async () => null,
+          },
+        }),
+      );
+
+      await expect(
+        service.linkInstallationOperationalRefs(
+          'exp-inexistente',
+          { ticketId: TICKET_UUID, workOrderId: WORK_ORDER_UUID },
+          'user-1',
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
+
+      expect(auditServiceMock.log).not.toHaveBeenCalled();
+    });
+  });
 });
 
 function resolveActor(actorId: string) {
