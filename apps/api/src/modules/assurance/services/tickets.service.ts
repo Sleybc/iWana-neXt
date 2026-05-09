@@ -662,8 +662,11 @@ export class TicketsService {
         return { ticket: existing, created: false };
       }
 
+      const ticketNumber = await this.generateTicketNumber(qr.manager, ctx.tenantId);
+
       const ticket = qr.manager.create(SupportTicket, {
         tenantId: ctx.tenantId,
+        ticketNumber,
         type: TicketType.OPERATIONAL_TASK,
         subjectType: TicketSubjectType.EXPEDIENTE,
         subjectRefId: dto.expedienteId,

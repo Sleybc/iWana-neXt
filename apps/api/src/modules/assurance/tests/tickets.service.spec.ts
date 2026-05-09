@@ -812,8 +812,10 @@ describe('TicketsService', () => {
     });
 
     it('debe crear ticket nuevo si no existe ninguno abierto', async () => {
+      const generatedTicketNumber = 'TK-20250101-001';
       const savedTicket = {
         id: 'ticket-new-001',
+        ticketNumber: generatedTicketNumber,
         type: TicketType.OPERATIONAL_TASK,
         subjectType: TicketSubjectType.EXPEDIENTE,
         subjectRefId: dto.expedienteId,
@@ -830,12 +832,24 @@ describe('TicketsService', () => {
       const createMock = jest.fn((_entity, payload) => payload);
       const saveMock = jest.fn().mockResolvedValue(savedTicket);
 
+      // Mock de createQueryBuilder para generateTicketNumber
+      const getRawOneMock = jest.fn().mockResolvedValue({ count: '0' });
+      const qbMock = {
+        select: jest.fn().mockReturnThis(),
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getRawOne: getRawOneMock,
+      };
+      const createQueryBuilderMock = jest.fn().mockReturnValue(qbMock);
+
       mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schemaName, fn) => {
         const mockQr = {
           manager: {
             findOne: findOneMock,
             create: createMock,
             save: saveMock,
+            createQueryBuilder: createQueryBuilderMock,
           },
         };
         return fn(mockQr as any);
@@ -850,6 +864,7 @@ describe('TicketsService', () => {
           type: TicketType.OPERATIONAL_TASK,
           subjectType: TicketSubjectType.EXPEDIENTE,
           subjectRefId: dto.expedienteId,
+          ticketNumber: expect.stringMatching(/^TK-\d{8}-\d{3}$/),
           queueName: TicketQueue.OPERATIONS,
           requesterType: TicketRequesterType.INTERNAL_USER,
           source: TicketSource.INTERNAL,
