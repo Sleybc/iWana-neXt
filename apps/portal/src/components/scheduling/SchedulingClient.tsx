@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { WfmWorkType, WorkOrderSourceContext } from '@iwana/shared';
 import {
   Badge,
   Button,
@@ -22,18 +24,23 @@ import type {
   WfmTechnicianAvailability,
   WfmWorkOrder,
 } from '@/lib/api-client';
-import { ApiError, usersApi, wfmApi } from '@/lib/api-client';
+import { ApiError, assuranceApi, crmApi, usersApi, wfmApi } from '@/lib/api-client';
 import { useAuth } from '@/components/auth/AuthProvider';
+import {
+  INSTALLATION_SCHEDULING_MIN_PROGRESS,
+  canScheduleInstallation,
+} from '@/components/crm/expedientes/expediente-scheduling';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 import { ScheduleCalendar } from './ScheduleCalendar';
 import { ScheduleEventDrawer } from './ScheduleEventDrawer';
-import { ScheduleEventForm } from './ScheduleEventForm';
+import { ScheduleEventForm, type ScheduleEventFormInitialValues } from './ScheduleEventForm';
 import { ScheduleList } from './ScheduleList';
 import { SchedulingOverview } from './SchedulingOverview';
 import { SchedulingToolbar } from './SchedulingToolbar';
 import { TechnicianWorkList } from './TechnicianWorkList';
 import { RescheduleEventDialog } from './RescheduleEventDialog';
+import { syncExpedienteAfterScheduleEvent } from './scheduling-expediente-sync';
 import {
   buildCalendarDays,
   buildDefaultSchedulingFilters,
@@ -41,14 +48,18 @@ import {
   canManageScheduling,
   canViewScheduling,
   canViewSchedulingCommandCenter,
+  formatSchedulingExpedienteLabel,
   formatWfmDayLabel,
   getScheduleEventStatusLabel,
   getWfmWorkTypeLabel,
+  isScheduleEventTerminalStatus,
   toApiDateRange,
   type SchedulingFilters,
 } from './scheduling-ui';
 
 const USERS_PAGE_SIZE = 100;
+const CRM_EXPEDIENTE_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function mapSchedulingError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -76,6 +87,45 @@ async function loadOperationalUsers(): Promise<InternalUser[]> {
   } while (cursor);
 
   return Array.from(collected.values());
+}
+
+function buildExpedienteInitialValues(
+  response: Awaited<ReturnType<typeof crmApi.getExpediente>>,
+): ScheduleEventFormInitialValues {
+  const expedienteShortLabel = formatSchedulingExpedienteLabel(response.data.id);
+  const title = `Instalación - ${response.data.fullName}`.slice(0, 160);
+  const description = `Evento originado desde CRM para la oportunidad ${expedienteShortLabel}.`;
+  const workOrderSummary = `Instalación asociada al expediente ${response.data.fullName}`.slice(
+    0,
+    200,
+  );
+  const workOrderNotes = [response.data.specialAccessNotes, response.data.technicalObservations]
+    .filter((value): value is string => Boolean(value?.trim()))
+    .join(' | ')
+    .slice(0, 500);
+
+  return {
+    type: WfmWorkType.INSTALLATION,
+    title,
+    description,
+    address: response.data.address ?? '',
+    municipality: response.data.municipality ?? '',
+    latitude:
+      response.data.latitude !== null && response.data.latitude !== undefined
+        ? String(response.data.latitude)
+        : '',
+    longitude:
+      response.data.longitude !== null && response.data.longitude !== undefined
+        ? String(response.data.longitude)
+        : '',
+    expedienteId: response.data.id,
+    createWorkOrder: true,
+    workOrderType: WfmWorkType.INSTALLATION,
+    workOrderSourceContext: WorkOrderSourceContext.CRM,
+    workOrderSourceRef: response.data.id,
+    workOrderSummary,
+    workOrderNotes,
+  };
 }
 
 function MetricCard({
@@ -123,6 +173,9 @@ function SchedulingSkeleton() {
 }
 
 export function SchedulingClient() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, isLoading: authLoading } = useAuth();
   const [filters, setFilters] = useState<SchedulingFilters>(() => buildDefaultSchedulingFilters());
   const [events, setEvents] = useState<WfmScheduleEvent[]>([]);
@@ -138,6 +191,12 @@ export function SchedulingClient() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCreateSubmitting, setIsCreateSubmitting] = useState(false);
+  const [createInitialValues, setCreateInitialValues] = useState<
+    ScheduleEventFormInitialValues | undefined
+  >(undefined);
+  const [createContextLabel, setCreateContextLabel] = useState<string | null>(null);
+  const [expedienteContextId, setExpedienteContextId] = useState<string | null>(null);
+  const [installationTicketId, setInstallationTicketId] = useState<string | null>(null);
 
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<WfmScheduleEvent | null>(null);
@@ -153,6 +212,7 @@ export function SchedulingClient() {
   const [isWorkOrderTransitioning, setIsWorkOrderTransitioning] = useState(false);
 
   const loadSequenceRef = useRef(0);
+  const handledCreateQueryRef = useRef<string | null>(null);
   const canView = canViewScheduling(user?.role);
   const canManage = canManageScheduling(user?.role);
   const canViewCommandCenter = canViewSchedulingCommandCenter(user?.role);
@@ -168,6 +228,102 @@ export function SchedulingClient() {
   const selectedTechnician = selectedEvent
     ? (techniciansById.get(selectedEvent.assignedUserId) ?? null)
     : null;
+  const hasPendingCreateQueryContext =
+    searchParams.get('open') === 'create' && Boolean(searchParams.get('expedienteId'));
+
+  const clearCreateContext = useCallback(() => {
+    setCreateInitialValues(undefined);
+    setCreateContextLabel(null);
+    setExpedienteContextId(null);
+    setInstallationTicketId(null);
+    setCreateError(null);
+  }, []);
+
+  const clearCreateQueryParams = useCallback(() => {
+    if (!pathname) {
+      return;
+    }
+
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete('open');
+    nextParams.delete('type');
+    nextParams.delete('expedienteId');
+
+    const nextQuery = nextParams.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname);
+  }, [pathname, router, searchParams]);
+
+  const hydrateCreateFromExpediente = useCallback(
+    async (expedienteId: string, options?: { clearQueryOnFinish?: boolean }) => {
+      try {
+        const response = await crmApi.getExpediente(expedienteId);
+        const canSchedule = canScheduleInstallation({
+          status: response.data.status,
+          overallProgress:
+            response.completeness?.overall ??
+            response.data.completenessOverall ??
+            response.data.pipelineProgress ??
+            0,
+          canTransition:
+            response.completeness?.installationReadiness?.canTransition ??
+            response.installationReadiness?.canTransition ??
+            false,
+        });
+
+        if (!canSchedule) {
+          setInfoMessage(
+            `El expediente aún no está habilitado para agendar instalación. Debe estar en Listo para instalación y alcanzar al menos el ${INSTALLATION_SCHEDULING_MIN_PROGRESS}% de avance.`,
+          );
+          return false;
+        }
+
+        const expedienteEvents = await wfmApi.events.list({ expedienteId: response.data.id });
+        const existingActiveEvent = expedienteEvents.find(
+          (event) => !isScheduleEventTerminalStatus(event.status),
+        );
+
+        if (existingActiveEvent) {
+          setInfoMessage(
+            'Este expediente ya tiene un evento activo en Programación. Revisa el evento existente antes de crear uno nuevo.',
+          );
+          await loadEventDetails(existingActiveEvent.id);
+          return false;
+        }
+
+        // Asegurar ticket operativo en Assurance (idempotente)
+        let resolvedTicketId: string | null = null;
+        try {
+          const ticketResult = await assuranceApi.tickets.findOrCreateInstallation({
+            expedienteId: response.data.id,
+            expedienteFullName: response.data.fullName,
+          });
+          resolvedTicketId = ticketResult.ticket.id;
+          setInstallationTicketId(ticketResult.ticket.id);
+        } catch (ticketError) {
+          setInfoMessage(
+            `No fue posible asegurar el ticket de instalación. ${mapSchedulingError(ticketError)}`,
+          );
+          return false;
+        }
+
+        const baseInitialValues = buildExpedienteInitialValues(response);
+        setCreateInitialValues({ ...baseInitialValues, ticketId: resolvedTicketId ?? '' });
+        setCreateContextLabel(`Agendando instalación para ${response.data.fullName}.`);
+        setExpedienteContextId(response.data.id);
+        setCreateError(null);
+        setIsCreateOpen(true);
+        return true;
+      } catch (prefillError) {
+        setInfoMessage(mapSchedulingError(prefillError));
+        return false;
+      } finally {
+        if (options?.clearQueryOnFinish) {
+          clearCreateQueryParams();
+        }
+      }
+    },
+    [clearCreateQueryParams],
+  );
 
   const loadEventDetails = useCallback(async (eventId: string) => {
     setSelectedEventId(eventId);
@@ -315,6 +471,41 @@ export function SchedulingClient() {
     void loadData();
   }, [authLoading, canView, canViewCommandCenter, filters.view, loadData, user]);
 
+  useEffect(() => {
+    if (authLoading || !user) {
+      return;
+    }
+
+    const open = searchParams.get('open');
+    const type = searchParams.get('type');
+    const expedienteId = searchParams.get('expedienteId');
+    const queryKey = searchParams.toString();
+
+    if (open !== 'create' || type !== WfmWorkType.INSTALLATION || !expedienteId) {
+      return;
+    }
+
+    if (!canManage) {
+      setInfoMessage('Tu rol actual no puede crear agendamientos desde CRM en Programación.');
+      clearCreateQueryParams();
+      return;
+    }
+
+    if (!CRM_EXPEDIENTE_ID_PATTERN.test(expedienteId)) {
+      setInfoMessage('El identificador del expediente no es válido para abrir el agendamiento.');
+      clearCreateQueryParams();
+      return;
+    }
+
+    if (handledCreateQueryRef.current === queryKey) {
+      return;
+    }
+
+    handledCreateQueryRef.current = queryKey;
+
+    void hydrateCreateFromExpediente(expedienteId, { clearQueryOnFinish: true });
+  }, [authLoading, canManage, hydrateCreateFromExpediente, searchParams, user]);
+
   if (authLoading) {
     return (
       <div className="space-y-6">
@@ -440,7 +631,20 @@ export function SchedulingClient() {
               void loadData();
             }}
             onOpenCreate={() => {
-              setCreateError(null);
+              if (hasPendingCreateQueryContext && !createInitialValues) {
+                const pendingExpedienteId = searchParams.get('expedienteId');
+
+                if (pendingExpedienteId) {
+                  void hydrateCreateFromExpediente(pendingExpedienteId, {
+                    clearQueryOnFinish: true,
+                  });
+                  return;
+                }
+              }
+
+              if (!createInitialValues && !expedienteContextId && !hasPendingCreateQueryContext) {
+                clearCreateContext();
+              }
               setIsCreateOpen(true);
             }}
             isRefreshing={isLoading}
@@ -493,32 +697,103 @@ export function SchedulingClient() {
         </>
       )}
 
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+      <Dialog
+        open={isCreateOpen}
+        onOpenChange={(open) => {
+          setIsCreateOpen(open);
+          if (!open) {
+            clearCreateContext();
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>Crear evento operativo</DialogTitle>
             <DialogDescription>
-              Registra una nueva actividad técnica y, si aplica, genera una work order ligera dentro
-              del mismo flujo.
+              {createContextLabel ??
+                'Registra una nueva actividad técnica y, si aplica, genera una work order ligera dentro del mismo flujo.'}
             </DialogDescription>
           </DialogHeader>
           <ScheduleEventForm
+            initialValues={createInitialValues}
+            expedienteDisplayLabel={
+              expedienteContextId ? formatSchedulingExpedienteLabel(expedienteContextId) : undefined
+            }
+            workOrderSourceRefDisplayLabel={
+              expedienteContextId ? formatSchedulingExpedienteLabel(expedienteContextId) : undefined
+            }
             technicians={technicians}
             error={createError}
             isSubmitting={isCreateSubmitting}
-            onCancel={() => setIsCreateOpen(false)}
+            lockOperationalFlow={Boolean(expedienteContextId)}
+            onCancel={() => {
+              setIsCreateOpen(false);
+              clearCreateContext();
+            }}
             onSubmit={async (payload: CreateWfmScheduleEventDto) => {
               setCreateError(null);
               setIsCreateSubmitting(true);
 
               try {
                 const createdEvent = await wfmApi.events.create(payload);
-                setFeedback(
-                  `${createdEvent.title} quedó registrado como ${getWfmWorkTypeLabel(createdEvent.type).toLowerCase()}.`,
-                );
+                let feedbackMessage = `${createdEvent.title} quedó registrado como ${getWfmWorkTypeLabel(createdEvent.type).toLowerCase()}.`;
+                let transitionWarning: string | null = null;
+
+                // Vincular work order al ticket de instalación (si ambos existen)
+                if (installationTicketId && createdEvent.workOrderId) {
+                  try {
+                    await assuranceApi.tickets.linkWorkOrder(installationTicketId, {
+                      workOrderId: createdEvent.workOrderId,
+                    });
+                  } catch (linkWoError) {
+                    // No bloqueante: loguear pero continuar
+                    console.warn(
+                      'No fue posible vincular la work order al ticket de instalación:',
+                      linkWoError,
+                    );
+                  }
+                }
+
+                // Persistir refs operativas en CRM y transicionar estado
+                if (expedienteContextId && payload.expedienteId === expedienteContextId) {
+                  // Persistir ticketId + workOrderId en el expediente
+                  if (installationTicketId) {
+                    try {
+                      await crmApi.linkInstallationOperationalRefs(expedienteContextId, {
+                        ticketId: installationTicketId,
+                        workOrderId: createdEvent.workOrderId ?? '',
+                      });
+                    } catch (linkRefsError) {
+                      console.warn(
+                        'No fue posible persistir las refs operativas en el expediente:',
+                        linkRefsError,
+                      );
+                    }
+                  }
+
+                  // Transicionar estado del expediente
+                  try {
+                    await syncExpedienteAfterScheduleEvent({
+                      expedienteContextId,
+                      payloadExpedienteId: payload.expedienteId,
+                      transitionExpedienteStatus: crmApi.transitionExpedienteStatus,
+                    });
+                    feedbackMessage += ' El expediente quedó marcado como instalación agendada.';
+                  } catch (transitionError) {
+                    transitionWarning = `El evento se creó, pero no fue posible actualizar el expediente automáticamente. ${mapSchedulingError(transitionError)}`;
+                  }
+                }
+
+                setFeedback(feedbackMessage);
                 setIsCreateOpen(false);
+                clearCreateContext();
                 await loadData();
                 await loadEventDetails(createdEvent.id);
+                if (transitionWarning) {
+                  setInfoMessage((current) =>
+                    current ? `${current} ${transitionWarning}` : transitionWarning,
+                  );
+                }
               } catch (createEventError) {
                 setCreateError(mapSchedulingError(createEventError));
               } finally {

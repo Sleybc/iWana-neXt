@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -116,6 +116,8 @@ const scheduleEventFormSchema = z
 
 type ScheduleEventFormValues = z.infer<typeof scheduleEventFormSchema>;
 
+export type ScheduleEventFormInitialValues = Partial<ScheduleEventFormValues>;
+
 function buildDefaultDateTime(offsetHours: number): string {
   const date = new Date();
   date.setMinutes(0, 0, 0);
@@ -134,6 +136,36 @@ interface ScheduleEventFormProps {
   onCancel: () => void;
   isSubmitting: boolean;
   error: string | null;
+  expedienteDisplayLabel?: string | undefined;
+  workOrderSourceRefDisplayLabel?: string | undefined;
+  initialValues?: ScheduleEventFormInitialValues | undefined;
+  lockOperationalFlow?: boolean | undefined;
+}
+
+function buildDefaultFormValues(): ScheduleEventFormValues {
+  return {
+    type: WfmWorkType.TECHNICAL_VISIT,
+    title: '',
+    description: '',
+    scheduledStartAtLocal: buildDefaultDateTime(1),
+    scheduledEndAtLocal: buildDefaultDateTime(2),
+    assignedUserId: '',
+    address: '',
+    municipality: '',
+    latitude: '',
+    longitude: '',
+    expedienteId: '',
+    subscriberId: '',
+    ticketId: '',
+    contractId: '',
+    createWorkOrder: false,
+    workOrderSummary: '',
+    workOrderNotes: '',
+    workOrderPriority: WorkOrderPriority.NORMAL,
+    workOrderType: '',
+    workOrderSourceContext: WorkOrderSourceContext.MANUAL,
+    workOrderSourceRef: '',
+  };
 }
 
 export function ScheduleEventForm({
@@ -142,41 +174,32 @@ export function ScheduleEventForm({
   onCancel,
   isSubmitting,
   error,
+  expedienteDisplayLabel,
+  workOrderSourceRefDisplayLabel,
+  initialValues,
+  lockOperationalFlow,
 }: ScheduleEventFormProps) {
   const technicianOptions = useMemo(() => buildTechnicianOptions(technicians), [technicians]);
+  const defaultValues = useMemo(
+    () => ({ ...buildDefaultFormValues(), ...initialValues }),
+    [initialValues],
+  );
 
   const {
     register,
     control,
     handleSubmit,
+    reset,
     watch,
     formState: { errors },
   } = useForm<ScheduleEventFormValues>({
     resolver: zodResolver(scheduleEventFormSchema),
-    defaultValues: {
-      type: WfmWorkType.TECHNICAL_VISIT,
-      title: '',
-      description: '',
-      scheduledStartAtLocal: buildDefaultDateTime(1),
-      scheduledEndAtLocal: buildDefaultDateTime(2),
-      assignedUserId: '',
-      address: '',
-      municipality: '',
-      latitude: '',
-      longitude: '',
-      expedienteId: '',
-      subscriberId: '',
-      ticketId: '',
-      contractId: '',
-      createWorkOrder: false,
-      workOrderSummary: '',
-      workOrderNotes: '',
-      workOrderPriority: WorkOrderPriority.NORMAL,
-      workOrderType: '',
-      workOrderSourceContext: WorkOrderSourceContext.MANUAL,
-      workOrderSourceRef: '',
-    },
+    defaultValues,
   });
+
+  useEffect(() => {
+    reset(defaultValues);
+  }, [defaultValues, reset]);
 
   const createWorkOrder = watch('createWorkOrder');
 
@@ -358,7 +381,7 @@ export function ScheduleEventForm({
           id="schedule-event-ticket"
           label="Ticket o referencia"
           error={errors.ticketId?.message}
-          disabled={isSubmitting}
+          disabled={isSubmitting || Boolean(lockOperationalFlow)}
           {...register('ticketId')}
         />
         <Input
@@ -372,14 +395,28 @@ export function ScheduleEventForm({
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <Input
-          id="schedule-event-expediente"
-          label="Expediente"
-          helperText="UUID opcional del expediente comercial."
-          error={errors.expedienteId?.message}
-          disabled={isSubmitting}
-          {...register('expedienteId')}
-        />
+        {expedienteDisplayLabel ? (
+          <>
+            <input type="hidden" {...register('expedienteId')} />
+            <Input
+              id="schedule-event-expediente"
+              label="Expediente"
+              helperText="Referencia corta del expediente CRM. El vínculo interno usa el identificador real."
+              value={expedienteDisplayLabel}
+              readOnly
+              disabled={isSubmitting}
+            />
+          </>
+        ) : (
+          <Input
+            id="schedule-event-expediente"
+            label="Expediente"
+            helperText="Identificador interno opcional del expediente comercial."
+            error={errors.expedienteId?.message}
+            disabled={isSubmitting}
+            {...register('expedienteId')}
+          />
+        )}
         <Input
           id="schedule-event-subscriber"
           label="Suscriptor"
@@ -391,7 +428,11 @@ export function ScheduleEventForm({
       </div>
 
       <label className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-3 text-sm text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
-        <input type="checkbox" disabled={isSubmitting} {...register('createWorkOrder')} />
+        <input
+          type="checkbox"
+          disabled={isSubmitting || Boolean(lockOperationalFlow)}
+          {...register('createWorkOrder')}
+        />
         <span>
           <span className="block font-medium text-gray-900 dark:text-white">
             Crear work order embebida
@@ -458,13 +499,27 @@ export function ScheduleEventForm({
             disabled={isSubmitting}
             {...register('workOrderSummary')}
           />
-          <Input
-            id="schedule-work-order-source-ref"
-            label="Referencia de origen"
-            error={errors.workOrderSourceRef?.message}
-            disabled={isSubmitting}
-            {...register('workOrderSourceRef')}
-          />
+          {workOrderSourceRefDisplayLabel ? (
+            <>
+              <input type="hidden" {...register('workOrderSourceRef')} />
+              <Input
+                id="schedule-work-order-source-ref"
+                label="Referencia de origen"
+                helperText="Referencia corta visible del origen CRM. El vínculo interno conserva el identificador real."
+                value={workOrderSourceRefDisplayLabel}
+                readOnly
+                disabled={isSubmitting}
+              />
+            </>
+          ) : (
+            <Input
+              id="schedule-work-order-source-ref"
+              label="Referencia de origen"
+              error={errors.workOrderSourceRef?.message}
+              disabled={isSubmitting}
+              {...register('workOrderSourceRef')}
+            />
+          )}
 
           <div>
             <label
