@@ -609,16 +609,14 @@ export class ExpedienteService {
       const effectiveView = filters.view ?? (includeCompleted ? 'all' : 'open');
       const allowedStatuses = resolveExpedienteStatusesForView(effectiveView);
 
-      if (allowedStatuses !== null) {
-        if (status) {
-          // Filtro específico de estado dentro del superconjunto de la vista
-          query.andWhere('expediente.status = :status', { status });
-        } else {
+      if (status) {
+        query.andWhere('expediente.status = :status', { status });
+        // Solo aplicar restricción de vista si no es 'all' (allowedStatuses !== null)
+        if (allowedStatuses !== null) {
           query.andWhere('expediente.status IN (:...allowedStatuses)', { allowedStatuses });
         }
-      } else if (status) {
-        // view='all' con filtro exacto de estado
-        query.andWhere('expediente.status = :status', { status });
+      } else if (allowedStatuses !== null) {
+        query.andWhere('expediente.status IN (:...allowedStatuses)', { allowedStatuses });
       }
 
       query.orderBy('expediente.createdAt', 'DESC');

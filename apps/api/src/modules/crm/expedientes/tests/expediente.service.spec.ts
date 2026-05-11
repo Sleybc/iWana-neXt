@@ -1690,6 +1690,39 @@ describe('ExpedienteService', () => {
     });
   });
 
+  it('excluye registros fuera de la vista cuando se combina view + status', async () => {
+    const baseRows = [
+      buildExpediente({ id: 'exp-open', status: ExpedienteStatus.PRECALIFICADO }),
+      buildExpediente({ id: 'exp-archive', status: ExpedienteStatus.CLIENTE_ACTIVO }),
+    ];
+
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 0,
+      legal: 0,
+      technical: 0,
+      operational: 0,
+      overall: 0,
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          createQueryBuilder: jest.fn().mockReturnValue(buildFindAllQueryBuilder(baseRows)),
+        },
+      }),
+    );
+
+    // CLIENTE_ACTIVO pertenece a la vista 'archive', no a 'open' → debe devolver total 0
+    await expect(
+      service.findAll({
+        view: 'open',
+        status: ExpedienteStatus.CLIENTE_ACTIVO,
+        limit: 20,
+        page: 1,
+      }),
+    ).resolves.toMatchObject({ data: [], total: 0 });
+  });
+
   it('revoca consentimiento de tratamiento de datos y marca el agregado para cumplimiento', async () => {
     const consentimiento = {
       id: 'consent-1',
