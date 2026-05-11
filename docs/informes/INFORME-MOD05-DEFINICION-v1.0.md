@@ -1,8 +1,8 @@
 # INFORME — Definición MOD05 CRM / Expediente Único Progresivo
 
-**Versión:** 4.2  
-**Estado:** Correctivo CRM alineado — backend y portal validados  
-**Fecha:** 2026-05-05  
+**Versión:** 4.3  
+**Estado:** Correctivo CRM alineado — post-conversión CRM/subscriber validado  
+**Fecha:** 2026-05-11  
 **Modo activo:** Mixto  
 **Módulo:** MOD05 — CRM / Expediente Único Progresivo  
 **Artefacto principal:** docs/prds/PRD-MOD05-CRM-DEFINICION-v2.0.md
@@ -19,9 +19,11 @@
 | Spec expediente único     | `docs/superpowers/specs/SPEC-MOD05-EXPEDIENTE-UNICO-v1.0.md` |
 | Spec rediseño             | `docs/superpowers/specs/SPEC-MOD05-REDISENO-v1.0.md`         |
 | Spec simplificación vista general | `docs/superpowers/specs/2026-05-05-crm-expediente-vista-general-simplificacion-design.md` |
+| Spec post-conversión CRM/subscriber | `docs/specs/SPEC-MOD05-CRM-POSTCONVERSION-FULLSTACK-v1.0.md` |
 | HLD vigente (v2.0)        | `docs/hlds/HLD-MOD05-ARQUITECTURA-v2.0.md`                   |
 | HLD previo (v1.0)         | _(eliminado — referencia historica)_                         |
 | ADR-024                   | `docs/adrs/ADR-024-Migracion-CRM-Expediente-Unico.md`        |
+| ADR-027                   | `docs/adrs/ADR-027-Conversion-Expediente-Subscriber-Two-Stage.md` |
 | Addendum cierre Sprint 02 | `docs/prds/PRD-MOD05-CRM-ADDENDUM-CIERRE-v2.1.md`            |
 | PRD origen y atribución   | `docs/prds/PRD-MOD05-CRM-ORIGEN-ATRIBUCION-v1.1.md`          |
 | Plan backlog incentivos futuro | `docs/plans/PLAN-MOD05-INCENTIVOS-BACKLOG-v1.0.md`      |
@@ -31,7 +33,7 @@
 | PRD del sistema           | `docs/prds/PRD_Sistema_ISP_Colombia_v2_2.md`                 |
 | Stack tecnológico         | `docs/prds/Stack_Tecnologico.md`                             |
 | Informe Sprint 01         | _(eliminado — referencia historica)_                         |
-| ADRs referenciados        | ADR-016, ADR-017, ADR-018, ADR-019, ADR-022, ADR-024         |
+| ADRs referenciados        | ADR-016, ADR-017, ADR-018, ADR-019, ADR-022, ADR-024, ADR-027 |
 
 ---
 
@@ -308,14 +310,52 @@ Nota de roadmap:
 
 - Reintroducir estas capacidades en un flujo dedicado de ejecución cuando estén disponibles los módulos de parametrización de ciclos y programación de instalación.
 
+### Evidencia correctiva del 2026-05-11 (post-conversión expediente / subscriber)
+
+Se cerró la ejecución full stack del ajuste post-conversión definido para la convivencia operativa entre CRM y Subscriber 360°, preservando el diseño two-stage aprobado y sin introducir migraciones ni nuevos endpoints.
+
+Implementación consolidada:
+
+- Backend CRM:
+  - `GET /crm/expedientes` quedó extendido con semántica `view=open|converted|archive|all`, con `open` por defecto y precedencia explícita sobre `includeCompleted`.
+  - El mapeo de vistas a estados quedó centralizado en `apps/api/src/modules/crm/expedientes/expediente-list-view.ts`.
+  - `GET /crm/expedientes/:id` enriquece el expediente con `subscriberSummary` cuando existe vínculo por `expedienteId`, sin bloquear la lectura si el enriquecimiento falla.
+- Portal:
+  - `apps/portal/src/app/dashboard/crm/expedientes/page.tsx` ahora expone las vistas `Abiertas`, `Convertidas` y `Archivo`, usa búsqueda global temporal con `Todo CRM` y etiqueta el origen operativo cuando la consulta llega por `all`.
+  - `apps/portal/src/app/dashboard/crm/expedientes/[id]/page.tsx` muestra banner de conversión para `INSTALACION_AGENDADA` y `CLIENTE_ACTIVO`, con CTA a `/dashboard/crm/subscribers/[subscriberId]` cuando existe vínculo.
+  - `apps/portal/src/components/crm/CrmOverviewClient.tsx` conserva `Total` como lectura operativa y deja `Activos` con copy explícito de cierre histórico.
+  - Se preservó el enlace inverso desde Subscriber 360° al expediente origen en `apps/portal/src/components/crm/subscribers/SubscriberDetailClient.tsx`.
+- Testing focalizado:
+  - pruebas backend de servicio y controller cubren `view`, compatibilidad temporal con `includeCompleted` y `subscriberSummary`;
+  - pruebas unitarias portal cubren tabs, `Todo CRM`, badge de origen y banner de conversión;
+  - el flujo E2E portal valida navegación expediente convertido → subscriber y subscriber → expediente origen.
+
+Validación ejecutada en esta pasada:
+
+- `pnpm --filter @iwana/api test -- src/modules/crm/expedientes/tests/expediente.service.spec.ts src/modules/crm/expedientes/tests/expedientes.controller.spec.ts` ✅ (72/72)
+- `pnpm --filter @iwana/portal exec jest src/app/dashboard/crm/expedientes/page.spec.tsx src/components/crm/expedientes/ExpedienteConversionBanner.spec.tsx src/components/crm/expedientes/expediente-list-view.spec.ts --runInBand` ✅ (11/11)
+- `pnpm exec playwright test --config e2e/playwright.portal.config.ts e2e/tests/portal-crm-expedientes.spec.ts` ✅ (11/11)
+
+Bloqueos de validación global detectados pero fuera de este correctivo:
+
+- `pnpm --filter @iwana/api typecheck` falla por trabajo no relacionado en `apps/api/src/modules/assurance/**` y exports faltantes de `@iwana/db` / `@iwana/shared`.
+- `pnpm --filter @iwana/portal typecheck` falla por trabajo no relacionado en `apps/portal/src/components/assurance/**`, `apps/portal/src/components/scheduling/**` y helpers no exportados fuera del alcance MOD05.
+
+Conclusión operativa:
+
+1. `INSTALACION_AGENDADA` ya no participa en la bandeja principal `Abiertas`.
+2. El expediente convertido conserva detalle, histórico y navegación cruzada con Subscriber 360°.
+3. La semántica de vistas quedó resuelta en backend, evitando drift en totales, búsqueda y paginación.
+4. La ejecución del spec post-conversión queda cerrada a nivel funcional; los fallos actuales de typecheck del workspace pertenecen a cambios ajenos en curso.
+
 ---
 
 ## 5. Evidencia de calidad
 
 - Estado de verificación en esta actualización:
-  - No se ejecutaron pruebas; la actualización fue documental.
-  - Se validó consistencia de gobernanza: 10 secciones en el PRD nuevo, HLD mínimo emitido e informe vivo actualizado.
-  - Se validó consistencia arquitectónica del boundary contra el modulith y contra MOD03.
+  - Se ejecutaron pruebas focalizadas backend, portal unitario y E2E del flujo post-conversión CRM/subscriber.
+  - Los typechecks globales de `apps/api` y `apps/portal` permanecen bloqueados por cambios no relacionados en Assurance y Scheduling presentes en el workspace.
+  - Se validó consistencia de gobernanza del ajuste contra PRD complementario, HLD vigente y ADR-027.
 - Revisión de alineación: el PRD v1.1 corrige la activación temprana y formaliza la trazabilidad operativa exigida por negocio.
 - Regulación colombiana aún aplicable: Ley 1581 (Habeas Data) y trazabilidad contractual/documental; para MVP queda aprobada una modalidad parametrizable por tenant y cualquier exigencia probatoria superior deberá escalarse como ADR o requerimiento tenant específico.
 
@@ -337,7 +377,8 @@ Nota de roadmap:
 | `docs/prompts/PROMPT-MOD05-CRM-ORIGEN-ATRIBUCION-FASE1-v1.1.md` | Prompt operativo de origen/atribución | Aprobado por CTO |
 | `docs/superpowers/specs/SPEC-MOD05-EXPEDIENTE-UNICO-v1.0.md` | Spec expediente único           | Aprobado por CTO               |
 | `docs/superpowers/specs/2026-05-05-crm-expediente-vista-general-simplificacion-design.md` | Spec refinamiento visual de vista general | Aprobado |
-| Este informe                                                 | Informe vivo de definición      | Actualizado v4.2               |
+| `docs/specs/SPEC-MOD05-CRM-POSTCONVERSION-FULLSTACK-v1.0.md` | Spec post-conversión CRM/subscriber | En revisión ejecutada |
+| Este informe                                                 | Informe vivo de definición      | Actualizado v4.3               |
 
 **Documentos eliminados por consolidación:**
 

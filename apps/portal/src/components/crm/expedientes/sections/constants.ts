@@ -57,14 +57,32 @@ function normalizePersonType(value: string | null | undefined): string {
     .replace(/\s+/g, '_');
 }
 
-function isLegalEntityPersonType(value: string | null | undefined): boolean {
+export function canonicalizeExpedientePersonType(value: string | null | undefined): string {
   const normalized = normalizePersonType(value);
-  return (
+
+  if (
     normalized === 'PERSONA_JURIDICA' ||
     normalized === 'JURIDICA' ||
     normalized === 'PERSONAJURIDICA' ||
     normalized === 'TIPO_PERSONA_JURIDICA'
-  );
+  ) {
+    return 'PERSONA_JURIDICA';
+  }
+
+  if (
+    normalized === 'PERSONA_NATURAL' ||
+    normalized === 'NATURAL' ||
+    normalized === 'PERSONANATURAL' ||
+    normalized === 'TIPO_PERSONA_NATURAL'
+  ) {
+    return 'PERSONA_NATURAL';
+  }
+
+  return normalized;
+}
+
+function isLegalEntityPersonType(value: string | null | undefined): boolean {
+  return canonicalizeExpedientePersonType(value) === 'PERSONA_JURIDICA';
 }
 
 function getRequiredDocumentKeysByPersonType(
@@ -197,7 +215,7 @@ const IDENTIFICATION_FIELDS_JURIDICA = [
 export function getIdentificationRelevantFields(
   personType: string | null | undefined,
 ): readonly string[] {
-  if (personType === 'PERSONA_JURIDICA') {
+  if (canonicalizeExpedientePersonType(personType) === 'PERSONA_JURIDICA') {
     return IDENTIFICATION_FIELDS_JURIDICA;
   }
   return IDENTIFICATION_FIELDS_NATURAL;
@@ -378,7 +396,7 @@ export function buildDraftValues(
   return {
     ...previous,
     fullName: expediente.fullName ?? EMPTY_VALUE,
-    personType: expediente.personType ?? EMPTY_VALUE,
+    personType: canonicalizeExpedientePersonType(expediente.personType),
     documentType: expediente.documentType ?? EMPTY_VALUE,
     documentNumber: expediente.documentNumber ?? previous.documentNumber ?? EMPTY_VALUE,
     firstName: expediente.firstName ?? EMPTY_VALUE,

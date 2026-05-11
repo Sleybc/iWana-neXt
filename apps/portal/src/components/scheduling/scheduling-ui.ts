@@ -15,6 +15,7 @@ import type {
   WfmTechnicianAvailability,
   WfmWorkOrder,
 } from '@/lib/api-client';
+import { formatExpedienteDisplayRef, formatExpedienteShortLabel } from '@/lib/expediente-labels';
 import { getPortalUserRoleLabel } from '@/lib/user-labels';
 
 export type SchedulingView = 'command-center' | 'calendar' | 'list';
@@ -335,6 +336,37 @@ export function getWorkOrderSourceContextLabel(sourceContext: WorkOrderSourceCon
   return sourceContextLabels[sourceContext];
 }
 
+export function formatSchedulingExpedienteLabel(expedienteId: string | null | undefined): string {
+  return formatExpedienteShortLabel(expedienteId);
+}
+
+export function getWorkOrderSourceReferenceLabel(workOrder: {
+  sourceContext: WorkOrderSourceContext;
+  sourceRef: string | null;
+}): string {
+  if (!workOrder.sourceRef) {
+    return 'No disponible';
+  }
+
+  if (workOrder.sourceContext === WorkOrderSourceContext.CRM) {
+    return formatSchedulingExpedienteLabel(workOrder.sourceRef);
+  }
+
+  return workOrder.sourceRef;
+}
+
+export function getSchedulingVisibleDescription(description: string | null | undefined): string {
+  if (!description) {
+    return 'Sin descripción operativa.';
+  }
+
+  return description.replace(
+    /expediente ([0-9a-f]{8}-[0-9a-f-]{28,})/gi,
+    (_match, expedienteId: string) =>
+      `oportunidad ${formatSchedulingExpedienteLabel(expedienteId)}`,
+  );
+}
+
 export function getTechnicianAvailabilityLabel(type: TechnicianAvailabilityType): string {
   return availabilityMeta[type].label;
 }
@@ -590,6 +622,6 @@ export function getEventReferenceLabel(event: WfmScheduleEvent): string {
   if (event.ticketId) return `Ticket ${event.ticketId}`;
   if (event.contractId) return 'Contrato vinculado';
   if (event.subscriberId) return 'Suscriptor vinculado';
-  if (event.expedienteId) return 'Expediente vinculado';
+  if (event.expedienteId) return formatExpedienteDisplayRef(event.expedienteId);
   return 'Sin referencia externa';
 }

@@ -23,3 +23,11 @@ export { WorkOrder } from './work-order.entity';
 export { WorkOrderTask } from './work-order-task.entity';
 export { ScheduleRescheduleLog } from './schedule-reschedule-log.entity';
 export { TechnicianAvailability } from './technician-availability.entity';
+
+// MOD10 — Service Assurance
+export { SupportTicket } from './support-ticket.entity';
+export { TicketComment } from './ticket-comment.entity';
+export { TicketPqrRecord } from './ticket-pqr-record.entity';
+export { TicketSlaPolicy } from './ticket-sla-policy.entity';
+export { TicketTimelineEvent } from './ticket-timeline-event.entity';
+export { TicketWorkOrderLink } from './ticket-work-order-link.entity';
