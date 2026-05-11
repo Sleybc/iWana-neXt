@@ -624,6 +624,65 @@ describe('SubscribersService', () => {
       }),
     );
   }
+
+  // ── buildProvisioningReadiness ──
+
+  describe('buildProvisioningReadiness', () => {
+    it('bloquea cuando el subscriber no tiene expediente vinculado', () => {
+      const subscriber = buildSubscriber({ expedienteId: null });
+      const result = (service as any).buildProvisioningReadiness(subscriber, null);
+      expect(result.status).toBe('BLOQUEADO');
+      expect(result.retryable).toBe(false);
+      expect(result.canProvision).toBe(false);
+    });
+
+    it('marca retryableError cuando el subscriber tiene link pero el expediente no se cargó', () => {
+      const subscriber = buildSubscriber({ expedienteId: 'exp-1' });
+      const result = (service as any).buildProvisioningReadiness(subscriber, null);
+      expect(result.status).toBe('ERROR_REINTENTABLE');
+      expect(result.retryable).toBe(true);
+      expect(result.message).toBeTruthy();
+    });
+
+    it('bloquea con mensaje de consentimiento cuando dataConsentRevoked es true', () => {
+      const subscriber = buildSubscriber({ expedienteId: 'exp-1' });
+      const expediente = {
+        dataConsentRevoked: true,
+        legalComplianceStatus: null,
+        identityVerified: null,
+        interestedPlanId: null,
+        workOrderId: null,
+        ticketId: null,
+        status: null,
+      } as any;
+      const result = (service as any).buildProvisioningReadiness(subscriber, expediente);
+      expect(result.status).toBe('BLOQUEADO');
+      expect(result.message).toContain('consentimiento');
+    });
+
+    it('no bloquea en happy path con subscriber operativo y campos mínimos presentes', () => {
+      const subscriber = buildSubscriber({
+        expedienteId: 'exp-1',
+        status: SubscriberStatus.ACTIVE,
+        documentNumberEncrypted: 'encrypted-doc',
+        phoneEncrypted: 'encrypted-phone',
+        address: 'Calle 1 #2-3',
+      });
+      const expediente = {
+        id: 'exp-1',
+        dataConsentRevoked: false,
+        legalComplianceStatus: null,
+        identityVerified: 'verified',
+        interestedPlanId: 'plan-1',
+        workOrderId: null,
+        ticketId: null,
+        status: null,
+      } as any;
+      const result = (service as any).buildProvisioningReadiness(subscriber, expediente);
+      expect(result.status).not.toBe('BLOQUEADO');
+      expect(result.status).not.toBe('ERROR_REINTENTABLE');
+    });
+  });
 });
 
 function buildSubscriber(overrides: Partial<Subscriber> = {}): Subscriber {
