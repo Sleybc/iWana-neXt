@@ -2701,6 +2701,29 @@ describe('ExpedienteService', () => {
       const result = await service.findById('exp-unlinked');
       expect((result as any).subscriberSummary).toBeUndefined();
     });
+
+    it('no propaga errores de subscriberSummary al resultado de findById', async () => {
+      const expediente = buildExpediente({ id: 'exp-resilient' });
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager: { findOne: jest.fn().mockResolvedValueOnce(expediente) } }),
+      );
+      completenessCalculatorMock.calculate.mockResolvedValue({
+        commercial: 0,
+        legal: 0,
+        technical: 0,
+        operational: 0,
+        overall: 0,
+        sectionCompleteness: {},
+        installationReadiness: { ready: false, missingFields: [] },
+        missingRequirements: [],
+      });
+      subscribersServiceMock.findSummaryByExpedienteId.mockRejectedValue(new Error('DB timeout'));
+
+      // findById must succeed even when subscriber summary throws
+      const result = await service.findById('exp-resilient');
+      expect(result).toBeDefined();
+      expect((result as any).subscriberSummary).toBeUndefined();
+    });
   });
 });
 

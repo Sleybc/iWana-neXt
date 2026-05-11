@@ -536,6 +536,20 @@ describe('SubscribersService', () => {
       const result = await service.findSummaryByExpedienteId('exp-biz');
       expect(result?.fullName).toBe('Mi Empresa S.A.S.');
     });
+
+    it('retorna null cuando todos los campos de nombre están vacíos', async () => {
+      mockFindOne(
+        buildSubscriber({
+          expedienteId: 'exp-noname',
+          firstName: null,
+          lastName: null,
+          commercialName: null,
+          businessName: null,
+        }),
+      );
+
+      await expect(service.findSummaryByExpedienteId('exp-noname')).resolves.toBeNull();
+    });
   });
 
   // ── Helpers ──

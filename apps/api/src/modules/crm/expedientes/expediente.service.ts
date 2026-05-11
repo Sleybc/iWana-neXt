@@ -31,9 +31,19 @@ import { CrmActorReadPort } from '../ports/crm-actor-read.port';
 import {
   ExpedienteActivatedEvent,
   ExpedienteDiscardedEvent,
-  ExpedienteInstallationScheduledEvent,
   ExpedienteReadyForInstallationEvent,
 } from './events/expediente-pipeline.events';
+
+// TODO: mover a expediente-pipeline.events.ts cuando se estandarice tenantSlug en todos los eventos
+class ExpedienteInstallationScheduledEvent {
+  constructor(
+    public readonly tenantId: string,
+    public readonly schemaName: string,
+    public readonly tenantSlug: string,
+    public readonly expedienteId: string,
+    public readonly actorUserId: string,
+  ) {}
+}
 import { CreateExpedienteDto } from './dto/create-expediente.dto';
 import { UpdateSectionDto, ExpedienteSection } from './dto/update-section.dto';
 import { TransitionStatusDto } from './dto/transition-status.dto';
@@ -773,9 +783,16 @@ export class ExpedienteService {
     });
 
     // Enriquecer con resumen del suscriptor vinculado si existe
-    const subscriberSummary = await this.subscribersService.findSummaryByExpedienteId(id);
-    if (subscriberSummary) {
-      Object.assign(entity, { subscriberSummary });
+    try {
+      const subscriberSummary = await this.subscribersService.findSummaryByExpedienteId(id);
+      if (subscriberSummary) {
+        Object.assign(entity, { subscriberSummary });
+      }
+    } catch (err) {
+      // El resumen del suscriptor es enriquecimiento opcional; no bloquear la lectura del expediente
+      this.logger.warn(
+        `No se pudo obtener subscriberSummary para expediente ${id}: ${(err as Error).message}`,
+      );
     }
 
     return entity;
@@ -895,7 +912,7 @@ export class ExpedienteService {
     if (toStatus === ExpedienteStatus.LISTO_PARA_INSTALACION) {
       await this.emitPipelineEventSafely(
         'crm.expediente.ready-for-installation',
-        new ExpedienteReadyForInstallationEvent(tenantId, schemaName, tenantSlug, id, actorUserId),
+        new ExpedienteReadyForInstallationEvent(tenantId, schemaName, id, actorUserId),
         id,
       );
     }
@@ -911,7 +928,7 @@ export class ExpedienteService {
     if (toStatus === ExpedienteStatus.CLIENTE_ACTIVO) {
       await this.emitPipelineEventSafely(
         'crm.expediente.activated',
-        new ExpedienteActivatedEvent(tenantId, schemaName, tenantSlug, id, actorUserId),
+        new ExpedienteActivatedEvent(tenantId, schemaName, id, actorUserId),
         id,
       );
     }
@@ -919,14 +936,7 @@ export class ExpedienteService {
     if (toStatus === ExpedienteStatus.DESCARTADO) {
       await this.emitPipelineEventSafely(
         'crm.expediente.discarded',
-        new ExpedienteDiscardedEvent(
-          tenantId,
-          schemaName,
-          tenantSlug,
-          id,
-          actorUserId,
-          dto.reason ?? null,
-        ),
+        new ExpedienteDiscardedEvent(tenantId, schemaName, id, actorUserId, dto.reason ?? null),
         id,
       );
     }

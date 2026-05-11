@@ -642,7 +642,12 @@ export class SubscribersService {
     const fullName =
       subscriber.commercialName ||
       subscriber.businessName ||
-      [subscriber.firstName, subscriber.lastName].filter(Boolean).join(' ').trim();
+      [subscriber.firstName, subscriber.lastName].filter(Boolean).join(' ').trim() ||
+      null;
+
+    if (!fullName) {
+      return null;
+    }
 
     return {
       id: subscriber.id,
