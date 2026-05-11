@@ -1522,3 +1522,40 @@ Resultado:
 - se preserva el contrato backend existente sin bloquear la experiencia del portal mientras la completitud 4D sigue evolucionando en servidor.
 
 Fecha: 2026-04-01_
+
+---
+
+## Evidencia funcional — post-conversión CRM (2026-05-11)
+
+### Alcance implementado
+
+Se implementó la segmentación operativa de expedientes CRM con vistas diferenciadas y trazabilidad inversa hacia el suscriptor convertido.
+
+### Archivos impactados
+
+**Backend (`apps/api`):**
+- `crm/expedientes/expediente-list-view.ts` — helper centralizado de semántica de vistas
+- `crm/expedientes/expediente.service.ts` — `effectiveView`, intersección view+status, enrichment `subscriberSummary`
+- `crm/expedientes/expedientes.controller.ts` — parámetro `view` en `GET /crm/expedientes`
+- `crm/subscribers/subscribers.service.ts` — `findSummaryByExpedienteId()` con guard try/catch
+
+**Portal (`apps/portal`):**
+- `components/crm/expedientes/expediente-list-view.ts` — helper frontend de vistas
+- `lib/api-client.ts` — `ExpedienteListView`, `ExpedienteSubscriberSummary`, `view?` en filtros
+- `app/dashboard/crm/expedientes/page.tsx` — tabs Abiertas/Convertidas/Archivo, conteos, búsqueda global
+- `components/crm/expedientes/ExpedienteConversionBanner.tsx` — banner de conversión con CTA
+- `app/dashboard/crm/expedientes/[id]/page.tsx` — banner montado en detalle
+- `components/crm/CrmOverviewClient.tsx` — semántica histórico vs operativo
+
+**E2E:**
+- `e2e/tests/portal-crm-expedientes.spec.ts` — flujo de navegación entre bandejas y banner
+
+### Pruebas
+
+- Backend: 93 pruebas en `expediente.service.spec`, `expedientes.controller.spec`, `subscribers.service.spec`
+- Portal: 7 pruebas en `page.spec.tsx`, 4 pruebas en `expediente-list-view.spec.ts`, 4 pruebas en `ExpedienteConversionBanner.spec.tsx`
+- E2E: flujo de navegación entre bandejas y banner de conversión
+
+### Estado
+
+✅ Implementación completa. Tasks 1–5 cerradas con spec compliance ✅ y code quality ✅.

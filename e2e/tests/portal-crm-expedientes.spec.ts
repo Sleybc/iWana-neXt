@@ -54,6 +54,15 @@ const mockExpediente = {
   updatedAt: '2026-03-26T12:00:00.000Z',
 };
 
+const convertedExpediente = {
+  ...mockExpediente,
+  id: '22222222-2222-4222-8222-222222222222',
+  status: 'INSTALACION_AGENDADA' as const,
+  fullName: 'Empresa convertida SAS',
+  firstName: null,
+  lastName: null,
+};
+
 const mockResponsibility = {
   currentResponsibleUserId: 'user-uuid-admin-test',
   currentResponsibleAssignedAt: '2026-03-26T10:30:00.000Z',
@@ -333,7 +342,7 @@ async function setupCrmMocks(page: import('@playwright/test').Page) {
             EN_COTIZACION: 0,
             PENDIENTE_DECISION: 0,
             LISTO_PARA_INSTALACION: 0,
-            INSTALACION_AGENDADA: 0,
+            INSTALACION_AGENDADA: 1,
             CLIENTE_ACTIVO: 0,
             DESCARTADO: 0,
           },
@@ -343,15 +352,21 @@ async function setupCrmMocks(page: import('@playwright/test').Page) {
       return;
     }
 
-    if (pathname.endsWith('/crm/expedientes') && method === 'GET' && url.includes('?')) {
-      capturedExpedientesQuery = new URL(url).search;
+    if (pathname.endsWith('/crm/expedientes') && method === 'GET') {
+      const urlObj = new URL(url);
+      capturedExpedientesQuery = urlObj.search;
+      const view = urlObj.searchParams.get('view') ?? 'open';
+      const expedientesByView: Record<string, (typeof mockExpediente)[]> = {
+        open: [mockExpediente],
+        converted: [convertedExpediente],
+        archive: [],
+        all: [mockExpediente, convertedExpediente],
+      };
+      const data = expedientesByView[view] ?? [mockExpediente];
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          data: [mockExpediente],
-          total: 1,
-        }),
+        body: JSON.stringify({ data, total: data.length }),
       });
       return;
     }
@@ -688,6 +703,31 @@ async function setupCrmMocks(page: import('@playwright/test').Page) {
       return;
     }
 
+    if (pathname.endsWith(`/crm/expedientes/${convertedExpediente.id}`) && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            ...convertedExpediente,
+            subscriberSummary: {
+              id: 'sub-1',
+              status: 'PROSPECT',
+              fullName: 'Empresa convertida SAS',
+            },
+          },
+          completeness: {
+            commercial: 80,
+            legal: 60,
+            technical: 50,
+            operational: 40,
+            overall: 58,
+          },
+        }),
+      });
+      return;
+    }
+
     if (pathname.endsWith(`/crm/expedientes/${mockExpediente.id}`) && method === 'GET') {
       await route.fulfill({
         status: 200,
@@ -929,5 +969,35 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await expect(page.getByLabel('Cargo del contacto')).toBeVisible();
 
     Object.assign(mockExpediente, original);
+  });
+
+  test('permite navegar entre bandejas y ver banner de conversión en detalle', async ({ page }) => {
+    await setupCrmMocks(page);
+    await setAuthSession(page);
+    await page.goto('/dashboard/crm/expedientes');
+    await page.waitForLoadState('networkidle');
+
+    // Default view: Abiertas — shows open expediente
+    await expect(page.getByRole('button', { name: /abiertas/i })).toBeVisible();
+    await expect(page.getByText('Empresa Demo SAS')).toBeVisible();
+
+    // Navigate to Convertidas
+    await page.getByRole('button', { name: /convertidas/i }).click();
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByText('Empresa convertida SAS')).toBeVisible();
+
+    // Open converted expediente detail
+    await page.getByRole('link', { name: /empresa convertida sas/i }).click();
+    await page.waitForLoadState('networkidle');
+
+    // Banner visible
+    await expect(page.getByText('Este expediente ya fue convertido a suscriptor.')).toBeVisible();
+
+    // CTA link present
+    await expect(page.getByRole('link', { name: 'Ir al suscriptor' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Ir al suscriptor' })).toHaveAttribute(
+      'href',
+      '/dashboard/crm/subscribers/sub-1',
+    );
   });
 });

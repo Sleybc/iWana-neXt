@@ -1017,7 +1017,7 @@ export default function ExpedienteDetailPage() {
       />
       <ExpedienteConversionBanner
         status={expediente.status}
-        subscriberSummary={expediente.subscriberSummary}
+        subscriberSummary={expediente.subscriberSummary ?? null}
       />
       <ExpedienteTabsContainer
         defaultTab="vista-general"
