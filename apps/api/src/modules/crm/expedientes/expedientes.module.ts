@@ -18,6 +18,7 @@ import { CoverageCheck } from './entities/coverage-check.entity';
 import { StatusChange } from './entities/status-change.entity';
 import { Quote } from '../quotes/entities/quote.entity';
 import { AuditModule } from '../../audit/audit.module';
+import { SubscribersModule } from '../subscribers/subscribers.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { AuditModule } from '../../audit/audit.module';
       Quote,
     ]),
     AuditModule,
+    SubscribersModule,
   ],
   controllers: [ExpedientesController, PipelineController],
   providers: [

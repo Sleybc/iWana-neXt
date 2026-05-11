@@ -59,6 +59,7 @@ import {
   evaluateProvisioningReadiness,
   isBlockingLegalComplianceStatus,
 } from '../provisioning-readiness';
+import { SubscribersService } from '../subscribers/subscribers.service';
 
 export interface ExpedienteTimelineActor {
   userId: string | null;
@@ -209,6 +210,7 @@ export class ExpedienteService {
     private readonly completenessCalculator: CompletenessCalculator,
     private readonly crmActorReadPort: CrmActorReadPort,
     private readonly eventEmitter: EventEmitter2,
+    private readonly subscribersService: SubscribersService,
   ) {
     const keyHex = this.configService.getOrThrow<string>('MFA_ENCRYPTION_KEY');
     this.encryptionKey = Buffer.from(keyHex, 'hex');
@@ -769,6 +771,12 @@ export class ExpedienteService {
       missingRequirements: completeness.missingRequirements,
       pipelineProgress: this.calculatePipelineProgress(completeness),
     });
+
+    // Enriquecer con resumen del suscriptor vinculado si existe
+    const subscriberSummary = await this.subscribersService.findSummaryByExpedienteId(id);
+    if (subscriberSummary) {
+      Object.assign(entity, { subscriberSummary });
+    }
 
     return entity;
   }

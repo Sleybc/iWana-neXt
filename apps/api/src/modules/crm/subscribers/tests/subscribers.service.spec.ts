@@ -493,6 +493,51 @@ describe('SubscribersService', () => {
     });
   });
 
+  // ── findSummaryByExpedienteId ──
+
+  describe('findSummaryByExpedienteId', () => {
+    it('devuelve un summary mínimo por expedienteId', async () => {
+      mockFindOne(
+        buildSubscriber({
+          id: 'sub-1',
+          expedienteId: 'exp-linked',
+          status: SubscriberStatus.PROSPECT,
+          firstName: 'Laura',
+          lastName: 'Pérez',
+          commercialName: null,
+          businessName: null,
+        }),
+      );
+
+      await expect(service.findSummaryByExpedienteId('exp-linked')).resolves.toEqual({
+        id: 'sub-1',
+        status: SubscriberStatus.PROSPECT,
+        fullName: 'Laura Pérez',
+      });
+    });
+
+    it('devuelve null cuando no existe suscriptor vinculado', async () => {
+      mockFindOne(null);
+      await expect(service.findSummaryByExpedienteId('exp-not-found')).resolves.toBeNull();
+    });
+
+    it('usa commercialName cuando está disponible en lugar de firstName + lastName', async () => {
+      mockFindOne(
+        buildSubscriber({
+          id: 'sub-biz',
+          expedienteId: 'exp-biz',
+          firstName: 'Juan',
+          lastName: 'García',
+          commercialName: 'Mi Empresa S.A.S.',
+          businessName: null,
+        }),
+      );
+
+      const result = await service.findSummaryByExpedienteId('exp-biz');
+      expect(result?.fullName).toBe('Mi Empresa S.A.S.');
+    });
+  });
+
   // ── Helpers ──
 
   function mockSave(subscriber: Subscriber): void {
@@ -616,6 +661,7 @@ function buildSubscriber(overrides: Partial<Subscriber> = {}): Subscriber {
     longitude: null,
     coverageNodeId: null,
     status: SubscriberStatus.LEAD,
+    expedienteId: null,
     externalId: null,
     createdBy: 'user-base',
     createdAt: new Date('2026-04-16T00:00:00Z'),

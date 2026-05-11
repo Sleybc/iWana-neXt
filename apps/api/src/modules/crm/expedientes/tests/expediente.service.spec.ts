@@ -10,11 +10,13 @@ import {
   ConsentStatus,
   ConsentType,
   ExpedienteStatus,
+  SubscriberStatus,
   TechnicalViabilityResult,
 } from '@iwana/shared';
 import { AuditService } from '../../../audit/audit.service';
 import { CompletenessCalculator } from '../completeness-calculator.service';
 import { CrmActorReadPort } from '../../ports/crm-actor-read.port';
+import { SubscribersService } from '../../subscribers/subscribers.service';
 import { UpdateSectionDto, ExpedienteSection } from '../dto/update-section.dto';
 import { ExpedienteRecord } from '../entities/expediente-record.entity';
 import { StatusChange } from '../entities/status-change.entity';
@@ -63,8 +65,13 @@ describe('ExpedienteService', () => {
     emitAsync: jest.fn().mockResolvedValue([]),
   };
 
+  const subscribersServiceMock = {
+    findSummaryByExpedienteId: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
+    subscribersServiceMock.findSummaryByExpedienteId.mockReset();
     mockTenantContextGetOrThrow.mockReturnValue({
       tenantId: 'ten-1',
       schemaName: 'tenant_test',
@@ -92,6 +99,7 @@ describe('ExpedienteService', () => {
         { provide: CompletenessCalculator, useValue: completenessCalculatorMock },
         { provide: CrmActorReadPort, useValue: crmActorReadPortMock },
         { provide: EventEmitter2, useValue: eventEmitterMock },
+        { provide: SubscribersService, useValue: subscribersServiceMock },
       ],
     }).compile();
 
@@ -2629,6 +2637,69 @@ describe('ExpedienteService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
 
       expect(auditServiceMock.log).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── findById — subscriberSummary enrichment ──
+
+  describe('findById con subscriberSummary', () => {
+    it('retorna subscriberSummary cuando existe suscriptor vinculado por expedienteId', async () => {
+      const expediente = buildExpediente({
+        id: 'exp-linked',
+        status: ExpedienteStatus.INSTALACION_AGENDADA,
+      });
+
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: jest.fn().mockResolvedValueOnce(expediente),
+          },
+        }),
+      );
+      completenessCalculatorMock.calculate.mockResolvedValue({
+        commercial: 0,
+        legal: 0,
+        technical: 0,
+        operational: 0,
+        overall: 0,
+        sectionCompleteness: {},
+        installationReadiness: { ready: false, missingFields: [] },
+        missingRequirements: [],
+      });
+      subscribersServiceMock.findSummaryByExpedienteId.mockResolvedValue({
+        id: 'sub-1',
+        status: SubscriberStatus.PROSPECT,
+        fullName: 'Laura Pérez',
+      });
+
+      const result = await service.findById('exp-linked');
+
+      expect((result as any).subscriberSummary).toEqual({
+        id: 'sub-1',
+        status: SubscriberStatus.PROSPECT,
+        fullName: 'Laura Pérez',
+      });
+    });
+
+    it('retorna undefined subscriberSummary cuando no existe suscriptor vinculado', async () => {
+      const expediente = buildExpediente({ id: 'exp-unlinked' });
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager: { findOne: jest.fn().mockResolvedValueOnce(expediente) } }),
+      );
+      completenessCalculatorMock.calculate.mockResolvedValue({
+        commercial: 0,
+        legal: 0,
+        technical: 0,
+        operational: 0,
+        overall: 0,
+        sectionCompleteness: {},
+        installationReadiness: { ready: false, missingFields: [] },
+        missingRequirements: [],
+      });
+      subscribersServiceMock.findSummaryByExpedienteId.mockResolvedValue(null);
+
+      const result = await service.findById('exp-unlinked');
+      expect((result as any).subscriberSummary).toBeUndefined();
     });
   });
 });
