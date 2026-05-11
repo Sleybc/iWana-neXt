@@ -3089,6 +3089,14 @@ export type ExpedienteStatus =
   | 'CLIENTE_ACTIVO'
   | 'DESCARTADO';
 
+export type ExpedienteListView = 'open' | 'converted' | 'archive' | 'all';
+
+export interface ExpedienteSubscriberSummary {
+  id: string;
+  status: 'LEAD' | 'PROSPECT' | 'ACTIVE' | 'SUSPENDED' | 'CANCELLED';
+  fullName: string;
+}
+
 export interface ExpedienteRecord {
   id: string;
   tenantId: string;
@@ -3168,6 +3176,7 @@ export interface ExpedienteRecord {
   completenessOperational: number | null;
   completenessOverall?: number | null;
   pipelineProgress?: number | null;
+  subscriberSummary?: ExpedienteSubscriberSummary | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -3637,6 +3646,7 @@ export const crmApi = {
   listExpedientes: (
     filters?: {
       status?: ExpedienteStatus;
+      view?: ExpedienteListView;
       municipality?: string;
       search?: string;
       assignedTo?: string;
@@ -3650,6 +3660,7 @@ export const crmApi = {
     const searchParams = new URLSearchParams();
 
     if (filters?.status) searchParams.set('status', filters.status);
+    if (filters?.view) searchParams.set('view', filters.view);
     if (filters?.municipality) searchParams.set('municipality', filters.municipality);
     if (filters?.search) searchParams.set('search', filters.search);
     if (filters?.assignedTo) searchParams.set('assignedTo', filters.assignedTo);
