@@ -84,6 +84,31 @@ describe('ExpedientesController', () => {
     );
   });
 
+  it('propaga view al servicio y da precedencia a view sobre includeCompleted', async () => {
+    expedienteServiceMock.findAll.mockResolvedValue({ data: [], total: 0 });
+
+    await (controller as any).findAll(
+      undefined,
+      undefined,
+      'Cliente demo',
+      1,
+      20,
+      undefined,
+      '900123456',
+      'true',
+      'converted',
+    );
+
+    expect(expedienteServiceMock.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: 'Cliente demo',
+        documentNumber: '900123456',
+        includeCompleted: true,
+        view: 'converted',
+      }),
+    );
+  });
+
   it('obtiene el resumen del pipeline desde el servicio dedicado', async () => {
     expedienteServiceMock.getPipelineSummary.mockResolvedValue({
       data: { [ExpedienteStatus.NUEVO_POTENCIAL]: 2 },

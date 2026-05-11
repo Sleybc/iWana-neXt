@@ -7,6 +7,7 @@ import { access, mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 import { DataSource, In, Like } from 'typeorm';
 import { AuditLog, runInTenantSchema, TenantContext } from '@iwana/db';
+import { ExpedienteListView, resolveExpedienteStatusesForView } from './expediente-list-view';
 import {
   AcquisitionChannel,
   AuditAction,
@@ -14,6 +15,7 @@ import {
   ConsentType,
   ConsentChannel,
   ExpedienteStatus,
+  SubscriberStatus,
   TechnicalViabilityResult,
 } from '@iwana/shared';
 
@@ -29,6 +31,7 @@ import { CrmActorReadPort } from '../ports/crm-actor-read.port';
 import {
   ExpedienteActivatedEvent,
   ExpedienteDiscardedEvent,
+  ExpedienteInstallationScheduledEvent,
   ExpedienteReadyForInstallationEvent,
 } from './events/expediente-pipeline.events';
 import { CreateExpedienteDto } from './dto/create-expediente.dto';
@@ -52,6 +55,10 @@ import {
   type StoredDocumentSupportMap,
   type StoredDocumentSupportVersion,
 } from './document-support.types';
+import {
+  evaluateProvisioningReadiness,
+  isBlockingLegalComplianceStatus,
+} from '../provisioning-readiness';
 
 export interface ExpedienteTimelineActor {
   userId: string | null;
@@ -499,7 +506,7 @@ export class ExpedienteService {
    * CA-01
    */
   async create(dto: CreateExpedienteDto, actorUserId: string): Promise<ExpedienteRecord> {
-    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    const { schemaName, tenantId, tenantSlug } = TenantContext.getOrThrow();
     const now = new Date();
 
     const created = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
@@ -577,6 +584,7 @@ export class ExpedienteService {
     assignedTo?: string | undefined;
     documentNumber?: string | undefined;
     includeCompleted?: boolean | undefined;
+    view?: ExpedienteListView | undefined;
     page?: number | undefined;
     limit?: number | undefined;
   }): Promise<{ data: ExpedienteRecord[]; total: number }> {
@@ -593,14 +601,24 @@ export class ExpedienteService {
     const [data, total] = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const query = qr.manager.createQueryBuilder(ExpedienteRecord, 'expediente');
 
-      if (status) query.andWhere('expediente.status = :status', { status });
       if (municipality) query.andWhere('expediente.municipality = :municipality', { municipality });
       if (search) query.andWhere('expediente.fullName LIKE :search', { search: `%${search}%` });
       if (assignedTo) query.andWhere('expediente.assignedTo = :assignedTo', { assignedTo });
-      if (!includeCompleted) {
-        query.andWhere('expediente.status NOT IN (:...closedStatuses)', {
-          closedStatuses: [ExpedienteStatus.CLIENTE_ACTIVO, ExpedienteStatus.DESCARTADO],
-        });
+
+      // Semántica de vista: `view` es fuente de verdad; `includeCompleted` es compatibilidad temporal.
+      const effectiveView = filters.view ?? (includeCompleted ? 'all' : 'open');
+      const allowedStatuses = resolveExpedienteStatusesForView(effectiveView);
+
+      if (allowedStatuses !== null) {
+        if (status) {
+          // Filtro específico de estado dentro del superconjunto de la vista
+          query.andWhere('expediente.status = :status', { status });
+        } else {
+          query.andWhere('expediente.status IN (:...allowedStatuses)', { allowedStatuses });
+        }
+      } else if (status) {
+        // view='all' con filtro exacto de estado
+        query.andWhere('expediente.status = :status', { status });
       }
 
       query.orderBy('expediente.createdAt', 'DESC');
@@ -749,6 +767,7 @@ export class ExpedienteService {
       completenessOverall: completeness.overall,
       sectionCompleteness: completeness.sectionCompleteness,
       installationReadiness: completeness.installationReadiness,
+      provisioningReadiness: this.buildProvisioningReadiness(entity),
       missingRequirements: completeness.missingRequirements,
       pipelineProgress: this.calculatePipelineProgress(completeness),
     });
@@ -814,7 +833,7 @@ export class ExpedienteService {
     dto: TransitionStatusDto,
     actorUserId: string,
   ): Promise<ExpedienteRecord> {
-    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    const { schemaName, tenantId, tenantSlug } = TenantContext.getOrThrow();
     const entity = await this.findById(id);
 
     const fromStatus = entity.status;
@@ -870,7 +889,15 @@ export class ExpedienteService {
     if (toStatus === ExpedienteStatus.LISTO_PARA_INSTALACION) {
       await this.emitPipelineEventSafely(
         'crm.expediente.ready-for-installation',
-        new ExpedienteReadyForInstallationEvent(tenantId, schemaName, id, actorUserId),
+        new ExpedienteReadyForInstallationEvent(tenantId, schemaName, tenantSlug, id, actorUserId),
+        id,
+      );
+    }
+
+    if (toStatus === ExpedienteStatus.INSTALACION_AGENDADA) {
+      await this.emitPipelineEventSafely(
+        'crm.expediente.installation-scheduled',
+        new ExpedienteInstallationScheduledEvent(tenantId, schemaName, tenantSlug, id, actorUserId),
         id,
       );
     }
@@ -878,7 +905,7 @@ export class ExpedienteService {
     if (toStatus === ExpedienteStatus.CLIENTE_ACTIVO) {
       await this.emitPipelineEventSafely(
         'crm.expediente.activated',
-        new ExpedienteActivatedEvent(tenantId, schemaName, id, actorUserId),
+        new ExpedienteActivatedEvent(tenantId, schemaName, tenantSlug, id, actorUserId),
         id,
       );
     }
@@ -886,7 +913,14 @@ export class ExpedienteService {
     if (toStatus === ExpedienteStatus.DESCARTADO) {
       await this.emitPipelineEventSafely(
         'crm.expediente.discarded',
-        new ExpedienteDiscardedEvent(tenantId, schemaName, id, actorUserId, dto.reason ?? null),
+        new ExpedienteDiscardedEvent(
+          tenantId,
+          schemaName,
+          tenantSlug,
+          id,
+          actorUserId,
+          dto.reason ?? null,
+        ),
         id,
       );
     }
@@ -2255,10 +2289,60 @@ export class ExpedienteService {
     });
   }
 
+  private buildProvisioningReadiness(entity: ExpedienteRecord) {
+    const hasOperationalStage =
+      entity.status === ExpedienteStatus.INSTALACION_AGENDADA ||
+      entity.status === ExpedienteStatus.CLIENTE_ACTIVO;
+
+    const isBlockedByConsent = Boolean(entity.dataConsentRevoked);
+    const isBlockedByLegalStatus = isBlockingLegalComplianceStatus(entity.legalComplianceStatus);
+
+    return evaluateProvisioningReadiness({
+      expedienteStatus: entity.status,
+      subscriberStatus:
+        entity.status === ExpedienteStatus.CLIENTE_ACTIVO
+          ? SubscriberStatus.ACTIVE
+          : hasOperationalStage
+            ? SubscriberStatus.PROSPECT
+            : null,
+      hasPartyOrDocument: Boolean(entity.documentNumberEncrypted || entity.fiscalDocument),
+      hasInstallationAddress: Boolean(entity.installationAddress || entity.address),
+      hasSiteContact: Boolean(entity.siteContactName && entity.siteContactPhoneEncrypted),
+      hasCommercialOffer: Boolean(
+        entity.interestedPlanId ||
+        (entity.additionalProductIds?.length ?? 0) > 0 ||
+        (entity.additionalServiceIds?.length ?? 0) > 0,
+      ),
+      hasTechnologyDefinition: Boolean(
+        entity.availableTechnology ||
+        (entity.candidateTechnologies?.length ?? 0) > 0 ||
+        entity.feasibility ||
+        entity.coverageResult,
+      ),
+      hasTicketReference: Boolean(entity.ticketId),
+      hasWorkOrderReference: Boolean(entity.workOrderId),
+      hasAssignedTechnician: Boolean(entity.workOrderId),
+      hasMinimumConsent: Boolean(
+        !entity.dataConsentRevoked && entity.identityVerified && entity.legalComplianceStatus,
+      ),
+      isBlocked: isBlockedByConsent || isBlockedByLegalStatus || !hasOperationalStage,
+      blockedReason: isBlockedByConsent
+        ? 'El consentimiento de datos está revocado para este expediente.'
+        : isBlockedByLegalStatus
+          ? 'El estado legal del expediente bloquea la preparación para aprovisionamiento.'
+          : !hasOperationalStage
+            ? 'El expediente aún no está en instalación agendada.'
+            : null,
+      hasRetryableError: false,
+      retryableErrorMessage: null,
+    });
+  }
+
   private async emitPipelineEventSafely(
     eventName: string,
     payload:
       | ExpedienteReadyForInstallationEvent
+      | ExpedienteInstallationScheduledEvent
       | ExpedienteActivatedEvent
       | ExpedienteDiscardedEvent,
     expedienteId: string,

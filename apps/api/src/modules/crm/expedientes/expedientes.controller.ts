@@ -29,6 +29,7 @@ import { ExpedienteService } from './expediente.service';
 import { StatusTransitionService } from './status-transition.service';
 import { CompletenessCalculator } from './completeness-calculator.service';
 import { PipelineRecommendationService } from './pipeline-recommendation.service';
+import { parseExpedienteListView } from './expediente-list-view';
 import { CreateExpedienteDto, CreateExpedienteSchema } from './dto/create-expediente.dto';
 import {
   ExpedienteSection,
@@ -98,6 +99,7 @@ export class ExpedientesController {
     @Query('assignedTo') assignedTo?: string,
     @Query('documentNumber') documentNumber?: string,
     @Query('includeCompleted') includeCompleted?: string,
+    @Query('view') view?: string,
   ) {
     const result = await this.expedienteService.findAll({
       status: status as ExpedienteStatus | undefined,
@@ -108,6 +110,7 @@ export class ExpedientesController {
       assignedTo: assignedTo ?? undefined,
       documentNumber: documentNumber ?? undefined,
       includeCompleted: includeCompleted === 'true',
+      view: parseExpedienteListView(view),
     });
     return result;
   }
@@ -124,6 +127,7 @@ export class ExpedientesController {
       completeness,
       sectionCompleteness: completeness.sectionCompleteness,
       installationReadiness: completeness.installationReadiness,
+      provisioningReadiness: (data as { provisioningReadiness?: unknown }).provisioningReadiness,
       missingRequirements: completeness.missingRequirements,
       pipelineRecommendation,
     };
@@ -186,6 +190,7 @@ export class ExpedientesController {
       completeness,
       sectionCompleteness: completeness.sectionCompleteness,
       installationReadiness: completeness.installationReadiness,
+      provisioningReadiness: (data as { provisioningReadiness?: unknown }).provisioningReadiness,
       missingRequirements: completeness.missingRequirements,
       pipelineRecommendation,
       transitionWarning:

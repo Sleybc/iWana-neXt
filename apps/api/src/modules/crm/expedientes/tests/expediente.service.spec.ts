@@ -68,6 +68,7 @@ describe('ExpedienteService', () => {
     mockTenantContextGetOrThrow.mockReturnValue({
       tenantId: 'ten-1',
       schemaName: 'tenant_test',
+      tenantSlug: 'iwana',
     });
     crmActorReadPortMock.findById.mockImplementation(async (_schemaName: string, actorId: string) =>
       resolveActor(actorId),
@@ -1267,6 +1268,114 @@ describe('ExpedienteService', () => {
     );
   });
 
+  it('emite installation-scheduled al transicionar a INSTALACION_AGENDADA', async () => {
+    const actorUserId = '6e2eb956-c266-4c14-b00d-0eea857f66cc';
+    const expediente = buildExpediente({
+      id: 'exp-installation-scheduled',
+      status: ExpedienteStatus.LISTO_PARA_INSTALACION,
+      ticketId: 'ticket-001',
+      workOrderId: 'work-order-001',
+    });
+    const createdStatusChanges: Array<Record<string, unknown>> = [];
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          save: async (entity: unknown, data: Record<string, unknown>) => {
+            if (entity === ExpedienteRecord) {
+              Object.assign(expediente, data);
+            }
+            if (entity === StatusChange) {
+              createdStatusChanges.push(data);
+            }
+            return data;
+          },
+          create: (_entity: unknown, data: Record<string, unknown>) => data,
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => ({
+            ...expediente,
+            statusChanges: createdStatusChanges,
+            contactAttempts: [],
+            consents: [],
+            coverageChecks: [],
+          }),
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 90,
+      legal: 90,
+      technical: 90,
+      operational: 90,
+      overall: 90,
+    });
+
+    await service.transitionStatus(
+      'exp-installation-scheduled',
+      { targetStatus: ExpedienteStatus.INSTALACION_AGENDADA, reason: 'Agenda creada en WFM' },
+      actorUserId,
+    );
+
+    expect(eventEmitterMock.emitAsync).toHaveBeenCalledWith(
+      'crm.expediente.installation-scheduled',
+      expect.objectContaining({
+        tenantId: 'ten-1',
+        schemaName: 'tenant_test',
+        tenantSlug: 'iwana',
+        expedienteId: 'exp-installation-scheduled',
+        actorUserId,
+      }),
+    );
+  });
+
+  it('no emite installation-scheduled al transicionar solo a LISTO_PARA_INSTALACION', async () => {
+    const actorUserId = '6e2eb956-c266-4c14-b00d-0eea857f66cc';
+    const expediente = buildExpediente({
+      id: 'exp-ready-only',
+      status: ExpedienteStatus.EN_COTIZACION,
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          save: async (entity: unknown, data: Record<string, unknown>) => {
+            if (entity === ExpedienteRecord) {
+              Object.assign(expediente, data);
+            }
+            return data;
+          },
+          create: (_entity: unknown, data: Record<string, unknown>) => data,
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => ({
+            ...expediente,
+            statusChanges: [],
+            contactAttempts: [],
+            consents: [],
+            coverageChecks: [],
+          }),
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 90,
+      legal: 90,
+      technical: 90,
+      operational: 90,
+      overall: 90,
+    });
+
+    await service.transitionStatus(
+      'exp-ready-only',
+      { targetStatus: ExpedienteStatus.LISTO_PARA_INSTALACION, reason: 'Readiness aprobado' },
+      actorUserId,
+    );
+
+    expect(eventEmitterMock.emitAsync).not.toHaveBeenCalledWith(
+      'crm.expediente.installation-scheduled',
+      expect.anything(),
+    );
+  });
+
   it('reactiva un expediente descartado al estado previo y limpia el motivo de descarte', async () => {
     const actorUserId = 'f8f5fa0e-c9f3-4d14-97e6-88c61f8f0e5f';
     const expediente = buildExpediente({
@@ -1483,6 +1592,49 @@ describe('ExpedienteService', () => {
     expect(result.data[0]?.assignedTo).toBe('advisor-1');
     expect(result.data[0]?.documentNumberEncrypted).toBeNull();
     expect(result.data[0]?.phonePrimaryEncrypted).toBeNull();
+  });
+
+  it('filtra open, converted, archive y all desde una sola regla de dominio', async () => {
+    const baseRows = [
+      buildExpediente({ id: 'exp-open', status: ExpedienteStatus.PRECALIFICADO }),
+      buildExpediente({ id: 'exp-converted', status: ExpedienteStatus.INSTALACION_AGENDADA }),
+      buildExpediente({ id: 'exp-active', status: ExpedienteStatus.CLIENTE_ACTIVO }),
+      buildExpediente({ id: 'exp-archived', status: ExpedienteStatus.DESCARTADO }),
+    ];
+
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 0,
+      legal: 0,
+      technical: 0,
+      operational: 0,
+      overall: 0,
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          createQueryBuilder: jest.fn().mockReturnValue(buildFindAllQueryBuilder(baseRows)),
+        },
+      }),
+    );
+
+    await expect(service.findAll({ view: 'open', limit: 20, page: 1 })).resolves.toMatchObject({
+      data: [expect.objectContaining({ id: 'exp-open' })],
+      total: 1,
+    });
+    await expect(service.findAll({ view: 'converted', limit: 20, page: 1 })).resolves.toMatchObject(
+      {
+        data: [expect.objectContaining({ id: 'exp-converted' })],
+        total: 1,
+      },
+    );
+    await expect(service.findAll({ view: 'archive', limit: 20, page: 1 })).resolves.toMatchObject({
+      data: expect.arrayContaining([
+        expect.objectContaining({ id: 'exp-active' }),
+        expect.objectContaining({ id: 'exp-archived' }),
+      ]),
+      total: 2,
+    });
   });
 
   it('revoca consentimiento de tratamiento de datos y marca el agregado para cumplimiento', async () => {
@@ -2518,4 +2670,41 @@ function encryptTestValue(value: string): string {
   const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
   const authTag = cipher.getAuthTag();
   return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+}
+
+/**
+ * Crea un mock de QueryBuilder que captura los filtros de andWhere y aplica la
+ * partición de estado en memoria, simulando la lógica SQL en tests unitarios.
+ */
+function buildFindAllQueryBuilder(rows: ExpedienteRecord[]) {
+  let statusInFilter: ExpedienteStatus[] | null = null;
+  let exactStatusFilter: ExpedienteStatus | null = null;
+
+  function applyFilters(list: ExpedienteRecord[]): ExpedienteRecord[] {
+    let result = list;
+    if (statusInFilter) result = result.filter((r) => statusInFilter!.includes(r.status));
+    if (exactStatusFilter) result = result.filter((r) => r.status === exactStatusFilter);
+    return result;
+  }
+
+  const qb: Record<string, jest.Mock> = {
+    andWhere: jest.fn((condition: string, params?: Record<string, unknown>) => {
+      if (condition.includes('IN (:...allowedStatuses)') && params?.allowedStatuses) {
+        statusInFilter = params.allowedStatuses as ExpedienteStatus[];
+      }
+      if (condition.includes('status = :status') && params?.status) {
+        exactStatusFilter = params.status as ExpedienteStatus;
+      }
+      return qb;
+    }),
+    orderBy: jest.fn(() => qb),
+    skip: jest.fn(() => qb),
+    take: jest.fn(() => qb),
+    getManyAndCount: jest.fn(() => {
+      const filtered = applyFilters(rows);
+      return Promise.resolve([filtered, filtered.length] as const);
+    }),
+    getMany: jest.fn(() => Promise.resolve(applyFilters(rows))),
+  };
+  return qb;
 }
