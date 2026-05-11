@@ -117,7 +117,7 @@ export function CrmOverviewClient() {
     {
       label: 'Activos',
       value: metrics.activos,
-      helper: 'Clientes ya cerrados en el pipeline',
+      helper: 'Cierre histórico ya convertido a suscriptor',
       icon: ShieldCheck,
       tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
     },

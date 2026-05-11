@@ -48,6 +48,7 @@ import {
   usersApi,
 } from '@/lib/api-client';
 import { ExpedienteHeader } from '@/components/crm/expedientes/ExpedienteHeader';
+import { ExpedienteConversionBanner } from '@/components/crm/expedientes/ExpedienteConversionBanner';
 import { SeguimientoTab } from '@/components/crm/expedientes/SeguimientoTab';
 
 import {
@@ -1013,6 +1014,10 @@ export default function ExpedienteDetailPage() {
         acquisitionChannel={formatAcquisitionChannel(
           currentAttribution?.acquisitionChannel ?? expediente.acquisitionChannel,
         )}
+      />
+      <ExpedienteConversionBanner
+        status={expediente.status}
+        subscriberSummary={expediente.subscriberSummary}
       />
       <ExpedienteTabsContainer
         defaultTab="vista-general"
