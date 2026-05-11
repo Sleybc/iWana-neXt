@@ -1635,6 +1635,59 @@ describe('ExpedienteService', () => {
       ]),
       total: 2,
     });
+
+    // view='all' no aplica partición de estado → devuelve todos los registros
+    await expect(service.findAll({ view: 'all', limit: 20, page: 1 })).resolves.toMatchObject({
+      data: expect.arrayContaining([
+        expect.objectContaining({ id: 'exp-open' }),
+        expect.objectContaining({ id: 'exp-converted' }),
+        expect.objectContaining({ id: 'exp-active' }),
+        expect.objectContaining({ id: 'exp-archived' }),
+      ]),
+      total: 4,
+    });
+  });
+
+  it('conserva compatibilidad con includeCompleted cuando no se pasa view', async () => {
+    const baseRows = [
+      buildExpediente({ id: 'exp-open', status: ExpedienteStatus.PRECALIFICADO }),
+      buildExpediente({ id: 'exp-active', status: ExpedienteStatus.CLIENTE_ACTIVO }),
+    ];
+
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 0,
+      legal: 0,
+      technical: 0,
+      operational: 0,
+      overall: 0,
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          createQueryBuilder: jest.fn().mockReturnValue(buildFindAllQueryBuilder(baseRows)),
+        },
+      }),
+    );
+
+    // Sin view, includeCompleted=false → efectivo 'open' → excluye CLIENTE_ACTIVO
+    await expect(
+      service.findAll({ includeCompleted: false, limit: 20, page: 1 }),
+    ).resolves.toMatchObject({
+      data: [expect.objectContaining({ id: 'exp-open' })],
+      total: 1,
+    });
+
+    // Sin view, includeCompleted=true → efectivo 'all' → incluye todos
+    await expect(
+      service.findAll({ includeCompleted: true, limit: 20, page: 1 }),
+    ).resolves.toMatchObject({
+      data: expect.arrayContaining([
+        expect.objectContaining({ id: 'exp-open' }),
+        expect.objectContaining({ id: 'exp-active' }),
+      ]),
+      total: 2,
+    });
   });
 
   it('revoca consentimiento de tratamiento de datos y marca el agregado para cumplimiento', async () => {

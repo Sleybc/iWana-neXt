@@ -84,7 +84,8 @@ describe('ExpedientesController', () => {
     );
   });
 
-  it('propaga view al servicio y da precedencia a view sobre includeCompleted', async () => {
+  // La precedencia de view sobre includeCompleted se aplica en la capa de servicio y está cubierta en expediente.service.spec.ts
+  it('propaga view e includeCompleted al servicio', async () => {
     expedienteServiceMock.findAll.mockResolvedValue({ data: [], total: 0 });
 
     await (controller as any).findAll(
