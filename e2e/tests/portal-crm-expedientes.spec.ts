@@ -728,6 +728,32 @@ async function setupCrmMocks(page: import('@playwright/test').Page) {
       return;
     }
 
+    // Sub-endpoints del expediente convertido: respuestas mínimas válidas
+    // (el test de conversión solo valida el banner, no los datos secundarios)
+    if (pathname.includes(`/crm/expedientes/${convertedExpediente.id}/`) && method === 'GET') {
+      const isTimeline = pathname.endsWith('/timeline');
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(
+          isTimeline
+            ? {
+                data: {
+                  changes: [],
+                  activities: [],
+                  metadata: {
+                    createdBy: { userId: null, name: null },
+                    lastEditedBy: { userId: null, name: null },
+                    lastActivityAt: null,
+                  },
+                },
+              }
+            : { data: null },
+        ),
+      });
+      return;
+    }
+
     if (pathname.endsWith(`/crm/expedientes/${mockExpediente.id}`) && method === 'GET') {
       await route.fulfill({
         status: 200,
@@ -975,25 +1001,22 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await setupCrmMocks(page);
     await setAuthSession(page);
     await page.goto('/dashboard/crm/expedientes');
-    await page.waitForLoadState('networkidle');
 
-    // Default view: Abiertas — shows open expediente
+    // Esperar a que carguen las pestañas de la lista operativa
     await expect(page.getByRole('button', { name: /abiertas/i })).toBeVisible();
     await expect(page.getByText('Empresa Demo SAS')).toBeVisible();
 
-    // Navigate to Convertidas
+    // Navegar a Convertidas
     await page.getByRole('button', { name: /convertidas/i }).click();
-    await page.waitForLoadState('networkidle');
     await expect(page.getByText('Empresa convertida SAS')).toBeVisible();
 
-    // Open converted expediente detail
+    // Abrir detalle del expediente convertido
     await page.getByRole('link', { name: /empresa convertida sas/i }).click();
-    await page.waitForLoadState('networkidle');
 
-    // Banner visible
+    // Banner de conversión visible
     await expect(page.getByText('Este expediente ya fue convertido a suscriptor.')).toBeVisible();
 
-    // CTA link present
+    // CTA hacia el suscriptor
     await expect(page.getByRole('link', { name: 'Ir al suscriptor' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Ir al suscriptor' })).toHaveAttribute(
       'href',
