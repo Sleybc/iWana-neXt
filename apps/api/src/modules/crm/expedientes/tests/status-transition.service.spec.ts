@@ -78,7 +78,7 @@ describe('StatusTransitionService', () => {
     expect(result).toEqual({ valid: false, missingFields: ['Plan de interés seleccionado'] });
   });
 
-  it('rechaza CLIENTE_ACTIVO si la completitud no cumple', async () => {
+  it('permite CLIENTE_ACTIVO con advertencia cuando solo faltan soportes documentales', async () => {
     mockExpediente(buildExpediente({ checklistCompleted: false }));
     completenessCalculatorMock.calculate.mockResolvedValue({
       commercial: 95,
@@ -105,13 +105,20 @@ describe('StatusTransitionService', () => {
 
     const result = await service.validateTransition('exp-4', ExpedienteStatus.CLIENTE_ACTIVO);
 
-    expect(result.valid).toBe(false);
-    expect(result.missingFields).toEqual(
-      expect.arrayContaining([
-        'Completitud general = 100% en las 7 secciones',
-        'Soportes documentales: Copia de documento de identidad',
-      ]),
-    );
+    expect(result).toEqual({
+      valid: true,
+      warningTitle: 'Soportes documentales pendientes',
+      warningMessage:
+        'El expediente puede avanzar a Cliente activo. Los soportes documentales están pendientes y deben gestionarse lo antes posible.',
+      missingRequirements: [
+        {
+          sectionKey: 'documentSupport',
+          sectionLabel: 'Soportes documentales',
+          fieldKey: 'identity_document',
+          fieldLabel: 'Copia de documento de identidad',
+        },
+      ],
+    });
   });
 
   it('permite CLIENTE_ACTIVO cuando el expediente llega al 100%', async () => {

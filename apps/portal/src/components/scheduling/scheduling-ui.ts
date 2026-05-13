@@ -361,9 +361,9 @@ export function getSchedulingVisibleDescription(description: string | null | und
   }
 
   return description.replace(
-    /expediente ([0-9a-f]{8}-[0-9a-f-]{28,})/gi,
+    /el expediente ([0-9a-f]{8}-[0-9a-f-]{27,})/gi,
     (_match, expedienteId: string) =>
-      `oportunidad ${formatSchedulingExpedienteLabel(expedienteId)}`,
+      `la oportunidad ${formatSchedulingExpedienteLabel(expedienteId)}`,
   );
 }
 

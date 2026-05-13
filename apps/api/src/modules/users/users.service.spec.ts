@@ -37,6 +37,7 @@ import {
 import { UserRole, UserStatus, AuditAction, DocumentType } from '@iwana/shared';
 import { UsersService } from './users.service';
 import { AuditService } from '../audit/audit.service';
+import { SearchQueueService } from '../search/search-queue.service';
 import { TenantService } from '../tenant/tenant.service';
 
 jest.mock('bcryptjs', () => {
@@ -180,6 +181,7 @@ describe('UsersService', () => {
   let service: UsersService;
   let auditServiceMock: { log: jest.Mock };
   let tenantServiceMock: { updateTenantSelfProfile: jest.Mock };
+  let searchQueueServiceMock: { enqueueUserUpsert: jest.Mock; enqueueUserDelete: jest.Mock };
 
   beforeEach(async () => {
     mockRunInTenantSchema.mockReset();
@@ -188,6 +190,10 @@ describe('UsersService', () => {
 
     auditServiceMock = { log: jest.fn() };
     tenantServiceMock = { updateTenantSelfProfile: jest.fn() };
+    searchQueueServiceMock = {
+      enqueueUserUpsert: jest.fn(),
+      enqueueUserDelete: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -195,6 +201,7 @@ describe('UsersService', () => {
         { provide: DataSource, useValue: {} },
         { provide: AuditService, useValue: auditServiceMock },
         { provide: TenantService, useValue: tenantServiceMock },
+        { provide: SearchQueueService, useValue: searchQueueServiceMock },
         {
           provide: ConfigService,
           useValue: {

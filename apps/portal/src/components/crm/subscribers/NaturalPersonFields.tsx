@@ -27,7 +27,8 @@ function toLocalDateValue(date: Date | undefined): string {
 }
 
 export function NaturalPersonFields({ control, register, errors }: NaturalPersonFieldsProps) {
-  const birthDateError = typeof errors.birthDate?.message === 'string' ? errors.birthDate.message : undefined;
+  const birthDateError =
+    typeof errors.birthDate?.message === 'string' ? errors.birthDate.message : undefined;
 
   return (
     <div className="grid gap-4 md:grid-cols-2">

@@ -28,11 +28,7 @@ const CATALOG_LOCATION_LABELS = (() => {
 })();
 
 function toSentenceCaseLocation(value: string): string {
-  const normalized = value
-    .trim()
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .toLowerCase();
+  const normalized = value.trim().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').toLowerCase();
 
   if (!normalized) {
     return '';

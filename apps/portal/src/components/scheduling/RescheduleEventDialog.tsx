@@ -119,7 +119,10 @@ export function RescheduleEventDialog({
       return;
     }
 
-    const derivedDurationMinutes = deriveDurationMinutes(event.scheduledStartAt, event.scheduledEndAt);
+    const derivedDurationMinutes = deriveDurationMinutes(
+      event.scheduledStartAt,
+      event.scheduledEndAt,
+    );
 
     reset({
       scheduledDateLocal: toLocalDateValue(event.scheduledStartAt),

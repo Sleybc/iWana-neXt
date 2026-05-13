@@ -400,7 +400,9 @@ export function ScheduleEventForm({
               <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
                 Duración estimada
               </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Duración rápida o personalizada.</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Duración rápida o personalizada.
+              </p>
             </div>
 
             <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-white p-1 dark:border-dark-border-2 dark:bg-dark-surface-2">
@@ -465,7 +467,9 @@ export function ScheduleEventForm({
                 disabled={isSubmitting}
                 onChange={(event) => {
                   const nextHours = Number.parseInt(event.target.value || '0', 10);
-                  const safeHours = Number.isNaN(nextHours) ? 0 : Math.min(Math.max(nextHours, 0), 12);
+                  const safeHours = Number.isNaN(nextHours)
+                    ? 0
+                    : Math.min(Math.max(nextHours, 0), 12);
                   setValue('durationMinutes', safeHours * 60 + durationRemainderMinutes, {
                     shouldDirty: true,
                     shouldValidate: true,

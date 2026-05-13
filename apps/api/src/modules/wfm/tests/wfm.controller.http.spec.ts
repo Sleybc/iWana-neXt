@@ -253,7 +253,9 @@ describe('WfmController HTTP', () => {
     });
 
     it('accepts expedienteId as filter for CRM scheduling flows', async () => {
-      scheduleEventsServiceMock.list.mockResolvedValue([{ ...mockEvent, expedienteId: EXPEDIENTE_UUID }]);
+      scheduleEventsServiceMock.list.mockResolvedValue([
+        { ...mockEvent, expedienteId: EXPEDIENTE_UUID },
+      ]);
 
       await request(app.getHttpServer())
         .get('/api/v1/wfm/events')

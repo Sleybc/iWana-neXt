@@ -4,6 +4,13 @@ import { SchedulingClient } from './SchedulingClient';
 import { ApiError, usersApi, wfmApi } from '@/lib/api-client';
 
 const useAuthMock = jest.fn();
+const replaceMock = jest.fn();
+
+jest.mock('next/navigation', () => ({
+  usePathname: () => '/dashboard/scheduling',
+  useRouter: () => ({ replace: replaceMock }),
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 jest.mock('@/components/auth/AuthProvider', () => ({
   useAuth: () => useAuthMock(),
@@ -154,6 +161,7 @@ function buildEvent() {
 describe('SchedulingClient', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    replaceMock.mockReset();
     useAuthMock.mockReturnValue({
       user: buildAuthUser(),
       isLoading: false,

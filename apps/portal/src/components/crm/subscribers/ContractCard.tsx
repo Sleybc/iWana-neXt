@@ -153,7 +153,10 @@ export function ContractCard({
   // Nombre del plan desde snapshot
   const planName = (contract.planSnapshotJson?.name as string | undefined) ?? contract.planId;
 
-  const locationLine = [formatLocationLabel(contract.installationCity), contract.installationAddress]
+  const locationLine = [
+    formatLocationLabel(contract.installationCity),
+    contract.installationAddress,
+  ]
     .filter(Boolean)
     .join(' · ');
 

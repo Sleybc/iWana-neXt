@@ -93,24 +93,47 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
     const platformSection = page.locator('section[aria-labelledby="platform-audit-heading"]');
     await expect(platformSection.getByText('Administrador plataforma')).toBeVisible();
 
-    await selectDateFromPickerByPlaceholder(page, platformSection, 'audit-date-from', buildDateInput(1));
+<<<<<<< HEAD
+    await selectDateFromPickerByPlaceholder(
+      page,
+      platformSection,
+      'audit-date-from',
+      buildDateInput(1),
+    );
     await expect(
       platformSection.getByText('No hay eventos que cumplan los filtros actuales.'),
     ).toBeVisible();
 
-    await selectDateFromPickerByPlaceholder(page, platformSection, 'audit-date-from', buildDateInput(-3));
+    await selectDateFromPickerByPlaceholder(
+      page,
+      platformSection,
+      'audit-date-from',
+      buildDateInput(-3),
+    );
     await expect(platformSection.getByText('Administrador plataforma')).toBeVisible();
 
-    await selectDateFromPickerByPlaceholder(page, platformSection, 'audit-date-to', buildDateInput(-10));
+    await selectDateFromPickerByPlaceholder(
+      page,
+      platformSection,
+      'audit-date-to',
+      buildDateInput(-10),
+    );
     await expect(
       platformSection.getByText('No hay eventos que cumplan los filtros actuales.'),
     ).toBeVisible();
 
-    await selectDateFromPickerByPlaceholder(page, platformSection, 'audit-date-to', buildDateInput(1));
+    await selectDateFromPickerByPlaceholder(
+      page,
+      platformSection,
+      'audit-date-to',
+      buildDateInput(1),
+    );
     await expect(platformSection.getByText('Administrador plataforma')).toBeVisible();
   });
 
-  test('filtra y restablece la tabla Por empresa usando Fecha desde y Fecha hasta', async ({ page }) => {
+  test('filtra y restablece la tabla Por empresa usando Fecha desde y Fecha hasta', async ({
+    page,
+  }) => {
     await loginAsPlatformAdmin(page);
 
     await page.goto('/audit-logs');
@@ -119,8 +142,15 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
     const tenantSection = page.locator('section[aria-labelledby="tenant-audit-heading"]');
     await expect(tenantSection.locator('[title^="Actor: Operador demo"]')).toBeVisible();
 
-    await selectDateFromPickerByPlaceholder(page, tenantSection, 'audit-date-from', buildDateInput(1));
-    await expect(tenantSection.getByText('No hay eventos que cumplan los filtros actuales.')).toBeVisible();
+    await selectDateFromPickerByPlaceholder(
+      page,
+      tenantSection,
+      'audit-date-from',
+      buildDateInput(1),
+    );
+    await expect(
+      tenantSection.getByText('No hay eventos que cumplan los filtros actuales.'),
+    ).toBeVisible();
 
     await selectDateFromPickerByPlaceholder(
       page,
@@ -136,13 +166,22 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
       'audit-date-to',
       buildDateInput(-10),
     );
-    await expect(tenantSection.getByText('No hay eventos que cumplan los filtros actuales.')).toBeVisible();
+    await expect(
+      tenantSection.getByText('No hay eventos que cumplan los filtros actuales.'),
+    ).toBeVisible();
 
-    await selectDateFromPickerByPlaceholder(page, tenantSection, 'audit-date-to', buildDateInput(1));
+    await selectDateFromPickerByPlaceholder(
+      page,
+      tenantSection,
+      'audit-date-to',
+      buildDateInput(1),
+    );
     await expect(tenantSection.locator('[title^="Actor: Operador demo"]')).toBeVisible();
   });
 
-  test('cambia de empresa y mantiene filtros DatePicker funcionales en la tabla tenant', async ({ page }) => {
+  test('cambia de empresa y mantiene filtros DatePicker funcionales en la tabla tenant', async ({
+    page,
+  }) => {
     await loginAsPlatformAdmin(page);
 
     await page.goto('/audit-logs');
@@ -157,8 +196,15 @@ test.describe('Web auditoria - filtros de fecha con DatePicker', () => {
     await expect(tenantSection.locator('[title^="Actor: Operador fibernet"]')).toBeVisible();
     await expect(tenantSection.locator('[title^="Actor: Operador demo"]')).toHaveCount(0);
 
-    await selectDateFromPickerByPlaceholder(page, tenantSection, 'audit-date-from', buildDateInput(-3));
-    await expect(tenantSection.getByText('No hay eventos que cumplan los filtros actuales.')).toBeVisible();
+    await selectDateFromPickerByPlaceholder(
+      page,
+      tenantSection,
+      'audit-date-from',
+      buildDateInput(-3),
+    );
+    await expect(
+      tenantSection.getByText('No hay eventos que cumplan los filtros actuales.'),
+    ).toBeVisible();
 
     await selectDateFromPickerByPlaceholder(
       page,

@@ -6,6 +6,7 @@ import { DataSource, Repository } from 'typeorm';
 import { AuditService } from '../audit/audit.service';
 import { MediaService } from '../media/media.service';
 import { REDIS_CLIENT } from '../redis/redis.module';
+import { SearchQueueService } from '../search/search-queue.service';
 import { TenantService } from './tenant.service';
 
 function buildTenant(overrides: Partial<Tenant> = {}): Tenant {
@@ -81,6 +82,11 @@ describe('Tenant settings', () => {
     upload: jest.fn(),
   };
 
+  const searchQueueServiceMock = {
+    enqueueTenantUpsert: jest.fn(),
+    enqueueNavigationRebuild: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -103,6 +109,7 @@ describe('Tenant settings', () => {
         { provide: REDIS_CLIENT, useValue: redisMock },
         { provide: AuditService, useValue: auditServiceMock },
         { provide: MediaService, useValue: mediaServiceMock },
+        { provide: SearchQueueService, useValue: searchQueueServiceMock },
       ],
     }).compile();
 

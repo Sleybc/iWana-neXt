@@ -183,7 +183,8 @@ function buildDefaultTenantAuditDataBySlug(): Record<string, WebTenantAuditEntry
 export function setupWebApiMocks(options: SetupWebApiMocksOptions = {}) {
   const tenants = options.tenants ?? buildDefaultTenants();
   const platformAuditData = options.platformAuditData ?? buildDefaultPlatformAuditData();
-  const tenantAuditDataBySlug = options.tenantAuditDataBySlug ?? buildDefaultTenantAuditDataBySlug();
+  const tenantAuditDataBySlug =
+    options.tenantAuditDataBySlug ?? buildDefaultTenantAuditDataBySlug();
   const onUnhandledApiRoute = options.onUnhandledApiRoute ?? 'continue';
 
   return async ({ page }: { page: import('@playwright/test').Page }) => {

@@ -9,6 +9,69 @@
 
 Se ejecutó la implementación transversal de enablement operativo para habilitar perfil de plataforma, settings funcionales de tenant, flujo de alta de primera empresa y gestión operativa de usuarios internos. El cierre incluyó la corrección del flujo MFA de plataforma en web, la activación real de acciones de usuarios por tenant y la ampliación del E2E de bootstrap administrativo.
 
+### Addendum correctivo 2026-05-13 — Configuración raíz de Jest para monorepo
+
+Se corrigió una falla transversal de tooling que hacía que Jest, al ejecutarse desde la raíz del monorepo, usara su configuración por defecto en lugar de los `jest.config.js` de cada workspace. El efecto operativo era que los archivos `*.spec.ts` y `*.spec.tsx` se intentaban parsear con `babel-jest` sin soporte real para TypeScript/TSX, y además se incluían specs de `e2e` escritos para Playwright, generando cascadas de errores de sintaxis (`type`, `as const`, `public readonly`, JSX, `import type`).
+
+El ajuste introdujo `jest.config.cjs` en la raíz con `projects` explícitos para `apps/api`, `apps/web`, `apps/portal` y `apps/worker`, delegando la transformación a `ts-jest` según la configuración ya existente en cada app. Con esto, Jest deja de barrer el repo completo con el fallback Babel y excluye de facto los tests E2E de Playwright del runner unitario.
+
+Validación ejecutada:
+
+- `pnpm exec jest --showConfig`
+- `pnpm exec jest --listTests`
+- pruebas focalizadas en verde para:
+  - `apps/api/src/modules/wfm/tests/schedule-events.service.spec.ts`
+  - `apps/portal/src/components/auth/LoginExperience.spec.tsx`
+  - `apps/web/src/components/auth/PlatformLoginExperience.spec.tsx`
+
+Resultado: Jest raíz quedó enrutable por proyectos, sin parseo Babel por defecto sobre TypeScript/TSX y sin descubrimiento accidental de suites Playwright.
+
+### Addendum correctivo 2026-05-13 — Barrido incremental de Jest y anclaje de VS Code
+
+Se completó un barrido incremental de Jest por workspace usando ejecución serial (`--runInBand`) y configuración explícita por app para evitar saturación local y separar fallas reales de problemas del runner. Adicionalmente, el workspace de VS Code quedó configurado para que la extensión Jest use el `jest.config.cjs` raíz del monorepo en modo `on-demand`, evitando watch agresivo y evitando volver al descubrimiento incorrecto desde configuración implícita.
+
+Validación ejecutada por partes:
+
+- `pnpm exec jest -c apps/worker/jest.config.js --runInBand`
+- `pnpm exec jest -c apps/web/jest.config.js --runInBand`
+- `pnpm exec jest -c apps/portal/jest.config.js --runInBand`
+- `pnpm exec jest -c apps/api/jest.config.js --runInBand`
+
+Resultado del barrido:
+
+- `apps/worker`: 5 suites en verde, 30 tests en verde.
+- `apps/web`: 10 suites en verde, 31 tests en verde.
+- `apps/portal`: fallos funcionales reales en `SchedulingClient.spec.tsx` por ausencia de mock de `next/navigation`, más dos desalineaciones de copy/labels en `scheduling-ui.spec.ts` y `expediente-ui.spec.ts`.
+- `apps/api`: 4 suites fallidas y 96 en verde; los fallos reales detectados se concentran en `users.service.spec.ts`, `tenant.service.spec.ts`, `tenant-settings.spec.ts` y `status-transition.service.spec.ts`.
+
+Resultado operativo: el tooling de Jest quedó estable tanto en CLI como en VS Code; los errores restantes ya son incidencias concretas de tests/código y no fallas de infraestructura de test.
+
+### Addendum correctivo 2026-05-13 — Cierre de fallos reales en portal y API
+
+Se corrigieron los fallos funcionales y de wiring detectados durante el barrido incremental de Jest, manteniendo validación por slices pequeños para no saturar el entorno local.
+
+Correcciones aplicadas:
+
+- `apps/portal`: `SchedulingClient.spec.tsx` quedó alineado con el uso actual de `next/navigation` mediante mocks explícitos de `useRouter`, `usePathname` y `useSearchParams`.
+- `apps/portal`: `scheduling-ui.ts` corrigió la normalización de descripciones legacy de CRM para UUID completos y la sustitución gramatical correcta hacia `la oportunidad <ref corta>`.
+- `apps/portal`: `expediente-ui.ts` unificó el label visible `Listo para instalación`, evitando inconsistencia con otras pantallas del portal.
+- `apps/api`: `tenant.service.spec.ts`, `tenant-settings.spec.ts` y `users.service.spec.ts` registran ahora `SearchQueueService` mockeado, alineándose con la nueva dependencia introducida en los servicios reales.
+- `apps/api`: `status-transition.service.spec.ts` se actualizó para reflejar la regla vigente del pipeline: soportes documentales pendientes en `CLIENTE_ACTIVO` generan advertencia, no bloqueo.
+
+Validación correctiva ejecutada:
+
+- `runTests` focalizado sobre `SchedulingClient.spec.tsx`, `scheduling-ui.spec.ts` y `expediente-ui.spec.ts`
+- `pnpm exec jest -c apps/portal/jest.config.js --runInBand`
+- `runTests` focalizado sobre `tenant.service.spec.ts`, `tenant-settings.spec.ts` y `users.service.spec.ts`
+- `runTests` focalizado sobre `status-transition.service.spec.ts`
+- `pnpm exec jest -c apps/api/jest.config.js --runInBand`
+
+Resultado final:
+
+- `apps/portal`: 33 suites en verde, 96 tests en verde.
+- `apps/api`: 100 suites en verde, 1101 tests en verde.
+- Estado transversal del barrido por workspace: `worker`, `web`, `portal` y `api` quedaron validados sin fallos.
+
 ### Addendum documental 2026-05-02 — Diseño de búsqueda global Typesense
 
 Se documentó la evolución del buscador de `apps/web` desde filtro local por `q` hacia una búsqueda global indexada tipo UISP. La decisión de producto define overlay flotante con resultados vivos mientras se escribe, alcance inicial sobre Empresas, Usuarios cross-tenant y Módulos/Navegación, ranking fuzzy y navegación por teclado.
@@ -543,6 +606,7 @@ Validación adicional del refuerzo:
 Se ejecutó el rediseño visual de `/dashboard/settings` en `apps/portal` con foco en jerarquía, densidad operativa y navegación por subdominios. La pestaña `Marca` dejó de actuar como contenedor monolítico y ahora separa identidad visual, catálogo de planes, productos y cobertura mediante navegación secundaria explícita (`SettingsSubTabs`).
 
 **Cambios principales:**
+
 - `SettingsSubTabs.tsx` — Componente genérico de navegación secundaria (WCAG 2.2 AA, teclado)
 - `settings-branding-navigation.ts` — Constante de 4 ítems con tipado (`BrandingSettingsTabId`)
 - `SettingsSectionPanel.tsx` — Envoltorio reutilizable de sección con título, descripción y toolbar
@@ -552,6 +616,7 @@ Se ejecutó el rediseño visual de `/dashboard/settings` en `apps/portal` con fo
 - `PlanCatalogManager`, `AdditionalProductsManager`, `AdditionalServicesManager`, `CoverageCheckSection` — Aislados bajo su subdominio activo
 
 **Validación ejecutada:**
+
 - Todos los tests de settings: PASS
 - Typecheck: PASS
 - Lint: PASS
