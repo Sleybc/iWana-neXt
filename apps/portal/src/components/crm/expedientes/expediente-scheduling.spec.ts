@@ -2,6 +2,7 @@ import {
   INSTALLATION_SCHEDULING_MIN_PROGRESS,
   buildSchedulingHref,
   canScheduleInstallation,
+  hasMissingOperationalRefsForInstallation,
 } from './expediente-scheduling';
 
 describe('expediente-scheduling', () => {
@@ -43,5 +44,15 @@ describe('expediente-scheduling', () => {
     expect(buildSchedulingHref('550e8400-e29b-41d4-a716-446655440000')).toBe(
       '/dashboard/scheduling?open=create&type=INSTALLATION&expedienteId=550e8400-e29b-41d4-a716-446655440000',
     );
+  });
+
+  it('should detectar faltantes operativos para redirigir a scheduling', () => {
+    expect(
+      hasMissingOperationalRefsForInstallation(['Ticket vinculado', 'Orden de trabajo vinculada']),
+    ).toBe(true);
+
+    expect(hasMissingOperationalRefsForInstallation(['orden de trabajo vinculada'])).toBe(true);
+    expect(hasMissingOperationalRefsForInstallation(['Ticket Vinculado'])).toBe(true);
+    expect(hasMissingOperationalRefsForInstallation(['Dirección de instalación'])).toBe(false);
   });
 });

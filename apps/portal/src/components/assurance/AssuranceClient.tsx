@@ -56,6 +56,16 @@ function mapAssuranceError(error: unknown): string {
   return 'No fue posible completar la operación. Intenta de nuevo.';
 }
 
+function mapAssuranceViewError(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 404) {
+      return 'No fue posible cargar la mesa de ayuda porque el servicio no está disponible en este entorno.';
+    }
+  }
+
+  return mapAssuranceError(error);
+}
+
 function buildDefaultFilters(): ListAssuranceTicketsParams {
   return { page: 1, limit: 20 };
 }
@@ -169,7 +179,7 @@ export function AssuranceClient() {
     ]);
 
     if (ticketsResult.status === 'rejected') {
-      setError(mapAssuranceError(ticketsResult.reason));
+      setError(mapAssuranceViewError(ticketsResult.reason));
       setTickets([]);
       setTotalTickets(0);
     } else {

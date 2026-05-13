@@ -13,6 +13,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import type { Contract, ContractStatus } from '@/lib/api-client';
+import { formatLocationLabel } from './subscriber-ui';
 
 // ── Colores y labels por estado ───────────────────────────────────────────────
 
@@ -152,7 +153,7 @@ export function ContractCard({
   // Nombre del plan desde snapshot
   const planName = (contract.planSnapshotJson?.name as string | undefined) ?? contract.planId;
 
-  const locationLine = [contract.installationCity, contract.installationAddress]
+  const locationLine = [formatLocationLabel(contract.installationCity), contract.installationAddress]
     .filter(Boolean)
     .join(' · ');
 

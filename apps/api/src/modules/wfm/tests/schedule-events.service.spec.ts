@@ -226,6 +226,34 @@ describe('ScheduleEventsService', () => {
     });
   });
 
+  describe('list — expediente filter', () => {
+    it('should restrict the query to events linked to the requested expediente', async () => {
+      const expedienteId = '5acea022-2419-453a-a324-1a762853383f';
+      const andWhereMock = jest.fn().mockReturnThis();
+
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
+        const mockQr = {
+          manager: {
+            createQueryBuilder: () => ({
+              where: jest.fn().mockReturnThis(),
+              andWhere: andWhereMock,
+              orderBy: jest.fn().mockReturnThis(),
+              getMany: jest.fn().mockResolvedValue([{ id: 'evt-expediente', expedienteId }]),
+            }),
+          },
+        };
+        return fn(mockQr as any);
+      });
+
+      const result = await service.list({ expedienteId }, adminActor as any);
+
+      expect(andWhereMock).toHaveBeenCalledWith('se.expediente_id = :expedienteId', {
+        expedienteId,
+      });
+      expect(result).toEqual([{ id: 'evt-expediente', expedienteId }]);
+    });
+  });
+
   describe('getById — ownership rule for TECHNICIAN', () => {
     it('should throw ForbiddenException when TECHNICIAN requests event of another user', async () => {
       const eventBelongingToOther = {

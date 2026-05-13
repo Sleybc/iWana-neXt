@@ -27,6 +27,7 @@ import { MediaModule } from './modules/media/media.module';
 import { PlatformBrandingModule } from './modules/platform-branding/platform-branding.module';
 import { SearchQueueModule } from './modules/search/search-queue.module';
 import { SearchModule } from './modules/search/search.module';
+import { AssuranceModule } from './modules/assurance/assurance.module';
 
 const runtimeEnv = process.env['NODE_ENV'];
 const apiDevelopmentLocalEnvPath = resolve(__dirname, '../../../.env.development.local');
@@ -267,6 +268,9 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
 
     // Modulo WFM (MOD09) Fase 01: agenda operativa, work orders, disponibilidad de tecnicos
     WfmModule,
+
+    // Modulo Assurance (MOD10): tickets, SLA y trazabilidad de mesa de ayuda
+    AssuranceModule,
   ],
   controllers: [],
   providers: [

@@ -86,6 +86,7 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
   const editing = Boolean(initialData);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const {
+    control,
     register,
     handleSubmit,
     reset,
@@ -206,7 +207,7 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
           {personType === PersonType.JURIDICA ? (
             <JuridicaPersonFields register={register} errors={errors} />
           ) : (
-            <NaturalPersonFields register={register} errors={errors} />
+            <NaturalPersonFields control={control} register={register} errors={errors} />
           )}
 
           <SharedPersonFields register={register} errors={errors} />

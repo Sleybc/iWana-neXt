@@ -1,134 +1,39 @@
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-
-function buildMockJwt(expirationSecondsFromNow = 3600): string {
-  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_');
-  const payload = Buffer.from(
-    JSON.stringify({ exp: Math.floor(Date.now() / 1000) + expirationSecondsFromNow }),
-  )
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_');
-  return `${header}.${payload}.signature`;
-}
-
-function setupWebApiMocks() {
-  return async ({ page }: { page: import('@playwright/test').Page }) => {
-    let isLoggedIn = false;
-
-    // Mock central de API para mantener el flujo E2E estable sin dependencia del backend local.
-    await page.route('**/api/v1/**', async (route) => {
-      const request = route.request();
-      const url = request.url();
-      const method = request.method();
-
-      if (url.endsWith('/auth/platform/login') && method === 'POST') {
-        isLoggedIn = true;
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            data: {
-              accessToken: buildMockJwt(),
-            },
-          }),
-        });
-        return;
-      }
-
-      if (url.endsWith('/auth/me') && method === 'GET') {
-        if (!isLoggedIn) {
-          await route.fulfill({
-            status: 401,
-            contentType: 'application/json',
-            body: JSON.stringify({ code: 'UNAUTHORIZED', message: 'No autenticado' }),
-          });
-          return;
-        }
-
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            data: {
-              sub: '8f145de2-1111-4abc-9e08-3b768a194001',
-              email: 'sha256:admin-hash',
-              role: 'system_admin',
-              tenantId: null,
-              schemaName: null,
-              jti: 'jti-123',
-              type: 'platform',
-            },
-          }),
-        });
-        return;
-      }
-
-      if (url.endsWith('/auth/logout') && method === 'POST') {
-        isLoggedIn = false;
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ data: { message: 'Sesion cerrada correctamente.' } }),
-        });
-        return;
-      }
-
-      if (url.includes('/tenants') && method === 'GET') {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            data: [
-              {
-                id: 'tenant-1',
-                name: 'Demo ISP',
-                slug: 'demo-isp',
-                schemaName: 'tenant_demo_isp',
-                status: 'PROVISIONING_FAILED',
-                contactEmail: 'hash:contact-1',
-                maxSubscribers: 500,
-                settings: {},
-                createdAt: '2026-03-12T09:00:00.000Z',
-                updatedAt: '2026-03-13T10:00:00.000Z',
-              },
-              {
-                id: 'tenant-2',
-                name: 'Fibernet Colombia',
-                slug: 'fibernet-col',
-                schemaName: 'tenant_fibernet_col',
-                status: 'ACTIVE',
-                contactEmail: 'hash:contact-2',
-                maxSubscribers: 1200,
-                settings: {},
-                createdAt: '2026-03-11T10:00:00.000Z',
-                updatedAt: '2026-03-13T09:30:00.000Z',
-              },
-            ],
-          }),
-        });
-        return;
-      }
-
-      if (url.endsWith('/auth/refresh') && method === 'POST') {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ data: { accessToken: buildMockJwt() } }),
-        });
-        return;
-      }
-
-      await route.continue();
-    });
-  };
-}
+import { setupWebApiMocks, submitPlatformLogin } from './helpers/web-api-mocks';
 
 test.describe('Web auth + dashboard flows', () => {
-  test.beforeEach(setupWebApiMocks());
+  test.beforeEach(
+    setupWebApiMocks({
+      tenants: [
+        {
+          id: 'tenant-1',
+          name: 'Demo ISP',
+          slug: 'demo-isp',
+          schemaName: 'tenant_demo_isp',
+          status: 'PROVISIONING_FAILED',
+          contactEmail: 'hash:contact-1',
+          maxSubscribers: 500,
+          settings: {},
+          createdAt: '2026-03-12T09:00:00.000Z',
+          updatedAt: '2026-03-13T10:00:00.000Z',
+        },
+        {
+          id: 'tenant-2',
+          name: 'Fibernet Colombia',
+          slug: 'fibernet-col',
+          schemaName: 'tenant_fibernet_col',
+          status: 'ACTIVE',
+          contactEmail: 'hash:contact-2',
+          maxSubscribers: 1200,
+          settings: {},
+          createdAt: '2026-03-11T10:00:00.000Z',
+          updatedAt: '2026-03-13T09:30:00.000Z',
+        },
+      ],
+      onUnhandledApiRoute: '404',
+    }),
+  );
 
   test('login -> dashboard -> filtro por buscador -> logout', async ({ page }) => {
     await page.goto('/auth/login');
@@ -140,9 +45,7 @@ test.describe('Web auth + dashboard flows', () => {
     const loginA11y = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
     expect(loginA11y.violations).toEqual([]);
 
-    await page.getByLabel('Correo Electrónico / Identidad').fill('admin@iwana.local');
-    await page.getByPlaceholder('••••••••').fill('Password123!');
-    await page.getByRole('button', { name: 'Ingresar' }).click();
+    await submitPlatformLogin(page);
 
     await expect(page).toHaveURL(/\/dashboard/);
     await expect(page.getByText(/Tenants de la plataforma|Empresas de la plataforma/i)).toBeVisible();
@@ -154,11 +57,9 @@ test.describe('Web auth + dashboard flows', () => {
 
     await expect(page.getByRole('cell', { name: 'Demo ISP' })).toBeVisible();
 
-    await page.getByPlaceholder('Buscar o escribir un comando...').fill('fibernet');
-    await page.keyboard.press('Enter');
-
-    await expect(page).toHaveURL(/q=fibernet/);
+    await page.getByPlaceholder('Buscar por nombre o slug...').fill('fibernet');
     await expect(page.getByRole('cell', { name: 'Fibernet Colombia' })).toBeVisible();
+    await expect(page.getByRole('cell', { name: 'Demo ISP' })).toHaveCount(0);
 
     // Abrimos menú de usuario y cerramos sesión para validar la navegación de salida.
     await page.getByRole('button', { name: 'Menú de usuario' }).click();

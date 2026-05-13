@@ -1,9 +1,10 @@
 'use client';
 
 import { CalendarDays, LayoutDashboard, List, Plus, RefreshCcw } from 'lucide-react';
-import { Button, Input, Select } from '@iwana/ui';
+import { Button, DatePicker, Select } from '@iwana/ui';
 import { PortalPanel } from '@/components/shared/portal-ui';
 import type { SchedulingFilters } from './scheduling-ui';
+import { toDateFromLocalDateValue, toLocalDateValue } from './schedule-event-time';
 import {
   SCHEDULE_EVENT_STATUS_OPTIONS,
   type SchedulingView,
@@ -68,19 +69,17 @@ export function SchedulingToolbar({
       }
     >
       <div className="grid gap-3 lg:grid-cols-[repeat(5,minmax(0,1fr))_auto] lg:items-end">
-        <Input
+        <DatePicker
           id="scheduling-from-date"
-          type="date"
           label="Desde"
-          value={filters.fromDate}
-          onChange={(event) => update('fromDate', event.target.value)}
+          value={toDateFromLocalDateValue(filters.fromDate)}
+          onChange={(date) => update('fromDate', date ? toLocalDateValue(date) : '')}
         />
-        <Input
+        <DatePicker
           id="scheduling-to-date"
-          type="date"
           label="Hasta"
-          value={filters.toDate}
-          onChange={(event) => update('toDate', event.target.value)}
+          value={toDateFromLocalDateValue(filters.toDate)}
+          onChange={(date) => update('toDate', date ? toLocalDateValue(date) : '')}
         />
         <Select
           id="scheduling-technician-filter"

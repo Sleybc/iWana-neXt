@@ -21,6 +21,7 @@ import {
   SUBSCRIBER_STATUS_META,
   SUBSCRIBER_STATUS_OPTIONS,
   formatDocumentDisplay,
+  formatSubscriberLocation,
   formatSubscriberDate,
   formatSubscriberName,
   formatVatTreatmentLabel,
@@ -306,7 +307,7 @@ export function SubscribersListClient() {
                       {formatVatTreatmentLabel(subscriber.vatTreatment)}
                     </td>
                     <td className={cellClass}>
-                      {subscriber.city || subscriber.department || 'Sin ubicación'}
+                      {formatSubscriberLocation(subscriber.city, subscriber.department)}
                     </td>
                     <td className={cellClass}>
                       <Badge

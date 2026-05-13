@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Button, Input, Select } from '@iwana/ui';
+import { Button, DatePicker, Input, Select } from '@iwana/ui';
 import { WfmWorkType, WorkOrderPriority, WorkOrderSourceContext } from '@iwana/shared';
+import { Clock3 } from 'lucide-react';
 import type { CreateWfmScheduleEventDto, InternalUser } from '@/lib/api-client';
 import { PortalAlert } from '@/components/shared/portal-ui';
 import {
@@ -15,6 +16,17 @@ import {
   buildTechnicianOptions,
   toIsoFromDatetimeLocal,
 } from './scheduling-ui';
+import {
+  QUICK_DURATION_OPTIONS,
+  SCHEDULE_TIME_OPTIONS,
+  buildDefaultScheduleStart,
+  buildScheduleWindow,
+  deriveDurationMinutes,
+  getDefaultDurationForWorkType,
+  toDateFromLocalDateValue,
+  toLocalDateValue,
+  toLocalTimeValue,
+} from './schedule-event-time';
 
 const optionalUuidField = z
   .string()
@@ -47,8 +59,13 @@ const scheduleEventFormSchema = z
     type: z.nativeEnum(WfmWorkType, { required_error: 'Selecciona un tipo de trabajo.' }),
     title: z.string().trim().min(1, 'El título es obligatorio.').max(160, 'Máximo 160 caracteres.'),
     description: z.string().trim().max(500, 'Máximo 500 caracteres.').optional().or(z.literal('')),
-    scheduledStartAtLocal: z.string().min(1, 'Selecciona la fecha y hora de inicio.'),
-    scheduledEndAtLocal: z.string().min(1, 'Selecciona la fecha y hora de cierre.'),
+    scheduledDateLocal: z.string().min(1, 'Selecciona la fecha de visita.'),
+    scheduledStartTimeLocal: z.string().min(1, 'Selecciona la hora de llegada.'),
+    durationMinutes: z.coerce
+      .number({ invalid_type_error: 'Ingresa una duración válida.' })
+      .int('Ingresa una duración válida.')
+      .min(15, 'La duración mínima es de 15 minutos.')
+      .max(12 * 60, 'La duración máxima es de 12 horas.'),
     assignedUserId: z.string().uuid('Selecciona un técnico válido.'),
     address: z.string().trim().max(255, 'Máximo 255 caracteres.').optional().or(z.literal('')),
     municipality: z.string().trim().max(120, 'Máximo 120 caracteres.').optional().or(z.literal('')),
@@ -82,26 +99,21 @@ const scheduleEventFormSchema = z
       .or(z.literal('')),
   })
   .superRefine((values, ctx) => {
-    const startAt = new Date(values.scheduledStartAtLocal).getTime();
-    const endAt = new Date(values.scheduledEndAtLocal).getTime();
+    const scheduleWindow = buildScheduleWindow(
+      values.scheduledDateLocal,
+      values.scheduledStartTimeLocal,
+      values.durationMinutes,
+    );
 
-    if (Number.isNaN(startAt) || Number.isNaN(endAt)) {
+    if (!scheduleWindow) {
       return;
     }
 
-    if (endAt <= startAt) {
+    if (scheduleWindow.endAt.getTime() <= scheduleWindow.startAt.getTime()) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['scheduledEndAtLocal'],
-        message: 'La fecha de cierre debe ser posterior al inicio.',
-      });
-    }
-
-    if (endAt - startAt < 15 * 60 * 1000) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['scheduledEndAtLocal'],
-        message: 'La duración mínima del evento es de 15 minutos.',
+        path: ['durationMinutes'],
+        message: 'La hora de fin debe ser posterior al inicio.',
       });
     }
 
@@ -118,18 +130,6 @@ type ScheduleEventFormValues = z.infer<typeof scheduleEventFormSchema>;
 
 export type ScheduleEventFormInitialValues = Partial<ScheduleEventFormValues>;
 
-function buildDefaultDateTime(offsetHours: number): string {
-  const date = new Date();
-  date.setMinutes(0, 0, 0);
-  date.setHours(date.getHours() + offsetHours);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
-}
-
 interface ScheduleEventFormProps {
   technicians: InternalUser[];
   onSubmit: (payload: CreateWfmScheduleEventDto) => Promise<void>;
@@ -143,12 +143,15 @@ interface ScheduleEventFormProps {
 }
 
 function buildDefaultFormValues(): ScheduleEventFormValues {
+  const startDefaults = buildDefaultScheduleStart(1);
+
   return {
     type: WfmWorkType.TECHNICAL_VISIT,
     title: '',
     description: '',
-    scheduledStartAtLocal: buildDefaultDateTime(1),
-    scheduledEndAtLocal: buildDefaultDateTime(2),
+    scheduledDateLocal: startDefaults.scheduledDateLocal,
+    scheduledStartTimeLocal: startDefaults.scheduledStartTimeLocal,
+    durationMinutes: 60,
     assignedUserId: '',
     address: '',
     municipality: '',
@@ -168,6 +171,18 @@ function buildDefaultFormValues(): ScheduleEventFormValues {
   };
 }
 
+function buildResolvedFormValues(
+  initialValues?: ScheduleEventFormInitialValues | undefined,
+): ScheduleEventFormValues {
+  const mergedValues = { ...buildDefaultFormValues(), ...initialValues };
+
+  if (typeof initialValues?.durationMinutes !== 'number') {
+    mergedValues.durationMinutes = getDefaultDurationForWorkType(mergedValues.type);
+  }
+
+  return mergedValues;
+}
+
 export function ScheduleEventForm({
   technicians,
   onSubmit,
@@ -180,10 +195,7 @@ export function ScheduleEventForm({
   lockOperationalFlow,
 }: ScheduleEventFormProps) {
   const technicianOptions = useMemo(() => buildTechnicianOptions(technicians), [technicians]);
-  const defaultValues = useMemo(
-    () => ({ ...buildDefaultFormValues(), ...initialValues }),
-    [initialValues],
-  );
+  const defaultValues = useMemo(() => buildResolvedFormValues(initialValues), [initialValues]);
 
   const {
     register,
@@ -191,6 +203,7 @@ export function ScheduleEventForm({
     handleSubmit,
     reset,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<ScheduleEventFormValues>({
     resolver: zodResolver(scheduleEventFormSchema),
@@ -202,23 +215,56 @@ export function ScheduleEventForm({
   }, [defaultValues, reset]);
 
   const createWorkOrder = watch('createWorkOrder');
+  const scheduledDateLocal = watch('scheduledDateLocal');
+  const scheduledStartTimeLocal = watch('scheduledStartTimeLocal');
+  const durationMinutes = watch('durationMinutes');
+  const [durationMode, setDurationMode] = useState<'quick' | 'custom'>(() =>
+    QUICK_DURATION_OPTIONS.some((option) => option.minutes === defaultValues.durationMinutes)
+      ? 'quick'
+      : 'custom',
+  );
+  const durationInputId = useId();
+  const scheduleWindow = useMemo(
+    () => buildScheduleWindow(scheduledDateLocal, scheduledStartTimeLocal, durationMinutes),
+    [scheduledDateLocal, scheduledStartTimeLocal, durationMinutes],
+  );
+  const durationHours = Math.floor(Math.max(durationMinutes || 0, 0) / 60);
+  const durationRemainderMinutes = Math.max(durationMinutes || 0, 0) % 60;
+
+  useEffect(() => {
+    setDurationMode(
+      QUICK_DURATION_OPTIONS.some((option) => option.minutes === defaultValues.durationMinutes)
+        ? 'quick'
+        : 'custom',
+    );
+  }, [defaultValues.durationMinutes]);
 
   return (
     <form
       noValidate
       className="space-y-5"
       onSubmit={handleSubmit(async (values) => {
+        const scheduleValues = buildScheduleWindow(
+          values.scheduledDateLocal,
+          values.scheduledStartTimeLocal,
+          values.durationMinutes,
+        );
         const latitude = values.latitude?.trim();
         const longitude = values.longitude?.trim();
         const expedienteId = values.expedienteId?.trim();
         const subscriberId = values.subscriberId?.trim();
         const contractId = values.contractId?.trim();
         const workOrderSummary = values.workOrderSummary?.trim();
+
+        if (!scheduleValues) {
+          return;
+        }
+
         const payload: CreateWfmScheduleEventDto = {
           type: values.type,
           title: values.title.trim(),
-          scheduledStartAt: toIsoFromDatetimeLocal(values.scheduledStartAtLocal),
-          scheduledEndAt: toIsoFromDatetimeLocal(values.scheduledEndAtLocal),
+          scheduledStartAt: toIsoFromDatetimeLocal(scheduleValues.scheduledStartAtLocal),
+          scheduledEndAt: toIsoFromDatetimeLocal(scheduleValues.scheduledEndAtLocal),
           assignedUserId: values.assignedUserId,
         };
 
@@ -300,24 +346,178 @@ export function ScheduleEventForm({
         {...register('title')}
       />
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <section className="space-y-4 rounded-2xl border border-gray-200 bg-[#fbfcf8] p-4 dark:border-dark-border dark:bg-dark-surface-3">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Programación</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Define cuándo inicia la visita y cuánto tiempo ocupará la cuadrilla.
+          </p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <Controller
+            name="scheduledDateLocal"
+            control={control}
+            render={({ field }) => (
+              <DatePicker
+                id="schedule-event-date"
+                label="Fecha de visita"
+                requiredIndicator
+                value={toDateFromLocalDateValue(field.value)}
+                onChange={(date) => field.onChange(date ? toLocalDateValue(date) : '')}
+                onBlur={field.onBlur}
+                disabled={isSubmitting}
+                {...(errors.scheduledDateLocal?.message
+                  ? { error: errors.scheduledDateLocal.message }
+                  : {})}
+              />
+            )}
+          />
+
+          <Controller
+            name="scheduledStartTimeLocal"
+            control={control}
+            render={({ field }) => (
+              <Select
+                id="schedule-event-time"
+                label="Hora de llegada"
+                value={field.value}
+                placeholder="Selecciona una hora"
+                options={SCHEDULE_TIME_OPTIONS}
+                onChange={(event) => field.onChange(event.target.value)}
+                disabled={isSubmitting}
+                {...(errors.scheduledStartTimeLocal?.message
+                  ? { error: errors.scheduledStartTimeLocal.message }
+                  : {})}
+              />
+            )}
+          />
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Duración estimada
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Duración rápida o personalizada.</p>
+            </div>
+
+            <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-white p-1 dark:border-dark-border-2 dark:bg-dark-surface-2">
+              <Button
+                type="button"
+                variant={durationMode === 'quick' ? 'primary' : 'ghost'}
+                size="sm"
+                aria-pressed={durationMode === 'quick'}
+                disabled={isSubmitting}
+                onClick={() => setDurationMode('quick')}
+              >
+                Duración rápida
+              </Button>
+              <Button
+                type="button"
+                variant={durationMode === 'custom' ? 'primary' : 'ghost'}
+                size="sm"
+                aria-pressed={durationMode === 'custom'}
+                disabled={isSubmitting}
+                onClick={() => setDurationMode('custom')}
+              >
+                Personalizada
+              </Button>
+            </div>
+          </div>
+
+          {durationMode === 'quick' ? (
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Duración rápida">
+              {QUICK_DURATION_OPTIONS.map((option) => {
+                const isActive = durationMinutes === option.minutes;
+
+                return (
+                  <Button
+                    key={option.minutes}
+                    type="button"
+                    variant={isActive ? 'primary' : 'secondary'}
+                    size="sm"
+                    aria-pressed={isActive}
+                    disabled={isSubmitting}
+                    onClick={() => {
+                      setValue('durationMinutes', option.minutes, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      });
+                    }}
+                  >
+                    {option.label}
+                  </Button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              <Input
+                id={`${durationInputId}-hours`}
+                type="number"
+                min={0}
+                max={12}
+                step={1}
+                label="Horas"
+                value={String(durationHours)}
+                disabled={isSubmitting}
+                onChange={(event) => {
+                  const nextHours = Number.parseInt(event.target.value || '0', 10);
+                  const safeHours = Number.isNaN(nextHours) ? 0 : Math.min(Math.max(nextHours, 0), 12);
+                  setValue('durationMinutes', safeHours * 60 + durationRemainderMinutes, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  });
+                }}
+              />
+              <Input
+                id={`${durationInputId}-minutes`}
+                type="number"
+                min={0}
+                max={45}
+                step={15}
+                label="Minutos"
+                value={String(durationRemainderMinutes)}
+                disabled={isSubmitting}
+                onChange={(event) => {
+                  const nextMinutes = Number.parseInt(event.target.value || '0', 10);
+                  const normalizedMinutes = Number.isNaN(nextMinutes)
+                    ? 0
+                    : Math.min(Math.max(nextMinutes, 0), 45);
+                  const roundedMinutes = Math.round(normalizedMinutes / 15) * 15;
+                  setValue('durationMinutes', durationHours * 60 + roundedMinutes, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  });
+                }}
+              />
+            </div>
+          )}
+
+          {errors.durationMinutes?.message && (
+            <p className="text-xs text-[#EF4444]" role="alert">
+              {errors.durationMinutes.message}
+            </p>
+          )}
+        </div>
+
         <Input
-          id="schedule-event-start"
-          type="datetime-local"
-          label="Inicio programado"
-          error={errors.scheduledStartAtLocal?.message}
+          id="schedule-event-end-preview"
+          label="Termina"
+          value={
+            scheduleWindow
+              ? `${toLocalDateValue(scheduleWindow.endAt)} ${toLocalTimeValue(scheduleWindow.endAt)}`
+              : 'No disponible'
+          }
+          readOnly
           disabled={isSubmitting}
-          {...register('scheduledStartAtLocal')}
+          startIcon={<Clock3 className="h-4 w-4" />}
+          helperText="Se calcula automáticamente a partir de la hora de llegada y la duración estimada."
+          className="cursor-default bg-[#f8faf5] font-medium text-gray-700 dark:bg-dark-surface-2 dark:text-gray-100"
         />
-        <Input
-          id="schedule-event-end"
-          type="datetime-local"
-          label="Fin programado"
-          error={errors.scheduledEndAtLocal?.message}
-          disabled={isSubmitting}
-          {...register('scheduledEndAtLocal')}
-        />
-      </div>
+      </section>
 
       <div>
         <label

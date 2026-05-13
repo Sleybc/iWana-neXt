@@ -14,6 +14,9 @@ import { expect, test } from '@playwright/test';
 
 const MOCK_TENANT_SLUG = 'tenant-wfm-demo';
 const TECHNICIAN_ID = '11111111-1111-4111-8111-111111111111';
+const CRM_EXPEDIENTE_ID = 'fcda817a-6340-4b83-bdd3-8bb4caa6cae9';
+const CRM_INSTALLATION_TICKET_ID = 'ticket-install-001';
+const CRM_EXPEDIENTE_NAME = 'Empresa Demo SAS';
 
 function buildIsoAt(dayOffset: number, hour: number, minute = 0): string {
   const value = new Date();
@@ -29,6 +32,151 @@ function buildDateInput(dayOffset: number): string {
   const month = String(value.getMonth() + 1).padStart(2, '0');
   const day = String(value.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function parseInputDate(value: string): Date | null {
+  const [yearPart, monthPart, dayPart] = value.split('-');
+  if (!yearPart || !monthPart || !dayPart) {
+    return null;
+  }
+
+  const year = Number(yearPart);
+  const month = Number(monthPart);
+  const day = Number(dayPart);
+
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+    return null;
+  }
+
+  const parsed = new Date(year, month - 1, day);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseTriggerDate(value: string): Date | null {
+  const [dayPart, monthPart, yearPart] = value.trim().split('/');
+  if (!yearPart || !monthPart || !dayPart) {
+    return null;
+  }
+
+  const year = Number(yearPart);
+  const month = Number(monthPart);
+  const day = Number(dayPart);
+
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+    return null;
+  }
+
+  const parsed = new Date(year, month - 1, day);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+async function selectDateFromPicker(
+  page: import('@playwright/test').Page,
+  scope: import('@playwright/test').Page | import('@playwright/test').Locator,
+  label: string,
+  value: string,
+) {
+  const targetDate = parseInputDate(value);
+  if (!targetDate) {
+    return;
+  }
+
+  const trigger = scope.getByLabel(label);
+  const triggerText = (await trigger.textContent())?.trim() ?? '';
+  const currentDate = parseTriggerDate(triggerText);
+
+  await trigger.click();
+
+  const popover = page.locator('[data-state="open"][data-side]').last();
+  await expect(popover).toBeVisible();
+
+  if (currentDate) {
+    const monthDelta =
+      (targetDate.getFullYear() - currentDate.getFullYear()) * 12 +
+      (targetDate.getMonth() - currentDate.getMonth());
+
+    if (monthDelta > 0) {
+      for (let index = 0; index < monthDelta; index += 1) {
+        await popover.getByRole('button', { name: /siguiente|next/i }).click();
+      }
+    }
+
+    if (monthDelta < 0) {
+      for (let index = 0; index < Math.abs(monthDelta); index += 1) {
+        await popover.getByRole('button', { name: /anterior|previous/i }).click();
+      }
+    }
+  }
+
+  const targetLabel = targetDate.toLocaleDateString('es-CO', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
+  await popover.getByRole('button', { name: new RegExp(targetLabel, 'i') }).click();
+}
+
+function buildCrmInstallationExpediente() {
+  return {
+    id: CRM_EXPEDIENTE_ID,
+    tenantId: 'tenant-wfm-001',
+    status: 'LISTO_PARA_INSTALACION',
+    previousStatus: 'EN_COTIZACION',
+    assignedTo: 'admin-001',
+    dataConsentRevoked: false,
+    statusChangedAt: buildIsoAt(-1, 8),
+    discardReason: null,
+    fullName: CRM_EXPEDIENTE_NAME,
+    documentType: 'NIT',
+    documentNumberEncrypted: 'enc-documento-demo',
+    personType: 'PERSONA_JURIDICA',
+    firstName: null,
+    lastName: null,
+    primaryContactName: 'Laura Pérez',
+    primaryContactRole: 'Administración',
+    documentNumber: '900123456',
+    phonePrimaryEncrypted: 'enc-telefono-demo',
+    phoneSecondaryEncrypted: null,
+    emailPrimaryEncrypted: null,
+    acquisitionChannel: 'REFERRAL',
+    sourceDetail: 'Aliado estratégico',
+    source: 'Manual',
+    address: 'Calle 10 # 20-30',
+    municipality: 'Bogotá',
+    department: 'Cundinamarca',
+    interestedPlanId: 'plan-500',
+    additionalProductIds: ['prod-router'],
+    completenessCommercial: 90,
+    completenessLegal: 80,
+    completenessTechnical: 85,
+    completenessOperational: 80,
+    completenessOverall: 82,
+    pipelineProgress: 82,
+    latitude: '4.7110',
+    longitude: '-74.0721',
+    technicalObservations: 'Coordinar instalación en horario AM.',
+    specialAccessNotes: 'Portería 24 horas.',
+    createdAt: buildIsoAt(-10, 10),
+    updatedAt: buildIsoAt(-1, 11),
+  };
+}
+
+async function fillSchedulingWindow(
+  page: import('@playwright/test').Page,
+  scope: import('@playwright/test').Page | import('@playwright/test').Locator,
+  values: { date: string; time: string; durationLabel?: string },
+) {
+  if (values.date) {
+    await selectDateFromPicker(page, scope, 'Fecha de visita', values.date);
+  }
+
+  await scope.getByRole('combobox', { name: 'Hora de llegada' }).click();
+  await page.getByRole('option', { name: values.time }).click();
+
+  if (values.durationLabel) {
+    await scope.getByRole('button', { name: values.durationLabel, exact: true }).click();
+  }
 }
 
 function buildToken(role: 'ADMIN' | 'TECHNICIAN', sub: string): string {
@@ -201,10 +349,12 @@ async function seedPortalSession(
 async function setupSchedulingMocks(
   page: import('@playwright/test').Page,
   role: 'ADMIN' | 'TECHNICIAN',
+  options?: { enableCrmInstallationFlow?: boolean },
 ) {
   const technician = buildTechnicianUser();
   const events: MockScheduleEvent[] = [buildInitialEvent()];
   const workOrders: MockWorkOrder[] = [buildWorkOrder('evt-001')];
+  const crmExpediente = buildCrmInstallationExpediente();
   const availability = [
     {
       id: 'availability-001',
@@ -526,6 +676,102 @@ async function setupSchedulingMocks(
       return;
     }
 
+    if (
+      options?.enableCrmInstallationFlow &&
+      pathname.endsWith(`/crm/expedientes/${CRM_EXPEDIENTE_ID}`) &&
+      method === 'GET'
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: crmExpediente,
+          completeness: {
+            overall: 82,
+            installationReadiness: {
+              canTransition: true,
+            },
+          },
+          sectionCompleteness: [],
+          installationReadiness: {
+            canTransition: true,
+          },
+          missingRequirements: [],
+          pipelineRecommendation: null,
+        }),
+      });
+      return;
+    }
+
+    if (
+      options?.enableCrmInstallationFlow &&
+      pathname.endsWith('/assurance/tickets/find-or-create-installation') &&
+      method === 'POST'
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ticket: {
+            id: CRM_INSTALLATION_TICKET_ID,
+            code: 'TK-CRM-001',
+          },
+          created: false,
+        }),
+      });
+      return;
+    }
+
+    if (
+      options?.enableCrmInstallationFlow &&
+      pathname.endsWith(`/assurance/tickets/${CRM_INSTALLATION_TICKET_ID}/link-work-order`) &&
+      method === 'POST'
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ id: CRM_INSTALLATION_TICKET_ID }),
+      });
+      return;
+    }
+
+    if (
+      options?.enableCrmInstallationFlow &&
+      pathname.endsWith(`/crm/expedientes/${CRM_EXPEDIENTE_ID}/installation-operational-refs`) &&
+      method === 'PATCH'
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: crmExpediente }),
+      });
+      return;
+    }
+
+    if (
+      options?.enableCrmInstallationFlow &&
+      pathname.endsWith(`/crm/expedientes/${CRM_EXPEDIENTE_ID}/status`) &&
+      method === 'PATCH'
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            ...crmExpediente,
+            status: 'INSTALACION_AGENDADA',
+          },
+          completeness: { overall: 82 },
+          sectionCompleteness: [],
+          installationReadiness: { canTransition: true },
+          missingRequirements: [],
+          pipelineRecommendation: null,
+          transitionWarning: null,
+        }),
+      });
+      return;
+    }
+
     if (/\/api\/v1\/wfm\/events\/[^/]+$/.test(pathname) && method === 'GET') {
       const eventId = pathname.split('/').at(-1);
       const event = events.find((item) => item.id === eventId);
@@ -542,6 +788,7 @@ async function setupSchedulingMocks(
       const assignedUserId = url.searchParams.get('assignedUserId');
       const status = url.searchParams.get('status');
       const type = url.searchParams.get('type');
+      const expedienteId = url.searchParams.get('expedienteId');
       const from = url.searchParams.get('from');
       const to = url.searchParams.get('to');
 
@@ -556,6 +803,9 @@ async function setupSchedulingMocks(
           return false;
         }
         if (type && event.type !== type) {
+          return false;
+        }
+        if (expedienteId && event.expedienteId !== expedienteId) {
           return false;
         }
         if (from && new Date(event.scheduledStartAt) < new Date(from)) {
@@ -612,9 +862,9 @@ async function setupSchedulingMocks(
         municipality: payload.municipality ?? null,
         latitude: null,
         longitude: null,
-        expedienteId: null,
+        expedienteId: payload.expedienteId ?? null,
         subscriberId: null,
-        ticketId: null,
+        ticketId: payload.ticketId ?? null,
         contractId: null,
         createdBy: 'admin-001',
         updatedBy: 'admin-001',
@@ -679,20 +929,32 @@ test('admin crea, reagenda y completa un evento con work order desde Programacio
   await page.getByRole('combobox', { name: 'Técnico responsable' }).click();
   await page.getByRole('option', { name: 'Luisa Campos' }).click();
   await page.getByLabel('Título operativo').fill('Alta fibra barrio sur');
-  await page.getByLabel('Inicio programado').fill('2026-06-03T08:00');
-  await page.getByLabel('Fin programado').fill('2026-06-03T10:00');
+  const createDialog = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: 'Crear evento operativo' }),
+  });
+  await fillSchedulingWindow(page, createDialog, {
+    date: buildDateInput(3),
+    time: '08:00',
+    durationLabel: '2 h',
+  });
   await page.locator('label').filter({ hasText: 'Crear work order embebida' }).click();
   await expect(page.getByLabel('Resumen operativo')).toBeVisible();
   await page.getByLabel('Resumen operativo').fill('Instalacion residencial nueva');
   await page.getByRole('dialog').getByRole('button', { name: 'Crear evento' }).click();
 
   await expect(page.getByText('Operación aplicada')).toBeVisible();
-  await expect(page.getByText('Alta fibra barrio sur')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Alta fibra barrio sur' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Reagendar' }).click();
   await expect(page.getByText('Reagendar evento')).toBeVisible();
-  await page.getByLabel('Nuevo inicio').fill('2026-06-03T09:00');
-  await page.getByLabel('Nuevo cierre').fill('2026-06-03T11:00');
+  const rescheduleDialog = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: 'Reagendar evento' }),
+  });
+  await fillSchedulingWindow(page, rescheduleDialog, {
+    date: buildDateInput(3),
+    time: '09:00',
+    durationLabel: '2 h',
+  });
   await page.getByLabel('Motivo').fill('Cliente solicitó mover la visita');
   await page.getByRole('button', { name: 'Guardar nueva franja' }).click();
 
@@ -713,6 +975,45 @@ test('admin crea, reagenda y completa un evento con work order desde Programacio
   await page.getByRole('option', { name: 'Cerrada' }).click();
   await detailDialog.getByRole('button', { name: 'Actualizar OT' }).click();
   await expect(page.getByText('La work order quedó en estado done.')).toBeVisible();
+});
+
+test('admin abre Programación desde CRM y agenda instalación con la nueva franja operativa', async ({
+  page,
+}) => {
+  await seedPortalSession(page, 'ADMIN', 'admin-001');
+  await setupSchedulingMocks(page, 'ADMIN', { enableCrmInstallationFlow: true });
+
+  await page.goto(
+    `/dashboard/scheduling?open=create&type=INSTALLATION&expedienteId=${CRM_EXPEDIENTE_ID}`,
+  );
+
+  const createDialog = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: 'Crear evento operativo' }),
+  });
+
+  await expect(page.getByText(`Agendando instalación para ${CRM_EXPEDIENTE_NAME}.`)).toBeVisible();
+  await expect(createDialog.getByLabel('Expediente')).toHaveValue('FCDA817A');
+  await expect(createDialog.getByLabel('Título operativo')).toHaveValue(
+    `Instalación - ${CRM_EXPEDIENTE_NAME}`,
+  );
+
+  await page.getByRole('combobox', { name: 'Técnico responsable' }).click();
+  await page.getByRole('option', { name: 'Luisa Campos' }).click();
+  await fillSchedulingWindow(page, createDialog, {
+    date: buildDateInput(4),
+    time: '08:30',
+    durationLabel: '2 h 30 min',
+  });
+
+  await createDialog.getByRole('button', { name: 'Crear evento' }).click();
+
+  await expect(page.getByText('Operación aplicada')).toBeVisible();
+  await expect(
+    page.getByText('El expediente quedó marcado como instalación agendada.'),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: `Instalación - ${CRM_EXPEDIENTE_NAME}` }),
+  ).toBeVisible();
 });
 
 test('technician solo visualiza trabajos asignados en su agenda', async ({ page }) => {
@@ -759,12 +1060,12 @@ test('admin visualiza command center y abre detalle desde timeline', async ({ pa
 
   await page.goto('/dashboard/scheduling');
 
-  await expect(page.getByText('Command center')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Command center' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Calendario' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Lista' })).toBeVisible();
 
-  await page.getByLabel('Desde').fill(buildDateInput(1));
-  await page.getByLabel('Hasta').fill(buildDateInput(1));
+  await selectDateFromPicker(page, page, 'Desde', buildDateInput(1));
+  await selectDateFromPicker(page, page, 'Hasta', buildDateInput(1));
   await page.getByRole('button', { name: 'Actualizar' }).click();
 
   await page.getByRole('button', { name: 'Abrir evento Instalacion inicial de fibra' }).click();
@@ -782,17 +1083,17 @@ test('admin consulta agenda por rango diario, semanal y mensual', async ({ page 
   await page.goto('/dashboard/scheduling');
   await page.getByRole('button', { name: 'Lista' }).click();
 
-  await page.getByLabel('Desde').fill(buildDateInput(0));
-  await page.getByLabel('Hasta').fill(buildDateInput(0));
+  await selectDateFromPicker(page, page, 'Desde', buildDateInput(0));
+  await selectDateFromPicker(page, page, 'Hasta', buildDateInput(0));
   await page.getByRole('button', { name: 'Actualizar' }).click();
   await expect(page.getByText('Sin eventos en el rango')).toBeVisible();
 
-  await page.getByLabel('Desde').fill(buildDateInput(0));
-  await page.getByLabel('Hasta').fill(buildDateInput(6));
+  await selectDateFromPicker(page, page, 'Desde', buildDateInput(0));
+  await selectDateFromPicker(page, page, 'Hasta', buildDateInput(6));
   await page.getByRole('button', { name: 'Actualizar' }).click();
   await expect(page.getByRole('button', { name: 'Ver detalle' })).toBeVisible();
 
-  await page.getByLabel('Hasta').fill(buildDateInput(30));
+  await selectDateFromPicker(page, page, 'Hasta', buildDateInput(30));
   await page.getByRole('button', { name: 'Actualizar' }).click();
   await expect(page.getByRole('cell', { name: /Luisa Campos/ })).toBeVisible();
 });

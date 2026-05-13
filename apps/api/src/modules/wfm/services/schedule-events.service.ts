@@ -70,6 +70,9 @@ export class ScheduleEventsService {
           assignedUserId: query.assignedUserId,
         });
       }
+      if (query.expedienteId) {
+        qb.andWhere('se.expediente_id = :expedienteId', { expedienteId: query.expedienteId });
+      }
       if (query.type) {
         qb.andWhere('se.type = :type', { type: query.type });
       }

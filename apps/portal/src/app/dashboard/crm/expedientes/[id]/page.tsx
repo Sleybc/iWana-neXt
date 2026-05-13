@@ -67,6 +67,10 @@ import {
   getCandidateTechnologiesFromDraft,
   getMunicipiosByDepartamento,
 } from '@/components/crm/expedientes/sections';
+import {
+  buildSchedulingHref,
+  hasMissingOperationalRefsForInstallation,
+} from '@/components/crm/expedientes/expediente-scheduling';
 import type { SectionId, DraftValues } from '@/components/crm/expedientes/sections';
 
 function getActorLabel(name: string | null | undefined): string {
@@ -529,6 +533,19 @@ export default function ExpedienteDetailPage() {
           ? ((err as ApiError & { details?: { missingFields?: string[] } }).details!
               .missingFields ?? [])
           : [];
+
+        if (
+          targetStatus === 'INSTALACION_AGENDADA' &&
+          hasMissingOperationalRefsForInstallation(missing)
+        ) {
+          setActionMessageTone('info');
+          setActionMessage(
+            'Para cerrar la oportunidad como instalación agendada debes crear el evento operativo. Te llevamos a Programación con este expediente preseleccionado.',
+          );
+          router.push(buildSchedulingHref(id));
+          return;
+        }
+
         if (missing.length > 0) {
           const preview = missing.slice(0, 3).join(', ');
           const extra = missing.length > 3 ? ` y ${missing.length - 3} más` : '';
@@ -928,10 +945,10 @@ export default function ExpedienteDetailPage() {
           <Button
             type="button"
             variant="secondary"
-            onClick={() => handleTransition('INSTALACION_AGENDADA')}
+            onClick={() => router.push(buildSchedulingHref(id))}
           >
             <CalendarCheck2 className="h-4 w-4" aria-hidden="true" />
-            Cerrar como agendada
+            Agendar instalación
           </Button>
         </div>
         {transitionTarget === 'LISTO_PARA_INSTALACION' && installationReadiness && (

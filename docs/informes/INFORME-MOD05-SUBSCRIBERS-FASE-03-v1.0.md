@@ -1,8 +1,8 @@
 # INFORME — MOD05 Subscribers Fase 03
 
-**Version:** 1.1  
+**Version:** 1.2  
 **Estado:** Completado  
-**Fecha:** 2026-04-17
+**Fecha:** 2026-05-11
 
 ## Alcance ejecutado
 
@@ -224,8 +224,23 @@
 5. **ContractCard**: nuevo prop onViewDetail + botón "Ver detalle →".
 6. **ServiciosTab**: wiring completo — importa y renderiza drawer + diálogo crear contrato; reemplaza TODOs.
 
-### Validación
+## Corrección aplicada — normalización de municipios y ubicaciones en Suscriptores
 
-- 
-px tsc --noEmit en pps/portal ✅ (sin errores)
-- Corregido xactOptionalPropertyTypes en payloads con spread condicional.
+**Fecha:** 2026-05-11
+
+- **Síntoma observado:** en la tabla de `/dashboard/crm/subscribers` y en vistas de contratos se mostraban ubicaciones en formato técnico (`UPPER_SNAKE_CASE`), por ejemplo `SAN_ANTONIO_DEL_TEQUENDAMA` y `EL_COLEGIO`.
+- **Causa raíz confirmada:** render directo de `city` / `department` / `installationCity` / `installationDepartment` sin pasar por una utilidad de presentación; la lógica estaba dispersa y sin prueba de regresión en el módulo de suscriptores.
+- **Ajuste implementado (portal):**
+  1. Se centralizó el formateo en `subscriber-ui.ts` con `formatLocationLabel()` y `formatSubscriberLocation()`.
+  2. El formateo usa primero etiquetas canónicas del catálogo (`DEPARTAMENTOS`) y, si no hay match, aplica fallback en sentence case español (`_`/`-` -> espacio + conectores en minúscula).
+  3. Se reemplazó render crudo por util central en lista de suscriptores, `ContractCard` y `ContractDetailDrawer`.
+  4. Se agregó test unitario de regresión para municipios conocidos y valores no catalogados.
+- **Archivos impactados:**
+  - `apps/portal/src/components/crm/subscribers/subscriber-ui.ts`
+  - `apps/portal/src/components/crm/subscribers/SubscribersListClient.tsx`
+  - `apps/portal/src/components/crm/subscribers/ContractCard.tsx`
+  - `apps/portal/src/components/crm/subscribers/ContractDetailDrawer.tsx`
+  - `apps/portal/src/components/crm/subscribers/subscriber-ui.spec.ts`
+- **Validación ejecutada:**
+  - `pnpm --filter @iwana/portal test -- subscriber-ui.spec.ts` ✅ (3 tests)
+  - `pnpm --filter @iwana/portal lint` ✅

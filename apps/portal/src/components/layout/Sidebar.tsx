@@ -12,6 +12,7 @@ import {
   BarChart3,
   BriefcaseBusiness,
   HandCoins,
+  LifeBuoy,
   X,
 } from 'lucide-react';
 import { cn } from '@iwana/ui';
@@ -68,6 +69,7 @@ const navGroups: NavGroup[] = [
       { href: '/dashboard/crm', label: 'CRM', icon: BriefcaseBusiness },
       { href: '/dashboard/crm/subscribers', label: 'Suscriptores', icon: Users },
       { href: '/dashboard/scheduling', label: 'Programacion', icon: CalendarClock },
+      { href: '/dashboard/assurance', label: 'Mesa de ayuda', icon: LifeBuoy },
     ],
   },
   {

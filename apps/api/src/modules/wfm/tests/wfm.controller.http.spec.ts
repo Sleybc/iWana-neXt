@@ -167,6 +167,7 @@ describe('WfmController HTTP', () => {
   };
 
   const EVENT_UUID = '11111111-1111-1111-1111-111111111111';
+  const EXPEDIENTE_UUID = '5acea022-2419-453a-a324-1a762853383f';
 
   const mockEvent = {
     id: EVENT_UUID,
@@ -249,6 +250,30 @@ describe('WfmController HTTP', () => {
         .get('/api/v1/wfm/events')
         .set('Authorization', 'Bearer contractor-token')
         .expect(200);
+    });
+
+    it('accepts expedienteId as filter for CRM scheduling flows', async () => {
+      scheduleEventsServiceMock.list.mockResolvedValue([{ ...mockEvent, expedienteId: EXPEDIENTE_UUID }]);
+
+      await request(app.getHttpServer())
+        .get('/api/v1/wfm/events')
+        .query({ expedienteId: EXPEDIENTE_UUID })
+        .set('Authorization', 'Bearer admin-token')
+        .expect(200)
+        .expect(() => {
+          expect(scheduleEventsServiceMock.list).toHaveBeenCalledWith(
+            expect.objectContaining({ expedienteId: EXPEDIENTE_UUID }),
+            expect.objectContaining({ sub: 'admin-001', role: UserRole.ADMIN }),
+          );
+        });
+    });
+
+    it('rejects invalid expedienteId filters', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/wfm/events')
+        .query({ expedienteId: 'not-a-uuid' })
+        .set('Authorization', 'Bearer admin-token')
+        .expect(400);
     });
   });
 

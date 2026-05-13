@@ -10,6 +10,7 @@ const quickLinks: Array<{ href: string; label: string }> = [
   { href: '/dashboard/commercial', label: 'Comercial' },
   { href: '/dashboard/crm', label: 'CRM' },
   { href: '/dashboard/crm/subscribers', label: 'Suscriptores' },
+  { href: '/dashboard/assurance', label: 'Mesa de ayuda' },
   { href: '/dashboard/settings', label: 'Configuración' },
   { href: '/dashboard/users', label: 'Usuarios' },
 ];
