@@ -61,6 +61,7 @@ import { ExpedienteTabsContainer } from '@/components/crm/expedientes/Expediente
 import { useAuth } from '@/components/auth/AuthProvider';
 import {
   ACQUISITION_CHANNEL_OPTIONS,
+  applyIdentificationDerivedDefaults,
   hasPersistedIdentificationData,
   getSectionPayloadFields,
   buildDraftValues,
@@ -322,7 +323,15 @@ export default function ExpedienteDetailPage() {
   };
 
   const handleDraftChange = (field: string, value: string) => {
-    setDraftValues((current) => ({ ...current, [field]: value }));
+    setDraftValues((current) => {
+      const nextValues = { ...current, [field]: value };
+
+      if (field === 'personType') {
+        return applyIdentificationDerivedDefaults(nextValues);
+      }
+
+      return nextValues;
+    });
   };
 
   const handleCandidateTechnologyToggle = (technology: string, checked: boolean) => {

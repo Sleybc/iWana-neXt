@@ -1,8 +1,8 @@
 # INFORME — MOD05 Subscribers Fase 03
 
-**Version:** 1.2  
+**Version:** 1.6  
 **Estado:** Completado  
-**Fecha:** 2026-05-11
+**Fecha:** 2026-05-14
 
 ## Alcance ejecutado
 
@@ -244,3 +244,72 @@
 - **Validación ejecutada:**
   - `pnpm --filter @iwana/portal test -- subscriber-ui.spec.ts` ✅ (3 tests)
   - `pnpm --filter @iwana/portal lint` ✅
+
+## Corrección aplicada — propagación de nombre completo a Identificación en Expedientes
+
+**Fecha:** 2026-05-14
+
+- **Síntoma observado:** al crear una oportunidad desde `/dashboard/crm/expedientes`, el campo `Nombre completo` se persistía en el expediente, pero la sección `Identificación` abría vacía en `Nombres` / `Apellidos` o `Razón social`; el usuario debía reescribir manualmente la información ya capturada.
+- **Causa raíz confirmada:** el flujo de creación rápida solo persistía `fullName`, mientras la hidratación del detalle y el formulario de identificación del portal trabajaban con `firstName`, `lastName` y `companyName` sin una derivación intermedia desde `fullName`.
+- **Ajuste implementado (portal):**
+  1. Se creó una derivación compartida que usa `fullName` como semilla de identificación cuando los campos específicos todavía están vacíos.
+  2. Para persona natural, la derivación aplica heurística simple: última palabra como apellido y el resto como nombres.
+  3. Para persona jurídica, la derivación hidrata `companyName` desde `fullName` sin pisar valores persistidos.
+  4. La vista de detalle reutiliza la misma derivación cuando el usuario cambia `Tipo de persona`, evitando que tenga que volver a digitar el nombre base.
+  5. Se agregaron pruebas unitarias de regresión para derivación natural, derivación jurídica, no sobreescritura de datos persistidos y reutilización al cambiar el tipo de persona.
+- **Archivos impactados:**
+  - `apps/portal/src/components/crm/expedientes/sections/constants.ts`
+  - `apps/portal/src/components/crm/expedientes/sections/index.ts`
+  - `apps/portal/src/app/dashboard/crm/expedientes/[id]/page.tsx`
+  - `apps/portal/src/components/crm/expedientes/sections/constants.spec.ts`
+- **Validación ejecutada:**
+  - `runTests` focalizado sobre `apps/portal/src/components/crm/expedientes/sections/constants.spec.ts` ✅ (6 tests)
+  - `pnpm --filter @iwana/portal typecheck` ✅
+
+### Refinamiento posterior — heurística para personas naturales
+
+- **Ajuste aplicado:** se refinó la separación automática de `fullName` para personas naturales con reglas explícitas por cantidad de palabras.
+  1. Dos palabras: un nombre y un apellido.
+  2. Tres palabras: se admite el caso ambiguo entre `dos nombres + un apellido` y `un nombre + dos apellidos`; la heurística prioriza `dos nombres + un apellido` cuando la segunda palabra coincide con nombres propios frecuentes y, en caso contrario, asume `un nombre + dos apellidos`.
+  3. Cuatro palabras: dos nombres y dos apellidos.
+  4. Cinco o más palabras: se preserva el patrón extendido dejando las dos últimas como apellidos.
+- **Cobertura agregada:** regresiones unitarias para 2, 3 y 4 palabras en `constants.spec.ts`.
+- **Validación ejecutada:**
+  - `runTests` focalizado sobre `apps/portal/src/components/crm/expedientes/sections/constants.spec.ts` ✅ (9 tests)
+  - `pnpm --filter @iwana/portal typecheck` ✅
+
+## Corrección aplicada — completitud cruzada entre Dirección y Validación técnica
+
+**Fecha:** 2026-05-14
+
+- **Síntoma observado:** al completar el formulario de `Dirección`, la sección quedaba en `75%`; luego, al registrar coordenadas desde `Validación técnica`, la sección `Dirección` subía a `100%`, aunque esas coordenadas no se capturan en el formulario de ubicación.
+- **Causa raíz confirmada:** el backend de completitud estaba tratando coordenadas o referencias de ubicación como requisito de la sección `Dirección`, y el fallback del portal también incluía `latitude` y `longitude` dentro de `completionFields` de la sección `location`.
+- **Ajuste implementado:**
+  1. API: la completitud de `Dirección` se alineó con los campos visibles del formulario de ubicación: `department`, `municipality`, `address`, `postalCode`, `stratum` y `neighborhood`.
+  2. API: se removió la dependencia de coordenadas para completar la sección `Dirección`; las coordenadas permanecen asociadas al flujo de `Validación técnica`.
+  3. Portal: se eliminaron `latitude` y `longitude` de `renderFields`, `payloadFields` y `completionFields` de la sección `location`.
+  4. Se agregaron pruebas de regresión para validar que `Dirección` puede llegar a `100%` sin coordenadas y que `Validación técnica` no altera ese porcentaje por cruce de campos.
+- **Archivos impactados:**
+  - `apps/api/src/modules/crm/expedientes/expediente-section-completeness.service.ts`
+  - `apps/api/src/modules/crm/expedientes/tests/completeness-calculator.service.spec.ts`
+  - `apps/portal/src/components/crm/expedientes/sections/constants.ts`
+  - `apps/portal/src/components/crm/expedientes/sections/constants.spec.ts`
+- **Validación ejecutada:**
+  - `runTests` focalizado sobre `apps/api/src/modules/crm/expedientes/tests/completeness-calculator.service.spec.ts` ✅ (4 tests)
+  - `runTests` focalizado sobre `apps/portal/src/components/crm/expedientes/sections/constants.spec.ts` ✅ (10 tests)
+  - `pnpm --filter @iwana/api typecheck` ✅
+  - `pnpm --filter @iwana/portal typecheck` ✅
+
+### Ajuste posterior — Viabilidad técnica exige coordenadas
+
+- **Síntoma observado:** tras separar correctamente la sección `Dirección`, la sección `Viabilidad técnica` seguía marcando `100%` aunque no tuviera coordenadas registradas.
+- **Causa raíz confirmada:** el cálculo de completitud técnica solo evaluaba `feasibility`, `candidateTechnologies`, `evaluationSource` y `technicalConfidence`; las coordenadas se capturaban en la UI pero no participaban en el porcentaje de completitud.
+- **Ajuste implementado:**
+  1. API: se agregó un requisito explícito de `Coordenadas de validación` dentro de la sección `technicalFeasibility`, cumplido solo cuando existen `latitude` y `longitude`.
+  2. Portal: se añadieron `latitude` y `longitude` a `completionFields` de `technical_feasibility` para alinear el fallback local con la completitud del backend.
+  3. Se agregaron regresiones unitarias para asegurar que `Viabilidad técnica` no marque `100%` si faltan coordenadas y que la configuración del portal también las exija.
+- **Validación ejecutada:**
+  - `runTests` focalizado sobre `apps/api/src/modules/crm/expedientes/tests/completeness-calculator.service.spec.ts` ✅ (5 tests)
+  - `runTests` focalizado sobre `apps/portal/src/components/crm/expedientes/sections/constants.spec.ts` ✅ (11 tests)
+  - `pnpm --filter @iwana/api typecheck` ✅
+  - `pnpm --filter @iwana/portal typecheck` ✅

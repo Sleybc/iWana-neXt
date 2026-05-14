@@ -85,6 +85,145 @@ function isLegalEntityPersonType(value: string | null | undefined): boolean {
   return canonicalizeExpedientePersonType(value) === 'PERSONA_JURIDICA';
 }
 
+function normalizeFullNameSeed(value: string | null | undefined): string {
+  return String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+const COMMON_GIVEN_NAME_TOKENS = new Set([
+  'ALEJANDRA',
+  'ALEJANDRO',
+  'ANDREA',
+  'ANDRES',
+  'ANGELA',
+  'ANTONIO',
+  'CAMILA',
+  'CARLOS',
+  'CAROLINA',
+  'DAVID',
+  'DANIEL',
+  'DANIELA',
+  'EDUARDO',
+  'ELIANA',
+  'FELIPE',
+  'GABRIEL',
+  'ISABEL',
+  'JAVIER',
+  'JOSE',
+  'JUAN',
+  'JULIAN',
+  'LAURA',
+  'LUIS',
+  'LUISA',
+  'LUZ',
+  'MANUEL',
+  'MARIA',
+  'MARIO',
+  'MIGUEL',
+  'NICOLAS',
+  'PAOLA',
+  'PATRICIA',
+  'SANTIAGO',
+  'SEBASTIAN',
+  'SOFIA',
+  'VALENTINA',
+]);
+
+function isLikelyGivenNameToken(value: string | null | undefined): boolean {
+  const normalizedValue = normalizePersonType(value).replace(/_/g, ' ');
+  return COMMON_GIVEN_NAME_TOKENS.has(normalizedValue);
+}
+
+function splitNaturalPersonFullName(fullName: string): {
+  firstName: string;
+  lastName: string;
+} {
+  const normalizedFullName = normalizeFullNameSeed(fullName);
+
+  if (!normalizedFullName) {
+    return { firstName: EMPTY_VALUE, lastName: EMPTY_VALUE };
+  }
+
+  const tokens = normalizedFullName.split(' ');
+
+  if (tokens.length === 1) {
+    return { firstName: normalizedFullName, lastName: EMPTY_VALUE };
+  }
+
+  if (tokens.length === 2) {
+    return {
+      firstName: tokens[0] ?? EMPTY_VALUE,
+      lastName: tokens[1] ?? EMPTY_VALUE,
+    };
+  }
+
+  if (tokens.length === 3) {
+    // Tres palabras siguen siendo ambiguas; si la segunda parece nombre propio,
+    // privilegiamos dos nombres y un apellido. Si no, asumimos un nombre y dos apellidos.
+    if (isLikelyGivenNameToken(tokens[1])) {
+      return {
+        firstName: tokens.slice(0, 2).join(' '),
+        lastName: tokens[2] ?? EMPTY_VALUE,
+      };
+    }
+
+    return {
+      firstName: tokens[0] ?? EMPTY_VALUE,
+      lastName: tokens.slice(1).join(' '),
+    };
+  }
+
+  if (tokens.length === 4) {
+    return {
+      firstName: tokens.slice(0, 2).join(' '),
+      lastName: tokens.slice(2).join(' '),
+    };
+  }
+
+  return {
+    firstName: tokens.slice(0, -2).join(' '),
+    lastName: tokens.slice(-2).join(' '),
+  };
+}
+
+// Deriva valores iniciales de identificación sin pisar datos ya persistidos o editados.
+export function applyIdentificationDerivedDefaults(values: DraftValues): DraftValues {
+  const personType = canonicalizeExpedientePersonType(values.personType);
+  const fullName = normalizeFullNameSeed(values.fullName);
+  const nextValues = personType === values.personType ? values : { ...values, personType };
+
+  if (!fullName) {
+    return nextValues;
+  }
+
+  if (personType === 'PERSONA_JURIDICA') {
+    if (nextValues.companyName?.trim()) {
+      return nextValues;
+    }
+
+    return {
+      ...nextValues,
+      companyName: fullName,
+    };
+  }
+
+  const shouldDeriveFirstName = !nextValues.firstName?.trim();
+  const shouldDeriveLastName = !nextValues.lastName?.trim();
+
+  if (!shouldDeriveFirstName && !shouldDeriveLastName) {
+    return nextValues;
+  }
+
+  const derivedNames = splitNaturalPersonFullName(fullName);
+
+  return {
+    ...nextValues,
+    ...(shouldDeriveFirstName ? { firstName: derivedNames.firstName } : {}),
+    ...(shouldDeriveLastName ? { lastName: derivedNames.lastName } : {}),
+  };
+}
+
 function getRequiredDocumentKeysByPersonType(
   personType: string | null | undefined,
 ): readonly string[] {
@@ -260,8 +399,6 @@ export const SECTIONS: SectionConfig[] = [
       'postalCode',
       'stratum',
       'neighborhood',
-      'latitude',
-      'longitude',
     ],
     payloadFields: [
       'department',
@@ -270,8 +407,6 @@ export const SECTIONS: SectionConfig[] = [
       'postalCode',
       'stratum',
       'neighborhood',
-      'latitude',
-      'longitude',
     ],
     completionFields: [
       'department',
@@ -280,8 +415,6 @@ export const SECTIONS: SectionConfig[] = [
       'postalCode',
       'stratum',
       'neighborhood',
-      'latitude',
-      'longitude',
     ],
   },
   {
@@ -333,6 +466,8 @@ export const SECTIONS: SectionConfig[] = [
       'candidateTechnologies',
       'evaluationSource',
       'technicalConfidence',
+      'latitude',
+      'longitude',
     ],
   },
   {
@@ -393,7 +528,7 @@ export function buildDraftValues(
   expediente: ExpedienteRecord,
   previous: DraftValues = {},
 ): DraftValues {
-  return {
+  const nextDraft = {
     ...previous,
     fullName: expediente.fullName ?? EMPTY_VALUE,
     personType: canonicalizeExpedientePersonType(expediente.personType),
@@ -435,6 +570,8 @@ export function buildDraftValues(
     identityVerified: expediente.identityVerified ?? EMPTY_VALUE,
     legalComplianceStatus: expediente.legalComplianceStatus ?? EMPTY_VALUE,
   };
+
+  return applyIdentificationDerivedDefaults(nextDraft);
 }
 
 export function getCandidateTechnologiesFromDraft(values: DraftValues): string[] {

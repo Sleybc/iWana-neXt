@@ -116,6 +116,8 @@ describe('CompletenessCalculator', () => {
       candidateTechnologies: ['RADIO'],
       technicalConfidence: 'MEDIUM',
       evaluationSource: 'TECHNICAL_SITE_VISIT',
+      latitude: 4.58,
+      longitude: -74.44,
       availableTechnology: null,
       estimatedEquipment: null,
     });
@@ -147,6 +149,92 @@ describe('CompletenessCalculator', () => {
           expect.objectContaining({
             key: 'technicalFeasibility',
             percentage: 100,
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it('no marca Viabilidad técnica al 100% si faltan coordenadas', async () => {
+    const expediente = buildExpediente({
+      feasibility: 'VALIDATION_REQUIRED',
+      candidateTechnologies: ['RADIO'],
+      technicalConfidence: 'MEDIUM',
+      evaluationSource: 'TECHNICAL_SITE_VISIT',
+      latitude: null,
+      longitude: null,
+    });
+
+    mockRunInTenantSchema
+      .mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: async () => expediente,
+          },
+        }),
+      )
+      .mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            find: async () => [],
+          },
+        }),
+      );
+
+    await expect(service.calculate('exp-1')).resolves.toEqual(
+      expect.objectContaining({
+        sectionCompleteness: expect.arrayContaining([
+          expect.objectContaining({
+            key: 'technicalFeasibility',
+            percentage: 80,
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it('marca Dirección al 100% cuando el formulario de ubicación está completo sin coordenadas', async () => {
+    const expediente = buildExpediente({
+      address: 'Calle 1 # 2-3',
+      municipality: 'EL_COLEGIO',
+      department: 'CUNDINAMARCA',
+      postalCode: '252601',
+      stratum: 2,
+      neighborhood: 'Centro',
+      latitude: null,
+      longitude: null,
+      feasibility: null,
+      candidateTechnologies: null,
+      technicalConfidence: null,
+      evaluationSource: null,
+    });
+
+    mockRunInTenantSchema
+      .mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: async () => expediente,
+          },
+        }),
+      )
+      .mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            find: async () => [],
+          },
+        }),
+      );
+
+    await expect(service.calculate('exp-1')).resolves.toEqual(
+      expect.objectContaining({
+        sectionCompleteness: expect.arrayContaining([
+          expect.objectContaining({
+            key: 'address',
+            percentage: 100,
+          }),
+          expect.objectContaining({
+            key: 'technicalFeasibility',
+            percentage: 0,
           }),
         ]),
       }),

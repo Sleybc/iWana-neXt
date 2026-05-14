@@ -85,8 +85,8 @@ export class ExpedienteSectionCompletenessService {
   }
 
   private buildAddressSection(expediente: ExpedienteRecord): SectionCompletenessItem {
-    const hasCoordinates = expediente.latitude != null && expediente.longitude != null;
-
+    // La sección Dirección debe reflejar únicamente los campos visibles del formulario de ubicación.
+    // Las coordenadas se capturan desde Viabilidad técnica y no deben completar esta sección.
     return this.buildSection('address', 'Dirección', [
       {
         fieldKey: 'address',
@@ -100,13 +100,23 @@ export class ExpedienteSectionCompletenessService {
       },
       {
         fieldKey: 'department',
-        fieldLabel: 'Departamento o barrio',
-        fulfilled: this.hasText(expediente.department) || this.hasText(expediente.neighborhood),
+        fieldLabel: 'Departamento',
+        fulfilled: this.hasText(expediente.department),
       },
       {
-        fieldKey: 'coordinates',
-        fieldLabel: 'Referencias de ubicación',
-        fulfilled: hasCoordinates || this.hasText(expediente.accessReferences),
+        fieldKey: 'postalCode',
+        fieldLabel: 'Código postal',
+        fulfilled: this.hasText(expediente.postalCode),
+      },
+      {
+        fieldKey: 'stratum',
+        fieldLabel: 'Estrato',
+        fulfilled: expediente.stratum != null,
+      },
+      {
+        fieldKey: 'neighborhood',
+        fieldLabel: 'Sector / barrio',
+        fulfilled: this.hasText(expediente.neighborhood),
       },
     ]);
   }
@@ -142,7 +152,9 @@ export class ExpedienteSectionCompletenessService {
     expediente: ExpedienteRecord,
     _coverageChecks: CoverageCheck[],
   ): SectionCompletenessItem {
-    // Los 4 campos del formulario de Viabilidad técnica en el portal.
+    const hasCoordinates = expediente.latitude != null && expediente.longitude != null;
+
+    // Viabilidad técnica requiere el bloque técnico más las coordenadas capturadas en esta misma sección.
     // coverageResult no tiene campo propio en el formulario; se evalúa feasibility directamente.
     return this.buildSection('technicalFeasibility', 'Viabilidad técnica', [
       {
@@ -164,6 +176,11 @@ export class ExpedienteSectionCompletenessService {
         fieldKey: 'technicalConfidence',
         fieldLabel: 'Nivel de certeza',
         fulfilled: this.hasText(expediente.technicalConfidence),
+      },
+      {
+        fieldKey: 'coordinates',
+        fieldLabel: 'Coordenadas de validación',
+        fulfilled: hasCoordinates,
       },
     ]);
   }
