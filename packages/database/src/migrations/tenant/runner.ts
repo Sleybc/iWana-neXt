@@ -28,6 +28,7 @@ import { ExtendContractsForServices1700000000029 } from './029_extend_contracts_
 import { CreateWfmModule1700000000030 } from './030_create_wfm_module';
 import { CreateAssuranceModule1700000000031 } from './031_create_assurance_module';
 import { AddExpedienteToTicketSubjectType1700000000032 } from './032_add_expediente_to_ticket_subject_type';
+import { CreateVisitRequests1700000000034 } from './034_create_visit_requests';
 
 const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   InitialTenantSchema1700000000000,
@@ -59,6 +60,7 @@ const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   CreateWfmModule1700000000030,
   CreateAssuranceModule1700000000031,
   AddExpedienteToTicketSubjectType1700000000032,
+  CreateVisitRequests1700000000034,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

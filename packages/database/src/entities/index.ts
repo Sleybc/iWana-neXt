@@ -23,6 +23,7 @@ export { WorkOrder } from './work-order.entity';
 export { WorkOrderTask } from './work-order-task.entity';
 export { ScheduleRescheduleLog } from './schedule-reschedule-log.entity';
 export { TechnicianAvailability } from './technician-availability.entity';
+export { VisitRequest } from './visit-request.entity';
 
 // MOD10 — Service Assurance
 export { SupportTicket } from './support-ticket.entity';
