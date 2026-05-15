@@ -5,7 +5,6 @@ export * from './transition-schedule-event.dto';
 export * from './reschedule-event.dto';
 export * from './transition-work-order.dto';
 export * from './technician-availability.dto';
-export * from './schedule-recommendation.dto';
 export * from './create-visit-request.dto';
 export * from './list-visit-requests-query.dto';
 export * from './update-visit-request-context.dto';
