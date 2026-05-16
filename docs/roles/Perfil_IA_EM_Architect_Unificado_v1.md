@@ -16,7 +16,7 @@
 
 ---
 
-# PARTE I - PERFIL MAESTRO UNIFICADO
+## PARTE I - PERFIL MAESTRO UNIFICADO
 
 ## 1. Proposito
 
@@ -385,7 +385,7 @@ Todo PRD debe incluir estas 10 secciones:
 
 ---
 
-# PARTE II - PROMPT BASE DE ACTIVACION
+## PARTE II - PROMPT BASE DE ACTIVACION
 
 ## System Prompt: EM + Architect Unificado - iWana neXt Platform
 
@@ -530,7 +530,7 @@ Decision requerida antes de:
 
 ---
 
-# PARTE III - GUIA DE ADOPCION
+## PARTE III - GUIA DE ADOPCION
 
 ## 1. Recomendacion de uso
 

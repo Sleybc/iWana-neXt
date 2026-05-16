@@ -87,39 +87,40 @@ El modelo Expediente Unico Progresivo unifica en un solo registro toda la inform
 
 ### Personas primarias
 
-| Persona | Rol | Necesidad principal |
-| --- | --- | --- |
-| Asesor comercial | SALES | Capturar y gestionar expedientes desde primer contacto hasta cierre |
-| Jefe comercial | ADMIN | Supervisar pipeline, metricas, asignar expedientes |
-| Tecnico de campo | TECHNICIAN | Consultar expediente para instalacion agendada |
+| Persona          | Rol        | Necesidad principal                                                 |
+| ---------------- | ---------- | ------------------------------------------------------------------- |
+| Asesor comercial | SALES      | Capturar y gestionar expedientes desde primer contacto hasta cierre |
+| Jefe comercial   | ADMIN      | Supervisar pipeline, metricas, asignar expedientes                  |
+| Tecnico de campo | TECHNICIAN | Consultar expediente para instalacion agendada                      |
 
 ### Personas secundarias
 
-| Persona | Rol | Necesidad principal |
-| --- | --- | --- |
-| Soporte | SUPPORT | Consultar expediente en contexto de PQR |
-| Admin plataforma | SYSTEM_ADMIN | Gestion cross-tenant de expedientes |
+| Persona          | Rol          | Necesidad principal                     |
+| ---------------- | ------------ | --------------------------------------- |
+| Soporte          | SUPPORT      | Consultar expediente en contexto de PQR |
+| Admin plataforma | SYSTEM_ADMIN | Gestion cross-tenant de expedientes     |
 
 ### Casos de uso
 
-| CU | Actor | Descripcion |
-| --- | --- | --- |
-| CU-01 | Asesor | Crear expediente con nombre y fuente (captura rapida) |
+| CU    | Actor  | Descripcion                                                          |
+| ----- | ------ | -------------------------------------------------------------------- |
+| CU-01 | Asesor | Crear expediente con nombre y fuente (captura rapida)                |
 | CU-02 | Asesor | Completar secciones de forma progresiva segun informacion disponible |
-| CU-03 | Asesor | Transicionar estado del expediente cumpliendo campos minimos |
-| CU-04 | Asesor | Registrar intento de contacto con canal, resultado y notas |
-| CU-05 | Asesor | Obtener verificacion de cobertura (via puerto MOD03) |
-| CU-06 | Asesor | Registrar consentimiento triple (Ley 1581) |
-| CU-07 | Jefe | Consultar pipeline summary (metricas por estado) |
-| CU-08 | Asesor | Descartar expediente con motivo |
-| CU-09 | Admin | Reactivar expediente descartado |
-| CU-10 | Asesor | Consultar timeline del expediente (cambios, actividades, metadata) |
+| CU-03 | Asesor | Transicionar estado del expediente cumpliendo campos minimos         |
+| CU-04 | Asesor | Registrar intento de contacto con canal, resultado y notas           |
+| CU-05 | Asesor | Obtener verificacion de cobertura (via puerto MOD03)                 |
+| CU-06 | Asesor | Registrar consentimiento triple (Ley 1581)                           |
+| CU-07 | Jefe   | Consultar pipeline summary (metricas por estado)                     |
+| CU-08 | Asesor | Descartar expediente con motivo                                      |
+| CU-09 | Admin  | Reactivar expediente descartado                                      |
+| CU-10 | Asesor | Consultar timeline del expediente (cambios, actividades, metadata)   |
 
 ---
 
 ## 4. Requisitos funcionales
 
 ### RF-CRM-01: Creacion rapida de expediente
+
 - POST /api/v1/crm/expedientes con `fullName` (1-160 chars) y `source` (1-120 chars).
 - Estado inicial: NUEVO_POTENCIAL.
 - `createdBy` = actor autenticado (JWT sub).
@@ -127,16 +128,19 @@ El modelo Expediente Unico Progresivo unifica en un solo registro toda la inform
 - Validacion Zod via `ZodBodyValidationPipe(CreateExpedienteSchema)`.
 
 ### RF-CRM-02: Listado con filtros y paginacion
+
 - GET /api/v1/crm/expedientes con query: status (enum), municipality, search (fullName), page, limit.
 - Retorna `{ data: ExpedienteRecord[], total }`.
 - Multi-tenant: opera sobre schema del tenant autenticado.
 
 ### RF-CRM-03: Detalle con completitud
+
 - GET /api/v1/crm/expedientes/:id
 - Retorna `{ data: ExpedienteRecord, completeness, sectionCompleteness, installationReadiness, missingRequirements }`.
 - Incluye relaciones: contactAttempts, consents, coverageChecks, statusChanges.
 
 ### RF-CRM-04: Actualizacion por seccion
+
 - PATCH /api/v1/crm/expedientes/:id/sections/:section
 - Section = IDENTIFICATION | CONTACT | LOCATION | COMMERCIAL_INTEREST | TECHNICAL_FEASIBILITY | LEGAL_CONSENT | BILLING | INSTALLATION.
 - Cifra campos PII al guardar.
@@ -144,6 +148,7 @@ El modelo Expediente Unico Progresivo unifica en un solo registro toda la inform
 - Validacion Zod del body.
 
 ### RF-CRM-05: Transicion de estado con validacion
+
 - PATCH /api/v1/crm/expedientes/:id/status
 - Valida campos minimos requeridos por transicion objetivo (ver tabla en §4.1).
 - Registra StatusChange (entidad hija).
@@ -152,44 +157,47 @@ El modelo Expediente Unico Progresivo unifica en un solo registro toda la inform
 - `changedBy` = actor autenticado.
 
 ### RF-CRM-06: Descarte y reactivacion
+
 - Transicion a DESCARTADO: siempre permitida desde cualquier estado; requiere `reason`.
 - Reactivacion: POST /api/v1/crm/expedientes/:id/reactivate → restaura `previousStatus`.
 
 ### RF-CRM-07: Timeline separado
+
 - GET /api/v1/crm/expedientes/:id/timeline
 - Retorna `{ changes: StatusChange[], activities: ContactAttempt[], metadata: {...} }`.
 - Metadata incluye createdBy con resolucion de actor real.
 
 ### RF-CRM-08: Pipeline summary
+
 - GET /api/v1/crm/pipeline/summary
 - Retorna conteo por estado: `{ data: Record<ExpedienteStatus, number>, total }`.
 
 ### 4.1 Campos minimos por transicion
 
-| Estado objetivo | Campos requeridos |
-| --- | --- |
-| PRECALIFICADO | Tipo documento, numero documento, telefono o email, direccion, municipio |
-| VALIDANDO_COBERTURA | Coordenadas (lat/lng) O direccion+municipio |
-| EN_COTIZACION | Plan de interes seleccionado |
+| Estado objetivo        | Campos requeridos                                                             |
+| ---------------------- | ----------------------------------------------------------------------------- |
+| PRECALIFICADO          | Tipo documento, numero documento, telefono o email, direccion, municipio      |
+| VALIDANDO_COBERTURA    | Coordenadas (lat/lng) O direccion+municipio                                   |
+| EN_COTIZACION          | Plan de interes seleccionado                                                  |
 | LISTO_PARA_INSTALACION | Completitud general >= 75%; si es < 100%, avanza con advertencia de faltantes |
-| INSTALACION_AGENDADA | Ticket vinculado, orden de trabajo vinculada |
-| CLIENTE_ACTIVO | Completitud general = 100% en 7 secciones + checklist completo |
-| DESCARTADO | Siempre permitido |
+| INSTALACION_AGENDADA   | Ticket vinculado, orden de trabajo vinculada                                  |
+| CLIENTE_ACTIVO         | Completitud general = 100% en 7 secciones + checklist completo                |
+| DESCARTADO             | Siempre permitido                                                             |
 
 ---
 
 ## 5. Requisitos no funcionales
 
-| RNF | Descripcion | Criterio |
-| --- | --- | --- |
-| RNF-01 | Cifrado PII at-rest | AES-256-GCM para 6 campos; IV unico por registro |
-| RNF-02 | Rendimiento listado | Paginacion offset con total; < 200ms para 100 registros |
-| RNF-03 | Multi-tenant | Aislamiento total por schema PostgreSQL |
-| RNF-04 | Validacion Zod | En todos los boundaries de entrada (create, updateSection, transitionStatus) |
-| RNF-05 | Consentimiento triple | Ley 1581: DATA_TREATMENT, COMMERCIAL_CONTACT, OPERATIONAL_CONTACT |
-| RNF-06 | Auditoria status | Cada transicion registrada en StatusChange con changedBy = actor real |
-| RNF-07 | Degradacion segura | CompletenessCalculator tolera errores DB (42P01/42703) sin crash |
-| RNF-08 | Accesibilidad portal | WCAG 2.2 AA; labels en espanol |
+| RNF    | Descripcion           | Criterio                                                                     |
+| ------ | --------------------- | ---------------------------------------------------------------------------- |
+| RNF-01 | Cifrado PII at-rest   | AES-256-GCM para 6 campos; IV unico por registro                             |
+| RNF-02 | Rendimiento listado   | Paginacion offset con total; < 200ms para 100 registros                      |
+| RNF-03 | Multi-tenant          | Aislamiento total por schema PostgreSQL                                      |
+| RNF-04 | Validacion Zod        | En todos los boundaries de entrada (create, updateSection, transitionStatus) |
+| RNF-05 | Consentimiento triple | Ley 1581: DATA_TREATMENT, COMMERCIAL_CONTACT, OPERATIONAL_CONTACT            |
+| RNF-06 | Auditoria status      | Cada transicion registrada en StatusChange con changedBy = actor real        |
+| RNF-07 | Degradacion segura    | CompletenessCalculator tolera errores DB (42P01/42703) sin crash             |
+| RNF-08 | Accesibilidad portal  | WCAG 2.2 AA; labels en espanol                                               |
 
 ---
 
@@ -201,33 +209,33 @@ Entidad maestra organizada en 8 secciones + referencias operativas + completitud
 
 ### 6.2 Entidades hijas
 
-| Entidad | Tabla | Relacion | Proposito |
-| --- | --- | --- | --- |
-| ContactAttempt | contact_attempts | ManyToOne → ExpedienteRecord | Trazabilidad de intentos de contacto |
-| ConsentRecord v2 | consent_records | ManyToOne → ExpedienteRecord | Consentimiento triple Ley 1581 |
-| CoverageCheck | coverage_checks | ManyToOne → ExpedienteRecord | Verificaciones de cobertura |
-| StatusChange | status_changes | ManyToOne → ExpedienteRecord | Historial de transiciones |
+| Entidad          | Tabla            | Relacion                     | Proposito                            |
+| ---------------- | ---------------- | ---------------------------- | ------------------------------------ |
+| ContactAttempt   | contact_attempts | ManyToOne → ExpedienteRecord | Trazabilidad de intentos de contacto |
+| ConsentRecord v2 | consent_records  | ManyToOne → ExpedienteRecord | Consentimiento triple Ley 1581       |
+| CoverageCheck    | coverage_checks  | ManyToOne → ExpedienteRecord | Verificaciones de cobertura          |
+| StatusChange     | status_changes   | ManyToOne → ExpedienteRecord | Historial de transiciones            |
 
 ### 6.3 Entidades legacy preservadas
 
-| Entidad | Tabla | Estado |
-| --- | --- | --- |
-| PotentialLead | potential_leads | Deprecada — absorbida por ExpedienteRecord |
-| ProspectCase | prospect_cases | Deprecada — absorbida por ExpedienteRecord |
-| ConsentRecord v1 | consent_records (legacy) | Deprecada — evolucionada a v2 |
-| CustomerActivation | customer_activations | Deprecada — absorbida en transiciones |
+| Entidad            | Tabla                    | Estado                                     |
+| ------------------ | ------------------------ | ------------------------------------------ |
+| PotentialLead      | potential_leads          | Deprecada — absorbida por ExpedienteRecord |
+| ProspectCase       | prospect_cases           | Deprecada — absorbida por ExpedienteRecord |
+| ConsentRecord v1   | consent_records (legacy) | Deprecada — evolucionada a v2              |
+| CustomerActivation | customer_activations     | Deprecada — absorbida en transiciones      |
 
 ### 6.4 Entidades auxiliares CRM
 
-| Entidad | Tabla | Estado |
-| --- | --- | --- |
-| Quote | quotes | Activa — FK dual: opportunityId (legacy) + expedienteId (v2) |
-| Contract | contracts | Activa — FK quoteId |
-| Subscriber | subscribers | Activa — creacion post-CLIENTE_ACTIVO |
-| SubscriberContact | subscriber_contacts | Activa — contactos del suscriptor |
-| Opportunity | opportunities | Legacy — reemplazada conceptualmente por expediente |
-| HabeasDataConsent | habeas_data_consents | Legacy — reemplazada por ConsentRecord v2 |
-| ArcoRequest | arco_requests | Activa — derechos ARCO Ley 1581 |
+| Entidad           | Tabla                | Estado                                                       |
+| ----------------- | -------------------- | ------------------------------------------------------------ |
+| Quote             | quotes               | Activa — FK dual: opportunityId (legacy) + expedienteId (v2) |
+| Contract          | contracts            | Activa — FK quoteId                                          |
+| Subscriber        | subscribers          | Activa — creacion post-CLIENTE_ACTIVO                        |
+| SubscriberContact | subscriber_contacts  | Activa — contactos del suscriptor                            |
+| Opportunity       | opportunities        | Legacy — reemplazada conceptualmente por expediente          |
+| HabeasDataConsent | habeas_data_consents | Legacy — reemplazada por ConsentRecord v2                    |
+| ArcoRequest       | arco_requests        | Activa — derechos ARCO Ley 1581                              |
 
 ---
 
@@ -260,10 +268,10 @@ Reglas:
 
 ## 8. Consentimiento triple (Ley 1581)
 
-| Tipo | Proposito | Momento |
-| --- | --- | --- |
-| DATA_TREATMENT | Autorizacion para tratamiento de datos personales | Antes de almacenar PII |
-| COMMERCIAL_CONTACT | Autorizacion para contacto con fines comerciales | Al avanzar a PRECALIFICADO |
+| Tipo                | Proposito                                             | Momento                         |
+| ------------------- | ----------------------------------------------------- | ------------------------------- |
+| DATA_TREATMENT      | Autorizacion para tratamiento de datos personales     | Antes de almacenar PII          |
+| COMMERCIAL_CONTACT  | Autorizacion para contacto con fines comerciales      | Al avanzar a PRECALIFICADO      |
 | OPERATIONAL_CONTACT | Autorizacion para contacto operativo post-instalacion | Antes de LISTO_PARA_INSTALACION |
 
 Cada consentimiento registra: canal, fecha, IP, version del texto legal, referencia de evidencia.
@@ -272,52 +280,60 @@ Cada consentimiento registra: canal, fecha, IP, version del texto legal, referen
 
 ## 9. Puertos de integracion
 
-| Puerto | Interfaz | Modulo proveedor | Estado |
-| --- | --- | --- | --- |
-| CoverageReadPort | checkAvailability(tenantId, schema, address, coords?) | MOD03 | Adaptador real |
-| ExecutionPolicyReadPort | resolvePolicy(tenantId, schema) | MOD03 | Adaptador real |
-| CrmActorReadPort | resolveActor(userId) → { id, name, role } | Auth/Users (via read model) | Nuevo |
-| CrmQuoteReadPort | getExpedienteQuotes(expedienteId) | CRM quotes (via read model) | Nuevo |
-| PlanCatalogReadPort | getActivePlans(), createSnapshot() | MOD03 | Stub |
-| TicketReferencePort | ensureReference(tenantId, schema, ticketId) | MOD-Ticketing | Stub |
-| WorkOrderReferencePort | ensureReference(tenantId, schema, workOrderId) | MOD-WorkOrders | Stub |
-| InventoryAssignmentPort | registerAssignment(tenantId, schema, prospectId) | MOD-Inventory | Stub |
-| ExpansionRequestPort | createRequest(tenantId, schema, ...) | MOD-Network | Stub |
-| BillingActivationPort | activate(tenantId, schema, ...) | MOD-Billing | Stub |
-| ProvisioningActivationPort | activate(tenantId, schema, ...) | MOD-Provisioning | Stub |
+| Puerto                     | Interfaz                                              | Modulo proveedor            | Estado         |
+| -------------------------- | ----------------------------------------------------- | --------------------------- | -------------- |
+| CoverageReadPort           | checkAvailability(tenantId, schema, address, coords?) | MOD03                       | Adaptador real |
+| ExecutionPolicyReadPort    | resolvePolicy(tenantId, schema)                       | MOD03                       | Adaptador real |
+| CrmActorReadPort           | resolveActor(userId) → { id, name, role }             | Auth/Users (via read model) | Nuevo          |
+| CrmQuoteReadPort           | getExpedienteQuotes(expedienteId)                     | CRM quotes (via read model) | Nuevo          |
+| PlanCatalogReadPort        | getActivePlans(), createSnapshot()                    | MOD03                       | Stub           |
+| TicketReferencePort        | ensureReference(tenantId, schema, ticketId)           | MOD-Ticketing               | Stub           |
+| WorkOrderReferencePort     | ensureReference(tenantId, schema, workOrderId)        | MOD-WorkOrders              | Stub           |
+| InventoryAssignmentPort    | registerAssignment(tenantId, schema, prospectId)      | MOD-Inventory               | Stub           |
+| ExpansionRequestPort       | createRequest(tenantId, schema, ...)                  | MOD-Network                 | Stub           |
+| BillingActivationPort      | activate(tenantId, schema, ...)                       | MOD-Billing                 | Stub           |
+| ProvisioningActivationPort | activate(tenantId, schema, ...)                       | MOD-Provisioning            | Stub           |
 
 ---
 
 ## 10. Contratos API
 
 ### POST /api/v1/crm/expedientes
+
 - **Guards:** JwtAuth, Roles (ADMIN, SALES, SUPPORT, SYSTEM_ADMIN)
 - **Body:** CreateExpedienteSchema — `{ fullName: string(1-160), source: string(1-120) }`
 - **Response 201:** `{ data: ExpedienteRecord }`
 
 ### GET /api/v1/crm/expedientes
+
 - **Guards:** JwtAuth, Roles
 - **Query:** status?, municipality?, search?, page?, limit?
 - **Response 200:** `{ data: ExpedienteRecord[], total }`
 
 ### GET /api/v1/crm/expedientes/:id
+
 - **Response 200:** `{ data: ExpedienteRecord, completeness, sectionCompleteness, installationReadiness, missingRequirements }`
 
 ### PATCH /api/v1/crm/expedientes/:id/sections/:section
+
 - **Body:** `{ data: Record<string, unknown> }`
 - **Response 200:** `{ data: ExpedienteRecord }`
 
 ### PATCH /api/v1/crm/expedientes/:id/status
+
 - **Body:** `{ targetStatus: ExpedienteStatus, reason?: string(max 255) }`
 - **Response 200:** `{ data, completeness, sectionCompleteness, installationReadiness, missingRequirements }`
 
 ### POST /api/v1/crm/expedientes/:id/reactivate
+
 - **Response 200:** `{ data: ExpedienteRecord }`
 
 ### GET /api/v1/crm/expedientes/:id/timeline
+
 - **Response 200:** `{ data: { changes, activities, metadata } }`
 
 ### GET /api/v1/crm/pipeline/summary
+
 - **Response 200:** `{ data: Record<status, count>, total }`
 
 ---
@@ -325,16 +341,19 @@ Cada consentimiento registra: canal, fecha, IP, version del texto legal, referen
 ## 11. Seguridad y cumplimiento
 
 ### Ley 1581/2012 — Habeas Data
+
 - Consentimiento triple obligatorio (DATA_TREATMENT, COMMERCIAL_CONTACT, OPERATIONAL_CONTACT).
 - Derechos ARCO via ArcoRequest entity.
 - PII cifrada at-rest con AES-256-GCM (6 campos).
 - Evidencia de consentimiento: canal, IP, version texto legal, referencia.
 
 ### CRC (Comision de Regulacion de Comunicaciones)
+
 - Trazabilidad de tiempos en pipeline para reportes PQR.
 - StatusChange con timestamps para cumplimiento de plazos.
 
 ### RBAC
+
 - ADMIN, SALES, SUPPORT, SYSTEM_ADMIN para lectura y operaciones.
 - Solo ADMIN, SALES, SYSTEM_ADMIN para transiciones y reactivacion.
 - Guards: JwtAuthGuard + RolesGuard con UserRole enum.
@@ -343,30 +362,30 @@ Cada consentimiento registra: canal, fecha, IP, version del texto legal, referen
 
 ## 12. Criterios de aceptacion
 
-| CA | Descripcion |
-| --- | --- |
-| CA-01 | Crear expediente rapido con solo fullName y source |
-| CA-02 | Completar secciones de forma progresiva; completitud recalculada en cada mutacion |
-| CA-03 | Transiciones de estado validan campos minimos requeridos |
-| CA-04 | Consentimiento triple registrado con canal, IP, texto legal |
-| CA-05 | Timeline separado: changes, activities, metadata con actor real |
-| CA-06 | Pipeline summary funcional con conteo por estado |
-| CA-07 | PII cifrada at-rest; datos descifrados solo en respuesta API |
-| CA-08 | Descarte con motivo y reactivacion restauran previousStatus |
-| CA-09 | Portal: listado con filtros, detalle accordion 8 secciones, guardar por seccion |
+| CA    | Descripcion                                                                                                          |
+| ----- | -------------------------------------------------------------------------------------------------------------------- |
+| CA-01 | Crear expediente rapido con solo fullName y source                                                                   |
+| CA-02 | Completar secciones de forma progresiva; completitud recalculada en cada mutacion                                    |
+| CA-03 | Transiciones de estado validan campos minimos requeridos                                                             |
+| CA-04 | Consentimiento triple registrado con canal, IP, texto legal                                                          |
+| CA-05 | Timeline separado: changes, activities, metadata con actor real                                                      |
+| CA-06 | Pipeline summary funcional con conteo por estado                                                                     |
+| CA-07 | PII cifrada at-rest; datos descifrados solo en respuesta API                                                         |
+| CA-08 | Descarte con motivo y reactivacion restauran previousStatus                                                          |
+| CA-09 | Portal: listado con filtros, detalle accordion 8 secciones, guardar por seccion                                      |
 | CA-10 | El backend expone resumen de completitud por 7 secciones y readiness de instalacion sin recalculo primario en portal |
 
 ---
 
 ## 13. Riesgos residuales
 
-| Riesgo | Severidad | Estado |
-| --- | --- | --- |
-| Tests con datos reales de tenant insuficientes | Media | Pendiente |
-| E2E escenarios error/descarte/reactivacion | Media | Pendiente |
-| Revision seguridad campos cifrados en respuestas | Media | Pendiente |
-| Retiro definitivo flujo legacy Sprint 01 backend | Baja | Documentado |
-| Enums CRM sin fuente .ts en packages/shared/src | Media | Solo compilados en dist |
+| Riesgo                                           | Severidad | Estado                  |
+| ------------------------------------------------ | --------- | ----------------------- |
+| Tests con datos reales de tenant insuficientes   | Media     | Pendiente               |
+| E2E escenarios error/descarte/reactivacion       | Media     | Pendiente               |
+| Revision seguridad campos cifrados en respuestas | Media     | Pendiente               |
+| Retiro definitivo flujo legacy Sprint 01 backend | Baja      | Documentado             |
+| Enums CRM sin fuente .ts en packages/shared/src  | Media     | Solo compilados en dist |
 
 ---
 
@@ -376,4 +395,4 @@ Cada consentimiento registra: canal, fecha, IP, version del texto legal, referen
 
 ---
 
-*Documento reconstruido por AI-EM-ARCH a partir del INFORME-MOD05-DEFINICION-v1.0.md (v2.8) y el codigo fuente implementado, como parte de la restauracion de gobernanza documental MOD05.*
+_Documento reconstruido por AI-EM-ARCH a partir del INFORME-MOD05-DEFINICION-v1.0.md (v2.8) y el codigo fuente implementado, como parte de la restauracion de gobernanza documental MOD05._

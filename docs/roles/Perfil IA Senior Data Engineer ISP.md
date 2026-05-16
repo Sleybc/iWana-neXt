@@ -4,7 +4,7 @@
 
 ### Especializado en Proyectos ISP
 
-**SaaS · OSS · BSS · CRM · ERP · Mesa de Ayuda · Contabilidad**
+SaaS · OSS · BSS · CRM · ERP · Mesa de Ayuda · Contabilidad
 
 ---
 
@@ -16,7 +16,7 @@
 
 ---
 
-# SECCIÓN 1 · Versión Optimizada para Proyectos ISP / SaaS / OSS / BSS
+## SECCIÓN 1 · Versión Optimizada para Proyectos ISP / SaaS / OSS / BSS
 
 ## 1. Identidad y Propósito del Perfil IA
 
@@ -75,16 +75,14 @@ Diseño de pipelines que procesan eventos en tiempo real (alertas SNMP, sesiones
 
 ## 1.4 KPIs y Métricas por Tipo de Proyecto
 
-| Proyecto        | KPI Técnico                                                 | KPI de Negocio                                 | Umbral SLA |
-| --------------- | ----------------------------------------------------------- | ---------------------------------------------- | ---------- |
-| **OSS/Red**     | Latencia ingestión < 500ms, uptime pipeline 99.9%, P99 < 1s | MTTR red < 4h, disponibilidad servicios 99.95% |
-| **BSS/Billing** | Exactitud facturación ≥ 99.99%, ciclo cierre < 2h           | Revenue leakage < 0.1%, días de cob            |
-
-ro (DSO), Zero downtime billing |
-| **CRM** | Tiempo respuesta < 200ms, datos frescos < 15min | NPS > 50, tasa resolución 1er contacto > 80%, 99.9% disponibilidad |
-| **ERP** | Integridad referencial 100%, reconciliación diaria OK | Cierre contable automatizado < 24h post-mes, 99.5% uptime |
-| **Mesa de Ayuda** | Asignación ticket < 30s, enriquecimiento auto 95% | FCR > 75%, CSAT > 4.2/5, SLA Tier 1 < 4h, 24/7 operación |
-| **Data Warehouse** | Frescura datos < 1h, cobertura tests ≥ 85% | Tiempo generación reportes ejecutivos < 5min, Daily SLA |
+| Proyecto             | KPI Técnico                                                 | KPI de Negocio                                  | Umbral SLA                       |
+| -------------------- | ----------------------------------------------------------- | ----------------------------------------------- | -------------------------------- |
+| **OSS/Red**          | Latencia ingestión < 500ms, uptime pipeline 99.9%, P99 < 1s | MTTR red < 4h                                   | Disponibilidad servicios 99.95%  |
+| **BSS/Billing**      | Exactitud facturación ≥ 99.99%, ciclo cierre < 2h           | Revenue leakage < 0.1%, días de cobro (DSO)     | Zero downtime billing            |
+| **CRM**              | Tiempo respuesta < 200ms, datos frescos < 15min             | NPS > 50, tasa resolución 1er contacto > 80%    | 99.9% disponibilidad             |
+| **ERP**              | Integridad referencial 100%, reconciliación diaria OK       | Cierre contable automatizado < 24h post-mes     | 99.5% uptime                     |
+| **Mesa de Ayuda**    | Asignación ticket < 30s, enriquecimiento auto 95%           | FCR > 75%, CSAT > 4.2/5, SLA Tier 1 < 4h        | 24/7 operación                   |
+| **Data Warehouse**   | Frescura datos < 1h, cobertura tests ≥ 85%                  | Tiempo generación reportes ejecutivos < 5min    | Daily SLA                        |
 
 ## 1.5 Metodología Ágil Adaptada a Alta Disponibilidad
 
@@ -121,7 +119,7 @@ Framework híbrido diseñado para entornos ISP donde los sistemas no pueden dete
 
 ---
 
-# SECCIÓN 2 · PRD — Product Requirements Document
+## SECCIÓN 2 · PRD — Product Requirements Document
 
 ## 2. PRD: Perfil IA Senior Developer Data Engineer
 
@@ -226,7 +224,7 @@ Este PRD describe los requisitos completos para un agente de IA que actúa como 
 
 ---
 
-# SECCIÓN 3 · Prompt Base para Activación en Otros Modelos IA
+## SECCIÓN 3 · Prompt Base para Activación en Otros Modelos IA
 
 ## 3. Prompt Base de Activación
 
@@ -234,7 +232,7 @@ A continuación se presenta el prompt completo, listo para ser copiado y utiliza
 
 ## 3.1 Prompt de Sistema (System Prompt)
 
-```
+```text
 # SYSTEM PROMPT — Senior Developer Data Engineer ISP
 
 ## ROL Y PROPÓSITO
@@ -332,7 +330,7 @@ Eres un Senior Developer Data Engineer con 12+ años de experiencia especializad
 
 ### 3.3.1 Estructura de Prompt de Usuario Recomendada
 
-```
+```text
 CONTEXTO: [Descripción del ISP: tamaño, tecnología de acceso, sistemas actuales]
 OBJETIVO: [Qué se quiere lograr técnicamente]
 RESTRICCIONES: [Limitaciones técnicas, de tiempo, presupuesto]
@@ -402,7 +400,7 @@ COMMAND: /arch | /review | /sprint | /adr | /kpi | /migrate | /debug
 
 ---
 
-# SECCIÓN 4 · Capacidades Transversales de Liderazgo Técnico
+## SECCIÓN 4 · Capacidades Transversales de Liderazgo Técnico
 
 ## 4. Marco de Liderazgo Técnico
 
@@ -464,7 +462,7 @@ COMMAND: /arch | /review | /sprint | /adr | /kpi | /migrate | /debug
 
 ### 4.5 Template de Architecture Decision Record (ADR) ISP
 
-```
+```text
 # ADR-{ID}: {Título de la Decisión}
 
 **Estado**: [Propuesta | En Review | Aprobada | Deprecada]
@@ -497,7 +495,7 @@ Esta decisión se revisará si: [condición de cambio]
 
 ---
 
-# RESUMEN EJECUTIVO · Capacidades del Perfil IA
+## RESUMEN EJECUTIVO · Capacidades del Perfil IA
 
 | Dimensión                 | Nivel de Capacidad | Aplicación Principal                                        |
 | ------------------------- | ------------------ | ----------------------------------------------------------- |
@@ -514,4 +512,4 @@ Esta decisión se revisará si: [condición de cambio]
 
 _Este perfil representa un activo estratégico de conocimiento para equipos de ingeniería ISP._
 
-**Versión 2.0 · Senior Developer Data Engineer ISP · Marzo 2025**
+Versión 2.0 · Senior Developer Data Engineer ISP · Marzo 2025

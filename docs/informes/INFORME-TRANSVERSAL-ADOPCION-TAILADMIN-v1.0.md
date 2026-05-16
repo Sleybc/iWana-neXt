@@ -718,5 +718,25 @@ Se ejecutó un ajuste visual y de interacción en el tab de Marca de `apps/porta
 
 - El tab Marca de portal queda visualmente consistente con el estándar de Branding en web.
 - Se mejora la legibilidad operativa: el usuario edita por slot con una única superficie (preview + upload + URL opcional).
+
+---
+
+## Addendum correctivo — 2026-05-15 (preload tipográfico portal)
+
+Se aplicó un correctivo acotado sobre el layout raíz de `apps/portal` para eliminar avisos de recursos tipográficos precargados pero no usados durante los primeros segundos del arranque en `/dashboard`.
+
+### Artefactos del correctivo tipográfico
+
+- `apps/portal/src/app/layout.tsx`: `JetBrains_Mono` mantiene la variable global `--font-jetbrains-mono` para `code/pre`, pero se desactiva `preload` porque no participa en el primer paint del dashboard.
+- `docs/informes/INFORME-TRANSVERSAL-ADOPCION-TAILADMIN-v1.0.md`: actualizado como documento vivo del shell/layout del portal.
+
+### Verificación del correctivo tipográfico
+
+- `pnpm --filter @iwana/portal typecheck` ✅
+
+### Resultado del correctivo tipográfico
+
+- El dashboard deja de anunciar precarga innecesaria de la fuente monoespaciada secundaria.
+- La fuente mono sigue disponible para superficies de código sin alterar la tipografía principal del portal.
 - Se incorpora la sección de identidad de marca con el mismo lenguaje visual y mismas opciones de web, adaptada a datos disponibles del tenant.
 - No se alteran endpoints ni contratos backend; el comportamiento funcional validado por tests se mantiene.

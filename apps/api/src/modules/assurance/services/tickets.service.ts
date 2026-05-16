@@ -571,6 +571,7 @@ export class TicketsService {
       await this.fieldServicePort.requestFieldService({
         ticketId: id,
         tenantId,
+        schemaName,
         priority: ticket.priority,
         subject: ticket.subject,
         requestedByUserId: actor.sub,

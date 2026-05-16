@@ -12,6 +12,7 @@ export const UpdateScheduleEventSchema = z
     assignedUserId: z.string().uuid(),
     address: z.string().max(255).nullable(),
     municipality: z.string().max(120).nullable(),
+    sector: z.string().max(120).nullable(),
     latitude: z.number().min(-90).max(90).nullable(),
     longitude: z.number().min(-180).max(180).nullable(),
     expedienteId: z.string().uuid().nullable(),
@@ -62,6 +63,12 @@ export class UpdateScheduleEventDto {
   @IsString()
   @MaxLength(120)
   municipality?: string | null;
+
+  @ApiPropertyOptional({ maxLength: 120, description: 'Sector, barrio o vereda operativa' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  sector?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()

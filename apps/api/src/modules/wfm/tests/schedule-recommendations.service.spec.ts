@@ -1,0 +1,141 @@
+import { BadRequestException } from '@nestjs/common';
+import { DataSource } from 'typeorm';
+import { TenantContext, runInTenantSchema } from '@iwana/db';
+import { ScheduleEventStatus, TechnicianAvailabilityType, WfmWorkType } from '@iwana/shared';
+import { ScheduleRecommendationsService } from '../services/schedule-recommendations.service';
+
+jest.mock('@iwana/db', () => ({
+  TenantContext: {
+    getOrThrow: jest.fn().mockReturnValue({
+      tenantId: 'tenant-001',
+      schemaName: 'tenant_001',
+    }),
+  },
+  runInTenantSchema: jest.fn(),
+  ScheduleEvent: class {},
+  TechnicianAvailability: class {},
+}));
+
+function buildQueryBuilder<T>(result: T[]) {
+  return {
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    orderBy: jest.fn().mockReturnThis(),
+    getMany: jest.fn().mockResolvedValue(result),
+  };
+}
+
+describe('ScheduleRecommendationsService', () => {
+  let service: ScheduleRecommendationsService;
+  let mockRunInTenantSchema: jest.MockedFunction<typeof runInTenantSchema>;
+
+  const baseInput = {
+    workType: WfmWorkType.INSTALLATION,
+    durationMinutes: 60,
+    windowStartAt: '2026-06-01T09:00:00.000Z',
+    windowEndAt: '2026-06-01T12:00:00.000Z',
+    candidateUserIds: [
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+    ],
+    municipality: 'Soacha',
+    sector: 'Vereda Primavera',
+    latitude: 4.583,
+    longitude: -74.216,
+    maxResults: 4,
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRunInTenantSchema = runInTenantSchema as jest.MockedFunction<typeof runInTenantSchema>;
+    service = new ScheduleRecommendationsService({} as DataSource);
+  });
+
+  it('prioriza franjas de tecnicos con ruta territorial cercana', async () => {
+    const nearbyEvent = {
+      id: 'evt-near',
+      assignedUserId: '11111111-1111-4111-8111-111111111111',
+      status: ScheduleEventStatus.SCHEDULED,
+      scheduledStartAt: new Date('2026-06-01T08:00:00.000Z'),
+      scheduledEndAt: new Date('2026-06-01T09:00:00.000Z'),
+      municipality: 'Soacha',
+      sector: 'Vereda Primavera',
+      latitude: '4.5829000',
+      longitude: '-74.2161000',
+    };
+    const eventsQb = buildQueryBuilder([nearbyEvent]);
+    const availabilityQb = buildQueryBuilder([]);
+
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
+      fn({
+        manager: {
+          createQueryBuilder: jest
+            .fn()
+            .mockReturnValueOnce(eventsQb)
+            .mockReturnValueOnce(availabilityQb),
+        },
+      } as any),
+    );
+
+    const result = await service.recommend(baseInput);
+
+    expect(TenantContext.getOrThrow).toHaveBeenCalled();
+    expect(result[0]).toEqual(
+      expect.objectContaining({
+        technicianId: '11111111-1111-4111-8111-111111111111',
+        scheduledStartAt: '2026-06-01T09:00:00.000Z',
+        nearestEventId: 'evt-near',
+      }),
+    );
+    expect(result[0]?.labels).toEqual(
+      expect.arrayContaining([
+        'Recomendado',
+        'Mismo sector/vereda',
+        'Mismo municipio',
+        'Ruta compacta',
+      ]),
+    );
+    expect(result[0]?.scoreBreakdown.sector).toBe(20);
+  });
+
+  it('descarta franjas bloqueadas por disponibilidad del tecnico', async () => {
+    const blockedAvailability = {
+      userId: '11111111-1111-4111-8111-111111111111',
+      type: TechnicianAvailabilityType.BLOCKED,
+      startsAt: new Date('2026-06-01T09:00:00.000Z'),
+      endsAt: new Date('2026-06-01T12:00:00.000Z'),
+    };
+    const eventsQb = buildQueryBuilder([]);
+    const availabilityQb = buildQueryBuilder([blockedAvailability]);
+
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
+      fn({
+        manager: {
+          createQueryBuilder: jest
+            .fn()
+            .mockReturnValueOnce(eventsQb)
+            .mockReturnValueOnce(availabilityQb),
+        },
+      } as any),
+    );
+
+    const result = await service.recommend({
+      ...baseInput,
+      candidateUserIds: ['11111111-1111-4111-8111-111111111111'],
+      windowStartAt: '2026-06-01T09:00:00.000Z',
+      windowEndAt: '2026-06-01T10:00:00.000Z',
+    });
+
+    expect(result).toEqual([]);
+  });
+
+  it('rechaza ventanas demasiado amplias', async () => {
+    await expect(
+      service.recommend({
+        ...baseInput,
+        windowStartAt: '2026-06-01T00:00:00.000Z',
+        windowEndAt: '2026-06-20T00:00:00.000Z',
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+});

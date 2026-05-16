@@ -365,6 +365,7 @@ describe('TicketsService', () => {
       expect.objectContaining({
         ticketId: 'ticket-002',
         tenantId: 'tenant-001',
+        schemaName: 'tenant_001',
       }),
     );
     expect(timelineService.recordWithManager).toHaveBeenCalledWith(

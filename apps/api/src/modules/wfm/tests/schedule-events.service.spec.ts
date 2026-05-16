@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException, ForbiddenException } from '@nes
 import { DataSource } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
 import { ScheduleEventStatus, UserRole } from '@iwana/shared';
+import { WfmTenantSettingsReadPort } from '../ports/wfm-tenant-settings-read.port';
 import { ScheduleEventsService } from '../services/schedule-events.service';
 import { ScheduleConflictService } from '../services/schedule-conflict.service';
 import { WorkOrdersService } from '../services/work-orders.service';
@@ -26,6 +27,9 @@ describe('ScheduleEventsService', () => {
   let mockDataSource: Partial<DataSource>;
   let mockConflictService: jest.Mocked<ScheduleConflictService>;
   let mockWorkOrdersService: jest.Mocked<WorkOrdersService>;
+  let mockTenantService: {
+    getTimezone: jest.Mock;
+  };
   let mockRunInTenantSchema: jest.MockedFunction<typeof runInTenantSchema>;
 
   const adminActor = {
@@ -61,8 +65,8 @@ describe('ScheduleEventsService', () => {
   const validCreateInput = {
     type: 'INSTALLATION' as any,
     title: 'Instalacion fibra',
-    scheduledStartAt: '2026-06-01T09:00:00Z',
-    scheduledEndAt: '2026-06-01T11:00:00Z',
+    scheduledStartAt: '2026-06-01T14:00:00Z',
+    scheduledEndAt: '2026-06-01T16:00:00Z',
     assignedUserId: '22222222-2222-2222-2222-222222222222',
   };
 
@@ -75,6 +79,10 @@ describe('ScheduleEventsService', () => {
       hasConflictWithManager: jest.fn().mockResolvedValue(false),
     } as any;
 
+    mockTenantService = {
+      getTimezone: jest.fn().mockResolvedValue('America/Bogota'),
+    };
+
     mockWorkOrdersService = {
       create: jest.fn(),
       createWithinManager: jest.fn(),
@@ -86,6 +94,7 @@ describe('ScheduleEventsService', () => {
 
     service = new ScheduleEventsService(
       mockDataSource as DataSource,
+      mockTenantService as unknown as WfmTenantSettingsReadPort,
       mockConflictService,
       mockWorkOrdersService,
     );
@@ -145,6 +154,21 @@ describe('ScheduleEventsService', () => {
       await expect(service.create(shortInput, adminActor as any)).rejects.toThrow(
         BadRequestException,
       );
+    });
+
+    it('should reject installation schedules outside tenant business hours', async () => {
+      const outOfRangeInput = {
+        ...validCreateInput,
+        scheduledStartAt: '2026-06-01T11:00:00Z',
+        scheduledEndAt: '2026-06-01T13:00:00Z',
+      };
+
+      mockRunInTenantSchema.mockClear();
+
+      await expect(service.create(outOfRangeInput, adminActor as any)).rejects.toThrow(
+        'Las instalaciones solo pueden programarse entre 07:00 y 18:00.',
+      );
+      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
     });
 
     it('should create a WorkOrder when workOrder is embedded in input', async () => {
@@ -327,8 +351,8 @@ describe('ScheduleEventsService', () => {
         service.reschedule(
           'evt-001',
           {
-            scheduledStartAt: '2026-06-02T09:00:00Z',
-            scheduledEndAt: '2026-06-02T11:00:00Z',
+            scheduledStartAt: '2026-06-02T14:00:00Z',
+            scheduledEndAt: '2026-06-02T16:00:00Z',
             reason: '',
           } as any,
           adminActor as any,
@@ -366,8 +390,8 @@ describe('ScheduleEventsService', () => {
       const result = await service.reschedule(
         'evt-001',
         {
-          scheduledStartAt: '2026-06-02T09:00:00Z',
-          scheduledEndAt: '2026-06-02T11:00:00Z',
+          scheduledStartAt: '2026-06-02T14:00:00Z',
+          scheduledEndAt: '2026-06-02T16:00:00Z',
           reason: 'Solicitud del cliente',
         },
         adminActor as any,
@@ -379,10 +403,44 @@ describe('ScheduleEventsService', () => {
       expect(mockConflictService.hasConflict).toHaveBeenCalledWith({
         tenantId: adminActor.tenantId,
         assignedUserId: existingEvent.assignedUserId,
-        scheduledStartAt: '2026-06-02T09:00:00Z',
-        scheduledEndAt: '2026-06-02T11:00:00Z',
+        scheduledStartAt: '2026-06-02T14:00:00Z',
+        scheduledEndAt: '2026-06-02T16:00:00Z',
         excludeEventId: 'evt-001',
       });
+    });
+
+    it('should reject installation reschedules outside tenant business hours', async () => {
+      const existingEvent = {
+        id: 'evt-010',
+        tenantId: 'tenant-001',
+        assignedUserId: 'tech-001',
+        type: 'INSTALLATION',
+        scheduledStartAt: new Date('2026-06-01T09:00:00Z'),
+        scheduledEndAt: new Date('2026-06-01T11:00:00Z'),
+        status: ScheduleEventStatus.SCHEDULED,
+      };
+
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
+        const mockQr = {
+          manager: {
+            findOne: jest.fn().mockResolvedValue(existingEvent),
+          },
+        };
+        return fn(mockQr as any);
+      });
+
+      await expect(
+        service.reschedule(
+          'evt-010',
+          {
+            scheduledStartAt: '2026-06-02T11:00:00Z',
+            scheduledEndAt: '2026-06-02T13:00:00Z',
+            reason: 'Cliente indisponible en la manana',
+          },
+          adminActor as any,
+        ),
+      ).rejects.toThrow('Las instalaciones solo pueden reagendarse entre 07:00 y 18:00.');
+      expect(mockConflictService.hasConflict).not.toHaveBeenCalled();
     });
   });
 });

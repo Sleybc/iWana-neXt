@@ -25,6 +25,7 @@ import {
   TaxRegime,
   TechnicianAvailabilityType,
   TechnologyOption,
+  VisitRequestStatus,
   TicketFieldDecision,
   TicketPriority,
   TicketQueue,
@@ -2202,6 +2203,7 @@ export interface WfmScheduleEvent {
   assignedTeamId: string | null;
   address: string | null;
   municipality: string | null;
+  sector: string | null;
   latitude: string | null;
   longitude: string | null;
   expedienteId: string | null;
@@ -2233,6 +2235,7 @@ export interface CreateWfmScheduleEventDto {
   assignedUserId: string;
   address?: string | null | undefined;
   municipality?: string | null | undefined;
+  sector?: string | null | undefined;
   latitude?: number | null | undefined;
   longitude?: number | null | undefined;
   expedienteId?: string | null | undefined;
@@ -2250,6 +2253,7 @@ export interface UpdateWfmScheduleEventDto {
   assignedUserId?: string | undefined;
   address?: string | null | undefined;
   municipality?: string | null | undefined;
+  sector?: string | null | undefined;
   latitude?: number | null | undefined;
   longitude?: number | null | undefined;
   expedienteId?: string | null | undefined;
@@ -2277,6 +2281,187 @@ export interface ListWfmScheduleEventsParams {
   type?: WfmWorkType | undefined;
   status?: ScheduleEventStatus | undefined;
   municipality?: string | undefined;
+  sector?: string | undefined;
+}
+
+export interface WfmScheduleRecommendationRequestDto {
+  workType: WfmWorkType;
+  durationMinutes: number;
+  windowStartAt: string;
+  windowEndAt: string;
+  candidateUserIds: string[];
+  municipality?: string | null | undefined;
+  sector?: string | null | undefined;
+  latitude?: number | null | undefined;
+  longitude?: number | null | undefined;
+  maxResults?: number | undefined;
+}
+
+export interface WfmScheduleRecommendationScoreBreakdown {
+  distance: number;
+  municipality: number;
+  sector: number;
+  routeContinuity: number;
+  load: number;
+  earliest: number;
+}
+
+export interface WfmScheduleRecommendation {
+  technicianId: string;
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  score: number;
+  labels: string[];
+  scoreBreakdown: WfmScheduleRecommendationScoreBreakdown;
+  distanceKm: number | null;
+  nearestEventId: string | null;
+  totalScheduledMinutes: number;
+  eventCount: number;
+}
+
+export interface WfmVisitRequest {
+  id: string;
+  tenantId: string;
+  status: VisitRequestStatus;
+  originContext: WorkOrderSourceContext;
+  originRef: string | null;
+  originLabel: string | null;
+  workType: WfmWorkType;
+  priority: WorkOrderPriority;
+  title: string;
+  description: string | null;
+  requestedWindowStartAt: string | null;
+  requestedWindowEndAt: string | null;
+  slaDueAt: string | null;
+  address: string | null;
+  municipality: string | null;
+  sector: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  expedienteId: string | null;
+  subscriberId: string | null;
+  ticketId: string | null;
+  contractId: string | null;
+  scheduleEventId: string | null;
+  workOrderId: string | null;
+  requestedByUserId: string;
+  scheduledByUserId: string | null;
+  scheduledAt: string | null;
+  cancelledAt: string | null;
+  cancelledByUserId: string | null;
+  cancelReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  rejectReason?: string | undefined;
+}
+
+export interface ListWfmVisitRequestsParams {
+  status?: VisitRequestStatus | undefined;
+  originContext?: WorkOrderSourceContext | undefined;
+  workType?: WfmWorkType | undefined;
+  priority?: WorkOrderPriority | undefined;
+  municipality?: string | undefined;
+  sector?: string | undefined;
+  from?: string | undefined;
+  to?: string | undefined;
+  page?: number | undefined;
+  limit?: number | undefined;
+}
+
+export interface ListWfmVisitRequestsResponse {
+  items: WfmVisitRequest[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+
+export interface WfmVisitRequestFilterOption {
+  value: string;
+  label: string;
+  count: number;
+  municipality?: string | undefined;
+}
+
+export interface WfmVisitRequestFilterOptionsResponse {
+  municipalities: WfmVisitRequestFilterOption[];
+  sectors: WfmVisitRequestFilterOption[];
+}
+
+export interface WfmVisitRequestFilterOptionsParams {
+  municipality?: string | undefined;
+  includeScheduled?: boolean | undefined;
+}
+
+export interface CreateWfmVisitRequestDto {
+  originContext: WorkOrderSourceContext;
+  originRef?: string | null | undefined;
+  originLabel?: string | null | undefined;
+  workType: WfmWorkType;
+  priority?: WorkOrderPriority | undefined;
+  title: string;
+  description?: string | null | undefined;
+  requestedWindowStartAt?: string | null | undefined;
+  requestedWindowEndAt?: string | null | undefined;
+  slaDueAt?: string | null | undefined;
+  address?: string | null | undefined;
+  municipality?: string | null | undefined;
+  sector?: string | null | undefined;
+  latitude?: number | null | undefined;
+  longitude?: number | null | undefined;
+  expedienteId?: string | null | undefined;
+  subscriberId?: string | null | undefined;
+  ticketId?: string | null | undefined;
+  contractId?: string | null | undefined;
+}
+
+export interface UpdateWfmVisitRequestContextDto {
+  description?: string | null | undefined;
+  requestedWindowStartAt?: string | null | undefined;
+  requestedWindowEndAt?: string | null | undefined;
+  slaDueAt?: string | null | undefined;
+  address?: string | null | undefined;
+  municipality?: string | null | undefined;
+  sector?: string | null | undefined;
+  latitude?: number | null | undefined;
+  longitude?: number | null | undefined;
+  expedienteId?: string | null | undefined;
+  subscriberId?: string | null | undefined;
+  ticketId?: string | null | undefined;
+  contractId?: string | null | undefined;
+}
+
+export interface RecommendWfmVisitRequestDto {
+  durationMinutes: number;
+  candidateUserIds: string[];
+  windowStartAt?: string | undefined;
+  windowEndAt?: string | undefined;
+  searchHorizonDays?: number | undefined;
+  municipality?: string | null | undefined;
+  sector?: string | null | undefined;
+  latitude?: number | null | undefined;
+  longitude?: number | null | undefined;
+  maxResults?: number | undefined;
+}
+
+export interface ScheduleWfmVisitRequestDto {
+  assignedUserId: string;
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  createWorkOrder?: boolean | undefined;
+  workOrderSummary?: string | undefined;
+  workOrderNotes?: string | null | undefined;
+}
+
+export interface CancelWfmVisitRequestDto {
+  cancelReason: string;
+}
+
+export interface RejectWfmVisitRequestDto {
+  rejectReason: string;
 }
 
 export interface WfmWorkOrder {
@@ -2371,6 +2556,93 @@ export interface CreateWfmTechnicianAvailabilityDto {
 }
 
 export const wfmApi = {
+  visitRequests: {
+    list: (params?: ListWfmVisitRequestsParams, tenantSlug?: string) => {
+      const searchParams = new URLSearchParams();
+      if (params?.status) searchParams.set('status', params.status);
+      if (params?.originContext) searchParams.set('originContext', params.originContext);
+      if (params?.workType) searchParams.set('workType', params.workType);
+      if (params?.priority) searchParams.set('priority', params.priority);
+      if (params?.municipality) searchParams.set('municipality', params.municipality);
+      if (params?.sector) searchParams.set('sector', params.sector);
+      if (params?.from) searchParams.set('from', params.from);
+      if (params?.to) searchParams.set('to', params.to);
+      if (params?.page !== undefined) searchParams.set('page', String(params.page));
+      if (params?.limit !== undefined) searchParams.set('limit', String(params.limit));
+
+      const query = searchParams.toString();
+      return request<ListWfmVisitRequestsResponse>(
+        `/wfm/visit-requests${query ? `?${query}` : ''}`,
+        { returnFullResponse: true },
+        tenantSlug,
+      );
+    },
+
+    filterOptions: (params?: WfmVisitRequestFilterOptionsParams, tenantSlug?: string) => {
+      const searchParams = new URLSearchParams();
+      if (params?.municipality) searchParams.set('municipality', params.municipality);
+      if (params?.includeScheduled !== undefined) {
+        searchParams.set('includeScheduled', String(params.includeScheduled));
+      }
+
+      const query = searchParams.toString();
+      return request<WfmVisitRequestFilterOptionsResponse>(
+        `/wfm/visit-requests/filter-options${query ? `?${query}` : ''}`,
+        { returnFullResponse: true },
+        tenantSlug,
+      );
+    },
+
+    get: (id: string, tenantSlug?: string) =>
+      request<WfmVisitRequest>(
+        `/wfm/visit-requests/${id}`,
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    create: (dto: CreateWfmVisitRequestDto, tenantSlug?: string) =>
+      request<WfmVisitRequest>(
+        '/wfm/visit-requests',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    updateContext: (id: string, dto: UpdateWfmVisitRequestContextDto, tenantSlug?: string) =>
+      request<WfmVisitRequest>(
+        `/wfm/visit-requests/${id}/context`,
+        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    recommend: (id: string, dto: RecommendWfmVisitRequestDto, tenantSlug?: string) =>
+      request<WfmScheduleRecommendation[]>(
+        `/wfm/visit-requests/${id}/schedule-recommendations`,
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    schedule: (id: string, dto: ScheduleWfmVisitRequestDto, tenantSlug?: string) =>
+      request<WfmVisitRequest>(
+        `/wfm/visit-requests/${id}/schedule`,
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    cancel: (id: string, dto: CancelWfmVisitRequestDto, tenantSlug?: string) =>
+      request<WfmVisitRequest>(
+        `/wfm/visit-requests/${id}/cancel`,
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    reject: (id: string, dto: RejectWfmVisitRequestDto, tenantSlug?: string) =>
+      request<WfmVisitRequest>(
+        `/wfm/visit-requests/${id}/reject`,
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+
   events: {
     list: (params?: ListWfmScheduleEventsParams, tenantSlug?: string) => {
       const searchParams = new URLSearchParams();
@@ -2381,6 +2653,7 @@ export const wfmApi = {
       if (params?.type) searchParams.set('type', params.type);
       if (params?.status) searchParams.set('status', params.status);
       if (params?.municipality) searchParams.set('municipality', params.municipality);
+      if (params?.sector) searchParams.set('sector', params.sector);
 
       const query = searchParams.toString();
       return request<WfmScheduleEvent[]>(
@@ -2423,6 +2696,15 @@ export const wfmApi = {
 
     remove: (id: string, tenantSlug?: string) =>
       request<void>(`/wfm/events/${id}`, { method: 'DELETE' }, tenantSlug),
+  },
+
+  recommendations: {
+    create: (dto: WfmScheduleRecommendationRequestDto, tenantSlug?: string) =>
+      request<WfmScheduleRecommendation[]>(
+        '/wfm/schedule-recommendations',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
   },
 
   workOrders: {

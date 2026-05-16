@@ -1,128 +1,75 @@
-title: "PRD — Módulo Comercial (Catálogo de Planes y Servicios)"
-version: "1.0"
-owner: "Arquitectura de Soluciones / Producto"
-date: "2026-04-18"
-status: "Aprobado para Diseño Arquitectónico"
-contexto: "Plataforma Integral ISP Colombia"
+# PRD: Módulo Comercial (Catálogo de planes y servicios)
 
-PRD: Módulo Comercial (Catálogo)
+**Versión:** 1.0
+**Owner:** Arquitectura de Soluciones / Producto
+**Fecha:** 2026-04-18
+**Estado:** Aprobado para diseño arquitectónico
+**Contexto:** Plataforma Integral ISP Colombia
 
-1. Resumen Ejecutivo
+## 1. Resumen ejecutivo
 
-El Módulo Comercial es el Bounded Context encargado de centralizar y gestionar la oferta de valor del ISP. Actúa como el catálogo maestro de Planes (Internet, TV, Telefonía), Productos (venta y comodato) y Servicios Adicionales. Su objetivo principal es abstraer las reglas de negocio y precios del inventario físico, proporcionando una fuente única de verdad para la facturación, ventas y la vista 360 del suscriptor.
+El módulo Comercial es el bounded context encargado de centralizar y gestionar la oferta de valor del ISP. Actúa como el catálogo maestro de planes (Internet, TV, telefonía), productos (venta y comodato) y servicios adicionales. Su objetivo principal es abstraer las reglas de negocio y precios del inventario físico, proporcionando una fuente única de verdad para la facturación, ventas y la vista 360 del suscriptor.
 
-2. Objetivos y Principios Arquitectónicos
+## 2. Objetivos y principios arquitectónicos
 
-Separación de Responsabilidades: El Catálogo define el qué y a cuánto (dominio comercial), mientras que el Inventario define el dónde y cuál (dominio físico).
+- **Separación de responsabilidades:** el catálogo define el qué y a cuánto, dominio comercial, mientras que el inventario define el dónde y cuál, dominio físico.
+- **Inmutabilidad financiera:** los precios históricos no se sobrescriben. Se utiliza el patrón Slowly Changing Dimensions (SCD) Tipo 2 para el catálogo y el patrón Snapshot en la facturación.
+- **Aplicación inmediata:** los cambios de tarifas se aplican en el momento de la edición, cerrando la vigencia del precio anterior.
 
-Inmutabilidad Financiera: Los precios históricos no se sobrescriben. Se utiliza el patrón Slowly Changing Dimensions (SCD) Tipo 2 para el catálogo y el patrón Snapshot en la facturación.
-
-Aplicación Inmediata: Los cambios de tarifas se aplican en el momento de la edición, cerrando la vigencia del precio anterior.
-
-3. Matriz de Acceso (RBAC)
+## 3. Matriz de acceso (RBAC)
 
 Para garantizar la seguridad financiera, los accesos se dividen estrictamente:
 
-Rol
+| Rol                       | Permisos en módulo Comercial | Casos de uso                                                       |
+| ------------------------- | ---------------------------- | ------------------------------------------------------------------ |
+| Gerencia Comercial        | CRUD total                   | Creación de nuevos planes, combos y promociones                    |
+| Facturación / Finanzas    | CRUD total                   | Modificación de tarifas, ajuste de impuestos, IVA, etc.            |
+| SuperAdmin (TI)           | CRUD total                   | Soporte técnico al módulo y configuración inicial                  |
+| Atención al Cliente (SAC) | Solo lectura                 | Consulta de características del plan para soporte técnico          |
+| Ventas / Ejecutivos       | Solo lectura                 | Consulta de precios vigentes para cotizaciones                     |
+| Técnicos (WFM)            | Solo lectura                 | Consulta de tarifas de materiales y servicios adicionales en campo |
 
-Permisos en Módulo Comercial
+## 4. Requerimientos funcionales
 
-Casos de Uso
-
-Gerencia Comercial
-
-CRUD Total
-
-Creación de nuevos planes, combos y promociones.
-
-Facturación / Finanzas
-
-CRUD Total
-
-Modificación de tarifas, ajuste de impuestos (IVA, etc).
-
-SuperAdmin (TI)
-
-CRUD Total
-
-Soporte técnico al módulo, configuración inicial.
-
-Atención al Cliente (SAC)
-
-Solo Lectura
-
-Consulta de características del plan para soporte técnico.
-
-Ventas / Ejecutivos
-
-Solo Lectura
-
-Consulta de precios vigentes para cotizaciones.
-
-Técnicos (WFM)
-
-Solo Lectura
-
-Consulta de tarifas de materiales/servicios adicionales en campo.
-
-4. Requerimientos Funcionales
-
-4.1. Gestión de Categorías del Catálogo
+### 4.1 Gestión de categorías del catálogo
 
 El sistema debe permitir gestionar tres entidades principales:
 
-Planes: Servicios recurrentes facturados por ciclo (ej. "Plan Fibra 500 Mbps"). Debe incluir atributos como velocidad (Up/Down), tipo de tecnología (FTTH, HFC), e impuestos aplicables.
+- **Planes:** servicios recurrentes facturados por ciclo, por ejemplo, "Plan Fibra 500 Mbps". Debe incluir atributos como velocidad subida y bajada, tipo de tecnología, FTTH o HFC, e impuestos aplicables.
+- **Productos:** elementos tangibles que se asocian a un contrato. Deben tener un flag `es_comodato` para indicar si el ISP retiene la propiedad, requiere devolución, o si es venta directa.
+- **Servicios adicionales:** cargos de única vez o bajo demanda, por ejemplo, traslados, IP pública, reconexión o metros extra de fibra.
 
-Productos: Elementos tangibles que se asocian a un contrato. Deben tener un flag de es_comodato (booleano) para indicar si el ISP retiene la propiedad (requiere devolución) o si es venta directa.
+### 4.2 Historial de precios (motor de tarifas)
 
-Servicios Adicionales: Cargos de única vez o bajo demanda (ej. Traslados, IP Pública, Reconexión, Metros extra de fibra).
+- Al crear un ítem, el sistema debe solicitar el precio inicial.
+- Al editar un precio, el sistema no debe hacer un `UPDATE` sobre el valor actual. Debe hacer un `INSERT` en una tabla de historial, marcando la fecha y hora actual como inicio de vigencia y cerrando la fecha fin del registro anterior.
+- La interfaz debe mostrar una pestaña de historial de tarifas en el detalle de cada ítem.
 
-4.2. Historial de Precios (Motor de Tarifas)
+## 5. Modelo de datos propuesto (guía para arquitectura)
 
-Al crear un ítem, el sistema debe solicitar el precio inicial.
+Se requiere normalizar la información separando la definición del ítem de su precio.
 
-Al "editar un precio", el sistema NO debe hacer un UPDATE sobre el valor actual. Debe hacer un INSERT en una tabla de historial, marcando la fecha/hora actual como inicio de vigencia y cerrando la fecha fin del registro anterior.
+### Tabla: `catalogo_items`
 
-La interfaz debe mostrar una pestaña de "Historial de Tarifas" en el detalle de cada ítem.
+- `id`: UUID, PK
+- `tipo`: enum, PLAN, PRODUCTO, SERVICIO
+- `nombre`: varchar
+- `descripcion`: text
+- `impuesto_porcentaje`: decimal
+- `requiere_inventario`: boolean, vínculo con el módulo WFM/Inventario
+- `activo`: boolean
 
-5. Modelo de Datos Propuesto (Guía para Arquitectura)
+### Tabla: `catalogo_precios_historial` (SCD Tipo 2)
 
-Se requiere normalizar la información separando la definición del ítem de su precio:
+- `id`: UUID, PK
+- `item_id`: FK hacia `catalogo_items`
+- `precio_base`: decimal
+- `fecha_inicio`: timestamp, se genera automáticamente al guardar, `now`
+- `fecha_fin`: timestamp nullable, se actualiza al crear un nuevo precio
+- `vigente`: boolean, facilita las consultas rápidas de Ventas
 
-Tabla: catalogo_items
+## 6. Integración con otros bounded contexts
 
-id (UUID/PK)
-
-tipo (Enum: PLAN, PRODUCTO, SERVICIO)
-
-nombre (Varchar)
-
-descripcion (Text)
-
-impuesto_porcentaje (Decimal)
-
-requiere_inventario (Boolean) - Link con el módulo WFM/Inventario.
-
-activo (Boolean)
-
-Tabla: catalogo_precios_historial (SCD Tipo 2)
-
-id (UUID/PK)
-
-item_id (FK -> catalogo_items)
-
-precio_base (Decimal)
-
-fecha_inicio (Timestamp) - Se genera automáticamente al guardar (now).
-
-fecha_fin (Timestamp, Nullable) - Se actualiza al crear un nuevo precio.
-
-vigente (Boolean) - Facilita las queries rápidas de Ventas.
-
-6. Integración con otros Bounded Contexts
-
-CRM / Suscriptor 360: Consumirá el catalogo_items para mostrar en la pestaña "Servicios Contratados" el nombre del plan y sus características.
-
-Billing / Facturación: Al emitir la factura, leerá el precio vigente = true y creará un Snapshot (copia en texto y valor numérico estático) en la tabla facturas_detalles.
-
-WFM / Inventario: Cuando se seleccione un "Producto" del catálogo en una orden de trabajo, WFM pedirá a Inventario que asigne la MAC/Serial físico correspondiente.
+- **CRM / Suscriptor 360:** consumirá `catalogo_items` para mostrar en la pestaña Servicios Contratados el nombre del plan y sus características.
+- **Billing / Facturación:** al emitir la factura, leerá el precio vigente y creará un Snapshot, copia en texto y valor numérico estático, en la tabla `facturas_detalles`.
+- **WFM / Inventario:** cuando se seleccione un producto del catálogo en una orden de trabajo, WFM pedirá a Inventario que asigne la MAC o serial físico correspondiente.

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -20,6 +21,8 @@ import {
   RescheduleEventSchema,
   ListScheduleEventsQueryDto,
 } from '../dto';
+import { WfmTenantSettingsReadPort } from '../ports/wfm-tenant-settings-read.port';
+import { isInstallationScheduleWithinBusinessHours } from './installation-schedule-window';
 import { ScheduleConflictService } from './schedule-conflict.service';
 import { WorkOrdersService } from './work-orders.service';
 
@@ -40,6 +43,8 @@ const MIN_DURATION_MS = 15 * 60 * 1000;
 export class ScheduleEventsService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
+    @Inject(WfmTenantSettingsReadPort)
+    private readonly tenantSettingsReadPort: WfmTenantSettingsReadPort,
     private readonly conflictService: ScheduleConflictService,
     private readonly workOrdersService: WorkOrdersService,
   ) {}
@@ -82,6 +87,9 @@ export class ScheduleEventsService {
       if (query.municipality) {
         qb.andWhere('se.municipality ILIKE :mun', { mun: `%${query.municipality}%` });
       }
+      if (query.sector) {
+        qb.andWhere('se.sector ILIKE :sector', { sector: `%${query.sector}%` });
+      }
 
       return qb.getMany();
     });
@@ -110,13 +118,23 @@ export class ScheduleEventsService {
   async create(input: CreateScheduleEventInput, actor: JwtPayload): Promise<ScheduleEvent> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = CreateScheduleEventSchema.parse(input);
+    const startAt = new Date(validated.scheduledStartAt);
+    const endAt = new Date(validated.scheduledEndAt);
 
     // Validar duracion minima
-    const startMs = new Date(validated.scheduledStartAt).getTime();
-    const endMs = new Date(validated.scheduledEndAt).getTime();
+    const startMs = startAt.getTime();
+    const endMs = endAt.getTime();
     if (endMs - startMs < MIN_DURATION_MS) {
       throw new BadRequestException('La duracion minima del evento es de 15 minutos');
     }
+
+    await this.assertInstallationScheduleWindow(
+      validated.type,
+      tenantId,
+      startAt,
+      endAt,
+      'Las instalaciones solo pueden programarse entre 07:00 y 18:00.',
+    );
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const hasConflict = await this.conflictService.hasConflictWithManager(qr.manager, {
@@ -135,11 +153,12 @@ export class ScheduleEventsService {
         status: ScheduleEventStatus.DRAFT,
         title: validated.title,
         description: validated.description ?? null,
-        scheduledStartAt: new Date(validated.scheduledStartAt),
-        scheduledEndAt: new Date(validated.scheduledEndAt),
+        scheduledStartAt: startAt,
+        scheduledEndAt: endAt,
         assignedUserId: validated.assignedUserId,
         address: validated.address ?? null,
         municipality: validated.municipality ?? null,
+        sector: validated.sector ?? null,
         latitude: validated.latitude !== undefined ? String(validated.latitude) : null,
         longitude: validated.longitude !== undefined ? String(validated.longitude) : null,
         expedienteId: validated.expedienteId ?? null,
@@ -200,11 +219,21 @@ export class ScheduleEventsService {
         const endAt = validated.scheduledEndAt ?? event.scheduledEndAt.toISOString();
         const assignedUid = validated.assignedUserId ?? event.assignedUserId;
 
-        const startMs = new Date(startAt).getTime();
-        const endMs = new Date(endAt).getTime();
+        const nextStartAt = new Date(startAt);
+        const nextEndAt = new Date(endAt);
+        const startMs = nextStartAt.getTime();
+        const endMs = nextEndAt.getTime();
         if (endMs - startMs < MIN_DURATION_MS) {
           throw new BadRequestException('La duracion minima del evento es de 15 minutos');
         }
+
+        await this.assertInstallationScheduleWindow(
+          event.type,
+          tenantId,
+          nextStartAt,
+          nextEndAt,
+          'Las instalaciones solo pueden actualizarse entre 07:00 y 18:00.',
+        );
 
         const conflict = await this.conflictService.hasConflict({
           tenantId,
@@ -234,6 +263,7 @@ export class ScheduleEventsService {
       if (validated.assignedUserId !== undefined) updates.assignedUserId = validated.assignedUserId;
       if (validated.address !== undefined) updates.address = validated.address;
       if (validated.municipality !== undefined) updates.municipality = validated.municipality;
+      if (validated.sector !== undefined) updates.sector = validated.sector;
       if (validated.expedienteId !== undefined) updates.expedienteId = validated.expedienteId;
       if (validated.subscriberId !== undefined) updates.subscriberId = validated.subscriberId;
       if (validated.ticketId !== undefined) updates.ticketId = validated.ticketId;
@@ -317,6 +347,14 @@ export class ScheduleEventsService {
         );
       }
 
+      await this.assertInstallationScheduleWindow(
+        event.type,
+        tenantId,
+        new Date(validated.scheduledStartAt),
+        new Date(validated.scheduledEndAt),
+        'Las instalaciones solo pueden reagendarse entre 07:00 y 18:00.',
+      );
+
       // Verificar conflicto real con el usuario asignado
       const hasConflict = await this.conflictService.hasConflict({
         tenantId,
@@ -356,6 +394,24 @@ export class ScheduleEventsService {
       await qr.manager.update(ScheduleEvent, { id, tenantId }, updates);
       return { ...event, ...updates } as ScheduleEvent;
     });
+  }
+
+  private async assertInstallationScheduleWindow(
+    type: WfmWorkType,
+    tenantId: string,
+    startAt: Date,
+    endAt: Date,
+    message: string,
+  ): Promise<void> {
+    if (type !== WfmWorkType.INSTALLATION) {
+      return;
+    }
+
+    const timezone = await this.tenantSettingsReadPort.getTimezone(tenantId);
+
+    if (!isInstallationScheduleWithinBusinessHours(startAt, endAt, timezone)) {
+      throw new BadRequestException(message);
+    }
   }
 
   /** Soft-delete de un evento que no este en estado terminal. */

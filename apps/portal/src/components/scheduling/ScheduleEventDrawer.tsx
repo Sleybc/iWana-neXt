@@ -159,7 +159,11 @@ export function ScheduleEventDrawer({
                   </p>
                   <p className="flex items-start gap-2">
                     <MapPin className="mt-0.5 h-4 w-4 text-iwana-primary" aria-hidden="true" />
-                    <span>{event.address || event.municipality || 'Ubicación no disponible'}</span>
+                    <span>
+                      {[event.address, event.sector, event.municipality]
+                        .filter(Boolean)
+                        .join(' · ') || 'Ubicación no disponible'}
+                    </span>
                   </p>
                   <p className="flex items-start gap-2">
                     <Ticket className="mt-0.5 h-4 w-4 text-iwana-primary" aria-hidden="true" />

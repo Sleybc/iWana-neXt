@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { WfmWorkType } from '@iwana/shared';
 import {
   Button,
   DatePicker,
@@ -21,9 +22,10 @@ import type { RescheduleWfmEventDto, WfmScheduleEvent } from '@/lib/api-client';
 import { PortalAlert } from '@/components/shared/portal-ui';
 import {
   QUICK_DURATION_OPTIONS,
-  SCHEDULE_TIME_OPTIONS,
   buildScheduleWindow,
   deriveDurationMinutes,
+  getScheduleTimeOptionsForWorkType,
+  isScheduleWindowAllowedForWorkType,
   toDateFromLocalDateValue,
   toLocalDateValue,
   toLocalTimeValue,
@@ -91,6 +93,8 @@ export function RescheduleEventDialog({
     reset,
     watch,
     setValue,
+    setError,
+    clearErrors,
     formState: { errors },
   } = useForm<RescheduleFormValues>({
     resolver: zodResolver(rescheduleSchema),
@@ -110,6 +114,10 @@ export function RescheduleEventDialog({
   const scheduleWindow = useMemo(
     () => buildScheduleWindow(scheduledDateLocal, scheduledStartTimeLocal, durationMinutes),
     [scheduledDateLocal, scheduledStartTimeLocal, durationMinutes],
+  );
+  const scheduleTimeOptions = useMemo(
+    () => getScheduleTimeOptionsForWorkType(event?.type as WfmWorkType | undefined),
+    [event?.type],
   );
   const durationHours = Math.floor(Math.max(durationMinutes || 0, 0) / 60);
   const durationRemainderMinutes = Math.max(durationMinutes || 0, 0) % 60;
@@ -139,6 +147,23 @@ export function RescheduleEventDialog({
     );
   }, [event, open, reset]);
 
+  useEffect(() => {
+    if (!scheduledStartTimeLocal) {
+      return;
+    }
+
+    if (!scheduleTimeOptions.some((option) => option.value === scheduledStartTimeLocal)) {
+      const fallbackTime = scheduleTimeOptions[0]?.value;
+
+      if (fallbackTime) {
+        setValue('scheduledStartTimeLocal', fallbackTime, {
+          shouldDirty: false,
+          shouldValidate: true,
+        });
+      }
+    }
+  }, [scheduleTimeOptions, scheduledStartTimeLocal, setValue]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
@@ -162,6 +187,19 @@ export function RescheduleEventDialog({
             if (!nextWindow) {
               return;
             }
+
+            if (
+              event?.type === WfmWorkType.INSTALLATION &&
+              !isScheduleWindowAllowedForWorkType(WfmWorkType.INSTALLATION, nextWindow)
+            ) {
+              setError('scheduledStartTimeLocal', {
+                type: 'validate',
+                message: 'Las instalaciones solo se programan entre 07:00 y 18:00.',
+              });
+              return;
+            }
+
+            clearErrors('scheduledStartTimeLocal');
 
             await onSubmit({
               scheduledStartAt: nextWindow.startAt.toISOString(),
@@ -211,7 +249,7 @@ export function RescheduleEventDialog({
                     label="Hora de llegada"
                     value={field.value}
                     placeholder="Selecciona una hora"
-                    options={SCHEDULE_TIME_OPTIONS}
+                    options={scheduleTimeOptions}
                     onChange={(event) => field.onChange(event.target.value)}
                     disabled={isSubmitting}
                     {...(errors.scheduledStartTimeLocal?.message

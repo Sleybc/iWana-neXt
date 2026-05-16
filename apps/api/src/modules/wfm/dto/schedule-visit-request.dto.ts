@@ -1,5 +1,13 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsDateString, IsNotEmpty, IsUUID } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsBoolean,
+  IsDateString,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 import { z } from 'zod';
 
 // --- Zod schema ---
@@ -9,6 +17,9 @@ export const ScheduleVisitRequestSchema = z.object({
   scheduledStartAt: z.string().datetime({ offset: true }),
   scheduledEndAt: z.string().datetime({ offset: true }),
   assignedUserId: z.string().uuid(),
+  createWorkOrder: z.boolean().optional(),
+  workOrderSummary: z.string().trim().max(160).optional(),
+  workOrderNotes: z.string().trim().max(4000).nullable().optional(),
 });
 
 export type ScheduleVisitRequestInput = z.infer<typeof ScheduleVisitRequestSchema>;
@@ -34,4 +45,34 @@ export class ScheduleVisitRequestDto {
   })
   @IsUUID()
   assignedUserId: string;
+
+  @ApiPropertyOptional({
+    example: true,
+    description: 'Si es false, agenda solo el evento sin crear Work Order.',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  createWorkOrder?: boolean;
+
+  @ApiPropertyOptional({
+    example: 'Instalacion prioritaria barrio centro',
+    description: 'Resumen manual opcional para la Work Order.',
+    maxLength: 160,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  workOrderSummary?: string;
+
+  @ApiPropertyOptional({
+    example: 'Coordinar acceso con porteria antes de las 10:00.',
+    description: 'Notas operativas opcionales para la Work Order.',
+    nullable: true,
+    maxLength: 4000,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  workOrderNotes?: string | null;
 }

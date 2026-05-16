@@ -31,6 +31,18 @@ export {
 
 export const EMPTY_VALUE = '';
 
+const IDENTIFICATION_REQUIRED_FIELDS_BASE = [
+  'personType',
+  'documentType',
+  'documentNumber',
+] as const;
+const IDENTIFICATION_REQUIRED_FIELDS_NATURAL = ['firstName', 'lastName'] as const;
+const IDENTIFICATION_REQUIRED_FIELDS_JURIDICA = [
+  'companyName',
+  'primaryContactName',
+  'primaryContactRole',
+] as const;
+
 export const BACKEND_SECTION_KEY_BY_UI_SECTION: Record<SectionId | 'document_support', string> = {
   identification: 'identification',
   contact: 'contact',
@@ -363,6 +375,39 @@ export function getIdentificationRelevantFields(
 export function hasPersistedIdentificationData(values: DraftValues): boolean {
   const relevantFields = getIdentificationRelevantFields(values.personType);
   return relevantFields.some((field) => values[field]?.trim());
+}
+
+export function getIdentificationValidationMessage(values: DraftValues): string | null {
+  const personType = canonicalizeExpedientePersonType(values.personType);
+
+  if (!personType) {
+    return `${FIELD_LABELS.personType} es requerido.`;
+  }
+
+  if (personType !== 'PERSONA_NATURAL' && personType !== 'PERSONA_JURIDICA') {
+    return `${FIELD_LABELS.personType} no es válido.`;
+  }
+
+  const missingBaseField = IDENTIFICATION_REQUIRED_FIELDS_BASE.find(
+    (field) => !values[field]?.trim(),
+  );
+
+  if (missingBaseField) {
+    return `${FIELD_LABELS[missingBaseField]} es requerido.`;
+  }
+
+  const specificRequiredFields =
+    personType === 'PERSONA_JURIDICA'
+      ? IDENTIFICATION_REQUIRED_FIELDS_JURIDICA
+      : IDENTIFICATION_REQUIRED_FIELDS_NATURAL;
+
+  const missingSpecificField = specificRequiredFields.find((field) => !values[field]?.trim());
+
+  if (missingSpecificField) {
+    return `${FIELD_LABELS[missingSpecificField]} es requerido.`;
+  }
+
+  return null;
 }
 
 export const SECTIONS: SectionConfig[] = [

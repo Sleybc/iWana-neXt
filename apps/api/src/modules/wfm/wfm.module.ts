@@ -6,15 +6,21 @@ import {
   WorkOrderTask,
   ScheduleRescheduleLog,
   TechnicianAvailability,
+  VisitRequest,
 } from '@iwana/db';
+import { TenantModule } from '../tenant/tenant.module';
 import { WfmController } from './wfm.controller';
 import { ScheduleConflictService } from './services/schedule-conflict.service';
 import { ScheduleEventsService } from './services/schedule-events.service';
+import { VisitRequestsService } from './services/visit-requests.service';
 import { WorkOrdersService } from './services/work-orders.service';
 import { TechnicianAvailabilityService } from './services/technician-availability.service';
 import { WfmDashboardService } from './services/wfm-dashboard.service';
+import { ScheduleRecommendationsService } from './services/schedule-recommendations.service';
 import { WfmWorkOrderReadPort } from './ports/wfm-work-order-read.port';
 import { WfmWorkOrderReadAdapter } from './ports/wfm-work-order-read.adapter';
+import { WfmTenantSettingsReadPort } from './ports/wfm-tenant-settings-read.port';
+import { WfmTenantSettingsReadAdapter } from './ports/wfm-tenant-settings-read.adapter';
 
 /**
  * Modulo WFM — Fase 01: Agenda, Work Orders y disponibilidad de tecnicos.
@@ -23,24 +29,33 @@ import { WfmWorkOrderReadAdapter } from './ports/wfm-work-order-read.adapter';
  */
 @Module({
   imports: [
+    TenantModule,
     TypeOrmModule.forFeature([
       ScheduleEvent,
       WorkOrder,
       WorkOrderTask,
       ScheduleRescheduleLog,
       TechnicianAvailability,
+      VisitRequest,
     ]),
   ],
   controllers: [WfmController],
   providers: [
     ScheduleConflictService,
     ScheduleEventsService,
+    VisitRequestsService,
     WorkOrdersService,
     TechnicianAvailabilityService,
     WfmDashboardService,
+    ScheduleRecommendationsService,
+    WfmTenantSettingsReadAdapter,
     {
       provide: WfmWorkOrderReadPort,
       useClass: WfmWorkOrderReadAdapter,
+    },
+    {
+      provide: WfmTenantSettingsReadPort,
+      useExisting: WfmTenantSettingsReadAdapter,
     },
   ],
   exports: [WfmWorkOrderReadPort],

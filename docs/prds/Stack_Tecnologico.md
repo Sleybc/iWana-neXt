@@ -17,67 +17,67 @@
 
 ## Runtime y Tooling
 
-| Tecnología    | Versión Latest (Abr 2026) | Link oficial                                     |
-| ------------- | ------------------------- | ------------------------------------------------ |
-| Node.js       | **25.8.2** (current; LTS: v24.x)| https://nodejs.org/en/blog/                      |
-| pnpm          | **10.32.1**               | https://github.com/pnpm/pnpm/releases            |
-| TypeScript    | **5.9.3**                 | https://www.typescriptlang.org/docs              |
-| Turborepo     | **2.8.11**                | https://turbo.build/repo/docs                    |
-| Docker Engine | **29.1.5**                | https://docs.docker.com/engine/release-notes/29/ |
+| Tecnología    | Versión Latest (Abr 2026)        | Link oficial                                       |
+| ------------- | -------------------------------- | -------------------------------------------------- |
+| Node.js       | **25.8.2** (current; LTS: v24.x) | <https://nodejs.org/en/blog/>                      |
+| pnpm          | **10.32.1**                      | <https://github.com/pnpm/pnpm/releases>            |
+| TypeScript    | **5.9.3**                        | <https://www.typescriptlang.org/docs>              |
+| Turborepo     | **2.8.11**                       | <https://turbo.build/repo/docs>                    |
+| Docker Engine | **29.1.5**                       | <https://docs.docker.com/engine/release-notes/29/> |
 
 ---
 
 ## Backend (apps/api)
 
-| Paquete                 | Versión Latest (Abr 2026) | Notas                                          |
-| ----------------------- | ------------------------- | ---------------------------------------------- |
-| NestJS (`@nestjs/core`) | **11.1.14**               | https://github.com/nestjs/nest/releases        |
-| TypeORM                 | **0.3.28**                | https://github.com/typeorm/typeorm/releases    |
-| BullMQ                  | **5.71.0**                | https://github.com/taskforcesh/bullmq/releases |
-| Zod                     | **4.0.1** ⚠️              | https://github.com/colinhacks/zod/releases     |
-| bcryptjs                | **3.0.3**                 | https://www.npmjs.com/package/bcryptjs         |
-| otplib                  | **13.3.0** ⚠️             | https://github.com/yeojz/otplib                |
-| pg (node-postgres)      | latest stable             | https://github.com/brianc/node-postgres        |
-| ioredis                 | **5.10.0**                | https://github.com/redis/ioredis               |
-| Pino                    | latest stable             | https://github.com/pinojs/pino                 |
-| Helmet                  | latest stable             | https://github.com/helmetjs/helmet             |
-| uuid                    | latest stable             | https://github.com/uuidjs/uuid                 |
-| nodemailer              | latest stable             | https://nodemailer.com/                        |
+| Paquete                 | Versión Latest (Abr 2026) | Notas                                            |
+| ----------------------- | ------------------------- | ------------------------------------------------ |
+| NestJS (`@nestjs/core`) | **11.1.14**               | <https://github.com/nestjs/nest/releases>        |
+| TypeORM                 | **0.3.28**                | <https://github.com/typeorm/typeorm/releases>    |
+| BullMQ                  | **5.71.0**                | <https://github.com/taskforcesh/bullmq/releases> |
+| Zod                     | **4.0.1** ⚠️              | <https://github.com/colinhacks/zod/releases>     |
+| bcryptjs                | **3.0.3**                 | <https://www.npmjs.com/package/bcryptjs>         |
+| otplib                  | **13.3.0** ⚠️             | <https://github.com/yeojz/otplib>                |
+| pg (node-postgres)      | latest stable             | <https://github.com/brianc/node-postgres>        |
+| ioredis                 | **5.10.0**                | <https://github.com/redis/ioredis>               |
+| Pino                    | latest stable             | <https://github.com/pinojs/pino>                 |
+| Helmet                  | latest stable             | <https://github.com/helmetjs/helmet>             |
+| uuid                    | latest stable             | <https://github.com/uuidjs/uuid>                 |
+| nodemailer              | latest stable             | <https://nodemailer.com/>                        |
 
 ---
 
 ## Frontend (apps/web, apps/portal)
 
-| Paquete                 | Versión Latest (Abr 2026) | Notas                                       |
-| ----------------------- | ------------------------- | ------------------------------------------- |
-| Next.js                 | **16.1.6**                | https://nextjs.org/blog                     |
-| React                   | **19.2**                  | https://react.dev/versions                  |
-| Tailwind CSS            | **4.x** ⚠️                | https://tailwindcss.com/blog/tailwindcss-v4 |
-| shadcn/ui               | **2.5.0+**                | https://ui.shadcn.com/docs/changelog        |
-| `@tanstack/react-query` | latest stable             | https://tanstack.com/query                  |
-| react-hook-form         | latest stable             | https://react-hook-form.com/                |
-| Zod                     | **4.0.1** ⚠️              | (compartido con backend; en proyecto: 3.24.2)    |
+| Paquete                 | Versión Latest (Abr 2026) | Notas                                         |
+| ----------------------- | ------------------------- | --------------------------------------------- |
+| Next.js                 | **16.1.6**                | <https://nextjs.org/blog>                     |
+| React                   | **19.2**                  | <https://react.dev/versions>                  |
+| Tailwind CSS            | **4.x** ⚠️                | <https://tailwindcss.com/blog/tailwindcss-v4> |
+| shadcn/ui               | **2.5.0+**                | <https://ui.shadcn.com/docs/changelog>        |
+| `@tanstack/react-query` | latest stable             | <https://tanstack.com/query>                  |
+| react-hook-form         | latest stable             | <https://react-hook-form.com/>                |
+| Zod                     | **4.0.1** ⚠️              | (compartido con backend; en proyecto: 3.24.2) |
 
 ---
 
 ## Testing
 
-| Paquete    | Versión Latest (Abr 2026) | Notas                                            |
-| ---------- | ------------------------- | ------------------------------------------------ |
-| Jest       | **29.7.0**                | https://jestjs.io/versions                       |
-| Playwright | **1.58.2**                | https://github.com/microsoft/playwright/releases |
-| Supertest  | latest stable             | Integración con Jest para integration tests      |
+| Paquete    | Versión Latest (Abr 2026) | Notas                                              |
+| ---------- | ------------------------- | -------------------------------------------------- |
+| Jest       | **29.7.0**                | <https://jestjs.io/versions>                       |
+| Playwright | **1.58.2**                | <https://github.com/microsoft/playwright/releases> |
+| Supertest  | latest stable             | Integración con Jest para integration tests        |
 
 ---
 
 ## Infraestructura
 
-| Servicio   | Versión Latest (Abr 2026) | Notas                                  |
-| ---------- | ------------------------- | -------------------------------------- |
-| PostgreSQL | **18.3** ⚠️               | https://www.postgresql.org/about/news/ |
-| Redis      | **8.6**                   | https://redis.io/downloads/            |
-| pgBouncer  | latest stable             | https://www.pgbouncer.org/             |
-| MinIO      | latest stable             | https://min.io/download                |
+| Servicio   | Versión Latest (Abr 2026) | Notas                                    |
+| ---------- | ------------------------- | ---------------------------------------- |
+| PostgreSQL | **18.3** ⚠️               | <https://www.postgresql.org/about/news/> |
+| Redis      | **8.6**                   | <https://redis.io/downloads/>            |
+| pgBouncer  | latest stable             | <https://www.pgbouncer.org/>             |
+| MinIO      | latest stable             | <https://min.io/download>                |
 
 ---
 
@@ -87,25 +87,25 @@ Las tecnologías marcadas tienen breaking changes significativos respecto a las 
 del Sprint 1. El **Architect Software debe emitir un ADR** validando compatibilidad antes
 de que el Staff Engineer proponga actualizar el PROMPT-EXEC de un sprint:
 
-| Tecnología       | Versión Sprint 1 | Versión Latest | Impacto principal                                                        |
-| ---------------- | ---------------- | -------------- | ------------------------------------------------------------------------ |
-| **PostgreSQL**   | 16               | 18.3           | Cambios en SQL parser, comportamiento de RLS, funciones                  |
-| **Tailwind CSS** | 3.4.x            | 4.x            | Sintaxis de configuración completamente nueva (CSS-first, sin JS config) |
-| **Zod**          | 3.24.x           | 4.0.1          | API de métodos cambiada — migración requerida en todos los validators    |
-| **otplib**       | 7.11.x           | 13.3.x         | API de autenticación TOTP cambiada (+6 versiones major)                  |
-| **bcryptjs**     | 2.4.x            | 3.0.x          | Paquete en uso es `bcryptjs` (no `bcrypt`); revisar compatibilidad Node 24 |
-| **Node.js**      | 22.14.0 LTS      | 25.8.2 (current; LTS: v24.x) | Cambios en resolución de módulos, deprecaciones de APIs |
-| **pnpm**         | 9.15.x           | 10.x           | Workspace protocol y lockfile format                                     |
-| **Next.js**      | 15.2.x           | 16.x           | Revisar App Router, RSC y Server Actions                                 |
+| Tecnología       | Versión Sprint 1 | Versión Latest               | Impacto principal                                                          |
+| ---------------- | ---------------- | ---------------------------- | -------------------------------------------------------------------------- |
+| **PostgreSQL**   | 16               | 18.3                         | Cambios en SQL parser, comportamiento de RLS, funciones                    |
+| **Tailwind CSS** | 3.4.x            | 4.x                          | Sintaxis de configuración completamente nueva (CSS-first, sin JS config)   |
+| **Zod**          | 3.24.x           | 4.0.1                        | API de métodos cambiada — migración requerida en todos los validators      |
+| **otplib**       | 7.11.x           | 13.3.x                       | API de autenticación TOTP cambiada (+6 versiones major)                    |
+| **bcryptjs**     | 2.4.x            | 3.0.x                        | Paquete en uso es `bcryptjs` (no `bcrypt`); revisar compatibilidad Node 24 |
+| **Node.js**      | 22.14.0 LTS      | 25.8.2 (current; LTS: v24.x) | Cambios en resolución de módulos, deprecaciones de APIs                    |
+| **pnpm**         | 9.15.x           | 10.x                         | Workspace protocol y lockfile format                                       |
+| **Next.js**      | 15.2.x           | 16.x                         | Revisar App Router, RSC y Server Actions                                   |
 
 ---
 
 ## Contexto histórico de versiones por sprint
 
-| Sprint    | Node.js                                                 | NestJS | Next.js | PostgreSQL | Fecha verificación |
-| --------- | ------------------------------------------------------- | ------ | ------- | ---------- | ------------------ |
-| Sprint 1  | 22.14.0 LTS                                             | 11.1.0 | 15.2.0  | 16         | 2026-02-27         |
-| Sprint 2  | 25.8.2 (LTS: v24.x)                                     | 11.1.14 | 16.1.6 | 18         | 2026-04-01         |
+| Sprint   | Node.js             | NestJS  | Next.js | PostgreSQL | Fecha verificación |
+| -------- | ------------------- | ------- | ------- | ---------- | ------------------ |
+| Sprint 1 | 22.14.0 LTS         | 11.1.0  | 15.2.0  | 16         | 2026-02-27         |
+| Sprint 2 | 25.8.2 (LTS: v24.x) | 11.1.14 | 16.1.6  | 18         | 2026-04-01         |
 
 > El Architect Software actualiza esta tabla al inicio de cada sprint si propone cambios de versión.
 > Las versiones deben ser verificadas en conjunto antes de actualizar el PROMPT-EXEC.
@@ -143,22 +143,22 @@ Para iWana neXt se recomienda distinguir entre:
 
 El proyecto adopta un **baseline moderno alineado con latest stable** para las capas principales del stack. Esto implica trabajar con las versiones más recientes listadas en este documento, no solo como referencia tecnológica sino como dirección operativa deseada.
 
-| Tecnología              | Evaluación                                                     | Recomendación                                                           |
-| ----------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| **NestJS 11.1.x**       | Adecuado y maduro                                              | **Adoptar** como baseline                                               |
-| **TypeORM 0.3.28**      | Adecuado para Modulith + migraciones versionadas               | **Adoptar** como baseline                                               |
-| **BullMQ 5.71.x**       | Adecuado para jobs de provisioning, billing y ETL              | **Adoptar** como baseline                                               |
-| **Next.js 16.1.x**      | Adecuado para App Router, portales multirol y RSC              | **Adoptar** como baseline                                               |
-| **React 19.2**          | Coherente con Next.js 16                                       | **Adoptar** como baseline                                               |
-| **Tailwind CSS 4.x**    | Adecuado y consistente con el enfoque CSS-first ya documentado | **Adoptar** como baseline                                               |
-| **shadcn/ui 2.5+**      | Muy adecuado para velocidad de desarrollo y consistencia de UI | **Adoptar** como baseline                                               |
-| **PostgreSQL 18.3**     | Potente y alineado al crecimiento del proyecto                 | **Adoptar**, con validación reforzada de RLS, migraciones y performance |
-| **Redis 8.6**           | Adecuado y consistente con BullMQ                              | **Adoptar** como baseline                                               |
+| Tecnología                      | Evaluación                                                     | Recomendación                                                           |
+| ------------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| **NestJS 11.1.x**               | Adecuado y maduro                                              | **Adoptar** como baseline                                               |
+| **TypeORM 0.3.28**              | Adecuado para Modulith + migraciones versionadas               | **Adoptar** como baseline                                               |
+| **BullMQ 5.71.x**               | Adecuado para jobs de provisioning, billing y ETL              | **Adoptar** como baseline                                               |
+| **Next.js 16.1.x**              | Adecuado para App Router, portales multirol y RSC              | **Adoptar** como baseline                                               |
+| **React 19.2**                  | Coherente con Next.js 16                                       | **Adoptar** como baseline                                               |
+| **Tailwind CSS 4.x**            | Adecuado y consistente con el enfoque CSS-first ya documentado | **Adoptar** como baseline                                               |
+| **shadcn/ui 2.5+**              | Muy adecuado para velocidad de desarrollo y consistencia de UI | **Adoptar** como baseline                                               |
+| **PostgreSQL 18.3**             | Potente y alineado al crecimiento del proyecto                 | **Adoptar**, con validación reforzada de RLS, migraciones y performance |
+| **Redis 8.6**                   | Adecuado y consistente con BullMQ                              | **Adoptar** como baseline                                               |
 | **Node.js 25.8.2** (LTS: v24.x) | LTS vigente y deseado para el proyecto                         | **Adoptar** como baseline                                               |
-| **pnpm 10.32.x**        | Coherente con Node 24/25 y monorepo moderno                    | **Adoptar** como baseline                                               |
-| **Zod 4.0.1**           | Adecuado para validación moderna del proyecto                  | **Adoptar** como baseline                                               |
-| **otplib 13.3.x**       | Adecuado para MFA/TOTP en baseline moderno                     | **Adoptar** como baseline                                               |
-| **bcryptjs 3.0.x**      | Adecuado y verificado con runtime actual                       | **Adoptar** como baseline                                               |
+| **pnpm 10.32.x**                | Coherente con Node 24/25 y monorepo moderno                    | **Adoptar** como baseline                                               |
+| **Zod 4.0.1**                   | Adecuado para validación moderna del proyecto                  | **Adoptar** como baseline                                               |
+| **otplib 13.3.x**               | Adecuado para MFA/TOTP en baseline moderno                     | **Adoptar** como baseline                                               |
+| **bcryptjs 3.0.x**              | Adecuado y verificado con runtime actual                       | **Adoptar** como baseline                                               |
 
 ---
 
@@ -186,7 +186,7 @@ El baseline sugerido para el siguiente sprint, alineado con la decisión actual 
 
 | Capa            | Recomendación Sprint 2                                          |
 | --------------- | --------------------------------------------------------------- |
-| Runtime         | Node.js 25.8.2 (LTS: v24.x)                                    |
+| Runtime         | Node.js 25.8.2 (LTS: v24.x)                                     |
 | Package manager | pnpm 10.32.x                                                    |
 | Backend         | NestJS 11.1.x + TypeORM 0.3.28 + BullMQ 5.71.x                  |
 | Frontend        | Next.js 16.1.x + React 19.2 + Tailwind CSS 4.x + shadcn/ui 2.5+ |

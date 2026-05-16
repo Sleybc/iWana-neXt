@@ -1,5 +1,6 @@
 import type { ChangeEvent, ReactNode } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { WfmWorkType } from '@iwana/shared';
 import { RescheduleEventDialog } from './RescheduleEventDialog';
 
 jest.mock('@iwana/ui', () => {
@@ -113,7 +114,7 @@ function buildEvent(overrides?: Partial<Record<string, unknown>>) {
     id: 'evt-001',
     tenantId: 'tenant-wfm-001',
     workOrderId: 'wo-001',
-    type: 'INSTALLATION',
+    type: WfmWorkType.INSTALLATION,
     status: 'SCHEDULED',
     title: 'Alta fibra barrio sur',
     description: 'Cliente listo para visita.',
@@ -240,5 +241,30 @@ describe('RescheduleEventDialog', () => {
         notes: 'Confirmado por llamada.',
       });
     });
+  });
+
+  it('limita la reagenda de instalaciones al rango 07:00-18:00', () => {
+    render(
+      <RescheduleEventDialog
+        open
+        event={
+          buildEvent({
+            scheduledStartAt: new Date('2026-06-03T06:30').toISOString(),
+            scheduledEndAt: new Date('2026-06-03T08:30').toISOString(),
+          }) as never
+        }
+        onOpenChange={jest.fn()}
+        onSubmit={jest.fn().mockResolvedValue(undefined)}
+        isSubmitting={false}
+        error={null}
+      />,
+    );
+
+    const timeSelect = screen.getByLabelText('Hora de llegada');
+
+    expect(timeSelect).toHaveValue('07:00');
+    expect(screen.queryByRole('option', { name: '06:45' })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '07:00' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '18:00' })).toBeInTheDocument();
   });
 });

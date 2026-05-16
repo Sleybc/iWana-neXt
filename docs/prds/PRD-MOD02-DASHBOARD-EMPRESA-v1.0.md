@@ -91,34 +91,34 @@ Decisión de boundary:
 
 ### Usuarios primarios
 
-| Usuario | Rol | Necesidad principal |
-| --- | --- | --- |
-| Administrador de empresa | ADMIN | Ver estado general del tenant, completar configuración base y entrar a módulos administrativos |
-| Operador NOC | NOC | Ver estado operativo, alertas y accesos directos a capacidades técnicas habilitadas |
-| Responsable financiero | ACCOUNTANT | Ver estado administrativo y accesos a configuración y módulos financieros cuando existan |
-| Soporte interno | SUPPORT | Ver actividad reciente y navegar a módulos operativos autorizados |
+| Usuario                  | Rol        | Necesidad principal                                                                            |
+| ------------------------ | ---------- | ---------------------------------------------------------------------------------------------- |
+| Administrador de empresa | ADMIN      | Ver estado general del tenant, completar configuración base y entrar a módulos administrativos |
+| Operador NOC             | NOC        | Ver estado operativo, alertas y accesos directos a capacidades técnicas habilitadas            |
+| Responsable financiero   | ACCOUNTANT | Ver estado administrativo y accesos a configuración y módulos financieros cuando existan       |
+| Soporte interno          | SUPPORT    | Ver actividad reciente y navegar a módulos operativos autorizados                              |
 
 ### Casos de uso prioritarios
 
-**CU-01: Entrar al dashboard correcto tras login**
+#### CU-01: Entrar al dashboard correcto tras login
 
 - Usuario interno del tenant completa login.
 - El sistema lo redirige a un dashboard empresarial, no a un portal de suscriptor ni a una consola de plataforma.
 
-**CU-02: Entender el estado inicial de la empresa ya creada**
+#### CU-02: Entender el estado inicial de la empresa ya creada
 
 - El ADMIN ve nombre comercial, slug, estado del tenant, timezone, moneda, idioma y controles base de seguridad/configuración.
 
-**CU-03: Identificar tareas pendientes de habilitación**
+#### CU-03: Identificar tareas pendientes de habilitación
 
 - El dashboard muestra pendientes base del tenant: MFA organizacional, configuración operativa, usuarios, auditoría, módulos aún no activados.
 
-**CU-04: Navegar a módulos empresariales**
+#### CU-04: Navegar a módulos empresariales
 
 - El usuario ve accesos rápidos solo a los módulos disponibles para su rol.
 - Los módulos no implementados aparecen como próximos o no disponibles, sin romper navegación.
 
-**CU-05: Revisar actividad reciente del tenant**
+#### CU-05: Revisar actividad reciente del tenant
 
 - El usuario autorizado ve eventos recientes relevantes del propio tenant, sin visibilidad cross-tenant.
 
@@ -128,58 +128,58 @@ Decisión de boundary:
 
 ### 5.1 Dashboard y navegación
 
-| ID | Requerimiento | Prioridad |
-| --- | --- | --- |
-| RF-DE-01 | `apps/portal` debe usar `/dashboard` como home protegida del tenant interno. | MVP |
-| RF-DE-02 | El dashboard no debe renderizar widgets de suscriptor ni copy orientado a cliente final. | MVP |
-| RF-DE-03 | La navegación lateral debe exponer secciones empresariales alineadas al roadmap y al rol autenticado. | MVP |
-| RF-DE-04 | Los accesos a módulos no implementados deben mostrarse en estado deshabilitado o “próximamente”, sin rutas rotas. | MVP |
+| ID       | Requerimiento                                                                                                     | Prioridad |
+| -------- | ----------------------------------------------------------------------------------------------------------------- | --------- |
+| RF-DE-01 | `apps/portal` debe usar `/dashboard` como home protegida del tenant interno.                                      | MVP       |
+| RF-DE-02 | El dashboard no debe renderizar widgets de suscriptor ni copy orientado a cliente final.                          | MVP       |
+| RF-DE-03 | La navegación lateral debe exponer secciones empresariales alineadas al roadmap y al rol autenticado.             | MVP       |
+| RF-DE-04 | Los accesos a módulos no implementados deben mostrarse en estado deshabilitado o “próximamente”, sin rutas rotas. | MVP       |
 
 ### 5.2 Resumen operativo del tenant
 
-| ID | Requerimiento | Prioridad |
-| --- | --- | --- |
-| RF-DE-05 | El dashboard debe mostrar nombre de empresa, slug, estado del tenant y metadatos operativos básicos del tenant autenticado. | MVP |
-| RF-DE-06 | Debe mostrar al menos un panel de configuración base con timezone, moneda, idioma y país. | MVP |
-| RF-DE-07 | Debe mostrar indicadores iniciales que no dependan de módulos futuros, por ejemplo estado de provisioning, MFA, usuarios activos configurados y salud documental/operativa básica si existe fuente. | MVP |
+| ID       | Requerimiento                                                                                                                                                                                       | Prioridad |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| RF-DE-05 | El dashboard debe mostrar nombre de empresa, slug, estado del tenant y metadatos operativos básicos del tenant autenticado.                                                                         | MVP       |
+| RF-DE-06 | Debe mostrar al menos un panel de configuración base con timezone, moneda, idioma y país.                                                                                                           | MVP       |
+| RF-DE-07 | Debe mostrar indicadores iniciales que no dependan de módulos futuros, por ejemplo estado de provisioning, MFA, usuarios activos configurados y salud documental/operativa básica si existe fuente. | MVP       |
 
 ### 5.3 Alertas y actividad
 
-| ID | Requerimiento | Prioridad |
-| --- | --- | --- |
-| RF-DE-08 | El dashboard debe exponer alertas de onboarding del tenant cuando falten configuraciones críticas. | MVP |
-| RF-DE-09 | Debe mostrar actividad reciente del tenant a partir de eventos auditables del propio tenant o una fuente equivalente aprobada. | MVP |
-| RF-DE-10 | El contenido de actividad debe estar filtrado por tenant y por permisos del usuario. | MVP |
+| ID       | Requerimiento                                                                                                                  | Prioridad |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------ | --------- |
+| RF-DE-08 | El dashboard debe exponer alertas de onboarding del tenant cuando falten configuraciones críticas.                             | MVP       |
+| RF-DE-09 | Debe mostrar actividad reciente del tenant a partir de eventos auditables del propio tenant o una fuente equivalente aprobada. | MVP       |
+| RF-DE-10 | El contenido de actividad debe estar filtrado por tenant y por permisos del usuario.                                           | MVP       |
 
 ### 5.4 Roles y personalización
 
-| ID | Requerimiento | Prioridad |
-| --- | --- | --- |
-| RF-DE-11 | ADMIN debe ver la vista más completa del dashboard. | MVP |
-| RF-DE-12 | NOC, ACCOUNTANT y SUPPORT deben ver variantes de widgets y accesos según permisos. | MVP |
-| RF-DE-13 | Si un rol no tiene módulos habilitados aún, debe ver una vista vacía guiada con próximos pasos permitidos. | MVP |
+| ID       | Requerimiento                                                                                              | Prioridad |
+| -------- | ---------------------------------------------------------------------------------------------------------- | --------- |
+| RF-DE-11 | ADMIN debe ver la vista más completa del dashboard.                                                        | MVP       |
+| RF-DE-12 | NOC, ACCOUNTANT y SUPPORT deben ver variantes de widgets y accesos según permisos.                         | MVP       |
+| RF-DE-13 | Si un rol no tiene módulos habilitados aún, debe ver una vista vacía guiada con próximos pasos permitidos. | MVP       |
 
 ### 5.5 Integración con módulos siguientes
 
-| ID | Requerimiento | Prioridad |
-| --- | --- | --- |
-| RF-DE-14 | El dashboard debe quedar preparado para enlazar futuros módulos empresariales sin requerir rediseño del shell. | MVP |
-| RF-DE-15 | El dashboard debe funcionar como capa de entrada a configuración de empresa, usuarios, auditoría y seguridad. | MVP |
+| ID       | Requerimiento                                                                                                  | Prioridad |
+| -------- | -------------------------------------------------------------------------------------------------------------- | --------- |
+| RF-DE-14 | El dashboard debe quedar preparado para enlazar futuros módulos empresariales sin requerir rediseño del shell. | MVP       |
+| RF-DE-15 | El dashboard debe funcionar como capa de entrada a configuración de empresa, usuarios, auditoría y seguridad.  | MVP       |
 
 ---
 
 ## 6. Requerimientos no funcionales y seguridad
 
-| Categoría | Requerimiento |
-| --- | --- |
-| Seguridad | Todo dato mostrado debe resolverse desde el tenant autenticado y nunca desde listados globales de plataforma. |
-| Seguridad | Los boundaries externos deben validarse con Zod y las respuestas UI no deben exponer PII real ni secretos. |
-| Seguridad | No se deben registrar tokens, slugs sensibles, credenciales ni datos empresariales completos en logs de cliente. |
-| Tenancy | El dashboard solo puede consumir endpoints self-scoped del tenant o endpoints ya protegidos por TenantMiddleware. |
-| UX | El dashboard debe reutilizar el shell aprobado por ADR-023 sin replicar la consola de plataforma. |
-| Accesibilidad | Debe cumplir WCAG AA en contraste, foco visible, navegación por teclado y estados vacíos legibles. |
-| Mantenibilidad | La solución debe permitir agregar widgets por módulo sin reescribir el layout principal. |
-| Observabilidad | Deben quedar evidencias de carga y errores de dashboard sin incluir PII. |
+| Categoría      | Requerimiento                                                                                                     |
+| -------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Seguridad      | Todo dato mostrado debe resolverse desde el tenant autenticado y nunca desde listados globales de plataforma.     |
+| Seguridad      | Los boundaries externos deben validarse con Zod y las respuestas UI no deben exponer PII real ni secretos.        |
+| Seguridad      | No se deben registrar tokens, slugs sensibles, credenciales ni datos empresariales completos en logs de cliente.  |
+| Tenancy        | El dashboard solo puede consumir endpoints self-scoped del tenant o endpoints ya protegidos por TenantMiddleware. |
+| UX             | El dashboard debe reutilizar el shell aprobado por ADR-023 sin replicar la consola de plataforma.                 |
+| Accesibilidad  | Debe cumplir WCAG AA en contraste, foco visible, navegación por teclado y estados vacíos legibles.                |
+| Mantenibilidad | La solución debe permitir agregar widgets por módulo sin reescribir el layout principal.                          |
+| Observabilidad | Deben quedar evidencias de carga y errores de dashboard sin incluir PII.                                          |
 
 Regla explícita:
 

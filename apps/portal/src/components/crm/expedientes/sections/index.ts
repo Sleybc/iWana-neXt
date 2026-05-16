@@ -15,6 +15,7 @@ export {
   EMPTY_VALUE,
   DIMENSION_SECTION_GROUPS,
   getIdentificationRelevantFields,
+  getIdentificationValidationMessage,
   hasPersistedIdentificationData,
   getSectionRenderFields,
   getSectionPayloadFields,

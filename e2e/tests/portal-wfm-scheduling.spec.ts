@@ -253,6 +253,48 @@ type MockWorkOrder = {
   updatedAt: string;
   deletedAt: string | null;
 };
+type MockVisitRequest = {
+  id: string;
+  tenantId: string;
+  status:
+    | 'PENDING'
+    | 'NEEDS_CONTEXT'
+    | 'READY_TO_SCHEDULE'
+    | 'SCHEDULED'
+    | 'CANCELLED'
+    | 'REJECTED'
+    | 'EXPIRED';
+  originContext: 'MANUAL' | 'CRM' | 'ASSURANCE' | 'PROVISIONING';
+  originRef: string | null;
+  originLabel: string | null;
+  workType: 'INSTALLATION' | 'TECHNICAL_VISIT' | 'SUPPORT';
+  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+  title: string;
+  description: string | null;
+  requestedWindowStartAt: string | null;
+  requestedWindowEndAt: string | null;
+  slaDueAt: string | null;
+  address: string | null;
+  municipality: string | null;
+  sector: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  expedienteId: string | null;
+  subscriberId: string | null;
+  ticketId: string | null;
+  contractId: string | null;
+  scheduleEventId: string | null;
+  workOrderId: string | null;
+  requestedByUserId: string;
+  scheduledByUserId: string | null;
+  scheduledAt: string | null;
+  cancelledAt: string | null;
+  cancelledByUserId: string | null;
+  cancelReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+};
 
 function buildTechnicianUser() {
   return {
@@ -330,6 +372,43 @@ function buildInitialEvent(): MockScheduleEvent {
     deletedAt: null,
   };
 }
+function buildPendingVisitRequest(): MockVisitRequest {
+  return {
+    id: 'vr-001',
+    tenantId: 'tenant-wfm-001',
+    status: 'READY_TO_SCHEDULE',
+    originContext: 'CRM',
+    originRef: CRM_EXPEDIENTE_ID,
+    originLabel: 'Oportunidad EXP-CRM-001',
+    workType: 'INSTALLATION',
+    priority: 'HIGH',
+    title: 'Instalación GPON barrio norte',
+    description: 'Cliente listo para ventana PM.',
+    requestedWindowStartAt: buildIsoAt(1, 13),
+    requestedWindowEndAt: buildIsoAt(1, 18),
+    slaDueAt: buildIsoAt(2, 23, 59),
+    address: 'Cra 10 # 10 - 10',
+    municipality: 'Bogotá',
+    sector: 'Chapinero',
+    latitude: null,
+    longitude: null,
+    expedienteId: CRM_EXPEDIENTE_ID,
+    subscriberId: null,
+    ticketId: CRM_INSTALLATION_TICKET_ID,
+    contractId: null,
+    scheduleEventId: null,
+    workOrderId: null,
+    requestedByUserId: 'admin-001',
+    scheduledByUserId: null,
+    scheduledAt: null,
+    cancelledAt: null,
+    cancelledByUserId: null,
+    cancelReason: null,
+    createdAt: buildIsoAt(-1, 9),
+    updatedAt: buildIsoAt(-1, 9),
+    deletedAt: null,
+  };
+}
 
 async function seedPortalSession(
   page: import('@playwright/test').Page,
@@ -354,6 +433,7 @@ async function setupSchedulingMocks(
   const technician = buildTechnicianUser();
   const events: MockScheduleEvent[] = [buildInitialEvent()];
   const workOrders: MockWorkOrder[] = [buildWorkOrder('evt-001')];
+  const visitRequests: MockVisitRequest[] = [buildPendingVisitRequest()];
   const crmExpediente = buildCrmInstallationExpediente();
   const availability = [
     {
@@ -547,6 +627,210 @@ async function setupSchedulingMocks(
           role === 'ADMIN'
             ? JSON.stringify(buildSummary())
             : JSON.stringify({ code: 'FORBIDDEN', message: 'No autorizado' }),
+      });
+      return;
+    }
+    if (pathname.endsWith('/wfm/visit-requests') && method === 'GET') {
+      await route.fulfill({
+        status: role === 'ADMIN' ? 200 : 403,
+        contentType: 'application/json',
+        body:
+          role === 'ADMIN'
+            ? JSON.stringify({
+                items: visitRequests,
+                meta: {
+                  total: visitRequests.length,
+                  page: 1,
+                  limit: 20,
+                  totalPages: 1,
+                },
+              })
+            : JSON.stringify({ code: 'FORBIDDEN', message: 'No autorizado' }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/wfm/visit-requests/filter-options') && method === 'GET') {
+      await route.fulfill({
+        status: role === 'ADMIN' ? 200 : 403,
+        contentType: 'application/json',
+        body:
+          role === 'ADMIN'
+            ? JSON.stringify({
+                municipalities: [{ value: 'Bogotá', label: 'Bogotá', count: 1 }],
+                sectors: [
+                  {
+                    value: 'Chapinero',
+                    label: 'Chapinero',
+                    municipality: 'Bogotá',
+                    count: 1,
+                  },
+                ],
+              })
+            : JSON.stringify({ code: 'FORBIDDEN', message: 'No autorizado' }),
+      });
+      return;
+    }
+
+    if (/\/api\/v1\/wfm\/visit-requests\/[^/]+\/context$/.test(pathname) && method === 'PATCH') {
+      const visitRequestId = pathname.split('/').at(-2);
+      const visitRequest = visitRequests.find((item) => item.id === visitRequestId);
+
+      if (!visitRequest) {
+        await route.fulfill({
+          status: 404,
+          contentType: 'application/json',
+          body: JSON.stringify({ code: 'NOT_FOUND', message: 'Solicitud no encontrada' }),
+        });
+        return;
+      }
+
+      const payload = request.postDataJSON() as {
+        description?: string;
+        address?: string;
+        municipality?: string;
+        sector?: string;
+        requestedWindowStartAt?: string;
+        requestedWindowEndAt?: string;
+      };
+
+      visitRequest.description = payload.description ?? visitRequest.description;
+      visitRequest.address = payload.address ?? visitRequest.address;
+      visitRequest.municipality = payload.municipality ?? visitRequest.municipality;
+      visitRequest.sector = payload.sector ?? visitRequest.sector;
+      visitRequest.requestedWindowStartAt =
+        payload.requestedWindowStartAt ?? visitRequest.requestedWindowStartAt;
+      visitRequest.requestedWindowEndAt =
+        payload.requestedWindowEndAt ?? visitRequest.requestedWindowEndAt;
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(visitRequest),
+      });
+      return;
+    }
+
+    if (
+      /\/api\/v1\/wfm\/visit-requests\/[^/]+\/schedule-recommendations$/.test(pathname) &&
+      method === 'POST'
+    ) {
+      await route.fulfill({
+        status: role === 'ADMIN' ? 200 : 403,
+        contentType: 'application/json',
+        body:
+          role === 'ADMIN'
+            ? JSON.stringify([
+                {
+                  technicianId: TECHNICIAN_ID,
+                  scheduledStartAt: buildIsoAt(1, 14),
+                  scheduledEndAt: buildIsoAt(1, 16),
+                  score: 91,
+                  labels: ['Recomendado'],
+                  scoreBreakdown: {
+                    distance: 30,
+                    municipality: 25,
+                    sector: 20,
+                    routeContinuity: 10,
+                    load: 4,
+                    earliest: 2,
+                  },
+                  distanceKm: 1.1,
+                  nearestEventId: null,
+                  totalScheduledMinutes: 120,
+                  eventCount: 1,
+                },
+              ])
+            : JSON.stringify({ code: 'FORBIDDEN', message: 'No autorizado' }),
+      });
+      return;
+    }
+
+    if (/\/api\/v1\/wfm\/visit-requests\/[^/]+\/schedule$/.test(pathname) && method === 'POST') {
+      const visitRequestId = pathname.split('/').at(-2);
+      const visitRequest = visitRequests.find((item) => item.id === visitRequestId);
+
+      if (!visitRequest) {
+        await route.fulfill({
+          status: 404,
+          contentType: 'application/json',
+          body: JSON.stringify({ code: 'NOT_FOUND', message: 'Solicitud no encontrada' }),
+        });
+        return;
+      }
+
+      const payload = request.postDataJSON() as {
+        assignedUserId: string;
+        scheduledStartAt: string;
+        scheduledEndAt: string;
+        createWorkOrder?: boolean;
+        workOrderNotes?: string | null;
+      };
+      const nextEventId = `evt-visit-${events.length + 1}`;
+      const nextWorkOrderId =
+        payload.createWorkOrder === false ? null : `wo-visit-${workOrders.length + 1}`;
+
+      events.push({
+        id: nextEventId,
+        tenantId: visitRequest.tenantId,
+        workOrderId: nextWorkOrderId,
+        type: 'INSTALLATION',
+        status: 'SCHEDULED',
+        title: visitRequest.title,
+        description: visitRequest.description,
+        scheduledStartAt: payload.scheduledStartAt,
+        scheduledEndAt: payload.scheduledEndAt,
+        assignedUserId: payload.assignedUserId,
+        assignedTeamId: null,
+        address: visitRequest.address,
+        municipality: visitRequest.municipality,
+        latitude: null,
+        longitude: null,
+        expedienteId: visitRequest.expedienteId,
+        subscriberId: visitRequest.subscriberId,
+        ticketId: visitRequest.ticketId,
+        contractId: null,
+        createdBy: 'admin-001',
+        updatedBy: 'admin-001',
+        createdAt: buildIsoAt(0, 12),
+        updatedAt: buildIsoAt(0, 12),
+        deletedAt: null,
+      });
+
+      if (nextWorkOrderId) {
+        workOrders.push({
+          id: nextWorkOrderId,
+          tenantId: visitRequest.tenantId,
+          code: `WO-PV-${String(workOrders.length + 1).padStart(3, '0')}`,
+          type: 'INSTALLATION',
+          status: 'OPEN',
+          priority: visitRequest.priority,
+          assignedUserId: payload.assignedUserId,
+          scheduledEventId: nextEventId,
+          sourceContext: visitRequest.originContext,
+          sourceRef: visitRequest.originRef,
+          summary: visitRequest.title,
+          notes: payload.workOrderNotes ?? visitRequest.description,
+          createdBy: 'admin-001',
+          closedBy: null,
+          closedAt: null,
+          createdAt: buildIsoAt(0, 12),
+          updatedAt: buildIsoAt(0, 12),
+          deletedAt: null,
+        });
+      }
+
+      visitRequest.status = 'SCHEDULED';
+      visitRequest.scheduleEventId = nextEventId;
+      visitRequest.workOrderId = nextWorkOrderId;
+      visitRequest.scheduledByUserId = 'admin-001';
+      visitRequest.scheduledAt = buildIsoAt(0, 12);
+      visitRequest.updatedAt = buildIsoAt(0, 12);
+
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify(visitRequest),
       });
       return;
     }
@@ -1014,6 +1298,33 @@ test('admin abre Programación desde CRM y agenda instalación con la nueva fran
   await expect(
     page.getByRole('heading', { name: `Instalación - ${CRM_EXPEDIENTE_NAME}` }),
   ).toBeVisible();
+});
+test('admin confirma una visita pendiente desde la bandeja WFM', async ({ page }) => {
+  await seedPortalSession(page, 'ADMIN', 'admin-001');
+  await setupSchedulingMocks(page, 'ADMIN');
+
+  await page.goto('/dashboard/scheduling/pending-visits');
+
+  await expect(page.getByRole('heading', { name: 'Visitas pendientes' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: /Instalación GPON barrio norte/i })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Calcular recomendaciones' }).click();
+  await expect(page.getByText('Score 91')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Confirmar franja seleccionada' }).click();
+  await page
+    .getByLabel('Notas para la work order')
+    .fill('Coordinar acceso con portería y validar materiales.');
+  await page.getByRole('button', { name: 'Confirmar agenda' }).click();
+
+  await expect(
+    page.getByText('La solicitud Instalación GPON barrio norte quedó agendada correctamente.'),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Volver a bandeja' }).click();
+  const scheduledVisitRow = page
+    .getByRole('row')
+    .filter({ hasText: 'Instalación GPON barrio norte' });
+  await expect(scheduledVisitRow.getByText('Agendada')).toBeVisible();
 });
 
 test('technician solo visualiza trabajos asignados en su agenda', async ({ page }) => {

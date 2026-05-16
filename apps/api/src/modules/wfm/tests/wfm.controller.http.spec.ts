@@ -15,9 +15,11 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { WfmController } from '../wfm.controller';
 import { ScheduleEventsService } from '../services/schedule-events.service';
+import { VisitRequestsService } from '../services/visit-requests.service';
 import { WorkOrdersService } from '../services/work-orders.service';
 import { TechnicianAvailabilityService } from '../services/technician-availability.service';
 import { WfmDashboardService } from '../services/wfm-dashboard.service';
+import { ScheduleRecommendationsService } from '../services/schedule-recommendations.service';
 
 jest.mock('../../auth/guards/jwt-auth.guard', () => ({
   JwtAuthGuard: class JwtAuthGuard {
@@ -162,8 +164,22 @@ describe('WfmController HTTP', () => {
     create: jest.fn(),
   };
 
+  const visitRequestsServiceMock = {
+    listVisitRequests: jest.fn(),
+    createVisitRequest: jest.fn(),
+    getVisitRequestById: jest.fn(),
+    updateVisitRequestContext: jest.fn(),
+    scheduleVisitRequest: jest.fn(),
+    cancelVisitRequest: jest.fn(),
+    rejectVisitRequest: jest.fn(),
+  };
+
   const dashboardServiceMock = {
     getSummary: jest.fn(),
+  };
+
+  const scheduleRecommendationsServiceMock = {
+    recommend: jest.fn(),
   };
 
   const EVENT_UUID = '11111111-1111-1111-1111-111111111111';
@@ -185,9 +201,11 @@ describe('WfmController HTTP', () => {
       controllers: [WfmController],
       providers: [
         { provide: ScheduleEventsService, useValue: scheduleEventsServiceMock },
+        { provide: VisitRequestsService, useValue: visitRequestsServiceMock },
         { provide: WorkOrdersService, useValue: workOrdersServiceMock },
         { provide: TechnicianAvailabilityService, useValue: technicianAvailabilityServiceMock },
         { provide: WfmDashboardService, useValue: dashboardServiceMock },
+        { provide: ScheduleRecommendationsService, useValue: scheduleRecommendationsServiceMock },
         JwtAuthGuard,
         RolesGuard,
       ],
@@ -212,6 +230,68 @@ describe('WfmController HTTP', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe('POST /api/v1/wfm/schedule-recommendations', () => {
+    it('returns ordered territorial recommendations for ADMIN', async () => {
+      scheduleRecommendationsServiceMock.recommend.mockResolvedValue([
+        {
+          technicianId: '22222222-2222-4222-8222-222222222222',
+          scheduledStartAt: '2026-06-01T09:00:00.000Z',
+          scheduledEndAt: '2026-06-01T11:00:00.000Z',
+          score: 95,
+          labels: ['Recomendado', 'Mismo sector/vereda'],
+          scoreBreakdown: {
+            distance: 35,
+            municipality: 25,
+            sector: 20,
+            routeContinuity: 10,
+            load: 3,
+            earliest: 2,
+          },
+          distanceKm: 1.2,
+          nearestEventId: 'evt-near',
+          totalScheduledMinutes: 180,
+          eventCount: 2,
+        },
+      ]);
+
+      await request(app.getHttpServer())
+        .post('/api/v1/wfm/schedule-recommendations')
+        .set('Authorization', 'Bearer admin-token')
+        .send({
+          workType: 'INSTALLATION',
+          durationMinutes: 120,
+          windowStartAt: '2026-06-01T07:00:00.000Z',
+          windowEndAt: '2026-06-01T18:00:00.000Z',
+          candidateUserIds: ['22222222-2222-4222-8222-222222222222'],
+          municipality: 'Soacha',
+          sector: 'Vereda Primavera',
+          latitude: 4.583,
+          longitude: -74.216,
+        })
+        .expect(201)
+        .expect(({ body }) => {
+          expect(body[0].labels).toContain('Recomendado');
+          expect(scheduleRecommendationsServiceMock.recommend).toHaveBeenCalledWith(
+            expect.objectContaining({ sector: 'Vereda Primavera' }),
+          );
+        });
+    });
+
+    it('returns 403 for TECHNICIAN because recommendations are coordinator-only', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/wfm/schedule-recommendations')
+        .set('Authorization', 'Bearer tech-token')
+        .send({
+          workType: 'INSTALLATION',
+          durationMinutes: 60,
+          windowStartAt: '2026-06-01T07:00:00.000Z',
+          windowEndAt: '2026-06-01T18:00:00.000Z',
+          candidateUserIds: ['22222222-2222-4222-8222-222222222222'],
+        })
+        .expect(403);
+    });
   });
 
   // ─── GET /wfm/events ─────────────────────────────────────────────────────
@@ -339,6 +419,23 @@ describe('WfmController HTTP', () => {
         .send(validPayload)
         .expect(400);
     });
+
+    it('returns 400 when installation is outside tenant business hours', async () => {
+      scheduleEventsServiceMock.create.mockRejectedValue(
+        new BadRequestException('Las instalaciones solo pueden programarse entre 07:00 y 18:00.'),
+      );
+
+      await request(app.getHttpServer())
+        .post('/api/v1/wfm/events')
+        .set('Authorization', 'Bearer admin-token')
+        .send(validPayload)
+        .expect(400)
+        .expect(({ body }) => {
+          expect(body.message).toBe(
+            'Las instalaciones solo pueden programarse entre 07:00 y 18:00.',
+          );
+        });
+    });
   });
 
   // ─── PATCH /wfm/events/:id/status ─────────────────────────────────────────
@@ -414,6 +511,27 @@ describe('WfmController HTTP', () => {
           reason: 'Solicitud del cliente',
         })
         .expect(201);
+    });
+
+    it('returns 400 when installation reschedule is outside tenant business hours', async () => {
+      scheduleEventsServiceMock.reschedule.mockRejectedValue(
+        new BadRequestException('Las instalaciones solo pueden reagendarse entre 07:00 y 18:00.'),
+      );
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/wfm/events/${EVENT_UUID}/reschedule`)
+        .set('Authorization', 'Bearer admin-token')
+        .send({
+          scheduledStartAt: '2026-06-02T09:00:00Z',
+          scheduledEndAt: '2026-06-02T11:00:00Z',
+          reason: 'Solicitud del cliente',
+        })
+        .expect(400)
+        .expect(({ body }) => {
+          expect(body.message).toBe(
+            'Las instalaciones solo pueden reagendarse entre 07:00 y 18:00.',
+          );
+        });
     });
   });
 

@@ -46,6 +46,9 @@ jest.mock('@/lib/api-client', () => {
         reschedule: jest.fn(),
         remove: jest.fn(),
       },
+      recommendations: {
+        create: jest.fn(),
+      },
       workOrders: {
         list: jest.fn(),
         get: jest.fn(),
@@ -75,6 +78,9 @@ const wfmApiMock = wfmApi as unknown as {
     transitionStatus: jest.Mock;
     reschedule: jest.Mock;
     remove: jest.Mock;
+  };
+  recommendations: {
+    create: jest.Mock;
   };
   workOrders: {
     list: jest.Mock;
@@ -183,6 +189,7 @@ describe('SchedulingClient', () => {
     wfmApiMock.technicians.listAvailability.mockResolvedValue([]);
     wfmApiMock.workOrders.list.mockResolvedValue([]);
     wfmApiMock.events.list.mockResolvedValue([]);
+    wfmApiMock.recommendations.create.mockResolvedValue([]);
   });
 
   it('muestra estado de carga mientras resuelve la sesión del portal', () => {

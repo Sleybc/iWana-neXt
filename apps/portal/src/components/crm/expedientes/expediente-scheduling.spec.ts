@@ -40,9 +40,9 @@ describe('expediente-scheduling', () => {
     ).toBe(false);
   });
 
-  it('should construir la ruta de scheduling con el contexto del expediente', () => {
+  it('should construir la ruta de la bandeja pendiente con el contexto del expediente', () => {
     expect(buildSchedulingHref('550e8400-e29b-41d4-a716-446655440000')).toBe(
-      '/dashboard/scheduling?open=create&type=INSTALLATION&expedienteId=550e8400-e29b-41d4-a716-446655440000',
+      '/dashboard/scheduling/pending-visits?expedienteId=550e8400-e29b-41d4-a716-446655440000',
     );
   });
 

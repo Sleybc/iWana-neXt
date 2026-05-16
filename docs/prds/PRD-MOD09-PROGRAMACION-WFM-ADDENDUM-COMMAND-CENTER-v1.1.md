@@ -57,49 +57,49 @@ Este corte prioriza visibilidad operacional, alertas derivadas de datos ya dispo
 
 ## 3. Personas y casos de uso
 
-| Persona | Rol | Necesidad principal |
-| --- | --- | --- |
-| Coordinador operativo | ADMIN, NOC, SUPPORT | Detectar rapidamente retrasos, carga y eventos en riesgo |
-| Supervisor de tecnicos | ADMIN, NOC | Ver saturacion por tecnico y reordenar trabajo desde la agenda existente |
-| Tecnico de campo | TECHNICIAN | Mantener acceso a su agenda asignada sin exponerle paneles de supervision completos |
+| Persona                | Rol                 | Necesidad principal                                                                 |
+| ---------------------- | ------------------- | ----------------------------------------------------------------------------------- |
+| Coordinador operativo  | ADMIN, NOC, SUPPORT | Detectar rapidamente retrasos, carga y eventos en riesgo                            |
+| Supervisor de tecnicos | ADMIN, NOC          | Ver saturacion por tecnico y reordenar trabajo desde la agenda existente            |
+| Tecnico de campo       | TECHNICIAN          | Mantener acceso a su agenda asignada sin exponerle paneles de supervision completos |
 
-| CU | Actor | Descripcion |
-| --- | --- | --- |
+| CU        | Actor       | Descripcion                                                                            |
+| --------- | ----------- | -------------------------------------------------------------------------------------- |
 | CU-WFM-10 | Coordinador | Abrir el command center y entender el estado operativo del dia en menos de 10 segundos |
-| CU-WFM-11 | Coordinador | Identificar eventos atrasados o en riesgo y abrir su detalle directamente |
-| CU-WFM-12 | Supervisor | Ver saturacion por tecnico y filtrar la agenda por responsable |
-| CU-WFM-13 | Coordinador | Navegar entre command center, calendario y lista sin perder filtros |
-| CU-WFM-14 | Tecnico | Seguir viendo solo su agenda asignada, sin superficie de supervision innecesaria |
+| CU-WFM-11 | Coordinador | Identificar eventos atrasados o en riesgo y abrir su detalle directamente              |
+| CU-WFM-12 | Supervisor  | Ver saturacion por tecnico y filtrar la agenda por responsable                         |
+| CU-WFM-13 | Coordinador | Navegar entre command center, calendario y lista sin perder filtros                    |
+| CU-WFM-14 | Tecnico     | Seguir viendo solo su agenda asignada, sin superficie de supervision innecesaria       |
 
 ---
 
 ## 4. Requerimientos funcionales
 
-| ID | Requerimiento | Prioridad |
-| --- | --- | --- |
-| RF-WFM-16 | La UI debe ofrecer una vista operacional priorizada para supervision dentro de la ruta actual de scheduling. | MVP |
-| RF-WFM-17 | El dashboard summary debe exponer contadores priorizados y carga por tecnico suficiente para supervision diaria. | MVP |
-| RF-WFM-18 | El sistema debe derivar alertas operativas sin persistencia nueva, usando reglas sobre estado, horario y disponibilidad. | MVP |
-| RF-WFM-19 | La vista timeline debe mostrar eventos por tecnico para el dia seleccionado, con posicion temporal y severidad visual. | MVP |
-| RF-WFM-20 | Un coordinador debe poder abrir el detalle de un evento desde KPI, alerta o timeline. | MVP |
-| RF-WFM-21 | La vista debe resaltar tecnicos con banda de saturacion `LOW`, `MEDIUM` o `HIGH`. | MVP |
-| RF-WFM-22 | La experiencia debe mantener filtros sincronizados entre vista operacional, calendario y lista. | MVP |
-| RF-WFM-23 | Los roles `TECHNICIAN` y `CONTRACTOR` no deben ver indicadores globales ni alertas fuera de su ownership aprobado. | MVP |
-| RF-WFM-24 | El command center debe renderizar estados vacios y cobertura parcial sin romper la experiencia. | MVP |
-| RF-WFM-25 | La fase no debe introducir drag-and-drop, mapa ni algoritmos de dispatch automatico. | MVP |
+| ID        | Requerimiento                                                                                                            | Prioridad |
+| --------- | ------------------------------------------------------------------------------------------------------------------------ | --------- |
+| RF-WFM-16 | La UI debe ofrecer una vista operacional priorizada para supervision dentro de la ruta actual de scheduling.             | MVP       |
+| RF-WFM-17 | El dashboard summary debe exponer contadores priorizados y carga por tecnico suficiente para supervision diaria.         | MVP       |
+| RF-WFM-18 | El sistema debe derivar alertas operativas sin persistencia nueva, usando reglas sobre estado, horario y disponibilidad. | MVP       |
+| RF-WFM-19 | La vista timeline debe mostrar eventos por tecnico para el dia seleccionado, con posicion temporal y severidad visual.   | MVP       |
+| RF-WFM-20 | Un coordinador debe poder abrir el detalle de un evento desde KPI, alerta o timeline.                                    | MVP       |
+| RF-WFM-21 | La vista debe resaltar tecnicos con banda de saturacion `LOW`, `MEDIUM` o `HIGH`.                                        | MVP       |
+| RF-WFM-22 | La experiencia debe mantener filtros sincronizados entre vista operacional, calendario y lista.                          | MVP       |
+| RF-WFM-23 | Los roles `TECHNICIAN` y `CONTRACTOR` no deben ver indicadores globales ni alertas fuera de su ownership aprobado.       | MVP       |
+| RF-WFM-24 | El command center debe renderizar estados vacios y cobertura parcial sin romper la experiencia.                          | MVP       |
+| RF-WFM-25 | La fase no debe introducir drag-and-drop, mapa ni algoritmos de dispatch automatico.                                     | MVP       |
 
 ---
 
 ## 5. Requerimientos no funcionales
 
-| ID | Requerimiento | Criterio |
-| --- | --- | --- |
-| RNF-WFM-11 | Sin cambio de boundary | Todo sigue dentro de `WfmModule` y `apps/portal`; no se abre ADR nuevo. |
-| RNF-WFM-12 | Sin nueva infraestructura runtime | No introducir WebSocket, SSE, colas nuevas ni dependencias de mapa. |
-| RNF-WFM-13 | Rendimiento de supervision | La vista operacional debe cargar sobre la misma base de consultas ya aprobada para scheduling. |
-| RNF-WFM-14 | Accesibilidad | Mantener WCAG 2.2 AA, textos en espanol y feedback legible en alertas y timeline. |
-| RNF-WFM-15 | Resiliencia | Si summary o availability fallan, la pantalla debe degradarse con estado parcial, sin caida total. |
-| RNF-WFM-16 | Seguridad de ownership | Roles restringidos solo consumen datos ya permitidos por ownership backend. |
+| ID         | Requerimiento                     | Criterio                                                                                           |
+| ---------- | --------------------------------- | -------------------------------------------------------------------------------------------------- |
+| RNF-WFM-11 | Sin cambio de boundary            | Todo sigue dentro de `WfmModule` y `apps/portal`; no se abre ADR nuevo.                            |
+| RNF-WFM-12 | Sin nueva infraestructura runtime | No introducir WebSocket, SSE, colas nuevas ni dependencias de mapa.                                |
+| RNF-WFM-13 | Rendimiento de supervision        | La vista operacional debe cargar sobre la misma base de consultas ya aprobada para scheduling.     |
+| RNF-WFM-14 | Accesibilidad                     | Mantener WCAG 2.2 AA, textos en espanol y feedback legible en alertas y timeline.                  |
+| RNF-WFM-15 | Resiliencia                       | Si summary o availability fallan, la pantalla debe degradarse con estado parcial, sin caida total. |
+| RNF-WFM-16 | Seguridad de ownership            | Roles restringidos solo consumen datos ya permitidos por ownership backend.                        |
 
 ---
 
@@ -125,12 +125,12 @@ Las alertas de Fase 02 son derivadas y no persistentes.
 
 Se preserva la base `/api/v1/wfm`.
 
-| Metodo | Ruta | Uso en Fase 02 |
-| --- | --- | --- |
-| GET | `/events` | Fuente canonica para timeline diario, calendario y lista |
-| GET | `/dashboard/summary` | Puede ampliarse para devolver KPIs priorizados y alertas derivadas |
-| GET | `/technicians/availability` | Fuente para cruces simples de disponibilidad y carga |
-| GET | `/work-orders/:id` | Mantiene apertura de detalle desde evento si existe OT vinculada |
+| Metodo | Ruta                        | Uso en Fase 02                                                     |
+| ------ | --------------------------- | ------------------------------------------------------------------ |
+| GET    | `/events`                   | Fuente canonica para timeline diario, calendario y lista           |
+| GET    | `/dashboard/summary`        | Puede ampliarse para devolver KPIs priorizados y alertas derivadas |
+| GET    | `/technicians/availability` | Fuente para cruces simples de disponibilidad y carga               |
+| GET    | `/work-orders/:id`          | Mantiene apertura de detalle desde evento si existe OT vinculada   |
 
 Regla de contrato:
 
@@ -141,28 +141,28 @@ Regla de contrato:
 
 ## 8. Criterios de aceptacion
 
-| CA | Criterio |
-| --- | --- |
+| CA        | Criterio                                                                                                     |
+| --------- | ------------------------------------------------------------------------------------------------------------ |
 | CA-WFM-13 | Un usuario ADMIN/NOC/SUPPORT puede abrir una vista operacional con KPIs y alertas sobre la agenda existente. |
-| CA-WFM-14 | La vista timeline del dia agrupa eventos por tecnico y permite abrir el detalle de un evento. |
-| CA-WFM-15 | La UI resalta tecnicos con saturacion alta usando datos del summary sin requerir infraestructura nueva. |
-| CA-WFM-16 | Las alertas se calculan con reglas deterministicas y no requieren tabla nueva. |
-| CA-WFM-17 | Un `TECHNICIAN` no visualiza KPIs globales ni alertas fuera de su ownership. |
-| CA-WFM-18 | Si falla una fuente secundaria, la pantalla informa cobertura parcial y mantiene operativa la vista. |
-| CA-WFM-19 | Calendario y lista actuales siguen disponibles y comparten filtros con la nueva vista. |
-| CA-WFM-20 | Tests backend, frontend y E2E focalizados quedan en verde o el bloqueo queda documentado. |
+| CA-WFM-14 | La vista timeline del dia agrupa eventos por tecnico y permite abrir el detalle de un evento.                |
+| CA-WFM-15 | La UI resalta tecnicos con saturacion alta usando datos del summary sin requerir infraestructura nueva.      |
+| CA-WFM-16 | Las alertas se calculan con reglas deterministicas y no requieren tabla nueva.                               |
+| CA-WFM-17 | Un `TECHNICIAN` no visualiza KPIs globales ni alertas fuera de su ownership.                                 |
+| CA-WFM-18 | Si falla una fuente secundaria, la pantalla informa cobertura parcial y mantiene operativa la vista.         |
+| CA-WFM-19 | Calendario y lista actuales siguen disponibles y comparten filtros con la nueva vista.                       |
+| CA-WFM-20 | Tests backend, frontend y E2E focalizados quedan en verde o el bloqueo queda documentado.                    |
 
 ---
 
 ## 9. Dependencias y riesgos
 
-| Dependencia / riesgo | Estado | Mitigacion |
-| --- | --- | --- |
-| Summary actual insuficiente para supervision | Medio | Ampliar `WfmDashboardSummary` sin romper consumidores existentes. |
-| `SchedulingClient` puede crecer demasiado | Medio | Separar vista operacional en componentes dedicados. |
-| Scope creep hacia mapa, Kanban o IA | Alto | Mantener exclusiones explicitas en plan y prompt de Fase 02. |
-| Alertas ambiguas | Medio | Fijar reglas simples basadas en tiempo, estado y disponibilidad. |
-| Roles restringidos viendo mas de lo debido | Alto | Reusar ownership backend y gating UI explicito. |
+| Dependencia / riesgo                         | Estado | Mitigacion                                                        |
+| -------------------------------------------- | ------ | ----------------------------------------------------------------- |
+| Summary actual insuficiente para supervision | Medio  | Ampliar `WfmDashboardSummary` sin romper consumidores existentes. |
+| `SchedulingClient` puede crecer demasiado    | Medio  | Separar vista operacional en componentes dedicados.               |
+| Scope creep hacia mapa, Kanban o IA          | Alto   | Mantener exclusiones explicitas en plan y prompt de Fase 02.      |
+| Alertas ambiguas                             | Medio  | Fijar reglas simples basadas en tiempo, estado y disponibilidad.  |
+| Roles restringidos viendo mas de lo debido   | Alto   | Reusar ownership backend y gating UI explicito.                   |
 
 ---
 

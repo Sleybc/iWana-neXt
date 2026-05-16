@@ -7,7 +7,7 @@
 **Autor:** AI-EM-ARCH  
 **Clasificacion:** Confidencial - Uso Interno  
 **Trazabilidad base:** docs/prds/PRD_Sistema_ISP_Colombia_v2_3.md, docs/ideas/mesa_de_ayuda.md  
-**Referencias relacionadas:** docs/hlds/HLD-MOD09-PROGRAMACION-WFM-v1.0.md, docs/adrs/ADR-037-Bounded-Context-Programacion-WFM.md, docs/specs/SPEC-MOD09-PROGRAMACION-WFM-DISENO-v1.0.md  
+**Referencias relacionadas:** docs/hlds/HLD-MOD09-PROGRAMACION-WFM-v1.0.md, docs/adrs/ADR-037-Bounded-Context-Programacion-WFM.md, docs/specs/SPEC-MOD09-PROGRAMACION-WFM-DISENO-v1.0.md
 
 > Nota de numeración: el PRD maestro ubica Service Assurance como prioridad 7 del roadmap MVP. El repositorio vigente ya asignó `MOD07` a Taxation y `MOD09` a Programacion / WFM; por consistencia documental este paquete usa `MOD10-SERVICE-ASSURANCE`. Si el CTO decide renumerar módulos, este PRD deberá actualizarse junto con HLD, ADR, plan y prompt.
 
@@ -56,50 +56,50 @@ El módulo debe cubrir tickets ligados a suscriptores, usuarios internos, técni
 
 ## 3. Personas y casos de uso
 
-| Persona | Rol | Necesidad principal |
-| --- | --- | --- |
-| Agente de soporte | SUPPORT | Crear, clasificar, responder y cerrar tickets con contexto operativo |
-| NOC | NOC | Atender incidentes técnicos, escalar a campo y registrar diagnóstico |
-| Admin ISP | ADMIN | Supervisar colas, SLA, PQR y productividad |
-| Técnico | TECHNICIAN | Consultar tickets asignados o relacionados con OTs propias |
-| Contratista | CONTRACTOR | Ver tickets asociados a trabajos asignados, con acceso limitado |
-| Usuario interno | Empleado ISP | Reportar necesidades internas o soporte de herramientas |
-| Suscriptor | Cliente | Crear y seguir tickets propios desde portal futuro |
-| Soporte iWana | IWANA_SUPPORT | Diagnóstico técnico sin acceso a PII ni datos financieros |
+| Persona           | Rol           | Necesidad principal                                                  |
+| ----------------- | ------------- | -------------------------------------------------------------------- |
+| Agente de soporte | SUPPORT       | Crear, clasificar, responder y cerrar tickets con contexto operativo |
+| NOC               | NOC           | Atender incidentes técnicos, escalar a campo y registrar diagnóstico |
+| Admin ISP         | ADMIN         | Supervisar colas, SLA, PQR y productividad                           |
+| Técnico           | TECHNICIAN    | Consultar tickets asignados o relacionados con OTs propias           |
+| Contratista       | CONTRACTOR    | Ver tickets asociados a trabajos asignados, con acceso limitado      |
+| Usuario interno   | Empleado ISP  | Reportar necesidades internas o soporte de herramientas              |
+| Suscriptor        | Cliente       | Crear y seguir tickets propios desde portal futuro                   |
+| Soporte iWana     | IWANA_SUPPORT | Diagnóstico técnico sin acceso a PII ni datos financieros            |
 
-| CU | Actor | Descripcion |
-| --- | --- | --- |
-| CU-01 | Soporte | Crear ticket para un suscriptor existente |
-| CU-02 | Soporte | Crear ticket interno sin cliente asociado |
-| CU-03 | NOC | Clasificar incidente técnico y decidir si requiere campo |
-| CU-04 | Soporte | Registrar PQR con deadline CRC |
-| CU-05 | Admin | Reasignar ticket entre colas o agentes |
+| CU    | Actor   | Descripcion                                                |
+| ----- | ------- | ---------------------------------------------------------- |
+| CU-01 | Soporte | Crear ticket para un suscriptor existente                  |
+| CU-02 | Soporte | Crear ticket interno sin cliente asociado                  |
+| CU-03 | NOC     | Clasificar incidente técnico y decidir si requiere campo   |
+| CU-04 | Soporte | Registrar PQR con deadline CRC                             |
+| CU-05 | Admin   | Reasignar ticket entre colas o agentes                     |
 | CU-06 | Técnico | Ver ticket vinculado a su trabajo y aportar nota operativa |
-| CU-07 | Soporte | Solicitar Work Order a WFM cuando el caso requiere visita |
-| CU-08 | Admin | Revisar dashboard de SLA y tickets vencidos |
+| CU-07 | Soporte | Solicitar Work Order a WFM cuando el caso requiere visita  |
+| CU-08 | Admin   | Revisar dashboard de SLA y tickets vencidos                |
 
 ---
 
 ## 4. Requerimientos funcionales
 
-| ID | Requerimiento | Prioridad |
-| --- | --- | --- |
-| RF-ASS-01 | Crear tickets externos e internos con requester y subject tipados | MVP |
-| RF-ASS-02 | Clasificar tickets como incidente, PQR, consulta, solicitud, soporte interno o tarea operativa | MVP |
-| RF-ASS-03 | Gestionar estados: nuevo, clasificado, en proceso, espera cliente, espera interna, requiere campo, escalado, resuelto, cerrado y cancelado | MVP |
-| RF-ASS-04 | Asignar ticket a usuario responsable y cola funcional | MVP |
-| RF-ASS-05 | Registrar comentarios internos y visibles al cliente | MVP |
-| RF-ASS-06 | Mantener timeline append-only de cambios relevantes | MVP |
-| RF-ASS-07 | Calcular SLA de primera respuesta y resolución por política simple | MVP |
-| RF-ASS-08 | Registrar PQR CRC con fechas de recepción, respuesta, recurso y cierre | MVP |
-| RF-ASS-09 | Marcar si un ticket requiere Work Order y emitir evento hacia WFM | MVP |
-| RF-ASS-10 | Vincular ticket con `workOrderId` devuelto o informado por WFM | MVP |
-| RF-ASS-11 | Consultar tickets por filtros: estado, prioridad, tipo, requester, cola, responsable, SLA | MVP |
-| RF-ASS-12 | Dashboard operativo de tickets, SLA y carga por cola | MVP |
-| RF-ASS-13 | Preparar contratos para ticket creado por NMS en fase futura | Fase 2 |
-| RF-ASS-14 | Macros y respuestas predefinidas | Fase 2 |
-| RF-ASS-15 | Incidentes masivos y agrupación de tickets similares | Fase 2 |
-| RF-ASS-16 | IA para resumen, clasificación y respuesta sugerida | Fase 3 |
+| ID        | Requerimiento                                                                                                                              | Prioridad |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
+| RF-ASS-01 | Crear tickets externos e internos con requester y subject tipados                                                                          | MVP       |
+| RF-ASS-02 | Clasificar tickets como incidente, PQR, consulta, solicitud, soporte interno o tarea operativa                                             | MVP       |
+| RF-ASS-03 | Gestionar estados: nuevo, clasificado, en proceso, espera cliente, espera interna, requiere campo, escalado, resuelto, cerrado y cancelado | MVP       |
+| RF-ASS-04 | Asignar ticket a usuario responsable y cola funcional                                                                                      | MVP       |
+| RF-ASS-05 | Registrar comentarios internos y visibles al cliente                                                                                       | MVP       |
+| RF-ASS-06 | Mantener timeline append-only de cambios relevantes                                                                                        | MVP       |
+| RF-ASS-07 | Calcular SLA de primera respuesta y resolución por política simple                                                                         | MVP       |
+| RF-ASS-08 | Registrar PQR CRC con fechas de recepción, respuesta, recurso y cierre                                                                     | MVP       |
+| RF-ASS-09 | Marcar si un ticket requiere Work Order y emitir evento hacia WFM                                                                          | MVP       |
+| RF-ASS-10 | Vincular ticket con `workOrderId` devuelto o informado por WFM                                                                             | MVP       |
+| RF-ASS-11 | Consultar tickets por filtros: estado, prioridad, tipo, requester, cola, responsable, SLA                                                  | MVP       |
+| RF-ASS-12 | Dashboard operativo de tickets, SLA y carga por cola                                                                                       | MVP       |
+| RF-ASS-13 | Preparar contratos para ticket creado por NMS en fase futura                                                                               | Fase 2    |
+| RF-ASS-14 | Macros y respuestas predefinidas                                                                                                           | Fase 2    |
+| RF-ASS-15 | Incidentes masivos y agrupación de tickets similares                                                                                       | Fase 2    |
+| RF-ASS-16 | IA para resumen, clasificación y respuesta sugerida                                                                                        | Fase 3    |
 
 ---
 
@@ -123,33 +123,33 @@ Todas las tablas viven en el schema del tenant.
 
 ### `support_tickets`
 
-| Campo | Tipo | Notas |
-| --- | --- | --- |
-| `id` | uuid | PK |
-| `tenant_id` | uuid | Aislamiento lógico |
-| `code` | varchar(40) | Consecutivo por tenant, ej. `TK-20260509-001` |
-| `type` | enum | `INCIDENT`, `PQR`, `QUESTION`, `REQUEST`, `INTERNAL_SUPPORT`, `OPERATIONAL_TASK` |
-| `status` | enum | Flujo operativo del ticket |
-| `priority` | enum | `LOW`, `NORMAL`, `HIGH`, `URGENT`, `CRITICAL` |
-| `source` | enum | `MANUAL`, `PORTAL`, `EMAIL`, `NMS`, `WFM`, `MIGRATION`, `INTERNAL` |
-| `requester_type` | enum | `SUBSCRIBER`, `EMPLOYEE`, `TECHNICIAN`, `CONTRACTOR`, `PARTNER`, `SYSTEM`, `EXTERNAL` |
-| `requester_ref_id` | varchar(160) nullable | ID lógico del solicitante |
-| `subject_type` | enum nullable | `SUBSCRIBER`, `CONTRACT`, `SERVICE`, `NETWORK_NODE`, `DEVICE`, `WORK_ORDER`, `INTERNAL_AREA`, `GENERAL` |
-| `subject_ref_id` | varchar(160) nullable | ID lógico del objeto afectado |
-| `queue` | enum | `SUPPORT`, `NOC`, `BILLING`, `OPERATIONS`, `SALES`, `ADMIN`, `IWANA_SUPPORT` |
-| `assigned_user_id` | uuid nullable | Responsable actual |
-| `summary` | varchar(200) | Resumen operativo |
-| `description` | text nullable | Detalle controlado |
-| `field_decision` | enum | `NOT_REQUIRED`, `NEEDS_DIAGNOSIS`, `FIELD_SERVICE_REQUIRED` |
-| `work_order_id` | uuid nullable | Referencia WFM si aplica |
-| `sla_policy_id` | uuid nullable | Política aplicada |
-| `first_response_due_at` | timestamptz nullable | SLA primera respuesta |
-| `resolution_due_at` | timestamptz nullable | SLA resolución |
-| `first_responded_at` | timestamptz nullable | Evidencia |
-| `resolved_at` | timestamptz nullable | Evidencia |
-| `closed_at` | timestamptz nullable | Cierre |
-| `created_by`, `updated_by` | uuid nullable | Actor autenticado |
-| `created_at`, `updated_at`, `deleted_at` | timestamptz | Auditoría técnica |
+| Campo                                    | Tipo                  | Notas                                                                                                   |
+| ---------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------- |
+| `id`                                     | uuid                  | PK                                                                                                      |
+| `tenant_id`                              | uuid                  | Aislamiento lógico                                                                                      |
+| `code`                                   | varchar(40)           | Consecutivo por tenant, ej. `TK-20260509-001`                                                           |
+| `type`                                   | enum                  | `INCIDENT`, `PQR`, `QUESTION`, `REQUEST`, `INTERNAL_SUPPORT`, `OPERATIONAL_TASK`                        |
+| `status`                                 | enum                  | Flujo operativo del ticket                                                                              |
+| `priority`                               | enum                  | `LOW`, `NORMAL`, `HIGH`, `URGENT`, `CRITICAL`                                                           |
+| `source`                                 | enum                  | `MANUAL`, `PORTAL`, `EMAIL`, `NMS`, `WFM`, `MIGRATION`, `INTERNAL`                                      |
+| `requester_type`                         | enum                  | `SUBSCRIBER`, `EMPLOYEE`, `TECHNICIAN`, `CONTRACTOR`, `PARTNER`, `SYSTEM`, `EXTERNAL`                   |
+| `requester_ref_id`                       | varchar(160) nullable | ID lógico del solicitante                                                                               |
+| `subject_type`                           | enum nullable         | `SUBSCRIBER`, `CONTRACT`, `SERVICE`, `NETWORK_NODE`, `DEVICE`, `WORK_ORDER`, `INTERNAL_AREA`, `GENERAL` |
+| `subject_ref_id`                         | varchar(160) nullable | ID lógico del objeto afectado                                                                           |
+| `queue`                                  | enum                  | `SUPPORT`, `NOC`, `BILLING`, `OPERATIONS`, `SALES`, `ADMIN`, `IWANA_SUPPORT`                            |
+| `assigned_user_id`                       | uuid nullable         | Responsable actual                                                                                      |
+| `summary`                                | varchar(200)          | Resumen operativo                                                                                       |
+| `description`                            | text nullable         | Detalle controlado                                                                                      |
+| `field_decision`                         | enum                  | `NOT_REQUIRED`, `NEEDS_DIAGNOSIS`, `FIELD_SERVICE_REQUIRED`                                             |
+| `work_order_id`                          | uuid nullable         | Referencia WFM si aplica                                                                                |
+| `sla_policy_id`                          | uuid nullable         | Política aplicada                                                                                       |
+| `first_response_due_at`                  | timestamptz nullable  | SLA primera respuesta                                                                                   |
+| `resolution_due_at`                      | timestamptz nullable  | SLA resolución                                                                                          |
+| `first_responded_at`                     | timestamptz nullable  | Evidencia                                                                                               |
+| `resolved_at`                            | timestamptz nullable  | Evidencia                                                                                               |
+| `closed_at`                              | timestamptz nullable  | Cierre                                                                                                  |
+| `created_by`, `updated_by`               | uuid nullable         | Actor autenticado                                                                                       |
+| `created_at`, `updated_at`, `deleted_at` | timestamptz           | Auditoría técnica                                                                                       |
 
 ### `ticket_comments`
 
@@ -177,20 +177,20 @@ Vínculos entre ticket y Work Order. Permite historial cuando una solicitud de c
 
 Base path: `/api/v1/assurance`.
 
-| Metodo | Ruta | Uso | Roles |
-| --- | --- | --- | --- |
-| GET | `/tickets` | Listar tickets con filtros | ADMIN, SUPPORT, NOC, TECHNICIAN, CONTRACTOR, IWANA_SUPPORT |
-| POST | `/tickets` | Crear ticket | ADMIN, SUPPORT, NOC, SALES, TECHNICIAN |
-| GET | `/tickets/:id` | Detalle | ADMIN, SUPPORT, NOC, TECHNICIAN, CONTRACTOR, IWANA_SUPPORT |
-| PATCH | `/tickets/:id` | Editar campos abiertos permitidos | ADMIN, SUPPORT, NOC |
-| PATCH | `/tickets/:id/status` | Transicionar estado | ADMIN, SUPPORT, NOC, TECHNICIAN |
-| POST | `/tickets/:id/comments` | Agregar comentario | ADMIN, SUPPORT, NOC, TECHNICIAN, CONTRACTOR |
-| POST | `/tickets/:id/assign` | Asignar responsable/cola | ADMIN, SUPPORT, NOC |
-| POST | `/tickets/:id/request-field-service` | Solicitar OT a WFM | ADMIN, SUPPORT, NOC |
-| POST | `/tickets/:id/link-work-order` | Asociar Work Order existente | ADMIN, SUPPORT, NOC |
-| GET | `/dashboard/summary` | KPIs operativos | ADMIN, SUPPORT, NOC |
-| GET | `/sla-policies` | Listar políticas SLA | ADMIN, SUPPORT, NOC |
-| POST | `/sla-policies` | Crear política SLA | ADMIN |
+| Metodo | Ruta                                 | Uso                               | Roles                                                      |
+| ------ | ------------------------------------ | --------------------------------- | ---------------------------------------------------------- |
+| GET    | `/tickets`                           | Listar tickets con filtros        | ADMIN, SUPPORT, NOC, TECHNICIAN, CONTRACTOR, IWANA_SUPPORT |
+| POST   | `/tickets`                           | Crear ticket                      | ADMIN, SUPPORT, NOC, SALES, TECHNICIAN                     |
+| GET    | `/tickets/:id`                       | Detalle                           | ADMIN, SUPPORT, NOC, TECHNICIAN, CONTRACTOR, IWANA_SUPPORT |
+| PATCH  | `/tickets/:id`                       | Editar campos abiertos permitidos | ADMIN, SUPPORT, NOC                                        |
+| PATCH  | `/tickets/:id/status`                | Transicionar estado               | ADMIN, SUPPORT, NOC, TECHNICIAN                            |
+| POST   | `/tickets/:id/comments`              | Agregar comentario                | ADMIN, SUPPORT, NOC, TECHNICIAN, CONTRACTOR                |
+| POST   | `/tickets/:id/assign`                | Asignar responsable/cola          | ADMIN, SUPPORT, NOC                                        |
+| POST   | `/tickets/:id/request-field-service` | Solicitar OT a WFM                | ADMIN, SUPPORT, NOC                                        |
+| POST   | `/tickets/:id/link-work-order`       | Asociar Work Order existente      | ADMIN, SUPPORT, NOC                                        |
+| GET    | `/dashboard/summary`                 | KPIs operativos                   | ADMIN, SUPPORT, NOC                                        |
+| GET    | `/sla-policies`                      | Listar políticas SLA              | ADMIN, SUPPORT, NOC                                        |
+| POST   | `/sla-policies`                      | Crear política SLA                | ADMIN                                                      |
 
 Reglas de acceso:
 
@@ -219,15 +219,15 @@ Reglas de acceso:
 
 ## 9. Dependencias y riesgos
 
-| Dependencia / riesgo | Impacto | Mitigacion |
-| --- | --- | --- |
-| Nuevo bounded context | Alto | ADR-038 debe ser aprobado antes de ejecución productiva |
-| Numeración documental difiere del PRD maestro | Medio | Usar MOD10 y dejar nota de trazabilidad |
-| WFM ya existe como owner de Work Orders | Alto | Assurance solo solicita o vincula OT; no agenda ni ejecuta trabajos |
-| PII de clientes en tickets | Alto | Guardar referencias y contenido mínimo; sanitizar logs |
-| PQR CRC requiere precisión legal | Alto | Basarse en PRD vigente y marcar cambios normativos como verificación oficial |
-| UI puede volverse demasiado compleja | Medio | Fase 01 con lista operativa, kanban simple y drawer |
-| Integraciones NMS/WhatsApp no listas | Bajo | Diferir a Fase 02 como fuentes futuras |
+| Dependencia / riesgo                          | Impacto | Mitigacion                                                                   |
+| --------------------------------------------- | ------- | ---------------------------------------------------------------------------- |
+| Nuevo bounded context                         | Alto    | ADR-038 debe ser aprobado antes de ejecución productiva                      |
+| Numeración documental difiere del PRD maestro | Medio   | Usar MOD10 y dejar nota de trazabilidad                                      |
+| WFM ya existe como owner de Work Orders       | Alto    | Assurance solo solicita o vincula OT; no agenda ni ejecuta trabajos          |
+| PII de clientes en tickets                    | Alto    | Guardar referencias y contenido mínimo; sanitizar logs                       |
+| PQR CRC requiere precisión legal              | Alto    | Basarse en PRD vigente y marcar cambios normativos como verificación oficial |
+| UI puede volverse demasiado compleja          | Medio   | Fase 01 con lista operativa, kanban simple y drawer                          |
+| Integraciones NMS/WhatsApp no listas          | Bajo    | Diferir a Fase 02 como fuentes futuras                                       |
 
 ---
 

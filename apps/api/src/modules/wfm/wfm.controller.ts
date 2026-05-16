@@ -20,11 +20,21 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { ScheduleEventsService } from './services/schedule-events.service';
+import { VisitRequestsService } from './services/visit-requests.service';
+import { ScheduleRecommendationsService } from './services/schedule-recommendations.service';
 import { WorkOrdersService } from './services/work-orders.service';
 import { TechnicianAvailabilityService } from './services/technician-availability.service';
 import { WfmDashboardService } from './services/wfm-dashboard.service';
 import {
+  CancelVisitRequestDto,
   CreateScheduleEventDto,
+  CreateVisitRequestDto,
+  ListVisitRequestsQueryDto,
+  RecommendVisitRequestDto,
+  RejectVisitRequestDto,
+  ScheduleRecommendationRequestDto,
+  ScheduleVisitRequestDto,
+  toCreateVisitRequestInput,
   toCreateScheduleEventInput,
   ListScheduleEventsQueryDto,
   ListTechnicianAvailabilityQueryDto,
@@ -33,6 +43,9 @@ import {
   TransitionScheduleEventDto,
   TransitionWorkOrderDto,
   UpdateScheduleEventDto,
+  UpdateVisitRequestContextDto,
+  VisitRequestFilterOptionsQueryDto,
+  VisitRequestFilterOptionsResponseDto,
 } from './dto';
 
 @ApiTags('wfm')
@@ -42,12 +55,119 @@ import {
 export class WfmController {
   constructor(
     private readonly scheduleEventsService: ScheduleEventsService,
+    private readonly visitRequestsService: VisitRequestsService,
+    private readonly scheduleRecommendationsService: ScheduleRecommendationsService,
     private readonly workOrdersService: WorkOrdersService,
     private readonly technicianAvailabilityService: TechnicianAvailabilityService,
     private readonly dashboardService: WfmDashboardService,
   ) {}
 
+  // ─── Visit Requests ───────────────────────────────────────────────────────
+
+  @Get('visit-requests')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Listar solicitudes pendientes de visita del tenant' })
+  listVisitRequests(@Query() query: ListVisitRequestsQueryDto, @CurrentUser() actor: JwtPayload) {
+    return this.visitRequestsService.listVisitRequests(query, actor);
+  }
+
+  @Post('visit-requests')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.SALES)
+  @ApiOperation({ summary: 'Crear una solicitud operativa de visita' })
+  createVisitRequest(@Body() dto: CreateVisitRequestDto, @CurrentUser() actor: JwtPayload) {
+    return this.visitRequestsService.createVisitRequest(toCreateVisitRequestInput(dto), actor);
+  }
+
+  @Get('visit-requests/filter-options')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Listar opciones territoriales disponibles para solicitudes de visita' })
+  @ApiResponse({ status: 200, type: VisitRequestFilterOptionsResponseDto })
+  getVisitRequestFilterOptions(
+    @Query() query: VisitRequestFilterOptionsQueryDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.visitRequestsService.getFilterOptions(query, actor);
+  }
+
+  @Get('visit-requests/:id')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.SALES)
+  @ApiOperation({ summary: 'Obtener solicitud operativa de visita por id' })
+  getVisitRequest(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: JwtPayload) {
+    return this.visitRequestsService.getVisitRequestById(id, actor);
+  }
+
+  @Patch('visit-requests/:id/context')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.SALES)
+  @ApiOperation({ summary: 'Completar o corregir contexto de una solicitud de visita' })
+  updateVisitRequestContext(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateVisitRequestContextDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.visitRequestsService.updateVisitRequestContext(id, dto, actor);
+  }
+
+  @Post('visit-requests/:id/schedule-recommendations')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.SALES)
+  @ApiOperation({ summary: 'Obtener recomendaciones territoriales para una solicitud lista' })
+  async recommendVisitRequest(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RecommendVisitRequestDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    const payload = await this.visitRequestsService.prepareVisitRequestRecommendation(
+      id,
+      dto,
+      actor,
+    );
+
+    return this.scheduleRecommendationsService.recommend(payload);
+  }
+
+  @Post('visit-requests/:id/schedule')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.SALES)
+  @ApiOperation({ summary: 'Agendar una solicitud de visita lista para programar' })
+  @ApiResponse({ status: 201, description: 'Solicitud agendada' })
+  scheduleVisitRequest(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ScheduleVisitRequestDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.visitRequestsService.scheduleVisitRequest(id, dto, actor);
+  }
+
+  @Post('visit-requests/:id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.SALES)
+  @ApiOperation({ summary: 'Cancelar una solicitud de visita' })
+  cancelVisitRequest(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CancelVisitRequestDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.visitRequestsService.cancelVisitRequest(id, dto, actor);
+  }
+
+  @Post('visit-requests/:id/reject')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.SALES)
+  @ApiOperation({ summary: 'Rechazar una solicitud de visita' })
+  rejectVisitRequest(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RejectVisitRequestDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.visitRequestsService.rejectVisitRequest(id, dto, actor);
+  }
+
   // ─── Schedule Events ──────────────────────────────────────────────────────
+
+  @Post('schedule-recommendations')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.SALES)
+  @ApiOperation({ summary: 'Obtener recomendaciones territoriales de agenda' })
+  recommendSchedule(@Body() dto: ScheduleRecommendationRequestDto) {
+    return this.scheduleRecommendationsService.recommend(dto);
+  }
 
   @Get('events')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)

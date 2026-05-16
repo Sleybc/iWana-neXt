@@ -39,6 +39,7 @@ export const CreateScheduleEventSchema = z.object({
   assignedUserId: z.string().uuid(),
   address: z.string().max(255).optional().nullable(),
   municipality: z.string().max(120).optional().nullable(),
+  sector: z.string().max(120).optional().nullable(),
   latitude: z.number().min(-90).max(90).optional().nullable(),
   longitude: z.number().min(-180).max(180).optional().nullable(),
   expedienteId: z.string().uuid().optional().nullable(),
@@ -144,6 +145,12 @@ export class CreateScheduleEventDto {
   @IsString()
   @MaxLength(120)
   municipality?: string | null;
+
+  @ApiPropertyOptional({ maxLength: 120, description: 'Sector, barrio o vereda operativa' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  sector?: string | null;
 
   @ApiPropertyOptional({ example: 4.711 })
   @IsOptional()

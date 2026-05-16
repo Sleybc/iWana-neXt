@@ -47,21 +47,21 @@ Este PRD define el ajuste funcional para que el estado del expediente se derive 
 
 ## 3. Personas y casos de uso
 
-| Persona | Rol | Necesidad principal |
-| --- | --- | --- |
-| Asesor comercial | SALES | Que el estado del expediente avance solo mientras captura informacion del cliente |
-| Jefe comercial | ADMIN | Ver el pipeline actualizado sin depender de movimientos manuales inconsistentes |
+| Persona               | Rol   | Necesidad principal                                                                         |
+| --------------------- | ----- | ------------------------------------------------------------------------------------------- |
+| Asesor comercial      | SALES | Que el estado del expediente avance solo mientras captura informacion del cliente           |
+| Jefe comercial        | ADMIN | Ver el pipeline actualizado sin depender de movimientos manuales inconsistentes             |
 | Coordinador operativo | ADMIN | Confiar en que la viabilidad tecnica y los datos operativos reflejan la etapa real del caso |
 
-| CU | Actor | Descripcion |
-| --- | --- | --- |
-| CU-AP-01 | Asesor | Crear expediente y verlo en `NUEVO_POTENCIAL` sin pasos adicionales |
-| CU-AP-02 | Asesor | Capturar informacion parcial y ver el expediente pasar a `PENDIENTE_DATOS` |
-| CU-AP-03 | Asesor | Completar base comercial minima y ver el expediente pasar a `PRECALIFICADO` |
-| CU-AP-04 | Asesor | Registrar viabilidad `VALIDATION_REQUIRED` y ver el expediente pasar a `VALIDANDO_COBERTURA` |
-| CU-AP-05 | Asesor | Registrar viabilidad `VIABLE` y ver el expediente pasar a `VIABLE_COMERCIALMENTE` |
-| CU-AP-06 | Asesor | Seleccionar plan y ver el expediente pasar a `EN_COTIZACION` |
-| CU-AP-07 | Usuario concurrente | Observar en portal el nuevo estado sin forzar recarga manual |
+| CU       | Actor               | Descripcion                                                                                  |
+| -------- | ------------------- | -------------------------------------------------------------------------------------------- |
+| CU-AP-01 | Asesor              | Crear expediente y verlo en `NUEVO_POTENCIAL` sin pasos adicionales                          |
+| CU-AP-02 | Asesor              | Capturar informacion parcial y ver el expediente pasar a `PENDIENTE_DATOS`                   |
+| CU-AP-03 | Asesor              | Completar base comercial minima y ver el expediente pasar a `PRECALIFICADO`                  |
+| CU-AP-04 | Asesor              | Registrar viabilidad `VALIDATION_REQUIRED` y ver el expediente pasar a `VALIDANDO_COBERTURA` |
+| CU-AP-05 | Asesor              | Registrar viabilidad `VIABLE` y ver el expediente pasar a `VIABLE_COMERCIALMENTE`            |
+| CU-AP-06 | Asesor              | Seleccionar plan y ver el expediente pasar a `EN_COTIZACION`                                 |
+| CU-AP-07 | Usuario concurrente | Observar en portal el nuevo estado sin forzar recarga manual                                 |
 
 ---
 
@@ -81,17 +81,17 @@ El backend debe recalcular el estado objetivo del expediente despues de cada esc
 
 El estado objetivo debe resolverse en este orden:
 
-| Orden | Estado objetivo | Regla base |
-| --- | --- | --- |
-| 1 | NUEVO_POTENCIAL | Expediente recien creado sin base suficiente de identificacion/contacto para avanzar |
-| 2 | PENDIENTE_DATOS | Existe captura parcial pero faltan datos base para precalificacion |
-| 3 | PRECALIFICADO | Ya existen documento, contacto y ubicacion minima para continuar |
-| 4 | VALIDANDO_COBERTURA | `feasibility = VALIDATION_REQUIRED` |
-| 5 | VIABLE_COMERCIALMENTE | `feasibility = VIABLE` |
-| 6 | EN_COTIZACION | Existe `interestedPlanId` valido |
-| 7 | PENDIENTE_DECISION | Existe cotizacion/propuesta emitida y el caso espera definicion comercial |
-| 8 | LISTO_PARA_INSTALACION | Existen direccion de instalacion y contacto en sitio |
-| 9 | INSTALACION_AGENDADA | Existen ticket y orden de trabajo vinculados |
+| Orden | Estado objetivo        | Regla base                                                                           |
+| ----- | ---------------------- | ------------------------------------------------------------------------------------ |
+| 1     | NUEVO_POTENCIAL        | Expediente recien creado sin base suficiente de identificacion/contacto para avanzar |
+| 2     | PENDIENTE_DATOS        | Existe captura parcial pero faltan datos base para precalificacion                   |
+| 3     | PRECALIFICADO          | Ya existen documento, contacto y ubicacion minima para continuar                     |
+| 4     | VALIDANDO_COBERTURA    | `feasibility = VALIDATION_REQUIRED`                                                  |
+| 5     | VIABLE_COMERCIALMENTE  | `feasibility = VIABLE`                                                               |
+| 6     | EN_COTIZACION          | Existe `interestedPlanId` valido                                                     |
+| 7     | PENDIENTE_DECISION     | Existe cotizacion/propuesta emitida y el caso espera definicion comercial            |
+| 8     | LISTO_PARA_INSTALACION | Existen direccion de instalacion y contacto en sitio                                 |
+| 9     | INSTALACION_AGENDADA   | Existen ticket y orden de trabajo vinculados                                         |
 
 ### RF-AP-03: Politica de retroceso mixto
 
@@ -130,14 +130,14 @@ La fase base debe usar polling inteligente y no un canal realtime dedicado.
 
 ## 5. Requerimientos no funcionales
 
-| RNF | Descripcion | Criterio |
-| --- | --- | --- |
-| RNF-AP-01 | Multi-tenancy | Todo recálculo debe ejecutarse en el schema resuelto por request o flujo aprobado |
-| RNF-AP-02 | Auditoria | Todo cambio automatico de estado deja rastro en `StatusChange` y `AuditLog` |
-| RNF-AP-03 | Seguridad | No exponer tenant, schema ni datos sensibles adicionales al cliente |
-| RNF-AP-04 | Performance | El recálculo no debe degradar perceptiblemente el guardado de secciones ni el listado |
-| RNF-AP-05 | UX | El portal no debe hacer reload de página completo para reflejar el nuevo estado |
-| RNF-AP-06 | Consistencia | La decision de estado debe vivir en backend como fuente de verdad |
+| RNF       | Descripcion   | Criterio                                                                              |
+| --------- | ------------- | ------------------------------------------------------------------------------------- |
+| RNF-AP-01 | Multi-tenancy | Todo recálculo debe ejecutarse en el schema resuelto por request o flujo aprobado     |
+| RNF-AP-02 | Auditoria     | Todo cambio automatico de estado deja rastro en `StatusChange` y `AuditLog`           |
+| RNF-AP-03 | Seguridad     | No exponer tenant, schema ni datos sensibles adicionales al cliente                   |
+| RNF-AP-04 | Performance   | El recálculo no debe degradar perceptiblemente el guardado de secciones ni el listado |
+| RNF-AP-05 | UX            | El portal no debe hacer reload de página completo para reflejar el nuevo estado       |
+| RNF-AP-06 | Consistencia  | La decision de estado debe vivir en backend como fuente de verdad                     |
 
 ---
 

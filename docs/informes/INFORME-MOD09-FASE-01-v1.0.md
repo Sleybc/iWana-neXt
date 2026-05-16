@@ -3,6 +3,7 @@
 **Version:** 1.0  
 **Estado:** Aprobado  
 **Fecha:** 2026-05-06  
+**Ultima actualizacion:** 2026-05-15  
 **Modo activo:** Mixto  
 **Modulo:** MOD09 Programacion / WFM  
 **Responsable principal:** GitHub Copilot
@@ -156,3 +157,31 @@ No se identifican bloqueos criticos de arquitectura, seguridad, tenancy o compil
 3. Se amplio `portal-wfm-scheduling.spec.ts` con evidencia responsive mobile y consulta por rango diario, semanal y mensual.
 4. Se corrigio un defecto post-cierre en portal scheduling donde `wfmApi` consumia respuestas WFM como envelope `{ data }` aunque el backend devolvia payload crudo. El ajuste se aplico en `apps/portal/src/lib/api-client.ts` con `returnFullResponse: true` para la superficie WFM y se reforzo `SchedulingClient` con fallback a colecciones vacias para evitar una caida total de la UI ante respuestas invalidas.
 5. Se agrego regresion en `apps/portal/src/components/scheduling/SchedulingClient.spec.tsx` para cubrir el caso `events.list() -> undefined` y confirmar que la vista cae a estado vacio en lugar de lanzar `TypeError`.
+6. Se aplico un correctivo UX en `apps/portal/src/components/scheduling/VisitRequestRecommendationPanel.tsx` para que la duracion de la instalacion deje de venir preseleccionada y pase a ser un prerequisito explicito antes de habilitar `Calcular recomendaciones`. En el mismo ajuste se reorganizo el panel lateral de despacho: la configuracion de duracion y horizonte ahora lidera el flujo, mientras el contexto operativo pasa a un bloque expandible menos denso.
+7. Se actualizo la regresion de `apps/portal/src/components/scheduling/PendingVisitRequestsView.spec.tsx` para cubrir el nuevo gating de duracion, la interaccion real del `Select` custom y el acceso al bloque de contexto colapsable.
+8. Se normalizo el rango horario de instalaciones en portal para operar solo entre `07:00` y `18:00`, reutilizando un helper compartido de franjas por tipo de trabajo en creacion, reagenda y contexto de solicitudes pendientes.
+9. Se endurecio la misma regla en backend WFM mediante un port de lectura de timezone tenant-aware, de modo que `create`, `update`, `reschedule` y `scheduleVisitRequest` rechacen instalaciones fuera de la ventana local `07:00`-`18:00` del tenant.
+
+### Actualizacion correctiva 2026-05-15
+
+- Flujo corregido: la recomendacion de franja ya no arranca con 120 minutos implicitos; el usuario debe elegir la duracion estimada de la tarea antes de disparar el calculo.
+- Densidad visual reducida: el panel `Despacho de la solicitud` prioriza el paso de duracion y busqueda, conserva la confirmacion en el mismo rail y mueve el contexto operativo a una superficie expandible para evitar amontonamiento en columna angosta.
+- Evidencia ejecutada: `pnpm exec jest -c apps/portal/jest.config.js --runInBand apps/portal/src/components/scheduling/PendingVisitRequestsView.spec.tsx` ✅
+- Rango operativo corregido: las instalaciones ahora solo exponen y aceptan franjas locales entre `07:00` y `18:00` en `ScheduleEventForm`, `RescheduleEventDialog`, `PendingVisitRequestsView` y `VisitRequestRecommendationPanel`.
+- Evidencia ejecutada: `pnpm exec jest -c apps/portal/jest.config.js --runInBand apps/portal/src/components/scheduling/ScheduleEventForm.spec.tsx apps/portal/src/components/scheduling/RescheduleEventDialog.spec.tsx apps/portal/src/components/scheduling/PendingVisitRequestsView.spec.tsx` ✅
+- Defensa en servidor: WFM ahora valida la franja de instalaciones contra la timezone IANA efectiva del tenant antes de crear, actualizar, reagendar o materializar la agenda desde una visit request, evitando bypass por llamadas directas al API.
+- Evidencia ejecutada: `pnpm exec jest -c apps/api/jest.config.js --runInBand apps/api/src/modules/wfm/tests/schedule-events.service.spec.ts apps/api/src/modules/wfm/services/visit-requests.service.spec.ts` ✅
+- Contrato HTTP reforzado: los endpoints `POST /wfm/events`, `POST /wfm/events/:id/reschedule` y `POST /wfm/visit-requests/:id/schedule` ya exponen `400` con el mensaje de negocio correspondiente cuando la regla de horario `07:00`-`18:00` rechaza una instalación.
+- Evidencia ejecutada: `pnpm exec jest -c apps/api/jest.config.js --runInBand apps/api/src/modules/wfm/tests/wfm.controller.http.spec.ts apps/api/src/modules/wfm/tests/visit-requests.controller.http.spec.ts` ✅
+
+### Actualizacion de preparacion para ejecucion 2026-05-15
+
+- Se aprobó la evolucion de horario fijo a modelo relacional tenant-aware con soporte de empresa, sede operativa, overrides por técnico y festivos/cierres.
+- Se dejó explícito que `sede` significa oficina/base operativa real y no `CommercialNode`.
+- Se cerró la precedencia ejecutable: `override técnico > festivo/cierre > sede > empresa`.
+- Se aprobó que `operatingSiteId` sea opcional en el primer corte para no romper flujos legacy ni tenants monosede.
+- Se aprobó que la administración inicial viva dentro de la pestaña `operations` del portal, pero en un manager WFM separado de `OperationalSettingsForm`.
+- Se generó la spec ejecutable en `docs/superpowers/specs/2026-05-15-mod09-wfm-operating-hours-design.md`.
+- Se generó el plan task-by-task en `docs/superpowers/plans/2026-05-15-mod09-wfm-operating-hours.md`.
+- Se generó el prompt de ejecución para fullstack en `docs/prompts/PROMPT-MOD09-HORARIOS-OPERATIVOS-WFM-v1.0.md`.
+- Estado actual: listo para ejecución fullstack; aún no se han corrido pruebas de implementación de esta nueva fase porque este corte fue documental y de gobierno técnico.

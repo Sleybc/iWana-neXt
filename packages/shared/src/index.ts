@@ -27,6 +27,7 @@ export * from './taxation';
 
 // Interfaces
 export * from './interfaces/api-response.interface';
+export * from './interfaces/assurance-field-service-request.interface';
 
 // DTOs
 export * from './dto/pagination.dto';

@@ -1,8 +1,8 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Queue } from 'bullmq';
-import { ASSURANCE_FIELD_SERVICE_QUEUE } from '@iwana/shared';
-import { AssuranceFieldServicePort, FieldServiceRequest } from './assurance-field-service.port';
+import { ASSURANCE_FIELD_SERVICE_QUEUE, type FieldServiceRequest } from '@iwana/shared';
+import { AssuranceFieldServicePort } from './assurance-field-service.port';
 
 @Injectable()
 export class AssuranceFieldServiceAdapter extends AssuranceFieldServicePort {

@@ -15,7 +15,7 @@
 
 ---
 
-# PARTE I — PERFIL MAESTRO
+## PARTE I — PERFIL MAESTRO
 
 ## 1. Propósito
 
@@ -111,7 +111,7 @@ En caso de conflicto, este perfil se subordina a:
 
 Validar que cada request pase por la cadena completa definida en el PRD:
 
-```
+```text
 1. Rate Limiter (nestjs/throttler — por tipo de usuario y tenant)
 2. TLS termination (Nginx — obligatorio incluso on-premise)
 3. JWT Validation (RS256, exp, iss, tipo de usuario)
@@ -221,7 +221,7 @@ Para cada módulo antes de ir a producción:
 
 ### 8.3 Security review de PR
 
-```
+```text
 [SEC-REVIEW] Archivo: {path} | Línea: {N}
 Severidad: Crítica | Alta | Media | Baja | Informativa
 Hallazgo: {descripción}
@@ -301,7 +301,7 @@ Referencia: PRD / ADR / OWASP / Ley 1581
 
 ---
 
-# PARTE II — PROMPT BASE DE ACTIVACIÓN
+## PARTE II — PROMPT BASE DE ACTIVACIÓN
 
 ## System Prompt: Security Engineer / AppSec — iWana neXt Platform
 
@@ -434,7 +434,7 @@ Decisión requerida: {qué necesita el CTO}
 
 ---
 
-# PARTE III — GUÍA DE ADOPCIÓN
+## PARTE III — GUÍA DE ADOPCIÓN
 
 ## 1. Recomendación de uso
 

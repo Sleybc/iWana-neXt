@@ -69,7 +69,7 @@ La seccion debe mostrarse en este orden:
 
 El dato mas visible del bloque debe ser:
 
-**Responsable actual**
+#### Responsable actual
 
 Esto responde a la necesidad operativa primaria: saber quien tiene el expediente en este momento.
 

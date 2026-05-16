@@ -44,4 +44,11 @@ export class ListScheduleEventsQueryDto {
   @IsOptional()
   @IsString()
   municipality?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filtrar por sector, barrio o vereda (coincidencia parcial)',
+  })
+  @IsOptional()
+  @IsString()
+  sector?: string;
 }

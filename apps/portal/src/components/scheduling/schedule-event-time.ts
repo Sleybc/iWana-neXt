@@ -25,6 +25,9 @@ export const QUICK_DURATION_OPTIONS: QuickDurationOption[] = [
   { label: '3 h', minutes: 180 },
 ];
 
+const INSTALLATION_SCHEDULE_START_MINUTES = 7 * 60;
+const INSTALLATION_SCHEDULE_END_MINUTES = 18 * 60;
+
 export const SCHEDULE_TIME_OPTIONS: TimeOption[] = Array.from({ length: 24 * 4 }, (_, index) => {
   const totalMinutes = index * 15;
   const hours = Math.floor(totalMinutes / 60);
@@ -33,6 +36,52 @@ export const SCHEDULE_TIME_OPTIONS: TimeOption[] = Array.from({ length: 24 * 4 }
 
   return { value, label: value };
 });
+
+export const INSTALLATION_SCHEDULE_TIME_OPTIONS: TimeOption[] = SCHEDULE_TIME_OPTIONS.filter(
+  (option) => {
+    const [hoursPart, minutesPart] = option.value.split(':');
+    const hours = Number(hoursPart);
+    const minutes = Number(minutesPart);
+    const totalMinutes = hours * 60 + minutes;
+
+    return (
+      Number.isFinite(totalMinutes) &&
+      totalMinutes >= INSTALLATION_SCHEDULE_START_MINUTES &&
+      totalMinutes <= INSTALLATION_SCHEDULE_END_MINUTES
+    );
+  },
+);
+
+export function getScheduleTimeOptionsForWorkType(type?: WfmWorkType | null): TimeOption[] {
+  return type === WfmWorkType.INSTALLATION
+    ? INSTALLATION_SCHEDULE_TIME_OPTIONS
+    : SCHEDULE_TIME_OPTIONS;
+}
+
+export function isScheduleWindowAllowedForWorkType(
+  type: WfmWorkType,
+  scheduleWindow: {
+    startAt: Date;
+    endAt: Date;
+  } | null,
+): boolean {
+  if (!scheduleWindow) {
+    return true;
+  }
+
+  if (type !== WfmWorkType.INSTALLATION) {
+    return true;
+  }
+
+  const startMinutes = scheduleWindow.startAt.getHours() * 60 + scheduleWindow.startAt.getMinutes();
+  const endMinutes = scheduleWindow.endAt.getHours() * 60 + scheduleWindow.endAt.getMinutes();
+
+  return (
+    scheduleWindow.startAt.toDateString() === scheduleWindow.endAt.toDateString() &&
+    startMinutes >= INSTALLATION_SCHEDULE_START_MINUTES &&
+    endMinutes <= INSTALLATION_SCHEDULE_END_MINUTES
+  );
+}
 
 export function getDefaultDurationForWorkType(type: WfmWorkType): number {
   switch (type) {
@@ -102,6 +151,26 @@ export function toDateFromLocalDateValue(value?: string): Date | undefined {
   return date;
 }
 
+export function toLocalDateTimeParts(value?: string | Date | null): {
+  dateLocal: string;
+  timeLocal: string;
+} {
+  if (!value) {
+    return { dateLocal: '', timeLocal: '' };
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return { dateLocal: '', timeLocal: '' };
+  }
+
+  return {
+    dateLocal: toLocalDateValue(date),
+    timeLocal: toLocalTimeValue(date),
+  };
+}
+
 export function toLocalTimeValue(value: string | Date): string {
   const date = new Date(value);
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
@@ -151,4 +220,15 @@ export function buildScheduleWindow(
     scheduledStartAtLocal,
     scheduledEndAtLocal: `${endAt.getFullYear()}-${pad(endAt.getMonth() + 1)}-${pad(endAt.getDate())}T${pad(endAt.getHours())}:${pad(endAt.getMinutes())}`,
   };
+}
+
+export function toIsoFromLocalDateAndTime(
+  dateLocal?: string,
+  timeLocal?: string,
+): string | undefined {
+  if (!dateLocal || !timeLocal) {
+    return undefined;
+  }
+
+  return new Date(`${dateLocal}T${timeLocal}`).toISOString();
 }

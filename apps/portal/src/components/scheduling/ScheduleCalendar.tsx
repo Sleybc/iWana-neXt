@@ -109,7 +109,9 @@ export function ScheduleCalendar({ days, techniciansById, onSelectEvent }: Sched
                           </p>
                           <p className="flex items-center gap-2">
                             <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-                            {event.municipality || event.address || 'Ubicación no disponible'}
+                            {[event.address, event.sector, event.municipality]
+                              .filter(Boolean)
+                              .join(' · ') || 'Ubicación no disponible'}
                           </p>
                         </div>
                       </button>

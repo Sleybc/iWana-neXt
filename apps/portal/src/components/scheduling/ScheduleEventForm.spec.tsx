@@ -1,5 +1,6 @@
 import type { ChangeEvent } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { WfmWorkType } from '@iwana/shared';
 import { ScheduleEventForm } from './ScheduleEventForm';
 
 jest.mock('@iwana/ui', () => {
@@ -258,5 +259,28 @@ describe('ScheduleEventForm', () => {
         }),
       );
     });
+  });
+
+  it('restringe las instalaciones al rango 07:00-18:00', () => {
+    render(
+      <ScheduleEventForm
+        technicians={[buildTechnician()]}
+        onSubmit={jest.fn().mockResolvedValue(undefined)}
+        onCancel={jest.fn()}
+        isSubmitting={false}
+        error={null}
+        initialValues={{
+          type: WfmWorkType.INSTALLATION,
+          scheduledStartTimeLocal: '06:30',
+        }}
+      />,
+    );
+
+    const timeSelect = screen.getByLabelText('Hora de llegada');
+
+    expect(timeSelect).toHaveValue('07:00');
+    expect(screen.queryByRole('option', { name: '06:45' })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '07:00' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '18:00' })).toBeInTheDocument();
   });
 });

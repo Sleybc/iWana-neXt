@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
@@ -110,6 +111,7 @@ function buildExpedienteInitialValues(
     description,
     address: response.data.address ?? '',
     municipality: response.data.municipality ?? '',
+    sector: response.data.neighborhood ?? response.data.zoneType ?? '',
     latitude:
       response.data.latitude !== null && response.data.latitude !== undefined
         ? String(response.data.latitude)
@@ -557,9 +559,14 @@ export function SchedulingClient() {
         title="Programacion"
         subtitle="Coordina agenda operativa, atención técnica y work orders ligeras del tenant autenticado."
         actions={
-          <Badge variant="primary" className="px-3 py-1 text-[11px] uppercase tracking-[0.18em]">
-            {formatWfmDayLabel(new Date())}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="primary" className="px-3 py-1 text-[11px] uppercase tracking-[0.18em]">
+              {formatWfmDayLabel(new Date())}
+            </Badge>
+            <Button asChild type="button" variant="secondary">
+              <Link href="/dashboard/scheduling/pending-visits">Bandeja pendiente</Link>
+            </Button>
+          </div>
         }
       />
 
@@ -725,6 +732,7 @@ export function SchedulingClient() {
             technicians={technicians}
             error={createError}
             isSubmitting={isCreateSubmitting}
+            onFindRecommendations={(payload) => wfmApi.recommendations.create(payload)}
             lockOperationalFlow={Boolean(expedienteContextId)}
             onCancel={() => {
               setIsCreateOpen(false);

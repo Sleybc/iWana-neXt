@@ -90,6 +90,9 @@ export class ScheduleEvent {
   @Column({ type: 'varchar', length: 120, nullable: true })
   municipality: string | null;
 
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  sector: string | null;
+
   @Column({ type: 'numeric', precision: 10, scale: 7, nullable: true })
   latitude: string | null;
 

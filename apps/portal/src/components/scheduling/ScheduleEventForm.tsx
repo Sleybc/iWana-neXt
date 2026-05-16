@@ -7,22 +7,29 @@ import { z } from 'zod';
 import { Button, DatePicker, Input, Select } from '@iwana/ui';
 import { WfmWorkType, WorkOrderPriority, WorkOrderSourceContext } from '@iwana/shared';
 import { Clock3 } from 'lucide-react';
-import type { CreateWfmScheduleEventDto, InternalUser } from '@/lib/api-client';
+import type {
+  CreateWfmScheduleEventDto,
+  InternalUser,
+  WfmScheduleRecommendation,
+  WfmScheduleRecommendationRequestDto,
+} from '@/lib/api-client';
 import { PortalAlert } from '@/components/shared/portal-ui';
 import {
   WORK_ORDER_PRIORITY_OPTIONS,
   WORK_ORDER_SOURCE_CONTEXT_OPTIONS,
   WFM_WORK_TYPE_OPTIONS,
   buildTechnicianOptions,
+  getTechnicianDisplayName,
   toIsoFromDatetimeLocal,
 } from './scheduling-ui';
 import {
   QUICK_DURATION_OPTIONS,
-  SCHEDULE_TIME_OPTIONS,
   buildDefaultScheduleStart,
   buildScheduleWindow,
   deriveDurationMinutes,
   getDefaultDurationForWorkType,
+  getScheduleTimeOptionsForWorkType,
+  isScheduleWindowAllowedForWorkType,
   toDateFromLocalDateValue,
   toLocalDateValue,
   toLocalTimeValue,
@@ -54,6 +61,22 @@ function buildOptionalCoordinateField(label: string, min: number, max: number) {
     );
 }
 
+function parseOptionalNumber(value: string | undefined): number | null {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatRecommendationRange(recommendation: WfmScheduleRecommendation): string {
+  return `${toLocalDateValue(recommendation.scheduledStartAt)} ${toLocalTimeValue(
+    recommendation.scheduledStartAt,
+  )} - ${toLocalTimeValue(recommendation.scheduledEndAt)}`;
+}
+
 const scheduleEventFormSchema = z
   .object({
     type: z.nativeEnum(WfmWorkType, { required_error: 'Selecciona un tipo de trabajo.' }),
@@ -69,6 +92,7 @@ const scheduleEventFormSchema = z
     assignedUserId: z.string().uuid('Selecciona un técnico válido.'),
     address: z.string().trim().max(255, 'Máximo 255 caracteres.').optional().or(z.literal('')),
     municipality: z.string().trim().max(120, 'Máximo 120 caracteres.').optional().or(z.literal('')),
+    sector: z.string().trim().max(120, 'Máximo 120 caracteres.').optional().or(z.literal('')),
     latitude: buildOptionalCoordinateField('La latitud', -90, 90),
     longitude: buildOptionalCoordinateField('La longitud', -180, 180),
     expedienteId: optionalUuidField,
@@ -117,6 +141,14 @@ const scheduleEventFormSchema = z
       });
     }
 
+    if (!isScheduleWindowAllowedForWorkType(values.type, scheduleWindow)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['scheduledStartTimeLocal'],
+        message: 'Las instalaciones solo se programan entre 07:00 y 18:00.',
+      });
+    }
+
     if (values.createWorkOrder && !values.workOrderSummary?.trim()) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -133,6 +165,9 @@ export type ScheduleEventFormInitialValues = Partial<ScheduleEventFormValues>;
 interface ScheduleEventFormProps {
   technicians: InternalUser[];
   onSubmit: (payload: CreateWfmScheduleEventDto) => Promise<void>;
+  onFindRecommendations?: (
+    payload: WfmScheduleRecommendationRequestDto,
+  ) => Promise<WfmScheduleRecommendation[]>;
   onCancel: () => void;
   isSubmitting: boolean;
   error: string | null;
@@ -155,6 +190,7 @@ function buildDefaultFormValues(): ScheduleEventFormValues {
     assignedUserId: '',
     address: '',
     municipality: '',
+    sector: '',
     latitude: '',
     longitude: '',
     expedienteId: '',
@@ -186,6 +222,7 @@ function buildResolvedFormValues(
 export function ScheduleEventForm({
   technicians,
   onSubmit,
+  onFindRecommendations,
   onCancel,
   isSubmitting,
   error,
@@ -215,9 +252,18 @@ export function ScheduleEventForm({
   }, [defaultValues, reset]);
 
   const createWorkOrder = watch('createWorkOrder');
+  const type = watch('type');
   const scheduledDateLocal = watch('scheduledDateLocal');
   const scheduledStartTimeLocal = watch('scheduledStartTimeLocal');
   const durationMinutes = watch('durationMinutes');
+  const municipality = watch('municipality');
+  const sector = watch('sector');
+  const latitude = watch('latitude');
+  const longitude = watch('longitude');
+  const assignedUserId = watch('assignedUserId');
+  const [recommendations, setRecommendations] = useState<WfmScheduleRecommendation[]>([]);
+  const [recommendationError, setRecommendationError] = useState<string | null>(null);
+  const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
   const [durationMode, setDurationMode] = useState<'quick' | 'custom'>(() =>
     QUICK_DURATION_OPTIONS.some((option) => option.minutes === defaultValues.durationMinutes)
       ? 'quick'
@@ -228,6 +274,7 @@ export function ScheduleEventForm({
     () => buildScheduleWindow(scheduledDateLocal, scheduledStartTimeLocal, durationMinutes),
     [scheduledDateLocal, scheduledStartTimeLocal, durationMinutes],
   );
+  const scheduleTimeOptions = useMemo(() => getScheduleTimeOptionsForWorkType(type), [type]);
   const durationHours = Math.floor(Math.max(durationMinutes || 0, 0) / 60);
   const durationRemainderMinutes = Math.max(durationMinutes || 0, 0) % 60;
 
@@ -238,6 +285,23 @@ export function ScheduleEventForm({
         : 'custom',
     );
   }, [defaultValues.durationMinutes]);
+
+  useEffect(() => {
+    if (!scheduledStartTimeLocal) {
+      return;
+    }
+
+    if (!scheduleTimeOptions.some((option) => option.value === scheduledStartTimeLocal)) {
+      const fallbackTime = scheduleTimeOptions[0]?.value;
+
+      if (fallbackTime) {
+        setValue('scheduledStartTimeLocal', fallbackTime, {
+          shouldDirty: false,
+          shouldValidate: true,
+        });
+      }
+    }
+  }, [scheduleTimeOptions, scheduledStartTimeLocal, setValue]);
 
   return (
     <form
@@ -251,6 +315,7 @@ export function ScheduleEventForm({
         );
         const latitude = values.latitude?.trim();
         const longitude = values.longitude?.trim();
+        const sector = values.sector?.trim();
         const expedienteId = values.expedienteId?.trim();
         const subscriberId = values.subscriberId?.trim();
         const contractId = values.contractId?.trim();
@@ -271,6 +336,7 @@ export function ScheduleEventForm({
         if (values.description?.trim()) payload.description = values.description.trim();
         if (values.address?.trim()) payload.address = values.address.trim();
         if (values.municipality?.trim()) payload.municipality = values.municipality.trim();
+        if (sector) payload.sector = sector;
         if (latitude) payload.latitude = Number(latitude);
         if (longitude) payload.longitude = Number(longitude);
         if (expedienteId) payload.expedienteId = expedienteId;
@@ -383,7 +449,7 @@ export function ScheduleEventForm({
                 label="Hora de llegada"
                 value={field.value}
                 placeholder="Selecciona una hora"
-                options={SCHEDULE_TIME_OPTIONS}
+                options={scheduleTimeOptions}
                 onChange={(event) => field.onChange(event.target.value)}
                 disabled={isSubmitting}
                 {...(errors.scheduledStartTimeLocal?.message
@@ -523,6 +589,163 @@ export function ScheduleEventForm({
         />
       </section>
 
+      {onFindRecommendations && (
+        <section className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                Asistente de agenda
+              </p>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                Mejor franja por zona y ruta
+              </h3>
+              <p className="max-w-2xl text-sm text-gray-500 dark:text-gray-400">
+                Busca franjas libres y prioriza técnicos con tareas cercanas por municipio,
+                sector/vereda y coordenadas.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              loading={isLoadingRecommendations}
+              disabled={isSubmitting || isLoadingRecommendations || technicians.length === 0}
+              onClick={async () => {
+                if (!scheduledDateLocal) {
+                  setRecommendationError('Selecciona una fecha para buscar disponibilidad.');
+                  return;
+                }
+
+                if (!Number.isFinite(durationMinutes) || durationMinutes < 15) {
+                  setRecommendationError('Define una duración válida antes de buscar franjas.');
+                  return;
+                }
+
+                const parsedLatitude = parseOptionalNumber(latitude);
+                const parsedLongitude = parseOptionalNumber(longitude);
+                const hasInvalidCoordinates =
+                  (latitude?.trim() && parsedLatitude === null) ||
+                  (longitude?.trim() && parsedLongitude === null);
+
+                if (hasInvalidCoordinates) {
+                  setRecommendationError('Corrige las coordenadas antes de buscar franjas.');
+                  return;
+                }
+
+                setIsLoadingRecommendations(true);
+                setRecommendationError(null);
+
+                try {
+                  const result = await onFindRecommendations({
+                    workType: type,
+                    durationMinutes,
+                    windowStartAt: toIsoFromDatetimeLocal(`${scheduledDateLocal}T07:00`),
+                    windowEndAt: toIsoFromDatetimeLocal(`${scheduledDateLocal}T18:00`),
+                    candidateUserIds: technicians.map((technician) => technician.id),
+                    municipality: municipality?.trim() || null,
+                    sector: sector?.trim() || null,
+                    latitude: parsedLatitude,
+                    longitude: parsedLongitude,
+                    maxResults: 8,
+                  });
+
+                  setRecommendations(result);
+                  if (result.length === 0) {
+                    setRecommendationError(
+                      'No encontramos una franja libre en la jornada seleccionada.',
+                    );
+                  }
+                } catch {
+                  setRecommendationError('No fue posible calcular recomendaciones de agenda.');
+                } finally {
+                  setIsLoadingRecommendations(false);
+                }
+              }}
+            >
+              Buscar mejores franjas
+            </Button>
+          </div>
+
+          {recommendationError && (
+            <PortalAlert
+              variant="warning"
+              title="Sin recomendación aplicable"
+              description={recommendationError}
+            />
+          )}
+
+          {recommendations.length > 0 && (
+            <div className="grid gap-3 md:grid-cols-2">
+              {recommendations.map((recommendation) => {
+                const technician = technicians.find(
+                  (item) => item.id === recommendation.technicianId,
+                );
+                const isSelected = assignedUserId === recommendation.technicianId;
+
+                return (
+                  <button
+                    key={`${recommendation.technicianId}-${recommendation.scheduledStartAt}`}
+                    type="button"
+                    className={`rounded-2xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-dark-surface-2 ${
+                      isSelected &&
+                      scheduledStartTimeLocal === toLocalTimeValue(recommendation.scheduledStartAt)
+                        ? 'border-iwana-primary bg-iwana-primary-50/70 dark:border-iwana-primary-300 dark:bg-iwana-primary-400/10'
+                        : 'border-gray-200 bg-[#fbfcf8] hover:border-iwana-primary/40 dark:border-dark-border dark:bg-dark-surface-3'
+                    }`}
+                    onClick={() => {
+                      const startAt = new Date(recommendation.scheduledStartAt);
+                      setValue('assignedUserId', recommendation.technicianId, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      });
+                      setValue('scheduledDateLocal', toLocalDateValue(startAt), {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      });
+                      setValue('scheduledStartTimeLocal', toLocalTimeValue(startAt), {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      });
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium text-gray-900 dark:text-white">
+                          {technician
+                            ? getTechnicianDisplayName(technician)
+                            : 'Técnico no disponible'}
+                        </p>
+                        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                          {formatRecommendationRange(recommendation)}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-iwana-secondary-100 px-2.5 py-1 text-xs font-semibold text-iwana-secondary-700 dark:bg-iwana-secondary-400/15 dark:text-iwana-secondary-300">
+                        {recommendation.score} pts
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {recommendation.labels.map((label) => (
+                        <span
+                          key={label}
+                          className="rounded-full border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-300"
+                        >
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                      {recommendation.distanceKm !== null
+                        ? `Referencia cercana a ${recommendation.distanceKm} km.`
+                        : 'Recomendación basada en disponibilidad, carga y horario.'}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
       <div>
         <label
           htmlFor="schedule-event-description"
@@ -558,6 +781,13 @@ export function ScheduleEventForm({
           error={errors.municipality?.message}
           disabled={isSubmitting}
           {...register('municipality')}
+        />
+        <Input
+          id="schedule-event-sector"
+          label="Sector / vereda"
+          error={errors.sector?.message}
+          disabled={isSubmitting}
+          {...register('sector')}
         />
       </div>
 

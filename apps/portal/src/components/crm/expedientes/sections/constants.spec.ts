@@ -2,6 +2,7 @@ import type { ExpedienteRecord } from '@/lib/api-client';
 import {
   applyIdentificationDerivedDefaults,
   buildDraftValues,
+  getIdentificationValidationMessage,
   getSectionCompletionFields,
   canonicalizeExpedientePersonType,
 } from './constants';
@@ -120,5 +121,43 @@ describe('sections constants', () => {
       'latitude',
       'longitude',
     ]);
+  });
+
+  it('valida contacto principal cuando la identificación es persona jurídica', () => {
+    expect(
+      getIdentificationValidationMessage({
+        personType: 'PERSONA_JURIDICA',
+        documentType: 'NIT',
+        documentNumber: '900123456',
+        companyName: 'Empresa Demo SAS',
+        primaryContactName: '',
+        primaryContactRole: 'Representante legal',
+      }),
+    ).toBe('Nombre del contacto principal es requerido.');
+  });
+
+  it('valida apellidos cuando la identificación es persona natural', () => {
+    expect(
+      getIdentificationValidationMessage({
+        personType: 'PERSONA_NATURAL',
+        documentType: 'CC',
+        documentNumber: '1012345678',
+        firstName: 'Laura',
+        lastName: '   ',
+      }),
+    ).toBe('Apellidos es requerido.');
+  });
+
+  it('permite guardar identificación cuando los campos requeridos están completos', () => {
+    expect(
+      getIdentificationValidationMessage({
+        personType: 'PERSONA_JURIDICA',
+        documentType: 'NIT',
+        documentNumber: '900123456',
+        companyName: 'Empresa Demo SAS',
+        primaryContactName: 'Laura Perez',
+        primaryContactRole: 'Representante legal',
+      }),
+    ).toBeNull();
   });
 });

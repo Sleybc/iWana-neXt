@@ -98,7 +98,9 @@ export function ScheduleList({ events, techniciansById, onSelectEvent }: Schedul
                       {formatWfmDateRange(event.scheduledStartAt, event.scheduledEndAt)}
                     </td>
                     <td className="align-middle px-4 py-3 text-gray-600 dark:text-gray-300">
-                      {event.municipality || event.address || 'No disponible'}
+                      {[event.address, event.sector, event.municipality]
+                        .filter(Boolean)
+                        .join(' · ') || 'No disponible'}
                     </td>
                     <td className="align-middle px-4 py-3 text-right">
                       <Button

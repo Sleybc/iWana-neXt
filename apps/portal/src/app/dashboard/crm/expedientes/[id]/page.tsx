@@ -62,6 +62,7 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import {
   ACQUISITION_CHANNEL_OPTIONS,
   applyIdentificationDerivedDefaults,
+  getIdentificationValidationMessage,
   hasPersistedIdentificationData,
   getSectionPayloadFields,
   buildDraftValues,
@@ -453,6 +454,16 @@ export default function ExpedienteDetailPage() {
       return;
     }
 
+    if (section === 'identification') {
+      const validationMessage = getIdentificationValidationMessage(draftValues);
+
+      if (validationMessage) {
+        setActionMessageTone('error');
+        setActionMessage(validationMessage);
+        return;
+      }
+    }
+
     const fieldsToSend = getSectionPayloadFields(section, effectivePersonType);
 
     const payload = fieldsToSend.reduce<Record<string, unknown>>((accumulator, field) => {
@@ -549,7 +560,7 @@ export default function ExpedienteDetailPage() {
         ) {
           setActionMessageTone('info');
           setActionMessage(
-            'Para cerrar la oportunidad como instalación agendada debes crear el evento operativo. Te llevamos a Programación con este expediente preseleccionado.',
+            'Para cerrar la oportunidad como instalación agendada debes crear la solicitud operativa. Te llevamos a la bandeja pendiente con este expediente preseleccionado.',
           );
           router.push(buildSchedulingHref(id));
           return;
