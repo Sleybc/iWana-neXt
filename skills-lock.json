@@ -2,53 +2,52 @@
   "version": 1,
   "skills": {
     "brainstorming": {
-      "source": "obra/superpowers",
-      "sourceType": "github",
-      "computedHash": "f483c304fcde060211ffae00f49bb728536e7e7613c99db45b5b924d9fc17243"
+      "source": ".agents/skills/brainstorming",
+      "sourceType": "workspace"
     },
     "dispatching-parallel-agents": {
-      "source": "obra/superpowers",
-      "sourceType": "github"
+      "source": ".agents/skills/dispatching-parallel-agents",
+      "sourceType": "workspace"
     },
     "executing-plans": {
-      "source": "obra/superpowers",
-      "sourceType": "github"
+      "source": ".agents/skills/executing-plans",
+      "sourceType": "workspace"
     },
     "finishing-a-development-branch": {
-      "source": "obra/superpowers",
-      "sourceType": "github"
+      "source": ".agents/skills/finishing-a-development-branch",
+      "sourceType": "workspace"
     },
     "receiving-code-review": {
-      "source": "obra/superpowers",
-      "sourceType": "github"
+      "source": ".agents/skills/receiving-code-review",
+      "sourceType": "workspace"
     },
     "requesting-code-review": {
-      "source": "obra/superpowers",
-      "sourceType": "github"
+      "source": ".agents/skills/requesting-code-review",
+      "sourceType": "workspace"
     },
     "subagent-driven-development": {
-      "source": "obra/superpowers",
-      "sourceType": "github"
+      "source": ".agents/skills/subagent-driven-development",
+      "sourceType": "workspace"
     },
     "systematic-debugging": {
-      "source": "obra/superpowers",
-      "sourceType": "github"
+      "source": ".agents/skills/systematic-debugging",
+      "sourceType": "workspace"
     },
     "using-git-worktrees": {
-      "source": "obra/superpowers",
-      "sourceType": "github"
+      "source": ".agents/skills/using-git-worktrees",
+      "sourceType": "workspace"
     },
     "verification-before-completion": {
-      "source": "obra/superpowers",
-      "sourceType": "github"
+      "source": ".agents/skills/verification-before-completion",
+      "sourceType": "workspace"
     },
     "writing-plans": {
-      "source": "obra/superpowers",
-      "sourceType": "github"
+      "source": ".agents/skills/writing-plans",
+      "sourceType": "workspace"
     },
     "writing-skills": {
-      "source": "obra/superpowers",
-      "sourceType": "github"
+      "source": ".agents/skills/writing-skills",
+      "sourceType": "workspace"
     }
   }
 }
