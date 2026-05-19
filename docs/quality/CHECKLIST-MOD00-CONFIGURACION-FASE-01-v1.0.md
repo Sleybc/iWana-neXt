@@ -9,7 +9,7 @@
 **ADR:** docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md  
 **PRD:** docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md  
 **HLD:** docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md  
-**Plan:** docs/superpowers/plans/2026-05-19-mod00-configuracion-control-plane.md  
+**Plan:** docs/plans/2026-05-19-mod00-configuracion-control-plane.md  
 **Prompt:** docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-01-v1.0.md
 
 ---

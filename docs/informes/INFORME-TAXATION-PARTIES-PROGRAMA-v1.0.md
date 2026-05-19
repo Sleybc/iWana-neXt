@@ -74,9 +74,9 @@
 - **Tratamiento de IVA:** el sistema puede sugerir tratamiento por estrato, pero la confirmación final queda en el área de facturación.
 - **Tributos territoriales:** no se disparan por municipio de residencia de forma general. Se configuran para casos específicos, en especial entidades públicas colombianas, que son personas jurídicas con tributos propios.
 - **Artefactos actualizados:**
-  - `docs/superpowers/specs/2026-04-21-taxation-bounded-context-design.md` (addendum MVP)
-  - `docs/superpowers/specs/2026-04-20-reglas-comerciales-design.md` (addendum MVP)
-  - `docs/superpowers/specs/2026-04-22-taxation-mvp-tributos-por-cliente-design.md` (nuevo)
+  - `docs/specs/2026-04-21-taxation-bounded-context-design.md` (addendum MVP)
+  - `docs/specs/2026-04-20-reglas-comerciales-design.md` (addendum MVP)
+  - `docs/specs/2026-04-22-taxation-mvp-tributos-por-cliente-design.md` (nuevo)
   - `docs/prompts/PROMPT-TAXATION-MVP-TRIBUTOS-CLIENTE-v1.0.md` (nuevo)
   - `docs/sprints/PLAN-TAXATION-MVP-TRIBUTOS-CLIENTE-v1.0.md` (nuevo)
 - **Aprobación de gobierno:** CTO aprueba el spec MVP 2026-04-22 y habilita transición a ejecución.
@@ -544,7 +544,7 @@ _Vacío._
 - `docs/hlds/HLD-MOD08-PARTIES-v1.0.md`
 - `docs/hlds/HLD-MOD06-TAXATION-DEPENDENCY-v1.1-addendum.md`
 - `docs/hlds/HLD-MOD05-PARTIES-DEPENDENCY-v2.1-addendum.md`
-- `docs/superpowers/specs/2026-04-21-taxation-bounded-context-design.md`
-- `docs/superpowers/specs/2026-04-21-parties-multi-rol-design.md`
-- `docs/superpowers/specs/2026-04-20-reglas-comerciales-design.md`
+- `docs/specs/2026-04-21-taxation-bounded-context-design.md`
+- `docs/specs/2026-04-21-parties-multi-rol-design.md`
+- `docs/specs/2026-04-20-reglas-comerciales-design.md`
 - `docs/prompts/PROMPT-TAXATION-PARTIES-COMMERCIAL-FASE-01-v1.0.md`

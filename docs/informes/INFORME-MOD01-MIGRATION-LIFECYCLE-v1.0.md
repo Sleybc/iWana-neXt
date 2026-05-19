@@ -8,7 +8,7 @@
 
 - Plantilla base: docs/informes/TEMPLATE-INFORME-FASE-v1.0.md
 - Spec: docs/specs/2026-03-31-migration-lifecycle-multi-tenant-design.md
-- Plan: docs/superpowers/plans/2026-03-31-migration-lifecycle-multi-tenant-plan.md
+- Plan: docs/plans/2026-03-31-migration-lifecycle-multi-tenant-plan.md
 - Politica de ejecucion: ADR-022
 
 ---
@@ -106,7 +106,7 @@ Segun el PRD (seccion 13.3):
 ## 5. Cambios documentales
 
 - **Spec:** docs/specs/2026-03-31-migration-lifecycle-multi-tenant-design.md (nuevo)
-- **Plan:** docs/superpowers/plans/2026-03-31-migration-lifecycle-multi-tenant-plan.md (nuevo)
+- **Plan:** docs/plans/2026-03-31-migration-lifecycle-multi-tenant-plan.md (nuevo)
 - **HLD actualizado:** HLD-MOD01-ARQUITECTURA-v1.0.md (seccion 3 - Modelo de Datos)
 - **ADR nuevo o referenciado:** ADR-017 (Provisioning Schema-per-tenant), ADR-022 (Politica de ejecucion)
 - **Otros documentos afectados:** CHECKLIST-RIESGOS-SPRINT-01-v1.0.md

@@ -1,6 +1,6 @@
 # MOD00 Configuracion Fase 02 WFM Integration Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use subagent-driven-development (recommended) or executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Connect WFM with MOD00 Organization/Sites through approved ports and gradual compatibility, without breaking existing Work Orders or schedules.
 

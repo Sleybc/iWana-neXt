@@ -33,10 +33,10 @@ Integrar WFM con las sedes organizacionales creadas en Fase 01, preservando comp
 - ADR MOD00: docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md
 - PRD MOD00: docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md
 - HLD MOD00: docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md
-- Plan Fase 02: docs/superpowers/plans/2026-05-19-mod00-configuracion-fase-02-wfm-integration.md
+- Plan Fase 02: docs/plans/2026-05-19-mod00-configuracion-fase-02-wfm-integration.md
 - Checklist Fase 02: docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-02-v1.0.md
 - ADR WFM: docs/adrs/ADR-037-Bounded-Context-Programacion-WFM.md
-- Spec WFM: docs/superpowers/specs/2026-05-15-mod09-wfm-operating-hours-design.md
+- Spec WFM: docs/specs/2026-05-15-mod09-wfm-operating-hours-design.md
 
 ## 3. Instrucciones para Sr. Dev Fullstack
 

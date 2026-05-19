@@ -60,7 +60,7 @@ Multi-fase aditiva (detalle en HLD-MOD08 §7). CRM mantiene su API actual durant
 
 ## 8. Pendientes
 
-- Spec operativa de migración por fases, incluida en `docs/superpowers/specs/2026-04-21-parties-multi-rol-design.md`.
+- Spec operativa de migración por fases, incluida en `docs/specs/2026-04-21-parties-multi-rol-design.md`.
 - ADR operativo para renombre físico de `users` → `user_accounts` si se confirma.
 
 ## 9. Referencias

@@ -33,7 +33,7 @@ Convertir settings en un shell federado donde MOD00 organiza navegacion y estado
 - ADR MOD00: docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md
 - PRD MOD00: docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md
 - HLD MOD00: docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md
-- Plan Fase 03: docs/superpowers/plans/2026-05-19-mod00-configuracion-fase-03-settings-federados.md
+- Plan Fase 03: docs/plans/2026-05-19-mod00-configuracion-fase-03-settings-federados.md
 - Checklist Fase 03: docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-03-v1.0.md
 - ADR Commercial: docs/adrs/ADR-028-Extraccion-Modulo-Comercial.md
 - ADR WFM: docs/adrs/ADR-037-Bounded-Context-Programacion-WFM.md

@@ -16,9 +16,9 @@
 | PRD vigente (v2.0)        | `docs/prds/PRD-MOD05-CRM-DEFINICION-v2.0.md`                 |
 | PRD previo (v1.1)         | _(eliminado — referencia historica)_                         |
 | PRD original (v1.0)       | _(eliminado — referencia historica)_                         |
-| Spec expediente único     | `docs/superpowers/specs/SPEC-MOD05-EXPEDIENTE-UNICO-v1.0.md` |
-| Spec rediseño             | `docs/superpowers/specs/SPEC-MOD05-REDISENO-v1.0.md`         |
-| Spec simplificación vista general | `docs/superpowers/specs/2026-05-05-crm-expediente-vista-general-simplificacion-design.md` |
+| Spec expediente único     | `docs/specs/SPEC-MOD05-EXPEDIENTE-UNICO-v1.0.md` |
+| Spec rediseño             | `docs/specs/SPEC-MOD05-REDISENO-v1.0.md`         |
+| Spec simplificación vista general | `docs/specs/2026-05-05-crm-expediente-vista-general-simplificacion-design.md` |
 | Spec post-conversión CRM/subscriber | `docs/specs/SPEC-MOD05-CRM-POSTCONVERSION-FULLSTACK-v1.0.md` |
 | HLD vigente (v2.0)        | `docs/hlds/HLD-MOD05-ARQUITECTURA-v2.0.md`                   |
 | HLD previo (v1.0)         | _(eliminado — referencia historica)_                         |
@@ -76,7 +76,7 @@ El Sprint 01 implementó un flujo funcional pero limitado: solo nombre + fuente 
 
 - `docs/prds/PRD_Sistema_ISP_Colombia_v2_2.md` — §5.1 (RF-CRM), §6.2-6.4 (modelo de datos), §14.2 (roadmap)
 - `docs/prds/Stack_Tecnologico.md`
-- `docs/superpowers/specs/SPEC-MOD05-REDISENO-v1.0.md`
+- `docs/specs/SPEC-MOD05-REDISENO-v1.0.md`
 - `docs/prds/PRD-MOD01-DEFINICION-v1.1.md`
 - `docs/prds/PRD-MOD02-DASHBOARD-EMPRESA-v1.0.md`
 - `docs/prds/PRD-MOD03-CONFIGURACION-EMPRESA-v1.0.md`
@@ -124,7 +124,7 @@ Esta actualización del informe es documental. Se consolidaron artefactos de dis
 
 Avances documentales de esta actualización:
 
-- Spec de rediseño emitida en `docs/superpowers/specs/SPEC-MOD05-REDISENO-v1.0.md`.
+- Spec de rediseño emitida en `docs/specs/SPEC-MOD05-REDISENO-v1.0.md`.
 - PRD revisado emitido en `docs/prds/PRD-MOD05-CRM-DEFINICION-v1.1.md`.
 - HLD emitido en `docs/hlds/HLD-MOD05-ARQUITECTURA-v1.0.md`.
 - Alineación explícita con decisiones de negocio sobre potenciales, prospectos, activación, revisión y política configurable.
@@ -365,7 +365,7 @@ Conclusión operativa:
 
 | Documento                                                    | Tipo                            | Estado                         |
 | ------------------------------------------------------------ | ------------------------------- | ------------------------------ |
-| `docs/superpowers/specs/SPEC-MOD05-REDISENO-v1.0.md`         | Spec de rediseño                | Base aprobada de referencia    |
+| `docs/specs/SPEC-MOD05-REDISENO-v1.0.md`         | Spec de rediseño                | Base aprobada de referencia    |
 | `docs/prds/PRD-MOD05-CRM-DEFINICION-v2.0.md`                 | PRD vigente                     | Aprobado por CTO               |
 | `docs/prds/PRD-MOD05-CRM-ADDENDUM-CIERRE-v2.1.md`            | Addendum de cierre Sprint 02    | Aprobado para cierre extendido |
 | `docs/prds/PRD-MOD05-CRM-ORIGEN-ATRIBUCION-v1.1.md`          | PRD operativo de origen/atribución | Aprobado por CTO |
@@ -375,8 +375,8 @@ Conclusión operativa:
 | `docs/sprints/PLAN-MOD05-CRM-SPRINT-02-v1.0.md`              | Plan de sprint vigente (v1.1)   | Aprobado con cierre extendido  |
 | `docs/prompts/PROMPT-MOD05-CRM-FASE-02-v1.0.md`              | Prompt ejecución vigente (v1.1) | Aprobado con cierre extendido  |
 | `docs/prompts/PROMPT-MOD05-CRM-ORIGEN-ATRIBUCION-FASE1-v1.1.md` | Prompt operativo de origen/atribución | Aprobado por CTO |
-| `docs/superpowers/specs/SPEC-MOD05-EXPEDIENTE-UNICO-v1.0.md` | Spec expediente único           | Aprobado por CTO               |
-| `docs/superpowers/specs/2026-05-05-crm-expediente-vista-general-simplificacion-design.md` | Spec refinamiento visual de vista general | Aprobado |
+| `docs/specs/SPEC-MOD05-EXPEDIENTE-UNICO-v1.0.md` | Spec expediente único           | Aprobado por CTO               |
+| `docs/specs/2026-05-05-crm-expediente-vista-general-simplificacion-design.md` | Spec refinamiento visual de vista general | Aprobado |
 | `docs/specs/SPEC-MOD05-CRM-POSTCONVERSION-FULLSTACK-v1.0.md` | Spec post-conversión CRM/subscriber | En revisión ejecutada |
 | Este informe                                                 | Informe vivo de definición      | Actualizado v4.3               |
 
@@ -487,12 +487,12 @@ Se aplicó un segundo refinamiento para corregir el flujo de negocio real del IS
 | Documento                  | Ruta                                                         | Estado                  |
 | -------------------------- | ------------------------------------------------------------ | ----------------------- |
 | PRD v2.0                   | `docs/prds/PRD-MOD05-CRM-DEFINICION-v2.0.md`                 | Aprobado por CTO        |
-| Spec expediente único      | `docs/superpowers/specs/SPEC-MOD05-EXPEDIENTE-UNICO-v1.0.md` | Aprobado por CTO        |
+| Spec expediente único      | `docs/specs/SPEC-MOD05-EXPEDIENTE-UNICO-v1.0.md` | Aprobado por CTO        |
 | HLD v2.0                   | `docs/hlds/HLD-MOD05-ARQUITECTURA-v2.0.md`                   | Aprobado por CTO        |
 | ADR-024                    | `docs/adrs/ADR-024-Migracion-CRM-Expediente-Unico.md`        | Aprobado                |
 | ADR-026                    | `docs/adrs/ADR-026-Pipeline-CRM-8-Estados.md`                | Aprobado                |
-| Spec correctivo 2026-05-05 | `docs/superpowers/specs/2026-05-05-crm-pipeline-completeness-read-model-design.md` | Aprobado |
-| Spec simplificación vista general 2026-05-05 | `docs/superpowers/specs/2026-05-05-crm-expediente-vista-general-simplificacion-design.md` | Aprobado |
+| Spec correctivo 2026-05-05 | `docs/specs/2026-05-05-crm-pipeline-completeness-read-model-design.md` | Aprobado |
+| Spec simplificación vista general 2026-05-05 | `docs/specs/2026-05-05-crm-expediente-vista-general-simplificacion-design.md` | Aprobado |
 | Sprint plan 02             | `docs/sprints/PLAN-MOD05-CRM-SPRINT-02-v1.0.md`              | Aprobado                |
 | Prompt ejecución Fase 02   | `docs/prompts/PROMPT-MOD05-CRM-FASE-02-v1.0.md`              | Aprobado para ejecución |
 | Este informe (actualizado) | `docs/informes/INFORME-MOD05-DEFINICION-v1.0.md`             | Actualizado v4.2        |
@@ -616,7 +616,7 @@ Corrección aplicada:
 
 Artefacto de diseño emitido:
 
-- `docs/superpowers/specs/2026-05-05-crm-expediente-vista-general-simplificacion-design.md`
+- `docs/specs/2026-05-05-crm-expediente-vista-general-simplificacion-design.md`
 
 Pendientes para cierre definitivo:
 
@@ -916,7 +916,7 @@ Decisiones aprobadas en brainstorming y formalizadas en spec:
 
 Artefacto emitido:
 
-- `docs/superpowers/specs/2026-03-27-mod05-identificacion-refinement-design.md`
+- `docs/specs/2026-03-27-mod05-identificacion-refinement-design.md`
 
 Revisión arquitectónica aplicada:
 

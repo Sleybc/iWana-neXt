@@ -3,7 +3,7 @@
 **Modo activo:** Mixto
 **Version:** 1.1
 **Estado:** Aprobado
-**Fecha:** 2026-05-04
+**Fecha:** 2026-05-19
 **Convencion documental:** {TIPO}-{MODULO}-{FASE}-v{VERSION}.md
 
 ## Vinculos de trazabilidad
@@ -26,7 +26,7 @@
 ## 1. Resumen ejecutivo
 
 - Objetivo de la fase: auditar la carpeta .agents/skills para detectar inconsistencias estructurales, duplicados, dependencias inciertas y skills fuera de scope para iWana neXt.
-- Resultado alcanzado: se confirmo el exceso de catalogo y, como accion correctiva, se redujo el set activo a 23 skills core alineadas al proyecto; 685 entradas no activas fueron movidas a .agents/skills-archive/ para futura evaluacion o restauracion controlada.
+- Resultado alcanzado: la auditoria original redujo el catalogo a un set core operativo y la actualizacion del 2026-05-19 dejo el estado vivo alineado al repo actual: 41 skills activas documentadas en `.agents/skills`, 10 workflow skills habilitadas por `skills-lock.json`, sin directorio local `.agents/skills-archive/` y con referencias legacy `docs/superpowers/*` migradas a `docs/specs/*` y `docs/plans/*`.
 - Estado: Completa
 
 ## 2. Metodologia aplicada
@@ -82,9 +82,10 @@
   - 4 aliases raiz confirmados como archivos y no como carpetas.
   - 1 duplicado funcional confirmado con diferencias nominales minimas.
   - 1 par adicional de solapamiento fuerte confirmado en error tracing.
-  - 23 skills quedaron activas en .agents/skills.
-  - 685 entradas no activas fueron archivadas en .agents/skills-archive.
-  - El archivo quedo compuesto por 681 directorios y 4 archivos legacy.
+  - 23 skills quedaron activas tras la auditoria original.
+  - El estado vivo al 2026-05-19 registra 41 skills documentadas en `.agents/skills`.
+  - `skills-lock.json` habilita 10 workflow skills para la sesion operativa actual.
+  - El repo ya no mantiene un directorio local `.agents/skills-archive/`.
 
 ## 5. Matriz de clasificacion
 
@@ -104,18 +105,18 @@
 - Se mantuvieron activas solo las skills consideradas core para el proyecto.
 - Set final activo: architect-review, architecture-decision-records, auth-implementation-patterns, backend-security-coder, bullmq-specialist, core-components, docker-expert, frontend-dev-guidelines, frontend-security-coder, i18n-localization, mermaid-expert, monorepo-architect, nestjs-expert, nextjs-app-router-patterns, openapi-spec-generation, playwright-skill, postgresql, security-auditor, tailwind-patterns, test-driven-development, testing-patterns, typescript-expert y wcag-audit-patterns.
 
-### 6.2 Archivo de skills no activas
+### 6.2 Tratamiento del material no activo
 
-- Se creo la ruta .agents/skills-archive/ como contenedor de skills no activas.
-- La depuracion se hizo por movimiento, no por borrado irreversible.
-- Esto permite una fase posterior de potencializacion sin perder material historico.
+- Durante la auditoria original se uso un archivo local temporal para separar material no activo.
+- En el estado actual del repo ese directorio ya no existe.
+- Las decisiones historicas de descarte, hold y restauracion se conservan en este informe y en el manifiesto del catalogo activo.
 
 ### 6.3 Sincronizacion documental
 
 - Se actualizo .agents/skills/README.md para reflejar el set core activo.
-- Se agrego .agents/skills-archive/README.md para documentar el criterio de restauracion.
 - Se creo .agents/skills/INDEX.md como manifiesto formal de estados core, candidate, archived y hold.
 - Se creo .agents/skills/MANIFEST.json como representacion legible por maquina del catalogo vigente.
+- En la actualizacion 2026-05-19 se limpiaron referencias documentales a `docs/superpowers/*` y se retiro la dependencia operativa hacia `.agents/skills-archive/`.
 
 ## 7. Plan de limpieza por lotes
 
@@ -153,7 +154,7 @@
 - PRD actualizado: No aplica.
 - HLD actualizado: No aplica.
 - ADR nuevo o referenciado: ADR-022 referenciado como politica de ejecucion.
-- Otros documentos afectados: .agents/skills/README.md, .agents/skills/INDEX.md, .agents/skills/MANIFEST.json y .agents/skills-archive/README.md quedaron sincronizados con el estado actual del catalogo.
+- Otros documentos afectados: .agents/skills/README.md, .agents/skills/INDEX.md, .agents/skills/MANIFEST.json y docs/quality/CHECKLIST-SISTEMA-SKILLS-GOBERNANZA-v1.0.md quedaron sincronizados con el estado actual del catalogo.
 
 ## 10. Decision de salida
 
@@ -415,26 +416,26 @@ Se revisaron las nueve skills activas que aun no habian pasado por una potencial
 
 ### 19.1 Tabla de decision ejecutada
 
-| Skill                      | Decision           | Ubicacion actual                            | Motivo resumido                                                        |
-| -------------------------- | ------------------ | ------------------------------------------- | ---------------------------------------------------------------------- |
-| docs-architect             | restaurar          | `.agents/skills-archive/candidate-restore/` | valor directo para gobierno documental y calidad del repo              |
-| observability-engineer     | restaurar          | `.agents/skills-archive/candidate-restore/` | valor transversal probable para siguiente capa operativa del sistema   |
-| github-actions-templates   | mantener archivada | `.agents/skills-archive/candidate-keep/`    | util potencial, pero no prioritaria frente al baseline actual          |
-| deployment-pipeline-design | mantener archivada | `.agents/skills-archive/candidate-keep/`    | relevante a futuro, no urgente para el estado actual del repo          |
-| slo-implementation         | mantener archivada | `.agents/skills-archive/candidate-keep/`    | necesita mayor madurez operativa antes de justificar activacion        |
-| prometheus-configuration   | mantener archivada | `.agents/skills-archive/candidate-keep/`    | util cuando exista iniciativa concreta de observabilidad               |
-| grafana-dashboards         | mantener archivada | `.agents/skills-archive/candidate-keep/`    | dependiente de una capa observability aun no priorizada                |
-| distributed-tracing        | mantener archivada | `.agents/skills-archive/candidate-keep/`    | premature para el estado actual del sistema                            |
-| nx-workspace-patterns      | descartar          | `.agents/skills-archive/hold/`              | fuera del baseline Turborepo aprobado                                  |
-| nodejs-best-practices      | descartar          | `.agents/skills-archive/hold/`              | demasiado generica y redundante frente a skills activas especializadas |
-| context7-auto-research     | descartar          | `.agents/skills-archive/hold/`              | dependiente de flujo externo no esencial para el catalogo activo       |
+| Skill                      | Decision           | Estado actual documentado        | Motivo resumido                                                        |
+| -------------------------- | ------------------ | -------------------------------- | ---------------------------------------------------------------------- |
+| docs-architect             | restaurar          | activa en `.agents/skills/`      | valor directo para gobierno documental y calidad del repo              |
+| observability-engineer     | restaurar          | activa en `.agents/skills/`      | valor transversal probable para siguiente capa operativa del sistema   |
+| github-actions-templates   | mantener archivada | solo documentada en este informe | util potencial, pero no prioritaria frente al baseline actual          |
+| deployment-pipeline-design | mantener archivada | solo documentada en este informe | relevante a futuro, no urgente para el estado actual del repo          |
+| slo-implementation         | mantener archivada | solo documentada en este informe | necesita mayor madurez operativa antes de justificar activacion        |
+| prometheus-configuration   | mantener archivada | solo documentada en este informe | util cuando exista iniciativa concreta de observabilidad               |
+| grafana-dashboards         | mantener archivada | solo documentada en este informe | dependiente de una capa observability aun no priorizada                |
+| distributed-tracing        | mantener archivada | solo documentada en este informe | premature para el estado actual del sistema                            |
+| nx-workspace-patterns      | descartar          | solo documentada en este informe | fuera del baseline Turborepo aprobado                                  |
+| nodejs-best-practices      | descartar          | solo documentada en este informe | demasiado generica y redundante frente a skills activas especializadas |
+| context7-auto-research     | descartar          | solo documentada en este informe | dependiente de flujo externo no esencial para el catalogo activo       |
 
-### 19.2 Separacion fisica del archivo ejecutada
+### 19.2 Estado actual tras retiro del archivo local
 
-- Las dos skills con decision de restauracion quedaron movidas a `candidate-restore/`.
-- Las seis skills revisadas y mantener archivadas quedaron movidas a `candidate-keep/`.
-- Las tres skills descartadas por ahora quedaron movidas a `hold/`.
-- El resto del archivo queda como historico irrelevante o no priorizado hasta nueva revision.
+- Las dos skills con decision de restauracion ya forman parte del catalogo activo.
+- Las seis skills revisadas y mantener archivadas quedan solo registradas en este informe.
+- Las tres skills descartadas por ahora quedan solo registradas en este informe.
+- No existe un directorio fisico `.agents/skills-archive/` en el repo actual.
 
 ## 20. Documento corto de politica operativa
 
@@ -450,8 +451,8 @@ Se revisaron las nueve skills activas que aun no habian pasado por una potencial
 
 - docs-architect fue restaurada al catalogo activo y reescrita para gobernanza documental real del repo, con foco en PRD, HLD, ADR, informes, prompts y trazabilidad entre artefactos.
 - observability-engineer fue restaurada al catalogo activo y reescrita para una estrategia de observabilidad gradual, util y alineada al stack real, evitando asumir una plataforma enterprise no existente.
-- README, INDEX y MANIFEST del catalogo activo fueron actualizados para reflejar 25 skills activas, nueva prioridad de uso y ausencia de restaurables pendientes.
-- README del archivo, checklist de gobernanza e informe de cierre fueron actualizados para reflejar el nuevo estado del catalogo.
+- README, INDEX y MANIFEST del catalogo activo fueron actualizados para reflejar el estado vigente del catalogo y su prioridad de uso.
+- Checklist de gobernanza e informe maestro fueron actualizados para reflejar el retiro del archivo local y la limpieza de referencias legacy.
 
 ### 22.2 Estado posterior
 

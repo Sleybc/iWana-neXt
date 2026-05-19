@@ -36,7 +36,7 @@ Endurecer MOD00 con enforcement granular de permisos, anti-lockout administrativ
 - ADR Auth: docs/adrs/ADR-019-JWT-RS256-Refresh-Rotation.md
 - PRD MOD00: docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md
 - HLD MOD00: docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md
-- Plan Fase 04: docs/superpowers/plans/2026-05-19-mod00-configuracion-fase-04-gobierno-avanzado.md
+- Plan Fase 04: docs/plans/2026-05-19-mod00-configuracion-fase-04-gobierno-avanzado.md
 - Checklist Fase 04: docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-04-v1.0.md
 
 ## 3. Instrucciones para Sr. Dev Fullstack

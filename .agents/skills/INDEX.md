@@ -182,8 +182,8 @@ Sin entradas vigentes tras la restauracion ejecutada el 2026-03-12.
 
 ## Notas operativas
 
-- El resto del material archivado permanece en .agents/skills-archive/ como repositorio historico.
-- La separacion fisica del archivo es: `candidate-restore/`, `candidate-keep/`, `hold/` y resto historico en la raiz del archivo.
-- La restauracion debe hacerse por movimiento controlado desde .agents/skills-archive/ hacia .agents/skills/.
+- El repo ya no mantiene un directorio fisico `.agents/skills-archive/`.
+- Las decisiones historicas sobre skills no activas se conservan en `docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md`.
+- Toda reincorporacion debe hacerse por alta controlada en `.agents/skills/` y sincronizacion de `skills-lock.json` cuando aplique.
 - Toda modificacion sustancial del catalogo debe reflejarse en docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md.
 - Toda skill activa debe mantener frontmatter valido con `name` y `description` como minimo.

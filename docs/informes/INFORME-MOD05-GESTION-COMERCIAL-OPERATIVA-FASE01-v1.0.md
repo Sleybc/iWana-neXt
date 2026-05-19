@@ -9,8 +9,8 @@
 - Plantilla base: docs/informes/TEMPLATE-INFORME-FASE-v1.0.md
 - PRD: docs/prds/PRD-MOD05-CRM-GESTION-COMERCIAL-OPERATIVA-v1.0.md
 - Prompt de ejecucion: docs/prompts/PROMPT-MOD05-CRM-GESTION-COMERCIAL-OPERATIVA-FASE-01-v1.0.md
-- Spec de diseno: docs/superpowers/specs/2026-04-04-mod05-crm-gestion-comercial-operativa-fase-01-design.md
-- Plan de implementacion: docs/superpowers/plans/2026-04-04-mod05-crm-gestion-comercial-operativa-fase-01-plan.md
+- Spec de diseno: docs/specs/2026-04-04-mod05-crm-gestion-comercial-operativa-fase-01-design.md
+- Plan de implementacion: docs/plans/2026-04-04-mod05-crm-gestion-comercial-operativa-fase-01-plan.md
 - Politica de ejecucion: ADR-022
 
 ---
@@ -101,8 +101,8 @@
 - HLD actualizado: No aplica (HLD preexistente)
 - ADR nuevo o referenciado: ADR-022 (politica de ejecucion), ADR-024 (migracion CRM)
 - Otros documentos afectados:
-  - docs/superpowers/specs/2026-04-04-mod05-crm-gestion-comercial-operativa-fase-01-design.md (nuevo)
-  - docs/superpowers/plans/2026-04-04-mod05-crm-gestion-comercial-operativa-fase-01-plan.md (nuevo)
+  - docs/specs/2026-04-04-mod05-crm-gestion-comercial-operativa-fase-01-design.md (nuevo)
+  - docs/plans/2026-04-04-mod05-crm-gestion-comercial-operativa-fase-01-plan.md (nuevo)
 
 ---
 
@@ -163,7 +163,7 @@
 - 2026-04-04: Se corrigio un desalineamiento entre `apps/portal/src/app/dashboard/crm/expedientes/[id]/page.tsx` y `apps/portal/src/components/crm/expedientes/ExpedienteTabsContainer.tsx`. La pagina seguia invocando el contenedor con `expedienteId`, mientras el componente ya esperaba `tabs`. Se actualizo la pagina para enviar las tabs de seguimiento, consentimientos y cobertura, y se agrego fallback seguro cuando la lista de tabs llega vacia o indefinida.
 - 2026-04-04: Se reemplazo la barra de progreso con estilo inline en `apps/portal/src/components/crm/expedientes/ExpedienteHeader.tsx` por un elemento `progress` estilizado, alineado con la regla del repo que evita estilos inline en componentes React.
 - 2026-04-04: Se ejecuto un refinamiento visual del detalle de expediente en `apps/portal/src/app/dashboard/crm/expedientes/[id]/page.tsx`, `apps/portal/src/components/crm/expedientes/ExpedienteHeader.tsx` y `apps/portal/src/components/crm/expedientes/ExpedienteTabsContainer.tsx` para reducir densidad en el primer viewport, eliminar duplicidad en la sidebar, compactar el header, convertir historiales y edicion avanzada en disclosure progresivo y aligerar la lectura de `Secciones de la oportunidad`.
-- 2026-04-04: Se documento la direccion de rediseño en `docs/superpowers/specs/2026-04-04-mod05-crm-ui-density-reduction-design.md` para dejar trazabilidad entre analisis UX, decision visual y ejecucion de frontend en el portal.
+- 2026-04-04: Se documento la direccion de rediseño en `docs/specs/2026-04-04-mod05-crm-ui-density-reduction-design.md` para dejar trazabilidad entre analisis UX, decision visual y ejecucion de frontend en el portal.
 - 2026-04-xx: **Rediseño arquitectura 6-tabs** — Se reestructuro completamente `apps/portal/src/app/dashboard/crm/expedientes/[id]/page.tsx` (2665 lineas) eliminando el layout grid+aside y reemplazandolo por un unico `ExpedienteTabsContainer` con 6 tabs de primer nivel: `Vista general`, `Secciones`, `Seguimiento`, `Consentimientos`, `Cobertura`, `Contexto`. Los paneles `ContactAttemptsPanel`, `ConsentsPanel` y `CoverageChecksPanel` se integraron directamente como contenido de tabs. Se agrego `ExpedienteHeader` como cabecera fija fuera del contenedor de tabs. Se anadio `LayoutDashboard` (lucide-react) como icono del tab Vista general y las tarjetas de dimension (Comercial/Tecnica/Legal/Operativa) con porcentajes por seccion usando `DIMENSION_SECTION_GROUPS`. Compilacion TypeScript `tsc --noEmit` exitosa sin errores.
 - 2026-04-05: Se ajusto la tipografia de labels/titulos en formato oracion (primera letra mayuscula, resto minuscula) para el CRM del portal, eliminando uppercase forzado en `apps/portal/src/app/dashboard/crm/expedientes/[id]/page.tsx`, `apps/portal/src/components/crm/expedientes/ExpedienteHeader.tsx` y `apps/portal/src/components/crm/CrmOverviewClient.tsx`. El ajuste incluye encabezados de `Vista general`, labels de `Secciones` (incluyendo modo bloqueado de identificacion), cabecera del expediente (`Volver al listado`, badge/estado y `Progreso general`) y metricas del overview.
 - 2026-04-05: Se centralizo la gestion de `Atribución comercial` en la pestaña `Seguimiento` de `apps/portal/src/app/dashboard/crm/expedientes/[id]/page.tsx` (originador actual, formulario de reatribucion, revocacion e historial), y se elimino su duplicidad de `Contexto` para mantener esa pestaña enfocada en actividad, metadata e historial del pipeline.

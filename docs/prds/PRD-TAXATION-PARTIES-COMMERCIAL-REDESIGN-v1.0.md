@@ -19,9 +19,9 @@ references:
   - docs/hlds/HLD-MOD08-PARTIES-v1.0.md
   - docs/hlds/HLD-MOD06-TAXATION-DEPENDENCY-v1.1-addendum.md
   - docs/hlds/HLD-MOD05-PARTIES-DEPENDENCY-v2.1-addendum.md
-  - docs/superpowers/specs/2026-04-21-taxation-bounded-context-design.md
-  - docs/superpowers/specs/2026-04-21-parties-multi-rol-design.md
-  - docs/superpowers/specs/2026-04-20-reglas-comerciales-design.md
+  - docs/specs/2026-04-21-taxation-bounded-context-design.md
+  - docs/specs/2026-04-21-parties-multi-rol-design.md
+  - docs/specs/2026-04-20-reglas-comerciales-design.md
 ---
 
 ## 1. Resumen ejecutivo

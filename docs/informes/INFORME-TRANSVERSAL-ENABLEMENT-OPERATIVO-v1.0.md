@@ -103,7 +103,7 @@ Artefactos creados para ejecución fullstack:
 
 - `docs/adrs/ADR-036-Typesense-Busqueda-Global.md`
 - `docs/hlds/HLD-TRANSVERSAL-BUSQUEDA-GLOBAL-v1.0.md`
-- `docs/superpowers/specs/2026-05-02-busqueda-global-typesense-design.md`
+- `docs/specs/2026-05-02-busqueda-global-typesense-design.md`
 - `docs/plans/PLAN-TRANSVERSAL-BUSQUEDA-GLOBAL-TYPESENSE-v1.0.md`
 - `docs/prompts/PROMPT-TRANSVERSAL-BUSQUEDA-GLOBAL-TYPESENSE-v1.0.md`
 

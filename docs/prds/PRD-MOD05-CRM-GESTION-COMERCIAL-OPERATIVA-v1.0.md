@@ -11,7 +11,7 @@
 **Informe relacionado:** `docs/informes/INFORME-MOD05-ATRIBUCION-INCENTIVOS-FASE1-v1.0.md`  
 **ADRs aplicables:** ADR-016, ADR-018, ADR-019, ADR-022, ADR-024, ADR-026
 
-> **Nota correctiva 2026-05-05:** la implementacion tecnica de esta experiencia debe alinearse con `docs/superpowers/specs/2026-05-05-crm-pipeline-completeness-read-model-design.md`. La lectura de responsable actual, historial comercial e historial operativo debe resolverse via ports/read models de CRM y no por lecturas directas cross-module en servicios del expediente.
+> **Nota correctiva 2026-05-05:** la implementacion tecnica de esta experiencia debe alinearse con `docs/specs/2026-05-05-crm-pipeline-completeness-read-model-design.md`. La lectura de responsable actual, historial comercial e historial operativo debe resolverse via ports/read models de CRM y no por lecturas directas cross-module en servicios del expediente.
 
 ---
 

@@ -7,7 +7,7 @@
 **Autor:** AI-EM-ARCH  
 **PRD de referencia:** docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md  
 **ADR aprobado:** docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md  
-**Plan de ejecucion:** docs/superpowers/plans/2026-05-19-mod00-configuracion-control-plane.md  
+**Plan de ejecucion:** docs/plans/2026-05-19-mod00-configuracion-control-plane.md  
 **Prompt de ejecucion:** docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-01-v1.0.md
 
 ---
@@ -64,10 +64,10 @@ La Fase 01 no debe implementar funcionalidades de Fase 02-04 salvo interfaces pr
 
 | Fase | Plan | Prompt | Checklist |
 | --- | --- | --- | --- |
-| Fase 01 | `docs/superpowers/plans/2026-05-19-mod00-configuracion-control-plane.md` | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-01-v1.0.md` | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-01-v1.0.md` |
-| Fase 02 | `docs/superpowers/plans/2026-05-19-mod00-configuracion-fase-02-wfm-integration.md` | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-02-v1.0.md` | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-02-v1.0.md` |
-| Fase 03 | `docs/superpowers/plans/2026-05-19-mod00-configuracion-fase-03-settings-federados.md` | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-03-v1.0.md` | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-03-v1.0.md` |
-| Fase 04 | `docs/superpowers/plans/2026-05-19-mod00-configuracion-fase-04-gobierno-avanzado.md` | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-04-v1.0.md` | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-04-v1.0.md` |
+| Fase 01 | `docs/plans/2026-05-19-mod00-configuracion-control-plane.md` | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-01-v1.0.md` | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-01-v1.0.md` |
+| Fase 02 | `docs/plans/2026-05-19-mod00-configuracion-fase-02-wfm-integration.md` | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-02-v1.0.md` | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-02-v1.0.md` |
+| Fase 03 | `docs/plans/2026-05-19-mod00-configuracion-fase-03-settings-federados.md` | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-03-v1.0.md` | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-03-v1.0.md` |
+| Fase 04 | `docs/plans/2026-05-19-mod00-configuracion-fase-04-gobierno-avanzado.md` | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-04-v1.0.md` | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-04-v1.0.md` |
 
 ```mermaid
 flowchart TB

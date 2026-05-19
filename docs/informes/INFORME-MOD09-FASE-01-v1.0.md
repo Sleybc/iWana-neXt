@@ -181,8 +181,8 @@ No se identifican bloqueos criticos de arquitectura, seguridad, tenancy o compil
 - Se cerró la precedencia ejecutable: `override técnico > festivo/cierre > sede > empresa`.
 - Se aprobó que `operatingSiteId` sea opcional en el primer corte para no romper flujos legacy ni tenants monosede.
 - Se aprobó que la administración inicial viva dentro de la pestaña `operations` del portal, pero en un manager WFM separado de `OperationalSettingsForm`.
-- Se generó la spec ejecutable en `docs/superpowers/specs/2026-05-15-mod09-wfm-operating-hours-design.md`.
-- Se generó el plan task-by-task en `docs/superpowers/plans/2026-05-15-mod09-wfm-operating-hours.md`.
+- Se generó la spec ejecutable en `docs/specs/2026-05-15-mod09-wfm-operating-hours-design.md`.
+- Se generó el plan task-by-task en `docs/plans/2026-05-15-mod09-wfm-operating-hours.md`.
 - Se generó el prompt de ejecución para fullstack en `docs/prompts/PROMPT-MOD09-HORARIOS-OPERATIVOS-WFM-v1.0.md`.
 - Estado actual: listo para ejecución fullstack; aún no se han corrido pruebas de implementación de esta nueva fase porque este corte fue documental y de gobierno técnico.
 

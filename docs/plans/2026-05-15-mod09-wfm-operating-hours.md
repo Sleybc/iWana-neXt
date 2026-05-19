@@ -4,7 +4,7 @@
 **Estado:** Aprobado para ejecucion
 **Fecha:** 2026-05-15
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use subagent-driven-development (recommended) or executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Reemplazar la franja fija de instalaciones por un modelo tenant-aware de horarios operativos WFM con empresa, sede, técnico y festivos, aplicado tanto a administración como a recomendaciones y enforcement de agenda.
 
@@ -1035,7 +1035,7 @@ git commit -m "docs(mod09): record operating hours rollout evidence"
 
 ## Execution Handoff
 
-Plan complete and saved to `docs/superpowers/plans/2026-05-15-mod09-wfm-operating-hours.md`. Two execution options:
+Plan complete and saved to `docs/plans/2026-05-15-mod09-wfm-operating-hours.md`. Two execution options:
 
 **1. Subagent-Driven (recommended)** - I dispatch a fresh subagent per task, review between tasks, fast iteration
 

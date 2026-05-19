@@ -9,7 +9,7 @@
 **HLD de referencia:** docs/hlds/HLD-MOD07-TAXATION-v1.0.md  
 **HLD complementario:** docs/hlds/HLD-MOD05-ARQUITECTURA-v2.0.md  
 **ADRs relacionados:** docs/adrs/ADR-029-Bounded-Context-Taxation-Catalogo-Unificado.md, docs/adrs/ADR-030-Modelo-Party-Multi-Rol.md, docs/adrs/ADR-031-Rediseno-Tributario-Comercial-Impuestos-Reglas-Simulador.md  
-**Spec aprobado:** docs/superpowers/specs/2026-04-22-taxation-mvp-tributos-por-cliente-design.md  
+**Spec aprobado:** docs/specs/2026-04-22-taxation-mvp-tributos-por-cliente-design.md  
 **Prompt de ejecución:** docs/prompts/PROMPT-TAXATION-MVP-TRIBUTOS-CLIENTE-v1.0.md
 
 ---

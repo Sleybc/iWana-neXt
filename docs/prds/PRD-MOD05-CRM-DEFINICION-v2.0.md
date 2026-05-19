@@ -14,7 +14,7 @@
 
 > Nota de gobernanza: este PRD documenta la version vigente del modulo CRM. Las versiones v1.0 (CRM clasico) y v1.1 (lifecycle leads/prospects) fueron reemplazadas por el rediseno de Expediente Unico Progresivo aprobado en Sprint 02. Los documentos historicos no fueron preservados en disco; las decisiones se mantienen trazables via INFORME-MOD05-DEFINICION-v1.0.md y el addendum de cierre Sprint 02 emitido el 2026-03-26.
 >
-> **Nota correctiva 2026-05-05:** este PRD se alinea con `docs/adrs/ADR-026-Pipeline-CRM-8-Estados.md` y `docs/superpowers/specs/2026-05-05-crm-pipeline-completeness-read-model-design.md`. El pipeline oficial queda en 8 estados, la completitud general pasa a medirse por 7 secciones oficiales, la transicion a instalacion se habilita desde 75% con advertencia de faltantes, y CRM debe consumir actores/cotizaciones via ports o read models en vez de lecturas directas cross-module.
+> **Nota correctiva 2026-05-05:** este PRD se alinea con `docs/adrs/ADR-026-Pipeline-CRM-8-Estados.md` y `docs/specs/2026-05-05-crm-pipeline-completeness-read-model-design.md`. El pipeline oficial queda en 8 estados, la completitud general pasa a medirse por 7 secciones oficiales, la transicion a instalacion se habilita desde 75% con advertencia de faltantes, y CRM debe consumir actores/cotizaciones via ports o read models en vez de lecturas directas cross-module.
 
 ---
 

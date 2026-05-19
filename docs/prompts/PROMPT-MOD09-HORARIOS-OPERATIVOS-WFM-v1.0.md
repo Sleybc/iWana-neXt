@@ -59,8 +59,8 @@ Un tenant puede administrar sedes operativas, horario semanal base, horarios por
 - HLD del modulo: docs/hlds/HLD-MOD09-PROGRAMACION-WFM-v1.0.md
 - HLD complementario: docs/hlds/HLD-MOD03-CONFIGURACION-EMPRESA-v1.0.md
 - ADR aplicable: docs/adrs/ADR-037-Bounded-Context-Programacion-WFM.md
-- Spec de diseño aprobada: docs/superpowers/specs/2026-05-15-mod09-wfm-operating-hours-design.md
-- Plan de implementación: docs/superpowers/plans/2026-05-15-mod09-wfm-operating-hours.md
+- Spec de diseño aprobada: docs/specs/2026-05-15-mod09-wfm-operating-hours-design.md
+- Plan de implementación: docs/plans/2026-05-15-mod09-wfm-operating-hours.md
 - Informe vivo: docs/informes/INFORME-MOD09-FASE-01-v1.0.md
 - Stack: docs/prds/Stack_Tecnologico.md
 - Gobernanza: AGENTS.md, .github/copilot-instructions.md

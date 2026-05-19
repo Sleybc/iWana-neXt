@@ -14,7 +14,7 @@ references:
   - docs/adrs/ADR-029-Bounded-Context-Taxation-Catalogo-Unificado.md
   - docs/hlds/HLD-MOD05-ARQUITECTURA-v2.0.md
   - docs/hlds/HLD-MOD08-PARTIES-v1.0.md
-  - docs/superpowers/specs/2026-04-21-parties-multi-rol-design.md
+  - docs/specs/2026-04-21-parties-multi-rol-design.md
 ---
 
 # ADR-030: Modelo Party multi-rol y separación de identidad de negocio vs cuenta autenticada
@@ -149,7 +149,7 @@ Separa correctamente identidad, autenticación y rol de negocio. Permite multi-r
 - Nuevo HLD `HLD-MOD08-PARTIES-v1.0.md`.
 - Addendum al HLD de CRM que confirma que `Subscriber` evoluciona a perfil especializado.
 - PRD addendum con RF-PAR-xx para formalizar el maestro de terceros.
-- Spec `docs/superpowers/specs/2026-04-21-parties-multi-rol-design.md`.
+- Spec `docs/specs/2026-04-21-parties-multi-rol-design.md`.
 - Actualización al ADR-025 no se requiere: el modelo de dos dimensiones de `Subscriber` se conserva dentro del perfil especializado.
 
 ## Referencias

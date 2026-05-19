@@ -1,6 +1,6 @@
 # CRM ticket de instalacion Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use subagent-driven-development (recommended) or executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Hacer que `Agendar instalación` desde un expediente CRM siempre cree o reutilice un ticket operativo interno, enlace ese ticket con WFM y persista las referencias de ticket/work order en CRM antes de mover el expediente a `INSTALACION_AGENDADA`.
 
@@ -12,7 +12,7 @@
 
 ## Source documents
 
-- `docs/superpowers/specs/2026-05-09-crm-ticket-instalacion-design.md`
+- `docs/specs/2026-05-09-crm-ticket-instalacion-design.md`
 - `docs/prds/PRD-MOD09-PROGRAMACION-WFM-v1.0.md`
 - `docs/prds/PRD-MOD10-SERVICE-ASSURANCE-v1.0.md`
 - `docs/adrs/ADR-037-Bounded-Context-Programacion-WFM.md`

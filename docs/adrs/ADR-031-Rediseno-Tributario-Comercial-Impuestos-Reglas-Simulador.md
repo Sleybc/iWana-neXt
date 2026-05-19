@@ -12,7 +12,7 @@ references:
   - docs/adrs/ADR-028-Extraccion-Modulo-Comercial.md
   - docs/adrs/ADR-029-Bounded-Context-Taxation-Catalogo-Unificado.md
   - docs/hlds/HLD-MOD06-ARQUITECTURA-v1.0.md
-  - docs/superpowers/specs/2026-04-20-reglas-comerciales-design.md
+  - docs/specs/2026-04-20-reglas-comerciales-design.md
 ---
 
 # ADR-031: Rediseño tributario comercial — Impuestos + Reglas de aplicación + Simulador
@@ -119,7 +119,7 @@ Alinea el modelo con el lenguaje del negocio, reduce ambigüedad, prepara el cat
 ## Consecuencias documentales
 
 - Actualización de HLD-MOD06.
-- Actualización de la spec de reglas comerciales (`docs/superpowers/specs/2026-04-20-reglas-comerciales-design.md`) para reflejar el nuevo naming y la dependencia hacia Taxation.
+- Actualización de la spec de reglas comerciales (`docs/specs/2026-04-20-reglas-comerciales-design.md`) para reflejar el nuevo naming y la dependencia hacia Taxation.
 - Nuevos DTOs y contratos en `apps/api/src/modules/commercial/dto/tax.dto.ts` y `apps/portal/src/lib/api-client.ts`.
 - Tests afectados: `apps/api/src/modules/commercial/tests/tax-classification.service.spec.ts` y `apps/api/src/modules/commercial/tax.controller.http.spec.ts`.
 
@@ -129,4 +129,4 @@ Alinea el modelo con el lenguaje del negocio, reduce ambigüedad, prepara el cat
 - docs/adrs/ADR-028-Extraccion-Modulo-Comercial.md
 - docs/adrs/ADR-029-Bounded-Context-Taxation-Catalogo-Unificado.md
 - docs/hlds/HLD-MOD06-ARQUITECTURA-v1.0.md
-- docs/superpowers/specs/2026-04-20-reglas-comerciales-design.md
+- docs/specs/2026-04-20-reglas-comerciales-design.md

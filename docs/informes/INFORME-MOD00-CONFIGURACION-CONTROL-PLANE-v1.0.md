@@ -9,7 +9,7 @@
 **ADR aprobado:** docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md  
 **PRD:** docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md  
 **HLD:** docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md  
-**Plan:** docs/superpowers/plans/2026-05-19-mod00-configuracion-control-plane.md  
+**Plan:** docs/plans/2026-05-19-mod00-configuracion-control-plane.md  
 **Prompt:** docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-01-v1.0.md  
 **Checklist:** docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-01-v1.0.md  
 **Antecedente historico:** docs/informes/INFORME-MOD03-AUDITORIA-ESTADO-v1.0.md
@@ -45,26 +45,26 @@ La decision corrige la ambiguedad previa donde el control plane habia sido docum
 | `docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md` | Aprobado | Decision arquitectonica CTO |
 | `docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` | Aprobado | Alcance funcional MOD00 |
 | `docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` | Aprobado | Arquitectura tecnica |
-| `docs/superpowers/plans/2026-05-19-mod00-configuracion-control-plane.md` | Aprobado para ejecucion | Plan task-by-task |
+| `docs/plans/2026-05-19-mod00-configuracion-control-plane.md` | Aprobado para ejecucion | Plan task-by-task |
 | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-01-v1.0.md` | Aprobado para ejecucion | Prompt para Sr. Dev Fullstack |
 | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-01-v1.0.md` | Aprobado | Gates por backend, frontend, database, E2E y cierre documental |
 | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-02-v1.0.md` | Aprobado | Prompt operativo Fase 02 WFM integration |
-| `docs/superpowers/plans/2026-05-19-mod00-configuracion-fase-02-wfm-integration.md` | Aprobado | Plan ejecutable Fase 02 |
+| `docs/plans/2026-05-19-mod00-configuracion-fase-02-wfm-integration.md` | Aprobado | Plan ejecutable Fase 02 |
 | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-02-v1.0.md` | Aprobado | Gate de calidad Fase 02 |
 | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-03-v1.0.md` | Aprobado | Prompt operativo Fase 03 settings federados |
-| `docs/superpowers/plans/2026-05-19-mod00-configuracion-fase-03-settings-federados.md` | Aprobado | Plan ejecutable Fase 03 |
+| `docs/plans/2026-05-19-mod00-configuracion-fase-03-settings-federados.md` | Aprobado | Plan ejecutable Fase 03 |
 | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-03-v1.0.md` | Aprobado | Gate de calidad Fase 03 |
 | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-04-v1.0.md` | Aprobado | Prompt operativo Fase 04 gobierno avanzado |
-| `docs/superpowers/plans/2026-05-19-mod00-configuracion-fase-04-gobierno-avanzado.md` | Aprobado | Plan ejecutable Fase 04 |
+| `docs/plans/2026-05-19-mod00-configuracion-fase-04-gobierno-avanzado.md` | Aprobado | Plan ejecutable Fase 04 |
 | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-04-v1.0.md` | Aprobado | Gate de calidad Fase 04 |
-| `docs/superpowers/specs/2026-05-15-mod09-wfm-operating-hours-design.md` | Actualizado | Addendum de compatibilidad WFM -> MOD00 |
+| `docs/specs/2026-05-15-mod09-wfm-operating-hours-design.md` | Actualizado | Addendum de compatibilidad WFM -> MOD00 |
 | `docs/informes/INFORME-MOD03-AUDITORIA-ESTADO-v1.0.md` | Actualizado | Antecedente historico MOD03 |
 
 ---
 
 ## 4. Handoff para Fullstack
 
-El Sr. Dev Fullstack debe ejecutar `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-01-v1.0.md` y seguir `docs/superpowers/plans/2026-05-19-mod00-configuracion-control-plane.md`.
+El Sr. Dev Fullstack debe ejecutar `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-01-v1.0.md` y seguir `docs/plans/2026-05-19-mod00-configuracion-control-plane.md`.
 
 La ejecucion debe cerrar cada gate de `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-01-v1.0.md` o documentar el bloqueo con evidencia.
 

@@ -6,7 +6,7 @@
 **Aprobador:** CTO Humano  
 **PRD relacionado:** docs/prds/PRD-MOD05-CRM-SUBSCRIBERS-v1.0.md  
 **HLD relacionado:** docs/hlds/HLD-MOD05-ARQUITECTURA-v2.0.md  
-**Spec correctivo relacionado:** docs/superpowers/specs/2026-05-05-crm-pipeline-completeness-read-model-design.md
+**Spec correctivo relacionado:** docs/specs/2026-05-05-crm-pipeline-completeness-read-model-design.md
 
 ---
 
@@ -113,7 +113,7 @@ La complejidad por segmento se maneja con **reglas de aprobación dentro de EN_C
 
 ## Nota correctiva 2026-05-05
 
-La aprobacion del CTO sobre el pipeline de 8 estados queda extendida al correctivo operativo documentado en `docs/superpowers/specs/2026-05-05-crm-pipeline-completeness-read-model-design.md`, que fija adicionalmente:
+La aprobacion del CTO sobre el pipeline de 8 estados queda extendida al correctivo operativo documentado en `docs/specs/2026-05-05-crm-pipeline-completeness-read-model-design.md`, que fija adicionalmente:
 
 1. completitud general por 7 secciones oficiales;
 2. umbral >= 75% para habilitar `EN_COTIZACION -> LISTO_PARA_INSTALACION`;

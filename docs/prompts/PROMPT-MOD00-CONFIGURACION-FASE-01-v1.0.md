@@ -45,7 +45,7 @@ Esta fase deja preparado el camino para integrar WFM en una fase posterior, pero
 - ADR aprobado: docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md
 - PRD del modulo: docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md
 - HLD del modulo: docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md
-- Plan de implementacion: docs/superpowers/plans/2026-05-19-mod00-configuracion-control-plane.md
+- Plan de implementacion: docs/plans/2026-05-19-mod00-configuracion-control-plane.md
 - PRD Users: docs/prds/PRD-MOD04-USUARIOS-INTERNOS-v1.1.md
 - PRD WFM: docs/prds/PRD-MOD09-PROGRAMACION-WFM-v1.0.md
 - HLD WFM: docs/hlds/HLD-MOD09-PROGRAMACION-WFM-v1.0.md

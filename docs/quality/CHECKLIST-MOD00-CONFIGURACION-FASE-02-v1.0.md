@@ -5,7 +5,7 @@
 **Fecha:** 2026-05-19  
 **Modulo:** MOD00 Configuracion Control Plane  
 **Fase:** 02 - Integracion WFM con Organizacion/Sedes  
-**Plan:** docs/superpowers/plans/2026-05-19-mod00-configuracion-fase-02-wfm-integration.md  
+**Plan:** docs/plans/2026-05-19-mod00-configuracion-fase-02-wfm-integration.md  
 **Prompt:** docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-02-v1.0.md
 
 ---

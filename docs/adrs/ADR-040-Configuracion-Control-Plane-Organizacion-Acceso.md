@@ -168,9 +168,9 @@ Elegida. Mantiene una experiencia simple para el usuario y conserva ownership co
 
 - Nuevo PRD: docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md
 - Nuevo HLD: docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md
-- Nuevo plan: docs/superpowers/plans/2026-05-19-mod00-configuracion-control-plane.md
+- Nuevo plan: docs/plans/2026-05-19-mod00-configuracion-control-plane.md
 - Nuevo prompt: docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-01-v1.0.md
-- Addendum de compatibilidad en spec WFM: docs/superpowers/specs/2026-05-15-mod09-wfm-operating-hours-design.md
+- Addendum de compatibilidad en spec WFM: docs/specs/2026-05-15-mod09-wfm-operating-hours-design.md
 - Informe MOD00 creado: docs/informes/INFORME-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md
 - Informe vivo MOD03 actualizado como antecedente historico: docs/informes/INFORME-MOD03-AUDITORIA-ESTADO-v1.0.md
 
@@ -198,4 +198,4 @@ La aprobacion CTO de este ADR autoriza al equipo a iniciar MOD00 Configuracion C
 - docs/hlds/HLD-MOD09-PROGRAMACION-WFM-v1.0.md
 - docs/adrs/ADR-030-Modelo-Party-Multi-Rol.md
 - docs/adrs/ADR-037-Bounded-Context-Programacion-WFM.md
-- docs/superpowers/specs/2026-05-15-mod09-wfm-operating-hours-design.md
+- docs/specs/2026-05-15-mod09-wfm-operating-hours-design.md

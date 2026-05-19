@@ -15,7 +15,7 @@ references:
   - docs/adrs/ADR-025-Subscriber-Modelo-Dos-Dimensiones.md
   - docs/adrs/ADR-024-Migracion-CRM-Expediente-Unico.md
   - docs/hlds/HLD-MOD05-ARQUITECTURA-v2.0.md
-  - docs/superpowers/specs/2026-04-21-parties-multi-rol-design.md
+  - docs/specs/2026-04-21-parties-multi-rol-design.md
 ---
 
 # HLD: Módulo Parties — Arquitectura v1.0 (MOD08)

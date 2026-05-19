@@ -5,19 +5,18 @@
   "governance": {
     "precedence": [
       "AGENTS.md",
-      "CLAUDE.md",
       ".github/copilot-instructions.md",
       ".agents/skills/INDEX.md",
       "individual skill"
     ],
     "activeDirectory": ".agents/skills",
-    "archiveDirectory": ".agents/skills-archive"
+    "archiveDirectory": null
   },
   "summary": {
     "coreCount": 41,
-    "archivedItemCount": 683,
-    "archivedDirectoryCount": 679,
-    "archivedLegacyFileCount": 4,
+    "archivedItemCount": 0,
+    "archivedDirectoryCount": 0,
+    "archivedLegacyFileCount": 0,
     "candidateCount": 0,
     "reviewedArchivedCount": 6,
     "holdCount": 3,
@@ -162,14 +161,13 @@
     "adds more activation noise than operational value"
   ],
   "archiveLayout": {
-    "candidateRestore": ".agents/skills-archive/candidate-restore",
-    "candidateKeep": ".agents/skills-archive/candidate-keep",
-    "hold": ".agents/skills-archive/hold",
-    "historicalRoot": ".agents/skills-archive"
+    "candidateRestore": null,
+    "candidateKeep": null,
+    "hold": null,
+    "historicalRoot": null
   },
   "references": [
     "AGENTS.md",
-    "CLAUDE.md",
     ".github/copilot-instructions.md",
     ".agents/skills/INDEX.md",
     "docs/quality/CHECKLIST-SISTEMA-SKILLS-GOBERNANZA-v1.0.md",

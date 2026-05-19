@@ -1,6 +1,6 @@
 # CRM Post-Conversion Listing Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use subagent-driven-development (recommended) or executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implementar las bandejas operativas post-conversión de expedientes CRM, con semántica backend `view`, banner de conversión en detalle y navegación consistente entre expediente y subscriber.
 
@@ -18,7 +18,7 @@
 
 - Rol: `docs/roles/Perfil_IA_Sr_Dev_Fullstack_v1.md`
 - Spec de ejecución: `docs/specs/SPEC-MOD05-CRM-POSTCONVERSION-FULLSTACK-v1.0.md`
-- Design aprobada: `docs/superpowers/specs/2026-05-11-crm-postconversion-listing-design.md`
+- Design aprobada: `docs/specs/2026-05-11-crm-postconversion-listing-design.md`
 - PRD rector: `docs/prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-03-v1.0.md`
 - PRD complementario: `docs/prds/PRD-MOD05-CRM-AUTO-PIPELINE-v1.0.md`
 - HLD: `docs/hlds/HLD-MOD05-ARQUITECTURA-v2.0.md`

@@ -17,7 +17,7 @@
 |-----------|-----------|
 | ADR Typesense | [docs/adrs/ADR-036-Typesense-Busqueda-Global.md](../adrs/ADR-036-Typesense-Busqueda-Global.md) |
 | Stack Tecnologico | [docs/prds/Stack_Tecnologico.md](../prds/Stack_Tecnologico.md) |
-| Spec de diseno | [docs/superpowers/specs/2026-05-02-busqueda-global-typesense-design.md](../superpowers/specs/2026-05-02-busqueda-global-typesense-design.md) |
+| Spec de diseno | [docs/specs/2026-05-02-busqueda-global-typesense-design.md](../specs/2026-05-02-busqueda-global-typesense-design.md) |
 | Plan de ejecucion | [docs/plans/PLAN-TRANSVERSAL-BUSQUEDA-GLOBAL-TYPESENSE-v1.0.md](../plans/PLAN-TRANSVERSAL-BUSQUEDA-GLOBAL-TYPESENSE-v1.0.md) |
 | Prompt de ejecucion | [docs/prompts/PROMPT-TRANSVERSAL-BUSQUEDA-GLOBAL-TYPESENSE-v1.0.md](../prompts/PROMPT-TRANSVERSAL-BUSQUEDA-GLOBAL-TYPESENSE-v1.0.md) |
 

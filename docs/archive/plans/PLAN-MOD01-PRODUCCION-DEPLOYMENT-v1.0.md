@@ -5,7 +5,7 @@
 **Fecha:** 2026-03-16
 **Convencion documental:** PLAN-MOD01-PRODUCCION-DEPLOYMENT-v1.0.md
 
-> **Para Claude:** REQUIRED SUB-SKILL: Usar superpowers:executing-plans para implementar este plan tarea por tarea.
+> **Para Claude:** REQUIRED SUB-SKILL: Usar executing-plans para implementar este plan tarea por tarea.
 
 **Goal:** Llevar el stack completo de MOD01 (Auth + Tenant + Audit) a producción en el servidor on-premise `http://10.0.0.2:8080` con un solo `docker compose up -d --build`.
 

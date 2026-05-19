@@ -5,7 +5,7 @@
 **Fecha:** 2026-05-19  
 **Modulo:** MOD00 Configuracion Control Plane  
 **Fase:** 04 - Gobierno avanzado y permisos granulares  
-**Plan:** docs/superpowers/plans/2026-05-19-mod00-configuracion-fase-04-gobierno-avanzado.md  
+**Plan:** docs/plans/2026-05-19-mod00-configuracion-fase-04-gobierno-avanzado.md  
 **Prompt:** docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-04-v1.0.md
 
 ---

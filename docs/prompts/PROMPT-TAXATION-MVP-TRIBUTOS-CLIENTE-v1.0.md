@@ -57,9 +57,9 @@
 - Sprint plan aplicable:
   - `docs/sprints/PLAN-TAXATION-MVP-TRIBUTOS-CLIENTE-v1.0.md`
 - Prompt arquitectonico origen:
-  - `docs/superpowers/specs/2026-04-22-taxation-mvp-tributos-por-cliente-design.md`
-  - `docs/superpowers/specs/2026-04-21-taxation-bounded-context-design.md`
-  - `docs/superpowers/specs/2026-04-20-reglas-comerciales-design.md`
+  - `docs/specs/2026-04-22-taxation-mvp-tributos-por-cliente-design.md`
+  - `docs/specs/2026-04-21-taxation-bounded-context-design.md`
+  - `docs/specs/2026-04-20-reglas-comerciales-design.md`
 - Artefactos faltantes detectados:
   - Alinear formalmente PRD/HLD si este refinamiento MVP se adopta como baseline definitivo.
 

@@ -27,8 +27,8 @@ El resultado deja una gramática más consistente para CTAs, acciones repetidas,
 | Spec visual de fase 01 | [SPEC-TRANSVERSAL-BOTONES-SISTEMA-FASE-01-v1.0.md](../specs/SPEC-TRANSVERSAL-BOTONES-SISTEMA-FASE-01-v1.0.md) | En revisión |
 | Plan de fase 01 | [PLAN-TRANSVERSAL-BOTONES-SISTEMA-FASE-01-v1.0.md](../plans/PLAN-TRANSVERSAL-BOTONES-SISTEMA-FASE-01-v1.0.md) | En revisión |
 | Prompt de ejecución | [PROMPT-TRANSVERSAL-BOTONES-SISTEMA-FASE-01-v1.0.md](../prompts/PROMPT-TRANSVERSAL-BOTONES-SISTEMA-FASE-01-v1.0.md) | Ejecutado |
-| Design doc operativo Fase 01 | [2026-05-04-sistema-botones-fase-01-design.md](../superpowers/specs/2026-05-04-sistema-botones-fase-01-design.md) | Aprobado para ejecución |
-| Design doc operativo Fase 02 | [2026-05-04-sistema-botones-fase-02-web-design.md](../superpowers/specs/2026-05-04-sistema-botones-fase-02-web-design.md) | Aprobado para ejecución |
+| Design doc operativo Fase 01 | [2026-05-04-sistema-botones-fase-01-design.md](../specs/2026-05-04-sistema-botones-fase-01-design.md) | Aprobado para ejecución |
+| Design doc operativo Fase 02 | [2026-05-04-sistema-botones-fase-02-web-design.md](../specs/2026-05-04-sistema-botones-fase-02-web-design.md) | Aprobado para ejecución |
 
 ## 3. Cambios implementados
 

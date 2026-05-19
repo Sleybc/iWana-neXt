@@ -278,7 +278,7 @@ Para aprobacion CTO:
 Para ejecucion fullstack:
 
 - Usar HLD MOD00 v1.0 como arquitectura tecnica.
-- Usar plan `docs/superpowers/plans/2026-05-19-mod00-configuracion-control-plane.md`.
+- Usar plan `docs/plans/2026-05-19-mod00-configuracion-control-plane.md`.
 - Usar prompt `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-01-v1.0.md`.
 - Usar checklist `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-01-v1.0.md` como gate de calidad.
 
@@ -286,6 +286,6 @@ Artefactos operativos por fase posterior:
 
 | Fase | Plan | Prompt | Checklist |
 | --- | --- | --- | --- |
-| Fase 02 | `docs/superpowers/plans/2026-05-19-mod00-configuracion-fase-02-wfm-integration.md` | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-02-v1.0.md` | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-02-v1.0.md` |
-| Fase 03 | `docs/superpowers/plans/2026-05-19-mod00-configuracion-fase-03-settings-federados.md` | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-03-v1.0.md` | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-03-v1.0.md` |
-| Fase 04 | `docs/superpowers/plans/2026-05-19-mod00-configuracion-fase-04-gobierno-avanzado.md` | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-04-v1.0.md` | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-04-v1.0.md` |
+| Fase 02 | `docs/plans/2026-05-19-mod00-configuracion-fase-02-wfm-integration.md` | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-02-v1.0.md` | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-02-v1.0.md` |
+| Fase 03 | `docs/plans/2026-05-19-mod00-configuracion-fase-03-settings-federados.md` | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-03-v1.0.md` | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-03-v1.0.md` |
+| Fase 04 | `docs/plans/2026-05-19-mod00-configuracion-fase-04-gobierno-avanzado.md` | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-04-v1.0.md` | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-04-v1.0.md` |

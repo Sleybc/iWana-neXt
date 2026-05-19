@@ -13,8 +13,8 @@ La disponibilidad efectiva para GitHub Copilot se controla adicionalmente desde 
 1. Consulta `AGENTS.md` para precedencia, stack, comandos, boundaries y gotchas.
 2. Usa `.agents/skills/INDEX.md` para elegir la skill adecuada.
 3. Lee siempre el `SKILL.md` de la skill antes de aplicarla.
-4. No restaures skills archivadas sin una decision explicita del roadmap.
+4. No reincorpores skills inactivas sin una decision explicita del roadmap.
 
-## Archivo Historico
+## Registro historico
 
-Las skills no activas viven en `.agents/skills-archive/`. No forman parte del flujo activo de Copilot y solo deben restaurarse si cumplen la politica de admision descrita en `INDEX.md`.
+El repo ya no mantiene un directorio local de archivo para skills inactivas. Las decisiones historicas de descarte, hold o restauracion se conservan en `docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md` y deben revalidarse antes de reincorporar una skill al catalogo activo.

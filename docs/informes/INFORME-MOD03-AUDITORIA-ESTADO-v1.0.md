@@ -189,7 +189,7 @@ Tambien se identifico que MOD04 Users mantiene `UserRole` fijo y que los permiso
 | `docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md` | Aprobado | Decision CTO para MOD00 Configuracion como control plane federado, Organizacion/Sedes y perfiles de acceso |
 | `docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` | Aprobado | Alcance funcional MOD00 con Organizacion y Usuarios/Acceso |
 | `docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` | Aprobado | Arquitectura tecnica, tablas, contratos REST, seguridad, migracion WFM |
-| `docs/superpowers/plans/2026-05-19-mod00-configuracion-control-plane.md` | Aprobado para ejecucion | Plan de implementacion task-by-task para fullstack |
+| `docs/plans/2026-05-19-mod00-configuracion-control-plane.md` | Aprobado para ejecucion | Plan de implementacion task-by-task para fullstack |
 | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-01-v1.0.md` | Aprobado para ejecucion | Prompt operativo para Sr. Dev Fullstack basado en la plantilla oficial |
 | `docs/informes/INFORME-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` | Aprobado | Informe vivo de MOD00 Fase 01 |
 

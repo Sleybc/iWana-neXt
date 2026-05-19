@@ -268,7 +268,7 @@ Se ejecutó el refinamiento UI sistémico aprobado para `apps/portal` con alcanc
 **Documentos base de ejecución:**
 - [PLAN-TRANSVERSAL-PORTAL-REFINAMIENTO-UI-FASE-02-v1.0.md](../plans/PLAN-TRANSVERSAL-PORTAL-REFINAMIENTO-UI-FASE-02-v1.0.md)
 - [PROMPT-TRANSVERSAL-PORTAL-REFINAMIENTO-UI-FASE-02-v1.0.md](../prompts/PROMPT-TRANSVERSAL-PORTAL-REFINAMIENTO-UI-FASE-02-v1.0.md)
-- [2026-05-04-portal-ui-refinamiento-fase-02-design.md](../superpowers/specs/2026-05-04-portal-ui-refinamiento-fase-02-design.md)
+- [2026-05-04-portal-ui-refinamiento-fase-02-design.md](../specs/2026-05-04-portal-ui-refinamiento-fase-02-design.md)
 
 **Cambios ejecutados:**
 1. Se creó la primitive local `apps/portal/src/components/shared/portal-ui.tsx` con `PortalPanel`, `PortalSectionHeader`, `PortalAlert`, `PortalEmptyState`, `PortalSkeletonBlock` e `interactiveFocusClassName`.
@@ -527,7 +527,7 @@ Se ejecutó el cierre operativo de la Fase 03 sobre el worktree actual de `apps/
 - [SPEC-TRANSVERSAL-PORTAL-COMPACTA-OPERATIVA-FASE-03-v1.0.md](../specs/SPEC-TRANSVERSAL-PORTAL-COMPACTA-OPERATIVA-FASE-03-v1.0.md)
 - [PLAN-TRANSVERSAL-PORTAL-COMPACTA-OPERATIVA-FASE-03-v1.0.md](../plans/PLAN-TRANSVERSAL-PORTAL-COMPACTA-OPERATIVA-FASE-03-v1.0.md)
 - [PROMPT-TRANSVERSAL-PORTAL-COMPACTA-OPERATIVA-FASE-03-v1.0.md](../prompts/PROMPT-TRANSVERSAL-PORTAL-COMPACTA-OPERATIVA-FASE-03-v1.0.md)
-- [2026-05-04-portal-compacta-operativa-fase-03-design.md](../superpowers/specs/2026-05-04-portal-compacta-operativa-fase-03-design.md)
+- [2026-05-04-portal-compacta-operativa-fase-03-design.md](../specs/2026-05-04-portal-compacta-operativa-fase-03-design.md)
 
 **Correcciones aplicadas:**
 - se eliminó el banner introductorio permanente de `CommercialClient`;

@@ -8,7 +8,7 @@
 **Fecha:** 2026-04-22 → 2026-04-23 (actualización de cierre)  
 **Referencia prompt:** `docs/prompts/PROMPT-TAXATION-MVP-TRIBUTOS-CLIENTE-v1.0.md`  
 **Referencia plan:** `docs/sprints/PLAN-TAXATION-MVP-TRIBUTOS-CLIENTE-v1.0.md`  
-**Referencia spec:** `docs/superpowers/specs/2026-04-22-taxation-mvp-tributos-por-cliente-design.md`  
+**Referencia spec:** `docs/specs/2026-04-22-taxation-mvp-tributos-por-cliente-design.md`  
 **ADRs aplicables:** ADR-029 (Boundary Taxation), ADR-031 (Rediseño Tributario Comercial)
 
 ---

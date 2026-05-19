@@ -17,7 +17,7 @@
 
 MOD05 implementa el CRM del ISP como bounded context propio (`CrmModule`). La arquitectura vigente usa el modelo Expediente Unico Progresivo: un registro maestro (`ExpedienteRecord`) con 8 secciones de captura progresiva, 8 estados de pipeline, completitud general por 7 secciones oficiales y consentimiento triple Ley 1581.
 
-> **Nota correctiva 2026-05-05:** este HLD se alinea con `docs/adrs/ADR-026-Pipeline-CRM-8-Estados.md` y `docs/superpowers/specs/2026-05-05-crm-pipeline-completeness-read-model-design.md`. El calculo de completitud por 4 dimensiones queda deprecado como fuente primaria de negocio y se reemplaza por una fuente de verdad basada en 7 secciones oficiales y readiness de instalacion.
+> **Nota correctiva 2026-05-05:** este HLD se alinea con `docs/adrs/ADR-026-Pipeline-CRM-8-Estados.md` y `docs/specs/2026-05-05-crm-pipeline-completeness-read-model-design.md`. El calculo de completitud por 4 dimensiones queda deprecado como fuente primaria de negocio y se reemplaza por una fuente de verdad basada en 7 secciones oficiales y readiness de instalacion.
 
 El diseño reemplaza el modelo dual PotentialLead/ProspectCase de Sprint 01 (ver ADR-024) con una migracion aditiva que preserva datos existentes.
 

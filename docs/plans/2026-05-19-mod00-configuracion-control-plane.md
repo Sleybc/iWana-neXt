@@ -1,6 +1,6 @@
 # MOD00 Configuracion Control Plane Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use subagent-driven-development (recommended) or executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build MOD00 Configuracion Control Plane Fase 01 with Organization/Sites and Access Profiles as tenant-aware foundations administered from portal settings.
 
@@ -16,7 +16,7 @@
 - PRD: `docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md`
 - HLD: `docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md`
 - Quality checklist: `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-01-v1.0.md`
-- Existing WFM spec: `docs/superpowers/specs/2026-05-15-mod09-wfm-operating-hours-design.md`
+- Existing WFM spec: `docs/specs/2026-05-15-mod09-wfm-operating-hours-design.md`
 - Existing Users PRD: `docs/prds/PRD-MOD04-USUARIOS-INTERNOS-v1.1.md`
 
 ## Scope
