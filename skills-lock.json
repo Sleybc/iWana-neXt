@@ -1,10 +1,6 @@
 {
   "version": 1,
   "skills": {
-    "brainstorming": {
-      "source": ".agents/skills/brainstorming",
-      "sourceType": "workspace"
-    },
     "dispatching-parallel-agents": {
       "source": ".agents/skills/dispatching-parallel-agents",
       "sourceType": "workspace"
@@ -31,10 +27,6 @@
     },
     "systematic-debugging": {
       "source": ".agents/skills/systematic-debugging",
-      "sourceType": "workspace"
-    },
-    "using-git-worktrees": {
-      "source": ".agents/skills/using-git-worktrees",
       "sourceType": "workspace"
     },
     "verification-before-completion": {

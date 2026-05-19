@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "status": "approved",
-  "date": "2026-05-05",
+  "date": "2026-05-19",
   "governance": {
     "precedence": [
       "AGENTS.md",
@@ -14,14 +14,14 @@
     "archiveDirectory": ".agents/skills-archive"
   },
   "summary": {
-    "coreCount": 42,
+    "coreCount": 41,
     "archivedItemCount": 683,
     "archivedDirectoryCount": 679,
     "archivedLegacyFileCount": 4,
     "candidateCount": 0,
     "reviewedArchivedCount": 6,
     "holdCount": 3,
-    "potentializedCoreCount": 31,
+    "potentializedCoreCount": 41,
     "potentializationPhase": 8
   },
   "usagePriority": {
@@ -61,7 +61,6 @@
       "database-migration",
       "e2e-testing-patterns",
       "codebase-cleanup-deps-audit",
-      "brainstorming",
       "dispatching-parallel-agents",
       "executing-plans",
       "finishing-a-development-branch",
@@ -69,7 +68,6 @@
       "requesting-code-review",
       "subagent-driven-development",
       "systematic-debugging",
-      "using-git-worktrees",
       "verification-before-completion",
       "writing-plans",
       "writing-skills"
@@ -116,7 +114,6 @@
     ],
     "maintenance": ["codebase-cleanup-deps-audit"],
     "workflow": [
-      "brainstorming",
       "dispatching-parallel-agents",
       "executing-plans",
       "finishing-a-development-branch",
@@ -124,7 +121,6 @@
       "requesting-code-review",
       "subagent-driven-development",
       "systematic-debugging",
-      "using-git-worktrees",
       "verification-before-completion",
       "writing-plans",
       "writing-skills"
@@ -212,7 +208,6 @@
     "e2e-testing-patterns",
     "typescript-pro",
     "codebase-cleanup-deps-audit",
-    "brainstorming",
     "dispatching-parallel-agents",
     "executing-plans",
     "finishing-a-development-branch",
@@ -220,7 +215,6 @@
     "requesting-code-review",
     "subagent-driven-development",
     "systematic-debugging",
-    "using-git-worktrees",
     "verification-before-completion",
     "writing-plans",
     "writing-skills"

@@ -6,6 +6,8 @@
 
 Este directorio contiene el catalogo activo de skills del proyecto. La fuente maestra de gobernanza es `AGENTS.md`; el indice operativo del catalogo es `.agents/skills/INDEX.md`.
 
+La disponibilidad efectiva para GitHub Copilot se controla adicionalmente desde `skills-lock.json`. Si una skill existe en este directorio pero no aparece en ese lockfile, se considera fuera del set operativo habilitado para la sesion actual.
+
 ## Uso
 
 1. Consulta `AGENTS.md` para precedencia, stack, comandos, boundaries y gotchas.

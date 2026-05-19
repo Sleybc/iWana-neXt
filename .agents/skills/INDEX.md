@@ -1,8 +1,8 @@
 # Indice de Skills de iWana neXt
 
-**Version:** 1.0
+**Version:** 1.1
 **Estado:** Aprobado
-**Fecha:** 2026-03-12
+**Fecha:** 2026-05-19
 
 ## Proposito
 
@@ -110,9 +110,8 @@ Estados admitidos:
 - test-driven-development
 - testing-patterns
 
-### Flujos de trabajo (Superpowers)
+### Flujos de trabajo
 
-- brainstorming
 - dispatching-parallel-agents
 - executing-plans
 - finishing-a-development-branch
@@ -120,7 +119,6 @@ Estados admitidos:
 - requesting-code-review
 - subagent-driven-development
 - systematic-debugging
-- using-git-worktrees
 - verification-before-completion
 - writing-plans
 - writing-skills
