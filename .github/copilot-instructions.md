@@ -27,3 +27,25 @@ Si dos artefactos chocan en multi-tenancy, seguridad, boundaries o stack, no sin
 - Cero PII, secretos, tokens o connection strings en codigo, tests, docs o logs.
 
 Para el mapa completo de decisiones y comandos, vuelve a `AGENTS.md`.
+
+## Fuentes adicionales que puede leer la CLI de Copilot
+
+La CLI/cliente de Copilot puede recoger instrucciones desde varias ubicaciones. En entornos locales o cuando se establecen variables de entorno, el orden observado de lectura suele ser (ejemplo observado en el workspace):
+
+- `CLAUDE.md` (archivo local en la raíz, si existe)
+- `GEMINI.md` (archivo local en la raíz, si existe)
+- `AGENTS.md` (fuente maestra del repo)
+- `.github/instructions/**/*.instructions.md` (instrucciones por path)
+- `.github/copilot-instructions.md` (este archivo)
+- `$HOME/.copilot/copilot-instructions.md` (archivo por usuario)
+- rutas definidas por la variable `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`
+
+Nota importante: la presencia de estos archivos en el entorno no cambia la regla de gobernanza del proyecto. Aunque la CLI pueda leer `CLAUDE.md` o `GEMINI.md`, en este workspace **esas fuentes están marcadas como pasivas** y no deben emplearse como fuentes de verdad.
+
+Regla del repositorio sobre precedencia:
+
+- Fuente maestra: `AGENTS.md` — siempre prevalece cuando hay conflicto.
+- Complementos por path: `.github/instructions/*.instructions.md` — aplican en su ámbito de path.
+- Archivos de usuario (`$HOME/.copilot/...`) o variables de entorno son auxiliares y nunca deben contradecir `AGENTS.md`.
+
+Si encuentras que la CLI está considerando una instrucción que contradice `AGENTS.md`, documenta el conflicto y escálalo — no asumas la autoridad del archivo local que contradice `AGENTS.md`.
