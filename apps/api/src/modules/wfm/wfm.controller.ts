@@ -1,14 +1,17 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -25,8 +28,18 @@ import { ScheduleRecommendationsService } from './services/schedule-recommendati
 import { WorkOrdersService } from './services/work-orders.service';
 import { TechnicianAvailabilityService } from './services/technician-availability.service';
 import { WfmDashboardService } from './services/wfm-dashboard.service';
+import { OperatingSitesService } from './services/operating-sites.service';
+import { CompanyBusinessHoursService } from './services/company-business-hours.service';
+import { SiteBusinessHoursService } from './services/site-business-hours.service';
+import { TechnicianBusinessOverridesService } from './services/technician-business-overrides.service';
+import { HolidayBlackoutsService } from './services/holiday-blackouts.service';
+import { WfmTenantSettingsReadPort } from './ports/wfm-tenant-settings-read.port';
+import { OperatingWindowResolverService } from './services/operating-window-resolver.service';
 import {
+  CreateHolidayBlackoutDto,
+  CreateOperatingSiteDto,
   CancelVisitRequestDto,
+  CreateTechnicianBusinessOverrideDto,
   CreateScheduleEventDto,
   CreateVisitRequestDto,
   ListVisitRequestsQueryDto,
@@ -42,7 +55,13 @@ import {
   RescheduleEventDto,
   TransitionScheduleEventDto,
   TransitionWorkOrderDto,
+  UpdateCompanyBusinessHoursDto,
+  UpdateHolidayBlackoutDto,
+  UpdateOperatingSiteDto,
+  ResolveOperatingWindowDto,
   UpdateScheduleEventDto,
+  UpdateSiteBusinessHoursDto,
+  UpdateTechnicianBusinessOverrideDto,
   UpdateVisitRequestContextDto,
   VisitRequestFilterOptionsQueryDto,
   VisitRequestFilterOptionsResponseDto,
@@ -60,7 +79,195 @@ export class WfmController {
     private readonly workOrdersService: WorkOrdersService,
     private readonly technicianAvailabilityService: TechnicianAvailabilityService,
     private readonly dashboardService: WfmDashboardService,
+    private readonly operatingSitesService: OperatingSitesService,
+    private readonly companyBusinessHoursService: CompanyBusinessHoursService,
+    private readonly siteBusinessHoursService: SiteBusinessHoursService,
+    private readonly technicianBusinessOverridesService: TechnicianBusinessOverridesService,
+    private readonly holidayBlackoutsService: HolidayBlackoutsService,
+    @Inject(WfmTenantSettingsReadPort)
+    private readonly tenantSettingsReadPort: WfmTenantSettingsReadPort,
+    private readonly operatingWindowResolver: OperatingWindowResolverService,
   ) {}
+
+  // ─── Operating Hours Admin ───────────────────────────────────────────────
+
+  @Get('operating-sites')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Listar sedes operativas WFM del tenant' })
+  listOperatingSites(@CurrentUser() actor: JwtPayload) {
+    return this.operatingSitesService.list(actor);
+  }
+
+  @Post('operating-sites')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Crear una sede operativa WFM' })
+  createOperatingSite(@Body() dto: CreateOperatingSiteDto, @CurrentUser() actor: JwtPayload) {
+    return this.operatingSitesService.create(dto, actor);
+  }
+
+  @Patch('operating-sites/:id')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Actualizar una sede operativa WFM' })
+  updateOperatingSite(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateOperatingSiteDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.operatingSitesService.update(id, dto, actor);
+  }
+
+  @Delete('operating-sites/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Eliminar una sede operativa WFM' })
+  async deleteOperatingSite(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    await this.operatingSitesService.remove(id, actor);
+  }
+
+  @Get('business-hours/company')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Obtener horario base de empresa por dia de semana' })
+  getCompanyBusinessHours(@CurrentUser() actor: JwtPayload) {
+    return this.companyBusinessHoursService.getWeek(actor);
+  }
+
+  @Put('business-hours/company')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Reemplazar horario base de empresa por dia de semana' })
+  replaceCompanyBusinessHours(
+    @Body() dto: UpdateCompanyBusinessHoursDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.companyBusinessHoursService.replaceWeek(dto, actor);
+  }
+
+  @Get('operating-sites/:siteId/business-hours')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Obtener horario semanal de una sede operativa' })
+  getSiteBusinessHours(
+    @Param('siteId', ParseUUIDPipe) siteId: string,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.siteBusinessHoursService.getWeek(siteId, actor);
+  }
+
+  @Put('operating-sites/:siteId/business-hours')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Reemplazar horario semanal de una sede operativa' })
+  replaceSiteBusinessHours(
+    @Param('siteId', ParseUUIDPipe) siteId: string,
+    @Body() dto: UpdateSiteBusinessHoursDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.siteBusinessHoursService.replaceWeek(siteId, dto, actor);
+  }
+
+  @Get('technician-business-overrides')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Listar overrides operativos por tecnico' })
+  listTechnicianBusinessOverrides(@CurrentUser() actor: JwtPayload) {
+    return this.technicianBusinessOverridesService.list(actor);
+  }
+
+  @Post('technician-business-overrides')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Crear un override operativo por tecnico' })
+  createTechnicianBusinessOverride(
+    @Body() dto: CreateTechnicianBusinessOverrideDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.technicianBusinessOverridesService.create(dto, actor);
+  }
+
+  @Patch('technician-business-overrides/:id')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Actualizar un override operativo por tecnico' })
+  updateTechnicianBusinessOverride(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateTechnicianBusinessOverrideDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.technicianBusinessOverridesService.update(id, dto, actor);
+  }
+
+  @Delete('technician-business-overrides/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Eliminar un override operativo por tecnico' })
+  async deleteTechnicianBusinessOverride(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    await this.technicianBusinessOverridesService.remove(id, actor);
+  }
+
+  @Get('holiday-blackouts')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Listar festivos y cierres especiales WFM' })
+  listHolidayBlackouts(@CurrentUser() actor: JwtPayload) {
+    return this.holidayBlackoutsService.list(actor);
+  }
+
+  @Post('holiday-blackouts')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Crear un festivo o cierre especial WFM' })
+  createHolidayBlackout(@Body() dto: CreateHolidayBlackoutDto, @CurrentUser() actor: JwtPayload) {
+    return this.holidayBlackoutsService.create(dto, actor);
+  }
+
+  @Patch('holiday-blackouts/:id')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Actualizar un festivo o cierre especial WFM' })
+  updateHolidayBlackout(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateHolidayBlackoutDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.holidayBlackoutsService.update(id, dto, actor);
+  }
+
+  @Delete('holiday-blackouts/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Eliminar un festivo o cierre especial WFM' })
+  async deleteHolidayBlackout(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    await this.holidayBlackoutsService.remove(id, actor);
+  }
+
+  @Post('operating-window/resolve')
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.NOC,
+    UserRole.SUPPORT,
+    UserRole.SALES,
+    UserRole.TECHNICIAN,
+    UserRole.CONTRACTOR,
+  )
+  @ApiOperation({ summary: 'Resolver la ventana operativa efectiva para una fecha local' })
+  async resolveOperatingWindow(
+    @Body() dto: ResolveOperatingWindowDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    if (!actor.tenantId) {
+      throw new BadRequestException('No fue posible resolver el tenant autenticado.');
+    }
+
+    const timezone = await this.tenantSettingsReadPort.getTimezone(actor.tenantId);
+
+    return this.operatingWindowResolver.resolve({
+      tenantId: actor.tenantId,
+      siteId: dto.siteId ?? null,
+      technicianId: dto.technicianId ?? null,
+      dateLocal: dto.dateLocal,
+      timezone,
+    });
+  }
 
   // ─── Visit Requests ───────────────────────────────────────────────────────
 

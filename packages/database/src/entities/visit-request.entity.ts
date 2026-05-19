@@ -77,6 +77,10 @@ export class VisitRequest {
   @Column({ name: 'sla_due_at', type: 'timestamptz', nullable: true })
   slaDueAt: Date | null;
 
+  /** Sede operativa WFM sugerida o seleccionada; opcional para tenants monosede y legacy */
+  @Column({ name: 'operating_site_id', type: 'uuid', nullable: true })
+  operatingSiteId: string | null;
+
   @Column({ type: 'varchar', length: 255, nullable: true })
   address: string | null;
 

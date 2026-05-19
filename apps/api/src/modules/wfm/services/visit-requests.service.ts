@@ -41,7 +41,11 @@ import {
   VisitRequestFilterOptionsResponse,
 } from '../dto';
 import { WfmTenantSettingsReadPort } from '../ports/wfm-tenant-settings-read.port';
-import { isInstallationScheduleWithinBusinessHours } from './installation-schedule-window';
+import {
+  getLocalDateString,
+  isScheduleRangeWithinOperatingWindow,
+} from './installation-schedule-window';
+import { OperatingWindowResolverService } from './operating-window-resolver.service';
 import { ScheduleConflictService } from './schedule-conflict.service';
 import { WorkOrdersService } from './work-orders.service';
 
@@ -80,6 +84,7 @@ export class VisitRequestsService {
     @InjectDataSource() private readonly dataSource: DataSource,
     @Inject(WfmTenantSettingsReadPort)
     private readonly tenantSettingsReadPort: WfmTenantSettingsReadPort,
+    private readonly operatingWindowResolver: OperatingWindowResolverService,
     private readonly conflictService: ScheduleConflictService,
     private readonly workOrdersService: WorkOrdersService,
   ) {}
@@ -265,6 +270,7 @@ export class VisitRequestsService {
         priority: validated.priority ?? WorkOrderPriority.NORMAL,
         title: validated.title,
         description: validated.description ?? null,
+        operatingSiteId: validated.operatingSiteId ?? null,
         requestedWindowStartAt: validated.requestedWindowStartAt
           ? new Date(validated.requestedWindowStartAt)
           : null,
@@ -351,6 +357,10 @@ export class VisitRequestsService {
 
       const updates: Partial<VisitRequest> = {
         description: validated.description ?? visitRequest.description,
+        operatingSiteId:
+          validated.operatingSiteId === undefined
+            ? visitRequest.operatingSiteId
+            : (validated.operatingSiteId ?? null),
         requestedWindowStartAt: validated.requestedWindowStartAt
           ? new Date(validated.requestedWindowStartAt)
           : visitRequest.requestedWindowStartAt,
@@ -436,6 +446,7 @@ export class VisitRequestsService {
         workType: visitRequest.workType,
         durationMinutes: validated.durationMinutes,
         candidateUserIds: validated.candidateUserIds,
+        operatingSiteId: validated.operatingSiteId ?? visitRequest.operatingSiteId ?? undefined,
         windowStartAt: effectiveWindowStartAt,
         windowEndAt: effectiveWindowEndAt,
         municipality: resolvedMunicipality,
@@ -488,7 +499,17 @@ export class VisitRequestsService {
         throw new BadRequestException('La solicitud no esta lista para agendar');
       }
 
-      await this.assertInstallationScheduleWindow(visitRequest.workType, tenantId, startAt, endAt);
+      const operatingSiteId = validated.operatingSiteId ?? visitRequest.operatingSiteId ?? null;
+
+      await this.assertInstallationScheduleWindow(
+        qr.manager,
+        visitRequest.workType,
+        tenantId,
+        operatingSiteId,
+        validated.assignedUserId,
+        startAt,
+        endAt,
+      );
 
       const hasConflict = await this.conflictService.hasConflictWithManager(qr.manager, {
         tenantId,
@@ -510,6 +531,7 @@ export class VisitRequestsService {
         scheduledStartAt: startAt,
         scheduledEndAt: endAt,
         assignedUserId: validated.assignedUserId,
+        operatingSiteId,
         address: visitRequest.address ?? null,
         municipality: visitRequest.municipality ?? null,
         sector: visitRequest.sector ?? null,
@@ -562,6 +584,7 @@ export class VisitRequestsService {
         status: VisitRequestStatus.SCHEDULED,
         scheduleEventId: savedEvent.id,
         workOrderId,
+        operatingSiteId,
         scheduledByUserId: actor.sub,
         scheduledAt: new Date(),
       };
@@ -572,8 +595,11 @@ export class VisitRequestsService {
   }
 
   private async assertInstallationScheduleWindow(
+    manager: EntityManager,
     workType: WfmWorkType,
     tenantId: string,
+    operatingSiteId: string | null,
+    technicianId: string,
     startAt: Date,
     endAt: Date,
   ): Promise<void> {
@@ -582,9 +608,34 @@ export class VisitRequestsService {
     }
 
     const timezone = await this.tenantSettingsReadPort.getTimezone(tenantId);
+    const dateLocal = getLocalDateString(startAt, timezone);
 
-    if (!isInstallationScheduleWithinBusinessHours(startAt, endAt, timezone)) {
-      throw new BadRequestException('Las instalaciones solo pueden agendarse entre 07:00 y 18:00.');
+    if (!dateLocal) {
+      throw new BadRequestException(
+        'La fecha de instalacion no pudo resolverse en el timezone del tenant.',
+      );
+    }
+
+    const window = await this.operatingWindowResolver.resolveWithManager(manager, {
+      tenantId,
+      siteId: operatingSiteId,
+      technicianId,
+      dateLocal,
+      timezone,
+    });
+
+    if (
+      window.status !== 'OPEN' ||
+      !window.startTime ||
+      !window.endTime ||
+      !isScheduleRangeWithinOperatingWindow(startAt, endAt, timezone, {
+        startTime: window.startTime,
+        endTime: window.endTime,
+      })
+    ) {
+      throw new BadRequestException(
+        'La instalacion debe quedar dentro del horario operativo configurado.',
+      );
     }
   }
 

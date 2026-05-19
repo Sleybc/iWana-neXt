@@ -219,21 +219,21 @@ Se ejecutó un ajuste de consistencia visual adicional en `apps/portal` para cer
 - Los diagnósticos de accesibilidad reportados por Edge Tools sobre `aria-expanded`, `aria-selected`, `aria-pressed`, `aria-invalid`, `progressbar` y controles sin nombre visible quedaron corregidos o reestructurados sobre componentes y prototipos afectados.
 - La barra de completitud vuelve a renderizarse con geometría y colores de marca, y el `Select` compartido deja de depender del dropdown nativo del navegador para usar un listbox visualmente coherente con el sistema iWana.
 
-## Addendum correctivo — 2026-04-25
+## Addendum correctivo — 2026-04-25 (edicion de empresas)
 
 Se ejecutó un ajuste puntual en la consola de plataforma para ordenar mejor la edición de empresas existentes sin alterar contratos, validaciones ni comportamiento del módulo.
 
-### Artefactos ajustados
+### Artefactos ajustados — edicion de empresas
 
 | Artefacto                              | Archivo                                                                                                                 | Cambio                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Configuración de empresa en plataforma | `apps/web/src/components/tenants/TenantSettingsForm.tsx`, `apps/web/src/app/(protected)/tenants/[id]/settings/page.tsx` | Reorganización integral de los tabs "Datos de empresa" y "Configuración operativa" sobre una retícula de 12 columnas en desktop; se aprovecha una tercera columna efectiva en pantallas anchas y se agrupan pares semánticos como `NIT + DV`, `Ciudad + departamento`, `País + código postal`, además de bloques explícitos para parámetros regionales, límites operativos y políticas de seguridad. Como refinamiento final, el card padre reduce aire lateral, la barra de tabs deja de estirarse innecesariamente en desktop, los títulos de fieldsets pasan a renderizarse alineados dentro del contenedor y los banners/loading adoptan el mismo lenguaje visual premium del shell refinado |
 
-### Verificación ejecutada
+### Verificación ejecutada — edicion de empresas
 
 - `pnpm --filter @iwana/web build` ✅
 
-### Resultado
+### Resultado — edicion de empresas
 
 - El formulario de edición de empresas en `apps/web` ya no se percibe como una columna única estirada.
 - La sección conserva el lenguaje visual del sistema iWana mientras mejora escaneo, densidad y relación entre campos largos y cortos.
@@ -245,22 +245,22 @@ Se ejecutó un ajuste puntual en la consola de plataforma para ordenar mejor la 
 
 ---
 
-## Addendum correctivo — 2026-04-25
+## Addendum correctivo — 2026-04-25 (shell web)
 
 Se ejecutó un ajuste visual menor en el shell de `apps/web` para retirar la prominencia de los divisores del header/sidebar sin alterar la estructura, alturas ni comportamiento del colapso lateral.
 
-### Artefactos ajustados
+### Artefactos ajustados — shell web
 
 | Artefacto     | Archivo                                        | Cambio                                                                                                                                       |
 | ------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | Sidebar web   | `apps/web/src/components/layout/Sidebar.tsx`   | Divisor derecho y divisor inferior del header convertidos a `border-transparent`, preservando `border-r`/`border-b` para no modificar layout |
 | TopHeader web | `apps/web/src/components/layout/TopHeader.tsx` | Divisor inferior convertido a `border-transparent` para evitar líneas visibles desalineadas contra el bloque lateral                         |
 
-### Verificación ejecutada
+### Verificación ejecutada — shell web
 
 - `get_errors` sobre `apps/web/src/components/layout/Sidebar.tsx` ✅ sin errores antes del ajuste correctivo.
 
-### Resultado
+### Resultado — shell web
 
 - El shell web mantiene la alineación de 64px entre sidebar y top header.
 - Las líneas divisorias del bloque superior quedan invisibles y dejan de competir visualmente con el logo y el botón de menú.
@@ -271,7 +271,7 @@ Se ejecutó un ajuste visual menor en el shell de `apps/web` para retirar la pro
 
 ## Addendum correctivo — 2026-04-25 (bugs UI y provisioning)
 
-### Artefactos ajustados
+### Artefactos ajustados — bugs UI y provisioning
 
 | Artefacto        | Archivo                                                       | Cambio                                                                                                                                                                                                                                                  |
 | ---------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -304,7 +304,7 @@ Se ejecutó un ajuste visual menor en el shell de `apps/web` para retirar la pro
 
 Se ejecutó la primera fase de alineación visual de autenticación en `apps/web` para retirar el dialecto visual heredado de login, MFA y cambio de contraseña, sin alterar contratos, validaciones ni redirecciones del flujo.
 
-### Artefactos ajustados
+### Artefactos ajustados — auth web
 
 | Artefacto                          | Archivo                                                                                       | Cambio                                                                                                                                                 |
 | ---------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -313,11 +313,11 @@ Se ejecutó la primera fase de alineación visual de autenticación en `apps/web
 | MFA web                            | `apps/web/src/components/auth/MfaVerifyForm.tsx`, `apps/web/src/app/auth/mfa/verify/page.tsx` | Ajuste de formulario y wrapper — barra TOTP, alertas, pie informativo y panel de verificación consistentes con el baseline nuevo                       |
 | Cambio obligatorio de contraseña   | `apps/web/src/app/auth/change-password/page.tsx`                                              | Refactor visual del flujo de primer ingreso — aviso crítico, campos protegidos, checklist de política y CTA principal unificados con el shell refinado |
 
-### Verificación ejecutada
+### Verificación ejecutada — auth web
 
 - `pnpm --filter @iwana/web build` ✅
 
-### Resultado
+### Resultado — auth web
 
 - Login, MFA y cambio obligatorio de contraseña ya comparten una misma gramática visual dentro de `apps/web`.
 - Los formularios auth reutilizan una base común y dejan de depender de clases hardcodeadas dispersas por pantalla.
@@ -438,17 +438,17 @@ Se ejecutó la primera fase de alineación visual de autenticación en `apps/web
 
 Se ejecutó la siguiente fase del plan de formularios en `apps/web`, enfocada en el modal de creación de usuarios de plataforma para alinearlo con el baseline visual ya aplicado en settings y auth, sin alterar contratos ni flujos de creación.
 
-### Artefactos ajustados
+### Artefactos ajustados — baseline usuarios web
 
 | Artefacto                      | Archivo                                             | Cambio                                                                                                                                                                                                                      |
 | ------------------------------ | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Alta de usuarios en plataforma | `apps/web/src/components/users/UserCreateModal.tsx` | Refactor visual del modal: contenedor premium, secciones de credenciales/perfil con el baseline compartido, alertas consistentes, CTA alineados al sistema y pantalla de éxito con contraseña temporal más legible y segura |
 
-### Verificacion ejecutada
+### Verificacion ejecutada — baseline usuarios web
 
 - `pnpm --filter @iwana/web build` ✅
 
-### Resultado
+### Resultado — baseline usuarios web
 
 - El flujo de alta de usuarios ya no depende de clases locales heredadas para inputs, labels, errores y estados de feedback.
 - La confirmación de contraseña temporal ahora comparte el mismo lenguaje visual premium que auth y settings, con mejor jerarquía para copiar la credencial antes de cerrar.
@@ -460,7 +460,7 @@ Se ejecutó la siguiente fase del plan de formularios en `apps/web`, enfocada en
 
 Se ejecutó el cierre del lote pendiente de formularios en `apps/web`, atacando los tres frentes restantes del área de seguridad, perfil y gestión avanzada de usuarios para dejarlos alineados al baseline visual compartido y, donde hacía falta, corregir deuda estructural del lado cliente.
 
-### Artefactos ajustados
+### Artefactos ajustados — formularios residuales web
 
 | Artefacto                         | Archivo                                                 | Cambio                                                                                                                                                                                                                        |
 | --------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -468,11 +468,11 @@ Se ejecutó el cierre del lote pendiente de formularios en `apps/web`, atacando 
 | Perfil de usuario de plataforma   | `apps/web/src/components/profile/ProfileForm.tsx`       | Refactor visual del formulario principal y de los bloques sensibles de email/contraseña, manteniendo los tres formularios existentes pero con jerarquía, tarjetas y feedback consistentes con settings/auth                   |
 | Gestión avanzada de usuario       | `apps/web/src/components/users/UserManagementModal.tsx` | Refactor estructural y visual: migración de `useState` por campo a `react-hook-form` + `zod`, normalización tipada de `documentType`, reutilización del baseline visual y preservación de los flujos `load -> save -> delete` |
 
-### Verificacion ejecutada
+### Verificacion ejecutada — formularios residuales web
 
 - `pnpm --filter @iwana/web build` ✅
 
-### Resultado
+### Resultado — formularios residuales web
 
 - `apps/web` ya no conserva formularios administrativos principales con dialectos visuales heredados frente al baseline compartido.
 - El módulo de seguridad de plataforma y el perfil del usuario ya comparten el mismo sistema de tarjetas, inputs, alerts y acciones aplicado en settings y auth.
@@ -484,17 +484,17 @@ Se ejecutó el cierre del lote pendiente de formularios en `apps/web`, atacando 
 
 Se ejecutó un ajuste puntual en la edición de empresa dentro de `apps/web` para eliminar el comportamiento visual heredado del `<select>` nativo del navegador en los campos regionales y de tipo de empresa.
 
-### Artefactos ajustados
+### Artefactos ajustados — dropdowns tenant settings
 
 | Artefacto                            | Archivo                                                  | Cambio                                                                                                                                                                                                                                                    |
 | ------------------------------------ | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Dropdowns de configuración de tenant | `apps/web/src/components/tenants/TenantSettingsForm.tsx` | Reemplazo de selects nativos por `Select` compartido de `@iwana/ui` usando `Controller` de `react-hook-form`; las listas de zona horaria, moneda, idioma, país operativo y tipo de empresa ahora usan panel desplegable consistente con el sistema visual |
 
-### Verificacion ejecutada
+### Verificacion ejecutada — dropdowns tenant settings
 
 - `pnpm --filter @iwana/web build` ✅
 
-### Resultado
+### Resultado — dropdowns tenant settings
 
 - El dropdown visible en configuración regional deja de renderizar la lista nativa del navegador y adopta el mismo lenguaje visual del resto del sistema.
 - La interacción de selects en `TenantSettingsForm` ahora mantiene consistencia entre trigger, foco, lista, selección y estados de error.
@@ -505,7 +505,7 @@ Se ejecutó un ajuste puntual en la edición de empresa dentro de `apps/web` par
 
 Se ejecutó una pasada de smoke con agente de exploración sobre los formularios cerrados de `apps/web`. El hallazgo principal fue una divergencia entre creación y edición de tenant, más varios selects nativos residuales en perfil y usuarios. Se corrigió toda esa superficie en la misma fase.
 
-### Artefactos ajustados
+### Artefactos ajustados — cierre selects compartidos web
 
 | Artefacto                    | Archivo                                                 | Cambio                                                                                                                                                           |
 | ---------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -514,12 +514,12 @@ Se ejecutó una pasada de smoke con agente de exploración sobre los formularios
 | Alta de usuarios             | `apps/web/src/components/users/UserCreateModal.tsx`     | Migración de rol y tipo de documento al `Select` compartido                                                                                                      |
 | Gestión avanzada de usuarios | `apps/web/src/components/users/UserManagementModal.tsx` | Migración de rol, estado y tipo de documento al `Select` compartido, sobre el refactor previo a `react-hook-form` + `zod`                                        |
 
-### Verificacion ejecutada
+### Verificacion ejecutada — cierre selects compartidos web
 
 - `Explore` (auditoría read-only de formularios web) ✅
 - `pnpm --filter @iwana/web build` ✅
 
-### Resultado
+### Resultado — cierre selects compartidos web
 
 - Las superficies principales de formularios en `apps/web` ya no dependen de dropdowns nativos del navegador en create/settings/profile/users.
 - El sistema visual de selects queda unificado entre creación y edición de tenant, así como en los modales y formularios administrativos de usuarios.
@@ -531,7 +531,7 @@ Se ejecutó una pasada de smoke con agente de exploración sobre los formularios
 
 Se ejecutó una pasada final de cierre sobre la consola de plataforma para eliminar los últimos `select` nativos residuales en tablas operativas y alinear la suite E2E principal de `apps/web` con el componente `Select` compartido.
 
-### Artefactos ajustados
+### Artefactos ajustados — cierre productivo web admin
 
 | Artefacto            | Archivo                                              | Cambio                                                                                                                                                       |
 | -------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -539,14 +539,14 @@ Se ejecutó una pasada final de cierre sobre la consola de plataforma para elimi
 | Filtros de tenants   | `apps/web/src/components/dashboard/TenantsTable.tsx` | Migración del filtro por estado desde `<select>` nativo a `Select` compartido de `@iwana/ui`                                                                 |
 | Smoke E2E web admin  | `e2e/tests/web/admin-bootstrap.spec.ts`              | El spec deja de usar `.selectOption()` y placeholders del UI anterior; ahora selecciona opciones sobre el `Select` custom mediante helper explícito por `id` |
 
-### Verificación ejecutada
+### Verificación ejecutada — cierre productivo web admin
 
 - `pnpm --filter @iwana/web lint` ✅
 - `pnpm --filter @iwana/web build` ✅
 - `pnpm exec playwright test e2e/tests/web/admin-bootstrap.spec.ts --config e2e/playwright.web.config.ts --list` ✅
 - `pnpm exec playwright test e2e/tests/web/admin-bootstrap.spec.ts --config e2e/playwright.local.config.ts --project=google-chrome-local --workers=1` ✅
 
-### Nota operativa
+### Nota operativa — cierre productivo web admin
 
 - La configuración estándar basada en Chromium descargado por Playwright sigue bloqueada por entorno: `@playwright/test@1.58.2` no soporta la instalación automática de Chromium en Ubuntu 26.04. Para este workspace se validó una vía local compatible basada en Google Chrome del sistema.
 
@@ -556,7 +556,7 @@ Se ejecutó una pasada final de cierre sobre la consola de plataforma para elimi
 - El mismo config local desactiva `video` para evitar dependencia de `ffmpeg`, ya que `Playwright 1.58.2` tampoco soporta descargar `ffmpeg` en Ubuntu 26.04.
 - Con ese ajuste, Playwright supera la fase de instalación/arranque de navegador y el smoke crítico `web/admin-bootstrap.spec.ts` ya pasa completo en esta máquina.
 
-### Resultado
+### Resultado — cierre productivo web admin
 
 - `apps/web` ya no conserva `select` nativos visibles en las superficies operativas revisadas durante esta fase.
 - La suite E2E principal de bootstrap admin quedó actualizada al patrón de interacción real del sistema de componentes.
@@ -568,23 +568,23 @@ Se ejecutó una pasada final de cierre sobre la consola de plataforma para elimi
 
 Se ejecutó el cierre de release para la consola de plataforma con foco en dos brechas detectadas antes del commit final: el workflow CI base estaba estructuralmente roto en GitHub Actions y no existía un gate dedicado para el smoke E2E crítico de bootstrap admin.
 
-### Artefactos ajustados
+### Artefactos ajustados — gates release web admin
 
 | Artefacto          | Archivo                                     | Cambio                                                                                                                                                                                             |
 | ------------------ | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Pipeline CI base   | `.github/workflows/ci.yml`                  | Reordenamiento estructural del job para que `services` y `steps` queden correctamente definidos en GitHub Actions; además se declara `PGPASSWORD` para los pasos `psql` del chequeo de migraciones |
 | Gate E2E web admin | `.github/workflows/e2e-web-admin-smoke.yml` | Nuevo workflow dedicado al smoke `e2e/tests/web/admin-bootstrap.spec.ts` sobre `ubuntu-24.04`, con instalación controlada de Playwright Chromium y ejecución serial del spec crítico               |
 
-### Verificación ejecutada
+### Verificación ejecutada — gates release web admin
 
 - `pnpm exec prettier --check .github/workflows/ci.yml .github/workflows/e2e-web-admin-smoke.yml` ✅
 
-### Nota operativa
+### Nota operativa — gates release web admin
 
 - El gate E2E de GitHub Actions se fija sobre `ubuntu-24.04` para evitar acoplar la validación de release al bloqueo local ya verificado en Ubuntu 26.04 con `Playwright 1.58.2`.
 - La validación local compatible con Google Chrome del sistema se conserva como evidencia de máquina de desarrollo, pero la ruta de release queda trasladada al runner soportado del workflow nuevo.
 
-### Resultado
+### Resultado — gates release web admin
 
 - El monorepo recupera un CI base estructuralmente válido para lint, typecheck, build y migraciones.
 - La consola admin gana un gate explícito y reproducible para su smoke E2E más crítico antes de mergear a `main`.
@@ -633,7 +633,7 @@ Se formalizó una fase correctiva transversal para alinear el login empresarial 
 - Backend responde `400` para auth tenant publico sin slug o con slug vacio/whitespace.
 - E2E portal auth cubre login completo, MFA required, MFA setup required y password reset required con envelope `{ data }`.
 
-### Verificacion ejecutada
+### Verificacion ejecutada — plan premium auth
 
 - Revision read-only de `apps/web/src/components/auth/PlatformLoginExperience.tsx` y `LoginForm.tsx`.
 - Revision read-only de `apps/portal/src/components/auth/LoginExperience.tsx`, `LoginBrandPanel.tsx`, `LoginForm.tsx` y `apps/portal/src/lib/api-client.ts`.
@@ -663,7 +663,7 @@ La adopcion TailAdmin base permanece completada en FASE-01 a FASE-07; esta fase 
 
 Se ejecutó la fase correctiva transversal de autenticación premium sobre backend (`apps/api`), consola de plataforma (`apps/web`) y portal empresarial (`apps/portal`) sin crear endpoints nuevos y manteniendo los contratos vigentes.
 
-### Artefactos ajustados
+### Artefactos ajustados — ejecucion auth login premium
 
 | Artefacto                                | Archivo                                                                                                                                                                                          | Cambio                                                                                                                                                 |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -677,7 +677,7 @@ Se ejecutó la fase correctiva transversal de autenticación premium sobre backe
 | Unit tests portal auth                   | `apps/portal/src/components/auth/LoginExperience.spec.tsx`, `apps/portal/src/components/auth/LoginForm.spec.tsx`                                                                                 | Cobertura para tenant env bloqueado, tenant desde storage, bloqueo local sin empresa y normalización de tenant                                         |
 | E2E portal auth alineado a contrato real | `apps/portal/tests/e2e/auth-tenant.spec.ts`                                                                                                                                                      | Selectores actualizados (`Empresa`, `Correo electrónico`), envelope `{ data }` y aserción de header `X-Tenant-Slug` normalizado                        |
 
-### Verificación ejecutada
+### Verificación ejecutada — ejecucion auth login premium
 
 - `pnpm --filter @iwana/api test -- auth.tenant-context.http.spec.ts tenant.controller.http.spec.ts tenant.swagger.spec.ts` ✅
 - `pnpm --filter @iwana/web test -- PlatformLoginExperience.spec.tsx` ✅
@@ -686,7 +686,7 @@ Se ejecutó la fase correctiva transversal de autenticación premium sobre backe
 - `pnpm test:e2e:portal -- auth-tenant.spec.ts` ⚠️ no ejecuta por patrón `testMatch` del config portal (`portal-*.spec.ts`)
 - `npx playwright test apps/portal/tests/e2e/auth-tenant.spec.ts` ⚠️ bloqueado por binario de navegador ausente (`npx playwright install` pendiente en entorno local)
 
-### Resultado del corte
+### Resultado del corte — ejecucion auth login premium
 
 - Se elimina la deriva principal entre tenant visible y tenant efectivo en el login del portal.
 - La experiencia premium de login queda alineada entre `apps/web` y `apps/portal` sobre base técnica compartida en `@iwana/ui`.
@@ -700,21 +700,21 @@ Se ejecutó la fase correctiva transversal de autenticación premium sobre backe
 
 Se ejecutó un ajuste visual y de interacción en el tab de Marca de `apps/portal` para homologarlo con el patrón UX de Branding ya usado en `apps/web`, preservando contratos tenant-aware, payload incremental y flujo de subida inmediata.
 
-### Artefactos ajustados
+### Artefactos ajustados — paridad branding settings
 
-| Artefacto                | Archivo                                           | Cambio                                                                                                                                                                       |
-| ------------------------ | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Formulario Marca portal  | `apps/portal/src/components/settings/BrandingForm.tsx` | Refactor visual completo al patrón de cards por slot: preview clickeable para upload, overlay de reemplazo, URL HTTPS colapsable, ayudas de reglas y feedback superior      |
-| Identidad de marca       | `apps/portal/src/components/settings/BrandingForm.tsx` | Nueva sección `Nombres e identidad` con las mismas opciones visibles de web (`Producto`, `Superficie`, `Título público`, `Descripción pública`) y vista previa en vivo        |
-| Acciones de cierre       | `apps/portal/src/components/settings/BrandingForm.tsx` | Paridad de acciones con web: se añade `Restaurar base` (limpieza integral de slots de branding) y CTA principal renombrado a `Guardar cambios`                              |
+| Artefacto                | Archivo                                                | Cambio                                                                                                                                                                   |
+| ------------------------ | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Formulario Marca portal  | `apps/portal/src/components/settings/BrandingForm.tsx` | Refactor visual completo al patrón de cards por slot: preview clickeable para upload, overlay de reemplazo, URL HTTPS colapsable, ayudas de reglas y feedback superior   |
+| Identidad de marca       | `apps/portal/src/components/settings/BrandingForm.tsx` | Nueva sección `Nombres e identidad` con las mismas opciones visibles de web (`Producto`, `Superficie`, `Título público`, `Descripción pública`) y vista previa en vivo   |
+| Acciones de cierre       | `apps/portal/src/components/settings/BrandingForm.tsx` | Paridad de acciones con web: se añade `Restaurar base` (limpieza integral de slots de branding) y CTA principal renombrado a `Guardar cambios`                           |
 | Compatibilidad funcional | `apps/portal/src/components/settings/BrandingForm.tsx` | Se mantiene la lógica existente: uploads por slot (`usage` + `themeVariant`), limpieza de slot, guardado incremental por `dirtyFields`, evento `tenant-branding-updated` |
 
-### Verificación ejecutada
+### Verificación ejecutada — paridad branding settings
 
 - `pnpm --filter @iwana/portal test -- BrandingForm.spec.tsx` ✅
 - `pnpm --filter @iwana/portal typecheck` ✅
 
-### Resultado del corte
+### Resultado del corte — paridad branding settings
 
 - El tab Marca de portal queda visualmente consistente con el estándar de Branding en web.
 - Se mejora la legibilidad operativa: el usuario edita por slot con una única superficie (preview + upload + URL opcional).

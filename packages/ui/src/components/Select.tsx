@@ -16,6 +16,10 @@ export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElemen
   error?: string;
   options?: SelectOption[];
   placeholder?: string;
+  menuClassName?: string | undefined;
+  menuWidth?: number | undefined;
+  menuMaxHeight?: string | undefined;
+  menuHorizontalAlign?: 'start' | 'center' | 'end' | undefined;
 }
 
 interface NormalizedOption {
@@ -71,6 +75,10 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
       id,
       options,
       placeholder,
+      menuClassName,
+      menuWidth,
+      menuMaxHeight,
+      menuHorizontalAlign = 'start',
       children,
       value,
       defaultValue,
@@ -162,8 +170,20 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         const gap = 8;
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
-        const menuWidth = Math.max(160, Math.min(rect.width, viewportWidth - 16));
-        const left = Math.min(Math.max(rect.left, 8), Math.max(8, viewportWidth - menuWidth - 8));
+        const resolvedWidth = Math.max(
+          menuWidth ?? 160,
+          Math.min(menuWidth ?? rect.width, viewportWidth - 16),
+        );
+        const preferredLeft =
+          menuHorizontalAlign === 'center'
+            ? rect.left + (rect.width - resolvedWidth) / 2
+            : menuHorizontalAlign === 'end'
+              ? rect.right - resolvedWidth
+              : rect.left;
+        const left = Math.min(
+          Math.max(preferredLeft, 8),
+          Math.max(8, viewportWidth - resolvedWidth - 8),
+        );
         const spaceBelow = viewportHeight - rect.bottom - gap;
         const spaceAbove = rect.top - gap;
         const placeAbove = spaceBelow < 220 && spaceAbove > spaceBelow;
@@ -171,10 +191,10 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         setMenuStyle({
           position: 'fixed',
           left,
-          width: menuWidth,
+          width: resolvedWidth,
           // Debe superar overlays/modales que usan z-index alto en apps web/portal.
           zIndex: 11000,
-          maxHeight: '38vh',
+          maxHeight: menuMaxHeight ?? '38vh',
           ...(placeAbove
             ? {
                 bottom: Math.max(gap, viewportHeight - rect.top + gap),
@@ -411,7 +431,10 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
                   role="listbox"
                   aria-labelledby={label ? labelId : ariaLabelledBy}
                   aria-label={label ?? placeholder ?? 'Opciones'}
-                  className="max-h-[38vh] overflow-y-auto overscroll-contain rounded-[28px] border border-white/90 bg-white/98 p-2 shadow-[var(--shadow-iwana-lg)] ring-1 ring-black/5 backdrop-blur-md sm:max-h-72 dark:border-dark-border dark:bg-dark-surface-2/98 dark:ring-white/10"
+                  className={cn(
+                    'max-h-[38vh] overflow-y-auto overscroll-contain rounded-[28px] border border-white/90 bg-white/98 p-2 shadow-(--shadow-iwana-lg) ring-1 ring-black/5 backdrop-blur-md sm:max-h-72 dark:border-dark-border dark:bg-dark-surface-2/98 dark:ring-white/10',
+                    menuClassName,
+                  )}
                   style={menuStyle}
                   onMouseDown={(event) => {
                     event.stopPropagation();

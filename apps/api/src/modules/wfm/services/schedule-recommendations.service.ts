@@ -1,13 +1,20 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { Inject } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { ScheduleEvent, TechnicianAvailability, TenantContext, runInTenantSchema } from '@iwana/db';
-import { ScheduleEventStatus, TechnicianAvailabilityType } from '@iwana/shared';
+import { ScheduleEventStatus, TechnicianAvailabilityType, WfmWorkType } from '@iwana/shared';
 import {
   ScheduleRecommendationRequest,
   ScheduleRecommendationRequestInput,
   ScheduleRecommendationRequestSchema,
 } from '../dto';
+import { WfmTenantSettingsReadPort } from '../ports/wfm-tenant-settings-read.port';
+import {
+  getLocalDateString,
+  isScheduleRangeWithinOperatingWindow,
+} from './installation-schedule-window';
+import { OperatingWindowResolverService } from './operating-window-resolver.service';
 
 const ACTIVE_STATUSES: ScheduleEventStatus[] = [
   ScheduleEventStatus.DRAFT,
@@ -75,7 +82,12 @@ interface CandidateSlotContext {
 
 @Injectable()
 export class ScheduleRecommendationsService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    @Inject(WfmTenantSettingsReadPort)
+    private readonly tenantSettingsReadPort: WfmTenantSettingsReadPort,
+    private readonly operatingWindowResolver: OperatingWindowResolverService,
+  ) {}
 
   async recommend(input: ScheduleRecommendationRequest): Promise<ScheduleRecommendationResult[]> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
@@ -83,6 +95,7 @@ export class ScheduleRecommendationsService {
     const windowStartAt = new Date(validated.windowStartAt);
     const windowEndAt = new Date(validated.windowEndAt);
     const windowDays = (windowEndAt.getTime() - windowStartAt.getTime()) / (24 * 60 * MINUTE_MS);
+    const timezone = await this.tenantSettingsReadPort.getTimezone(tenantId);
 
     if (windowDays > MAX_WINDOW_DAYS) {
       throw new BadRequestException(
@@ -115,19 +128,35 @@ export class ScheduleRecommendationsService {
         .orderBy('ta.starts_at', 'ASC')
         .getMany();
 
-      return this.buildRecommendations(validated, events, availability, windowStartAt, windowEndAt);
+      return this.buildRecommendations(
+        qr.manager,
+        validated,
+        events,
+        availability,
+        windowStartAt,
+        windowEndAt,
+        timezone,
+        tenantId,
+      );
     });
   }
 
-  private buildRecommendations(
+  private async buildRecommendations(
+    manager: EntityManager,
     input: ScheduleRecommendationRequestInput,
     events: EventLike[],
     availability: AvailabilityLike[],
     windowStartAt: Date,
     windowEndAt: Date,
-  ): ScheduleRecommendationResult[] {
+    timezone: string,
+    tenantId: string,
+  ): Promise<ScheduleRecommendationResult[]> {
     const eventsByTechnician = groupBy(events, (event) => event.assignedUserId);
     const availabilityByTechnician = groupBy(availability, (item) => item.userId);
+    const operatingWindowCache = new Map<
+      string,
+      Promise<Awaited<ReturnType<OperatingWindowResolverService['resolveWithManager']>>>
+    >();
     const target: TerritorialContext = {
       municipality: normalizeText(input.municipality),
       sector: normalizeText(input.sector),
@@ -148,6 +177,40 @@ export class ScheduleRecommendationsService {
 
       for (const startAt of buildSlotStarts(windowStartAt, windowEndAt, input.durationMinutes)) {
         const endAt = new Date(startAt.getTime() + input.durationMinutes * MINUTE_MS);
+
+        if (input.workType === WfmWorkType.INSTALLATION) {
+          const dateLocal = getLocalDateString(startAt, timezone);
+
+          if (!dateLocal) {
+            continue;
+          }
+
+          const cacheKey = `${technicianId}:${input.operatingSiteId ?? 'global'}:${dateLocal}`;
+          const effectiveWindowPromise =
+            operatingWindowCache.get(cacheKey) ??
+            this.operatingWindowResolver.resolveWithManager(manager as any, {
+              tenantId,
+              siteId: input.operatingSiteId ?? null,
+              technicianId,
+              dateLocal,
+              timezone,
+            });
+
+          operatingWindowCache.set(cacheKey, effectiveWindowPromise);
+          const effectiveWindow = await effectiveWindowPromise;
+
+          if (
+            effectiveWindow.status !== 'OPEN' ||
+            !effectiveWindow.startTime ||
+            !effectiveWindow.endTime ||
+            !isScheduleRangeWithinOperatingWindow(startAt, endAt, timezone, {
+              startTime: effectiveWindow.startTime,
+              endTime: effectiveWindow.endTime,
+            })
+          ) {
+            continue;
+          }
+        }
 
         if (
           technicianEvents.some((event) =>

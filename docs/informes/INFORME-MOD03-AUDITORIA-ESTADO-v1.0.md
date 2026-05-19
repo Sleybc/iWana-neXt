@@ -3,7 +3,7 @@
 **Version:** 1.2  
 **Estado:** En revision  
 **Fecha:** 2026-03-24  
-**Convencion documental:** INFORME-MOD03-AUDITORIA-ESTADO-v1.0.md  
+**Convencion documental:** INFORME-MOD03-AUDITORIA-ESTADO-v1.0.md
 
 ## Vinculos de trazabilidad
 
@@ -17,11 +17,11 @@
 
 ## Changelog
 
-| Version | Fecha | Cambios |
-| --- | --- | --- |
-| 1.0 | 2026-03-24 | Emision inicial con gap analysis |
-| 1.1 | 2026-03-24 | Actualizacion post-planificacion: se formalizaron PRD v1.1, HLD v1.1, sprint plan y prompt de ejecucion para cerrar brechas |
-| 1.2 | 2026-03-24 | Actualizacion post-implementacion tecnica de Fase 02B: backend DELETE, frontend ABM + mapa, E2E ampliado y validaciones |
+| Version | Fecha      | Cambios                                                                                                                     |
+| ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 1.0     | 2026-03-24 | Emision inicial con gap analysis                                                                                            |
+| 1.1     | 2026-03-24 | Actualizacion post-planificacion: se formalizaron PRD v1.1, HLD v1.1, sprint plan y prompt de ejecucion para cerrar brechas |
+| 1.2     | 2026-03-24 | Actualizacion post-implementacion tecnica de Fase 02B: backend DELETE, frontend ABM + mapa, E2E ampliado y validaciones     |
 
 ---
 
@@ -29,7 +29,7 @@
 
 A solicitud del usuario, se ha realizado una auditoría del estado del Módulo 03 (Configuración Empresarial) contrastando el código actual en el repositorio y los artefactos documentales vigentes, **incluyendo los módulos adyacentes MOD04 y MOD05**.
 
-**El resultado del análisis es que el módulo MOD03 está parcialmente completado.** 
+**El resultado del análisis es que el módulo MOD03 está parcialmente completado.**
 La Fase 01 se encuentra terminada, validada y documentada, mientras que la Fase 02 (Cobertura Comercial y Planes y Valores) ha sido implementada a nivel de Backend, pero **le falta completamente la implementación del Frontend (interfaz de usuario ABM) en el Portal Empresarial.**
 Dicha interfaz frontend **NO** está contemplada ni delegada a MOD04 ni MOD05, sino que es una dependencia estricta para que MOD05 pueda operar.
 
@@ -38,6 +38,7 @@ Dicha interfaz frontend **NO** está contemplada ni delegada a MOD04 ni MOD05, s
 ## 2. Hallazgos y Brechas (Gap Analysis)
 
 ### 2.1 Fase 01: Perfil Empresarial y Configuración Operativa
+
 **Estado:** Completado (100%)
 
 - **Backend:** Endpoints `PATCH /api/v1/tenants/me/profile` y `PATCH /api/v1/tenants/me/settings` operativos.
@@ -45,15 +46,18 @@ Dicha interfaz frontend **NO** está contemplada ni delegada a MOD04 ni MOD05, s
 - **Documentación:** El HLD y todos los ADRs referenciados (ADR-016, ADR-018, ADR-019, ADR-022, ADR-023) existen y están disponibles. El previo `ANALISIS-PRD-MOD03-v1.0.md` era inexacto informando que faltaban.
 
 ### 2.2 Fase 02: Cobertura Comercial y Catálogo de Planes
+
 **Estado:** En progreso (Aprox. 60%)
 
 Según el plan vigente (`PLAN-MOD03-CONFIGURACION-EMPRESA-FASE-02-v1.0.md`), el alcance de la Fase 02 abarca persistencia, backend y frontend.
 
 #### Backend (Completado)
+
 - Los servicios de planes y cobertura ya están creados en TenantModule (`TenantService`).
 - Las entidades `CommercialNode`, `CoverageZone` y `PlanCatalogItem` existen en la base de datos con su auditoría correspondiente.
 
 #### Frontend (Pendiente / Brecha)
+
 - **Brecha 1:** Faltan las rutas `apps/portal/src/app/dashboard/settings/coverage` y `apps/portal/src/app/dashboard/settings/plans` para que el Administrador registre nodos y planes.
 - **Brecha 2:** No hay enlaces en el componente de navegación lateral `Sidebar.tsx`.
 - Las tareas `BT-CE2-07`, `BT-CE2-08` y `BT-CE2-09` del Plan Fase 02 siguen sin implementarse.
@@ -61,6 +65,7 @@ Según el plan vigente (`PLAN-MOD03-CONFIGURACION-EMPRESA-FASE-02-v1.0.md`), el 
 ### 2.3 Impacto Cruzado con MOD04 y MOD05
 
 Para descartar redundancias, se auditaron los PRD de módulos adyacentes:
+
 - **MOD04 (Usuarios Internos):** Este módulo rige exclusivamente la creación y jerarquía de empleados dentro de la consola, manejo de roles (RBAC) y cumplimiento de Habeas Data, **no** contempla ABM comercial de Cobertura o Planes.
 - **MOD05 (CRM Experimento Único):** Según la sección "Fuera de Scope" del `PRD-MOD05`, el ABM de cobertura y catálogos de planes pertenece expresamente a MOD03. MOD05 actúa como **consumidor solo lectura** (Read-Only Consumer) de estos servicios de MOD03 mediante los puertos `CoverageReadPort` y `PlanCatalogReadPort`.
 
@@ -73,6 +78,7 @@ Para descartar redundancias, se auditaron los PRD de módulos adyacentes:
 La arquitectura es coherente, pero la paralización en el Frontend Fase 02 de MOD03 genera un bloqueo funcional para la completitud productiva del CRM MOD05.
 
 **Siguientes Pasos (Next Steps):**
+
 1. **Ejecutar Frontend:** Iniciar el desarrollo de las rutas de `/coverage` y `/plans` en `apps/portal/src/app/dashboard/settings` para completar la Fase 2 del MOD03.
 2. Tras la codificación, aplicar pruebas E2E con Playwright simulando la carga de un nodo comercial y un plan, garantizando que queden listos para consumo por MOD05.
 
@@ -84,17 +90,17 @@ Tras la emision del informe v1.0, se realizo el siguiente trabajo de planificaci
 
 ### 4.1 Documentos actualizados
 
-| Documento | Cambio | Version |
-| --- | --- | --- |
-| PRD-MOD03 | Ampliado con CU-06 a CU-11, RF-CE-21 a RF-CE-40, contratos DELETE, mapa Leaflet, criterios de aceptacion CA-CE-09 a CA-CE-17 | v1.1 |
-| HLD-MOD03 | Ampliado con contratos de cobertura y planes, componentes frontend (ABM + mapa), deployment notes Leaflet, riesgos v1.1 | v1.1 |
+| Documento | Cambio                                                                                                                       | Version |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------- | ------- |
+| PRD-MOD03 | Ampliado con CU-06 a CU-11, RF-CE-21 a RF-CE-40, contratos DELETE, mapa Leaflet, criterios de aceptacion CA-CE-09 a CA-CE-17 | v1.1    |
+| HLD-MOD03 | Ampliado con contratos de cobertura y planes, componentes frontend (ABM + mapa), deployment notes Leaflet, riesgos v1.1      | v1.1    |
 
 ### 4.2 Documentos nuevos generados
 
-| Documento | Proposito |
-| --- | --- |
-| `docs/sprints/PLAN-MOD03-FASE-02B-SPRINT-01-v1.0.md` | Sprint plan con backlog de 25 tareas (P0-P4), dependencias, selectores E2E, criterios de aceptacion |
-| `docs/prompts/PROMPT-MOD03-FASE-02B-v1.0.md` | Prompt de ejecucion para Sr. Dev Fullstack con instrucciones paso a paso, restricciones, entregables y criterios stop/go |
+| Documento                                            | Proposito                                                                                                                |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `docs/sprints/PLAN-MOD03-FASE-02B-SPRINT-01-v1.0.md` | Sprint plan con backlog de 25 tareas (P0-P4), dependencias, selectores E2E, criterios de aceptacion                      |
+| `docs/prompts/PROMPT-MOD03-FASE-02B-v1.0.md`         | Prompt de ejecucion para Sr. Dev Fullstack con instrucciones paso a paso, restricciones, entregables y criterios stop/go |
 
 ### 4.3 Decisiones clave tomadas
 
@@ -104,13 +110,13 @@ Tras la emision del informe v1.0, se realizo el siguiente trabajo de planificaci
 
 ### 4.4 Estado de brechas post-planificacion
 
-| Brecha original | Estado actual |
-| --- | --- |
-| Brecha 1: Falta ABM frontend de cobertura | **Plan formalizado** — Sprint plan con 12 tareas P1+P2, prompt con instrucciones detalladas |
-| Brecha 2: Falta enlaces navegacion lateral | **Incluido en refactorizacion** de CommercialCoverageCard (tarea BT-CE2B-11) |
-| Impacto MOD05 sin datos semilla | **Desbloqueado** al completar estas tareas, MOD05 CRM tendra datos de cobertura y planes |
-| Falta E2E | **Plan formalizado** — 7 tests E2E en P3 del sprint |
-| Falta DELETE endpoints | **Plan formalizado** — 4 tareas P0 del sprint |
+| Brecha original                            | Estado actual                                                                               |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| Brecha 1: Falta ABM frontend de cobertura  | **Plan formalizado** — Sprint plan con 12 tareas P1+P2, prompt con instrucciones detalladas |
+| Brecha 2: Falta enlaces navegacion lateral | **Incluido en refactorizacion** de CommercialCoverageCard (tarea BT-CE2B-11)                |
+| Impacto MOD05 sin datos semilla            | **Desbloqueado** al completar estas tareas, MOD05 CRM tendra datos de cobertura y planes    |
+| Falta E2E                                  | **Plan formalizado** — 7 tests E2E en P3 del sprint                                         |
+| Falta DELETE endpoints                     | **Plan formalizado** — 4 tareas P0 del sprint                                               |
 
 ### 4.5 Siguiente paso
 
@@ -122,12 +128,12 @@ El Sr. Dev Fullstack debe ejecutar el prompt `PROMPT-MOD03-FASE-02B-v1.0.md` sig
 
 ### 5.1 Estado de cierre de brechas
 
-| Brecha | Estado post-ejecucion |
-| --- | --- |
-| Endpoints DELETE cobertura (nodos/zonas) | Cerrada |
-| Frontend ABM cobertura (tablas + dialogs) | Cerrada |
-| Integracion mapa interactivo Leaflet | Cerrada |
-| API client deleteCoverageNode/deleteCoverageZone | Cerrada |
+| Brecha                                            | Estado post-ejecucion    |
+| ------------------------------------------------- | ------------------------ |
+| Endpoints DELETE cobertura (nodos/zonas)          | Cerrada                  |
+| Frontend ABM cobertura (tablas + dialogs)         | Cerrada                  |
+| Integracion mapa interactivo Leaflet              | Cerrada                  |
+| API client deleteCoverageNode/deleteCoverageZone  | Cerrada                  |
 | E2E cobertura + planes + read-only + factibilidad | Cerrada en spec objetivo |
 
 ### 5.2 Evidencia tecnica implementada
@@ -159,6 +165,8 @@ El Sr. Dev Fullstack debe ejecutar el prompt `PROMPT-MOD03-FASE-02B-v1.0.md` sig
 - Frontend portal: se corrigio `CoverageMap` con `ResizeObserver` para invalidar tamano del mapa cuando el tab `Comercial` pasa de oculto a visible, evitando el render parcial de tiles.
 - Frontend portal: se desacoplo el `loading` de los botones `Agregar nodo`, `Agregar zona` y `Crear nodo de prueba` para que no hereden el spinner de toggles o deletes ejecutados sobre la tabla.
 - Design system: se elevo el z-index de `Dialog` para garantizar que overlays y contenido modal queden por encima de los panes internos de Leaflet, corrigiendo la superposicion visual del mapa al abrir `Nueva zona`.
+- Frontend portal: se corrigio el runtime `React is not defined` al entrar a `/dashboard/settings`. Causa raiz: `WeekGrid` en `apps/portal/src/components/settings/WfmOperatingHoursManager.tsx` habia quedado usando `React.Fragment` como hijo raiz de `week.map(...)` sin importar el namespace `React`, lo que rompe en ejecucion con el runtime JSX actual. Ajuste aplicado: se importo `Fragment` directamente desde `react` y se reemplazo `React.Fragment` por `Fragment` manteniendo `key={day.weekday}` en el hijo raiz. Validacion: diagnostico limpio del archivo tras el cambio.
+- Frontend portal: se corrigio el selector de horas en `/dashboard/settings` para alinearlo con el design system. Causa raiz: `WfmOperatingHoursManager` seguia usando `input[type="time"]`, lo que delegaba el picker al navegador y producia un popup nativo ajeno al lenguaje visual de iWana; en el primer reemplazo, la variante compacta del trigger no tenia ancho util suficiente dentro de la tabla y ocultaba los valores seleccionados. Ajuste aplicado: se reemplazaron los controles nativos de hora en `WeekGrid` y en el formulario de overrides por un selector compuesto `HH:mm` basado en `Select` de `@iwana/ui`, conservando el valor final `HH:mm` para no tocar contratos ni validaciones; despues se recalibro la variante compacta para centrar realmente el valor del trigger, mover el chevron a una posicion absoluta para no sesgar el texto hacia la derecha, reservar padding lateral para que el icono no se monte sobre el ultimo caracter, abrir mas el ancho horizontal del control, suavizar su geometria hacia una forma mas ovalada, normalizar placeholders en minuscula sin negrilla y reducir el ancho/alto del dropdown a una escala coherente con listas de dos digitos. Validacion: spec focalizada `WfmOperatingHoursManager.spec.tsx` en verde y sin `input[type="time"]` remanentes en el render del manager.
 
 ---
 

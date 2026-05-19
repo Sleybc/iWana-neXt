@@ -7,6 +7,7 @@ import { z } from 'zod';
 /** Schema Zod para actualizar contexto adicional de una solicitud de visita. SPEC-MOD09 §6.2 */
 export const UpdateVisitRequestContextSchema = z.object({
   description: z.string().optional().nullable(),
+  operatingSiteId: z.string().uuid().optional().nullable(),
   requestedWindowStartAt: z.string().datetime({ offset: true }).optional().nullable(),
   requestedWindowEndAt: z.string().datetime({ offset: true }).optional().nullable(),
   slaDueAt: z.string().datetime({ offset: true }).optional().nullable(),
@@ -31,6 +32,14 @@ export class UpdateVisitRequestContextDto {
   @IsOptional()
   @IsString()
   description?: string | null;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Sede operativa WFM asociada a la solicitud',
+  })
+  @IsOptional()
+  @IsUUID()
+  operatingSiteId?: string | null;
 
   @ApiPropertyOptional({
     example: '2026-06-01T09:00:00Z',

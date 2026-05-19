@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { CheckCircle2, CircleAlert } from 'lucide-react';
-import { Button, Card, CardContent, CardHeader } from '@iwana/ui';
+import { Button, Card, CardContent, CardHeader, Select } from '@iwana/ui';
 import { tenantSelfApi, type TenantSelfSettings } from '@/lib/api-client';
 import { PortalAlert, PortalSectionHeader } from '@/components/shared/portal-ui';
 
@@ -63,6 +63,7 @@ const LABEL_CLASS = 'mb-1.5 block text-sm font-medium text-gray-700 dark:text-gr
 const ERROR_CLASS = 'mt-1 text-xs text-red-600 dark:text-red-400';
 const SUBSECTION_LABEL =
   'text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400';
+const SELECT_MENU_CLASS = 'rounded-2xl p-1.5 [&_[role=option]]:min-h-11 [&_[role=option]]:px-3';
 
 // Resuelve la etiqueta legible dado un valor; si no hay match, devuelve el valor crudo
 function labelFor(options: { value: string; label: string }[], value: string): string {
@@ -195,13 +196,12 @@ export function OperationalSettingsForm({
                   <label htmlFor="timezone" className={LABEL_CLASS}>
                     Zona horaria
                   </label>
-                  <select id="timezone" className={INPUT_CLASS} {...register('timezone')}>
-                    {TIMEZONE_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    id="timezone"
+                    options={TIMEZONE_OPTIONS}
+                    menuClassName={SELECT_MENU_CLASS}
+                    {...register('timezone')}
+                  />
                   {errors.timezone?.message && (
                     <p className={ERROR_CLASS}>{errors.timezone.message}</p>
                   )}
@@ -210,13 +210,12 @@ export function OperationalSettingsForm({
                   <label htmlFor="country" className={LABEL_CLASS}>
                     País operativo
                   </label>
-                  <select id="country" className={INPUT_CLASS} {...register('country')}>
-                    {COUNTRY_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    id="country"
+                    options={COUNTRY_OPTIONS}
+                    menuClassName={SELECT_MENU_CLASS}
+                    {...register('country')}
+                  />
                   {errors.country?.message && (
                     <p className={ERROR_CLASS}>{errors.country.message}</p>
                   )}
@@ -232,13 +231,12 @@ export function OperationalSettingsForm({
                   <label htmlFor="language" className={LABEL_CLASS}>
                     Idioma
                   </label>
-                  <select id="language" className={INPUT_CLASS} {...register('language')}>
-                    {LANGUAGE_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    id="language"
+                    options={LANGUAGE_OPTIONS}
+                    menuClassName={SELECT_MENU_CLASS}
+                    {...register('language')}
+                  />
                   {errors.language?.message && (
                     <p className={ERROR_CLASS}>{errors.language.message}</p>
                   )}
@@ -247,13 +245,12 @@ export function OperationalSettingsForm({
                   <label htmlFor="currency" className={LABEL_CLASS}>
                     Moneda
                   </label>
-                  <select id="currency" className={INPUT_CLASS} {...register('currency')}>
-                    {CURRENCY_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    id="currency"
+                    options={CURRENCY_OPTIONS}
+                    menuClassName={SELECT_MENU_CLASS}
+                    {...register('currency')}
+                  />
                   {errors.currency?.message && (
                     <p className={ERROR_CLASS}>{errors.currency.message}</p>
                   )}

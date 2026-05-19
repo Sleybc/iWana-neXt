@@ -185,3 +185,24 @@ No se identifican bloqueos criticos de arquitectura, seguridad, tenancy o compil
 - Se generó el plan task-by-task en `docs/superpowers/plans/2026-05-15-mod09-wfm-operating-hours.md`.
 - Se generó el prompt de ejecución para fullstack en `docs/prompts/PROMPT-MOD09-HORARIOS-OPERATIVOS-WFM-v1.0.md`.
 - Estado actual: listo para ejecución fullstack; aún no se han corrido pruebas de implementación de esta nueva fase porque este corte fue documental y de gobierno técnico.
+
+### Actualizacion WFM operating hours 2026-05-16
+
+- Se completó el slice portal de `settings` dentro de la pestaña `operations` con `apps/portal/src/components/settings/WfmOperatingHoursManager.tsx`, manteniendo `OperationalSettingsForm` enfocado solo en timezone, moneda, idioma y país.
+- El portal ahora consume CRUD tipado para sedes operativas, horario base, horario por sede, overrides por técnico y festivos/cierres desde `apps/portal/src/lib/api-client.ts`.
+- Se agregó la consulta self-service `POST /api/v1/wfm/operating-window/resolve` para exponer al portal la ventana operativa efectiva resuelta por backend sin duplicar la precedencia en cliente.
+- `ScheduleEventForm`, `RescheduleEventDialog`, `VisitRequestRecommendationPanel` y `PendingVisitRequestsView` dejaron de depender del hardcode `07:00-18:00` y ahora resuelven la ventana efectiva para instalaciones, filtran horas según esa ventana y muestran mensajes de cierre cuando la fecha no está habilitada.
+- El helper `apps/portal/src/components/scheduling/schedule-event-time.ts` quedó generalizado para filtrar horas por una ventana operativa dinámica en lugar de un rango fijo embebido.
+- Se creó el hook `apps/portal/src/components/scheduling/useOperatingWindow.ts` para centralizar la lectura de ventana efectiva y el copy explicativo usado por scheduling.
+
+#### Evidencia ejecutada 2026-05-16
+
+- `pnpm exec jest -c apps/portal/jest.config.js --runInBand apps/portal/src/components/settings/WfmOperatingHoursManager.spec.tsx apps/portal/src/components/settings/SettingsClient.spec.tsx` ✅
+- `pnpm exec jest -c apps/api/jest.config.js --runInBand apps/api/src/modules/wfm/tests/wfm-operating-settings.controller.http.spec.ts` ✅
+- `pnpm exec jest -c apps/portal/jest.config.js --runInBand apps/portal/src/components/scheduling/ScheduleEventForm.spec.tsx apps/portal/src/components/scheduling/RescheduleEventDialog.spec.tsx apps/portal/src/components/scheduling/PendingVisitRequestsView.spec.tsx` ✅
+
+#### Estado resultante
+
+- `settings` del portal ya permite administrar configuración WFM sin mezclar ownership con `tenant.settings`.
+- Scheduling del portal ya explica cierres operativos usando la misma resolución efectiva que backend.
+- La validación quedó focalizada sobre los slices modificados de API y portal; no se ejecutó en este corte un `typecheck` global del monorepo completo.

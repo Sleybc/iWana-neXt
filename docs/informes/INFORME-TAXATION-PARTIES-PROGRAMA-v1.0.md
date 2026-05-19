@@ -1,9 +1,11 @@
 # Informe vivo — Programa Taxation (MOD07) + Parties (MOD08) + Rediseño tributario MOD06
 
+<!-- markdownlint-configure-file {"MD024": false, "MD032": false, "MD040": false, "MD060": false} -->
+
 **Version:** 1.0
 **Estado:** Cerrado ✅ — F0-F6 completadas
 **Fecha de apertura:** 2026-04-21
-**Última actualización:** 2026-04-22 (Refinamiento arquitectónico MVP: tributos por cliente + prompt de ejecución)
+**Última actualización:** 2026-05-19 (Cierre documental PRD sistema v2.4 + normalización markdown)
 **Owner técnico:** Sr. Dev Fullstack
 **Gobierno:** Engineering Manager (AI-EM-ARCH)
 **PRD:** `docs/prds/PRD-TAXATION-PARTIES-COMMERCIAL-REDESIGN-v1.0.md`
@@ -117,7 +119,13 @@
 
 - Confirmar política fina de cifrado de contactos PII en MOD08 (ADR operativo posterior si se requiere).
 - Evaluar renombre físico de tabla `users` → `user_accounts` (ADR operativo posterior).
-- Consolidar PRD v2.3 → v2.4 al cierre del programa.
+- Consolidar PRD v2.3 → v2.4 al cierre del programa. ✅ Completado 2026-05-19 (`docs/prds/PRD_Sistema_ISP_Colombia_v2_3.md`).
+
+### Cierre documental (2026-05-19)
+
+- Se consolidó el PRD sistémico a versión de contenido 2.4, incorporando ADR-025 a ADR-039 y estado real de módulos/transversales.
+- Se normalizó el documento para cumplir markdownlint (encabezados, fences con lenguaje, blockquotes, tablas conflictivas y URLs).
+- El archivo objetivo quedó sin errores de markdownlint al cierre de esta actividad.
 
 ---
 

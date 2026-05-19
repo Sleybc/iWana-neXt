@@ -1,4 +1,5 @@
 export * from './schedule-event-status.enum';
+export * from './business-hours-weekday.enum';
 export * from './technician-availability-type.enum';
 export * from './visit-request-status.enum';
 export * from './wfm-work-type.enum';

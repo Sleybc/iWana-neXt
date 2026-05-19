@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
 import { ScheduleEventStatus, UserRole } from '@iwana/shared';
 import { WfmTenantSettingsReadPort } from '../ports/wfm-tenant-settings-read.port';
+import { OperatingWindowResolverService } from '../services/operating-window-resolver.service';
 import { ScheduleEventsService } from '../services/schedule-events.service';
 import { ScheduleConflictService } from '../services/schedule-conflict.service';
 import { WorkOrdersService } from '../services/work-orders.service';
@@ -29,6 +30,10 @@ describe('ScheduleEventsService', () => {
   let mockWorkOrdersService: jest.Mocked<WorkOrdersService>;
   let mockTenantService: {
     getTimezone: jest.Mock;
+  };
+  let mockOperatingWindowResolver: {
+    resolve: jest.Mock;
+    resolveWithManager: jest.Mock;
   };
   let mockRunInTenantSchema: jest.MockedFunction<typeof runInTenantSchema>;
 
@@ -83,6 +88,23 @@ describe('ScheduleEventsService', () => {
       getTimezone: jest.fn().mockResolvedValue('America/Bogota'),
     };
 
+    mockOperatingWindowResolver = {
+      resolve: jest.fn().mockResolvedValue({
+        status: 'OPEN',
+        source: 'COMPANY_HOURS',
+        startTime: '07:00',
+        endTime: '18:00',
+        reason: null,
+      }),
+      resolveWithManager: jest.fn().mockResolvedValue({
+        status: 'OPEN',
+        source: 'COMPANY_HOURS',
+        startTime: '07:00',
+        endTime: '18:00',
+        reason: null,
+      }),
+    };
+
     mockWorkOrdersService = {
       create: jest.fn(),
       createWithinManager: jest.fn(),
@@ -95,6 +117,7 @@ describe('ScheduleEventsService', () => {
     service = new ScheduleEventsService(
       mockDataSource as DataSource,
       mockTenantService as unknown as WfmTenantSettingsReadPort,
+      mockOperatingWindowResolver as unknown as OperatingWindowResolverService,
       mockConflictService,
       mockWorkOrdersService,
     );
@@ -163,10 +186,18 @@ describe('ScheduleEventsService', () => {
         scheduledEndAt: '2026-06-01T13:00:00Z',
       };
 
+      mockOperatingWindowResolver.resolve.mockResolvedValueOnce({
+        status: 'CLOSED',
+        source: 'HOLIDAY_BLACKOUT',
+        startTime: null,
+        endTime: null,
+        reason: 'Festivo nacional',
+      });
+
       mockRunInTenantSchema.mockClear();
 
       await expect(service.create(outOfRangeInput, adminActor as any)).rejects.toThrow(
-        'Las instalaciones solo pueden programarse entre 07:00 y 18:00.',
+        'La instalacion debe quedar dentro del horario operativo configurado.',
       );
       expect(mockRunInTenantSchema).not.toHaveBeenCalled();
     });
@@ -415,10 +446,19 @@ describe('ScheduleEventsService', () => {
         tenantId: 'tenant-001',
         assignedUserId: 'tech-001',
         type: 'INSTALLATION',
+        operatingSiteId: null,
         scheduledStartAt: new Date('2026-06-01T09:00:00Z'),
         scheduledEndAt: new Date('2026-06-01T11:00:00Z'),
         status: ScheduleEventStatus.SCHEDULED,
       };
+
+      mockOperatingWindowResolver.resolveWithManager.mockResolvedValueOnce({
+        status: 'CLOSED',
+        source: 'HOLIDAY_BLACKOUT',
+        startTime: null,
+        endTime: null,
+        reason: 'Festivo nacional',
+      });
 
       mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
         const mockQr = {
@@ -439,7 +479,7 @@ describe('ScheduleEventsService', () => {
           },
           adminActor as any,
         ),
-      ).rejects.toThrow('Las instalaciones solo pueden reagendarse entre 07:00 y 18:00.');
+      ).rejects.toThrow('La instalacion debe quedar dentro del horario operativo configurado.');
       expect(mockConflictService.hasConflict).not.toHaveBeenCalled();
     });
   });

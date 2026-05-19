@@ -3,6 +3,30 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { WfmWorkType } from '@iwana/shared';
 import { ScheduleEventForm } from './ScheduleEventForm';
 
+const useOperatingWindowMock = jest.fn();
+
+jest.mock('./useOperatingWindow', () => ({
+  useOperatingWindow: (...args: unknown[]) => useOperatingWindowMock(...args),
+  getOperatingWindowMessage: (
+    window: {
+      status?: 'OPEN' | 'CLOSED';
+      startTime?: string | null;
+      endTime?: string | null;
+      reason?: string | null;
+    } | null,
+  ) => {
+    if (!window) {
+      return null;
+    }
+
+    if (window.status === 'OPEN' && window.startTime && window.endTime) {
+      return `Ventana operativa vigente: ${window.startTime} a ${window.endTime}.`;
+    }
+
+    return window.reason ?? null;
+  },
+}));
+
 jest.mock('@iwana/ui', () => {
   const actual = jest.requireActual('@iwana/ui');
 
@@ -139,6 +163,17 @@ function fillRequiredFields() {
 describe('ScheduleEventForm', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    useOperatingWindowMock.mockReturnValue({
+      operatingWindow: {
+        status: 'OPEN',
+        source: 'COMPANY_HOURS',
+        startTime: '07:00',
+        endTime: '18:00',
+        reason: null,
+      },
+      isLoadingOperatingWindow: false,
+      operatingWindowError: null,
+    });
   });
 
   it('valida campos requeridos antes de enviar', async () => {
@@ -261,7 +296,19 @@ describe('ScheduleEventForm', () => {
     });
   });
 
-  it('restringe las instalaciones al rango 07:00-18:00', () => {
+  it('usa la ventana operativa resuelta para filtrar horas de instalación', () => {
+    useOperatingWindowMock.mockReturnValue({
+      operatingWindow: {
+        status: 'OPEN',
+        source: 'SITE_HOURS',
+        startTime: '09:00',
+        endTime: '17:00',
+        reason: null,
+      },
+      isLoadingOperatingWindow: false,
+      operatingWindowError: null,
+    });
+
     render(
       <ScheduleEventForm
         technicians={[buildTechnician()]}
@@ -278,9 +325,9 @@ describe('ScheduleEventForm', () => {
 
     const timeSelect = screen.getByLabelText('Hora de llegada');
 
-    expect(timeSelect).toHaveValue('07:00');
-    expect(screen.queryByRole('option', { name: '06:45' })).not.toBeInTheDocument();
-    expect(screen.getByRole('option', { name: '07:00' })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: '18:00' })).toBeInTheDocument();
+    expect(timeSelect).toHaveValue('09:00');
+    expect(screen.queryByRole('option', { name: '08:45' })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '09:00' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: '16:00' })).not.toBeInTheDocument();
   });
 });

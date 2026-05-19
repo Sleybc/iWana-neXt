@@ -23,6 +23,7 @@ import {
   toIsoFromLocalDateAndTime,
   toLocalDateTimeParts,
 } from './schedule-event-time';
+import { getOperatingWindowMessage, useOperatingWindow } from './useOperatingWindow';
 import {
   formatVisitRequestLocationLabel,
   formatVisitRequestTerritory,
@@ -122,7 +123,17 @@ export function VisitRequestRecommendationPanel({
   const [searchHorizonDays, setSearchHorizonDays] = useState('7');
   const [isContextExpanded, setIsContextExpanded] = useState(false);
   const hasDurationSelection = durationMinutes.trim().length > 0;
-  const requestTimeOptions = getScheduleTimeOptionsForWorkType(selectedVisitRequest?.workType);
+  const { operatingWindow, isLoadingOperatingWindow, operatingWindowError } = useOperatingWindow({
+    workType: selectedVisitRequest?.workType,
+    dateLocal: contextDraft.requestedWindowStartDate || null,
+    siteId: selectedVisitRequest?.operatingSiteId ?? null,
+    enabled: Boolean(selectedVisitRequest),
+  });
+  const operatingWindowMessage = getOperatingWindowMessage(operatingWindow);
+  const requestTimeOptions = getScheduleTimeOptionsForWorkType(
+    selectedVisitRequest?.workType,
+    operatingWindow,
+  );
 
   useEffect(() => {
     const nextMissingFields = selectedVisitRequest
@@ -247,6 +258,28 @@ export function VisitRequestRecommendationPanel({
         />
       )}
 
+      {selectedVisitRequest.workType === 'INSTALLATION' && operatingWindowError && (
+        <PortalAlert
+          variant="warning"
+          title="No fue posible resolver la ventana operativa"
+          description={operatingWindowError}
+        />
+      )}
+
+      {selectedVisitRequest.workType === 'INSTALLATION' &&
+        !operatingWindowError &&
+        operatingWindowMessage && (
+          <PortalAlert
+            variant={operatingWindow?.status === 'OPEN' ? 'info' : 'warning'}
+            title={
+              operatingWindow?.status === 'OPEN'
+                ? 'Ventana operativa aplicada'
+                : 'Fecha cerrada para recomendar'
+            }
+            description={operatingWindowMessage}
+          />
+        )}
+
       <div className="space-y-4 rounded-3xl border border-gray-200 p-4 dark:border-dark-border">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -283,9 +316,15 @@ export function VisitRequestRecommendationPanel({
         <div className="rounded-2xl bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-dark-surface-3 dark:text-gray-300">
           {!hasDurationSelection
             ? 'Selecciona primero la duración estimada para habilitar las recomendaciones.'
-            : missingFields.length > 0
-              ? 'El cálculo ya puede usar la duración elegida, pero aún debes completar el contexto operativo faltante.'
-              : 'Cuando confirmes la búsqueda, el sistema propondrá las mejores franjas por territorio y continuidad de ruta.'}
+            : selectedVisitRequest.workType === 'INSTALLATION' && isLoadingOperatingWindow
+              ? 'Estamos resolviendo la ventana operativa configurada para la fecha solicitada.'
+              : selectedVisitRequest.workType === 'INSTALLATION' &&
+                  operatingWindow?.status === 'CLOSED'
+                ? (operatingWindowMessage ??
+                  'La fecha seleccionada no tiene una ventana operativa habilitada.')
+                : missingFields.length > 0
+                  ? 'El cálculo ya puede usar la duración elegida, pero aún debes completar el contexto operativo faltante.'
+                  : 'Cuando confirmes la búsqueda, el sistema propondrá las mejores franjas por territorio y continuidad de ruta.'}
         </div>
         <div className="flex justify-end">
           <Button
@@ -318,7 +357,13 @@ export function VisitRequestRecommendationPanel({
               }
             }}
             loading={isLoadingRecommendations}
-            disabled={missingFields.length > 0 || isTerminalVisitRequest || !hasDurationSelection}
+            disabled={
+              missingFields.length > 0 ||
+              isTerminalVisitRequest ||
+              !hasDurationSelection ||
+              (selectedVisitRequest.workType === 'INSTALLATION' &&
+                (!!operatingWindowError || operatingWindow?.status === 'CLOSED'))
+            }
           >
             <Sparkles className="h-4 w-4" aria-hidden="true" />
             Calcular recomendaciones

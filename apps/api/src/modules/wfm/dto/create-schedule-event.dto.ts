@@ -37,6 +37,7 @@ export const CreateScheduleEventSchema = z.object({
   scheduledStartAt: z.string().datetime({ offset: true }),
   scheduledEndAt: z.string().datetime({ offset: true }),
   assignedUserId: z.string().uuid(),
+  operatingSiteId: z.string().uuid().optional().nullable(),
   address: z.string().max(255).optional().nullable(),
   municipality: z.string().max(120).optional().nullable(),
   sector: z.string().max(120).optional().nullable(),
@@ -133,6 +134,11 @@ export class CreateScheduleEventDto {
   @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000', format: 'uuid' })
   @IsUUID()
   assignedUserId: string;
+
+  @ApiPropertyOptional({ format: 'uuid', description: 'Sede operativa WFM asociada al evento' })
+  @IsOptional()
+  @IsUUID()
+  operatingSiteId?: string | null;
 
   @ApiPropertyOptional({ maxLength: 255 })
   @IsOptional()

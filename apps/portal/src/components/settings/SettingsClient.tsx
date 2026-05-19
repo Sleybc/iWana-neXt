@@ -16,6 +16,7 @@ import { OperationalSettingsForm } from './OperationalSettingsForm';
 import { SecuritySettingsCard } from './SecuritySettingsCard';
 import { SettingsTabPanel } from './SettingsTabPanel';
 import { SettingsTabs } from './SettingsTabs';
+import { WfmOperatingHoursManager } from './WfmOperatingHoursManager';
 import { SETTINGS_NAVIGATION, type SettingsTabId } from './settings-navigation';
 import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 
@@ -178,11 +179,14 @@ export function SettingsClient() {
               labelledBy={getTabId('operations')}
               isActive={activeTab === 'operations'}
             >
-              <OperationalSettingsForm
-                settings={settings}
-                canEdit={canEdit}
-                onUpdated={setSettings}
-              />
+              <div className="space-y-6">
+                <OperationalSettingsForm
+                  settings={settings}
+                  canEdit={canEdit}
+                  onUpdated={setSettings}
+                />
+                <WfmOperatingHoursManager canEdit={canEdit} />
+              </div>
             </SettingsTabPanel>
 
             <SettingsTabPanel

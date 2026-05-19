@@ -30,6 +30,7 @@ import {
   toLocalDateValue,
   toLocalTimeValue,
 } from './schedule-event-time';
+import { getOperatingWindowMessage, useOperatingWindow } from './useOperatingWindow';
 
 const rescheduleSchema = z
   .object({
@@ -115,9 +116,24 @@ export function RescheduleEventDialog({
     () => buildScheduleWindow(scheduledDateLocal, scheduledStartTimeLocal, durationMinutes),
     [scheduledDateLocal, scheduledStartTimeLocal, durationMinutes],
   );
+  const { operatingWindow, isLoadingOperatingWindow, operatingWindowError } = useOperatingWindow({
+    workType: event?.type as WfmWorkType | undefined,
+    dateLocal: scheduledDateLocal,
+    siteId: event?.operatingSiteId ?? null,
+    technicianId: event?.assignedUserId ?? null,
+  });
+  const operatingWindowMessage = useMemo(
+    () => getOperatingWindowMessage(operatingWindow),
+    [operatingWindow],
+  );
   const scheduleTimeOptions = useMemo(
-    () => getScheduleTimeOptionsForWorkType(event?.type as WfmWorkType | undefined),
-    [event?.type],
+    () =>
+      getScheduleTimeOptionsForWorkType(
+        event?.type as WfmWorkType | undefined,
+        operatingWindow,
+        durationMinutes,
+      ),
+    [durationMinutes, event?.type, operatingWindow],
   );
   const durationHours = Math.floor(Math.max(durationMinutes || 0, 0) / 60);
   const durationRemainderMinutes = Math.max(durationMinutes || 0, 0) % 60;
@@ -153,9 +169,9 @@ export function RescheduleEventDialog({
     }
 
     if (!scheduleTimeOptions.some((option) => option.value === scheduledStartTimeLocal)) {
-      const fallbackTime = scheduleTimeOptions[0]?.value;
+      const fallbackTime = scheduleTimeOptions[0]?.value ?? '';
 
-      if (fallbackTime) {
+      if (fallbackTime || scheduledStartTimeLocal) {
         setValue('scheduledStartTimeLocal', fallbackTime, {
           shouldDirty: false,
           shouldValidate: true,
@@ -190,11 +206,18 @@ export function RescheduleEventDialog({
 
             if (
               event?.type === WfmWorkType.INSTALLATION &&
-              !isScheduleWindowAllowedForWorkType(WfmWorkType.INSTALLATION, nextWindow)
+              !isScheduleWindowAllowedForWorkType(
+                WfmWorkType.INSTALLATION,
+                nextWindow,
+                operatingWindow,
+              )
             ) {
               setError('scheduledStartTimeLocal', {
                 type: 'validate',
-                message: 'Las instalaciones solo se programan entre 07:00 y 18:00.',
+                message:
+                  operatingWindowMessage ??
+                  operatingWindowError ??
+                  'La fecha seleccionada no tiene una ventana operativa disponible.',
               });
               return;
             }
@@ -211,6 +234,34 @@ export function RescheduleEventDialog({
         >
           {error && (
             <PortalAlert variant="error" title="No fue posible reagendar" description={error} />
+          )}
+
+          {event?.type === WfmWorkType.INSTALLATION && operatingWindowError && (
+            <PortalAlert
+              variant="warning"
+              title="No fue posible resolver la ventana operativa"
+              description={operatingWindowError}
+            />
+          )}
+
+          {event?.type === WfmWorkType.INSTALLATION &&
+            !operatingWindowError &&
+            operatingWindowMessage && (
+              <PortalAlert
+                variant={operatingWindow?.status === 'OPEN' ? 'info' : 'warning'}
+                title={
+                  operatingWindow?.status === 'OPEN'
+                    ? 'Ventana operativa aplicada'
+                    : 'Fecha cerrada para reagendar'
+                }
+                description={operatingWindowMessage}
+              />
+            )}
+
+          {event?.type === WfmWorkType.INSTALLATION && isLoadingOperatingWindow && (
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Resolviendo la ventana operativa configurada para la nueva fecha...
+            </p>
           )}
 
           <section className="space-y-4 rounded-2xl border border-gray-200 bg-[#fbfcf8] p-4 dark:border-dark-border dark:bg-dark-surface-3">

@@ -46,6 +46,7 @@ import {
   toDateFromLocalDateValue,
   toIsoFromLocalDateAndTime,
 } from './schedule-event-time';
+import { useOperatingWindow } from './useOperatingWindow';
 import { syncExpedienteAfterScheduleEvent } from './scheduling-expediente-sync';
 import {
   buildDefaultPendingVisitFilters,
@@ -319,9 +320,14 @@ export function PendingVisitRequestsView() {
       : new Date();
     return toMatrixRange(anchor);
   }, [selectedVisitRequest?.requestedWindowStartAt]);
+  const { operatingWindow: createOperatingWindow } = useOperatingWindow({
+    workType: createDraft.workType,
+    dateLocal: createDraft.requestedWindowStartDate || null,
+    enabled: isCreateOpen,
+  });
   const createTimeOptions = useMemo(
-    () => getScheduleTimeOptionsForWorkType(createDraft.workType),
-    [createDraft.workType],
+    () => getScheduleTimeOptionsForWorkType(createDraft.workType, createOperatingWindow),
+    [createDraft.workType, createOperatingWindow],
   );
 
   function clearCrmQueryParams() {
@@ -788,6 +794,7 @@ export function PendingVisitRequestsView() {
                   durationMinutes: draft.durationMinutes,
                   candidateUserIds: technicians.map((technician) => technician.id),
                   searchHorizonDays: draft.searchHorizonDays,
+                  operatingSiteId: selectedVisitRequest.operatingSiteId,
                   municipality: draft.municipality,
                   sector: draft.sector,
                   maxResults: 8,
@@ -856,6 +863,7 @@ export function PendingVisitRequestsView() {
                 assignedUserId: selectedRecommendation.technicianId,
                 scheduledStartAt: selectedRecommendation.scheduledStartAt,
                 scheduledEndAt: selectedRecommendation.scheduledEndAt,
+                operatingSiteId: selectedVisitRequest.operatingSiteId,
                 createWorkOrder: scheduleCreateWorkOrder,
                 workOrderNotes: scheduleCreateWorkOrder
                   ? scheduleWorkOrderNotes.trim() || null

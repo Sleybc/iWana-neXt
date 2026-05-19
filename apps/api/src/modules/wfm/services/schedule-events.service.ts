@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { TenantContext, runInTenantSchema, ScheduleEvent, ScheduleRescheduleLog } from '@iwana/db';
 import { UserRole, ScheduleEventStatus, WfmWorkType } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
@@ -22,7 +22,11 @@ import {
   ListScheduleEventsQueryDto,
 } from '../dto';
 import { WfmTenantSettingsReadPort } from '../ports/wfm-tenant-settings-read.port';
-import { isInstallationScheduleWithinBusinessHours } from './installation-schedule-window';
+import {
+  getLocalDateString,
+  isScheduleRangeWithinOperatingWindow,
+} from './installation-schedule-window';
+import { OperatingWindowResolverService } from './operating-window-resolver.service';
 import { ScheduleConflictService } from './schedule-conflict.service';
 import { WorkOrdersService } from './work-orders.service';
 
@@ -45,6 +49,7 @@ export class ScheduleEventsService {
     @InjectDataSource() private readonly dataSource: DataSource,
     @Inject(WfmTenantSettingsReadPort)
     private readonly tenantSettingsReadPort: WfmTenantSettingsReadPort,
+    private readonly operatingWindowResolver: OperatingWindowResolverService,
     private readonly conflictService: ScheduleConflictService,
     private readonly workOrdersService: WorkOrdersService,
   ) {}
@@ -131,9 +136,10 @@ export class ScheduleEventsService {
     await this.assertInstallationScheduleWindow(
       validated.type,
       tenantId,
+      validated.operatingSiteId ?? null,
+      validated.assignedUserId,
       startAt,
       endAt,
-      'Las instalaciones solo pueden programarse entre 07:00 y 18:00.',
     );
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
@@ -156,6 +162,7 @@ export class ScheduleEventsService {
         scheduledStartAt: startAt,
         scheduledEndAt: endAt,
         assignedUserId: validated.assignedUserId,
+        operatingSiteId: validated.operatingSiteId ?? null,
         address: validated.address ?? null,
         municipality: validated.municipality ?? null,
         sector: validated.sector ?? null,
@@ -218,6 +225,10 @@ export class ScheduleEventsService {
         const startAt = validated.scheduledStartAt ?? event.scheduledStartAt.toISOString();
         const endAt = validated.scheduledEndAt ?? event.scheduledEndAt.toISOString();
         const assignedUid = validated.assignedUserId ?? event.assignedUserId;
+        const operatingSiteId =
+          validated.operatingSiteId === undefined
+            ? (event.operatingSiteId ?? null)
+            : (validated.operatingSiteId ?? null);
 
         const nextStartAt = new Date(startAt);
         const nextEndAt = new Date(endAt);
@@ -230,9 +241,11 @@ export class ScheduleEventsService {
         await this.assertInstallationScheduleWindow(
           event.type,
           tenantId,
+          operatingSiteId,
+          assignedUid,
           nextStartAt,
           nextEndAt,
-          'Las instalaciones solo pueden actualizarse entre 07:00 y 18:00.',
+          qr.manager,
         );
 
         const conflict = await this.conflictService.hasConflict({
@@ -261,6 +274,8 @@ export class ScheduleEventsService {
       if (validated.scheduledEndAt !== undefined)
         updates.scheduledEndAt = new Date(validated.scheduledEndAt);
       if (validated.assignedUserId !== undefined) updates.assignedUserId = validated.assignedUserId;
+      if (validated.operatingSiteId !== undefined)
+        updates.operatingSiteId = validated.operatingSiteId;
       if (validated.address !== undefined) updates.address = validated.address;
       if (validated.municipality !== undefined) updates.municipality = validated.municipality;
       if (validated.sector !== undefined) updates.sector = validated.sector;
@@ -350,9 +365,11 @@ export class ScheduleEventsService {
       await this.assertInstallationScheduleWindow(
         event.type,
         tenantId,
+        event.operatingSiteId ?? null,
+        event.assignedUserId,
         new Date(validated.scheduledStartAt),
         new Date(validated.scheduledEndAt),
-        'Las instalaciones solo pueden reagendarse entre 07:00 y 18:00.',
+        qr.manager,
       );
 
       // Verificar conflicto real con el usuario asignado
@@ -399,18 +416,53 @@ export class ScheduleEventsService {
   private async assertInstallationScheduleWindow(
     type: WfmWorkType,
     tenantId: string,
+    operatingSiteId: string | null,
+    technicianId: string,
     startAt: Date,
     endAt: Date,
-    message: string,
+    manager?: EntityManager,
   ): Promise<void> {
     if (type !== WfmWorkType.INSTALLATION) {
       return;
     }
 
     const timezone = await this.tenantSettingsReadPort.getTimezone(tenantId);
+    const dateLocal = getLocalDateString(startAt, timezone);
 
-    if (!isInstallationScheduleWithinBusinessHours(startAt, endAt, timezone)) {
-      throw new BadRequestException(message);
+    if (!dateLocal) {
+      throw new BadRequestException(
+        'La fecha de instalacion no pudo resolverse en el timezone del tenant.',
+      );
+    }
+
+    const window = manager
+      ? await this.operatingWindowResolver.resolveWithManager(manager, {
+          tenantId,
+          siteId: operatingSiteId,
+          technicianId,
+          dateLocal,
+          timezone,
+        })
+      : await this.operatingWindowResolver.resolve({
+          tenantId,
+          siteId: operatingSiteId,
+          technicianId,
+          dateLocal,
+          timezone,
+        });
+
+    if (
+      window.status !== 'OPEN' ||
+      !window.startTime ||
+      !window.endTime ||
+      !isScheduleRangeWithinOperatingWindow(startAt, endAt, timezone, {
+        startTime: window.startTime,
+        endTime: window.endTime,
+      })
+    ) {
+      throw new BadRequestException(
+        'La instalacion debe quedar dentro del horario operativo configurado.',
+      );
     }
   }
 

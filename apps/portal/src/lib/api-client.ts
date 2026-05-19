@@ -2,6 +2,7 @@
 
 import {
   AcquisitionChannel,
+  BusinessHoursWeekday,
   ConsentChannel,
   AttributionRole,
   CatalogItemType,
@@ -2193,6 +2194,7 @@ export interface WfmScheduleEvent {
   id: string;
   tenantId: string;
   workOrderId: string | null;
+  operatingSiteId: string | null;
   type: WfmWorkType;
   status: ScheduleEventStatus;
   title: string;
@@ -2233,6 +2235,7 @@ export interface CreateWfmScheduleEventDto {
   scheduledStartAt: string;
   scheduledEndAt: string;
   assignedUserId: string;
+  operatingSiteId?: string | null | undefined;
   address?: string | null | undefined;
   municipality?: string | null | undefined;
   sector?: string | null | undefined;
@@ -2251,6 +2254,7 @@ export interface UpdateWfmScheduleEventDto {
   scheduledStartAt?: string | undefined;
   scheduledEndAt?: string | undefined;
   assignedUserId?: string | undefined;
+  operatingSiteId?: string | null | undefined;
   address?: string | null | undefined;
   municipality?: string | null | undefined;
   sector?: string | null | undefined;
@@ -2290,6 +2294,7 @@ export interface WfmScheduleRecommendationRequestDto {
   windowStartAt: string;
   windowEndAt: string;
   candidateUserIds: string[];
+  operatingSiteId?: string | null | undefined;
   municipality?: string | null | undefined;
   sector?: string | null | undefined;
   latitude?: number | null | undefined;
@@ -2338,6 +2343,7 @@ export interface WfmVisitRequest {
   sector: string | null;
   latitude: number | null;
   longitude: number | null;
+  operatingSiteId: string | null;
   expedienteId: string | null;
   subscriberId: string | null;
   ticketId: string | null;
@@ -2412,6 +2418,7 @@ export interface CreateWfmVisitRequestDto {
   sector?: string | null | undefined;
   latitude?: number | null | undefined;
   longitude?: number | null | undefined;
+  operatingSiteId?: string | null | undefined;
   expedienteId?: string | null | undefined;
   subscriberId?: string | null | undefined;
   ticketId?: string | null | undefined;
@@ -2428,6 +2435,7 @@ export interface UpdateWfmVisitRequestContextDto {
   sector?: string | null | undefined;
   latitude?: number | null | undefined;
   longitude?: number | null | undefined;
+  operatingSiteId?: string | null | undefined;
   expedienteId?: string | null | undefined;
   subscriberId?: string | null | undefined;
   ticketId?: string | null | undefined;
@@ -2440,6 +2448,7 @@ export interface RecommendWfmVisitRequestDto {
   windowStartAt?: string | undefined;
   windowEndAt?: string | undefined;
   searchHorizonDays?: number | undefined;
+  operatingSiteId?: string | null | undefined;
   municipality?: string | null | undefined;
   sector?: string | null | undefined;
   latitude?: number | null | undefined;
@@ -2451,9 +2460,144 @@ export interface ScheduleWfmVisitRequestDto {
   assignedUserId: string;
   scheduledStartAt: string;
   scheduledEndAt: string;
+  operatingSiteId?: string | null | undefined;
   createWorkOrder?: boolean | undefined;
   workOrderSummary?: string | undefined;
   workOrderNotes?: string | null | undefined;
+}
+
+export interface WfmBusinessHoursDay {
+  weekday: BusinessHoursWeekday;
+  startTime: string | null;
+  endTime: string | null;
+  isEnabled: boolean;
+}
+
+export interface WfmOperatingSite {
+  id: string;
+  tenantId: string;
+  name: string;
+  code: string;
+  address: string | null;
+  municipality: string | null;
+  sector: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface CreateWfmOperatingSiteDto {
+  name: string;
+  code: string;
+  address?: string | null | undefined;
+  municipality?: string | null | undefined;
+  sector?: string | null | undefined;
+  latitude?: number | null | undefined;
+  longitude?: number | null | undefined;
+  isActive?: boolean | undefined;
+}
+
+export interface UpdateWfmOperatingSiteDto {
+  name?: string | undefined;
+  code?: string | undefined;
+  address?: string | null | undefined;
+  municipality?: string | null | undefined;
+  sector?: string | null | undefined;
+  latitude?: number | null | undefined;
+  longitude?: number | null | undefined;
+  isActive?: boolean | undefined;
+}
+
+export interface WfmTechnicianBusinessOverride {
+  id: string;
+  tenantId: string;
+  userId: string;
+  siteId: string | null;
+  overrideDate: string | null;
+  weekday: BusinessHoursWeekday | null;
+  startTime: string | null;
+  endTime: string | null;
+  isEnabled: boolean;
+  reason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateWfmTechnicianBusinessOverrideDto {
+  userId: string;
+  siteId?: string | null | undefined;
+  overrideDate?: string | null | undefined;
+  weekday?: BusinessHoursWeekday | null | undefined;
+  startTime?: string | null | undefined;
+  endTime?: string | null | undefined;
+  isEnabled?: boolean | undefined;
+  reason?: string | null | undefined;
+}
+
+export interface UpdateWfmTechnicianBusinessOverrideDto {
+  userId?: string | undefined;
+  siteId?: string | null | undefined;
+  overrideDate?: string | null | undefined;
+  weekday?: BusinessHoursWeekday | null | undefined;
+  startTime?: string | null | undefined;
+  endTime?: string | null | undefined;
+  isEnabled?: boolean | undefined;
+  reason?: string | null | undefined;
+}
+
+export interface WfmHolidayBlackout {
+  id: string;
+  tenantId: string;
+  siteId: string | null;
+  blackoutDate: string;
+  isRecurring: boolean;
+  name: string;
+  description: string | null;
+  isEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateWfmHolidayBlackoutDto {
+  siteId?: string | null | undefined;
+  blackoutDate: string;
+  isRecurring?: boolean | undefined;
+  name: string;
+  description?: string | null | undefined;
+  isEnabled?: boolean | undefined;
+}
+
+export interface UpdateWfmHolidayBlackoutDto {
+  siteId?: string | null | undefined;
+  blackoutDate?: string | undefined;
+  isRecurring?: boolean | undefined;
+  name?: string | undefined;
+  description?: string | null | undefined;
+  isEnabled?: boolean | undefined;
+}
+
+export type WfmOperatingWindowSource =
+  | 'TECHNICIAN_OVERRIDE'
+  | 'HOLIDAY_BLACKOUT'
+  | 'SITE_HOURS'
+  | 'COMPANY_HOURS'
+  | 'MISSING_CONFIGURATION';
+
+export interface WfmOperatingWindowResult {
+  status: 'OPEN' | 'CLOSED';
+  source: WfmOperatingWindowSource;
+  startTime: string | null;
+  endTime: string | null;
+  reason: string | null;
+}
+
+export interface ResolveWfmOperatingWindowDto {
+  dateLocal: string;
+  siteId?: string | null | undefined;
+  technicianId?: string | null | undefined;
 }
 
 export interface CancelWfmVisitRequestDto {
@@ -2556,6 +2700,123 @@ export interface CreateWfmTechnicianAvailabilityDto {
 }
 
 export const wfmApi = {
+  operatingWindow: {
+    resolve: (dto: ResolveWfmOperatingWindowDto, tenantSlug?: string) =>
+      request<WfmOperatingWindowResult>(
+        '/wfm/operating-window/resolve',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+
+  operatingSites: {
+    list: (tenantSlug?: string) =>
+      request<WfmOperatingSite[]>('/wfm/operating-sites', { returnFullResponse: true }, tenantSlug),
+
+    create: (dto: CreateWfmOperatingSiteDto, tenantSlug?: string) =>
+      request<WfmOperatingSite>(
+        '/wfm/operating-sites',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    update: (id: string, dto: UpdateWfmOperatingSiteDto, tenantSlug?: string) =>
+      request<WfmOperatingSite>(
+        `/wfm/operating-sites/${id}`,
+        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    remove: (id: string, tenantSlug?: string) =>
+      request<void>(`/wfm/operating-sites/${id}`, { method: 'DELETE' }, tenantSlug),
+
+    getBusinessHours: (siteId: string, tenantSlug?: string) =>
+      request<WfmBusinessHoursDay[]>(
+        `/wfm/operating-sites/${siteId}/business-hours`,
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    updateBusinessHours: (
+      siteId: string,
+      dto: { days: WfmBusinessHoursDay[] },
+      tenantSlug?: string,
+    ) =>
+      request<WfmBusinessHoursDay[]>(
+        `/wfm/operating-sites/${siteId}/business-hours`,
+        { method: 'PUT', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+
+  businessHours: {
+    getCompany: (tenantSlug?: string) =>
+      request<WfmBusinessHoursDay[]>(
+        '/wfm/business-hours/company',
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    updateCompany: (dto: { days: WfmBusinessHoursDay[] }, tenantSlug?: string) =>
+      request<WfmBusinessHoursDay[]>(
+        '/wfm/business-hours/company',
+        { method: 'PUT', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+
+  technicianBusinessOverrides: {
+    list: (tenantSlug?: string) =>
+      request<WfmTechnicianBusinessOverride[]>(
+        '/wfm/technician-business-overrides',
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    create: (dto: CreateWfmTechnicianBusinessOverrideDto, tenantSlug?: string) =>
+      request<WfmTechnicianBusinessOverride>(
+        '/wfm/technician-business-overrides',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    update: (id: string, dto: UpdateWfmTechnicianBusinessOverrideDto, tenantSlug?: string) =>
+      request<WfmTechnicianBusinessOverride>(
+        `/wfm/technician-business-overrides/${id}`,
+        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    remove: (id: string, tenantSlug?: string) =>
+      request<void>(`/wfm/technician-business-overrides/${id}`, { method: 'DELETE' }, tenantSlug),
+  },
+
+  holidayBlackouts: {
+    list: (tenantSlug?: string) =>
+      request<WfmHolidayBlackout[]>(
+        '/wfm/holiday-blackouts',
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    create: (dto: CreateWfmHolidayBlackoutDto, tenantSlug?: string) =>
+      request<WfmHolidayBlackout>(
+        '/wfm/holiday-blackouts',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    update: (id: string, dto: UpdateWfmHolidayBlackoutDto, tenantSlug?: string) =>
+      request<WfmHolidayBlackout>(
+        `/wfm/holiday-blackouts/${id}`,
+        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    remove: (id: string, tenantSlug?: string) =>
+      request<void>(`/wfm/holiday-blackouts/${id}`, { method: 'DELETE' }, tenantSlug),
+  },
+
   visitRequests: {
     list: (params?: ListWfmVisitRequestsParams, tenantSlug?: string) => {
       const searchParams = new URLSearchParams();

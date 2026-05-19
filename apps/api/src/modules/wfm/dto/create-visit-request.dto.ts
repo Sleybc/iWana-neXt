@@ -23,6 +23,7 @@ export const CreateVisitRequestSchema = z.object({
   priority: z.nativeEnum(WorkOrderPriority).optional().default(WorkOrderPriority.NORMAL),
   title: z.string().min(1).max(160),
   description: z.string().optional().nullable(),
+  operatingSiteId: z.string().uuid().optional().nullable(),
   requestedWindowStartAt: z.string().datetime({ offset: true }).optional().nullable(),
   requestedWindowEndAt: z.string().datetime({ offset: true }).optional().nullable(),
   slaDueAt: z.string().datetime({ offset: true }).optional().nullable(),
@@ -97,6 +98,14 @@ export class CreateVisitRequestDto {
   @IsOptional()
   @IsString()
   description?: string | null;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Sede operativa WFM asociada a la solicitud',
+  })
+  @IsOptional()
+  @IsUUID()
+  operatingSiteId?: string | null;
 
   @ApiPropertyOptional({
     example: '2026-06-01T09:00:00Z',

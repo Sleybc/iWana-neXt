@@ -34,6 +34,7 @@ import {
   toLocalDateValue,
   toLocalTimeValue,
 } from './schedule-event-time';
+import { getOperatingWindowMessage, useOperatingWindow } from './useOperatingWindow';
 
 const optionalUuidField = z
   .string()
@@ -141,14 +142,6 @@ const scheduleEventFormSchema = z
       });
     }
 
-    if (!isScheduleWindowAllowedForWorkType(values.type, scheduleWindow)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['scheduledStartTimeLocal'],
-        message: 'Las instalaciones solo se programan entre 07:00 y 18:00.',
-      });
-    }
-
     if (values.createWorkOrder && !values.workOrderSummary?.trim()) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -240,7 +233,9 @@ export function ScheduleEventForm({
     handleSubmit,
     reset,
     watch,
+    setError,
     setValue,
+    clearErrors,
     formState: { errors },
   } = useForm<ScheduleEventFormValues>({
     resolver: zodResolver(scheduleEventFormSchema),
@@ -274,7 +269,19 @@ export function ScheduleEventForm({
     () => buildScheduleWindow(scheduledDateLocal, scheduledStartTimeLocal, durationMinutes),
     [scheduledDateLocal, scheduledStartTimeLocal, durationMinutes],
   );
-  const scheduleTimeOptions = useMemo(() => getScheduleTimeOptionsForWorkType(type), [type]);
+  const { operatingWindow, isLoadingOperatingWindow, operatingWindowError } = useOperatingWindow({
+    workType: type,
+    dateLocal: scheduledDateLocal,
+    technicianId: assignedUserId || null,
+  });
+  const operatingWindowMessage = useMemo(
+    () => getOperatingWindowMessage(operatingWindow),
+    [operatingWindow],
+  );
+  const scheduleTimeOptions = useMemo(
+    () => getScheduleTimeOptionsForWorkType(type, operatingWindow, durationMinutes),
+    [durationMinutes, operatingWindow, type],
+  );
   const durationHours = Math.floor(Math.max(durationMinutes || 0, 0) / 60);
   const durationRemainderMinutes = Math.max(durationMinutes || 0, 0) % 60;
 
@@ -292,9 +299,9 @@ export function ScheduleEventForm({
     }
 
     if (!scheduleTimeOptions.some((option) => option.value === scheduledStartTimeLocal)) {
-      const fallbackTime = scheduleTimeOptions[0]?.value;
+      const fallbackTime = scheduleTimeOptions[0]?.value ?? '';
 
-      if (fallbackTime) {
+      if (fallbackTime || scheduledStartTimeLocal) {
         setValue('scheduledStartTimeLocal', fallbackTime, {
           shouldDirty: false,
           shouldValidate: true,
@@ -324,6 +331,19 @@ export function ScheduleEventForm({
         if (!scheduleValues) {
           return;
         }
+
+        if (!isScheduleWindowAllowedForWorkType(values.type, scheduleValues, operatingWindow)) {
+          setError('scheduledStartTimeLocal', {
+            type: 'validate',
+            message:
+              operatingWindowMessage ??
+              operatingWindowError ??
+              'La fecha seleccionada no tiene una ventana operativa disponible.',
+          });
+          return;
+        }
+
+        clearErrors('scheduledStartTimeLocal');
 
         const payload: CreateWfmScheduleEventDto = {
           type: values.type,
@@ -587,6 +607,32 @@ export function ScheduleEventForm({
           helperText="Se calcula automáticamente a partir de la hora de llegada y la duración estimada."
           className="cursor-default bg-[#f8faf5] font-medium text-gray-700 dark:bg-dark-surface-2 dark:text-gray-100"
         />
+
+        {type === WfmWorkType.INSTALLATION && operatingWindowError && (
+          <PortalAlert
+            variant="warning"
+            title="No fue posible resolver la ventana operativa"
+            description={operatingWindowError}
+          />
+        )}
+
+        {type === WfmWorkType.INSTALLATION && !operatingWindowError && operatingWindowMessage && (
+          <PortalAlert
+            variant={operatingWindow?.status === 'OPEN' ? 'info' : 'warning'}
+            title={
+              operatingWindow?.status === 'OPEN'
+                ? 'Ventana operativa aplicada'
+                : 'Fecha cerrada para programación'
+            }
+            description={operatingWindowMessage}
+          />
+        )}
+
+        {type === WfmWorkType.INSTALLATION && isLoadingOperatingWindow && (
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Resolviendo la ventana operativa configurada para la fecha seleccionada...
+          </p>
+        )}
       </section>
 
       {onFindRecommendations && (
@@ -609,10 +655,27 @@ export function ScheduleEventForm({
               variant="primary"
               size="sm"
               loading={isLoadingRecommendations}
-              disabled={isSubmitting || isLoadingRecommendations || technicians.length === 0}
+              disabled={
+                isSubmitting ||
+                isLoadingRecommendations ||
+                technicians.length === 0 ||
+                (type === WfmWorkType.INSTALLATION && operatingWindow?.status === 'CLOSED')
+              }
               onClick={async () => {
                 if (!scheduledDateLocal) {
                   setRecommendationError('Selecciona una fecha para buscar disponibilidad.');
+                  return;
+                }
+
+                if (
+                  type === WfmWorkType.INSTALLATION &&
+                  (operatingWindow?.status === 'CLOSED' || operatingWindowError)
+                ) {
+                  setRecommendationError(
+                    operatingWindowMessage ??
+                      operatingWindowError ??
+                      'La fecha seleccionada no tiene una ventana operativa disponible.',
+                  );
                   return;
                 }
 
@@ -639,8 +702,8 @@ export function ScheduleEventForm({
                   const result = await onFindRecommendations({
                     workType: type,
                     durationMinutes,
-                    windowStartAt: toIsoFromDatetimeLocal(`${scheduledDateLocal}T07:00`),
-                    windowEndAt: toIsoFromDatetimeLocal(`${scheduledDateLocal}T18:00`),
+                    windowStartAt: toIsoFromDatetimeLocal(`${scheduledDateLocal}T00:00`),
+                    windowEndAt: toIsoFromDatetimeLocal(`${scheduledDateLocal}T23:59`),
                     candidateUserIds: technicians.map((technician) => technician.id),
                     municipality: municipality?.trim() || null,
                     sector: sector?.trim() || null,
@@ -652,7 +715,9 @@ export function ScheduleEventForm({
                   setRecommendations(result);
                   if (result.length === 0) {
                     setRecommendationError(
-                      'No encontramos una franja libre en la jornada seleccionada.',
+                      operatingWindowMessage && operatingWindow?.status === 'CLOSED'
+                        ? operatingWindowMessage
+                        : 'No encontramos una franja libre dentro de la ventana operativa configurada.',
                     );
                   }
                 } catch {

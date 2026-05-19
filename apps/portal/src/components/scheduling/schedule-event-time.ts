@@ -1,4 +1,5 @@
 import { WfmWorkType } from '@iwana/shared';
+import type { WfmOperatingWindowResult } from '@/lib/api-client';
 
 type QuickDurationOption = {
   label: string;
@@ -25,9 +26,6 @@ export const QUICK_DURATION_OPTIONS: QuickDurationOption[] = [
   { label: '3 h', minutes: 180 },
 ];
 
-const INSTALLATION_SCHEDULE_START_MINUTES = 7 * 60;
-const INSTALLATION_SCHEDULE_END_MINUTES = 18 * 60;
-
 export const SCHEDULE_TIME_OPTIONS: TimeOption[] = Array.from({ length: 24 * 4 }, (_, index) => {
   const totalMinutes = index * 15;
   const hours = Math.floor(totalMinutes / 60);
@@ -37,25 +35,58 @@ export const SCHEDULE_TIME_OPTIONS: TimeOption[] = Array.from({ length: 24 * 4 }
   return { value, label: value };
 });
 
-export const INSTALLATION_SCHEDULE_TIME_OPTIONS: TimeOption[] = SCHEDULE_TIME_OPTIONS.filter(
-  (option) => {
-    const [hoursPart, minutesPart] = option.value.split(':');
-    const hours = Number(hoursPart);
-    const minutes = Number(minutesPart);
-    const totalMinutes = hours * 60 + minutes;
+function toMinutes(value: string | null | undefined): number | null {
+  if (!value) {
+    return null;
+  }
 
-    return (
-      Number.isFinite(totalMinutes) &&
-      totalMinutes >= INSTALLATION_SCHEDULE_START_MINUTES &&
-      totalMinutes <= INSTALLATION_SCHEDULE_END_MINUTES
-    );
-  },
-);
+  const [hoursPart, minutesPart] = value.split(':');
+  const hours = Number(hoursPart);
+  const minutes = Number(minutesPart);
 
-export function getScheduleTimeOptionsForWorkType(type?: WfmWorkType | null): TimeOption[] {
-  return type === WfmWorkType.INSTALLATION
-    ? INSTALLATION_SCHEDULE_TIME_OPTIONS
-    : SCHEDULE_TIME_OPTIONS;
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return null;
+  }
+
+  return hours * 60 + minutes;
+}
+
+export function getScheduleTimeOptionsForWorkType(
+  type?: WfmWorkType | null,
+  operatingWindow?: WfmOperatingWindowResult | null,
+  durationMinutes = 0,
+): TimeOption[] {
+  if (type !== WfmWorkType.INSTALLATION) {
+    return SCHEDULE_TIME_OPTIONS;
+  }
+
+  if (!operatingWindow) {
+    return SCHEDULE_TIME_OPTIONS;
+  }
+
+  if (operatingWindow.status !== 'OPEN' || !operatingWindow.startTime || !operatingWindow.endTime) {
+    return [];
+  }
+
+  const startMinutes = toMinutes(operatingWindow.startTime);
+  const endMinutes = toMinutes(operatingWindow.endTime);
+
+  if (startMinutes === null || endMinutes === null) {
+    return [];
+  }
+
+  return SCHEDULE_TIME_OPTIONS.filter((option) => {
+    const optionMinutes = toMinutes(option.value);
+
+    if (optionMinutes === null) {
+      return false;
+    }
+
+    const effectiveDuration =
+      Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : 0;
+
+    return optionMinutes >= startMinutes && optionMinutes + effectiveDuration <= endMinutes;
+  });
 }
 
 export function isScheduleWindowAllowedForWorkType(
@@ -64,6 +95,7 @@ export function isScheduleWindowAllowedForWorkType(
     startAt: Date;
     endAt: Date;
   } | null,
+  operatingWindow?: WfmOperatingWindowResult | null,
 ): boolean {
   if (!scheduleWindow) {
     return true;
@@ -73,13 +105,28 @@ export function isScheduleWindowAllowedForWorkType(
     return true;
   }
 
+  if (
+    !operatingWindow ||
+    operatingWindow.status !== 'OPEN' ||
+    !operatingWindow.startTime ||
+    !operatingWindow.endTime
+  ) {
+    return false;
+  }
+
+  const allowedStartMinutes = toMinutes(operatingWindow.startTime);
+  const allowedEndMinutes = toMinutes(operatingWindow.endTime);
   const startMinutes = scheduleWindow.startAt.getHours() * 60 + scheduleWindow.startAt.getMinutes();
   const endMinutes = scheduleWindow.endAt.getHours() * 60 + scheduleWindow.endAt.getMinutes();
 
+  if (allowedStartMinutes === null || allowedEndMinutes === null) {
+    return false;
+  }
+
   return (
     scheduleWindow.startAt.toDateString() === scheduleWindow.endAt.toDateString() &&
-    startMinutes >= INSTALLATION_SCHEDULE_START_MINUTES &&
-    endMinutes <= INSTALLATION_SCHEDULE_END_MINUTES
+    startMinutes >= allowedStartMinutes &&
+    endMinutes <= allowedEndMinutes
   );
 }
 

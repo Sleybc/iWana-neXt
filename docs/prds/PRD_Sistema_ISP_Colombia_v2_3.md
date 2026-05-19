@@ -1,45 +1,62 @@
 ---
 title: "PRD & Arquitectura — Plataforma Integral de Gestión ISP (Colombia)"
-version: "2.3"
+version: "2.4"
 owner: "Arquitectura de Soluciones / Producto"
-date: "2026-04-18"
+date: "2026-05-19"
 status: "Aprobado — Base Definitiva del Proyecto"
 classification: "Confidencial — Uso Interno"
-previousVersion: "2.2 (2026-02-24)"
-changelog: "v2.3: Extracción del Módulo Comercial (Catálogo) como Bounded Context independiente (MOD06). Definición del patrón SCD Tipo 2 para historial de precios inmutable. Motor de clasificación tributaria configurable (IVA exento/excluido/pleno, retención, ICA). Bundles (triple play) y promociones temporales. Reglas de compatibilidad entre ítems. Pricing por segmento de cliente. Refinamiento de la Ficha Suscriptor 360° como agregador BFF de dominios. Nuevo evento PlanPriceUpdated para integración Billing."
+previousVersion: "2.3 (2026-04-18)"
+changelog: "v2.4: Incorporación de ADR-025 al ADR-039 aprobados por CTO. Modelo Suscriptor con dos dimensiones ortogonales (personType + customerSegment). Pipeline CRM consolidado de 12 a 8 estados (ADR-026). Conversión Expediente→Subscriber two-stage por eventos de dominio (ADR-027). TaxationModule (MOD07) como catálogo centralizado de impuestos transversal (ADR-029). PartiesModule (MOD08) como maestro de identidad multi-rol (ADR-030). Rediseño tributario comercial: impuestos + reglas de aplicación + simulador (ADR-031). Retiro feature flag TAXATION_USE_CATALOG y limpieza motor legacy (ADR-032). Ciclo de vida tenant: nuevo estado MARKED_FOR_DELETION + purga diferida 30 días (ADR-033). MediaModule transversal + @iwana/storage con MinIO/StoragePort (ADR-034, ADR-035). SearchModule con Typesense para búsqueda global indexada (ADR-036). WfmModule (MOD09) con scheduling avanzado, horarios operativos y detección de conflictos (ADR-037). AssuranceModule (MOD10) con tickets, SLA, PQR CRC e integración WFM (ADR-038). Bandeja de visitas pendientes como inbox operativo WFM (ADR-039). Actualización del roadmap reflejando módulos completados y estado real del código."
 ---
 
-# PRD & Documento de Arquitectura — Plataforma Integral ISP Colombia
+<!-- markdownlint-configure-file {"MD060": false} -->
 
-### Versión 2.3 — Base Definitiva del Proyecto
+## PRD & Documento de Arquitectura — Plataforma Integral ISP Colombia
+
+## Versión 2.4 — Base Definitiva del Proyecto
 
 ---
 
 ## Tabla de Contenidos
 
-**PARTE 1 — FUNDAMENTOS**
+PARTE 1 — FUNDAMENTOS
 
-1. Resumen Ejecutivo
-2. Supuestos y Restricciones
-3. Contexto y Antecedentes
-4. Personas y Casos de Uso
-5. Requerimientos Funcionales por Dominio
+1 Resumen Ejecutivo
+2 Supuestos y Restricciones
+3 Contexto y Antecedentes
+4 Personas y Casos de Uso
+5 Requerimientos Funcionales por Dominio
 
-**PARTE 2 — ARQUITECTURA** 6. Modelo de Datos 7. Arquitectura C4 — Diagramas Mermaid 8. Arquitectura Lógica y DDD 9. Arquitectura Técnica
+PARTE 2 — ARQUITECTURA
+6 Modelo de Datos
+7 Arquitectura C4 — Diagramas Mermaid
+8 Arquitectura Lógica y DDD
+9 Arquitectura Técnica
 
-**PARTE 3 — IMPLEMENTACIÓN** 10. Arquitectura de Despliegue — On-Premise 11. Integraciones Prioritarias 12. DevEx — Monorepo, CI/CD, Estándares 13. Calidad, Seguridad y Operación 14. Roadmap — Orden de Módulos por Prioridad
+PARTE 3 — IMPLEMENTACIÓN
+10 Arquitectura de Despliegue — On-Premise
+11 Integraciones Prioritarias
+12 DevEx — Monorepo, CI/CD, Estándares
+13 Calidad, Seguridad y Operación
+14 Roadmap — Orden de Módulos por Prioridad
 
-**PARTE 4 — GESTIÓN DEL PROYECTO** 15. Plan de Migración de Datos 16. Matriz de Riesgos 17. KPIs y Métricas 18. Costeo ROM 19. Anexos
+PARTE 4 — GESTIÓN DEL PROYECTO
+15 Plan de Migración de Datos
+16 Matriz de Riesgos
+17 KPIs y Métricas
+18 Costeo ROM
+19 Anexos
 
-**PARTE 5 — GOBERNANZA** 20. Framework de Gobernanza Multi-IA
+PARTE 5 — GOBERNANZA
+20 Framework de Gobernanza Multi-IA
 
 ---
 
-# PARTE 1 — FUNDAMENTOS
+## PARTE 1 — FUNDAMENTOS
 
 ---
 
-# 1. Resumen Ejecutivo
+## 1. Resumen Ejecutivo
 
 ## 1.1 Qué vamos a construir
 
@@ -63,7 +80,7 @@ ISPs colombianos con 500–50,000 suscriptores, redes GPON multi-marca (Huawei �
 | ---------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------- |
 | Arquitectura                 | Modulith (monolito modular) NestJS                      | Equipo pequeño, time-to-market, ACID nativo. Ref: ADR-001         |
 | Multi-tenant                 | Schema por tenant en PostgreSQL desde el inicio         | Escalabilidad sin refactorización futura. Ref: ADR-002            |
-| Frontend                     | Next.js + Tailwind + shadcn/ui                          | Identidad iWana, SSR/SSG, design system                           |
+| Frontend                     | Next.js + Tailwind v4 CSS-first + design system iWana   | Identidad iWana, SSR/SSG, design system. Sin tailwind.config.js   |
 | Comunicación inter-módulo    | Domain Events (EventEmitter + BullMQ)                   | Desacoplamiento, retry, DLQ, observabilidad. Ref: ADR-003         |
 | ERP contable MVP             | Adapter Siigo (primary) o Alegra (alternativa)          | No tiene sentido construir motor contable NIIF en MVP             |
 | Facturación electrónica DIAN | MVP: vía Siigo/Alegra adapter. Futuro: módulo propio    | Reduce riesgo regulatorio en MVP. Ref: ADR-006                    |
@@ -71,6 +88,10 @@ ISPs colombianos con 500–50,000 suscriptores, redes GPON multi-marca (Huawei �
 | Despliegue                   | On-premise en servidores del ISP (Docker autocontenido) | Decisión del ISP. Sin dependencia de cloud. Ref: ADR-013          |
 | Nómina                       | Integración (Buk/Siigo Nómina) — no build               | Liquidación CO extremadamente compleja                            |
 | Monorepo                     | Turborepo                                               | Caching, builds paralelos, shared packages                        |
+| Object Storage               | MinIO (S3-compatible) + patrón StoragePort              | On-premise seguro, replicable, API S3 estándar. Ref: ADR-035      |
+| Búsqueda global              | Typesense (motor de búsqueda indexada)                  | Full-text fuzzy, ranking, multi-tenant, as-you-type. Ref: ADR-036 |
+| Identidad multi-rol          | PartiesModule (MOD08) — Party como maestro              | Un solo registro por persona/empresa con múltiples roles. Ref: ADR-030 |
+| Catálogo fiscal              | TaxationModule (MOD07) — catálogo centralizado          | Transversal para SALES, PURCHASE, BOTH. Sin duplicación. Ref: ADR-029 |
 
 ## 1.5 Riesgos clave
 
@@ -81,7 +102,22 @@ ISPs colombianos con 500–50,000 suscriptores, redes GPON multi-marca (Huawei �
 
 ## 1.6 MVP (90 días)
 
-Auth + RBAC multi-tenant (14 roles RBAC iniciales agrupados en 8 categorías de actor autenticado), CRM core (suscriptores Natural/Jurídico con estrato, contratos), Billing + FE DIAN (vía Siigo/Alegra adapter) con Motor IVA por estrato, NMS MikroTik, Provisioning básico (PPPoE + IP Fija + DHCP), RADIUS, Portal suscriptor, Notificaciones Email, ETL migración WispHub/AdminOLT/Excel.
+Auth + RBAC multi-tenant (14 roles RBAC iniciales agrupados en 8 categorías de actor autenticado), CRM core (suscriptores Natural/Jurídico con estrato, contratos, Expediente Único con pipeline de 8 estados, conversión two-stage Expediente→Subscriber), Billing + FE DIAN (vía Siigo/Alegra adapter) con Motor IVA por estrato, NMS MikroTik, Provisioning básico (PPPoE + IP Fija + DHCP), RADIUS, Portal suscriptor, Notificaciones Email, ETL migración WispHub/AdminOLT/Excel.
+
+**Módulos completados a la fecha (2026-05-19):**
+
+| Módulo | Código | Estado |
+|--------|--------|--------|
+| Auth + Users + Tenant + Audit | MOD01 | ✅ Producción (ADR-016) |
+| CRM + Expedientes + Subscribers | MOD05 | ✅ Implementado |
+| Módulo Comercial (Catálogo, Bundles, Precios) | MOD06 | ✅ Implementado (ADR-028) |
+| Tributación (Catálogo centralizado de impuestos) | MOD07 | ✅ Implementado (ADR-029) |
+| Parties (Identidad multi-rol) | MOD08 | ✅ Implementado (ADR-030) |
+| WFM / Programación Técnicos | MOD09 | ✅ Implementado (ADR-037, ADR-039) |
+| Service Assurance / Mesa de Ayuda | MOD10 | ✅ Implementado (ADR-038) |
+| Media + Object Storage (MinIO) | Transversal | ✅ Implementado (ADR-034, ADR-035) |
+| Búsqueda Global (Typesense) | Transversal | ✅ Implementado (ADR-036) |
+| NMS / Provisioning / Billing | MOD03–05 | 🔲 En roadmap |
 
 ## 1.7 Medidas de éxito (KPI)
 
@@ -96,7 +132,7 @@ Auth + RBAC multi-tenant (14 roles RBAC iniciales agrupados en 8 categorías de 
 
 ---
 
-# 2. Supuestos y Restricciones
+## 2. Supuestos y Restricciones
 
 ## 2.1 Supuestos (confirmados)
 
@@ -133,7 +169,7 @@ Auth + RBAC multi-tenant (14 roles RBAC iniciales agrupados en 8 categorías de 
 
 ---
 
-# 3. Contexto y Antecedentes
+## 3. Contexto y Antecedentes
 
 ## 3.1 Situación actual
 
@@ -162,7 +198,7 @@ Ninguna plataforma existente cubre el ciclo completo Lead→Cash + Trouble→Res
 
 ---
 
-# 4. Personas y Casos de Uso (Jobs-to-be-Done)
+## 4. Personas y Casos de Uso (Jobs-to-be-Done)
 
 ## 4.1 Tipos de usuarios del sistema
 
@@ -180,7 +216,6 @@ El sistema soporta **14 roles RBAC iniciales**, agrupados en **8 categorías de 
 | 8   | **Soporte Técnico Externo (iWana)** | Persona Natural (equipo iWana)           | Acceso remoto para diagnóstico: logs, métricas. Sin acceso a financiero ni PII                 | Portal Soporte iWana |
 
 > **Nota portal público:** El portal público (landing comercial, consulta de cobertura, registro de leads) se desarrolla como proyecto **externo separado**. En este sistema solo se incluye enlace externo hacia dicho portal.
-
 > **Nota sobre proveedores:** Los proveedores se modelan en el baseline actual como terceros del módulo de Compras/Inventario, no como usuarios autenticados del sistema. Un portal de proveedor requeriría ADR y extensión del modelo de identidad.
 
 ## 4.2 Personas operativas
@@ -282,7 +317,7 @@ El sistema soporta **14 roles RBAC iniciales**, agrupados en **8 categorías de 
 
 ---
 
-# 5. Requerimientos Funcionales (por dominios)
+## 5. Requerimientos Funcionales (por dominios)
 
 ## 5.1 BSS / CRM / Omnicanal
 
@@ -303,6 +338,9 @@ El sistema soporta **14 roles RBAC iniciales**, agrupados en **8 categorías de 
 | RF-CRM-11 | Segmentación de suscriptores por zona, plan, mora, NPS                                                          | Fase 2    |
 | RF-CRM-12 | Gestión de Partners/Vendedores externos: leads asignados, comisiones, reportes                                  | Fase 2    |
 | RF-CRM-13 | Programa de referidos para suscriptores                                                                         | Fase 2    |
+| RF-CRM-14 | **Modelo Suscriptor dos dimensiones ortogonales:** `personType` (NATURAL\|JURIDICA — dimensión fiscal, determina IVA y régimen) y `customerSegment` (RESIDENTIAL\|SOHO\|PYME\|CORPORATE\|GOVERNMENT\|WHOLESALE — dimensión comercial, determina tarifas). Reemplaza enum `SubscriberType` que mezclaba ambas dimensiones. Ref: ADR-025 | MVP |
+| RF-CRM-15 | **Pipeline CRM de 8 estados consolidados:** `NUEVO_POTENCIAL → PRECALIFICADO → VALIDANDO_COBERTURA → EN_COTIZACION → LISTO_PARA_INSTALACION → INSTALACION_AGENDADA → CLIENTE_ACTIVO → DESCARTADO`. Transiciones con reglas de negocio validadas (avance/retroceso explícito). Ref: ADR-026 | MVP |
+| RF-CRM-16 | **Conversión Expediente→Subscriber en dos etapas vía domain events:** Etapa 1 en `LISTO_PARA_INSTALACION` → crea Subscriber con status `PROSPECT` (idempotente); Etapa 2 en `CLIENTE_ACTIVO` → promueve a status `ACTIVE`. Via EventEmitter2. No reversible. Subscriber adquiere: `expedienteId`, `convertedAt`, `activatedAt`. Ref: ADR-027 | MVP |
 
 ### Omnicanal
 
@@ -366,7 +404,7 @@ El sistema soporta **14 roles RBAC iniciales**, agrupados en **8 categorías de 
 
 El sistema gestiona el ciclo de vida completo de todo activo físico de la empresa: equipos de red (ONUs, rosetas, cable), herramientas, dotación, vehículos y elementos de seguridad. La **responsabilidad del ítem es siempre visible** en el inventario, con actas de entrega en cada transferencia.
 
-```
+```text
 COMPRA → BODEGA → TÉCNICO → CLIENTE / TRABAJO → RETORNO / BAJA
 ```
 
@@ -418,7 +456,7 @@ COMPRA → BODEGA → TÉCNICO → CLIENTE / TRABAJO → RETORNO / BAJA
 
 Flujo completo desde la solicitud interna hasta el ingreso del material a bodega.
 
-```
+```text
 Área Solicitante → Solicitud de Compra → Compras (Cotizaciones) →
 Aprobación Dirección → Orden de Compra → Recepción en Bodega → Ingreso Inventario
 ```
@@ -462,6 +500,9 @@ Aprobación Dirección → Orden de Compra → Recepción en Bodega → Ingreso 
 | RF-ASS-04 | Diagnóstico automático: ping ONU, check Rx power, check RADIUS, check bandwidth | Fase 2    |
 | RF-ASS-05 | Correlación alertas NMS → tickets automáticos                                   | Fase 2    |
 | RF-ASS-06 | Macros y respuestas predefinidas para agentes                                   | Fase 2    |
+| RF-ASS-07 | **Ciclo de vida completo del ticket (MOD10 AssuranceModule):** `OPEN → ASSIGNED → IN_PROGRESS → RESOLVED → CLOSED`. Escalamiento por incumplimiento SLA, integración con WFM para trabajo de campo via evento `FieldServiceNeeded`. Dashboard con KPIs de aseguramiento. Ref: ADR-038 | MVP |
+| RF-ASS-08 | **Timeline de eventos inmutable por ticket:** registro de cada transición de estado, asignación, comentarios y acciones con actor y timestamp. | MVP |
+| RF-ASS-09 | **Link Ticket→WorkOrder:** asociar tickets de campo a Work Orders de WFM sin acceso directo a tablas del módulo WFM. | MVP |
 
 ## 5.6 ERP / WFM / HCM / SG-SST
 
@@ -479,7 +520,7 @@ Cada técnico gestiona sus trabajos del día a través de **Work Orders** que re
 
 **Estructura de una Work Order:**
 
-```
+```text
 WORK ORDER #WO-20260224-001
 ├── Encabezado
 │   ├── Fecha / Técnico asignado / Vehículo asignado
@@ -504,7 +545,7 @@ WORK ORDER #WO-20260224-001
 
 **Flujo de impacto en inventario al cerrar tarea:**
 
-```
+```text
 Técnico cierra tarea en app →
   ├── Sistema descuenta materiales consumibles del inventario del técnico
   ├── Equipos instalados: estado ASIGNADO_TECNICO → INSTALADO_CLIENTE
@@ -533,6 +574,10 @@ Técnico cierra tarea en app →
 | RF-WFM-13 | App móvil técnico nativa (React Native): OTs del día, dirección, datos cliente, materiales, firma, fotos                                                                 | Fase 2    |
 | RF-WFM-14 | Check-in/out geolocalizado con geofencing configurable por dirección de trabajo                                                                                          | Fase 2    |
 | RF-WFM-15 | Control de mantenimiento de vehículos: kilometraje, SOAT, revisión técnico-mecánica, alertas vencimiento                                                                 | Fase 3    |
+| RF-WFM-16 | **Scheduling avanzado (MOD09 WfmModule):** Gestión de disponibilidad de técnicos, ventanas de operación (empresa + sitio + técnico), resolución de conflictos de agenda, horarios especiales y días festivos por zona. Solicitudes de visita con recomendación automática de horario. Ref: ADR-037 | MVP |
+| RF-WFM-17 | **Bandeja de visitas pendientes (Inbox operativo):** Vista consolidada de solicitudes de visita por estado, técnico y zona. Permite asignación, reprogramación y seguimiento sin salir del contexto operativo. Ref: ADR-039 | MVP |
+| RF-WFM-18 | **VisitRequest lifecycle:** Estado de solicitud de visita con transiciones: `PENDING → RECOMMENDED → SCHEDULED → COMPLETED / CANCELLED`. Asociada a Expediente. Crea `ScheduleEvent` al confirmar. | MVP |
+| RF-WFM-19 | **Sitios de operación:** Configuración de sitios con horarios laborales propios, permite resolver ventanas de operación específicas por ubicación geográfica. | MVP |
 
 ### HCM
 
@@ -570,16 +615,17 @@ Técnico cierra tarea en app →
 | RF-SEC-09 | Rotación de secrets cada 90 días                                                                                                                       | Fase 2    |
 | RF-SEC-10 | Pentest trimestral                                                                                                                                     | Fase 2    |
 
-## 5.9 Catálogo y Gestión Comercial (Módulo Comercial)
+## 5.9 Catálogo y Gestión Comercial (Módulo Comercial + Motor Tributario)
 
-Se establece un módulo de primer nivel dedicado a la configuración centralizada de la oferta de valor del ISP. Actúa como fuente única de verdad para Planes, Productos, Servicios, Bundles, Promociones y reglas tributarias.
+Se establece un módulo de primer nivel dedicado a la configuración centralizada de la oferta de valor del ISP. Actúa como fuente única de verdad para Planes, Productos, Servicios, Bundles, Promociones y aplicación de impuestos.
 
-**Principios:**
+**Principios (actualizados v2.4 — ADR-028, ADR-029, ADR-031):**
 
 - **Desacoplamiento:** El Catálogo maneja entidades abstractas (qué y a cuánto); Inventario maneja instancias físicas (dónde y cuál).
 - **Inmutabilidad financiera:** SCD Tipo 2 — todo cambio de precio genera nuevo registro de vigencia, preservando histórico completo.
-- **Clasificación tributaria configurable:** Las reglas de impuestos son administrables por UI, adaptables a cambios regulatorios sin código.
-- **Pricing por segmento:** Precios diferenciados por segmento de cliente (RESIDENTIAL, SOHO, PYME, CORPORATE, GOVERNMENT, WHOLESALE).
+- **Motor tributario en dos capas:** (1) `TaxationModule` (MOD07) como catálogo centralizado de definiciones de impuesto (IVA, retenciones, estampillas, ICA); (2) `CommercialModule` como motor de reglas de aplicación (condiciones por segmento + personType + estrato + municipio + base mínima) con simulador de cómputo explicativo. Ref: ADR-029, ADR-031.
+- **Retiro de feature flag:** El flag `TAXATION_USE_CATALOG` y el motor legacy fueron eliminados (ADR-032). Único motor vigente.
+- **Pricing por segmento:** Precios diferenciados por `customerSegment` (RESIDENTIAL, SOHO, PYME, CORPORATE, GOVERNMENT, WHOLESALE).
 
 | ID        | Requerimiento                                                                                                                               | Prioridad |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
@@ -587,9 +633,9 @@ Se establece un módulo de primer nivel dedicado a la configuración centralizad
 | RF-COM-02 | CRUD de Productos tangibles con flag de comodato (propiedad ISP vs venta) y requerimiento de inventario físico                             | MVP       |
 | RF-COM-03 | CRUD de Servicios Adicionales con tipo de cargo (único, bajo demanda, recurrente)                                                          | MVP       |
 | RF-COM-04 | Motor de Precios SCD Tipo 2: historial inmutable de tarifas con vigencia automática (fecha inicio = NOW al guardar)                         | MVP       |
-| RF-COM-05 | Pricing por segmento de cliente: cada ítem puede tener precios diferenciados por segmento (RESIDENTIAL, SOHO, PYME, CORPORATE, GOVERNMENT)  | MVP       |
-| RF-COM-06 | Clasificación tributaria configurable: IVA pleno (19%), exento (estratos 1-2), excluido (estrato 3), retención, ICA municipal               | MVP       |
-| RF-COM-07 | Tabla de reglas tributarias administrable por UI: mapeo (clasificación × segmento × estrato × municipio) → impuestos aplicables con tasas   | MVP       |
+| RF-COM-05 | Pricing por segmento de cliente: cada ítem puede tener precios diferenciados por segmento (RESIDENTIAL, SOHO, PYME, CORPORATE, GOVERNMENT, WHOLESALE) | MVP |
+| RF-COM-06 | Motor de Reglas de Aplicación Tributaria administrable por UI: condiciones (clasificación × segmento × personType × estrato × municipio × base mínima) → impuestos del catálogo centralizado (TaxationModule). Prioridad configurable. Ref: ADR-031 | MVP |
+| RF-COM-07 | Simulador de impuestos: dado un ítem + perfil del suscriptor → devuelve lista de impuestos aplicables con monto calculado y regla ganadora. Explica el resultado. Ref: ADR-031 | MVP |
 | RF-COM-08 | Bundles / Combos: agrupación de ítems (PLAN + PRODUCTO + SERVICIO) con descuento sobre total, vigencia temporal                            | MVP       |
 | RF-COM-09 | Promociones temporales: descuentos sobre ítems, bundles o instalación con vigencia, límite de usos y código de tracking                    | MVP       |
 | RF-COM-10 | Reglas de compatibilidad entre ítems: REQUIRES (prerequisito), EXCLUDES (incompatible), REPLACES (sustitución)                             | MVP       |
@@ -600,6 +646,7 @@ Se establece un módulo de primer nivel dedicado a la configuración centralizad
 | RF-COM-15 | Evento `CatalogItemDeactivated`: CRM alerta cotizaciones pendientes con ítems desactivados                                                | Fase 2    |
 | RF-COM-16 | Vigencia programada de precios: programar cambio de tarifa para fecha futura específica                                                    | Fase 2    |
 | RF-COM-17 | Catálogo público para Portal Cliente: vista de planes y combos disponibles sin autenticación                                               | Fase 2    |
+| RF-COM-18 | **Catálogo centralizado de impuestos (TaxationModule MOD07):** CRUD de definiciones de impuesto con código, tasa, contexto (SALES/PURCHASE/BOTH). Presets del sistema: IVA 19%, IVA excluido, Retefuente base, ReteICA, Estampillas municipales. Consumido por CommercialModule vía `ITaxCatalogReadPort`. Ref: ADR-029 | MVP |
 
 **Ficha Suscriptor 360° (refinamiento):** Opera como Agregador de Dominios (BFF), consultando datos en tiempo real de cada Bounded Context:
 
@@ -625,17 +672,17 @@ Se establece un módulo de primer nivel dedicado a la configuración centralizad
 
 ---
 
-# PARTE 2 — ARQUITECTURA
+## PARTE 2 — ARQUITECTURA
 
 ---
 
-# 6. Modelo de Datos
+## 6. Modelo de Datos
 
 ## 6.1 Modelo USER + Perfil
 
 El sistema usa una **tabla central de autenticación (USER)** con perfiles diferenciados por tipo de usuario. Relación 1:1 entre USER y su perfil correspondiente.
 
-```
+```text
 USER (tabla central de autenticación)
 ├── uuid id PK
 ├── string email (único, cifrado AES-256)
@@ -723,14 +770,19 @@ Nota: `SYSTEM_ADMIN` e `IWANA_SUPPORT` operan como roles de plataforma en el sch
 
 > ✅ **Estado:** Confirmado por el ISP. El tratamiento de IVA para estratos 3 y 4 fue validado. Estrato 3 = EXCLUIDO, Estrato 4 = IVA 19%.
 
-## 6.4 Entidad SUBSCRIBER (Unificada)
+## 6.4 Entidad SUBSCRIBER (Unificada) — v2.4
 
-```
+> **Actualización v2.4 (ADR-025, ADR-027):** El modelo ahora separa dos dimensiones ortogonales en lugar del enum `SubscriberType` que las mezclaba. `personType` es la dimensión fiscal (determina IVA). `customerSegment` es la dimensión comercial (determina tarifas y políticas). Se agregan campos de conversión desde Expediente.
+
+```text
 SUBSCRIBER {
     uuid id PK
     uuid tenantId FK
     uuid userId FK → USER (1:1)
-    enum personType (NATURAL | JURIDICAL)
+
+    -- Dimensión fiscal (ADR-025)
+    enum personType (NATURAL | JURIDICA)       -- determina tratamiento IVA y régimen
+    enum customerSegment (RESIDENTIAL | SOHO | PYME | CORPORATE | GOVERNMENT | WHOLESALE) -- dimensión comercial (precios, políticas)
 
     -- Persona Natural
     string documentType (CC|CE|PASSPORT|PEP|PTP|NIT_NATURAL)
@@ -739,7 +791,7 @@ SUBSCRIBER {
     string lastName
     int stratum (1-6, null para jurídicas)
     date birthDate
-    enum vatTreatment (EXEMPT|EXCLUDED|STANDARD) -- calculado automáticamente
+    enum vatTreatment (EXEMPT|EXCLUDED|STANDARD) -- calculado automáticamente según personType + stratum
 
     -- Persona Jurídica
     string nit (cifrado AES-256)
@@ -753,7 +805,13 @@ SUBSCRIBER {
     string phone (cifrado AES-256)
     string whatsapp
     enum taxRegime (SIMPLIFIED|COMMON)
-    enum status (LEAD|PROSPECT|ACTIVE|SUSPENDED|CANCELLED)
+    enum status (PROSPECT|NASCENT|INSTALLATION|ACTIVE|SUSPENSION|CHURN|ARCHIVED)
+
+    -- Conversión two-stage desde Expediente (ADR-027)
+    uuid expedienteId FK → ExpedienteRecord (nullable)
+    timestamp convertedAt   -- timestamp de Etapa 1 (LISTO_PARA_INSTALACION)
+    timestamp activatedAt   -- timestamp de Etapa 2 (CLIENTE_ACTIVO)
+
     point geolocation
     string externalId (id en sistema origen para migración)
     timestamp createdAt
@@ -764,7 +822,7 @@ SUBSCRIBER {
 
 ## 6.5 Entidades de Usuarios (Tipos de Perfil)
 
-```
+```text
 EMPLOYEE {
     uuid id PK, uuid tenantId FK, uuid userId FK → USER
     string documentType, string documentNumber (cifrado)
@@ -824,28 +882,133 @@ erDiagram
     INVOICE ||--o{ PAYMENT : receives
     SUBSCRIBER ||--o{ TICKET : creates
     TICKET ||--o{ WORK_ORDER : spawns
-```
+```text
 
-## 6.7 Estrategia Multi-Tenant
+## 6.7 Estrategia Multi-Tenant — v2.4
 
-```
+```text
 PostgreSQL Instance
 ├── public (schema compartido)
-│   ├── tenants (tabla de tenants)
+│   ├── tenants (tabla de tenants — status incluye MARKED_FOR_DELETION — ADR-033)
+│   ├── platform_users
+│   ├── platform_audit_log
+│   ├── platform_branding_settings
+│   ├── media_assets, media_usages (ADR-034, ADR-035)
 │   ├── global_config
-│   ├── device_catalog (catálogo de modelos de equipos)
-│   └── plan_templates
-├── tenant_isp_alpha (schema tenant 1 — único inicialmente)
-│   ├── users, subscribers, employees, contractors, partners, investors
+│   └── device_catalog
+├── tenant_isp_alpha (schema tenant — dinámico vía SET LOCAL search_path)
+│   ├── users, refresh_tokens, audit_logs
+│   ├── subscribers, subscriber_tax_profile, expediente_records, consent_records
+│   ├── catalog_items, plan_details, product_details, catalog_price_history
+│   ├── catalog_bundles, catalog_promotions, compatibility_rules
+│   ├── tax_definitions (MOD07 — ADR-029)
+│   ├── tax_application_rules, tax_rule_applications (ADR-031)
+│   ├── party, party_role, party_contact (MOD08 — ADR-030)
+│   ├── work_orders, visit_requests, schedule_events, technician_availability
+│   ├── wfm_operating_sites, wfm_business_hours, wfm_holiday_blackouts
+│   ├── support_tickets, ticket_comments, ticket_sla_policies, ticket_pqr_records
 │   ├── contracts, invoices, payments, tickets, work_orders
 │   ├── network_devices, ip_pools, vlans
-│   ├── partner_leads, commissions
-│   └── audit_logs
+│   └── partner_leads, commissions
 └── tenant_isp_beta (schema futuro — cuando sea SaaS multi-ISP)
     └── ...
-```
+```text
+
+**Estados del Tenant (actualizados — ADR-033):**
+
+| Estado | Descripción |
+|--------|-------------|
+| `PROVISIONING` | Schema en proceso de creación (job BullMQ en curso) |
+| `ACTIVE` | Operando normalmente |
+| `SUSPENDED` | Cuenta suspendida (sin acceso usuario final) |
+| `INACTIVE` | Desactivado temporalmente por el ISP |
+| `MARKED_FOR_DELETION` | Marcado para eliminación; retención de 30 días antes de DROP SCHEMA |
+
+**maxSubscribers (ADR-033):** `null` = sin límite; `0` = bloqueado (no puede crear nuevos suscriptores); `>0` = límite explícito.
 
 > **Decisión crítica (ADR-002):** Aunque inicialmente habrá un solo tenant, la arquitectura multi-tenant por schema se implementa desde el primer sprint. El overhead es mínimo vs el costo de refactorizar después de tener datos en producción.
+
+## 6.9 Entidades Nuevas en v2.4
+
+### Party (MOD08 — ADR-030)
+
+```text
+PARTY {
+    uuid id PK
+    uuid tenantId FK
+    enum partyType (PERSON | ORGANIZATION)
+    string legalName, string commercialName
+    enum documentType, string documentNumber (cifrado AES-256)
+    timestamp createdAt, timestamp deletedAt
+}
+
+PARTY_ROLE {
+    uuid id PK
+    uuid partyId FK → PARTY
+    enum role (CUSTOMER | SUPPLIER | EMPLOYEE | CONTRACTOR | SALES_AGENT)
+    date startDate, date endDate
+}
+
+PARTY_CONTACT {
+    uuid id PK
+    uuid partyId FK → PARTY
+    enum contactType (EMAIL | PHONE | ADDRESS | WHATSAPP)
+    string value (cifrado AES-256 si PII)
+    boolean isPrimary
+}
+```text
+
+> **Nota:** `UserAccount` (antes User) puede vincularse opcionalmente a un Party. Los suscriptores existentes son Parties con rol `CUSTOMER`.
+
+### TaxDefinition (MOD07 — ADR-029)
+
+```text
+TAX_DEFINITION {
+    uuid id PK
+    uuid tenantId FK
+    string code (ej: IVA_19, RETEIVA, ICA_BOGOTA)
+    string name
+    decimal rate
+    enum context (SALES | PURCHASE | BOTH)
+    boolean isSystemPreset (true = presets del sistema, no editables por UI)
+    boolean active
+    timestamp createdAt, timestamp updatedAt
+}
+```text
+
+Presets del sistema: `IVA_19` (19%), `IVA_EXCLUIDO` (0%), `RETEFUENTE_BASE` (3.5%), `RETEIVA` (15%), `ICA_BOGOTA` (municipal).
+
+### MediaAsset (Schema Público — ADR-034, ADR-035)
+
+```text
+MEDIA_ASSET {
+    uuid id PK
+    uuid uploadedByUserId FK (nullable — plataforma o tenant)
+    string tenantSchema (nullable — null = plataforma)
+    string filename, string mimeType, bigint sizeBytes
+    string storageKey ({tenantSchema}/{usage}/{assetId}.{ext})
+    string usage (BRANDING | CONTRACT | EVIDENCE | PROFILE | OTHER)
+    boolean sanitized (SVG sanitizado)
+    timestamp createdAt
+}
+```text
+
+### VisitRequest (MOD09 — ADR-037, ADR-039)
+
+```text
+VISIT_REQUEST {
+    uuid id PK
+    uuid tenantId FK
+    uuid expedienteId FK → ExpedienteRecord (nullable)
+    uuid requestedByUserId FK
+    uuid assignedTechnicianId FK → User (nullable)
+    enum status (PENDING | RECOMMENDED | SCHEDULED | COMPLETED | CANCELLED)
+    string description, string priority
+    timestamp preferredDateFrom, timestamp preferredDateTo
+    uuid scheduleEventId FK → ScheduleEvent (nullable — asignado al confirmar)
+    timestamp createdAt, timestamp updatedAt
+}
+```text
 
 ## 6.8 Políticas de Retención de Datos
 
@@ -859,10 +1022,12 @@ PostgreSQL Instance
 | Network telemetry      | 90 días raw, 2 años agregado | Operacional                                 |
 | SG-SST Incidents       | 20 años                      | Decreto 1072/2015                           |
 | Partner commissions    | 5 años                       | Tributario                                  |
+| MediaAsset             | Duración del contrato + 5a   | Operacional + Habeas Data                   |
+| TaxDefinition          | Indefinida (catálogo fiscal) | Trazabilidad tributaria NIIF                |
 
 ---
 
-# 7. Arquitectura C4 — Diagramas Mermaid
+## 7. Arquitectura C4 — Diagramas Mermaid
 
 ## 7.1 Nivel 1 — Contexto
 
@@ -915,16 +1080,17 @@ C4Context
 
 ```mermaid
 C4Container
-    title Contenedores del Sistema — On-Premise
+    title Contenedores del Sistema — On-Premise (v2.4)
 
     Container_Boundary(platform, "iWana neXt Platform (Docker On-Premise)") {
-        Container(frontend_admin, "Admin Dashboard", "Next.js, Tailwind, shadcn/ui", "SPA/SSR para admin, NOC, soporte, ventas")
-      Container(frontend_portal, "Portal Multi-rol", "Next.js, Tailwind, shadcn/ui", "Portales: cliente, empleado, contratista, partner, auditor, inversionista, iWana")
-        Container(api, "API Backend", "NestJS, TypeScript", "REST API + WebSocket + Event Bus")
+        Container(frontend_admin, "Admin Dashboard", "Next.js, Tailwind v4, @iwana/ui", "SPA/SSR para admin, NOC, soporte, ventas")
+        Container(frontend_portal, "Portal Multi-rol", "Next.js, Tailwind v4, @iwana/ui", "Portales: cliente, empleado, contratista, partner, auditor, inversionista, iWana")
+        Container(api, "API Backend", "NestJS, TypeScript", "REST API + WebSocket + Event Bus — Modulith 10 módulos")
         Container(db, "Base de Datos", "PostgreSQL", "Transaccional, multi-tenant por schema")
-        Container(cache, "Cache / Colas", "Redis + BullMQ", "Caché, sesiones, colas de trabajo")
-        Container(workers, "Workers", "NestJS + BullMQ", "Async: billing, notificaciones, SNMP polling, reportes, migración")
-        Container(storage, "Object Storage", "MinIO", "Contratos, facturas PDF, evidencias WFM — on-premise")
+        Container(cache, "Cache / Colas", "Redis + BullMQ", "Caché, sesiones, colas de trabajo, JTI blacklist")
+        Container(workers, "Workers", "NestJS + BullMQ", "Async: billing, notificaciones, SNMP polling, reportes, migración, indexación")
+        Container(storage, "Object Storage", "@iwana/storage + MinIO", "Contratos, facturas PDF, evidencias WFM, branding — on-premise S3-compatible")
+        Container(search, "Search Engine", "Typesense", "Índice full-text global: contacts, expedientes, subscribers, catalog")
     }
 
     Container_Ext(nginx, "Reverse Proxy", "Nginx / Traefik", "TLS termination, rate limiting")
@@ -936,48 +1102,52 @@ C4Container
     Rel(api, cache, "ioredis")
     Rel(api, workers, "BullMQ queues")
     Rel(workers, db, "TypeORM/SQL")
-    Rel(workers, storage, "S3 API compatible")
+    Rel(workers, storage, "S3 API compatible (@iwana/storage)")
     Rel(api, storage, "S3 API compatible")
-```
+    Rel(api, search, "REST API Typesense")
+    Rel(workers, search, "Indexación async BullMQ")
+```text
 
-## 7.3 Nivel 3 — Componentes (API Backend)
+## 7.3 Nivel 3 — Componentes (API Backend) — v2.4
 
 ```mermaid
 C4Component
-    title Componentes del API Backend (NestJS Modulith)
+    title Componentes del API Backend (NestJS Modulith — v2.4)
 
     Container_Boundary(api, "API Backend") {
-        Component(auth, "Auth Module", "JWT RS256, RBAC/ABAC, MFA — 14 roles RBAC iniciales")
-        Component(tenant, "Tenant Module", "Gestión de tenants, schema routing")
-        Component(crm, "CRM Module", "Leads, Contratos, Suscriptores (Natural/Jurídico)")
-        Component(billing, "Billing Module", "Planes, Rating, Motor IVA, FE via Siigo/Alegra")
-        Component(nms, "NMS Module", "SNMP Poller, MikroTik API, IOltAdapter multi-marca")
-        Component(provisioning, "Provisioning Module", "Order-to-Activate Saga, PPPoE/DHCP/IP Fija/MAC")
-        Component(inventory, "Inventory Module", "IPAM, VLANs, ONTs, Warehouse")
-        Component(assurance, "Service Assurance Module", "Tickets, SLA Engine, PQR CRC")
-        Component(omnichannel, "Omnichannel Module", "Email (MVP), WhatsApp (Fase 2)")
-        Component(erp, "ERP Module", "Compras, Adapter Siigo/Alegra bidireccional")
-        Component(wfm, "WFM Module", "Órdenes de trabajo, Cuadrillas, Portal Contratista")
+        Component(auth, "Auth Module (MOD01)", "JWT RS256, RBAC/ABAC, MFA, JTI Redis — 14 roles RBAC")
+        Component(tenant, "Tenant Module (MOD02)", "Gestión de tenants, schema routing, branding, MARKED_FOR_DELETION")
+        Component(media, "Media Module (Transversal)", "Uploads + metadata, MIME/SVG validado, StoragePort, ADR-034/035")
+        Component(crm, "CRM Module (MOD05)", "Expedientes 8 estados, Subscribers two-stage, Contacts, Habeas Data")
+        Component(commercial, "Commercial Module (MOD06)", "Catálogo SCD T2, Bundles, Promociones, Reglas tributarias, ADR-028")
+        Component(taxation, "Taxation Module (MOD07)", "Catálogo centralizado de impuestos, ITaxCatalogReadPort, ADR-029")
+        Component(parties, "Parties Module (MOD08)", "Party maestro multi-rol, PartyRole, PartyContact, ADR-030")
+        Component(wfm, "WFM Module (MOD09)", "VisitRequests, ScheduleEvents, WorkOrders, Scheduling, Inbox, ADR-037/039")
+        Component(assurance, "Assurance Module (MOD10)", "Tickets, SLA, PQR CRC, Timeline, Link WFM, ADR-038")
+        Component(search, "Search Module (Transversal)", "Typesense, indexación async BullMQ, búsqueda global, ADR-036")
+        Component(billing, "Billing Module", "Planes, Rating, Motor IVA, FE via Siigo/Alegra — en roadmap")
+        Component(nms, "NMS Module", "SNMP Poller, MikroTik API, IOltAdapter multi-marca — en roadmap")
+        Component(provisioning, "Provisioning Module", "Order-to-Activate Saga, PPPoE/DHCP/IP Fija/MAC — en roadmap")
+        Component(inventory, "Inventory Module", "IPAM, VLANs, ONTs, Warehouse — en roadmap")
+        Component(omnichannel, "Omnichannel Module", "Email MVP, WhatsApp Fase 2")
+        Component(mailer, "Mailer Module", "Email transaccional, SMTP configurable")
         Component(hcm, "HCM Module", "Empleados, Vacaciones, Export nómina — Fase 3")
         Component(sgsst, "SG-SST Module", "IPERC, Capacitaciones, Incidentes — Fase 3")
-        Component(reporting, "Reporting Module", "Reportes CRC, MinTIC, Dashboards KPIs")
         Component(audit, "Audit Module", "Logging inmutable, Trazabilidad, Compliance")
-        Component(migration, "Migration Module", "ETL: WispHub, AdminOLT, UISP, Siigo, Excel")
-        Component(partner, "Partner Module", "Comisiones, leads, tracking referidos")
     }
 ```
 
 ---
 
-# 8. Arquitectura Lógica y DDD
+## 8. Arquitectura Lógica y DDD
 
-## 8.1 Bounded Contexts
+## 8.1 Bounded Contexts — v2.4
 
 ```mermaid
 flowchart TB
     subgraph Core["Core Domain"]
-        CRM["CRM / Subscriber Management\n(Natural + Jurídico, Estrato, IVA)"]
-        COM["Commercial Catalog\n(Planes+Productos+Servicios+Bundles\nSCD Tipo 2, Tax Rules)"]
+        CRM["CRM / Subscriber Management\n(Natural + Jurídico, Estrato, IVA)\nExpediente 8 estados, Two-stage conversion"]
+        COM["Commercial Catalog (MOD06)\n(Planes+Productos+Servicios+Bundles\nSCD Tipo 2, Reglas tributarias)"]
         BIL["Billing / Rating\n(Motor IVA EXENTO/EXCLUIDO/19%)"]
         PRV["Provisioning / Order Mgmt\n(PPPoE + DHCP + IP Fija + MAC)"]
         NMS["NMS/EMS\n(IOltAdapter multi-marca)"]
@@ -986,18 +1156,22 @@ flowchart TB
     subgraph Supporting["Supporting Domain"]
         INV["Inventory / Resource Mgmt\n(Ciclo: Bodega→Técnico→Cliente→Baja)"]
         PUR["Purchasing / Compras\n(Solicitud→Cotización→OC→Recepción)"]
-      ERP["ERP Integration\n(Siigo/Alegra + Compras)"]
-        ASS["Service Assurance\n(Tickets + SLA + PQR CRC)"]
+        ERP["ERP Integration\n(Siigo/Alegra + Compras)"]
+        ASS["Service Assurance (MOD10)\n(Tickets + SLA + PQR CRC + Timeline)"]
         OMN["Omnichannel / Notifications\n(Email MVP, WA Fase 2)"]
-        WFM["WFM / Hoja de Trabajo\n(Work Order + Materiales + Firma)"]
+        WFM["WFM Module (MOD09)\n(VisitRequests + WorkOrders + Scheduling)"]
         MIG["Migration / ETL\n(WispHub/AdminOLT/UISP/Siigo/Excel)"]
     end
 
     subgraph Generic["Generic Domain"]
-      AUTH["Auth / Identity\n(14 roles RBAC iniciales)"]
+        AUTH["Auth / Identity (MOD01)\n(JWT RS256, MFA, 14 roles RBAC)"]
         AUD["Audit / Compliance"]
         REP["Reporting / Analytics\n(+ Portal Inversionista)"]
-        TNT["Tenant Management\n(multi-tenant desde inicio)"]
+        TNT["Tenant Management (MOD02)\n(multi-tenant por schema, MARKED_FOR_DELETION)"]
+        TAX["Taxation / Catálogo Impuestos (MOD07)\n(ITaxCatalogReadPort)"]
+        PARTY["Parties / Identidad Multi-rol (MOD08)\n(Party + PartyRole + PartyContact)"]
+        MEDIA["Media / Object Storage\n(MediaModule + @iwana/storage + MinIO)"]
+        SEARCH["Search / Typesense\n(SearchModule transversal — global indexado)"]
         PRT["Partner / Comisiones"]
     end
 
@@ -1010,6 +1184,8 @@ flowchart TB
     CRM -->|"QuoteRequested query"| COM
     COM -->|"PlanPriceUpdated event"| BIL
     COM -->|"CatalogItemDeactivated event"| CRM
+    COM -->|"ITaxCatalogReadPort"| TAX
+    CRM -->|"PartyPort (identidad)"| PARTY
     PRV -->|"OrderCompleted event"| BIL
     PRV -->|"ResourceReserved cmd"| INV
     PRV -->|"WorkOrderCreated event"| WFM
@@ -1023,7 +1199,9 @@ flowchart TB
     NMS -->|"AlertTriggered event"| ASS
     ASS -->|"TicketCreated event"| OMN
     ASS -->|"FieldServiceNeeded event"| WFM
-```
+    CRM -->|"indexar expedientes/contacts"| SEARCH
+    COM -->|"indexar catálogo"| SEARCH
+```text
 
 ## 8.2 Mapa de contexto — Relaciones
 
@@ -1031,8 +1209,11 @@ flowchart TB
 | ----------------- | ----------------- | --------------------- | -------------------------------------------------------------------- |
 | Commercial Catalog| Billing           | Customer-Supplier     | Domain Event `PlanPriceUpdated` + query `GetCurrentPrice`            |
 | Commercial Catalog| CRM               | Customer-Supplier     | Query `GetCatalogItems`, Event `CatalogItemDeactivated`              |
+| Commercial Catalog| Taxation (MOD07)  | Customer-Supplier     | Interface `ITaxCatalogReadPort` — consume impuestos sin acoplamiento |
 | CRM               | Commercial Catalog| Customer-Supplier     | Query `QuoteRequested` → lectura de catálogo para cotización         |
 | CRM               | Provisioning      | Customer-Supplier     | Domain Event `ContractSigned`                                        |
+| CRM               | Parties (MOD08)   | Customer-Supplier     | `PartyPort` — identidad maestro multi-rol                            |
+| CRM               | Assurance (MOD10) | Publisher-Subscriber  | EventEmitter2 → conversión Expediente→Subscriber (two-stage)        |
 | Provisioning      | Billing           | Customer-Supplier     | Domain Event `ServiceActivated`                                      |
 | Provisioning      | Inventory         | Customer-Supplier     | Sync command `ReserveResources`                                      |
 | Provisioning      | WFM               | Customer-Supplier     | Domain Event `WorkOrderCreated`                                      |
@@ -1044,6 +1225,7 @@ flowchart TB
 | Billing           | ERP (external)    | Anti-Corruption Layer | Adapter Siigo/Alegra                                                 |
 | NMS               | Service Assurance | Conformist            | Event `AlertTriggered`                                               |
 | Service Assurance | Omnichannel       | Customer-Supplier     | Event `TicketUpdated`                                                |
+| Search Module     | All indexable     | Publisher-Subscriber  | Indexación async BullMQ: contacts, expedientes, subscribers, catalog |
 | Service Assurance | WFM               | Customer-Supplier     | Event `FieldServiceNeeded`                                           |
 | Auth              | Todos             | Shared Kernel         | JWT + RBAC/ABAC guards                                               |
 | Tenant            | Todos             | Shared Kernel         | Schema routing middleware                                            |
@@ -1072,24 +1254,26 @@ flowchart TB
 
 ---
 
-# 9. Arquitectura Técnica
+## 9. Arquitectura Técnica
 
 ## 9.1 Stack Tecnológico (baseline objetivo alineado con latest stable)
 
 > Verificar versiones actuales en `docs/prds/Stack_Tecnologico.md` antes de iniciar cada módulo.
 
-| Tecnología   | Versión referencia                                                       | Enlace docs                              |
-| ------------ | ------------------------------------------------------------------------ | ---------------------------------------- |
-| NestJS       | Latest stable como baseline objetivo; versión exacta validada por sprint | https://docs.nestjs.com/                 |
-| Next.js      | Latest stable como baseline objetivo; versión exacta validada por sprint | https://nextjs.org/docs                  |
-| Tailwind CSS | Latest stable como baseline objetivo; versión exacta validada por sprint | https://tailwindcss.com/docs             |
-| shadcn/ui    | Latest stable como baseline objetivo; versión exacta validada por sprint | https://ui.shadcn.com/docs               |
-| TypeORM      | Latest stable como baseline objetivo; versión exacta validada por sprint | https://typeorm.io/docs/getting-started  |
-| Turborepo    | Latest stable como baseline objetivo; versión exacta validada por sprint | https://turborepo.dev/docs               |
-| PostgreSQL   | Latest stable como baseline objetivo; versión exacta validada por sprint | https://www.postgresql.org/docs/current/ |
-| Docker       | Latest stable como baseline objetivo; versión exacta validada por sprint | https://docs.docker.com/                 |
-| Redis        | Latest stable como baseline objetivo; versión exacta validada por sprint | —                                        |
-| BullMQ       | Latest stable como baseline objetivo; versión exacta validada por sprint | —                                        |
+| Tecnología   | Versión referencia                                                                                                                                   | Enlace docs                                |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| NestJS       | Latest stable como baseline objetivo; versión exacta validada por sprint                                                                             | <https://docs.nestjs.com/>                 |
+| Next.js      | Latest stable como baseline objetivo; versión exacta validada por sprint                                                                             | <https://nextjs.org/docs>                  |
+| Tailwind CSS | v4 CSS-first (`@theme {}` — sin tailwind.config.js); versión exacta validada por sprint                                                             | <https://tailwindcss.com/docs>             |
+| TypeORM      | Latest stable como baseline objetivo; versión exacta validada por sprint                                                                             | <https://typeorm.io/docs/getting-started>  |
+| Turborepo    | Latest stable como baseline objetivo; versión exacta validada por sprint                                                                             | <https://turborepo.dev/docs>               |
+| PostgreSQL   | Latest stable como baseline objetivo; versión exacta validada por sprint                                                                             | <https://www.postgresql.org/docs/current/> |
+| Docker       | Latest stable como baseline objetivo; versión exacta validada por sprint                                                                             | <https://docs.docker.com/>                 |
+| Redis        | Latest stable como baseline objetivo; versión exacta validada por sprint                                                                             | —                                          |
+| BullMQ       | Latest stable como baseline objetivo; versión exacta validada por sprint                                                                             | —                                          |
+| MinIO        | Latest stable. Object storage S3-compatible on-prem. SDK: `@aws-sdk/client-s3`. Paquete: `@iwana/storage` con patrón `StoragePort`. Ref: ADR-035 | <https://min.io/docs/minio/linux/index.html> |
+| Typesense    | Latest stable. Motor de búsqueda full-text. `SearchModule` transversal, colecciones multi-tenant. Ref: ADR-036                                     | <https://typesense.org/docs/>              |
+| pgBouncer    | Latest stable. Connection pooling para PostgreSQL. Modo transaction pooling: usar `SET LOCAL` por TX                                               | <https://www.pgbouncer.org/>               |
 
 **Regla:** El proyecto adopta latest stable como baseline objetivo de trabajo, según `docs/prds/Stack_Tecnologico.md`. Cada sprint declara la versión exacta validada en conjunto y sus smoke tests asociados. Ninguna actualización con breaking changes entra sin validación arquitectónica.
 
@@ -1109,7 +1293,7 @@ flowchart TB
 
 **Event-Driven:**
 
-```
+```text
 In-process: EventEmitter2 (NestJS @OnEvent)
   └─ Síncrono dentro del proceso, sin durabilidad
 
@@ -1121,7 +1305,7 @@ Async/Durable: BullMQ (Redis-backed)
 
 **Saga Pattern (Provisioning):**
 
-```
+```text
 OrderSaga:
   1. ReserveResources → compensate: ReleaseResources
   2. CreateWorkOrder → compensate: CancelWorkOrder
@@ -1133,7 +1317,7 @@ OrderSaga:
 
 **Outbox Pattern (integraciones externas):**
 
-```
+```text
 1. Transaction: INSERT invoice + INSERT outbox_event (misma TX DB)
 2. Worker: Poll outbox_event WHERE processed = false
 3. Worker: Send to Siigo/Alegra/WhatsApp/Email
@@ -1169,15 +1353,15 @@ class OltAdapterFactory {
     }
   }
 }
-```
+```text
 
 ---
 
-# PARTE 3 — IMPLEMENTACIÓN
+## PARTE 3 — IMPLEMENTACIÓN
 
 ---
 
-# 10. Arquitectura de Despliegue — On-Premise
+## 10. Arquitectura de Despliegue — On-Premise
 
 ## 10.1 Decisión de despliegue
 
@@ -1194,7 +1378,7 @@ El sistema se despliega **on-premise en servidores del ISP**. No se asumen servi
 | Red                  | 100 Mbps                               | 1 Gbps                            |
 | Servidores           | 1 servidor (dev/staging/prod para MVP) | 2+ servidores (separar DB)        |
 
-## 10.3 Contenedores Docker
+## 10.3 Contenedores Docker — v2.4
 
 ```mermaid
 flowchart TB
@@ -1206,8 +1390,9 @@ flowchart TB
         WORKER["worker:nestjs\nBullMQ Workers"]
         PG["postgres\nPostgreSQL"]
         REDIS["redis\nRedis + BullMQ"]
-        MINIO["minio\nObject Storage On-Prem"]
+        MINIO["minio\nObject Storage On-Prem\n(ADR-035, @iwana/storage)"]
         PGBOUNCER["pgbouncer\nConnection Pooling"]
+        TYPESENSE["typesense\nSearch Engine\n(ADR-036)"]
     end
 
     NGINX --> WEB
@@ -1216,10 +1401,12 @@ flowchart TB
     API --> PGBOUNCER
     PGBOUNCER --> PG
     API --> REDIS
+    API --> MINIO
+    API --> TYPESENSE
     WORKER --> PGBOUNCER
     WORKER --> REDIS
     WORKER --> MINIO
-    API --> MINIO
+    WORKER --> TYPESENSE
 ```
 
 ## 10.4 Conectividad y Soporte Remoto
@@ -1242,7 +1429,7 @@ flowchart TB
 
 ---
 
-# 11. Integraciones Prioritarias
+## 11. Integraciones Prioritarias
 
 ## 11.1 Tabla de integraciones
 
@@ -1253,7 +1440,7 @@ flowchart TB
 | I03 | Siigo (FE DIAN + Contabilidad — primary)      | REST API                                 | MVP       |
 | I04 | Alegra (FE DIAN + Contabilidad — alternativa) | REST API v1                              | MVP       |
 | I05 | Wompi (Pasarela de pago)                      | REST API + Webhooks                      | MVP       |
-| I06 | Email (SendGrid/AWS SES)                      | SMTP/API                                 | MVP       |
+| I06 | Email (SMTP configurable — MailerModule)      | SMTP/API                                 | MVP       |
 | I07 | OLT Huawei MA58xx                             | SNMP v2c + Telnet/SSH CLI — IOltAdapter  | Fase 2    |
 | I08 | OLT ZTE C300/C320                             | SNMP + Telnet CLI — IOltAdapter          | Fase 2    |
 | I09 | OLT VSOL                                      | SNMP + SSH CLI — IOltAdapter             | Fase 3    |
@@ -1265,6 +1452,8 @@ flowchart TB
 | I15 | WispHub (migración)                           | API + CSV export                         | MVP (ETL) |
 | I16 | AdminOLT (migración)                          | API + export                             | MVP (ETL) |
 | I17 | UISP/Ubiquiti (migración)                     | REST API                                 | MVP (ETL) |
+| I18 | MinIO (Object Storage on-prem)                | S3-compatible REST API — `@iwana/storage` | MVP (implementado — ADR-035) |
+| I19 | Typesense (Search Engine on-prem)             | REST API local Docker — `SearchModule`   | MVP (implementado — ADR-036) |
 
 ## 11.2 Detalle — Adapter Siigo/Alegra (FE DIAN)
 
@@ -1280,15 +1469,15 @@ interface IErpFEAdapter {
 class SiigoAdapter implements IErpFEAdapter { ... }   // Primary — MVP
 class AlegraAdapter implements IErpFEAdapter { ... }  // Alternativa — MVP
 class DirecDIANAdapter implements IErpFEAdapter { ... } // Motor propio — Fase 3
-```
+```text
 
 ---
 
-# 12. DevEx — Monorepo, CI/CD, Estándares
+## 12. DevEx — Monorepo, CI/CD, Estándares
 
 ## 12.1 Estructura del Monorepo Turborepo
 
-```
+```text
 iwana-next/
 ├── turbo.json
 ├── package.json
@@ -1320,7 +1509,7 @@ iwana-next/
     ├── migrate.ts          # Migración para tenant específico
     ├── migrate-all-tenants.ts
     └── install-on-premise.sh  # Script de instalación automatizada
-```
+```text
 
 ## 12.2 Pipeline CI/CD
 
@@ -1348,7 +1537,7 @@ flowchart LR
 
 El ciclo de desarrollo de cada módulo tiene 3 fases formales:
 
-```
+```text
 FASE 1: DEFINICIÓN
 ├── Engineering Manager genera PROMPT para Architect Software
 ├── Architect Software (Claude Opus) estructura PRD del módulo + HLD + ADRs requeridos
@@ -1371,9 +1560,7 @@ FASE 3: INFORME Y AUDITORÍA
 ```
 
 > **Regla de completitud (ADR-016):** No se inicia el siguiente módulo hasta que el anterior esté production-ready y aprobado. El Architect Software emite el ADR de aprobación antes del deploy a producción.
-
 > **Excepción controlada de prioridad:** El orden objetivo de módulos es secuencial, pero CTO + Engineering Manager pueden repriorizar un módulo por necesidad de negocio o ventana operativa, siempre que las dependencias técnicas mínimas estén resueltas y la decisión quede documentada en ADR o artefacto formal de gobierno.
-
 > **Regla de stop técnico:** Si un módulo no puede continuar por dependencia faltante, bloqueo arquitectónico, riesgo regulatorio, brecha de seguridad o imposibilidad operativa verificable, el equipo debe detener ejecución, explicar el porqué, documentar impacto, alternativas y recomendación, y esperar decisión explícita antes de retomar o mover prioridad.
 
 ## 12.3.1 Artefactos obligatorios por fase
@@ -1417,7 +1604,7 @@ Un módulo se considera cerrado únicamente cuando cumple simultáneamente:
 
 ---
 
-# 13. Calidad, Seguridad y Operación (NFRs)
+## 13. Calidad, Seguridad y Operación (NFRs)
 
 ## 13.1 Requerimientos No Funcionales
 
@@ -1439,7 +1626,7 @@ Un módulo se considera cerrado únicamente cuando cumple simultáneamente:
 
 ## 13.2 Pipeline de seguridad por request
 
-```
+```text
 1. Rate Limiter (nestjs/throttler — por tipo de usuario y tenant)
 2. TLS termination (Nginx — obligatorio incluso en on-premise)
 3. JWT Validation (RS256, exp, iss, tipo de usuario)
@@ -1484,7 +1671,7 @@ Un módulo se considera cerrado únicamente cuando cumple simultáneamente:
 
 ---
 
-# 14. Roadmap — Orden de Módulos por Prioridad
+## 14. Roadmap — Orden de Módulos por Prioridad
 
 ## 14.1 Principio de Priorización
 
@@ -1506,30 +1693,35 @@ El orden de creación de módulos lo define el **CTO con ayuda del Engineering M
 
 **Módulos fundación (obligatorios primero, orden fijo):** Auth → Users → Tenant → Audit. Sin estos, todos los demás requerirían refactorización mayor.
 
-## 14.2 Tabla de implementación (20 módulos)
+## 14.2 Tabla de implementación — Estado Real (v2.4)
 
-| Orden | Módulo                                                                                                                         | Dependencias                              | Fase            |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- | --------------- |
-| 1     | **Core: Auth + Usuarios + Tenant + Audit**                                                                                     | Fundación de todo — no tiene dependencias | MVP Obligatorio |
-| 2     | **CRM: Clientes (Natural/Jurídico, Estrato, IVA) + Contratos**                                                                 | Auth + Tenant                             | MVP Obligatorio |
-| 3     | **NMS: MikroTik + Monitoreo básico + IOltAdapter (interfaz)**                                                                  | Auth + Tenant                             | MVP Obligatorio |
-| 4     | **Billing: Facturación + Motor IVA + Siigo/Alegra adapter**                                                                    | CRM + Auth                                | MVP Obligatorio |
-| 5     | **Provisioning: Activación servicios multi-método (PPPoE/DHCP/IP Fija/MAC)**                                                   | CRM + NMS + Billing + Auth                | MVP Obligatorio |
-| 6     | **Inventory: IPAM + recursos de red + ciclo de vida activos (Bodega → Técnico → Cliente → Baja) + Módulo Compras**             | Auth + Provisioning + CRM                 | MVP Obligatorio |
-| 7     | **Service Assurance: Tickets + SLA**                                                                                           | CRM + Auth                                | MVP Obligatorio |
-| 8     | **WFM: Hoja de Trabajo técnico (Work Order con materiales consumidos, firma digital, control de tiempo) + Portal Contratista** | Assurance + Inventory + Auth              | MVP             |
-| 9     | **Portal Cliente**                                                                                                             | Billing + Assurance + Auth                | MVP             |
-| 10    | **Notificaciones Email**                                                                                                       | Billing + Assurance                       | MVP             |
-| 11    | **ETL/Migración: WispHub + AdminOLT + UISP + Excel**                                                                           | Todos los módulos MVP                     | MVP             |
-| 12    | **OLT Adapters: Huawei + ZTE (zero-touch provisioning ONU)**                                                                   | NMS + IOltAdapter                         | Fase 2          |
-| 13    | **WFM avanzado (geofencing, app móvil técnico)**                                                                               | WFM base                                  | Fase 2          |
-| 14    | **Omnicanal: WhatsApp + SMS**                                                                                                  | Notificaciones                            | Fase 2          |
-| 15    | **Portal Partner + Comisiones**                                                                                                | CRM + Billing                             | Fase 2          |
-| 16    | **Reportes CRC + Dashboard KPIs**                                                                                              | Todos                                     | Fase 2          |
-| 17    | **Portal Inversionista + Portal Auditor**                                                                                      | Reporting                                 | Fase 2          |
-| 18    | **HCM + Portal Empleado**                                                                                                      | Auth + WFM                                | Fase 3          |
-| 19    | **SG-SST**                                                                                                                     | HCM                                       | Fase 3          |
-| 20    | **Motor FE DIAN propio (sin intermediario)**                                                                                   | Billing                                   | Fase 3          |
+| Orden | Módulo                                                                                                                         | Estado (v2.4)             | ADRs         | Fase            |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------- | ------------ | --------------- |
+| 1     | **Core: Auth + Usuarios + Tenant + Audit (MOD01, MOD02)**                                                                      | ✅ Producción             | ADR-016/018  | MVP Obligatorio |
+| 2     | **CRM: Expedientes, Subscribers, Contacts, Habeas Data (MOD05)** — Pipeline 8 estados, conversión two-stage                    | ✅ Implementado           | ADR-024/026/027 | MVP Obligatorio |
+| 2-B   | **Catálogo Comercial (MOD06):** Planes, Productos, Bundles, Promociones, Reglas, SCD T2, Pricing por segmento                  | ✅ Implementado           | ADR-028/031  | MVP Obligatorio |
+| 2-C   | **TaxationModule (MOD07):** Catálogo centralizado impuestos, `ITaxCatalogReadPort`, presets fiscales                           | ✅ Implementado           | ADR-029/032  | MVP Obligatorio |
+| 2-D   | **PartiesModule (MOD08):** Party maestro multi-rol, PartyRole, PartyContact                                                    | ✅ Implementado           | ADR-030      | MVP Obligatorio |
+| 2-E   | **MediaModule + @iwana/storage:** Upload, MIME/SVG validado, MinIO/StoragePort, media_assets                                   | ✅ Implementado           | ADR-034/035  | MVP Obligatorio |
+| 2-F   | **SearchModule (Typesense):** Búsqueda global indexada, colecciones multi-tenant, índice async BullMQ                          | ✅ Implementado           | ADR-036      | MVP Obligatorio |
+| 7     | **Service Assurance (MOD10):** Tickets, SLA, PQR CRC, Timeline, TicketWorkOrderLink                                           | ✅ Implementado           | ADR-038      | MVP Obligatorio |
+| 8     | **WFM (MOD09):** VisitRequests, WorkOrders, Scheduling, OperatingSites, HolidayBlackouts, Inbox operativo                     | ✅ Implementado           | ADR-037/039  | MVP             |
+| 3     | **NMS: MikroTik + Monitoreo básico + IOltAdapter (interfaz)**                                                                  | 🔲 En roadmap            | —            | MVP Obligatorio |
+| 4     | **Billing: Facturación + Motor IVA + Siigo/Alegra adapter**                                                                    | 🔲 En roadmap            | —            | MVP Obligatorio |
+| 5     | **Provisioning: Activación servicios multi-método (PPPoE/DHCP/IP Fija/MAC)**                                                   | 🔲 En roadmap            | —            | MVP Obligatorio |
+| 6     | **Inventory: IPAM + recursos de red + ciclo de vida activos + Módulo Compras**                                                 | 🔲 En roadmap            | —            | MVP Obligatorio |
+| 9     | **Portal Cliente**                                                                                                              | 🔲 En roadmap            | —            | MVP             |
+| 10    | **Notificaciones Email (MailerModule base: ✅)**                                                                               | 🔶 Base implementada     | —            | MVP             |
+| 11    | **ETL/Migración: WispHub + AdminOLT + UISP + Excel**                                                                           | 🔲 En roadmap            | —            | MVP             |
+| 12    | **OLT Adapters: Huawei + ZTE (zero-touch provisioning ONU)**                                                                   | 🔲 En roadmap            | —            | Fase 2          |
+| 13    | **WFM avanzado (geofencing, app móvil técnico)**                                                                               | 🔲 En roadmap            | —            | Fase 2          |
+| 14    | **Omnicanal: WhatsApp + SMS**                                                                                                  | 🔲 En roadmap            | —            | Fase 2          |
+| 15    | **Portal Partner + Comisiones**                                                                                                | 🔲 En roadmap            | —            | Fase 2          |
+| 16    | **Reportes CRC + Dashboard KPIs**                                                                                              | 🔲 En roadmap            | —            | Fase 2          |
+| 17    | **Portal Inversionista + Portal Auditor**                                                                                      | 🔲 En roadmap            | —            | Fase 2          |
+| 18    | **HCM + Portal Empleado**                                                                                                      | 🔲 En roadmap            | —            | Fase 3          |
+| 19    | **SG-SST**                                                                                                                     | 🔲 En roadmap            | —            | Fase 3          |
+| 20    | **Motor FE DIAN propio (sin intermediario)**                                                                                   | 🔲 En roadmap            | —            | Fase 3          |
 
 ## 14.3 MVP — 0 a 90 días (Sprints 1–12)
 
@@ -1659,11 +1851,129 @@ El orden de creación de módulos lo define el **CTO con ayuda del Engineering M
 
 ---
 
-# PARTE 4 — GESTIÓN DEL PROYECTO
+### ADR-017: Provisioning Schema vía BullMQ
+
+- **Decisión:** El aprovisionamiento del schema PostgreSQL del tenant se ejecuta de forma asíncrona vía job BullMQ. Estado del tenant: `PROVISIONING → ACTIVE` al finalizar el job.
+- **Razones:** No bloquear el request HTTP de creación de tenant. Job idempotente con retry.
+
+### ADR-018: Ciclo de Vida de Tenant
+
+- **Decisión:** TenantStatus: `PROVISIONING → ACTIVE ↔ SUSPENDED ↔ INACTIVE → MARKED_FOR_DELETION`. Ver también ADR-033.
+- **Razones:** Claridad en transiciones de estado y soporte para operaciones de desactivación progresiva.
+
+### ADR-019: JWT RS256 con Refresh Rotation
+
+- **Decisión:** Access token RS256 (15 min) + Refresh token httpOnly cookie (7 días) con rotación automática. JTI blacklist en Redis.
+- **Razones:** Revocación instantánea sin estado compartido en API, resistente a robo de refresh.
+
+### ADR-020: Seed Inicial con Credenciales Temporales
+
+- **Decisión:** El primer usuario de un tenant se crea con contraseña temporal aleatoria enviada por email. Obligado a cambiarla en el primer login.
+- **Razones:** Evitar credenciales hardcoded; cumplir principio de credenciales de un solo uso.
+
+### ADR-021: Perfil Unificado EM + Architect
+
+- **Decisión:** El rol de Architect y Engineering Manager se unifica en un único perfil para el equipo actual. Responsabilidades: diseño técnico + gobernanza de módulos + code review.
+- **Tipo:** Gobernanza de equipo — no afecta codebase directamente.
+
+### ADR-022: Política de Ejecución Modular Por Fases
+
+- **Decisión:** Cada sprint se ejecuta en dos fases: (1) Diseño + prueba de concepto, (2) Implementación production-ready. No se avanza a la siguiente fase sin aprobación del CTO.
+- **Razones:** Control de calidad y evitar deuda técnica acumulada.
+
+### ADR-023: Referencia TailAdmin Shell Dashboard
+
+- **Decisión:** La shell visual del dashboard administrativo (`apps/web`) se basa en patrones de TailAdmin como referencia visual. Componentes propios en `@iwana/ui` con tokens iWana. Sin copiar código de TailAdmin.
+- **Razones:** Aceleración de UX, consistencia visual SaaS, propiedad intelectual propia.
+
+### ADR-024: Migración CRM — Expediente Único
+
+- **Decisión:** El módulo CRM usa `ExpedienteRecord` como entidad central del ciclo de venta (antes disperso entre múltiples entidades). Un expediente por prospecto desde el primer contacto.
+- **Razones:** Trazabilidad completa del journey de venta; base para conversión two-stage (ver ADR-027).
+
+### ADR-025: Modelo Suscriptor Dos Dimensiones _(Estado: 🔷 Propuesto — pendiente aprobación CTO)_
+
+- **Decisión:** Separar `personType` (NATURAL|JURIDICA — dimensión fiscal) de `customerSegment` (RESIDENTIAL|SOHO|PYME|CORPORATE|GOVERNMENT|WHOLESALE — dimensión comercial) en la entidad Subscriber.
+- **Razones:** El enum `SubscriberType` anterior mezclaba ambas dimensiones, imposibilitando reglas tributarias correctas para PYME Natural vs PYME Jurídica.
+
+### ADR-026: Pipeline CRM — 8 Estados
+
+- **Decisión:** El pipeline de ventas/expediente tiene exactamente 8 estados: `NUEVO_POTENCIAL → PRECALIFICADO → VALIDANDO_COBERTURA → EN_COTIZACION → LISTO_PARA_INSTALACION → INSTALACION_AGENDADA → CLIENTE_ACTIVO → DESCARTADO`.
+- **Razones:** Reducción de 12 estados a 8 elimina ambigüedad. Cada estado tiene semántica y transiciones explícitas.
+
+### ADR-027: Conversión Expediente → Subscriber en Dos Etapas
+
+- **Decisión:** La conversión es un proceso de dos etapas vía EventEmitter2: Etapa 1 (`LISTO_PARA_INSTALACION`) crea Subscriber con status `PROSPECT` (idempotente). Etapa 2 (`CLIENTE_ACTIVO`) promueve a `ACTIVE`.
+- **Razones:** Permite pre-aprovisionar el suscriptor antes de la instalación. La conversión no es reversible. El Subscriber obtiene `expedienteId`, `convertedAt`, `activatedAt`.
+
+### ADR-028: Extracción CommercialModule (MOD06) de TenantModule
+
+- **Decisión:** El catálogo comercial (Planes, Productos, Servicios, Bundles, Promociones, Reglas de compatibilidad, Price History) se extrae a `CommercialModule` independiente.
+- **Razones:** TenantModule estaba creciendo fuera de su bounded context. Catálogo es un dominio propio.
+
+### ADR-029: Bounded Context Taxation — Catálogo Unificado de Impuestos (MOD07)
+
+- **Decisión:** `TaxationModule` es el único dueño de `tax_definitions`. El resto de módulos (Commercial, Billing) consumen impuestos vía interfaz `ITaxCatalogReadPort` únicamente.
+- **Presets del sistema:** IVA 19%, IVA excluido, Retefuente base, ReteICA, Estampillas municipales.
+- **Razones:** Single Source of Truth para definiciones fiscales. Evitar duplicación de lógica tributaria por módulo.
+
+### ADR-030: Modelo Party Multi-Rol (MOD08)
+
+- **Decisión:** `PartiesModule` introduce la entidad `Party` como maestro de identidad con soporte multi-rol (`CUSTOMER | SUPPLIER | EMPLOYEE | CONTRACTOR | SALES_AGENT`). `UserAccount` puede vincularse opcionalmente a un Party.
+- **Razones:** Evitar duplicación de datos de persona en múltiples entidades. Un Party puede ser cliente y proveedor simultáneamente.
+
+### ADR-031: Rediseño Motor Tributario en CommercialModule
+
+- **Decisión:** CommercialModule implementa motor de reglas de aplicación tributaria con: (1) Reglas con condiciones (segmento + personType + estrato + municipio + base mínima), (2) Prioridad configurable, (3) Simulador explicativo. UI: `TaxCatalogManager`, `TaxApplicationRulesManager`, `TaxSimulatorPanel`.
+- **Razones:** Reemplaza tabla estática de clasificaciones por motor flexible sin código.
+
+### ADR-032: Retiro Flag TAXATION_USE_CATALOG
+
+- **Decisión:** Se elimina el feature flag `TAXATION_USE_CATALOG`, el servicio `TaxClassificationService`, la tabla `tax_classifications` y los endpoints legacy asociados.
+- **Razones:** Un único motor tributario activo. Simplificación. Reduce superficie de bugs.
+
+### ADR-033: Ciclo de Vida Tenant — Purga Diferida + Límites Nullables
+
+- **Decisión:** Nuevo estado `MARKED_FOR_DELETION` con retención de 30 días antes de ejecutar `DROP SCHEMA`. `maxSubscribers: null` = sin límite; `0` = bloqueado; `>0` = límite explícito.
+- **Razones:** Protección contra eliminaciones accidentales. Flexibilidad en modelos de pricing (sin límite para planes premium).
+
+### ADR-034: MediaModule Transversal
+
+- **Decisión:** `MediaModule` es el único punto de entrada para subir archivos al sistema. Responsabilidades: validación MIME por magic bytes, sanitización SVG, metadata en tablas públicas `media_assets` + `media_usages`.
+- **Razones:** Evitar uploads dispersos por módulo. Seguridad centralizada. Ref: OWASP file upload.
+
+### ADR-035: MinIO S3-Compatible + Patrón StoragePort
+
+- **Decisión:** Nuevo paquete `@iwana/storage` con interfaz `StoragePort` y adaptador `MinioStorageAdapter` (SDK: `@aws-sdk/client-s3`). Object key: `{tenantSchema}/{usage}/{assetId}.{ext}`. URLs prefirmadas TTL 15 min.
+- **Razones:** Portabilidad a cualquier proveedor S3-compatible. Testabilidad. On-premise con MinIO.
+
+### ADR-036: Typesense para Búsqueda Global Indexada
+
+- **Decisión:** `SearchModule` transversal usa Typesense para indexación full-text. Colecciones: contacts, expedientes, subscribers, catalog. Endpoint: `GET /api/v1/search/global?q=&limit=`. Indexación async BullMQ. Frontend: overlay Cmd/K con debounce.
+- **Razones:** PostgreSQL full-text search no escala para búsqueda multi-tenant en tiempo real. Typesense es on-premise y rápido.
+
+### ADR-037: WfmModule (MOD09) — Scheduling Avanzado
+
+- **Decisión:** `WfmModule` implementa gestión completa de agenda técnica: `ScheduleEvent`, `WorkOrder`, `WorkOrderTask`, `TechnicianAvailability`, `VisitRequest`, `OperatingSite`, `BusinessHours`, `HolidayBlackout`, `OperatingWindowResolver`, `ScheduleConflict`.
+- **Razones:** El WFM base (Work Orders simples) no era suficiente para operaciones de campo reales con múltiples restricciones de agenda.
+
+### ADR-038: AssuranceModule (MOD10) — Módulo de Aseguramiento de Servicio
+
+- **Decisión:** `AssuranceModule` implementa ciclo de vida de tickets: `OPEN → ASSIGNED → IN_PROGRESS → RESOLVED → CLOSED`. Entidades: `SupportTicket`, `TicketComment`, `TicketTimelineEvent`, `TicketSlaPolicy`, `TicketPqrRecord`, `TicketWorkOrderLink`. API: `/api/v1/assurance`.
+- **Razones:** Separación clara entre CRM (ventas) y Assurance (posventa). Integración directa con WFM vía `TicketWorkOrderLink`.
+
+### ADR-039: WFM Inbox — Bandeja de Visitas Pendientes
+
+- **Decisión:** Se agrega vista de inbox operativo para gestión de solicitudes de visita (`VisitRequest`) pendientes en el módulo WFM. Permite filtrar por técnico, estado y zona. Flujo: `PENDING → RECOMMENDED → SCHEDULED → COMPLETED/CANCELLED`.
+- **Razones:** Requerimiento operacional crítico: sin bandeja los técnicos pierden visitas no asignadas.
 
 ---
 
-# 15. Plan de Migración de Datos
+## PARTE 4 — GESTIÓN DEL PROYECTO
+
+---
+
+## 15. Plan de Migración de Datos
 
 ## 15.1 Fuentes de datos existentes
 
@@ -1704,7 +2014,7 @@ El orden de creación de módulos lo define el **CTO con ayuda del Engineering M
 
 ## 15.4 Arquitectura ETL
 
-```
+```text
 Migration Module (@iwana/migration)
 ├── extractors/
 │   ├── WispHubExtractor     (API REST + CSV export)
@@ -1733,7 +2043,7 @@ Migration Module (@iwana/migration)
 
 ---
 
-# 16. Matriz de Riesgos
+## 16. Matriz de Riesgos
 
 | #   | Riesgo                                               | Prob. | Impacto | Score | Mitigación                                                                 |
 | --- | ---------------------------------------------------- | ----- | ------- | ----- | -------------------------------------------------------------------------- |
@@ -1750,7 +2060,7 @@ Migration Module (@iwana/migration)
 
 ---
 
-# 17. KPIs y Métricas
+## 17. KPIs y Métricas
 
 ## 17.1 KPIs de Producto
 
@@ -1780,7 +2090,7 @@ Migration Module (@iwana/migration)
 
 ---
 
-# 18. Costeo ROM
+## 18. Costeo ROM
 
 > **ROM = Rough Order of Magnitude.** Estimaciones aproximadas (±40%) sujetas a revisión por el CTO. No son compromisos de precio.
 
@@ -1828,7 +2138,7 @@ Migration Module (@iwana/migration)
 
 ---
 
-# 19. Anexos
+## 19. Anexos
 
 ## 19.1 Glosario ISP/ERP/Fiscal
 
@@ -1907,11 +2217,11 @@ Migration Module (@iwana/migration)
 
 ---
 
-# PARTE 5 — GOBERNANZA
+## PARTE 5 — GOBERNANZA
 
 ---
 
-# 20. Framework de Gobernanza Multi-IA
+## 20. Framework de Gobernanza Multi-IA
 
 **Proyecto:** iWana neXt Platform (ISP/SaaS/ERP Colombia)
 **Versión del Framework:** 2.0 — Actualización Consolidada
@@ -1954,7 +2264,6 @@ Diseñar un marco de gobierno integral para iWana neXt operando múltiples model
 | **Grok 4.2 Beta**     | xAI          | 17 Feb 2026 | Cerrado                  | 256K          | 4 agentes paralelos colaborativos, rapid-learning semanal — _API aún no pública_              | Beta — sin precio API         | Propietario |
 
 > **Nota sobre GLM-5:** Entrenado completamente en hardware Huawei Ascend (sin NVIDIA), es la única alternativa de frontera sin dependencia de infraestructura occidental. Interesante para estrategia de soberanía tecnológica a largo plazo. Z.ai está en la lista de entidades del Departamento de Comercio de EE.UU. desde enero 2025; evaluar implicaciones según jurisdicción de despliegue.
-
 > **Nota sobre Grok 4.2 Beta:** La arquitectura de 4 agentes paralelos colaborativos es técnicamente muy relevante para el rol de Staff Engineer (resolución de bloqueos complejos). Monitorear disponibilidad de API en Q2 2026.
 
 ---
@@ -2016,24 +2325,24 @@ flowchart TD
     DEV_D -->|"PRs para review"| ARCH_D
     DEV_Q -->|"Informes de calidad"| EM
     ARCH_S -->|"Aprobación módulo"| CTO
-```
+```text
 
 ### Flujo formal por módulo
 
-**FASE 1: DEFINICIÓN**
+### FASE 1: DEFINICIÓN
 
 1. El EM (Gemini 3.1 Pro) recibe lineamientos del CTO humano y genera el PROMPT para Architect Software.
 2. El Architect Software (Claude Opus 4.6) genera el PRD del módulo con HLD, ADRs y contratos de API.
 3. El CTO + Engineering Manager aprueban el PRD antes de iniciar ejecución.
 
-**FASE 2: EJECUCIÓN**
+### FASE 2: EJECUCIÓN
 
 1. El EM genera el PROMPT de ejecución para los Sr. Devs.
 2. Sr. Dev Fullstack: Backend + Frontend + DB.
 3. Sr. Dev Data Engineer: Integraciones (OLT/MikroTik/RADIUS/APIs externas).
 4. Sr. Dev QA/Testing: Tests (Unit/Integration/E2E).
 
-**FASE 3: INFORME Y AUDITORÍA**
+### FASE 3: INFORME Y AUDITORÍA
 
 1. Se genera Informe de Ejecución con métricas de cobertura y deuda técnica.
 2. Cada fase es auditada por el Engineering Manager.
@@ -2100,11 +2409,13 @@ iWana neXt asegura el equilibrio perfecto entre **velocidad de entrega** y **sol
 | 1.0     | 2026-02-11     | Release inicial — Draft con preguntas abiertas                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | 2.0     | 2026-02-24     | Base definitiva: respuestas a preguntas abiertas, on-premise, multi-tenant, 9 tipos de usuario, portales personalizados, tipos de persona Natural/Jurídica, estrategia migración, ADRs 013-016                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | **2.1** | **2026-02-24** | **IVA confirmado (EXENTO estratos 1-2, EXCLUIDO estrato 3, IVA 19% estratos 4-6 y jurídicas), modelo USER+Perfil explícito con tabla central USER + perfiles diferenciados, flujo de trabajo por módulo formalizado (Fases 1-2-3), sección DevEx (12) con estructura monorepo y estándares de código, Costeo ROM sección 18, Framework de Gobernanza Multi-IA integrado como Parte 5 (sección 20), reorganización en 5 partes / 20 secciones, tabla de contenidos completa**                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| **2.2** | **2026-02-24** | **Matriz de Roles IA ampliada con 13 modelos evaluados (GLM-5, MiniMax-M2.5, MiniMax-Text-01, Grok 4.1/4.2 + criterios de selección Plan A/B/C). Sección 5.4 Inventory ampliada con ciclo de vida completo de activos (Bodega→Técnico→Cliente→Baja), 6 categorías de inventario técnico (equipos, herramientas, dotación, vehículos, EPP). Nueva sección 5.4.3 Módulo de Compras (solicitud→cotizaciones→aprobación→OC→recepción→inventario). Sección WFM ampliada con Hoja de Trabajo completa (Work Order + materiales consumidos + firma digital + excepción con aprobador). KPIs de inventario y costo por cliente. Bounded Contexts actualizados con Purchasing, ERP y eventos WFM→Inventory. Correcciones de consistencia interna: modelo RBAC de 14 roles, proveedores tratados como terceros no autenticados, retención de billing alineada, ruta `docs/adrs/` y metadatos de versión corregidos.** |
+| **2.2** | **2026-02-24** | **Matriz de Roles IA ampliada con 13 modelos evaluados. Sección 5.4 Inventory ampliada con ciclo de vida completo de activos. Nueva sección 5.4.3 Módulo de Compras. Sección WFM ampliada con Hoja de Trabajo completa. Bounded Contexts actualizados. Correcciones RBAC y metadatos.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **2.3** | **2026-04-18** | **Extracción CommercialModule (MOD06) de TenantModule (ADR-028). Catálogo SCD Tipo 2, bundles, promociones, reglas de compatibilidad. Pricing por segmento de cliente. Ficha Suscriptor 360° como BFF. Evento PlanPriceUpdated. Referencia a ADR-017 a ADR-028.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **2.4** | **2026-05-19** | **Incorporación completa ADR-025 a ADR-039 (aprobados por CTO). Modelo Suscriptor dos dimensiones: `personType` (fiscal) + `customerSegment` (comercial), ADR-025. Pipeline CRM reducido a 8 estados, ADR-026. Conversión Expediente→Subscriber en dos etapas vía EventEmitter2 con `expedienteId`/`convertedAt`/`activatedAt`, ADR-027. TaxationModule (MOD07) como catálogo centralizado de impuestos y `ITaxCatalogReadPort`, ADR-029. PartiesModule (MOD08) maestro de identidad multi-rol (Party+PartyRole+PartyContact), ADR-030. Rediseño motor tributario: reglas de aplicación con condiciones multidimensionales + simulador explicativo, ADR-031. Retiro feature flag `TAXATION_USE_CATALOG` y limpieza motor legacy, ADR-032. TenantStatus `MARKED_FOR_DELETION` + purga diferida 30 días + `maxSubscribers` nullable, ADR-033. MediaModule transversal + validación MIME/SVG, ADR-034. `@iwana/storage` con `StoragePort` y `MinioStorageAdapter` (@aws-sdk/client-s3), ADR-035. SearchModule con Typesense para búsqueda global indexada multi-tenant + BullMQ, ADR-036. WfmModule (MOD09) con scheduling avanzado, `OperatingSite`, `BusinessHours`, `HolidayBlackout`, `ScheduleConflict`, ADR-037. AssuranceModule (MOD10) con ciclo completo de tickets, SLA, PQR CRC, `TicketWorkOrderLink`, ADR-038. Bandeja de visitas pendientes `VisitRequest` como inbox operativo WFM, ADR-039. Actualización C4 Nivel 2+3, Bounded Contexts, Stack Tecnológico, Docker, Integraciones, Roadmap y tabla de entidades.** |
 
 ---
 
-_Documento generado el 24 de febrero de 2026. Versión 2.2 — Base Definitiva del Proyecto._
+_Documento actualizado el 19 de mayo de 2026. Versión 2.4 — Estado Real del Código._
 _Aprobado para uso como referencia de desarrollo por el CTO Humano._
-_Generado por: Architect Software (Claude Opus 4.6) — AI-ARCH_
+_Actualizado por: GitHub Copilot (Claude Sonnet 4.6) — Architect Software_
 _Framework de Gobernanza Multi-IA v2.0_

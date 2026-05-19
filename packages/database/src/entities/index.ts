@@ -24,6 +24,11 @@ export { WorkOrderTask } from './work-order-task.entity';
 export { ScheduleRescheduleLog } from './schedule-reschedule-log.entity';
 export { TechnicianAvailability } from './technician-availability.entity';
 export { VisitRequest } from './visit-request.entity';
+export { WfmOperatingSite } from './wfm-operating-site.entity';
+export { WfmCompanyBusinessHours } from './wfm-company-business-hours.entity';
+export { WfmSiteBusinessHours } from './wfm-site-business-hours.entity';
+export { WfmTechnicianBusinessOverride } from './wfm-technician-business-override.entity';
+export { WfmHolidayBlackout } from './wfm-holiday-blackout.entity';
 
 // MOD10 — Service Assurance
 export { SupportTicket } from './support-ticket.entity';

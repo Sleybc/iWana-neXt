@@ -8,6 +8,30 @@ import {
 } from '@iwana/shared';
 import { PendingVisitRequestsView } from './PendingVisitRequestsView';
 
+const useOperatingWindowMock = jest.fn();
+
+jest.mock('./useOperatingWindow', () => ({
+  useOperatingWindow: (...args: unknown[]) => useOperatingWindowMock(...args),
+  getOperatingWindowMessage: (
+    window: {
+      status?: 'OPEN' | 'CLOSED';
+      startTime?: string | null;
+      endTime?: string | null;
+      reason?: string | null;
+    } | null,
+  ) => {
+    if (!window) {
+      return null;
+    }
+
+    if (window.status === 'OPEN' && window.startTime && window.endTime) {
+      return `Ventana operativa vigente: ${window.startTime} a ${window.endTime}.`;
+    }
+
+    return window.reason ?? null;
+  },
+}));
+
 const useAuthMock = jest.fn();
 const replaceMock = jest.fn();
 let searchParamsMock = new URLSearchParams();
@@ -135,6 +159,17 @@ async function selectVisitDuration(label = '2 h') {
 describe('PendingVisitRequestsView', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    useOperatingWindowMock.mockReturnValue({
+      operatingWindow: {
+        status: 'OPEN',
+        source: 'COMPANY_HOURS',
+        startTime: '07:00',
+        endTime: '18:00',
+        reason: null,
+      },
+      isLoadingOperatingWindow: false,
+      operatingWindowError: null,
+    });
     replaceMock.mockReset();
     searchParamsMock = new URLSearchParams();
     useAuthMock.mockReturnValue({ user: buildAuthUser(), isLoading: false });

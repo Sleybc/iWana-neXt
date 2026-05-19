@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 import { WfmTenantSettingsReadPort } from '../ports/wfm-tenant-settings-read.port';
 import { VisitRequestsService } from './visit-requests.service';
 import { ScheduleConflictService } from './schedule-conflict.service';
+import { OperatingWindowResolverService } from './operating-window-resolver.service';
 import { WorkOrdersService } from './work-orders.service';
 import {
   UserRole,
@@ -67,6 +68,7 @@ describe('VisitRequestsService', () => {
   let service: VisitRequestsService;
   let workOrdersService: { createWithinManager: jest.Mock };
   let tenantService: { getTimezone: jest.Mock };
+  let operatingWindowResolver: { resolveWithManager: jest.Mock };
 
   beforeEach(async () => {
     mockRunInTenantSchema.mockReset();
@@ -81,11 +83,22 @@ describe('VisitRequestsService', () => {
       getTimezone: jest.fn().mockResolvedValue('America/Bogota'),
     };
 
+    operatingWindowResolver = {
+      resolveWithManager: jest.fn().mockResolvedValue({
+        status: 'OPEN',
+        source: 'COMPANY_HOURS',
+        startTime: '07:00',
+        endTime: '18:00',
+        reason: null,
+      }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         VisitRequestsService,
         { provide: DataSource, useValue: {} },
         { provide: WfmTenantSettingsReadPort, useValue: tenantService },
+        { provide: OperatingWindowResolverService, useValue: operatingWindowResolver },
         { provide: ScheduleConflictService, useValue: { hasConflictWithManager: jest.fn() } },
         { provide: WorkOrdersService, useValue: workOrdersService },
       ],
@@ -165,6 +178,7 @@ describe('VisitRequestsService', () => {
       priority: WorkOrderPriority.HIGH,
       title: 'Instalación prioritaria',
       description: 'Coordinar visita con portería',
+      operatingSiteId: null,
       address: 'Cra 1 # 2-3',
       municipality: 'Bogotá',
       sector: 'Centro',
@@ -215,6 +229,7 @@ describe('VisitRequestsService', () => {
       priority: WorkOrderPriority.NORMAL,
       title: 'Instalación fuera de ventana',
       description: null,
+      operatingSiteId: null,
       address: 'Cra 1 # 2-3',
       municipality: 'Bogotá',
       sector: 'Centro',
@@ -235,6 +250,14 @@ describe('VisitRequestsService', () => {
       callback({ manager }),
     );
 
+    operatingWindowResolver.resolveWithManager.mockResolvedValueOnce({
+      status: 'CLOSED',
+      source: 'HOLIDAY_BLACKOUT',
+      startTime: null,
+      endTime: null,
+      reason: 'Festivo nacional',
+    });
+
     await expect(
       service.scheduleVisitRequest(
         'vr-ready-outside-window',
@@ -249,7 +272,7 @@ describe('VisitRequestsService', () => {
           role: UserRole.ADMIN,
         } as never,
       ),
-    ).rejects.toThrow('Las instalaciones solo pueden agendarse entre 07:00 y 18:00.');
+    ).rejects.toThrow('La instalacion debe quedar dentro del horario operativo configurado.');
   });
 
   it('mueve una solicitud PENDING a NEEDS_CONTEXT cuando se guarda contexto parcial', async () => {
