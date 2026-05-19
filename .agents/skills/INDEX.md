@@ -18,10 +18,11 @@ Estados admitidos:
 ## Reglas de precedencia
 
 1. AGENTS.md
-2. CLAUDE.md
-3. .github/copilot-instructions.md
-4. Este indice
-5. La skill individual
+2. .github/copilot-instructions.md
+3. Este indice
+4. La skill individual
+
+`CLAUDE.md` y `.opencode/` estan pasivos por ahora y no participan en la precedencia activa.
 
 ## Skills core activas
 

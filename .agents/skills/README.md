@@ -1,165 +1,18 @@
 # Skills activas de iWana neXt
 
-Este directorio mantiene solo el set core de skills necesarias para el proyecto iWana neXt.
+**Version:** 1.1  
+**Estado:** Aprobado  
+**Fecha:** 2026-05-19
 
-## Estado actual
+Este directorio contiene el catalogo activo de skills del proyecto. La fuente maestra de gobernanza es `AGENTS.md`; el indice operativo del catalogo es `.agents/skills/INDEX.md`.
 
-- Skills activas: 31
-- Skills archivadas fuera del catalogo activo: 683 entradas no activas
-- Desglose del archivo: 679 directorios y 4 archivos legacy
-- Ruta de archivo: .agents/skills-archive/
-- Criterio rector: AGENTS.md prevalece sobre cualquier skill individual
-- Skills core ya potencializadas contra el stack real: 30
+## Uso
 
-## Objetivo de esta reduccion
+1. Consulta `AGENTS.md` para precedencia, stack, comandos, boundaries y gotchas.
+2. Usa `.agents/skills/INDEX.md` para elegir la skill adecuada.
+3. Lee siempre el `SKILL.md` de la skill antes de aplicarla.
+4. No restaures skills archivadas sin una decision explicita del roadmap.
 
-- Reducir ruido de activacion y discoverability.
-- Mantener solo skills alineadas con el stack y la gobernanza real del repo.
-- Dejar el resto archivado para una fase posterior de evaluacion, restauracion o potencializacion.
+## Archivo Historico
 
-## Prioridad de uso
-
-### Primera linea
-
-Usar primero cuando la tarea caiga claramente en una de estas areas base del stack:
-
-- nestjs-expert
-- nextjs-app-router-patterns
-- frontend-dev-guidelines
-- testing-patterns
-- monorepo-architect
-- core-components
-- postgresql
-
-### Segunda linea
-
-Usar para profundizar seguridad, contratos, arquitectura o integracion cuando la tarea ya este acotada:
-
-- architect-review
-- architecture-decision-records
-- auth-implementation-patterns
-- backend-security-coder
-- docs-architect
-- frontend-security-coder
-- openapi-spec-generation
-- security-auditor
-- typescript-expert
-
-### Especializadas por necesidad
-
-Activarlas cuando el problema sea especifico del dominio o de una capa puntual:
-
-- bullmq-specialist
-- docker-expert
-- i18n-localization
-- mermaid-expert
-- observability-engineer
-- playwright-skill
-- senior-ui-systems-designer
-- tailwind-patterns
-- test-driven-development
-- wcag-audit-patterns
-
-## Skills activas por area
-
-### Arquitectura y gobierno
-
-- architect-review
-- architecture-decision-records
-- docs-architect
-- mermaid-expert
-- monorepo-architect
-- turborepo-caching
-
-### Backend y plataforma
-
-- auth-implementation-patterns
-- backend-security-coder
-- bullmq-specialist
-- database-migration
-- docker-expert
-- nestjs-expert
-- openapi-spec-generation
-- observability-engineer
-- postgresql
-- security-auditor
-- typescript-expert
-- typescript-pro
-
-### Frontend y accesibilidad
-
-- core-components
-- frontend-dev-guidelines
-- frontend-security-coder
-- i18n-localization
-- nextjs-app-router-patterns
-- senior-ui-systems-designer
-- tailwind-patterns
-- wcag-audit-patterns
-
-### Testing
-
-- e2e-testing-patterns
-- playwright-skill
-- test-driven-development
-- testing-patterns
-
-### Mantenimiento y dependencias
-
-- codebase-cleanup-deps-audit
-
-## Mapa rapido de combinacion
-
-- Si la tarea es de NestJS o backend modular, comenzar por nestjs-expert y complementar con auth-implementation-patterns, postgresql, bullmq-specialist u openapi-spec-generation segun corresponda.
-- Si la tarea es de frontend Next.js, comenzar por nextjs-app-router-patterns y complementar con frontend-dev-guidelines, core-components, tailwind-patterns, wcag-audit-patterns e i18n-localization.
-- Si la tarea es de direccion visual, propuesta estetica o review sistemico de una interfaz SaaS, usar senior-ui-systems-designer y complementar con core-components, tailwind-patterns y wcag-audit-patterns segun corresponda.
-- Si la tarea es transversal de seguridad, usar security-auditor y los skills de seguridad por capa.
-- Si la tarea es de pruebas, usar testing-patterns, test-driven-development y playwright-skill.
-- Si la tarea es de migraciones TypeORM o schema multi-tenant, usar database-migration y complementar con postgresql.
-- Si la tarea es de optimización de pipelines Turborepo o caché CI, usar turborepo-caching y complementar con monorepo-architect.
-- Si la tarea requiere tipos TypeScript complejos (generics, decoradores, inferencia avanzada), usar typescript-pro y complementar con typescript-expert.
-- Si la tarea es de auditoría de dependencias o preparación de release, usar codebase-cleanup-deps-audit y complementar con security-auditor.
-- Si la tarea es de E2E avanzado (tests flaky, trazas Playwright, CI paralelo), usar e2e-testing-patterns y complementar con playwright-skill.
-
-## Estado de homogeneizacion
-
-- Todo el catalogo activo ya fue potencializado o normalizado contra el stack real del repo.
-- El catalogo ya no presenta desalineaciones estructurales evidentes frente a AGENTS.md.
-- Las siguientes mejoras, si se desean, ya son de profundidad o gobernanza, no de limpieza base.
-
-## Gobernanza de restauracion
-
-- Skills restaurables priorizadas: 0
-- Skills revisadas y mantener archivadas: 6
-- Skills en hold: 3
-- El resto del archivo se considera historico y no debe volver al catalogo activo sin una nueva decision explicita.
-
-## Restaurar skills archivadas
-
-Las skills removidas del catalogo activo no fueron borradas. Se movieron a .agents/skills-archive/.
-
-Restauracion manual:
-
-1. Mover la carpeta deseada desde .agents/skills-archive/ hacia .agents/skills/.
-2. Validar que la skill restaurada tenga sentido para el stack y el dominio del repo.
-3. Actualizar este README si la skill vuelve a formar parte del set core.
-
-## Criterios para potencializar el catalogo despues
-
-Antes de volver a activar skills archivadas, evaluar:
-
-- compatibilidad con el stack real del repo
-- utilidad demostrable para el roadmap activo
-- ausencia de solapamiento con skills ya activas
-- dependencia de herramientas o MCPs realmente disponibles
-- alineacion con AGENTS.md, CLAUDE.md y .github/copilot-instructions.md
-
-## Referencias
-
-- AGENTS.md
-- CLAUDE.md
-- .github/copilot-instructions.md
-- .agents/skills/INDEX.md
-- .agents/skills/MANIFEST.json
-- docs/quality/CHECKLIST-SISTEMA-SKILLS-GOBERNANZA-v1.0.md
-- docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md
+Las skills no activas viven en `.agents/skills-archive/`. No forman parte del flujo activo de Copilot y solo deben restaurarse si cumplen la politica de admision descrita en `INDEX.md`.

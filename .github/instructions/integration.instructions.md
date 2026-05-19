@@ -5,11 +5,11 @@ applyTo: "apps/api/src/**/*.http.spec.ts,apps/api/src/**/*isolation.spec.ts,apps
 
 # Integration Testing Instructions
 
+Referencia maestra: `AGENTS.md`.
+
 - Priorizar pruebas de contrato HTTP, aislamiento por tenant, middleware y wiring realista entre controller, guards, services y persistencia.
 - Verificar auth, tenancy y errores esperados a nivel request/response, no solo comportamiento interno del servicio.
 - Para pruebas multi-tenant, afirmar explícitamente el schema o boundary esperado y cubrir negativos cross-tenant.
-- Usar datos ficticios y deterministas; nunca PII real ni secretos.
 - No reemplazar toda la cadena por mocks si el objetivo es validar integración o contratos del modulo.
 - Cubrir happy path, errores de autorizacion, validacion y regresiones de boundary.
 - Cuando se prueben endpoints, mantener nombres de casos y asserts alineados al contrato publico y a OpenAPI si aplica.
-- Tras cambios relevantes, actualizar el informe vivo relacionado en `docs/informes/`.

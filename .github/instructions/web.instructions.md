@@ -5,6 +5,8 @@ applyTo: "apps/web/**"
 
 # Web Platform Console Instructions
 
+Referencia maestra: `AGENTS.md`.
+
 - `apps/web` es la consola de plataforma; no tratarla como superficie tenant-aware equivalente a `apps/portal`.
 - La autenticacion principal de esta app usa contratos de plataforma como `POST /auth/platform/login` y perfiles de usuarios de plataforma.
 - Mantener separacion entre usuarios de plataforma (`SYSTEM_ADMIN`, `IWANA_SUPPORT`) y usuarios del tenant.
@@ -14,4 +16,3 @@ applyTo: "apps/web/**"
 - La UX y el copy deben hablar de plataforma, administracion y operacion interna; no reutilizar copy de suscriptor ni copy del portal empresarial.
 - Los flujos de recovery o soporte en `apps/web` pueden ser controlados y no necesariamente self-service; no abrir autoservicio si el backend no lo soporta.
 - Respetar el manejo de MFA y sesiones propio de plataforma en `AuthProvider` y `api-client`; no copiar sin revisar los patrones de `apps/portal`.
-- Tras cambios en `apps/web`, actualizar el informe vivo relacionado en `docs/informes/`.

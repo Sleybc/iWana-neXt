@@ -1,7 +1,7 @@
 # INFORME — MOD03 Configuracion Empresarial — Auditoria de Estado y Brechas
 
-**Version:** 1.2  
-**Estado:** En revision  
+**Version:** 1.4  
+**Estado:** Aprobado  
 **Fecha:** 2026-03-24  
 **Convencion documental:** INFORME-MOD03-AUDITORIA-ESTADO-v1.0.md
 
@@ -17,11 +17,13 @@
 
 ## Changelog
 
-| Version | Fecha      | Cambios                                                                                                                     |
-| ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------- |
-| 1.0     | 2026-03-24 | Emision inicial con gap analysis                                                                                            |
-| 1.1     | 2026-03-24 | Actualizacion post-planificacion: se formalizaron PRD v1.1, HLD v1.1, sprint plan y prompt de ejecucion para cerrar brechas |
-| 1.2     | 2026-03-24 | Actualizacion post-implementacion tecnica de Fase 02B: backend DELETE, frontend ABM + mapa, E2E ampliado y validaciones     |
+| Version | Fecha | Cambios |
+| --- | --- | --- |
+| 1.0 | 2026-03-24 | Emision inicial con gap analysis |
+| 1.1 | 2026-03-24 | Actualizacion post-planificacion: se formalizaron PRD v1.1, HLD v1.1, sprint plan y prompt de ejecucion para cerrar brechas |
+| 1.2 | 2026-03-24 | Actualizacion post-implementacion tecnica de Fase 02B: backend DELETE, frontend ABM + mapa, E2E ampliado y validaciones |
+| 1.3 | 2026-05-19 | Formalizacion arquitectonica MOD03 v2 como control plane federado con Organizacion/Sedes y Usuarios/Acceso |
+| 1.4 | 2026-05-19 | Aprobacion CTO: el control plane se transfiere a MOD00; MOD03 queda como antecedente historico |
 
 ---
 
@@ -170,5 +172,40 @@ El Sr. Dev Fullstack debe ejecutar el prompt `PROMPT-MOD03-FASE-02B-v1.0.md` sig
 
 ---
 
-_Documento actualizado a v1.2 — AI-EM-ARCH_  
-_Fecha: 2026-03-24_
+---
+
+## 6. Actualizacion arquitectonica MOD00 — Control Plane (2026-05-19)
+
+### 6.1 Motivo
+
+Durante la revision de Configuracion Empresarial, WFM y la vision operativa del tenant, se identifico que la nocion de **sede operativa** ya no puede permanecer encerrada en WFM. La sede debe servir tambien para empleados, responsables de inventario, recaudo, atencion al cliente, bases tecnicas, bodegas y futuros flujos de RRHH, Inventory y Billing.
+
+Tambien se identifico que MOD04 Users mantiene `UserRole` fijo y que los permisos granulares estaban diferidos. Para soportar acceso por modulos y perfiles configurables sin debilitar seguridad, el control plane aprobado como **MOD00 Configuracion** debe incluir una seccion de **Usuarios y acceso** con perfiles configurables sobre roles base.
+
+### 6.2 Documentos generados
+
+| Documento | Estado | Proposito |
+| --- | --- | --- |
+| `docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md` | Aprobado | Decision CTO para MOD00 Configuracion como control plane federado, Organizacion/Sedes y perfiles de acceso |
+| `docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` | Aprobado | Alcance funcional MOD00 con Organizacion y Usuarios/Acceso |
+| `docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` | Aprobado | Arquitectura tecnica, tablas, contratos REST, seguridad, migracion WFM |
+| `docs/superpowers/plans/2026-05-19-mod00-configuracion-control-plane.md` | Aprobado para ejecucion | Plan de implementacion task-by-task para fullstack |
+| `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-01-v1.0.md` | Aprobado para ejecucion | Prompt operativo para Sr. Dev Fullstack basado en la plantilla oficial |
+| `docs/informes/INFORME-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` | Aprobado | Informe vivo de MOD00 Fase 01 |
+
+### 6.3 Decisiones principales
+
+1. Configuracion centraliza la experiencia administrativa, no el ownership de todos los dominios.
+2. Organizacion/Sedes se convierte en subdominio transversal administrado desde Configuracion.
+3. WFM conserva agenda, Work Orders, overrides, ventanas de despacho y ejecucion de campo.
+4. Inventory futuro sera owner de stock, seriales, MACs, bodegas y movimientos.
+5. Billing futuro sera owner de recaudo, caja, cartera y facturacion.
+6. Users/Auth conservan `UserRole` como rol base; Access Profiles agrega permisos configurables por tenant.
+7. No se permite crear roles backend dinamicos desde la UI del tenant.
+
+### 6.4 Estado de aprobacion
+
+CTO aprueba ADR-040 el 2026-05-19. El paquete documental se renombra a MOD00 y queda habilitado para ejecucion fullstack. MOD03 Configuracion Empresarial v1.x se conserva como antecedente historico y no debe recibir nuevas responsabilidades de control plane.
+
+_Documento actualizado a v1.4 — AI-EM-ARCH_  
+_Fecha: 2026-05-19_

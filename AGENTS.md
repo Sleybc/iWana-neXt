@@ -2,7 +2,40 @@
 
 > **Stack:** NestJS + Next.js + PostgreSQL + TypeORM + Turborepo + pnpm  
 > **Identidad:** EM + Architect unificado  
-> **Fuentes:** [Stack_Tecnologico.md](docs/prds/Stack_Tecnologico.md) | [copilot-instructions.md](.github/copilot-instructions.md)
+> **Fuente maestra:** Este documento
+> **Stack validado:** [Stack_Tecnologico.md](docs/prds/Stack_Tecnologico.md)
+
+---
+
+## AI Workflow Activo
+
+**Asistente activo:** GitHub Copilot en VS Code.
+
+**Superficies activas:**
+
+- `.github/copilot-instructions.md` — bootstrap minimo para Copilot.
+- `.github/instructions/*.instructions.md` — reglas contextuales por path.
+- `.github/prompts/*.prompt.md` — prompts operativos reutilizables.
+- `.agents/skills/` — skills bajo demanda; este archivo prevalece sobre cualquier skill individual.
+
+**Superficies pasivas por ahora:**
+
+- `CLAUDE.md` — deprecado hasta que Claude Code vuelva a ser herramienta activa.
+- `.opencode/` — contingencia recuperable, no fuente activa de gobernanza.
+
+### Reactivacion De Herramientas Pasivas
+
+Si `CLAUDE.md` u OpenCode vuelven a estar activos:
+
+1. Comparar su bootstrap contra este documento.
+2. Reemplazar reglas duplicadas por referencias a `AGENTS.md`.
+3. Actualizar este documento si cambia la precedencia, el stack, los boundaries o la seguridad.
+4. Validar PRD, HLD y ADR vigentes antes de ejecutar tareas productivas.
+
+### Prompts Operativos
+
+- `.github/prompts/actualizar-informe-vivo.prompt.md` — actualizar el informe vivo relacionado sin duplicarlo.
+- `.github/prompts/revisar-boundary-modulith.prompt.md` — revisar boundaries Modulith, accesos cruzados y riesgos de arquitectura.
 
 ---
 
@@ -10,192 +43,64 @@
 
 **Package manager:** `pnpm` (never npm/yarn)
 
-### Root Commands
+| Objetivo | Comando |
+| --- | --- |
+| Dev local | `pnpm dev` |
+| Build | `pnpm build` |
+| Lint | `pnpm lint` |
+| Typecheck | `pnpm typecheck` |
+| Unit tests monorepo | `pnpm test` |
+| E2E web | `pnpm test:e2e` |
+| E2E portal | `pnpm test:e2e:portal` |
+| Limpiar artefactos | `pnpm clean` |
 
-```bash
-pnpm dev          # Docker + DB + migrations + turbo dev
-pnpm build        # turbo run build
-pnpm lint         # turbo run lint
-pnpm typecheck    # turbo run typecheck
-pnpm test         # turbo run test
-pnpm clean        # Clean node_modules, .turbo, dist, coverage
-```
-
-### Testing Commands
-
-**Run all tests:**
-
-```bash
-pnpm test                    # All workspaces
-pnpm test:e2e               # Playwright web tests
-pnpm test:e2e:portal        # Playwright portal tests
-pnpm test:e2e:headed        # Playwright with browser visible
-```
-
-**Run single test file (CRITICAL):**
-
-```bash
-# Backend (NestJS + Jest)
-cd apps/api && npx jest src/modules/auth/auth.service.spec.ts
-cd apps/api && npx jest --testNamePattern="should validate token"
-
-# Frontend (Next.js + Jest)
-cd apps/web && npx jest src/components/Button.test.tsx
-
-# Specific workspace via filter
-pnpm --filter @iwana/api test -- auth.service.spec.ts
-```
-
-**Run tests with coverage:**
-
-```bash
-cd apps/api && npx jest --coverage
-```
-
-**E2E single test:**
-
-```bash
-npx playwright test e2e/tests/web-auth-dashboard.spec.ts
-npx playwright test --grep "login flow"
-```
-
-### Workspace-Specific Commands
-
-```bash
-pnpm --filter @iwana/api test
-pnpm --filter @iwana/web test
-pnpm --filter @iwana/db migration:run
-pnpm --filter @iwana/db migration:generate -- src/migrations/CreateUsersTable
-```
+| Caso puntual | Comando |
+| --- | --- |
+| API tests | `pnpm --filter @iwana/api test` |
+| Web tests | `pnpm --filter @iwana/web test` |
+| DB migrations | `pnpm --filter @iwana/db migration:run` |
+| Generar migracion | `pnpm --filter @iwana/db migration:generate -- src/migrations/CreateUsersTable` |
+| Jest backend individual | `cd apps/api && npx jest src/modules/auth/auth.service.spec.ts` |
+| Playwright individual | `npx playwright test e2e/tests/web-auth-dashboard.spec.ts` |
 
 ---
 
-## Code Style Guidelines
+## Code Style Summary
 
-### TypeScript Configuration
+### Critical Rules
 
-- **Target:** ES2022, CommonJS modules
-- **Strict mode:** enabled (`strict: true`, `strictNullChecks: true`)
-- **No implicit any:** error
-- **Unused vars:** prefix with `_` to ignore
+| Nivel | Aplicacion |
+| --- | --- |
+| Critico | TypeScript estricto; sin `any` explicito; sin promesas flotantes; imports sin ciclos; logs sin PII, secretos ni payloads sensibles. |
 
-### Formatting (Prettier)
+### General Recommendations
 
-```javascript
-semi: true;
-singleQuote: true;
-trailingComma: 'all';
-printWidth: 100;
-tabWidth: 2;
-useTabs: false;
-endOfLine: 'lf';
-```
-
-### ESLint Rules
-
-```javascript
-'no-console': ['warn', { allow: ['warn', 'error'] }]
-'@typescript-eslint/no-explicit-any': 'error'
-'@typescript-eslint/no-floating-promises': 'error'
-'@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }]
-```
-
-### Naming Conventions
-
-- **Files:** kebab-case (`auth.controller.ts`, `user.service.ts`)
-- **Classes:** PascalCase (`UserService`, `AuthController`)
-- **Interfaces:** PascalCase with prefix (`IUser`, optional)
-- **Types:** PascalCase (`UserRole`, `ApiResponse`)
-- **Enums:** PascalCase, members UPPER_SNAKE_CASE
-- **Variables/functions:** camelCase
-- **Constants:** UPPER_SNAKE_CASE for true constants
-- **Private methods:** prefix with `_` (optional but consistent)
-- **Test files:** `*.spec.ts` (unit), `*.test.ts` (integration/e2e)
-
-### Import Guidelines
-
-```typescript
-// 1. External libraries
-import { Injectable } from '@nestjs/common';
-import { Repository } from 'typeorm';
-
-// 2. Internal workspace packages
-import { User } from '@iwana/db';
-import { ApiResponse } from '@iwana/shared';
-
-// 3. Relative imports (same module)
-import { AuthService } from './auth.service';
-import { LoginDto } from './dto/login.dto';
-```
-
-**Rules:**
-
-- Use workspace aliases (`@iwana/*`) for cross-package imports
-- Group imports: external → workspace → relative
-- Sort alphabetically within groups
-- No circular imports between bounded contexts
-
-### Error Handling
-
-```typescript
-// Use custom exceptions for domain errors
-throw new BadRequestException('Invalid credentials');
-throw new NotFoundException(`User ${id} not found`);
-
-// Async/await with proper error boundaries
-try {
-  await this.riskyOperation();
-} catch (error) {
-  this.logger.error('Operation failed', error.stack);
-  throw new InternalServerErrorException('Unable to process request');
-}
-```
-
-### Comments
-
-- Write in **Spanish** when logic is non-trivial
-- Explain intent, business rules, validations
-- Do NOT repeat obvious code line-by-line
-- Document WHY, not WHAT
-
-```typescript
-// ✓ Bien: explica la regla de negocio
-// Los usuarios de estrato 1-2 requieren aprobación adicional según CRC
-if (user.estrato <= 2 && !user.aprobado) {
-  await this.notificarAprobacion(user);
-}
-```
-
-### UI Copy y Casing
-
-- Todo texto visible en UI (`apps/web` y `apps/portal`) debe mostrarse en español.
-- Usar **sentence case**: solo la inicial en mayúscula (ej: `Prospecto`, `Persona natural`, `Listo instalación`).
-- No renderizar enums crudos en inglés o en `UPPER_SNAKE_CASE` en vistas finales; mapear siempre a labels de negocio.
+| Area | Recomendacion |
+| --- | --- |
+| Convencion | Prettier y ESLint del repo son fuente ejecutable; usar aliases `@iwana/*`, grupos de imports externo → workspace → relativo y naming consistente. |
+| UI y docs | Texto visible en espanol, sentence case, sin enums crudos en vistas finales; comentarios en espanol solo para logica no trivial. |
 
 ---
 
 ## Architecture Rules
 
-### Modulith Boundaries
+| Area | Regla critica |
+| --- | --- |
+| Modulith | Boundaries explicitos; sin acceso directo a tablas de otro modulo; comunicacion via interfaces tipadas o eventos; sin imports circulares. |
+| Multi-tenancy | Aislamiento PostgreSQL por schema; nunca hardcodear tenant/schema; resolver desde contexto aprobado; usar `SET LOCAL search_path` por transaccion. |
+| Security | Cero PII en codigo, tests, logs y docs; `@Roles()` usa `UserRole.*`; Zod en boundaries externos; sin `synchronize: true` en produccion. |
 
-- Each module has explicit boundaries
-- No direct table access from other modules
-- Inter-module communication via typed interfaces or events
-- No circular imports between bounded contexts
+### Regulatory Reference Map
 
-### Multi-Tenancy
+No inventar regulacion. Si no aplica una fuente oficial o ADR, detener el trabajo y notificar al responsable del proyecto para resolucion.
 
-- PostgreSQL schema-based isolation
-- Never hardcode tenant/schema
-- Resolve from request context or approved flow
-- Use `SET LOCAL search_path` per transaction (pgBouncer compatible)
-
-### Security
-
-- **Zero PII** in code, tests, logs, docs
-- `@Roles()` decorator must use `UserRole.*` enums (not string literals)
-- Zod validation on external boundaries
-- No `synchronize: true` in production
+| Dominio | Referencias operativas a verificar |
+| --- | --- |
+| Billing | IVA por estrato, DIAN UBL 2.1, CUFE |
+| CRM/Portal | Ley 1581, Habeas Data, ARCO |
+| Assurance/PQR | CRC tiempos, compensaciones |
+| Reporting | CRC, SUI, Colombia TIC |
+| HCM/SG-SST | Jornada 42h, IPERC, FURAT |
 
 ---
 
@@ -254,7 +159,7 @@ describe('UserService', () => {
 
 ## Project Structure
 
-```
+```text
 ├── apps/
 │   ├── api/              # NestJS API (port 3000)
 │   ├── web/              # Platform console (port 3001)
@@ -277,10 +182,13 @@ describe('UserService', () => {
 2. **pgBouncer** → `search_path` doesn't persist; use `SET LOCAL` per transaction
 3. **AsyncLocalStorage** → Doesn't propagate to BullMQ; pass tenant context explicitly
 4. **MFA setup token** → Includes `tenantId` + `schemaName`; don't rely on `X-Tenant-Slug`
-5. **Tailwind v4** → CSS-first; don't add `tailwind.config.js`
-6. **Color contrast** → Use `iwana-secondary-700` for text on white (AA compliance)
-7. **Portal localStorage — two tokens** → `iwana.portal.access-token` (full session) and `iwana.portal.mfa-setup-token` (limited scope, MFA setup only); `mfaSetup()` and `mfaVerifySetup()` read the second token directly, bypassing `request()`
-8. **TenantContext.getOrThrow()** → Throws a generic `Error` (→ 500), not `UnauthorizedException` (→ 401); a missing context on a protected route surfaces as 500, not 401
+5. **MFA setup idempotente** → `setupMfa()` tolera dobles invocaciones de React Strict Mode
+6. **MFA setup effects** → hooks que llaman setup MFA usan dependencia estable; no disparar ciclos por router mutable
+7. **Auth controller flags** → Propagar explicitamente `mfaRequired` y `mfaSetupRequired`; NestJS no serializa campos omitidos
+8. **Tailwind v4** → CSS-first; don't add `tailwind.config.js`
+9. **Color contrast** → Use `iwana-secondary-700` for text on white (AA compliance)
+10. **Portal localStorage — two tokens** → `iwana.portal.access-token` (full session) and `iwana.portal.mfa-setup-token` (limited scope, MFA setup only); `mfaSetup()` and `mfaVerifySetup()` read the second token directly, bypassing `request()`
+11. **TenantContext.getOrThrow()** → Throws a generic `Error` (→ 500), not `UnauthorizedException` (→ 401); a missing context on a protected route surfaces as 500, not 401
 
 ---
 
@@ -302,3 +210,5 @@ describe('UserService', () => {
 - [ ] Migrations reversible
 - [ ] No PII in logs
 - [ ] Lint and typecheck passing
+
+If coverage drops below 80%, identify untested areas and prioritize writing new tests before merging.

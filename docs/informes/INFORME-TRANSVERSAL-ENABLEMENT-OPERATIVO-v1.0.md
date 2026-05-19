@@ -9,6 +9,27 @@
 
 Se ejecutó la implementación transversal de enablement operativo para habilitar perfil de plataforma, settings funcionales de tenant, flujo de alta de primera empresa y gestión operativa de usuarios internos. El cierre incluyó la corrección del flujo MFA de plataforma en web, la activación real de acciones de usuarios por tenant y la ampliación del E2E de bootstrap administrativo.
 
+### Addendum documental 2026-05-19 — Limpieza de superficies IA para flujo Copilot
+
+Se simplifico la gobernanza operativa de asistentes IA para dejar GitHub Copilot como unica herramienta activa del workspace y reducir drift entre documentos. `AGENTS.md` queda ratificado como fuente maestra; `.github/copilot-instructions.md` pasa a bootstrap minimo; las instrucciones contextuales de `.github/instructions/` mantienen sus `applyTo` pero remiten a `AGENTS.md` y conservan solo reglas locales por superficie.
+
+Tambien se marco `CLAUDE.md` como deprecado hasta reactivacion explicita y `.opencode/` como contingencia pasiva recuperable. En OpenCode se deshabilitaron MCPs para evitar arranque accidental, se agrego `.opencode/DISABLED.md` y se redujeron agentes a tarjetas de referencia. El mapa regulatorio util que vivia en `mixed-governance` fue promovido a `AGENTS.md` para no perder conocimiento unico.
+
+Artefactos actualizados o creados:
+
+- `AGENTS.md`
+- `.github/copilot-instructions.md`
+- `.github/instructions/*.instructions.md`
+- `CLAUDE.md`
+- `.opencode/DISABLED.md`
+- `.opencode/opencode.json`
+- `.opencode/agents/*.md`
+- `.agents/skills/README.md`
+- `.agents/skills/INDEX.md`
+- `docs/runbooks/RUNBOOK-AI-WORKFLOW-COPILOT-v1.0.md`
+
+Resultado: el flujo activo de productividad IA queda centrado en Copilot, con fuentes pasivas documentadas y recuperables sin mantener cuatro copias vivas de la misma gobernanza.
+
 ### Addendum correctivo 2026-05-13 — Configuración raíz de Jest para monorepo
 
 Se corrigió una falla transversal de tooling que hacía que Jest, al ejecutarse desde la raíz del monorepo, usara su configuración por defecto en lugar de los `jest.config.js` de cada workspace. El efecto operativo era que los archivos `*.spec.ts` y `*.spec.tsx` se intentaban parsear con `babel-jest` sin soporte real para TypeScript/TSX, y además se incluían specs de `e2e` escritos para Playwright, generando cascadas de errores de sintaxis (`type`, `as const`, `public readonly`, JSX, `import type`).
