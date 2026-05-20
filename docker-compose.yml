@@ -1,191 +1,152 @@
-# docker-compose.yml — Stack de producción iWana neXt
-# Uso: docker compose up -d --build
-# Acceso: http://10.0.0.2:${APP_PORT:-8080}
-#
-# Servicios: postgres · redis · api · worker · web · nginx
-#
-# Para cambiar el puerto: editar APP_PORT en .env, luego:
-#   docker compose build web  (NEXT_PUBLIC_API_URL está bakeado)
-#   docker compose up -d
-
 services:
-  # ── PostgreSQL 18 ─────────────────────────────────────────────────────────
   postgres:
     image: postgres:18-alpine
-    container_name: iwana_postgres
+    container_name: iwana_postgres_dev
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER:-iwana}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      POSTGRES_DB: ${DB_NAME:-dbiw}
+    ports:
+      - '${DB_PORT:-5433}:5432'
     volumes:
-      - iwana_postgres_data:/var/lib/postgresql/data
+      - iwana_postgres_data_dev:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER} -d ${DB_NAME}']
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-iwana} -d ${DB_NAME:-dbiw}']
       interval: 10s
       timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    container_name: iwana_redis_dev
+    command: redis-server --save 60 1 --loglevel warning
+    ports:
+      - '${REDIS_PORT:-6380}:6379'
+    volumes:
+      - iwana_redis_data_dev:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: iwana_pgbouncer_dev
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-iwana}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      DB_NAME: ${DB_NAME:-dbiw}
+      LISTEN_PORT: 6432
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 200
+      DEFAULT_POOL_SIZE: 20
+    ports:
+      - '${PGBOUNCER_PORT:-6433}:6432'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    container_name: iwana_minio_dev
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    ports:
+      - '${MINIO_API_PORT:-9002}:9000'
+      - '${MINIO_CONSOLE_PORT:-9003}:9001'
+    volumes:
+      - iwana_minio_data_dev:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 30s
+      timeout: 10s
       retries: 5
       start_period: 10s
     restart: unless-stopped
 
-  # ── Redis 8 ───────────────────────────────────────────────────────────────
-  redis:
-    image: redis:8-alpine
-    container_name: iwana_redis
-    command: >
-      redis-server
-      --requirepass ${REDIS_PASSWORD}
-      --save 60 1
-      --loglevel warning
-    volumes:
-      - iwana_redis_data:/data
-    healthcheck:
-      test: ['CMD-SHELL', 'redis-cli -a $$REDIS_PASSWORD ping']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 5s
+  minio-init:
+    image: minio/mc:latest
+    container_name: iwana_minio_init_dev
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-    restart: unless-stopped
-
-  # ── Migrator (ejecuta migraciones y seed) ─────────────────────────────────
-  migrator:
-    build:
-      context: .
-      dockerfile: packages/database/Dockerfile.migrator
-    container_name: iwana_migrator
-    environment:
-      NODE_ENV: production
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_NAME: ${DB_NAME}
-    command: ['node', 'dist/cli/tenant-migrate.js']
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      S3_BUCKET: ${S3_BUCKET:-iwana-media}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mc alias set iwana-local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"
+        mc mb --ignore-existing "iwana-local/$${S3_BUCKET}"
+        mc anonymous set private "iwana-local/$${S3_BUCKET}"
+    depends_on:
+      minio:
+        condition: service_healthy
     restart: 'no'
-    depends_on:
-      postgres:
-        condition: service_healthy
 
-  # ── API NestJS ────────────────────────────────────────────────────────────
-  api:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
-    container_name: iwana_api
-    environment:
-      NODE_ENV: production
-      PORT: 3000
-      # Base de datos
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_NAME: ${DB_NAME}
-      # Redis (con password para producción)
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_DB: ${REDIS_DB:-0}
-      # JWT RS256 — contenido PEM con saltos de línea escapados como \n
-      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY}
-      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
-      # AES-256-GCM para cifrado de MFA secrets (64 hex chars = 256 bits)
-      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY}
-      # CORS — origen del browser (incluye puerto público)
-      CORS_ORIGIN: ${CORS_ORIGIN}
-      # Cookie Secure: false para HTTP on-prem, true solo con HTTPS/TLS
-      COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      # Bootstrap SYSTEM_ADMIN — se ejecuta una sola vez en startup
-      PLATFORM_SUPER_ADMIN_EMAIL: ${PLATFORM_SUPER_ADMIN_EMAIL}
-      PLATFORM_SUPER_ADMIN_PASSWORD: ${PLATFORM_SUPER_ADMIN_PASSWORD}
-      # URL del frontend para links en emails (forgot-password, etc.)
-      FRONTEND_URL: ${WEB_URL}
-      APP_NAME: ${APP_NAME:-iWana neXt}
-      # SMTP — si SMTP_HOST está vacío, MailerService usa modo dev (imprime en logs)
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASS: ${SMTP_PASS:-}
-      SMTP_FROM: ${SMTP_FROM:-no-reply@iwana.local}
-    depends_on:
-      migrator:
-        condition: service_completed_successfully
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+  typesense:
+    image: typesense/typesense:28.0
+    container_name: iwana_typesense_dev
+    command: >
+      --data-dir /data
+      --api-key=${TYPESENSE_API_KEY:-CHANGE_ME_TYPESENSE_DEV_KEY}
+      --enable-cors
+    ports:
+      - '${TYPESENSE_PORT:-8108}:8108'
+    volumes:
+      - iwana_typesense_data_dev:/data
     healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/api/v1/health || exit 1']
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 90s
+      test: ['CMD-SHELL', "bash -ec '</dev/tcp/127.0.0.1/8108'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     restart: unless-stopped
 
-  # ── Worker BullMQ ─────────────────────────────────────────────────────────
-  worker:
-    build:
-      context: .
-      dockerfile: apps/worker/Dockerfile
-    container_name: iwana_worker
-    environment:
-      NODE_ENV: production
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_NAME: ${DB_NAME}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_DB: ${REDIS_DB:-0}
-      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY}
-      PLATFORM_SUPER_ADMIN_EMAIL: ${PLATFORM_SUPER_ADMIN_EMAIL}
-    depends_on:
-      migrator:
-        condition: service_completed_successfully
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-
-  # ── Web Next.js ───────────────────────────────────────────────────────────
-  web:
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
-      args:
-        # Bakeado en el bundle en tiempo de build.
-        # Si cambia APP_PORT: editar .env + ejecutar: docker compose build web
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-    container_name: iwana_web
-    environment:
-      NODE_ENV: production
-      PORT: 3001
-    depends_on:
-      api:
-        condition: service_healthy
-    restart: unless-stopped
-
-  # ── Nginx (proxy + puerto público configurable) ───────────────────────────
   nginx:
     image: nginx:alpine
-    container_name: iwana_nginx
+    container_name: iwana_nginx_dev
     ports:
-      # Cambiar APP_PORT en .env si el puerto está ocupado
-      - '${APP_PORT:-8080}:80'
+      - '${DEV_PROXY_PORT:-8080}:80'
     volumes:
-      - ./nginx/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
-    depends_on:
-      - api
-      - web
+      - ./nginx/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1/ || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
     restart: unless-stopped
 
-# ── Volúmenes persistentes ────────────────────────────────────────────────
+  adminer:
+    image: adminer:latest
+    container_name: iwana_adminer_dev
+    ports:
+      - '${ADMINER_PORT:-8081}:8080'
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
-  iwana_postgres_data:
-    name: iwana_postgres_data
-  iwana_redis_data:
-    name: iwana_redis_data
+  iwana_postgres_data_dev:
+    name: iwana_postgres_data_dev
+  iwana_redis_data_dev:
+    name: iwana_redis_data_dev
+  iwana_minio_data_dev:
+    name: iwana_minio_data_dev
+  iwana_typesense_data_dev:
+    name: iwana_typesense_data_dev
