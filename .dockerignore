@@ -12,6 +12,9 @@ node_modules
 .env.*
 !.env.example
 
+# Ignore local Playwright MCP artifacts
+.playwright-mcp
+
 secrets
 docs
 test-results

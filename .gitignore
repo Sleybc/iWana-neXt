@@ -45,6 +45,9 @@ blob-report/
 *.trace
 *.har
 
+# Playwright MCP artifacts
+.playwright-mcp/
+
 # Next.js
 .next/
 out/

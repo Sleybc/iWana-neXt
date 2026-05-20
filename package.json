@@ -13,7 +13,7 @@
     "build": "turbo run build",
     "db:migrate:all": "pnpm --filter @iwana/db build && pnpm --filter @iwana/db migration:run && pnpm --filter @iwana/db migration:tenant:run",
     "dev:free-ports": "node scripts/free-dev-ports.mjs",
-    "dev": "pnpm dev:free-ports && docker compose -f docker-compose.dev.yml up -d postgres redis pgbouncer minio nginx adminer && pnpm --filter @iwana/shared build && pnpm db:migrate:all && turbo run dev",
+    "dev": "node scripts/dev.mjs",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "test:e2e": "playwright test --config e2e/playwright.web.config.ts",

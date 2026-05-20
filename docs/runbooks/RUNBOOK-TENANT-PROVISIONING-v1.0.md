@@ -36,14 +36,18 @@ El tenant aparece con `status: PROVISIONING_FAILED` en `GET /api/v1/tenants/:id`
 ### Localizar el error en logs del worker
 
 ```bash
-# Ver los últimos 200 logs del worker en Docker Compose
-docker compose -f docker-compose.dev.yml logs --tail=200 worker
+# En el flujo vigente, el worker corre en el host via `pnpm dev`.
+# Para diagnostico aislado, levantar la infraestructura Docker en una terminal:
+docker compose --env-file .env -f docker-compose.yml up -d postgres redis pgbouncer minio typesense nginx adminer
 
-# Filtrar solo errores relacionados con provisioning
-docker compose -f docker-compose.dev.yml logs worker 2>&1 | grep -i "provisioning\|failed\|error"
+# Luego ejecutar el worker en otra terminal y observar su salida:
+pnpm --filter @iwana/worker dev
 
-# Buscar el tenantId específico en los logs
-docker compose -f docker-compose.dev.yml logs worker 2>&1 | grep "<tenantId>"
+# Filtrar errores relacionados con provisioning en ejecucion aislada
+pnpm --filter @iwana/worker dev 2>&1 | grep -i "provisioning\|failed\|error"
+
+# Buscar un tenantId especifico en la salida del worker
+pnpm --filter @iwana/worker dev 2>&1 | grep "<tenantId>"
 ```
 
 ### Verificar el estado del tenant via API
@@ -67,7 +71,7 @@ BullMQ no expone una CLI oficial. Los jobs se inspeccionan via Redis CLI o via l
 
 ```bash
 # Conectarse al contenedor Redis
-docker compose -f docker-compose.dev.yml exec redis redis-cli
+docker compose --env-file .env -f docker-compose.yml exec redis redis-cli
 
 # Listar todas las claves relacionadas con la cola tenant-provisioning
 KEYS "bull:tenant-provisioning:*"
@@ -148,7 +152,7 @@ watch -n 30 'curl -s -H "Authorization: Bearer <token>" \
 
 ```bash
 # Via Docker Compose (entorno dev)
-docker compose -f docker-compose.dev.yml exec postgres psql \
+docker compose --env-file .env -f docker-compose.yml exec postgres psql \
   -U $DB_USER -d $DB_NAME
 
 # Via psql directo (si tiene acceso al host)

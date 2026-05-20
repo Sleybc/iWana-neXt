@@ -194,7 +194,7 @@ Checklist del DoD del PRD §10 verificado al cierre del BLOQUE 8.
 
 | Ítem | Estado | Nota |
 |------|--------|------|
-| `docker compose -f docker-compose.dev.yml up` funcional | ✅ | PostgreSQL + Redis + pgBouncer |
+| `pnpm dev` funcional | ✅ | Infraestructura Docker local + procesos host coordinados |
 | Migraciones TypeORM versionadas y reversibles | ✅ | `packages/database/src/migrations/` |
 | Worker con Dockerfile funcional para compose | ✅ | `apps/worker/Dockerfile` |
 | Jobs BullMQ con UnrecoverableError para errores de datos | ✅ | Previene reintentos inútiles |

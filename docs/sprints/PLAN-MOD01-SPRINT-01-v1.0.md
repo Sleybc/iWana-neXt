@@ -37,7 +37,7 @@
 **Día 2: Infraestructura Docker**
 
 ```
-1. docker-compose.dev.yml:
+1. docker-compose.yml:
    - postgres (latest) — puerto 5432, volume persistente
    - redis (latest) — puerto 6379
    - minio (latest) — puertos 9000/9001 (para módulos futuros)
@@ -66,7 +66,7 @@
 
 **Criterio de Done del Scaffold:**
 
-- `docker compose -f docker-compose.dev.yml up` levanta sin errores
+- `pnpm dev` levanta la infraestructura local y las apps sin errores
 - `turbo build` compila sin errores (apps vacíos pero compilando)
 - `turbo lint` pasa sin errores
 - CI verde en GitHub Actions

@@ -34,8 +34,9 @@
 ## 2. Entregables implementados
 
 ### Monorepo (raiz)
+
 | Archivo | Descripcion |
-|---------|-------------|
+| ------- | ----------- |
 | `package.json` | Root workspace con scripts turbo, packageManager pnpm@10.32.1 |
 | `pnpm-workspace.yaml` | Configuracion pnpm workspaces (apps/*, packages/*), useNodeVersion 24.13.1 |
 | `turbo.json` | Pipeline Turborepo: build, dev, lint, typecheck, test, clean |
@@ -45,34 +46,38 @@
 | `eslint.config.mjs` | ESLint v9 flat config con @typescript-eslint/parser, sin reglas Sprint 0 |
 
 ### packages/
+
 | Paquete | Descripcion |
-|---------|-------------|
+| ------- | ----------- |
 | `@iwana/config` | tsconfig.base/nestjs/nextjs, .eslintrc.base.js, prettier.config.js |
-| `@iwana/shared` | 4 enums (UserRole, UserStatus, TenantStatus, AuditAction), ApiResponse<T>, ProblemDetail RFC 7807, PaginationQueryDto |
+| `@iwana/shared` | 4 enums (UserRole, UserStatus, TenantStatus, AuditAction), `ApiResponse<T>`, ProblemDetail RFC 7807, PaginationQueryDto |
 | `@iwana/db` | Placeholder TypeORM — entidades en Sprint 1. tenant_template.sql stub |
 | `@iwana/ui` | Design tokens (colors #17163A/#A5C330), typography (Exo 2), spacing. globals.css Tailwind 4 CSS-first con @theme {} |
 
 ### apps/
+
 | App | Puerto | Descripcion |
-|-----|--------|-------------|
+| --- | ------ | ----------- |
 | `@iwana/api` | 3000 | NestJS 11.1.14 scaffold — AppModule vacio, modulos de negocio en Sprint 1 |
 | `@iwana/web` | 3001 | Next.js 16.1.6 Portal Administrativo — layout + page placeholder |
 | `@iwana/portal` | 3002 | Next.js 16.1.6 Portal de Suscriptores — layout + page placeholder |
 | `@iwana/worker` | — | NestJS WorkerModule BullMQ — sin puerto HTTP, workers en Sprint 1 |
 
 ### Docker
+
 | Archivo | Descripcion |
-|---------|-------------|
-| `docker-compose.dev.yml` | 6 servicios: postgres:16-alpine, redis:8-alpine, edoburu/pgbouncer, minio, nginx, adminer |
-| `docker-compose.yml` | Produccion: mismos servicios sin Adminer, vars ${ENV}, redes iwana_internal/external |
+| ------- | ----------- |
+| `docker-compose.yml` | Infraestructura local unica: postgres, redis, pgbouncer, minio, typesense, nginx y adminer |
+| `scripts/dev.mjs` | Orquestador de `pnpm dev`: levanta Docker, inicializa MinIO, ejecuta migraciones y arranca API/web/portal/worker en host |
 | `Dockerfile.api` | Multi-stage 3 etapas, usuario nestjs uid 1001, EXPOSE 3000 |
 | `Dockerfile.web` | Multi-stage 3 etapas, Next.js standalone, usuario nextjs uid 1001, EXPOSE 3001 |
 | `Dockerfile.worker` | Multi-stage 3 etapas, sin puerto HTTP, usuario worker uid 1001 |
 | `nginx/nginx.dev.conf` | Proxy /api/ → api:3000, /health check |
 
 ### CI/CD y Git
+
 | Archivo | Descripcion |
-|---------|-------------|
+| ------- | ----------- |
 | `.github/workflows/ci.yml` | Node 24, pnpm 10, cache store, install → lint → typecheck → build |
 | `.husky/pre-commit` | lint-staged scoped a apps/ y packages/ |
 | `.husky/commit-msg` | commitlint conventional commits |
@@ -80,8 +85,9 @@
 | `.lintstagedrc.js` | Scoped: apps/packages TS/TSX, json/yaml/md en project dirs, root JS/JSON |
 
 ### Secretos
+
 | Archivo | Descripcion |
-|---------|-------------|
+| ------- | ----------- |
 | `secrets/.gitkeep` | Directorio versionado sin los .pem (correctamente ignorados) |
 | `scripts/generate-secrets.sh` | Genera jwt-private.pem, jwt-public.pem y ENCRYPTION_KEY |
 | `secrets/jwt-private.pem` | RSA 2048-bit — generado localmente, NO versionado |
@@ -92,14 +98,16 @@
 ## 3. Evidencia funcional
 
 ### CA-SCAFFOLD-001: Docker dev stack
-```
-$ docker compose -f docker-compose.dev.yml ps
-NAME                  IMAGE                      STATUS
-iwana_postgres_dev    postgres:16-alpine         Up (healthy) — 5432
+
+```text
+$ docker compose --env-file .env -f docker-compose.yml ps
+NAME                  IMAGE                       STATUS
+iwana_postgres_dev    postgres:18-alpine         Up (healthy) — 5432
 iwana_redis_dev       redis:8-alpine             Up (healthy) — 6379
-iwana_pgbouncer_dev   edoburu/pgbouncer:latest   Up — 6432
+iwana_pgbouncer_dev   edoburu/pgbouncer:latest   Up (healthy) — 6432
 iwana_minio_dev       minio/minio:latest         Up (healthy) — 9000/9001
-iwana_nginx_dev       nginx:alpine               Up — 80
+iwana_typesense_dev   typesense/typesense:27.1   Up (healthy) — 8108
+iwana_nginx_dev       nginx:alpine               Up (healthy) — 80
 iwana_adminer_dev     adminer:latest             Up — 8080
 
 $ docker exec iwana_postgres_dev pg_isready -U iwana -d iwana_next
@@ -110,7 +118,8 @@ PONG ✓
 ```
 
 ### CA-SCAFFOLD-002: pnpm build
-```
+
+```text
 turbo run build — 6 Tasks: 6 successful, 0 failed
 - @iwana/shared: tsc ✓
 - @iwana/db: tsc ✓
@@ -121,13 +130,15 @@ turbo run build — 6 Tasks: 6 successful, 0 failed
 ```
 
 ### CA-SCAFFOLD-003: pnpm lint
-```
+
+```text
 turbo run lint — 7 Tasks: 7 successful, 0 failed
 ESLint v9 flat config con @typescript-eslint/parser — 0 errores ✓
 ```
 
 ### CA-SCAFFOLD-004: pnpm typecheck
-```
+
+```text
 turbo run typecheck — 7 Tasks: 7 successful, 0 failed
 TypeScript strict en todos los workspaces — 0 errores ✓
 ```
@@ -165,7 +176,7 @@ TypeScript strict en todos los workspaces — 0 errores ✓
 ## 6. Riesgos y bloqueos
 
 | ID | Riesgo | Mitigacion aplicada |
-|----|--------|---------------------|
+| -- | ------ | ------------------- |
 | R-01 | bitnami/pgbouncer removido de Docker Hub | Reemplazado con edoburu/pgbouncer — funcional y probado |
 | R-02 | pnpm 10 no instalable via Corepack (permisos NTFS) | Instalado via npm install -g pnpm@10 — misma version |
 | R-03 | lint-staged ejecutando sobre 2800+ archivos en commit inicial | lintstagedrc scoped a apps/, packages/ y root — resuelto |
@@ -184,8 +195,6 @@ TypeScript strict en todos los workspaces — 0 errores ✓
 
 ---
 
----
-
 ## 8. Verificacion de ejecucion en runtime (2026-03-12 — sesion post-cierre)
 
 **Objetivo:** Confirmar que el proyecto arranca correctamente en modo desarrollo y todos los servicios operan de extremo a extremo.
@@ -193,7 +202,7 @@ TypeScript strict en todos los workspaces — 0 errores ✓
 ### 8.1 Problemas detectados y corregidos
 
 | ID | Componente | Problema | Correccion aplicada |
-|----|-----------|---------|-------------------|
+| -- | ---------- | -------- | ------------------- |
 | FIX-01 | `nginx/nginx.dev.conf` | `host not found in upstream "api:3000"` — API corre en host, no en Docker | Cambiado a `server host.docker.internal:3000` |
 | FIX-02 | `apps/api/.env` | Archivo no existia — API no arrancaba por variables faltantes | Creado con todos los valores de dev (DB, Redis, JWT, MFA, CORS) |
 | FIX-03 | `apps/api/src/app.module.ts` | Schema Joi usaba `DATABASE_*` pero el codigo usa `DB_*` | Corregidas las claves: `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_PORT` |
@@ -202,7 +211,7 @@ TypeScript strict en todos los workspaces — 0 errores ✓
 | FIX-06 | 5 entidades en `@iwana/db` | `DataTypeNotSupportedError: Data type "Object"` — columnas `string \| null` sin `type` explicito; `reflect-metadata` reporta `Object` en TypeScript union types | Agregado `type: 'varchar'` (12 columnas) y `type: 'uuid'` (2 columnas) en los decoradores `@Column` de los 5 archivos de entidades |
 | FIX-07 | `apps/api/src/app.module.ts` | Warnings `Unsupported route path` en NestJS 11 — `path-to-regexp` ya no acepta `(.*)` ni `*` sin nombre | Cambiado a `tenants/*path` y `{ path: '*path', method: RequestMethod.ALL }` |
 | FIX-08 | `.env` raiz y `.env.example` | Faltaba el archivo requerido por `docker-compose.yml` para produccion; la plantilla ademas apuntaba a `.env.local`, lo que mezclaba flujo de desarrollo con despliegue | Creado `.env` raiz con placeholders seguros y corregida `.env.example` para distinguir raiz/produccion de `apps/api/.env` |
-| FIX-09 | `apps/api/.env` y `docker-compose.dev.yml` | Desarrollo local quedaba desalineado respecto a la nueva configuracion objetivo `dbiw` / `Iwana102+` | Actualizados API dev, PostgreSQL dev y pgBouncer dev para usar la misma base y credenciales; requiere recrear el volumen local si ya existia con el esquema anterior |
+| FIX-09 | `apps/api/.env` y `docker-compose.yml` | Desarrollo local quedaba desalineado respecto a la nueva configuracion objetivo `dbiw` / `Iwana102+` | Actualizados API dev, PostgreSQL dev y pgBouncer dev para usar la misma base y credenciales; requiere recrear el volumen local si ya existia con el esquema anterior |
 | FIX-10 | `apps/api/src/modules/auth/strategies/jwt.strategy.ts` | La verificacion RS256 fallaba con PEM cargado desde variable de entorno porque `JWT_PUBLIC_KEY` no normalizaba `\\n` | Agregado `.replace(/\\n/g, '\n')` en `secretOrKey` para que los Bearer tokens validos sean aceptados |
 | FIX-11 | `apps/worker/src/processors/tenant-provisioning.processor.ts` | El worker resolvia `tenant_template.sql` hacia `apps/packages/...` y el provisioning fallaba con `ENOENT` | Corregida la ruta relativa a `../../../../packages/database/src/templates/tenant_template.sql`; provisioning validado con tenant `demoisp2` en estado `ACTIVE` |
 | FIX-12 | `apps/api/src/modules/auth/*` | No existia un flujo formal de login de plataforma ni bootstrap del primer SYSTEM_ADMIN, lo que obligaba a firmar tokens manualmente para operar `/tenants` | Agregado `POST /api/v1/auth/platform/login` y bootstrap opcional del superusuario de plataforma desde variables locales de entorno |
@@ -216,7 +225,7 @@ TypeScript strict en todos los workspaces — 0 errores ✓
 
 ### 8.3 Evidencia de verificacion final
 
-```
+```text
 # Docker — todos los servicios operativos
 NAME                  STATUS
 iwana_adminer_dev     Up
@@ -243,6 +252,7 @@ pnpm --filter @iwana/api exec tsc --noEmit → 0 errors
 ## Notas adicionales
 
 ### Desviaciones respecto al plan original
+
 1. **pgBouncer image:** `bitnami/pgbouncer:latest` → `edoburu/pgbouncer:latest` (imagen no disponible en Docker Hub)
 2. **pnpm installation:** Corepack global install bloqueado por NTFS → `npm install -g pnpm@10`
 3. **root package.json additions:** `packageManager`, `pnpm.onlyBuiltDependencies`, `eslint + @typescript-eslint/*` agregados como necesidad del scaffold real
@@ -250,6 +260,7 @@ pnpm --filter @iwana/api exec tsc --noEmit → 0 errors
 5. **lint-staged:** Scoped a directorios de proyecto para evitar procesar el antiguo archivo local de skills, ya retirado del repo
 
 ### Artefactos de Sprint 1 desbloqueados
+
 - `packages/database/src/entities/` → TypeORM entities (User, Tenant, AuditLog, RefreshToken)
 - `packages/database/src/migrations/public/` → Migraciones PostgreSQL schema publico
 - `packages/database/src/templates/tenant_template.sql` → DDL completo por tenant

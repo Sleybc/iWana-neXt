@@ -59,7 +59,7 @@
 ### Integraciones
 
 - `docker-compose.yml` - Servicio migrator con depends_on condition: service_completed_successfully
-- `docker-compose.dev.yml` - Servicio migrator para desarrollo
+- `scripts/dev.mjs` - Orquestacion local: infraestructura Docker, migraciones y arranque coordinado de apps
 - `turbo.json` - Tasks @iwana/db#build y @iwana/db#migration:tenant:run
 - `packages/database/package.json` - Script migration:tenant:run
 - `.github/workflows/ci.yml` - Validacion de migraciones con Postgres ephemeral
@@ -213,7 +213,7 @@ Validaciones ejecutadas durante el correctivo:
 - `pnpm --filter @iwana/db typecheck`: OK;
 - `pnpm --filter @iwana/worker test -- tenant-provisioning.processor.spec.ts tenant-provisioning.processor.migration.spec.ts`: OK, 2 suites / 14 tests;
 - `pnpm --filter @iwana/worker typecheck`: OK;
-- rebuild real de Docker worker con `docker compose -f docker-compose.dev.yml build --no-cache worker` y recreacion del servicio worker;
+- recompilacion real del slice worker con `pnpm --filter @iwana/worker build` y reejecucion de `pnpm dev` para validar el flujo local vigente;
 - artefacto compilado del contenedor activo verificado con presencia de `search_path` y `requireTenantMigration`, y ausencia de `pathToFileURL`.
 
 ### 8.5 Recuperacion operativa validada

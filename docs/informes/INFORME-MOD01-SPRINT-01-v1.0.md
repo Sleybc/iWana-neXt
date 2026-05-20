@@ -1,13 +1,13 @@
 # INFORME-MOD01-SPRINT-01-v1.0.md
 
-**Tipo:** INFORME  
-**Módulo:** MOD01 — Auth + Tenant + Audit  
-**Fase:** SPRINT-01  
-**Versión:** 1.0 (documento cerrado — cierre formal de producción)  
-**Estado:** ✅ CERRADO — MOD01 apto para producción  
-**Fecha de apertura:** 2026-03-12  
-**Última actualización:** 2026-03-15 (Frontend PRD MOD01: MFA tenant corregido + recuperación/verificación públicas + hardening ARIA/rutas TailAdmin)  
-**Agente responsable:** AI-EM-ARCH (Modo Mixto)  
+**Tipo:** INFORME
+**Módulo:** MOD01 — Auth + Tenant + Audit
+**Fase:** SPRINT-01
+**Versión:** 1.0 (documento cerrado — cierre formal de producción)
+**Estado:** ✅ CERRADO — MOD01 apto para producción
+**Fecha de apertura:** 2026-03-12
+**Última actualización:** 2026-03-15 (Frontend PRD MOD01: MFA tenant corregido + recuperación/verificación públicas + hardening ARIA/rutas TailAdmin)
+**Agente responsable:** AI-EM-ARCH (Modo Mixto)
 **Referencia al prompt de ejecución:** `docs/prompts/PROMPT-MOD01-SPRINT-01-v1.0.md`
 
 ---
@@ -28,12 +28,12 @@
 
 ## 1. Contexto
 
-Este informe documenta la primera entrega técnica del Sprint 1 de MOD01 (Auth + Tenant + Audit).  
-El sprint plan orignal (`docs/sprints/PLAN-MOD01-SPRINT-01-v1.0.md`) estaba desfasado respecto al  
-estado real del código (0% de implementación post-scaffold). El corte fue reencuadrado correctamente  
+Este informe documenta la primera entrega técnica del Sprint 1 de MOD01 (Auth + Tenant + Audit).
+El sprint plan orignal (`docs/sprints/PLAN-MOD01-SPRINT-01-v1.0.md`) estaba desfasado respecto al
+estado real del código (0% de implementación post-scaffold). El corte fue reencuadrado correctamente
 como un backlog técnico, comenzando con la capa más fundamental: **DB entities + Tenant base**.
 
-El trabajo siguió el gate de gobernanza ADR-022: el prompt de ejecución fue verificado antes de  
+El trabajo siguió el gate de gobernanza ADR-022: el prompt de ejecución fue verificado antes de
 iniciar cualquier código (`docs/prompts/PROMPT-MOD01-SPRINT-01-v1.0.md`).
 
 ---
@@ -53,7 +53,7 @@ iniciar cualquier código (`docs/prompts/PROMPT-MOD01-SPRINT-01-v1.0.md`).
 |-----------|---------|--------|--------|
 | Clasificación de fallos permanentes | `apps/worker/src/processors/tenant-provisioning.processor.ts` | Los casos `schemaName` inválido y `tenant` inexistente ahora lanzan `UnrecoverableError`, evitando reintentos inútiles de BullMQ para errores de datos que no se resuelven con backoff | ✅ |
 | Cobertura del processor | `apps/worker/src/processors/tenant-provisioning.processor.spec.ts` | Se agregó test para verificar que un tenant inexistente se marca como fallo permanente y no intenta ejecutar DDL ni seed | ✅ |
-| Validación en stack compose | `docker-compose.dev.yml` + Redis/PostgreSQL locales | El worker volvió a levantar limpio y el job huérfano `provision-324ed043-ab17-4013-938f-30f22219c563` quedó estabilizado en `atm=3` sin nuevos reintentos tras recrear el contenedor | ✅ |
+| Validación en stack compose | `docker-compose.yml` + `pnpm dev` locales | El worker volvió a levantar limpio y el job huérfano `provision-324ed043-ab17-4013-938f-30f22219c563` quedó estabilizado en `atm=3` sin nuevos reintentos tras reiniciar el proceso local | ✅ |
 
 ### Addendum correctivo (2026-03-13) — Accesibilidad portal
 
@@ -133,10 +133,10 @@ iniciar cualquier código (`docs/prompts/PROMPT-MOD01-SPRINT-01-v1.0.md`).
 | tsconfig database | `packages/database/tsconfig.json` | Añadido `strictPropertyInitialization: false`, paths override |
 | tsconfig api | `apps/api/tsconfig.json` | Añadido `strictPropertyInitialization: false`, paths override |
 
-**Justificación del override de `paths`:** Las entidades TypeORM con `emitDecoratorMetadata` requieren  
-`strictPropertyInitialization: false` (recomendación oficial de TypeORM). El override de `paths`  
-elimina las referencias a source files de otros paquetes en el `rootDir` de compilación, usando  
-en cambio los artefactos compilados (`dist/`) que cada paquete expone. Este es el patrón correcto  
+**Justificación del override de `paths`:** Las entidades TypeORM con `emitDecoratorMetadata` requieren
+`strictPropertyInitialization: false` (recomendación oficial de TypeORM). El override de `paths`
+elimina las referencias a source files de otros paquetes en el `rootDir` de compilación, usando
+en cambio los artefactos compilados (`dist/`) que cada paquete expone. Este es el patrón correcto
 en un monorepo sin TypeScript project references.
 
 ---
@@ -363,38 +363,38 @@ en un monorepo sin TypeScript project references.
 ## 5. Decisiones Técnicas de Este Corte
 
 ### D1 — Entidades con `strictPropertyInitialization: false`
-Las entidades TypeORM no inicializan columnas en el constructor — TypeORM las hidrata  
-post-query vía reflection. El flag es la solución oficial de TypeORM para TypeScript strict.  
+Las entidades TypeORM no inicializan columnas en el constructor — TypeORM las hidrata
+post-query vía reflection. El flag es la solución oficial de TypeORM para TypeScript strict.
 Aplica solo a `packages/database` y `apps/api`.
 
 ### D2 — Schema routing sin calificar nombres de tabla en entidades tenant
-Las entidades `User`, `RefreshToken`, `AuditLog` no especifican `schema` en `@Entity()`.  
-TypeORM genera SQL sin calificar (`SELECT * FROM "users"`) que PostgreSQL resuelve vía  
-`search_path`. Esto es compatible con `SET LOCAL search_path = "tenant_xxx"` al inicio  
+Las entidades `User`, `RefreshToken`, `AuditLog` no especifican `schema` en `@Entity()`.
+TypeORM genera SQL sin calificar (`SELECT * FROM "users"`) que PostgreSQL resuelve vía
+`search_path`. Esto es compatible con `SET LOCAL search_path = "tenant_xxx"` al inicio
 de la transaccion.
 
 ### D3 — `PlatformRole` como enum separado de `UserRole`
-Las entidades y servicios que operan a nivel de plataforma usan `PlatformRole` (solo  
-`SYSTEM_ADMIN | IWANA_SUPPORT`) para evitar asignación accidental de roles tenant  
-(ej: `SUBSCRIBER`) a usuarios de plataforma. El constraint `CHECK` en la migración  
+Las entidades y servicios que operan a nivel de plataforma usan `PlatformRole` (solo
+`SYSTEM_ADMIN | IWANA_SUPPORT`) para evitar asignación accidental de roles tenant
+(ej: `SUBSCRIBER`) a usuarios de plataforma. El constraint `CHECK` en la migración
 refuerza esto a nivel de DB.
 
 ### D4 — TenantMiddleware resuelve tenant via header `X-Tenant-Slug` (transitorio)
-Para Sprint 1 first cut sin AuthModule disponible, la resolución usa el header  
-`X-Tenant-Slug`. En Sprint 1 Semana 2, cuando AuthModule esté listo, se reemplaza  
-por extracción del claim del JWT. El middleware rechaza `SUSPENDED` e `INACTIVE` con  
+Para Sprint 1 first cut sin AuthModule disponible, la resolución usa el header
+`X-Tenant-Slug`. En Sprint 1 Semana 2, cuando AuthModule esté listo, se reemplaza
+por extracción del claim del JWT. El middleware rechaza `SUSPENDED` e `INACTIVE` con
 403 en ambas versiones.
 
 ### D5 — otplib@13: API TOTP completamente renovada
 En `otplib@13` desaparece el namespace `authenticator`. El nuevo API usa la clase `TOTP`
 con plugins explícitos: `new TOTP({ crypto: new NobleCryptoPlugin(), base32: new ScureBase32Plugin() })`.
-El método `verify` es ahora **asíncrono** y retorna `{ valid: boolean, delta: number }`.  
-El parámetro de tolerancia cambió de `window: 1` a `epochTolerance: 30`.  
+El método `verify` es ahora **asíncrono** y retorna `{ valid: boolean, delta: number }`.
+El parámetro de tolerancia cambió de `window: 1` a `epochTolerance: 30`.
 Además, `@scure/base@2.0.0` (dep transitiva) es ESM-only: en tests Jest se mockea todo
 el módulo `otplib` con `jest.mock('otplib', factory)` (hoisting antes de imports).
 
 ### D6 — bcryptjs: jest.spyOn falla por propiedad non-configurable
-`bcryptjs` exporta `compare` con `configurable: false` en su módulo CJS.  
+`bcryptjs` exporta `compare` con `configurable: false` en su módulo CJS.
 `jest.spyOn` no puede redefinirlo. Solución: `jest.mock('bcryptjs', factory)` en el
  archivo spec reemplaza el módulo completo con mocks controlables antes de la carga;
 en cada test se usa `(bcrypt.compare as jest.Mock).mockResolvedValue(...)`.
@@ -403,13 +403,13 @@ en cada test se usa `(bcrypt.compare as jest.Mock).mockResolvedValue(...)`.
 Al extender `@iwana/config/tsconfig/nestjs`, TypeScript hereda `paths` con alias
 apuntando a archivos fuente de otros paquetes (ej: `@iwana/db → packages/database/src`),
 lo que viola el `rootDir` del worker. Solución: añadir `paths: { "@iwana/worker": [...] }`
-en el tsconfig local del worker para **sobrescribir** (no heredar) el map de paths base.  
-TypeScript no mergea `paths` — la asignación local reemplaza completamente la heredada.  
+en el tsconfig local del worker para **sobrescribir** (no heredar) el map de paths base.
+TypeScript no mergea `paths` — la asignación local reemplaza completamente la heredada.
 Patrón idéntico ya aplicado en `@iwana/api`.
 
 ### D8 — ioredis deduplicado via pnpm.overrides
-BullMQ@5 y ioredis directo requerían versiones compatibles. Se fijó  
-`pnpm.overrides.ioredis = "5.10.0"` en el root `package.json` para garantizar  
+BullMQ@5 y ioredis directo requerían versiones compatibles. Se fijó
+`pnpm.overrides.ioredis = "5.10.0"` en el root `package.json` para garantizar
 una única instancia del cliente en todo el monorepo.
 
 ### D9 — Contrato HTTP de AuthController validado con Supertest
@@ -556,7 +556,7 @@ docs/*.md references integrity      → OK
 | Sin PII en logs | ✅ |
 | ADR-022 gate cumplido | ✅ MOD02 desbloqueado |
 
-**Estado final:** ✅ MOD01 CERRADO Y APTO PARA PRODUCCIÓN  
+**Estado final:** ✅ MOD01 CERRADO Y APTO PARA PRODUCCIÓN
 **Aprobado por:** CTO — 2026-03-12
 
 ---

@@ -147,7 +147,7 @@ flowchart LR
 
 ### Entornos
 
-- **Dev:** MinIO en `docker-compose.dev.yml` (ya presente). Bucket auto-creado por script de bootstrap.
+- **Dev:** MinIO en `docker-compose.yml` (infraestructura local unica). Bucket auto-creado por el bootstrap que invoca `pnpm dev`.
 - **Staging:** MinIO dedicado en stack on-premise. TLS habilitado.
 - **Prod:** MinIO con replicacion erasure coding (configuracion infra fuera de scope de este HLD); credenciales en secret store; respaldo nocturno documentado en runbook.
 

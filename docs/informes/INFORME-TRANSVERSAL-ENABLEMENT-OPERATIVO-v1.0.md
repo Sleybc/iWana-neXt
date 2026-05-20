@@ -1,8 +1,8 @@
 # INFORME-TRANSVERSAL-ENABLEMENT-OPERATIVO
 
-**Version:** 1.0  
-**Estado:** Aprobado  
-**Fecha:** 2026-03-14  
+**Version:** 1.0
+**Estado:** Aprobado
+**Fecha:** 2026-03-14
 **Modo activo:** Mixto (EM + Architect)
 
 ## Resumen Ejecutivo
@@ -117,7 +117,7 @@ En frontend, `apps/web` reemplazó el comportamiento local del buscador del head
 
 Infraestructura dev aplicada:
 
-- `docker-compose.dev.yml` incorpora servicio `typesense` con health check y volumen dedicado.
+- `docker-compose.yml` incorpora servicio `typesense` con health check y volumen dedicado.
 - `apps/worker` recibe variables `TYPESENSE_*` para procesar jobs de indexación.
 - `apps/api` valida `TYPESENSE_HOST`, `TYPESENSE_PORT`, `TYPESENSE_PROTOCOL`, `TYPESENSE_API_KEY` y `TYPESENSE_TIMEOUT_MS`.
 
@@ -139,7 +139,7 @@ El ajuste en `apps/api` endureció `SearchService`: cuando Typesense responde `4
 
 Validación correctiva ejecutada:
 
-- `docker compose -f docker-compose.dev.yml up -d typesense`
+- `docker compose --env-file .env -f docker-compose.yml up -d typesense`
 - `curl -si http://localhost:8108/health` → `200 OK`
 - `pnpm --filter @iwana/api test -- search.service.spec.ts search-indexer.service.spec.ts search.controller.http.spec.ts`
 - `pnpm --filter @iwana/api lint`
@@ -328,12 +328,12 @@ Se corrigió un falso positivo del editor sobre `apps/portal/tsconfig.json` que 
 Se cerraron tres deudas operativas detectadas al levantar el stack Docker dev en Linux.
 
 **1. nginx — host.docker.internal no resuelve en Linux**
-`host.docker.internal` solo se resuelve automáticamente en Docker Desktop (macOS/Windows). En Linux el contenedor nginx caía en restart loop con `host not found in upstream "host.docker.internal:3000"`. Se añadió `extra_hosts: - "host.docker.internal:host-gateway"` al servicio nginx en `docker-compose.dev.yml`, que mapea el gateway del bridge de Docker al nombre del host. nginx quedó estable.
+`host.docker.internal` solo se resuelve automáticamente en Docker Desktop (macOS/Windows). En Linux el contenedor nginx caía en restart loop con `host not found in upstream "host.docker.internal:3000"`. Se añadió `extra_hosts: - "host.docker.internal:host-gateway"` al servicio nginx en `docker-compose.yml`, que mapea el gateway del bridge de Docker al nombre del host. nginx quedó estable.
 
 **2. Dockerfile.migrator — incompatibilidad musl/glibc con Node 24**
 El migrator usaba `node:20-alpine` (musl libc) pero pnpm intentaba descargar binarios de Node 24 (solo disponibles para glibc), provocando un build roto. La imagen se migró a `node:24-bookworm-slim` (Debian, glibc), alineándose con el Dockerfile del worker. Adicionalmente, `pnpm --filter @iwana/config build` fallaba con `ERR_PNPM_RECURSIVE_RUN_NO_SCRIPT` porque `@iwana/config` es un paquete de configuración pura sin script `build`. Se reemplazó por `pnpm exec tsc --project` explícito, compilando solo `@iwana/shared` y `@iwana/db`.
 
-**3. Worker — variables de entorno faltantes en docker-compose.dev.yml**
+**3. Worker — variables de entorno faltantes en el compose local**
 El worker arrancaba en crash loop por dos variables ausentes en su bloque `environment`: `MFA_ENCRYPTION_KEY` (requerida por `TenantSeedService` en el constructor) y `TENANT_INITIAL_ADMIN_PASSWORD` (validada en bootstrap contra la política de contraseñas). Se añadieron ambas al servicio worker con valores de desarrollo seguros para entorno local.
 
 **4. Processor — comentario stale + import huérfano**
@@ -348,11 +348,11 @@ Se corrigió una deuda de diseño en el onboarding de empresas: el login inicial
 
 ### Addendum correctivo 2026-03-18 — Eliminación del warning Redis por deriva de entorno y arranque duplicado
 
-Se corrigió la causa raíz de los mensajes repetidos `This Redis server's default user does not require a password, but a password was supplied` durante el arranque local. Había dos derivas combinadas. La primera era de configuración: API y, sobre todo, worker mezclaban `.env.development` con `.env`, por lo que en desarrollo terminaban heredando `REDIS_PASSWORD=CHANGE_ME_REDIS_PASSWORD` desde el template de producción aun cuando `docker-compose.dev.yml` levanta Redis sin `requirepass`. La segunda era operativa: `pnpm dev` arrancaba infraestructura Docker y luego `turbo run dev`, pero también dejaba disponible un worker Docker en la misma compose, abriendo la puerta a procesos BullMQ duplicados. El fix dejó el bootstrap de Nest aislado por entorno: en `development` solo carga `.env.development`, en `production/staging` ignora archivos `.env` y depende exclusivamente de variables inyectadas. Además, el script raíz `pnpm dev` pasó a levantar solo la infraestructura base de Docker y no el worker containerizado, evitando duplicidad con `@iwana/worker` ejecutado por Turbo.
+Se corrigió la causa raíz de los mensajes repetidos `This Redis server's default user does not require a password, but a password was supplied` durante el arranque local. Había dos derivas combinadas. La primera era de configuración: API y, sobre todo, worker mezclaban `.env.development` con `.env`, por lo que en desarrollo terminaban heredando `REDIS_PASSWORD=CHANGE_ME_REDIS_PASSWORD` desde el template de producción aun cuando el compose local vigente levanta Redis sin `requirepass`. La segunda era operativa: `pnpm dev` arrancaba infraestructura Docker y luego `turbo run dev`, por lo que cualquier worker containerizado adicional generaba riesgo de consumidores BullMQ duplicados. El fix dejó el bootstrap de Nest aislado por entorno: en `development` solo carga `.env.development`, en `production/staging` ignora archivos `.env` y depende exclusivamente de variables inyectadas. Además, el script raíz `pnpm dev` pasó a levantar solo la infraestructura base de Docker y el worker quedó corriendo exclusivamente en host vía Turbo.
 
 ### Addendum correctivo 2026-03-18 — Limpieza estructural de workspace y contexto Docker
 
-Se ejecutó una limpieza transversal para eliminar residuos locales que estaban inflando innecesariamente el workspace y el contexto de build de Docker. El diagnóstico mostró que el peso principal no estaba en código fuente sino en artefactos generados: `apps/web/.next` (~890 MB), `apps/portal/.next` (~648 MB), `apps/portal/test-results` y `.turbo`. Como corrección estructural se añadió un `.dockerignore` raíz para excluir `node_modules`, `.next`, `dist`, `coverage`, `test-results`, documentación y metadatos de tooling del contexto enviado al daemon. En paralelo, `.gitignore` quedó alineado para ignorar artefactos de Playwright y resultados locales de pruebas, el worker de `docker-compose.dev.yml` pasó a un profile opcional para no levantarse por defecto en entornos locales, y el `Dockerfile` del worker ahora elimina `.env*` del runtime igual que la API. Como endurecimiento adicional de mantenimiento, los scripts `clean` del monorepo dejaron de depender de `rm -rf` y pasaron a un helper Node cross-platform para limpiar artefactos también en Windows.
+Se ejecutó una limpieza transversal para eliminar residuos locales que estaban inflando innecesariamente el workspace y el contexto de build de Docker. El diagnóstico mostró que el peso principal no estaba en código fuente sino en artefactos generados: `apps/web/.next` (~890 MB), `apps/portal/.next` (~648 MB), `apps/portal/test-results` y `.turbo`. Como corrección estructural se añadió un `.dockerignore` raíz para excluir `node_modules`, `.next`, `dist`, `coverage`, `test-results`, documentación y metadatos de tooling del contexto enviado al daemon. En paralelo, `.gitignore` quedó alineado para ignorar artefactos de Playwright y resultados locales de pruebas, el worker dejó de levantarse desde Docker en el flujo local por defecto y el `Dockerfile` del worker ahora elimina `.env*` del runtime igual que la API. Como endurecimiento adicional de mantenimiento, los scripts `clean` del monorepo dejaron de depender de `rm -rf` y pasaron a un helper Node cross-platform para limpiar artefactos también en Windows.
 
 ### Addendum correctivo 2026-03-18 — Orden de build en `pnpm dev` para `@iwana/shared` y `@iwana/db`
 
@@ -537,7 +537,7 @@ Se corrigió un `500 Internal Server Error` en `POST /api/v1/auth/login` que afe
 - OpenAPI:
   - Verificación de montaje en código: Swagger sigue expuesto en `/api/v1/docs` desde `apps/api/src/main.ts` y los endpoints nuevos conservan decoradores `@ApiOperation` / `@ApiBearerAuth`.
 - Migraciones:
-  - Se reutilizó el PostgreSQL local levantado por `docker-compose.dev.yml` (`iwana_postgres_dev`, PostgreSQL 16.13, puerto 5432).
+  - Se reutilizó el PostgreSQL local levantado por `docker-compose.yml` (`iwana_postgres_dev`, PostgreSQL 18, puerto host 5433).
   - Se verificó conectividad SQL real con `docker exec iwana_postgres_dev psql -U iwana -d dbiw -c "SELECT version();"`.
   - Se ejecutó `pnpm --filter @iwana/db migration:show` con variables operativas apuntando a `localhost:5432`, confirmando 1 migración pendiente (`AddPlatformUserProfile1742100000000`).
   - Se ejecutó `pnpm --filter @iwana/db migration:run` en verde; `migration:show` posterior confirmó ambas migraciones marcadas como aplicadas.
@@ -548,7 +548,7 @@ Se corrigió un `500 Internal Server Error` en `POST /api/v1/auth/login` que afe
   - Hotfix adicional 2026-03-17: se detectó una tercera deriva de esquema en `public.tenants`, donde la entidad ya requería columnas de branding pero la base local seguía en el estado previo a `005_add_tenant_branding_columns.ts`; tras recompilar `@iwana/db`, aplicar la migración y verificar `typeorm_migrations`, el login tenant dejó de lanzar `QueryFailedError: column Tenant.logo_light_url does not exist`.
   - Hotfix adicional 2026-03-18: se corrigió una deriva de configuración en Docker para `@iwana/api`. La imagen runtime estaba en riesgo de leer `apps/api/.env` copiado dentro del contenedor por el `Dockerfile`, mientras `docker compose config` ya mostraba que `MFA_ENCRYPTION_KEY` y los `SMTP_*` se resolvían correctamente desde el entorno inyectado. Se endureció `ConfigModule.forRoot()` para ignorar archivos `.env` en producción y se eliminó cualquier `.env` embebido del runtime image, de modo que el arranque en contenedor dependa solo de variables de entorno explícitas y no de archivos locales arrastrados por el build context.
   - Hotfix adicional 2026-03-18: se corrigió el arranque del entorno dev para evitar `500` en `POST /api/v1/auth/login` sobre bases limpias. La causa raíz era operativa: `pnpm dev` levantaba PostgreSQL/Redis y los servidores locales, pero no aplicaba migraciones, dejando `public.tenants` inexistente y haciendo que el proxy del portal a `localhost:3000` fallara durante la resolución de tenant. Se aplicaron las migraciones pendientes en la base local y se actualizó el script raíz `pnpm dev` para ejecutar `@iwana/db build` + `migration:run` antes de `turbo run dev`.
-  - Hotfix adicional 2026-03-18: se corrigió una deriva entre el template SQL de schemas tenant y la entidad `User`. El provisioning fallaba en `PROVISIONING_FAILED` porque `tenant_template.sql` no creaba la columna `mfa_required`, y el `TenantSeedService` consultaba `users` vía TypeORM con una metadata más nueva. Como refuerzo operativo, el template quedó idempotente para reintentos (tablas e índices con `IF NOT EXISTS`, recreación segura de la política RLS) y el script raíz `pnpm dev` ahora usa `docker compose -f docker-compose.dev.yml up -d --build` para evitar workers Docker con imágenes stale durante cambios de provisioning.
+  - Hotfix adicional 2026-03-18: se corrigió una deriva entre el template SQL de schemas tenant y la entidad `User`. El provisioning fallaba en `PROVISIONING_FAILED` porque `tenant_template.sql` no creaba la columna `mfa_required`, y el `TenantSeedService` consultaba `users` vía TypeORM con una metadata más nueva. Como refuerzo operativo, el template quedó idempotente para reintentos (tablas e índices con `IF NOT EXISTS`, recreación segura de la política RLS) y el flujo raíz `pnpm dev` quedó consolidado sobre `scripts/dev.mjs` + `docker-compose.yml`, evitando workers Docker con imágenes stale durante cambios de provisioning.
 - Estado global: validación funcional completa para cierre de fase.
 
 ### Addendum correctivo 2026-05-07 — Dropdown de tipo de documento no visible en usuarios web

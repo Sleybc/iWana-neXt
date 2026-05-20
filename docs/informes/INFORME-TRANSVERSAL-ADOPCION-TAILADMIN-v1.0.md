@@ -287,8 +287,8 @@ Se ejecutó un ajuste visual menor en el shell de `apps/web` para retirar la pro
 
 ### Pasos adicionales para activar el fix en Docker
 
-- Reconstruir la imagen del worker: `docker compose -f docker-compose.dev.yml up -d --build worker`
-- El job BullMQ reintentará automáticamente al levantar el worker; si el schema ya existe, el path de idempotencia activará el tenant a `ACTIVE`.
+- Recompilar el worker local: `pnpm --filter @iwana/worker build`
+- Reejecutar `pnpm dev`; el job BullMQ reintentará automáticamente al levantar el worker y, si el schema ya existe, el path de idempotencia activará el tenant a `ACTIVE`.
 
 | Criterio                                                                                                            | Estado   |
 | ------------------------------------------------------------------------------------------------------------------- | -------- |

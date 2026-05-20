@@ -1492,13 +1492,10 @@ iwana-next/
 │   ├── shared/             # DTOs, enums, interfaces, utils (compartidos)
 │   ├── database/           # TypeORM entities, migrations, seeds
 │   └── config/             # ESLint, TS, Prettier configs compartidos
-├── docker/
-│   ├── docker-compose.yml
-│   ├── docker-compose.dev.yml
-│   ├── Dockerfile.api
-│   ├── Dockerfile.web
-│   ├── Dockerfile.portal
-│   └── nginx/
+├── docker-compose.yml       # Infraestructura local única
+├── nginx/
+│   ├── nginx.dev.conf
+│   └── nginx.prod.conf
 ├── docs/
 │   ├── adrs/               # Architecture Decision Records
 │   ├── api/                # OpenAPI specs generadas

@@ -30,8 +30,8 @@
 
 - **Lo que SÍ entra:**
   - Scaffold del monorepo: `turbo.json`, `apps/` (api, web, portal, worker), `packages/` (shared, database, config, ui)
-  - `docker-compose.dev.yml` con servicios: PostgreSQL 16, Redis 8, MinIO, pgBouncer, Nginx, Adminer
-  - `docker-compose.yml` (producción on-premise, sin Adminer)
+   - `docker-compose.yml` único para infraestructura local: PostgreSQL, Redis, MinIO, pgBouncer, Typesense, Nginx y Adminer
+   - `scripts/dev.mjs` como orquestador de `pnpm dev` (infraestructura Docker + bootstrap MinIO + migraciones + apps)
   - Dockerfiles base: `Dockerfile.api`, `Dockerfile.web`, `Dockerfile.worker`
   - `.env.example` completo y documentado (referencia Sección 7 del HLD-MOD01-ARQUITECTURA-v1.0.md)
   - CI workflow: `.github/workflows/ci.yml` (lint + typecheck + build)
@@ -86,23 +86,25 @@
 
 ### Día 2 — Infraestructura Docker
 
-1. Crear `docker-compose.dev.yml` con los siguientes servicios configurados:
+1. Crear `docker-compose.yml` con los siguientes servicios configurados para desarrollo local:
    - `postgres` — PostgreSQL 16, puerto 5432, volumen persistente, healthcheck
    - `redis` — Redis 8, puerto 6379, volumen persistente, healthcheck
    - `minio` — MinIO latest, puertos 9000 y 9001 (consola)
    - `pgbouncer` — PgBouncer 1.22+, modo transaction, puerto 6432
+   - `typesense` — motor de búsqueda local con healthcheck
    - `nginx` — Nginx alpine, puerto 80/443, reverse proxy a apps/api
    - `adminer` — Adminer latest, puerto 8080 (solo dev)
-2. Crear `docker-compose.yml` (producción on-premise):
-   - Servicios idénticos a dev pero SIN adminer
-   - Configura restart policies (`unless-stopped`)
-   - Healthchecks en todos los servicios críticos
+2. Crear `scripts/dev.mjs` para orquestar el flujo local:
+   - Levanta la infraestructura Docker necesaria
+   - Inicializa el bucket de MinIO
+   - Ejecuta migraciones antes de arrancar apps
+   - Inicia API, web, portal y worker en el host
 3. Crear `Dockerfile.api` (base NestJS): multi-stage build con node:22-alpine, instala deps con pnpm, build, copia dist.
 4. Crear `Dockerfile.web` (base Next.js): multi-stage build, output standalone.
 5. Crear `Dockerfile.worker` (base NestJS): igual a Dockerfile.api pero con comando diferente para workers.
 6. Crear `.env.example` completo con TODAS las variables documentadas (ref: HLD-MOD01-ARQUITECTURA-v1.0.md Sección 7). Usar SOLO valores placeholder — nunca valores reales.
 7. Crear `.env.local` (gitignored con `.gitignore`) con valores de desarrollo local.
-8. Verificar: `docker compose -f docker-compose.dev.yml up` levanta sin errores.
+8. Verificar: `pnpm dev` levanta sin errores la infraestructura local y las apps.
 
 ### Día 3 — Seguridad, CI y Design Tokens
 
@@ -131,7 +133,7 @@
    - `turbo dev` arranca sin errores
    - `turbo lint` pasa sin errores
    - `turbo build` compila todos los apps (vacíos) sin errores
-   - `docker compose -f docker-compose.dev.yml up` levanta todos los servicios
+   - `pnpm dev` levanta la infraestructura local y los procesos de desarrollo sin errores
    - CI verde en GitHub Actions
 
 ---
@@ -141,7 +143,7 @@
 - No romper los boundaries del modulith (refs: ADR-001, ADR-002).
 - No generar código de lógica de negocio en esta fase (ni services, ni entities, ni guards).
 - No usar credenciales reales en `.env.example` — SOLO valores placeholder como `changeme`, `<generate-with-openssl>`.
-- No omitir Dockerfiles ni `docker-compose.dev.yml` — son bloqueantes para Sprint 1.
+- No omitir Dockerfiles ni `docker-compose.yml` — son bloqueantes para Sprint 1.
 - No usar `npm` ni `yarn` — solo `pnpm` con workspaces.
 - No subir archivos de la carpeta `secrets/` al repositorio.
 - No iniciar Sprint 1 sin que todos los criterios de aceptación de esta fase estén en verde.
@@ -151,7 +153,7 @@
 ## 5. Entregables Técnicos Obligatorios
 
 - [ ] Monorepo Turborepo funcional: `turbo build` completa sin errores para todos los apps.
-- [ ] `docker-compose.dev.yml` funcional: todos los servicios levantan sin errores con `docker compose up`.
+- [ ] `docker-compose.yml` funcional: la infraestructura local levanta sin errores y `pnpm dev` completa el arranque integrado.
 - [ ] `docker-compose.yml` (producción) listo para revisión.
 - [ ] Dockerfiles base: `Dockerfile.api`, `Dockerfile.web`, `Dockerfile.worker`.
 - [ ] CI pipeline verde en GitHub Actions (lint + typecheck + build).
@@ -173,7 +175,7 @@
 
 | ID              | Criterio                                                                  | Verificación                                              |
 | --------------- | ------------------------------------------------------------------------- | --------------------------------------------------------- |
-| CA-SCAFFOLD-001 | `docker compose -f docker-compose.dev.yml up` levanta sin errores         | Terminal: todos los servicios `healthy` o `running`       |
+| CA-SCAFFOLD-001 | `pnpm dev` levanta sin errores la infraestructura local y las apps        | Terminal: servicios Docker `healthy` y procesos host activos |
 | CA-SCAFFOLD-002 | `turbo build` compila todos los apps sin errores (vacíos pero compilando) | Exit code 0 en `turbo build`                              |
 | CA-SCAFFOLD-003 | `turbo lint` pasa sin errores                                             | Exit code 0 en `turbo lint`                               |
 | CA-SCAFFOLD-004 | CI verde en GitHub Actions (lint + typecheck + build)                     | GitHub Actions: todos los checks en verde                 |

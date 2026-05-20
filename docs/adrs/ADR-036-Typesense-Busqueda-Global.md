@@ -115,7 +115,7 @@ Descartada para esta fase por mayor costo operativo, memoria, complejidad de des
 
 Se debe actualizar infraestructura solo tras aprobacion:
 
-- `docker-compose.dev.yml`: servicio `typesense`.
+- `docker-compose.yml`: servicio `typesense` dentro de la infraestructura local que arranca `pnpm dev`.
 - Variables esperadas: `TYPESENSE_HOST`, `TYPESENSE_PORT`, `TYPESENSE_PROTOCOL`, `TYPESENSE_API_KEY`.
 - Secretos fuera de git.
 - Health check operativo.

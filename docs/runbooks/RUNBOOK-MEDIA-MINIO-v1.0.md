@@ -41,12 +41,12 @@ packages/storage
 
 ## Configuración de variables de entorno
 
-### Desarrollo (`docker-compose.dev.yml`)
+### Desarrollo (`docker-compose.yml` + `pnpm dev`)
 
 | Variable | Valor dev | Descripción |
 |---|---|---|
 | `STORAGE_DRIVER` | `minio` | Driver activo |
-| `S3_ENDPOINT` | `http://minio:9000` | Endpoint interno Docker |
+| `S3_ENDPOINT` | `http://localhost:9002` | Endpoint expuesto al host en desarrollo |
 | `S3_REGION` | `us-east-1` | Región (MinIO ignora, requerido AWS SDK) |
 | `S3_ACCESS_KEY_ID` | `minioadmin` | Usuario MinIO |
 | `S3_SECRET_ACCESS_KEY` | `minioadmin123` | Contraseña MinIO |
@@ -123,7 +123,7 @@ Salidas esperadas:
 pnpm dev
 
 # O solo los servicios de infraestructura:
-docker compose -f docker-compose.dev.yml up -d minio postgres redis
+docker compose --env-file .env -f docker-compose.yml up -d minio postgres redis pgbouncer typesense nginx adminer
 
 # Luego bootstrap del bucket:
 bash scripts/bootstrap-minio.sh
@@ -166,7 +166,7 @@ Causa: MinIO no está corriendo o URL incorrecta
 Verificar:
   docker ps | grep minio
   # Si no está corriendo:
-  docker compose -f docker-compose.dev.yml up -d minio
+  docker compose --env-file .env -f docker-compose.yml up -d minio
 ```
 
 ### Error: `InvalidAccessKeyId`

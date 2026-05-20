@@ -45,7 +45,7 @@
 ## 2. Hallazgos previos relevantes
 
 - Branding tenant ya existe parcialmente: columnas `logo_*_url`, `seal_*_url`, `show_tenant_name`; PATCH self-service en portal; componentes `TenantSeal`, `BrandingForm`.
-- Storage formal NO existe: MinIO declarado en `docker-compose.dev.yml` sin cliente NestJS; CRM expedientes guarda en disco local del contenedor (deuda registrada para futuro).
+- Storage formal NO existe: MinIO declarado en `docker-compose.yml` sin cliente NestJS; CRM expedientes guarda en disco local del contenedor (deuda registrada para futuro).
 - Permisos actuales: `@Roles(UserRole.ADMIN)` en portal y roles plataforma en web. v1 mantiene este enfoque y deja TODO documentado para `branding:manage` cuando exista RBAC granular.
 
 ## 3. Decisiones cerradas en brainstorming

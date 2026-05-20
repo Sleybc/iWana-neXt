@@ -24,7 +24,7 @@
 - Web app con UI completa: login, dashboard, tenants CRUD, users, audit logs
 - api-client.ts con todos los endpoints (611 líneas)
 - Worker Dockerfile (multi-stage, sirve como plantilla para API y Web)
-- docker-compose.dev.yml (plantilla para compose de producción)
+- docker-compose.yml (stack local consolidado y base operativa actual)
 
 ### Gaps críticos que este plan corrige ❌
 | Gap | Impacto | Tarea |

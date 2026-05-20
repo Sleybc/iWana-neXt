@@ -15,7 +15,7 @@ iWana neXt no tiene hoy un mecanismo formal para almacenar archivos binarios (lo
 
 - `apps/api/storage/expediente-document-supports/` guarda archivos en disco local del contenedor API. No es persistente entre redeploys, no es replicable, no es seguro multi-tenant, no escala on-premise multi-instancia.
 - El branding tenant solo acepta URLs HTTPS externas, lo cual delega la persistencia al cliente y bloquea el upload propio decidido en el brainstorming.
-- `docker-compose.dev.yml` ya levanta MinIO (puertos 9002/9003) sin cliente NestJS que lo consuma.
+- `docker-compose.yml` ya levanta MinIO (puertos 9002/9003) como parte de la infraestructura local que orquesta `pnpm dev`, sin cliente NestJS que lo consuma.
 
 El nuevo modulo Media/Assets (ver ADR-034) requiere un backend de objetos productivo y aislamiento estricto por tenant, con la opcion de servir signed URLs o proxy controlado.
 

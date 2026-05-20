@@ -114,13 +114,10 @@ iwana-next/
 │   ├── shared/             # DTOs, enums, interfaces, utils
 │   ├── database/           # TypeORM entities, migrations, seeds
 │   └── config/             # ESLint, TS, Prettier configs
-├── docker/
-│   ├── docker-compose.yml
-│   ├── docker-compose.dev.yml
-│   ├── Dockerfile.api
-│   ├── Dockerfile.web
-│   ├── Dockerfile.portal
-│   └── nginx/
+├── docker-compose.yml
+├── nginx/
+│   ├── nginx.dev.conf
+│   └── nginx.prod.conf
 └── docs/
     ├── adrs/
     ├── api/
