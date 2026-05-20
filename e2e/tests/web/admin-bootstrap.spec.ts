@@ -5,7 +5,7 @@ async function selectCustomOption(scope: Page | Locator, labelText: string, opti
     name: new RegExp(labelText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
   });
   await trigger.click();
-  await scope.getByRole('option', { name: optionName, exact: true }).click();
+  await trigger.page().getByRole('option', { name: optionName, exact: true }).click();
 }
 
 function buildMockJwt(expirationSecondsFromNow = 3600): string {
@@ -401,9 +401,7 @@ test.describe('Bootstrap operativo admin', () => {
   test('SYSTEM_ADMIN puede completar bootstrap operativo', async ({ page }) => {
     await page.goto('/auth/login');
     await expect(page.getByRole('form', { name: 'Formulario de inicio de sesión' })).toBeVisible();
-    await page
-      .getByRole('textbox', { name: /correo electrónico o identidad/i })
-      .fill('admin@iwana.local');
+    await page.getByRole('textbox', { name: /correo electrónico/i }).fill('admin@iwana.local');
     await page.getByPlaceholder('••••••••').fill('Password123!');
     await page.getByRole('button', { name: 'Ingresar' }).click();
 
@@ -459,19 +457,19 @@ test.describe('Bootstrap operativo admin', () => {
     await page.getByRole('button', { name: 'Crear usuario' }).click();
     const createUserDialog = page.getByRole('dialog', { name: 'Crear usuario' });
     await createUserDialog.locator('#uc-email').fill('noc@empresa-demo.test');
-    await selectCustomOption(createUserDialog, 'Rol', 'SUPPORT');
+    await selectCustomOption(createUserDialog, 'Rol', 'Soporte');
     await createUserDialog.getByRole('button', { name: 'Crear' }).click();
     await expect(page.getByText('Usuario creado exitosamente')).toBeVisible();
     await expect(page.getByLabel('Contraseña temporal')).toContainText('TempUser123!');
     await createUserDialog.getByRole('button', { name: 'Entendido, cerrar' }).click();
-    await expect(page.getByRole('cell', { name: 'SUPPORT' }).first()).toBeVisible();
+    await expect(page.getByRole('cell', { name: 'Soporte' }).first()).toBeVisible();
     await expect(page.getByRole('cell', { name: /user-2/ }).first()).toBeVisible();
 
     await page.getByRole('button', { name: 'Gestionar' }).first().click();
     const manageUserDialog = page.getByRole('dialog', { name: 'Gestión de usuario' });
     await expect(manageUserDialog).toBeVisible();
-    await selectCustomOption(manageUserDialog, 'Rol', 'NOC');
-    await selectCustomOption(manageUserDialog, 'Estado', 'ACTIVE');
+    await selectCustomOption(manageUserDialog, 'Rol', 'Operador NOC');
+    await selectCustomOption(manageUserDialog, 'Estado', 'Activo');
     await manageUserDialog.getByRole('button', { name: 'Guardar cambios' }).click();
     await expect(page.getByText('Usuario actualizado correctamente.')).toBeVisible();
     await manageUserDialog.getByRole('button', { name: 'Eliminar usuario' }).click();
