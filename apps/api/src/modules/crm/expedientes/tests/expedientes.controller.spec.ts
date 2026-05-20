@@ -4,6 +4,7 @@ import { AcquisitionChannel, ContactChannel, ContactResult, ExpedienteStatus } f
 import { ExpedientesController, PipelineController } from '../expedientes.controller';
 import { CompletenessCalculator } from '../completeness-calculator.service';
 import { ExpedienteService } from '../expediente.service';
+import { PipelineRecommendationService } from '../pipeline-recommendation.service';
 import { StatusTransitionService } from '../status-transition.service';
 
 describe('ExpedientesController', () => {
@@ -18,6 +19,7 @@ describe('ExpedientesController', () => {
     getDocumentSupports: jest.fn(),
     uploadDocumentSupport: jest.fn(),
     updateDocumentSupportStatus: jest.fn(),
+    deleteDocumentSupport: jest.fn(),
     updateSection: jest.fn(),
     transitionStatus: jest.fn(),
     reactivate: jest.fn(),
@@ -34,6 +36,10 @@ describe('ExpedientesController', () => {
     calculate: jest.fn(),
   };
 
+  const pipelineRecommendationServiceMock = {
+    getRecommendation: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -43,6 +49,10 @@ describe('ExpedientesController', () => {
         { provide: ExpedienteService, useValue: expedienteServiceMock },
         { provide: StatusTransitionService, useValue: statusTransitionServiceMock },
         { provide: CompletenessCalculator, useValue: completenessCalculatorMock },
+        {
+          provide: PipelineRecommendationService,
+          useValue: pipelineRecommendationServiceMock,
+        },
       ],
     }).compile();
 
@@ -70,6 +80,32 @@ describe('ExpedientesController', () => {
         documentNumber: '900123456',
         page: 1,
         limit: 20,
+      }),
+    );
+  });
+
+  // La precedencia de view sobre includeCompleted se aplica en la capa de servicio y está cubierta en expediente.service.spec.ts
+  it('propaga view e includeCompleted al servicio', async () => {
+    expedienteServiceMock.findAll.mockResolvedValue({ data: [], total: 0 });
+
+    await (controller as any).findAll(
+      undefined,
+      undefined,
+      'Cliente demo',
+      1,
+      20,
+      undefined,
+      '900123456',
+      'true',
+      'converted',
+    );
+
+    expect(expedienteServiceMock.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: 'Cliente demo',
+        documentNumber: '900123456',
+        includeCompleted: true,
+        view: 'converted',
       }),
     );
   });
@@ -141,6 +177,75 @@ describe('ExpedientesController', () => {
         },
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('devuelve advertencia estructurada cuando la transición a instalación avanza con pendientes', async () => {
+    statusTransitionServiceMock.validateTransition.mockResolvedValue({
+      valid: true,
+      warningTitle: 'Puedes continuar a instalación con información pendiente',
+      warningMessage: 'Hay faltantes por cerrar.',
+      missingRequirements: [
+        {
+          sectionKey: 'documentSupport',
+          sectionLabel: 'Soportes documentales',
+          fieldKey: 'utility_bill',
+          fieldLabel: 'Recibo de servicio público',
+        },
+      ],
+    });
+    expedienteServiceMock.transitionStatus.mockResolvedValue({ id: 'exp-1' });
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 90,
+      legal: 70,
+      technical: 100,
+      operational: 60,
+      overall: 82,
+      sectionCompleteness: [],
+      installationReadiness: {
+        status: 'READY_WITH_PENDING',
+        canTransition: true,
+        title: 'Puedes continuar a instalación con información pendiente',
+        message: 'Hay faltantes por cerrar.',
+      },
+      missingRequirements: [
+        {
+          sectionKey: 'documentSupport',
+          sectionLabel: 'Soportes documentales',
+          fieldKey: 'utility_bill',
+          fieldLabel: 'Recibo de servicio público',
+        },
+      ],
+    });
+
+    const result = await controller.transitionStatus(
+      '00000000-0000-4000-a000-000000000001',
+      { targetStatus: ExpedienteStatus.LISTO_PARA_INSTALACION },
+      {
+        sub: 'user-1',
+        email: 'hash',
+        role: 'ADMIN',
+        tenantId: 'tenant-1',
+        schemaName: 'tenant_1',
+        jti: 'jti-1',
+        type: 'tenant',
+      },
+    );
+
+    expect(result.transitionWarning).toEqual({
+      title: 'Puedes continuar a instalación con información pendiente',
+      message: 'Hay faltantes por cerrar.',
+      missingRequirements: [
+        {
+          sectionKey: 'documentSupport',
+          sectionLabel: 'Soportes documentales',
+          fieldKey: 'utility_bill',
+          fieldLabel: 'Recibo de servicio público',
+        },
+      ],
+    });
+    expect(result.installationReadiness).toEqual(
+      expect.objectContaining({ status: 'READY_WITH_PENDING' }),
+    );
   });
 
   it('rechaza secciones fuera del contrato del expediente', async () => {
@@ -271,11 +376,11 @@ describe('ExpedientesController', () => {
     expect(result.data.items).toHaveLength(1);
   });
 
-  it('propaga upload documental al servicio con el actor autenticado', async () => {
+  it('propaga upload documental al servicio con override de personType y actor autenticado', async () => {
     expedienteServiceMock.uploadDocumentSupport.mockResolvedValue({
-      personType: 'PERSONA_NATURAL',
+      personType: 'PERSONA_JURIDICA',
       items: [],
-      summary: { requiredCount: 2, uploadedCount: 1, approvedCount: 0, blockStatus: 'EN_REVISION' },
+      summary: { requiredCount: 3, uploadedCount: 1, approvedCount: 0, blockStatus: 'EN_REVISION' },
     });
 
     const file = {
@@ -298,6 +403,7 @@ describe('ExpedientesController', () => {
         jti: 'jti-1',
         type: 'tenant',
       },
+      'PERSONA_JURIDICA',
     );
 
     expect(expedienteServiceMock.uploadDocumentSupport).toHaveBeenCalledWith(
@@ -305,14 +411,15 @@ describe('ExpedientesController', () => {
       'identity_document',
       file,
       'user-1',
+      'PERSONA_JURIDICA',
     );
   });
 
-  it('propaga cambio de estado documental al servicio', async () => {
+  it('propaga cambio de estado documental al servicio con override de personType', async () => {
     expedienteServiceMock.updateDocumentSupportStatus.mockResolvedValue({
-      personType: 'PERSONA_NATURAL',
+      personType: 'PERSONA_JURIDICA',
       items: [],
-      summary: { requiredCount: 2, uploadedCount: 1, approvedCount: 1, blockStatus: 'EN_REVISION' },
+      summary: { requiredCount: 3, uploadedCount: 1, approvedCount: 1, blockStatus: 'EN_REVISION' },
     });
 
     await controller.updateDocumentSupportStatus(
@@ -329,6 +436,7 @@ describe('ExpedientesController', () => {
         jti: 'jti-1',
         type: 'tenant',
       },
+      'PERSONA_JURIDICA',
     );
 
     expect(expedienteServiceMock.updateDocumentSupportStatus).toHaveBeenCalledWith(
@@ -338,6 +446,39 @@ describe('ExpedientesController', () => {
       'APPROVED',
       'user-1',
       null,
+      'PERSONA_JURIDICA',
+    );
+  });
+
+  it('propaga eliminacion documental al servicio con actor y personType override', async () => {
+    expedienteServiceMock.deleteDocumentSupport.mockResolvedValue({
+      personType: 'PERSONA_JURIDICA',
+      items: [],
+      summary: { requiredCount: 3, uploadedCount: 1, approvedCount: 1, blockStatus: 'EN_REVISION' },
+    });
+
+    await controller.deleteDocumentSupport(
+      '00000000-0000-4000-a000-000000000001',
+      'rut',
+      'ver-2',
+      {
+        sub: 'user-1',
+        email: 'hash',
+        role: 'ADMIN',
+        tenantId: 'tenant-1',
+        schemaName: 'tenant_1',
+        jti: 'jti-1',
+        type: 'tenant',
+      },
+      'PERSONA_JURIDICA',
+    );
+
+    expect(expedienteServiceMock.deleteDocumentSupport).toHaveBeenCalledWith(
+      '00000000-0000-4000-a000-000000000001',
+      'rut',
+      'ver-2',
+      'user-1',
+      'PERSONA_JURIDICA',
     );
   });
 });

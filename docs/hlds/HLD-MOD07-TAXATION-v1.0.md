@@ -15,7 +15,7 @@ references:
   - docs/adrs/ADR-031-Rediseno-Tributario-Comercial-Impuestos-Reglas-Simulador.md
   - docs/hlds/HLD-MOD06-ARQUITECTURA-v1.0.md
   - docs/prds/PRD_Sistema_ISP_Colombia_v2_3.md
-  - docs/superpowers/specs/2026-04-21-taxation-bounded-context-design.md
+  - docs/specs/2026-04-21-taxation-bounded-context-design.md
 ---
 
 # HLD: Módulo Taxation — Arquitectura v1.0 (MOD07)

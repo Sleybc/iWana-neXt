@@ -7,6 +7,7 @@ import { CompanyType, TenantStatus } from '@iwana/shared';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { AuditService } from '../audit/audit.service';
 import { MediaService } from '../media/media.service';
+import { SearchQueueService } from '../search/search-queue.service';
 import { TenantService } from './tenant.service';
 import { CreateTenantDto, UpdateTenantDto } from './dto/tenant.dto';
 
@@ -105,6 +106,10 @@ describe('TenantService', () => {
     softDelete: jest.Mock;
     upload: jest.Mock;
   };
+  let searchQueueServiceMock: {
+    enqueueTenantUpsert: jest.Mock;
+    enqueueNavigationRebuild: jest.Mock;
+  };
   let queryBuilder: {
     orderBy: jest.Mock;
     take: jest.Mock;
@@ -159,6 +164,10 @@ describe('TenantService', () => {
       softDelete: jest.fn(),
       upload: jest.fn(),
     };
+    searchQueueServiceMock = {
+      enqueueTenantUpsert: jest.fn(),
+      enqueueNavigationRebuild: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -182,6 +191,10 @@ describe('TenantService', () => {
         {
           provide: MediaService,
           useValue: mediaServiceMock,
+        },
+        {
+          provide: SearchQueueService,
+          useValue: searchQueueServiceMock,
         },
       ],
     }).compile();

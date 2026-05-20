@@ -5,13 +5,18 @@ import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { ExpedienteRecord } from './entities/expediente-record.entity';
 import { ConsentRecord } from './entities/consent-record-v2.entity';
 import { CoverageCheck } from './entities/coverage-check.entity';
-import { Quote } from '../quotes/entities/quote.entity';
-import { ConsentType, ConsentStatus, Feasibility } from '@iwana/shared';
 import {
   DOCUMENT_SUPPORT_STATUS,
   getDocumentDefinitionsByPersonType,
   type StoredDocumentSupportMap,
 } from './document-support.types';
+import { ExpedienteSectionCompletenessService } from './expediente-section-completeness.service';
+import { CrmQuoteReadPort, type CrmQuoteSnapshot } from '../ports/crm-quote-read.port';
+import {
+  type InstallationReadinessSummary,
+  type MissingRequirement,
+  type SectionCompletenessItem,
+} from './expediente-section-completeness.types';
 
 /**
  * Interfaz de resultado de completitud por dimensión
@@ -22,6 +27,9 @@ export interface CompletenessResult {
   technical: number;
   operational: number;
   overall: number;
+  sectionCompleteness: SectionCompletenessItem[];
+  installationReadiness: InstallationReadinessSummary;
+  missingRequirements: MissingRequirement[];
 }
 
 /**
@@ -32,7 +40,11 @@ export interface CompletenessResult {
 export class CompletenessCalculator {
   private readonly logger = new Logger(CompletenessCalculator.name);
 
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly sectionCompletenessService: ExpedienteSectionCompletenessService,
+    private readonly crmQuoteReadPort: CrmQuoteReadPort,
+  ) {}
 
   /**
    * Calcular completitud de un expediente por las 4 dimensiones
@@ -55,26 +67,24 @@ export class CompletenessCalculator {
     // Intentar cargar sub-tablas CRM. Si no existen (migración pendiente), continuar con
     // arrays vacíos para que al menos los campos del expediente contribuyan al score.
     let consents: ConsentRecord[] = [];
-    let quotes: Quote[] = [];
+    let quotes: CrmQuoteSnapshot[] = [];
     let coverageChecks: CoverageCheck[] = [];
 
     try {
       const expedienteData = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
         const loadedConsents = await qr.manager.find(ConsentRecord, { where: { expedienteId } });
-        const loadedQuotes = await qr.manager.find(Quote, { where: { expedienteId } });
         const loadedCoverageChecks = await qr.manager.find(CoverageCheck, {
           where: { expedienteId },
         });
         return {
           consents: loadedConsents,
-          quotes: loadedQuotes,
           coverageChecks: loadedCoverageChecks,
         };
       });
 
       consents = expedienteData.consents;
-      quotes = expedienteData.quotes;
       coverageChecks = expedienteData.coverageChecks;
+      quotes = await this.crmQuoteReadPort.findByExpedienteId(schemaName, expedienteId);
     } catch (subTableError) {
       if (this.isSchemaCompatibilityError(subTableError)) {
         // Sub-tablas aún no migradas — calcular con arrays vacíos para reflejar al menos
@@ -96,10 +106,23 @@ export class CompletenessCalculator {
         this.calculateTechnicalFromStructuredFields(expediente),
       );
       const operational = this.calculateOperational(expediente);
+      const sectionSummary = this.sectionCompletenessService.calculateSummary({
+        expediente,
+        consents,
+        quotes,
+        coverageChecks,
+      });
 
-      const overall = Math.round((commercial + legal + technical + operational) / 4);
-
-      return { commercial, legal, technical, operational, overall };
+      return {
+        commercial,
+        legal,
+        technical,
+        operational,
+        overall: sectionSummary.overallPercentage,
+        sectionCompleteness: sectionSummary.sections,
+        installationReadiness: sectionSummary.installationReadiness,
+        missingRequirements: sectionSummary.missingRequirements,
+      };
     } catch (error) {
       this.logger.error(
         `Error calculating completeness for expediente ${expedienteId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -121,9 +144,23 @@ export class CompletenessCalculator {
     const legal = expediente.completenessLegal ?? 0;
     const technical = expediente.completenessTechnical ?? 0;
     const operational = expediente.completenessOperational ?? 0;
-    const overall = Math.round((commercial + legal + technical + operational) / 4);
+    const sectionSummary = this.sectionCompletenessService.calculateSummary({
+      expediente,
+      consents: [],
+      quotes: [],
+      coverageChecks: [],
+    });
 
-    return { commercial, legal, technical, operational, overall };
+    return {
+      commercial,
+      legal,
+      technical,
+      operational,
+      overall: sectionSummary.overallPercentage,
+      sectionCompleteness: sectionSummary.sections,
+      installationReadiness: sectionSummary.installationReadiness,
+      missingRequirements: sectionSummary.missingRequirements,
+    };
   }
 
   private isSchemaCompatibilityError(error: unknown): boolean {
@@ -146,7 +183,7 @@ export class CompletenessCalculator {
    * Dimensión Comercial: identificación + contacto + interés + cotización
    * PRD v2.0 §4.6
    */
-  private calculateCommercial(expediente: ExpedienteRecord, quotes: Quote[]): number {
+  private calculateCommercial(expediente: ExpedienteRecord, quotes: CrmQuoteSnapshot[]): number {
     let score = 0;
     let total = 0;
 

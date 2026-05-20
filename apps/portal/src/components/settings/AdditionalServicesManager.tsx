@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { BriefcaseBusiness, CheckCircle2, CircleAlert, Search } from 'lucide-react';
+import { BriefcaseBusiness, CheckCircle2, CircleAlert, Pencil, Search, Trash2 } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -51,7 +51,7 @@ type ServiceStatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE';
 
 const tableHeadClass =
   'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500';
-const cellClass = 'px-4 py-3 align-top text-sm text-gray-700 dark:text-gray-200';
+const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
 const searchInputClass =
   'h-12 w-full rounded-2xl border border-gray-200 bg-gray-50/70 pl-11 pr-4 text-sm text-iwana-primary shadow-sm transition-all duration-200 placeholder:text-gray-400 focus:border-iwana-secondary focus:bg-white focus:outline-none focus:ring-2 focus:ring-iwana-secondary/35 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100 dark:placeholder-gray-500';
 
@@ -491,18 +491,25 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
                             <div className="flex gap-2">
                               <Button
                                 variant="secondary"
-                                size="sm"
+                                size="icon"
+                                aria-label={`Editar servicio ${service.name}`}
+                                title={`Editar servicio ${service.name}`}
                                 onClick={() => openEditDialog(service)}
                               >
-                                Editar
+                                <Pencil className="h-4 w-4" aria-hidden="true" />
                               </Button>
                               <Button
-                                variant="destructive"
-                                size="sm"
+                                variant="softDestructive"
+                                size="icon"
+                                aria-label={`Eliminar servicio ${service.name}`}
+                                title={`Eliminar servicio ${service.name}`}
                                 onClick={() => handleDelete(service.id)}
                                 disabled={deleting === service.id}
+                                loading={deleting === service.id}
                               >
-                                {deleting === service.id ? 'Eliminando...' : 'Eliminar'}
+                                {deleting !== service.id && (
+                                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                                )}
                               </Button>
                             </div>
                           </td>

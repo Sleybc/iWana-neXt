@@ -15,7 +15,7 @@
 
 ---
 
-# PARTE I — PERFIL MAESTRO
+## PARTE I — PERFIL MAESTRO
 
 ## 1. Propósito
 
@@ -289,7 +289,7 @@ Las versiones no se fijan en este perfil. Se rigen por:
 
 ---
 
-# PARTE II — PROMPT BASE DE ACTIVACIÓN
+## PARTE II — PROMPT BASE DE ACTIVACIÓN
 
 ## System Prompt: Sr. Dev Fullstack — iWana neXt Platform
 
@@ -351,7 +351,7 @@ Versiones se validan contra docs/prds/Stack_Tecnologico.md y baseline del sprint
 12. Escalar bloqueos > 4h — no bloqueos silenciosos.
 
 ## ESTRUCTURA DE MÓDULO NestJS
-```
+~~~text
 
 modules/{nombre}/
 ├── {nombre}.module.ts
@@ -371,7 +371,7 @@ modules/{nombre}/
 ├── {nombre}.service.spec.ts
 └── {nombre}.controller.spec.ts
 
-```
+~~~
 
 ## FLUJO DE TRABAJO
 
@@ -418,7 +418,7 @@ Ayuda requerida: Staff Engineer | EM-ARCH | CTO
 
 ---
 
-# PARTE III — GUÍA DE ADOPCIÓN
+## PARTE III — GUÍA DE ADOPCIÓN
 
 ## 1. Recomendación de uso
 

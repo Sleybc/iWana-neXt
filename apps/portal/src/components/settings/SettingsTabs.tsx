@@ -38,73 +38,72 @@ export function SettingsTabs({
   };
 
   return (
-    <div
-      role="tablist"
-      aria-label="Secciones de configuración empresarial"
-      className="flex gap-2 overflow-x-auto rounded-2xl border border-white/70 bg-white/95 p-2 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95"
-    >
-      {items.map((item, index) => {
-        const isActive = item.id === activeTab;
-        const selectedState = isActive
-          ? ({ 'aria-selected': 'true' } as const)
-          : ({ 'aria-selected': 'false' } as const);
-        const badge = getBadge?.(item.id) ?? null;
+    <div className="overflow-x-auto border-b border-gray-100 bg-[#f8faf5]/90 px-4 [-ms-overflow-style:none] [scrollbar-width:none] dark:border-dark-border dark:bg-dark-surface-3/40 md:px-6">
+      <nav
+        role="tablist"
+        aria-label="Secciones de configuración empresarial"
+        className="-mb-px flex min-w-max gap-5 md:gap-6"
+      >
+        {items.map((item, index) => {
+          const isActive = item.id === activeTab;
+          const selectedState = isActive
+            ? ({ 'aria-selected': 'true' } as const)
+            : ({ 'aria-selected': 'false' } as const);
+          const badge = getBadge?.(item.id) ?? null;
 
-        return (
-          <button
-            key={item.id}
-            ref={(element) => {
-              tabRefs.current[index] = element;
-            }}
-            id={getTabId(item.id)}
-            type="button"
-            role="tab"
-            aria-label={item.label}
-            aria-controls={getPanelId(item.id)}
-            {...selectedState}
-            tabIndex={isActive ? 0 : -1}
-            className={cn(
-              'flex min-w-fit items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2',
-              isActive
-                ? 'bg-iwana-primary text-white shadow-iwana dark:bg-iwana-primary-400'
-                : 'text-gray-600 hover:bg-[#f8faf5] hover:text-gray-900 dark:text-gray-300 dark:hover:bg-dark-surface-3 dark:hover:text-white',
-            )}
-            onClick={() => onChange(item.id)}
-            onKeyDown={(event) => {
-              // WCAG: ambos ejes (horizontal y vertical) permiten navegar en un tablist horizontal.
-              if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-                event.preventDefault();
-                focusTabAt(activeIndex + 1);
-              }
-              if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-                event.preventDefault();
-                focusTabAt(activeIndex - 1);
-              }
-              if (event.key === 'Home') {
-                event.preventDefault();
-                focusTabAt(0);
-              }
-              if (event.key === 'End') {
-                event.preventDefault();
-                focusTabAt(items.length - 1);
-              }
-            }}
-          >
-            {item.label}
-            {badge ? (
-              <Badge
-                variant={badge.variant ?? 'neutral'}
-                className={cn(
-                  'rounded-full px-2 py-0.5 text-[11px] uppercase tracking-[0.14em]',
-                  isActive && 'bg-white/15 text-white dark:bg-white/20',
-                )}
-              >
-                {badge.label}
-              </Badge>
-            ) : null}
-          </button>
-        );
-      })}
+          return (
+            <button
+              key={item.id}
+              ref={(element) => {
+                tabRefs.current[index] = element;
+              }}
+              id={getTabId(item.id)}
+              type="button"
+              role="tab"
+              aria-label={item.label}
+              aria-controls={getPanelId(item.id)}
+              {...selectedState}
+              tabIndex={isActive ? 0 : -1}
+              className={cn(
+                'relative flex items-center gap-2 border-b-[3px] border-transparent px-2 py-4 text-sm whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2',
+                isActive
+                  ? 'border-iwana-secondary font-semibold text-iwana-secondary-700 dark:border-iwana-secondary dark:text-iwana-secondary-300'
+                  : 'font-medium text-gray-500 hover:border-gray-200 hover:text-gray-800 dark:text-gray-400 dark:hover:border-dark-border dark:hover:text-gray-200',
+              )}
+              onClick={() => onChange(item.id)}
+              onKeyDown={(event) => {
+                // WCAG: ambos ejes (horizontal y vertical) permiten navegar en un tablist horizontal.
+                if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+                  event.preventDefault();
+                  focusTabAt(activeIndex + 1);
+                }
+                if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+                  event.preventDefault();
+                  focusTabAt(activeIndex - 1);
+                }
+                if (event.key === 'Home') {
+                  event.preventDefault();
+                  focusTabAt(0);
+                }
+                if (event.key === 'End') {
+                  event.preventDefault();
+                  focusTabAt(items.length - 1);
+                }
+              }}
+            >
+              {item.label}
+              {badge ? (
+                <Badge
+                  variant={badge.variant ?? 'neutral'}
+                  className="rounded-full px-2 py-0.5 text-[11px] uppercase tracking-[0.14em]"
+                >
+                  {badge.label}
+                </Badge>
+              ) : null}
+            </button>
+          );
+        })}
+      </nav>
     </div>
   );
 }

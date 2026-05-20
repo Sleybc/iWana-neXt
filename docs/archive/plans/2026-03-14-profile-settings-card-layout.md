@@ -1,6 +1,6 @@
 # Profile Settings Card Layout Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **For Claude:** REQUIRED SUB-SKILL: Use executing-plans to implement this plan task-by-task.
 
 **Goal:** Reestructurar las pantallas de perfil y configuración del dashboard para que cada bloque funcional tenga su propia card con acciones visibles y alineación consistente con el header de página.
 

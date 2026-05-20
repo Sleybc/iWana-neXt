@@ -25,7 +25,7 @@ Definir la politica operativa minima para mantener el catalogo de skills de iWan
 
 1. Restaurar solo skills con decision vigente de restauracion o nueva aprobacion explicita.
 2. Antes de restaurar, verificar caso de uso, prioridad, impacto sobre skills activas y costo de ruido de activacion.
-3. Restaurar por movimiento controlado desde `.agents/skills-archive/` al catalogo activo.
+3. Restaurar por reincorporacion controlada en `.agents/skills/` y sincronizacion de `skills-lock.json` cuando aplique.
 4. Actualizar siempre README, INDEX, MANIFEST e informe vigente tras la restauracion.
 
 ## Regla de mantenimiento
@@ -36,8 +36,8 @@ Definir la politica operativa minima para mantener el catalogo de skills de iWan
 
 ## Estado actual de referencia
 
-- Skills activas: 25.
+- Skills activas: 41.
 - Restaurables priorizadas: 0.
 - Revisadas y mantener archivadas: 6.
 - En hold: 3.
-- Resto del archivo: historico.
+- Decisions historicas: conservadas en `docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md`.

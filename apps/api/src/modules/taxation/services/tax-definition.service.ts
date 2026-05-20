@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, IsNull } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
@@ -132,7 +127,6 @@ export class TaxDefinitionService {
 
   /**
    * Actualiza una definición tributaria existente.
-   * Rechaza actualización de presets SYSTEM con ForbiddenException.
    * Solo campos proporcionados se actualizan (partial).
    */
   async update(id: string, input: UpdateTaxDefinitionInput): Promise<TaxDefinition> {
@@ -155,13 +149,6 @@ export class TaxDefinitionService {
         throw new NotFoundException(`TaxDefinition ${id} no encontrada`);
       }
 
-      // Protección de presets del sistema
-      if (entity.origin === TaxOrigin.SYSTEM) {
-        throw new ForbiddenException(
-          'Los presets del sistema no son editables. Puede duplicarlos como CUSTOM.',
-        );
-      }
-
       // Aplicar solo campos presentes en el input (partial update)
       if (data.name !== undefined) entity.name = data.name;
       if (data.category !== undefined) entity.category = data.category;
@@ -182,7 +169,6 @@ export class TaxDefinitionService {
 
   /**
    * Marca como eliminado (soft delete) una definición tributaria.
-   * Rechaza eliminación de presets SYSTEM con ForbiddenException.
    * Desactiva automáticamente el registro al eliminarlo.
    */
   async softDelete(id: string): Promise<void> {
@@ -195,11 +181,6 @@ export class TaxDefinitionService {
 
       if (!entity) {
         throw new NotFoundException(`TaxDefinition ${id} no encontrada`);
-      }
-
-      // Protección de presets del sistema
-      if (entity.origin === TaxOrigin.SYSTEM) {
-        throw new ForbiddenException('Los presets del sistema no pueden eliminarse.');
       }
 
       entity.deletedAt = new Date();

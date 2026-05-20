@@ -5,6 +5,8 @@ applyTo: "e2e/**,apps/portal/tests/e2e/**"
 
 # E2E Testing Instructions
 
+Referencia maestra: `AGENTS.md`.
+
 - Usar Playwright para flujos completos de usuario y validar comportamiento observable, no detalles internos de implementación.
 - Preferir selectores accesibles y estables sobre selectores frágiles por estructura visual.
 - Cubrir rutas críticas como login, redirecciones, navegación protegida, MFA y journeys del dashboard.
@@ -12,4 +14,3 @@ applyTo: "e2e/**,apps/portal/tests/e2e/**"
 - Evitar assertions excesivamente acopladas a animaciones, tiempos arbitrarios o copy incidental.
 - Si el flujo depende de tenancy, dejar claro el tenant usado y verificar que la navegación respeta el boundary correcto.
 - Guardar evidencia útil de fallos solo cuando aporte diagnóstico real; no inflar artifacts innecesariamente en el repo.
-- Tras cambios E2E o resultados relevantes, actualizar evidencia en `docs/quality/` o el informe vivo correspondiente.

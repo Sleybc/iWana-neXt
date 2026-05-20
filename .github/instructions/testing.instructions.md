@@ -5,12 +5,11 @@ applyTo: "apps/api/src/**/*.spec.ts,apps/api/src/**/*.test.ts,apps/worker/src/**
 
 # Unit Testing Instructions
 
-- Jest para pruebas unitarias de backend, worker, frontend y paquetes compartidos.
+Referencia maestra: `AGENTS.md`.
+
 - Factory functions para data de prueba, no fixtures globales.
 - Tests independientes y reproducibles.
-- Cobertura >= 80% en modulos core.
 - No aprobar PR sin tests de la funcionalidad cambiada.
 - Formato: `describe('Modulo') > it('should ...')`.
 - Comentar en espanol fixtures, factories y escenarios no obvios.
-- Tras ejecuciones de testing que dejen evidencia documental, actualizar el informe vigente en `docs/informes/` en lugar de duplicarlo.
 

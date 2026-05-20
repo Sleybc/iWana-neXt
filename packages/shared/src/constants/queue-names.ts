@@ -20,3 +20,6 @@ export const TENANT_SCHEMA_PURGE_QUEUE = 'tenant-schema-purge';
 
 /** Cola transversal para indexación de búsqueda global en Typesense */
 export const SEARCH_INDEX_QUEUE = 'search-index';
+
+/** Cola de despacho a campo originada desde Service Assurance */
+export const ASSURANCE_FIELD_SERVICE_QUEUE = 'assurance-field-service';

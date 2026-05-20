@@ -15,6 +15,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DatePicker,
   Select,
 } from '@iwana/ui';
 import {
@@ -59,11 +60,7 @@ const EMPTY_CREATE_FORM: CreateFormState = {
 
 const tableHeadClass =
   'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500';
-const cellClass = 'px-4 py-3 align-top text-sm text-gray-700 dark:text-gray-200';
-
-// Clase compartida para inputs de fecha y textarea dentro de los modales.
-const inputBaseClass =
-  'h-11 w-full rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-800 shadow-sm outline-none transition-colors focus:border-iwana-secondary focus:ring-2 focus:ring-iwana-secondary/30 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100';
+const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
 
 const textareaBaseClass =
   'w-full rounded-2xl border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none transition-colors focus:border-iwana-secondary focus:ring-2 focus:ring-iwana-secondary/30 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100';
@@ -71,6 +68,21 @@ const textareaBaseClass =
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '—';
   return new Date(dateStr).toLocaleDateString('es-CO');
+}
+
+function toDateFromLocalDateValue(value: string): Date | undefined {
+  if (!value) return undefined;
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return undefined;
+  return new Date(year, month - 1, day);
+}
+
+function toLocalDateValue(date: Date | undefined): string {
+  if (!date) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function mapLoadError(error: unknown): string {
@@ -414,15 +426,15 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
               >
                 Vigente desde (opcional)
               </label>
-              <input
+              <DatePicker
                 id="compat-effective-from"
-                type="date"
-                value={createForm.effectiveFrom}
-                onChange={(e) =>
-                  setCreateForm((prev) => ({ ...prev, effectiveFrom: e.target.value }))
+                value={toDateFromLocalDateValue(createForm.effectiveFrom)}
+                onChange={(date) =>
+                  setCreateForm((prev) => ({ ...prev, effectiveFrom: toLocalDateValue(date) }))
                 }
                 disabled={isSubmitting}
-                className={inputBaseClass}
+                placeholder="Selecciona una fecha"
+                buttonClassName="h-11 rounded-2xl border-gray-200 bg-white px-4 text-sm text-gray-800 shadow-sm dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100"
               />
             </div>
 
@@ -504,15 +516,15 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
               >
                 Vigente desde (opcional)
               </label>
-              <input
+              <DatePicker
                 id="edit-effective-from"
-                type="date"
-                value={editForm.effectiveFrom}
-                onChange={(e) =>
-                  setEditForm((prev) => ({ ...prev, effectiveFrom: e.target.value }))
+                value={toDateFromLocalDateValue(editForm.effectiveFrom)}
+                onChange={(date) =>
+                  setEditForm((prev) => ({ ...prev, effectiveFrom: toLocalDateValue(date) }))
                 }
                 disabled={isSubmitting}
-                className={inputBaseClass}
+                placeholder="Selecciona una fecha"
+                buttonClassName="h-11 rounded-2xl border-gray-200 bg-white px-4 text-sm text-gray-800 shadow-sm dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100"
               />
             </div>
 

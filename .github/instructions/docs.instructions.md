@@ -4,6 +4,8 @@ applyTo: "docs/**,*.md"
 
 # Documentation Instructions
 
+Referencia maestra: `AGENTS.md`.
+
 - Cada documento mayor: titulo, version, estado, fecha.
 - Estados: Borrador → En revisión → Aprobado → Deprecado.
 - PRDs finales en modo Architect, max 10 secciones estandar.

@@ -8,7 +8,7 @@ references:
   - AGENTS.md
   - docs/prds/Stack_Tecnologico.md
   - docs/hlds/HLD-TRANSVERSAL-BUSQUEDA-GLOBAL-v1.0.md
-  - docs/superpowers/specs/2026-05-02-busqueda-global-typesense-design.md
+  - docs/specs/2026-05-02-busqueda-global-typesense-design.md
   - docs/plans/PLAN-TRANSVERSAL-BUSQUEDA-GLOBAL-TYPESENSE-v1.0.md
 ---
 
@@ -132,5 +132,5 @@ Regla no negociable: ningun modulo de dominio debe consultar Typesense para vali
 - AGENTS.md
 - docs/prds/Stack_Tecnologico.md
 - docs/hlds/HLD-TRANSVERSAL-BUSQUEDA-GLOBAL-v1.0.md
-- docs/superpowers/specs/2026-05-02-busqueda-global-typesense-design.md
+- docs/specs/2026-05-02-busqueda-global-typesense-design.md
 - docs/plans/PLAN-TRANSVERSAL-BUSQUEDA-GLOBAL-TYPESENSE-v1.0.md

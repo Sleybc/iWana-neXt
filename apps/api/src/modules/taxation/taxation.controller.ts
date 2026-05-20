@@ -34,8 +34,7 @@ import { TaxDefinition } from './entities/tax-definition.entity';
  * - GET, POST, PATCH: ADMIN | ACCOUNTANT | SYSTEM_ADMIN
  * - DELETE: ADMIN | SYSTEM_ADMIN (solo roles de máxima autoridad)
  *
- * Protecciones:
- * - UPDATE y DELETE rechazan presets SYSTEM con ForbiddenException.
+ * Reglas:
  * - CREATE siempre fuerza origin=CUSTOM.
  *
  * HLD-MOD07-TRIBUTACION §5 — Endpoints REST versionada
@@ -96,17 +95,16 @@ export class TaxationController {
 
   /**
    * Actualiza una definición tributaria existente.
-   * Rechaza actualización de presets SYSTEM con ForbiddenException.
    */
   @Patch('definitions/:id')
   @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
-  @ApiOperation({ summary: 'Actualizar definición tributaria (solo origin CUSTOM)' })
+  @ApiOperation({ summary: 'Actualizar definición tributaria' })
   @ApiResponse({ status: 200, description: 'Definición tributaria actualizada exitosamente.' })
   @ApiResponse({ status: 400, description: 'Datos inválidos.' })
   @ApiResponse({ status: 401, description: 'Token inválido o expirado.' })
   @ApiResponse({
     status: 403,
-    description: 'Sin permisos o intento de editar preset del sistema.',
+    description: 'Sin permisos suficientes.',
   })
   @ApiResponse({ status: 404, description: 'Definición no encontrada.' })
   async update(
@@ -119,17 +117,16 @@ export class TaxationController {
 
   /**
    * Elimina (soft delete) una definición tributaria.
-   * Rechaza eliminación de presets SYSTEM con ForbiddenException.
    * Solo roles con autoridad máxima (ADMIN, SYSTEM_ADMIN).
    */
   @Delete('definitions/:id')
   @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
-  @ApiOperation({ summary: 'Eliminar definición tributaria (solo origin CUSTOM)' })
+  @ApiOperation({ summary: 'Eliminar definición tributaria' })
   @ApiResponse({ status: 200, description: 'Definición tributaria desactivada exitosamente.' })
   @ApiResponse({ status: 401, description: 'Token inválido o expirado.' })
   @ApiResponse({
     status: 403,
-    description: 'Sin permisos o intento de eliminar preset del sistema.',
+    description: 'Sin permisos suficientes.',
   })
   @ApiResponse({ status: 404, description: 'Definición no encontrada.' })
   async softDelete(@Param('id', ParseUUIDPipe) id: string): Promise<{ message: string }> {

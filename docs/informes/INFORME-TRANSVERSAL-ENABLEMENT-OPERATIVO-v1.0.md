@@ -9,6 +9,90 @@
 
 Se ejecutó la implementación transversal de enablement operativo para habilitar perfil de plataforma, settings funcionales de tenant, flujo de alta de primera empresa y gestión operativa de usuarios internos. El cierre incluyó la corrección del flujo MFA de plataforma en web, la activación real de acciones de usuarios por tenant y la ampliación del E2E de bootstrap administrativo.
 
+### Addendum documental 2026-05-19 — Limpieza de superficies IA para flujo Copilot
+
+Se simplifico la gobernanza operativa de asistentes IA para dejar GitHub Copilot como unica herramienta activa del workspace y reducir drift entre documentos. `AGENTS.md` queda ratificado como fuente maestra; `.github/copilot-instructions.md` pasa a bootstrap minimo; las instrucciones contextuales de `.github/instructions/` mantienen sus `applyTo` pero remiten a `AGENTS.md` y conservan solo reglas locales por superficie.
+
+Tambien se marco `CLAUDE.md` como deprecado hasta reactivacion explicita y `.opencode/` como contingencia pasiva recuperable. En OpenCode se deshabilitaron MCPs para evitar arranque accidental, se agrego `.opencode/DISABLED.md` y se redujeron agentes a tarjetas de referencia. El mapa regulatorio util que vivia en `mixed-governance` fue promovido a `AGENTS.md` para no perder conocimiento unico.
+
+Artefactos actualizados o creados:
+
+- `AGENTS.md`
+- `.github/copilot-instructions.md`
+- `.github/instructions/*.instructions.md`
+- `CLAUDE.md`
+- `.opencode/DISABLED.md`
+- `.opencode/opencode.json`
+- `.opencode/agents/*.md`
+- `.agents/skills/README.md`
+- `.agents/skills/INDEX.md`
+- `docs/runbooks/RUNBOOK-AI-WORKFLOW-COPILOT-v1.0.md`
+
+Resultado: el flujo activo de productividad IA queda centrado en Copilot, con fuentes pasivas documentadas y recuperables sin mantener cuatro copias vivas de la misma gobernanza.
+
+### Addendum correctivo 2026-05-13 — Configuración raíz de Jest para monorepo
+
+Se corrigió una falla transversal de tooling que hacía que Jest, al ejecutarse desde la raíz del monorepo, usara su configuración por defecto en lugar de los `jest.config.js` de cada workspace. El efecto operativo era que los archivos `*.spec.ts` y `*.spec.tsx` se intentaban parsear con `babel-jest` sin soporte real para TypeScript/TSX, y además se incluían specs de `e2e` escritos para Playwright, generando cascadas de errores de sintaxis (`type`, `as const`, `public readonly`, JSX, `import type`).
+
+El ajuste introdujo `jest.config.cjs` en la raíz con `projects` explícitos para `apps/api`, `apps/web`, `apps/portal` y `apps/worker`, delegando la transformación a `ts-jest` según la configuración ya existente en cada app. Con esto, Jest deja de barrer el repo completo con el fallback Babel y excluye de facto los tests E2E de Playwright del runner unitario.
+
+Validación ejecutada:
+
+- `pnpm exec jest --showConfig`
+- `pnpm exec jest --listTests`
+- pruebas focalizadas en verde para:
+  - `apps/api/src/modules/wfm/tests/schedule-events.service.spec.ts`
+  - `apps/portal/src/components/auth/LoginExperience.spec.tsx`
+  - `apps/web/src/components/auth/PlatformLoginExperience.spec.tsx`
+
+Resultado: Jest raíz quedó enrutable por proyectos, sin parseo Babel por defecto sobre TypeScript/TSX y sin descubrimiento accidental de suites Playwright.
+
+### Addendum correctivo 2026-05-13 — Barrido incremental de Jest y anclaje de VS Code
+
+Se completó un barrido incremental de Jest por workspace usando ejecución serial (`--runInBand`) y configuración explícita por app para evitar saturación local y separar fallas reales de problemas del runner. Adicionalmente, el workspace de VS Code quedó configurado para que la extensión Jest use el `jest.config.cjs` raíz del monorepo en modo `on-demand`, evitando watch agresivo y evitando volver al descubrimiento incorrecto desde configuración implícita.
+
+Validación ejecutada por partes:
+
+- `pnpm exec jest -c apps/worker/jest.config.js --runInBand`
+- `pnpm exec jest -c apps/web/jest.config.js --runInBand`
+- `pnpm exec jest -c apps/portal/jest.config.js --runInBand`
+- `pnpm exec jest -c apps/api/jest.config.js --runInBand`
+
+Resultado del barrido:
+
+- `apps/worker`: 5 suites en verde, 30 tests en verde.
+- `apps/web`: 10 suites en verde, 31 tests en verde.
+- `apps/portal`: fallos funcionales reales en `SchedulingClient.spec.tsx` por ausencia de mock de `next/navigation`, más dos desalineaciones de copy/labels en `scheduling-ui.spec.ts` y `expediente-ui.spec.ts`.
+- `apps/api`: 4 suites fallidas y 96 en verde; los fallos reales detectados se concentran en `users.service.spec.ts`, `tenant.service.spec.ts`, `tenant-settings.spec.ts` y `status-transition.service.spec.ts`.
+
+Resultado operativo: el tooling de Jest quedó estable tanto en CLI como en VS Code; los errores restantes ya son incidencias concretas de tests/código y no fallas de infraestructura de test.
+
+### Addendum correctivo 2026-05-13 — Cierre de fallos reales en portal y API
+
+Se corrigieron los fallos funcionales y de wiring detectados durante el barrido incremental de Jest, manteniendo validación por slices pequeños para no saturar el entorno local.
+
+Correcciones aplicadas:
+
+- `apps/portal`: `SchedulingClient.spec.tsx` quedó alineado con el uso actual de `next/navigation` mediante mocks explícitos de `useRouter`, `usePathname` y `useSearchParams`.
+- `apps/portal`: `scheduling-ui.ts` corrigió la normalización de descripciones legacy de CRM para UUID completos y la sustitución gramatical correcta hacia `la oportunidad <ref corta>`.
+- `apps/portal`: `expediente-ui.ts` unificó el label visible `Listo para instalación`, evitando inconsistencia con otras pantallas del portal.
+- `apps/api`: `tenant.service.spec.ts`, `tenant-settings.spec.ts` y `users.service.spec.ts` registran ahora `SearchQueueService` mockeado, alineándose con la nueva dependencia introducida en los servicios reales.
+- `apps/api`: `status-transition.service.spec.ts` se actualizó para reflejar la regla vigente del pipeline: soportes documentales pendientes en `CLIENTE_ACTIVO` generan advertencia, no bloqueo.
+
+Validación correctiva ejecutada:
+
+- `runTests` focalizado sobre `SchedulingClient.spec.tsx`, `scheduling-ui.spec.ts` y `expediente-ui.spec.ts`
+- `pnpm exec jest -c apps/portal/jest.config.js --runInBand`
+- `runTests` focalizado sobre `tenant.service.spec.ts`, `tenant-settings.spec.ts` y `users.service.spec.ts`
+- `runTests` focalizado sobre `status-transition.service.spec.ts`
+- `pnpm exec jest -c apps/api/jest.config.js --runInBand`
+
+Resultado final:
+
+- `apps/portal`: 33 suites en verde, 96 tests en verde.
+- `apps/api`: 100 suites en verde, 1101 tests en verde.
+- Estado transversal del barrido por workspace: `worker`, `web`, `portal` y `api` quedaron validados sin fallos.
+
 ### Addendum documental 2026-05-02 — Diseño de búsqueda global Typesense
 
 Se documentó la evolución del buscador de `apps/web` desde filtro local por `q` hacia una búsqueda global indexada tipo UISP. La decisión de producto define overlay flotante con resultados vivos mientras se escribe, alcance inicial sobre Empresas, Usuarios cross-tenant y Módulos/Navegación, ranking fuzzy y navegación por teclado.
@@ -19,7 +103,7 @@ Artefactos creados para ejecución fullstack:
 
 - `docs/adrs/ADR-036-Typesense-Busqueda-Global.md`
 - `docs/hlds/HLD-TRANSVERSAL-BUSQUEDA-GLOBAL-v1.0.md`
-- `docs/superpowers/specs/2026-05-02-busqueda-global-typesense-design.md`
+- `docs/specs/2026-05-02-busqueda-global-typesense-design.md`
 - `docs/plans/PLAN-TRANSVERSAL-BUSQUEDA-GLOBAL-TYPESENSE-v1.0.md`
 - `docs/prompts/PROMPT-TRANSVERSAL-BUSQUEDA-GLOBAL-TYPESENSE-v1.0.md`
 
@@ -94,6 +178,25 @@ Validación ejecutada:
 - `pnpm --filter @iwana/portal typecheck`
 
 Resultado: búsqueda global del portal operativa, con pruebas unitarias en verde para consulta, navegación, manejo de error y limpieza al navegar.
+
+### Addendum documental 2026-05-07 — Diseño y plan de rediseño visual para settings del portal
+
+Se documentó la propuesta de rediseño visual integral para `apps/portal:/dashboard/settings`, asumiendo el rol operativo de Senior UI Systems Designer y priorizando claridad estructural, densidad operativa, navegación escalable y consistencia sistémica.
+
+Decisión de diseño registrada:
+
+- mantener tabs principales (`General`, `Operación`, `Seguridad`, `Marca`),
+- convertir el bloque superior en resumen ejecutivo del módulo,
+- introducir navegación secundaria explícita en `Marca` para separar `Identidad visual`, `Planes`, `Productos` y `Cobertura`,
+- refactorizar formularios y managers densos bajo una gramática visual más sobria y más escaneable.
+
+Artefactos creados para ejecución fullstack:
+
+- `docs/specs/2026-05-07-portal-settings-redesign-design.md`
+- `docs/plans/PLAN-TRANSVERSAL-PORTAL-SETTINGS-REDISENO-UI-v1.0.md`
+- `docs/prompts/PROMPT-TRANSVERSAL-PORTAL-SETTINGS-REDISENO-UI-v1.0.md`
+
+Estado operativo: listo para ejecución por Sr. Dev Fullstack. No se implementó código en esta fase; se dejó la ruta táctica, archivos objetivo, pruebas y validaciones requeridas.
 
 ### Addendum correctivo 2026-04-30 — Habilitación de MCPs en OpenCode
 
@@ -448,6 +551,62 @@ Se corrigió un `500 Internal Server Error` en `POST /api/v1/auth/login` que afe
   - Hotfix adicional 2026-03-18: se corrigió una deriva entre el template SQL de schemas tenant y la entidad `User`. El provisioning fallaba en `PROVISIONING_FAILED` porque `tenant_template.sql` no creaba la columna `mfa_required`, y el `TenantSeedService` consultaba `users` vía TypeORM con una metadata más nueva. Como refuerzo operativo, el template quedó idempotente para reintentos (tablas e índices con `IF NOT EXISTS`, recreación segura de la política RLS) y el script raíz `pnpm dev` ahora usa `docker compose -f docker-compose.dev.yml up -d --build` para evitar workers Docker con imágenes stale durante cambios de provisioning.
 - Estado global: validación funcional completa para cierre de fase.
 
+### Addendum correctivo 2026-05-07 — Dropdown de tipo de documento no visible en usuarios web
+
+Se corrigió el incidente en `apps/web` donde el campo `Tipo de documento` en los modales de creación y gestión de usuarios no mostraba opciones al hacer clic. La causa raíz estaba en la primitive compartida `Select` de `@iwana/ui`: el menú se renderiza por portal (`document.body`) con `position: fixed`, pero su `z-index` estaba en `1200`, por debajo del overlay/modal de usuarios (`z-[10000]`).
+
+Corrección aplicada:
+
+- Se elevó el `z-index` del menú portalizado de `Select` a `11000` para garantizar superposición por encima de overlays de modal en web y portal.
+- Se dejó comentario funcional en el código para evitar regresiones futuras del mismo patrón de apilamiento visual.
+
+Archivos impactados:
+
+- `packages/ui/src/components/Select.tsx`
+
+Validación ejecutada:
+
+- `pnpm --filter @iwana/ui typecheck` ✅
+- `pnpm --filter @iwana/web typecheck` ✅
+
+### Addendum correctivo 2026-05-07 — 404 de branding público durante digitación de slug en portal
+
+Se corrigió el ruido de red en el login de `apps/portal` donde la UI disparaba `GET /api/v1/tenants/public-branding?slug=...` por cada tecla (`i`, `iw`, `iwa`, etc.), generando `404` repetidos mientras el slug aún estaba incompleto.
+
+Causa raíz:
+
+- En `LoginExperience`, la consulta de branding se ejecutaba inmediatamente ante cada cambio del slug diferido, sin umbral mínimo ni debounce temporal.
+
+Corrección aplicada:
+
+- Se agregó guardia de formato para consultar branding público solo cuando el slug es válido (`^[a-z][a-z0-9-]*$`) y tiene al menos 3 caracteres.
+- Se agregó debounce de 350ms antes de invocar `tenantSelfApi.getPublicBranding` para evitar peticiones por cada pulsación.
+- Cuando el slug no cumple condiciones, se limpia branding y no se dispara request al backend.
+
+Archivo impactado:
+
+- `apps/portal/src/components/auth/LoginExperience.tsx`
+
+Validación ejecutada:
+
+- `pnpm --filter @iwana/portal typecheck` ✅
+
+Refuerzo adicional aplicado (mismo día):
+
+- Se separó el estado de `slug` en edición vs `slug` confirmado para branding (`tenantSlug` vs `tenantSlugCommitted`).
+- El lookup de branding ahora se dispara solo con slug confirmado (evento `onBlur` del campo Empresa), no durante cada `onChange`.
+- Con esto se elimina el patrón de `404` repetidos mientras el usuario aún está escribiendo el identificador del tenant.
+
+Archivos impactados en el refuerzo:
+
+- `apps/portal/src/components/auth/LoginExperience.tsx`
+- `apps/portal/src/components/auth/LoginForm.tsx`
+- `apps/portal/src/components/auth/LoginExperience.spec.tsx`
+
+Validación adicional del refuerzo:
+
+- `pnpm --filter @iwana/portal test -- src/components/auth/LoginExperience.spec.tsx src/components/auth/LoginForm.spec.tsx` ✅ (2 suites, 7 tests)
+
 ## Pendientes y Deuda Técnica
 
 - Se cerró la deuda preexistente de `auth.service.spec.ts` agregando el mock de `PlatformUserRepository` requerido por el constructor actual de `AuthService`; la suite quedó nuevamente estable en verde (20/20).
@@ -460,3 +619,81 @@ Se corrigió un `500 Internal Server Error` en `POST /api/v1/auth/login` que afe
 - HLD base: `docs/hlds/HLD-TRANSVERSAL-ENABLEMENT-OPERATIVO-v1.0.md`
 - PRD base: `docs/prds/PRD-MOD01-Auth-Tenant-Audit-v1.0.md`
 - ADRs de referencia: `docs/adrs/ADR-016-Cierre-MOD01-Produccion.md`, `docs/adrs/ADR-023-Referencia-TailAdmin-Shell-Dashboard.md`
+
+---
+
+### Addendum — Rediseño visual de configuración empresarial en portal
+
+Se ejecutó el rediseño visual de `/dashboard/settings` en `apps/portal` con foco en jerarquía, densidad operativa y navegación por subdominios. La pestaña `Marca` dejó de actuar como contenedor monolítico y ahora separa identidad visual, catálogo de planes, productos y cobertura mediante navegación secundaria explícita (`SettingsSubTabs`).
+
+**Cambios principales:**
+
+- `SettingsSubTabs.tsx` — Componente genérico de navegación secundaria (WCAG 2.2 AA, teclado)
+- `settings-branding-navigation.ts` — Constante de 4 ítems con tipado (`BrandingSettingsTabId`)
+- `SettingsSectionPanel.tsx` — Envoltorio reutilizable de sección con título, descripción y toolbar
+- `SettingsClient.tsx` — Orquestador con estado `activeBrandingTab` y renderizado condicional
+- `SettingsOverviewPanel.tsx` — Resumen ejecutivo en grid con señales operacionales
+- `BrandingForm.tsx` — Reorganizado con toolbar; label cambiado a 'Guardar identidad visual'
+- `PlanCatalogManager`, `AdditionalProductsManager`, `AdditionalServicesManager`, `CoverageCheckSection` — Aislados bajo su subdominio activo
+
+**Validación ejecutada:**
+
+- Todos los tests de settings: PASS
+- Typecheck: PASS
+- Lint: PASS
+
+### Addendum documental 2026-05-08 — Plan de refinamiento de inputs en General y Operación
+
+Se documentó un frente específico para que Sr. Dev Fullstack ejecute el refinamiento visual de inputs en `apps/portal:/dashboard/settings`, acotado a las tabs `General` y `Operación`.
+
+Decisión de diseño registrada:
+
+- `General` y `Operación` **no** se fusionan en una sola tab ni en un solo submit.
+- El objetivo ya no es rediseñar todo el módulo, sino mejorar la distribución interna de inputs y la densidad útil de formularios.
+- El patrón aprobado es una grilla flexible de 12 columnas con spans variables.
+- Máximo 3 campos cortos por fila en desktop amplio; campos largos mantienen spans de 6 o 12 columnas.
+- `CompanyProfileForm` debe reorganizarse por grupos temáticos (`Perfil y contacto`, `Identificación y ubicación`).
+- `OperationalSettingsForm` mantiene sus grupos (`Ubicación`, `Preferencias`), pero mejora proporción entre `Zona horaria` y campos cortos.
+
+Artefactos creados para ejecución fullstack:
+
+- `docs/plans/PLAN-TRANSVERSAL-PORTAL-SETTINGS-LAYOUT-INPUTS-v1.0.md`
+- `docs/prompts/PROMPT-TRANSVERSAL-PORTAL-SETTINGS-LAYOUT-INPUTS-v1.0.md`
+
+Relación con el rediseño previo:
+
+- Este frente **no reemplaza** el histórico documental del rediseño amplio de settings.
+- Sí lo **acota operativamente** para la siguiente ejecución, dejando fuera nuevas iteraciones sobre overview, `Marca` o cambios de navegación adicional.
+
+Estado operativo: listo para ejecución por Sr. Dev Fullstack. En esta fase no se implementó código; se dejó trazado el alcance exacto, archivos objetivo, restricciones, validaciones y criterio de salida.
+
+### Addendum correctivo 2026-05-08 — Ejecución del refinamiento de inputs en settings portal
+
+Se ejecutó el plan de refinamiento visual sobre `apps/portal:/dashboard/settings`, limitado a las tabs `General` y `Operación`, manteniendo tabs separadas, submits independientes y contratos backend intactos.
+
+Cambios implementados:
+
+- `apps/portal/src/components/settings/CompanyProfileForm.tsx`
+  - la grilla editable dejó de ser plana y pasó a organizarse por dos bloques temáticos: `Perfil y contacto` y `Identificación y ubicación`;
+  - se adoptó una grilla flexible con spans variables para separar campos largos (`Correo`, `Razón social`, `Sitio web`) de campos cortos (`NIT`, `DV`, `País legal`).
+- `apps/portal/src/components/settings/OperationalSettingsForm.tsx`
+  - se mantuvieron los grupos `Ubicación` y `Preferencias`;
+  - `Zona horaria` pasó a ocupar mayor ancho visual que `País operativo`, `Idioma` y `Moneda`, tanto en edición como en lectura.
+- `apps/portal/src/components/settings/SettingsClient.spec.tsx`
+  - se agregó una prueba ancla para verificar que `General` y `Operación` siguen exponiendo sus acciones primarias visibles tras el refactor.
+
+Validación ejecutada:
+
+- `pnpm --filter @iwana/portal test -- "src/components/settings" --no-coverage` ✅
+- `pnpm --filter @iwana/portal typecheck` ✅
+- `pnpm --filter @iwana/portal lint` ✅
+
+Resultado:
+
+- `General` conserva su alcance funcional, pero ahora se percibe como formulario empresarial más escaneable y menos lineal.
+- `Operación` mejora proporción visual sin cambiar comportamiento.
+- No se tocaron DTOs, endpoints, permisos ni ownership de campos.
+
+Deuda residual:
+
+- Validación visual manual recomendada en `1440x900`, `1024x768` y `390x844` para afinar spans si operación considera que `NIT/DV/País legal` aún puede compactarse o soltarse un poco más según datos reales.

@@ -78,37 +78,160 @@ describe('StatusTransitionService', () => {
     expect(result).toEqual({ valid: false, missingFields: ['Plan de interés seleccionado'] });
   });
 
-  it('rechaza CLIENTE_ACTIVO si la completitud no cumple', async () => {
+  it('permite CLIENTE_ACTIVO con advertencia cuando solo faltan soportes documentales', async () => {
     mockExpediente(buildExpediente({ checklistCompleted: false }));
     completenessCalculatorMock.calculate.mockResolvedValue({
       commercial: 95,
       legal: 80,
       technical: 92,
       operational: 91,
-      overall: 90,
+      overall: 86,
+      sectionCompleteness: [],
+      installationReadiness: {
+        status: 'READY_WITH_PENDING',
+        canTransition: true,
+        title: 'Puedes continuar a instalación con información pendiente',
+        message: 'Hay pendientes.',
+      },
+      missingRequirements: [
+        {
+          sectionKey: 'documentSupport',
+          sectionLabel: 'Soportes documentales',
+          fieldKey: 'identity_document',
+          fieldLabel: 'Copia de documento de identidad',
+        },
+      ],
     });
 
     const result = await service.validateTransition('exp-4', ExpedienteStatus.CLIENTE_ACTIVO);
 
-    expect(result.valid).toBe(false);
-    expect(result.missingFields).toEqual(
-      expect.arrayContaining(['Completitud >= 90% en las 4 dimensiones', 'Checklist completo']),
-    );
+    expect(result).toEqual({
+      valid: true,
+      warningTitle: 'Soportes documentales pendientes',
+      warningMessage:
+        'El expediente puede avanzar a Cliente activo. Los soportes documentales están pendientes y deben gestionarse lo antes posible.',
+      missingRequirements: [
+        {
+          sectionKey: 'documentSupport',
+          sectionLabel: 'Soportes documentales',
+          fieldKey: 'identity_document',
+          fieldLabel: 'Copia de documento de identidad',
+        },
+      ],
+    });
   });
 
-  it('permite CLIENTE_ACTIVO cuando las cuatro dimensiones cumplen (aunque checklist esté en false)', async () => {
+  it('permite CLIENTE_ACTIVO cuando el expediente llega al 100%', async () => {
     mockExpediente(buildExpediente({ checklistCompleted: false }));
     completenessCalculatorMock.calculate.mockResolvedValue({
       commercial: 95,
       legal: 92,
       technical: 91,
       operational: 93,
-      overall: 93,
+      overall: 100,
+      sectionCompleteness: [],
+      installationReadiness: {
+        status: 'READY_COMPLETE',
+        canTransition: true,
+        title: 'Expediente completo para instalación',
+        message: 'Todo listo.',
+      },
+      missingRequirements: [],
     });
 
     const result = await service.validateTransition('exp-5', ExpedienteStatus.CLIENTE_ACTIVO);
 
     expect(result).toEqual({ valid: true });
+  });
+
+  it('bloquea LISTO_PARA_INSTALACION cuando la completitud general es menor a 75%', async () => {
+    mockExpediente(buildExpediente());
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 40,
+      legal: 20,
+      technical: 60,
+      operational: 10,
+      overall: 71,
+      sectionCompleteness: [],
+      installationReadiness: {
+        status: 'NOT_READY',
+        canTransition: false,
+        title: 'Información insuficiente para continuar a instalación',
+        message: 'Completa más información.',
+      },
+      missingRequirements: [
+        {
+          sectionKey: 'customerInterest',
+          sectionLabel: 'Interés del cliente',
+          fieldKey: 'interestedPlanId',
+          fieldLabel: 'Plan de interés',
+        },
+      ],
+    });
+
+    const result = await service.validateTransition(
+      'exp-listo-bloqueado',
+      ExpedienteStatus.LISTO_PARA_INSTALACION,
+    );
+
+    expect(result).toEqual({
+      valid: false,
+      errorMessage: 'Completa más información.',
+      missingFields: ['Interés del cliente: Plan de interés'],
+      missingRequirements: [
+        {
+          sectionKey: 'customerInterest',
+          sectionLabel: 'Interés del cliente',
+          fieldKey: 'interestedPlanId',
+          fieldLabel: 'Plan de interés',
+        },
+      ],
+    });
+  });
+
+  it('permite LISTO_PARA_INSTALACION con advertencia cuando supera el 75% y quedan faltantes', async () => {
+    mockExpediente(buildExpediente());
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 90,
+      legal: 75,
+      technical: 100,
+      operational: 60,
+      overall: 82,
+      sectionCompleteness: [],
+      installationReadiness: {
+        status: 'READY_WITH_PENDING',
+        canTransition: true,
+        title: 'Puedes continuar a instalación con información pendiente',
+        message: 'Hay faltantes por cerrar.',
+      },
+      missingRequirements: [
+        {
+          sectionKey: 'documentSupport',
+          sectionLabel: 'Soportes documentales',
+          fieldKey: 'utility_bill',
+          fieldLabel: 'Recibo de servicio público',
+        },
+      ],
+    });
+
+    const result = await service.validateTransition(
+      'exp-listo-warning',
+      ExpedienteStatus.LISTO_PARA_INSTALACION,
+    );
+
+    expect(result).toEqual({
+      valid: true,
+      warningTitle: 'Puedes continuar a instalación con información pendiente',
+      warningMessage: 'Hay faltantes por cerrar.',
+      missingRequirements: [
+        {
+          sectionKey: 'documentSupport',
+          sectionLabel: 'Soportes documentales',
+          fieldKey: 'utility_bill',
+          fieldLabel: 'Recibo de servicio público',
+        },
+      ],
+    });
   });
 
   it('permite transicion no-op cuando el target coincide con el estado actual', async () => {

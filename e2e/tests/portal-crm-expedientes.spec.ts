@@ -54,6 +54,15 @@ const mockExpediente = {
   updatedAt: '2026-03-26T12:00:00.000Z',
 };
 
+const convertedExpediente = {
+  ...mockExpediente,
+  id: '22222222-2222-4222-8222-222222222222',
+  status: 'INSTALACION_AGENDADA' as const,
+  fullName: 'Empresa convertida SAS',
+  firstName: null,
+  lastName: null,
+};
+
 const mockResponsibility = {
   currentResponsibleUserId: 'user-uuid-admin-test',
   currentResponsibleAssignedAt: '2026-03-26T10:30:00.000Z',
@@ -117,6 +126,87 @@ async function setupCrmMocks(page: import('@playwright/test').Page) {
   let contactAttemptCreated = false;
   let consentRevoked = false;
   const capturedCommercialCatalogRequests: string[] = [];
+  type MockDocumentSupportVersion = {
+    id: string;
+    fileName: string;
+    mimeType: string;
+    sizeBytes: number;
+    uploadedAt: string;
+    uploadedBy: string;
+    status: 'PENDING' | 'UPLOADED' | 'OBSERVED' | 'APPROVED' | 'REJECTED';
+    note: string | null;
+    downloadUrl: string;
+  };
+  type MockDocumentSupportItem = {
+    key: string;
+    label: string;
+    hint: string;
+    versions: MockDocumentSupportVersion[];
+  };
+
+  const buildDocumentSupportVersion = (
+    overrides: Partial<MockDocumentSupportVersion>,
+  ): MockDocumentSupportVersion => ({
+    id: overrides.id ?? 'version-1',
+    fileName: overrides.fileName ?? 'documento.pdf',
+    mimeType: overrides.mimeType ?? 'application/pdf',
+    sizeBytes: overrides.sizeBytes ?? 2048,
+    uploadedAt: overrides.uploadedAt ?? '2026-03-26T12:00:00.000Z',
+    uploadedBy: overrides.uploadedBy ?? 'Equipo operaciones',
+    status: overrides.status ?? 'UPLOADED',
+    note: overrides.note ?? null,
+    downloadUrl: overrides.downloadUrl ?? 'https://example.test/documento.pdf',
+  });
+
+  const buildDocumentSupportPayload = (items: MockDocumentSupportItem[]) => {
+    const uploadedCount = items.filter((item) => item.versions.length > 0).length;
+    const approvedCount = items.filter((item) => item.versions[0]?.status === 'APPROVED').length;
+    const blockStatus =
+      items.length > 0 && approvedCount === items.length
+        ? 'COMPLETO'
+        : items.some((item) => ['OBSERVED', 'REJECTED'].includes(item.versions[0]?.status ?? ''))
+          ? 'OBSERVADO'
+          : uploadedCount > 0
+            ? 'EN_REVISION'
+            : 'PENDIENTE';
+
+    return {
+      data: {
+        personType: mockExpediente.personType,
+        items,
+        summary: {
+          requiredCount: items.length,
+          uploadedCount,
+          approvedCount,
+          blockStatus,
+        },
+      },
+    };
+  };
+
+  let documentSupportItems: MockDocumentSupportItem[] = [
+    {
+      key: 'cedula_ciudadania',
+      label: 'Cédula de ciudadanía',
+      hint: 'Documento principal del titular',
+      versions: [
+        buildDocumentSupportVersion({
+          id: 'version-actual',
+          fileName: 'documento-vigente.pdf',
+          uploadedAt: '2026-03-26T12:00:00.000Z',
+          status: 'UPLOADED',
+          downloadUrl: 'https://example.test/documento-vigente.pdf',
+        }),
+        buildDocumentSupportVersion({
+          id: 'version-previa',
+          fileName: 'documento-anterior.pdf',
+          uploadedAt: '2026-03-25T09:30:00.000Z',
+          status: 'APPROVED',
+          downloadUrl: 'https://example.test/documento-anterior.pdf',
+        }),
+      ],
+    },
+  ];
 
   await page.route('**/api/v1/**', async (route) => {
     const url = route.request().url();
@@ -252,7 +342,7 @@ async function setupCrmMocks(page: import('@playwright/test').Page) {
             EN_COTIZACION: 0,
             PENDIENTE_DECISION: 0,
             LISTO_PARA_INSTALACION: 0,
-            INSTALACION_AGENDADA: 0,
+            INSTALACION_AGENDADA: 1,
             CLIENTE_ACTIVO: 0,
             DESCARTADO: 0,
           },
@@ -262,15 +352,21 @@ async function setupCrmMocks(page: import('@playwright/test').Page) {
       return;
     }
 
-    if (pathname.endsWith('/crm/expedientes') && method === 'GET' && url.includes('?')) {
-      capturedExpedientesQuery = new URL(url).search;
+    if (pathname.endsWith('/crm/expedientes') && method === 'GET') {
+      const urlObj = new URL(url);
+      capturedExpedientesQuery = urlObj.search;
+      const view = urlObj.searchParams.get('view') ?? 'open';
+      const expedientesByView: Record<string, (typeof mockExpediente)[]> = {
+        open: [mockExpediente],
+        converted: [convertedExpediente],
+        archive: [],
+        all: [mockExpediente, convertedExpediente],
+      };
+      const data = expedientesByView[view] ?? [mockExpediente];
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          data: [mockExpediente],
-          total: 1,
-        }),
+        body: JSON.stringify({ data, total: data.length }),
       });
       return;
     }
@@ -520,6 +616,43 @@ async function setupCrmMocks(page: import('@playwright/test').Page) {
     }
 
     if (
+      pathname.endsWith(`/crm/expedientes/${mockExpediente.id}/document-supports`) &&
+      method === 'GET'
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(buildDocumentSupportPayload(documentSupportItems)),
+      });
+      return;
+    }
+
+    if (
+      pathname.includes(`/crm/expedientes/${mockExpediente.id}/document-supports/`) &&
+      method === 'DELETE'
+    ) {
+      const segments = pathname.split('/');
+      const documentKey = decodeURIComponent(segments[segments.length - 2] ?? '');
+      const versionId = decodeURIComponent(segments[segments.length - 1] ?? '');
+
+      documentSupportItems = documentSupportItems.map((item) =>
+        item.key === documentKey
+          ? {
+              ...item,
+              versions: item.versions.filter((version) => version.id !== versionId),
+            }
+          : item,
+      );
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(buildDocumentSupportPayload(documentSupportItems)),
+      });
+      return;
+    }
+
+    if (
       pathname.includes(`/crm/expedientes/${mockExpediente.id}/sections/`) &&
       method === 'PATCH'
     ) {
@@ -566,6 +699,57 @@ async function setupCrmMocks(page: import('@playwright/test').Page) {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ data: mockExpediente }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith(`/crm/expedientes/${convertedExpediente.id}`) && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            ...convertedExpediente,
+            subscriberSummary: {
+              id: 'sub-1',
+              status: 'PROSPECT',
+              fullName: 'Empresa convertida SAS',
+            },
+          },
+          completeness: {
+            commercial: 80,
+            legal: 60,
+            technical: 50,
+            operational: 40,
+            overall: 58,
+          },
+        }),
+      });
+      return;
+    }
+
+    // Sub-endpoints del expediente convertido: respuestas mínimas válidas
+    // (el test de conversión solo valida el banner, no los datos secundarios)
+    if (pathname.includes(`/crm/expedientes/${convertedExpediente.id}/`) && method === 'GET') {
+      const isTimeline = pathname.endsWith('/timeline');
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(
+          isTimeline
+            ? {
+                data: {
+                  changes: [],
+                  activities: [],
+                  metadata: {
+                    createdBy: { userId: null, name: null },
+                    lastEditedBy: { userId: null, name: null },
+                    lastActivityAt: null,
+                  },
+                },
+              }
+            : { data: null },
+        ),
       });
       return;
     }
@@ -721,6 +905,35 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     });
   });
 
+  test('CRM permite eliminar un soporte cargado por error y reactivar la versión previa', async ({
+    page,
+  }) => {
+    await setupCrmMocks(page);
+    await setAuthSession(page);
+    await page.goto(`/dashboard/crm/expedientes/${mockExpediente.id}`);
+    await page.waitForLoadState('networkidle');
+
+    await page.getByRole('button', { name: 'Gestión' }).click();
+    await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
+
+    await page.getByRole('button', { name: /soportes documentales/i }).click();
+    await expect(page.getByText('Soportes requeridos para persona natural')).toBeVisible();
+    await expect(page.getByText('documento-vigente.pdf')).toBeVisible();
+
+    page.once('dialog', async (dialog) => {
+      expect(dialog.message()).toContain('documento-vigente.pdf');
+      await dialog.accept();
+    });
+
+    await page
+      .getByRole('button', { name: 'Eliminar versión actual de Cédula de ciudadanía' })
+      .click();
+
+    await expect(page.getByText('documento-anterior.pdf')).toBeVisible();
+    await expect(page.getByText('documento-vigente.pdf')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /ver historial \(1\)/i })).toBeVisible();
+  });
+
   test('CRM detalle carga plan y productos adicionales desde CommercialModule', async ({
     page,
   }) => {
@@ -782,5 +995,32 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await expect(page.getByLabel('Cargo del contacto')).toBeVisible();
 
     Object.assign(mockExpediente, original);
+  });
+
+  test('permite navegar entre bandejas y ver banner de conversión en detalle', async ({ page }) => {
+    await setupCrmMocks(page);
+    await setAuthSession(page);
+    await page.goto('/dashboard/crm/expedientes');
+
+    // Esperar a que carguen las pestañas de la lista operativa
+    await expect(page.getByRole('button', { name: /abiertas/i })).toBeVisible();
+    await expect(page.getByText('Empresa Demo SAS')).toBeVisible();
+
+    // Navegar a Convertidas
+    await page.getByRole('button', { name: /convertidas/i }).click();
+    await expect(page.getByText('Empresa convertida SAS')).toBeVisible();
+
+    // Abrir detalle del expediente convertido
+    await page.getByRole('link', { name: /empresa convertida sas/i }).click();
+
+    // Banner de conversión visible
+    await expect(page.getByText('Este expediente ya fue convertido a suscriptor.')).toBeVisible();
+
+    // CTA hacia el suscriptor
+    await expect(page.getByRole('link', { name: 'Ir al suscriptor' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Ir al suscriptor' })).toHaveAttribute(
+      'href',
+      '/dashboard/crm/subscribers/sub-1',
+    );
   });
 });

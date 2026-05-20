@@ -11,7 +11,6 @@ import {
   CircleDashed,
   User,
   FileText,
-  Filter,
   Loader2,
   MapPin,
   Plus,
@@ -21,19 +20,43 @@ import {
   ApiError,
   crmApi,
   ExpedienteRecord,
-  ExpedienteStatus,
+  ExpedienteListView,
   usersApi,
   InternalUser,
 } from '@/lib/api-client';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   ACQUISITION_CHANNEL_OPTIONS,
-  EXPEDIENTE_STATUS_META,
   getStatusMeta,
   formatAcquisitionChannel,
   formatCrmDate,
   formatMunicipio,
 } from '@/components/crm/expedientes/expediente-ui';
+import {
+  getDefaultExpedienteView,
+  getExpedienteViewLabel,
+  getOriginViewFromStatus,
+} from '@/components/crm/expedientes/expediente-list-view';
+
+const OPEN_STATUSES = [
+  'NUEVO_POTENCIAL',
+  'PRECALIFICADO',
+  'VALIDANDO_COBERTURA',
+  'EN_COTIZACION',
+  'LISTO_PARA_INSTALACION',
+] as const;
+const CONVERTED_STATUSES = ['INSTALACION_AGENDADA'] as const;
+const ARCHIVE_STATUSES = ['CLIENTE_ACTIVO', 'DESCARTADO'] as const;
+
+function getTabCount(
+  view: 'open' | 'converted' | 'archive',
+  summary: Record<string, number>,
+): number {
+  if (view === 'open') return OPEN_STATUSES.reduce((sum, k) => sum + (summary[k] ?? 0), 0);
+  if (view === 'converted')
+    return CONVERTED_STATUSES.reduce((sum, k) => sum + (summary[k] ?? 0), 0);
+  return ARCHIVE_STATUSES.reduce((sum, k) => sum + (summary[k] ?? 0), 0);
+}
 
 function validateCreateValues(values: {
   fullName: string;
@@ -82,7 +105,9 @@ export default function ExpedientesPage() {
   const [expedientes, setExpedientes] = useState<ExpedienteRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<ExpedienteStatus | ''>('');
+  const [activeView, setActiveView] = useState<ExpedienteListView>(getDefaultExpedienteView());
+  const [globalSearchEnabled, setGlobalSearchEnabled] = useState(false);
+  const [summary, setSummary] = useState<Record<string, number>>({});
   const [search, setSearch] = useState('');
   const [documentNumber, setDocumentNumber] = useState('');
   const [createValues, setCreateValues] = useState({
@@ -94,48 +119,61 @@ export default function ExpedientesPage() {
   const [error, setError] = useState<string | null>(null);
   const [employees, setEmployees] = useState<InternalUser[]>([]);
 
-  useEffect(() => {
-    void loadExpedientes();
-    void loadEmployees();
-  }, [statusFilter, search, documentNumber]);
+  // Vista efectiva: all cuando hay búsqueda global activa con texto, sino la pestaña activa
+  const effectiveView: ExpedienteListView =
+    globalSearchEnabled && (search.trim() || documentNumber.trim()) ? 'all' : activeView;
 
-  const loadExpedientes = async (silent = false) => {
+  const loadData = async (silent = false) => {
     try {
-      if (!silent) {
-        setLoading(true);
-      }
+      if (!silent) setLoading(true);
       setError(null);
+      const currentEffectiveView: ExpedienteListView =
+        globalSearchEnabled && (search.trim() || documentNumber.trim()) ? 'all' : activeView;
       const filters: {
-        status?: ExpedienteStatus;
+        view: ExpedienteListView;
         search?: string;
         documentNumber?: string;
         limit: number;
-      } = { limit: 100 };
-      if (statusFilter) filters.status = statusFilter as ExpedienteStatus;
+      } = { view: currentEffectiveView, limit: 100 };
       if (search) filters.search = search;
       if (documentNumber.trim()) filters.documentNumber = documentNumber.trim();
 
-      const response = await crmApi.listExpedientes(filters);
-      setExpedientes(response.data);
-      setTotal(response.total);
+      const [summaryRes, listRes] = await Promise.all([
+        crmApi.getPipelineSummary(),
+        crmApi.listExpedientes(filters),
+      ]);
+      setSummary(summaryRes.data);
+      setExpedientes(listRes.data);
+      setTotal(listRes.total);
     } catch (err) {
       console.error('Error loading expedientes:', err);
       setError('No fue posible cargar las oportunidades de la empresa.');
     } finally {
-      if (!silent) {
-        setLoading(false);
-      }
+      if (!silent) setLoading(false);
     }
   };
 
-  const loadEmployees = async () => {
-    try {
-      const response = await usersApi.list({ status: 'ACTIVE', limit: 200 });
-      setEmployees(response.data);
-    } catch {
-      // Si no se pueden cargar los empleados, el dropdown queda vacío pero no bloquea el formulario
-    }
-  };
+  useEffect(() => {
+    void loadData();
+  }, [activeView, globalSearchEnabled, search, documentNumber]);
+
+  useEffect(() => {
+    const loadEmployees = async () => {
+      try {
+        let cursor: string | undefined;
+        const all: InternalUser[] = [];
+        do {
+          const resp = await usersApi.list({ limit: 200, ...(cursor ? { cursor } : {}) });
+          all.push(...resp.data);
+          cursor = resp.meta.nextCursor ?? undefined;
+        } while (cursor);
+        setEmployees(all);
+      } catch {
+        // Si no se pueden cargar los empleados, el dropdown queda vacío pero no bloquea el formulario
+      }
+    };
+    void loadEmployees();
+  }, []);
 
   const handleCreateNew = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -170,7 +208,7 @@ export default function ExpedientesPage() {
       }
 
       setCreateValues({ fullName: '', acquisitionChannel: 'OTRO', originadorId: '' });
-      await loadExpedientes();
+      await loadData();
     } catch (err) {
       console.error('Error creating expediente:', err);
       setError(
@@ -184,6 +222,24 @@ export default function ExpedientesPage() {
       setCreating(false);
     }
   };
+
+  const handleGlobalSearch = () => {
+    // Solo activa la búsqueda global si hay texto en alguno de los campos
+    if (!search.trim() && !documentNumber.trim()) return;
+    setGlobalSearchEnabled(true);
+  };
+
+  const handleClearFilters = () => {
+    setSearch('');
+    setDocumentNumber('');
+    setGlobalSearchEnabled(false);
+  };
+
+  const tabs = [
+    { view: 'open' as const },
+    { view: 'converted' as const },
+    { view: 'archive' as const },
+  ];
 
   return (
     <div className="space-y-6 pb-6">
@@ -229,7 +285,7 @@ export default function ExpedientesPage() {
                   htmlFor="expediente-originador"
                   className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200"
                 >
-                  Origenador
+                  Originador
                 </label>
                 <Select
                   id="expediente-originador"
@@ -300,30 +356,39 @@ export default function ExpedientesPage() {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)_220px_auto] lg:items-end">
-            <div>
-              <label
-                htmlFor="expediente-status-filter"
-                className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300"
-              >
-                <Filter className="h-4 w-4 text-iwana-secondary-700" aria-hidden="true" />
-                Estado
-              </label>
-              <Select
-                id="expediente-status-filter"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as ExpedienteStatus | '')}
-                className="h-10"
-              >
-                <option value="">Todos los estados</option>
-                {Object.entries(EXPEDIENTE_STATUS_META).map(([value, meta]) => (
-                  <option key={value} value={value}>
-                    {meta.label}
-                  </option>
-                ))}
-              </Select>
-            </div>
+          {/* Pestañas de vista operacional */}
+          <div className="mb-4 flex gap-1 border-b border-gray-100 dark:border-dark-border">
+            {tabs.map(({ view }) => {
+              const label = getExpedienteViewLabel(view);
+              const count = getTabCount(view, summary);
+              const isActive = activeView === view && !globalSearchEnabled;
+              return (
+                <button
+                  key={view}
+                  type="button"
+                  onClick={() => {
+                    setActiveView(view);
+                    setGlobalSearchEnabled(false);
+                  }}
+                  className={`flex items-center gap-2 rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'border-b-2 border-iwana-primary text-iwana-primary dark:text-iwana-secondary'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                  }`}
+                >
+                  <span>{label}</span>
+                  {count > 0 && (
+                    <span className="rounded-full bg-iwana-primary/10 px-1.5 py-0.5 text-xs text-iwana-primary dark:bg-iwana-primary/20 dark:text-iwana-secondary">
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
 
+          {/* Filtros de búsqueda */}
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px_auto_auto] lg:items-end">
             <div className="relative">
               <span
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
@@ -348,16 +413,16 @@ export default function ExpedientesPage() {
               placeholder="Número de documento"
             />
 
+            <Button type="button" variant="secondary" onClick={handleGlobalSearch}>
+              Buscar en todo CRM
+            </Button>
+
             <div className="flex justify-start lg:justify-end">
               <Button
                 type="button"
                 variant="ghost"
-                disabled={!statusFilter && !search && !documentNumber}
-                onClick={() => {
-                  setStatusFilter('');
-                  setSearch('');
-                  setDocumentNumber('');
-                }}
+                disabled={!search && !documentNumber && !globalSearchEnabled}
+                onClick={handleClearFilters}
               >
                 Limpiar filtros
               </Button>
@@ -392,11 +457,20 @@ export default function ExpedientesPage() {
               </div>
               <div className="space-y-1">
                 <h2 className="text-base font-semibold text-gray-900 dark:text-white">
-                  Pipeline sin oportunidades activas
+                  {effectiveView === 'open' && 'Pipeline sin oportunidades activas'}
+                  {effectiveView === 'converted' && 'Sin expedientes convertidos en transición'}
+                  {effectiveView === 'archive' && 'Sin histórico comercial cerrado'}
+                  {effectiveView === 'all' && 'No se encontraron resultados para la búsqueda'}
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Registra la primera oportunidad para habilitar seguimiento, calificación y cierre
-                  comercial.
+                  {effectiveView === 'open' &&
+                    'Registra la primera oportunidad para habilitar seguimiento, calificación y cierre comercial.'}
+                  {effectiveView === 'converted' &&
+                    'Las oportunidades en proceso de instalación aparecerán aquí.'}
+                  {effectiveView === 'archive' &&
+                    'Los expedientes cerrados y convertidos a clientes se mostrarán en este historial.'}
+                  {effectiveView === 'all' &&
+                    'Ajusta los términos de búsqueda para encontrar resultados.'}
                 </p>
               </div>
             </div>
@@ -464,6 +538,11 @@ export default function ExpedientesPage() {
                           <Badge variant={getStatusMeta(expediente.status).variant}>
                             {getStatusMeta(expediente.status).label}
                           </Badge>
+                          {effectiveView === 'all' && (
+                            <Badge variant="neutral" className="mt-1 block w-fit">
+                              {getExpedienteViewLabel(getOriginViewFromStatus(expediente.status))}
+                            </Badge>
+                          )}
                         </td>
                         <td className="px-5 py-4 text-gray-700 dark:text-gray-200">
                           <Badge variant="primary">

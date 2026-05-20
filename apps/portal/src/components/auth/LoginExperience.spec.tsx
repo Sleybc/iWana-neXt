@@ -42,11 +42,18 @@ jest.mock('./LoginForm', () => ({
     tenantSlug: string;
     tenantLocked: boolean;
     onTenantSlugChange: (value: string) => void;
+    onTenantSlugCommit?: (value: string) => void;
   }) => (
     <div>
       <input aria-label="tenant-prop" readOnly value={props.tenantSlug} />
       <input aria-label="tenant-locked-prop" readOnly value={String(props.tenantLocked)} />
-      <button type="button" onClick={() => props.onTenantSlugChange('  ISP-DEMO  ')}>
+      <button
+        type="button"
+        onClick={() => {
+          props.onTenantSlugChange('  ISP-DEMO  ');
+          props.onTenantSlugCommit?.('  ISP-DEMO  ');
+        }}
+      >
         actualizar tenant
       </button>
     </div>

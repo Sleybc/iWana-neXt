@@ -72,7 +72,7 @@ El pipeline actual tiene 12 estados. Tras análisis, se consolidan a **8 estados
 
 Pipeline consolidado:
 
-```
+```text
 NUEVO_POTENCIAL → PRECALIFICADO → VALIDANDO_COBERTURA → EN_COTIZACION
      → LISTO_PARA_INSTALACION → INSTALACION_AGENDADA → CLIENTE_ACTIVO
      → DESCARTADO (desde cualquier estado, reactivable)
@@ -408,7 +408,7 @@ export enum ExpedienteStatus {
 
 ### 7.1 CRUD Subscriber
 
-```
+```text
 POST   /api/v1/subscribers                    # Crear subscriber (Natural o Jurídica)
 GET    /api/v1/subscribers                    # Listar con filtros + paginación
 GET    /api/v1/subscribers/:id                # Detalle (PII descifrada)
@@ -418,25 +418,25 @@ DELETE /api/v1/subscribers/:id                 # Soft delete
 
 ### 7.2 Transiciones de estado
 
-```
+```text
 PATCH  /api/v1/subscribers/:id/status          # Cambiar estado con motivo
 ```
 
 ### 7.3 Búsqueda
 
-```
+```text
 GET    /api/v1/subscribers/search?documentNumber=xxx&nit=xxx&email=xxx&name=xxx
 ```
 
 ### 7.4 Ficha 360°
 
-```
+```text
 GET    /api/v1/subscribers/:id/360             # Agregación: datos + contacts + contracts + habeas data + stubs
 ```
 
 ### 7.5 Integración con Expediente (interno)
 
-```
+```text
 Event: subscriber.created
 Payload: { subscriberId, tenantId, schemaName, expedienteId, personType, customerSegment, vatTreatment }
 ```

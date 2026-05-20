@@ -8,6 +8,8 @@ export {
   ExecutionPolicyReadPort,
   type ExecutionPolicySnapshot,
 } from './execution-policy-read.port';
+export { CrmActorReadPort, type CrmActorSnapshot } from './crm-actor-read.port';
+export { CrmQuoteReadPort, type CrmQuoteSnapshot } from './crm-quote-read.port';
 export { TicketReferencePort, type TicketReference } from './ticket-reference.port';
 export { WorkOrderReferencePort, type WorkOrderReference } from './work-order-reference.port';
 export {

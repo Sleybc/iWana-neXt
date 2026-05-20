@@ -3,10 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as crypto from 'crypto';
-import { access, mkdir, writeFile } from 'node:fs/promises';
+import { access, mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 import { DataSource, In, Like } from 'typeorm';
-import { AuditLog, PlatformUser, runInTenantSchema, TenantContext, User } from '@iwana/db';
+import { AuditLog, runInTenantSchema, TenantContext } from '@iwana/db';
+import { ExpedienteListView, resolveExpedienteStatusesForView } from './expediente-list-view';
 import {
   AcquisitionChannel,
   AuditAction,
@@ -14,6 +15,7 @@ import {
   ConsentType,
   ConsentChannel,
   ExpedienteStatus,
+  SubscriberStatus,
   TechnicalViabilityResult,
 } from '@iwana/shared';
 
@@ -25,17 +27,33 @@ import { ConsentRecord } from './entities/consent-record-v2.entity';
 import { CoverageCheck } from './entities/coverage-check.entity';
 import { AuditService } from '../../audit/audit.service';
 import { CompletenessCalculator } from './completeness-calculator.service';
+import { CrmActorReadPort } from '../ports/crm-actor-read.port';
 import {
   ExpedienteActivatedEvent,
   ExpedienteDiscardedEvent,
   ExpedienteReadyForInstallationEvent,
 } from './events/expediente-pipeline.events';
+
+// TODO: mover a expediente-pipeline.events.ts cuando se estandarice tenantSlug en todos los eventos
+class ExpedienteInstallationScheduledEvent {
+  constructor(
+    public readonly tenantId: string,
+    public readonly schemaName: string,
+    public readonly tenantSlug: string,
+    public readonly expedienteId: string,
+    public readonly actorUserId: string,
+  ) {}
+}
 import { CreateExpedienteDto } from './dto/create-expediente.dto';
 import { UpdateSectionDto, ExpedienteSection } from './dto/update-section.dto';
 import { TransitionStatusDto } from './dto/transition-status.dto';
 import { CreateContactAttemptDto } from './dto/create-contact-attempt.dto';
 import { CreateConsentDto, CONSENT_LEGAL_VERSION } from './dto/create-consent.dto';
 import { CreateCoverageCheckDto } from './dto/create-coverage-check.dto';
+import {
+  LinkInstallationOperationalRefsDto,
+  LinkInstallationOperationalRefsSchema,
+} from './dto/link-installation-operational-refs.dto';
 import { OperationalResponsibilityHistory } from '../responsibilities/entities/operational-responsibility-history.entity';
 import {
   DOCUMENT_SUPPORT_STATUS,
@@ -47,6 +65,11 @@ import {
   type StoredDocumentSupportMap,
   type StoredDocumentSupportVersion,
 } from './document-support.types';
+import {
+  evaluateProvisioningReadiness,
+  isBlockingLegalComplianceStatus,
+} from '../provisioning-readiness';
+import { SubscribersService } from '../subscribers/subscribers.service';
 
 export interface ExpedienteTimelineActor {
   userId: string | null;
@@ -167,6 +190,19 @@ const SECTION_FIELD_LABELS: Record<string, string> = {
   requiredMaterials: 'Materiales requeridos',
 };
 
+const DOCUMENT_SUPPORT_PERSON_TYPE_ALIASES: Readonly<
+  Record<string, 'PERSONA_NATURAL' | 'PERSONA_JURIDICA'>
+> = {
+  PERSONA_NATURAL: 'PERSONA_NATURAL',
+  NATURAL: 'PERSONA_NATURAL',
+  PERSONANATURAL: 'PERSONA_NATURAL',
+  TIPO_PERSONA_NATURAL: 'PERSONA_NATURAL',
+  PERSONA_JURIDICA: 'PERSONA_JURIDICA',
+  JURIDICA: 'PERSONA_JURIDICA',
+  PERSONAJURIDICA: 'PERSONA_JURIDICA',
+  TIPO_PERSONA_JURIDICA: 'PERSONA_JURIDICA',
+};
+
 /**
  * Servicio para gestionar el Expediente Único Progresivo
  * PRD v2.0 §4.1
@@ -182,7 +218,9 @@ export class ExpedienteService {
     private readonly configService: ConfigService,
     private readonly auditService: AuditService,
     private readonly completenessCalculator: CompletenessCalculator,
+    private readonly crmActorReadPort: CrmActorReadPort,
     private readonly eventEmitter: EventEmitter2,
+    private readonly subscribersService: SubscribersService,
   ) {
     const keyHex = this.configService.getOrThrow<string>('MFA_ENCRYPTION_KEY');
     this.encryptionKey = Buffer.from(keyHex, 'hex');
@@ -199,9 +237,11 @@ export class ExpedienteService {
     personTypeOverride?: string | null,
   ): Promise<ExpedienteDocumentSupportResponseDto> {
     const expediente = await this.findById(id);
-    // Usar el override si se envía desde el frontend (cuando identificación no ha sido guardada aún)
-    const resolvedPersonType = personTypeOverride || expediente.personType;
-    return this.buildDocumentSupportResponse(id, resolvedPersonType, expediente.documentSupports);
+    return this.buildDocumentSupportResponse(
+      id,
+      this.resolveEffectiveDocumentPersonType(expediente.personType, personTypeOverride),
+      expediente.documentSupports,
+    );
   }
 
   async uploadDocumentSupport(
@@ -209,10 +249,18 @@ export class ExpedienteService {
     documentKey: string,
     file: UploadedDocumentFile,
     actorUserId: string,
+    personTypeOverride?: string | null,
   ): Promise<ExpedienteDocumentSupportResponseDto> {
     const { schemaName } = TenantContext.getOrThrow();
     const expediente = await this.findById(id);
-    const definitions = getDocumentDefinitionsByPersonType(expediente.personType);
+    const effectivePersonType = this.resolveEffectiveDocumentPersonType(
+      expediente.personType,
+      personTypeOverride,
+    );
+    const definitions = this.getDocumentDefinitionsForOperation(
+      expediente.personType,
+      personTypeOverride,
+    );
     const documentDefinition = this.requireDocumentDefinition(definitions, documentKey);
     this.validateDocumentUpload(file);
 
@@ -260,7 +308,7 @@ export class ExpedienteService {
 
     await this.syncCompleteness(id, schemaName);
 
-    return this.buildDocumentSupportResponse(id, expediente.personType, supports);
+    return this.buildDocumentSupportResponse(id, effectivePersonType, supports);
   }
 
   async updateDocumentSupportStatus(
@@ -270,10 +318,18 @@ export class ExpedienteService {
     status: DocumentSupportStatus,
     actorUserId: string,
     note?: string | null,
+    personTypeOverride?: string | null,
   ): Promise<ExpedienteDocumentSupportResponseDto> {
     const { schemaName } = TenantContext.getOrThrow();
     const expediente = await this.findById(id);
-    const definitions = getDocumentDefinitionsByPersonType(expediente.personType);
+    const effectivePersonType = this.resolveEffectiveDocumentPersonType(
+      expediente.personType,
+      personTypeOverride,
+    );
+    const definitions = this.getDocumentDefinitionsForOperation(
+      expediente.personType,
+      personTypeOverride,
+    );
     const documentDefinition = this.requireDocumentDefinition(definitions, documentKey);
     const supports = this.getNormalizedDocumentSupports(expediente.documentSupports);
     const versions = supports[documentKey]?.versions ?? [];
@@ -314,7 +370,114 @@ export class ExpedienteService {
 
     await this.syncCompleteness(id, schemaName);
 
-    return this.buildDocumentSupportResponse(id, expediente.personType, supports);
+    return this.buildDocumentSupportResponse(id, effectivePersonType, supports);
+  }
+
+  async deleteDocumentSupport(
+    id: string,
+    documentKey: string,
+    versionId: string,
+    actorUserId: string,
+    personTypeOverride?: string | null,
+  ): Promise<ExpedienteDocumentSupportResponseDto> {
+    const { schemaName } = TenantContext.getOrThrow();
+    const expediente = await this.findById(id);
+    const effectivePersonType = this.resolveEffectiveDocumentPersonType(
+      expediente.personType,
+      personTypeOverride,
+    );
+    const definitions = this.getDocumentDefinitionsForOperation(
+      expediente.personType,
+      personTypeOverride,
+    );
+    const documentDefinition = this.requireDocumentDefinition(definitions, documentKey);
+    const supports = this.getNormalizedDocumentSupports(expediente.documentSupports);
+    const versions = supports[documentKey]?.versions ?? [];
+    const targetVersion = versions.find((version) => version.id === versionId);
+
+    if (!targetVersion) {
+      throw new NotFoundException('La versión documental solicitada no existe en este expediente.');
+    }
+
+    const targetFilePath = join(
+      this.documentSupportDir,
+      schemaName,
+      id,
+      documentKey,
+      targetVersion.storedFileName,
+    );
+    const pendingDeleteFilePath = `${targetFilePath}.pending-delete`;
+    let movedToPendingDelete = false;
+
+    try {
+      await rename(targetFilePath, pendingDeleteFilePath);
+      movedToPendingDelete = true;
+    } catch (error) {
+      const isMissingSourceFile =
+        error instanceof Error &&
+        'code' in error &&
+        typeof error.code === 'string' &&
+        error.code === 'ENOENT';
+
+      if (!isMissingSourceFile) {
+        throw error;
+      }
+    }
+
+    const remainingVersions = versions.filter((version) => version.id !== versionId);
+
+    if (remainingVersions.length > 0) {
+      supports[documentKey] = { versions: remainingVersions };
+    } else {
+      delete supports[documentKey];
+    }
+
+    try {
+      await this.persistDocumentSupports(id, schemaName, supports);
+    } catch (error) {
+      if (movedToPendingDelete) {
+        try {
+          await rename(pendingDeleteFilePath, targetFilePath);
+        } catch (rollbackError) {
+          const rollbackMessage =
+            rollbackError instanceof Error ? rollbackError.message : 'Error desconocido';
+          this.logger.error(
+            `No se pudo revertir la eliminación física ${pendingDeleteFilePath} tras fallar la persistencia del soporte documental: ${rollbackMessage}`,
+            rollbackError instanceof Error ? rollbackError.stack : undefined,
+          );
+        }
+      }
+      throw error;
+    }
+
+    if (movedToPendingDelete) {
+      try {
+        // Una vez persistida la eliminación, la limpieza física pasa a ser best-effort.
+        await unlink(pendingDeleteFilePath);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+        this.logger.warn(
+          `No se pudo limpiar el soporte documental ${pendingDeleteFilePath} tras persistir su eliminación: ${errorMessage}`,
+        );
+      }
+    }
+
+    const actorName = await this.resolveActorName(schemaName, actorUserId);
+    await this.auditService.log({
+      action: AuditAction.UPDATE,
+      entityType: 'ExpedienteRecord',
+      entityId: id,
+      userId: actorUserId,
+      newValue: {
+        section: 'document_support',
+        actorName,
+        changedFields: [documentDefinition.key],
+      },
+    });
+
+    await this.syncCompleteness(id, schemaName);
+
+    return this.buildDocumentSupportResponse(id, effectivePersonType, supports);
   }
 
   async getDocumentSupportFile(
@@ -355,7 +518,7 @@ export class ExpedienteService {
    * CA-01
    */
   async create(dto: CreateExpedienteDto, actorUserId: string): Promise<ExpedienteRecord> {
-    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    const { schemaName, tenantId, tenantSlug } = TenantContext.getOrThrow();
     const now = new Date();
 
     const created = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
@@ -433,6 +596,7 @@ export class ExpedienteService {
     assignedTo?: string | undefined;
     documentNumber?: string | undefined;
     includeCompleted?: boolean | undefined;
+    view?: ExpedienteListView | undefined;
     page?: number | undefined;
     limit?: number | undefined;
   }): Promise<{ data: ExpedienteRecord[]; total: number }> {
@@ -449,14 +613,22 @@ export class ExpedienteService {
     const [data, total] = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const query = qr.manager.createQueryBuilder(ExpedienteRecord, 'expediente');
 
-      if (status) query.andWhere('expediente.status = :status', { status });
       if (municipality) query.andWhere('expediente.municipality = :municipality', { municipality });
       if (search) query.andWhere('expediente.fullName LIKE :search', { search: `%${search}%` });
       if (assignedTo) query.andWhere('expediente.assignedTo = :assignedTo', { assignedTo });
-      if (!includeCompleted) {
-        query.andWhere('expediente.status NOT IN (:...closedStatuses)', {
-          closedStatuses: [ExpedienteStatus.CLIENTE_ACTIVO, ExpedienteStatus.DESCARTADO],
-        });
+
+      // Semántica de vista: `view` es fuente de verdad; `includeCompleted` es compatibilidad temporal.
+      const effectiveView = filters.view ?? (includeCompleted ? 'all' : 'open');
+      const allowedStatuses = resolveExpedienteStatusesForView(effectiveView);
+
+      if (status) {
+        query.andWhere('expediente.status = :status', { status });
+        // Solo aplicar restricción de vista si no es 'all' (allowedStatuses !== null)
+        if (allowedStatuses !== null) {
+          query.andWhere('expediente.status IN (:...allowedStatuses)', { allowedStatuses });
+        }
+      } else if (allowedStatuses !== null) {
+        query.andWhere('expediente.status IN (:...allowedStatuses)', { allowedStatuses });
       }
 
       query.orderBy('expediente.createdAt', 'DESC');
@@ -556,7 +728,7 @@ export class ExpedienteService {
     );
 
     if (!entity) {
-      throw new NotFoundException(`Expediente ${id} no encontrado`);
+      throw new NotFoundException('Expediente no encontrado');
     }
 
     if (entity.documentNumberEncrypted) {
@@ -603,8 +775,25 @@ export class ExpedienteService {
       completenessTechnical: completeness.technical,
       completenessOperational: completeness.operational,
       completenessOverall: completeness.overall,
+      sectionCompleteness: completeness.sectionCompleteness,
+      installationReadiness: completeness.installationReadiness,
+      provisioningReadiness: this.buildProvisioningReadiness(entity),
+      missingRequirements: completeness.missingRequirements,
       pipelineProgress: this.calculatePipelineProgress(completeness),
     });
+
+    // Enriquecer con resumen del suscriptor vinculado si existe
+    try {
+      const subscriberSummary = await this.subscribersService.findSummaryByExpedienteId(id);
+      if (subscriberSummary) {
+        Object.assign(entity, { subscriberSummary });
+      }
+    } catch (err) {
+      // El resumen del suscriptor es enriquecimiento opcional; no bloquear la lectura del expediente
+      this.logger.warn(
+        `No se pudo obtener subscriberSummary para expediente ${id}: ${(err as Error).message}`,
+      );
+    }
 
     return entity;
   }
@@ -667,7 +856,7 @@ export class ExpedienteService {
     dto: TransitionStatusDto,
     actorUserId: string,
   ): Promise<ExpedienteRecord> {
-    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    const { schemaName, tenantId, tenantSlug } = TenantContext.getOrThrow();
     const entity = await this.findById(id);
 
     const fromStatus = entity.status;
@@ -724,6 +913,14 @@ export class ExpedienteService {
       await this.emitPipelineEventSafely(
         'crm.expediente.ready-for-installation',
         new ExpedienteReadyForInstallationEvent(tenantId, schemaName, id, actorUserId),
+        id,
+      );
+    }
+
+    if (toStatus === ExpedienteStatus.INSTALACION_AGENDADA) {
+      await this.emitPipelineEventSafely(
+        'crm.expediente.installation-scheduled',
+        new ExpedienteInstallationScheduledEvent(tenantId, schemaName, tenantSlug, id, actorUserId),
         id,
       );
     }
@@ -1061,6 +1258,51 @@ export class ExpedienteService {
     );
   }
 
+  /**
+   * Vincular ticket y orden de trabajo operativos al expediente de instalación
+   */
+  async linkInstallationOperationalRefs(
+    expedienteId: string,
+    dto: LinkInstallationOperationalRefsDto,
+    actorUserId: string,
+  ): Promise<ExpedienteRecord> {
+    // Valida estructura del DTO en la frontera del servicio
+    LinkInstallationOperationalRefsSchema.parse(dto);
+
+    const { schemaName } = TenantContext.getOrThrow();
+    const entity = await this.findById(expedienteId);
+
+    const prevTicketId = entity.ticketId;
+    const prevWorkOrderId = entity.workOrderId;
+
+    entity.ticketId = dto.ticketId;
+    entity.workOrderId = dto.workOrderId;
+
+    if (dto.lastRescheduleReason !== undefined) {
+      entity.lastRescheduleReason = dto.lastRescheduleReason ?? null;
+    }
+    if (dto.lastRescheduleNotes !== undefined) {
+      entity.lastRescheduleNotes = dto.lastRescheduleNotes ?? null;
+    }
+
+    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await qr.manager.save(ExpedienteRecord, entity);
+    });
+
+    await this.auditService.log({
+      action: AuditAction.UPDATE,
+      entityType: 'ExpedienteRecord',
+      entityId: expedienteId,
+      userId: actorUserId,
+      newValue: {
+        ticketId: { from: prevTicketId, to: dto.ticketId },
+        workOrderId: { from: prevWorkOrderId, to: dto.workOrderId },
+      },
+    });
+
+    return this.findById(expedienteId);
+  }
+
   async getTimelineSummary(id: string): Promise<{
     changes: Array<{
       id: string;
@@ -1106,24 +1348,13 @@ export class ExpedienteService {
         }
       }
 
-      const users = actorIds.size
-        ? await qr.manager.find(User, { where: { id: In(Array.from(actorIds)) } })
-        : [];
-
-      // Para actores no encontrados en el schema tenant (p.ej. SYSTEM_ADMIN es PlatformUser),
-      // buscar en la tabla publica de usuarios de plataforma.
-      const foundTenantIds = new Set(users.map((u) => u.id));
-      const unmatchedIds = Array.from(actorIds).filter((id) => !foundTenantIds.has(id));
-      const platformUsers = unmatchedIds.length
-        ? await qr.manager.find(PlatformUser, { where: { id: In(unmatchedIds) } })
+      const actors = actorIds.size
+        ? await this.crmActorReadPort.findByIds(schemaName, Array.from(actorIds))
         : [];
 
       const actorMap = new Map<string, ExpedienteTimelineActor>();
-      for (const user of users) {
-        actorMap.set(user.id, { userId: user.id, name: this.formatActorName(user) });
-      }
-      for (const pu of platformUsers) {
-        actorMap.set(pu.id, { userId: pu.id, name: this.formatActorName(pu) });
+      for (const actor of actors) {
+        actorMap.set(actor.id, { userId: actor.id, name: actor.name });
       }
 
       const getActor = (userId: string | null | undefined): ExpedienteTimelineActor => {
@@ -1762,6 +1993,66 @@ export class ExpedienteService {
     return value as StoredDocumentSupportMap;
   }
 
+  private resolveEffectiveDocumentPersonType(
+    persistedPersonType: string | null | undefined,
+    personTypeOverride?: string | null,
+  ): string | null {
+    return (
+      this.resolveDocumentSupportPersonTypeOverride(personTypeOverride) ??
+      this.resolveSupportedDocumentSupportPersonType(persistedPersonType) ??
+      persistedPersonType ??
+      null
+    );
+  }
+
+  private resolveDocumentSupportPersonTypeOverride(
+    personTypeOverride?: string | null,
+  ): string | null {
+    const normalizedOverride = this.normalizeOptionalText(personTypeOverride);
+
+    if (normalizedOverride === null) {
+      return null;
+    }
+
+    const resolvedOverride = this.resolveSupportedDocumentSupportPersonType(normalizedOverride);
+
+    if (!resolvedOverride) {
+      throw new BadRequestException({
+        code: 'INVALID_DOCUMENT_SUPPORT_PERSON_TYPE',
+        message: 'El personType indicado no es válido para soportes documentales.',
+        field: 'personType',
+      });
+    }
+
+    return resolvedOverride;
+  }
+
+  private resolveSupportedDocumentSupportPersonType(
+    value: string | null | undefined,
+  ): 'PERSONA_NATURAL' | 'PERSONA_JURIDICA' | null {
+    const normalized = String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, '_');
+
+    if (!normalized) {
+      return null;
+    }
+
+    return DOCUMENT_SUPPORT_PERSON_TYPE_ALIASES[normalized] ?? null;
+  }
+
+  private getDocumentDefinitionsForOperation(
+    persistedPersonType: string | null | undefined,
+    personTypeOverride?: string | null,
+  ): DocumentSupportDefinition[] {
+    return getDocumentDefinitionsByPersonType(
+      this.resolveEffectiveDocumentPersonType(persistedPersonType, personTypeOverride),
+    );
+  }
+
   private requireDocumentDefinition(
     definitions: DocumentSupportDefinition[],
     documentKey: string,
@@ -1952,19 +2243,8 @@ export class ExpedienteService {
       return null;
     }
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const tenantUser = await qr.manager.findOne(User, { where: { id: userId } });
-      if (tenantUser) {
-        return this.formatActorName(tenantUser);
-      }
-
-      const platformUser = await qr.manager.findOne(PlatformUser, { where: { id: userId } });
-      if (platformUser) {
-        return this.formatActorName(platformUser);
-      }
-
-      return null;
-    });
+    const actor = await this.crmActorReadPort.findById(schemaName, userId);
+    return actor?.name ?? null;
   }
 
   private encryptValue(plaintext: string): string {
@@ -1973,22 +2253,6 @@ export class ExpedienteService {
     const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
     const authTag = cipher.getAuthTag();
     return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
-  }
-
-  private formatActorName(user: {
-    firstName: string | null;
-    lastName: string | null;
-    email: string;
-  }): string | null {
-    const firstName = this.decodeProfileValue(user.firstName);
-    const lastName = this.decodeProfileValue(user.lastName);
-    const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
-
-    if (fullName) {
-      return fullName;
-    }
-
-    return this.decodeProfileValue(user.email);
   }
 
   private decryptValue(encrypted: string): string {
@@ -2004,22 +2268,6 @@ export class ExpedienteService {
     decipher.setAuthTag(authTag);
 
     return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
-  }
-
-  private decodeProfileValue(value: string | null): string | null {
-    if (!value) {
-      return null;
-    }
-
-    if (!this.looksLikeEncryptedValue(value)) {
-      return value;
-    }
-
-    try {
-      return this.decryptValue(value);
-    } catch {
-      return null;
-    }
   }
 
   private looksLikeEncryptedValue(value: string): boolean {
@@ -2057,10 +2305,60 @@ export class ExpedienteService {
     });
   }
 
+  private buildProvisioningReadiness(entity: ExpedienteRecord) {
+    const hasOperationalStage =
+      entity.status === ExpedienteStatus.INSTALACION_AGENDADA ||
+      entity.status === ExpedienteStatus.CLIENTE_ACTIVO;
+
+    const isBlockedByConsent = Boolean(entity.dataConsentRevoked);
+    const isBlockedByLegalStatus = isBlockingLegalComplianceStatus(entity.legalComplianceStatus);
+
+    return evaluateProvisioningReadiness({
+      expedienteStatus: entity.status,
+      subscriberStatus:
+        entity.status === ExpedienteStatus.CLIENTE_ACTIVO
+          ? SubscriberStatus.ACTIVE
+          : hasOperationalStage
+            ? SubscriberStatus.PROSPECT
+            : null,
+      hasPartyOrDocument: Boolean(entity.documentNumberEncrypted || entity.fiscalDocument),
+      hasInstallationAddress: Boolean(entity.installationAddress || entity.address),
+      hasSiteContact: Boolean(entity.siteContactName && entity.siteContactPhoneEncrypted),
+      hasCommercialOffer: Boolean(
+        entity.interestedPlanId ||
+        (entity.additionalProductIds?.length ?? 0) > 0 ||
+        (entity.additionalServiceIds?.length ?? 0) > 0,
+      ),
+      hasTechnologyDefinition: Boolean(
+        entity.availableTechnology ||
+        (entity.candidateTechnologies?.length ?? 0) > 0 ||
+        entity.feasibility ||
+        entity.coverageResult,
+      ),
+      hasTicketReference: Boolean(entity.ticketId),
+      hasWorkOrderReference: Boolean(entity.workOrderId),
+      hasAssignedTechnician: Boolean(entity.workOrderId),
+      hasMinimumConsent: Boolean(
+        !entity.dataConsentRevoked && entity.identityVerified && entity.legalComplianceStatus,
+      ),
+      isBlocked: isBlockedByConsent || isBlockedByLegalStatus || !hasOperationalStage,
+      blockedReason: isBlockedByConsent
+        ? 'El consentimiento de datos está revocado para este expediente.'
+        : isBlockedByLegalStatus
+          ? 'El estado legal del expediente bloquea la preparación para aprovisionamiento.'
+          : !hasOperationalStage
+            ? 'El expediente aún no está en instalación agendada.'
+            : null,
+      hasRetryableError: false,
+      retryableErrorMessage: null,
+    });
+  }
+
   private async emitPipelineEventSafely(
     eventName: string,
     payload:
       | ExpedienteReadyForInstallationEvent
+      | ExpedienteInstallationScheduledEvent
       | ExpedienteActivatedEvent
       | ExpedienteDiscardedEvent,
     expedienteId: string,
@@ -2122,11 +2420,7 @@ export class ExpedienteService {
     }
   }
 
-  private calculatePipelineProgress(completeness: {
-    commercial: number;
-    legal: number;
-    technical: number;
-  }): number {
-    return Math.round((completeness.commercial + completeness.legal + completeness.technical) / 3);
+  private calculatePipelineProgress(completeness: { overall: number }): number {
+    return completeness.overall;
   }
 }

@@ -1,13 +1,13 @@
 ---
-title: "Addendum PRD v2.3 → incorporación de Taxation (MOD07) y Parties (MOD08)"
-version: "1.0"
-owner: "Arquitectura de Soluciones / Producto"
-date: "2026-04-21"
-status: "Aprobado"
-approvedAt: "2026-04-21"
-approvedBy: "CTO Humano"
-classification: "Confidencial — Uso Interno"
-parentDocument: "PRD_Sistema_ISP_Colombia_v2_3.md"
+title: 'Addendum PRD v2.3 → incorporación de Taxation (MOD07) y Parties (MOD08)'
+version: '1.0'
+owner: 'Arquitectura de Soluciones / Producto'
+date: '2026-04-21'
+status: 'Aprobado'
+approvedAt: '2026-04-21'
+approvedBy: 'CTO Humano'
+classification: 'Confidencial — Uso Interno'
+parentDocument: 'PRD_Sistema_ISP_Colombia_v2_3.md'
 references:
   - docs/prds/PRD_Sistema_ISP_Colombia_v2_3.md
   - docs/adrs/ADR-029-Bounded-Context-Taxation-Catalogo-Unificado.md
@@ -16,8 +16,6 @@ references:
   - docs/hlds/HLD-MOD07-TAXATION-v1.0.md
   - docs/hlds/HLD-MOD08-PARTIES-v1.0.md
 ---
-
-# Addendum PRD — Taxation (MOD07) y Parties (MOD08)
 
 Este addendum extiende el PRD maestro v2.3 sin reemplazarlo. Se consolidará en v2.4 cuando los ADRs referenciados estén aprobados y los HLDs en baseline.
 
@@ -90,16 +88,16 @@ Una misma persona u organización puede ser, al mismo tiempo, cliente, proveedor
 
 ## 6. Roadmap
 
-| Hito | Dependencia |
-|---|---|
-| Aprobación ADR-029, ADR-030, ADR-031 | CTO |
-| HLD-MOD07-TAXATION-v1.0 en baseline | ADR-029 |
-| HLD-MOD08-PARTIES-v1.0 en baseline | ADR-030 |
-| Implementación MOD07 | HLD-MOD07 + plan de fase |
-| Migración de catálogo desde Commercial | MOD07 listo |
-| Implementación MOD08 fase 1 (esquema) | HLD-MOD08 + plan de fase |
-| Migración backfill CRM → Parties | MOD08 fase 1 |
-| Purchasing con Parties y Taxation desde día uno | MOD07 y MOD08 estables |
+| Hito                                            | Dependencia              |
+| ----------------------------------------------- | ------------------------ |
+| Aprobación ADR-029, ADR-030, ADR-031            | CTO                      |
+| HLD-MOD07-TAXATION-v1.0 en baseline             | ADR-029                  |
+| HLD-MOD08-PARTIES-v1.0 en baseline              | ADR-030                  |
+| Implementación MOD07                            | HLD-MOD07 + plan de fase |
+| Migración de catálogo desde Commercial          | MOD07 listo              |
+| Implementación MOD08 fase 1 (esquema)           | HLD-MOD08 + plan de fase |
+| Migración backfill CRM → Parties                | MOD08 fase 1             |
+| Purchasing con Parties y Taxation desde día uno | MOD07 y MOD08 estables   |
 
 ## 7. Referencias
 

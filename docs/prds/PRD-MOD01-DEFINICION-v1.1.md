@@ -87,28 +87,28 @@ Este módulo no se considera correctamente gobernado si faltan alguno de estos a
 
 ### 3.2 Casos de uso principales
 
-**UC-01: Login con MFA**
+#### UC-01: Login con MFA
 
 - Actor: Cualquier usuario registrado
 - Flujo: Email + password → validación → si MFA habilitado, pedir código TOTP → retornar access token (body) + refresh token (cookie httpOnly)
 - Alternativa: Si `passwordResetRequired=true`, forzar pantalla de cambio de password antes de acceder
 
-**UC-02: Login primer acceso (Admin de nuevo tenant)**
+#### UC-02: Login primer acceso (Admin de nuevo tenant)
 
 - Actor: ADMIN de ISP recién creado
 - Flujo: Recibe email con password temporal → ingresa → sistema detecta `passwordResetRequired=true` → fuerza setup de nuevo password → fuerza setup de MFA (ADMIN obligatorio) → accede al dashboard
 
-**UC-03: Aprovisionamiento de tenant (SYSTEM_ADMIN)**
+#### UC-03: Aprovisionamiento de tenant (SYSTEM_ADMIN)
 
 - Actor: SYSTEM_ADMIN de iWana
 - Flujo: Crea tenant con nombre + slug + adminEmail → sistema crea schema PostgreSQL en background (BullMQ) → seed inicial (ADMIN + config) → email automático con credenciales temporales → tenant queda en ACTIVE
 
-**UC-04: Aislamiento multi-tenant**
+#### UC-04: Aislamiento multi-tenant
 
 - Actor: Usuario de Tenant A con JWT válido
 - Flujo: Intenta acceder a datos de Tenant B → TenantMiddleware detecta mismatch → HTTP 403 antes de llegar a la lógica de negocio
 
-**UC-05: Consulta de audit log (Auditor)**
+#### UC-05: Consulta de audit log (Auditor)
 
 - Actor: Auditor del ISP
 - Flujo: Consulta `/api/v1/audit-logs` con filtros (rango de fechas, tipo de entidad, usuario) → sistema retorna registros paginados con cursor → puede exportar para informes regulatorios (CRC, DIAN)
@@ -194,7 +194,7 @@ Este módulo no se considera correctamente gobernado si faltan alguno de estos a
 
 ### 6.1 Schema Público (una sola instancia, compartida)
 
-```
+```text
 public.tenants
   id (UUID PK), name, slug (UNIQUE), schema_name (UNIQUE), status (enum),
   settings (JSONB), contact_email, max_subscribers (int), created_at, updated_at
@@ -215,7 +215,7 @@ public.platform_audit_logs
 
 ### 6.2 Schema por Tenant (`tenant_<slug>`)
 
-```
+```text
 users
   id (UUID PK), email (AES-256), email_hash (SHA-256 UNIQUE),
   password_hash (bcrypt 12), role (enum 14 roles), status (enum),
@@ -260,36 +260,36 @@ audit_logs
 
 Referencia completa en docs/hlds/HLD-MOD01-ARQUITECTURA-v1.0.md — Sección 4.
 
-| Método | Endpoint                                           | Roles                        | Descripción                 |
-| ------ | -------------------------------------------------- | ---------------------------- | --------------------------- |
-| POST   | `/api/v1/auth/login`                               | Público                      | Login con credenciales (usuario de tenant)    |
+| Método | Endpoint                                           | Roles                        | Descripción                                                            |
+| ------ | -------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------- |
+| POST   | `/api/v1/auth/login`                               | Público                      | Login con credenciales (usuario de tenant)                             |
 | POST   | `/api/v1/auth/platform/login`                      | Público                      | Login de plataforma (SYSTEM_ADMIN / IWANA_SUPPORT) — sin X-Tenant-Slug |
-| POST   | `/api/v1/auth/refresh`                             | Público (cookie)             | Rotar refresh token         |
-| POST   | `/api/v1/auth/logout`                              | Autenticado                  | Cerrar sesión               |
-| POST   | `/api/v1/auth/mfa/setup`                           | Autenticado                  | Iniciar setup TOTP          |
-| POST   | `/api/v1/auth/mfa/verify`                          | Autenticado                  | Activar MFA                 |
-| POST   | `/api/v1/auth/mfa/disable`                         | Autenticado                  | Desactivar MFA              |
-| GET    | `/api/v1/auth/me`                                  | Autenticado                  | Perfil propio               |
-| POST   | `/api/v1/auth/forgot-password`                     | Público                      | Solicitar reset             |
-| POST   | `/api/v1/auth/reset-password`                      | Público (token)              | Establecer nueva contraseña |
-| POST   | `/api/v1/auth/change-password`                     | Autenticado                  | Cambiar contraseña          |
-| POST   | `/api/v1/auth/email/verify`                        | Público (token)              | Verificar email con token   |
-| POST   | `/api/v1/auth/email/resend-verification`           | Público                      | Reenviar email de verificación |
-| GET    | `/api/v1/users`                                    | ADMIN, SYSTEM_ADMIN          | Listar usuarios del tenant  |
-| POST   | `/api/v1/users`                                    | ADMIN                        | Crear usuario               |
-| GET    | `/api/v1/users/:id`                                | ADMIN, propio                | Ver usuario                 |
-| PATCH  | `/api/v1/users/:id`                                | ADMIN, propio                | Actualizar usuario          |
-| DELETE | `/api/v1/users/:id`                                | ADMIN                        | Soft delete usuario         |
-| GET    | `/api/v1/tenants`                                  | SYSTEM_ADMIN                 | Listar tenants              |
-| POST   | `/api/v1/tenants`                                  | SYSTEM_ADMIN                 | Crear tenant                |
-| GET    | `/api/v1/tenants/:id`                              | SYSTEM_ADMIN                 | Ver tenant                  |
-| PATCH  | `/api/v1/tenants/:id`                              | SYSTEM_ADMIN                 | Actualizar tenant           |
-| PATCH  | `/api/v1/tenants/:id/suspend`                      | SYSTEM_ADMIN                 | Suspender tenant            |
-| PATCH  | `/api/v1/tenants/:id/activate`                     | SYSTEM_ADMIN                 | Reactivar tenant            |
-| PATCH  | `/api/v1/tenants/:id/retry-provisioning`           | SYSTEM_ADMIN                 | Reintentar provisioning fallido |
-| POST   | `/api/v1/tenants/:id/regenerate-admin-credentials` | SYSTEM_ADMIN                 | Regenerar password admin    |
-| GET    | `/api/v1/audit-logs`                               | AUDITOR, ADMIN, SYSTEM_ADMIN | Consultar audit log         |
-| GET    | `/health`                                          | Público                      | Health check                |
+| POST   | `/api/v1/auth/refresh`                             | Público (cookie)             | Rotar refresh token                                                    |
+| POST   | `/api/v1/auth/logout`                              | Autenticado                  | Cerrar sesión                                                          |
+| POST   | `/api/v1/auth/mfa/setup`                           | Autenticado                  | Iniciar setup TOTP                                                     |
+| POST   | `/api/v1/auth/mfa/verify`                          | Autenticado                  | Activar MFA                                                            |
+| POST   | `/api/v1/auth/mfa/disable`                         | Autenticado                  | Desactivar MFA                                                         |
+| GET    | `/api/v1/auth/me`                                  | Autenticado                  | Perfil propio                                                          |
+| POST   | `/api/v1/auth/forgot-password`                     | Público                      | Solicitar reset                                                        |
+| POST   | `/api/v1/auth/reset-password`                      | Público (token)              | Establecer nueva contraseña                                            |
+| POST   | `/api/v1/auth/change-password`                     | Autenticado                  | Cambiar contraseña                                                     |
+| POST   | `/api/v1/auth/email/verify`                        | Público (token)              | Verificar email con token                                              |
+| POST   | `/api/v1/auth/email/resend-verification`           | Público                      | Reenviar email de verificación                                         |
+| GET    | `/api/v1/users`                                    | ADMIN, SYSTEM_ADMIN          | Listar usuarios del tenant                                             |
+| POST   | `/api/v1/users`                                    | ADMIN                        | Crear usuario                                                          |
+| GET    | `/api/v1/users/:id`                                | ADMIN, propio                | Ver usuario                                                            |
+| PATCH  | `/api/v1/users/:id`                                | ADMIN, propio                | Actualizar usuario                                                     |
+| DELETE | `/api/v1/users/:id`                                | ADMIN                        | Soft delete usuario                                                    |
+| GET    | `/api/v1/tenants`                                  | SYSTEM_ADMIN                 | Listar tenants                                                         |
+| POST   | `/api/v1/tenants`                                  | SYSTEM_ADMIN                 | Crear tenant                                                           |
+| GET    | `/api/v1/tenants/:id`                              | SYSTEM_ADMIN                 | Ver tenant                                                             |
+| PATCH  | `/api/v1/tenants/:id`                              | SYSTEM_ADMIN                 | Actualizar tenant                                                      |
+| PATCH  | `/api/v1/tenants/:id/suspend`                      | SYSTEM_ADMIN                 | Suspender tenant                                                       |
+| PATCH  | `/api/v1/tenants/:id/activate`                     | SYSTEM_ADMIN                 | Reactivar tenant                                                       |
+| PATCH  | `/api/v1/tenants/:id/retry-provisioning`           | SYSTEM_ADMIN                 | Reintentar provisioning fallido                                        |
+| POST   | `/api/v1/tenants/:id/regenerate-admin-credentials` | SYSTEM_ADMIN                 | Regenerar password admin                                               |
+| GET    | `/api/v1/audit-logs`                               | AUDITOR, ADMIN, SYSTEM_ADMIN | Consultar audit log                                                    |
+| GET    | `/health`                                          | Público                      | Health check                                                           |
 
 **Estándar de API:**
 

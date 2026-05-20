@@ -21,11 +21,13 @@ import { TenantMiddleware } from './modules/tenant/tenant.middleware';
 import { CrmModule } from './modules/crm/crm.module';
 import { CommercialModule } from './modules/commercial/commercial.module';
 import { TaxationModule } from './modules/taxation/taxation.module';
+import { WfmModule } from './modules/wfm/wfm.module';
 import { PartiesModule } from './modules/parties/parties.module';
 import { MediaModule } from './modules/media/media.module';
 import { PlatformBrandingModule } from './modules/platform-branding/platform-branding.module';
 import { SearchQueueModule } from './modules/search/search-queue.module';
 import { SearchModule } from './modules/search/search.module';
+import { AssuranceModule } from './modules/assurance/assurance.module';
 
 const runtimeEnv = process.env['NODE_ENV'];
 const apiDevelopmentLocalEnvPath = resolve(__dirname, '../../../.env.development.local');
@@ -263,6 +265,12 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
 
     // Búsqueda global indexada: consulta a Typesense protegida por backend
     SearchModule,
+
+    // Modulo WFM (MOD09) Fase 01: agenda operativa, work orders, disponibilidad de tecnicos
+    WfmModule,
+
+    // Modulo Assurance (MOD10): tickets, SLA y trazabilidad de mesa de ayuda
+    AssuranceModule,
   ],
   controllers: [],
   providers: [

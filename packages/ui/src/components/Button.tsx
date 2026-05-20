@@ -12,34 +12,36 @@ import { cn } from '../lib/utils';
  * ADR-026: shadcn/ui + CVA.
  */
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:pointer-events-none disabled:opacity-50 dark:focus-visible:ring-offset-dark-surface-2 [&_svg]:pointer-events-none [&_svg]:shrink-0',
   {
     variants: {
       variant: {
         // Light: azul noche (#17163A) con texto blanco.
         // Dark: violeta medio (#534FD4, primary-400) con texto blanco — contraste 3.8:1 sobre #222 (WCAG AA para componentes UI).
         primary:
-          'bg-iwana-primary text-white hover:bg-iwana-primary-600 focus-visible:ring-iwana-primary active:bg-iwana-primary-800 dark:bg-iwana-primary-400 dark:hover:bg-iwana-primary-300 dark:active:bg-iwana-primary-500',
+          'rounded-full bg-iwana-primary text-white shadow-sm hover:bg-iwana-primary-600 focus-visible:ring-iwana-primary active:bg-iwana-primary-800 dark:bg-iwana-primary-400 dark:hover:bg-iwana-primary-300 dark:active:bg-iwana-primary-500',
         // Light: borde+texto azul noche, fondo transparente.
         // Dark: borde+texto violeta claro (#7E7BDF, primary-300) — contraste 5.1:1 sobre #222.
         secondary:
-          'border-2 border-iwana-primary text-iwana-primary bg-transparent hover:bg-iwana-primary hover:text-white focus-visible:ring-iwana-primary dark:border-iwana-primary-300 dark:text-iwana-primary-300 dark:hover:bg-iwana-primary-400 dark:hover:border-iwana-primary-400 dark:hover:text-white',
+          'rounded-full border border-iwana-primary/25 bg-white text-iwana-primary hover:border-iwana-primary hover:bg-iwana-primary-50 focus-visible:ring-iwana-primary active:bg-iwana-primary-100 dark:border-iwana-primary-300/40 dark:bg-dark-surface-2 dark:text-iwana-primary-300 dark:hover:border-iwana-primary-300 dark:hover:bg-dark-surface-3',
         outline:
-          'border border-gray-300 bg-white hover:bg-gray-100 hover:text-gray-900 border-gray-300 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:hover:bg-dark-surface-2 dark:text-white dark:hover:text-gray-50 focus-visible:ring-iwana-primary',
+          'rounded-xl border border-gray-300 bg-white hover:bg-gray-100 hover:text-gray-900 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:hover:bg-dark-surface-2 dark:text-white dark:hover:text-gray-50 focus-visible:ring-iwana-primary',
         // Dark: texto e icono en gris claro visible.
         ghost:
-          'text-gray-700 hover:bg-gray-100 focus-visible:ring-iwana-primary dark:text-gray-300 dark:hover:bg-dark-surface-3',
+          'rounded-full text-gray-700 hover:bg-gray-100 focus-visible:ring-iwana-primary dark:text-gray-300 dark:hover:bg-dark-surface-3',
         // Rojo funciona bien en ambos modos — aclarar hover en dark.
         destructive:
-          'bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-600 active:bg-red-800 dark:bg-red-500 dark:hover:bg-red-400',
+          'rounded-full bg-red-600 text-white shadow-sm hover:bg-red-700 focus-visible:ring-red-600 active:bg-red-800 dark:bg-red-500 dark:hover:bg-red-400',
+        softDestructive:
+          'rounded-full border border-red-200 bg-white text-red-600 hover:bg-red-50 focus-visible:ring-red-500 active:bg-red-100 dark:border-red-500/30 dark:bg-dark-surface-2 dark:text-red-300 dark:hover:bg-red-500/10 dark:active:bg-red-500/20',
         // Dark: usar secondary (#A5C330) que tiene 6.1:1 sobre #222 — contraste excelente.
-        link: 'text-iwana-secondary-700 underline-offset-4 hover:underline focus-visible:ring-iwana-secondary-700 p-0 h-auto dark:text-iwana-secondary',
+        link: 'rounded-none p-0 h-auto text-iwana-secondary-700 underline-offset-4 hover:underline focus-visible:ring-iwana-secondary-700 dark:text-iwana-secondary',
       },
       size: {
-        sm: 'h-8 px-3 text-xs',
-        default: 'h-10 px-6 py-2',
-        lg: 'h-12 px-8 text-base',
-        icon: 'h-10 w-10',
+        sm: 'h-8 px-3.5 text-xs',
+        default: 'h-10 px-5 py-2',
+        lg: 'h-12 px-7 text-base',
+        icon: 'h-10 w-10 rounded-full p-0',
       },
     },
     defaultVariants: {

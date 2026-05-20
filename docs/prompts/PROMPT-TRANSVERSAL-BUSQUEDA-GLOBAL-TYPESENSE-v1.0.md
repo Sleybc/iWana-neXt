@@ -10,7 +10,7 @@
 - Plantilla base: docs/prompts/TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md
 - ADR propuesto: docs/adrs/ADR-036-Typesense-Busqueda-Global.md
 - HLD base: docs/hlds/HLD-TRANSVERSAL-BUSQUEDA-GLOBAL-v1.0.md
-- Spec de diseno: docs/superpowers/specs/2026-05-02-busqueda-global-typesense-design.md
+- Spec de diseno: docs/specs/2026-05-02-busqueda-global-typesense-design.md
 - Plan de ejecucion: docs/plans/PLAN-TRANSVERSAL-BUSQUEDA-GLOBAL-TYPESENSE-v1.0.md
 - Stack vigente: docs/prds/Stack_Tecnologico.md
 - Informe a actualizar al cierre: docs/informes/INFORME-TRANSVERSAL-ENABLEMENT-OPERATIVO-v1.0.md
@@ -52,7 +52,7 @@
 - HLD del modulo: docs/hlds/HLD-TRANSVERSAL-BUSQUEDA-GLOBAL-v1.0.md
 - ADRs aplicables: ADR-036, ADR-017, ADR-019, ADR-022, ADR-023.
 - Sprint plan aplicable: docs/plans/PLAN-TRANSVERSAL-BUSQUEDA-GLOBAL-TYPESENSE-v1.0.md
-- Prompt arquitectonico origen: docs/superpowers/specs/2026-05-02-busqueda-global-typesense-design.md
+- Prompt arquitectonico origen: docs/specs/2026-05-02-busqueda-global-typesense-design.md
 - Artefactos faltantes detectados:
   - aprobacion formal de ADR-036 por CTO,
   - runbook operativo de Typesense para despliegue productivo.

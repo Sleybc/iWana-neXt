@@ -13,7 +13,7 @@ interface CoverageNodeTableProps {
 
 const tableHeadClass =
   'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400';
-const cellClass = 'px-4 py-3 align-top text-sm text-gray-700 dark:text-gray-200';
+const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
 
 export function CoverageNodeTable({
   nodes,
@@ -23,7 +23,7 @@ export function CoverageNodeTable({
   onToggle,
 }: CoverageNodeTableProps) {
   return (
-    <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-dark-border">
+    <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-dark-border">
       <table className="w-full min-w-[760px] border-collapse" data-testid="coverage-node-table">
         <thead className="bg-[#f6f8f4] dark:bg-dark-surface-3">
           <tr>

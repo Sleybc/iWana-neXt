@@ -79,7 +79,8 @@ const planFormSchema = z
 
 type PlanFormValues = z.infer<typeof planFormSchema>;
 
-const TECHNOLOGY_SUGGESTIONS = ['FTTH', 'GPON', 'XGS-PON', 'HFC', 'WIFI6', 'WIFI5'];
+const BLOCKED_TECHNOLOGIES = new Set(['FTTH']);
+const TECHNOLOGY_SUGGESTIONS = ['GPON', 'XGS-PON', 'HFC', 'WIFI6', 'WIFI5'];
 const TECHNOLOGY_OPTIONS_STORAGE_KEY = 'iwana.portal.commercial.plan-technology-options';
 
 /** Lee tecnologías del localStorage; retorna los defaults si no hay datos o están corruptos. */
@@ -120,7 +121,7 @@ function persistTechnologies(options: string[]): void {
 
 const tableHeadClass =
   'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500';
-const cellClass = 'px-4 py-3 align-top text-sm text-gray-700 dark:text-gray-200';
+const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
 
 function formatMoney(value: number): string {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(value);
@@ -189,6 +190,14 @@ function mergeTechnologyOptions(current: string[], incoming: string[]): string[]
   });
 
   return [...unique.values()].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+}
+
+function isBlockedTechnology(value: string): boolean {
+  return BLOCKED_TECHNOLOGIES.has(normalizeTechnologyName(value).toUpperCase());
+}
+
+function filterAllowedTechnologies(options: string[]): string[] {
+  return options.filter((option) => !isBlockedTechnology(option));
 }
 
 function toFormValues(plan: PlanCatalogItem): PlanFormValues {
@@ -296,7 +305,7 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
       : mergeTechnologyOptions([], TECHNOLOGY_SUGGESTIONS);
 
   const selectTechnologyOptions = useMemo(() => {
-    if (!selectedTechnology) {
+    if (!selectedTechnology || isBlockedTechnology(selectedTechnology)) {
       return effectiveTechnologyOptions;
     }
 
@@ -343,7 +352,7 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
   // Carga tecnologías desde localStorage una sola vez al montar. La escritura se hace de forma
   // síncrona en cada handler (persistTechnologies) para evitar race conditions con React StrictMode.
   useEffect(() => {
-    setTechnologyOptions(loadPersistedTechnologies());
+    setTechnologyOptions(filterAllowedTechnologies(loadPersistedTechnologies()));
   }, []);
 
   const handleOpenCreateDialog = () => {
@@ -352,9 +361,10 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
     setTechnologyDraft('');
     setEditingTechnologyOriginal(null);
     setEditingTechnologyDraft('');
+    const defaultTechnology = effectiveTechnologyOptions[0] ?? '';
     reset({
       name: '',
-      technology: 'FTTH',
+      technology: defaultTechnology,
       speedMode: 'SYMMETRIC',
       downloadSpeedMbps: 300,
       uploadSpeedMbps: 300,
@@ -382,6 +392,11 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
       return;
     }
 
+    if (isBlockedTechnology(normalized)) {
+      setServerMessage('FTTH ya no está disponible como tecnología comercial.');
+      return;
+    }
+
     const next = mergeTechnologyOptions(technologyOptions, [normalized]);
     setTechnologyOptions(next);
     persistTechnologies(next);
@@ -401,6 +416,11 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
 
     const normalized = normalizeTechnologyName(editingTechnologyDraft);
     if (!normalized) {
+      return;
+    }
+
+    if (isBlockedTechnology(normalized)) {
+      setServerMessage('FTTH ya no está disponible como tecnología comercial.');
       return;
     }
 
@@ -466,6 +486,11 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
 
   const onSubmit = async (values: PlanFormValues) => {
     setServerMessage(null);
+
+    if (isBlockedTechnology(values.technology)) {
+      setServerMessage('FTTH ya no está disponible como tecnología comercial.');
+      return;
+    }
 
     const normalizedInstallationRule: PlanInstallationRule = values.installationEnabled
       ? values.installationRule
@@ -567,7 +592,12 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
             <Badge variant="primary">
               {activePlansCount} activo{activePlansCount === 1 ? '' : 's'}
             </Badge>
-            {canEdit && <Button onClick={handleOpenCreateDialog}>Nuevo plan</Button>}
+            {canEdit && (
+              <Button onClick={handleOpenCreateDialog}>
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                Nuevo plan
+              </Button>
+            )}
           </div>
         </div>
       </CardHeader>
@@ -679,13 +709,15 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
                             </Badge>
                           </td>
                           <td className={cellClass}>
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2">
                               <Button
                                 variant="secondary"
-                                size="sm"
+                                size="icon"
+                                aria-label={`Editar plan ${plan.name}`}
+                                title={`Editar plan ${plan.name}`}
                                 onClick={() => handleOpenEditDialog(plan)}
                               >
-                                Editar
+                                <Pencil className="h-4 w-4" aria-hidden="true" />
                               </Button>
                             </div>
                           </td>

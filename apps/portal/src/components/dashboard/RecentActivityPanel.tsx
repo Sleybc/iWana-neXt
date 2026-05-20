@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { Activity, CheckCircle2, CircleAlert, Clock } from 'lucide-react';
 import { auditApi, ApiError, type AuditLogEntry } from '@/lib/api-client';
 import { DashboardPanel } from './DashboardPanel';
-import { PortalAlert, PortalEmptyState, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 
 /**
  * Panel de actividad reciente del tenant autenticado.
@@ -83,26 +82,32 @@ export function RecentActivityPanel() {
         {isLoading && (
           <div className="space-y-3" aria-busy="true" aria-label="Cargando actividad">
             {Array.from({ length: 4 }).map((_, i) => (
-              <PortalSkeletonBlock key={i} className="h-10 rounded-xl" />
+              <div
+                key={i}
+                className="h-10 animate-pulse rounded-xl bg-gray-100 dark:bg-dark-surface-3"
+              />
             ))}
           </div>
         )}
 
         {!isLoading && error && (
-          <PortalAlert
-            variant="error"
-            title="Actividad no disponible"
-            description={error}
-            icon={CircleAlert}
-          />
+          <div className="flex items-start gap-3 rounded-[24px] border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] px-4 py-3 text-sm text-red-700 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+            <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+            <p>{error}</p>
+          </div>
         )}
 
         {!isLoading && !error && entries.length === 0 && (
-          <PortalEmptyState
-            title="Actividad bajo control"
-            description="No hay actividad registrada en esta empresa todavía."
-            icon={CheckCircle2}
-          />
+          <div className="flex items-start gap-3 rounded-[24px] border border-emerald-200/60 bg-[linear-gradient(135deg,rgba(248,250,245,0.96),rgba(255,255,255,0.94))] px-4 py-4 text-sm text-gray-600 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
+            <CheckCircle2
+              className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"
+              aria-hidden="true"
+            />
+            <div>
+              <p className="font-medium text-gray-800 dark:text-white">Actividad bajo control</p>
+              <p className="mt-1">No hay actividad registrada en esta empresa todavía.</p>
+            </div>
+          </div>
         )}
 
         {!isLoading && !error && entries.length > 0 && (

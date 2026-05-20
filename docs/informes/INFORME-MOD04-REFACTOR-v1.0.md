@@ -236,6 +236,9 @@ MOD04 cumple todos los gates de merge/producción definidos en AGENTS.md:
 
 ### Fase 3 (frontend)
 
+- `apps/portal/src/components/settings/SettingsClient.tsx` - eliminado el bloque visual `Estado actual`; las tabs de Configuración ahora comparten el mismo contenedor inferior del panel activo, homologando la composición con Comercial y simplificando la carga al dejar de consultar `dashboardApi.getSummary()`.
+- `apps/portal/src/components/settings/SettingsTabs.tsx` - reducido a barra de navegación interna con `border-b` y scroll horizontal; deja de renderizar una card independiente para mantener tabs + contenido en un solo bloque visual.
+- `apps/portal/src/components/settings/SettingsClient.spec.tsx` - ancla de carga ajustada al nuevo layout sin resumen superior.
 - `apps/portal/src/lib/api-client.ts` - `usersApi.changeEmail` path corregido, `ListUsersParams.search` agregado, `usersApi.list()` propaga `search`.
 - `apps/portal/src/components/users/UsersTable.tsx` - input de búsqueda con debounce, botón reset password por fila, props `searchValue`/`onSearchChange`/`onResetPassword`.
 - `apps/portal/src/components/users/UsersClient.tsx` - debounce 300ms, estado `isResetPasswordOpen`, handler `handleResetPasswordConfirm`, modal de contraseña temporal.

@@ -112,7 +112,7 @@ describe('BrandingForm', () => {
       target: { value: 'https://cdn.demo.co/branding/seal-light.svg' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar identidad visual' }));
 
     await waitFor(() => {
       expect(tenantSelfApiMock.updateBranding).toHaveBeenCalledWith({
@@ -205,7 +205,7 @@ describe('BrandingForm', () => {
       target: { value: 'Portal empresarial para la operación de ISP Demo Pro en iWana neXt.' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar identidad visual' }));
 
     await waitFor(() => {
       expect(tenantSelfApiMock.updateBranding).toHaveBeenCalledWith({

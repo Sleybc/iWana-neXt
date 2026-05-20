@@ -13,8 +13,8 @@
 - HLD del modulo: docs/hlds/HLD-MOD05-ARQUITECTURA-v2.0.md
 - ADR relacionado: docs/adrs/ADR-024-Migracion-CRM-Expediente-Unico.md
 - Sprint plan: docs/sprints/PLAN-MOD05-CRM-SPRINT-02-v1.0.md
-- Spec expediente: docs/superpowers/specs/SPEC-MOD05-EXPEDIENTE-UNICO-v1.0.md
-- Spec rediseno: docs/superpowers/specs/SPEC-MOD05-REDISENO-v1.0.md
+- Spec expediente: docs/specs/SPEC-MOD05-EXPEDIENTE-UNICO-v1.0.md
+- Spec rediseno: docs/specs/SPEC-MOD05-REDISENO-v1.0.md
 - Informe relacionado: docs/informes/INFORME-MOD05-DEFINICION-v1.0.md
 - Prompt anterior: _(eliminado — Sprint 01 deprecado, ver ADR-024)_
 - Dependencia upstream: docs/prompts/PROMPT-MOD03-CONFIGURACION-EMPRESA-FASE-02-v1.0.md (MOD03 provee ICoverageReadPort, IPlanCatalogReadPort)

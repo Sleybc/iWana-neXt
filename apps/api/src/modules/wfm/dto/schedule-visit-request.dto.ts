@@ -1,0 +1,84 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsBoolean,
+  IsDateString,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
+import { z } from 'zod';
+
+// --- Zod schema ---
+
+/** Schema Zod para agendar una solicitud de visita (status: READY_TO_SCHEDULE → SCHEDULED). SPEC-MOD09 §6.2 */
+export const ScheduleVisitRequestSchema = z.object({
+  scheduledStartAt: z.string().datetime({ offset: true }),
+  scheduledEndAt: z.string().datetime({ offset: true }),
+  assignedUserId: z.string().uuid(),
+  operatingSiteId: z.string().uuid().optional().nullable(),
+  createWorkOrder: z.boolean().optional(),
+  workOrderSummary: z.string().trim().max(160).optional(),
+  workOrderNotes: z.string().trim().max(4000).nullable().optional(),
+});
+
+export type ScheduleVisitRequestInput = z.infer<typeof ScheduleVisitRequestSchema>;
+
+// --- DTO class-validator para ValidationPipe + OpenAPI ---
+
+/** DTO para agendar una solicitud de visita. Genera ScheduleEvent + WorkOrder. */
+export class ScheduleVisitRequestDto {
+  @ApiProperty({ example: '2026-06-01T09:00:00Z', description: 'Inicio programado (ISO 8601)' })
+  @IsDateString({ strict: false })
+  @IsNotEmpty()
+  scheduledStartAt: string;
+
+  @ApiProperty({ example: '2026-06-01T11:00:00Z', description: 'Fin programado (ISO 8601)' })
+  @IsDateString({ strict: false })
+  @IsNotEmpty()
+  scheduledEndAt: string;
+
+  @ApiProperty({
+    example: '550e8400-e29b-41d4-a716-446655440000',
+    format: 'uuid',
+    description: 'Tecnico asignado',
+  })
+  @IsUUID()
+  assignedUserId: string;
+
+  @ApiPropertyOptional({ format: 'uuid', description: 'Sede operativa WFM seleccionada' })
+  @IsOptional()
+  @IsUUID()
+  operatingSiteId?: string | null;
+
+  @ApiPropertyOptional({
+    example: true,
+    description: 'Si es false, agenda solo el evento sin crear Work Order.',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  createWorkOrder?: boolean;
+
+  @ApiPropertyOptional({
+    example: 'Instalacion prioritaria barrio centro',
+    description: 'Resumen manual opcional para la Work Order.',
+    maxLength: 160,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  workOrderSummary?: string;
+
+  @ApiPropertyOptional({
+    example: 'Coordinar acceso con porteria antes de las 10:00.',
+    description: 'Notas operativas opcionales para la Work Order.',
+    nullable: true,
+    maxLength: 4000,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  workOrderNotes?: string | null;
+}

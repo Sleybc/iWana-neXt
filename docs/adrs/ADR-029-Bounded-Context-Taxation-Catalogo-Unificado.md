@@ -12,8 +12,8 @@ references:
   - docs/prds/PRD_Sistema_ISP_Colombia_v2_3.md
   - docs/hlds/HLD-MOD06-ARQUITECTURA-v1.0.md
   - docs/adrs/ADR-028-Extraccion-Modulo-Comercial.md
-  - docs/superpowers/specs/2026-04-20-reglas-comerciales-design.md
-  - docs/superpowers/specs/2026-04-21-taxation-bounded-context-design.md
+  - docs/specs/2026-04-20-reglas-comerciales-design.md
+  - docs/specs/2026-04-21-taxation-bounded-context-design.md
 ---
 
 # ADR-029: Catálogo unificado de impuestos como Bounded Context propio (Taxation)
@@ -113,4 +113,4 @@ Obliga a:
 - docs/prds/PRD_Sistema_ISP_Colombia_v2_3.md — secciones RF-PUR, RF-INV
 - docs/adrs/ADR-028-Extraccion-Modulo-Comercial.md
 - docs/hlds/HLD-MOD06-ARQUITECTURA-v1.0.md
-- docs/superpowers/specs/2026-04-20-reglas-comerciales-design.md
+- docs/specs/2026-04-20-reglas-comerciales-design.md

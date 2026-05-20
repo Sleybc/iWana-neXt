@@ -6,11 +6,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { dataSourceOptions } from '@iwana/db';
 import {
+  ASSURANCE_FIELD_SERVICE_QUEUE,
   REFRESH_TOKEN_PURGE_QUEUE,
   SEARCH_INDEX_QUEUE,
   TENANT_PROVISIONING_QUEUE,
   TENANT_SCHEMA_PURGE_QUEUE,
 } from '@iwana/shared';
+import { AssuranceFieldServiceProcessor } from './processors/assurance-field-service.processor';
 import { RefreshTokenPurgeProcessor } from './processors/refresh-token-purge.processor';
 import { SearchIndexProcessor } from './processors/search-index.processor';
 import { TenantSchemaPurgeProcessor } from './processors/tenant-schema-purge.processor';
@@ -149,12 +151,17 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
     BullModule.registerQueue({
       name: SEARCH_INDEX_QUEUE,
     }),
+
+    BullModule.registerQueue({
+      name: ASSURANCE_FIELD_SERVICE_QUEUE,
+    }),
   ],
   providers: [
     TenantProvisioningProcessor,
     TenantSeedService,
     RefreshTokenPurgeProcessor,
     TenantSchemaPurgeProcessor,
+    AssuranceFieldServiceProcessor,
     SearchIndexProcessor,
     SearchIndexWorkerService,
     SearchNavigationCatalogService,

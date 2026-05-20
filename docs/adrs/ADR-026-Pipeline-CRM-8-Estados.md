@@ -1,11 +1,12 @@
 # ADR-026: Consolidación del Pipeline CRM de 12 a 8 Estados
 
-**Estado:** Propuesto  
+**Estado:** Aprobado  
 **Fecha:** 2026-04-16  
 **Autor:** AI-EM-ARCH  
-**Aprobador requerido:** CTO Humano  
+**Aprobador:** CTO Humano  
 **PRD relacionado:** docs/prds/PRD-MOD05-CRM-SUBSCRIBERS-v1.0.md  
-**HLD relacionado:** docs/hlds/HLD-MOD05-ARQUITECTURA-v2.0.md
+**HLD relacionado:** docs/hlds/HLD-MOD05-ARQUITECTURA-v2.0.md  
+**Spec correctivo relacionado:** docs/specs/2026-05-05-crm-pipeline-completeness-read-model-design.md
 
 ---
 
@@ -55,10 +56,10 @@ NUEVO_POTENCIAL → PRECALIFICADO (requiere: documento, nombre, contacto, direcc
 PRECALIFICADO → VALIDANDO_COBERTURA (requiere: coordenadas o dirección completa)
 VALIDANDO_COBERTURA → EN_COTIZACION (requiere: cobertura viable)
 VALIDANDO_COBERTURA → DESCARTADO (cobertura no viable)
-EN_COTIZACION → LISTO_PARA_INSTALACION (requiere: plan seleccionado, dirección instalación, contacto en sitio)
+EN_COTIZACION → LISTO_PARA_INSTALACION (requiere: completitud general >= 75%; si es < 100%, avanza con advertencia de faltantes)
 EN_COTIZACION → DESCARTADO (cliente rechaza)
 LISTO_PARA_INSTALACION → INSTALACION_AGENDADA (requiere: ticketId, workOrderId)
-INSTALACION_AGENDADA → CLIENTE_ACTIVO (requiere: completitud ≥90% en 4 dimensiones + checklist)
+INSTALACION_AGENDADA → CLIENTE_ACTIVO (requiere: completitud general = 100% en 7 secciones + checklist)
 Cualquier estado → DESCARTADO (requiere: motivo)
 DESCARTADO → NUEVO_POTENCIAL (reactivar)
 ```
@@ -109,6 +110,15 @@ La complejidad por segmento se maneja con **reglas de aprobación dentro de EN_C
 
 - Datos existentes en estados eliminados necesitan mapeo correcto. Mitigación: migración aditiva que mapea CONTACTADO→PRECALIFICADO, PENDIENTE_DATOS→PRECALIFICADO, VIABLE_COMERCIALMENTE→VALIDANDO_COBERTURA, PENDIENTE_DECISION→EN_COTIZACION.
 - Frontend del portal puede tener dependencias en estados eliminados. Mitigación: actualizar expediente-ui.ts y api-client.ts en la misma fase.
+
+## Nota correctiva 2026-05-05
+
+La aprobacion del CTO sobre el pipeline de 8 estados queda extendida al correctivo operativo documentado en `docs/specs/2026-05-05-crm-pipeline-completeness-read-model-design.md`, que fija adicionalmente:
+
+1. completitud general por 7 secciones oficiales;
+2. umbral >= 75% para habilitar `EN_COTIZACION -> LISTO_PARA_INSTALACION`;
+3. requisito de 100% general para cierre completo antes de `CLIENTE_ACTIVO`;
+4. uso de ports/read models para eliminar lecturas cross-module dentro de CRM.
 
 ## Plan de migración
 

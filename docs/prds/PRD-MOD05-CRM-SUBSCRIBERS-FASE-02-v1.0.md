@@ -242,7 +242,7 @@ interface TransitionStatusPayload {
 
 ### 5.2 Transiciones permitidas
 
-```
+```text
 LEAD      → PROSPECT, CANCELLED
 PROSPECT  → ACTIVE, CANCELLED
 ACTIVE    → SUSPENDED, CANCELLED

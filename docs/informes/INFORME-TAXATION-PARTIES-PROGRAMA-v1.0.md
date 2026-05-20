@@ -1,9 +1,11 @@
 # Informe vivo — Programa Taxation (MOD07) + Parties (MOD08) + Rediseño tributario MOD06
 
+<!-- markdownlint-configure-file {"MD024": false, "MD032": false, "MD040": false, "MD060": false} -->
+
 **Version:** 1.0
 **Estado:** Cerrado ✅ — F0-F6 completadas
 **Fecha de apertura:** 2026-04-21
-**Última actualización:** 2026-04-22 (Refinamiento arquitectónico MVP: tributos por cliente + prompt de ejecución)
+**Última actualización:** 2026-05-19 (Cierre documental PRD sistema v2.4 + normalización markdown)
 **Owner técnico:** Sr. Dev Fullstack
 **Gobierno:** Engineering Manager (AI-EM-ARCH)
 **PRD:** `docs/prds/PRD-TAXATION-PARTIES-COMMERCIAL-REDESIGN-v1.0.md`
@@ -72,9 +74,9 @@
 - **Tratamiento de IVA:** el sistema puede sugerir tratamiento por estrato, pero la confirmación final queda en el área de facturación.
 - **Tributos territoriales:** no se disparan por municipio de residencia de forma general. Se configuran para casos específicos, en especial entidades públicas colombianas, que son personas jurídicas con tributos propios.
 - **Artefactos actualizados:**
-  - `docs/superpowers/specs/2026-04-21-taxation-bounded-context-design.md` (addendum MVP)
-  - `docs/superpowers/specs/2026-04-20-reglas-comerciales-design.md` (addendum MVP)
-  - `docs/superpowers/specs/2026-04-22-taxation-mvp-tributos-por-cliente-design.md` (nuevo)
+  - `docs/specs/2026-04-21-taxation-bounded-context-design.md` (addendum MVP)
+  - `docs/specs/2026-04-20-reglas-comerciales-design.md` (addendum MVP)
+  - `docs/specs/2026-04-22-taxation-mvp-tributos-por-cliente-design.md` (nuevo)
   - `docs/prompts/PROMPT-TAXATION-MVP-TRIBUTOS-CLIENTE-v1.0.md` (nuevo)
   - `docs/sprints/PLAN-TAXATION-MVP-TRIBUTOS-CLIENTE-v1.0.md` (nuevo)
 - **Aprobación de gobierno:** CTO aprueba el spec MVP 2026-04-22 y habilita transición a ejecución.
@@ -117,7 +119,13 @@
 
 - Confirmar política fina de cifrado de contactos PII en MOD08 (ADR operativo posterior si se requiere).
 - Evaluar renombre físico de tabla `users` → `user_accounts` (ADR operativo posterior).
-- Consolidar PRD v2.3 → v2.4 al cierre del programa.
+- Consolidar PRD v2.3 → v2.4 al cierre del programa. ✅ Completado 2026-05-19 (`docs/prds/PRD_Sistema_ISP_Colombia_v2_3.md`).
+
+### Cierre documental (2026-05-19)
+
+- Se consolidó el PRD sistémico a versión de contenido 2.4, incorporando ADR-025 a ADR-039 y estado real de módulos/transversales.
+- Se normalizó el documento para cumplir markdownlint (encabezados, fences con lenguaje, blockquotes, tablas conflictivas y URLs).
+- El archivo objetivo quedó sin errores de markdownlint al cierre de esta actividad.
 
 ---
 
@@ -536,7 +544,7 @@ _Vacío._
 - `docs/hlds/HLD-MOD08-PARTIES-v1.0.md`
 - `docs/hlds/HLD-MOD06-TAXATION-DEPENDENCY-v1.1-addendum.md`
 - `docs/hlds/HLD-MOD05-PARTIES-DEPENDENCY-v2.1-addendum.md`
-- `docs/superpowers/specs/2026-04-21-taxation-bounded-context-design.md`
-- `docs/superpowers/specs/2026-04-21-parties-multi-rol-design.md`
-- `docs/superpowers/specs/2026-04-20-reglas-comerciales-design.md`
+- `docs/specs/2026-04-21-taxation-bounded-context-design.md`
+- `docs/specs/2026-04-21-parties-multi-rol-design.md`
+- `docs/specs/2026-04-20-reglas-comerciales-design.md`
 - `docs/prompts/PROMPT-TAXATION-PARTIES-COMMERCIAL-FASE-01-v1.0.md`

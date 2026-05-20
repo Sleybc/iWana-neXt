@@ -1,9 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { ExpedienteStatus } from '@iwana/shared';
 import { CompletenessCalculator } from './completeness-calculator.service';
+import { type MissingRequirement } from './expediente-section-completeness.types';
 import { ExpedienteRecord } from './entities/expediente-record.entity';
 
 /**
@@ -13,6 +14,9 @@ export interface TransitionValidationResult {
   valid: boolean;
   missingFields?: string[];
   errorMessage?: string;
+  missingRequirements?: MissingRequirement[];
+  warningTitle?: string;
+  warningMessage?: string;
 }
 
 /**
@@ -64,7 +68,7 @@ export class StatusTransitionService {
       case ExpedienteStatus.EN_COTIZACION:
         return this.validateEnCotizacion(expediente);
       case ExpedienteStatus.LISTO_PARA_INSTALACION:
-        return this.validateListoParaInstalacion(expediente);
+        return this.validateListoParaInstalacion(expedienteId);
       case ExpedienteStatus.INSTALACION_AGENDADA:
         return this.validateInstalacionAgenda(expediente);
       case ExpedienteStatus.CLIENTE_ACTIVO:
@@ -112,10 +116,29 @@ export class StatusTransitionService {
     return { valid: true };
   }
 
-  private validateListoParaInstalacion(_expediente: ExpedienteRecord): TransitionValidationResult {
-    // La dirección de instalación corresponde a la dirección del suscriptor, ya capturada
-    // en la etapa de precalificación. El contacto en sitio se resuelve desde el titular
-    // o el contacto alternativo. No se requieren campos adicionales para esta transición.
+  private async validateListoParaInstalacion(
+    expedienteId: string,
+  ): Promise<TransitionValidationResult> {
+    const completeness = await this.completenessCalculator.calculate(expedienteId);
+
+    if (!completeness.installationReadiness.canTransition) {
+      return {
+        valid: false,
+        errorMessage: completeness.installationReadiness.message,
+        missingFields: this.formatMissingFields(completeness.missingRequirements),
+        missingRequirements: completeness.missingRequirements,
+      };
+    }
+
+    if (completeness.installationReadiness.status === 'READY_WITH_PENDING') {
+      return {
+        valid: true,
+        warningTitle: completeness.installationReadiness.title,
+        warningMessage: completeness.installationReadiness.message,
+        missingRequirements: completeness.missingRequirements,
+      };
+    }
+
     return { valid: true };
   }
 
@@ -133,29 +156,51 @@ export class StatusTransitionService {
 
   private async validateClienteActivo(
     expedienteId: string,
-    expediente: ExpedienteRecord,
+    _expediente: ExpedienteRecord,
   ): Promise<TransitionValidationResult> {
-    const missing: string[] = [];
-
     const completeness = await this.completenessCalculator.calculate(expedienteId);
-    const commercial = completeness.commercial;
-    const legal = completeness.legal;
-    const tech = completeness.technical;
-    const ops = completeness.operational;
 
-    if (commercial < 90 || legal < 90 || tech < 90 || ops < 90) {
-      missing.push('Completitud >= 90% en las 4 dimensiones');
+    // Soportes documentales son informativos, no bloquean el pipeline (ADR-026, spec pipeline asistido).
+    // Se valida que las 6 secciones funcionales estén al 100%.
+    const functionalSections = completeness.sectionCompleteness.filter(
+      (s) => s.key !== 'documentSupport',
+    );
+    const functionalMissing = completeness.missingRequirements.filter(
+      (r) => r.sectionKey !== 'documentSupport',
+    );
+    const allFunctionalComplete = functionalSections.every((s) => s.percentage === 100);
+
+    if (!allFunctionalComplete) {
+      return {
+        valid: false,
+        missingFields: [
+          'Completitud funcional = 100% en las 6 secciones (excluye soportes documentales)',
+          ...this.formatMissingFields(functionalMissing),
+        ],
+        missingRequirements: functionalMissing,
+      };
     }
 
-    // Compatibilidad operativa MOD05: en expediente no existe aún captura explícita
-    // de checklist desde UI. Si la completitud ya cumple el umbral, no bloqueamos.
-    if (!expediente.checklistCompleted && missing.length > 0) {
-      missing.push('Checklist completo');
+    // Soportes documentales pendientes se devuelven como advertencia informativa
+    const documentalMissing = completeness.missingRequirements.filter(
+      (r) => r.sectionKey === 'documentSupport',
+    );
+    if (documentalMissing.length > 0) {
+      return {
+        valid: true,
+        warningTitle: 'Soportes documentales pendientes',
+        warningMessage:
+          'El expediente puede avanzar a Cliente activo. Los soportes documentales están pendientes y deben gestionarse lo antes posible.',
+        missingRequirements: documentalMissing,
+      };
     }
 
-    if (missing.length > 0) {
-      return { valid: false, missingFields: missing };
-    }
     return { valid: true };
+  }
+
+  private formatMissingFields(missingRequirements: MissingRequirement[]): string[] {
+    return missingRequirements.map(
+      (requirement) => `${requirement.sectionLabel}: ${requirement.fieldLabel}`,
+    );
   }
 }

@@ -247,7 +247,7 @@ pnpm --filter @iwana/api exec tsc --noEmit → 0 errors
 2. **pnpm installation:** Corepack global install bloqueado por NTFS → `npm install -g pnpm@10`
 3. **root package.json additions:** `packageManager`, `pnpm.onlyBuiltDependencies`, `eslint + @typescript-eslint/*` agregados como necesidad del scaffold real
 4. **eslint.config.mjs:** Creado en raiz como flat config ESLint v9 para hoisting correcto en monorepo pnpm 10
-5. **lint-staged:** Scoped a directorios de proyecto para evitar procesamiento de .agents/skills-archive/ (2800+ archivos)
+5. **lint-staged:** Scoped a directorios de proyecto para evitar procesar el antiguo archivo local de skills, ya retirado del repo
 
 ### Artefactos de Sprint 1 desbloqueados
 - `packages/database/src/entities/` → TypeORM entities (User, Tenant, AuditLog, RefreshToken)

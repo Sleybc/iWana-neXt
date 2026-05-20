@@ -20,6 +20,7 @@ import {
 import { CustomerSegment } from '@iwana/shared';
 import type { Contract, ContractStatus } from '@/lib/api-client';
 import { ApiError, contractsApi } from '@/lib/api-client';
+import { formatLocationLabel } from './subscriber-ui';
 
 // ── Constantes de UI ──────────────────────────────────────────────────────────
 
@@ -500,8 +501,14 @@ export function ContractDetailDrawer({
               <>
                 <DetailField label="Alias" value={contract.alias} />
                 <DetailField label="Dirección" value={contract.installationAddress} />
-                <DetailField label="Ciudad" value={contract.installationCity} />
-                <DetailField label="Departamento" value={contract.installationDepartment} />
+                <DetailField
+                  label="Ciudad"
+                  value={formatLocationLabel(contract.installationCity)}
+                />
+                <DetailField
+                  label="Departamento"
+                  value={formatLocationLabel(contract.installationDepartment)}
+                />
                 <DetailField label="Código postal" value={contract.installationPostalCode} />
                 {contract.installationNotes && (
                   <div className="sm:col-span-2">

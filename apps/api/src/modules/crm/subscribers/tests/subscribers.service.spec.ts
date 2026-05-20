@@ -493,6 +493,65 @@ describe('SubscribersService', () => {
     });
   });
 
+  // ── findSummaryByExpedienteId ──
+
+  describe('findSummaryByExpedienteId', () => {
+    it('devuelve un summary mínimo por expedienteId', async () => {
+      mockFindOne(
+        buildSubscriber({
+          id: 'sub-1',
+          expedienteId: 'exp-linked',
+          status: SubscriberStatus.PROSPECT,
+          firstName: 'Laura',
+          lastName: 'Pérez',
+          commercialName: null,
+          businessName: null,
+        }),
+      );
+
+      await expect(service.findSummaryByExpedienteId('exp-linked')).resolves.toEqual({
+        id: 'sub-1',
+        status: SubscriberStatus.PROSPECT,
+        fullName: 'Laura Pérez',
+      });
+    });
+
+    it('devuelve null cuando no existe suscriptor vinculado', async () => {
+      mockFindOne(null);
+      await expect(service.findSummaryByExpedienteId('exp-not-found')).resolves.toBeNull();
+    });
+
+    it('usa commercialName cuando está disponible en lugar de firstName + lastName', async () => {
+      mockFindOne(
+        buildSubscriber({
+          id: 'sub-biz',
+          expedienteId: 'exp-biz',
+          firstName: 'Juan',
+          lastName: 'García',
+          commercialName: 'Mi Empresa S.A.S.',
+          businessName: null,
+        }),
+      );
+
+      const result = await service.findSummaryByExpedienteId('exp-biz');
+      expect(result?.fullName).toBe('Mi Empresa S.A.S.');
+    });
+
+    it('retorna null cuando todos los campos de nombre están vacíos', async () => {
+      mockFindOne(
+        buildSubscriber({
+          expedienteId: 'exp-noname',
+          firstName: null,
+          lastName: null,
+          commercialName: null,
+          businessName: null,
+        }),
+      );
+
+      await expect(service.findSummaryByExpedienteId('exp-noname')).resolves.toBeNull();
+    });
+  });
+
   // ── Helpers ──
 
   function mockSave(subscriber: Subscriber): void {
@@ -579,6 +638,65 @@ describe('SubscribersService', () => {
       }),
     );
   }
+
+  // ── buildProvisioningReadiness ──
+
+  describe('buildProvisioningReadiness', () => {
+    it('bloquea cuando el subscriber no tiene expediente vinculado', () => {
+      const subscriber = buildSubscriber({ expedienteId: null });
+      const result = (service as any).buildProvisioningReadiness(subscriber, null);
+      expect(result.status).toBe('BLOQUEADO');
+      expect(result.retryable).toBe(false);
+      expect(result.canProvision).toBe(false);
+    });
+
+    it('marca retryableError cuando el subscriber tiene link pero el expediente no se cargó', () => {
+      const subscriber = buildSubscriber({ expedienteId: 'exp-1' });
+      const result = (service as any).buildProvisioningReadiness(subscriber, null);
+      expect(result.status).toBe('ERROR_REINTENTABLE');
+      expect(result.retryable).toBe(true);
+      expect(result.message).toBeTruthy();
+    });
+
+    it('bloquea con mensaje de consentimiento cuando dataConsentRevoked es true', () => {
+      const subscriber = buildSubscriber({ expedienteId: 'exp-1' });
+      const expediente = {
+        dataConsentRevoked: true,
+        legalComplianceStatus: null,
+        identityVerified: null,
+        interestedPlanId: null,
+        workOrderId: null,
+        ticketId: null,
+        status: null,
+      } as any;
+      const result = (service as any).buildProvisioningReadiness(subscriber, expediente);
+      expect(result.status).toBe('BLOQUEADO');
+      expect(result.message).toContain('consentimiento');
+    });
+
+    it('no bloquea en happy path con subscriber operativo y campos mínimos presentes', () => {
+      const subscriber = buildSubscriber({
+        expedienteId: 'exp-1',
+        status: SubscriberStatus.ACTIVE,
+        documentNumberEncrypted: 'encrypted-doc',
+        phoneEncrypted: 'encrypted-phone',
+        address: 'Calle 1 #2-3',
+      });
+      const expediente = {
+        id: 'exp-1',
+        dataConsentRevoked: false,
+        legalComplianceStatus: null,
+        identityVerified: 'verified',
+        interestedPlanId: 'plan-1',
+        workOrderId: null,
+        ticketId: null,
+        status: null,
+      } as any;
+      const result = (service as any).buildProvisioningReadiness(subscriber, expediente);
+      expect(result.status).not.toBe('BLOQUEADO');
+      expect(result.status).not.toBe('ERROR_REINTENTABLE');
+    });
+  });
 });
 
 function buildSubscriber(overrides: Partial<Subscriber> = {}): Subscriber {
@@ -616,6 +734,7 @@ function buildSubscriber(overrides: Partial<Subscriber> = {}): Subscriber {
     longitude: null,
     coverageNodeId: null,
     status: SubscriberStatus.LEAD,
+    expedienteId: null,
     externalId: null,
     createdBy: 'user-base',
     createdAt: new Date('2026-04-16T00:00:00Z'),

@@ -16,12 +16,7 @@ const createUserSchema = z.object({
   role: z.string().min(1, 'Selecciona un rol.'),
   firstName: z.string().trim().max(100, 'Maximo 100 caracteres.').optional().or(z.literal('')),
   lastName: z.string().trim().max(100, 'Maximo 100 caracteres.').optional().or(z.literal('')),
-  phone: z
-    .string()
-    .min(7, 'Minimo 7 caracteres')
-    .max(50, 'Maximo 50 caracteres')
-    .optional()
-    .or(z.literal('')),
+  phone: z.string().max(15, 'Maximo 15 caracteres.').optional().or(z.literal('')),
   jobTitle: z.string().trim().max(150, 'Maximo 150 caracteres.').optional().or(z.literal('')),
   documentType: z.string().optional(),
   documentNumber: z.string().trim().max(20, 'Maximo 20 caracteres.').optional().or(z.literal('')),
@@ -112,7 +107,11 @@ export function CreateUserModal({
     };
     if (values.firstName?.trim()) dto.firstName = values.firstName.trim();
     if (values.lastName?.trim()) dto.lastName = values.lastName.trim();
-    if (values.phone?.trim()) dto.phone = values.phone.trim();
+    if (values.phone?.trim()) {
+      const raw = values.phone.trim().replace(/\s/g, '');
+      // Normalizar a E.164 con prefijo Colombia si el usuario no lo incluyó
+      dto.phone = raw.startsWith('+') ? raw : `+57${raw}`;
+    }
     if (values.jobTitle?.trim()) dto.jobTitle = values.jobTitle.trim();
     if (values.documentType) dto.documentType = values.documentType;
     if (values.documentNumber?.trim()) dto.documentNumber = values.documentNumber.trim();

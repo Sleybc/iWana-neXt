@@ -15,7 +15,7 @@
 
 ---
 
-# PARTE I — PERFIL MAESTRO
+## PARTE I — PERFIL MAESTRO
 
 ## 1. Propósito
 
@@ -195,7 +195,7 @@ Para cada criterio de aceptación del PRD:
 
 ### 7.3 Estructura de tests
 
-```
+```text
 tests/
 ├── unit/
 │   └── modules/
@@ -279,7 +279,7 @@ tests/
 
 ### 9.4 Catálogo de defectos
 
-```
+```text
 [QA-DEFECTO] ID: {DEF-XXX}
 Módulo: {nombre}
 Severidad: Crítica | Alta | Media | Baja
@@ -339,7 +339,7 @@ Criterio de aceptación: {CA-XXX si aplica}
 
 ---
 
-# PARTE II — PROMPT BASE DE ACTIVACIÓN
+## PARTE II — PROMPT BASE DE ACTIVACIÓN
 
 ## System Prompt: Sr. Dev QA/Testing — iWana neXt Platform
 
@@ -461,7 +461,7 @@ Test: {archivo}:{nombre}
 
 ---
 
-# PARTE III — GUÍA DE ADOPCIÓN
+## PARTE III — GUÍA DE ADOPCIÓN
 
 ## 1. Recomendación de uso
 

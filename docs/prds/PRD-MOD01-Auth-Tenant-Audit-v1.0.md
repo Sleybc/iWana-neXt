@@ -87,28 +87,28 @@ Este módulo no se considera correctamente gobernado si faltan alguno de estos a
 
 ### 3.2 Casos de uso principales
 
-**UC-01: Login con MFA**
+#### UC-01: Login con MFA
 
 - Actor: Cualquier usuario registrado
 - Flujo: Email + password → validación → si MFA habilitado, pedir código TOTP → retornar access token (body) + refresh token (cookie httpOnly)
 - Alternativa: Si `passwordResetRequired=true`, forzar pantalla de cambio de password antes de acceder
 
-**UC-02: Login primer acceso (Admin de nuevo tenant)**
+#### UC-02: Login primer acceso (Admin de nuevo tenant)
 
 - Actor: ADMIN de ISP recién creado
 - Flujo: Recibe email con password temporal → ingresa → sistema detecta `passwordResetRequired=true` → fuerza setup de nuevo password → fuerza setup de MFA (ADMIN obligatorio) → accede al dashboard
 
-**UC-03: Aprovisionamiento de tenant (SYSTEM_ADMIN)**
+#### UC-03: Aprovisionamiento de tenant (SYSTEM_ADMIN)
 
 - Actor: SYSTEM_ADMIN de iWana
 - Flujo: Crea tenant con nombre + slug + adminEmail → sistema crea schema PostgreSQL en background (BullMQ) → seed inicial (ADMIN + config) → email automático con credenciales temporales → tenant queda en ACTIVE
 
-**UC-04: Aislamiento multi-tenant**
+#### UC-04: Aislamiento multi-tenant
 
 - Actor: Usuario de Tenant A con JWT válido
 - Flujo: Intenta acceder a datos de Tenant B → TenantMiddleware detecta mismatch → HTTP 403 antes de llegar a la lógica de negocio
 
-**UC-05: Consulta de audit log (Auditor)**
+#### UC-05: Consulta de audit log (Auditor)
 
 - Actor: Auditor del ISP
 - Flujo: Consulta `/api/v1/audit-logs` con filtros (rango de fechas, tipo de entidad, usuario) → sistema retorna registros paginados con cursor → puede exportar para informes regulatorios (CRC, DIAN)
@@ -194,7 +194,7 @@ Este módulo no se considera correctamente gobernado si faltan alguno de estos a
 
 ### 6.1 Schema Público (una sola instancia, compartida)
 
-```
+```text
 public.tenants
   id (UUID PK), name, slug (UNIQUE), schema_name (UNIQUE), status (enum),
   settings (JSONB), contact_email, max_subscribers (int), created_at, updated_at
@@ -215,7 +215,7 @@ public.platform_audit_logs
 
 ### 6.2 Schema por Tenant (`tenant_<slug>`)
 
-```
+```text
 users
   id (UUID PK), email (AES-256), email_hash (SHA-256 UNIQUE),
   password_hash (bcrypt 12), role (enum 14 roles), status (enum),

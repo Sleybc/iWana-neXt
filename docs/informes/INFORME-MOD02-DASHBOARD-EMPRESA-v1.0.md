@@ -268,7 +268,7 @@ Se ejecutó el refinamiento UI sistémico aprobado para `apps/portal` con alcanc
 **Documentos base de ejecución:**
 - [PLAN-TRANSVERSAL-PORTAL-REFINAMIENTO-UI-FASE-02-v1.0.md](../plans/PLAN-TRANSVERSAL-PORTAL-REFINAMIENTO-UI-FASE-02-v1.0.md)
 - [PROMPT-TRANSVERSAL-PORTAL-REFINAMIENTO-UI-FASE-02-v1.0.md](../prompts/PROMPT-TRANSVERSAL-PORTAL-REFINAMIENTO-UI-FASE-02-v1.0.md)
-- [2026-05-04-portal-ui-refinamiento-fase-02-design.md](../superpowers/specs/2026-05-04-portal-ui-refinamiento-fase-02-design.md)
+- [2026-05-04-portal-ui-refinamiento-fase-02-design.md](../specs/2026-05-04-portal-ui-refinamiento-fase-02-design.md)
 
 **Cambios ejecutados:**
 1. Se creó la primitive local `apps/portal/src/components/shared/portal-ui.tsx` con `PortalPanel`, `PortalSectionHeader`, `PortalAlert`, `PortalEmptyState`, `PortalSkeletonBlock` e `interactiveFocusClassName`.
@@ -527,7 +527,7 @@ Se ejecutó el cierre operativo de la Fase 03 sobre el worktree actual de `apps/
 - [SPEC-TRANSVERSAL-PORTAL-COMPACTA-OPERATIVA-FASE-03-v1.0.md](../specs/SPEC-TRANSVERSAL-PORTAL-COMPACTA-OPERATIVA-FASE-03-v1.0.md)
 - [PLAN-TRANSVERSAL-PORTAL-COMPACTA-OPERATIVA-FASE-03-v1.0.md](../plans/PLAN-TRANSVERSAL-PORTAL-COMPACTA-OPERATIVA-FASE-03-v1.0.md)
 - [PROMPT-TRANSVERSAL-PORTAL-COMPACTA-OPERATIVA-FASE-03-v1.0.md](../prompts/PROMPT-TRANSVERSAL-PORTAL-COMPACTA-OPERATIVA-FASE-03-v1.0.md)
-- [2026-05-04-portal-compacta-operativa-fase-03-design.md](../superpowers/specs/2026-05-04-portal-compacta-operativa-fase-03-design.md)
+- [2026-05-04-portal-compacta-operativa-fase-03-design.md](../specs/2026-05-04-portal-compacta-operativa-fase-03-design.md)
 
 **Correcciones aplicadas:**
 - se eliminó el banner introductorio permanente de `CommercialClient`;
@@ -585,6 +585,123 @@ Se ejecutó el cierre operativo de la Fase 03 sobre el worktree actual de `apps/
 
 ---
 
+## 8.12 Addendum Correctivo del select en modal Comercial (2026-05-04)
+
+Se corrigió un bug puntual en el modal de creación/edición de planes comerciales (`/dashboard/commercial/planes/nuevo`) donde el desplegable de **Regla de instalación** quedaba recortado dentro del contenedor del diálogo al abrirse cerca del borde inferior.
+
+**Causa raíz:**
+- el `Select` compartido del design system renderizaba su lista en flujo normal dentro del propio contenedor del modal;
+- `DialogContent` usa scroll interno (`overflow-y-auto`), así que el menú podía quedar oculto por clipping.
+
+**Corrección aplicada:**
+- el menú del `Select` ahora se portaliza a `document.body`;
+- se calcula su posición con `position: fixed` para mantenerlo anclado al trigger;
+- se ajustó el `aria-labelledby` del trigger para usar el label visible cuando aplique;
+- se añadió una prueba de regresión que verifica que el listbox queda fuera del contenedor del modal.
+
+**Archivos tocados:**
+- `packages/ui/src/components/Select.tsx`
+- `apps/portal/src/components/shared/Select.spec.tsx`
+
+**Validación ejecutada:**
+
+| Comando | Resultado |
+|---|---|
+| `pnpm --filter @iwana/portal test -- --runTestsByPath src/components/shared/Select.spec.tsx` | ✅ OK |
+| `pnpm --filter @iwana/portal typecheck` | ✅ OK |
+| `pnpm --filter @iwana/portal lint` | ✅ OK |
+
+**Conclusión operativa:**
+- El menú de "Regla de instalación" ya no queda oculto dentro del modal.
+- La solución queda generalizada para cualquier `Select` del portal que se use dentro de diálogos con overflow.
+
+---
+
+## 8.13 Addendum Limpieza FTTH en catálogo comercial (2026-05-04)
+
+Se corrigió el catálogo de planes comerciales para que **FTTH** deje de aparecer como tecnología disponible al crear un plan nuevo.
+
+**Causa raíz:**
+- FTTH seguía presente en las sugerencias por defecto del catálogo;
+- el formulario reutilizaba ese valor como fallback de creación;
+- el listado de opciones persistidas podía reintroducirlo al abrir el modal.
+
+**Corrección aplicada:**
+- se eliminó FTTH de las sugerencias por defecto;
+- se filtró FTTH al cargar tecnologías persistidas;
+- el alta nueva ahora usa la primera tecnología disponible como valor inicial;
+- se bloqueó FTTH en alta, edición y submit para evitar que vuelva a entrar por atajos o datos viejos.
+
+**Archivos tocados:**
+- `apps/portal/src/components/settings/PlanCatalogManager.tsx`
+- `apps/portal/src/components/settings/PlanCatalogManager.spec.tsx`
+
+**Validación ejecutada:**
+
+| Comando | Resultado |
+|---|---|
+| `pnpm --filter @iwana/portal test -- --runTestsByPath src/components/settings/PlanCatalogManager.spec.tsx` | ✅ OK |
+| `pnpm --filter @iwana/portal typecheck` | ✅ OK |
+| `pnpm --filter @iwana/portal lint` | ✅ OK |
+
+**Conclusión operativa:**
+- El selector de tecnología ya no muestra FTTH en el flujo de alta.
+- La restricción también evita que FTTH reaparezca desde persistencia o entradas manuales.
+
+---
+
+## 8.14 Addendum Botón explícito de edición en catálogo de impuestos (2026-05-04)
+
+Se hizo visible la acción de edición para las definiciones tributarias creadas en `Catálogo de impuestos`, alineando el patrón con el resto de gestores comerciales.
+
+**Corrección aplicada:**
+- el botón de edición pasó de icono-only a botón explícito con texto `Editar`;
+- se agregaron `aria-label` y `title` por definición para mejorar descubrimiento y accesibilidad;
+- se añadió una regresión que verifica que el botón aparece para impuestos `CUSTOM` y `SYSTEM`.
+
+**Archivos tocados:**
+- `apps/portal/src/components/commercial/TaxCatalogManager.tsx`
+- `apps/portal/src/components/commercial/TaxCatalogManager.spec.tsx`
+
+**Validación ejecutada:**
+
+| Comando | Resultado |
+|---|---|
+| `pnpm --filter @iwana/portal test -- --runTestsByPath src/components/commercial/TaxCatalogManager.spec.tsx` | ✅ OK |
+| `pnpm --filter @iwana/portal typecheck` | ✅ OK |
+| `pnpm --filter @iwana/portal lint` | ✅ OK |
+
+**Conclusión operativa:**
+- Los impuestos creados y los presets del sistema muestran una acción de edición visible.
+- La edición sigue habilitada solo para roles con permiso de gestión.
+
+---
+
+## 8.15 Addendum Visibilidad de edición en presets de impuestos (2026-05-04)
+
+Se ajustó nuevamente el catálogo de impuestos para que las acciones **Editar** y **Eliminar** estén visibles también en las definiciones `SYSTEM`, usando esas filas como referencia visual y plantilla operativa.
+
+**Corrección aplicada:**
+- los botones **Editar** y **Eliminar** ahora se muestran para todas las definiciones visibles, incluidas las de origen `SYSTEM`;
+- se añadió una regresión que verifica edición y eliminación visibles en ambos orígenes.
+
+**Archivos tocados:**
+- `apps/portal/src/components/commercial/TaxCatalogManager.tsx`
+- `apps/portal/src/components/commercial/TaxCatalogManager.spec.tsx`
+
+**Validación ejecutada:**
+
+| Comando | Resultado |
+|---|---|
+| `pnpm --filter @iwana/portal test -- --runTestsByPath src/components/commercial/TaxCatalogManager.spec.tsx` | ✅ OK |
+| `pnpm --filter @iwana/portal typecheck` | ✅ OK |
+| `pnpm --filter @iwana/portal lint` | ✅ OK |
+
+**Conclusión operativa:**
+- La edición y el borrado ya son visibles también sobre los presets del sistema.
+
+---
+
 ## 9. Historial de Cambios
 
 | Versión | Fecha | Autor | Descripción |
@@ -601,3 +718,7 @@ Se ejecutó el cierre operativo de la Fase 03 sobre el worktree actual de `apps/
 | v1.9 | 2026-05-04 | GitHub Copilot (GPT-5.4) | Normalización de gutter exterior en CRM y Suscriptores para igualarlo con el Dashboard base del portal |
 | v1.10 | 2026-05-04 | GitHub Copilot | Spec, plan y prompt Fase 03: portal compacta operativa con header único + workspace |
 | v1.11 | 2026-05-04 | GitHub Copilot (GPT-5.4) | Ejecución Fase 03: compactación final de Comercial, Settings, CRM detalle, Perfil y Auth, con validación `63/63` en E2E |
+| v1.12 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Correctivo puntual: Select portalizado para evitar clipping del desplegable en modales de Comercial |
+| v1.13 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Limpieza del catálogo comercial: FTTH eliminada del alta nueva y de la persistencia local |
+| v1.14 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Catálogo de impuestos: botón explícito de edición para definiciones CUSTOM |
+| v1.15 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Catálogo de impuestos: edición y borrado visibles también para presets SYSTEM |

@@ -830,7 +830,7 @@ Impacto:
 
 ### 8.30 Implementacion de reglas comerciales: Compatibilidad y Tributarias (2026-04-20)
 
-Se ejecuto la especificacion de diseño `docs/superpowers/specs/2026-04-20-reglas-comerciales-design.md` completa, implementando las dos subsecciones de `Reglas comerciales` en el modulo Comercial: compatibilidad entre items del catalogo y clasificaciones tributarias con resolucion por estrato y segmento.
+Se ejecuto la especificacion de diseño `docs/specs/2026-04-20-reglas-comerciales-design.md` completa, implementando las dos subsecciones de `Reglas comerciales` en el modulo Comercial: compatibilidad entre items del catalogo y clasificaciones tributarias con resolucion por estrato y segmento.
 
 #### Alcance implementado — Backend
 

@@ -21,6 +21,7 @@ import {
   SUBSCRIBER_STATUS_META,
   SUBSCRIBER_STATUS_OPTIONS,
   formatDocumentDisplay,
+  formatSubscriberLocation,
   formatSubscriberDate,
   formatSubscriberName,
   formatVatTreatmentLabel,
@@ -28,7 +29,7 @@ import {
 
 const tableHeadClass =
   'px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400';
-const cellClass = 'px-4 py-3 align-top text-sm text-gray-700 dark:text-gray-200';
+const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
 
 function mapError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -306,7 +307,7 @@ export function SubscribersListClient() {
                       {formatVatTreatmentLabel(subscriber.vatTreatment)}
                     </td>
                     <td className={cellClass}>
-                      {subscriber.city || subscriber.department || 'Sin ubicación'}
+                      {formatSubscriberLocation(subscriber.city, subscriber.department)}
                     </td>
                     <td className={cellClass}>
                       <Badge

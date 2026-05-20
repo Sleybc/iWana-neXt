@@ -14,6 +14,7 @@ import {
   SECTIONS,
   calculateDocumentSupportCompletion,
   calculateSectionCompletion,
+  getBackendSectionCompletion,
   getSectionCompletionFields,
   getSectionPayloadFields,
   getSectionRenderFields,
@@ -70,6 +71,16 @@ export function ExpedienteSections({
   const effectivePersonType = draftValues.personType || null;
 
   const sectionCompletionById = SECTIONS.reduce<Record<string, number>>((accumulator, section) => {
+    const backendCompletion = getBackendSectionCompletion(
+      completeness?.sectionCompleteness,
+      section.id as SectionId,
+    );
+
+    if (backendCompletion !== null) {
+      accumulator[section.id] = backendCompletion;
+      return accumulator;
+    }
+
     const completionFields = getSectionCompletionFields(
       section.id as SectionId,
       effectivePersonType,
@@ -78,10 +89,9 @@ export function ExpedienteSections({
     return accumulator;
   }, {});
 
-  const documentSupportCompletion = calculateDocumentSupportCompletion(
-    effectivePersonType,
-    expediente.documentSupports,
-  );
+  const documentSupportCompletion =
+    getBackendSectionCompletion(completeness?.sectionCompleteness, 'document_support') ??
+    calculateDocumentSupportCompletion(effectivePersonType, expediente.documentSupports);
 
   const completedSections = [...SECTIONS.map((section) => section.id), 'document_support'].filter(
     (sectionId) =>

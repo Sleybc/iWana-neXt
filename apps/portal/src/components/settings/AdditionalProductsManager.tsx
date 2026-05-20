@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { CheckCircle2, CircleAlert, PackagePlus, Search } from 'lucide-react';
+import { CheckCircle2, CircleAlert, PackagePlus, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -65,7 +65,7 @@ const CATEGORY_ORDER = [
 
 const tableHeadClass =
   'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500';
-const cellClass = 'px-4 py-3 align-top text-sm text-gray-700 dark:text-gray-200';
+const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
 const searchInputClass =
   'h-12 w-full rounded-2xl border border-gray-200 bg-gray-50/70 pl-11 pr-4 text-sm text-iwana-primary shadow-sm transition-all duration-200 placeholder:text-gray-400 focus:border-iwana-secondary focus:bg-white focus:outline-none focus:ring-2 focus:ring-iwana-secondary/35 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100 dark:placeholder-gray-500';
 
@@ -346,6 +346,7 @@ export function AdditionalProductsManager({ canEdit }: AdditionalProductsManager
             </Badge>
             {canEdit && (
               <Button onClick={openCreateDialog} size="sm">
+                <Plus className="h-4 w-4" aria-hidden="true" />
                 Agregar producto
               </Button>
             )}
@@ -446,18 +447,20 @@ export function AdditionalProductsManager({ canEdit }: AdditionalProductsManager
               </Select>
 
               {hasActiveFilters && (
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => {
                     setSearchValue('');
                     setCategoryFilter('ALL');
                     setStatusFilter('ALL');
                     setCommercialModelFilter('ALL');
                   }}
-                  className="inline-flex h-12 items-center justify-center rounded-2xl border border-gray-200 px-4 text-sm font-semibold text-iwana-primary transition-colors hover:border-iwana-secondary/40 hover:bg-iwana-secondary-50 dark:border-dark-border dark:text-gray-100 dark:hover:bg-dark-surface-3"
+                  className="h-12 px-4"
                 >
                   Limpiar filtros
-                </button>
+                </Button>
               )}
             </div>
 
@@ -587,18 +590,22 @@ export function AdditionalProductsManager({ canEdit }: AdditionalProductsManager
                             <div className="flex gap-2">
                               <Button
                                 variant="secondary"
-                                size="sm"
+                                size="icon"
+                                aria-label={`Editar producto ${product.name}`}
+                                title={`Editar producto ${product.name}`}
                                 onClick={() => openEditDialog(product)}
                               >
-                                Editar
+                                <Pencil className="h-4 w-4" aria-hidden="true" />
                               </Button>
                               <Button
-                                variant="destructive"
-                                size="sm"
+                                variant="softDestructive"
+                                size="icon"
+                                aria-label={`Eliminar producto ${product.name}`}
+                                title={`Eliminar producto ${product.name}`}
                                 onClick={() => handleDelete(product.id)}
                                 disabled={deleting === product.id}
                               >
-                                {deleting === product.id ? 'Eliminando...' : 'Eliminar'}
+                                <Trash2 className="h-4 w-4" aria-hidden="true" />
                               </Button>
                             </div>
                           </td>

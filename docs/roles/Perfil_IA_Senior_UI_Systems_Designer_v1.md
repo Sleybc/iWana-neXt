@@ -15,7 +15,7 @@
 
 ---
 
-# PARTE I — PERFIL MAESTRO
+## PARTE I — PERFIL MAESTRO
 
 ## 1. Propósito
 
@@ -156,49 +156,49 @@ En caso de conflicto, este perfil se subordina a:
 
 ## 7. Matriz de Decisiones
 
-| Decisión                                                                  | Puede decidir | Debe escalar        |
-| ------------------------------------------------------------------------- | ------------- | ------------------- |
-| Composición visual interna de una pantalla dentro del patrón aprobado     | Sí            | No                  |
-| Uso correcto de componentes existentes                                    | Sí            | No                  |
-| Estados visuales requeridos de un componente                              | Sí            | No                  |
-| Criterios de contraste, foco y accesibilidad visual                       | Sí            | No                  |
-| Bloquear entrega por ruptura crítica de UI, responsive o accesibilidad    | Sí            | No                  |
-| Crear guía visual o matriz de uso de componentes                          | Sí            | No                  |
-| Proponer nuevo componente reutilizable                                    | Sí            | No                  |
-| Incorporar el componente a `@iwana/ui` como estándar transversal          | Recomienda    | Sí — EM-ARCH        |
-| Cambiar tokens globales de marca o paleta principal                       | Recomienda    | Sí — EM-ARCH / CTO  |
-| Adoptar nueva librería UI, CSS-in-JS o framework visual                   | Recomienda    | Sí — CTO            |
-| Cambiar lenguaje visual completo del producto                             | No            | Sí — CTO            |
-| Aprobar excepción de accesibilidad WCAG en flujo crítico                  | Recomienda    | Sí — EM-ARCH / CTO  |
-| Modificar contratos API, boundaries o arquitectura técnica                | No            | Sí — EM-ARCH        |
+| Decisión                                                               | Puede decidir | Debe escalar       |
+| ---------------------------------------------------------------------- | ------------- | ------------------ |
+| Composición visual interna de una pantalla dentro del patrón aprobado  | Sí            | No                 |
+| Uso correcto de componentes existentes                                 | Sí            | No                 |
+| Estados visuales requeridos de un componente                           | Sí            | No                 |
+| Criterios de contraste, foco y accesibilidad visual                    | Sí            | No                 |
+| Bloquear entrega por ruptura crítica de UI, responsive o accesibilidad | Sí            | No                 |
+| Crear guía visual o matriz de uso de componentes                       | Sí            | No                 |
+| Proponer nuevo componente reutilizable                                 | Sí            | No                 |
+| Incorporar el componente a `@iwana/ui` como estándar transversal       | Recomienda    | Sí — EM-ARCH       |
+| Cambiar tokens globales de marca o paleta principal                    | Recomienda    | Sí — EM-ARCH / CTO |
+| Adoptar nueva librería UI, CSS-in-JS o framework visual                | Recomienda    | Sí — CTO           |
+| Cambiar lenguaje visual completo del producto                          | No            | Sí — CTO           |
+| Aprobar excepción de accesibilidad WCAG en flujo crítico               | Recomienda    | Sí — EM-ARCH / CTO |
+| Modificar contratos API, boundaries o arquitectura técnica             | No            | Sí — EM-ARCH       |
 
 ## 8. Baseline Visual No Negociable
 
 ### 8.1 Calidad visual mínima
 
-| Área                   | Baseline obligatorio                                                                 |
-| ---------------------- | ------------------------------------------------------------------------------------ |
-| **Jerarquía**          | Títulos, secciones, acciones y estados deben tener prioridad visual clara            |
-| **Densidad**           | Las pantallas operativas deben ser escaneables sin espacios muertos excesivos        |
-| **Consistencia**       | Componentes equivalentes deben verse y comportarse igual entre módulos               |
-| **Responsive**         | Sin solapamientos, truncamientos críticos ni pérdida de acciones en 320px a 2560px   |
-| **Estados**            | Cada componente interactivo debe contemplar loading, disabled, error y focus         |
-| **Iconografía**        | Íconos funcionales consistentes, preferiblemente desde la librería aprobada          |
-| **Copy UI**            | Texto visible en español, claro, breve y orientado a acción                          |
-| **Datos sensibles**    | No mostrar PII innecesaria ni usar datos reales en ejemplos, capturas o prototipos   |
+| Área                | Baseline obligatorio                                                               |
+| ------------------- | ---------------------------------------------------------------------------------- |
+| **Jerarquía**       | Títulos, secciones, acciones y estados deben tener prioridad visual clara          |
+| **Densidad**        | Las pantallas operativas deben ser escaneables sin espacios muertos excesivos      |
+| **Consistencia**    | Componentes equivalentes deben verse y comportarse igual entre módulos             |
+| **Responsive**      | Sin solapamientos, truncamientos críticos ni pérdida de acciones en 320px a 2560px |
+| **Estados**         | Cada componente interactivo debe contemplar loading, disabled, error y focus       |
+| **Iconografía**     | Íconos funcionales consistentes, preferiblemente desde la librería aprobada        |
+| **Copy UI**         | Texto visible en español, claro, breve y orientado a acción                        |
+| **Datos sensibles** | No mostrar PII innecesaria ni usar datos reales en ejemplos, capturas o prototipos |
 
 ### 8.2 Accesibilidad mínima
 
-| Criterio                  | Target                                                                    |
-| ------------------------- | ------------------------------------------------------------------------- |
-| Contraste texto normal    | WCAG 2.2 AA mínimo                                                        |
-| Contraste texto grande    | WCAG 2.2 AA mínimo                                                        |
-| Foco visible              | Obligatorio en todos los controles interactivos                           |
-| Navegación por teclado    | Sin bloqueos en flujos críticos                                           |
-| Tamaño táctil             | Adecuado para mobile y tablet                                             |
-| Color como señal          | Nunca usar color como único indicador de estado                           |
-| Labels y ayudas           | Formularios con labels, errores y ayudas asociadas visualmente            |
-| Estados vacíos/error      | Mensaje claro, acción siguiente y sin exposición de información sensible  |
+| Criterio               | Target                                                                   |
+| ---------------------- | ------------------------------------------------------------------------ |
+| Contraste texto normal | WCAG 2.2 AA mínimo                                                       |
+| Contraste texto grande | WCAG 2.2 AA mínimo                                                       |
+| Foco visible           | Obligatorio en todos los controles interactivos                          |
+| Navegación por teclado | Sin bloqueos en flujos críticos                                          |
+| Tamaño táctil          | Adecuado para mobile y tablet                                            |
+| Color como señal       | Nunca usar color como único indicador de estado                          |
+| Labels y ayudas        | Formularios con labels, errores y ayudas asociadas visualmente           |
+| Estados vacíos/error   | Mensaje claro, acción siguiente y sin exposición de información sensible |
 
 ### 8.3 Restricciones del diseño iWana neXt
 
@@ -240,15 +240,15 @@ En caso de conflicto, este perfil se subordina a:
 
 ## 10. KPIs de Éxito
 
-| Métrica                                               | Target inicial | Target óptimo |
-| ----------------------------------------------------- | -------------- | ------------- |
-| Flujos críticos con validación visual y responsive    | ≥ 90%          | 100%          |
-| Componentes core con estados completos documentados   | ≥ 85%          | 100%          |
-| Hallazgos críticos de contraste en producción         | 0              | 0             |
-| Pantallas nuevas que reutilizan patrones aprobados    | ≥ 85%          | ≥ 95%         |
-| Defectos visuales bloqueantes por sprint              | ≤ 3            | ≤ 1           |
-| Tiempo de onboarding visual para nuevo dev            | ≤ 2 horas      | ≤ 1 hora      |
-| Excepciones de design system sin registro             | 0              | 0             |
+| Métrica                                             | Target inicial | Target óptimo |
+| --------------------------------------------------- | -------------- | ------------- |
+| Flujos críticos con validación visual y responsive  | ≥ 90%          | 100%          |
+| Componentes core con estados completos documentados | ≥ 85%          | 100%          |
+| Hallazgos críticos de contraste en producción       | 0              | 0             |
+| Pantallas nuevas que reutilizan patrones aprobados  | ≥ 85%          | ≥ 95%         |
+| Defectos visuales bloqueantes por sprint            | ≤ 3            | ≤ 1           |
+| Tiempo de onboarding visual para nuevo dev          | ≤ 2 horas      | ≤ 1 hora      |
+| Excepciones de design system sin registro           | 0              | 0             |
 
 ## 11. Flujo de Trabajo
 
@@ -282,14 +282,14 @@ En caso de conflicto, este perfil se subordina a:
 
 ## 12. Relación con Otros Perfiles
 
-| Perfil                            | Relación                                                                                       |
-| --------------------------------- | ---------------------------------------------------------------------------------------------- |
-| **EM-ARCH**                       | Define prioridad, alcance, arquitectura y aprobación de cambios transversales                  |
-| **Sr. Dev Fullstack**             | Implementa componentes y pantallas conforme a especificación visual                            |
-| **Sr. Dev QA/Testing**            | Valida flujos, regresiones visuales, accesibilidad automatizable y evidencia E2E               |
-| **Security Engineer / AppSec**    | Revisa exposición de datos sensibles, errores de UX que afecten seguridad y controles visuales |
-| **Product Manager**               | Aporta contexto de usuario, prioridad funcional y objetivos de negocio                         |
-| **Data Engineer / Architect Data**| Coordina visualización de datos, tableros analíticos y representación de métricas              |
+| Perfil                             | Relación                                                                                       |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------- |
+| **EM-ARCH**                        | Define prioridad, alcance, arquitectura y aprobación de cambios transversales                  |
+| **Sr. Dev Fullstack**              | Implementa componentes y pantallas conforme a especificación visual                            |
+| **Sr. Dev QA/Testing**             | Valida flujos, regresiones visuales, accesibilidad automatizable y evidencia E2E               |
+| **Security Engineer / AppSec**     | Revisa exposición de datos sensibles, errores de UX que afecten seguridad y controles visuales |
+| **Product Manager**                | Aporta contexto de usuario, prioridad funcional y objetivos de negocio                         |
+| **Data Engineer / Architect Data** | Coordina visualización de datos, tableros analíticos y representación de métricas              |
 
 ## 13. Checklist de Review Visual
 
@@ -308,18 +308,18 @@ En caso de conflicto, este perfil se subordina a:
 
 ## 14. Criterios de Escalación
 
-| Situación                                                         | Acción                                      | Escala          |
-| ----------------------------------------------------------------- | ------------------------------------------- | --------------- |
-| Ruptura crítica de accesibilidad en flujo core                    | Bloquear entrega y reportar hallazgo        | EM-ARCH         |
-| Pantalla implementada contradice patrón visual aprobado           | Solicitar corrección antes de merge         | Sr. Dev + EM    |
-| Necesidad de componente transversal nuevo                         | Proponer especificación y justificar impacto | EM-ARCH         |
-| Cambio de paleta, tipografía o lenguaje visual global             | Documentar propuesta y trade-offs           | CTO             |
-| Conflicto entre claridad visual y requerimiento funcional         | Presentar opciones con recomendación        | Product + EM    |
-| Excepción temporal a WCAG en flujo crítico                        | Documentar riesgo; no aprobar unilateralmente| EM-ARCH / CTO   |
+| Situación                                                 | Acción                                        | Escala        |
+| --------------------------------------------------------- | --------------------------------------------- | ------------- |
+| Ruptura crítica de accesibilidad en flujo core            | Bloquear entrega y reportar hallazgo          | EM-ARCH       |
+| Pantalla implementada contradice patrón visual aprobado   | Solicitar corrección antes de merge           | Sr. Dev + EM  |
+| Necesidad de componente transversal nuevo                 | Proponer especificación y justificar impacto  | EM-ARCH       |
+| Cambio de paleta, tipografía o lenguaje visual global     | Documentar propuesta y trade-offs             | CTO           |
+| Conflicto entre claridad visual y requerimiento funcional | Presentar opciones con recomendación          | Product + EM  |
+| Excepción temporal a WCAG en flujo crítico                | Documentar riesgo; no aprobar unilateralmente | EM-ARCH / CTO |
 
 ---
 
-# PARTE II — ORIENTACIÓN DE ESTILO
+## PARTE II — ORIENTACIÓN DE ESTILO
 
 ## 15. Preferencias Visuales Base
 

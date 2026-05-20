@@ -31,7 +31,7 @@ export const EXPEDIENTE_STATUS_META: Record<
   PRECALIFICADO: { label: 'Precalificado', variant: 'primary' },
   VALIDANDO_COBERTURA: { label: 'Validando cobertura', variant: 'primary' },
   EN_COTIZACION: { label: 'En cotización', variant: 'info' },
-  LISTO_PARA_INSTALACION: { label: 'Listo instalación', variant: 'lime' },
+  LISTO_PARA_INSTALACION: { label: 'Listo para instalación', variant: 'lime' },
   INSTALACION_AGENDADA: { label: 'Instalación agendada', variant: 'success' },
   CLIENTE_ACTIVO: { label: 'Activo', variant: 'success' },
   DESCARTADO: { label: 'Descartado', variant: 'neutral' },

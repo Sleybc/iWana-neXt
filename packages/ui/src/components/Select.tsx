@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { Check, ChevronDown } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -15,6 +16,10 @@ export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElemen
   error?: string;
   options?: SelectOption[];
   placeholder?: string;
+  menuClassName?: string | undefined;
+  menuWidth?: number | undefined;
+  menuMaxHeight?: string | undefined;
+  menuHorizontalAlign?: 'start' | 'center' | 'end' | undefined;
 }
 
 interface NormalizedOption {
@@ -70,6 +75,10 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
       id,
       options,
       placeholder,
+      menuClassName,
+      menuWidth,
+      menuMaxHeight,
+      menuHorizontalAlign = 'start',
       children,
       value,
       defaultValue,
@@ -108,6 +117,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
       resolveInitialValue(value, defaultValue),
     );
     const [open, setOpen] = React.useState(false);
+    const [menuStyle, setMenuStyle] = React.useState<React.CSSProperties | null>(null);
     const expandedState = open
       ? ({ 'aria-expanded': 'true' } as const)
       : ({ 'aria-expanded': 'false' } as const);
@@ -116,6 +126,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
     const wrapperRef = React.useRef<HTMLDivElement>(null);
     const triggerRef = React.useRef<HTMLButtonElement>(null);
     const hiddenSelectRef = React.useRef<HTMLSelectElement>(null);
+    const menuRef = React.useRef<HTMLDivElement>(null);
     const optionRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
 
     const currentValue = isControlled ? String(value ?? '') : internalValue;
@@ -142,6 +153,66 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
       document.addEventListener('mousedown', onPointerDown);
       return () => document.removeEventListener('mousedown', onPointerDown);
     }, [open]);
+
+    React.useLayoutEffect(() => {
+      if (!open) {
+        setMenuStyle(null);
+        return;
+      }
+
+      const updateMenuPosition = () => {
+        const trigger = triggerRef.current;
+        if (!trigger) {
+          return;
+        }
+
+        const rect = trigger.getBoundingClientRect();
+        const gap = 8;
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        const resolvedWidth = Math.max(
+          menuWidth ?? 160,
+          Math.min(menuWidth ?? rect.width, viewportWidth - 16),
+        );
+        const preferredLeft =
+          menuHorizontalAlign === 'center'
+            ? rect.left + (rect.width - resolvedWidth) / 2
+            : menuHorizontalAlign === 'end'
+              ? rect.right - resolvedWidth
+              : rect.left;
+        const left = Math.min(
+          Math.max(preferredLeft, 8),
+          Math.max(8, viewportWidth - resolvedWidth - 8),
+        );
+        const spaceBelow = viewportHeight - rect.bottom - gap;
+        const spaceAbove = rect.top - gap;
+        const placeAbove = spaceBelow < 220 && spaceAbove > spaceBelow;
+
+        setMenuStyle({
+          position: 'fixed',
+          left,
+          width: resolvedWidth,
+          // Debe superar overlays/modales que usan z-index alto en apps web/portal.
+          zIndex: 11000,
+          maxHeight: menuMaxHeight ?? '38vh',
+          ...(placeAbove
+            ? {
+                bottom: Math.max(gap, viewportHeight - rect.top + gap),
+              }
+            : {
+                top: rect.bottom + gap,
+              }),
+        });
+      };
+
+      updateMenuPosition();
+      window.addEventListener('resize', updateMenuPosition);
+      window.addEventListener('scroll', updateMenuPosition, true);
+      return () => {
+        window.removeEventListener('resize', updateMenuPosition);
+        window.removeEventListener('scroll', updateMenuPosition, true);
+      };
+    }, [open, normalizedOptions.length]);
 
     React.useEffect(() => {
       if (!open) {
@@ -237,7 +308,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         className="flex w-full flex-col gap-1.5"
         onBlurCapture={(event) => {
           const nextTarget = event.relatedTarget as Node | null;
-          if (!wrapperRef.current?.contains(nextTarget)) {
+          if (!wrapperRef.current?.contains(nextTarget) && !menuRef.current?.contains(nextTarget)) {
             setOpen(false);
             emitBlur();
           }
@@ -295,7 +366,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
             aria-haspopup="listbox"
             aria-controls={`${selectId}-listbox`}
             aria-describedby={describedBy}
-            aria-labelledby={ariaLabelledBy}
+            aria-labelledby={ariaLabelledBy ?? (label ? labelId : undefined)}
             aria-label={ariaLabel}
             title={title}
             disabled={disabled}
@@ -352,91 +423,106 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
             />
           </button>
 
-          {open && normalizedOptions.length > 0 ? (
-            <div
-              id={`${selectId}-listbox`}
-              role="listbox"
-              aria-labelledby={label ? labelId : ariaLabelledBy}
-              aria-label={label ?? placeholder ?? 'Opciones'}
-              className="absolute left-0 top-full z-[70] mt-2 max-h-[38vh] w-full overflow-y-auto overscroll-contain rounded-[28px] border border-white/90 bg-white/98 p-2 shadow-[var(--shadow-iwana-lg)] ring-1 ring-black/5 backdrop-blur-md sm:max-h-72 dark:border-dark-border dark:bg-dark-surface-2/98 dark:ring-white/10"
-            >
-              {normalizedOptions.map((option, index) => {
-                const isSelected = option.value === currentValue;
-                const isHighlighted = index === highlightedIndex;
-                const optionState = isSelected
-                  ? ({ 'aria-selected': 'true' } as const)
-                  : ({ 'aria-selected': 'false' } as const);
+          {open && normalizedOptions.length > 0 && menuStyle
+            ? createPortal(
+                <div
+                  ref={menuRef}
+                  id={`${selectId}-listbox`}
+                  role="listbox"
+                  aria-labelledby={label ? labelId : ariaLabelledBy}
+                  aria-label={label ?? placeholder ?? 'Opciones'}
+                  className={cn(
+                    'max-h-[38vh] overflow-y-auto overscroll-contain rounded-[28px] border border-white/90 bg-white/98 p-2 shadow-(--shadow-iwana-lg) ring-1 ring-black/5 backdrop-blur-md sm:max-h-72 dark:border-dark-border dark:bg-dark-surface-2/98 dark:ring-white/10',
+                    menuClassName,
+                  )}
+                  style={menuStyle}
+                  onMouseDown={(event) => {
+                    event.stopPropagation();
+                  }}
+                >
+                  {normalizedOptions.map((option, index) => {
+                    const isSelected = option.value === currentValue;
+                    const isHighlighted = index === highlightedIndex;
+                    const optionState = isSelected
+                      ? ({ 'aria-selected': 'true' } as const)
+                      : ({ 'aria-selected': 'false' } as const);
 
-                return (
-                  <button
-                    key={`${selectId}-${option.value}`}
-                    ref={(element) => {
-                      optionRefs.current[index] = element;
-                    }}
-                    id={`${selectId}-option-${index}`}
-                    type="button"
-                    role="option"
-                    disabled={option.disabled}
-                    {...optionState}
-                    className={cn(
-                      'flex w-full items-center justify-between rounded-[20px] px-4 py-3 text-left text-sm transition',
-                      option.disabled && 'cursor-not-allowed opacity-50',
-                      !option.disabled &&
-                        isHighlighted &&
-                        'bg-[#f4f8ea] text-iwana-primary dark:bg-dark-surface-3',
-                      !option.disabled &&
-                        !isHighlighted &&
-                        'text-gray-700 hover:bg-[#f8faf5] dark:text-gray-200 dark:hover:bg-dark-surface-3',
-                      isSelected && 'font-semibold text-iwana-primary dark:text-white',
-                    )}
-                    onClick={() => {
-                      if (!option.disabled) {
-                        commitValue(option.value);
-                      }
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'ArrowDown') {
-                        event.preventDefault();
-                        moveHighlight(1);
-                      }
-                      if (event.key === 'ArrowUp') {
-                        event.preventDefault();
-                        moveHighlight(-1);
-                      }
-                      if (event.key === 'Home' && enabledIndices.length > 0) {
-                        event.preventDefault();
-                        setHighlightedIndex(enabledIndices[0]!.index);
-                      }
-                      if (event.key === 'End' && enabledIndices.length > 0) {
-                        event.preventDefault();
-                        setHighlightedIndex(enabledIndices[enabledIndices.length - 1]!.index);
-                      }
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        if (!option.disabled) {
-                          commitValue(option.value);
-                        }
-                      }
-                      if (event.key === 'Escape') {
-                        event.preventDefault();
-                        setOpen(false);
-                        triggerRef.current?.focus();
-                      }
-                    }}
-                    onMouseEnter={() => setHighlightedIndex(index)}
-                  >
-                    <span className="truncate">{option.label}</span>
-                    {isSelected ? (
-                      <Check
-                        className="h-4 w-4 shrink-0 text-iwana-secondary-700 dark:text-iwana-secondary"
-                        aria-hidden="true"
-                      />
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
+                    return (
+                      <button
+                        key={`${selectId}-${option.value}`}
+                        ref={(element) => {
+                          optionRefs.current[index] = element;
+                        }}
+                        id={`${selectId}-option-${index}`}
+                        type="button"
+                        role="option"
+                        disabled={option.disabled}
+                        {...optionState}
+                        className={cn(
+                          'flex w-full items-center justify-between rounded-[20px] px-4 py-3 text-left text-sm transition',
+                          option.disabled && 'cursor-not-allowed opacity-50',
+                          !option.disabled &&
+                            isHighlighted &&
+                            'bg-[#f4f8ea] text-iwana-primary dark:bg-dark-surface-3',
+                          !option.disabled &&
+                            !isHighlighted &&
+                            'text-gray-700 hover:bg-[#f8faf5] dark:text-gray-200 dark:hover:bg-dark-surface-3',
+                          isSelected && 'font-semibold text-iwana-primary dark:text-white',
+                        )}
+                        onClick={() => {
+                          if (!option.disabled) {
+                            commitValue(option.value);
+                          }
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'ArrowDown') {
+                            event.preventDefault();
+                            moveHighlight(1);
+                          }
+                          if (event.key === 'ArrowUp') {
+                            event.preventDefault();
+                            moveHighlight(-1);
+                          }
+                          if (event.key === 'Home' && enabledIndices.length > 0) {
+                            event.preventDefault();
+                            setHighlightedIndex(enabledIndices[0]!.index);
+                          }
+                          if (event.key === 'End' && enabledIndices.length > 0) {
+                            event.preventDefault();
+                            setHighlightedIndex(enabledIndices[enabledIndices.length - 1]!.index);
+                          }
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            if (!option.disabled) {
+                              commitValue(option.value);
+                            }
+                          }
+                          if (event.key === 'Escape') {
+                            event.preventDefault();
+                            setOpen(false);
+                            triggerRef.current?.focus();
+                          }
+                        }}
+                        onMouseEnter={() => {
+                          if (!option.disabled) {
+                            setHighlightedIndex(index);
+                          }
+                        }}
+                      >
+                        <span className="truncate">{option.label}</span>
+                        {isSelected ? (
+                          <Check
+                            className="h-4 w-4 shrink-0 text-iwana-secondary-700 dark:text-iwana-secondary"
+                            aria-hidden="true"
+                          />
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>,
+                document.body,
+              )
+            : null}
         </div>
 
         {error ? (

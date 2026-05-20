@@ -2,6 +2,7 @@
 
 import {
   AcquisitionChannel,
+  BusinessHoursWeekday,
   ConsentChannel,
   AttributionRole,
   CatalogItemType,
@@ -16,15 +17,32 @@ import {
   PersonType,
   PromotionScope,
   ProductCategory,
+  ScheduleEventStatus,
+  SlaBreachStatus,
   SubscriberStatus,
   TaxType,
   TechnicalConfidence,
   TechnicalViabilityResult,
   TaxRegime,
+  TechnicianAvailabilityType,
   TechnologyOption,
+  VisitRequestStatus,
+  TicketFieldDecision,
+  TicketPriority,
+  TicketQueue,
+  TicketRequesterType,
+  TicketSource,
+  TicketStatus,
+  TicketSubjectType,
+  TicketTimelineEventType,
+  TicketType,
   TransitionStatusPayload,
   UpdateSubscriberPayload,
   VatTreatment,
+  WfmWorkType,
+  WorkOrderPriority,
+  WorkOrderSourceContext,
+  WorkOrderStatus,
 } from '@iwana/shared';
 import { persistTenantSlug, resolveTenantSlug } from './tenant-resolution';
 
@@ -1866,6 +1884,1140 @@ export const dashboardApi = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// MOD10 / SERVICE ASSURANCE / MESA DE AYUDA
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AssuranceTicket {
+  id: string;
+  tenantId: string;
+  ticketNumber: string;
+  type: TicketType;
+  status: TicketStatus;
+  priority: TicketPriority;
+  source: TicketSource;
+  subject: string;
+  description: string | null;
+  requesterType: TicketRequesterType;
+  requesterRefId: string | null;
+  subjectType: TicketSubjectType | null;
+  subjectRefId: string | null;
+  assignedUserId: string | null;
+  queueName: TicketQueue | null;
+  slaPolicyId: string | null;
+  slaFirstResponseAt: string | null;
+  slaResolveByAt: string | null;
+  firstRespondedAt: string | null;
+  resolvedAt: string | null;
+  closedAt: string | null;
+  slaBreachStatus: SlaBreachStatus;
+  fieldDecision: TicketFieldDecision;
+  workOrderId: string | null;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssuranceTicketComment {
+  id: string;
+  ticketId: string;
+  tenantId: string;
+  body: string;
+  isInternal: boolean;
+  authorUserId: string;
+  createdAt: string;
+}
+
+export interface AssuranceTimelineEvent {
+  id: string;
+  ticketId: string;
+  tenantId: string;
+  eventType: TicketTimelineEventType;
+  payload: Record<string, unknown>;
+  actorUserId: string | null;
+  occurredAt: string;
+}
+
+export interface AssuranceSlaPolicy {
+  id: string;
+  tenantId: string;
+  name: string;
+  appliesToType: string | null;
+  appliesToPriority: string | null;
+  firstResponseMinutes: number;
+  resolutionMinutes: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssuranceDashboardSummary {
+  openCount: number;
+  assignedCount: number;
+  inProgressCount: number;
+  atRiskCount: number;
+  breachedCount: number;
+  resolvedTodayCount: number;
+  fieldServicePendingCount: number;
+  byPriority: Record<string, number>;
+  byType: Record<string, number>;
+}
+
+export interface CreateAssuranceTicketDto {
+  type: TicketType;
+  priority?: TicketPriority | undefined;
+  source?: TicketSource | undefined;
+  subject: string;
+  description?: string | null | undefined;
+  requesterType: TicketRequesterType;
+  requesterRefId?: string | null | undefined;
+  subjectType?: TicketSubjectType | null | undefined;
+  subjectRefId?: string | null | undefined;
+  assignedUserId?: string | null | undefined;
+  queueName?: TicketQueue | null | undefined;
+  fieldDecision?: TicketFieldDecision | undefined;
+  slaPolicyId?: string | null | undefined;
+}
+
+export interface UpdateAssuranceTicketDto {
+  subject?: string | undefined;
+  description?: string | null | undefined;
+  priority?: TicketPriority | undefined;
+  source?: TicketSource | undefined;
+  requesterRefId?: string | null | undefined;
+  subjectType?: TicketSubjectType | null | undefined;
+  subjectRefId?: string | null | undefined;
+  assignedUserId?: string | null | undefined;
+  queueName?: TicketQueue | null | undefined;
+  fieldDecision?: TicketFieldDecision | undefined;
+}
+
+export interface TransitionAssuranceTicketDto {
+  status: TicketStatus;
+  notes?: string | null | undefined;
+}
+
+export interface AddAssuranceCommentDto {
+  body: string;
+  isInternal?: boolean | undefined;
+}
+
+export interface AssignAssuranceTicketDto {
+  assignedUserId?: string | null | undefined;
+  queueName?: TicketQueue | null | undefined;
+}
+
+export interface RequestAssuranceFieldServiceDto {
+  notes?: string | null | undefined;
+}
+
+export interface LinkAssuranceWorkOrderDto {
+  workOrderId: string;
+  notes?: string | null | undefined;
+}
+
+export interface CreateAssuranceSlaPolicyDto {
+  name: string;
+  appliesToType?: string | null | undefined;
+  appliesToPriority?: string | null | undefined;
+  firstResponseMinutes: number;
+  resolutionMinutes: number;
+  isActive?: boolean | undefined;
+}
+
+export interface ListAssuranceTicketsParams {
+  status?: TicketStatus | undefined;
+  type?: TicketType | undefined;
+  priority?: TicketPriority | undefined;
+  slaBreachStatus?: SlaBreachStatus | undefined;
+  queueName?: TicketQueue | undefined;
+  requesterRefId?: string | undefined;
+  assignedUserId?: string | undefined;
+  page?: number | undefined;
+  limit?: number | undefined;
+}
+
+export interface ListAssuranceTicketsResponse {
+  data: AssuranceTicket[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface FindOrCreateInstallationTicketDto {
+  expedienteId: string;
+  expedienteFullName: string;
+}
+
+export interface FindOrCreateInstallationTicketResponse {
+  ticket: AssuranceTicket;
+  created: boolean;
+}
+
+export interface LinkExpedienteInstallationRefsDto {
+  ticketId: string;
+  workOrderId: string;
+  lastRescheduleReason?: string | null;
+  lastRescheduleNotes?: string | null;
+}
+
+export const assuranceApi = {
+  tickets: {
+    list: (params?: ListAssuranceTicketsParams, tenantSlug?: string) => {
+      const searchParams = new URLSearchParams();
+      if (params?.status) searchParams.set('status', params.status);
+      if (params?.type) searchParams.set('type', params.type);
+      if (params?.priority) searchParams.set('priority', params.priority);
+      if (params?.slaBreachStatus) searchParams.set('slaBreachStatus', params.slaBreachStatus);
+      if (params?.queueName) searchParams.set('queueName', params.queueName);
+      if (params?.requesterRefId) searchParams.set('requesterRefId', params.requesterRefId);
+      if (params?.assignedUserId) searchParams.set('assignedUserId', params.assignedUserId);
+      if (params?.page) searchParams.set('page', String(params.page));
+      if (params?.limit) searchParams.set('limit', String(params.limit));
+
+      const query = searchParams.toString();
+      return request<ListAssuranceTicketsResponse>(
+        `/assurance/tickets${query ? `?${query}` : ''}`,
+        { returnFullResponse: true },
+        tenantSlug,
+      );
+    },
+
+    get: (id: string, tenantSlug?: string) =>
+      request<AssuranceTicket>(
+        `/assurance/tickets/${id}`,
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    create: (dto: CreateAssuranceTicketDto, tenantSlug?: string) =>
+      request<AssuranceTicket>(
+        '/assurance/tickets',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    update: (id: string, dto: UpdateAssuranceTicketDto, tenantSlug?: string) =>
+      request<AssuranceTicket>(
+        `/assurance/tickets/${id}`,
+        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    transitionStatus: (id: string, dto: TransitionAssuranceTicketDto, tenantSlug?: string) =>
+      request<AssuranceTicket>(
+        `/assurance/tickets/${id}/status`,
+        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    addComment: (id: string, dto: AddAssuranceCommentDto, tenantSlug?: string) =>
+      request<AssuranceTicketComment>(
+        `/assurance/tickets/${id}/comments`,
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    listComments: (id: string, tenantSlug?: string) =>
+      request<AssuranceTicketComment[]>(
+        `/assurance/tickets/${id}/comments`,
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    assign: (id: string, dto: AssignAssuranceTicketDto, tenantSlug?: string) =>
+      request<AssuranceTicket>(
+        `/assurance/tickets/${id}/assign`,
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    listTimeline: (id: string, tenantSlug?: string) =>
+      request<AssuranceTimelineEvent[]>(
+        `/assurance/tickets/${id}/timeline`,
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    requestFieldService: (id: string, dto: RequestAssuranceFieldServiceDto, tenantSlug?: string) =>
+      request<AssuranceTicket>(
+        `/assurance/tickets/${id}/request-field-service`,
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    linkWorkOrder: (id: string, dto: LinkAssuranceWorkOrderDto, tenantSlug?: string) =>
+      request<AssuranceTicket>(
+        `/assurance/tickets/${id}/link-work-order`,
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    findOrCreateInstallation: (dto: FindOrCreateInstallationTicketDto, tenantSlug?: string) =>
+      request<FindOrCreateInstallationTicketResponse>(
+        '/assurance/tickets/find-or-create-installation',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+
+  dashboard: {
+    getSummary: (tenantSlug?: string) =>
+      request<AssuranceDashboardSummary>(
+        '/assurance/dashboard/summary',
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+
+  slaPolicies: {
+    list: (tenantSlug?: string) =>
+      request<AssuranceSlaPolicy[]>(
+        '/assurance/sla-policies',
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    create: (dto: CreateAssuranceSlaPolicyDto, tenantSlug?: string) =>
+      request<AssuranceSlaPolicy>(
+        '/assurance/sla-policies',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WFM / PROGRAMACION OPERATIVA DEL TENANT
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface WfmScheduleEvent {
+  id: string;
+  tenantId: string;
+  workOrderId: string | null;
+  operatingSiteId: string | null;
+  type: WfmWorkType;
+  status: ScheduleEventStatus;
+  title: string;
+  description: string | null;
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  assignedUserId: string;
+  assignedTeamId: string | null;
+  address: string | null;
+  municipality: string | null;
+  sector: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  expedienteId: string | null;
+  subscriberId: string | null;
+  ticketId: string | null;
+  contractId: string | null;
+  createdBy: string;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface CreateWfmEmbeddedWorkOrderDto {
+  type?: WfmWorkType | undefined;
+  priority?: WorkOrderPriority | undefined;
+  sourceContext?: WorkOrderSourceContext | undefined;
+  sourceRef?: string | null | undefined;
+  summary: string;
+  notes?: string | null | undefined;
+}
+
+export interface CreateWfmScheduleEventDto {
+  type: WfmWorkType;
+  title: string;
+  description?: string | null | undefined;
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  assignedUserId: string;
+  operatingSiteId?: string | null | undefined;
+  address?: string | null | undefined;
+  municipality?: string | null | undefined;
+  sector?: string | null | undefined;
+  latitude?: number | null | undefined;
+  longitude?: number | null | undefined;
+  expedienteId?: string | null | undefined;
+  subscriberId?: string | null | undefined;
+  ticketId?: string | null | undefined;
+  contractId?: string | null | undefined;
+  workOrder?: CreateWfmEmbeddedWorkOrderDto | undefined;
+}
+
+export interface UpdateWfmScheduleEventDto {
+  title?: string | undefined;
+  description?: string | null | undefined;
+  scheduledStartAt?: string | undefined;
+  scheduledEndAt?: string | undefined;
+  assignedUserId?: string | undefined;
+  operatingSiteId?: string | null | undefined;
+  address?: string | null | undefined;
+  municipality?: string | null | undefined;
+  sector?: string | null | undefined;
+  latitude?: number | null | undefined;
+  longitude?: number | null | undefined;
+  expedienteId?: string | null | undefined;
+  subscriberId?: string | null | undefined;
+  ticketId?: string | null | undefined;
+  contractId?: string | null | undefined;
+}
+
+export interface TransitionWfmScheduleEventDto {
+  status: ScheduleEventStatus;
+}
+
+export interface RescheduleWfmEventDto {
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  reason: string;
+  notes?: string | null | undefined;
+}
+
+export interface ListWfmScheduleEventsParams {
+  from?: string | undefined;
+  to?: string | undefined;
+  assignedUserId?: string | undefined;
+  expedienteId?: string | undefined;
+  type?: WfmWorkType | undefined;
+  status?: ScheduleEventStatus | undefined;
+  municipality?: string | undefined;
+  sector?: string | undefined;
+}
+
+export interface WfmScheduleRecommendationRequestDto {
+  workType: WfmWorkType;
+  durationMinutes: number;
+  windowStartAt: string;
+  windowEndAt: string;
+  candidateUserIds: string[];
+  operatingSiteId?: string | null | undefined;
+  municipality?: string | null | undefined;
+  sector?: string | null | undefined;
+  latitude?: number | null | undefined;
+  longitude?: number | null | undefined;
+  maxResults?: number | undefined;
+}
+
+export interface WfmScheduleRecommendationScoreBreakdown {
+  distance: number;
+  municipality: number;
+  sector: number;
+  routeContinuity: number;
+  load: number;
+  earliest: number;
+}
+
+export interface WfmScheduleRecommendation {
+  technicianId: string;
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  score: number;
+  labels: string[];
+  scoreBreakdown: WfmScheduleRecommendationScoreBreakdown;
+  distanceKm: number | null;
+  nearestEventId: string | null;
+  totalScheduledMinutes: number;
+  eventCount: number;
+}
+
+export interface WfmVisitRequest {
+  id: string;
+  tenantId: string;
+  status: VisitRequestStatus;
+  originContext: WorkOrderSourceContext;
+  originRef: string | null;
+  originLabel: string | null;
+  workType: WfmWorkType;
+  priority: WorkOrderPriority;
+  title: string;
+  description: string | null;
+  requestedWindowStartAt: string | null;
+  requestedWindowEndAt: string | null;
+  slaDueAt: string | null;
+  address: string | null;
+  municipality: string | null;
+  sector: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  operatingSiteId: string | null;
+  expedienteId: string | null;
+  subscriberId: string | null;
+  ticketId: string | null;
+  contractId: string | null;
+  scheduleEventId: string | null;
+  workOrderId: string | null;
+  requestedByUserId: string;
+  scheduledByUserId: string | null;
+  scheduledAt: string | null;
+  cancelledAt: string | null;
+  cancelledByUserId: string | null;
+  cancelReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  rejectReason?: string | undefined;
+}
+
+export interface ListWfmVisitRequestsParams {
+  status?: VisitRequestStatus | undefined;
+  originContext?: WorkOrderSourceContext | undefined;
+  workType?: WfmWorkType | undefined;
+  priority?: WorkOrderPriority | undefined;
+  municipality?: string | undefined;
+  sector?: string | undefined;
+  from?: string | undefined;
+  to?: string | undefined;
+  page?: number | undefined;
+  limit?: number | undefined;
+}
+
+export interface ListWfmVisitRequestsResponse {
+  items: WfmVisitRequest[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+
+export interface WfmVisitRequestFilterOption {
+  value: string;
+  label: string;
+  count: number;
+  municipality?: string | undefined;
+}
+
+export interface WfmVisitRequestFilterOptionsResponse {
+  municipalities: WfmVisitRequestFilterOption[];
+  sectors: WfmVisitRequestFilterOption[];
+}
+
+export interface WfmVisitRequestFilterOptionsParams {
+  municipality?: string | undefined;
+  includeScheduled?: boolean | undefined;
+}
+
+export interface CreateWfmVisitRequestDto {
+  originContext: WorkOrderSourceContext;
+  originRef?: string | null | undefined;
+  originLabel?: string | null | undefined;
+  workType: WfmWorkType;
+  priority?: WorkOrderPriority | undefined;
+  title: string;
+  description?: string | null | undefined;
+  requestedWindowStartAt?: string | null | undefined;
+  requestedWindowEndAt?: string | null | undefined;
+  slaDueAt?: string | null | undefined;
+  address?: string | null | undefined;
+  municipality?: string | null | undefined;
+  sector?: string | null | undefined;
+  latitude?: number | null | undefined;
+  longitude?: number | null | undefined;
+  operatingSiteId?: string | null | undefined;
+  expedienteId?: string | null | undefined;
+  subscriberId?: string | null | undefined;
+  ticketId?: string | null | undefined;
+  contractId?: string | null | undefined;
+}
+
+export interface UpdateWfmVisitRequestContextDto {
+  description?: string | null | undefined;
+  requestedWindowStartAt?: string | null | undefined;
+  requestedWindowEndAt?: string | null | undefined;
+  slaDueAt?: string | null | undefined;
+  address?: string | null | undefined;
+  municipality?: string | null | undefined;
+  sector?: string | null | undefined;
+  latitude?: number | null | undefined;
+  longitude?: number | null | undefined;
+  operatingSiteId?: string | null | undefined;
+  expedienteId?: string | null | undefined;
+  subscriberId?: string | null | undefined;
+  ticketId?: string | null | undefined;
+  contractId?: string | null | undefined;
+}
+
+export interface RecommendWfmVisitRequestDto {
+  durationMinutes: number;
+  candidateUserIds: string[];
+  windowStartAt?: string | undefined;
+  windowEndAt?: string | undefined;
+  searchHorizonDays?: number | undefined;
+  operatingSiteId?: string | null | undefined;
+  municipality?: string | null | undefined;
+  sector?: string | null | undefined;
+  latitude?: number | null | undefined;
+  longitude?: number | null | undefined;
+  maxResults?: number | undefined;
+}
+
+export interface ScheduleWfmVisitRequestDto {
+  assignedUserId: string;
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  operatingSiteId?: string | null | undefined;
+  createWorkOrder?: boolean | undefined;
+  workOrderSummary?: string | undefined;
+  workOrderNotes?: string | null | undefined;
+}
+
+export interface WfmBusinessHoursDay {
+  weekday: BusinessHoursWeekday;
+  startTime: string | null;
+  endTime: string | null;
+  isEnabled: boolean;
+}
+
+export interface WfmOperatingSite {
+  id: string;
+  tenantId: string;
+  name: string;
+  code: string;
+  address: string | null;
+  municipality: string | null;
+  sector: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface CreateWfmOperatingSiteDto {
+  name: string;
+  code: string;
+  address?: string | null | undefined;
+  municipality?: string | null | undefined;
+  sector?: string | null | undefined;
+  latitude?: number | null | undefined;
+  longitude?: number | null | undefined;
+  isActive?: boolean | undefined;
+}
+
+export interface UpdateWfmOperatingSiteDto {
+  name?: string | undefined;
+  code?: string | undefined;
+  address?: string | null | undefined;
+  municipality?: string | null | undefined;
+  sector?: string | null | undefined;
+  latitude?: number | null | undefined;
+  longitude?: number | null | undefined;
+  isActive?: boolean | undefined;
+}
+
+export interface WfmTechnicianBusinessOverride {
+  id: string;
+  tenantId: string;
+  userId: string;
+  siteId: string | null;
+  overrideDate: string | null;
+  weekday: BusinessHoursWeekday | null;
+  startTime: string | null;
+  endTime: string | null;
+  isEnabled: boolean;
+  reason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateWfmTechnicianBusinessOverrideDto {
+  userId: string;
+  siteId?: string | null | undefined;
+  overrideDate?: string | null | undefined;
+  weekday?: BusinessHoursWeekday | null | undefined;
+  startTime?: string | null | undefined;
+  endTime?: string | null | undefined;
+  isEnabled?: boolean | undefined;
+  reason?: string | null | undefined;
+}
+
+export interface UpdateWfmTechnicianBusinessOverrideDto {
+  userId?: string | undefined;
+  siteId?: string | null | undefined;
+  overrideDate?: string | null | undefined;
+  weekday?: BusinessHoursWeekday | null | undefined;
+  startTime?: string | null | undefined;
+  endTime?: string | null | undefined;
+  isEnabled?: boolean | undefined;
+  reason?: string | null | undefined;
+}
+
+export interface WfmHolidayBlackout {
+  id: string;
+  tenantId: string;
+  siteId: string | null;
+  blackoutDate: string;
+  isRecurring: boolean;
+  name: string;
+  description: string | null;
+  isEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateWfmHolidayBlackoutDto {
+  siteId?: string | null | undefined;
+  blackoutDate: string;
+  isRecurring?: boolean | undefined;
+  name: string;
+  description?: string | null | undefined;
+  isEnabled?: boolean | undefined;
+}
+
+export interface UpdateWfmHolidayBlackoutDto {
+  siteId?: string | null | undefined;
+  blackoutDate?: string | undefined;
+  isRecurring?: boolean | undefined;
+  name?: string | undefined;
+  description?: string | null | undefined;
+  isEnabled?: boolean | undefined;
+}
+
+export type WfmOperatingWindowSource =
+  | 'TECHNICIAN_OVERRIDE'
+  | 'HOLIDAY_BLACKOUT'
+  | 'SITE_HOURS'
+  | 'COMPANY_HOURS'
+  | 'MISSING_CONFIGURATION';
+
+export interface WfmOperatingWindowResult {
+  status: 'OPEN' | 'CLOSED';
+  source: WfmOperatingWindowSource;
+  startTime: string | null;
+  endTime: string | null;
+  reason: string | null;
+}
+
+export interface ResolveWfmOperatingWindowDto {
+  dateLocal: string;
+  siteId?: string | null | undefined;
+  technicianId?: string | null | undefined;
+}
+
+export interface CancelWfmVisitRequestDto {
+  cancelReason: string;
+}
+
+export interface RejectWfmVisitRequestDto {
+  rejectReason: string;
+}
+
+export interface WfmWorkOrder {
+  id: string;
+  tenantId: string;
+  code: string;
+  type: WfmWorkType;
+  status: WorkOrderStatus;
+  priority: WorkOrderPriority;
+  assignedUserId: string;
+  scheduledEventId: string | null;
+  sourceContext: WorkOrderSourceContext;
+  sourceRef: string | null;
+  summary: string;
+  notes: string | null;
+  createdBy: string;
+  closedBy: string | null;
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface TransitionWfmWorkOrderDto {
+  status: WorkOrderStatus;
+}
+
+export type WfmTechnicianLoadRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
+export type WfmDashboardAlertSeverity = 'critical' | 'warning' | 'info';
+export type WfmDashboardAlertType =
+  | 'OVERDUE_EVENT'
+  | 'DRAFT_STARTING_SOON'
+  | 'HIGH_TECHNICIAN_LOAD';
+
+export interface WfmDashboardTechnicianLoad {
+  assignedUserId: string;
+  todayCount: number;
+  overdueCount: number;
+  totalScheduledMinutes: number;
+  utilizationPercent: number;
+  riskLevel: WfmTechnicianLoadRiskLevel;
+}
+
+export interface WfmDashboardAlert {
+  id: string;
+  type: WfmDashboardAlertType;
+  severity: WfmDashboardAlertSeverity;
+  title: string;
+  description: string;
+  eventId: string | null;
+  assignedUserId: string | null;
+  scheduledStartAt: string | null;
+}
+
+export interface WfmDashboardSummary {
+  todayCount: number;
+  overdueCount: number;
+  upcomingCount: number;
+  activeCount: number;
+  enRouteCount: number;
+  atRiskCount: number;
+  alerts: WfmDashboardAlert[];
+  technicianLoad: WfmDashboardTechnicianLoad[];
+}
+
+export interface WfmTechnicianAvailability {
+  id: string;
+  tenantId: string;
+  userId: string;
+  type: TechnicianAvailabilityType;
+  startsAt: string;
+  endsAt: string;
+  reason: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ListWfmTechnicianAvailabilityParams {
+  userId?: string | undefined;
+  from?: string | undefined;
+  to?: string | undefined;
+  type?: TechnicianAvailabilityType | undefined;
+}
+
+export interface CreateWfmTechnicianAvailabilityDto {
+  userId: string;
+  type: TechnicianAvailabilityType;
+  startsAt: string;
+  endsAt: string;
+  reason?: string | null | undefined;
+}
+
+export const wfmApi = {
+  operatingWindow: {
+    resolve: (dto: ResolveWfmOperatingWindowDto, tenantSlug?: string) =>
+      request<WfmOperatingWindowResult>(
+        '/wfm/operating-window/resolve',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+
+  operatingSites: {
+    list: (tenantSlug?: string) =>
+      request<WfmOperatingSite[]>('/wfm/operating-sites', { returnFullResponse: true }, tenantSlug),
+
+    create: (dto: CreateWfmOperatingSiteDto, tenantSlug?: string) =>
+      request<WfmOperatingSite>(
+        '/wfm/operating-sites',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    update: (id: string, dto: UpdateWfmOperatingSiteDto, tenantSlug?: string) =>
+      request<WfmOperatingSite>(
+        `/wfm/operating-sites/${id}`,
+        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    remove: (id: string, tenantSlug?: string) =>
+      request<void>(`/wfm/operating-sites/${id}`, { method: 'DELETE' }, tenantSlug),
+
+    getBusinessHours: (siteId: string, tenantSlug?: string) =>
+      request<WfmBusinessHoursDay[]>(
+        `/wfm/operating-sites/${siteId}/business-hours`,
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    updateBusinessHours: (
+      siteId: string,
+      dto: { days: WfmBusinessHoursDay[] },
+      tenantSlug?: string,
+    ) =>
+      request<WfmBusinessHoursDay[]>(
+        `/wfm/operating-sites/${siteId}/business-hours`,
+        { method: 'PUT', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+
+  businessHours: {
+    getCompany: (tenantSlug?: string) =>
+      request<WfmBusinessHoursDay[]>(
+        '/wfm/business-hours/company',
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    updateCompany: (dto: { days: WfmBusinessHoursDay[] }, tenantSlug?: string) =>
+      request<WfmBusinessHoursDay[]>(
+        '/wfm/business-hours/company',
+        { method: 'PUT', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+
+  technicianBusinessOverrides: {
+    list: (tenantSlug?: string) =>
+      request<WfmTechnicianBusinessOverride[]>(
+        '/wfm/technician-business-overrides',
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    create: (dto: CreateWfmTechnicianBusinessOverrideDto, tenantSlug?: string) =>
+      request<WfmTechnicianBusinessOverride>(
+        '/wfm/technician-business-overrides',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    update: (id: string, dto: UpdateWfmTechnicianBusinessOverrideDto, tenantSlug?: string) =>
+      request<WfmTechnicianBusinessOverride>(
+        `/wfm/technician-business-overrides/${id}`,
+        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    remove: (id: string, tenantSlug?: string) =>
+      request<void>(`/wfm/technician-business-overrides/${id}`, { method: 'DELETE' }, tenantSlug),
+  },
+
+  holidayBlackouts: {
+    list: (tenantSlug?: string) =>
+      request<WfmHolidayBlackout[]>(
+        '/wfm/holiday-blackouts',
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    create: (dto: CreateWfmHolidayBlackoutDto, tenantSlug?: string) =>
+      request<WfmHolidayBlackout>(
+        '/wfm/holiday-blackouts',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    update: (id: string, dto: UpdateWfmHolidayBlackoutDto, tenantSlug?: string) =>
+      request<WfmHolidayBlackout>(
+        `/wfm/holiday-blackouts/${id}`,
+        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    remove: (id: string, tenantSlug?: string) =>
+      request<void>(`/wfm/holiday-blackouts/${id}`, { method: 'DELETE' }, tenantSlug),
+  },
+
+  visitRequests: {
+    list: (params?: ListWfmVisitRequestsParams, tenantSlug?: string) => {
+      const searchParams = new URLSearchParams();
+      if (params?.status) searchParams.set('status', params.status);
+      if (params?.originContext) searchParams.set('originContext', params.originContext);
+      if (params?.workType) searchParams.set('workType', params.workType);
+      if (params?.priority) searchParams.set('priority', params.priority);
+      if (params?.municipality) searchParams.set('municipality', params.municipality);
+      if (params?.sector) searchParams.set('sector', params.sector);
+      if (params?.from) searchParams.set('from', params.from);
+      if (params?.to) searchParams.set('to', params.to);
+      if (params?.page !== undefined) searchParams.set('page', String(params.page));
+      if (params?.limit !== undefined) searchParams.set('limit', String(params.limit));
+
+      const query = searchParams.toString();
+      return request<ListWfmVisitRequestsResponse>(
+        `/wfm/visit-requests${query ? `?${query}` : ''}`,
+        { returnFullResponse: true },
+        tenantSlug,
+      );
+    },
+
+    filterOptions: (params?: WfmVisitRequestFilterOptionsParams, tenantSlug?: string) => {
+      const searchParams = new URLSearchParams();
+      if (params?.municipality) searchParams.set('municipality', params.municipality);
+      if (params?.includeScheduled !== undefined) {
+        searchParams.set('includeScheduled', String(params.includeScheduled));
+      }
+
+      const query = searchParams.toString();
+      return request<WfmVisitRequestFilterOptionsResponse>(
+        `/wfm/visit-requests/filter-options${query ? `?${query}` : ''}`,
+        { returnFullResponse: true },
+        tenantSlug,
+      );
+    },
+
+    get: (id: string, tenantSlug?: string) =>
+      request<WfmVisitRequest>(
+        `/wfm/visit-requests/${id}`,
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    create: (dto: CreateWfmVisitRequestDto, tenantSlug?: string) =>
+      request<WfmVisitRequest>(
+        '/wfm/visit-requests',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    updateContext: (id: string, dto: UpdateWfmVisitRequestContextDto, tenantSlug?: string) =>
+      request<WfmVisitRequest>(
+        `/wfm/visit-requests/${id}/context`,
+        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    recommend: (id: string, dto: RecommendWfmVisitRequestDto, tenantSlug?: string) =>
+      request<WfmScheduleRecommendation[]>(
+        `/wfm/visit-requests/${id}/schedule-recommendations`,
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    schedule: (id: string, dto: ScheduleWfmVisitRequestDto, tenantSlug?: string) =>
+      request<WfmVisitRequest>(
+        `/wfm/visit-requests/${id}/schedule`,
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    cancel: (id: string, dto: CancelWfmVisitRequestDto, tenantSlug?: string) =>
+      request<WfmVisitRequest>(
+        `/wfm/visit-requests/${id}/cancel`,
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    reject: (id: string, dto: RejectWfmVisitRequestDto, tenantSlug?: string) =>
+      request<WfmVisitRequest>(
+        `/wfm/visit-requests/${id}/reject`,
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+
+  events: {
+    list: (params?: ListWfmScheduleEventsParams, tenantSlug?: string) => {
+      const searchParams = new URLSearchParams();
+      if (params?.from) searchParams.set('from', params.from);
+      if (params?.to) searchParams.set('to', params.to);
+      if (params?.assignedUserId) searchParams.set('assignedUserId', params.assignedUserId);
+      if (params?.expedienteId) searchParams.set('expedienteId', params.expedienteId);
+      if (params?.type) searchParams.set('type', params.type);
+      if (params?.status) searchParams.set('status', params.status);
+      if (params?.municipality) searchParams.set('municipality', params.municipality);
+      if (params?.sector) searchParams.set('sector', params.sector);
+
+      const query = searchParams.toString();
+      return request<WfmScheduleEvent[]>(
+        `/wfm/events${query ? `?${query}` : ''}`,
+        { returnFullResponse: true },
+        tenantSlug,
+      );
+    },
+
+    get: (id: string, tenantSlug?: string) =>
+      request<WfmScheduleEvent>(`/wfm/events/${id}`, { returnFullResponse: true }, tenantSlug),
+
+    create: (dto: CreateWfmScheduleEventDto, tenantSlug?: string) =>
+      request<WfmScheduleEvent>(
+        '/wfm/events',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    update: (id: string, dto: UpdateWfmScheduleEventDto, tenantSlug?: string) =>
+      request<WfmScheduleEvent>(
+        `/wfm/events/${id}`,
+        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    transitionStatus: (id: string, dto: TransitionWfmScheduleEventDto, tenantSlug?: string) =>
+      request<WfmScheduleEvent>(
+        `/wfm/events/${id}/status`,
+        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    reschedule: (id: string, dto: RescheduleWfmEventDto, tenantSlug?: string) =>
+      request<WfmScheduleEvent>(
+        `/wfm/events/${id}/reschedule`,
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    remove: (id: string, tenantSlug?: string) =>
+      request<void>(`/wfm/events/${id}`, { method: 'DELETE' }, tenantSlug),
+  },
+
+  recommendations: {
+    create: (dto: WfmScheduleRecommendationRequestDto, tenantSlug?: string) =>
+      request<WfmScheduleRecommendation[]>(
+        '/wfm/schedule-recommendations',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+
+  workOrders: {
+    list: (tenantSlug?: string) =>
+      request<WfmWorkOrder[]>('/wfm/work-orders', { returnFullResponse: true }, tenantSlug),
+
+    get: (id: string, tenantSlug?: string) =>
+      request<WfmWorkOrder>(`/wfm/work-orders/${id}`, { returnFullResponse: true }, tenantSlug),
+
+    transitionStatus: (id: string, dto: TransitionWfmWorkOrderDto, tenantSlug?: string) =>
+      request<WfmWorkOrder>(
+        `/wfm/work-orders/${id}/status`,
+        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+
+  dashboard: {
+    getSummary: (tenantSlug?: string) =>
+      request<WfmDashboardSummary>(
+        '/wfm/dashboard/summary',
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+
+  technicians: {
+    listAvailability: (params?: ListWfmTechnicianAvailabilityParams, tenantSlug?: string) => {
+      const searchParams = new URLSearchParams();
+      if (params?.userId) searchParams.set('userId', params.userId);
+      if (params?.from) searchParams.set('from', params.from);
+      if (params?.to) searchParams.set('to', params.to);
+      if (params?.type) searchParams.set('type', params.type);
+
+      const query = searchParams.toString();
+      return request<WfmTechnicianAvailability[]>(
+        `/wfm/technicians/availability${query ? `?${query}` : ''}`,
+        { returnFullResponse: true },
+        tenantSlug,
+      );
+    },
+
+    createAvailability: (dto: CreateWfmTechnicianAvailabilityDto, tenantSlug?: string) =>
+      request<WfmTechnicianAvailability>(
+        '/wfm/technicians/availability',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GESTION DE USUARIOS INTERNOS DEL TENANT
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1972,6 +3124,13 @@ const PORTAL_SEARCH_MODULES: PortalSearchModule[] = [
     description: 'Gestión comercial y postventa de suscriptores',
     keywords: ['suscriptores', 'clientes', 'postventa', 'subscriber'],
     route: '/dashboard/crm/subscribers',
+  },
+  {
+    id: 'scheduling',
+    title: 'Programacion',
+    description: 'Agenda operativa, eventos técnicos y work orders del tenant',
+    keywords: ['programacion', 'agenda', 'wfm', 'ordenes de trabajo', 'tecnicos'],
+    route: '/dashboard/scheduling',
   },
   {
     id: 'settings',
@@ -2473,6 +3632,14 @@ export type ExpedienteStatus =
   | 'CLIENTE_ACTIVO'
   | 'DESCARTADO';
 
+export type ExpedienteListView = 'open' | 'converted' | 'archive' | 'all';
+
+export interface ExpedienteSubscriberSummary {
+  id: string;
+  status: 'LEAD' | 'PROSPECT' | 'ACTIVE' | 'SUSPENDED' | 'CANCELLED';
+  fullName: string;
+}
+
 export interface ExpedienteRecord {
   id: string;
   tenantId: string;
@@ -2552,6 +3719,7 @@ export interface ExpedienteRecord {
   completenessOperational: number | null;
   completenessOverall?: number | null;
   pipelineProgress?: number | null;
+  subscriberSummary?: ExpedienteSubscriberSummary | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -2897,6 +4065,47 @@ export interface CompletenessResult {
   technical: number;
   operational: number;
   overall: number;
+  sectionCompleteness?: SectionCompletenessItem[];
+  installationReadiness?: InstallationReadinessSummary;
+  missingRequirements?: CompletenessMissingRequirement[];
+}
+
+export interface CompletenessMissingRequirement {
+  sectionKey: string;
+  sectionLabel: string;
+  fieldKey: string;
+  fieldLabel: string;
+}
+
+export interface SectionCompletenessItem {
+  key: string;
+  label: string;
+  percentage: number;
+  completedFields: number;
+  totalFields: number;
+  missingFields: CompletenessMissingRequirement[];
+}
+
+export interface InstallationReadinessSummary {
+  status: 'NOT_READY' | 'READY_WITH_PENDING' | 'READY_COMPLETE';
+  canTransition: boolean;
+  title: string;
+  message: string;
+}
+
+export interface TransitionWarning {
+  title: string;
+  message: string;
+  missingRequirements: CompletenessMissingRequirement[];
+}
+
+export interface PipelineRecommendation {
+  currentStatus: string;
+  /** null si ya está en el estado óptimo recomendado */
+  suggestedStatus: string | null;
+  recommendationReason: string | null;
+  blockingRequirements: CompletenessMissingRequirement[];
+  informationalRequirements: CompletenessMissingRequirement[];
 }
 
 export interface ExpedienteTimelineChange {
@@ -2972,10 +4181,15 @@ export interface ExpedienteOperationalMetadata {
   lastActivityAt: string | null;
 }
 
+function buildDocumentSupportQuery(personType?: string | null): string {
+  return personType ? `?personType=${encodeURIComponent(personType)}` : '';
+}
+
 export const crmApi = {
   listExpedientes: (
     filters?: {
       status?: ExpedienteStatus;
+      view?: ExpedienteListView;
       municipality?: string;
       search?: string;
       assignedTo?: string;
@@ -2989,6 +4203,7 @@ export const crmApi = {
     const searchParams = new URLSearchParams();
 
     if (filters?.status) searchParams.set('status', filters.status);
+    if (filters?.view) searchParams.set('view', filters.view);
     if (filters?.municipality) searchParams.set('municipality', filters.municipality);
     if (filters?.search) searchParams.set('search', filters.search);
     if (filters?.assignedTo) searchParams.set('assignedTo', filters.assignedTo);
@@ -3007,11 +4222,14 @@ export const crmApi = {
   },
 
   getExpediente: (id: string, tenantSlug?: string) =>
-    request<{ data: ExpedienteRecord; completeness: CompletenessResult }>(
-      `/crm/expedientes/${id}`,
-      { returnFullResponse: true },
-      tenantSlug,
-    ),
+    request<{
+      data: ExpedienteRecord;
+      completeness: CompletenessResult;
+      sectionCompleteness: SectionCompletenessItem[];
+      installationReadiness: InstallationReadinessSummary;
+      missingRequirements: CompletenessMissingRequirement[];
+      pipelineRecommendation: PipelineRecommendation;
+    }>(`/crm/expedientes/${id}`, { returnFullResponse: true }, tenantSlug),
 
   createExpediente: (dto: CreateExpedienteDto, tenantSlug?: string) =>
     request<{ data: ExpedienteRecord }>(
@@ -3033,8 +4251,27 @@ export const crmApi = {
     ),
 
   transitionExpedienteStatus: (id: string, dto: TransitionStatusDto, tenantSlug?: string) =>
-    request<{ data: ExpedienteRecord; completeness: CompletenessResult }>(
+    request<{
+      data: ExpedienteRecord;
+      completeness: CompletenessResult;
+      sectionCompleteness: SectionCompletenessItem[];
+      installationReadiness: InstallationReadinessSummary;
+      missingRequirements: CompletenessMissingRequirement[];
+      pipelineRecommendation: PipelineRecommendation;
+      transitionWarning: TransitionWarning | null;
+    }>(
       `/crm/expedientes/${id}/status`,
+      { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  linkInstallationOperationalRefs: (
+    id: string,
+    dto: LinkExpedienteInstallationRefsDto,
+    tenantSlug?: string,
+  ) =>
+    request<{ data: ExpedienteRecord }>(
+      `/crm/expedientes/${id}/installation-operational-refs`,
       { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
       tenantSlug,
     ),
@@ -3180,7 +4417,7 @@ export const crmApi = {
   },
 
   getDocumentSupports: (id: string, tenantSlug?: string, personType?: string | null) => {
-    const query = personType ? `?personType=${encodeURIComponent(personType)}` : '';
+    const query = buildDocumentSupportQuery(personType);
     return request<{ data: ExpedienteDocumentSupportResponse }>(
       `/crm/expedientes/${id}/document-supports${query}`,
       { returnFullResponse: true },
@@ -3188,12 +4425,19 @@ export const crmApi = {
     );
   },
 
-  uploadDocumentSupport: (id: string, documentKey: string, file: File, tenantSlug?: string) => {
+  uploadDocumentSupport: (
+    id: string,
+    documentKey: string,
+    file: File,
+    tenantSlug?: string,
+    personType?: string | null,
+  ) => {
     const body = new FormData();
     body.append('file', file);
+    const query = buildDocumentSupportQuery(personType);
 
     return request<{ data: ExpedienteDocumentSupportResponse }>(
-      `/crm/expedientes/${id}/document-supports/${documentKey}/upload`,
+      `/crm/expedientes/${id}/document-supports/${documentKey}/upload${query}`,
       { method: 'POST', body, returnFullResponse: true },
       tenantSlug,
     );
@@ -3205,12 +4449,32 @@ export const crmApi = {
     versionId: string,
     dto: { status: DocumentReviewStatus; note?: string | null },
     tenantSlug?: string,
-  ) =>
-    request<{ data: ExpedienteDocumentSupportResponse }>(
-      `/crm/expedientes/${id}/document-supports/${documentKey}/${versionId}/status`,
+    personType?: string | null,
+  ) => {
+    const query = buildDocumentSupportQuery(personType);
+
+    return request<{ data: ExpedienteDocumentSupportResponse }>(
+      `/crm/expedientes/${id}/document-supports/${documentKey}/${versionId}/status${query}`,
       { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
       tenantSlug,
-    ),
+    );
+  },
+
+  deleteDocumentSupport: (
+    id: string,
+    documentKey: string,
+    versionId: string,
+    tenantSlug?: string,
+    personType?: string | null,
+  ) => {
+    const query = buildDocumentSupportQuery(personType);
+
+    return request<{ data: ExpedienteDocumentSupportResponse }>(
+      `/crm/expedientes/${id}/document-supports/${documentKey}/${versionId}${query}`,
+      { method: 'DELETE', returnFullResponse: true },
+      tenantSlug,
+    );
+  },
 };
 
 export const subscribersApi = {

@@ -42,9 +42,9 @@ Lee y respeta en este orden:
 6. `docs/hlds/HLD-MOD08-PARTIES-v1.0.md`
 7. `docs/hlds/HLD-MOD06-TAXATION-DEPENDENCY-v1.1-addendum.md`
 8. `docs/hlds/HLD-MOD05-PARTIES-DEPENDENCY-v2.1-addendum.md`
-9. `docs/superpowers/specs/2026-04-21-taxation-bounded-context-design.md`
-10. `docs/superpowers/specs/2026-04-21-parties-multi-rol-design.md`
-11. `docs/superpowers/specs/2026-04-20-reglas-comerciales-design.md` (con addendum 2026-04-21)
+9. `docs/specs/2026-04-21-taxation-bounded-context-design.md`
+10. `docs/specs/2026-04-21-parties-multi-rol-design.md`
+11. `docs/specs/2026-04-20-reglas-comerciales-design.md` (con addendum 2026-04-21)
 12. `docs/adrs/ADR-025-Subscriber-Modelo-Dos-Dimensiones.md`
 13. `docs/adrs/ADR-028-Extraccion-Modulo-Comercial.md`
 14. `AGENTS.md`, `CLAUDE.md`, `docs/prds/Stack_Tecnologico.md`

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { PortalPanel } from '@/components/shared/portal-ui';
+import { cn } from '@iwana/ui';
 
 interface DashboardPanelProps {
   title: string;
@@ -23,15 +23,32 @@ export function DashboardPanel({
   children,
 }: DashboardPanelProps) {
   return (
-    <PortalPanel
-      as="section"
-      eyebrow={eyebrow}
-      title={title}
-      description={description}
-      className={className}
-      contentClassName={contentClassName}
+    <section
+      className={cn(
+        'rounded-2xl border border-gray-200 bg-white p-5 dark:border-dark-border dark:bg-dark-surface-2',
+        className,
+      )}
     >
-      {children}
-    </PortalPanel>
+      <div>
+        {eyebrow && (
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+            {eyebrow}
+          </p>
+        )}
+        <h3
+          className={cn(
+            'text-base font-semibold text-gray-800 dark:text-white/90',
+            eyebrow && 'mt-1',
+          )}
+        >
+          {title}
+        </h3>
+        {description && (
+          <p className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">{description}</p>
+        )}
+      </div>
+
+      <div className={cn('mt-4', contentClassName)}>{children}</div>
+    </section>
   );
 }

@@ -151,15 +151,10 @@ export default function PortalDashboardLayout({ children }: { children: ReactNod
           setDesktopCollapsed={setSidebarDesktopCollapsed}
           mobileOpen={sidebarMobileOpen}
           setMobileOpen={setSidebarMobileOpen}
-          profile={tenantProfile}
         />
 
         {/* CONTENIDO DE LA PÁGINA */}
-        <main
-          className="flex-1 overflow-y-auto bg-slate-50 dark:bg-dark-surface lg:rounded-3xl"
-          tabIndex={0}
-          aria-label="Contenido principal del portal"
-        >
+        <main className="flex-1 overflow-y-auto bg-slate-50 dark:bg-dark-surface lg:rounded-3xl">
           <div className="mx-auto max-w-screen-2xl p-4 md:p-6 2xl:p-10">{children}</div>
         </main>
       </div>

@@ -1,8 +1,8 @@
 # Indice de Skills de iWana neXt
 
-**Version:** 1.0
+**Version:** 1.1
 **Estado:** Aprobado
-**Fecha:** 2026-03-12
+**Fecha:** 2026-05-19
 
 ## Proposito
 
@@ -18,10 +18,11 @@ Estados admitidos:
 ## Reglas de precedencia
 
 1. AGENTS.md
-2. CLAUDE.md
-3. .github/copilot-instructions.md
-4. Este indice
-5. La skill individual
+2. .github/copilot-instructions.md
+3. Este indice
+4. La skill individual
+
+`CLAUDE.md` y `.opencode/` estan pasivos por ahora y no participan en la precedencia activa.
 
 ## Skills core activas
 
@@ -109,6 +110,19 @@ Estados admitidos:
 - test-driven-development
 - testing-patterns
 
+### Flujos de trabajo
+
+- dispatching-parallel-agents
+- executing-plans
+- finishing-a-development-branch
+- receiving-code-review
+- requesting-code-review
+- subagent-driven-development
+- systematic-debugging
+- verification-before-completion
+- writing-plans
+- writing-skills
+
 ### Mantenimiento y dependencias
 
 - codebase-cleanup-deps-audit
@@ -168,8 +182,8 @@ Sin entradas vigentes tras la restauracion ejecutada el 2026-03-12.
 
 ## Notas operativas
 
-- El resto del material archivado permanece en .agents/skills-archive/ como repositorio historico.
-- La separacion fisica del archivo es: `candidate-restore/`, `candidate-keep/`, `hold/` y resto historico en la raiz del archivo.
-- La restauracion debe hacerse por movimiento controlado desde .agents/skills-archive/ hacia .agents/skills/.
+- El repo ya no mantiene un directorio fisico `.agents/skills-archive/`.
+- Las decisiones historicas sobre skills no activas se conservan en `docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md`.
+- Toda reincorporacion debe hacerse por alta controlada en `.agents/skills/` y sincronizacion de `skills-lock.json` cuando aplique.
 - Toda modificacion sustancial del catalogo debe reflejarse en docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md.
 - Toda skill activa debe mantener frontmatter valido con `name` y `description` como minimo.

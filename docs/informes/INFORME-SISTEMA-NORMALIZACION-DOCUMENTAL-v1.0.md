@@ -1,10 +1,10 @@
 # INFORME — Sistema: Normalización Documental + Materialización HLD
 
-# INFORME-SISTEMA-NORMALIZACION-DOCUMENTAL-v1.0.md
+**Archivo:** INFORME-SISTEMA-NORMALIZACION-DOCUMENTAL-v1.0.md
 
-**Version:** 2.4
+**Version:** 2.5
 **Fecha:** 2026-03-08
-**Fecha de última actualización:** 2026-03-24
+**Fecha de última actualización:** 2026-05-15
 **Plantilla base:** docs/informes/TEMPLATE-INFORME-FASE-v1.0.md
 **Convención documental:** {TIPO}-{MODULO}-{FASE}-v{VERSION}.md
 **Política de ejecución:** ADR-022
@@ -507,3 +507,114 @@ _Actualizado: 2026-03-08 — Corrección stack versions via Context7 MCP_
 
 - Permanecen en `docs/plans/` algunos pares `design` + `implementation` o planes fechados antiguos que todavía conservan referencias históricas activas y no deben archivarse hasta consolidar esas citas.
 - El archivo `docs/prompts/TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md` se mantiene en su ruta actual porque la gobernanza del repo y varios prompts activos aún dependen explícitamente de ese path.
+
+---
+
+### Corrección 15 — Saneamiento de markdownlint en PRDs vigentes y stack documental (2026-05-15)
+
+**Motivo:** Se detectó un bloque amplio de errores de markdownlint en PRDs vigentes y en `docs/prds/Stack_Tecnologico.md`. El ruido combinaba problemas mecánicos de formato (tablas, listas y trailing newline) con problemas estructurales repetidos: H1 duplicados por coexistencia con frontmatter `title`, uso de negritas como pseudo-encabezados, fences sin lenguaje y blockquotes separados por líneas en blanco.
+
+**Artefactos corregidos:**
+
+| Artefacto | Cambios realizados |
+| --- | --- |
+| `docs/prds/PRD-ADDENDUM-TAXATION-PARTIES-v1.0.md` | Eliminado H1 redundante para evitar conflicto con `title` en frontmatter. |
+| `docs/prds/PRD-MOD01-Auth-Tenant-Audit-v1.0.md` | Corregido previamente en el mismo saneamiento: casos de uso como encabezados reales y fences con lenguaje. |
+| `docs/prds/PRD-MOD01-DEFINICION-v1.1.md` | Casos de uso convertidos a encabezados reales y fences marcados como `text`. |
+| `docs/prds/PRD-MOD02-DASHBOARD-EMPRESA-v1.0.md` | Casos de uso convertidos a encabezados reales. |
+| `docs/prds/PRD-MOD02-DEFINICION-v1.0.md` | Casos de uso y bloques `users`, `refresh_tokens`, `audit_logs` convertidos a encabezados reales. |
+| `docs/prds/PRD-MOD02-FRONTEND-v1.0.md` | Casos de uso frontend convertidos a encabezados reales. |
+| `docs/prds/PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md` | Normalizado blockquote sin línea en blanco interna. |
+| `docs/prds/PRD-MOD03-CONFIGURACION-EMPRESA-v1.0.md` | Normalizado blockquote y convertidos los casos de uso a encabezados reales. |
+| `docs/prds/PRD-MOD05-CRM-GESTION-COMERCIAL-OPERATIVA-v1.0.md` | `Responsable actual` convertido a encabezado real. |
+| `docs/prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-02-v1.0.md` | Fence de transiciones marcado como `text`. |
+| `docs/prds/PRD-MOD05-CRM-SUBSCRIBERS-v1.0.md` | Fences de pipeline y contratos API marcados como `text`. |
+| `docs/prds/PRD-MOD06-COMERCIAL-DEFINICION-v1.0.md` | Eliminado H1 redundante y convertidos todos los flujos a encabezados reales. |
+| `docs/prds/Stack_Tecnologico.md` y PRDs relacionados del set reportado | Formateados con Prettier para normalizar tablas, listas y saltos finales sin cambiar contenido funcional. |
+| `docs/informes/INFORME-SISTEMA-NORMALIZACION-DOCUMENTAL-v1.0.md` | Actualizado como documento vivo para registrar el saneamiento. |
+
+**Resultado observado:**
+
+- El conjunto reportado de PRDs y `Stack_Tecnologico.md` quedó sin errores en la validación actual de markdownlint expuesta por el workspace.
+- Se redujo la deuda documental repetitiva sin reescribir contenido funcional ni alterar decisiones de producto/arquitectura.
+- Prettier absorbió la corrección mecánica en bloque; los cambios manuales se limitaron a estructura Markdown válida.
+
+**Hallazgos abiertos tras esta corrección:**
+
+- El repo sigue teniendo documentos históricos fuera del set corregido que podrían beneficiarse de una pasada transversal adicional si se decide elevar el estándar de markdownlint a todo `docs/`.
+
+---
+
+### Corrección 16 — Cierre residual de markdownlint en ideas WFM y documentos complementarios (2026-05-15)
+
+**Motivo:** Después del saneamiento principal de PRDs quedó un residuo menor en tres documentos: la idea de producto `docs/ideas/módulo_WFM.md`, un H1 redundante en el PRD de rediseño tributario y varias URLs desnudas dentro de tablas de `Stack_Tecnologico.md`.
+
+**Artefactos corregidos:**
+
+| Artefacto | Cambios realizados |
+| --- | --- |
+| `docs/ideas/módulo_WFM.md` | Reestructurado con jerarquía de encabezados válida, tablas corregidas, bloques `text` para bocetos visuales y eliminación de falsos reference-links. |
+| `docs/prds/PRD-TAXATION-PARTIES-COMMERCIAL-REDESIGN-v1.0.md` | Eliminado el H1 redundante bajo frontmatter para cumplir la regla de título único. |
+| `docs/prds/Stack_Tecnologico.md` | URLs desnudas convertidas a autolinks dentro de tablas y realineadas con Prettier. |
+
+**Resultado observado:**
+
+- Los tres documentos quedaron sin errores en la validación actual del workspace.
+- El documento de ideas WFM pasó de borrador libre a Markdown estructuralmente válido sin perder el contenido conceptual.
+- `Stack_Tecnologico.md` mantiene la misma información, pero ahora cumple `MD034` y `MD060`.
+
+**Hallazgos abiertos tras esta corrección:**
+
+- El árbol `docs/ideas/` puede requerir una pasada adicional si existen más notas exploratorias escritas con formato libre similar al caso WFM.
+
+---
+
+### Corrección 17 — Normalización de notas de ideas para PRD base, Comercial y Mesa de Ayuda (2026-05-15)
+
+**Motivo:** Se detectó un nuevo bloque de errores de markdownlint dentro de `docs/ideas/`, concentrado en tres notas: una actualización del PRD base, una definición temprana del módulo Comercial y una propuesta libre para Mesa de Ayuda. Los problemas combinaban ausencia de H1 válido, listas ordenadas fuera de estilo, saltos finales incorrectos y jerarquía de encabezados inconsistente.
+
+**Artefactos corregidos:**
+
+| Artefacto | Cambios realizados |
+| --- | --- |
+| `docs/ideas/actulizacion_prd_base.md` | Convertido a nota estructurada con H1 válido, secciones claras y bloques `text` para snippets de actualización. |
+| `docs/ideas/modulo_comercial.md` | Reordenado como PRD breve con metadatos visibles, tabla RBAC válida y listas normalizadas. |
+| `docs/ideas/mesa_de_ayuda.md` | Reestructurado por completo con jerarquía real de encabezados, listas válidas y bloques `text` para bocetos operativos y SLA. |
+
+**Resultado observado:**
+
+- Los tres documentos quedaron sin errores en la validación actual del workspace.
+- La carpeta `docs/ideas/` gana consistencia mínima sin convertir estas notas en PRDs formales ni alterar su intención exploratoria.
+
+**Hallazgos abiertos tras esta corrección:**
+
+- Siguen siendo documentos de ideación; si alguno pasa a ejecución formal, conviene migrarlo a PRD/HLD/informe según la convención documental del repo.
+
+---
+
+### Corrección 18 — Cierre de markdownlint en perfiles de roles IA activos (2026-05-15)
+
+**Motivo:** Se reportó un nuevo lote de errores de markdownlint en perfiles activos de `docs/roles/`. El patrón repetido fue consistente con el resto de la deuda documental reciente: encabezados H1 internos usados como separadores de partes, fences sin lenguaje en prompts y plantillas, blockquotes con línea en blanco, tablas con columnas desalineadas y, en un caso, una tabla rota por un salto de línea indebido.
+
+**Artefactos corregidos:**
+
+| Artefacto | Cambios realizados |
+| --- | --- |
+| `docs/roles/Perfil IA Senior Data Engineer ISP.md` | Normalizados subtítulos en negrita usados como pseudoencabezados, secciones `SECCIÓN` degradadas a H2, fences marcados como `text` y tabla de KPIs recompuesta a 4 columnas válidas. |
+| `docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md` | Corregidos los tres H1 internos de partes para mantener un único título principal por documento. |
+| `docs/roles/Perfil_IA_Engineering_Manager_Senior_v1.md` | Compactados blockquotes iniciales, fences de ejemplos y prompts marcados con lenguaje, tablas de IVA y métricas normalizadas y fences anidados del prompt convertidos a tildes internas. |
+| `docs/roles/Perfil_IA_Lead_Software_Architect_Senior_v1.md` | Compactados blockquotes iniciales, secciones `PARTE` degradadas a H2 y fences internos del bloque de activación convertidos a formato válido sin romper el prompt externo. |
+| `docs/roles/Perfil_IA_Security_Engineer_AppSec_v1.md` | Secciones `PARTE` normalizadas y fences de pipeline/review marcados como `text`. |
+| `docs/roles/Perfil_IA_Senior_UI_Systems_Designer_v1.md` | Corregido el H1 interno restante, alineada la tabla de escalación y normalizado el salto final con Prettier. |
+| `docs/roles/Perfil_IA_Sr_Dev_Fullstack_v1.md` | Secciones `PARTE` degradadas a H2 y fence anidado del prompt convertido a tildes internas para no romper el bloque markdown padre. |
+| `docs/roles/Perfil_IA_Sr_Dev_QA_Testing_v1.md` | Secciones `PARTE` degradadas a H2 y fences de ejemplos marcados como `text`. |
+
+**Resultado observado:**
+
+- Los ocho perfiles reportados quedaron sin errores en la validación actual del workspace.
+- La corrección fue estrictamente estructural: no cambió el contenido funcional de los perfiles ni su intención operativa.
+- Se eliminó un patrón especialmente riesgoso en prompts documentados: fences anidados con triple backtick dentro de bloques markdown ya abiertos, que rompían la estructura del documento y exponían falsos errores de encabezados y espaciado.
+
+**Hallazgos abiertos tras esta corrección:**
+
+- El árbol `docs/roles/` ya quedó limpio para el lote reportado, pero conviene seguir validando por tandas pequeñas si aparecen más perfiles históricos con la misma plantilla base.

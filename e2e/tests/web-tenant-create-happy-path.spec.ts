@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { loginAsPlatformAdmin } from './helpers/web-api-mocks';
 
 const platformEmail = process.env['E2E_PLATFORM_EMAIL'];
 const platformPassword = process.env['E2E_PLATFORM_PASSWORD'];
@@ -18,14 +19,10 @@ test.describe('Web tenant create happy path real', () => {
     const tenantName = `Empresa E2E ${suffix}`;
     const tenantSlug = `empresa-e2e-${suffix}`.slice(0, 55);
 
-    await page.goto('/auth/login');
-    await expect(page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible();
-
-    await page.getByLabel(/correo electrónico|identidad/i).fill(platformEmail!);
-    await page.getByPlaceholder('••••••••').fill(platformPassword!);
-    await page.getByRole('button', { name: 'Ingresar' }).click();
-
-    await expect(page).toHaveURL(/\/dashboard/);
+    await loginAsPlatformAdmin(page, {
+      email: platformEmail!,
+      password: platformPassword!,
+    });
 
     await page.getByRole('link', { name: 'Empresas' }).click();
     await page.getByRole('link', { name: 'Nueva empresa' }).click();

@@ -2,7 +2,6 @@
 import Link from 'next/link';
 import { Settings, Users, ShieldCheck, BarChart3, ArrowRight, Zap, HandCoins } from 'lucide-react';
 import { DashboardPanel } from './DashboardPanel';
-import { interactiveFocusClassName } from '@/components/shared/portal-ui';
 
 interface QuickAction {
   label: string;
@@ -68,7 +67,7 @@ export function QuickActionsPanel() {
               <Link
                 key={action.href}
                 href={action.href}
-                className={`flex items-center justify-between rounded-xl border border-gray-200 px-4 py-4 text-sm transition-all hover:-translate-y-0.5 hover:border-iwana-primary hover:bg-iwana-primary-50 dark:border-dark-border dark:hover:border-iwana-primary-300 dark:hover:bg-iwana-primary/10 ${interactiveFocusClassName}`}
+                className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-4 text-sm transition-all hover:-translate-y-0.5 hover:border-iwana-primary hover:bg-iwana-primary-50 dark:border-dark-border dark:hover:border-iwana-primary-300 dark:hover:bg-iwana-primary/10"
               >
                 <span className="flex items-center gap-3">
                   <action.icon

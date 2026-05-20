@@ -13,7 +13,7 @@ import {
   KeyRound,
   Search,
 } from 'lucide-react';
-import { Badge, Select } from '@iwana/ui';
+import { Badge, Button, Select } from '@iwana/ui';
 import {
   getPortalUserRoleLabel,
   getPortalUserStatusLabel,
@@ -151,18 +151,19 @@ export function UsersTable({
           </div>
 
           {(statusFilter || roleFilter || searchValue) && (
-            <button
+            <Button
               type="button"
+              variant="secondary"
               onClick={() => {
                 setStatusFilter('');
                 setRoleFilter('');
                 onSearchChange('');
                 onFilterChange({});
               }}
-              className="inline-flex h-12 items-center justify-center rounded-2xl border border-gray-200 px-4 text-sm font-semibold text-iwana-primary transition-colors hover:border-iwana-secondary/40 hover:bg-iwana-secondary-50 dark:border-dark-border dark:text-gray-100 dark:hover:bg-dark-surface-3"
+              className="h-12 px-4"
             >
               Limpiar filtros
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -293,28 +294,33 @@ export function UsersTable({
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1">
-                    <button
+                    <Button
                       type="button"
+                      variant="secondary"
+                      size="icon"
                       onClick={() => onEdit(user)}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-dark-surface-3 dark:hover:text-gray-200 transition-colors"
                       aria-label={`Editar usuario ${user.email}`}
+                      title={`Editar usuario ${user.email}`}
                     >
                       <Pencil className="h-4 w-4" aria-hidden="true" />
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="icon"
                       onClick={() => onResetPassword(user)}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-amber-50 hover:text-amber-600 dark:hover:bg-amber-900/20 dark:hover:text-amber-400 transition-colors"
+                      className="hover:bg-amber-50 hover:text-amber-600 dark:hover:bg-amber-900/20 dark:hover:text-amber-400"
                       aria-label={`Reiniciar contraseña de ${user.email}`}
                       title="Reiniciar contraseña"
                     >
                       <KeyRound className="h-4 w-4" aria-hidden="true" />
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      variant="softDestructive"
+                      size="icon"
                       onClick={() => onDelete(user)}
                       disabled={!canDelete(user)}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-red-900/20 dark:hover:text-red-400 transition-colors"
                       aria-label={`Eliminar usuario ${user.email}`}
                       title={
                         !canDelete(user)
@@ -325,7 +331,7 @@ export function UsersTable({
                       }
                     >
                       <Trash2 className="h-4 w-4" aria-hidden="true" />
-                    </button>
+                    </Button>
                   </div>
                 </td>
               </tr>
@@ -342,43 +348,17 @@ export function UsersTable({
           </p>
           <div className="flex items-center gap-2">
             {meta?.nextCursor && (
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="sm"
                 onClick={onLoadMore}
                 disabled={isLoading}
-                className="inline-flex items-center gap-1.5 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:border-iwana-secondary/40 hover:bg-[#fbfcf8] disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-4"
+                loading={isLoading}
               >
-                {isLoading ? (
-                  <>
-                    <svg
-                      className="h-4 w-4 animate-spin"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                      />
-                    </svg>
-                    Cargando...
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="h-4 w-4" aria-hidden="true" />
-                    Cargar más
-                  </>
-                )}
-              </button>
+                {!isLoading && <ChevronDown className="h-4 w-4" aria-hidden="true" />}
+                Cargar más
+              </Button>
             )}
             {!meta?.nextCursor && users.length > 0 && (
               <div className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">

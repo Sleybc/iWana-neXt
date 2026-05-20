@@ -10,7 +10,6 @@ import { RecentActivityPanel } from './RecentActivityPanel';
 import { QuickActionsPanel } from './QuickActionsPanel';
 import { dashboardApi, ApiError, type DashboardSummary } from '@/lib/api-client';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { PortalAlert, PortalEmptyState, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 
 /**
  * Componente cliente del dashboard empresarial del tenant.
@@ -38,7 +37,10 @@ function MetricsSkeleton() {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-busy="true">
       {Array.from({ length: 3 }).map((_, i) => (
-        <PortalSkeletonBlock key={i} className="h-28" />
+        <div
+          key={i}
+          className="h-28 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3"
+        />
       ))}
     </div>
   );
@@ -50,12 +52,17 @@ function RoleRestrictedView() {
     <div className="space-y-6">
       <PageHeader title="Panel empresarial" subtitle="Vista según tus permisos de acceso" />
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-        <div className="xl:col-span-8">
-          <PortalEmptyState
-            title="Panel en preparación"
-            description="El dashboard para tu rol estará disponible próximamente."
-            icon={Activity}
-          />
+        <div className="xl:col-span-8 rounded-2xl border border-gray-200 bg-white p-8 text-center dark:border-dark-border dark:bg-dark-surface-2">
+          <Activity className="mx-auto mb-3 h-10 w-10 text-gray-400" aria-hidden="true" />
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+            Rol en expansión
+          </p>
+          <p className="mt-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+            Panel en preparación
+          </p>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            El dashboard para tu rol estará disponible próximamente.
+          </p>
         </div>
         <div className="xl:col-span-4">
           <QuickActionsPanel />
@@ -107,12 +114,12 @@ export function DashboardClient() {
         <PageHeader title="Panel empresarial" subtitle="Cargando datos de tu empresa..." />
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
           <div className="xl:col-span-8 space-y-6">
-            <PortalSkeletonBlock className="h-40" />
+            <div className="h-40 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3" />
             <MetricsSkeleton />
           </div>
           <div className="xl:col-span-4 space-y-6">
-            <PortalSkeletonBlock className="h-52" />
-            <PortalSkeletonBlock className="h-64" />
+            <div className="h-52 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3" />
+            <div className="h-64 animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3" />
           </div>
         </div>
       </div>
@@ -125,22 +132,23 @@ export function DashboardClient() {
       <div className="space-y-6">
         <PageHeader title="Panel empresarial" subtitle="Error al cargar el dashboard" />
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-          <div className="xl:col-span-8">
-            <PortalAlert
-              variant="error"
-              title="No fue posible cargar el panel"
-              description={error}
-              action={
+          <div className="xl:col-span-8 rounded-2xl border border-red-200/80 bg-[linear-gradient(135deg,rgba(254,242,242,0.98),rgba(254,226,226,0.82))] p-6 shadow-iwana-soft dark:border-red-800 dark:bg-red-900/20">
+            <div className="flex items-start gap-3">
+              <AlertTriangle
+                className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-400"
+                aria-hidden="true"
+              />
+              <div>
+                <p className="text-sm font-medium text-red-800 dark:text-red-300">{error}</p>
                 <button
                   type="button"
                   onClick={() => void loadSummary()}
-                  className="text-sm font-medium text-red-700 underline decoration-red-300 underline-offset-4 hover:no-underline dark:text-red-300"
+                  className="mt-2 text-sm font-medium text-red-700 underline decoration-red-300 underline-offset-4 hover:no-underline dark:text-red-400"
                 >
                   Reintentar
                 </button>
-              }
-              icon={AlertTriangle}
-            />
+              </div>
+            </div>
           </div>
           <div className="xl:col-span-4">
             <QuickActionsPanel />

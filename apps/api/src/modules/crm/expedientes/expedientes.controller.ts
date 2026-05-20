@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -27,6 +28,8 @@ import { ZodBodyValidationPipe } from '../pipes/zod-body-validation.pipe';
 import { ExpedienteService } from './expediente.service';
 import { StatusTransitionService } from './status-transition.service';
 import { CompletenessCalculator } from './completeness-calculator.service';
+import { PipelineRecommendationService } from './pipeline-recommendation.service';
+import { parseExpedienteListView } from './expediente-list-view';
 import { CreateExpedienteDto, CreateExpedienteSchema } from './dto/create-expediente.dto';
 import {
   ExpedienteSection,
@@ -49,6 +52,10 @@ import {
   UpdateDocumentSupportStatusBodyDto,
   UpdateDocumentSupportStatusSchema,
 } from './dto/update-document-support-status.dto';
+import {
+  LinkInstallationOperationalRefsDto,
+  LinkInstallationOperationalRefsSchema,
+} from './dto/link-installation-operational-refs.dto';
 
 interface UploadedDocumentFile {
   originalname: string;
@@ -66,6 +73,7 @@ export class ExpedientesController {
     private readonly expedienteService: ExpedienteService,
     private readonly statusTransitionService: StatusTransitionService,
     private readonly completenessCalculator: CompletenessCalculator,
+    private readonly pipelineRecommendationService: PipelineRecommendationService,
   ) {}
 
   @Post()
@@ -91,6 +99,7 @@ export class ExpedientesController {
     @Query('assignedTo') assignedTo?: string,
     @Query('documentNumber') documentNumber?: string,
     @Query('includeCompleted') includeCompleted?: string,
+    @Query('view') view?: string,
   ) {
     const result = await this.expedienteService.findAll({
       status: status as ExpedienteStatus | undefined,
@@ -101,6 +110,7 @@ export class ExpedientesController {
       assignedTo: assignedTo ?? undefined,
       documentNumber: documentNumber ?? undefined,
       includeCompleted: includeCompleted === 'true',
+      view: parseExpedienteListView(view),
     });
     return result;
   }
@@ -111,7 +121,16 @@ export class ExpedientesController {
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     const data = await this.expedienteService.findById(id);
     const completeness = await this.completenessCalculator.calculate(id);
-    return { data, completeness };
+    const pipelineRecommendation = await this.pipelineRecommendationService.getRecommendation(id);
+    return {
+      data,
+      completeness,
+      sectionCompleteness: completeness.sectionCompleteness,
+      installationReadiness: completeness.installationReadiness,
+      provisioningReadiness: (data as { provisioningReadiness?: unknown }).provisioningReadiness,
+      missingRequirements: completeness.missingRequirements,
+      pipelineRecommendation,
+    };
   }
 
   @Patch(':id/sections/:section')
@@ -165,7 +184,24 @@ export class ExpedientesController {
 
     const data = await this.expedienteService.transitionStatus(id, dto, user.sub);
     const completeness = await this.completenessCalculator.calculate(id);
-    return { data, completeness };
+    const pipelineRecommendation = await this.pipelineRecommendationService.getRecommendation(id);
+    return {
+      data,
+      completeness,
+      sectionCompleteness: completeness.sectionCompleteness,
+      installationReadiness: completeness.installationReadiness,
+      provisioningReadiness: (data as { provisioningReadiness?: unknown }).provisioningReadiness,
+      missingRequirements: completeness.missingRequirements,
+      pipelineRecommendation,
+      transitionWarning:
+        validation.warningTitle && validation.warningMessage
+          ? {
+              title: validation.warningTitle,
+              message: validation.warningMessage,
+              missingRequirements: validation.missingRequirements ?? [],
+            }
+          : null,
+    };
   }
 
   @Post(':id/reactivate')
@@ -211,12 +247,14 @@ export class ExpedientesController {
     @Param('documentKey') documentKey: string,
     @UploadedFile() file: UploadedDocumentFile,
     @CurrentUser() user: JwtPayload,
+    @Query('personType') personTypeOverride?: string,
   ) {
     const data = await this.expedienteService.uploadDocumentSupport(
       id,
       documentKey,
       file,
       user.sub,
+      personTypeOverride,
     );
     return { data };
   }
@@ -231,6 +269,7 @@ export class ExpedientesController {
     @Body(new ZodBodyValidationPipe(UpdateDocumentSupportStatusSchema))
     dto: UpdateDocumentSupportStatusBodyDto,
     @CurrentUser() user: JwtPayload,
+    @Query('personType') personTypeOverride?: string,
   ) {
     const data = await this.expedienteService.updateDocumentSupportStatus(
       id,
@@ -239,6 +278,27 @@ export class ExpedientesController {
       dto.status,
       user.sub,
       dto.note,
+      personTypeOverride,
+    );
+    return { data };
+  }
+
+  @Delete(':id/document-supports/:documentKey/:versionId')
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Eliminar una versión específica de soporte documental' })
+  async deleteDocumentSupport(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('documentKey') documentKey: string,
+    @Param('versionId') versionId: string,
+    @CurrentUser() user: JwtPayload,
+    @Query('personType') personTypeOverride?: string,
+  ) {
+    const data = await this.expedienteService.deleteDocumentSupport(
+      id,
+      documentKey,
+      versionId,
+      user.sub,
+      personTypeOverride,
     );
     return { data };
   }
@@ -348,6 +408,19 @@ export class ExpedientesController {
   @ApiOperation({ summary: 'Listar verificaciones de cobertura del expediente' })
   async listCoverageChecks(@Param('id', ParseUUIDPipe) id: string) {
     const data = await this.expedienteService.listCoverageChecks(id);
+    return { data };
+  }
+
+  @Patch(':id/installation-operational-refs')
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @ApiOperation({ summary: 'Vincular referencias operativas de instalación al expediente' })
+  async linkInstallationOperationalRefs(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodBodyValidationPipe(LinkInstallationOperationalRefsSchema))
+    dto: LinkInstallationOperationalRefsDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const data = await this.expedienteService.linkInstallationOperationalRefs(id, dto, user.sub);
     return { data };
   }
 }

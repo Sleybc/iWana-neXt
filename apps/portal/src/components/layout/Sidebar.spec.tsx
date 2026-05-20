@@ -48,4 +48,19 @@ describe('Sidebar', () => {
     expect(screen.getAllByText('Gestion C').length).toBeGreaterThan(0);
     expect(screen.getAllByTestId('tenant-seal')[0]).toHaveTextContent('Gestion C');
   });
+
+  it('muestra el acceso a Mesa de ayuda en el menu principal', () => {
+    render(
+      <Sidebar
+        desktopCollapsed={false}
+        setDesktopCollapsed={jest.fn()}
+        mobileOpen={false}
+        setMobileOpen={jest.fn()}
+        profile={null}
+      />,
+    );
+
+    const helpDeskLink = screen.getByRole('link', { name: 'Mesa de ayuda' });
+    expect(helpDeskLink).toHaveAttribute('href', '/dashboard/assurance');
+  });
 });

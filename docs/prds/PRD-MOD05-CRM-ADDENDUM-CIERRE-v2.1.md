@@ -132,11 +132,11 @@ Este addendum completa el PRD v2.0 como parte del cierre extendido de Sprint 02,
 
 ## 4. Enums nuevos requeridos
 
-| Enum | Archivo destino | Valores |
-| --- | --- | --- |
-| ContactChannel | `packages/shared/src/enums/crm/contact-channel.enum.ts` | TELEFONO, EMAIL, PRESENCIAL, WHATSAPP, SMS, OTRO |
-| ContactResult | `packages/shared/src/enums/crm/contact-result.enum.ts` | EXITOSO, NO_CONTESTA, BUZON, OCUPADO, NUMERO_INVALIDO, RECHAZADO, REPROGRAMADO |
-| EvidenceMode | `packages/shared/src/enums/crm/evidence-mode.enum.ts` | ACTA_CONFORMIDAD, SOPORTE_CONTRACTUAL, FIRMA_DIGITAL, OTRO |
+| Enum           | Archivo destino                                         | Valores                                                                        |
+| -------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| ContactChannel | `packages/shared/src/enums/crm/contact-channel.enum.ts` | TELEFONO, EMAIL, PRESENCIAL, WHATSAPP, SMS, OTRO                               |
+| ContactResult  | `packages/shared/src/enums/crm/contact-result.enum.ts`  | EXITOSO, NO_CONTESTA, BUZON, OCUPADO, NUMERO_INVALIDO, RECHAZADO, REPROGRAMADO |
+| EvidenceMode   | `packages/shared/src/enums/crm/evidence-mode.enum.ts`   | ACTA_CONFORMIDAD, SOPORTE_CONTRACTUAL, FIRMA_DIGITAL, OTRO                     |
 
 Reexportar desde `packages/shared/src/enums/crm/index.ts` y `packages/shared/src/index.ts`.
 
@@ -145,39 +145,47 @@ Reexportar desde `packages/shared/src/enums/crm/index.ts` y `packages/shared/src
 ## 5. Contratos API adicionales
 
 ### POST /api/v1/crm/expedientes/:id/contact-attempts
+
 - **Guards:** JwtAuth, Roles (ADMIN, SALES, SUPPORT, SYSTEM_ADMIN)
 - **Body:** CreateContactAttemptSchema — `{ channel, result, durationMinutes?, notes? }`
 - **Response 201:** `{ data: ContactAttempt }`
 
 ### GET /api/v1/crm/expedientes/:id/contact-attempts
+
 - **Guards:** JwtAuth, Roles
 - **Query:** page?, limit?
 - **Response 200:** `{ data: ContactAttempt[], total }`
 
 ### POST /api/v1/crm/expedientes/:id/consents
+
 - **Guards:** JwtAuth, Roles (ADMIN, SALES, SYSTEM_ADMIN)
 - **Body:** CreateConsentSchema — `{ consentType, status, channel, legalTextVersion, evidenceRef? }`
 - **Response 201:** `{ data: ConsentRecord }`
 
 ### GET /api/v1/crm/expedientes/:id/consents
+
 - **Guards:** JwtAuth, Roles
 - **Response 200:** `{ data: ConsentRecord[] }`
 
 ### PATCH /api/v1/crm/expedientes/:id/consents/:consentId/revoke
+
 - **Guards:** JwtAuth, Roles (ADMIN, SYSTEM_ADMIN)
 - **Body:** `{ reason: string(1-255) }`
 - **Response 200:** `{ data: ConsentRecord }`
 
 ### POST /api/v1/crm/expedientes/:id/coverage-checks
+
 - **Guards:** JwtAuth, Roles (ADMIN, SALES, TECHNICIAN, SYSTEM_ADMIN)
 - **Body:** CreateCoverageCheckSchema — `{ latitude?, longitude?, addressUsed, result, technologyAvailable?, distanceM?, snapshotJson? }`
 - **Response 201:** `{ data: CoverageCheck }`
 
 ### GET /api/v1/crm/expedientes/:id/coverage-checks
+
 - **Guards:** JwtAuth, Roles
 - **Response 200:** `{ data: CoverageCheck[] }`
 
 ### PATCH /api/v1/crm/expedientes/:id/assign
+
 - **Guards:** JwtAuth, Roles (ADMIN, SYSTEM_ADMIN)
 - **Body:** `{ assignedTo: uuid }`
 - **Response 200:** `{ data: ExpedienteRecord }`
@@ -188,29 +196,29 @@ Reexportar desde `packages/shared/src/enums/crm/index.ts` y `packages/shared/src
 
 ### 6.1 Columna nueva en expediente_records
 
-| Columna | Tipo | Notas |
-| --- | --- | --- |
+| Columna    | Tipo | Notas                                      |
+| ---------- | ---- | ------------------------------------------ |
 | assignedTo | uuid | FK nullable; referencia a users del tenant |
 
 ### 6.2 Columnas nuevas en status_changes
 
-| Columna | Tipo | Notas |
-| --- | --- | --- |
+| Columna   | Tipo         | Notas                                            |
+| --------- | ------------ | ------------------------------------------------ |
 | actorName | varchar(160) | Nullable; nombre del actor al momento del cambio |
 
 ### 6.3 Columnas nuevas en contact_attempts
 
-| Columna | Tipo | Notas |
-| --- | --- | --- |
+| Columna   | Tipo         | Notas                                              |
+| --------- | ------------ | -------------------------------------------------- |
 | actorName | varchar(160) | Nullable; nombre del asesor al momento del intento |
 
 ### 6.4 Columnas nuevas en consent_records
 
-| Columna | Tipo | Notas |
-| --- | --- | --- |
-| revokedAt | timestamptz | Nullable; momento de revocacion |
-| revokedReason | varchar(255) | Nullable; motivo de revocacion |
-| revokedBy | uuid | Nullable; actor que revoco |
+| Columna       | Tipo         | Notas                           |
+| ------------- | ------------ | ------------------------------- |
+| revokedAt     | timestamptz  | Nullable; momento de revocacion |
+| revokedReason | varchar(255) | Nullable; motivo de revocacion  |
+| revokedBy     | uuid         | Nullable; actor que revoco      |
 
 ### 6.5 Indice nuevo
 
@@ -240,34 +248,34 @@ Reexportar desde `packages/shared/src/enums/crm/index.ts` y `packages/shared/src
 
 ## 8. Criterios de aceptacion adicionales
 
-| CA | Descripcion |
-| --- | --- |
-| CA-13 | Crear intento de contacto con channel, result; advisorId = actor real |
-| CA-14 | Listar intentos de contacto del expediente paginados |
-| CA-15 | Crear consentimiento triple por tipo; IP capturada automaticamente |
-| CA-16 | Solo 1 consentimiento ACCEPTED por tipo por expediente |
-| CA-17 | Revocar consentimiento DATA_TREATMENT marca flag en expediente |
-| CA-18 | Crear verificacion de cobertura con coordenadas o direccion |
-| CA-19 | Listar verificaciones de cobertura ordenadas por fecha |
-| CA-20 | Asignar expediente a asesor; filtrar por asignado en listado |
-| CA-21 | PII oculta en listados; solo visible en detalle individual |
-| CA-22 | Actor name resuelto en timeline sin lookup adicional |
-| CA-23 | Legacy modules removidos del backend |
-| CA-24 | Enums CRM en shared/src como fuente de verdad |
-| CA-25 | Tests >= 80% en servicios core + servicios hijos |
-| CA-26 | E2E: crear intento de contacto, registrar consentimiento, ver timeline completo |
+| CA    | Descripcion                                                                           |
+| ----- | ------------------------------------------------------------------------------------- |
+| CA-13 | Crear intento de contacto con channel, result; advisorId = actor real                 |
+| CA-14 | Listar intentos de contacto del expediente paginados                                  |
+| CA-15 | Crear consentimiento triple por tipo; IP capturada automaticamente                    |
+| CA-16 | Solo 1 consentimiento ACCEPTED por tipo por expediente                                |
+| CA-17 | Revocar consentimiento DATA_TREATMENT marca flag en expediente                        |
+| CA-18 | Crear verificacion de cobertura con coordenadas o direccion                           |
+| CA-19 | Listar verificaciones de cobertura ordenadas por fecha                                |
+| CA-20 | Asignar expediente a asesor; filtrar por asignado en listado                          |
+| CA-21 | PII oculta en listados; solo visible en detalle individual                            |
+| CA-22 | Actor name resuelto en timeline sin lookup adicional                                  |
+| CA-23 | Legacy modules removidos del backend                                                  |
+| CA-24 | Enums CRM en shared/src como fuente de verdad                                         |
+| CA-25 | Tests >= 80% en servicios core + servicios hijos                                      |
+| CA-26 | E2E: crear intento de contacto, registrar consentimiento, ver timeline completo       |
 | CA-27 | Portal: tabs para intentos contacto, consentimientos, cobertura en detalle expediente |
 
 ---
 
 ## 9. Riesgos
 
-| Riesgo | Severidad | Mitigacion |
-| --- | --- | --- |
-| Rendimiento busqueda por documento cifrado | Media | Limitar a busqueda exacta; rate limiting; evaluar indice hash en Sprint 04 |
-| Removal legacy puede romper consumidores desconocidos | Baja | Verificar que portal no consume endpoints legacy antes de remover |
-| Volumen de endpoints (+8) puede necesitar versionado | Baja | Mantener /v1/ consistente; documentar en OpenAPI |
-| Denormalizacion actorName puede desincronizarse | Baja | Aceptable: nombre al momento de la accion es correcto historicamente |
+| Riesgo                                                | Severidad | Mitigacion                                                                 |
+| ----------------------------------------------------- | --------- | -------------------------------------------------------------------------- |
+| Rendimiento busqueda por documento cifrado            | Media     | Limitar a busqueda exacta; rate limiting; evaluar indice hash en Sprint 04 |
+| Removal legacy puede romper consumidores desconocidos | Baja      | Verificar que portal no consume endpoints legacy antes de remover          |
+| Volumen de endpoints (+8) puede necesitar versionado  | Baja      | Mantener /v1/ consistente; documentar en OpenAPI                           |
+| Denormalizacion actorName puede desincronizarse       | Baja      | Aceptable: nombre al momento de la accion es correcto historicamente       |
 
 ---
 
@@ -282,6 +290,7 @@ Reexportar desde `packages/shared/src/enums/crm/index.ts` y `packages/shared/src
 ## 11. Decision de salida de cierre Sprint 02
 
 **GO cuando:**
+
 - Todos los CA-13 a CA-27 validados.
 - Tests >= 80% en modulos CRM.
 - E2E portal expandido pasando.
@@ -290,10 +299,11 @@ Reexportar desde `packages/shared/src/enums/crm/index.ts` y `packages/shared/src
 - OpenAPI actualizada con endpoints nuevos.
 
 **NO-GO si:**
+
 - Algun CA de compliance (CA-15, CA-16, CA-17) falla.
 - Cobertura de tests < 80%.
 - Campos PII expuestos en listados (CA-21 falla).
 
 ---
 
-*Addendum generado por AI-EM-ARCH como extension del PRD-MOD05-CRM-DEFINICION-v2.0.md para cerrar Sprint 02 sin abrir una fase documental paralela.*
+_Addendum generado por AI-EM-ARCH como extension del PRD-MOD05-CRM-DEFINICION-v2.0.md para cerrar Sprint 02 sin abrir una fase documental paralela._

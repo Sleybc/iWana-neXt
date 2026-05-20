@@ -1,14 +1,14 @@
 ---
-title: "PRD — Taxation (MOD07) + Parties (MOD08) + Rediseño tributario MOD06"
-version: "1.0"
-owner: "Arquitectura de Soluciones / Producto"
-date: "2026-04-21"
-status: "Aprobado"
-approvedAt: "2026-04-21"
-approvedBy: "CTO Humano"
-classification: "Confidencial — Uso Interno"
-modules: ["MOD06", "MOD07", "MOD08"]
-relatedADRs: ["ADR-029", "ADR-030", "ADR-031"]
+title: 'PRD — Taxation (MOD07) + Parties (MOD08) + Rediseño tributario MOD06'
+version: '1.0'
+owner: 'Arquitectura de Soluciones / Producto'
+date: '2026-04-21'
+status: 'Aprobado'
+approvedAt: '2026-04-21'
+approvedBy: 'CTO Humano'
+classification: 'Confidencial — Uso Interno'
+modules: ['MOD06', 'MOD07', 'MOD08']
+relatedADRs: ['ADR-029', 'ADR-030', 'ADR-031']
 references:
   - docs/prds/PRD_Sistema_ISP_Colombia_v2_3.md
   - docs/prds/PRD-ADDENDUM-TAXATION-PARTIES-v1.0.md
@@ -19,12 +19,10 @@ references:
   - docs/hlds/HLD-MOD08-PARTIES-v1.0.md
   - docs/hlds/HLD-MOD06-TAXATION-DEPENDENCY-v1.1-addendum.md
   - docs/hlds/HLD-MOD05-PARTIES-DEPENDENCY-v2.1-addendum.md
-  - docs/superpowers/specs/2026-04-21-taxation-bounded-context-design.md
-  - docs/superpowers/specs/2026-04-21-parties-multi-rol-design.md
-  - docs/superpowers/specs/2026-04-20-reglas-comerciales-design.md
+  - docs/specs/2026-04-21-taxation-bounded-context-design.md
+  - docs/specs/2026-04-21-parties-multi-rol-design.md
+  - docs/specs/2026-04-20-reglas-comerciales-design.md
 ---
-
-# PRD: Taxation + Parties + Rediseño tributario Comercial
 
 ## 1. Resumen ejecutivo
 
@@ -38,13 +36,13 @@ Los tres trabajos son dependientes y se entregan como programa coordinado.
 
 ## 2. Problema de negocio
 
-| Problema | Impacto actual |
-|---|---|
-| Catálogo tributario dentro de Commercial | Bloquea Purchasing/Payroll sin refactor |
-| Clasificaciones tributarias con naming confuso | Negocio no entiende qué hace cada sección |
-| `User` y `Subscriber` no modelan multi-rol | Al entrar Purchasing/RRHH se duplicará identidad |
-| `TaxRegime` con solo `SIMPLIFIED`/`COMMON` | Insuficiente para regímenes de proveedores |
-| Deuda técnica: columnas duplicadas de estrato | Ambigüedad en queries y migraciones |
+| Problema                                       | Impacto actual                                   |
+| ---------------------------------------------- | ------------------------------------------------ |
+| Catálogo tributario dentro de Commercial       | Bloquea Purchasing/Payroll sin refactor          |
+| Clasificaciones tributarias con naming confuso | Negocio no entiende qué hace cada sección        |
+| `User` y `Subscriber` no modelan multi-rol     | Al entrar Purchasing/RRHH se duplicará identidad |
+| `TaxRegime` con solo `SIMPLIFIED`/`COMMON`     | Insuficiente para regímenes de proveedores       |
+| Deuda técnica: columnas duplicadas de estrato  | Ambigüedad en queries y migraciones              |
 
 ## 3. Objetivos
 
@@ -171,26 +169,26 @@ Detalle completo en HLDs. Resumen:
 
 ## 11. Fases de entrega
 
-| Fase | Objetivo | Dependencia |
-|---|---|---|
-| F1 | Scaffold y esquema MOD07 + seeder presets | ADR-029 aprobado |
-| F2 | Scaffold y esquema MOD08 (tablas + `users.party_id`) | ADR-030 aprobado |
-| F3 | Consumo de Taxation desde Commercial vía puerto + tabla puente `tax_rule_applications` | F1 |
-| F4 | Rediseño frontend tributario: `TaxCatalogManager`, `TaxApplicationRulesManager`, `TaxSimulatorPanel` | F3 |
-| F5 | Backfill Subscribers → Parties + enlace Users | F2 |
-| F6 | Deprecación controlada de `tax_classifications` y columnas duplicadas de estrato | F3, F4 |
+| Fase | Objetivo                                                                                             | Dependencia      |
+| ---- | ---------------------------------------------------------------------------------------------------- | ---------------- |
+| F1   | Scaffold y esquema MOD07 + seeder presets                                                            | ADR-029 aprobado |
+| F2   | Scaffold y esquema MOD08 (tablas + `users.party_id`)                                                 | ADR-030 aprobado |
+| F3   | Consumo de Taxation desde Commercial vía puerto + tabla puente `tax_rule_applications`               | F1               |
+| F4   | Rediseño frontend tributario: `TaxCatalogManager`, `TaxApplicationRulesManager`, `TaxSimulatorPanel` | F3               |
+| F5   | Backfill Subscribers → Parties + enlace Users                                                        | F2               |
+| F6   | Deprecación controlada de `tax_classifications` y columnas duplicadas de estrato                     | F3, F4           |
 
 Las fases se entregan secuencialmente. F1 y F2 pueden trabajarse en paralelo con equipos separados si el recurso lo permite.
 
 ## 12. Riesgos
 
-| Riesgo | Mitigación |
-|---|---|
-| Backfill de Subscribers masivo con errores | Script idempotente, ejecutado en DB de test, ventana controlada |
-| Presets SYSTEM editados accidentalmente | Guard en service + test unitario específico |
-| Coexistencia legacy prolongada | Feature flag + deadline de corte documentado |
-| PII en logs de Parties | Redactor de logs + test que valida ausencia de `documentNumber` en logs |
-| Boundary roto Commercial → Taxation (acceso directo a tabla) | Lint/ESLint rule o test de arquitectura + revisión de imports |
+| Riesgo                                                       | Mitigación                                                              |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| Backfill de Subscribers masivo con errores                   | Script idempotente, ejecutado en DB de test, ventana controlada         |
+| Presets SYSTEM editados accidentalmente                      | Guard en service + test unitario específico                             |
+| Coexistencia legacy prolongada                               | Feature flag + deadline de corte documentado                            |
+| PII en logs de Parties                                       | Redactor de logs + test que valida ausencia de `documentNumber` en logs |
+| Boundary roto Commercial → Taxation (acceso directo a tabla) | Lint/ESLint rule o test de arquitectura + revisión de imports           |
 
 ## 13. Seguridad y auditoría
 

@@ -1,5 +1,9 @@
 import { BriefcaseBusiness, MapPin, Phone, ShieldCheck, UserRound, Wrench } from 'lucide-react';
-import type { CompletenessResult, ExpedienteRecord } from '@/lib/api-client';
+import type {
+  CompletenessResult,
+  ExpedienteRecord,
+  SectionCompletenessItem,
+} from '@/lib/api-client';
 import {
   ACQUISITION_CHANNEL_OPTIONS,
   DEPARTAMENTO_DEFAULT,
@@ -27,6 +31,28 @@ export {
 
 export const EMPTY_VALUE = '';
 
+const IDENTIFICATION_REQUIRED_FIELDS_BASE = [
+  'personType',
+  'documentType',
+  'documentNumber',
+] as const;
+const IDENTIFICATION_REQUIRED_FIELDS_NATURAL = ['firstName', 'lastName'] as const;
+const IDENTIFICATION_REQUIRED_FIELDS_JURIDICA = [
+  'companyName',
+  'primaryContactName',
+  'primaryContactRole',
+] as const;
+
+export const BACKEND_SECTION_KEY_BY_UI_SECTION: Record<SectionId | 'document_support', string> = {
+  identification: 'identification',
+  contact: 'contact',
+  location: 'address',
+  commercial_interest: 'customerInterest',
+  technical_feasibility: 'technicalFeasibility',
+  legal_consent: 'legalCompliance',
+  document_support: 'documentSupport',
+};
+
 const NATURAL_PERSON_DOCUMENT_KEYS = ['identity_document', 'utility_bill'] as const;
 const LEGAL_ENTITY_DOCUMENT_KEYS = [
   'chamber_of_commerce',
@@ -43,14 +69,171 @@ function normalizePersonType(value: string | null | undefined): string {
     .replace(/\s+/g, '_');
 }
 
-function isLegalEntityPersonType(value: string | null | undefined): boolean {
+export function canonicalizeExpedientePersonType(value: string | null | undefined): string {
   const normalized = normalizePersonType(value);
-  return (
+
+  if (
     normalized === 'PERSONA_JURIDICA' ||
     normalized === 'JURIDICA' ||
     normalized === 'PERSONAJURIDICA' ||
     normalized === 'TIPO_PERSONA_JURIDICA'
-  );
+  ) {
+    return 'PERSONA_JURIDICA';
+  }
+
+  if (
+    normalized === 'PERSONA_NATURAL' ||
+    normalized === 'NATURAL' ||
+    normalized === 'PERSONANATURAL' ||
+    normalized === 'TIPO_PERSONA_NATURAL'
+  ) {
+    return 'PERSONA_NATURAL';
+  }
+
+  return normalized;
+}
+
+function isLegalEntityPersonType(value: string | null | undefined): boolean {
+  return canonicalizeExpedientePersonType(value) === 'PERSONA_JURIDICA';
+}
+
+function normalizeFullNameSeed(value: string | null | undefined): string {
+  return String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+const COMMON_GIVEN_NAME_TOKENS = new Set([
+  'ALEJANDRA',
+  'ALEJANDRO',
+  'ANDREA',
+  'ANDRES',
+  'ANGELA',
+  'ANTONIO',
+  'CAMILA',
+  'CARLOS',
+  'CAROLINA',
+  'DAVID',
+  'DANIEL',
+  'DANIELA',
+  'EDUARDO',
+  'ELIANA',
+  'FELIPE',
+  'GABRIEL',
+  'ISABEL',
+  'JAVIER',
+  'JOSE',
+  'JUAN',
+  'JULIAN',
+  'LAURA',
+  'LUIS',
+  'LUISA',
+  'LUZ',
+  'MANUEL',
+  'MARIA',
+  'MARIO',
+  'MIGUEL',
+  'NICOLAS',
+  'PAOLA',
+  'PATRICIA',
+  'SANTIAGO',
+  'SEBASTIAN',
+  'SOFIA',
+  'VALENTINA',
+]);
+
+function isLikelyGivenNameToken(value: string | null | undefined): boolean {
+  const normalizedValue = normalizePersonType(value).replace(/_/g, ' ');
+  return COMMON_GIVEN_NAME_TOKENS.has(normalizedValue);
+}
+
+function splitNaturalPersonFullName(fullName: string): {
+  firstName: string;
+  lastName: string;
+} {
+  const normalizedFullName = normalizeFullNameSeed(fullName);
+
+  if (!normalizedFullName) {
+    return { firstName: EMPTY_VALUE, lastName: EMPTY_VALUE };
+  }
+
+  const tokens = normalizedFullName.split(' ');
+
+  if (tokens.length === 1) {
+    return { firstName: normalizedFullName, lastName: EMPTY_VALUE };
+  }
+
+  if (tokens.length === 2) {
+    return {
+      firstName: tokens[0] ?? EMPTY_VALUE,
+      lastName: tokens[1] ?? EMPTY_VALUE,
+    };
+  }
+
+  if (tokens.length === 3) {
+    // Tres palabras siguen siendo ambiguas; si la segunda parece nombre propio,
+    // privilegiamos dos nombres y un apellido. Si no, asumimos un nombre y dos apellidos.
+    if (isLikelyGivenNameToken(tokens[1])) {
+      return {
+        firstName: tokens.slice(0, 2).join(' '),
+        lastName: tokens[2] ?? EMPTY_VALUE,
+      };
+    }
+
+    return {
+      firstName: tokens[0] ?? EMPTY_VALUE,
+      lastName: tokens.slice(1).join(' '),
+    };
+  }
+
+  if (tokens.length === 4) {
+    return {
+      firstName: tokens.slice(0, 2).join(' '),
+      lastName: tokens.slice(2).join(' '),
+    };
+  }
+
+  return {
+    firstName: tokens.slice(0, -2).join(' '),
+    lastName: tokens.slice(-2).join(' '),
+  };
+}
+
+// Deriva valores iniciales de identificación sin pisar datos ya persistidos o editados.
+export function applyIdentificationDerivedDefaults(values: DraftValues): DraftValues {
+  const personType = canonicalizeExpedientePersonType(values.personType);
+  const fullName = normalizeFullNameSeed(values.fullName);
+  const nextValues = personType === values.personType ? values : { ...values, personType };
+
+  if (!fullName) {
+    return nextValues;
+  }
+
+  if (personType === 'PERSONA_JURIDICA') {
+    if (nextValues.companyName?.trim()) {
+      return nextValues;
+    }
+
+    return {
+      ...nextValues,
+      companyName: fullName,
+    };
+  }
+
+  const shouldDeriveFirstName = !nextValues.firstName?.trim();
+  const shouldDeriveLastName = !nextValues.lastName?.trim();
+
+  if (!shouldDeriveFirstName && !shouldDeriveLastName) {
+    return nextValues;
+  }
+
+  const derivedNames = splitNaturalPersonFullName(fullName);
+
+  return {
+    ...nextValues,
+    ...(shouldDeriveFirstName ? { firstName: derivedNames.firstName } : {}),
+    ...(shouldDeriveLastName ? { lastName: derivedNames.lastName } : {}),
+  };
 }
 
 function getRequiredDocumentKeysByPersonType(
@@ -84,6 +267,15 @@ export function calculateDocumentSupportCompletion(
   }).length;
 
   return Math.round((uploadedCount / requiredDocumentKeys.length) * 100);
+}
+
+export function getBackendSectionCompletion(
+  sectionCompleteness: SectionCompletenessItem[] | null | undefined,
+  sectionId: SectionId | 'document_support',
+): number | null {
+  const backendKey = BACKEND_SECTION_KEY_BY_UI_SECTION[sectionId];
+  const match = sectionCompleteness?.find((section) => section.key === backendKey);
+  return typeof match?.percentage === 'number' ? match.percentage : null;
 }
 
 export const FIELD_LABELS: Record<string, string> = {
@@ -174,7 +366,7 @@ const IDENTIFICATION_FIELDS_JURIDICA = [
 export function getIdentificationRelevantFields(
   personType: string | null | undefined,
 ): readonly string[] {
-  if (personType === 'PERSONA_JURIDICA') {
+  if (canonicalizeExpedientePersonType(personType) === 'PERSONA_JURIDICA') {
     return IDENTIFICATION_FIELDS_JURIDICA;
   }
   return IDENTIFICATION_FIELDS_NATURAL;
@@ -183,6 +375,39 @@ export function getIdentificationRelevantFields(
 export function hasPersistedIdentificationData(values: DraftValues): boolean {
   const relevantFields = getIdentificationRelevantFields(values.personType);
   return relevantFields.some((field) => values[field]?.trim());
+}
+
+export function getIdentificationValidationMessage(values: DraftValues): string | null {
+  const personType = canonicalizeExpedientePersonType(values.personType);
+
+  if (!personType) {
+    return `${FIELD_LABELS.personType} es requerido.`;
+  }
+
+  if (personType !== 'PERSONA_NATURAL' && personType !== 'PERSONA_JURIDICA') {
+    return `${FIELD_LABELS.personType} no es válido.`;
+  }
+
+  const missingBaseField = IDENTIFICATION_REQUIRED_FIELDS_BASE.find(
+    (field) => !values[field]?.trim(),
+  );
+
+  if (missingBaseField) {
+    return `${FIELD_LABELS[missingBaseField]} es requerido.`;
+  }
+
+  const specificRequiredFields =
+    personType === 'PERSONA_JURIDICA'
+      ? IDENTIFICATION_REQUIRED_FIELDS_JURIDICA
+      : IDENTIFICATION_REQUIRED_FIELDS_NATURAL;
+
+  const missingSpecificField = specificRequiredFields.find((field) => !values[field]?.trim());
+
+  if (missingSpecificField) {
+    return `${FIELD_LABELS[missingSpecificField]} es requerido.`;
+  }
+
+  return null;
 }
 
 export const SECTIONS: SectionConfig[] = [
@@ -205,7 +430,7 @@ export const SECTIONS: SectionConfig[] = [
     icon: Phone,
     renderFields: ['phonePrimary', 'emailPrimary', 'altContactName', 'altContactPhone'],
     payloadFields: ['phonePrimary', 'emailPrimary', 'altContactName', 'altContactPhone'],
-    completionFields: ['phonePrimary', 'emailPrimary'],
+    completionFields: ['phonePrimary', 'emailPrimary', 'altContactName', 'altContactPhone'],
   },
   {
     id: 'location',
@@ -219,8 +444,6 @@ export const SECTIONS: SectionConfig[] = [
       'postalCode',
       'stratum',
       'neighborhood',
-      'latitude',
-      'longitude',
     ],
     payloadFields: [
       'department',
@@ -229,8 +452,6 @@ export const SECTIONS: SectionConfig[] = [
       'postalCode',
       'stratum',
       'neighborhood',
-      'latitude',
-      'longitude',
     ],
     completionFields: [
       'department',
@@ -239,8 +460,6 @@ export const SECTIONS: SectionConfig[] = [
       'postalCode',
       'stratum',
       'neighborhood',
-      'latitude',
-      'longitude',
     ],
   },
   {
@@ -290,9 +509,10 @@ export const SECTIONS: SectionConfig[] = [
     completionFields: [
       'feasibility',
       'candidateTechnologies',
-      'availableTechnology',
-      'technicalConfidence',
       'evaluationSource',
+      'technicalConfidence',
+      'latitude',
+      'longitude',
     ],
   },
   {
@@ -353,10 +573,10 @@ export function buildDraftValues(
   expediente: ExpedienteRecord,
   previous: DraftValues = {},
 ): DraftValues {
-  return {
+  const nextDraft = {
     ...previous,
     fullName: expediente.fullName ?? EMPTY_VALUE,
-    personType: expediente.personType ?? EMPTY_VALUE,
+    personType: canonicalizeExpedientePersonType(expediente.personType),
     documentType: expediente.documentType ?? EMPTY_VALUE,
     documentNumber: expediente.documentNumber ?? previous.documentNumber ?? EMPTY_VALUE,
     firstName: expediente.firstName ?? EMPTY_VALUE,
@@ -395,6 +615,8 @@ export function buildDraftValues(
     identityVerified: expediente.identityVerified ?? EMPTY_VALUE,
     legalComplianceStatus: expediente.legalComplianceStatus ?? EMPTY_VALUE,
   };
+
+  return applyIdentificationDerivedDefaults(nextDraft);
 }
 
 export function getCandidateTechnologiesFromDraft(values: DraftValues): string[] {

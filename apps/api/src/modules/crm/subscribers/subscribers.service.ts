@@ -10,6 +10,7 @@ import {
   CustomerSegment,
   SubscriberStatus,
   DocumentType,
+  ExpedienteStatus,
   AuditAction,
 } from '@iwana/shared';
 import { Subscriber } from './entities/subscriber.entity';
@@ -18,6 +19,11 @@ import { SubscriberStatusTransitionService } from './subscriber-status-transitio
 import { AuditService } from '../../audit/audit.service';
 import { ExpedienteRecord } from '../expedientes/entities/expediente-record.entity';
 import { Contract } from '../contracts/entities/contract.entity';
+import {
+  evaluateProvisioningReadiness,
+  isBlockingLegalComplianceStatus,
+  type ProvisioningReadinessSummary,
+} from '../provisioning-readiness';
 
 const SUBSCRIBER_SECTION_SCHEMAS = {
   identification: z
@@ -566,6 +572,8 @@ export class SubscribersService {
       nit?: string | undefined;
       email: string;
       phone: string;
+      altContactName?: string | undefined;
+      altContactPhone?: string | undefined;
       address: string;
       city?: string | undefined;
       department?: string | undefined;
@@ -596,6 +604,8 @@ export class SubscribersService {
         nit: overrides.nit,
         email: overrides.email,
         phone: overrides.phone,
+        altContactName: overrides.altContactName,
+        altContactPhone: overrides.altContactPhone,
         address: overrides.address,
         city: overrides.city,
         department: overrides.department,
@@ -618,6 +628,32 @@ export class SubscribersService {
     return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
       qr.manager.findOne(Subscriber, { where: { expedienteId } }),
     );
+  }
+
+  async findSummaryByExpedienteId(
+    expedienteId: string,
+  ): Promise<{ id: string; status: SubscriberStatus; fullName: string } | null> {
+    const subscriber = await this.findByExpedienteId(expedienteId);
+
+    if (!subscriber) {
+      return null;
+    }
+
+    const fullName =
+      subscriber.commercialName ||
+      subscriber.businessName ||
+      [subscriber.firstName, subscriber.lastName].filter(Boolean).join(' ').trim() ||
+      null;
+
+    if (!fullName) {
+      return null;
+    }
+
+    return {
+      id: subscriber.id,
+      status: subscriber.status,
+      fullName,
+    };
   }
 
   async activateFromExpediente(expedienteId: string, actorId: string): Promise<Subscriber | null> {
@@ -684,9 +720,11 @@ export class SubscribersService {
     arcoRequests: unknown[];
     expedienteSummary: Record<string, unknown> | null;
     timelineSeed: Array<Record<string, unknown>>;
+    provisioningReadiness: ProvisioningReadinessSummary;
   }> {
     const subscriber = await this.findById(id);
     let expedienteSummary: Record<string, unknown> | null = null;
+    let expedienteRecord: ExpedienteRecord | null = null;
 
     if (subscriber.expedienteId) {
       const expedienteId = subscriber.expedienteId;
@@ -696,6 +734,8 @@ export class SubscribersService {
       );
 
       if (expediente) {
+        expedienteRecord = expediente;
+
         // Compatibilidad con subscribers creados antes de propagar postalCode
         // desde expediente en la conversión automática.
         if (!subscriber.postalCode && expediente.postalCode) {
@@ -758,7 +798,87 @@ export class SubscribersService {
             ]
           : []),
       ],
+      provisioningReadiness: this.buildProvisioningReadiness(subscriber, expedienteRecord),
     };
+  }
+
+  private buildProvisioningReadiness(
+    subscriber: Subscriber,
+    expediente: ExpedienteRecord | null,
+  ): ProvisioningReadinessSummary {
+    const hasSubscriberLink = Boolean(subscriber.expedienteId);
+    const hasPartyOrDocument = Boolean(
+      subscriber.partyId || subscriber.documentNumberEncrypted || subscriber.nit,
+    );
+
+    const hasInstallationAddress = Boolean(
+      expediente?.installationAddress?.trim() || subscriber.address?.trim(),
+    );
+
+    const hasSiteContact = Boolean(
+      (expediente?.siteContactName?.trim() && expediente?.siteContactPhoneEncrypted) ||
+      subscriber.phoneEncrypted,
+    );
+
+    const hasCommercialOffer = Boolean(
+      expediente?.interestedPlanId ||
+      (expediente?.additionalProductIds?.length ?? 0) > 0 ||
+      (expediente?.additionalServiceIds?.length ?? 0) > 0,
+    );
+
+    const hasTechnologyDefinition = Boolean(
+      expediente?.availableTechnology ||
+      (expediente?.candidateTechnologies?.length ?? 0) > 0 ||
+      expediente?.feasibility ||
+      expediente?.coverageResult,
+    );
+
+    const hasTicketReference = Boolean(expediente?.ticketId);
+    const hasWorkOrderReference = Boolean(expediente?.workOrderId);
+    const hasAssignedTechnician = hasWorkOrderReference;
+
+    const hasMinimumConsent = Boolean(
+      expediente &&
+      !expediente.dataConsentRevoked &&
+      expediente.identityVerified?.trim() &&
+      expediente.legalComplianceStatus?.trim(),
+    );
+
+    const isBlockedByConsent = Boolean(expediente?.dataConsentRevoked);
+    const isBlockedByLegalStatus = isBlockingLegalComplianceStatus(
+      expediente?.legalComplianceStatus ?? null,
+    );
+
+    const blockedReason = isBlockedByConsent
+      ? 'El consentimiento de datos está revocado para este expediente.'
+      : isBlockedByLegalStatus
+        ? 'El estado legal del expediente bloquea la preparación para aprovisionamiento.'
+        : null;
+
+    const hasRetryableError = hasSubscriberLink && !expediente;
+    const retryableErrorMessage = hasRetryableError
+      ? 'El subscriber está vinculado a un expediente que no se pudo sincronizar. Reintenta la lectura.'
+      : null;
+
+    return evaluateProvisioningReadiness({
+      expedienteStatus: (expediente?.status as ExpedienteStatus | null) ?? null,
+      subscriberStatus: subscriber.status,
+      hasPartyOrDocument,
+      hasInstallationAddress,
+      hasSiteContact,
+      hasCommercialOffer,
+      hasTechnologyDefinition,
+      hasTicketReference,
+      hasWorkOrderReference,
+      hasAssignedTechnician,
+      hasMinimumConsent,
+      isBlocked: isBlockedByConsent || isBlockedByLegalStatus || !hasSubscriberLink,
+      blockedReason:
+        blockedReason ??
+        (!hasSubscriberLink ? 'El subscriber no está vinculado a expediente.' : null),
+      hasRetryableError,
+      retryableErrorMessage,
+    });
   }
 
   async updateSection(

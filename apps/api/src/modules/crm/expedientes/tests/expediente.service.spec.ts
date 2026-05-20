@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { DataSource } from 'typeorm';
 import {
   AcquisitionChannel,
@@ -10,10 +10,13 @@ import {
   ConsentStatus,
   ConsentType,
   ExpedienteStatus,
+  SubscriberStatus,
   TechnicalViabilityResult,
 } from '@iwana/shared';
 import { AuditService } from '../../../audit/audit.service';
 import { CompletenessCalculator } from '../completeness-calculator.service';
+import { CrmActorReadPort } from '../../ports/crm-actor-read.port';
+import { SubscribersService } from '../../subscribers/subscribers.service';
 import { UpdateSectionDto, ExpedienteSection } from '../dto/update-section.dto';
 import { ExpedienteRecord } from '../entities/expediente-record.entity';
 import { StatusChange } from '../entities/status-change.entity';
@@ -23,6 +26,8 @@ jest.mock('node:fs/promises', () => ({
   mkdir: jest.fn().mockResolvedValue(undefined),
   writeFile: jest.fn().mockResolvedValue(undefined),
   access: jest.fn().mockResolvedValue(undefined),
+  rename: jest.fn().mockResolvedValue(undefined),
+  unlink: jest.fn().mockResolvedValue(undefined),
 }));
 
 const mockRunInTenantSchema = jest.fn();
@@ -51,16 +56,36 @@ describe('ExpedienteService', () => {
     calculate: jest.fn(),
   };
 
+  const crmActorReadPortMock = {
+    findById: jest.fn(),
+    findByIds: jest.fn(),
+  };
+
   const eventEmitterMock = {
     emitAsync: jest.fn().mockResolvedValue([]),
   };
 
+  const subscribersServiceMock = {
+    findSummaryByExpedienteId: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
+    subscribersServiceMock.findSummaryByExpedienteId.mockReset();
     mockTenantContextGetOrThrow.mockReturnValue({
       tenantId: 'ten-1',
       schemaName: 'tenant_test',
+      tenantSlug: 'iwana',
     });
+    crmActorReadPortMock.findById.mockImplementation(async (_schemaName: string, actorId: string) =>
+      resolveActor(actorId),
+    );
+    crmActorReadPortMock.findByIds.mockImplementation(
+      async (_schemaName: string, actorIds: string[]) =>
+        actorIds
+          .map((actorId) => resolveActor(actorId))
+          .filter((actor): actor is NonNullable<typeof actor> => actor !== null),
+    );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -72,7 +97,9 @@ describe('ExpedienteService', () => {
         },
         { provide: AuditService, useValue: auditServiceMock },
         { provide: CompletenessCalculator, useValue: completenessCalculatorMock },
+        { provide: CrmActorReadPort, useValue: crmActorReadPortMock },
         { provide: EventEmitter2, useValue: eventEmitterMock },
+        { provide: SubscribersService, useValue: subscribersServiceMock },
       ],
     }).compile();
 
@@ -262,7 +289,7 @@ describe('ExpedienteService', () => {
 
     const result = await service.findById('exp-progress-detail');
 
-    expect((result as any).pipelineProgress).toBe(100);
+    expect((result as any).pipelineProgress).toBe(75);
   });
 
   it('audita acceso autorizado al Documento visible sin persistir el valor plano', async () => {
@@ -337,7 +364,78 @@ describe('ExpedienteService', () => {
     );
   });
 
-  it('sube un soporte documental requerido y devuelve la versión registrada', async () => {
+  it('lista soportes documentales canonicalizando aliases válidos del personType override', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-list-1',
+      personType: 'PERSONA_NATURAL',
+      documentSupports: {},
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    const result = await service.getDocumentSupports('exp-doc-list-1', 'tipo persona jurídica');
+
+    expect(result.personType).toBe('PERSONA_JURIDICA');
+    expect(result.items.map((item) => item.key)).toEqual([
+      'chamber_of_commerce',
+      'rut',
+      'legal_representative_id',
+    ]);
+  });
+
+  it('lista soportes documentales canonicalizando alias natural del personType override', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-list-natural',
+      personType: 'PERSONA_JURIDICA',
+      documentSupports: {},
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    const result = await service.getDocumentSupports('exp-doc-list-natural', 'natural');
+
+    expect(result.personType).toBe('PERSONA_NATURAL');
+    expect(result.items.map((item) => item.key)).toEqual(['identity_document', 'utility_bill']);
+  });
+
+  it('rechaza personType override inválido al listar soportes documentales', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-list-invalid',
+      personType: 'PERSONA_NATURAL',
+      documentSupports: {},
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    await expect(
+      service.getDocumentSupports('exp-doc-list-invalid', 'empresa_x'),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'INVALID_DOCUMENT_SUPPORT_PERSON_TYPE',
+        field: 'personType',
+      }),
+    });
+  });
+
+  it('sube un soporte documental usando el personType efectivo cuando llega por override', async () => {
     const expediente = buildExpediente({
       id: 'exp-doc-1',
       personType: 'PERSONA_NATURAL',
@@ -363,22 +461,24 @@ describe('ExpedienteService', () => {
 
     const result = await service.uploadDocumentSupport(
       'exp-doc-1',
-      'identity_document',
+      'rut',
       {
-        originalname: 'cedula.pdf',
+        originalname: 'rut.pdf',
         mimetype: 'application/pdf',
         size: 2048,
         buffer: Buffer.from('pdf-demo'),
       },
       'user-docs',
+      'jurídica',
     );
 
     expect(mkdir).toHaveBeenCalled();
     expect(writeFile).toHaveBeenCalled();
-    expect(result.items).toHaveLength(2);
-    expect(result.items[0]?.versions[0]).toEqual(
+    expect(result.personType).toBe('PERSONA_JURIDICA');
+    expect(result.items).toHaveLength(3);
+    expect(result.items.find((item) => item.key === 'rut')?.versions[0]).toEqual(
       expect.objectContaining({
-        fileName: 'cedula.pdf',
+        fileName: 'rut.pdf',
         status: 'UPLOADED',
       }),
     );
@@ -386,16 +486,55 @@ describe('ExpedienteService', () => {
       expect.objectContaining({
         newValue: expect.objectContaining({
           section: 'document_support',
-          changedFields: ['identity_document'],
+          changedFields: ['rut'],
         }),
       }),
     );
   });
 
-  it('actualiza el estado de una versión documental y recalcula el resumen', async () => {
+  it('rechaza personType override inválido al subir soportes documentales', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-upload-invalid',
+      personType: 'PERSONA_NATURAL',
+      documentSupports: {},
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    await expect(
+      service.uploadDocumentSupport(
+        'exp-doc-upload-invalid',
+        'rut',
+        {
+          originalname: 'rut.pdf',
+          mimetype: 'application/pdf',
+          size: 2048,
+          buffer: Buffer.from('pdf-demo'),
+        },
+        'user-docs',
+        'empresa_x',
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'INVALID_DOCUMENT_SUPPORT_PERSON_TYPE',
+        field: 'personType',
+      }),
+    });
+
+    expect(mkdir).not.toHaveBeenCalled();
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+
+  it('actualiza el estado de una versión documental usando el personType efectivo y recalcula el resumen', async () => {
     const expediente = buildExpediente({
       id: 'exp-doc-2',
-      personType: 'PERSONA_JURIDICA',
+      personType: 'PERSONA_NATURAL',
       documentSupports: {
         rut: {
           versions: [
@@ -439,9 +578,12 @@ describe('ExpedienteService', () => {
       'ver-1',
       'APPROVED',
       'user-docs',
+      undefined,
+      'tipo persona juridica',
     );
 
     const rutItem = result.items.find((item) => item.key === 'rut');
+    expect(result.personType).toBe('PERSONA_JURIDICA');
     expect(rutItem?.versions[0]?.status).toBe('APPROVED');
     expect(result.summary.approvedCount).toBe(1);
     expect(auditServiceMock.log).toHaveBeenCalledWith(
@@ -451,6 +593,447 @@ describe('ExpedienteService', () => {
         }),
       }),
     );
+  });
+
+  it('rechaza personType override inválido al actualizar estado documental', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-status-invalid',
+      personType: 'PERSONA_NATURAL',
+      documentSupports: {
+        rut: {
+          versions: [
+            {
+              id: 'ver-1',
+              fileName: 'rut.pdf',
+              storedFileName: 'ver-1.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 1024,
+              uploadedAt: '2026-04-13T12:00:00.000Z',
+              uploadedByUserId: 'user-docs',
+              uploadedByName: 'Equipo interno',
+              status: 'UPLOADED',
+              note: null,
+            },
+          ],
+        },
+      },
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    await expect(
+      service.updateDocumentSupportStatus(
+        'exp-doc-status-invalid',
+        'rut',
+        'ver-1',
+        'APPROVED',
+        'user-docs',
+        undefined,
+        'empresa_x',
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'INVALID_DOCUMENT_SUPPORT_PERSON_TYPE',
+        field: 'personType',
+      }),
+    });
+  });
+
+  it('elimina la versión vigente y promueve la anterior como vigente', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-delete-1',
+      personType: 'PERSONA_JURIDICA',
+      documentSupports: {
+        rut: {
+          versions: [
+            {
+              id: 'ver-2',
+              fileName: 'rut-correccion.pdf',
+              storedFileName: 'ver-2.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 1024,
+              uploadedAt: '2026-05-06T10:00:00.000Z',
+              uploadedByUserId: 'user-docs',
+              uploadedByName: 'Equipo interno',
+              status: 'UPLOADED',
+              note: null,
+            },
+            {
+              id: 'ver-1',
+              fileName: 'rut-base.pdf',
+              storedFileName: 'ver-1.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 900,
+              uploadedAt: '2026-05-05T10:00:00.000Z',
+              uploadedByUserId: 'user-docs',
+              uploadedByName: 'Equipo interno',
+              status: 'APPROVED',
+              note: null,
+            },
+          ],
+        },
+      },
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 80,
+      legal: 75,
+      technical: 40,
+      operational: 30,
+      overall: 56,
+    });
+
+    const result = await service.deleteDocumentSupport(
+      'exp-doc-delete-1',
+      'rut',
+      'ver-2',
+      'user-docs',
+      'persona jurídica',
+    );
+
+    const rutItem = result.items.find((item: { key: string }) => item.key === 'rut');
+    expect(result.personType).toBe('PERSONA_JURIDICA');
+    expect(rutItem?.versions.map((version: { id: string }) => version.id)).toEqual(['ver-1']);
+    expect(rutItem?.versions[0]?.status).toBe('APPROVED');
+  });
+
+  it('mantiene la eliminación persistida aunque falle la limpieza física final', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-delete-unlink',
+      personType: 'PERSONA_JURIDICA',
+      documentSupports: {
+        rut: {
+          versions: [
+            {
+              id: 'ver-2',
+              fileName: 'rut-correccion.pdf',
+              storedFileName: 'ver-2.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 1024,
+              uploadedAt: '2026-05-06T10:00:00.000Z',
+              uploadedByUserId: 'user-docs',
+              uploadedByName: 'Equipo interno',
+              status: 'UPLOADED',
+              note: null,
+            },
+            {
+              id: 'ver-1',
+              fileName: 'rut-base.pdf',
+              storedFileName: 'ver-1.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 900,
+              uploadedAt: '2026-05-05T10:00:00.000Z',
+              uploadedByUserId: 'user-docs',
+              uploadedByName: 'Equipo interno',
+              status: 'APPROVED',
+              note: null,
+            },
+          ],
+        },
+      },
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 80,
+      legal: 75,
+      technical: 40,
+      operational: 30,
+      overall: 56,
+    });
+    (unlink as jest.MockedFunction<typeof unlink>).mockRejectedValueOnce(
+      new Error('permiso denegado'),
+    );
+
+    const result = await service.deleteDocumentSupport(
+      'exp-doc-delete-unlink',
+      'rut',
+      'ver-2',
+      'user-docs',
+      'PERSONA_JURIDICA',
+    );
+
+    expect(result.items.find((item: { key: string }) => item.key === 'rut')?.versions).toEqual([
+      expect.objectContaining({ id: 'ver-1', status: 'APPROVED' }),
+    ]);
+    expect(auditServiceMock.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityId: 'exp-doc-delete-unlink',
+        newValue: expect.objectContaining({
+          section: 'document_support',
+          changedFields: ['rut'],
+        }),
+      }),
+    );
+    expect(completenessCalculatorMock.calculate).toHaveBeenCalledWith('exp-doc-delete-unlink');
+  });
+
+  it('mantiene la eliminación lógica cuando el archivo físico ya no existe', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-delete-missing-file',
+      personType: 'PERSONA_JURIDICA',
+      documentSupports: {
+        rut: {
+          versions: [
+            {
+              id: 'ver-2',
+              fileName: 'rut-correccion.pdf',
+              storedFileName: 'ver-2.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 1024,
+              uploadedAt: '2026-05-06T10:00:00.000Z',
+              uploadedByUserId: 'user-docs',
+              uploadedByName: 'Equipo interno',
+              status: 'UPLOADED',
+              note: null,
+            },
+            {
+              id: 'ver-1',
+              fileName: 'rut-base.pdf',
+              storedFileName: 'ver-1.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 900,
+              uploadedAt: '2026-05-05T10:00:00.000Z',
+              uploadedByUserId: 'user-docs',
+              uploadedByName: 'Equipo interno',
+              status: 'APPROVED',
+              note: null,
+            },
+          ],
+        },
+      },
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 80,
+      legal: 75,
+      technical: 40,
+      operational: 30,
+      overall: 56,
+    });
+    (rename as jest.MockedFunction<typeof rename>).mockRejectedValueOnce(
+      Object.assign(new Error('archivo inexistente'), { code: 'ENOENT' }),
+    );
+
+    const result = await service.deleteDocumentSupport(
+      'exp-doc-delete-missing-file',
+      'rut',
+      'ver-2',
+      'user-docs',
+      'PERSONA_JURIDICA',
+    );
+
+    expect(result.items.find((item: { key: string }) => item.key === 'rut')?.versions).toEqual([
+      expect.objectContaining({ id: 'ver-1', status: 'APPROVED' }),
+    ]);
+    expect(rename).toHaveBeenCalledTimes(1);
+    expect(unlink).not.toHaveBeenCalled();
+    expect(auditServiceMock.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityId: 'exp-doc-delete-missing-file',
+        newValue: expect.objectContaining({
+          section: 'document_support',
+          changedFields: ['rut'],
+        }),
+      }),
+    );
+    expect(completenessCalculatorMock.calculate).toHaveBeenCalledWith(
+      'exp-doc-delete-missing-file',
+    );
+  });
+
+  it('preserva el error de persistencia aunque falle el rollback físico', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-delete-rollback',
+      personType: 'PERSONA_JURIDICA',
+      documentSupports: {
+        rut: {
+          versions: [
+            {
+              id: 'ver-2',
+              fileName: 'rut-correccion.pdf',
+              storedFileName: 'ver-2.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 1024,
+              uploadedAt: '2026-05-06T10:00:00.000Z',
+              uploadedByUserId: 'user-docs',
+              uploadedByName: 'Equipo interno',
+              status: 'UPLOADED',
+              note: null,
+            },
+            {
+              id: 'ver-1',
+              fileName: 'rut-base.pdf',
+              storedFileName: 'ver-1.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 900,
+              uploadedAt: '2026-05-05T10:00:00.000Z',
+              uploadedByUserId: 'user-docs',
+              uploadedByName: 'Equipo interno',
+              status: 'APPROVED',
+              note: null,
+            },
+          ],
+        },
+      },
+    });
+    const persistError = new Error('falló persistencia documental');
+    const rollbackError = new Error('falló rollback físico');
+    const loggerErrorSpy = jest.spyOn((service as any).logger, 'error').mockImplementation();
+
+    mockRunInTenantSchema
+      .mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: async () => expediente,
+          },
+        }),
+      )
+      .mockRejectedValueOnce(persistError);
+
+    (rename as jest.MockedFunction<typeof rename>)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(rollbackError);
+
+    await expect(
+      service.deleteDocumentSupport(
+        'exp-doc-delete-rollback',
+        'rut',
+        'ver-2',
+        'user-docs',
+        'PERSONA_JURIDICA',
+      ),
+    ).rejects.toThrow('falló persistencia documental');
+
+    expect(rename).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining('/tenant_test/exp-doc-delete-rollback/rut/ver-2.pdf'),
+      expect.stringContaining('/tenant_test/exp-doc-delete-rollback/rut/ver-2.pdf.pending-delete'),
+    );
+    expect(rename).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('/tenant_test/exp-doc-delete-rollback/rut/ver-2.pdf.pending-delete'),
+      expect.stringContaining('/tenant_test/exp-doc-delete-rollback/rut/ver-2.pdf'),
+    );
+    expect(loggerErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('No se pudo revertir la eliminación física'),
+      rollbackError.stack,
+    );
+    expect(unlink).not.toHaveBeenCalled();
+    expect(auditServiceMock.log).not.toHaveBeenCalled();
+  });
+
+  it('permite operar el documento correcto cuando el personType efectivo llega por override', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-delete-override',
+      personType: 'PERSONA_NATURAL',
+      documentSupports: {},
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 80,
+      legal: 75,
+      technical: 40,
+      operational: 30,
+      overall: 56,
+    });
+
+    await expect(
+      service.deleteDocumentSupport(
+        'exp-doc-delete-override',
+        'rut',
+        'ver-9',
+        'user-docs',
+        'PERSONA_JURIDICA',
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('rechaza personType override inválido al eliminar soportes documentales', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-doc-delete-invalid',
+      personType: 'PERSONA_JURIDICA',
+      documentSupports: {
+        rut: {
+          versions: [
+            {
+              id: 'ver-2',
+              fileName: 'rut.pdf',
+              storedFileName: 'ver-2.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 1024,
+              uploadedAt: '2026-05-06T10:00:00.000Z',
+              uploadedByUserId: 'user-docs',
+              uploadedByName: 'Equipo interno',
+              status: 'UPLOADED',
+              note: null,
+            },
+          ],
+        },
+      },
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: async () => expediente,
+        },
+      }),
+    );
+
+    await expect(
+      service.deleteDocumentSupport(
+        'exp-doc-delete-invalid',
+        'rut',
+        'ver-2',
+        'user-docs',
+        'empresa_x',
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'INVALID_DOCUMENT_SUPPORT_PERSON_TYPE',
+        field: 'personType',
+      }),
+    });
+
+    expect(rename).not.toHaveBeenCalled();
   });
 
   it('no registra actividad cuando el payload no produce cambios reales', async () => {
@@ -693,6 +1276,114 @@ describe('ExpedienteService', () => {
     );
   });
 
+  it('emite installation-scheduled al transicionar a INSTALACION_AGENDADA', async () => {
+    const actorUserId = '6e2eb956-c266-4c14-b00d-0eea857f66cc';
+    const expediente = buildExpediente({
+      id: 'exp-installation-scheduled',
+      status: ExpedienteStatus.LISTO_PARA_INSTALACION,
+      ticketId: 'ticket-001',
+      workOrderId: 'work-order-001',
+    });
+    const createdStatusChanges: Array<Record<string, unknown>> = [];
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          save: async (entity: unknown, data: Record<string, unknown>) => {
+            if (entity === ExpedienteRecord) {
+              Object.assign(expediente, data);
+            }
+            if (entity === StatusChange) {
+              createdStatusChanges.push(data);
+            }
+            return data;
+          },
+          create: (_entity: unknown, data: Record<string, unknown>) => data,
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => ({
+            ...expediente,
+            statusChanges: createdStatusChanges,
+            contactAttempts: [],
+            consents: [],
+            coverageChecks: [],
+          }),
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 90,
+      legal: 90,
+      technical: 90,
+      operational: 90,
+      overall: 90,
+    });
+
+    await service.transitionStatus(
+      'exp-installation-scheduled',
+      { targetStatus: ExpedienteStatus.INSTALACION_AGENDADA, reason: 'Agenda creada en WFM' },
+      actorUserId,
+    );
+
+    expect(eventEmitterMock.emitAsync).toHaveBeenCalledWith(
+      'crm.expediente.installation-scheduled',
+      expect.objectContaining({
+        tenantId: 'ten-1',
+        schemaName: 'tenant_test',
+        tenantSlug: 'iwana',
+        expedienteId: 'exp-installation-scheduled',
+        actorUserId,
+      }),
+    );
+  });
+
+  it('no emite installation-scheduled al transicionar solo a LISTO_PARA_INSTALACION', async () => {
+    const actorUserId = '6e2eb956-c266-4c14-b00d-0eea857f66cc';
+    const expediente = buildExpediente({
+      id: 'exp-ready-only',
+      status: ExpedienteStatus.EN_COTIZACION,
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          save: async (entity: unknown, data: Record<string, unknown>) => {
+            if (entity === ExpedienteRecord) {
+              Object.assign(expediente, data);
+            }
+            return data;
+          },
+          create: (_entity: unknown, data: Record<string, unknown>) => data,
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => ({
+            ...expediente,
+            statusChanges: [],
+            contactAttempts: [],
+            consents: [],
+            coverageChecks: [],
+          }),
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 90,
+      legal: 90,
+      technical: 90,
+      operational: 90,
+      overall: 90,
+    });
+
+    await service.transitionStatus(
+      'exp-ready-only',
+      { targetStatus: ExpedienteStatus.LISTO_PARA_INSTALACION, reason: 'Readiness aprobado' },
+      actorUserId,
+    );
+
+    expect(eventEmitterMock.emitAsync).not.toHaveBeenCalledWith(
+      'crm.expediente.installation-scheduled',
+      expect.anything(),
+    );
+  });
+
   it('reactiva un expediente descartado al estado previo y limpia el motivo de descarte', async () => {
     const actorUserId = 'f8f5fa0e-c9f3-4d14-97e6-88c61f8f0e5f';
     const expediente = buildExpediente({
@@ -860,7 +1551,7 @@ describe('ExpedienteService', () => {
 
     const result = await service.findAll({ page: 1, limit: 10 });
 
-    expect((result.data[0] as any).pipelineProgress).toBe(100);
+    expect((result.data[0] as any).pipelineProgress).toBe(75);
   });
 
   it('filtra por assignedTo y documentNumber exacto manteniendo PII oculta en listados', async () => {
@@ -909,6 +1600,135 @@ describe('ExpedienteService', () => {
     expect(result.data[0]?.assignedTo).toBe('advisor-1');
     expect(result.data[0]?.documentNumberEncrypted).toBeNull();
     expect(result.data[0]?.phonePrimaryEncrypted).toBeNull();
+  });
+
+  it('filtra open, converted, archive y all desde una sola regla de dominio', async () => {
+    const baseRows = [
+      buildExpediente({ id: 'exp-open', status: ExpedienteStatus.PRECALIFICADO }),
+      buildExpediente({ id: 'exp-converted', status: ExpedienteStatus.INSTALACION_AGENDADA }),
+      buildExpediente({ id: 'exp-active', status: ExpedienteStatus.CLIENTE_ACTIVO }),
+      buildExpediente({ id: 'exp-archived', status: ExpedienteStatus.DESCARTADO }),
+    ];
+
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 0,
+      legal: 0,
+      technical: 0,
+      operational: 0,
+      overall: 0,
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          createQueryBuilder: jest.fn().mockReturnValue(buildFindAllQueryBuilder(baseRows)),
+        },
+      }),
+    );
+
+    await expect(service.findAll({ view: 'open', limit: 20, page: 1 })).resolves.toMatchObject({
+      data: [expect.objectContaining({ id: 'exp-open' })],
+      total: 1,
+    });
+    await expect(service.findAll({ view: 'converted', limit: 20, page: 1 })).resolves.toMatchObject(
+      {
+        data: [expect.objectContaining({ id: 'exp-converted' })],
+        total: 1,
+      },
+    );
+    await expect(service.findAll({ view: 'archive', limit: 20, page: 1 })).resolves.toMatchObject({
+      data: expect.arrayContaining([
+        expect.objectContaining({ id: 'exp-active' }),
+        expect.objectContaining({ id: 'exp-archived' }),
+      ]),
+      total: 2,
+    });
+
+    // view='all' no aplica partición de estado → devuelve todos los registros
+    await expect(service.findAll({ view: 'all', limit: 20, page: 1 })).resolves.toMatchObject({
+      data: expect.arrayContaining([
+        expect.objectContaining({ id: 'exp-open' }),
+        expect.objectContaining({ id: 'exp-converted' }),
+        expect.objectContaining({ id: 'exp-active' }),
+        expect.objectContaining({ id: 'exp-archived' }),
+      ]),
+      total: 4,
+    });
+  });
+
+  it('conserva compatibilidad con includeCompleted cuando no se pasa view', async () => {
+    const baseRows = [
+      buildExpediente({ id: 'exp-open', status: ExpedienteStatus.PRECALIFICADO }),
+      buildExpediente({ id: 'exp-active', status: ExpedienteStatus.CLIENTE_ACTIVO }),
+    ];
+
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 0,
+      legal: 0,
+      technical: 0,
+      operational: 0,
+      overall: 0,
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          createQueryBuilder: jest.fn().mockReturnValue(buildFindAllQueryBuilder(baseRows)),
+        },
+      }),
+    );
+
+    // Sin view, includeCompleted=false → efectivo 'open' → excluye CLIENTE_ACTIVO
+    await expect(
+      service.findAll({ includeCompleted: false, limit: 20, page: 1 }),
+    ).resolves.toMatchObject({
+      data: [expect.objectContaining({ id: 'exp-open' })],
+      total: 1,
+    });
+
+    // Sin view, includeCompleted=true → efectivo 'all' → incluye todos
+    await expect(
+      service.findAll({ includeCompleted: true, limit: 20, page: 1 }),
+    ).resolves.toMatchObject({
+      data: expect.arrayContaining([
+        expect.objectContaining({ id: 'exp-open' }),
+        expect.objectContaining({ id: 'exp-active' }),
+      ]),
+      total: 2,
+    });
+  });
+
+  it('excluye registros fuera de la vista cuando se combina view + status', async () => {
+    const baseRows = [
+      buildExpediente({ id: 'exp-open', status: ExpedienteStatus.PRECALIFICADO }),
+      buildExpediente({ id: 'exp-archive', status: ExpedienteStatus.CLIENTE_ACTIVO }),
+    ];
+
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 0,
+      legal: 0,
+      technical: 0,
+      operational: 0,
+      overall: 0,
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          createQueryBuilder: jest.fn().mockReturnValue(buildFindAllQueryBuilder(baseRows)),
+        },
+      }),
+    );
+
+    // CLIENTE_ACTIVO pertenece a la vista 'archive', no a 'open' → debe devolver total 0
+    await expect(
+      service.findAll({
+        view: 'open',
+        status: ExpedienteStatus.CLIENTE_ACTIVO,
+        limit: 20,
+        page: 1,
+      }),
+    ).resolves.toMatchObject({ data: [], total: 0 });
   });
 
   it('revoca consentimiento de tratamiento de datos y marca el agregado para cumplimiento', async () => {
@@ -1711,7 +2531,219 @@ describe('ExpedienteService', () => {
       }),
     );
   });
+
+  describe('linkInstallationOperationalRefs', () => {
+    const TICKET_UUID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+    const WORK_ORDER_UUID = 'b2c3d4e5-f6a7-8901-bcde-f12345678901';
+
+    it('debe persistir ticketId y workOrderId en el expediente', async () => {
+      const expediente = buildExpediente({ id: 'exp-link-refs' });
+      const saveSpy = jest.fn(async (_entity: unknown, data: unknown) => data);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: async () => expediente,
+            save: saveSpy,
+          },
+        }),
+      );
+      completenessCalculatorMock.calculate.mockResolvedValue({
+        commercial: 80,
+        legal: 50,
+        technical: 40,
+        operational: 60,
+        overall: 57,
+      });
+
+      await service.linkInstallationOperationalRefs(
+        'exp-link-refs',
+        { ticketId: TICKET_UUID, workOrderId: WORK_ORDER_UUID },
+        'user-1',
+      );
+
+      expect(saveSpy).toHaveBeenCalledWith(
+        ExpedienteRecord,
+        expect.objectContaining({ ticketId: TICKET_UUID, workOrderId: WORK_ORDER_UUID }),
+      );
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.UPDATE,
+          entityId: 'exp-link-refs',
+          userId: 'user-1',
+          newValue: expect.objectContaining({
+            ticketId: { from: null, to: TICKET_UUID },
+            workOrderId: { from: null, to: WORK_ORDER_UUID },
+          }),
+        }),
+      );
+    });
+
+    it('debe persistir lastRescheduleReason y lastRescheduleNotes cuando se proveen', async () => {
+      const expediente = buildExpediente({ id: 'exp-link-reschedule' });
+      const saveSpy = jest.fn(async (_entity: unknown, data: unknown) => data);
+
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: async () => expediente,
+            save: saveSpy,
+          },
+        }),
+      );
+      completenessCalculatorMock.calculate.mockResolvedValue({
+        commercial: 80,
+        legal: 50,
+        technical: 40,
+        operational: 60,
+        overall: 57,
+      });
+
+      await service.linkInstallationOperationalRefs(
+        'exp-link-reschedule',
+        {
+          ticketId: TICKET_UUID,
+          workOrderId: WORK_ORDER_UUID,
+          lastRescheduleReason: 'Clima adverso',
+          lastRescheduleNotes: 'Se reprogramó para la próxima semana',
+        },
+        'user-1',
+      );
+
+      expect(saveSpy).toHaveBeenCalledWith(
+        ExpedienteRecord,
+        expect.objectContaining({
+          lastRescheduleReason: 'Clima adverso',
+          lastRescheduleNotes: 'Se reprogramó para la próxima semana',
+        }),
+      );
+    });
+
+    it('debe lanzar NotFoundException si el expediente no existe', async () => {
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: async () => null,
+          },
+        }),
+      );
+
+      await expect(
+        service.linkInstallationOperationalRefs(
+          'exp-inexistente',
+          { ticketId: TICKET_UUID, workOrderId: WORK_ORDER_UUID },
+          'user-1',
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
+
+      expect(auditServiceMock.log).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── findById — subscriberSummary enrichment ──
+
+  describe('findById con subscriberSummary', () => {
+    it('retorna subscriberSummary cuando existe suscriptor vinculado por expedienteId', async () => {
+      const expediente = buildExpediente({
+        id: 'exp-linked',
+        status: ExpedienteStatus.INSTALACION_AGENDADA,
+      });
+
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: jest.fn().mockResolvedValueOnce(expediente),
+          },
+        }),
+      );
+      completenessCalculatorMock.calculate.mockResolvedValue({
+        commercial: 0,
+        legal: 0,
+        technical: 0,
+        operational: 0,
+        overall: 0,
+        sectionCompleteness: {},
+        installationReadiness: { ready: false, missingFields: [] },
+        missingRequirements: [],
+      });
+      subscribersServiceMock.findSummaryByExpedienteId.mockResolvedValue({
+        id: 'sub-1',
+        status: SubscriberStatus.PROSPECT,
+        fullName: 'Laura Pérez',
+      });
+
+      const result = await service.findById('exp-linked');
+
+      expect((result as any).subscriberSummary).toEqual({
+        id: 'sub-1',
+        status: SubscriberStatus.PROSPECT,
+        fullName: 'Laura Pérez',
+      });
+    });
+
+    it('retorna undefined subscriberSummary cuando no existe suscriptor vinculado', async () => {
+      const expediente = buildExpediente({ id: 'exp-unlinked' });
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager: { findOne: jest.fn().mockResolvedValueOnce(expediente) } }),
+      );
+      completenessCalculatorMock.calculate.mockResolvedValue({
+        commercial: 0,
+        legal: 0,
+        technical: 0,
+        operational: 0,
+        overall: 0,
+        sectionCompleteness: {},
+        installationReadiness: { ready: false, missingFields: [] },
+        missingRequirements: [],
+      });
+      subscribersServiceMock.findSummaryByExpedienteId.mockResolvedValue(null);
+
+      const result = await service.findById('exp-unlinked');
+      expect((result as any).subscriberSummary).toBeUndefined();
+    });
+
+    it('no propaga errores de subscriberSummary al resultado de findById', async () => {
+      const expediente = buildExpediente({ id: 'exp-resilient' });
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager: { findOne: jest.fn().mockResolvedValueOnce(expediente) } }),
+      );
+      completenessCalculatorMock.calculate.mockResolvedValue({
+        commercial: 0,
+        legal: 0,
+        technical: 0,
+        operational: 0,
+        overall: 0,
+        sectionCompleteness: {},
+        installationReadiness: { ready: false, missingFields: [] },
+        missingRequirements: [],
+      });
+      subscribersServiceMock.findSummaryByExpedienteId.mockRejectedValue(new Error('DB timeout'));
+
+      // findById must succeed even when subscriber summary throws
+      const result = await service.findById('exp-resilient');
+      expect(result).toBeDefined();
+      expect((result as any).subscriberSummary).toBeUndefined();
+    });
+  });
 });
+
+function resolveActor(actorId: string) {
+  const actorDirectory: Record<string, { id: string; name: string; role: string | null }> = {
+    'user-1': { id: 'user-1', name: 'Carlos Mejía', role: 'ADMIN' },
+    'user-2': { id: 'user-2', name: 'Ana Torres', role: 'ADMIN' },
+    'user-creator': { id: 'user-creator', name: 'Carlos Mejía', role: 'ADMIN' },
+    'user-editor': { id: 'user-editor', name: 'Ana Torres', role: 'ADMIN' },
+    'user-sales': { id: 'user-sales', name: 'Laura Pérez', role: 'SALES' },
+    'user-admin': { id: 'user-admin', name: 'Carlos Mejía', role: 'ADMIN' },
+    'user-liliana': {
+      id: 'user-liliana',
+      name: 'Liliana Paola Borda Ovalle',
+      role: 'ADMIN',
+    },
+  };
+
+  return actorDirectory[actorId] ?? null;
+}
 
 function buildExpediente(overrides: Partial<ExpedienteRecord>): ExpedienteRecord {
   return {
@@ -1818,4 +2850,41 @@ function encryptTestValue(value: string): string {
   const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
   const authTag = cipher.getAuthTag();
   return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+}
+
+/**
+ * Crea un mock de QueryBuilder que captura los filtros de andWhere y aplica la
+ * partición de estado en memoria, simulando la lógica SQL en tests unitarios.
+ */
+function buildFindAllQueryBuilder(rows: ExpedienteRecord[]) {
+  let statusInFilter: ExpedienteStatus[] | null = null;
+  let exactStatusFilter: ExpedienteStatus | null = null;
+
+  function applyFilters(list: ExpedienteRecord[]): ExpedienteRecord[] {
+    let result = list;
+    if (statusInFilter) result = result.filter((r) => statusInFilter!.includes(r.status));
+    if (exactStatusFilter) result = result.filter((r) => r.status === exactStatusFilter);
+    return result;
+  }
+
+  const qb: Record<string, jest.Mock> = {
+    andWhere: jest.fn((condition: string, params?: Record<string, unknown>) => {
+      if (condition.includes('IN (:...allowedStatuses)') && params?.allowedStatuses) {
+        statusInFilter = params.allowedStatuses as ExpedienteStatus[];
+      }
+      if (condition.includes('status = :status') && params?.status) {
+        exactStatusFilter = params.status as ExpedienteStatus;
+      }
+      return qb;
+    }),
+    orderBy: jest.fn(() => qb),
+    skip: jest.fn(() => qb),
+    take: jest.fn(() => qb),
+    getManyAndCount: jest.fn(() => {
+      const filtered = applyFilters(rows);
+      return Promise.resolve([filtered, filtered.length] as const);
+    }),
+    getMany: jest.fn(() => Promise.resolve(applyFilters(rows))),
+  };
+  return qb;
 }

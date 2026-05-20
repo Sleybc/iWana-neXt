@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { CheckCircle2, CircleAlert } from 'lucide-react';
-import { Button, Card, CardContent, CardHeader } from '@iwana/ui';
+import { Button, Card, CardContent, CardHeader, Select } from '@iwana/ui';
 import { tenantSelfApi, type TenantSelfSettings } from '@/lib/api-client';
 import { PortalAlert, PortalSectionHeader } from '@/components/shared/portal-ui';
 
@@ -63,6 +63,7 @@ const LABEL_CLASS = 'mb-1.5 block text-sm font-medium text-gray-700 dark:text-gr
 const ERROR_CLASS = 'mt-1 text-xs text-red-600 dark:text-red-400';
 const SUBSECTION_LABEL =
   'text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400';
+const SELECT_MENU_CLASS = 'rounded-2xl p-1.5 [&_[role=option]]:min-h-11 [&_[role=option]]:px-3';
 
 // Resuelve la etiqueta legible dado un valor; si no hay match, devuelve el valor crudo
 function labelFor(options: { value: string; label: string }[], value: string): string {
@@ -131,8 +132,8 @@ export function OperationalSettingsForm({
             <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
               {/* Grupo Ubicación */}
               <p className={`mb-4 ${SUBSECTION_LABEL}`}>Ubicación</p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3 xl:col-span-7">
                   <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
                     Zona horaria
                   </span>
@@ -140,7 +141,7 @@ export function OperationalSettingsForm({
                     {labelFor(TIMEZONE_OPTIONS, settings.timezone)}
                   </span>
                 </div>
-                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3 xl:col-span-5">
                   <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
                     País operativo
                   </span>
@@ -154,8 +155,8 @@ export function OperationalSettingsForm({
 
               {/* Grupo Preferencias */}
               <p className={`mb-4 ${SUBSECTION_LABEL}`}>Preferencias</p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3 xl:col-span-6">
                   <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
                     Idioma
                   </span>
@@ -163,7 +164,7 @@ export function OperationalSettingsForm({
                     {labelFor(LANGUAGE_OPTIONS, settings.language)}
                   </span>
                 </div>
-                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3 xl:col-span-6">
                   <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
                     Moneda
                   </span>
@@ -190,33 +191,31 @@ export function OperationalSettingsForm({
             <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
               {/* Grupo: Ubicación */}
               <p className={`mb-4 ${SUBSECTION_LABEL}`}>Ubicación</p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12">
+                <div className="xl:col-span-7">
                   <label htmlFor="timezone" className={LABEL_CLASS}>
                     Zona horaria
                   </label>
-                  <select id="timezone" className={INPUT_CLASS} {...register('timezone')}>
-                    {TIMEZONE_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    id="timezone"
+                    options={TIMEZONE_OPTIONS}
+                    menuClassName={SELECT_MENU_CLASS}
+                    {...register('timezone')}
+                  />
                   {errors.timezone?.message && (
                     <p className={ERROR_CLASS}>{errors.timezone.message}</p>
                   )}
                 </div>
-                <div>
+                <div className="xl:col-span-5">
                   <label htmlFor="country" className={LABEL_CLASS}>
                     País operativo
                   </label>
-                  <select id="country" className={INPUT_CLASS} {...register('country')}>
-                    {COUNTRY_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    id="country"
+                    options={COUNTRY_OPTIONS}
+                    menuClassName={SELECT_MENU_CLASS}
+                    {...register('country')}
+                  />
                   {errors.country?.message && (
                     <p className={ERROR_CLASS}>{errors.country.message}</p>
                   )}
@@ -227,33 +226,31 @@ export function OperationalSettingsForm({
 
               {/* Grupo: Preferencias */}
               <p className={`mb-4 ${SUBSECTION_LABEL}`}>Preferencias</p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12">
+                <div className="xl:col-span-6">
                   <label htmlFor="language" className={LABEL_CLASS}>
                     Idioma
                   </label>
-                  <select id="language" className={INPUT_CLASS} {...register('language')}>
-                    {LANGUAGE_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    id="language"
+                    options={LANGUAGE_OPTIONS}
+                    menuClassName={SELECT_MENU_CLASS}
+                    {...register('language')}
+                  />
                   {errors.language?.message && (
                     <p className={ERROR_CLASS}>{errors.language.message}</p>
                   )}
                 </div>
-                <div>
+                <div className="xl:col-span-6">
                   <label htmlFor="currency" className={LABEL_CLASS}>
                     Moneda
                   </label>
-                  <select id="currency" className={INPUT_CLASS} {...register('currency')}>
-                    {CURRENCY_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    id="currency"
+                    options={CURRENCY_OPTIONS}
+                    menuClassName={SELECT_MENU_CLASS}
+                    {...register('currency')}
+                  />
                   {errors.currency?.message && (
                     <p className={ERROR_CLASS}>{errors.currency.message}</p>
                   )}

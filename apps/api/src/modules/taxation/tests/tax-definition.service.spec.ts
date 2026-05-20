@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { DataSource, IsNull } from 'typeorm';
 import { TaxOrigin, TaxCategory, JurisdictionLevel, TaxTreatment, TaxContext } from '@iwana/shared';
 import { TaxDefinitionService } from '../services/tax-definition.service';
@@ -249,22 +249,26 @@ describe('TaxDefinitionService', () => {
   });
 
   describe('update', () => {
-    it('should throw ForbiddenException when updating SYSTEM preset', async () => {
+    it('should update SYSTEM preset successfully', async () => {
       const systemEntity = buildTaxDef({
         id: 'def-system',
         origin: TaxOrigin.SYSTEM,
       });
 
+      const updatedEntity = { ...systemEntity, name: 'Nuevo nombre' };
+
       mockQr.manager.findOne.mockResolvedValue(systemEntity);
+      mockQr.manager.save.mockResolvedValue(updatedEntity);
 
       const input: UpdateTaxDefinitionInput = { name: 'Nuevo nombre' };
 
-      await expect(service.update('def-system', input)).rejects.toThrow(ForbiddenException);
-      await expect(service.update('def-system', input)).rejects.toThrow(
-        'Los presets del sistema no son editables',
-      );
+      const result = await service.update('def-system', input);
 
-      expect(mockQr.manager.save).not.toHaveBeenCalled();
+      expect(mockQr.manager.findOne).toHaveBeenCalledWith(TaxDefinition, {
+        where: { id: 'def-system', deletedAt: IsNull() },
+      });
+      expect(mockQr.manager.save).toHaveBeenCalledWith(TaxDefinition, systemEntity);
+      expect(result.name).toBe('Nuevo nombre');
     });
 
     it('should update CUSTOM entity successfully', async () => {
@@ -307,20 +311,22 @@ describe('TaxDefinitionService', () => {
   });
 
   describe('softDelete', () => {
-    it('should throw ForbiddenException when deleting SYSTEM preset', async () => {
+    it('should soft delete SYSTEM preset', async () => {
       const systemEntity = buildTaxDef({
         id: 'def-system',
         origin: TaxOrigin.SYSTEM,
+        isActive: true,
+        deletedAt: null,
       });
 
       mockQr.manager.findOne.mockResolvedValue(systemEntity);
+      mockQr.manager.save.mockResolvedValue(systemEntity);
 
-      await expect(service.softDelete('def-system')).rejects.toThrow(ForbiddenException);
-      await expect(service.softDelete('def-system')).rejects.toThrow(
-        'Los presets del sistema no pueden eliminarse',
-      );
+      await service.softDelete('def-system');
 
-      expect(mockQr.manager.save).not.toHaveBeenCalled();
+      expect(systemEntity.deletedAt).toBeInstanceOf(Date);
+      expect(systemEntity.isActive).toBe(false);
+      expect(mockQr.manager.save).toHaveBeenCalledWith(TaxDefinition, systemEntity);
     });
 
     it('should soft delete CUSTOM entity and set isActive=false', async () => {

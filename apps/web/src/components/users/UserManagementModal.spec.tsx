@@ -191,4 +191,32 @@ describe('UserManagementModal', () => {
       }),
     );
   });
+
+  it('elimina el usuario y propaga el cierre al padre', async () => {
+    const onDeleted = jest.fn();
+    const onClose = jest.fn();
+    usersApiMock.remove.mockResolvedValue(undefined as never);
+
+    render(
+      <UserManagementModal
+        open
+        tenantSlug="acme"
+        tenantName="Acme"
+        user={baseUser as never}
+        onClose={onClose}
+        onSaved={jest.fn()}
+        onDeleted={onDeleted}
+      />,
+    );
+
+    await screen.findByLabelText('Correo de acceso');
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar usuario' }));
+
+    await waitFor(() => {
+      expect(usersApiMock.remove).toHaveBeenCalledWith('acme', baseUser.id);
+    });
+
+    expect(onDeleted).toHaveBeenCalledWith(baseUser.id);
+    expect(onClose).toHaveBeenCalled();
+  });
 });

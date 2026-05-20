@@ -69,59 +69,59 @@ El resultado esperado es:
 
 ### 4.1 Conversión del expediente a subscriber
 
-| ID | Requerimiento | Prioridad |
-| --- | --- | --- |
-| RF-S360-01 | Al transicionar un expediente a `LISTO_PARA_INSTALACION`, el sistema debe crear o reutilizar un subscriber vinculado por `expedienteId` en estado `PROSPECT`. | MVP |
-| RF-S360-02 | La creación automática debe ser idempotente por tenant + `expedienteId`. | MVP |
-| RF-S360-03 | Al transicionar el expediente a `CLIENTE_ACTIVO`, el subscriber vinculado debe pasar de `PROSPECT` a `ACTIVE`. | MVP |
-| RF-S360-04 | Al transicionar el expediente a `DESCARTADO`, el subscriber vinculado en `PROSPECT` debe pasar automáticamente a `CANCELLED`. | MVP |
-| RF-S360-05 | El subscriber creado automáticamente debe conservar trazabilidad del expediente origen, fecha de conversión y fecha de activación. | MVP |
+| ID         | Requerimiento                                                                                                                                                 | Prioridad |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| RF-S360-01 | Al transicionar un expediente a `LISTO_PARA_INSTALACION`, el sistema debe crear o reutilizar un subscriber vinculado por `expedienteId` en estado `PROSPECT`. | MVP       |
+| RF-S360-02 | La creación automática debe ser idempotente por tenant + `expedienteId`.                                                                                      | MVP       |
+| RF-S360-03 | Al transicionar el expediente a `CLIENTE_ACTIVO`, el subscriber vinculado debe pasar de `PROSPECT` a `ACTIVE`.                                                | MVP       |
+| RF-S360-04 | Al transicionar el expediente a `DESCARTADO`, el subscriber vinculado en `PROSPECT` debe pasar automáticamente a `CANCELLED`.                                 | MVP       |
+| RF-S360-05 | El subscriber creado automáticamente debe conservar trazabilidad del expediente origen, fecha de conversión y fecha de activación.                            | MVP       |
 
 ### 4.2 Gestión manual controlada
 
-| ID | Requerimiento | Prioridad |
-| --- | --- | --- |
-| RF-S360-06 | Debe mantenerse `POST /crm/subscribers` como vía de creación manual solo para `TENANT_ADMIN` o superior. | MVP |
-| RF-S360-07 | La creación manual debe exigir `manualOverrideReason` obligatorio con mínimo 10 caracteres. | MVP |
-| RF-S360-08 | La creación manual puede incluir `expedienteId` opcional para vincular un expediente incompleto. | MVP |
-| RF-S360-09 | Toda creación manual debe registrar auditoría diferenciada. | MVP |
+| ID         | Requerimiento                                                                                            | Prioridad |
+| ---------- | -------------------------------------------------------------------------------------------------------- | --------- |
+| RF-S360-06 | Debe mantenerse `POST /crm/subscribers` como vía de creación manual solo para `TENANT_ADMIN` o superior. | MVP       |
+| RF-S360-07 | La creación manual debe exigir `manualOverrideReason` obligatorio con mínimo 10 caracteres.              | MVP       |
+| RF-S360-08 | La creación manual puede incluir `expedienteId` opcional para vincular un expediente incompleto.         | MVP       |
+| RF-S360-09 | Toda creación manual debe registrar auditoría diferenciada.                                              | MVP       |
 
 ### 4.3 Subscriber 360°
 
-| ID | Requerimiento | Prioridad |
-| --- | --- | --- |
-| RF-S360-10 | La página `/dashboard/crm/subscribers/[id]` debe ofrecer una vista 360° espejo del expediente detail. | MVP |
-| RF-S360-11 | La vista debe incluir 6 tabs: Vista general, Datos, Servicios, Financiero, Cumplimiento y Seguimiento. | MVP |
-| RF-S360-12 | La tab Vista general debe resumir identidad, origen, servicio activo y trazabilidad del expediente. | MVP |
-| RF-S360-13 | La tab Datos debe permitir edición por secciones con guardado individual. | MVP |
-| RF-S360-14 | La tab Servicios debe mostrar contratos, cotizaciones y plan activo, dejando equipos y provisioning como stub explícito. | MVP |
-| RF-S360-15 | La tab Financiero debe mostrar datos fiscales editables y placeholders claros para facturación y pagos. | MVP |
-| RF-S360-16 | La tab Cumplimiento debe mostrar consentimientos, solicitudes ARCO y consentimientos heredados del expediente origen. | MVP |
-| RF-S360-17 | La tab Seguimiento debe consolidar timeline de conversión, cambios de estado y eventos relevantes. | MVP |
-| RF-S360-18 | La vista debe incluir link inverso al expediente origen cuando exista `expedienteId`. | MVP |
+| ID         | Requerimiento                                                                                                            | Prioridad |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------ | --------- |
+| RF-S360-10 | La página `/dashboard/crm/subscribers/[id]` debe ofrecer una vista 360° espejo del expediente detail.                    | MVP       |
+| RF-S360-11 | La vista debe incluir 6 tabs: Vista general, Datos, Servicios, Financiero, Cumplimiento y Seguimiento.                   | MVP       |
+| RF-S360-12 | La tab Vista general debe resumir identidad, origen, servicio activo y trazabilidad del expediente.                      | MVP       |
+| RF-S360-13 | La tab Datos debe permitir edición por secciones con guardado individual.                                                | MVP       |
+| RF-S360-14 | La tab Servicios debe mostrar contratos, cotizaciones y plan activo, dejando equipos y provisioning como stub explícito. | MVP       |
+| RF-S360-15 | La tab Financiero debe mostrar datos fiscales editables y placeholders claros para facturación y pagos.                  | MVP       |
+| RF-S360-16 | La tab Cumplimiento debe mostrar consentimientos, solicitudes ARCO y consentimientos heredados del expediente origen.    | MVP       |
+| RF-S360-17 | La tab Seguimiento debe consolidar timeline de conversión, cambios de estado y eventos relevantes.                       | MVP       |
+| RF-S360-18 | La vista debe incluir link inverso al expediente origen cuando exista `expedienteId`.                                    | MVP       |
 
 ### 4.4 Pipeline CRM
 
-| ID | Requerimiento | Prioridad |
-| --- | --- | --- |
-| RF-S360-19 | El listado de expedientes debe excluir por defecto estados `CLIENTE_ACTIVO` y `DESCARTADO`. | MVP |
-| RF-S360-20 | Debe existir opción explícita para mostrar expedientes completados cuando el usuario lo requiera. | MVP |
-| RF-S360-21 | El expediente completado debe seguir accesible por búsqueda directa y desde el Subscriber 360°. | MVP |
+| ID         | Requerimiento                                                                                     | Prioridad |
+| ---------- | ------------------------------------------------------------------------------------------------- | --------- |
+| RF-S360-19 | El listado de expedientes debe excluir por defecto estados `CLIENTE_ACTIVO` y `DESCARTADO`.       | MVP       |
+| RF-S360-20 | Debe existir opción explícita para mostrar expedientes completados cuando el usuario lo requiera. | MVP       |
+| RF-S360-21 | El expediente completado debe seguir accesible por búsqueda directa y desde el Subscriber 360°.   | MVP       |
 
 ---
 
 ## 5. Requerimientos no funcionales
 
-| ID | Requerimiento | Prioridad |
-| --- | --- | --- |
-| RNF-S360-01 | Mantener multi-tenancy por schema y resolución de tenant vigente. | MVP |
-| RNF-S360-02 | No acceder a tablas de otros módulos fuera del boundary CRM. | MVP |
-| RNF-S360-03 | Usar eventos de dominio intra-módulo; no introducir BullMQ para esta orquestación. | MVP |
-| RNF-S360-04 | Mantener validación Zod en todos los boundaries nuevos o extendidos. | MVP |
-| RNF-S360-05 | No recalcular IVA en frontend; el backend mantiene la fuente de verdad. | MVP |
-| RNF-S360-06 | Zero PII en logs, tests y documentación. | MVP |
-| RNF-S360-07 | El frontend debe conservar identidad iWana y contraste AA. | MVP |
-| RNF-S360-08 | Los placeholders de módulos futuros deben ser explícitos y no simular datos inexistentes. | MVP |
+| ID          | Requerimiento                                                                             | Prioridad |
+| ----------- | ----------------------------------------------------------------------------------------- | --------- |
+| RNF-S360-01 | Mantener multi-tenancy por schema y resolución de tenant vigente.                         | MVP       |
+| RNF-S360-02 | No acceder a tablas de otros módulos fuera del boundary CRM.                              | MVP       |
+| RNF-S360-03 | Usar eventos de dominio intra-módulo; no introducir BullMQ para esta orquestación.        | MVP       |
+| RNF-S360-04 | Mantener validación Zod en todos los boundaries nuevos o extendidos.                      | MVP       |
+| RNF-S360-05 | No recalcular IVA en frontend; el backend mantiene la fuente de verdad.                   | MVP       |
+| RNF-S360-06 | Zero PII en logs, tests y documentación.                                                  | MVP       |
+| RNF-S360-07 | El frontend debe conservar identidad iWana y contraste AA.                                | MVP       |
+| RNF-S360-08 | Los placeholders de módulos futuros deben ser explícitos y no simular datos inexistentes. | MVP       |
 
 ---
 
@@ -146,11 +146,11 @@ DESCARTADO post-conversión → cancela Subscriber(PROSPECT)
 
 ### 6.2 Extensión mínima de datos en subscriber
 
-| Campo | Tipo | Uso |
-| --- | --- | --- |
-| `expedienteId` | uuid nullable | Trazabilidad con expediente origen |
-| `convertedAt` | timestamptz nullable | Fecha de conversión a `PROSPECT` |
-| `activatedAt` | timestamptz nullable | Fecha de activación a `ACTIVE` |
+| Campo          | Tipo                 | Uso                                |
+| -------------- | -------------------- | ---------------------------------- |
+| `expedienteId` | uuid nullable        | Trazabilidad con expediente origen |
+| `convertedAt`  | timestamptz nullable | Fecha de conversión a `PROSPECT`   |
+| `activatedAt`  | timestamptz nullable | Fecha de activación a `ACTIVE`     |
 
 ### 6.3 Composición del 360°
 
@@ -185,18 +185,18 @@ No se comparte implementación interna de componentes con expediente en esta fas
 
 ## 8. Criterios de aceptación
 
-| CA | Descripción |
-| --- | --- |
-| CA-S360-01 | La transición a `LISTO_PARA_INSTALACION` crea un subscriber `PROSPECT` sin duplicados. |
-| CA-S360-02 | La transición a `CLIENTE_ACTIVO` activa el subscriber vinculado y registra `activatedAt`. |
-| CA-S360-03 | La transición a `DESCARTADO` cancela el subscriber `PROSPECT` vinculado. |
-| CA-S360-04 | El pipeline abierto ya no muestra por defecto expedientes `CLIENTE_ACTIVO` ni `DESCARTADO`. |
-| CA-S360-05 | La vista Subscriber 360° muestra las 6 tabs aprobadas y respeta el patrón visual de expediente. |
-| CA-S360-06 | El guardado por sección funciona con validación parcial y feedback de carga. |
-| CA-S360-07 | El enlace inverso entre subscriber y expediente funciona cuando existe trazabilidad. |
-| CA-S360-08 | Los módulos no implementados aparecen como placeholders explícitos, sin datos ficticios. |
+| CA         | Descripción                                                                                       |
+| ---------- | ------------------------------------------------------------------------------------------------- |
+| CA-S360-01 | La transición a `LISTO_PARA_INSTALACION` crea un subscriber `PROSPECT` sin duplicados.            |
+| CA-S360-02 | La transición a `CLIENTE_ACTIVO` activa el subscriber vinculado y registra `activatedAt`.         |
+| CA-S360-03 | La transición a `DESCARTADO` cancela el subscriber `PROSPECT` vinculado.                          |
+| CA-S360-04 | El pipeline abierto ya no muestra por defecto expedientes `CLIENTE_ACTIVO` ni `DESCARTADO`.       |
+| CA-S360-05 | La vista Subscriber 360° muestra las 6 tabs aprobadas y respeta el patrón visual de expediente.   |
+| CA-S360-06 | El guardado por sección funciona con validación parcial y feedback de carga.                      |
+| CA-S360-07 | El enlace inverso entre subscriber y expediente funciona cuando existe trazabilidad.              |
+| CA-S360-08 | Los módulos no implementados aparecen como placeholders explícitos, sin datos ficticios.          |
 | CA-S360-09 | `pnpm --filter @iwana/api typecheck` y `pnpm --filter @iwana/portal typecheck` pasan sin errores. |
-| CA-S360-10 | Existen pruebas para conversión, activación, cancelación y guardado por sección. |
+| CA-S360-10 | Existen pruebas para conversión, activación, cancelación y guardado por sección.                  |
 
 ---
 

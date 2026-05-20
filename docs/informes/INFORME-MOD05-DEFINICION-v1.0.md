@@ -1,9 +1,9 @@
 # INFORME — Definición MOD05 CRM / Expediente Único Progresivo
 
-**Versión:** 4.0  
-**Estado:** Sprint 02 cerrado — refinamiento técnico validado  
-**Fecha:** 2026-04-14  
-**Modo activo:** Architect  
+**Versión:** 4.3  
+**Estado:** Correctivo CRM alineado — post-conversión CRM/subscriber validado  
+**Fecha:** 2026-05-11  
+**Modo activo:** Mixto  
 **Módulo:** MOD05 — CRM / Expediente Único Progresivo  
 **Artefacto principal:** docs/prds/PRD-MOD05-CRM-DEFINICION-v2.0.md
 
@@ -16,11 +16,14 @@
 | PRD vigente (v2.0)        | `docs/prds/PRD-MOD05-CRM-DEFINICION-v2.0.md`                 |
 | PRD previo (v1.1)         | _(eliminado — referencia historica)_                         |
 | PRD original (v1.0)       | _(eliminado — referencia historica)_                         |
-| Spec expediente único     | `docs/superpowers/specs/SPEC-MOD05-EXPEDIENTE-UNICO-v1.0.md` |
-| Spec rediseño             | `docs/superpowers/specs/SPEC-MOD05-REDISENO-v1.0.md`         |
+| Spec expediente único     | `docs/specs/SPEC-MOD05-EXPEDIENTE-UNICO-v1.0.md` |
+| Spec rediseño             | `docs/specs/SPEC-MOD05-REDISENO-v1.0.md`         |
+| Spec simplificación vista general | `docs/specs/2026-05-05-crm-expediente-vista-general-simplificacion-design.md` |
+| Spec post-conversión CRM/subscriber | `docs/specs/SPEC-MOD05-CRM-POSTCONVERSION-FULLSTACK-v1.0.md` |
 | HLD vigente (v2.0)        | `docs/hlds/HLD-MOD05-ARQUITECTURA-v2.0.md`                   |
 | HLD previo (v1.0)         | _(eliminado — referencia historica)_                         |
 | ADR-024                   | `docs/adrs/ADR-024-Migracion-CRM-Expediente-Unico.md`        |
+| ADR-027                   | `docs/adrs/ADR-027-Conversion-Expediente-Subscriber-Two-Stage.md` |
 | Addendum cierre Sprint 02 | `docs/prds/PRD-MOD05-CRM-ADDENDUM-CIERRE-v2.1.md`            |
 | PRD origen y atribución   | `docs/prds/PRD-MOD05-CRM-ORIGEN-ATRIBUCION-v1.1.md`          |
 | Plan backlog incentivos futuro | `docs/plans/PLAN-MOD05-INCENTIVOS-BACKLOG-v1.0.md`      |
@@ -30,7 +33,7 @@
 | PRD del sistema           | `docs/prds/PRD_Sistema_ISP_Colombia_v2_2.md`                 |
 | Stack tecnológico         | `docs/prds/Stack_Tecnologico.md`                             |
 | Informe Sprint 01         | _(eliminado — referencia historica)_                         |
-| ADRs referenciados        | ADR-016, ADR-017, ADR-018, ADR-019, ADR-022, ADR-024         |
+| ADRs referenciados        | ADR-016, ADR-017, ADR-018, ADR-019, ADR-022, ADR-024, ADR-027 |
 
 ---
 
@@ -50,7 +53,7 @@ MOD05 ha pasado por tres iteraciones de definición:
 
 1. **PRD v1.0:** CRM clásico con leads, suscriptores y contratos.
 2. **PRD v1.1:** Rediseño del lifecycle comercial-operativo (potencial → prospecto → instalación → cliente activo). Sprint 01 ejecutado con modelo básico.
-3. **PRD v2.0 (actual):** Evolución al modelo de **expediente único progresivo** con captura en 8 secciones, 12 estados de pipeline, completitud por 4 dimensiones y consentimiento triple.
+3. **PRD v2.0 (actual):** Evolución al modelo de **expediente único progresivo** con captura en 8 secciones, 8 estados de pipeline, completitud general por 7 secciones y consentimiento triple.
 
 ### Motivación de v2.0
 
@@ -62,7 +65,7 @@ El Sprint 01 implementó un flujo funcional pero limitado: solo nombre + fuente 
 - PRD v1.1 emitido → ejecutado en Sprint 01.
 - Sprint 01 completado con backend (PotentialsModule, ProspectsModule, ReviewsModule) + frontend portal + migración tenant 017.
 - **Brainstorming de expediente único completado** → 5 secciones de diseño aprobadas.
-- **Spec de expediente único v1.0 emitida** → modelo maestro + hijos + pipeline 12 estados.
+- **Spec de expediente único v1.0 emitida** → modelo maestro + hijos; posteriormente alineada al pipeline de 8 estados y completitud general por 7 secciones.
 - **PRD v2.0 emitido** → 10 secciones canónicas con expediente único progresivo.
 - **CTO aprobó PRD v2.0 y Spec.** HLD v2.0 emitido. ADR-024 emitido. Sprint plan 02 y prompt de ejecución Fase 02 generados.
 - **Refinamiento documental 2026-04-02 aprobado por CTO:** PRD y prompt complementarios quedaron aprobados para cerrar origen comercial y atribución como alcance operativo, dejando incentivos y productividad como roadmap futuro fuera de MOD05.
@@ -73,7 +76,7 @@ El Sprint 01 implementó un flujo funcional pero limitado: solo nombre + fuente 
 
 - `docs/prds/PRD_Sistema_ISP_Colombia_v2_2.md` — §5.1 (RF-CRM), §6.2-6.4 (modelo de datos), §14.2 (roadmap)
 - `docs/prds/Stack_Tecnologico.md`
-- `docs/superpowers/specs/SPEC-MOD05-REDISENO-v1.0.md`
+- `docs/specs/SPEC-MOD05-REDISENO-v1.0.md`
 - `docs/prds/PRD-MOD01-DEFINICION-v1.1.md`
 - `docs/prds/PRD-MOD02-DASHBOARD-EMPRESA-v1.0.md`
 - `docs/prds/PRD-MOD03-CONFIGURACION-EMPRESA-v1.0.md`
@@ -121,7 +124,7 @@ Esta actualización del informe es documental. Se consolidaron artefactos de dis
 
 Avances documentales de esta actualización:
 
-- Spec de rediseño emitida en `docs/superpowers/specs/SPEC-MOD05-REDISENO-v1.0.md`.
+- Spec de rediseño emitida en `docs/specs/SPEC-MOD05-REDISENO-v1.0.md`.
 - PRD revisado emitido en `docs/prds/PRD-MOD05-CRM-DEFINICION-v1.1.md`.
 - HLD emitido en `docs/hlds/HLD-MOD05-ARQUITECTURA-v1.0.md`.
 - Alineación explícita con decisiones de negocio sobre potenciales, prospectos, activación, revisión y política configurable.
@@ -307,14 +310,52 @@ Nota de roadmap:
 
 - Reintroducir estas capacidades en un flujo dedicado de ejecución cuando estén disponibles los módulos de parametrización de ciclos y programación de instalación.
 
+### Evidencia correctiva del 2026-05-11 (post-conversión expediente / subscriber)
+
+Se cerró la ejecución full stack del ajuste post-conversión definido para la convivencia operativa entre CRM y Subscriber 360°, preservando el diseño two-stage aprobado y sin introducir migraciones ni nuevos endpoints.
+
+Implementación consolidada:
+
+- Backend CRM:
+  - `GET /crm/expedientes` quedó extendido con semántica `view=open|converted|archive|all`, con `open` por defecto y precedencia explícita sobre `includeCompleted`.
+  - El mapeo de vistas a estados quedó centralizado en `apps/api/src/modules/crm/expedientes/expediente-list-view.ts`.
+  - `GET /crm/expedientes/:id` enriquece el expediente con `subscriberSummary` cuando existe vínculo por `expedienteId`, sin bloquear la lectura si el enriquecimiento falla.
+- Portal:
+  - `apps/portal/src/app/dashboard/crm/expedientes/page.tsx` ahora expone las vistas `Abiertas`, `Convertidas` y `Archivo`, usa búsqueda global temporal con `Todo CRM` y etiqueta el origen operativo cuando la consulta llega por `all`.
+  - `apps/portal/src/app/dashboard/crm/expedientes/[id]/page.tsx` muestra banner de conversión para `INSTALACION_AGENDADA` y `CLIENTE_ACTIVO`, con CTA a `/dashboard/crm/subscribers/[subscriberId]` cuando existe vínculo.
+  - `apps/portal/src/components/crm/CrmOverviewClient.tsx` conserva `Total` como lectura operativa y deja `Activos` con copy explícito de cierre histórico.
+  - Se preservó el enlace inverso desde Subscriber 360° al expediente origen en `apps/portal/src/components/crm/subscribers/SubscriberDetailClient.tsx`.
+- Testing focalizado:
+  - pruebas backend de servicio y controller cubren `view`, compatibilidad temporal con `includeCompleted` y `subscriberSummary`;
+  - pruebas unitarias portal cubren tabs, `Todo CRM`, badge de origen y banner de conversión;
+  - el flujo E2E portal valida navegación expediente convertido → subscriber y subscriber → expediente origen.
+
+Validación ejecutada en esta pasada:
+
+- `pnpm --filter @iwana/api test -- src/modules/crm/expedientes/tests/expediente.service.spec.ts src/modules/crm/expedientes/tests/expedientes.controller.spec.ts` ✅ (72/72)
+- `pnpm --filter @iwana/portal exec jest src/app/dashboard/crm/expedientes/page.spec.tsx src/components/crm/expedientes/ExpedienteConversionBanner.spec.tsx src/components/crm/expedientes/expediente-list-view.spec.ts --runInBand` ✅ (11/11)
+- `pnpm exec playwright test --config e2e/playwright.portal.config.ts e2e/tests/portal-crm-expedientes.spec.ts` ✅ (11/11)
+
+Bloqueos de validación global detectados pero fuera de este correctivo:
+
+- `pnpm --filter @iwana/api typecheck` falla por trabajo no relacionado en `apps/api/src/modules/assurance/**` y exports faltantes de `@iwana/db` / `@iwana/shared`.
+- `pnpm --filter @iwana/portal typecheck` falla por trabajo no relacionado en `apps/portal/src/components/assurance/**`, `apps/portal/src/components/scheduling/**` y helpers no exportados fuera del alcance MOD05.
+
+Conclusión operativa:
+
+1. `INSTALACION_AGENDADA` ya no participa en la bandeja principal `Abiertas`.
+2. El expediente convertido conserva detalle, histórico y navegación cruzada con Subscriber 360°.
+3. La semántica de vistas quedó resuelta en backend, evitando drift en totales, búsqueda y paginación.
+4. La ejecución del spec post-conversión queda cerrada a nivel funcional; los fallos actuales de typecheck del workspace pertenecen a cambios ajenos en curso.
+
 ---
 
 ## 5. Evidencia de calidad
 
 - Estado de verificación en esta actualización:
-  - No se ejecutaron pruebas; la actualización fue documental.
-  - Se validó consistencia de gobernanza: 10 secciones en el PRD nuevo, HLD mínimo emitido e informe vivo actualizado.
-  - Se validó consistencia arquitectónica del boundary contra el modulith y contra MOD03.
+  - Se ejecutaron pruebas focalizadas backend, portal unitario y E2E del flujo post-conversión CRM/subscriber.
+  - Los typechecks globales de `apps/api` y `apps/portal` permanecen bloqueados por cambios no relacionados en Assurance y Scheduling presentes en el workspace.
+  - Se validó consistencia de gobernanza del ajuste contra PRD complementario, HLD vigente y ADR-027.
 - Revisión de alineación: el PRD v1.1 corrige la activación temprana y formaliza la trazabilidad operativa exigida por negocio.
 - Regulación colombiana aún aplicable: Ley 1581 (Habeas Data) y trazabilidad contractual/documental; para MVP queda aprobada una modalidad parametrizable por tenant y cualquier exigencia probatoria superior deberá escalarse como ADR o requerimiento tenant específico.
 
@@ -324,7 +365,7 @@ Nota de roadmap:
 
 | Documento                                                    | Tipo                            | Estado                         |
 | ------------------------------------------------------------ | ------------------------------- | ------------------------------ |
-| `docs/superpowers/specs/SPEC-MOD05-REDISENO-v1.0.md`         | Spec de rediseño                | Base aprobada de referencia    |
+| `docs/specs/SPEC-MOD05-REDISENO-v1.0.md`         | Spec de rediseño                | Base aprobada de referencia    |
 | `docs/prds/PRD-MOD05-CRM-DEFINICION-v2.0.md`                 | PRD vigente                     | Aprobado por CTO               |
 | `docs/prds/PRD-MOD05-CRM-ADDENDUM-CIERRE-v2.1.md`            | Addendum de cierre Sprint 02    | Aprobado para cierre extendido |
 | `docs/prds/PRD-MOD05-CRM-ORIGEN-ATRIBUCION-v1.1.md`          | PRD operativo de origen/atribución | Aprobado por CTO |
@@ -334,8 +375,10 @@ Nota de roadmap:
 | `docs/sprints/PLAN-MOD05-CRM-SPRINT-02-v1.0.md`              | Plan de sprint vigente (v1.1)   | Aprobado con cierre extendido  |
 | `docs/prompts/PROMPT-MOD05-CRM-FASE-02-v1.0.md`              | Prompt ejecución vigente (v1.1) | Aprobado con cierre extendido  |
 | `docs/prompts/PROMPT-MOD05-CRM-ORIGEN-ATRIBUCION-FASE1-v1.1.md` | Prompt operativo de origen/atribución | Aprobado por CTO |
-| `docs/superpowers/specs/SPEC-MOD05-EXPEDIENTE-UNICO-v1.0.md` | Spec expediente único           | Aprobado por CTO               |
-| Este informe                                                 | Informe vivo de definición      | Actualizado v4.0               |
+| `docs/specs/SPEC-MOD05-EXPEDIENTE-UNICO-v1.0.md` | Spec expediente único           | Aprobado por CTO               |
+| `docs/specs/2026-05-05-crm-expediente-vista-general-simplificacion-design.md` | Spec refinamiento visual de vista general | Aprobado |
+| `docs/specs/SPEC-MOD05-CRM-POSTCONVERSION-FULLSTACK-v1.0.md` | Spec post-conversión CRM/subscriber | En revisión ejecutada |
+| Este informe                                                 | Informe vivo de definición      | Actualizado v4.3               |
 
 **Documentos eliminados por consolidación:**
 
@@ -419,8 +462,8 @@ Se aplicó un segundo refinamiento para corregir el flujo de negocio real del IS
 | ----------------------------- | -------------------------------------------------------------------------------------------------- |
 | Expediente único              | Un solo registro maestro reemplaza PotentialLead + ProspectCase                                    |
 | 8 secciones de captura        | Identificación, contacto, ubicación, interés, viabilidad, consentimiento, facturación, instalación |
-| 12 estados de pipeline        | Desde NUEVO_POTENCIAL hasta CLIENTE_ACTIVO o DESCARTADO                                            |
-| Completitud por 4 dimensiones | Comercial, legal, técnica, operativa — solo CLIENTE_ACTIVO exige >= 90%                            |
+| 8 estados de pipeline         | Desde NUEVO_POTENCIAL hasta CLIENTE_ACTIVO o DESCARTADO                                            |
+| Completitud por 7 secciones   | Identificacion, direccion, contacto, viabilidad tecnica, interes del cliente, cumplimiento legal, soportes documentales |
 | Consentimiento triple         | Tratamiento datos, contacto comercial, contacto operativo (Ley 1581)                               |
 | Coordenadas prioritarias      | Con fuente (manual/GPS/mapa) y confianza (exacto/aproximado/referencial)                           |
 | Entidades hijas               | ContactAttempt, ConsentRecord v2, CoverageCheck, StatusChange, Quote                               |
@@ -444,16 +487,19 @@ Se aplicó un segundo refinamiento para corregir el flujo de negocio real del IS
 | Documento                  | Ruta                                                         | Estado                  |
 | -------------------------- | ------------------------------------------------------------ | ----------------------- |
 | PRD v2.0                   | `docs/prds/PRD-MOD05-CRM-DEFINICION-v2.0.md`                 | Aprobado por CTO        |
-| Spec expediente único      | `docs/superpowers/specs/SPEC-MOD05-EXPEDIENTE-UNICO-v1.0.md` | Aprobado por CTO        |
+| Spec expediente único      | `docs/specs/SPEC-MOD05-EXPEDIENTE-UNICO-v1.0.md` | Aprobado por CTO        |
 | HLD v2.0                   | `docs/hlds/HLD-MOD05-ARQUITECTURA-v2.0.md`                   | Aprobado por CTO        |
 | ADR-024                    | `docs/adrs/ADR-024-Migracion-CRM-Expediente-Unico.md`        | Aprobado                |
+| ADR-026                    | `docs/adrs/ADR-026-Pipeline-CRM-8-Estados.md`                | Aprobado                |
+| Spec correctivo 2026-05-05 | `docs/specs/2026-05-05-crm-pipeline-completeness-read-model-design.md` | Aprobado |
+| Spec simplificación vista general 2026-05-05 | `docs/specs/2026-05-05-crm-expediente-vista-general-simplificacion-design.md` | Aprobado |
 | Sprint plan 02             | `docs/sprints/PLAN-MOD05-CRM-SPRINT-02-v1.0.md`              | Aprobado                |
 | Prompt ejecución Fase 02   | `docs/prompts/PROMPT-MOD05-CRM-FASE-02-v1.0.md`              | Aprobado para ejecución |
-| Este informe (actualizado) | `docs/informes/INFORME-MOD05-DEFINICION-v1.0.md`             | Actualizado v1.2        |
+| Este informe (actualizado) | `docs/informes/INFORME-MOD05-DEFINICION-v1.0.md`             | Actualizado v4.2        |
 
 ### 10.4 Acciones post-aprobación CTO (completadas)
 
-1. ✅ HLD v2.0 emitido con modelo ExpedienteRecord, 12 estados, 4 dimensiones.
+1. ✅ HLD v2.0 emitido con modelo ExpedienteRecord; corregido luego a 8 estados, completitud general por 7 secciones y read models CRM.
 2. ✅ ADR-024 emitido (Migración CRM a Expediente Único Progresivo).
 3. ✅ Plan de sprint 02 generado con 15 tareas Fullstack, 8 QA, 3 EM en 3 fases.
 4. ✅ Prompt de ejecución Fase 02 generado para Sr. Dev Fullstack.
@@ -516,7 +562,61 @@ Validación ejecutada:
 - análisis estático sin errores en los archivos backend y frontend modificados;
 - prueba unitaria focalizada ejecutada: `pnpm --filter @iwana/api test -- expedientes.controller.spec.ts` ✅.
 - verificación de tipos ejecutada: `pnpm --filter @iwana/api typecheck` ✅.
+
+### 10.23 Ejecución correctiva de completitud, readiness y read models (2026-05-05)
+
+Se completó el correctivo fullstack para alinear documentación, backend y portal con el baseline aprobado por CTO para MOD05.
+
+Correcciones aplicadas:
+
+- se consolidó el pipeline canónico en 8 estados y se actualizó la documentación viva vinculada al módulo;
+- backend quedó con fuente de verdad para completitud general por 7 secciones, readiness de instalación y faltantes estructurados;
+- la transición `EN_COTIZACION -> LISTO_PARA_INSTALACION` ahora bloquea por debajo de 75%, permite desde 75% con aviso estructurado y exige 100% para `CLIENTE_ACTIVO`;
+- CRM dejó de leer actores y cotizaciones directamente desde servicios ajenos mediante `CrmActorReadPort` y `CrmQuoteReadPort`;
+- el portal de expediente dejó de recalcular la verdad comercial desde el cliente y ahora renderiza `sectionCompleteness`, `installationReadiness`, `missingRequirements` y `transitionWarning` emitidos por backend.
+
+Archivos impactados de la corrección:
+
+- `apps/api/src/modules/crm/expedientes/expediente-section-completeness.service.ts`
+- `apps/api/src/modules/crm/expedientes/completeness-calculator.service.ts`
+- `apps/api/src/modules/crm/expedientes/status-transition.service.ts`
+- `apps/api/src/modules/crm/expedientes/expedientes.controller.ts`
+- `apps/api/src/modules/crm/expedientes/expediente.service.ts`
+- `apps/api/src/modules/crm/expedientes/crm-actor-read.adapter.ts`
+- `apps/api/src/modules/crm/expedientes/crm-quote-read.adapter.ts`
+- `apps/api/src/modules/crm/ports/crm-actor-read.port.ts`
+- `apps/api/src/modules/crm/ports/crm-quote-read.port.ts`
+- `apps/portal/src/lib/api-client.ts`
+- `apps/portal/src/app/dashboard/crm/expedientes/[id]/page.tsx`
+- `apps/portal/src/components/crm/expedientes/sections/constants.ts`
+- `apps/portal/src/components/crm/expedientes/sections/ExpedienteSections.tsx`
+
+Validaciones ejecutadas:
+
+- `pnpm --filter @iwana/api test -- src/modules/crm/expedientes/tests/completeness-calculator.service.spec.ts` ✅
+- `pnpm --filter @iwana/api test -- src/modules/crm/expedientes/tests/status-transition.service.spec.ts` ✅
+- `pnpm --filter @iwana/api test -- src/modules/crm/expedientes/tests/expedientes.controller.spec.ts` ✅
+- `pnpm --filter @iwana/api test -- src/modules/crm/expedientes/tests/expediente.service.spec.ts` ✅
+- `pnpm --filter @iwana/api typecheck` ✅
+- `pnpm --filter @iwana/portal typecheck` ✅
+- `pnpm --filter @iwana/portal lint` ✅
+- `pnpm --filter @iwana/portal test` ✅
 - verificación de tipos ejecutada: `pnpm --filter @iwana/portal typecheck` ✅.
+
+### 10.24 Refinamiento visual de vista general del expediente (2026-05-05)
+
+Se aplicó un ajuste de densidad visual en la pestaña `vista general` del expediente para dejarla como resumen rápido y no como duplicado del detalle por secciones.
+
+Corrección aplicada:
+
+- `apps/portal/src/app/dashboard/crm/expedientes/[id]/page.tsx`
+  - se eliminó la grilla de tarjetas de completitud por sección ubicada debajo de `Resumen de la oportunidad`;
+  - se conservó el bloque superior con contador de secciones completas, barra de progreso y estados por sección dentro del `ProgressMeter`;
+  - se mantuvieron sin cambios el aviso de readiness / pendientes principales y el bloque de información del caso.
+
+Artefacto de diseño emitido:
+
+- `docs/specs/2026-05-05-crm-expediente-vista-general-simplificacion-design.md`
 
 Pendientes para cierre definitivo:
 
@@ -816,7 +916,7 @@ Decisiones aprobadas en brainstorming y formalizadas en spec:
 
 Artefacto emitido:
 
-- `docs/superpowers/specs/2026-03-27-mod05-identificacion-refinement-design.md`
+- `docs/specs/2026-03-27-mod05-identificacion-refinement-design.md`
 
 Revisión arquitectónica aplicada:
 
@@ -1064,7 +1164,7 @@ Resultado operativo:
 | Componente                                   | Ubicación                                        | Estado                      |
 | -------------------------------------------- | ------------------------------------------------ | --------------------------- |
 | **Enums CRM**                                | `packages/shared/src/enums/crm/`                 | ✅ Completado               |
-| `ExpedienteStatus` (12 estados)              | `expediente-status.enum.ts`                      | ✅                          |
+| `ExpedienteStatus` (8 estados)               | `expediente-status.enum.ts`                      | ✅                          |
 | `ConsentType`                                | `consent-type.enum.ts`                           | ✅                          |
 | `ConsentStatus`                              | `consent-status.enum.ts`                         | ✅                          |
 | `CoordinatesSource`, `CoordinatesConfidence` | `coordinates-*.enum.ts`                          | ✅                          |
@@ -1080,7 +1180,7 @@ Resultado operativo:
 | **Servicios**                                | `apps/api/src/modules/crm/expedientes/`          | ✅ Completado               |
 | `ExpedienteService`                          | CRUD por sección + cifrado                       | ✅                          |
 | `StatusTransitionService`                    | Validación de transiciones                       | ✅                          |
-| `CompletenessCalculator`                     | 4 dimensiones                                    | ✅                          |
+| `ExpedienteSectionCompletenessService`       | 7 secciones + readiness de instalacion           | ✅ Correctivo 2026-05-05    |
 | **Controladores**                            | `expedientes.controller.ts`                      | ✅ ~10 endpoints REST       |
 | **Módulo**                                   | `expedientes.module.ts`                          | ✅ Integrado a CrmModule    |
 
@@ -1463,3 +1563,40 @@ Resultado:
 - se preserva el contrato backend existente sin bloquear la experiencia del portal mientras la completitud 4D sigue evolucionando en servidor.
 
 Fecha: 2026-04-01_
+
+---
+
+## Evidencia funcional — post-conversión CRM (2026-05-11)
+
+### Alcance implementado
+
+Se implementó la segmentación operativa de expedientes CRM con vistas diferenciadas y trazabilidad inversa hacia el suscriptor convertido.
+
+### Archivos impactados
+
+**Backend (`apps/api`):**
+- `crm/expedientes/expediente-list-view.ts` — helper centralizado de semántica de vistas
+- `crm/expedientes/expediente.service.ts` — `effectiveView`, intersección view+status, enrichment `subscriberSummary`
+- `crm/expedientes/expedientes.controller.ts` — parámetro `view` en `GET /crm/expedientes`
+- `crm/subscribers/subscribers.service.ts` — `findSummaryByExpedienteId()` con guard try/catch
+
+**Portal (`apps/portal`):**
+- `components/crm/expedientes/expediente-list-view.ts` — helper frontend de vistas
+- `lib/api-client.ts` — `ExpedienteListView`, `ExpedienteSubscriberSummary`, `view?` en filtros
+- `app/dashboard/crm/expedientes/page.tsx` — tabs Abiertas/Convertidas/Archivo, conteos, búsqueda global
+- `components/crm/expedientes/ExpedienteConversionBanner.tsx` — banner de conversión con CTA
+- `app/dashboard/crm/expedientes/[id]/page.tsx` — banner montado en detalle
+- `components/crm/CrmOverviewClient.tsx` — semántica histórico vs operativo
+
+**E2E:**
+- `e2e/tests/portal-crm-expedientes.spec.ts` — flujo de navegación entre bandejas y banner
+
+### Pruebas
+
+- Backend: 93 pruebas en `expediente.service.spec`, `expedientes.controller.spec`, `subscribers.service.spec`
+- Portal: 7 pruebas en `page.spec.tsx`, 4 pruebas en `expediente-list-view.spec.ts`, 4 pruebas en `ExpedienteConversionBanner.spec.tsx`
+- E2E: flujo de navegación entre bandejas y banner de conversión
+
+### Estado
+
+✅ Implementación completa. Tasks 1–5 cerradas con spec compliance ✅ y code quality ✅.

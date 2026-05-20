@@ -1,10 +1,45 @@
 {
   "version": 1,
   "skills": {
-    "brainstorming": {
-      "source": "obra/superpowers",
-      "sourceType": "github",
-      "computedHash": "f483c304fcde060211ffae00f49bb728536e7e7613c99db45b5b924d9fc17243"
+    "dispatching-parallel-agents": {
+      "source": ".agents/skills/dispatching-parallel-agents",
+      "sourceType": "workspace"
+    },
+    "executing-plans": {
+      "source": ".agents/skills/executing-plans",
+      "sourceType": "workspace"
+    },
+    "finishing-a-development-branch": {
+      "source": ".agents/skills/finishing-a-development-branch",
+      "sourceType": "workspace"
+    },
+    "receiving-code-review": {
+      "source": ".agents/skills/receiving-code-review",
+      "sourceType": "workspace"
+    },
+    "requesting-code-review": {
+      "source": ".agents/skills/requesting-code-review",
+      "sourceType": "workspace"
+    },
+    "subagent-driven-development": {
+      "source": ".agents/skills/subagent-driven-development",
+      "sourceType": "workspace"
+    },
+    "systematic-debugging": {
+      "source": ".agents/skills/systematic-debugging",
+      "sourceType": "workspace"
+    },
+    "verification-before-completion": {
+      "source": ".agents/skills/verification-before-completion",
+      "sourceType": "workspace"
+    },
+    "writing-plans": {
+      "source": ".agents/skills/writing-plans",
+      "sourceType": "workspace"
+    },
+    "writing-skills": {
+      "source": ".agents/skills/writing-skills",
+      "sourceType": "workspace"
     }
   }
 }

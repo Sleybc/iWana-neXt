@@ -9,6 +9,7 @@ import {
   FileBadge2,
   FileText,
   Loader2,
+  Trash2,
   Upload,
 } from 'lucide-react';
 import {
@@ -21,7 +22,7 @@ import {
 interface DocumentSupportSectionProps {
   expedienteId: string;
   personType?: string | null;
-  onSaved?: () => void;
+  onSaved?: () => void | Promise<void>;
 }
 
 function isLegalEntityPersonType(value: string | null | undefined): boolean {
@@ -93,6 +94,71 @@ function getSummaryLabel(blockStatus: ExpedienteDocumentSupportResponse['summary
   return 'Pendiente';
 }
 
+function buildLocalDocumentSummary(
+  items: ExpedienteDocumentItem[],
+): ExpedienteDocumentSupportResponse['summary'] {
+  const requiredCount = items.length;
+  const uploadedCount = items.filter((item) => item.versions.length > 0).length;
+  const approvedCount = items.filter((item) => item.versions[0]?.status === 'APPROVED').length;
+  const hasObservedVersion = items.some((item) => {
+    const currentVersion = item.versions[0];
+    return currentVersion?.status === 'OBSERVED' || currentVersion?.status === 'REJECTED';
+  });
+
+  if (requiredCount > 0 && approvedCount === requiredCount) {
+    return { requiredCount, uploadedCount, approvedCount, blockStatus: 'COMPLETO' };
+  }
+
+  if (hasObservedVersion) {
+    return { requiredCount, uploadedCount, approvedCount, blockStatus: 'OBSERVADO' };
+  }
+
+  if (uploadedCount > 0) {
+    return { requiredCount, uploadedCount, approvedCount, blockStatus: 'EN_REVISION' };
+  }
+
+  return { requiredCount, uploadedCount, approvedCount, blockStatus: 'PENDIENTE' };
+}
+
+function buildPayloadAfterDelete(
+  currentPayload: ExpedienteDocumentSupportResponse | null,
+  documentKey: string,
+  versionId: string,
+): ExpedienteDocumentSupportResponse | null {
+  if (!currentPayload) {
+    return null;
+  }
+
+  const items = currentPayload.items.map((item) =>
+    item.key === documentKey
+      ? {
+          ...item,
+          versions: item.versions.filter((version) => version.id !== versionId),
+        }
+      : item,
+  );
+
+  return {
+    ...currentPayload,
+    items,
+    summary: buildLocalDocumentSummary(items),
+  };
+}
+
+function getDocumentKeyFromSavingKey(savingKey: string | null): string | null {
+  if (!savingKey) {
+    return null;
+  }
+
+  if (savingKey.startsWith('delete:')) {
+    const [, documentKey] = savingKey.split(':');
+    return documentKey ?? null;
+  }
+
+  const [documentKey] = savingKey.split(':');
+  return documentKey ?? null;
+}
+
 export function DocumentSupportSection({
   expedienteId,
   personType,
@@ -105,18 +171,28 @@ export function DocumentSupportSection({
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const loadDocumentSupports = async () => {
+  const loadDocumentSupports = async ({
+    showLoader = true,
+  }: {
+    showLoader?: boolean;
+  } = {}) => {
     try {
-      setLoading(true);
+      if (showLoader) {
+        setLoading(true);
+      }
       const response = await crmApi.getDocumentSupports(expedienteId, undefined, personType);
       setPayload(response.data);
       setError(null);
+      return response.data;
     } catch (loadError) {
       setError(
         loadError instanceof Error ? loadError.message : 'No fue posible cargar los soportes.',
       );
+      return null;
     } finally {
-      setLoading(false);
+      if (showLoader) {
+        setLoading(false);
+      }
     }
   };
 
@@ -147,7 +223,13 @@ export function DocumentSupportSection({
   const handleUpload = async (documentKey: string, file: File) => {
     try {
       setSavingKey(documentKey);
-      const response = await crmApi.uploadDocumentSupport(expedienteId, documentKey, file);
+      const response = await crmApi.uploadDocumentSupport(
+        expedienteId,
+        documentKey,
+        file,
+        undefined,
+        personType,
+      );
       setPayload(response.data);
       setError(null);
       await onSaved?.();
@@ -174,6 +256,8 @@ export function DocumentSupportSection({
         {
           status,
         },
+        undefined,
+        personType,
       );
       setPayload(response.data);
       setError(null);
@@ -183,6 +267,49 @@ export function DocumentSupportSection({
         statusError instanceof Error
           ? statusError.message
           : 'No fue posible actualizar el estado del soporte.',
+      );
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const handleDeleteVersion = async (
+    documentKey: string,
+    documentLabel: string,
+    versionId: string,
+    fileName: string,
+  ) => {
+    if (
+      !window.confirm(
+        `¿Eliminar la versión "${fileName}" de ${documentLabel}? Si existe una versión previa, quedará activa de nuevo.`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setSavingKey(`delete:${documentKey}:${versionId}`);
+      const response = await crmApi.deleteDocumentSupport(
+        expedienteId,
+        documentKey,
+        versionId,
+        undefined,
+        personType,
+      );
+      const nextPayload = response.data ?? buildPayloadAfterDelete(payload, documentKey, versionId);
+
+      if (nextPayload) {
+        // La respuesta del borrado pasa a ser la fuente de verdad inmediata para evitar reintroducir estado obsoleto.
+        setPayload(nextPayload);
+      }
+
+      setError(null);
+      await onSaved?.();
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : 'No fue posible eliminar la versión del soporte.',
       );
     } finally {
       setSavingKey(null);
@@ -239,6 +366,7 @@ export function DocumentSupportSection({
           const currentVersion = versions[0];
           const currentStatus = currentVersion?.status ?? 'PENDING';
           const isHistoryOpen = expandedHistoryIds.has(document.key);
+          const isDocumentBusy = getDocumentKeyFromSavingKey(savingKey) === document.key;
 
           return (
             <div
@@ -316,6 +444,7 @@ export function DocumentSupportSection({
                     variant="primary"
                     size="sm"
                     loading={savingKey === document.key}
+                    disabled={isDocumentBusy}
                     onClick={() => inputRefs.current[document.key]?.click()}
                   >
                     <Upload className="h-4 w-4" aria-hidden="true" />
@@ -331,13 +460,39 @@ export function DocumentSupportSection({
                     </Button>
                   ) : null}
 
+                  <Button
+                    type="button"
+                    variant="softDestructive"
+                    size="sm"
+                    loading={
+                      currentVersion
+                        ? savingKey === `delete:${document.key}:${currentVersion.id}`
+                        : false
+                    }
+                    disabled={!currentVersion || isDocumentBusy}
+                    aria-label={`Eliminar versión actual de ${document.label}`}
+                    title={`Eliminar versión actual de ${document.label}`}
+                    onClick={() =>
+                      currentVersion &&
+                      void handleDeleteVersion(
+                        document.key,
+                        document.label,
+                        currentVersion.id,
+                        currentVersion.fileName,
+                      )
+                    }
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    Eliminar archivo
+                  </Button>
+
                   <div className="grid grid-cols-3 gap-2 pt-1">
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
                       loading={savingKey === `${document.key}:OBSERVED`}
-                      disabled={!currentVersion}
+                      disabled={!currentVersion || isDocumentBusy}
                       onClick={() =>
                         currentVersion &&
                         void handleStatusChange(document.key, currentVersion.id, 'OBSERVED')
@@ -350,7 +505,7 @@ export function DocumentSupportSection({
                       variant="ghost"
                       size="sm"
                       loading={savingKey === `${document.key}:APPROVED`}
-                      disabled={!currentVersion}
+                      disabled={!currentVersion || isDocumentBusy}
                       onClick={() =>
                         currentVersion &&
                         void handleStatusChange(document.key, currentVersion.id, 'APPROVED')
@@ -363,7 +518,7 @@ export function DocumentSupportSection({
                       variant="destructive"
                       size="sm"
                       loading={savingKey === `${document.key}:REJECTED`}
-                      disabled={!currentVersion}
+                      disabled={!currentVersion || isDocumentBusy}
                       onClick={() =>
                         currentVersion &&
                         void handleStatusChange(document.key, currentVersion.id, 'REJECTED')
@@ -419,6 +574,25 @@ export function DocumentSupportSection({
                               Nota: {version.note}
                             </span>
                           ) : null}
+                          <Button
+                            type="button"
+                            variant="softDestructive"
+                            size="sm"
+                            loading={savingKey === `delete:${document.key}:${version.id}`}
+                            disabled={isDocumentBusy}
+                            aria-label={`Eliminar versión ${versions.length - index} de ${document.label}`}
+                            title={`Eliminar versión ${versions.length - index} de ${document.label}`}
+                            onClick={() =>
+                              void handleDeleteVersion(
+                                document.key,
+                                document.label,
+                                version.id,
+                                version.fileName,
+                              )
+                            }
+                          >
+                            Eliminar
+                          </Button>
                         </div>
                       </div>
                     ))

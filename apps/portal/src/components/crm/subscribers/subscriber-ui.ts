@@ -7,6 +7,76 @@ import {
   VatTreatment,
 } from '@iwana/shared';
 import type { SubscriberRecord } from '@/lib/api-client';
+import { DEPARTAMENTOS } from '@/components/crm/expedientes/expediente-ui';
+
+const LOCATION_CONNECTORS = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e', 'o', 'u']);
+
+const CATALOG_LOCATION_LABELS = (() => {
+  const labels = new Map<string, string>();
+
+  for (const departamento of DEPARTAMENTOS) {
+    labels.set(departamento.value, departamento.label);
+    labels.set(departamento.label.toLowerCase(), departamento.label);
+
+    for (const municipio of departamento.municipios) {
+      labels.set(municipio.value, municipio.label);
+      labels.set(municipio.label.toLowerCase(), municipio.label);
+    }
+  }
+
+  return labels;
+})();
+
+function toSentenceCaseLocation(value: string): string {
+  const normalized = value.trim().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').toLowerCase();
+
+  if (!normalized) {
+    return '';
+  }
+
+  return normalized
+    .split(' ')
+    .map((token, index) => {
+      if (index > 0 && LOCATION_CONNECTORS.has(token)) {
+        return token;
+      }
+
+      return token.charAt(0).toUpperCase() + token.slice(1);
+    })
+    .join(' ');
+}
+
+export function formatLocationLabel(value: string | null | undefined): string {
+  const normalized = value?.trim() ?? '';
+  if (!normalized) {
+    return '';
+  }
+
+  const catalogLabel = CATALOG_LOCATION_LABELS.get(normalized);
+  if (catalogLabel) {
+    return catalogLabel;
+  }
+
+  const catalogLabelByLowercase = CATALOG_LOCATION_LABELS.get(normalized.toLowerCase());
+  if (catalogLabelByLowercase) {
+    return catalogLabelByLowercase;
+  }
+
+  return toSentenceCaseLocation(normalized);
+}
+
+export function formatSubscriberLocation(
+  city: string | null | undefined,
+  department: string | null | undefined,
+): string {
+  const cityLabel = formatLocationLabel(city);
+  if (cityLabel) {
+    return cityLabel;
+  }
+
+  const departmentLabel = formatLocationLabel(department);
+  return departmentLabel || 'Sin ubicación';
+}
 
 export type SubscriberBadgeVariant =
   | 'success'

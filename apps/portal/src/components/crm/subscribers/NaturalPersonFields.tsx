@@ -1,16 +1,35 @@
 'use client';
 
-import { Input, Select } from '@iwana/ui';
-import type { FieldErrors, UseFormRegister } from 'react-hook-form';
+import { DatePicker, Input, Select } from '@iwana/ui';
+import { Controller, type Control, type FieldErrors, type UseFormRegister } from 'react-hook-form';
 import type { SubscriberFormValues } from './SubscriberForm';
 import { DOCUMENT_TYPE_OPTIONS, STRATUM_OPTIONS } from './subscriber-ui';
 
 interface NaturalPersonFieldsProps {
+  control: Control<SubscriberFormValues>;
   register: UseFormRegister<SubscriberFormValues>;
   errors: FieldErrors<SubscriberFormValues>;
 }
 
-export function NaturalPersonFields({ register, errors }: NaturalPersonFieldsProps) {
+function toDateFromLocalDateValue(value: string): Date | undefined {
+  if (!value) return undefined;
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return undefined;
+  return new Date(year, month - 1, day);
+}
+
+function toLocalDateValue(date: Date | undefined): string {
+  if (!date) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function NaturalPersonFields({ control, register, errors }: NaturalPersonFieldsProps) {
+  const birthDateError =
+    typeof errors.birthDate?.message === 'string' ? errors.birthDate.message : undefined;
+
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <div>
@@ -54,15 +73,23 @@ export function NaturalPersonFields({ register, errors }: NaturalPersonFieldsPro
         {errors.stratum && <p className="mt-1 text-xs text-rose-600">{errors.stratum.message}</p>}
       </div>
       <div>
-        <Input
-          label="Fecha de nacimiento"
-          type="date"
-          className="h-11"
-          {...register('birthDate')}
+        <Controller
+          name="birthDate"
+          control={control}
+          render={({ field }) => (
+            <DatePicker
+              id="subscriber-birth-date"
+              name={field.name}
+              label="Fecha de nacimiento"
+              value={toDateFromLocalDateValue(field.value)}
+              onChange={(date) => field.onChange(toLocalDateValue(date))}
+              onBlur={field.onBlur}
+              error={birthDateError}
+              placeholder="Selecciona la fecha"
+              buttonClassName="h-11"
+            />
+          )}
         />
-        {errors.birthDate && (
-          <p className="mt-1 text-xs text-rose-600">{errors.birthDate.message}</p>
-        )}
       </div>
     </div>
   );

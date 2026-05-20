@@ -18,13 +18,16 @@ export * from './enums/tax-regime.enum';
 export * from './enums/subscriber-status.enum';
 export * from './enums/crm';
 export * from './enums/commercial';
+export * from './enums/assurance';
 export * from './commercial';
 export * from './enums/taxation';
 export * from './enums/parties';
+export * from './enums/wfm';
 export * from './taxation';
 
 // Interfaces
 export * from './interfaces/api-response.interface';
+export * from './interfaces/assurance-field-service-request.interface';
 
 // DTOs
 export * from './dto/pagination.dto';

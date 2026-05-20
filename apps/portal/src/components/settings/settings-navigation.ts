@@ -1,5 +1,3 @@
-'use client';
-
 export type SettingsTabId = 'general' | 'operations' | 'security' | 'branding';
 
 export interface SettingsNavigationItem {

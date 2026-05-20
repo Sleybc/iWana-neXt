@@ -2,7 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { AcquisitionChannel } from '@iwana/shared';
 import { CompletenessCalculator } from '../completeness-calculator.service';
+import { ExpedienteSectionCompletenessService } from '../expediente-section-completeness.service';
 import { ExpedienteRecord } from '../entities/expediente-record.entity';
+import { CrmQuoteReadPort } from '../../ports/crm-quote-read.port';
 
 const mockRunInTenantSchema = jest.fn();
 const mockTenantContextGetOrThrow = jest.fn();
@@ -21,6 +23,9 @@ jest.mock('@iwana/db', () => {
 
 describe('CompletenessCalculator', () => {
   let service: CompletenessCalculator;
+  const crmQuoteReadPortMock = {
+    findByExpedienteId: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -29,8 +34,15 @@ describe('CompletenessCalculator', () => {
       schemaName: 'tenant_test',
     });
 
+    crmQuoteReadPortMock.findByExpedienteId.mockResolvedValue([]);
+
     const module: TestingModule = await Test.createTestingModule({
-      providers: [CompletenessCalculator, { provide: DataSource, useValue: {} }],
+      providers: [
+        CompletenessCalculator,
+        ExpedienteSectionCompletenessService,
+        { provide: CrmQuoteReadPort, useValue: crmQuoteReadPortMock },
+        { provide: DataSource, useValue: {} },
+      ],
     }).compile();
 
     service = module.get<CompletenessCalculator>(CompletenessCalculator);
@@ -64,13 +76,19 @@ describe('CompletenessCalculator', () => {
 
     // Con sub-tablas vacías el cálculo refleja solo los campos del expediente en memoria.
     // El expediente de prueba solo tiene fullName, lo que aporta ~20% en comercial.
-    await expect(service.calculate('exp-1')).resolves.toEqual({
-      commercial: 20,
-      legal: 0,
-      technical: 0,
-      operational: 0,
-      overall: 5,
-    });
+    await expect(service.calculate('exp-1')).resolves.toEqual(
+      expect.objectContaining({
+        commercial: 20,
+        legal: 0,
+        technical: 0,
+        operational: 0,
+        overall: 11,
+        installationReadiness: expect.objectContaining({
+          status: 'NOT_READY',
+          canTransition: false,
+        }),
+      }),
+    );
   });
 
   it('re-lanza errores no atribuibles a compatibilidad de esquema', async () => {
@@ -98,6 +116,8 @@ describe('CompletenessCalculator', () => {
       candidateTechnologies: ['RADIO'],
       technicalConfidence: 'MEDIUM',
       evaluationSource: 'TECHNICAL_SITE_VISIT',
+      latitude: 4.58,
+      longitude: -74.44,
       availableTechnology: null,
       estimatedEquipment: null,
     });
@@ -118,13 +138,107 @@ describe('CompletenessCalculator', () => {
         }),
       );
 
-    await expect(service.calculate('exp-1')).resolves.toEqual({
-      commercial: 20,
-      legal: 0,
-      technical: 100,
-      operational: 0,
-      overall: 30,
+    await expect(service.calculate('exp-1')).resolves.toEqual(
+      expect.objectContaining({
+        commercial: 20,
+        legal: 0,
+        technical: 100,
+        operational: 0,
+        overall: 25,
+        sectionCompleteness: expect.arrayContaining([
+          expect.objectContaining({
+            key: 'technicalFeasibility',
+            percentage: 100,
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it('no marca Viabilidad técnica al 100% si faltan coordenadas', async () => {
+    const expediente = buildExpediente({
+      feasibility: 'VALIDATION_REQUIRED',
+      candidateTechnologies: ['RADIO'],
+      technicalConfidence: 'MEDIUM',
+      evaluationSource: 'TECHNICAL_SITE_VISIT',
+      latitude: null,
+      longitude: null,
     });
+
+    mockRunInTenantSchema
+      .mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: async () => expediente,
+          },
+        }),
+      )
+      .mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            find: async () => [],
+          },
+        }),
+      );
+
+    await expect(service.calculate('exp-1')).resolves.toEqual(
+      expect.objectContaining({
+        sectionCompleteness: expect.arrayContaining([
+          expect.objectContaining({
+            key: 'technicalFeasibility',
+            percentage: 80,
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it('marca Dirección al 100% cuando el formulario de ubicación está completo sin coordenadas', async () => {
+    const expediente = buildExpediente({
+      address: 'Calle 1 # 2-3',
+      municipality: 'EL_COLEGIO',
+      department: 'CUNDINAMARCA',
+      postalCode: '252601',
+      stratum: 2,
+      neighborhood: 'Centro',
+      latitude: null,
+      longitude: null,
+      feasibility: null,
+      candidateTechnologies: null,
+      technicalConfidence: null,
+      evaluationSource: null,
+    });
+
+    mockRunInTenantSchema
+      .mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: async () => expediente,
+          },
+        }),
+      )
+      .mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            find: async () => [],
+          },
+        }),
+      );
+
+    await expect(service.calculate('exp-1')).resolves.toEqual(
+      expect.objectContaining({
+        sectionCompleteness: expect.arrayContaining([
+          expect.objectContaining({
+            key: 'address',
+            percentage: 100,
+          }),
+          expect.objectContaining({
+            key: 'technicalFeasibility',
+            percentage: 0,
+          }),
+        ]),
+      }),
+    );
   });
 });
 

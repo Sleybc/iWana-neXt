@@ -21,29 +21,29 @@
 
 ### Lo que se hereda de MOD01 (no se reimplementa)
 
-| Componente | Estado en MOD01 | Uso en MOD02 |
-|---|---|---|
-| AuthModule completo (AuthService, AuthController, guards) | ✅ Implementado | Heredado — se extiende, no se reemplaza |
-| JWT RS256 (signAccessToken, verifyToken, refresh rotation) | ✅ Implementado | Heredado con extensión de scope |
-| TenantMiddleware + TenantContext AsyncLocalStorage | ✅ Implementado | Heredado sin cambios |
-| JwtAuthGuard, RolesGuard, AbacGuard | ✅ Implementados | JwtAuthGuard extendido para scope check |
-| Entidades TypeORM: User, RefreshToken, AuditLog | ✅ Implementadas | Heredadas sin cambios de schema |
-| AuditModule + AuditInterceptor | ✅ Implementado | Heredado — se agregan nuevos AuditAction values |
-| Redis JTI blacklist + MFA pending setup | ✅ Implementado | Heredado sin cambios |
-| 13 endpoints /auth/** funcionales | ✅ Implementados | Heredados con hardening puntual |
-| Flujo passwordResetRequired | ✅ Implementado | Heredado sin cambios |
-| MFA verify en login | ✅ Implementado | Heredado sin cambios |
+| Componente                                                 | Estado en MOD01  | Uso en MOD02                                    |
+| ---------------------------------------------------------- | ---------------- | ----------------------------------------------- |
+| AuthModule completo (AuthService, AuthController, guards)  | ✅ Implementado  | Heredado — se extiende, no se reemplaza         |
+| JWT RS256 (signAccessToken, verifyToken, refresh rotation) | ✅ Implementado  | Heredado con extensión de scope                 |
+| TenantMiddleware + TenantContext AsyncLocalStorage         | ✅ Implementado  | Heredado sin cambios                            |
+| JwtAuthGuard, RolesGuard, AbacGuard                        | ✅ Implementados | JwtAuthGuard extendido para scope check         |
+| Entidades TypeORM: User, RefreshToken, AuditLog            | ✅ Implementadas | Heredadas sin cambios de schema                 |
+| AuditModule + AuditInterceptor                             | ✅ Implementado  | Heredado — se agregan nuevos AuditAction values |
+| Redis JTI blacklist + MFA pending setup                    | ✅ Implementado  | Heredado sin cambios                            |
+| 13 endpoints /auth/\*\* funcionales                        | ✅ Implementados | Heredados con hardening puntual                 |
+| Flujo passwordResetRequired                                | ✅ Implementado  | Heredado sin cambios                            |
+| MFA verify en login                                        | ✅ Implementado  | Heredado sin cambios                            |
 
 ### Lo nuevo en MOD02 (brechas funcionales a implementar)
 
-| Brecha | Impacto | Tarea |
-|---|---|---|
-| Login emite tokens completos a ADMIN/NOC/ACCOUNTANT sin MFA configurado | Viola RF-AUTH-04, RF-MFA-04 | Fase 2.1 — token scope `mfa-setup` |
-| `refreshTokens()` no emite audit event | Viola RF-AUD-02 | Fase 2.2a — `AuditAction.REFRESH` |
-| `resetPassword()` no emite audit event al completar | Viola RF-AUD-02 | Fase 2.2b — `AuditAction.PASSWORD_RESET_COMPLETED` |
-| `registerFailedAttempt()` no emite ACCOUNT_LOCKED al bloquear | Viola RF-AUD-02 | Fase 2.2c — `AuditAction.ACCOUNT_LOCKED` |
-| `verifyEmail()` usa `AuditAction.UPDATE` genérico | Viola RF-AUD-02 (semántica) | Fase 2.2d — `AuditAction.EMAIL_VERIFIED` |
-| Portal no tiene página MFA setup | Bloquea flujo de primer acceso ADMIN | Fase 3.1 — `/auth/mfa/setup/page.tsx` |
+| Brecha                                                                  | Impacto                              | Tarea                                              |
+| ----------------------------------------------------------------------- | ------------------------------------ | -------------------------------------------------- |
+| Login emite tokens completos a ADMIN/NOC/ACCOUNTANT sin MFA configurado | Viola RF-AUTH-04, RF-MFA-04          | Fase 2.1 — token scope `mfa-setup`                 |
+| `refreshTokens()` no emite audit event                                  | Viola RF-AUD-02                      | Fase 2.2a — `AuditAction.REFRESH`                  |
+| `resetPassword()` no emite audit event al completar                     | Viola RF-AUD-02                      | Fase 2.2b — `AuditAction.PASSWORD_RESET_COMPLETED` |
+| `registerFailedAttempt()` no emite ACCOUNT_LOCKED al bloquear           | Viola RF-AUD-02                      | Fase 2.2c — `AuditAction.ACCOUNT_LOCKED`           |
+| `verifyEmail()` usa `AuditAction.UPDATE` genérico                       | Viola RF-AUD-02 (semántica)          | Fase 2.2d — `AuditAction.EMAIL_VERIFIED`           |
+| Portal no tiene página MFA setup                                        | Bloquea flujo de primer acceso ADMIN | Fase 3.1 — `/auth/mfa/setup/page.tsx`              |
 
 ### Decisión de diseño: token de alcance limitado `scope: 'mfa-setup'`
 
@@ -122,38 +122,38 @@ El módulo debe ofrecer una superficie de autenticación reutilizable, auditable
 
 ### 3.1 Personas primarias
 
-| Persona | Rol principal | Necesidad clave |
-| --- | --- | --- |
-| ADMIN del tenant | ADMIN | Acceder por primera vez, cambiar password temporal, activar MFA y administrar su sesión |
-| Operador crítico | NOC / ACCOUNTANT | Autenticarse con MFA obligatorio y operar con acceso controlado |
-| Usuario operativo | SUPPORT / SALES / TECHNICIAN / HR | Iniciar sesión y trabajar dentro de sus permisos |
-| Suscriptor o tercero autenticado | SUBSCRIBER / CONTRACTOR / PARTNER / AUDITOR / INVESTOR | Acceder al portal correcto con aislamiento por tenant |
-| Auditor del tenant | AUDITOR | Consultar trazas de eventos de identidad y acceso |
-| Frontend de plataforma | apps/web / apps/portal | Consumir contratos consistentes de auth y responder a estados de sesión |
+| Persona                          | Rol principal                                          | Necesidad clave                                                                         |
+| -------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| ADMIN del tenant                 | ADMIN                                                  | Acceder por primera vez, cambiar password temporal, activar MFA y administrar su sesión |
+| Operador crítico                 | NOC / ACCOUNTANT                                       | Autenticarse con MFA obligatorio y operar con acceso controlado                         |
+| Usuario operativo                | SUPPORT / SALES / TECHNICIAN / HR                      | Iniciar sesión y trabajar dentro de sus permisos                                        |
+| Suscriptor o tercero autenticado | SUBSCRIBER / CONTRACTOR / PARTNER / AUDITOR / INVESTOR | Acceder al portal correcto con aislamiento por tenant                                   |
+| Auditor del tenant               | AUDITOR                                                | Consultar trazas de eventos de identidad y acceso                                       |
+| Frontend de plataforma           | apps/web / apps/portal                                 | Consumir contratos consistentes de auth y responder a estados de sesión                 |
 
 ### 3.2 Casos de uso prioritarios
 
-**UC-01: Login regular del tenant**
+#### UC-01: Login regular del tenant
 
 - Actor: usuario del tenant.
 - Flujo: envía email + password + X-Tenant-Slug → sistema valida credenciales → si MFA aplica, exige TOTP → emite access token y refresh token.
 
-**UC-02: Primer acceso del ADMIN del tenant**
+#### UC-02: Primer acceso del ADMIN del tenant
 
 - Actor: ADMIN sembrado durante provisioning.
 - Flujo: inicia con credencial temporal → sistema detecta passwordResetRequired → obliga cambio de password → obliga setup MFA → habilita acceso al dashboard.
 
-**UC-03: Rotación de sesión**
+#### UC-03: Rotación de sesión
 
 - Actor: cualquier usuario autenticado.
 - Flujo: cliente invoca refresh con cookie httpOnly → sistema rota refresh token → emite nuevo access token → si detecta reuse attack, revoca la familia completa.
 
-**UC-04: Recuperación de contraseña**
+#### UC-04: Recuperación de contraseña
 
 - Actor: usuario que olvidó su password.
 - Flujo: solicita recuperación → sistema responde genéricamente → si el usuario existe, genera token temporal → usuario redefine password → se revocan sesiones anteriores.
 
-**UC-05: Consulta de eventos de identidad**
+#### UC-05: Consulta de eventos de identidad
 
 - Actor: auditor o ADMIN con permisos.
 - Flujo: consulta audit logs de identidad por filtros de usuario, acción y rango de fechas → sistema retorna eventos paginados.
@@ -164,46 +164,46 @@ El módulo debe ofrecer una superficie de autenticación reutilizable, auditable
 
 ### 4.1 RF-AUTH
 
-| ID | Requerimiento | Prioridad | Referencia |
-| --- | --- | --- | --- |
-| RF-AUTH-01 | Login con email + password y mensaje de error genérico. | MVP | OWASP ASVS L2 |
-| RF-AUTH-02 | Los endpoints públicos de auth tenant-aware deben resolver el tenant por X-Tenant-Slug cuando no exista JWT de tenant. | MVP | HLD MOD01 §2 |
-| RF-AUTH-03 | Bloqueo temporal de cuenta tras 5 intentos fallidos por 15 minutos. | MVP | PRD sistema RF-SEC |
-| RF-AUTH-04 | Los roles ADMIN, NOC y ACCOUNTANT del tenant deben operar con MFA obligatorio. | MVP | PRD sistema §5.7 |
-| RF-AUTH-05 | El módulo debe emitir access tokens RS256 de 15 minutos con tenantId, schemaName, role y jti. | MVP | ADR-019 |
-| RF-AUTH-06 | El módulo debe operar refresh token rotation con duración de 7 días y cookie httpOnly. | MVP | ADR-019 |
-| RF-AUTH-07 | Debe detectarse reuse attack sobre refresh tokens y revocar toda la familia. | MVP | ADR-019 |
-| RF-AUTH-08 | Logout debe invalidar el jti en Redis y revocar el refresh token activo. | MVP | ADR-019 |
-| RF-AUTH-09 | Forgot-password debe responder siempre HTTP 200 sin revelar si la cuenta existe. | MVP | OWASP |
-| RF-AUTH-10 | Change-password y reset-password deben revocar todas las sesiones persistentes del usuario. | MVP | Seguridad repo |
-| RF-AUTH-11 | Email verification y resend verification forman parte del ciclo de vida del usuario del tenant. | MVP | PRD heredado |
+| ID         | Requerimiento                                                                                                          | Prioridad | Referencia         |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------- | --------- | ------------------ |
+| RF-AUTH-01 | Login con email + password y mensaje de error genérico.                                                                | MVP       | OWASP ASVS L2      |
+| RF-AUTH-02 | Los endpoints públicos de auth tenant-aware deben resolver el tenant por X-Tenant-Slug cuando no exista JWT de tenant. | MVP       | HLD MOD01 §2       |
+| RF-AUTH-03 | Bloqueo temporal de cuenta tras 5 intentos fallidos por 15 minutos.                                                    | MVP       | PRD sistema RF-SEC |
+| RF-AUTH-04 | Los roles ADMIN, NOC y ACCOUNTANT del tenant deben operar con MFA obligatorio.                                         | MVP       | PRD sistema §5.7   |
+| RF-AUTH-05 | El módulo debe emitir access tokens RS256 de 15 minutos con tenantId, schemaName, role y jti.                          | MVP       | ADR-019            |
+| RF-AUTH-06 | El módulo debe operar refresh token rotation con duración de 7 días y cookie httpOnly.                                 | MVP       | ADR-019            |
+| RF-AUTH-07 | Debe detectarse reuse attack sobre refresh tokens y revocar toda la familia.                                           | MVP       | ADR-019            |
+| RF-AUTH-08 | Logout debe invalidar el jti en Redis y revocar el refresh token activo.                                               | MVP       | ADR-019            |
+| RF-AUTH-09 | Forgot-password debe responder siempre HTTP 200 sin revelar si la cuenta existe.                                       | MVP       | OWASP              |
+| RF-AUTH-10 | Change-password y reset-password deben revocar todas las sesiones persistentes del usuario.                            | MVP       | Seguridad repo     |
+| RF-AUTH-11 | Email verification y resend verification forman parte del ciclo de vida del usuario del tenant.                        | MVP       | PRD heredado       |
 
 ### 4.2 RF-MFA
 
-| ID | Requerimiento | Prioridad | Referencia |
-| --- | --- | --- | --- |
-| RF-MFA-01 | Setup MFA debe generar secret TOTP y QR para activación posterior. | MVP | Código actual |
-| RF-MFA-02 | Verify MFA debe persistir el secret solo después de validar el primer código TOTP. | MVP | AuthService |
-| RF-MFA-03 | Disable MFA debe requerir password actual más código TOTP vigente. | MVP | AuthService |
-| RF-MFA-04 | El ADMIN de primer acceso no puede completar onboarding sin MFA activo. | MVP | ADR-020 |
+| ID        | Requerimiento                                                                      | Prioridad | Referencia    |
+| --------- | ---------------------------------------------------------------------------------- | --------- | ------------- |
+| RF-MFA-01 | Setup MFA debe generar secret TOTP y QR para activación posterior.                 | MVP       | Código actual |
+| RF-MFA-02 | Verify MFA debe persistir el secret solo después de validar el primer código TOTP. | MVP       | AuthService   |
+| RF-MFA-03 | Disable MFA debe requerir password actual más código TOTP vigente.                 | MVP       | AuthService   |
+| RF-MFA-04 | El ADMIN de primer acceso no puede completar onboarding sin MFA activo.            | MVP       | ADR-020       |
 
 ### 4.3 RF-RBAC y RF-ABAC
 
-| ID | Requerimiento | Prioridad | Referencia |
-| --- | --- | --- | --- |
-| RF-ACC-01 | El módulo debe exponer guardas reutilizables para autorización por rol. | MVP | HLD MOD01 |
-| RF-ACC-02 | El módulo debe impedir acceso a recursos de otro tenant mediante ABAC y TenantMiddleware. | MVP | ADR-018 |
-| RF-ACC-03 | El usuario solo puede operar sobre su propio tenant y recursos autorizados por contexto. | MVP | PRD sistema |
-| RF-ACC-04 | El módulo debe diferenciar claramente auth de tenant y auth de plataforma. | MVP | Boundary MOD02 |
+| ID        | Requerimiento                                                                             | Prioridad | Referencia     |
+| --------- | ----------------------------------------------------------------------------------------- | --------- | -------------- |
+| RF-ACC-01 | El módulo debe exponer guardas reutilizables para autorización por rol.                   | MVP       | HLD MOD01      |
+| RF-ACC-02 | El módulo debe impedir acceso a recursos de otro tenant mediante ABAC y TenantMiddleware. | MVP       | ADR-018        |
+| RF-ACC-03 | El usuario solo puede operar sobre su propio tenant y recursos autorizados por contexto.  | MVP       | PRD sistema    |
+| RF-ACC-04 | El módulo debe diferenciar claramente auth de tenant y auth de plataforma.                | MVP       | Boundary MOD02 |
 
 ### 4.4 RF-AUDIT
 
-| ID | Requerimiento | Prioridad | Referencia |
-| --- | --- | --- | --- |
-| RF-AUD-01 | Todo evento sensible de identidad debe dejar traza auditable. | MVP | Ley 1581 / PRD sistema |
-| RF-AUD-02 | Deben auditarse login exitoso, login fallido, refresh, logout, MFA enable/disable, password change, password reset y email verification. | MVP | AuditAction |
-| RF-AUD-03 | Los eventos de identidad deben consultarse con filtros y paginación cursor-based. | MVP | HLD MOD01 |
-| RF-AUD-04 | La auditoría del tenant debe ser append-only y no participar en borrados ARCO. | MVP | Ley 1581 |
+| ID        | Requerimiento                                                                                                                            | Prioridad | Referencia             |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------- | ---------------------- |
+| RF-AUD-01 | Todo evento sensible de identidad debe dejar traza auditable.                                                                            | MVP       | Ley 1581 / PRD sistema |
+| RF-AUD-02 | Deben auditarse login exitoso, login fallido, refresh, logout, MFA enable/disable, password change, password reset y email verification. | MVP       | AuditAction            |
+| RF-AUD-03 | Los eventos de identidad deben consultarse con filtros y paginación cursor-based.                                                        | MVP       | HLD MOD01              |
+| RF-AUD-04 | La auditoría del tenant debe ser append-only y no participar en borrados ARCO.                                                           | MVP       | Ley 1581               |
 
 ### 4.5 Arquitectura funcional del módulo
 
@@ -240,18 +240,18 @@ flowchart LR
 
 ## 5. Requerimientos no funcionales
 
-| Categoría | Requerimiento | Meta |
-| --- | --- | --- |
-| Seguridad | Cumplir OWASP ASVS L2 para autenticación y sesión. | Obligatorio |
-| Seguridad | No registrar PII, secretos, tokens ni refresh tokens en logs. | Obligatorio |
-| Seguridad | Cifrar email, nombres sensibles, documento y secret MFA con AES-256-GCM. | Obligatorio |
-| Seguridad | Hash de password con bcrypt 12 rounds o baseline vigente aprobado. | Obligatorio |
-| Performance | Login p95 menor a 200 ms sin contar latencia de correo. | Objetivo MVP |
-| Performance | Refresh p95 menor a 100 ms. | Objetivo MVP |
-| Disponibilidad | Auth debe funcionar con tenants ACTIVE sin acoplarse a provisioning síncrono. | Obligatorio |
-| Observabilidad | Logs estructurados y audit trail para eventos sensibles. | Obligatorio |
+| Categoría      | Requerimiento                                                                         | Meta           |
+| -------------- | ------------------------------------------------------------------------------------- | -------------- |
+| Seguridad      | Cumplir OWASP ASVS L2 para autenticación y sesión.                                    | Obligatorio    |
+| Seguridad      | No registrar PII, secretos, tokens ni refresh tokens en logs.                         | Obligatorio    |
+| Seguridad      | Cifrar email, nombres sensibles, documento y secret MFA con AES-256-GCM.              | Obligatorio    |
+| Seguridad      | Hash de password con bcrypt 12 rounds o baseline vigente aprobado.                    | Obligatorio    |
+| Performance    | Login p95 menor a 200 ms sin contar latencia de correo.                               | Objetivo MVP   |
+| Performance    | Refresh p95 menor a 100 ms.                                                           | Objetivo MVP   |
+| Disponibilidad | Auth debe funcionar con tenants ACTIVE sin acoplarse a provisioning síncrono.         | Obligatorio    |
+| Observabilidad | Logs estructurados y audit trail para eventos sensibles.                              | Obligatorio    |
 | Mantenibilidad | Cobertura de pruebas >= 85% lines/functions, >= 80% branches en capa core del módulo. | Gate de salida |
-| Compatibilidad | OpenAPI actualizada para todo endpoint de auth expuesto. | Gate de salida |
+| Compatibilidad | OpenAPI actualizada para todo endpoint de auth expuesto.                              | Gate de salida |
 
 ---
 
@@ -259,7 +259,7 @@ flowchart LR
 
 ### 6.1 Entidades principales del tenant
 
-**users**
+#### users
 
 - id
 - email cifrado
@@ -281,7 +281,7 @@ flowchart LR
 - firstName / lastName / documentNumber cifrados cuando aplique
 - timestamps y soft delete
 
-**refresh_tokens**
+#### refresh_tokens
 
 - id
 - userId
@@ -294,7 +294,7 @@ flowchart LR
 - userAgent
 - createdAt
 
-**audit_logs**
+#### audit_logs
 
 - id
 - tenantId
@@ -328,26 +328,26 @@ flowchart LR
 
 ### 7.1 Endpoints principales del módulo
 
-| Método | Ruta | Descripción | Alcance |
-| --- | --- | --- | --- |
-| POST | /api/v1/auth/login | Login de usuario del tenant | Core MOD02 |
-| POST | /api/v1/auth/refresh | Rotación de refresh token | Core MOD02 |
-| POST | /api/v1/auth/logout | Cierre de sesión | Core MOD02 |
-| GET | /api/v1/auth/me | Estado del usuario autenticado | Core MOD02 |
-| POST | /api/v1/auth/mfa/setup | Generación de setup MFA | Core MOD02 |
-| POST | /api/v1/auth/mfa/verify | Activación MFA | Core MOD02 |
-| POST | /api/v1/auth/mfa/disable | Desactivación MFA | Core MOD02 |
-| POST | /api/v1/auth/forgot-password | Solicitud de recuperación | Core MOD02 |
-| POST | /api/v1/auth/reset-password | Ejecución de reset | Core MOD02 |
-| POST | /api/v1/auth/change-password | Cambio de password autenticado | Core MOD02 |
-| POST | /api/v1/auth/email/verify | Verificación de email | Core MOD02 |
-| POST | /api/v1/auth/email/resend-verification | Reenvío de verificación | Core MOD02 |
+| Método | Ruta                                   | Descripción                    | Alcance    |
+| ------ | -------------------------------------- | ------------------------------ | ---------- |
+| POST   | /api/v1/auth/login                     | Login de usuario del tenant    | Core MOD02 |
+| POST   | /api/v1/auth/refresh                   | Rotación de refresh token      | Core MOD02 |
+| POST   | /api/v1/auth/logout                    | Cierre de sesión               | Core MOD02 |
+| GET    | /api/v1/auth/me                        | Estado del usuario autenticado | Core MOD02 |
+| POST   | /api/v1/auth/mfa/setup                 | Generación de setup MFA        | Core MOD02 |
+| POST   | /api/v1/auth/mfa/verify                | Activación MFA                 | Core MOD02 |
+| POST   | /api/v1/auth/mfa/disable               | Desactivación MFA              | Core MOD02 |
+| POST   | /api/v1/auth/forgot-password           | Solicitud de recuperación      | Core MOD02 |
+| POST   | /api/v1/auth/reset-password            | Ejecución de reset             | Core MOD02 |
+| POST   | /api/v1/auth/change-password           | Cambio de password autenticado | Core MOD02 |
+| POST   | /api/v1/auth/email/verify              | Verificación de email          | Core MOD02 |
+| POST   | /api/v1/auth/email/resend-verification | Reenvío de verificación        | Core MOD02 |
 
 ### 7.2 Endpoint relacionado pero fuera del foco principal
 
-| Método | Ruta | Descripción | Tratamiento documental |
-| --- | --- | --- | --- |
-| POST | /api/v1/auth/platform/login | Login de SYSTEM_ADMIN e IWANA_SUPPORT | Integración heredada de MOD01 |
+| Método | Ruta                        | Descripción                           | Tratamiento documental        |
+| ------ | --------------------------- | ------------------------------------- | ----------------------------- |
+| POST   | /api/v1/auth/platform/login | Login de SYSTEM_ADMIN e IWANA_SUPPORT | Integración heredada de MOD01 |
 
 ### 7.3 Contratos y reglas de borde
 
@@ -374,6 +374,7 @@ flowchart LR
 ### Flujos E2E requeridos para cierre
 
 **Flujo A — Primer acceso ADMIN:**
+
 1. Login con credenciales temporales → `passwordResetRequired: true` → redirect a `/auth/change-password`
 2. Cambiar password → redirect a `/auth/login`
 3. Re-login → `mfaSetupRequired: true` + token scope `mfa-setup` → redirect a `/auth/mfa/setup`
@@ -381,6 +382,7 @@ flowchart LR
 5. Login final con password + TOTP → tokens completos → dashboard
 
 **Flujo B — Recuperación de contraseña:**
+
 1. `/auth/forgot-password` → respuesta HTTP 200 genérica
 2. Clic en enlace del email → `/auth/reset-password` con token temporal
 3. Nueva password → sesiones revocadas → redirect a login
@@ -398,12 +400,12 @@ flowchart LR
 
 ### Riesgos
 
-| ID | Riesgo | Impacto | Tratamiento |
-| --- | --- | --- | --- |
-| R-MOD02-01 | Confusión de boundary entre MOD01 y MOD02 | Alto | Mantener estado En revisión hasta validar separación documental |
-| R-MOD02-02 | Integración de correo no cerrada end-to-end | Alto | Mantener backlog explícito y no marcar como aprobado sin evidencia |
-| R-MOD02-03 | Acoplamiento indebido entre auth tenant y auth plataforma | Medio | Documentar auth plataforma como integración separada |
-| R-MOD02-04 | Fuga cross-tenant por mala resolución de contexto | Crítico | Reforzar TenantMiddleware, guards y pruebas de aislamiento |
+| ID         | Riesgo                                                    | Impacto | Tratamiento                                                        |
+| ---------- | --------------------------------------------------------- | ------- | ------------------------------------------------------------------ |
+| R-MOD02-01 | Confusión de boundary entre MOD01 y MOD02                 | Alto    | Mantener estado En revisión hasta validar separación documental    |
+| R-MOD02-02 | Integración de correo no cerrada end-to-end               | Alto    | Mantener backlog explícito y no marcar como aprobado sin evidencia |
+| R-MOD02-03 | Acoplamiento indebido entre auth tenant y auth plataforma | Medio   | Documentar auth plataforma como integración separada               |
+| R-MOD02-04 | Fuga cross-tenant por mala resolución de contexto         | Crítico | Reforzar TenantMiddleware, guards y pruebas de aislamiento         |
 
 ### Escalación
 

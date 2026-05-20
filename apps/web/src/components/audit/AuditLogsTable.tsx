@@ -3,7 +3,7 @@
 // Tabla principal de registros de auditoría — soporta modo Básico y Técnico
 // con filtros client-side, export CSV, paginación cursor-based y conmutador de vista
 import React, { useMemo, useState } from 'react';
-import { Select } from '@iwana/ui';
+import { DatePicker, Select } from '@iwana/ui';
 import { AuditRowBasic } from './AuditRowBasic';
 import type { AuditBasicEntry } from './AuditRowBasic';
 import { AuditRowTechnical } from './AuditRowTechnical';
@@ -82,6 +82,21 @@ function EmptyState({ hasFilters }: { hasFilters: boolean }) {
       </p>
     </div>
   );
+}
+
+function toDateFromLocalDateValue(value: string): Date | undefined {
+  if (!value) return undefined;
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return undefined;
+  return new Date(year, month - 1, day);
+}
+
+function toLocalDateValue(date: Date | undefined): string {
+  if (!date) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 export function AuditLogsTable({
@@ -230,22 +245,24 @@ export function AuditLogsTable({
                 title="Filtrar por acción"
               />
             </div>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              aria-label="Fecha desde"
-              title="Fecha desde"
-              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-dark-surface-3 dark:text-gray-300 focus:outline-none"
-            />
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              aria-label="Fecha hasta"
-              title="Fecha hasta"
-              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-dark-surface-3 dark:text-gray-300 focus:outline-none"
-            />
+            <div className="w-full sm:w-[180px]">
+              <DatePicker
+                id="audit-date-from"
+                value={toDateFromLocalDateValue(dateFrom)}
+                onChange={(date) => setDateFrom(toLocalDateValue(date))}
+                placeholder="Fecha desde"
+                buttonClassName="rounded-lg border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-dark-surface-3 dark:text-gray-300"
+              />
+            </div>
+            <div className="w-full sm:w-[180px]">
+              <DatePicker
+                id="audit-date-to"
+                value={toDateFromLocalDateValue(dateTo)}
+                onChange={(date) => setDateTo(toLocalDateValue(date))}
+                placeholder="Fecha hasta"
+                buttonClassName="rounded-lg border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-dark-surface-3 dark:text-gray-300"
+              />
+            </div>
           </>
         )}
 

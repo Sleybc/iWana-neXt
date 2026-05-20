@@ -9,7 +9,9 @@
 **PRD relacionado:** `docs/prds/PRD-MOD05-CRM-ORIGEN-ATRIBUCION-v1.1.md`  
 **HLD relacionado:** `docs/hlds/HLD-MOD05-ARQUITECTURA-v2.0.md`  
 **Informe relacionado:** `docs/informes/INFORME-MOD05-ATRIBUCION-INCENTIVOS-FASE1-v1.0.md`  
-**ADRs aplicables:** ADR-016, ADR-018, ADR-019, ADR-022, ADR-024
+**ADRs aplicables:** ADR-016, ADR-018, ADR-019, ADR-022, ADR-024, ADR-026
+
+> **Nota correctiva 2026-05-05:** la implementacion tecnica de esta experiencia debe alinearse con `docs/specs/2026-05-05-crm-pipeline-completeness-read-model-design.md`. La lectura de responsable actual, historial comercial e historial operativo debe resolverse via ports/read models de CRM y no por lecturas directas cross-module en servicios del expediente.
 
 ---
 
@@ -67,7 +69,7 @@ La seccion debe mostrarse en este orden:
 
 El dato mas visible del bloque debe ser:
 
-**Responsable actual**
+#### Responsable actual
 
 Esto responde a la necesidad operativa primaria: saber quien tiene el expediente en este momento.
 
@@ -235,9 +237,13 @@ Debe residir en el agregado principal `ExpedienteRecord`:
 
 Puede reutilizar la entidad existente de atribucion si se adapta semantica y funcionalmente al concepto de originador comercial y correcciones auditables.
 
+La resolucion de nombres y roles asociados al historial comercial debe realizarse via read models o puertos tipados del modulo CRM.
+
 ### 7.3 Historial operativo
 
 Debe existir como historial independiente del comercial. Puede modelarse como nueva entidad de transferencias/asignaciones o como extension auditada del expediente, pero sin mezclar semantica con atribucion comercial.
+
+La resolucion del responsable actual y de los actores del historial operativo debe evitar lecturas directas cross-module desde los servicios del expediente.
 
 ---
 

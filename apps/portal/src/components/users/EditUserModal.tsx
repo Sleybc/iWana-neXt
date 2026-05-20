@@ -150,7 +150,11 @@ export function EditUserModal({
       dto.firstName = values.firstName?.trim() || undefined;
     if (values.lastName?.trim() !== (user.lastName ?? ''))
       dto.lastName = values.lastName?.trim() || undefined;
-    if (values.phone?.trim() !== (user.phone ?? '')) dto.phone = values.phone?.trim() || undefined;
+    if (values.phone?.trim() !== (user.phone ?? '')) {
+      const raw = values.phone?.trim().replace(/\s/g, '') ?? '';
+      // Normalizar a E.164 con prefijo Colombia si el usuario no lo incluyó
+      dto.phone = raw ? (raw.startsWith('+') ? raw : `+57${raw}`) : undefined;
+    }
     if (values.jobTitle?.trim() !== (user.jobTitle ?? ''))
       dto.jobTitle = values.jobTitle?.trim() || undefined;
     if (values.documentType !== user.documentType)
