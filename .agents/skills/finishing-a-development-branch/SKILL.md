@@ -210,4 +210,4 @@ git worktree remove <worktree-path>
 
 **Pairs with:**
 
-- **using-git-worktrees** - Cleans up worktree created by that skill
+- Optional isolated worktree workflows - Clean up the worktree only when the selected completion path calls for it
