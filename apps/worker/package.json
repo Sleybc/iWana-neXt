@@ -7,7 +7,7 @@
     "dev": "node ../../scripts/clean-paths.mjs dist && cross-env NODE_ENV=development nest start --watch",
     "start": "node dist/main",
     "lint": "eslint src --ext .ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "jest --passWithNoTests",
     "clean": "node ../../scripts/clean-paths.mjs dist"
   },

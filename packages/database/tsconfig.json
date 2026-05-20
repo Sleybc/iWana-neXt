@@ -7,9 +7,7 @@
     "strictPropertyInitialization": false,
     "types": ["node"],
     "paths": {
-      "@iwana/shared": ["../../packages/shared/src/index.ts"],
-      "@iwana/db": ["./src/index.ts"],
-      "@iwana/config": ["../../packages/config/index.ts"]
+      "@iwana/db": ["./src/index.ts"]
     }
   },
   "include": ["src/**/*"],

@@ -2,12 +2,13 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "rootDir": "..",
+    "rootDir": "../..",
     "paths": {
-      "@iwana/db": ["./src/index.ts"],
+      "@iwana/worker": ["./src/index.ts"],
+      "@iwana/db": ["../../packages/database/src/index.ts"],
       "@iwana/shared": ["../../packages/shared/src/index.ts"],
       "@iwana/config": ["../../packages/config/index.ts"]
     }
   },
-  "include": ["src/**/*", "../shared/src/**/*"]
+  "include": ["src/**/*", "../../packages/database/src/**/*", "../../packages/shared/src/**/*"]
 }
