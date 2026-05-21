@@ -54,7 +54,7 @@
 ### 3.3 Nombres no canonicos o de baja calidad semantica
 
 - Se confirmaron nombres redundantes o poco mantenibles, por ejemplo c4-architecture-c4-architecture y application-performance-performance-optimization.
-- Tambien existen familias con prefijos heterogeneos que reducen claridad operativa, por ejemplo error-debugging-_, error-diagnostics-_, code-refactoring-_ y codebase-cleanup-_.
+- Tambien existen familias con prefijos heterogeneos que reducen claridad operativa, por ejemplo `error-debugging-*`, `error-diagnostics-*`, `code-refactoring-*` y `codebase-cleanup-*`.
 
 ### 3.4 Solapamientos y duplicados funcionales
 
@@ -133,9 +133,9 @@
 
 ### Lote 3 — Consolidacion de duplicados
 
-- Unificar familias error-debugging-_ y error-diagnostics-_ bajo un solo namespace.
-- Revisar y consolidar familias code-refactoring-_ y codebase-cleanup-_.
-- Revisar la serie tdd-workflow, tdd-orchestrator y tdd-workflows-\* para dejar un arbol claro y no competitivo.
+- Unificar familias `error-debugging-*` y `error-diagnostics-*` bajo un solo namespace.
+- Revisar y consolidar familias `code-refactoring-*` y `codebase-cleanup-*`.
+- Revisar la serie `tdd-workflow`, `tdd-orchestrator` y `tdd-workflows-*` para dejar un arbol claro y no competitivo.
 
 ### Lote 4 — Deprecacion por pertinencia
 
@@ -170,7 +170,7 @@
 
 ## 12. Shortlist de potencializacion posterior
 
-### Prioridad alta
+### Prioridad alta (Shortlist)
 
 - observability-engineer
   - Motivo: agrega una capa SRE/operacional que hoy no esta cubierta de forma explicita en el set activo.
@@ -185,7 +185,7 @@
   - Motivo: aporta diseno de gates y despliegue seguro, especialmente util si se formaliza el flujo CI/CD del monorepo.
   - Valor esperado: stages, aprobaciones, rollback y estrategia de release.
 
-### Prioridad media
+### Prioridad media (Shortlist)
 
 - slo-implementation
   - Motivo: valiosa cuando ya exista una base minima de observabilidad y se quieran formalizar objetivos de confiabilidad.
@@ -230,7 +230,7 @@
 
 ### 13.2 Desalineaciones concretas detectadas
 
-#### Prioridad alta
+#### Prioridad alta (Desalineaciones)
 
 - frontend-dev-guidelines
   - Problema: esta orientada a React generico con MUI v7 y TanStack Router, mientras el repo usa Next.js App Router y la linea activa privilegia patrones distintos.
@@ -248,7 +248,7 @@
   - Problema: mantiene paridad entre Nx, Turborepo, Bazel y Lerna; el repo ya tiene direccion clara de Turborepo.
   - Potencializacion requerida: convertirlo en un skill preferentemente Turborepo-first con pnpm, boundaries y caching coherentes con el workspace.
 
-#### Prioridad media
+#### Prioridad media (Desalineaciones)
 
 - architect-review
   - Problema: sobrepondera microservices y event-driven architecture frente al enfoque modulith del repo.
@@ -467,7 +467,7 @@ Se revisaron las nueve skills activas que aun no habian pasado por una potencial
 ### Skills restauradas al catálogo activo (25 → 30)
 
 | Skill | Dominio | Commits |
-|---|---|---|
+| --- | --- | --- |
 | `turborepo-caching` | Arquitectura/Monorepo | 49f57f6 |
 | `database-migration` | Backend | 554d2d9 |
 | `e2e-testing-patterns` | Testing | ba1dc64 |

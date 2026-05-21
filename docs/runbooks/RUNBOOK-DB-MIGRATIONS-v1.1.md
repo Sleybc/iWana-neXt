@@ -23,7 +23,7 @@ No cubre cambios de modelo nuevos ni generación de migraciones; cubre ejecució
 ## 1. Prerrequisitos
 
 - El package `@iwana/db` debe compilar sin errores.
-- PostgreSQL y Redis deben estar accesibles según `.env`.
+- PostgreSQL y Redis deben estar accesibles según el entorno activo. En desarrollo local, el data source intenta resolver primero `.env.development` y, si faltan variables, cae a `.env`; además, `docker compose` usa `.env` para la infraestructura local.
 - No ejecutar migraciones tenant durante incidentes de conectividad inestables.
 - Validar primero el estado de la base si hubo fallos previos de provisioning o migraciones parciales.
 
@@ -34,9 +34,28 @@ pnpm --filter @iwana/db typecheck
 pnpm --filter @iwana/db build
 ```
 
+### Flujo local vigente
+
+```bash
+pnpm dev
+```
+
+El flujo raíz recomendado ya levanta la infraestructura Docker y luego ejecuta `pnpm db:migrate:all` desde el host antes de arrancar API, web, portal y worker. Usar los comandos de este runbook cuando necesites diagnosticar, repetir o aislar el paso de migraciones fuera del arranque normal.
+
 ---
 
 ## 2. Migraciones del Schema Público
+
+### Ejecutar ambas capas desde la raíz
+
+```bash
+pnpm db:migrate:all
+```
+
+Este comando:
+- compila `@iwana/db`
+- ejecuta migraciones públicas
+- ejecuta migraciones tenant sobre los schemas activos
 
 ### Mostrar migraciones
 

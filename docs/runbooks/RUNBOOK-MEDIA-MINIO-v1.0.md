@@ -79,20 +79,31 @@ MinIO debe estar corriendo. Verificar:
 
 ```bash
 docker ps | grep minio
-# Debe aparecer: iwana-minio   minio/minio   Up ...   0.0.0.0:9002->9000/tcp, 0.0.0.0:9003->9001/tcp
+# Debe aparecer: iwana_minio_dev   minio/minio   Up ...   0.0.0.0:9002->9000/tcp, 0.0.0.0:9003->9001/tcp
 ```
 
-### Script automático
+### Flujo recomendado
 
 ```bash
-bash scripts/bootstrap-minio.sh
+pnpm dev
 ```
 
-El script:
-1. Espera que MinIO esté listo (30 segundos máx.)
-2. Configura alias `minio-local` en `mc`
+`pnpm dev` ya levanta MinIO, PostgreSQL, Redis, pgBouncer, Typesense, nginx y Adminer, y además ejecuta el bootstrap del bucket vía el servicio `minio-init` del compose local.
+
+### Bootstrap aislado
+
+Usar esta ruta solo si estás depurando MinIO fuera del flujo normal de `pnpm dev`.
+
+```bash
+docker compose --env-file .env -f docker-compose.yml up -d minio
+docker compose --env-file .env -f docker-compose.yml run --rm minio-init
+```
+
+El bootstrap aislado:
+1. Espera que MinIO esté listo
+2. Configura alias `iwana-local` en `mc`
 3. Crea el bucket `iwana-media` si no existe
-4. Aplica policy `private` (sin acceso público anonimizado)
+4. Aplica policy `private`
 
 Salidas esperadas:
 ```
@@ -119,16 +130,16 @@ Salidas esperadas:
 ## Arrancar el entorno de desarrollo
 
 ```bash
-# Levantar todos los servicios (incluye MinIO, Postgres, Redis)
+# Flujo normal y recomendado: infraestructura + bootstrap + apps en host
 pnpm dev
 
-# O solo los servicios de infraestructura:
+# Diagnóstico aislado de infraestructura (sin apps):
 docker compose --env-file .env -f docker-compose.yml up -d minio postgres redis pgbouncer typesense nginx adminer
 
-# Luego bootstrap del bucket:
-bash scripts/bootstrap-minio.sh
+# Inicializar el bucket manualmente si no se usa pnpm dev:
+docker compose --env-file .env -f docker-compose.yml run --rm minio-init
 
-# Arrancar la API:
+# Arrancar la API de forma aislada:
 pnpm --filter @iwana/api dev
 ```
 
@@ -156,7 +167,7 @@ curl -X POST http://localhost:3000/api/v1/media/upload \
 
 ```
 Causa: Bucket iwana-media no fue creado
-Solución: bash scripts/bootstrap-minio.sh
+Solución: `pnpm dev` o `docker compose --env-file .env -f docker-compose.yml run --rm minio-init`
 ```
 
 ### Error: `ECONNREFUSED` al subir archivo
@@ -206,15 +217,16 @@ Para uso cliente, redirigir vía API o usar S3_PUBLIC_BASE_URL externa.
 
 ```bash
 # Listar contenidos del bucket
-docker exec iwana-minio mc ls minio-local/iwana-media --recursive
+docker compose --env-file .env -f docker-compose.yml run --rm --entrypoint /bin/sh minio-init -lc \
+  'mc alias set iwana-local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" && mc ls iwana-local/iwana-media --recursive'
 
 # Eliminar todos los objetos del bucket (solo dev)
-docker exec iwana-minio mc rm --recursive --force minio-local/iwana-media
+docker compose --env-file .env -f docker-compose.yml run --rm --entrypoint /bin/sh minio-init -lc \
+  'mc alias set iwana-local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" && mc rm --recursive --force iwana-local/iwana-media'
 
 # Eliminar y recrear el bucket
-docker exec iwana-minio mc rb --force minio-local/iwana-media
-docker exec iwana-minio mc mb minio-local/iwana-media
-docker exec iwana-minio mc policy set private minio-local/iwana-media
+docker compose --env-file .env -f docker-compose.yml run --rm --entrypoint /bin/sh minio-init -lc \
+  'mc alias set iwana-local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" && mc rb --force iwana-local/iwana-media && mc mb iwana-local/iwana-media && mc anonymous set private iwana-local/iwana-media'
 ```
 
 ---

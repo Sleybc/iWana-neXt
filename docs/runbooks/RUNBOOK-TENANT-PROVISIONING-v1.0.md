@@ -11,13 +11,18 @@
 
 ## Descripción del Proceso
 
-Cuando se crea un tenant via `POST /api/v1/tenants`, el API responde HTTP 201 con el tenant en estado `PROVISIONING`. El worker `@iwana/worker` consume el job de la cola `tenant-provisioning` (BullMQ sobre Redis), ejecuta el DDL del schema PostgreSQL, realiza el seed del ADMIN inicial y actualiza el estado a `ACTIVE`.
+Cuando se crea un tenant via `POST /api/v1/tenants`, el API responde HTTP 201 con el tenant en estado `PROVISIONING`. El worker `@iwana/worker` consume el job de la cola `tenant-provisioning` (BullMQ sobre Redis), crea el schema del tenant, ejecuta la migración base y las migraciones tenant registradas, realiza el seed del ADMIN inicial y actualiza el estado a `ACTIVE`.
 
 Este runbook cubre los procedimientos operativos cuando el proceso falla o queda en estado inconsistente.
 
 ---
 
 ## 1. Diagnóstico de PROVISIONING_FAILED
+
+### URLs operativas por ambiente
+
+- Desarrollo local: `http://localhost:3000/api/v1`
+- Otros ambientes: definir `API_BASE_URL` con la URL pública correspondiente antes de ejecutar los `curl`
 
 ### Síntoma
 El tenant aparece con `status: PROVISIONING_FAILED` en `GET /api/v1/tenants/:id`.
@@ -36,8 +41,10 @@ El tenant aparece con `status: PROVISIONING_FAILED` en `GET /api/v1/tenants/:id`
 ### Localizar el error en logs del worker
 
 ```bash
-# En el flujo vigente, el worker corre en el host via `pnpm dev`.
-# Para diagnostico aislado, levantar la infraestructura Docker en una terminal:
+# Flujo recomendado: pnpm dev levanta infraestructura, API y worker.
+pnpm dev
+
+# Diagnostico aislado: en una terminal levantar solo la infraestructura Docker:
 docker compose --env-file .env -f docker-compose.yml up -d postgres redis pgbouncer minio typesense nginx adminer
 
 # Luego ejecutar el worker en otra terminal y observar su salida:
@@ -54,7 +61,9 @@ pnpm --filter @iwana/worker dev 2>&1 | grep "<tenantId>"
 
 ```bash
 # Requiere token de SYSTEM_ADMIN
-curl -X GET https://api.iwana.local/api/v1/tenants/<tenantId> \
+export API_BASE_URL="${API_BASE_URL:-http://localhost:3000/api/v1}"
+
+curl -X GET "$API_BASE_URL/tenants/<tenantId>" \
   -H "Authorization: Bearer <access_token>"
 
 # Verificar el campo status en la respuesta
@@ -119,7 +128,9 @@ El worker registra en consola los eventos `completed`, `failed` y `error` de Bul
 
 ```bash
 # Requiere token de SYSTEM_ADMIN
-curl -X PATCH https://api.iwana.local/api/v1/tenants/<tenantId>/retry-provisioning \
+export API_BASE_URL="${API_BASE_URL:-http://localhost:3000/api/v1}"
+
+curl -X PATCH "$API_BASE_URL/tenants/<tenantId>/retry-provisioning" \
   -H "Authorization: Bearer <access_token>" \
   -H "Content-Type: application/json"
 ```
@@ -141,7 +152,7 @@ El endpoint actualiza el estado del tenant de `PROVISIONING_FAILED` a `PROVISION
 ```bash
 # Sondear el estado cada 30 segundos hasta que cambie a ACTIVE o PROVISIONING_FAILED
 watch -n 30 'curl -s -H "Authorization: Bearer <token>" \
-  https://api.iwana.local/api/v1/tenants/<tenantId> | jq .status'
+  "${API_BASE_URL:-http://localhost:3000/api/v1}/tenants/<tenantId>" | jq .status'
 ```
 
 ---
@@ -184,10 +195,12 @@ WHERE table_schema = 'tenant_<slug>'
 ORDER BY table_name;
 ```
 
-El schema debe contener exactamente estas tablas:
+El schema debe contener al menos estas tablas core:
 - `users`
 - `refresh_tokens`
 - `audit_logs`
+
+Tambien es esperable ver `typeorm_migrations` y tablas adicionales de los modulos ya migrados, por ejemplo catálogos comerciales, parties, taxation, WFM y assurance. Si faltan las tablas core o `typeorm_migrations`, tratar el schema como incompleto.
 
 ### Verificar que el ADMIN inicial fue creado
 
@@ -210,7 +223,9 @@ RESET search_path;
 Actualmente el seed inicial crea el ADMIN y marca `passwordResetRequired=true`, pero la entrega automatizada por email todavía no es el camino operativo estable del repositorio. El workaround vigente y soportado es regenerar credenciales temporales por API, no consultar logs del worker.
 
 ```bash
-curl -X POST https://api.iwana.local/api/v1/tenants/<tenantId>/regenerate-admin-credentials \
+export API_BASE_URL="${API_BASE_URL:-http://localhost:3000/api/v1}"
+
+curl -X POST "$API_BASE_URL/tenants/<tenantId>/regenerate-admin-credentials" \
   -H "Authorization: Bearer <access_token>" \
   -H "Idempotency-Key: <uuid-unico>" \
   -H "Content-Type: application/json"
@@ -241,7 +256,7 @@ Reglas operativas:
 
 ### Cuándo aplica
 
-El DDL del `tenant_template.sql` se ejecuta dentro de una transacción `BEGIN/COMMIT`. Si PostgreSQL aborta la transacción a mitad, el schema podría quedar creado pero sin todas las tablas. Esto ocurre en casos extremos como:
+El provisioning actual crea el schema y luego ejecuta la migración base tenant junto con el resto de migraciones registradas. Si PostgreSQL aborta a mitad del proceso o el worker cae entre pasos, el schema podría quedar creado pero incompleto. Esto ocurre en casos extremos como:
 
 - Muerte del proceso PostgreSQL durante el DDL.
 - OOM (Out of Memory) del servidor durante la ejecución del template.
@@ -256,7 +271,8 @@ FROM information_schema.tables
 WHERE table_schema = 'tenant_<slug>'
 ORDER BY table_name;
 
--- Si el resultado no incluye las 3 tablas (users, refresh_tokens, audit_logs),
+-- Si el resultado no incluye las tablas core (users, refresh_tokens, audit_logs)
+-- o falta typeorm_migrations,
 -- el schema está incompleto y debe limpiarse.
 ```
 
@@ -294,7 +310,7 @@ WHERE id = '<tenantId>';
 **Paso 4 — Reintentar el provisioning via API** (ver sección 3):
 
 ```bash
-curl -X PATCH https://api.iwana.local/api/v1/tenants/<tenantId>/retry-provisioning \
+curl -X PATCH "$API_BASE_URL/tenants/<tenantId>/retry-provisioning" \
   -H "Authorization: Bearer <access_token>"
 ```
 
@@ -318,5 +334,6 @@ curl -X PATCH https://api.iwana.local/api/v1/tenants/<tenantId>/retry-provisioni
 - [ADR-017 — Provisioning de Schema PostgreSQL vía BullMQ Worker](../adrs/ADR-017-Provisioning-Schema-BullMQ.md)
 - [ADR-018 — Ciclo de Vida del Tenant](../adrs/ADR-018-Ciclo-Vida-Tenant.md)
 - [ADR-020 — Seed Inicial + Credenciales Temporales](../adrs/ADR-020-Seed-Inicial-Credenciales-Temporales.md)
+- [INFORME-MOD01-MIGRATION-LIFECYCLE-v1.0.md](../informes/INFORME-MOD01-MIGRATION-LIFECYCLE-v1.0.md)
 - `apps/worker/src/processors/tenant-provisioning.processor.ts`
-- `packages/database/src/templates/tenant_template.sql`
+- `packages/database/src/migrations/tenant/runner.ts`
