@@ -55,6 +55,12 @@ export class OrganizationSite {
   @Column({ type: 'numeric', precision: 10, scale: 7, nullable: true })
   longitude: string | null;
 
+  @Column({ name: 'contact_name', type: 'varchar', length: 160, nullable: true })
+  contactName: string | null;
+
+  @Column({ name: 'contact_phone', type: 'varchar', length: 32, nullable: true })
+  contactPhone: string | null;
+
   @Column({ name: 'is_primary', type: 'boolean', default: false })
   isPrimary: boolean;
 

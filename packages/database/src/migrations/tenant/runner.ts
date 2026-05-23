@@ -1,3 +1,6 @@
+import { DropWfmTechnicianBusinessOverrides1748566800000 } from './041_drop_wfm_technician_business_overrides';
+import { CreateWfmOperationalEventualities1748653200042 } from './042_create_wfm_operational_eventualities';
+import { AddOrganizationSiteContactFields1748698800043 } from './043_add_organization_site_contact_fields';
 import { DataSource, MigrationInterface } from 'typeorm';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
 import { CreateExpedienteRecords1700000000001 } from './001_create_expediente_records';
@@ -31,6 +34,10 @@ import { AddExpedienteToTicketSubjectType1700000000032 } from './032_add_expedie
 import { CreateVisitRequests1700000000034 } from './034_create_visit_requests';
 import { HardenVisitRequestsIndexes1700000000035 } from './035_harden_visit_requests_indexes';
 import { CreateWfmOperatingHoursModule1700000000036 } from './036_create_wfm_operating_hours_module';
+import { CreateConfigurationControlPlane1700000000037 } from './037_create_configuration_control_plane';
+import { MapWfmOperatingSitesToOrganizationSites1700000000038 } from './038_map_wfm_operating_sites_to_organization_sites';
+import { ReplaceWfmOperatingSitesWithOrganizationSites1700000000039 } from './039_replace_wfm_operating_sites_with_organization_sites';
+import { Mod00HorarioBaseEmpresaExcepciones1748000000000 } from './040_add_organization_company_hours_and_exceptions';
 
 const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   InitialTenantSchema1700000000000,
@@ -65,6 +72,13 @@ const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   CreateVisitRequests1700000000034,
   HardenVisitRequestsIndexes1700000000035,
   CreateWfmOperatingHoursModule1700000000036,
+  CreateConfigurationControlPlane1700000000037,
+  MapWfmOperatingSitesToOrganizationSites1700000000038,
+  ReplaceWfmOperatingSitesWithOrganizationSites1700000000039,
+  Mod00HorarioBaseEmpresaExcepciones1748000000000,
+  DropWfmTechnicianBusinessOverrides1748566800000,
+  CreateWfmOperationalEventualities1748653200042,
+  AddOrganizationSiteContactFields1748698800043,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;
