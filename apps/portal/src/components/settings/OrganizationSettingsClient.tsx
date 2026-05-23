@@ -71,6 +71,10 @@ const siteFormSchema = z.object({
   address: z.string().trim().max(240, 'Maximo 240 caracteres.').optional(),
   municipality: z.string().trim().max(120, 'Maximo 120 caracteres.').optional(),
   department: z.string().trim().max(120, 'Maximo 120 caracteres.').optional(),
+  latitude: z.number({ required_error: 'La latitud es requerida' }),
+  longitude: z.number({ required_error: 'La longitud es requerida' }),
+  contactName: z.string().min(1, 'El nombre de contacto es requerido').max(160),
+  contactPhone: z.string().min(1, 'El teléfono de contacto es requerido').max(32),
   isPrimary: z.boolean(),
   isActive: z.boolean(),
 });
@@ -118,6 +122,10 @@ function createDefaultSiteFormValues(): SiteFormValues {
     address: '',
     municipality: '',
     department: '',
+    latitude: 0,
+    longitude: 0,
+    contactName: '',
+    contactPhone: '',
     isPrimary: false,
     isActive: true,
   };
@@ -131,6 +139,10 @@ function toSiteFormValues(site: OrganizationSiteDetail): SiteFormValues {
     address: site.address ?? '',
     municipality: site.municipality ?? '',
     department: site.department ?? '',
+    latitude: typeof site.latitude === 'number' ? site.latitude : 0,
+    longitude: typeof site.longitude === 'number' ? site.longitude : 0,
+    contactName: site.contactName ?? '',
+    contactPhone: site.contactPhone ?? '',
     isPrimary: site.isPrimary,
     isActive: site.isActive,
   };
@@ -337,6 +349,10 @@ export function OrganizationSettingsClient() {
         address: values.address?.trim() || null,
         municipality: values.municipality?.trim() || null,
         department: values.department?.trim() || null,
+        latitude: values.latitude,
+        longitude: values.longitude,
+        contactName: values.contactName,
+        contactPhone: values.contactPhone,
         isPrimary: values.isPrimary,
         isActive: values.isActive,
       };
@@ -750,6 +766,76 @@ export function OrganizationSettingsClient() {
                       Departamento
                     </label>
                     <Input id="site-department" {...register('department')} className="h-11" />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="site-latitude"
+                      className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                    >
+                      Latitud
+                    </label>
+                    <Input
+                      id="site-latitude"
+                      type="number"
+                      step="any"
+                      {...register('latitude', { valueAsNumber: true })}
+                      className="h-11"
+                    />
+                    {errors.latitude?.message ? (
+                      <p className="mt-1 text-sm text-red-600">{errors.latitude.message}</p>
+                    ) : null}
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="site-longitude"
+                      className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                    >
+                      Longitud
+                    </label>
+                    <Input
+                      id="site-longitude"
+                      type="number"
+                      step="any"
+                      {...register('longitude', { valueAsNumber: true })}
+                      className="h-11"
+                    />
+                    {errors.longitude?.message ? (
+                      <p className="mt-1 text-sm text-red-600">{errors.longitude.message}</p>
+                    ) : null}
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="site-contact-name"
+                      className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                    >
+                      Nombre de contacto
+                    </label>
+                    <Input
+                      id="site-contact-name"
+                      type="text"
+                      {...register('contactName')}
+                      className="h-11"
+                    />
+                    {errors.contactName?.message ? (
+                      <p className="mt-1 text-sm text-red-600">{errors.contactName.message}</p>
+                    ) : null}
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="site-contact-phone"
+                      className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
+                    >
+                      Teléfono de contacto
+                    </label>
+                    <Input
+                      id="site-contact-phone"
+                      type="tel"
+                      {...register('contactPhone')}
+                      className="h-11"
+                    />
+                    {errors.contactPhone?.message ? (
+                      <p className="mt-1 text-sm text-red-600">{errors.contactPhone.message}</p>
+                    ) : null}
                   </div>
                 </div>
 

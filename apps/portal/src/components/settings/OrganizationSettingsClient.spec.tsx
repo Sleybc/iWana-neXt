@@ -105,6 +105,8 @@ const organizationDetail = {
   country: 'CO',
   latitude: null,
   longitude: null,
+  contactName: null,
+  contactPhone: null,
   isPrimary: true,
   businessHours: [
     {
@@ -218,6 +220,12 @@ describe('OrganizationSettingsClient', () => {
 
     fireEvent.change(dialog.getByLabelText('Nombre'), { target: { value: 'Sede norte' } });
     fireEvent.change(dialog.getByLabelText('Código'), { target: { value: 'NORTE' } });
+    fireEvent.change(dialog.getByLabelText('Nombre de contacto'), {
+      target: { value: 'Contacto Test' },
+    });
+    fireEvent.change(dialog.getByLabelText('Teléfono de contacto'), {
+      target: { value: '+573001112233' },
+    });
     fireEvent.click(dialog.getByRole('button', { name: 'Crear sede' }));
 
     await waitFor(() => {
@@ -227,6 +235,10 @@ describe('OrganizationSettingsClient', () => {
           code: 'NORTE',
           siteType: OrganizationSiteType.OFFICE,
           capabilities: [],
+          latitude: 0,
+          longitude: 0,
+          contactName: 'Contacto Test',
+          contactPhone: '+573001112233',
         }),
       );
     });
@@ -244,6 +256,13 @@ describe('OrganizationSettingsClient', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Editar sede' }));
 
     const dialog = within(screen.getByRole('dialog'));
+
+    fireEvent.change(dialog.getByLabelText('Nombre de contacto'), {
+      target: { value: 'Contacto Test' },
+    });
+    fireEvent.change(dialog.getByLabelText('Teléfono de contacto'), {
+      target: { value: '+573001112233' },
+    });
 
     fireEvent.click(dialog.getByRole('tab', { name: 'Servicios' }));
 
@@ -280,6 +299,13 @@ describe('OrganizationSettingsClient', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Editar sede' }));
 
     const dialog = within(screen.getByRole('dialog'));
+
+    fireEvent.change(dialog.getByLabelText('Nombre de contacto'), {
+      target: { value: 'Contacto Test' },
+    });
+    fireEvent.change(dialog.getByLabelText('Teléfono de contacto'), {
+      target: { value: '+573001112233' },
+    });
 
     fireEvent.click(dialog.getByRole('tab', { name: 'Servicios' }));
     fireEvent.click(dialog.getByRole('checkbox', { name: 'Gestión administrativa' }));

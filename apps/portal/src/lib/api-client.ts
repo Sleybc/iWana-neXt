@@ -64,16 +64,19 @@ import { persistTenantSlug, resolveTenantSlug } from './tenant-resolution';
 function resolveApiBase(): string {
   const configuredApiBase = process.env.NEXT_PUBLIC_API_URL?.trim();
 
-  if (!configuredApiBase) {
-    // En desarrollo usamos el mismo origen del portal y delegamos el salto al backend
-    // al rewrite de Next.js para evitar acoplar el navegador a localhost:3000.
-    return '/api/v1';
+  if (configuredApiBase) {
+    return configuredApiBase.replace(/\/$/, '');
   }
 
-  return configuredApiBase.replace(/\/$/, '');
-}
+  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+    return `${window.location.protocol}//127.0.0.1:3000/api/v1`;
+  }
 
-const API_BASE = resolveApiBase();
+  // El servidor del portal mantiene el mismo origen y delega el salto al backend
+  // al rewrite de Next.js. En el navegador, durante desarrollo local, evitamos el
+  // proxy para no depender del dev server de Next mientras la API recompila.
+  return '/api/v1';
+}
 const ACCESS_TOKEN_STORAGE_KEY = 'iwana.portal.access-token';
 
 /**
@@ -250,7 +253,7 @@ function getTenantSlug(tenantSlugOverride?: string): string {
 }
 
 async function refreshAccessToken(tenantSlug: string): Promise<string> {
-  const res = await fetch(`${API_BASE}/auth/refresh`, {
+  const res = await fetch(`${resolveApiBase()}/auth/refresh`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -289,7 +292,9 @@ async function request<T>(
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const apiBase = resolveApiBase();
+
+  const res = await fetch(`${apiBase}${path}`, {
     ...options,
     headers,
     credentials: 'include',
@@ -494,7 +499,9 @@ export const authApi = {
       Authorization: `Bearer ${mfaSetupToken}`,
     });
 
-    const res = await fetch(`${API_BASE}/auth/mfa/setup`, {
+    const apiBase = resolveApiBase();
+
+    const res = await fetch(`${apiBase}/auth/mfa/setup`, {
       method: 'POST',
       headers,
       credentials: 'include',
@@ -536,7 +543,9 @@ export const authApi = {
       Authorization: `Bearer ${mfaSetupToken}`,
     });
 
-    const res = await fetch(`${API_BASE}/auth/mfa/verify`, {
+    const apiBase = resolveApiBase();
+
+    const res = await fetch(`${apiBase}/auth/mfa/verify`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ totpCode }),
@@ -3413,6 +3422,8 @@ export interface OrganizationSiteDetail extends OrganizationSiteSummary {
   country: string;
   latitude: number | null;
   longitude: number | null;
+  contactName: string | null;
+  contactPhone: string | null;
   isPrimary: boolean;
   businessHoursMode: 'BASE' | 'OVERRIDE';
   businessHours: OrganizationSiteBusinessHourSnapshot[];
@@ -3432,8 +3443,10 @@ export interface CreateOrganizationSiteDto {
   municipality?: string | null;
   department?: string | null;
   country?: string;
-  latitude?: number | null;
-  longitude?: number | null;
+  latitude: number | null;
+  longitude: number | null;
+  contactName: string;
+  contactPhone: string;
   isPrimary?: boolean;
   isActive?: boolean;
 }
