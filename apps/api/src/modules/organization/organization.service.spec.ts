@@ -363,4 +363,52 @@ describe('OrganizationService', () => {
     expect(result.contactName).toBe('Mesa tecnica centro');
     expect(result.contactPhone).toBe('+573001112233');
   });
+
+  it('should persist contact fields during update when provided', async () => {
+    const existingSite = {
+      id: 'site-1',
+      tenantId: 'tenant-test',
+      name: 'Sede norte',
+      code: 'NORTE',
+      siteType: OrganizationSiteType.OFFICE,
+      address: null,
+      municipality: null,
+      department: null,
+      country: 'CO',
+      latitude: null,
+      longitude: null,
+      isPrimary: false,
+      isActive: true,
+    };
+    const manager = {
+      findOne: jest.fn().mockResolvedValue(existingSite),
+      create: jest.fn((_entity, value) => value),
+      save: jest.fn().mockImplementation(async (_entity, value) => value),
+      delete: jest.fn().mockResolvedValue(undefined),
+    };
+    mockTenantRun(manager);
+
+    jest
+      .spyOn(service as never, 'loadSiteDetail')
+      .mockResolvedValueOnce(
+        createSiteDetail({
+          contactName: 'Contacto anterior',
+          contactPhone: '+571234567',
+        }) as never,
+      )
+      .mockResolvedValueOnce(
+        createSiteDetail({
+          contactName: 'Mesa tecnica actualizada',
+          contactPhone: '+573009998877',
+        }) as never,
+      );
+
+    const result = await service.update('site-1', {
+      contactName: 'Mesa tecnica actualizada',
+      contactPhone: '+573009998877',
+    });
+
+    expect(result.contactName).toBe('Mesa tecnica actualizada');
+    expect(result.contactPhone).toBe('+573009998877');
+  });
 });

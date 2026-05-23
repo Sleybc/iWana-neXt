@@ -77,14 +77,14 @@ export class CreateOrganizationSiteDto {
   @Length(2, 2)
   country?: string;
 
-  @ApiProperty({ nullable: true, example: 4.6486259 })
+  @ApiProperty({ example: 4.6486259 })
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 7 })
   @Min(-90)
   @Max(90)
   latitude: number;
 
-  @ApiProperty({ nullable: true, example: -74.0651466 })
+  @ApiProperty({ example: -74.0651466 })
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 7 })
   @Min(-180)
@@ -101,7 +101,7 @@ export class CreateOrganizationSiteDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(32)
-  @Matches(/^\+?[0-9()\-\s]{7,32}$/u, {
+  @Matches(/^\+?[0-9()\- ]{7,32}$/u, {
     message: 'El telefono de contacto debe tener un formato valido.',
   })
   contactPhone: string;

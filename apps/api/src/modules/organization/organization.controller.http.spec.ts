@@ -410,4 +410,19 @@ describe('OrganizationController HTTP', () => {
       })
       .expect(400);
   });
+
+  it('POST /api/v1/organization/sites retorna 400 cuando falta contactName', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/organization/sites')
+      .set('Authorization', 'Bearer admin-token')
+      .send({
+        name: 'Sede norte',
+        code: 'NORTE',
+        siteType: OrganizationSiteType.OFFICE,
+        latitude: 4.6486259,
+        longitude: -74.0651466,
+        contactPhone: '+573001112233',
+      })
+      .expect(400);
+  });
 });
