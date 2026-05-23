@@ -77,21 +77,34 @@ export class CreateOrganizationSiteDto {
   @Length(2, 2)
   country?: string;
 
-  @ApiPropertyOptional({ nullable: true, example: 4.6486259 })
-  @IsOptional()
+  @ApiProperty({ nullable: true, example: 4.6486259 })
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 7 })
   @Min(-90)
   @Max(90)
-  latitude?: number | null;
+  latitude: number;
 
-  @ApiPropertyOptional({ nullable: true, example: -74.0651466 })
-  @IsOptional()
+  @ApiProperty({ nullable: true, example: -74.0651466 })
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 7 })
   @Min(-180)
   @Max(180)
-  longitude?: number | null;
+  longitude: number;
+
+  @ApiProperty({ example: 'Mesa tecnica centro' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(160)
+  contactName: string;
+
+  @ApiProperty({ example: '+573001112233' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(32)
+  @Matches(/^\+?[0-9()\-\s]{7,32}$/u, {
+    message: 'El telefono de contacto debe tener un formato valido.',
+  })
+  contactPhone: string;
 
   @ApiPropertyOptional({ default: false })
   @IsOptional()

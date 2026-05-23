@@ -222,7 +222,15 @@ describe('OrganizationController HTTP', () => {
     await request(app.getHttpServer())
       .post('/api/v1/organization/sites')
       .set('Authorization', 'Bearer admin-token')
-      .send({ name: 'Sede norte', code: 'NORTE', siteType: OrganizationSiteType.OFFICE })
+      .send({
+        name: 'Sede norte',
+        code: 'NORTE',
+        siteType: OrganizationSiteType.OFFICE,
+        latitude: 4.6486259,
+        longitude: -74.0651466,
+        contactName: 'Mesa tecnica centro',
+        contactPhone: '+573001112233',
+      })
       .expect(201)
       .expect(({ body }) => {
         expect(body.data.id).toBe('site-1');
@@ -242,6 +250,10 @@ describe('OrganizationController HTTP', () => {
         name: 'Sede norte',
         code: 'NORTE',
         siteType: OrganizationSiteType.OFFICE,
+        latitude: 4.6486259,
+        longitude: -74.0651466,
+        contactName: 'Mesa tecnica centro',
+        contactPhone: '+573001112233',
         capabilities: [OrganizationSiteCapability.NOC],
       })
       .expect(201)
@@ -364,5 +376,38 @@ describe('OrganizationController HTTP', () => {
       .expect(({ body }) => {
         expect(body.data).toEqual([]);
       });
+  });
+
+  it('POST /api/v1/organization/sites acepta coordenadas y contacto requeridos', async () => {
+    organizationServiceMock.create.mockResolvedValue({ id: 'site-1' });
+
+    await request(app.getHttpServer())
+      .post('/api/v1/organization/sites')
+      .set('Authorization', 'Bearer admin-token')
+      .send({
+        name: 'Sede norte',
+        code: 'NORTE',
+        siteType: OrganizationSiteType.OFFICE,
+        latitude: 4.6486259,
+        longitude: -74.0651466,
+        contactName: 'Mesa tecnica centro',
+        contactPhone: '+573001112233',
+      })
+      .expect(201);
+  });
+
+  it('POST /api/v1/organization/sites retorna 400 cuando falta contactPhone', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/organization/sites')
+      .set('Authorization', 'Bearer admin-token')
+      .send({
+        name: 'Sede norte',
+        code: 'NORTE',
+        siteType: OrganizationSiteType.OFFICE,
+        latitude: 4.6486259,
+        longitude: -74.0651466,
+        contactName: 'Mesa tecnica centro',
+      })
+      .expect(400);
   });
 });

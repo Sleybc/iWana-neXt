@@ -68,6 +68,8 @@ describe('OrganizationService', () => {
       country: 'CO',
       latitude: null,
       longitude: null,
+      contactName: null,
+      contactPhone: null,
       isPrimary: false,
       businessHoursMode: 'BASE' as const,
       businessHours: [],
@@ -101,6 +103,10 @@ describe('OrganizationService', () => {
         name: 'Sede norte',
         code: 'NORTE',
         siteType: OrganizationSiteType.OFFICE,
+        latitude: 4.6486259,
+        longitude: -74.0651466,
+        contactName: 'Mesa tecnica centro',
+        contactPhone: '+573001112233',
         isPrimary: true,
       }),
     ).rejects.toBeInstanceOf(ConflictException);
@@ -128,6 +134,10 @@ describe('OrganizationService', () => {
       name: 'Sede norte',
       code: 'NORTE',
       siteType: OrganizationSiteType.OFFICE,
+      latitude: 4.6486259,
+      longitude: -74.0651466,
+      contactName: 'Mesa tecnica centro',
+      contactPhone: '+573001112233',
       capabilities: [OrganizationSiteCapability.NOC],
     });
 
@@ -310,5 +320,47 @@ describe('OrganizationService', () => {
       expect.any(Array),
     );
     expect(result.capabilities).toEqual([]);
+  });
+
+  it('should persist coordinates and site contact during create', async () => {
+    const manager = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn((_entity, value) => value),
+      save: jest.fn().mockImplementation(async (_entity, value) => ({
+        id: 'site-1',
+        ...(Array.isArray(value) ? value[0] : value),
+      })),
+      delete: jest.fn().mockResolvedValue(undefined),
+    };
+    mockTenantRun(manager);
+
+    jest.spyOn(service as never, 'loadSiteDetail').mockResolvedValue(
+      createSiteDetail({
+        latitude: 4.6486259,
+        longitude: -74.0651466,
+        contactName: 'Mesa tecnica centro',
+        contactPhone: '+573001112233',
+      }) as never,
+    );
+
+    const result = await service.create({
+      name: 'Sede norte',
+      code: 'NORTE',
+      siteType: OrganizationSiteType.OFFICE,
+      latitude: 4.6486259,
+      longitude: -74.0651466,
+      contactName: 'Mesa tecnica centro',
+      contactPhone: '+573001112233',
+    });
+
+    expect(manager.save).toHaveBeenCalledWith(
+      OrganizationSite,
+      expect.objectContaining({
+        contactName: 'Mesa tecnica centro',
+        contactPhone: '+573001112233',
+      }),
+    );
+    expect(result.contactName).toBe('Mesa tecnica centro');
+    expect(result.contactPhone).toBe('+573001112233');
   });
 });

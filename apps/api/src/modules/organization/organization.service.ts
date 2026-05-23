@@ -92,6 +92,8 @@ export interface OrganizationSiteDetail extends OrganizationSiteSummary {
   country: string;
   latitude: number | null;
   longitude: number | null;
+  contactName: string | null;
+  contactPhone: string | null;
   isPrimary: boolean;
   businessHoursMode: 'BASE' | 'OVERRIDE';
   businessHours: OrganizationSiteBusinessHourSnapshot[];
@@ -146,6 +148,10 @@ export class OrganizationService {
         longitude: this.toNumericColumn(dto.longitude),
         isPrimary: dto.isPrimary ?? false,
         isActive: dto.isActive ?? true,
+      });
+      Object.assign(site, {
+        contactName: dto.contactName.trim(),
+        contactPhone: dto.contactPhone.trim(),
       });
 
       const saved = await qr.manager.save(OrganizationSite, site);
@@ -217,6 +223,15 @@ export class OrganizationService {
       if (dto.longitude !== undefined) existing.longitude = this.toNumericColumn(dto.longitude);
       if (dto.isPrimary !== undefined) existing.isPrimary = dto.isPrimary;
       if (dto.isActive !== undefined) existing.isActive = dto.isActive;
+
+      const existingExtra = existing as OrganizationSite & {
+        contactName?: string | null;
+        contactPhone?: string | null;
+      };
+      if (dto.contactName !== undefined)
+        existingExtra.contactName = dto.contactName?.trim() ?? null;
+      if (dto.contactPhone !== undefined)
+        existingExtra.contactPhone = dto.contactPhone?.trim() ?? null;
 
       await qr.manager.save(OrganizationSite, existing);
 
@@ -566,6 +581,9 @@ export class OrganizationService {
       country: site.country,
       latitude: this.toNumber(site.latitude),
       longitude: this.toNumber(site.longitude),
+      contactName: (site as OrganizationSite & { contactName?: string | null }).contactName ?? null,
+      contactPhone:
+        (site as OrganizationSite & { contactPhone?: string | null }).contactPhone ?? null,
       isPrimary: site.isPrimary,
       businessHoursMode,
       businessHours: siteBusinessHours.map((entry) => this.sanitizeBusinessHour(entry)),
@@ -660,6 +678,8 @@ export class OrganizationService {
       country: site.country,
       latitude: site.latitude,
       longitude: site.longitude,
+      contactName: site.contactName,
+      contactPhone: site.contactPhone,
       isPrimary: site.isPrimary,
       isActive: site.isActive,
       capabilities: site.capabilities,
