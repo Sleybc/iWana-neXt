@@ -8,7 +8,9 @@ import {
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-import { UserRole, UserStatus } from '@iwana/shared';
+import { AccessPermissionKey, UserRole, UserStatus } from '@iwana/shared';
+import { PermissionsGuard } from '../access-control/guards/permissions.guard';
+import { EffectivePermissionsService } from '../access-control/services/effective-permissions.service';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { IS_PUBLIC_KEY } from '../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -46,6 +48,32 @@ jest.mock('../auth/guards/jwt-auth.guard', () => ({
           schemaName: 'tenant_test',
           jti: 'jti-noc',
           type: 'tenant',
+        };
+        return true;
+      }
+
+      if (authHeader === 'Bearer restricted-admin-token') {
+        request.user = {
+          sub: 'usr-admin-restricted',
+          email: 'hash-admin-restricted',
+          role: UserRole.ADMIN,
+          tenantId: 'tenant-test',
+          schemaName: 'tenant_test',
+          jti: 'jti-admin-restricted',
+          type: 'tenant',
+        };
+        return true;
+      }
+
+      if (authHeader === 'Bearer system-admin-token') {
+        request.user = {
+          sub: 'usr-system-admin',
+          email: 'hash-system-admin',
+          role: UserRole.SYSTEM_ADMIN,
+          tenantId: null,
+          schemaName: null,
+          jti: 'jti-system-admin',
+          type: 'platform',
         };
         return true;
       }
@@ -97,6 +125,9 @@ jest.mock('../auth/guards/roles.guard', () => ({
 
 describe('UsersController HTTP', () => {
   let app: INestApplication;
+  const effectivePermissionsServiceMock = {
+    getEffectivePermissionsForUser: jest.fn(),
+  };
 
   const usersServiceMock = {
     findAll: jest.fn(),
@@ -114,7 +145,13 @@ describe('UsersController HTTP', () => {
   beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       controllers: [UsersController],
-      providers: [{ provide: UsersService, useValue: usersServiceMock }, JwtAuthGuard, RolesGuard],
+      providers: [
+        { provide: UsersService, useValue: usersServiceMock },
+        { provide: EffectivePermissionsService, useValue: effectivePermissionsServiceMock },
+        JwtAuthGuard,
+        RolesGuard,
+        PermissionsGuard,
+      ],
     }).compile();
 
     app = moduleRef.createNestApplication();
@@ -136,6 +173,15 @@ describe('UsersController HTTP', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockImplementation(
+      async (userId: string) => {
+        if (userId === 'usr-admin-restricted') {
+          return [];
+        }
+
+        return [AccessPermissionKey.USERS_MANAGE];
+      },
+    );
   });
 
   it('GET /api/v1/users retorna 200 con lista paginada', async () => {
@@ -193,6 +239,34 @@ describe('UsersController HTTP', () => {
       .expect(({ body }) => {
         expect(body.data.temporaryPassword).toBeDefined();
       });
+  });
+
+  it('POST /api/v1/users retorna 403 cuando ADMIN no tiene users.manage', async () => {
+    usersServiceMock.create.mockResolvedValue({
+      id: 'usr-1',
+      temporaryPassword: 'temp1234567890abcdef',
+    });
+
+    await request(app.getHttpServer())
+      .post('/api/v1/users')
+      .set('Authorization', 'Bearer restricted-admin-token')
+      .set('Idempotency-Key', 'idem-1-perm')
+      .send({ email: 'usuario@empresa.com', role: UserRole.NOC })
+      .expect(403);
+  });
+
+  it('POST /api/v1/users retorna 201 para SYSTEM_ADMIN aunque no tenga permisos tenant', async () => {
+    usersServiceMock.create.mockResolvedValue({
+      id: 'usr-system-created',
+      temporaryPassword: 'temp1234567890abcdef',
+    });
+
+    await request(app.getHttpServer())
+      .post('/api/v1/users')
+      .set('Authorization', 'Bearer system-admin-token')
+      .set('Idempotency-Key', 'idem-1-platform')
+      .send({ email: 'usuario@empresa.com', role: UserRole.NOC })
+      .expect(201);
   });
 
   it('POST /api/v1/users retorna 400 sin Idempotency-Key', async () => {

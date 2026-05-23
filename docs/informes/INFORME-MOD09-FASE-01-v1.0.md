@@ -188,6 +188,8 @@ No se identifican bloqueos criticos de arquitectura, seguridad, tenancy o compil
 
 ### Actualizacion WFM operating hours 2026-05-16
 
+> **Nota de vigencia 2026-05-22:** Las menciones historicas de overrides por tecnico y precedencia `override tecnico > festivo/cierre > sede > empresa` quedan reemplazadas por ADR-041. Desde ese corte, Excepciones por tecnico se retira del producto WFM y la precedencia objetivo vuelve a `festivo/cierre > sede > empresa` hasta que un futuro modulo de RR. HH. gobierne ausencias personales aprobadas.
+
 - Se completó el slice portal de `settings` dentro de la pestaña `operations` con `apps/portal/src/components/settings/WfmOperatingHoursManager.tsx`, manteniendo `OperationalSettingsForm` enfocado solo en timezone, moneda, idioma y país.
 - El portal ahora consume CRUD tipado para sedes operativas, horario base, horario por sede, overrides por técnico y festivos/cierres desde `apps/portal/src/lib/api-client.ts`.
 - Se agregó la consulta self-service `POST /api/v1/wfm/operating-window/resolve` para exponer al portal la ventana operativa efectiva resuelta por backend sin duplicar la precedencia en cliente.

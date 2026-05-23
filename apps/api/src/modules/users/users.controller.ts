@@ -23,6 +23,9 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { AccessPermissionKey, UserRole, UserStatus } from '@iwana/shared';
+import { Permissions } from '../access-control/decorators/permissions.decorator';
+import { PermissionsGuard } from '../access-control/guards/permissions.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -38,7 +41,6 @@ import {
   UpdateUserDto,
   UserResponseDto,
 } from './dto/user.dto';
-import { UserRole, UserStatus } from '@iwana/shared';
 
 /**
  * Controlador de gestion de usuarios por tenant.
@@ -55,7 +57,7 @@ import { UserRole, UserStatus } from '@iwana/shared';
  */
 @ApiTags('users')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
@@ -126,6 +128,7 @@ export class UsersController {
    */
   @Post()
   @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.USERS_MANAGE)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Crear usuario en el tenant' })
   @ApiHeader({
@@ -209,6 +212,8 @@ export class UsersController {
    * El header Idempotency-Key es obligatorio para reintentos seguros.
    */
   @Patch(':id')
+  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.USERS_MANAGE)
   @ApiOperation({ summary: 'Actualizar estado o rol de un usuario' })
   @ApiHeader({
     name: 'Idempotency-Key',
@@ -240,6 +245,7 @@ export class UsersController {
    */
   @Patch(':id/login-email/admin')
   @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.USERS_MANAGE)
   @ApiOperation({ summary: 'Cambiar el email de acceso de un usuario (admin)' })
   @ApiHeader({
     name: 'Idempotency-Key',
@@ -294,6 +300,7 @@ export class UsersController {
 
   @Patch(':id/password')
   @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.USERS_MANAGE)
   @ApiOperation({ summary: 'Reiniciar password de usuario' })
   @ApiHeader({
     name: 'Idempotency-Key',
@@ -331,6 +338,7 @@ export class UsersController {
    */
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.USERS_MANAGE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Eliminar (soft delete) un usuario del tenant' })
   @ApiResponse({ status: 204, description: 'Usuario eliminado exitosamente.' })

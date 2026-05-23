@@ -25,6 +25,28 @@ function setupPasswordRecoveryMocks() {
       const url = request.url();
       const method = request.method();
 
+      if (url.includes('/tenants/public-branding') && method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              displayName: 'Portal Demo',
+              showTenantName: true,
+              logoLightUrl: null,
+              logoDarkUrl: null,
+              sealLightUrl: null,
+              sealDarkUrl: null,
+              faviconLightUrl: null,
+              faviconDarkUrl: null,
+              loginBackgroundLightUrl: null,
+              loginBackgroundDarkUrl: null,
+            },
+          }),
+        });
+        return;
+      }
+
       // -----------------------------------------------------------------------
       // POST /auth/forgot-password — siempre responde OK (OWASP — no revelar existencia)
       // -----------------------------------------------------------------------
@@ -72,7 +94,10 @@ function setupPasswordRecoveryMocks() {
           await route.fulfill({
             status: 401,
             contentType: 'application/json',
-            body: JSON.stringify({ code: 'INVALID_CREDENTIALS', message: 'Credenciales incorrectas' }),
+            body: JSON.stringify({
+              code: 'INVALID_CREDENTIALS',
+              message: 'Credenciales incorrectas',
+            }),
           });
         }
         return;
@@ -105,6 +130,91 @@ function setupPasswordRecoveryMocks() {
             body: JSON.stringify({ code: 'UNAUTHORIZED', message: 'No autenticado' }),
           });
         }
+        return;
+      }
+
+      if (url.match(/\/users\/[^/]+$/) && method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              id: 'user-recovery-uuid',
+              email: 'recovery@portal-demo.test',
+              role: 'tenant_support',
+              status: 'ACTIVE',
+              firstName: 'Recuperación',
+              lastName: 'Portal',
+              avatarUrl: null,
+              mfaEnabled: false,
+              emailVerified: true,
+              createdAt: '2026-03-13T12:00:00.000Z',
+            },
+          }),
+        });
+        return;
+      }
+
+      if (url.includes('/tenants/me/summary') && method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              tenant: {
+                id: 'tenant-uuid-recovery',
+                name: 'Portal Recovery Demo',
+                slug: 'isp-demo',
+                status: 'ACTIVE',
+              },
+              settings: {
+                timezone: 'America/Bogota',
+                currency: 'COP',
+                language: 'es-CO',
+                country: 'CO',
+                features: { billing: false, mfa_required_all: false },
+              },
+              metrics: {
+                configuredUsers: 1,
+                mfaCoverage: null,
+                pendingAlerts: 0,
+                auditEventsLast7d: 0,
+              },
+              alerts: [],
+            },
+          }),
+        });
+        return;
+      }
+
+      if (url.includes('/tenants/me') && method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              id: 'tenant-uuid-recovery',
+              name: 'Portal Recovery Demo',
+              slug: 'isp-demo',
+              status: 'ACTIVE',
+              contactEmail: 'recovery@portal-demo.test',
+              showTenantName: true,
+              logoLightUrl: null,
+              logoDarkUrl: null,
+              sealLightUrl: null,
+              sealDarkUrl: null,
+            },
+          }),
+        });
+        return;
+      }
+
+      if (url.includes('/audit-logs') && method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: [] }),
+        });
         return;
       }
 
@@ -149,7 +259,10 @@ test.describe('Portal — recuperación de contraseña (MOD02)', () => {
     await page.waitForLoadState('networkidle');
 
     // La página debe tener un campo para el email
-    const emailInput = page.getByLabel(/correo/i).or(page.getByPlaceholder(/correo|email/i)).first();
+    const emailInput = page
+      .getByLabel(/correo/i)
+      .or(page.getByPlaceholder(/correo|email/i))
+      .first();
     await expect(emailInput).toBeVisible();
   });
 

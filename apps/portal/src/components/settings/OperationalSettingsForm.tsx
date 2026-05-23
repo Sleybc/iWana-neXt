@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { CheckCircle2, CircleAlert } from 'lucide-react';
@@ -11,9 +11,9 @@ import { PortalAlert, PortalSectionHeader } from '@/components/shared/portal-ui'
 
 const operationalSettingsSchema = z.object({
   timezone: z.string().min(1, 'Selecciona una zona horaria.'),
-  currency: z.string().regex(/^[A-Z]{3}$/, 'Usa una moneda ISO 4217.'),
+  currency: z.string().regex(/^[A-Z]{3}$/, 'Usa un código de moneda de 3 letras, por ejemplo COP.'),
   language: z.string().min(2, 'Selecciona un idioma.'),
-  country: z.string().regex(/^[A-Z]{2}$/, 'Usa un país ISO alpha-2.'),
+  country: z.string().regex(/^[A-Z]{2}$/, 'Usa un código de país de 2 letras, por ejemplo CO.'),
 });
 
 type OperationalSettingsFormValues = z.infer<typeof operationalSettingsSchema>;
@@ -26,11 +26,11 @@ interface OperationalSettingsFormProps {
 
 // Opciones con etiquetas legibles para el usuario
 const TIMEZONE_OPTIONS = [
-  { value: 'America/Bogota', label: 'America/Bogota (Colombia)' },
-  { value: 'America/Guayaquil', label: 'America/Guayaquil (Ecuador)' },
-  { value: 'America/Lima', label: 'America/Lima (Perú)' },
-  { value: 'America/Mexico_City', label: 'America/Mexico_City (México)' },
-  { value: 'America/New_York', label: 'America/New_York (EE.UU.)' },
+  { value: 'America/Bogota', label: 'Colombia (Bogotá)' },
+  { value: 'America/Guayaquil', label: 'Ecuador (Guayaquil)' },
+  { value: 'America/Lima', label: 'Perú (Lima)' },
+  { value: 'America/Mexico_City', label: 'México (Ciudad de México)' },
+  { value: 'America/New_York', label: 'Estados Unidos (Nueva York)' },
 ];
 
 const CURRENCY_OPTIONS = [
@@ -45,7 +45,7 @@ const LANGUAGE_OPTIONS = [
   { value: 'es-CO', label: 'Español — Colombia' },
   { value: 'es-MX', label: 'Español — México' },
   { value: 'es-PE', label: 'Español — Perú' },
-  { value: 'en-US', label: 'English (en-US)' },
+  { value: 'en-US', label: 'Inglés — Estados Unidos' },
 ];
 
 const COUNTRY_OPTIONS = [
@@ -79,7 +79,7 @@ export function OperationalSettingsForm({
   const [success, setSuccess] = useState<string | null>(null);
 
   const {
-    register,
+    control,
     handleSubmit,
     reset,
     formState: { errors, isDirty, isSubmitting },
@@ -129,139 +129,161 @@ export function OperationalSettingsForm({
         {/* Vista consulta: info-pills en lugar de selects deshabilitados */}
         {!canEdit ? (
           <div className="space-y-5">
-            <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
-              {/* Grupo Ubicación */}
-              <p className={`mb-4 ${SUBSECTION_LABEL}`}>Ubicación</p>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
-                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3 xl:col-span-7">
-                  <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-                    Zona horaria
-                  </span>
-                  <span className="mt-0.5 block text-sm font-medium text-gray-900 dark:text-white">
-                    {labelFor(TIMEZONE_OPTIONS, settings.timezone)}
-                  </span>
-                </div>
-                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3 xl:col-span-5">
-                  <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-                    País operativo
-                  </span>
-                  <span className="mt-0.5 block text-sm font-medium text-gray-900 dark:text-white">
-                    {labelFor(COUNTRY_OPTIONS, settings.country)}
-                  </span>
-                </div>
+            {/* Grupo Ubicación */}
+            <p className={`mb-3 ${SUBSECTION_LABEL}`}>Ubicación</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
+                <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+                  Zona horaria
+                </span>
+                <span className="mt-0.5 block text-sm font-medium text-gray-900 dark:text-white">
+                  {labelFor(TIMEZONE_OPTIONS, settings.timezone)}
+                </span>
               </div>
-
-              <hr className="my-4 border-gray-100 dark:border-dark-border" />
-
-              {/* Grupo Preferencias */}
-              <p className={`mb-4 ${SUBSECTION_LABEL}`}>Preferencias</p>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
-                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3 xl:col-span-6">
-                  <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-                    Idioma
-                  </span>
-                  <span className="mt-0.5 block text-sm font-medium text-gray-900 dark:text-white">
-                    {labelFor(LANGUAGE_OPTIONS, settings.language)}
-                  </span>
-                </div>
-                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3 xl:col-span-6">
-                  <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-                    Moneda
-                  </span>
-                  <span className="mt-0.5 block text-sm font-medium text-gray-900 dark:text-white">
-                    {labelFor(CURRENCY_OPTIONS, settings.currency)}
-                  </span>
-                </div>
+              <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
+                <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+                  País operativo
+                </span>
+                <span className="mt-0.5 block text-sm font-medium text-gray-900 dark:text-white">
+                  {labelFor(COUNTRY_OPTIONS, settings.country)}
+                </span>
               </div>
             </div>
 
-            {/* Nota de plataforma */}
-            <div className="rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-3 text-sm text-gray-500 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-400">
-              El límite de suscriptores y otros parámetros comerciales permanecen administrados por
-              plataforma y no forman parte de este flujo self-service.
+            <hr className="my-4 border-gray-100 dark:border-dark-border" />
+
+            {/* Grupo Preferencias */}
+            <p className={`mb-3 ${SUBSECTION_LABEL}`}>Preferencias</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
+                <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+                  Idioma
+                </span>
+                <span className="mt-0.5 block text-sm font-medium text-gray-900 dark:text-white">
+                  {labelFor(LANGUAGE_OPTIONS, settings.language)}
+                </span>
+              </div>
+              <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
+                <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+                  Moneda
+                </span>
+                <span className="mt-0.5 block text-sm font-medium text-gray-900 dark:text-white">
+                  {labelFor(CURRENCY_OPTIONS, settings.currency)}
+                </span>
+              </div>
             </div>
 
             <p className="text-xs text-gray-400 dark:text-gray-500">
-              Tu rol puede consultar la configuración operativa, pero no modificarla.
+              Puedes consultar esta información, pero no cambiarla.
             </p>
           </div>
         ) : (
-          /* Vista edición: formulario con inner panel y grupos visuales */
+          /* Vista edición: formulario sin panel anidado */
           <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
-            <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
-              {/* Grupo: Ubicación */}
-              <p className={`mb-4 ${SUBSECTION_LABEL}`}>Ubicación</p>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12">
-                <div className="xl:col-span-7">
-                  <label htmlFor="timezone" className={LABEL_CLASS}>
-                    Zona horaria
-                  </label>
-                  <Select
-                    id="timezone"
-                    options={TIMEZONE_OPTIONS}
-                    menuClassName={SELECT_MENU_CLASS}
-                    {...register('timezone')}
-                  />
-                  {errors.timezone?.message && (
-                    <p className={ERROR_CLASS}>{errors.timezone.message}</p>
+            {/* Grupo: Ubicación */}
+            <p className={`mb-3 ${SUBSECTION_LABEL}`}>Ubicación</p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label htmlFor="timezone" className={LABEL_CLASS}>
+                  Zona horaria
+                </label>
+                <Controller
+                  name="timezone"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      id="timezone"
+                      options={TIMEZONE_OPTIONS}
+                      menuClassName={SELECT_MENU_CLASS}
+                      name={field.name}
+                      value={field.value}
+                      onChange={(event) => field.onChange(event.target.value)}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                    />
                   )}
-                </div>
-                <div className="xl:col-span-5">
-                  <label htmlFor="country" className={LABEL_CLASS}>
-                    País operativo
-                  </label>
-                  <Select
-                    id="country"
-                    options={COUNTRY_OPTIONS}
-                    menuClassName={SELECT_MENU_CLASS}
-                    {...register('country')}
-                  />
-                  {errors.country?.message && (
-                    <p className={ERROR_CLASS}>{errors.country.message}</p>
-                  )}
-                </div>
+                />
+                {errors.timezone?.message && (
+                  <p className={ERROR_CLASS}>{errors.timezone.message}</p>
+                )}
               </div>
-
-              <hr className="my-4 border-gray-100 dark:border-dark-border" />
-
-              {/* Grupo: Preferencias */}
-              <p className={`mb-4 ${SUBSECTION_LABEL}`}>Preferencias</p>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12">
-                <div className="xl:col-span-6">
-                  <label htmlFor="language" className={LABEL_CLASS}>
-                    Idioma
-                  </label>
-                  <Select
-                    id="language"
-                    options={LANGUAGE_OPTIONS}
-                    menuClassName={SELECT_MENU_CLASS}
-                    {...register('language')}
-                  />
-                  {errors.language?.message && (
-                    <p className={ERROR_CLASS}>{errors.language.message}</p>
+              <div>
+                <label htmlFor="country" className={LABEL_CLASS}>
+                  País operativo
+                </label>
+                <Controller
+                  name="country"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      id="country"
+                      options={COUNTRY_OPTIONS}
+                      menuClassName={SELECT_MENU_CLASS}
+                      name={field.name}
+                      value={field.value}
+                      onChange={(event) => field.onChange(event.target.value)}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                    />
                   )}
-                </div>
-                <div className="xl:col-span-6">
-                  <label htmlFor="currency" className={LABEL_CLASS}>
-                    Moneda
-                  </label>
-                  <Select
-                    id="currency"
-                    options={CURRENCY_OPTIONS}
-                    menuClassName={SELECT_MENU_CLASS}
-                    {...register('currency')}
-                  />
-                  {errors.currency?.message && (
-                    <p className={ERROR_CLASS}>{errors.currency.message}</p>
-                  )}
-                </div>
+                />
+                {errors.country?.message && <p className={ERROR_CLASS}>{errors.country.message}</p>}
               </div>
             </div>
 
-            {/* Nota de plataforma */}
-            <div className="rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-3 text-sm text-gray-500 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-400">
-              El límite de suscriptores y otros parámetros comerciales permanecen administrados por
-              plataforma y no forman parte de este flujo self-service.
+            <hr className="my-4 border-gray-100 dark:border-dark-border" />
+
+            {/* Grupo: Preferencias */}
+            <p className={`mb-3 ${SUBSECTION_LABEL}`}>Preferencias</p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label htmlFor="language" className={LABEL_CLASS}>
+                  Idioma
+                </label>
+                <Controller
+                  name="language"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      id="language"
+                      options={LANGUAGE_OPTIONS}
+                      menuClassName={SELECT_MENU_CLASS}
+                      name={field.name}
+                      value={field.value}
+                      onChange={(event) => field.onChange(event.target.value)}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                    />
+                  )}
+                />
+                {errors.language?.message && (
+                  <p className={ERROR_CLASS}>{errors.language.message}</p>
+                )}
+              </div>
+              <div>
+                <label htmlFor="currency" className={LABEL_CLASS}>
+                  Moneda
+                </label>
+                <Controller
+                  name="currency"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      id="currency"
+                      options={CURRENCY_OPTIONS}
+                      menuClassName={SELECT_MENU_CLASS}
+                      name={field.name}
+                      value={field.value}
+                      onChange={(event) => field.onChange(event.target.value)}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                    />
+                  )}
+                />
+                {errors.currency?.message && (
+                  <p className={ERROR_CLASS}>{errors.currency.message}</p>
+                )}
+              </div>
             </div>
 
             {/* Feedback de servidor */}

@@ -1,6 +1,74 @@
 import { expect, test, type Page } from '@playwright/test';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
+const SETTINGS_SECTIONS = [
+  {
+    key: 'organization',
+    label: 'Perfil empresarial y organización',
+    description: 'Perfil empresarial, configuración operativa base y sedes.',
+    ownerModule: 'MOD00 / Organización',
+    status: 'AVAILABLE',
+    route: '/dashboard/settings/organization',
+    requiredPermissions: [],
+  },
+  {
+    key: 'field_operations',
+    label: 'Operación de campo',
+    description: 'Configuración WFM disponible.',
+    ownerModule: 'MOD09 / WFM',
+    status: 'AVAILABLE',
+    route: '/dashboard/settings/field-operations',
+    requiredPermissions: [],
+  },
+  {
+    key: 'access',
+    label: 'Usuarios y acceso',
+    description: 'Perfiles y permisos.',
+    ownerModule: 'MOD00 / Access control',
+    status: 'AVAILABLE',
+    route: '/dashboard/settings/access',
+    requiredPermissions: [],
+  },
+  {
+    key: 'security',
+    label: 'Seguridad',
+    description: 'Políticas de acceso y MFA.',
+    ownerModule: 'Auth / Users',
+    status: 'AVAILABLE',
+    route: '/dashboard/settings/security',
+    requiredPermissions: [],
+  },
+  {
+    key: 'branding',
+    label: 'Marca',
+    description: 'Identidad visual del portal empresarial.',
+    ownerModule: 'Tenant / Branding',
+    status: 'AVAILABLE',
+    route: '/dashboard/settings/branding',
+    requiredPermissions: [],
+  },
+  {
+    key: 'commercial',
+    label: 'Comercial',
+    description: 'Configuración comercial unificada.',
+    ownerModule: 'MOD08 / Comercial',
+    status: 'NOT_CONFIGURED',
+    route: null,
+    requiredPermissions: [],
+  },
+];
+const MOCK_PUBLIC_BRANDING = {
+  displayName: 'ISP Prueba Colombia',
+  showTenantName: true,
+  logoLightUrl: null,
+  logoDarkUrl: null,
+  sealLightUrl: null,
+  sealDarkUrl: null,
+  faviconLightUrl: null,
+  faviconDarkUrl: null,
+  loginBackgroundLightUrl: null,
+  loginBackgroundDarkUrl: null,
+};
 
 function buildAccessToken(role: string): string {
   const payload = Buffer.from(
@@ -36,6 +104,7 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
     settingsPatches: [] as Array<Record<string, unknown>>,
     platformCalls: [] as string[],
     summaryRequests: 0,
+    legacyOperatingSiteRequests: 0,
     coverageNodePosts: 0,
     coverageNodePatches: 0,
     coverageNodeDeletes: 0,
@@ -124,6 +193,83 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
     },
   };
 
+  const wfmCompanyWeek = [
+    {
+      weekday: 1,
+      isOpen: true,
+      startTime: '08:00',
+      endTime: '18:00',
+      slotMinutes: 60,
+    },
+    {
+      weekday: 2,
+      isOpen: true,
+      startTime: '08:00',
+      endTime: '18:00',
+      slotMinutes: 60,
+    },
+    {
+      weekday: 3,
+      isOpen: true,
+      startTime: '08:00',
+      endTime: '18:00',
+      slotMinutes: 60,
+    },
+    {
+      weekday: 4,
+      isOpen: true,
+      startTime: '08:00',
+      endTime: '18:00',
+      slotMinutes: 60,
+    },
+    {
+      weekday: 5,
+      isOpen: true,
+      startTime: '08:00',
+      endTime: '18:00',
+      slotMinutes: 60,
+    },
+    {
+      weekday: 6,
+      isOpen: false,
+      startTime: null,
+      endTime: null,
+      slotMinutes: null,
+    },
+    {
+      weekday: 0,
+      isOpen: false,
+      startTime: null,
+      endTime: null,
+      slotMinutes: null,
+    },
+  ];
+
+  const activeUsers = [
+    {
+      id: 'user-uuid-admin-test',
+      email: 'admin@isp-demo.test',
+      role,
+      status: 'ACTIVE',
+      tenantId: 'tenant-uuid-test',
+      mfaEnabled: tenantSettings.features.mfa_required_all,
+      mfaRequired: false,
+      emailVerified: true,
+      passwordResetRequired: false,
+      lastLoginAt: null,
+      createdAt: '2026-01-15T00:00:00.000Z',
+      updatedAt: '2026-01-15T00:00:00.000Z',
+      deletedAt: null,
+      firstName: 'Ana',
+      lastName: 'Prueba',
+      phone: '+573001234567',
+      jobTitle: 'Operaciones',
+      documentType: null,
+      documentNumber: null,
+      avatarUrl: null,
+    },
+  ];
+
   await page.route('**/api/v1/**', async (route) => {
     const url = route.request().url();
     const method = route.request().method();
@@ -151,6 +297,20 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
       return;
     }
 
+    if (url.includes('/tenants/public-branding') && method === 'GET') {
+      const slug = new URL(url).searchParams.get('slug');
+      await route.fulfill({
+        status: slug === MOCK_TENANT_SLUG ? 200 : 404,
+        contentType: 'application/json',
+        body: JSON.stringify(
+          slug === MOCK_TENANT_SLUG
+            ? { data: MOCK_PUBLIC_BRANDING }
+            : { code: 'TENANT_NOT_FOUND', message: 'Tenant no encontrado' },
+        ),
+      });
+      return;
+    }
+
     if (url.includes('/users/user-uuid-admin-test') && method === 'GET') {
       await route.fulfill({
         status: 200,
@@ -170,6 +330,64 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
             createdAt: '2026-01-15T00:00:00.000Z',
           },
         }),
+      });
+      return;
+    }
+
+    if (url.includes('/users?limit=200&status=ACTIVE') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            data: activeUsers,
+            nextCursor: null,
+          },
+        }),
+      });
+      return;
+    }
+
+    if (/\/access-control\/users\/[^/]+\/effective-permissions$/.test(url) && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            userId: 'user-uuid-admin-test',
+            role,
+            effectivePermissions: ['settings.read'],
+            recoveryPermissions: [],
+            profileSources: [],
+          },
+        }),
+      });
+      return;
+    }
+
+    if (url.includes('/audit-logs') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [] }),
+      });
+      return;
+    }
+
+    if (url.includes('/configuration/settings-sections') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: SETTINGS_SECTIONS }),
+      });
+      return;
+    }
+
+    if (url.endsWith('/organization/sites') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [] }),
       });
       return;
     }
@@ -253,6 +471,43 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
             ],
           },
         }),
+      });
+      return;
+    }
+
+    if (url.includes('/wfm/dispatch-sites') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      });
+      return;
+    }
+
+    if (url.includes('/wfm/operating-sites') && method === 'GET') {
+      requestLog.legacyOperatingSiteRequests += 1;
+      await route.fulfill({
+        status: 410,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'Legacy operating-sites endpoint should not be called' }),
+      });
+      return;
+    }
+
+    if (url.includes('/wfm/business-hours/company') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(wfmCompanyWeek),
+      });
+      return;
+    }
+
+    if (url.includes('/wfm/holiday-blackouts') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
       });
       return;
     }
@@ -512,7 +767,24 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
 }
 
 async function pickNativeSelectOption(page: Page, selectId: string, value: string) {
-  await page.locator(`#${selectId}`).selectOption(value);
+  const optionLabels: Record<string, Record<string, string>> = {
+    timezone: {
+      'America/Guayaquil': 'America/Guayaquil (Ecuador)',
+    },
+    currency: {
+      USD: 'USD — Dólar estadounidense',
+    },
+    country: {
+      EC: 'Ecuador',
+    },
+  };
+
+  const combobox = page.locator(`#${selectId}`);
+  await combobox.click();
+  await page
+    .locator(`#${selectId}-listbox`)
+    .getByRole('option', { name: optionLabels[selectId]?.[value] ?? value, exact: true })
+    .click();
 }
 
 test.describe('Configuración empresarial del portal', () => {
@@ -522,10 +794,12 @@ test.describe('Configuración empresarial del portal', () => {
     const { requestLog } = await setupSettingsMocks(page, 'ADMIN');
     await setAuthSession(page, 'ADMIN');
 
-    await page.goto('/dashboard/settings');
+    await page.goto('/dashboard/settings/organization');
     await page.waitForLoadState('networkidle');
 
-    await expect(page.getByRole('heading', { name: 'Configuración empresarial' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Perfil empresarial y organización' }),
+    ).toBeVisible();
     await expect(page.getByLabel('Correo de contacto')).toHaveValue('contacto@test-isp.co');
 
     await page.getByLabel('Correo de contacto').fill('gestion@test-isp.co');
@@ -544,7 +818,6 @@ test.describe('Configuración empresarial del portal', () => {
     );
     expect(requestLog.profilePatches[0]).not.toHaveProperty('name');
 
-    await page.getByRole('tab', { name: 'Operación', exact: true }).click();
     await pickNativeSelectOption(page, 'timezone', 'America/Guayaquil');
     await pickNativeSelectOption(page, 'currency', 'USD');
     await pickNativeSelectOption(page, 'country', 'EC');
@@ -563,7 +836,8 @@ test.describe('Configuración empresarial del portal', () => {
     expect(requestLog.settingsPatches[0]).not.toHaveProperty('maxSubscribers');
     expect(requestLog.settingsPatches[0]).not.toHaveProperty('billing');
 
-    await page.getByRole('tab', { name: 'Seguridad', exact: true }).click();
+    await page.goto('/dashboard/settings/security');
+    await page.waitForLoadState('networkidle');
     const mfaToggle = page.getByLabel('Activar MFA obligatorio');
     await mfaToggle.scrollIntoViewIfNeeded();
     await mfaToggle.check({ force: true });
@@ -575,27 +849,32 @@ test.describe('Configuración empresarial del portal', () => {
         features: { mfa_required_all: true },
       }),
     );
+    expect(requestLog.legacyOperatingSiteRequests).toBe(0);
     expect(requestLog.platformCalls).toHaveLength(0);
-    expect(requestLog.summaryRequests).toBeGreaterThanOrEqual(1);
+    expect(requestLog.summaryRequests).toBe(0);
   });
 
   test('ADMIN puede guardar sello y desactivar nombre en sidebar', async ({ page }) => {
-    await setupSettingsMocks(page, 'ADMIN');
+    const { requestLog } = await setupSettingsMocks(page, 'ADMIN');
     await setAuthSession(page, 'ADMIN');
 
-    await page.goto('/dashboard/settings');
+    await page.goto('/dashboard/settings/branding');
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('tab', { name: 'Marca', exact: true }).click();
-    await page.getByRole('heading', { name: 'Marca empresarial' }).scrollIntoViewIfNeeded();
+    await page.getByRole('heading', { name: 'Identidad visual' }).scrollIntoViewIfNeeded();
     await page.getByText('o pega una URL HTTPS directamente').first().click();
     await page.getByLabel('URL HTTPS externa').first().fill('https://cdn.test-isp.co/seal.png');
 
     // Desactivar nombre en sidebar
-    await page.getByRole('checkbox', { name: /mostrar nombre comercial/i }).uncheck();
+    await page
+      .getByRole('checkbox', {
+        name: /mostrar nombre comercial junto al sello en el menú lateral/i,
+      })
+      .uncheck();
 
-    await page.getByRole('button', { name: 'Guardar cambios' }).click();
+    await page.getByRole('button', { name: 'Guardar identidad visual' }).click();
     await expect(page.getByText('Branding empresarial actualizado correctamente.')).toBeVisible();
+    expect(requestLog.legacyOperatingSiteRequests).toBe(0);
   });
 
   test('NOC ve la pantalla en modo solo lectura y no consume summary de ADMIN', async ({
@@ -604,78 +883,99 @@ test.describe('Configuración empresarial del portal', () => {
     const { requestLog } = await setupSettingsMocks(page, 'NOC');
     await setAuthSession(page, 'NOC');
 
-    await page.goto('/dashboard/settings');
+    await page.goto('/dashboard/settings/organization');
     await page.waitForLoadState('networkidle');
 
-    await expect(page.getByText('Vista solo lectura para tu rol')).toBeVisible();
+    await expect(
+      page.getByText('Tu rol tiene acceso solo lectura sobre esta sección.'),
+    ).toBeVisible();
     await expect(page.getByLabel('Correo de contacto')).toBeDisabled();
     await expect(page.getByRole('button', { name: 'Guardar perfil empresarial' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Guardar configuración operativa' })).toHaveCount(
       0,
     );
+
+    await page.goto('/dashboard/settings/field-operations');
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByText('Modo solo lectura')).toBeVisible();
+
+    await page.goto('/dashboard/settings/security');
+    await page.waitForLoadState('networkidle');
     await expect(page.getByRole('button', { name: 'Guardar seguridad' })).toHaveCount(0);
+    expect(requestLog.legacyOperatingSiteRequests).toBe(0);
     expect(requestLog.summaryRequests).toBe(0);
     expect(requestLog.platformCalls).toHaveLength(0);
   });
 
-  test('El módulo comercial vive en ruta dedicada y no en tabs de Settings', async ({ page }) => {
-    await setupSettingsMocks(page, 'ADMIN');
-    await setAuthSession(page, 'ADMIN');
-
-    await page.goto('/dashboard/settings');
-    await page.waitForLoadState('networkidle');
-
-    await expect(page.getByRole('tab', { name: 'Comercial', exact: true })).toHaveCount(0);
-
-    await expect(page.getByRole('link', { name: 'Comercial' })).toHaveAttribute(
-      'href',
-      '/dashboard/commercial',
-    );
-  });
-
-  test('Configuracion usa tabs accesibles y restablece datos al cambiar de seccion', async ({
+  test('La raíz muestra solo el índice federado y no duplica tabs ni formularios', async ({
     page,
   }) => {
-    await setupSettingsMocks(page, 'ADMIN');
+    const { requestLog } = await setupSettingsMocks(page, 'ADMIN');
+    await setAuthSession(page, 'ADMIN');
+
+    await page.goto('/dashboard/settings');
+    await page.waitForLoadState('networkidle');
+    const shellPanel = page
+      .locator('section')
+      .filter({ has: page.getByRole('heading', { name: 'Secciones de configuración' }) });
+
+    await expect(page.getByRole('tab')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Perfil empresarial' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Configuración operativa' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Seguridad' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Identidad visual' })).toHaveCount(0);
+
+    await expect(shellPanel.getByRole('link', { name: /Organización/i })).toHaveAttribute(
+      'href',
+      '/dashboard/settings/organization',
+    );
+    await expect(shellPanel.getByRole('link', { name: /Operación de campo/i })).toHaveAttribute(
+      'href',
+      '/dashboard/settings/field-operations',
+    );
+    await expect(shellPanel.getByRole('link', { name: /Seguridad/i })).toHaveAttribute(
+      'href',
+      '/dashboard/settings/security',
+    );
+    await expect(shellPanel.getByRole('link', { name: /Marca/i })).toHaveAttribute(
+      'href',
+      '/dashboard/settings/branding',
+    );
+    await expect(shellPanel.getByRole('link', { name: /Comercial/i })).toHaveCount(0);
+    expect(requestLog.legacyOperatingSiteRequests).toBe(0);
+  });
+
+  test('Las tarjetas disponibles abren rutas dueñas con información existente', async ({
+    page,
+  }) => {
+    const { requestLog } = await setupSettingsMocks(page, 'ADMIN');
     await setAuthSession(page, 'ADMIN');
 
     await page.goto('/dashboard/settings');
     await page.waitForLoadState('networkidle');
 
-    await expect(page.getByRole('tab', { name: 'General', exact: true })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'Operación', exact: true })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'Seguridad', exact: true })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'Marca', exact: true })).toBeVisible();
-
-    await expect(page.getByRole('tab', { name: 'General', exact: true })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    await expect(page.getByRole('tabpanel', { name: 'General' })).toBeVisible();
+    await page.getByRole('link', { name: /Organización/i }).click();
+    await expect(page).toHaveURL(/\/dashboard\/settings\/organization$/);
     await expect(page.getByRole('heading', { name: 'Perfil empresarial' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Configuración operativa' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Cobertura comercial' })).toHaveCount(0);
 
-    await page.getByRole('tab', { name: 'General', exact: true }).focus();
-    await page.keyboard.press('ArrowRight');
-    await expect(page.getByRole('tab', { name: 'Operación', exact: true })).toBeFocused();
+    await page.goto('/dashboard/settings');
+    await page.getByRole('link', { name: /Operación de campo/i }).click();
+    await expect(page).toHaveURL(/\/dashboard\/settings\/field-operations$/);
+    await expect(page.getByRole('heading', { name: 'Operación de campo' })).toBeVisible();
+    await expect(page.getByText('Excepciones por técnico')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Configuración operativa' })).toHaveCount(0);
 
-    await page.keyboard.press('End');
-    await expect(page.getByRole('tab', { name: 'Marca', exact: true })).toBeFocused();
+    await page.goto('/dashboard/settings');
+    await page.getByRole('link', { name: /Seguridad/i }).click();
+    await expect(page).toHaveURL(/\/dashboard\/settings\/security$/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Seguridad' })).toBeVisible();
 
-    await page.keyboard.press('Home');
-    await expect(page.getByRole('tab', { name: 'General', exact: true })).toBeFocused();
-
-    await page.getByLabel('Correo de contacto').fill('draft-tabs@test-isp.co');
-    await page.getByRole('tab', { name: 'Operación', exact: true }).click();
-
-    await expect(page.getByRole('tab', { name: 'Operación', exact: true })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    await expect(page.getByRole('tabpanel', { name: 'Operación' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Configuración operativa' })).toBeVisible();
-
-    await page.getByRole('tab', { name: 'General', exact: true }).click();
-    await expect(page.getByLabel('Correo de contacto')).toHaveValue('contacto@test-isp.co');
+    await page.goto('/dashboard/settings');
+    await page.getByRole('link', { name: /Marca/i }).click();
+    await expect(page).toHaveURL(/\/dashboard\/settings\/branding$/);
+    await expect(page.getByRole('heading', { name: 'Identidad visual' })).toBeVisible();
+    expect(requestLog.legacyOperatingSiteRequests).toBe(0);
   });
 });

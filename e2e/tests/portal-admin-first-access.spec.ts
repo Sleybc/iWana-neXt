@@ -17,6 +17,19 @@
 
 import { expect, test } from '@playwright/test';
 
+const MOCK_PUBLIC_BRANDING = {
+  displayName: 'ISP Demo',
+  showTenantName: true,
+  logoLightUrl: null,
+  logoDarkUrl: null,
+  sealLightUrl: null,
+  sealDarkUrl: null,
+  faviconLightUrl: null,
+  faviconDarkUrl: null,
+  loginBackgroundLightUrl: null,
+  loginBackgroundDarkUrl: null,
+};
+
 /** Configuracion de mocks para el flujo de primer acceso ADMIN */
 function setupAdminFirstAccessMocks() {
   return async ({ page }: { page: import('@playwright/test').Page }) => {
@@ -27,6 +40,15 @@ function setupAdminFirstAccessMocks() {
       const request = route.request();
       const url = request.url();
       const method = request.method();
+
+      if (url.includes('/tenants/public-branding') && method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: MOCK_PUBLIC_BRANDING }),
+        });
+        return;
+      }
 
       // -----------------------------------------------------------------------
       // POST /auth/login — comportamiento segun el paso del flujo
@@ -292,6 +314,15 @@ test.describe('Portal — MFA enforcement por rol (MOD02)', () => {
       const url = route.request().url();
       const method = route.request().method();
 
+      if (url.includes('/tenants/public-branding') && method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: MOCK_PUBLIC_BRANDING }),
+        });
+        return;
+      }
+
       if (url.endsWith('/auth/mfa/setup') && method === 'POST') {
         const minimalPng =
           'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
@@ -335,6 +366,15 @@ test.describe('Portal — MFA enforcement por rol (MOD02)', () => {
     await page.route('**/api/v1/**', async (route) => {
       const url = route.request().url();
       const method = route.request().method();
+
+      if (url.includes('/tenants/public-branding') && method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: MOCK_PUBLIC_BRANDING }),
+        });
+        return;
+      }
 
       if (url.endsWith('/auth/mfa/setup') && method === 'POST') {
         // Sin token → el backend retornaría 401, pero el cliente ya valida antes de llamar

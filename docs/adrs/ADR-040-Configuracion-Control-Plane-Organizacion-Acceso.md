@@ -1,8 +1,8 @@
 # ADR-040: MOD00 Configuracion como control plane federado, Organizacion/Sedes y perfiles de acceso
 
-**Version:** 1.0  
+**Version:** 1.2
 **Estado:** Aprobado  
-**Fecha:** 2026-05-19  
+**Fecha:** 2026-05-22
 **Modo activo:** Architect  
 **Autor:** AI-EM-ARCH  
 **Modulo:** MOD00 Configuracion Control Plane v1.0  
@@ -89,13 +89,19 @@ Se agregan **perfiles de acceso configurables por tenant**:
 
 Ejemplo:
 
-| Usuario | Rol base | Perfil configurable |
-| --- | --- | --- |
-| Admin tenant | `ADMIN` | Administrador general |
-| Tecnico | `TECHNICIAN` | Tecnico instalador fibra |
-| Soporte | `SUPPORT` | Mesa de ayuda nivel 1 |
-| Contador | `ACCOUNTANT` | Recaudo sede centro |
-| NOC | `NOC` | Monitor NMS solo lectura |
+| Usuario      | Rol base     | Perfil configurable      |
+| ------------ | ------------ | ------------------------ |
+| Admin tenant | `ADMIN`      | Administrador general    |
+| Tecnico      | `TECHNICIAN` | Tecnico instalador fibra |
+| Soporte      | `SUPPORT`    | Mesa de ayuda nivel 1    |
+| Contador     | `ACCOUNTANT` | Recaudo sede centro      |
+| NOC          | `NOC`        | Monitor NMS solo lectura |
+
+Interpretacion obligatoria para ejecucion y refinamiento:
+
+- el gobierno operativo del tenant recae en usuarios con rol base `ADMIN`;
+- un perfil configurable puede refinar, segmentar o acotar permisos dentro del rol base compatible;
+- un perfil configurable no convierte a un usuario con otro `UserRole` en administrador del tenant, aunque el nombre del perfil sugiera lo contrario.
 
 ### D5. Permisos granulares son complemento, no reemplazo inmediato del RBAC actual
 
@@ -107,6 +113,26 @@ La Fase 01 debe mantener compatibilidad con guards actuales:
 - futuras policies/guards de permisos refinan acciones dentro del rol.
 
 No se habilita un bypass donde ocultar botones en frontend equivalga a autorizacion. Toda accion sensible debe validarse en backend.
+
+### D6. Catalogo inicial versionado y compatibilidad con `UserRole`
+
+Se aprueba el catalogo inicial `MOD00_ACCESS_V1` como seed versionado de Fase 01. El catalogo define permisos estables por modulo, con estado `ASSIGNABLE` cuando pueden incluirse en perfiles de tenant y `RESERVED` cuando solo quedan visibles como ruta futura no asignable.
+
+Los permisos no crean capacidades por si solos: cada permiso debe validarse contra el `UserRole` base del usuario al crear/editar perfiles y al asignarlos. En Fase 01, todo perfil tenant-created debe declarar `baseRoleConstraint`; el backend rechaza perfiles sin rol base, permisos desconocidos, permisos `RESERVED` y permisos incompatibles con el rol base declarado.
+
+`SYSTEM_ADMIN` e `IWANA_SUPPORT` son roles de plataforma y quedan fuera de perfiles configurables del tenant. `SUBSCRIBER`, `PARTNER` e `INVESTOR` no reciben perfiles administrativos de MOD00 en Fase 01.
+
+### D7. Gobierno operativo del tenant y acceso modular
+
+Se formaliza que el usuario con rol base `ADMIN` debe poder, dentro de su tenant:
+
+- crear y gestionar usuarios internos;
+- crear, editar, ordenar y retirar perfiles configurables;
+- asignar acceso a modulos mediante perfiles y permisos compatibles con el rol base del usuario destino.
+
+En este ADR, "dar acceso a un modulo" significa asignar perfiles y permisos del catalogo aprobado; no significa crear roles backend dinamicos, ni permitir bypass de `RolesGuard`, ni confiar en ocultamiento de botones en frontend como mecanismo de autorizacion.
+
+Como refinamiento posterior a la ejecucion inicial, el gobierno granular debe separar la administracion del catalogo de perfiles de la asignacion de acceso a usuarios y endurecer los endpoints sensibles de Users con permiso granular ademas del rol base.
 
 ---
 
@@ -141,6 +167,7 @@ Elegida. Mantiene una experiencia simple para el usuario y conserva ownership co
 - Requiere migracion aditiva de `WfmOperatingSite` hacia `OrganizationSite`.
 - Requiere nuevas tablas tenant-aware para sedes, capacidades, horarios institucionales, perfiles y permisos.
 - Requiere definir catalogo de permisos por modulo y estrategia de cache/invalidation.
+- Requiere versionar el catalogo y mantener matriz explicita `UserRole` -> permisos asignables por fase.
 - Requiere documentar claramente que Configuracion administra la experiencia, pero no reemplaza los boundaries de dominio.
 
 ### Riesgos aceptados
@@ -155,7 +182,7 @@ Elegida. Mantiene una experiencia simple para el usuario y conserva ownership co
 
 1. No usar `tenant.settings` JSONB para modelar sedes, horarios institucionales, perfiles o permisos.
 2. No crear roles backend dinamicos equivalentes a `UserRole` desde la UI del tenant.
-3. Mantener `@Roles(UserRole.*)` en endpoints criticos; los permisos granulares solo refinan autorizacion.
+3. Mantener `@Roles(UserRole.*)` en endpoints criticos; los permisos granulares solo refinan autorizacion y no elevan un rol base distinto a `ADMIN` hacia gobierno administrativo del tenant.
 4. No acceder directamente a tablas de WFM, Inventory, Billing, Commercial, Users o Parties desde Configuracion salvo mediante puertos aprobados.
 5. Todas las tablas nuevas deben ser tenant-aware y resolverse por `SET LOCAL search_path`.
 6. Todas las escrituras de organizacion, sedes, perfiles y permisos deben auditarse.
@@ -172,6 +199,7 @@ Elegida. Mantiene una experiencia simple para el usuario y conserva ownership co
 - Nuevo prompt: docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-01-v1.0.md
 - Addendum de compatibilidad en spec WFM: docs/specs/2026-05-15-mod09-wfm-operating-hours-design.md
 - Informe MOD00 creado: docs/informes/INFORME-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md
+- Plan de refinamiento post-ejecucion: docs/plans/2026-05-22-mod00-refinamiento-post-ejecucion.md
 - Informe vivo MOD03 actualizado como antecedente historico: docs/informes/INFORME-MOD03-AUDITORIA-ESTADO-v1.0.md
 
 ---

@@ -13,12 +13,12 @@ export class HolidayBlackoutsService {
   async list(actor: JwtPayload): Promise<WfmHolidayBlackout[]> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.find(WfmHolidayBlackout, {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      return qr.manager.find(WfmHolidayBlackout, {
         where: { tenantId },
         order: { blackoutDate: 'ASC', createdAt: 'DESC' },
-      }),
-    );
+      });
+    });
   }
 
   async create(dto: CreateHolidayBlackoutDto, actor: JwtPayload): Promise<WfmHolidayBlackout> {
@@ -27,7 +27,7 @@ export class HolidayBlackoutsService {
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const blackout = qr.manager.create(WfmHolidayBlackout, {
         tenantId,
-        siteId: dto.siteId ?? null,
+        organizationSiteId: dto.organizationSiteId ?? null,
         blackoutDate: dto.blackoutDate,
         isRecurring: dto.isRecurring ?? false,
         name: dto.name.trim(),
@@ -55,7 +55,9 @@ export class HolidayBlackoutsService {
         throw new NotFoundException('El festivo o cierre no existe para este tenant.');
       }
 
-      blackout.siteId = dto.siteId === undefined ? blackout.siteId : (dto.siteId ?? null);
+      if (dto.organizationSiteId !== undefined) {
+        blackout.organizationSiteId = dto.organizationSiteId ?? null;
+      }
       blackout.blackoutDate = dto.blackoutDate ?? blackout.blackoutDate;
       blackout.isRecurring = dto.isRecurring ?? blackout.isRecurring;
       blackout.name = dto.name?.trim() ?? blackout.name;

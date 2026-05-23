@@ -1,27 +1,16 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Building2,
-  CalendarDays,
-  ChevronDown,
-  CircleAlert,
-  Clock3,
-  RefreshCcw,
-  ShieldAlert,
-} from 'lucide-react';
+import { CalendarDays, CircleAlert, Clock3, ShieldAlert } from 'lucide-react';
 import { z } from 'zod';
-import { BusinessHoursWeekday, UserRole } from '@iwana/shared';
+import { BusinessHoursWeekday } from '@iwana/shared';
 import { Button, Card, CardContent, CardHeader, DatePicker, Select } from '@iwana/ui';
 import {
   ApiError,
-  usersApi,
   wfmApi,
-  type InternalUser,
   type WfmBusinessHoursDay,
+  type WfmDispatchSite,
   type WfmHolidayBlackout,
-  type WfmOperatingSite,
-  type WfmTechnicianBusinessOverride,
 } from '@/lib/api-client';
 import {
   PortalAlert,
@@ -89,18 +78,6 @@ type SiteFormState = {
   isActive: boolean;
 };
 
-type OverrideFormState = {
-  id: string | null;
-  userId: string;
-  siteId: string;
-  overrideDate: string;
-  weekday: '' | BusinessHoursWeekday;
-  startTime: string;
-  endTime: string;
-  isEnabled: boolean;
-  reason: string;
-};
-
 type BlackoutFormState = {
   id: string | null;
   siteId: string;
@@ -120,43 +97,6 @@ const siteSchema = z.object({
   coordinates: z.string().trim(),
   isActive: z.boolean(),
 });
-
-const overrideSchema = z
-  .object({
-    userId: z.string().trim().min(1, 'Selecciona un técnico.'),
-    siteId: z.string().trim(),
-    overrideDate: z.string().trim(),
-    weekday: z.union([z.literal(''), z.nativeEnum(BusinessHoursWeekday)]),
-    startTime: z.string().trim(),
-    endTime: z.string().trim(),
-    isEnabled: z.boolean(),
-    reason: z.string().trim(),
-  })
-  .superRefine((value, ctx) => {
-    if (!value.overrideDate && !value.weekday) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Debes indicar una fecha puntual o un día de semana.',
-        path: ['overrideDate'],
-      });
-    }
-
-    if (value.isEnabled) {
-      if (!value.startTime || !value.endTime) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'La excepción habilitada requiere hora inicial y final.',
-          path: ['startTime'],
-        });
-      } else if (value.startTime >= value.endTime) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'La hora final debe ser posterior a la inicial.',
-          path: ['endTime'],
-        });
-      }
-    }
-  });
 
 const blackoutSchema = z.object({
   siteId: z.string().trim(),
@@ -250,20 +190,6 @@ function createEmptySiteForm(): SiteFormState {
     sector: '',
     coordinates: '',
     isActive: true,
-  };
-}
-
-function createEmptyOverrideForm(): OverrideFormState {
-  return {
-    id: null,
-    userId: '',
-    siteId: '',
-    overrideDate: '',
-    weekday: '',
-    startTime: '',
-    endTime: '',
-    isEnabled: true,
-    reason: '',
   };
 }
 
@@ -363,11 +289,6 @@ function toDateFromLocalDateValue(value?: string): Date | undefined {
 
   const date = new Date(year, month - 1, day);
   return Number.isNaN(date.getTime()) ? undefined : date;
-}
-
-function formatUserLabel(user: InternalUser): string {
-  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
-  return fullName || user.email;
 }
 
 function mapError(error: unknown, fallback: string): string {
@@ -553,153 +474,66 @@ interface WfmOperatingHoursManagerProps {
 
 export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerProps) {
   const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
-  const [sites, setSites] = useState<WfmOperatingSite[]>([]);
+  const [dispatchSites, setDispatchSites] = useState<WfmDispatchSite[]>([]);
   const [companyWeek, setCompanyWeek] = useState<WeekEditorDay[]>(createEmptyWeek());
-  const [siteWeek, setSiteWeek] = useState<WeekEditorDay[]>(createEmptyWeek());
-  const [selectedSiteId, setSelectedSiteId] = useState('');
-  const [isSiteWeekLoading, setIsSiteWeekLoading] = useState(false);
-  const [isSitesAccordionOpen, setIsSitesAccordionOpen] = useState(false);
-  const [overrides, setOverrides] = useState<WfmTechnicianBusinessOverride[]>([]);
   const [blackouts, setBlackouts] = useState<WfmHolidayBlackout[]>([]);
-  const [users, setUsers] = useState<InternalUser[]>([]);
-  const [siteForm, setSiteForm] = useState<SiteFormState>(createEmptySiteForm());
-  const [overrideForm, setOverrideForm] = useState<OverrideFormState>(createEmptyOverrideForm());
   const [blackoutForm, setBlackoutForm] = useState<BlackoutFormState>(createEmptyBlackoutForm());
   const [isSavingCompanyWeek, setIsSavingCompanyWeek] = useState(false);
-  const [isSavingSiteWeek, setIsSavingSiteWeek] = useState(false);
-  const [isSavingSite, setIsSavingSite] = useState(false);
-  const [isSavingOverride, setIsSavingOverride] = useState(false);
   const [isSavingBlackout, setIsSavingBlackout] = useState(false);
 
-  const technicians = useMemo(
+  const dispatchSiteOptions = useMemo(
     () =>
-      users.filter((user) =>
-        [UserRole.TECHNICIAN, UserRole.CONTRACTOR].includes(user.role as UserRole),
-      ),
-    [users],
+      dispatchSites.map((site) => ({
+        value: site.id,
+        label: `${site.name} (${site.code})`,
+      })),
+    [dispatchSites],
   );
 
-  const siteNameMap = useMemo(
-    () => new Map(sites.map((site) => [site.id, `${site.name} (${site.code})`])),
-    [sites],
-  );
+  const siteNameMap = useMemo(() => {
+    const next = new Map<string, string>();
 
-  const siteOptions = useMemo(
-    () => sites.map((site) => ({ value: site.id, label: `${site.name} (${site.code})` })),
-    [sites],
+    dispatchSites.forEach((site) => {
+      const label = `${site.name} (${site.code})`;
+      next.set(site.id, label);
+    });
+
+    return next;
+  }, [dispatchSites]);
+
+  const companyWideSiteOptions = useMemo(
+    () => [{ value: '', label: 'Toda la empresa' }, ...dispatchSiteOptions],
+    [dispatchSiteOptions],
   );
 
   const siteSelectorMenuClassName =
     'rounded-2xl p-1.5 [&_[role=option]]:min-h-11 [&_[role=option]]:px-3';
 
-  const overrideTechnicianOptions = useMemo(
-    () => [
-      { value: '', label: 'Selecciona un técnico' },
-      ...technicians.map((user) => ({ value: user.id, label: formatUserLabel(user) })),
-    ],
-    [technicians],
-  );
-
-  const optionalSiteOptions = useMemo(
-    () => [{ value: '', label: 'Todas las sedes' }, ...siteOptions],
-    [siteOptions],
-  );
-
-  const overrideWeekdayOptions = useMemo(
-    () => [
-      { value: '', label: 'Sin recurrencia' },
-      ...ORDERED_WEEKDAYS.map((weekday) => ({ value: weekday, label: WEEKDAY_LABELS[weekday] })),
-    ],
-    [],
-  );
-
-  const companyWideSiteOptions = useMemo(
-    () => [{ value: '', label: 'Toda la empresa' }, ...siteOptions],
-    [siteOptions],
-  );
-
-  const userNameMap = useMemo(
-    () => new Map(technicians.map((user) => [user.id, formatUserLabel(user)])),
-    [technicians],
-  );
-
-  const loadSiteWeek = useCallback(async (siteId: string) => {
-    if (!siteId) {
-      setSiteWeek(createEmptyWeek());
-      return;
-    }
-
-    setIsSiteWeekLoading(true);
-
-    try {
-      const nextWeek = await wfmApi.operatingSites.getBusinessHours(siteId);
-      setSiteWeek(normalizeWeek(nextWeek));
-    } catch (error) {
-      setFeedback({
-        variant: 'error',
-        title: 'No fue posible cargar el horario por sede',
-        description: mapError(error, 'Intenta de nuevo en unos segundos.'),
-      });
-      setSiteWeek(createEmptyWeek());
-    } finally {
-      setIsSiteWeekLoading(false);
-    }
-  }, []);
-
-  const loadManager = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
-    if (mode === 'initial') {
-      setIsLoading(true);
-    } else {
-      setIsRefreshing(true);
-    }
-
+  const loadManager = useCallback(async () => {
+    setIsLoading(true);
     setLoadError(null);
 
     try {
-      const [nextSites, nextCompanyWeek, nextOverrides, nextBlackouts, userResponse] =
-        await Promise.all([
-          wfmApi.operatingSites.list(),
-          wfmApi.businessHours.getCompany(),
-          wfmApi.technicianBusinessOverrides.list(),
-          wfmApi.holidayBlackouts.list(),
-          usersApi.list({ limit: 200, status: 'ACTIVE' }),
-        ]);
+      const [[nextCompanyWeek, nextBlackouts], nextDispatchSites] = await Promise.all([
+        Promise.all([wfmApi.businessHours.getCompany(), wfmApi.holidayBlackouts.list()]),
+        wfmApi.dispatchSites.list().catch(() => []),
+      ]);
 
-      setSites(nextSites);
+      setDispatchSites(nextDispatchSites);
       setCompanyWeek(normalizeWeek(nextCompanyWeek));
-      setOverrides(nextOverrides);
       setBlackouts(nextBlackouts);
-      setUsers(userResponse.data);
-      setSelectedSiteId((current) => {
-        if (current && nextSites.some((site) => site.id === current)) {
-          return current;
-        }
-
-        return nextSites[0]?.id ?? '';
-      });
     } catch (error) {
-      setLoadError(
-        mapError(error, 'No fue posible cargar la configuración de operación de campo.'),
-      );
+      setLoadError(mapError(error, 'No fue posible cargar la configuración de despacho técnico.'));
     } finally {
-      if (mode === 'initial') {
-        setIsLoading(false);
-      } else {
-        setIsRefreshing(false);
-      }
+      setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void loadManager();
   }, [loadManager]);
-
-  useEffect(() => {
-    void loadSiteWeek(selectedSiteId);
-  }, [loadSiteWeek, selectedSiteId]);
 
   const updateWeekDay = useCallback(
     (
@@ -737,198 +571,6 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
     }
   };
 
-  const handleSaveSiteWeek = async () => {
-    if (!selectedSiteId) {
-      return;
-    }
-
-    setFeedback(null);
-    setIsSavingSiteWeek(true);
-
-    try {
-      const saved = await wfmApi.operatingSites.updateBusinessHours(
-        selectedSiteId,
-        toWeekPayload(siteWeek),
-      );
-      setSiteWeek(normalizeWeek(saved));
-      setFeedback({
-        variant: 'success',
-        title: 'Horario de sede actualizado',
-        description: 'La sede operativa ya tiene su semana vigente.',
-      });
-    } catch (error) {
-      setFeedback({
-        variant: 'error',
-        title: 'No fue posible guardar el horario de sede',
-        description: mapError(
-          error,
-          'Revisa la configuración semanal de la sede e intenta de nuevo.',
-        ),
-      });
-    } finally {
-      setIsSavingSiteWeek(false);
-    }
-  };
-
-  const handleSubmitSite = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setFeedback(null);
-    setIsSavingSite(true);
-
-    try {
-      const parsed = siteSchema.parse(siteForm);
-      const parsedCoordinates = parseLatLngPair(parsed.coordinates);
-      const payload = {
-        name: parsed.name,
-        code: parsed.code.toUpperCase(),
-        address: toNullableString(parsed.address),
-        municipality: toNullableString(parsed.municipality),
-        sector: toNullableString(parsed.sector),
-        latitude: parsedCoordinates.latitude,
-        longitude: parsedCoordinates.longitude,
-        isActive: parsed.isActive,
-      };
-
-      const saved = siteForm.id
-        ? await wfmApi.operatingSites.update(siteForm.id, payload)
-        : await wfmApi.operatingSites.create(payload);
-
-      setSiteForm(createEmptySiteForm());
-      setIsSitesAccordionOpen(true);
-      await loadManager('refresh');
-      setSelectedSiteId(saved.id);
-      setFeedback({
-        variant: 'success',
-        title: siteForm.id ? 'Sede actualizada' : 'Sede creada',
-        description: 'La configuración base de la sede ya quedó registrada.',
-      });
-    } catch (error) {
-      setFeedback({
-        variant: 'error',
-        title: 'No fue posible guardar la sede',
-        description: mapError(error, 'Revisa los datos de la sede e intenta de nuevo.'),
-      });
-    } finally {
-      setIsSavingSite(false);
-    }
-  };
-
-  const handleEditSite = (site: WfmOperatingSite) => {
-    setIsSitesAccordionOpen(true);
-    setSiteForm({
-      id: site.id,
-      name: site.name,
-      code: site.code,
-      address: site.address ?? '',
-      municipality: site.municipality ?? '',
-      sector: site.sector ?? '',
-      coordinates: formatLatLngPair(site.latitude, site.longitude),
-      isActive: site.isActive,
-    });
-  };
-
-  const handleDeleteSite = async (site: WfmOperatingSite) => {
-    if (!(globalThis.confirm?.(`Eliminar la sede ${site.name}?`) ?? true)) {
-      return;
-    }
-
-    setFeedback(null);
-
-    try {
-      await wfmApi.operatingSites.remove(site.id);
-      await loadManager('refresh');
-      setFeedback({
-        variant: 'success',
-        title: 'Sede eliminada',
-        description: 'La sede operativa dejó de estar disponible para la operación de campo.',
-      });
-    } catch (error) {
-      setFeedback({
-        variant: 'error',
-        title: 'No fue posible eliminar la sede',
-        description: mapError(error, 'Intenta de nuevo en unos segundos.'),
-      });
-    }
-  };
-
-  const handleSubmitOverride = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setFeedback(null);
-    setIsSavingOverride(true);
-
-    try {
-      const parsed = overrideSchema.parse(overrideForm);
-      const payload = {
-        userId: parsed.userId,
-        siteId: toNullableString(parsed.siteId),
-        overrideDate: toNullableString(parsed.overrideDate),
-        weekday: parsed.weekday || null,
-        startTime: parsed.isEnabled ? toNullableString(parsed.startTime) : null,
-        endTime: parsed.isEnabled ? toNullableString(parsed.endTime) : null,
-        isEnabled: parsed.isEnabled,
-        reason: toNullableString(parsed.reason),
-      };
-
-      await (overrideForm.id
-        ? wfmApi.technicianBusinessOverrides.update(overrideForm.id, payload)
-        : wfmApi.technicianBusinessOverrides.create(payload));
-
-      setOverrideForm(createEmptyOverrideForm());
-      await loadManager('refresh');
-      setFeedback({
-        variant: 'success',
-        title: overrideForm.id ? 'Excepción actualizada' : 'Excepción creada',
-        description: 'La regla operativa por técnico ya quedó vigente.',
-      });
-    } catch (error) {
-      setFeedback({
-        variant: 'error',
-        title: 'No fue posible guardar la excepción',
-        description: mapError(error, 'Revisa los datos de la excepción e intenta de nuevo.'),
-      });
-    } finally {
-      setIsSavingOverride(false);
-    }
-  };
-
-  const handleEditOverride = (override: WfmTechnicianBusinessOverride) => {
-    setOverrideForm({
-      id: override.id,
-      userId: override.userId,
-      siteId: override.siteId ?? '',
-      overrideDate: override.overrideDate ?? '',
-      weekday: override.weekday ?? '',
-      startTime: override.startTime ?? '',
-      endTime: override.endTime ?? '',
-      isEnabled: override.isEnabled,
-      reason: override.reason ?? '',
-    });
-  };
-
-  const handleDeleteOverride = async (override: WfmTechnicianBusinessOverride) => {
-    if (!(globalThis.confirm?.('Eliminar esta excepción operativa?') ?? true)) {
-      return;
-    }
-
-    setFeedback(null);
-
-    try {
-      await wfmApi.technicianBusinessOverrides.remove(override.id);
-      await loadManager('refresh');
-      setFeedback({
-        variant: 'success',
-        title: 'Excepción eliminada',
-        description: 'La excepción operativa del técnico fue retirada.',
-      });
-    } catch (error) {
-      setFeedback({
-        variant: 'error',
-        title: 'No fue posible eliminar la excepción',
-        description: mapError(error, 'Intenta de nuevo en unos segundos.'),
-      });
-    }
-  };
-
   const handleSubmitBlackout = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFeedback(null);
@@ -937,7 +579,7 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
     try {
       const parsed = blackoutSchema.parse(blackoutForm);
       const payload = {
-        siteId: toNullableString(parsed.siteId),
+        organizationSiteId: toNullableString(parsed.siteId),
         blackoutDate: parsed.blackoutDate,
         isRecurring: parsed.isRecurring,
         name: parsed.name,
@@ -950,7 +592,7 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
         : wfmApi.holidayBlackouts.create(payload));
 
       setBlackoutForm(createEmptyBlackoutForm());
-      await loadManager('refresh');
+      await loadManager();
       setFeedback({
         variant: 'success',
         title: blackoutForm.id ? 'Cierre actualizado' : 'Cierre creado',
@@ -970,7 +612,7 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
   const handleEditBlackout = (blackout: WfmHolidayBlackout) => {
     setBlackoutForm({
       id: blackout.id,
-      siteId: blackout.siteId ?? '',
+      siteId: blackout.organizationSiteId ?? '',
       blackoutDate: blackout.blackoutDate,
       isRecurring: blackout.isRecurring,
       name: blackout.name,
@@ -988,11 +630,11 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
 
     try {
       await wfmApi.holidayBlackouts.remove(blackout.id);
-      await loadManager('refresh');
+      await loadManager();
       setFeedback({
         variant: 'success',
         title: 'Cierre eliminado',
-        description: 'El calendario especial de la operación de campo fue actualizado.',
+        description: 'El calendario especial del despacho técnico fue actualizado.',
       });
     } catch (error) {
       setFeedback({
@@ -1021,7 +663,7 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
         description={loadError}
         icon={CircleAlert}
         action={
-          <Button type="button" variant="secondary" onClick={() => void loadManager('refresh')}>
+          <Button type="button" variant="secondary" onClick={() => void loadManager()}>
             Reintentar carga
           </Button>
         }
@@ -1034,56 +676,17 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
       <Card className="rounded-2xl border border-gray-200 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
         <CardHeader>
           <PortalSectionHeader
-            eyebrow="Operación de campo"
+            eyebrow="Despacho técnico"
             title="Horarios operativos"
-            description="Administra sedes, horario base, excepciones por técnico y cierres especiales sin inflar la configuración general del tenant."
-            actions={
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                loading={isRefreshing}
-                onClick={() => void loadManager('refresh')}
-              >
-                <RefreshCcw className="h-4 w-4" />
-                Recargar
-              </Button>
-            }
+            description="Administra el horario base y los cierres especiales de la agenda técnica."
           />
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-4">
-            <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 dark:border-dark-border dark:bg-dark-surface-3">
-              <p className={BADGE_CLASS}>Sedes activas</p>
-              <p className="mt-3 text-2xl font-semibold text-gray-900 dark:text-white">
-                {sites.length}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 dark:border-dark-border dark:bg-dark-surface-3">
-              <p className={BADGE_CLASS}>Excepciones</p>
-              <p className="mt-3 text-2xl font-semibold text-gray-900 dark:text-white">
-                {overrides.length}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 dark:border-dark-border dark:bg-dark-surface-3">
-              <p className={BADGE_CLASS}>Cierres</p>
-              <p className="mt-3 text-2xl font-semibold text-gray-900 dark:text-white">
-                {blackouts.length}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-gray-200 bg-white px-4 py-4 dark:border-dark-border dark:bg-dark-surface-3">
-              <p className={BADGE_CLASS}>Precedencia</p>
-              <p className="mt-3 text-sm font-medium text-gray-900 dark:text-white">
-                Técnico {'>'} festivo {'>'} sede {'>'} empresa
-              </p>
-            </div>
-          </div>
-
           {!canEdit && (
             <PortalAlert
               variant="info"
               title="Modo solo lectura"
-              description="Tu rol puede consultar la configuración de operación de campo, pero no modificar horarios, sedes ni cierres."
+              description="Tu rol puede consultar la configuración de despacho técnico, pero no modificar horarios ni cierres."
               icon={ShieldAlert}
             />
           )}
@@ -1102,8 +705,8 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
       <Card className="rounded-2xl border border-gray-200 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
         <CardHeader>
           <PortalSectionHeader
-            title="Horario base de empresa"
-            description="Define la semana laboral que aplica cuando una sede no tiene una especialización propia."
+            title="Horario base de despacho técnico"
+            description="Horario base para programar visitas técnicas."
           />
         </CardHeader>
         <CardContent className="space-y-4">
@@ -1113,9 +716,7 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
             onChange={(weekday, patch) => updateWeekDay(setCompanyWeek, weekday, patch)}
           />
           <div className="flex items-center justify-between gap-3">
-            <p className={MUTED_CLASS}>
-              Cada día cerrado deja la ventana en blanco para la operación de campo.
-            </p>
+            <p className={MUTED_CLASS}>Cada día cerrado queda sin agenda disponible.</p>
             {canEdit && (
               <Button type="button" loading={isSavingCompanyWeek} onClick={handleSaveCompanyWeek}>
                 Guardar horario base
@@ -1125,709 +726,200 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
         </CardContent>
       </Card>
 
-      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <Card className="rounded-2xl border border-gray-200 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
-          <CardHeader>
-            <PortalSectionHeader
-              title="Sedes operativas"
-              description="Registra oficinas o bases reales desde donde se organiza la operación de campo."
+      <Card className="rounded-2xl border border-gray-200 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
+        <CardHeader>
+          <PortalSectionHeader
+            title="Festivos y cierres especiales"
+            description="Bloquea fechas para toda la empresa o para una sede cuando no debe haber agenda disponible."
+          />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {blackouts.length === 0 ? (
+            <PortalEmptyState
+              icon={CalendarDays}
+              title="Sin cierres especiales"
+              description="Registra festivos nacionales, cierres por sede o mantenimientos operativos cuando corresponda."
             />
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {sites.length === 0 ? (
-              <PortalEmptyState
-                icon={Building2}
-                title="Sin sedes operativas"
-                description="Crea la primera sede para habilitar horarios específicos por base operativa."
-              />
-            ) : (
-              <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-3">
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left transition hover:bg-gray-50 dark:hover:bg-dark-surface-2"
-                  aria-expanded={isSitesAccordionOpen}
-                  onClick={() => setIsSitesAccordionOpen((current) => !current)}
+          ) : (
+            <div className="space-y-3">
+              {blackouts.map((blackout) => (
+                <div
+                  key={blackout.id}
+                  className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-3"
                 >
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                      Sedes registradas
-                    </p>
-                    <p className={MUTED_CLASS}>
-                      {sites.length} {sites.length === 1 ? 'sede creada' : 'sedes creadas'} para la
-                      operación.
-                    </p>
-                  </div>
-                  <ChevronDown
-                    className={`h-4 w-4 shrink-0 text-gray-500 transition-transform dark:text-gray-400 ${
-                      isSitesAccordionOpen ? 'rotate-180' : ''
-                    }`}
-                  />
-                </button>
-
-                {isSitesAccordionOpen && (
-                  <div className="space-y-3 border-t border-gray-200 px-4 py-4 dark:border-dark-border">
-                    {sites.map((site) => (
-                      <div
-                        key={site.id}
-                        className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2"
-                      >
-                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                                {site.name}
-                              </h3>
-                              <span className={BADGE_CLASS}>{site.code}</span>
-                              {!site.isActive && <span className={BADGE_CLASS}>Inactiva</span>}
-                            </div>
-                            <p className={`mt-1 ${MUTED_CLASS}`}>
-                              {[site.municipality, site.sector, site.address]
-                                .filter((value): value is string => Boolean(value))
-                                .join(' · ') || 'Sin ubicación operativa detallada'}
-                            </p>
-                          </div>
-                          {canEdit && (
-                            <div className="flex items-center gap-2">
-                              <Button
-                                type="button"
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => handleEditSite(site)}
-                              >
-                                Editar
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="softDestructive"
-                                size="sm"
-                                onClick={() => void handleDeleteSite(site)}
-                              >
-                                Eliminar
-                              </Button>
-                            </div>
-                          )}
-                        </div>
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                          {blackout.name}
+                        </h3>
+                        <span className={BADGE_CLASS}>
+                          {blackout.isRecurring ? 'Recurrente' : 'Puntual'}
+                        </span>
+                        {!blackout.isEnabled && <span className={BADGE_CLASS}>Inactivo</span>}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {canEdit && (
-              <form
-                onSubmit={handleSubmitSite}
-                className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-3"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                      {siteForm.id ? 'Editar sede operativa' : 'Nueva sede operativa'}
-                    </p>
-                    <p className={MUTED_CLASS}>Usa una sede física real, no un nodo comercial.</p>
-                  </div>
-                  {siteForm.id && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setSiteForm(createEmptySiteForm())}
-                    >
-                      Limpiar
-                    </Button>
-                  )}
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label htmlFor="wfm-site-name" className={LABEL_CLASS}>
-                      Nombre de la sede
-                    </label>
-                    <input
-                      id="wfm-site-name"
-                      className={INPUT_CLASS}
-                      value={siteForm.name}
-                      onChange={(event) =>
-                        setSiteForm((current) => ({ ...current, name: event.target.value }))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="wfm-site-code" className={LABEL_CLASS}>
-                      Código operativo
-                    </label>
-                    <input
-                      id="wfm-site-code"
-                      className={INPUT_CLASS}
-                      value={siteForm.code}
-                      onChange={(event) =>
-                        setSiteForm((current) => ({ ...current, code: event.target.value }))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="wfm-site-municipality" className={LABEL_CLASS}>
-                      Municipio
-                    </label>
-                    <input
-                      id="wfm-site-municipality"
-                      className={INPUT_CLASS}
-                      value={siteForm.municipality}
-                      onChange={(event) =>
-                        setSiteForm((current) => ({ ...current, municipality: event.target.value }))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="wfm-site-sector" className={LABEL_CLASS}>
-                      Sector
-                    </label>
-                    <input
-                      id="wfm-site-sector"
-                      className={INPUT_CLASS}
-                      value={siteForm.sector}
-                      onChange={(event) =>
-                        setSiteForm((current) => ({ ...current, sector: event.target.value }))
-                      }
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label htmlFor="wfm-site-address" className={LABEL_CLASS}>
-                      Dirección base
-                    </label>
-                    <input
-                      id="wfm-site-address"
-                      className={INPUT_CLASS}
-                      value={siteForm.address}
-                      onChange={(event) =>
-                        setSiteForm((current) => ({ ...current, address: event.target.value }))
-                      }
-                    />
-                  </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_180px]">
-                  <div>
-                    <label htmlFor="wfm-site-coordinates" className={LABEL_CLASS}>
-                      Coordenadas (Lat, Lng)
-                    </label>
-                    <input
-                      id="wfm-site-coordinates"
-                      className={INPUT_CLASS}
-                      placeholder="4.6097100, -74.0817500"
-                      value={siteForm.coordinates}
-                      onChange={(event) =>
-                        setSiteForm((current) => ({ ...current, coordinates: event.target.value }))
-                      }
-                    />
-                  </div>
-                  <label className="flex items-center gap-2 self-end rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 dark:border-dark-border dark:text-gray-300">
-                    <input
-                      type="checkbox"
-                      checked={siteForm.isActive}
-                      onChange={(event) =>
-                        setSiteForm((current) => ({ ...current, isActive: event.target.checked }))
-                      }
-                    />
-                    Sede activa
-                  </label>
-                </div>
-
-                <div className="flex items-center justify-end">
-                  <Button type="submit" loading={isSavingSite}>
-                    {siteForm.id ? 'Guardar sede' : 'Crear sede'}
-                  </Button>
-                </div>
-              </form>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-2xl border border-gray-200 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
-          <CardHeader>
-            <PortalSectionHeader
-              title="Horario por sede"
-              description="Especializa la semana base cuando una sede tiene una operación distinta."
-            />
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {!sites.length ? (
-              <PortalEmptyState
-                icon={Clock3}
-                title="Sin horario por sede"
-                description="Primero crea una sede operativa para configurar su calendario semanal."
-              />
-            ) : (
-              <>
-                <div>
-                  <label htmlFor="wfm-site-selector" className={LABEL_CLASS}>
-                    Sede operativa
-                  </label>
-                  <Select
-                    id="wfm-site-selector"
-                    aria-label="Sede operativa"
-                    options={siteOptions}
-                    menuClassName={siteSelectorMenuClassName}
-                    value={selectedSiteId}
-                    onChange={(event) => setSelectedSiteId(event.target.value)}
-                  />
-                </div>
-
-                {isSiteWeekLoading ? (
-                  <PortalSkeletonBlock className="h-72" />
-                ) : (
-                  <WeekGrid
-                    week={siteWeek}
-                    readOnly={!canEdit}
-                    onChange={(weekday, patch) => updateWeekDay(setSiteWeek, weekday, patch)}
-                  />
-                )}
-
-                <div className="flex items-center justify-between gap-3">
-                  <p className={MUTED_CLASS}>
-                    Si una sede no tiene horas propias, el resolvedor cae al horario base de
-                    empresa.
-                  </p>
-                  {canEdit && (
-                    <Button type="button" loading={isSavingSiteWeek} onClick={handleSaveSiteWeek}>
-                      Guardar horario de sede
-                    </Button>
-                  )}
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-2">
-        <Card className="rounded-2xl border border-gray-200 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
-          <CardHeader>
-            <PortalSectionHeader
-              title="Excepciones por técnico"
-              description="Permite abrir o cerrar una fecha puntual o un día recurrente para un técnico específico."
-            />
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {overrides.length === 0 ? (
-              <PortalEmptyState
-                icon={CalendarDays}
-                title="Sin excepciones configuradas"
-                description="La operación usará festivos, horarios de sede y horario base hasta que registres excepciones por técnico."
-              />
-            ) : (
-              <div className="space-y-3">
-                {overrides.map((override) => (
-                  <div
-                    key={override.id}
-                    className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-3"
-                  >
-                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                            {userNameMap.get(override.userId) ?? override.userId}
-                          </h3>
-                          <span className={BADGE_CLASS}>
-                            {override.isEnabled ? 'Abierto' : 'Cerrado'}
-                          </span>
-                        </div>
-                        <p className={`mt-1 ${MUTED_CLASS}`}>
-                          {override.overrideDate
-                            ? `Fecha puntual ${override.overrideDate}`
-                            : `Cada ${override.weekday ? WEEKDAY_LABELS[override.weekday] : 'día configurado'}`}
-                          {override.siteId
-                            ? ` · ${siteNameMap.get(override.siteId) ?? override.siteId}`
-                            : ' · Aplica a todas las sedes'}
-                          {override.isEnabled && override.startTime && override.endTime
-                            ? ` · ${override.startTime} a ${override.endTime}`
-                            : ''}
-                        </p>
-                        {override.reason && (
-                          <p className={`mt-1 ${MUTED_CLASS}`}>{override.reason}</p>
-                        )}
-                      </div>
-                      {canEdit && (
-                        <div className="flex items-center gap-2">
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => handleEditOverride(override)}
-                          >
-                            Editar
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="softDestructive"
-                            size="sm"
-                            onClick={() => void handleDeleteOverride(override)}
-                          >
-                            Eliminar
-                          </Button>
-                        </div>
+                      <p className={`mt-1 ${MUTED_CLASS}`}>
+                        {blackout.blackoutDate}
+                        {blackout.organizationSiteId
+                          ? ` · ${siteNameMap.get(blackout.organizationSiteId) ?? blackout.organizationSiteId}`
+                          : ' · Aplica a toda la empresa'}
+                      </p>
+                      {blackout.description && (
+                        <p className={`mt-1 ${MUTED_CLASS}`}>{blackout.description}</p>
                       )}
                     </div>
+                    {canEdit && (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleEditBlackout(blackout)}
+                        >
+                          Editar
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="softDestructive"
+                          size="sm"
+                          onClick={() => void handleDeleteBlackout(blackout)}
+                        >
+                          Eliminar
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                ))}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {canEdit && (
+            <form
+              onSubmit={handleSubmitBlackout}
+              className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-3"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                    {blackoutForm.id ? 'Editar cierre especial' : 'Nuevo cierre especial'}
+                  </p>
+                  <p className={MUTED_CLASS}>
+                    Los cierres bloquean la agenda del periodo o fecha configurados.
+                  </p>
+                </div>
+                {blackoutForm.id && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setBlackoutForm(createEmptyBlackoutForm())}
+                  >
+                    Limpiar
+                  </Button>
+                )}
               </div>
-            )}
 
-            {canEdit && (
-              <form
-                onSubmit={handleSubmitOverride}
-                className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-3"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                      {overrideForm.id ? 'Editar excepción' : 'Nueva excepción'}
-                    </p>
-                    <p className={MUTED_CLASS}>
-                      Las excepciones ganan sobre festivos, sede y empresa.
-                    </p>
-                  </div>
-                  {overrideForm.id && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setOverrideForm(createEmptyOverrideForm())}
-                    >
-                      Limpiar
-                    </Button>
-                  )}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label htmlFor="wfm-blackout-name" className={LABEL_CLASS}>
+                    Nombre del cierre
+                  </label>
+                  <input
+                    id="wfm-blackout-name"
+                    className={INPUT_CLASS}
+                    value={blackoutForm.name}
+                    onChange={(event) =>
+                      setBlackoutForm((current) => ({ ...current, name: event.target.value }))
+                    }
+                  />
                 </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label htmlFor="wfm-override-user" className={LABEL_CLASS}>
-                      Técnico
-                    </label>
-                    <Select
-                      id="wfm-override-user"
-                      options={overrideTechnicianOptions}
-                      menuClassName={siteSelectorMenuClassName}
-                      value={overrideForm.userId}
-                      onChange={(event) =>
-                        setOverrideForm((current) => ({ ...current, userId: event.target.value }))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="wfm-override-site" className={LABEL_CLASS}>
-                      Sede operativa
-                    </label>
-                    <Select
-                      id="wfm-override-site"
-                      options={optionalSiteOptions}
-                      menuClassName={siteSelectorMenuClassName}
-                      value={overrideForm.siteId}
-                      onChange={(event) =>
-                        setOverrideForm((current) => ({ ...current, siteId: event.target.value }))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <DatePicker
-                      id="wfm-override-date"
-                      label="Fecha puntual"
-                      placeholder="dd/mm/aaaa"
-                      value={toDateFromLocalDateValue(overrideForm.overrideDate)}
-                      onChange={(date) =>
-                        setOverrideForm((current) => ({
-                          ...current,
-                          overrideDate: toLocalDateValue(date),
-                        }))
-                      }
-                      buttonClassName="h-[46px] rounded-[1.15rem] border-gray-200 px-4 shadow-none"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="wfm-override-weekday" className={LABEL_CLASS}>
-                      Día recurrente
-                    </label>
-                    <Select
-                      id="wfm-override-weekday"
-                      options={overrideWeekdayOptions}
-                      menuClassName={siteSelectorMenuClassName}
-                      value={overrideForm.weekday}
-                      onChange={(event) =>
-                        setOverrideForm((current) => ({
-                          ...current,
-                          weekday: event.target.value as '' | BusinessHoursWeekday,
-                        }))
-                      }
-                    />
-                  </div>
+                <div>
+                  <DatePicker
+                    id="wfm-blackout-date"
+                    label="Fecha"
+                    placeholder="dd/mm/aaaa"
+                    value={toDateFromLocalDateValue(blackoutForm.blackoutDate)}
+                    onChange={(date) =>
+                      setBlackoutForm((current) => ({
+                        ...current,
+                        blackoutDate: toLocalDateValue(date),
+                      }))
+                    }
+                    buttonClassName="h-[46px] rounded-[1.15rem] border-gray-200 px-4 shadow-none"
+                  />
                 </div>
-
-                <div className="grid gap-4 md:grid-cols-3">
-                  <label className="flex items-center gap-2 self-end rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 dark:border-dark-border dark:text-gray-300">
+                <div>
+                  <label htmlFor="wfm-blackout-site" className={LABEL_CLASS}>
+                    Sede empresarial
+                  </label>
+                  <Select
+                    id="wfm-blackout-site"
+                    options={companyWideSiteOptions}
+                    menuClassName={siteSelectorMenuClassName}
+                    value={blackoutForm.siteId}
+                    onChange={(event) =>
+                      setBlackoutForm((current) => ({ ...current, siteId: event.target.value }))
+                    }
+                  />
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 dark:border-dark-border dark:text-gray-300">
                     <input
                       type="checkbox"
-                      checked={overrideForm.isEnabled}
+                      checked={blackoutForm.isRecurring}
                       onChange={(event) =>
-                        setOverrideForm((current) => ({
+                        setBlackoutForm((current) => ({
+                          ...current,
+                          isRecurring: event.target.checked,
+                        }))
+                      }
+                    />
+                    Recurrente
+                  </label>
+                  <label className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 dark:border-dark-border dark:text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={blackoutForm.isEnabled}
+                      onChange={(event) =>
+                        setBlackoutForm((current) => ({
                           ...current,
                           isEnabled: event.target.checked,
                         }))
                       }
                     />
-                    Excepción habilitada
+                    Activo
                   </label>
-                  <div>
-                    <label htmlFor="wfm-override-start" className={LABEL_CLASS}>
-                      Hora inicial
-                    </label>
-                    <div id="wfm-override-start">
-                      <TimeSelectField
-                        ariaLabelPrefix="Hora inicial excepción"
-                        disabled={!overrideForm.isEnabled}
-                        value={overrideForm.startTime}
-                        onChange={(nextValue) =>
-                          setOverrideForm((current) => ({ ...current, startTime: nextValue }))
-                        }
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label htmlFor="wfm-override-end" className={LABEL_CLASS}>
-                      Hora final
-                    </label>
-                    <div id="wfm-override-end">
-                      <TimeSelectField
-                        ariaLabelPrefix="Hora final excepción"
-                        disabled={!overrideForm.isEnabled}
-                        value={overrideForm.endTime}
-                        onChange={(nextValue) =>
-                          setOverrideForm((current) => ({ ...current, endTime: nextValue }))
-                        }
-                      />
-                    </div>
-                  </div>
                 </div>
-
-                <div>
-                  <label htmlFor="wfm-override-reason" className={LABEL_CLASS}>
-                    Motivo operativo
-                  </label>
-                  <textarea
-                    id="wfm-override-reason"
-                    className={INPUT_CLASS}
-                    rows={3}
-                    value={overrideForm.reason}
-                    onChange={(event) =>
-                      setOverrideForm((current) => ({ ...current, reason: event.target.value }))
-                    }
-                  />
-                </div>
-
-                <div className="flex items-center justify-end">
-                  <Button type="submit" loading={isSavingOverride}>
-                    {overrideForm.id ? 'Guardar excepción' : 'Crear excepción'}
-                  </Button>
-                </div>
-              </form>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-2xl border border-gray-200 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
-          <CardHeader>
-            <PortalSectionHeader
-              title="Festivos y cierres especiales"
-              description="Bloquea fechas a nivel tenant o por sede cuando la operación no debe generar agenda."
-            />
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {blackouts.length === 0 ? (
-              <PortalEmptyState
-                icon={CalendarDays}
-                title="Sin cierres especiales"
-                description="Registra festivos nacionales, cierres por sede o mantenimientos operativos cuando aplique."
-              />
-            ) : (
-              <div className="space-y-3">
-                {blackouts.map((blackout) => (
-                  <div
-                    key={blackout.id}
-                    className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-3"
-                  >
-                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                            {blackout.name}
-                          </h3>
-                          <span className={BADGE_CLASS}>
-                            {blackout.isRecurring ? 'Recurrente' : 'Puntual'}
-                          </span>
-                          {!blackout.isEnabled && <span className={BADGE_CLASS}>Inactivo</span>}
-                        </div>
-                        <p className={`mt-1 ${MUTED_CLASS}`}>
-                          {blackout.blackoutDate}
-                          {blackout.siteId
-                            ? ` · ${siteNameMap.get(blackout.siteId) ?? blackout.siteId}`
-                            : ' · Aplica a toda la empresa'}
-                        </p>
-                        {blackout.description && (
-                          <p className={`mt-1 ${MUTED_CLASS}`}>{blackout.description}</p>
-                        )}
-                      </div>
-                      {canEdit && (
-                        <div className="flex items-center gap-2">
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => handleEditBlackout(blackout)}
-                          >
-                            Editar
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="softDestructive"
-                            size="sm"
-                            onClick={() => void handleDeleteBlackout(blackout)}
-                          >
-                            Eliminar
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
               </div>
-            )}
 
-            {canEdit && (
-              <form
-                onSubmit={handleSubmitBlackout}
-                className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-3"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                      {blackoutForm.id ? 'Editar cierre especial' : 'Nuevo cierre especial'}
-                    </p>
-                    <p className={MUTED_CLASS}>
-                      Los cierres bloquean agenda salvo excepción explícita del técnico.
-                    </p>
-                  </div>
-                  {blackoutForm.id && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setBlackoutForm(createEmptyBlackoutForm())}
-                    >
-                      Limpiar
-                    </Button>
-                  )}
-                </div>
+              <div>
+                <label htmlFor="wfm-blackout-description" className={LABEL_CLASS}>
+                  Descripción
+                </label>
+                <textarea
+                  id="wfm-blackout-description"
+                  className={INPUT_CLASS}
+                  rows={3}
+                  value={blackoutForm.description}
+                  onChange={(event) =>
+                    setBlackoutForm((current) => ({
+                      ...current,
+                      description: event.target.value,
+                    }))
+                  }
+                />
+              </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label htmlFor="wfm-blackout-name" className={LABEL_CLASS}>
-                      Nombre del cierre
-                    </label>
-                    <input
-                      id="wfm-blackout-name"
-                      className={INPUT_CLASS}
-                      value={blackoutForm.name}
-                      onChange={(event) =>
-                        setBlackoutForm((current) => ({ ...current, name: event.target.value }))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <DatePicker
-                      id="wfm-blackout-date"
-                      label="Fecha"
-                      placeholder="dd/mm/aaaa"
-                      value={toDateFromLocalDateValue(blackoutForm.blackoutDate)}
-                      onChange={(date) =>
-                        setBlackoutForm((current) => ({
-                          ...current,
-                          blackoutDate: toLocalDateValue(date),
-                        }))
-                      }
-                      buttonClassName="h-[46px] rounded-[1.15rem] border-gray-200 px-4 shadow-none"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="wfm-blackout-site" className={LABEL_CLASS}>
-                      Sede operativa
-                    </label>
-                    <Select
-                      id="wfm-blackout-site"
-                      options={companyWideSiteOptions}
-                      menuClassName={siteSelectorMenuClassName}
-                      value={blackoutForm.siteId}
-                      onChange={(event) =>
-                        setBlackoutForm((current) => ({ ...current, siteId: event.target.value }))
-                      }
-                    />
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <label className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 dark:border-dark-border dark:text-gray-300">
-                      <input
-                        type="checkbox"
-                        checked={blackoutForm.isRecurring}
-                        onChange={(event) =>
-                          setBlackoutForm((current) => ({
-                            ...current,
-                            isRecurring: event.target.checked,
-                          }))
-                        }
-                      />
-                      Recurrente
-                    </label>
-                    <label className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 dark:border-dark-border dark:text-gray-300">
-                      <input
-                        type="checkbox"
-                        checked={blackoutForm.isEnabled}
-                        onChange={(event) =>
-                          setBlackoutForm((current) => ({
-                            ...current,
-                            isEnabled: event.target.checked,
-                          }))
-                        }
-                      />
-                      Activo
-                    </label>
-                  </div>
-                </div>
-
-                <div>
-                  <label htmlFor="wfm-blackout-description" className={LABEL_CLASS}>
-                    Descripción
-                  </label>
-                  <textarea
-                    id="wfm-blackout-description"
-                    className={INPUT_CLASS}
-                    rows={3}
-                    value={blackoutForm.description}
-                    onChange={(event) =>
-                      setBlackoutForm((current) => ({
-                        ...current,
-                        description: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-
-                <div className="flex items-center justify-end">
-                  <Button type="submit" loading={isSavingBlackout}>
-                    {blackoutForm.id ? 'Guardar cierre' : 'Crear cierre'}
-                  </Button>
-                </div>
-              </form>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+              <div className="flex items-center justify-end">
+                <Button type="submit" loading={isSavingBlackout}>
+                  {blackoutForm.id ? 'Guardar cierre' : 'Crear cierre'}
+                </Button>
+              </div>
+            </form>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

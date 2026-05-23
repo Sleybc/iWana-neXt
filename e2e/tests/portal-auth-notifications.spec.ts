@@ -10,6 +10,28 @@ function setupPortalApiMocks() {
       const url = request.url();
       const method = request.method();
 
+      if (url.includes('/tenants/public-branding') && method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              displayName: 'Portal Demo',
+              showTenantName: true,
+              logoLightUrl: null,
+              logoDarkUrl: null,
+              sealLightUrl: null,
+              sealDarkUrl: null,
+              faviconLightUrl: null,
+              faviconDarkUrl: null,
+              loginBackgroundLightUrl: null,
+              loginBackgroundDarkUrl: null,
+            },
+          }),
+        });
+        return;
+      }
+
       if (url.endsWith('/auth/login') && method === 'POST') {
         isLoggedIn = true;
         await route.fulfill({
@@ -42,6 +64,82 @@ function setupPortalApiMocks() {
               schemaName: 'tenant_isp_demo',
               jti: 'portal-jti-1',
               type: 'tenant',
+            },
+          }),
+        });
+        return;
+      }
+
+      if (url.match(/\/users\/[^/]+$/) && method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              id: '2f145de2-aaaa-4abc-9e08-3b768a194777',
+              email: 'admin@portal-demo.test',
+              role: 'ADMIN',
+              status: 'ACTIVE',
+              firstName: 'Portal',
+              lastName: 'Admin',
+              avatarUrl: null,
+              mfaEnabled: false,
+              emailVerified: true,
+              createdAt: '2026-03-13T12:00:00.000Z',
+            },
+          }),
+        });
+        return;
+      }
+
+      if (url.includes('/tenants/me/summary') && method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              tenant: {
+                id: 'tenant-portal-1',
+                name: 'ISP Prueba Colombia',
+                slug: 'isp-demo',
+                status: 'ACTIVE',
+              },
+              settings: {
+                timezone: 'America/Bogota',
+                currency: 'COP',
+                language: 'es-CO',
+                country: 'CO',
+                features: { billing: false, mfa_required_all: false },
+              },
+              metrics: {
+                configuredUsers: 5,
+                mfaCoverage: null,
+                pendingAlerts: 1,
+                auditEventsLast7d: 1,
+              },
+              alerts: [],
+            },
+          }),
+        });
+        return;
+      }
+
+      if (url.includes('/tenants/me') && method === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              id: 'tenant-portal-1',
+              name: 'ISP Prueba Colombia',
+              slug: 'isp-demo',
+              status: 'ACTIVE',
+              contactEmail: 'contacto@portal-demo.test',
+              showTenantName: true,
+              logoLightUrl: null,
+              logoDarkUrl: null,
+              sealLightUrl: null,
+              sealDarkUrl: null,
             },
           }),
         });
@@ -136,7 +234,10 @@ test.describe('Portal auth + notifications', () => {
     await page.getByRole('button', { name: 'Ingresar' }).click();
 
     await expect(page).toHaveURL(/\/dashboard/);
-    await expect(page.getByRole('heading', { name: 'Panel empresarial' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: /bienvenido, isp prueba colombia/i }),
+    ).toBeVisible();
+    await expect(page.getByText('Panel de administración empresarial')).toBeVisible();
     await page.waitForLoadState('networkidle');
 
     // Validación WCAG 2.1 AA en dashboard del portal
@@ -144,7 +245,9 @@ test.describe('Portal auth + notifications', () => {
     expect(dashboardA11y.violations).toEqual([]);
 
     // Check básico de navegación en dashboard autenticado.
-    await expect(page.getByRole('heading', { name: 'Panel empresarial' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: /bienvenido, isp prueba colombia/i }),
+    ).toBeVisible();
 
     await page.getByRole('button', { name: 'Notificaciones' }).click();
     await expect(page.getByText('Notificaciones del portal')).toBeVisible();

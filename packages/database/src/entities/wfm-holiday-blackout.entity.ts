@@ -8,7 +8,11 @@ import {
 } from 'typeorm';
 
 @Index('idx_wfm_holiday_blackouts_tenant_date', ['tenantId', 'blackoutDate'])
-@Index('idx_wfm_holiday_blackouts_tenant_site_date', ['tenantId', 'siteId', 'blackoutDate'])
+@Index('idx_wfm_holiday_blackouts_tenant_org_site_date', [
+  'tenantId',
+  'organizationSiteId',
+  'blackoutDate',
+])
 @Entity({ name: 'wfm_holiday_blackouts' })
 export class WfmHolidayBlackout {
   @PrimaryGeneratedColumn('uuid')
@@ -17,8 +21,8 @@ export class WfmHolidayBlackout {
   @Column({ name: 'tenant_id', type: 'uuid' })
   tenantId: string;
 
-  @Column({ name: 'site_id', type: 'uuid', nullable: true })
-  siteId: string | null;
+  @Column({ name: 'organization_site_id', type: 'uuid', nullable: true })
+  organizationSiteId: string | null;
 
   @Column({ name: 'blackout_date', type: 'date' })
   blackoutDate: string;

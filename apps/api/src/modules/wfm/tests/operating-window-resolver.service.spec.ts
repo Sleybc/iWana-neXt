@@ -11,7 +11,6 @@ jest.mock('@iwana/db', () => ({
     }),
   },
   runInTenantSchema: jest.fn(),
-  WfmTechnicianBusinessOverride: class WfmTechnicianBusinessOverride {},
   WfmHolidayBlackout: class WfmHolidayBlackout {},
   WfmSiteBusinessHours: class WfmSiteBusinessHours {},
   WfmCompanyBusinessHours: class WfmCompanyBusinessHours {},
@@ -23,8 +22,8 @@ describe('OperatingWindowResolverService', () => {
 
   const baseInput = {
     tenantId: 'tenant-001',
-    siteId: 'site-001',
-    technicianId: 'tech-001',
+    organizationSiteId: 'site-001',
+    technicianId: null,
     dateLocal: '2026-05-18',
     timezone: 'America/Bogota',
   };
@@ -35,37 +34,23 @@ describe('OperatingWindowResolverService', () => {
     service = new OperatingWindowResolverService({} as DataSource);
   });
 
-  it('prioriza override de tecnico sobre festivo y sede', async () => {
+  it('bloquea por festivo cuando hay cierre especial aplicable (maxima prioridad)', async () => {
     mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
       fn({
         manager: buildManager({
-          overrides: [
-            {
-              tenantId: 'tenant-001',
-              userId: 'tech-001',
-              siteId: 'site-001',
-              overrideDate: '2026-05-18',
-              weekday: null,
-              startTime: '10:00',
-              endTime: '16:00',
-              isEnabled: true,
-              reason: 'Turno especial',
-            },
-          ],
           blackouts: [
             {
               tenantId: 'tenant-001',
-              siteId: null,
+              organizationSiteId: null,
               blackoutDate: '2026-05-18',
               isRecurring: false,
               name: 'Festivo nacional',
               isEnabled: true,
             },
           ],
-          siteHours: {
+          companyHours: {
             tenantId: 'tenant-001',
-            siteId: 'site-001',
-            weekday: BusinessHoursWeekday.MONDAY,
+            weekday: BusinessHoursWeekday.SUNDAY,
             startTime: '09:00',
             endTime: '17:00',
             isEnabled: true,
@@ -78,23 +63,22 @@ describe('OperatingWindowResolverService', () => {
 
     expect(TenantContext.getOrThrow).toHaveBeenCalled();
     expect(result).toEqual({
-      status: 'OPEN',
-      source: 'TECHNICIAN_OVERRIDE',
-      startTime: '10:00',
-      endTime: '16:00',
-      reason: 'Turno especial',
+      status: 'CLOSED',
+      source: 'HOLIDAY_BLACKOUT',
+      startTime: null,
+      endTime: null,
+      reason: 'Festivo nacional',
     });
   });
 
-  it('bloquea por festivo si no existe override tecnico', async () => {
+  it('bloquea por festivo si no existe cierre en otra fecha', async () => {
     mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
       fn({
         manager: buildManager({
-          overrides: [],
           blackouts: [
             {
               tenantId: 'tenant-001',
-              siteId: null,
+              organizationSiteId: null,
               blackoutDate: '2026-05-18',
               isRecurring: false,
               name: 'Festivo nacional',
@@ -116,15 +100,13 @@ describe('OperatingWindowResolverService', () => {
     });
   });
 
-  it('cae a horario de sede cuando no hay override ni festivo', async () => {
+  it('cae a horario de empresa cuando no hay festivo', async () => {
     mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
       fn({
         manager: buildManager({
-          overrides: [],
           blackouts: [],
-          siteHours: {
+          companyHours: {
             tenantId: 'tenant-001',
-            siteId: 'site-001',
             weekday: BusinessHoursWeekday.TUESDAY,
             startTime: '09:00',
             endTime: '17:00',
@@ -138,7 +120,7 @@ describe('OperatingWindowResolverService', () => {
 
     expect(result).toEqual({
       status: 'OPEN',
-      source: 'SITE_HOURS',
+      source: 'COMPANY_HOURS',
       startTime: '09:00',
       endTime: '17:00',
       reason: null,
@@ -149,7 +131,6 @@ describe('OperatingWindowResolverService', () => {
     mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
       fn({
         manager: buildManager({
-          overrides: [],
           blackouts: [],
           siteHours: null,
           companyHours: {
@@ -178,7 +159,6 @@ describe('OperatingWindowResolverService', () => {
     mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
       fn({
         manager: buildManager({
-          overrides: [],
           blackouts: [],
           siteHours: null,
           companyHours: null,
@@ -186,7 +166,11 @@ describe('OperatingWindowResolverService', () => {
       } as any),
     );
 
-    const result = await service.resolve({ ...baseInput, siteId: null, technicianId: null });
+    const result = await service.resolve({
+      ...baseInput,
+      organizationSiteId: null,
+      technicianId: null,
+    });
 
     expect(result).toEqual({
       status: 'CLOSED',
@@ -199,7 +183,6 @@ describe('OperatingWindowResolverService', () => {
 });
 
 function buildManager(data: {
-  overrides?: unknown[];
   blackouts?: unknown[];
   siteHours?: unknown | null;
   companyHours?: unknown | null;
@@ -207,9 +190,6 @@ function buildManager(data: {
   return {
     find: jest.fn().mockImplementation((entity) => {
       const name = entity?.name;
-      if (name === 'WfmTechnicianBusinessOverride') {
-        return Promise.resolve(data.overrides ?? []);
-      }
 
       if (name === 'WfmHolidayBlackout') {
         return Promise.resolve(data.blackouts ?? []);

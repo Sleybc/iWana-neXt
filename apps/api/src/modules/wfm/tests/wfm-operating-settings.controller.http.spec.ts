@@ -12,16 +12,15 @@ import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { WfmController } from '../wfm.controller';
+import { WfmOrganizationSitesReadPort } from '../ports/wfm-organization-sites-read.port';
 import { WfmTenantSettingsReadPort } from '../ports/wfm-tenant-settings-read.port';
 import { CompanyBusinessHoursService } from '../services/company-business-hours.service';
 import { HolidayBlackoutsService } from '../services/holiday-blackouts.service';
 import { OperatingWindowResolverService } from '../services/operating-window-resolver.service';
-import { OperatingSitesService } from '../services/operating-sites.service';
 import { ScheduleEventsService } from '../services/schedule-events.service';
 import { ScheduleRecommendationsService } from '../services/schedule-recommendations.service';
 import { SiteBusinessHoursService } from '../services/site-business-hours.service';
 import { TechnicianAvailabilityService } from '../services/technician-availability.service';
-import { TechnicianBusinessOverridesService } from '../services/technician-business-overrides.service';
 import { VisitRequestsService } from '../services/visit-requests.service';
 import { WfmDashboardService } from '../services/wfm-dashboard.service';
 import { WorkOrdersService } from '../services/work-orders.service';
@@ -164,13 +163,6 @@ describe('Wfm operating settings HTTP', () => {
     getSummary: jest.fn(),
   };
 
-  const operatingSitesServiceMock = {
-    list: jest.fn(),
-    create: jest.fn(),
-    update: jest.fn(),
-    remove: jest.fn(),
-  };
-
   const companyBusinessHoursServiceMock = {
     getWeek: jest.fn(),
     replaceWeek: jest.fn(),
@@ -179,13 +171,6 @@ describe('Wfm operating settings HTTP', () => {
   const siteBusinessHoursServiceMock = {
     getWeek: jest.fn(),
     replaceWeek: jest.fn(),
-  };
-
-  const technicianBusinessOverridesServiceMock = {
-    list: jest.fn(),
-    create: jest.fn(),
-    update: jest.fn(),
-    remove: jest.fn(),
   };
 
   const holidayBlackoutsServiceMock = {
@@ -213,14 +198,10 @@ describe('Wfm operating settings HTTP', () => {
         { provide: WorkOrdersService, useValue: workOrdersServiceMock },
         { provide: TechnicianAvailabilityService, useValue: technicianAvailabilityServiceMock },
         { provide: WfmDashboardService, useValue: dashboardServiceMock },
-        { provide: OperatingSitesService, useValue: operatingSitesServiceMock },
         { provide: CompanyBusinessHoursService, useValue: companyBusinessHoursServiceMock },
         { provide: SiteBusinessHoursService, useValue: siteBusinessHoursServiceMock },
-        {
-          provide: TechnicianBusinessOverridesService,
-          useValue: technicianBusinessOverridesServiceMock,
-        },
         { provide: HolidayBlackoutsService, useValue: holidayBlackoutsServiceMock },
+        { provide: WfmOrganizationSitesReadPort, useValue: { listDispatchSites: jest.fn() } },
         { provide: WfmTenantSettingsReadPort, useValue: tenantSettingsReadPortMock },
         { provide: OperatingWindowResolverService, useValue: operatingWindowResolverMock },
         JwtAuthGuard,
@@ -249,51 +230,6 @@ describe('Wfm operating settings HTTP', () => {
     jest.clearAllMocks();
   });
 
-  it('lista sedes operativas para NOC', async () => {
-    operatingSitesServiceMock.list.mockResolvedValue([
-      { id: '11111111-1111-1111-1111-111111111111', name: 'Sede norte', code: 'NORTE' },
-    ]);
-
-    await request(app.getHttpServer())
-      .get('/api/v1/wfm/operating-sites')
-      .set('Authorization', 'Bearer noc-token')
-      .expect(200)
-      .expect(({ body }) => {
-        expect(body).toHaveLength(1);
-        expect(operatingSitesServiceMock.list).toHaveBeenCalledWith(
-          expect.objectContaining({ tenantId: 'tenant-001', role: UserRole.NOC }),
-        );
-      });
-  });
-
-  it('crea una sede operativa para ADMIN', async () => {
-    operatingSitesServiceMock.create.mockResolvedValue({
-      id: '11111111-1111-1111-1111-111111111111',
-      name: 'Sede norte',
-      code: 'NORTE',
-    });
-
-    await request(app.getHttpServer())
-      .post('/api/v1/wfm/operating-sites')
-      .set('Authorization', 'Bearer admin-token')
-      .send({ name: 'Sede norte', code: 'NORTE' })
-      .expect(201)
-      .expect(() => {
-        expect(operatingSitesServiceMock.create).toHaveBeenCalledWith(
-          expect.objectContaining({ name: 'Sede norte', code: 'NORTE' }),
-          expect.objectContaining({ tenantId: 'tenant-001', role: UserRole.ADMIN }),
-        );
-      });
-  });
-
-  it('rechaza crear sede operativa para NOC', async () => {
-    await request(app.getHttpServer())
-      .post('/api/v1/wfm/operating-sites')
-      .set('Authorization', 'Bearer noc-token')
-      .send({ name: 'Sede norte', code: 'NORTE' })
-      .expect(403);
-  });
-
   it('reemplaza el horario base de empresa para ADMIN', async () => {
     companyBusinessHoursServiceMock.replaceWeek.mockResolvedValue([
       { weekday: 'MONDAY', startTime: '07:00', endTime: '18:00', isEnabled: true },
@@ -311,6 +247,68 @@ describe('Wfm operating settings HTTP', () => {
       .expect(() => {
         expect(companyBusinessHoursServiceMock.replaceWeek).toHaveBeenCalledWith(
           expect.objectContaining({ days }),
+          expect.objectContaining({ tenantId: 'tenant-001', role: UserRole.ADMIN }),
+        );
+      });
+  });
+
+  it('obtiene horario por sede para SUPPORT', async () => {
+    siteBusinessHoursServiceMock.getWeek.mockResolvedValue([
+      { weekday: 'MONDAY', startTime: '07:00', endTime: '18:00', isEnabled: true },
+    ]);
+
+    await request(app.getHttpServer())
+      .get('/api/v1/wfm/operating-sites/11111111-1111-1111-1111-111111111111/business-hours')
+      .set('Authorization', 'Bearer support-token')
+      .expect(200)
+      .expect(() => {
+        expect(siteBusinessHoursServiceMock.getWeek).toHaveBeenCalledWith(
+          '11111111-1111-1111-1111-111111111111',
+          expect.objectContaining({ tenantId: 'tenant-001', role: UserRole.SUPPORT }),
+        );
+      });
+  });
+
+  it('el endpoint de override por tecnico ya no existe (404)', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/wfm/technician-business-overrides')
+      .set('Authorization', 'Bearer admin-token')
+      .send({
+        userId: '11111111-1111-4111-8111-111111111119',
+        weekday: 'MONDAY',
+        startTime: '08:00',
+        endTime: '12:00',
+        isEnabled: true,
+      })
+      .expect(404);
+  });
+
+  it('acepta organizationSiteId al crear cierre especial', async () => {
+    holidayBlackoutsServiceMock.create.mockResolvedValue({
+      id: 'blackout-1',
+      siteId: 'site-1',
+      organizationSiteId: '11111111-1111-4111-8111-111111111111',
+      blackoutDate: '2026-05-18T00:00:00.000Z',
+      isRecurring: false,
+      name: 'Festivo local',
+      description: null,
+      isEnabled: true,
+    });
+
+    await request(app.getHttpServer())
+      .post('/api/v1/wfm/holiday-blackouts')
+      .set('Authorization', 'Bearer admin-token')
+      .send({
+        organizationSiteId: '11111111-1111-4111-8111-111111111111',
+        blackoutDate: '2026-05-18T00:00:00.000Z',
+        name: 'Festivo local',
+      })
+      .expect(201)
+      .expect(() => {
+        expect(holidayBlackoutsServiceMock.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            organizationSiteId: '11111111-1111-4111-8111-111111111111',
+          }),
           expect.objectContaining({ tenantId: 'tenant-001', role: UserRole.ADMIN }),
         );
       });
@@ -357,7 +355,7 @@ describe('Wfm operating settings HTTP', () => {
         expect(tenantSettingsReadPortMock.getTimezone).toHaveBeenCalledWith('tenant-001');
         expect(operatingWindowResolverMock.resolve).toHaveBeenCalledWith({
           tenantId: 'tenant-001',
-          siteId: null,
+          organizationSiteId: null,
           technicianId: null,
           dateLocal: '2026-05-18',
           timezone: 'America/Bogota',

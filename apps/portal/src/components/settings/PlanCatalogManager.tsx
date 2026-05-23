@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { CheckCircle2, CircleAlert, Layers3, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react';
@@ -271,6 +271,7 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
   }, [plans]);
 
   const {
+    control,
     register,
     handleSubmit,
     reset,
@@ -757,19 +758,29 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
               />
 
               <div className="space-y-1.5">
-                <Select
-                  id="plan-technology"
-                  label="Tecnología"
-                  className="h-11"
-                  disabled={!canEdit || isSubmitting}
-                  {...register('technology')}
-                >
-                  {selectTechnologyOptions.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
-                </Select>
+                <Controller
+                  name="technology"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      id="plan-technology"
+                      label="Tecnología"
+                      className="h-11"
+                      disabled={!canEdit || isSubmitting}
+                      name={field.name}
+                      value={field.value}
+                      onChange={(event) => field.onChange(event.target.value)}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                    >
+                      {selectTechnologyOptions.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                />
                 {errors.technology?.message && (
                   <p className="text-xs text-red-600 dark:text-red-400">
                     {errors.technology.message}
@@ -993,17 +1004,27 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
               {installationEnabled && (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-1.5">
-                    <Select
-                      id="installation-rule"
-                      label="Regla de instalación"
-                      className="h-11"
-                      disabled={!canEdit || isSubmitting}
-                      {...register('installationRule')}
-                    >
-                      <option value="ALWAYS">Siempre cobrar instalación</option>
-                      <option value="ON_DEMAND">Cobrar instalación bajo demanda</option>
-                      <option value="NEVER">Nunca cobrar instalación</option>
-                    </Select>
+                    <Controller
+                      name="installationRule"
+                      control={control}
+                      render={({ field }) => (
+                        <Select
+                          id="installation-rule"
+                          label="Regla de instalación"
+                          className="h-11"
+                          disabled={!canEdit || isSubmitting}
+                          name={field.name}
+                          value={field.value}
+                          onChange={(event) => field.onChange(event.target.value)}
+                          onBlur={field.onBlur}
+                          ref={field.ref}
+                        >
+                          <option value="ALWAYS">Siempre cobrar instalación</option>
+                          <option value="ON_DEMAND">Cobrar instalación bajo demanda</option>
+                          <option value="NEVER">Nunca cobrar instalación</option>
+                        </Select>
+                      )}
+                    />
                   </div>
 
                   <Input

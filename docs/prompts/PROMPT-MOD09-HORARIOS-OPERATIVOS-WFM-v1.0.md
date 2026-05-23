@@ -1,5 +1,7 @@
 # PROMPT - MOD09 Horarios operativos WFM
 
+> **Actualizacion 2026-05-22:** Las instrucciones sobre overrides por tecnico y habilitacion de trabajo por tecnico en festivos quedan reemplazadas por `docs/adrs/ADR-041-Retiro-Excepciones-Tecnico-WFM.md`, `docs/specs/2026-05-22-mod09-wfm-field-operations-sin-excepciones-design.md` y `docs/prompts/PROMPT-MOD09-RETIRO-EXCEPCIONES-TECNICO-v1.0.md`. No usar esas partes como alcance vigente.
+
 **Version:** 1.0  
 **Estado:** Aprobado  
 **Fecha:** 2026-05-15  
@@ -24,18 +26,18 @@
 
 ## 1. Objetivo exacto de la fase
 
-Implementar fullstack el modelo tenant-aware de horarios operativos WFM para que empresa, sede, técnico y festivos gobiernen tanto la administración de configuración como la generación y validación de franjas de agenda.
+Implementar fullstack el modelo tenant-aware de horarios operativos WFM para que empresa, sede y festivos gobiernen tanto la administración de configuración como la generación y validación de franjas de agenda. Las instrucciones historicas sobre overrides por tecnico quedan reemplazadas por ADR-041.
 
 ### Resultado esperado
 
-Un tenant puede administrar sedes operativas, horario semanal base, horarios por sede, overrides por técnico y festivos/cierres, y WFM solo recomienda y persiste instalaciones dentro de la ventana efectiva resuelta para la fecha consultada.
+Un tenant puede administrar sedes operativas, horario semanal base, horarios por sede y festivos/cierres, y WFM solo recomienda y persiste instalaciones dentro de la ventana efectiva resuelta para la fecha consultada.
 
 ### Lo que si entra
 
-- Tablas nuevas tenant-aware para sedes, horarios base, horarios por sede, overrides y festivos.
+- Tablas nuevas tenant-aware para sedes, horarios base, horarios por sede y festivos.
 - `operatingSiteId` opcional en `schedule_events` y `visit_requests`.
-- Endpoints WFM de administración para sedes, horarios, overrides y festivos.
-- Resolvedor central de ventana efectiva con precedencia `tecnico > festivo > sede > empresa`.
+- Endpoints WFM de administración para sedes, horarios y festivos.
+- Resolvedor central de ventana efectiva con precedencia vigente segun ADR-041: `festivo > sede > empresa`.
 - Reemplazo del hardcode horario en `ScheduleRecommendationsService`, `ScheduleEventsService` y `VisitRequestsService`.
 - UI portal para administrar configuración WFM dentro de la pestaña `operations` con manager dedicado.
 - UI de scheduling filtrada por ventana efectiva y con mensajes claros cuando no existan franjas.
@@ -106,10 +108,10 @@ Un tenant puede administrar sedes operativas, horario semanal base, horarios por
 ### Backend y base de datos
 
 - Enum compartido `BusinessHoursWeekday`.
-- Entidades tenant-aware nuevas para sedes, horarios base, horarios por sede, overrides y festivos.
+- Entidades tenant-aware nuevas para sedes, horarios base, horarios por sede y festivos.
 - Migración reversible tenant `036_create_wfm_operating_hours_module.ts`.
 - Campos `operatingSiteId` opcionales en `schedule_events` y `visit_requests`.
-- Endpoints WFM de administración para sedes, horarios, overrides y festivos.
+- Endpoints WFM de administración para sedes, horarios y festivos.
 - `OperatingWindowResolverService` con precedencia explícita.
 - Enforcement backend en create/update/reschedule/scheduleVisitRequest.
 - Recomendaciones limitadas a la ventana efectiva.
@@ -143,11 +145,11 @@ Un tenant puede administrar sedes operativas, horario semanal base, horarios por
 
 - CA-HO-01: El tenant puede administrar horario base por día de semana.
 - CA-HO-02: El tenant puede crear sedes operativas y horarios semanales por sede.
-- CA-HO-03: El tenant puede configurar overrides por técnico y festivos/cierres.
-- CA-HO-04: El resolvedor aplica la precedencia `tecnico > festivo > sede > empresa`.
+- CA-HO-03: El tenant puede configurar festivos/cierres.
+- CA-HO-04: El resolvedor aplica la precedencia vigente segun ADR-041: `festivo > sede > empresa`.
 - CA-HO-05: Las recomendaciones no generan slots fuera de la ventana efectiva.
 - CA-HO-06: Create, update, reschedule y scheduleVisitRequest rechazan con `400` fuera de la ventana efectiva.
-- CA-HO-07: Un override explícito de técnico puede habilitar trabajo en un festivo.
+- CA-HO-07: Un cierre especial aplicable bloquea agenda sin excepciones personales manuales en WFM.
 - CA-HO-08: Portal explica por qué no existen franjas cuando la fecha está cerrada.
 
 ---

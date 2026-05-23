@@ -9,12 +9,13 @@ import {
   VisitRequest,
   WfmCompanyBusinessHours,
   WfmHolidayBlackout,
-  WfmOperatingSite,
   WfmSiteBusinessHours,
-  WfmTechnicianBusinessOverride,
+  WfmOperationalEventuality,
 } from '@iwana/db';
+import { OrganizationModule } from '../organization/organization.module';
 import { TenantModule } from '../tenant/tenant.module';
 import { WfmController } from './wfm.controller';
+import { OperationalEventualitiesService } from './services/operational-eventualities.service';
 import { ScheduleConflictService } from './services/schedule-conflict.service';
 import { ScheduleEventsService } from './services/schedule-events.service';
 import { VisitRequestsService } from './services/visit-requests.service';
@@ -22,16 +23,16 @@ import { WorkOrdersService } from './services/work-orders.service';
 import { TechnicianAvailabilityService } from './services/technician-availability.service';
 import { WfmDashboardService } from './services/wfm-dashboard.service';
 import { ScheduleRecommendationsService } from './services/schedule-recommendations.service';
-import { OperatingSitesService } from './services/operating-sites.service';
 import { CompanyBusinessHoursService } from './services/company-business-hours.service';
 import { SiteBusinessHoursService } from './services/site-business-hours.service';
-import { TechnicianBusinessOverridesService } from './services/technician-business-overrides.service';
 import { HolidayBlackoutsService } from './services/holiday-blackouts.service';
 import { OperatingWindowResolverService } from './services/operating-window-resolver.service';
 import { WfmWorkOrderReadPort } from './ports/wfm-work-order-read.port';
 import { WfmWorkOrderReadAdapter } from './ports/wfm-work-order-read.adapter';
 import { WfmTenantSettingsReadPort } from './ports/wfm-tenant-settings-read.port';
 import { WfmTenantSettingsReadAdapter } from './ports/wfm-tenant-settings-read.adapter';
+import { WfmOrganizationSitesReadPort } from './ports/wfm-organization-sites-read.port';
+import { WfmOrganizationSitesAdapter } from './services/wfm-organization-sites.adapter';
 
 /**
  * Modulo WFM — Fase 01: Agenda, Work Orders y disponibilidad de tecnicos.
@@ -41,6 +42,7 @@ import { WfmTenantSettingsReadAdapter } from './ports/wfm-tenant-settings-read.a
 @Module({
   imports: [
     TenantModule,
+    OrganizationModule,
     TypeOrmModule.forFeature([
       ScheduleEvent,
       WorkOrder,
@@ -48,11 +50,10 @@ import { WfmTenantSettingsReadAdapter } from './ports/wfm-tenant-settings-read.a
       ScheduleRescheduleLog,
       TechnicianAvailability,
       VisitRequest,
-      WfmOperatingSite,
       WfmCompanyBusinessHours,
       WfmSiteBusinessHours,
-      WfmTechnicianBusinessOverride,
       WfmHolidayBlackout,
+      WfmOperationalEventuality,
     ]),
   ],
   controllers: [WfmController],
@@ -64,12 +65,12 @@ import { WfmTenantSettingsReadAdapter } from './ports/wfm-tenant-settings-read.a
     TechnicianAvailabilityService,
     WfmDashboardService,
     ScheduleRecommendationsService,
-    OperatingSitesService,
     CompanyBusinessHoursService,
     SiteBusinessHoursService,
-    TechnicianBusinessOverridesService,
     HolidayBlackoutsService,
     OperatingWindowResolverService,
+    OperationalEventualitiesService,
+    WfmOrganizationSitesAdapter,
     WfmTenantSettingsReadAdapter,
     {
       provide: WfmWorkOrderReadPort,
@@ -78,6 +79,10 @@ import { WfmTenantSettingsReadAdapter } from './ports/wfm-tenant-settings-read.a
     {
       provide: WfmTenantSettingsReadPort,
       useExisting: WfmTenantSettingsReadAdapter,
+    },
+    {
+      provide: WfmOrganizationSitesReadPort,
+      useExisting: WfmOrganizationSitesAdapter,
     },
   ],
   exports: [WfmWorkOrderReadPort],

@@ -78,6 +78,95 @@ const mockTenantSummary = {
   ],
 };
 
+const mockTenantProfile = {
+  id: 'tenant-uuid-test',
+  name: 'ISP Prueba Colombia',
+  slug: 'isp-demo',
+  status: 'ACTIVE',
+  contactEmail: 'contacto@test-isp.co',
+  legalName: null,
+  nit: null,
+  city: 'Medellín',
+  department: 'Antioquia',
+  countryCode: 'CO',
+  phone: null,
+  website: null,
+  createdAt: '2026-01-15T00:00:00.000Z',
+  showTenantName: true,
+  logoLightUrl: null,
+  logoLightAssetId: null,
+  logoDarkUrl: null,
+  logoDarkAssetId: null,
+  sealLightUrl: null,
+  sealLightAssetId: null,
+  sealDarkUrl: null,
+  sealDarkAssetId: null,
+  faviconLightUrl: null,
+  faviconLightAssetId: null,
+  faviconDarkUrl: null,
+  faviconDarkAssetId: null,
+  loginBackgroundLightUrl: null,
+  loginBackgroundLightAssetId: null,
+  loginBackgroundDarkUrl: null,
+  loginBackgroundDarkAssetId: null,
+  brandingProductName: null,
+  brandingSurfaceName: null,
+  brandingMetadataTitle: null,
+  brandingMetadataDescription: null,
+};
+
+const mockPublicBranding = {
+  displayName: 'ISP Prueba Colombia',
+  showTenantName: true,
+  logoLightUrl: null,
+  logoDarkUrl: null,
+  sealLightUrl: null,
+  sealDarkUrl: null,
+  faviconLightUrl: null,
+  faviconDarkUrl: null,
+  loginBackgroundLightUrl: null,
+  loginBackgroundDarkUrl: null,
+};
+
+const mockSettingsSections = [
+  {
+    key: 'organization',
+    label: 'Perfil empresarial y organización',
+    description: 'Perfil empresarial, configuración operativa base y sedes.',
+    ownerModule: 'MOD00 / Organización',
+    status: 'AVAILABLE',
+    route: '/dashboard/settings/organization',
+    requiredPermissions: [],
+  },
+  {
+    key: 'field_operations',
+    label: 'Operación de campo',
+    description: 'Configuración WFM disponible.',
+    ownerModule: 'MOD09 / WFM',
+    status: 'AVAILABLE',
+    route: '/dashboard/settings/field-operations',
+    requiredPermissions: [],
+  },
+  {
+    key: 'access',
+    label: 'Usuarios y acceso',
+    description: 'Perfiles y permisos.',
+    ownerModule: 'MOD00 / Access control',
+    status: 'AVAILABLE',
+    route: '/dashboard/settings/access',
+    requiredPermissions: [],
+  },
+  {
+    key: 'commercial',
+    label: 'Comercial',
+    description: 'Configuración comercial unificada.',
+    ownerModule: 'MOD08 / Comercial',
+    status: 'AVAILABLE',
+    route: '/dashboard/commercial',
+    requiredPermissions: [],
+  },
+];
+
 const mockAuditLogs = [
   {
     id: 'audit-uuid-1',
@@ -103,6 +192,15 @@ async function setupDashboardMocks(page: import('@playwright/test').Page) {
   await page.route('**/api/v1/**', async (route) => {
     const url = route.request().url();
     const method = route.request().method();
+
+    if (url.includes('/tenants/public-branding') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: mockPublicBranding }),
+      });
+      return;
+    }
 
     // Login tenant
     if (url.includes('/auth/login') && method === 'POST') {
@@ -159,12 +257,47 @@ async function setupDashboardMocks(page: import('@playwright/test').Page) {
       return;
     }
 
+    if (/\/access-control\/users\/[^/]+\/effective-permissions$/.test(url) && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            userId: 'user-uuid-admin-test',
+            role: 'ADMIN',
+            effectivePermissions: ['settings.read'],
+            recoveryPermissions: [],
+            profileSources: [],
+          },
+        }),
+      });
+      return;
+    }
+
     // Summary del dashboard — contrato self-service
     if (url.includes('/tenants/me/summary') && method === 'GET') {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ data: mockTenantSummary }),
+      });
+      return;
+    }
+
+    if (url.includes('/tenants/me') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: mockTenantProfile }),
+      });
+      return;
+    }
+
+    if (url.includes('/configuration/settings-sections') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: mockSettingsSections }),
       });
       return;
     }

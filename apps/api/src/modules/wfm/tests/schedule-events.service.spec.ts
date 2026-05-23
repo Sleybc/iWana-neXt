@@ -227,6 +227,33 @@ describe('ScheduleEventsService', () => {
       await service.create(inputWithWo as any, adminActor as any);
       expect(mockWorkOrdersService.createWithinManager).toHaveBeenCalled();
     });
+
+    it('should keep organizationSiteId when provided', async () => {
+      const inputWithSite = {
+        ...validCreateInput,
+        organizationSiteId: '99999999-9999-4999-8999-999999999999',
+      };
+      const savedEvent = {
+        id: 'evt-site',
+        tenantId: 'tenant-001',
+        status: ScheduleEventStatus.DRAFT,
+        ...inputWithSite,
+      };
+
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
+        const mockQr = {
+          manager: {
+            create: jest.fn().mockReturnValue(savedEvent),
+            save: jest.fn().mockResolvedValue(savedEvent),
+          },
+        };
+        return fn(mockQr as any);
+      });
+
+      const result = await service.create(inputWithSite, adminActor as any);
+
+      expect(result.organizationSiteId).toBe('99999999-9999-4999-8999-999999999999');
+    });
   });
 
   describe('list — ownership rule for TECHNICIAN', () => {
@@ -446,7 +473,7 @@ describe('ScheduleEventsService', () => {
         tenantId: 'tenant-001',
         assignedUserId: 'tech-001',
         type: 'INSTALLATION',
-        operatingSiteId: null,
+        organizationSiteId: null,
         scheduledStartAt: new Date('2026-06-01T09:00:00Z'),
         scheduledEndAt: new Date('2026-06-01T11:00:00Z'),
         status: ScheduleEventStatus.SCHEDULED,

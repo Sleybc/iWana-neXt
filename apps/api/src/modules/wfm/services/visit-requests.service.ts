@@ -62,7 +62,7 @@ const MIN_DURATION_MS = 15 * 60 * 1000;
 const VISIT_REQUEST_ACTIVE_ORIGIN_UNIQUE = 'idx_visit_requests_active_origin_unique';
 
 type VisitRequestListResponse = {
-  items: VisitRequest[];
+  items: VisitRequestResponse[];
   meta: {
     total: number;
     page: number;
@@ -70,6 +70,8 @@ type VisitRequestListResponse = {
     totalPages: number;
   };
 };
+
+type VisitRequestResponse = VisitRequest;
 
 type VisitRequestSchedulingContext = {
   address?: string | null | undefined;
@@ -142,9 +144,10 @@ export class VisitRequestsService {
         .take(validated.limit);
 
       const [items, total] = await qb.getManyAndCount();
+      const enrichedItems = await this.enrichVisitRequests(items, qr.manager);
 
       return {
-        items,
+        items: enrichedItems,
         meta: {
           total,
           page: validated.page,
@@ -217,7 +220,7 @@ export class VisitRequestsService {
     });
   }
 
-  async getVisitRequestById(id: string, actor: JwtPayload): Promise<VisitRequest> {
+  async getVisitRequestById(id: string, actor: JwtPayload): Promise<VisitRequestResponse> {
     this.ensureActorCanAccessGlobalVisitRequests(actor);
 
     const { tenantId, schemaName } = TenantContext.getOrThrow();
@@ -233,14 +236,14 @@ export class VisitRequestsService {
 
       this.ensureActorCanAccessVisitRequest(actor, visitRequest);
 
-      return visitRequest;
+      return this.enrichVisitRequest(visitRequest, qr.manager);
     });
   }
 
   async createVisitRequest(
     input: CreateVisitRequestInput,
     actor: JwtPayload,
-  ): Promise<VisitRequest> {
+  ): Promise<VisitRequestResponse> {
     this.ensureActorCanAccessGlobalVisitRequests(actor);
 
     const { tenantId, schemaName } = TenantContext.getOrThrow();
@@ -248,6 +251,7 @@ export class VisitRequestsService {
     this.ensureActorCanCreateVisitRequest(actor, validated.originContext);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const organizationSiteId = validated.organizationSiteId ?? null;
       const duplicate = await this.findActiveDuplicateByOrigin(
         qr.manager,
         tenantId,
@@ -257,7 +261,7 @@ export class VisitRequestsService {
       );
 
       if (duplicate) {
-        return duplicate;
+        return this.enrichVisitRequest(duplicate, qr.manager);
       }
 
       const visitRequest = qr.manager.create(VisitRequest, {
@@ -270,7 +274,7 @@ export class VisitRequestsService {
         priority: validated.priority ?? WorkOrderPriority.NORMAL,
         title: validated.title,
         description: validated.description ?? null,
-        operatingSiteId: validated.operatingSiteId ?? null,
+        organizationSiteId,
         requestedWindowStartAt: validated.requestedWindowStartAt
           ? new Date(validated.requestedWindowStartAt)
           : null,
@@ -298,7 +302,8 @@ export class VisitRequestsService {
       });
 
       try {
-        return await qr.manager.save(VisitRequest, visitRequest);
+        const savedVisitRequest = await qr.manager.save(VisitRequest, visitRequest);
+        return this.enrichVisitRequest(savedVisitRequest, qr.manager);
       } catch (error) {
         if (this.isActiveOriginUniqueViolation(error)) {
           const existing = await this.findActiveDuplicateByOrigin(
@@ -310,7 +315,7 @@ export class VisitRequestsService {
           );
 
           if (existing) {
-            return existing;
+            return this.enrichVisitRequest(existing, qr.manager);
           }
         }
 
@@ -323,7 +328,7 @@ export class VisitRequestsService {
     id: string,
     input: UpdateVisitRequestContextInput,
     actor: JwtPayload,
-  ): Promise<VisitRequest> {
+  ): Promise<VisitRequestResponse> {
     this.ensureActorCanAccessGlobalVisitRequests(actor);
 
     const { tenantId, schemaName } = TenantContext.getOrThrow();
@@ -353,14 +358,12 @@ export class VisitRequestsService {
       const mergedContext = {
         ...visitRequest,
         ...validated,
+        organizationSiteId: validated.organizationSiteId ?? visitRequest.organizationSiteId ?? null,
       };
 
       const updates: Partial<VisitRequest> = {
         description: validated.description ?? visitRequest.description,
-        operatingSiteId:
-          validated.operatingSiteId === undefined
-            ? visitRequest.operatingSiteId
-            : (validated.operatingSiteId ?? null),
+        organizationSiteId: mergedContext.organizationSiteId,
         requestedWindowStartAt: validated.requestedWindowStartAt
           ? new Date(validated.requestedWindowStartAt)
           : visitRequest.requestedWindowStartAt,
@@ -381,7 +384,7 @@ export class VisitRequestsService {
       };
 
       await qr.manager.update(VisitRequest, { id, tenantId }, updates);
-      return { ...visitRequest, ...updates } as VisitRequest;
+      return this.enrichVisitRequest({ ...visitRequest, ...updates } as VisitRequest, qr.manager);
     });
   }
 
@@ -442,11 +445,14 @@ export class VisitRequestsService {
         );
       }
 
+      const organizationSiteId =
+        validated.organizationSiteId ?? visitRequest.organizationSiteId ?? null;
+
       return {
         workType: visitRequest.workType,
         durationMinutes: validated.durationMinutes,
         candidateUserIds: validated.candidateUserIds,
-        operatingSiteId: validated.operatingSiteId ?? visitRequest.operatingSiteId ?? undefined,
+        organizationSiteId: organizationSiteId ?? undefined,
         windowStartAt: effectiveWindowStartAt,
         windowEndAt: effectiveWindowEndAt,
         municipality: resolvedMunicipality,
@@ -462,7 +468,7 @@ export class VisitRequestsService {
     id: string,
     input: ScheduleVisitRequestInput,
     actor: JwtPayload,
-  ): Promise<VisitRequest> {
+  ): Promise<VisitRequestResponse> {
     this.ensureActorCanAccessGlobalVisitRequests(actor);
 
     const { tenantId, schemaName } = TenantContext.getOrThrow();
@@ -486,7 +492,7 @@ export class VisitRequestsService {
       this.ensureActorCanAccessVisitRequest(actor, visitRequest);
 
       if (visitRequest.status === VisitRequestStatus.SCHEDULED && visitRequest.scheduleEventId) {
-        return visitRequest;
+        return this.enrichVisitRequest(visitRequest, qr.manager);
       }
 
       if (TERMINAL_VISIT_REQUEST_STATUSES.has(visitRequest.status)) {
@@ -499,13 +505,14 @@ export class VisitRequestsService {
         throw new BadRequestException('La solicitud no esta lista para agendar');
       }
 
-      const operatingSiteId = validated.operatingSiteId ?? visitRequest.operatingSiteId ?? null;
+      const organizationSiteId =
+        validated.organizationSiteId ?? visitRequest.organizationSiteId ?? null;
 
       await this.assertInstallationScheduleWindow(
         qr.manager,
         visitRequest.workType,
         tenantId,
-        operatingSiteId,
+        organizationSiteId,
         validated.assignedUserId,
         startAt,
         endAt,
@@ -531,7 +538,7 @@ export class VisitRequestsService {
         scheduledStartAt: startAt,
         scheduledEndAt: endAt,
         assignedUserId: validated.assignedUserId,
-        operatingSiteId,
+        organizationSiteId,
         address: visitRequest.address ?? null,
         municipality: visitRequest.municipality ?? null,
         sector: visitRequest.sector ?? null,
@@ -584,13 +591,13 @@ export class VisitRequestsService {
         status: VisitRequestStatus.SCHEDULED,
         scheduleEventId: savedEvent.id,
         workOrderId,
-        operatingSiteId,
+        organizationSiteId,
         scheduledByUserId: actor.sub,
         scheduledAt: new Date(),
       };
 
       await qr.manager.update(VisitRequest, { id, tenantId }, updates);
-      return { ...visitRequest, ...updates } as VisitRequest;
+      return this.enrichVisitRequest({ ...visitRequest, ...updates } as VisitRequest, qr.manager);
     });
   }
 
@@ -598,7 +605,7 @@ export class VisitRequestsService {
     manager: EntityManager,
     workType: WfmWorkType,
     tenantId: string,
-    operatingSiteId: string | null,
+    organizationSiteId: string | null,
     technicianId: string,
     startAt: Date,
     endAt: Date,
@@ -618,7 +625,7 @@ export class VisitRequestsService {
 
     const window = await this.operatingWindowResolver.resolveWithManager(manager, {
       tenantId,
-      siteId: operatingSiteId,
+      organizationSiteId,
       technicianId,
       dateLocal,
       timezone,
@@ -643,7 +650,7 @@ export class VisitRequestsService {
     id: string,
     input: CancelVisitRequestInput,
     actor: JwtPayload,
-  ): Promise<VisitRequest> {
+  ): Promise<VisitRequestResponse> {
     this.ensureActorCanAccessGlobalVisitRequests(actor);
 
     const { tenantId, schemaName } = TenantContext.getOrThrow();
@@ -661,7 +668,7 @@ export class VisitRequestsService {
       this.ensureActorCanAccessVisitRequest(actor, visitRequest);
 
       if (visitRequest.status === VisitRequestStatus.CANCELLED) {
-        return visitRequest;
+        return this.enrichVisitRequest(visitRequest, qr.manager);
       }
 
       if (visitRequest.status === VisitRequestStatus.SCHEDULED) {
@@ -680,7 +687,7 @@ export class VisitRequestsService {
       };
 
       await qr.manager.update(VisitRequest, { id, tenantId }, updates);
-      return { ...visitRequest, ...updates } as VisitRequest;
+      return this.enrichVisitRequest({ ...visitRequest, ...updates } as VisitRequest, qr.manager);
     });
   }
 
@@ -688,7 +695,7 @@ export class VisitRequestsService {
     id: string,
     input: RejectVisitRequestInput,
     actor: JwtPayload,
-  ): Promise<VisitRequest & { rejectReason?: string | undefined }> {
+  ): Promise<VisitRequestResponse & { rejectReason?: string | undefined }> {
     this.ensureActorCanAccessGlobalVisitRequests(actor);
 
     const { tenantId, schemaName } = TenantContext.getOrThrow();
@@ -706,7 +713,10 @@ export class VisitRequestsService {
       this.ensureActorCanAccessVisitRequest(actor, visitRequest);
 
       if (visitRequest.status === VisitRequestStatus.REJECTED) {
-        return { ...visitRequest, rejectReason: visitRequest.cancelReason ?? undefined };
+        return this.enrichVisitRequest(
+          { ...visitRequest, rejectReason: visitRequest.cancelReason ?? undefined },
+          qr.manager,
+        );
       }
 
       if (visitRequest.status === VisitRequestStatus.SCHEDULED) {
@@ -721,12 +731,29 @@ export class VisitRequestsService {
       };
 
       await qr.manager.update(VisitRequest, { id, tenantId }, updates);
-      return {
-        ...visitRequest,
-        ...updates,
-        rejectReason: validated.rejectReason,
-      } as VisitRequest & { rejectReason: string };
+      return this.enrichVisitRequest(
+        {
+          ...visitRequest,
+          ...updates,
+          rejectReason: validated.rejectReason,
+        } as VisitRequest & { rejectReason: string },
+        qr.manager,
+      );
     });
+  }
+
+  private async enrichVisitRequest<T extends VisitRequest>(
+    visitRequest: T,
+    _manager: EntityManager,
+  ): Promise<T> {
+    return visitRequest;
+  }
+
+  private async enrichVisitRequests<T extends VisitRequest>(
+    visitRequests: T[],
+    _manager: EntityManager,
+  ): Promise<T[]> {
+    return visitRequests;
   }
 
   private ensureActorCanAccessGlobalVisitRequests(actor: JwtPayload): void {

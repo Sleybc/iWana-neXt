@@ -1,9 +1,23 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { UserRole } from '@iwana/shared';
+import {
+  AccessPermissionKey,
+  SettingsSectionKey,
+  SettingsSectionStatus,
+  UserRole,
+} from '@iwana/shared';
 import { SettingsSubTabs } from './SettingsSubTabs';
 import { SettingsClient } from './SettingsClient';
 
 const useAuthMock = jest.fn();
+
+jest.mock('next/link', () => ({
+  __esModule: true,
+  default: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a href={typeof href === 'string' ? href : '#'} {...props}>
+      {children}
+    </a>
+  ),
+}));
 
 jest.mock('@/components/auth/AuthProvider', () => ({
   useAuth: () => useAuthMock(),
@@ -33,6 +47,14 @@ jest.mock('@/lib/api-client', () => ({
     getProfile: jest.fn(),
     getSettings: jest.fn(),
   },
+  configurationApi: {
+    settingsSections: {
+      list: jest.fn(),
+    },
+  },
+  accessControlApi: {
+    getMyEffectivePermissions: jest.fn(),
+  },
   dashboardApi: {
     getSummary: jest.fn(),
   },
@@ -61,51 +83,6 @@ describe('SettingsSubTabs', () => {
 });
 
 describe('SettingsClient', () => {
-  const mockProfile = {
-    id: 'tenant-1',
-    name: 'Test Company',
-    slug: 'test-company',
-    status: 'ACTIVE' as const,
-    contactEmail: 'test@test.com',
-    legalName: 'Test Company S.A.S.',
-    nit: '123456789',
-    nitDv: '1',
-    city: 'Bogotá',
-    department: 'Cundinamarca',
-    countryCode: 'CO',
-    phone: '+57300123456',
-    website: null,
-    createdAt: new Date().toISOString(),
-    logoLightUrl: null,
-    logoLightAssetId: null,
-    logoDarkUrl: null,
-    logoDarkAssetId: null,
-    sealLightUrl: null,
-    sealLightAssetId: null,
-    sealDarkUrl: null,
-    sealDarkAssetId: null,
-    faviconLightUrl: null,
-    faviconLightAssetId: null,
-    faviconDarkUrl: null,
-    faviconDarkAssetId: null,
-    loginBackgroundLightUrl: null,
-    loginBackgroundLightAssetId: null,
-    loginBackgroundDarkUrl: null,
-    loginBackgroundDarkAssetId: null,
-  };
-
-  const mockSettings = {
-    timezone: 'America/Bogota',
-    currency: 'COP',
-    language: 'es-CO',
-    country: 'Colombia',
-    fiberInstallationThresholdMeters: 100,
-    features: {
-      billing: false,
-      mfa_required_all: true,
-    },
-  };
-
   beforeEach(() => {
     jest.clearAllMocks();
     useAuthMock.mockReturnValue({
@@ -113,29 +90,96 @@ describe('SettingsClient', () => {
       isLoading: false,
     });
 
-    const { tenantSelfApi, dashboardApi } = jest.requireMock('@/lib/api-client');
-    tenantSelfApi.getProfile.mockResolvedValue(mockProfile);
-    tenantSelfApi.getSettings.mockResolvedValue(mockSettings);
-    dashboardApi.getSummary.mockResolvedValue({ alerts: [] });
+    const { accessControlApi, configurationApi } = jest.requireMock('@/lib/api-client');
+    accessControlApi.getMyEffectivePermissions.mockResolvedValue({
+      userId: 'user-1',
+      role: UserRole.ADMIN,
+      effectivePermissions: [
+        AccessPermissionKey.SETTINGS_READ,
+        AccessPermissionKey.ORGANIZATION_SITES_READ,
+        AccessPermissionKey.ACCESS_PERMISSIONS_READ,
+      ],
+      recoveryPermissions: [],
+      profileSources: [],
+    });
+    configurationApi.settingsSections.list.mockResolvedValue([
+      {
+        key: SettingsSectionKey.ORGANIZATION,
+        label: 'Perfil empresarial y organización',
+        description: 'Perfil empresarial, configuración operativa base y sedes.',
+        ownerModule: 'MOD00 / Organización',
+        status: SettingsSectionStatus.AVAILABLE,
+        route: '/dashboard/settings/organization',
+        requiredPermissions: [
+          AccessPermissionKey.SETTINGS_READ,
+          AccessPermissionKey.ORGANIZATION_SITES_READ,
+        ],
+      },
+      {
+        key: SettingsSectionKey.ACCESS,
+        label: 'Usuarios y acceso',
+        description: 'Perfiles y permisos.',
+        ownerModule: 'MOD00 / Access control',
+        status: SettingsSectionStatus.AVAILABLE,
+        route: '/dashboard/settings/access',
+        requiredPermissions: [
+          AccessPermissionKey.SETTINGS_READ,
+          AccessPermissionKey.ACCESS_PERMISSIONS_READ,
+        ],
+      },
+      {
+        key: SettingsSectionKey.BILLING,
+        label: 'Billing',
+        description: 'Futuro.',
+        ownerModule: 'Billing futuro',
+        status: SettingsSectionStatus.COMING_SOON,
+        route: null,
+        requiredPermissions: [],
+      },
+    ]);
   });
 
-  it('should render branding form when marca tab is active', async () => {
+  it('should render the federated shell with real routes and future states', async () => {
     render(<SettingsClient />);
-    await screen.findByText('Guardar perfil empresarial');
 
-    fireEvent.click(screen.getByRole('tab', { name: /Marca/i }));
-
-    expect(await screen.findByText('Guardar identidad visual')).toBeInTheDocument();
+    expect(await screen.findByText('Secciones de configuración')).toBeInTheDocument();
+    expect(screen.getByText('Secciones de configuración')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Organización/i })).toHaveAttribute(
+      'href',
+      '/dashboard/settings/organization',
+    );
+    expect(screen.queryByRole('link', { name: /Operación de campo/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Usuarios y acceso/i })).toHaveAttribute(
+      'href',
+      '/dashboard/settings/access',
+    );
+    expect(screen.getByText('Próximamente')).toBeInTheDocument();
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+    expect(screen.queryByText('Guardar perfil empresarial')).not.toBeInTheDocument();
+    expect(screen.queryByText('Guardar configuración operativa')).not.toBeInTheDocument();
   });
 
-  it('should render general and operations sections with their primary actions', async () => {
+  it('should degrade unavailable links when requiredPermissions are missing', async () => {
+    const { accessControlApi } = jest.requireMock('@/lib/api-client');
+    accessControlApi.getMyEffectivePermissions.mockResolvedValue({
+      userId: 'user-1',
+      role: UserRole.ADMIN,
+      effectivePermissions: [AccessPermissionKey.SETTINGS_READ],
+      recoveryPermissions: [],
+      profileSources: [],
+    });
+
     render(<SettingsClient />);
 
-    expect(await screen.findByText('Guardar perfil empresarial')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('tab', { name: /Operación/i }));
-
-    expect(await screen.findByText('Guardar configuración operativa')).toBeInTheDocument();
-    expect(screen.getByText('Horarios operativos editable')).toBeInTheDocument();
+    expect(await screen.findByText('Secciones de configuración')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Operación de campo/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Usuarios y acceso/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /Perfil empresarial y organización/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByText('Acceso restringido')).toHaveLength(2);
+    expect(
+      screen.getAllByText(/Tu sesión no tiene los permisos granulares requeridos/i),
+    ).toHaveLength(2);
   });
 });

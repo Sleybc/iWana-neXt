@@ -3,7 +3,17 @@ import { resolve } from 'path';
 import { DataSource, DataSourceOptions, QueryRunner } from 'typeorm';
 
 import { AuditLog } from './entities/audit-log.entity';
+import { AccessPermissionCatalog } from './entities/access-permission-catalog.entity';
+import { AccessProfile } from './entities/access-profile.entity';
+import { AccessProfilePermission } from './entities/access-profile-permission.entity';
 import { MediaAsset } from './entities/media-asset.entity';
+import { OrganizationSite } from './entities/organization-site.entity';
+import { OrganizationSiteAssignment } from './entities/organization-site-assignment.entity';
+import { OrganizationSiteBusinessHour } from './entities/organization-site-business-hour.entity';
+import { OrganizationCompanyBusinessHours } from './entities/organization-company-business-hours.entity';
+import { OrganizationBusinessHoursException } from './entities/organization-business-hours-exception.entity';
+import { OrganizationSiteCapabilityEntity } from './entities/organization-site-capability.entity';
+import { OrganizationSiteResponsibilityEntity } from './entities/organization-site-responsibility.entity';
 import { PlatformAuditLog } from './entities/platform-audit-log.entity';
 import { PlatformBrandingSettings } from './entities/platform-branding-settings.entity';
 import { PlatformUser } from './entities/platform-user.entity';
@@ -13,6 +23,7 @@ import { ScheduleRescheduleLog } from './entities/schedule-reschedule-log.entity
 import { TechnicianAvailability } from './entities/technician-availability.entity';
 import { Tenant } from './entities/tenant.entity';
 import { User } from './entities/user.entity';
+import { UserAccessProfile } from './entities/user-access-profile.entity';
 import { WorkOrder } from './entities/work-order.entity';
 import { WorkOrderTask } from './entities/work-order-task.entity';
 
@@ -89,6 +100,17 @@ export const dataSourceOptions: DataSourceOptions = {
     User,
     RefreshToken,
     AuditLog,
+    OrganizationSite,
+    OrganizationSiteCapabilityEntity,
+    OrganizationSiteBusinessHour,
+    OrganizationCompanyBusinessHours,
+    OrganizationBusinessHoursException,
+    OrganizationSiteAssignment,
+    OrganizationSiteResponsibilityEntity,
+    AccessPermissionCatalog,
+    AccessProfile,
+    AccessProfilePermission,
+    UserAccessProfile,
     // MOD09 — WFM / Programacion Fase 1
     ScheduleEvent,
     WorkOrder,

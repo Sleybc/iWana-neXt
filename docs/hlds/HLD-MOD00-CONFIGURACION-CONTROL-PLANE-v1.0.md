@@ -1,8 +1,8 @@
 # HLD - MOD00 Configuracion Control Plane
 
-**Version:** 1.0  
+**Version:** 1.2
 **Estado:** Aprobado  
-**Fecha:** 2026-05-19  
+**Fecha:** 2026-05-22
 **Modo activo:** Architect  
 **Autor:** AI-EM-ARCH  
 **PRD de referencia:** docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md  
@@ -25,18 +25,18 @@ El cambio no busca centralizar todos los datos operativos. Busca crear dos capac
 
 ## 2. Bounded contexts afectados
 
-| Bounded context | Impacto | Regla |
-| --- | --- | --- |
-| Configuracion / MOD00 | Principal | Control plane UX, Organizacion/Sedes y perfiles de acceso |
-| TenantModule | Upstream | TenantContext, settings globales existentes, perfil empresa legacy |
-| UsersModule | Upstream | Owner de `User`, `UserRole`, CRUD de cuentas y MFA por usuario |
-| AuthModule | Upstream | JWT, MFA, guards y sesion |
-| AuditModule | Transversal | Auditoria de cambios sensibles |
-| WfmModule | Consumer | Consume sedes organizacionales para despacho; conserva agenda y Work Orders |
-| PartiesModule | Relacionado | Owner de identidad de negocio y roles de tercero |
-| Inventory futuro | Consumer | Consumira sedes con capacidad `WAREHOUSE` |
-| Billing futuro | Consumer | Consumira sedes con capacidad `COLLECTION_POINT` |
-| apps/portal | Principal | UI de Configuracion v2 |
+| Bounded context       | Impacto     | Regla                                                                       |
+| --------------------- | ----------- | --------------------------------------------------------------------------- |
+| Configuracion / MOD00 | Principal   | Control plane UX, Organizacion/Sedes y perfiles de acceso                   |
+| TenantModule          | Upstream    | TenantContext, settings globales existentes, perfil empresa legacy          |
+| UsersModule           | Upstream    | Owner de `User`, `UserRole`, CRUD de cuentas y MFA por usuario              |
+| AuthModule            | Upstream    | JWT, MFA, guards y sesion                                                   |
+| AuditModule           | Transversal | Auditoria de cambios sensibles                                              |
+| WfmModule             | Consumer    | Consume sedes organizacionales para despacho; conserva agenda y Work Orders |
+| PartiesModule         | Relacionado | Owner de identidad de negocio y roles de tercero                            |
+| Inventory futuro      | Consumer    | Consumira sedes con capacidad `WAREHOUSE`                                   |
+| Billing futuro        | Consumer    | Consumira sedes con capacidad `COLLECTION_POINT`                            |
+| apps/portal           | Principal   | UI de Configuracion v2                                                      |
 
 ### Boundary explicito
 
@@ -51,23 +51,23 @@ El cambio no busca centralizar todos los datos operativos. Busca crear dos capac
 
 ### Roadmap tecnico por fases
 
-| Fase | Backend | Frontend | Database | Integraciones |
-| --- | --- | --- | --- | --- |
-| Fase 01 | `OrganizationModule`, `AccessControlModule`, contratos REST y puertos | Secciones `Organizacion` y `Usuarios y acceso` en settings | Tablas tenant para sedes, capacidades, horarios, perfiles y permisos | Puerto preparado para WFM, sin migrar Work Orders |
-| Fase 02 | Adapter WFM -> `OrganizationSiteReadPort`, compatibilidad `operatingSiteId`/`organizationSiteId` | Reubicar Operacion de campo dentro del centro de settings | Mapping o columna aprobada para relacion WFM legacy | WFM consume sedes por puerto, no por tabla directa |
-| Fase 03 | APIs federadas de settings por modulo owner | Navegacion de settings por modulo con estados reales/no disponibles | Solo cambios del modulo owner correspondiente | Commercial, Inventory y Billing exponen configuracion por contrato |
-| Fase 04 | `PermissionsGuard` granular en endpoints seleccionados y auditoria reforzada | Matriz avanzada de permisos y evidencia de cambios | Indices/cache si el volumen lo exige | Invalidacion de permisos y observabilidad operacional |
+| Fase    | Backend                                                                                          | Frontend                                                            | Database                                                             | Integraciones                                                      |
+| ------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Fase 01 | `OrganizationModule`, `AccessControlModule`, contratos REST y puertos                            | Secciones `Organizacion` y `Usuarios y acceso` en settings          | Tablas tenant para sedes, capacidades, horarios, perfiles y permisos | Puerto preparado para WFM, sin migrar Work Orders                  |
+| Fase 02 | Adapter WFM -> `OrganizationSiteReadPort`, compatibilidad `operatingSiteId`/`organizationSiteId` | Reubicar Operacion de campo dentro del centro de settings           | Mapping o columna aprobada para relacion WFM legacy                  | WFM consume sedes por puerto, no por tabla directa                 |
+| Fase 03 | APIs federadas de settings por modulo owner                                                      | Navegacion de settings por modulo con estados reales/no disponibles | Solo cambios del modulo owner correspondiente                        | Commercial, Inventory y Billing exponen configuracion por contrato |
+| Fase 04 | `PermissionsGuard` granular en endpoints seleccionados y auditoria reforzada                     | Matriz avanzada de permisos y evidencia de cambios                  | Indices/cache si el volumen lo exige                                 | Invalidacion de permisos y observabilidad operacional              |
 
 La Fase 01 no debe implementar funcionalidades de Fase 02-04 salvo interfaces preparatorias explicitamente listadas en este HLD.
 
 ### Artefactos de ejecucion por fase
 
-| Fase | Plan | Prompt | Checklist |
-| --- | --- | --- | --- |
-| Fase 01 | `docs/plans/2026-05-19-mod00-configuracion-control-plane.md` | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-01-v1.0.md` | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-01-v1.0.md` |
-| Fase 02 | `docs/plans/2026-05-19-mod00-configuracion-fase-02-wfm-integration.md` | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-02-v1.0.md` | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-02-v1.0.md` |
+| Fase    | Plan                                                                      | Prompt                                                    | Checklist                                                    |
+| ------- | ------------------------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------ |
+| Fase 01 | `docs/plans/2026-05-19-mod00-configuracion-control-plane.md`              | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-01-v1.0.md` | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-01-v1.0.md` |
+| Fase 02 | `docs/plans/2026-05-19-mod00-configuracion-fase-02-wfm-integration.md`    | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-02-v1.0.md` | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-02-v1.0.md` |
 | Fase 03 | `docs/plans/2026-05-19-mod00-configuracion-fase-03-settings-federados.md` | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-03-v1.0.md` | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-03-v1.0.md` |
-| Fase 04 | `docs/plans/2026-05-19-mod00-configuracion-fase-04-gobierno-avanzado.md` | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-04-v1.0.md` | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-04-v1.0.md` |
+| Fase 04 | `docs/plans/2026-05-19-mod00-configuracion-fase-04-gobierno-avanzado.md`  | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-04-v1.0.md` | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-04-v1.0.md` |
 
 ```mermaid
 flowchart TB
@@ -154,121 +154,121 @@ Todas las tablas viven en schema tenant y se resuelven por `SET LOCAL search_pat
 
 #### `organization_sites`
 
-| Campo | Tipo | Regla |
-| --- | --- | --- |
-| `id` | uuid PK | `gen_random_uuid()` |
-| `tenant_id` | uuid | Referencia logica a tenant |
-| `name` | varchar(160) | Requerido |
-| `code` | varchar(40) | Unico por tenant activo |
-| `site_type` | enum/varchar | `OFFICE`, `WAREHOUSE`, `TECH_BASE`, `CUSTOMER_SERVICE`, `COLLECTION_POINT`, `NOC`, `MIXED` |
-| `address` | varchar(240) nullable | Sin PII de clientes |
-| `municipality` | varchar(120) nullable | Colombia u otros paises |
-| `department` | varchar(120) nullable | Departamento/estado |
-| `country` | varchar(2) | ISO-3166, default `CO` |
-| `latitude` | numeric(10,7) nullable | Validar rango |
-| `longitude` | numeric(10,7) nullable | Validar rango |
-| `is_primary` | boolean | Maximo una primaria por tenant activo |
-| `is_active` | boolean | Default true |
-| `created_at` / `updated_at` / `deleted_at` | timestamptz | Auditoria tecnica |
+| Campo                                      | Tipo                   | Regla                                                                                      |
+| ------------------------------------------ | ---------------------- | ------------------------------------------------------------------------------------------ |
+| `id`                                       | uuid PK                | `gen_random_uuid()`                                                                        |
+| `tenant_id`                                | uuid                   | Referencia logica a tenant                                                                 |
+| `name`                                     | varchar(160)           | Requerido                                                                                  |
+| `code`                                     | varchar(40)            | Unico por tenant activo                                                                    |
+| `site_type`                                | enum/varchar           | `OFFICE`, `WAREHOUSE`, `TECH_BASE`, `CUSTOMER_SERVICE`, `COLLECTION_POINT`, `NOC`, `MIXED` |
+| `address`                                  | varchar(240) nullable  | Sin PII de clientes                                                                        |
+| `municipality`                             | varchar(120) nullable  | Colombia u otros paises                                                                    |
+| `department`                               | varchar(120) nullable  | Departamento/estado                                                                        |
+| `country`                                  | varchar(2)             | ISO-3166, default `CO`                                                                     |
+| `latitude`                                 | numeric(10,7) nullable | Validar rango                                                                              |
+| `longitude`                                | numeric(10,7) nullable | Validar rango                                                                              |
+| `is_primary`                               | boolean                | Maximo una primaria por tenant activo                                                      |
+| `is_active`                                | boolean                | Default true                                                                               |
+| `created_at` / `updated_at` / `deleted_at` | timestamptz            | Auditoria tecnica                                                                          |
 
 #### `organization_site_capabilities`
 
-| Campo | Tipo | Regla |
-| --- | --- | --- |
-| `id` | uuid PK | Identificador |
-| `tenant_id` | uuid | Tenant lógico |
-| `site_id` | uuid | FK tenant-local a `organization_sites.id` |
+| Campo        | Tipo    | Regla                                                                                                       |
+| ------------ | ------- | ----------------------------------------------------------------------------------------------------------- |
+| `id`         | uuid PK | Identificador                                                                                               |
+| `tenant_id`  | uuid    | Tenant lógico                                                                                               |
+| `site_id`    | uuid    | FK tenant-local a `organization_sites.id`                                                                   |
 | `capability` | varchar | `CUSTOMER_SERVICE`, `TECH_DISPATCH`, `WAREHOUSE`, `COLLECTION_POINT`, `ADMIN_OFFICE`, `NOC`, `SALES_OFFICE` |
-| `is_enabled` | boolean | Default true |
+| `is_enabled` | boolean | Default true                                                                                                |
 
 Unique activo: `(tenant_id, site_id, capability)`.
 
 #### `organization_site_business_hours`
 
-| Campo | Tipo | Regla |
-| --- | --- | --- |
-| `id` | uuid PK | Identificador |
-| `tenant_id` | uuid | Tenant lógico |
-| `site_id` | uuid | FK tenant-local |
-| `weekday` | enum/varchar | `MONDAY` a `SUNDAY` |
-| `opens_at` | time nullable | Requerido si abierto |
+| Campo       | Tipo          | Regla                |
+| ----------- | ------------- | -------------------- |
+| `id`        | uuid PK       | Identificador        |
+| `tenant_id` | uuid          | Tenant lógico        |
+| `site_id`   | uuid          | FK tenant-local      |
+| `weekday`   | enum/varchar  | `MONDAY` a `SUNDAY`  |
+| `opens_at`  | time nullable | Requerido si abierto |
 | `closes_at` | time nullable | Requerido si abierto |
-| `is_open` | boolean | Default true |
+| `is_open`   | boolean       | Default true         |
 
 Unique activo: `(tenant_id, site_id, weekday)`.
 
 #### `organization_site_assignments`
 
-| Campo | Tipo | Regla |
-| --- | --- | --- |
-| `id` | uuid PK | Identificador |
-| `tenant_id` | uuid | Tenant lógico |
-| `site_id` | uuid | FK tenant-local |
-| `user_id` | uuid | Referencia logica a `users.id` |
-| `assignment_type` | varchar | `HOME_SITE`, `WORKS_AT`, `INVENTORY_CUSTODIAN`, `CASHIER`, `SUPERVISOR` |
-| `valid_from` | date | Default current date |
-| `valid_to` | date nullable | Fin de vigencia opcional |
-| `is_active` | boolean | Default true |
+| Campo             | Tipo          | Regla                                                                   |
+| ----------------- | ------------- | ----------------------------------------------------------------------- |
+| `id`              | uuid PK       | Identificador                                                           |
+| `tenant_id`       | uuid          | Tenant lógico                                                           |
+| `site_id`         | uuid          | FK tenant-local                                                         |
+| `user_id`         | uuid          | Referencia logica a `users.id`                                          |
+| `assignment_type` | varchar       | `HOME_SITE`, `WORKS_AT`, `INVENTORY_CUSTODIAN`, `CASHIER`, `SUPERVISOR` |
+| `valid_from`      | date          | Default current date                                                    |
+| `valid_to`        | date nullable | Fin de vigencia opcional                                                |
+| `is_active`       | boolean       | Default true                                                            |
 
 #### `organization_site_responsibilities`
 
-| Campo | Tipo | Regla |
-| --- | --- | --- |
-| `id` | uuid PK | Identificador |
-| `tenant_id` | uuid | Tenant lógico |
-| `site_id` | uuid | FK tenant-local |
-| `responsibility` | varchar | `ADMINISTRATIVE`, `INVENTORY`, `COLLECTION`, `FIELD_OPERATIONS`, `CUSTOMER_SERVICE` |
-| `user_id` | uuid | Responsable actual |
-| `valid_from` / `valid_to` | date | Historial basico |
+| Campo                     | Tipo    | Regla                                                                               |
+| ------------------------- | ------- | ----------------------------------------------------------------------------------- |
+| `id`                      | uuid PK | Identificador                                                                       |
+| `tenant_id`               | uuid    | Tenant lógico                                                                       |
+| `site_id`                 | uuid    | FK tenant-local                                                                     |
+| `responsibility`          | varchar | `ADMINISTRATIVE`, `INVENTORY`, `COLLECTION`, `FIELD_OPERATIONS`, `CUSTOMER_SERVICE` |
+| `user_id`                 | uuid    | Responsable actual                                                                  |
+| `valid_from` / `valid_to` | date    | Historial basico                                                                    |
 
 ### 4.2 Access Control
 
 #### `access_permission_catalog`
 
-| Campo | Tipo | Regla |
-| --- | --- | --- |
-| `id` | uuid PK | Identificador |
-| `permission_key` | varchar(120) | Unico por tenant o seed global tenant-local |
-| `module_key` | varchar(60) | `settings`, `organization`, `users`, `wfm`, etc. |
-| `action` | varchar(60) | `read`, `manage`, `execute`, `approve`, etc. |
-| `description` | varchar(240) | Texto UI en espanol |
-| `is_system` | boolean | Permisos seed no eliminables |
-| `is_active` | boolean | Default true |
+| Campo            | Tipo         | Regla                                            |
+| ---------------- | ------------ | ------------------------------------------------ |
+| `id`             | uuid PK      | Identificador                                    |
+| `permission_key` | varchar(120) | Unico por tenant o seed global tenant-local      |
+| `module_key`     | varchar(60)  | `settings`, `organization`, `users`, `wfm`, etc. |
+| `action`         | varchar(60)  | `read`, `manage`, `execute`, `approve`, etc.     |
+| `description`    | varchar(240) | Texto UI en espanol                              |
+| `is_system`      | boolean      | Permisos seed no eliminables                     |
+| `is_active`      | boolean      | Default true                                     |
 
 #### `access_profiles`
 
-| Campo | Tipo | Regla |
-| --- | --- | --- |
-| `id` | uuid PK | Identificador |
-| `tenant_id` | uuid | Tenant lógico |
-| `name` | varchar(120) | Unico por tenant activo |
-| `description` | text nullable | Descripcion opcional |
-| `base_role_constraint` | varchar nullable | Limita asignacion a `UserRole` especifico |
-| `scope_site_id` | uuid nullable | Perfil acotado a sede |
-| `is_system` | boolean | Perfiles seed no eliminables |
-| `is_active` | boolean | Default true |
-| `created_at` / `updated_at` / `deleted_at` | timestamptz | Auditoria tecnica |
+| Campo                                      | Tipo             | Regla                                     |
+| ------------------------------------------ | ---------------- | ----------------------------------------- |
+| `id`                                       | uuid PK          | Identificador                             |
+| `tenant_id`                                | uuid             | Tenant lógico                             |
+| `name`                                     | varchar(120)     | Unico por tenant activo                   |
+| `description`                              | text nullable    | Descripcion opcional                      |
+| `base_role_constraint`                     | varchar nullable | Limita asignacion a `UserRole` especifico |
+| `scope_site_id`                            | uuid nullable    | Perfil acotado a sede                     |
+| `is_system`                                | boolean          | Perfiles seed no eliminables              |
+| `is_active`                                | boolean          | Default true                              |
+| `created_at` / `updated_at` / `deleted_at` | timestamptz      | Auditoria tecnica                         |
 
 #### `access_profile_permissions`
 
-| Campo | Tipo | Regla |
-| --- | --- | --- |
-| `id` | uuid PK | Identificador |
-| `tenant_id` | uuid | Tenant lógico |
-| `profile_id` | uuid | FK tenant-local |
+| Campo            | Tipo         | Regla                          |
+| ---------------- | ------------ | ------------------------------ |
+| `id`             | uuid PK      | Identificador                  |
+| `tenant_id`      | uuid         | Tenant lógico                  |
+| `profile_id`     | uuid         | FK tenant-local                |
 | `permission_key` | varchar(120) | Referencia estable al catalogo |
 
 #### `user_access_profiles`
 
-| Campo | Tipo | Regla |
-| --- | --- | --- |
-| `id` | uuid PK | Identificador |
-| `tenant_id` | uuid | Tenant lógico |
-| `user_id` | uuid | Referencia logica a `users.id` |
-| `profile_id` | uuid | FK tenant-local |
-| `valid_from` | date | Default current date |
-| `valid_to` | date nullable | Fin de vigencia opcional |
-| `is_active` | boolean | Default true |
+| Campo        | Tipo          | Regla                          |
+| ------------ | ------------- | ------------------------------ |
+| `id`         | uuid PK       | Identificador                  |
+| `tenant_id`  | uuid          | Tenant lógico                  |
+| `user_id`    | uuid          | Referencia logica a `users.id` |
+| `profile_id` | uuid          | FK tenant-local                |
+| `valid_from` | date          | Default current date           |
+| `valid_to`   | date nullable | Fin de vigencia opcional       |
+| `is_active`  | boolean       | Default true                   |
 
 ---
 
@@ -278,29 +278,28 @@ Base path recomendado: `/api/v1/configuration` para shell y `/api/v1/organizatio
 
 ### 5.1 Organizacion
 
-| Metodo | Ruta | Uso | Roles base |
-| --- | --- | --- | --- |
-| GET | `/organization/sites` | Listar sedes | ADMIN, NOC, SUPPORT, ACCOUNTANT, HR |
-| POST | `/organization/sites` | Crear sede | ADMIN |
-| GET | `/organization/sites/:id` | Detalle sede | ADMIN, NOC, SUPPORT, ACCOUNTANT, HR |
-| PATCH | `/organization/sites/:id` | Editar sede | ADMIN |
-| DELETE | `/organization/sites/:id` | Soft-delete sede | ADMIN |
-| PUT | `/organization/sites/:id/capabilities` | Reemplazar capacidades | ADMIN |
-| PUT | `/organization/sites/:id/business-hours` | Reemplazar horario semanal | ADMIN |
-| PUT | `/organization/sites/:id/assignments` | Reemplazar asignaciones activas | ADMIN |
-| PUT | `/organization/sites/:id/responsibilities` | Reemplazar responsables activos | ADMIN |
+| Metodo | Ruta                                       | Uso                             | Roles base                          |
+| ------ | ------------------------------------------ | ------------------------------- | ----------------------------------- |
+| GET    | `/organization/sites`                      | Listar sedes                    | ADMIN, NOC, SUPPORT, ACCOUNTANT, HR |
+| POST   | `/organization/sites`                      | Crear sede                      | ADMIN                               |
+| GET    | `/organization/sites/:id`                  | Detalle sede                    | ADMIN, NOC, SUPPORT, ACCOUNTANT, HR |
+| PATCH  | `/organization/sites/:id`                  | Editar sede                     | ADMIN                               |
+| DELETE | `/organization/sites/:id`                  | Soft-delete sede                | ADMIN                               |
+| PUT    | `/organization/sites/:id/business-hours`   | Reemplazar horario semanal      | ADMIN                               |
+| PUT    | `/organization/sites/:id/assignments`      | Reemplazar asignaciones activas | ADMIN                               |
+| PUT    | `/organization/sites/:id/responsibilities` | Reemplazar responsables activos | ADMIN                               |
 
 ### 5.2 Access Control
 
-| Metodo | Ruta | Uso | Roles base |
-| --- | --- | --- | --- |
-| GET | `/access-control/permissions` | Catalogo de permisos | ADMIN |
-| GET | `/access-control/profiles` | Listar perfiles | ADMIN |
-| POST | `/access-control/profiles` | Crear perfil | ADMIN |
-| PATCH | `/access-control/profiles/:id` | Editar perfil | ADMIN |
-| DELETE | `/access-control/profiles/:id` | Soft-delete perfil no sistema | ADMIN |
-| PUT | `/access-control/profiles/:id/permissions` | Reemplazar permisos | ADMIN |
-| PUT | `/access-control/users/:userId/profiles` | Asignar perfiles a usuario | ADMIN |
+| Metodo | Ruta                                       | Uso                           | Roles base |
+| ------ | ------------------------------------------ | ----------------------------- | ---------- |
+| GET    | `/access-control/permissions`              | Catalogo de permisos          | ADMIN      |
+| GET    | `/access-control/profiles`                 | Listar perfiles               | ADMIN      |
+| POST   | `/access-control/profiles`                 | Crear perfil                  | ADMIN      |
+| PATCH  | `/access-control/profiles/:id`             | Editar perfil                 | ADMIN      |
+| DELETE | `/access-control/profiles/:id`             | Soft-delete perfil no sistema | ADMIN      |
+| PUT    | `/access-control/profiles/:id/permissions` | Reemplazar permisos           | ADMIN      |
+| PUT    | `/access-control/users/:userId/profiles`   | Asignar perfiles a usuario    | ADMIN      |
 
 ### 5.3 Puertos
 
@@ -332,36 +331,96 @@ WFM debe consumir `OrganizationSiteReadPort` para sedes con `TECH_DISPATCH`.
 1. `JwtAuthGuard` valida sesion.
 2. `TenantMiddleware` resuelve tenant y schema.
 3. `RolesGuard` valida `UserRole` base.
-4. `PermissionsGuard` futuro valida permisos granulares cuando el endpoint lo declare.
+4. `PermissionsGuard` valida permisos granulares cuando el endpoint lo declare.
 5. DTO/Zod valida payload externo.
 6. Servicio valida invariantes de negocio.
 7. Audit registra mutaciones.
 
-### 6.2 Permisos seed iniciales
+Lectura obligatoria del pipeline:
 
-| Permiso | Uso |
-| --- | --- |
-| `settings.read` | Ver Configuracion |
-| `settings.manage` | Administrar configuracion general |
-| `organization.sites.read` | Ver sedes |
-| `organization.sites.manage` | Gestionar sedes |
-| `organization.hours.manage` | Gestionar horarios institucionales |
-| `organization.assignments.manage` | Gestionar asignaciones/responsables |
-| `users.read` | Ver usuarios |
-| `users.manage` | Gestionar usuarios |
-| `access.profiles.read` | Ver perfiles |
-| `access.profiles.manage` | Gestionar perfiles |
-| `wfm.schedule.read` | Ver agenda WFM |
-| `wfm.schedule.manage` | Gestionar agenda WFM |
-| `wfm.work_orders.execute` | Ejecutar Work Orders |
-| `inventory.stock.read` | Ver inventario futuro |
-| `billing.payments.register` | Registrar recaudo futuro |
+- `RolesGuard` sigue siendo la barrera primaria para gobierno del tenant.
+- Los permisos granulares refinan acciones dentro del rol base permitido.
+- Un perfil configurable no eleva a un usuario fuera de `UserRole.ADMIN` hacia capacidades de gobierno administrativo del tenant.
 
-### 6.3 Reglas criticas
+### 6.2 Catalogo seed versionado `MOD00_ACCESS_V1`
+
+El catalogo se siembra de forma idempotente por tenant. Las claves son estables: no se renombran; si una clave cambia de significado se depreca y se crea una nueva. `ASSIGNABLE` significa que puede incluirse en perfiles de Fase 01. `RESERVED` significa visible solo como ruta futura, no asignable ni ejecutable por permisos granulares en esta fase.
+
+| Permiso                           | Modulo       | Estado Fase 01 | Uso                                                              |
+| --------------------------------- | ------------ | -------------- | ---------------------------------------------------------------- |
+| `settings.read`                   | settings     | ASSIGNABLE     | Ver centro de Configuracion                                      |
+| `settings.manage`                 | settings     | ASSIGNABLE     | Administrar configuracion general de MOD00                       |
+| `organization.sites.read`         | organization | ASSIGNABLE     | Ver sedes organizacionales                                       |
+| `organization.sites.manage`       | organization | ASSIGNABLE     | Crear, editar, activar/desactivar y eliminar sedes               |
+| `organization.hours.manage`       | organization | ASSIGNABLE     | Gestionar horarios institucionales de sedes                      |
+| `organization.assignments.manage` | organization | ASSIGNABLE     | Gestionar asignaciones y responsables de sedes                   |
+| `users.read`                      | users        | ASSIGNABLE     | Ver usuarios internos del tenant                                 |
+| `users.manage`                    | users        | ASSIGNABLE     | Gestionar usuarios internos desde el contrato aprobado de Users  |
+| `access.permissions.read`         | access       | ASSIGNABLE     | Ver catalogo de permisos y matriz disponible                     |
+| `access.profiles.read`            | access       | ASSIGNABLE     | Ver perfiles configurables                                       |
+| `access.profiles.manage`          | access       | ASSIGNABLE     | Crear, editar y desactivar perfiles                              |
+| `wfm.schedule.read`               | wfm          | ASSIGNABLE     | Ver agenda WFM cuando el modulo exponga guard granular           |
+| `wfm.schedule.manage`             | wfm          | ASSIGNABLE     | Gestionar agenda WFM cuando el modulo exponga guard granular     |
+| `wfm.work_orders.execute`         | wfm          | ASSIGNABLE     | Ejecutar Work Orders asignadas cuando WFM exponga guard granular |
+| `crm.customers.read`              | crm          | RESERVED       | Ver expedientes CRM en fase futura                               |
+| `crm.customers.manage`            | crm          | RESERVED       | Gestionar expedientes CRM en fase futura                         |
+| `commercial.catalog.read`         | commercial   | RESERVED       | Ver catalogo comercial en fase futura                            |
+| `commercial.catalog.manage`       | commercial   | RESERVED       | Gestionar catalogo comercial en fase futura                      |
+| `assurance.tickets.read`          | assurance    | RESERVED       | Ver tickets/PQR en fase futura                                   |
+| `assurance.tickets.manage`        | assurance    | RESERVED       | Gestionar tickets/PQR en fase futura                             |
+| `inventory.stock.read`            | inventory    | RESERVED       | Ver inventario futuro                                            |
+| `inventory.stock.manage`          | inventory    | RESERVED       | Gestionar inventario futuro                                      |
+| `billing.payments.read`           | billing      | RESERVED       | Ver recaudos futuros                                             |
+| `billing.payments.register`       | billing      | RESERVED       | Registrar recaudo futuro                                         |
+| `billing.invoices.read`           | billing      | RESERVED       | Ver facturas futuras                                             |
+| `billing.invoices.manage`         | billing      | RESERVED       | Gestionar facturacion futura                                     |
+
+### 6.3 Matriz de compatibilidad `UserRole` -> permisos asignables
+
+Nota operativa: en la implementacion analizada, `access.profiles.manage` todavia cubre temporalmente la asignacion de perfiles a usuarios. El refinamiento aprobado separa esa operacion en un permiso dedicado sin relajar `UserRole.ADMIN` como prerrequisito.
+
+La validacion se aplica en dos momentos: al guardar permisos de un perfil contra `baseRoleConstraint` y al asignar el perfil a un usuario contra el `UserRole` real del usuario. En Fase 01, `baseRoleConstraint` es obligatorio para perfiles creados por el tenant aunque la columna pueda permanecer nullable para compatibilidad futura.
+
+| `UserRole` base | Permisos asignables en Fase 01                                                                              | Regla                                                                                     |
+| --------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `ADMIN`         | Todos los permisos `ASSIGNABLE` de `MOD00_ACCESS_V1`                                                        | Rol de administracion tenant; mantiene recuperacion operativa con proteccion anti-lockout |
+| `NOC`           | `settings.read`, `organization.sites.read`, `wfm.schedule.read`                                             | Lectura operativa; no muta sedes, perfiles ni usuarios                                    |
+| `SUPPORT`       | `settings.read`, `organization.sites.read`, `users.read`, `wfm.schedule.read`                               | Soporte consulta contexto; no administra acceso                                           |
+| `SALES`         | `settings.read`, `organization.sites.read`                                                                  | Acceso base hasta que CRM/Commercial activen permisos propios                             |
+| `TECHNICIAN`    | `settings.read`, `organization.sites.read`, `wfm.schedule.read`, `wfm.work_orders.execute`                  | Ejecucion de campo; no gestiona agenda ni sedes                                           |
+| `ACCOUNTANT`    | `settings.read`, `organization.sites.read`                                                                  | Recaudo/Billing quedan reservados hasta modulo owner                                      |
+| `HR`            | `settings.read`, `organization.sites.read`, `users.read`                                                    | RRHH futuro no administra asignaciones de sede en Fase 01                                 |
+| `AUDITOR`       | `settings.read`, `organization.sites.read`, `users.read`, `access.permissions.read`, `access.profiles.read` | Solo lectura para revision y control                                                      |
+| `CONTRACTOR`    | `settings.read`, `organization.sites.read`, `wfm.schedule.read`, `wfm.work_orders.execute`                  | Contratista operativo; solo ejecucion asignada                                            |
+| `SUBSCRIBER`    | Ninguno                                                                                                     | Fuera de perfiles administrativos MOD00                                                   |
+| `PARTNER`       | Ninguno                                                                                                     | Fuera de perfiles administrativos MOD00                                                   |
+| `INVESTOR`      | Ninguno                                                                                                     | Fuera de perfiles administrativos MOD00                                                   |
+| `SYSTEM_ADMIN`  | No asignable desde portal tenant                                                                            | Rol de plataforma, fuera de Access Profiles tenant                                        |
+| `IWANA_SUPPORT` | No asignable desde portal tenant                                                                            | Rol de plataforma, fuera de Access Profiles tenant                                        |
+
+Errores obligatorios:
+
+- Permiso no existente en catalogo activo: `400 UNKNOWN_PERMISSION`.
+- Permiso `RESERVED`: `400 PERMISSION_NOT_ASSIGNABLE_IN_PHASE`.
+- Permiso incompatible con `baseRoleConstraint`: `400 PERMISSION_ROLE_INCOMPATIBLE`.
+- Perfil asignado a usuario con rol distinto a `baseRoleConstraint`: `400 PROFILE_ROLE_INCOMPATIBLE`.
+- Intento de asignar perfiles a roles de plataforma desde portal tenant: `403 PLATFORM_ROLE_NOT_TENANT_ASSIGNABLE`.
+
+### 6.4 Reglas criticas
 
 - Un perfil no puede conceder permisos incompatibles con el rol base permitido.
 - `ADMIN` mantiene capacidad de recuperacion administrativa, pero no debe poder eliminar el ultimo perfil/admin efectivo sin proteccion anti-lockout.
 - `SYSTEM_ADMIN` e `IWANA_SUPPORT` siguen siendo roles de plataforma y no se asignan desde portal.
+
+### 6.5 Refinamientos obligatorios post-ejecucion
+
+El analisis de la ejecucion implementada deja aprobados los siguientes refinamientos sin cambiar el boundary de MOD00:
+
+1. Los endpoints sensibles de Users para gobierno del tenant deben endurecerse con `users.manage` ademas del rol base cuando el hardening se implemente.
+2. `PUT /access-control/users/:userId/profiles` debe migrar desde el uso compartido de `access.profiles.manage` hacia un permiso dedicado de asignacion de acceso, manteniendo `UserRole.ADMIN` como prerrequisito.
+3. `scope_site_id` debe dejar de ser metadata persistida solamente y pasar a formar parte del enforcement real de permisos efectivos o policies de recurso.
+4. El shell federado de settings debe consumir `requiredPermissions` o devolver estados no operables explicitos para evitar navegacion hacia rutas que luego terminan en `403`.
+5. El contrato `DELETE /organization/sites/:id` debe cerrarse en API, pruebas y portal para alinear implementacion con HLD aprobado.
 
 ---
 
@@ -460,10 +519,10 @@ pnpm test:e2e:portal --grep "Configuracion"
 
 ## 10. Riesgos tecnicos
 
-| Riesgo | Impacto | Mitigacion |
-| --- | --- | --- |
-| Circularidad entre Users y Access Control | Alto | Access referencia userId logico; Users no importa servicios internos de Access |
-| Romper WFM existente | Alto | Migracion aditiva; compatibilidad `operatingSiteId` durante transicion |
-| Permisos inconsistentes en cache | Medio | TTL corto e invalidacion al mutar perfiles; no cache en primera fase si no hace falta |
-| Sobrecargar settings UI | Medio | Subrutas y componentes dedicados |
-| Confusion entre PartyRole y AccessProfile | Alto | Naming y docs: rol de tercero vs perfil de acceso |
+| Riesgo                                    | Impacto | Mitigacion                                                                            |
+| ----------------------------------------- | ------- | ------------------------------------------------------------------------------------- |
+| Circularidad entre Users y Access Control | Alto    | Access referencia userId logico; Users no importa servicios internos de Access        |
+| Romper WFM existente                      | Alto    | Migracion aditiva; compatibilidad `operatingSiteId` durante transicion                |
+| Permisos inconsistentes en cache          | Medio   | TTL corto e invalidacion al mutar perfiles; no cache en primera fase si no hace falta |
+| Sobrecargar settings UI                   | Medio   | Subrutas y componentes dedicados                                                      |
+| Confusion entre PartyRole y AccessProfile | Alto    | Naming y docs: rol de tercero vs perfil de acceso                                     |

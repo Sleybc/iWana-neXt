@@ -88,9 +88,48 @@ async function setupBrandingUploadMocks(page: Page): Promise<{
     },
   };
 
+  const settingsSections = [
+    {
+      key: 'branding',
+      label: 'Marca',
+      description: 'Gestiona identidad visual y activos corporativos del tenant autenticado.',
+      ownerModule: 'Tenant / Branding',
+      status: 'AVAILABLE',
+      route: '/dashboard/settings/branding',
+      requiredPermissions: ['settings.read'],
+    },
+  ];
+
   await page.route('**/api/v1/**', async (route) => {
     const url = route.request().url();
     const method = route.request().method();
+
+    if (url.includes('/tenants/public-branding') && method === 'GET') {
+      const slug = new URL(url).searchParams.get('slug');
+      await route.fulfill({
+        status: slug === MOCK_TENANT_SLUG ? 200 : 404,
+        contentType: 'application/json',
+        body: JSON.stringify(
+          slug === MOCK_TENANT_SLUG
+            ? {
+                data: {
+                  displayName: 'ISP Prueba Colombia',
+                  showTenantName: true,
+                  logoLightUrl: null,
+                  logoDarkUrl: null,
+                  sealLightUrl: null,
+                  sealDarkUrl: null,
+                  faviconLightUrl: null,
+                  faviconDarkUrl: null,
+                  loginBackgroundLightUrl: null,
+                  loginBackgroundDarkUrl: null,
+                },
+              }
+            : { code: 'TENANT_NOT_FOUND', message: 'Tenant no encontrado' },
+        ),
+      });
+      return;
+    }
 
     if (url.includes('/auth/me') && method === 'GET') {
       await route.fulfill({
@@ -130,6 +169,41 @@ async function setupBrandingUploadMocks(page: Page): Promise<{
             createdAt: '2026-01-15T00:00:00.000Z',
           },
         }),
+      });
+      return;
+    }
+
+    if (/\/access-control\/users\/[^/]+\/effective-permissions$/.test(url) && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            userId: 'user-uuid-admin-test',
+            role: 'ADMIN',
+            effectivePermissions: ['settings.read'],
+            recoveryPermissions: [],
+            profileSources: [],
+          },
+        }),
+      });
+      return;
+    }
+
+    if (url.includes('/configuration/settings-sections') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: settingsSections }),
+      });
+      return;
+    }
+
+    if (url.includes('/audit-logs') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [] }),
       });
       return;
     }
@@ -222,11 +296,10 @@ test.describe('Portal branding upload', () => {
     const { uploadRequests } = await setupBrandingUploadMocks(page);
     await setAuthSession(page);
 
-    await page.goto('/dashboard/settings');
+    await page.goto('/dashboard/settings/branding');
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('tab', { name: 'Marca', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Marca empresarial' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Identidad visual' })).toBeVisible();
 
     await page.locator('#seal-light-file').setInputFiles({
       name: 'seal-light.png',

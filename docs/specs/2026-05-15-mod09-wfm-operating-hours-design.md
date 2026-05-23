@@ -12,6 +12,8 @@
 **ADR rector:** `docs/adrs/ADR-037-Bounded-Context-Programacion-WFM.md`
 
 > **Addendum de arquitectura (2026-05-19):** La decision de esta spec sigue valida para MOD09 Fase 01 como implementacion transitoria de horarios operativos WFM. Sin embargo, la aprobacion CTO de ADR-040 elevo la **sede** a dato maestro transversal administrado desde MOD00 Configuracion/Organizacion. Ver `docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md`, `docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` y `docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md`. La direccion aprobada es que `OrganizationSite` sea el owner conceptual de sedes y WFM conserve solo reglas de despacho, agenda, Work Orders, overrides y ventanas operativas.
+>
+> **Addendum de arquitectura (2026-05-22):** ADR-041 retira del producto WFM las **Excepciones por tecnico** y reemplaza el modelo de precedencia que daba prioridad a `WfmTechnicianBusinessOverride`. Desde este corte, field operations no expone reglas personales recurrentes. WFM conserva horario base, horario por sede y cierres especiales; ausencias personales, permisos y licencias quedan como ownership futuro de RR. HH. Ver `docs/adrs/ADR-041-Retiro-Excepciones-Tecnico-WFM.md` y `docs/specs/2026-05-22-mod09-wfm-field-operations-sin-excepciones-design.md`.
 
 ---
 
@@ -20,15 +22,15 @@
 WFM hoy asume una franja operativa fija para instalaciones y eso rompe en dos niveles:
 
 1. Las recomendaciones pueden terminar proponiendo o dejando pasar escenarios que no responden al horario real de la empresa.
-2. El modelo actual no soporta reglas reales del negocio: sedes con horarios distintos, técnicos con turnos propios y festivos o cierres especiales.
+2. El modelo actual no soporta reglas reales del negocio: sedes con horarios distintos y festivos o cierres especiales.
 
 El usuario confirma un alcance más exigente que el correctivo inicial:
 
 1. El horario debe ser configurable manualmente.
 2. La configuración debe cubrir días de la semana, hora de entrada y hora de salida.
 3. Se requieren festivos o cierres especiales.
-4. Se requieren overrides por técnico.
-5. Se requieren reglas por sede entendida como **oficina/base operativa real**, no como nodo comercial.
+4. Se requieren reglas por sede entendida como **oficina/base operativa real**, no como nodo comercial.
+5. Las reglas personales recurrentes por tecnico quedan fuera de WFM desde ADR-041.
 
 La solución ya no cabe de forma sana en un hardcode ni en un JSONB simple de settings.
 
@@ -48,14 +50,14 @@ La decisión aprobada es:
 
 Se descartan dos alternativas:
 
-- **Extender `tenant.settings` con horarios semanales:** útil para un caso simple por empresa, pero insuficiente para festivos, sede y overrides por técnico.
-- **Resolverlo solo con `TechnicianAvailability`:** esa entidad sirve para bloqueos puntuales, pero no es un buen owner del calendario operativo recurrente ni de la jerarquía empresa → sede → técnico.
+- **Extender `tenant.settings` con horarios semanales:** util para un caso simple por empresa, pero insuficiente para festivos, sedes y cierres especiales.
+- **Resolverlo solo con `TechnicianAvailability`:** esa entidad sirve para bloqueos puntuales, pero no es un buen owner del calendario operativo estructural ni de la jerarquía empresa → sede. Tampoco debe convertirse en sustituto visible de Excepciones por tecnico.
 
 ---
 
 ## 3. Objetivo funcional
 
-El sistema debe calcular una **ventana efectiva de trabajo** por fecha local, sede operativa y técnico asignado o candidato.
+El sistema debe calcular una **ventana efectiva de trabajo** por fecha local, sede operativa y tecnico asignado o candidato, sin reglas personales recurrentes administradas desde settings.
 
 Con esa ventana efectiva:
 
@@ -68,31 +70,28 @@ Con esa ventana efectiva:
 
 ## 4. Precedencia de reglas
 
-La precedencia aprobada para resolver choques es:
+La precedencia vigente desde ADR-041 para resolver choques es:
 
-1. **Override explícito del técnico**
-2. **Festivo o cierre especial**
-3. **Horario de sede**
-4. **Horario base de empresa**
+1. **Festivo o cierre especial**
+2. **Horario de sede**
+3. **Horario base de empresa**
 
 Interpretación operativa:
 
-1. Si existe una regla explícita del técnico para ese día o fecha, esa regla manda aunque la sede o la empresa tengan otra franja.
-2. Si no existe override del técnico, un festivo o cierre especial bloquea la agenda de ese contexto.
-3. Si no hay cierre aplicable, la sede puede restringir o especializar el horario base de empresa.
-4. Si no hay regla de sede, aplica la regla base de empresa.
+1. Un festivo o cierre especial bloquea la agenda del contexto aplicable.
+2. Si no hay cierre aplicable, la sede puede restringir o especializar el horario base de empresa.
+3. Si no hay regla de sede, aplica la regla base de empresa.
 
 Ejemplo:
 
 - Empresa: 08:00–18:00
 - Sede A: 09:00–17:00
-- Técnico Juan: 10:00–16:00
 - Fecha: festivo
 
 Resultado:
 
-1. Si Juan tiene override explícito para esa fecha o ese día, se agenda 10:00–16:00.
-2. Si no tiene override, el festivo bloquea y no se generan ni persisten slots.
+1. Si el festivo aplica al contexto, la fecha queda bloqueada y no se generan ni persisten slots.
+2. Si no aplica festivo, la sede A opera 09:00–17:00.
 
 ---
 
@@ -100,7 +99,8 @@ Resultado:
 
 ### 5.1 Ownership
 
-- **WFM** es owner del calendario operativo de Fase 01, festivos, overrides por técnico, agenda y recomendaciones.
+- **WFM** es owner del calendario operativo de Fase 01, festivos, cierres especiales, agenda y recomendaciones.
+- **RR. HH. futuro** sera owner conceptual de ausencias personales, permisos, licencias y reglas individuales recurrentes.
 - **Configuracion/Organizacion v2** sera owner conceptual de sedes corporativas cuando ADR-040 sea aprobado. WFM consumira esas sedes por puerto tipado y mantendra reglas propias de despacho.
 - **TenantModule** sigue siendo owner de settings corporativos globales como `timezone`, `currency`, `language` y `country`.
 - **MOD03 cobertura legacy** mantiene ownership historico de `CommercialNode` y `CoverageZone`, que no deben usarse como sustituto de sede física. La direccion nueva de control plane vive en MOD00.
@@ -190,33 +190,11 @@ Restricciones:
 1. Única fila activa por `tenant_id + site_id + weekday`.
 2. La ausencia de fila implica fallback al horario base de empresa.
 
-### 6.4 Override por técnico
+### 6.4 Excepciones por tecnico retiradas
 
-Tabla propuesta: `wfm_technician_business_overrides`
+ADR-041 retira `wfm_technician_business_overrides` del producto WFM. Esta tabla deja de ser parte del modelo objetivo de horarios operativos y debe retirarse mediante plan tecnico y migracion reversible.
 
-Responsabilidad: definir ventanas que sobreescriben empresa, sede y festivo para un técnico en un contexto temporal concreto.
-
-Campos mínimos:
-
-- `id`
-- `tenant_id`
-- `user_id`
-- `site_id` nullable
-- `override_date` nullable
-- `weekday` nullable
-- `start_time`
-- `end_time`
-- `is_enabled`
-- `reason`
-- `created_at`
-- `updated_at`
-
-Reglas:
-
-1. Debe existir al menos `override_date` o `weekday`.
-2. `override_date` tiene mayor prioridad que `weekday`.
-3. Si `is_enabled = false`, el técnico queda cerrado para esa fecha o día, incluso si empresa o sede están abiertas.
-4. Si `is_enabled = true`, habilita esa ventana aunque la fecha coincida con festivo.
+La disponibilidad personal recurrente no se modela en WFM. Cuando exista RR. HH., WFM consumira ausencias aprobadas por contrato tipado o evento aprobado.
 
 ### 6.5 Festivos y cierres especiales
 
@@ -241,7 +219,7 @@ Reglas:
 
 1. Si `site_id` es null, el cierre aplica a nivel tenant.
 2. Si `site_id` tiene valor, aplica solo a esa sede.
-3. Si existe override explícito del técnico, el cierre no bloquea a ese técnico.
+3. No existe excepcion personal manual en WFM que pueda abrir agenda sobre un cierre especial.
 
 ---
 
@@ -260,19 +238,17 @@ Entrada mínima:
 Salida esperada:
 
 - `status`: `OPEN` o `CLOSED`
-- `source`: `TECHNICIAN_OVERRIDE`, `HOLIDAY_BLACKOUT`, `SITE_HOURS`, `COMPANY_HOURS`
+- `source`: `HOLIDAY_BLACKOUT`, `SITE_HOURS`, `COMPANY_HOURS`
 - `startTime`
 - `endTime`
 - `reason`
 
 Reglas de resolución:
 
-1. Buscar override por técnico específico de fecha.
-2. Si no existe, buscar override por técnico para el día de semana.
-3. Si no existe override, evaluar blackout recurrente o puntual del tenant o de la sede.
-4. Si no hay blackout, buscar horario de sede.
-5. Si no hay horario de sede, usar horario base de empresa.
-6. Si ninguna regla existe, devolver cerrado con motivo de configuración faltante o usar fallback controlado durante migración inicial.
+1. Evaluar blackout recurrente o puntual del tenant o de la sede.
+2. Si no hay blackout, buscar horario de sede.
+3. Si no hay horario de sede, usar horario base de empresa.
+4. Si ninguna regla existe, devolver cerrado con motivo de configuración faltante o usar fallback controlado durante migración inicial.
 
 ---
 
@@ -287,7 +263,7 @@ Nuevo comportamiento:
 1. Determinar el día local de la búsqueda.
 2. Resolver la ventana efectiva para cada técnico candidato y la sede aplicable.
 3. Generar slots solo dentro de esa ventana.
-4. Si la fecha está cerrada y no hay override técnico, no devolver recomendaciones.
+4. Si la fecha está cerrada por cierre especial o falta de horario aplicable, no devolver recomendaciones.
 
 ### 8.2 Guardado final
 
@@ -296,8 +272,8 @@ Nuevo comportamiento:
 Debe rechazarse con `400` cuando:
 
 1. la fecha esté cerrada a nivel empresa o sede;
-2. exista blackout sin override del técnico;
-3. la hora esté fuera del rango efectivo del técnico, sede o empresa.
+2. exista blackout aplicable;
+3. la hora esté fuera del rango efectivo de sede o empresa.
 
 ### 8.3 Asociación con sede operativa
 
@@ -328,8 +304,7 @@ Se recomienda una superficie dedicada dentro del portal para WFM settings que cu
 1. CRUD de sedes operativas;
 2. horario semanal base de empresa;
 3. horario semanal por sede;
-4. overrides por técnico;
-5. festivos y cierres especiales.
+4. festivos y cierres especiales.
 
 Decisión de ejecución para este corte:
 
@@ -365,7 +340,7 @@ Para no romper el comportamiento actual en tenants ya operativos:
 La recomendación base para la transición es:
 
 - empresa: lunes a domingo 07:00–18:00 como semilla técnica de compatibilidad;
-- luego cada tenant ajusta sedes, festivos y técnicos según operación real.
+- luego cada tenant ajusta sedes, festivos y cierres especiales según operación real.
 
 ---
 
@@ -401,12 +376,10 @@ Mitigación:
 
 1. El tenant puede definir horario base por día de semana.
 2. El tenant puede definir sedes operativas y horarios semanales por sede.
-3. El tenant puede definir overrides por técnico.
-4. El tenant puede registrar festivos o cierres especiales.
-5. Las recomendaciones solo se calculan dentro de la ventana efectiva.
-6. Crear, editar, reagendar y agendar desde visit request se bloquea fuera de la ventana efectiva.
-7. Un técnico con override explícito puede trabajar en un festivo si así se configuró.
-8. La UI explica por qué no existen slots cuando la fecha o el contexto está cerrado.
+3. El tenant puede registrar festivos o cierres especiales.
+4. Las recomendaciones solo se calculan dentro de la ventana efectiva.
+5. Crear, editar, reagendar y agendar desde visit request se bloquea fuera de la ventana efectiva.
+6. La UI explica por qué no existen slots cuando la fecha o el contexto está cerrado.
 
 ---
 

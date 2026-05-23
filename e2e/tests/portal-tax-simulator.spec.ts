@@ -35,6 +35,28 @@ async function setupTaxMocks(page: Page) {
     const url = new URL(requestUrl);
     const pathname = url.pathname;
 
+    if (pathname.endsWith('/tenants/public-branding') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            displayName: 'ISP Demo',
+            showTenantName: true,
+            logoLightUrl: null,
+            logoDarkUrl: null,
+            sealLightUrl: null,
+            sealDarkUrl: null,
+            faviconLightUrl: null,
+            faviconDarkUrl: null,
+            loginBackgroundLightUrl: null,
+            loginBackgroundDarkUrl: null,
+          },
+        }),
+      });
+      return;
+    }
+
     if (pathname.endsWith('/auth/me') && method === 'GET') {
       await route.fulfill({
         status: 200,

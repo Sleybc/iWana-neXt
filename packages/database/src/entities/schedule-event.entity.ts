@@ -84,9 +84,9 @@ export class ScheduleEvent {
   @Column({ name: 'assigned_team_id', type: 'uuid', nullable: true })
   assignedTeamId: string | null;
 
-  /** Sede operativa WFM desde donde se atiende la agenda; opcional para flujos legacy */
-  @Column({ name: 'operating_site_id', type: 'uuid', nullable: true })
-  operatingSiteId: string | null;
+  /** Sede organizacional desde donde se atiende la agenda; opcional */
+  @Column({ name: 'organization_site_id', type: 'uuid', nullable: true })
+  organizationSiteId: string | null;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   address: string | null;

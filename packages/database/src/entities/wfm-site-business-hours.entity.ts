@@ -8,10 +8,14 @@ import {
 } from 'typeorm';
 import { BusinessHoursWeekday } from '@iwana/shared';
 
-@Index('uq_wfm_site_business_hours_site_weekday', ['tenantId', 'siteId', 'weekday'], {
-  unique: true,
-})
-@Index('idx_wfm_site_business_hours_tenant_site', ['tenantId', 'siteId'])
+@Index(
+  'uq_wfm_site_business_hours_org_site_weekday',
+  ['tenantId', 'organizationSiteId', 'weekday'],
+  {
+    unique: true,
+  },
+)
+@Index('idx_wfm_site_business_hours_tenant_org_site', ['tenantId', 'organizationSiteId'])
 @Entity({ name: 'wfm_site_business_hours' })
 export class WfmSiteBusinessHours {
   @PrimaryGeneratedColumn('uuid')
@@ -20,8 +24,8 @@ export class WfmSiteBusinessHours {
   @Column({ name: 'tenant_id', type: 'uuid' })
   tenantId: string;
 
-  @Column({ name: 'site_id', type: 'uuid' })
-  siteId: string;
+  @Column({ name: 'organization_site_id', type: 'uuid' })
+  organizationSiteId: string;
 
   @Column({
     type: 'enum',

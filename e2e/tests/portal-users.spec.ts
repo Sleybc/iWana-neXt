@@ -135,6 +135,91 @@ async function setupAuthenticatedAdminMocks(
     const url = request.url();
     const method = request.method();
 
+    if (url.includes('/tenants/public-branding') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            displayName: 'Tenant Prueba',
+            showTenantName: true,
+            logoLightUrl: null,
+            logoDarkUrl: null,
+            sealLightUrl: null,
+            sealDarkUrl: null,
+            faviconLightUrl: null,
+            faviconDarkUrl: null,
+            loginBackgroundLightUrl: null,
+            loginBackgroundDarkUrl: null,
+          },
+        }),
+      });
+      return;
+    }
+
+    if (url.includes('/tenants/me/summary') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            tenant: {
+              id: 'tenant-uuid-001',
+              name: 'Tenant Prueba',
+              slug: MOCK_TENANT,
+              status: 'ACTIVE',
+            },
+            settings: {
+              timezone: 'America/Bogota',
+              currency: 'COP',
+              language: 'es-CO',
+              country: 'CO',
+              features: { billing: false, mfa_required_all: false },
+            },
+            metrics: {
+              configuredUsers: 2,
+              mfaCoverage: 50,
+              pendingAlerts: 0,
+              auditEventsLast7d: 0,
+            },
+            alerts: [],
+          },
+        }),
+      });
+      return;
+    }
+
+    if (url.includes('/tenants/me') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: 'tenant-uuid-001',
+            name: 'Tenant Prueba',
+            slug: MOCK_TENANT,
+            status: 'ACTIVE',
+            contactEmail: 'contacto@tenant-prueba.test',
+            showTenantName: true,
+            logoLightUrl: null,
+            logoDarkUrl: null,
+            sealLightUrl: null,
+            sealDarkUrl: null,
+          },
+        }),
+      });
+      return;
+    }
+
+    if (url.includes('/audit-logs') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [] }),
+      });
+      return;
+    }
+
     // GET /auth/me — sesión activa como ADMIN
     if (url.includes('/auth/me') && method === 'GET') {
       await route.fulfill({
@@ -333,12 +418,9 @@ test('caso 8 — /dashboard/profile muestra el formulario de información person
   await setupAuthenticatedAdminMocks(page);
   await page.goto('/dashboard/profile');
 
-  // Debe mostrar el título del perfil y los campos del formulario
-  await expect(page.getByText(/información personal/i)).toBeVisible();
-  // El nombre del usuario debe aparecer en el bloque de identidad del perfil
-  await expect(
-    page.getByLabel('Contenido principal del portal').getByText('Administrador Prueba', {
-      exact: true,
-    }),
-  ).toBeVisible();
+  // Debe mostrar el título del perfil y el formulario personal cargado
+  await expect(page.getByRole('heading', { name: 'Mi perfil' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Datos personales' })).toBeVisible();
+  await expect(page.getByLabel('Nombre')).toHaveValue('Administrador');
+  await expect(page.getByLabel('Apellido')).toHaveValue('Prueba');
 });

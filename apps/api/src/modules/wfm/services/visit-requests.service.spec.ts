@@ -166,7 +166,46 @@ describe('VisitRequestsService', () => {
       } as never,
     );
 
-    expect(result).toBe(duplicate);
+    expect(result).toEqual({ ...duplicate });
+  });
+
+  it('persiste organizationSiteId cuando llega en la solicitud', async () => {
+    const duplicateQb = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue(null),
+    };
+    const manager = buildManager({
+      createQueryBuilder: jest.fn().mockReturnValue(duplicateQb),
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    const result = await service.createVisitRequest(
+      {
+        originContext: WorkOrderSourceContext.CRM,
+        originRef: 'exp-002',
+        workType: WfmWorkType.INSTALLATION,
+        title: 'Instalación con sede organization',
+        organizationSiteId: '77777777-7777-4777-8777-777777777777',
+        priority: WorkOrderPriority.NORMAL,
+      },
+      {
+        sub: 'admin-001',
+        role: UserRole.ADMIN,
+      } as never,
+    );
+
+    expect(manager.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        organizationSiteId: '77777777-7777-4777-8777-777777777777',
+      }),
+    );
+    expect(result.organizationSiteId).toBe('77777777-7777-4777-8777-777777777777');
   });
 
   it('agenda sin crear Work Order cuando createWorkOrder=false', async () => {
@@ -178,7 +217,7 @@ describe('VisitRequestsService', () => {
       priority: WorkOrderPriority.HIGH,
       title: 'Instalación prioritaria',
       description: 'Coordinar visita con portería',
-      operatingSiteId: null,
+      organizationSiteId: null,
       address: 'Cra 1 # 2-3',
       municipality: 'Bogotá',
       sector: 'Centro',
@@ -229,7 +268,7 @@ describe('VisitRequestsService', () => {
       priority: WorkOrderPriority.NORMAL,
       title: 'Instalación fuera de ventana',
       description: null,
-      operatingSiteId: null,
+      organizationSiteId: null,
       address: 'Cra 1 # 2-3',
       municipality: 'Bogotá',
       sector: 'Centro',

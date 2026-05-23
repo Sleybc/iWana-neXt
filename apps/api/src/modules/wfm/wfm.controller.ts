@@ -28,18 +28,21 @@ import { ScheduleRecommendationsService } from './services/schedule-recommendati
 import { WorkOrdersService } from './services/work-orders.service';
 import { TechnicianAvailabilityService } from './services/technician-availability.service';
 import { WfmDashboardService } from './services/wfm-dashboard.service';
-import { OperatingSitesService } from './services/operating-sites.service';
 import { CompanyBusinessHoursService } from './services/company-business-hours.service';
 import { SiteBusinessHoursService } from './services/site-business-hours.service';
-import { TechnicianBusinessOverridesService } from './services/technician-business-overrides.service';
 import { HolidayBlackoutsService } from './services/holiday-blackouts.service';
+import { OperationalEventualitiesService } from './services/operational-eventualities.service';
+import { WfmOrganizationSiteDto } from './dto';
+import {
+  CreateOperationalEventualityDto,
+  UpdateOperationalEventualityStatusDto,
+} from './dto/operational-eventuality.dto';
+import { WfmOrganizationSitesReadPort } from './ports/wfm-organization-sites-read.port';
 import { WfmTenantSettingsReadPort } from './ports/wfm-tenant-settings-read.port';
 import { OperatingWindowResolverService } from './services/operating-window-resolver.service';
 import {
   CreateHolidayBlackoutDto,
-  CreateOperatingSiteDto,
   CancelVisitRequestDto,
-  CreateTechnicianBusinessOverrideDto,
   CreateScheduleEventDto,
   CreateVisitRequestDto,
   ListVisitRequestsQueryDto,
@@ -57,11 +60,9 @@ import {
   TransitionWorkOrderDto,
   UpdateCompanyBusinessHoursDto,
   UpdateHolidayBlackoutDto,
-  UpdateOperatingSiteDto,
   ResolveOperatingWindowDto,
   UpdateScheduleEventDto,
   UpdateSiteBusinessHoursDto,
-  UpdateTechnicianBusinessOverrideDto,
   UpdateVisitRequestContextDto,
   VisitRequestFilterOptionsQueryDto,
   VisitRequestFilterOptionsResponseDto,
@@ -79,11 +80,12 @@ export class WfmController {
     private readonly workOrdersService: WorkOrdersService,
     private readonly technicianAvailabilityService: TechnicianAvailabilityService,
     private readonly dashboardService: WfmDashboardService,
-    private readonly operatingSitesService: OperatingSitesService,
     private readonly companyBusinessHoursService: CompanyBusinessHoursService,
     private readonly siteBusinessHoursService: SiteBusinessHoursService,
-    private readonly technicianBusinessOverridesService: TechnicianBusinessOverridesService,
     private readonly holidayBlackoutsService: HolidayBlackoutsService,
+    private readonly operationalEventualitiesService: OperationalEventualitiesService,
+    @Inject(WfmOrganizationSitesReadPort)
+    private readonly organizationSitesReadPort: WfmOrganizationSitesReadPort,
     @Inject(WfmTenantSettingsReadPort)
     private readonly tenantSettingsReadPort: WfmTenantSettingsReadPort,
     private readonly operatingWindowResolver: OperatingWindowResolverService,
@@ -91,40 +93,12 @@ export class WfmController {
 
   // ─── Operating Hours Admin ───────────────────────────────────────────────
 
-  @Get('operating-sites')
+  @Get('dispatch-sites')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Listar sedes operativas WFM del tenant' })
-  listOperatingSites(@CurrentUser() actor: JwtPayload) {
-    return this.operatingSitesService.list(actor);
-  }
-
-  @Post('operating-sites')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Crear una sede operativa WFM' })
-  createOperatingSite(@Body() dto: CreateOperatingSiteDto, @CurrentUser() actor: JwtPayload) {
-    return this.operatingSitesService.create(dto, actor);
-  }
-
-  @Patch('operating-sites/:id')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Actualizar una sede operativa WFM' })
-  updateOperatingSite(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateOperatingSiteDto,
-    @CurrentUser() actor: JwtPayload,
-  ) {
-    return this.operatingSitesService.update(id, dto, actor);
-  }
-
-  @Delete('operating-sites/:id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Eliminar una sede operativa WFM' })
-  async deleteOperatingSite(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() actor: JwtPayload,
-  ) {
-    await this.operatingSitesService.remove(id, actor);
+  @ApiOperation({ summary: 'Listar sedes organizacionales activas para despacho tecnico' })
+  @ApiResponse({ status: 200, type: [WfmOrganizationSiteDto] })
+  async listDispatchSites(@CurrentUser() actor: JwtPayload) {
+    return this.organizationSitesReadPort.listDispatchSites(actor);
   }
 
   @Get('business-hours/company')
@@ -163,45 +137,6 @@ export class WfmController {
     @CurrentUser() actor: JwtPayload,
   ) {
     return this.siteBusinessHoursService.replaceWeek(siteId, dto, actor);
-  }
-
-  @Get('technician-business-overrides')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Listar overrides operativos por tecnico' })
-  listTechnicianBusinessOverrides(@CurrentUser() actor: JwtPayload) {
-    return this.technicianBusinessOverridesService.list(actor);
-  }
-
-  @Post('technician-business-overrides')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Crear un override operativo por tecnico' })
-  createTechnicianBusinessOverride(
-    @Body() dto: CreateTechnicianBusinessOverrideDto,
-    @CurrentUser() actor: JwtPayload,
-  ) {
-    return this.technicianBusinessOverridesService.create(dto, actor);
-  }
-
-  @Patch('technician-business-overrides/:id')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Actualizar un override operativo por tecnico' })
-  updateTechnicianBusinessOverride(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateTechnicianBusinessOverrideDto,
-    @CurrentUser() actor: JwtPayload,
-  ) {
-    return this.technicianBusinessOverridesService.update(id, dto, actor);
-  }
-
-  @Delete('technician-business-overrides/:id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Eliminar un override operativo por tecnico' })
-  async deleteTechnicianBusinessOverride(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() actor: JwtPayload,
-  ) {
-    await this.technicianBusinessOverridesService.remove(id, actor);
   }
 
   @Get('holiday-blackouts')
@@ -262,7 +197,7 @@ export class WfmController {
 
     return this.operatingWindowResolver.resolve({
       tenantId: actor.tenantId,
-      siteId: dto.siteId ?? null,
+      organizationSiteId: dto.organizationSiteId ?? null,
       technicianId: dto.technicianId ?? null,
       dateLocal: dto.dateLocal,
       timezone,
@@ -505,5 +440,51 @@ export class WfmController {
     @CurrentUser() actor: JwtPayload,
   ) {
     return this.technicianAvailabilityService.create(dto, actor);
+  }
+
+  // ─── Operational Eventualities ────────────────────────────────────────────
+
+  @Post('operational-eventualities')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Crear eventualidad operativa puntual' })
+  @ApiResponse({ status: 201, description: 'Eventualidad creada' })
+  createOperationalEventuality(
+    @Body() dto: CreateOperationalEventualityDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.operationalEventualitiesService.create(actor.sub, dto);
+  }
+
+  @Get('operational-eventualities')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Listar eventualidades operativas del tenant' })
+  listOperationalEventualities(
+    @Query('userId') userId?: string,
+    @Query('organizationSiteId') organizationSiteId?: string,
+  ) {
+    return this.operationalEventualitiesService.findAllByTenant({
+      ...(userId ? { userId } : {}),
+      ...(organizationSiteId ? { organizationSiteId } : {}),
+    });
+  }
+
+  @Patch('operational-eventualities/:id/status')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Actualizar estado de eventualidad operativa' })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  updateOperationalEventualityStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateOperationalEventualityStatusDto,
+  ) {
+    return this.operationalEventualitiesService.updateStatus(id, dto);
+  }
+
+  @Delete('operational-eventualities/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Eliminar (soft-delete) eventualidad operativa' })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  async deleteOperationalEventuality(@Param('id', ParseUUIDPipe) id: string) {
+    await this.operationalEventualitiesService.softDelete(id);
   }
 }

@@ -9,6 +9,7 @@
 **Spec de origen:** docs/specs/SPEC-MOD09-PROGRAMACION-WFM-DISENO-v1.0.md  
 **HLD relacionado:** docs/hlds/HLD-MOD09-PROGRAMACION-WFM-v1.0.md  
 **ADR aprobado:** docs/adrs/ADR-037-Bounded-Context-Programacion-WFM.md  
+**ADR complementario:** docs/adrs/ADR-041-Retiro-Excepciones-Tecnico-WFM.md  
 **Plan relacionado:** docs/plans/PLAN-MOD09-PROGRAMACION-WFM-FASE-01-v1.0.md  
 **Prompt de ejecucion:** docs/prompts/PROMPT-MOD09-PROGRAMACION-WFM-FASE-01-v1.0.md
 
@@ -96,13 +97,13 @@ MOD09 resuelve esta brecha creando una agenda operativa tenant-aware con Work Or
 | RF-WFM-02 | Crear o asociar una Work Order ligera al evento programado. | MVP |
 | RF-WFM-03 | Listar eventos por rango temporal para vistas dia, semana, mes y lista. | MVP |
 | RF-WFM-04 | Filtrar agenda por tecnico, tipo, estado, municipio y referencia. | MVP |
-| RF-WFM-05 | Rechazar solapamientos activos por tecnico, salvo override administrativo documentado si se habilita. | MVP |
+| RF-WFM-05 | Rechazar solapamientos activos por tecnico sin excepciones administrativas recurrentes en WFM. | MVP |
 | RF-WFM-06 | Reagendar eventos con motivo obligatorio, notas opcionales e historial append-only. | MVP |
 | RF-WFM-07 | Cambiar estado de agenda: `DRAFT`, `SCHEDULED`, `EN_ROUTE`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED`, `RESCHEDULED`, `NO_SHOW`. | MVP |
 | RF-WFM-08 | Cambiar estado de Work Order ligera: `OPEN`, `ASSIGNED`, `IN_PROGRESS`, `DONE`, `CANCELLED`. | MVP |
 | RF-WFM-09 | Restringir visibilidad de `TECHNICIAN` y `CONTRACTOR` solo a trabajos asignados. | MVP |
 | RF-WFM-10 | Consultar dashboard summary con trabajos de hoy, atrasados, proximos y carga por tecnico. | MVP |
-| RF-WFM-11 | Registrar disponibilidad/bloqueos puntuales de tecnico. | MVP |
+| RF-WFM-11 | Registrar disponibilidad/bloqueos puntuales de tecnico solo como control operativo interno de agenda; no como permisos, licencias ni excepciones recurrentes visibles en configuracion. | MVP |
 | RF-WFM-12 | Exponer contrato para que CRM reemplace el stub de Work Order sin acceso directo a tablas WFM. | MVP |
 | RF-WFM-13 | Emitir o preparar eventos de dominio para integraciones futuras con Inventory y Service Assurance. | Fase 2 |
 | RF-WFM-14 | Soportar evidencias, firma y materiales de trabajo. | Fase 2 |
@@ -137,7 +138,7 @@ MOD09 resuelve esta brecha creando una agenda operativa tenant-aware con Work Or
 | `WorkOrder` | `work_orders` | Orden de trabajo ligera |
 | `WorkOrderTask` | `work_order_tasks` | Tarea interna ejecutable de la orden |
 | `ScheduleRescheduleLog` | `schedule_reschedule_logs` | Historial de reagendamientos |
-| `TechnicianAvailability` | `technician_availability` | Bloqueos o disponibilidad puntual |
+| `TechnicianAvailability` | `technician_availability` | Bloqueos o disponibilidad puntual de agenda, sin representar permisos o licencias formales |
 
 Campos, indices y enums quedan detallados en `docs/specs/SPEC-MOD09-PROGRAMACION-WFM-DISENO-v1.0.md` y en el HLD MOD09.
 
@@ -172,6 +173,8 @@ Rutas recomendadas bajo `/api/v1/wfm`.
 | GET | `/dashboard/summary` | Resumen operativo |
 | GET | `/technicians/availability` | Consultar disponibilidad/bloqueos |
 | POST | `/technicians/availability` | Crear bloqueo o disponibilidad puntual |
+
+Los contratos de excepciones recurrentes por tecnico en settings quedan fuera del alcance vigente de WFM segun ADR-041. Las ausencias personales aprobadas pertenecen al future owner de Recursos Humanos.
 
 Todos los endpoints deben documentarse con Swagger/OpenAPI y usar DTOs tipados con validacion Zod.
 

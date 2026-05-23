@@ -8,6 +8,7 @@
 **PRD de referencia:** docs/prds/PRD-MOD09-PROGRAMACION-WFM-v1.0.md  
 **Spec de origen:** docs/specs/SPEC-MOD09-PROGRAMACION-WFM-DISENO-v1.0.md  
 **ADR aprobado:** docs/adrs/ADR-037-Bounded-Context-Programacion-WFM.md  
+**ADR complementario:** docs/adrs/ADR-041-Retiro-Excepciones-Tecnico-WFM.md  
 **Prompt de ejecucion:** docs/prompts/PROMPT-MOD09-PROGRAMACION-WFM-FASE-01-v1.0.md
 
 > Aprobacion CTO registrada: este HLD adopta `WfmModule` como nuevo bounded context aprobado para ejecucion de MOD09 Fase 01.
@@ -26,7 +27,7 @@ La Fase 01 prioriza la programacion y trazabilidad minima. Las capacidades compl
 
 | Bounded context | Impacto | Regla |
 | --- | --- | --- |
-| `WfmModule` | Principal | Owner de agenda, Work Orders ligeras, disponibilidad y reagendamientos |
+| `WfmModule` | Principal | Owner de agenda, Work Orders ligeras, disponibilidad puntual operativa y reagendamientos |
 | `UsersModule` | Upstream | Provee usuarios/roles; MOD09 referencia `assignedUserId` sin leer tablas directamente fuera de patron aprobado |
 | `CrmModule` | Downstream/consumer | Consume referencia `workOrderId` por puerto/evento, sin leer tablas WFM |
 | `AuthModule` | Upstream | JWT, RolesGuard y actor autenticado |
@@ -36,6 +37,7 @@ La Fase 01 prioriza la programacion y trazabilidad minima. Las capacidades compl
 | Service Assurance futuro | Upstream futuro | Emitira necesidad de visita tecnica |
 | Provisioning futuro | Upstream futuro | Solicitara instalacion fisica o trabajo tecnico |
 | Inventory futuro | Downstream futuro | Consumira eventos de materiales/equipos en fases posteriores |
+| Recursos Humanos futuro | Upstream futuro | Sera owner de ausencias personales, permisos, licencias y disponibilidad individual aprobada |
 
 ### Boundary explicito
 
@@ -43,6 +45,7 @@ La Fase 01 prioriza la programacion y trazabilidad minima. Las capacidades compl
 - CRM no consulta tablas de WFM; consume `workOrderId` por puerto tipado o evento.
 - Las referencias cross-module son IDs logicos, no FKs cross-schema.
 - La agenda no duplica PII sensible del suscriptor.
+- WFM no expone excepciones personales recurrentes por tecnico como configuracion visible; ADR-041 retira esa capacidad del producto WFM.
 
 ---
 
@@ -50,7 +53,7 @@ La Fase 01 prioriza la programacion y trazabilidad minima. Las capacidades compl
 
 ### Backend
 
-```
+```text
 apps/api/src/modules/wfm/
 ├── wfm.module.ts
 ├── wfm.controller.ts
@@ -77,7 +80,7 @@ apps/api/src/modules/wfm/
 
 ### Shared contracts
 
-```
+```text
 packages/shared/src/enums/wfm/
 ├── wfm-work-type.enum.ts
 ├── schedule-event-status.enum.ts
@@ -90,7 +93,7 @@ packages/shared/src/enums/wfm/
 
 ### Database
 
-```
+```text
 packages/database/src/entities/
 ├── schedule-event.entity.ts
 ├── work-order.entity.ts
@@ -104,7 +107,7 @@ packages/database/src/migrations/tenant/
 
 ### Portal
 
-```
+```text
 apps/portal/src/app/dashboard/scheduling/page.tsx
 apps/portal/src/components/scheduling/
 ├── SchedulingClient.tsx
@@ -180,7 +183,7 @@ Append-only para cambios de fecha/hora. No debe editarse ni borrarse desde API f
 
 ### `technician_availability`
 
-Bloqueos puntuales y disponibilidad explicita. La recurrencia semanal se difiere a Fase 02 salvo necesidad confirmada.
+Bloqueos puntuales y disponibilidad explicita de agenda. No representa permisos, licencias, vacaciones ni reglas personales recurrentes; esos conceptos pertenecen al future owner de Recursos Humanos segun ADR-041.
 
 ---
 
@@ -213,7 +216,7 @@ Responsable de crear Work Orders ligeras, generar consecutivo `WO-YYYYMMDD-NNN`,
 
 ### TechnicianAvailabilityService
 
-Gestiona bloqueos y disponibilidad puntual de tecnicos/contratistas.
+Gestiona bloqueos y disponibilidad puntual de tecnicos/contratistas como control operativo de agenda. No debe usarse como reemplazo visible de Excepciones por tecnico en field operations.
 
 ### WfmDashboardService
 
@@ -273,7 +276,7 @@ Patrones:
 
 ## 10. Testing y validacion
 
-### Backend
+### Backend tests
 
 - Unit: `ScheduleConflictService`.
 - Unit: transiciones validas e invalidas.

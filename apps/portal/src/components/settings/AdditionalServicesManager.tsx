@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { BriefcaseBusiness, CheckCircle2, CircleAlert, Pencil, Search, Trash2 } from 'lucide-react';
@@ -119,6 +119,7 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
   const [chargeTypeFilter, setChargeTypeFilter] = useState<string>('ALL');
 
   const {
+    control,
     register,
     handleSubmit,
     reset,
@@ -559,13 +560,27 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
                   )}
                 </div>
 
-                <Select {...register('chargeType')} label="Tipo de cobro" className="h-11">
-                  {SERVICE_CHARGE_TYPES.map((chargeType) => (
-                    <option key={chargeType} value={chargeType}>
-                      {chargeTypeLabel(chargeType)}
-                    </option>
-                  ))}
-                </Select>
+                <Controller
+                  name="chargeType"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      label="Tipo de cobro"
+                      className="h-11"
+                      name={field.name}
+                      value={field.value}
+                      onChange={(event) => field.onChange(event.target.value)}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                    >
+                      {SERVICE_CHARGE_TYPES.map((chargeType) => (
+                        <option key={chargeType} value={chargeType}>
+                          {chargeTypeLabel(chargeType)}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                />
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200">

@@ -11,6 +11,7 @@ export const UpdateScheduleEventSchema = z
     scheduledEndAt: z.string().datetime({ offset: true }),
     assignedUserId: z.string().uuid(),
     operatingSiteId: z.string().uuid().nullable(),
+    organizationSiteId: z.string().uuid().nullable(),
     address: z.string().max(255).nullable(),
     municipality: z.string().max(120).nullable(),
     sector: z.string().max(120).nullable(),
@@ -57,6 +58,14 @@ export class UpdateScheduleEventDto {
   @IsOptional()
   @IsUUID()
   operatingSiteId?: string | null;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Sede Organization a resolver a una sede operativa WFM efectiva',
+  })
+  @IsOptional()
+  @IsUUID()
+  organizationSiteId?: string | null;
 
   @ApiPropertyOptional({ maxLength: 255 })
   @IsOptional()

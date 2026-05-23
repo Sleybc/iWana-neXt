@@ -12,34 +12,34 @@
 
 ## 1. Stop/go inicial
 
-- [ ] Fase 01 cerrada.
-- [ ] Fase 02 cerrada o compatibilidad explicita documentada.
-- [ ] Owner map revisado contra ADR-040.
-- [ ] No se agregan forms falsos para modulos futuros.
+- [x] Fase 01 cerrada.
+- [x] Fase 02 cerrada o compatibilidad explicita documentada.
+- [x] Owner map revisado contra ADR-040.
+- [x] No se agregan forms falsos para modulos futuros.
 
 ## 2. Backend
 
-- [ ] Registry devuelve metadata, no datos internos de modulos.
-- [ ] Endpoint protegido por JWT/Tenant/Roles.
-- [ ] OpenAPI actualizado si aplica.
-- [ ] Tests de registry pasan.
+- [x] Registry devuelve metadata, no datos internos de modulos.
+- [x] Endpoint protegido por JWT/Tenant/Roles.
+- [x] OpenAPI actualizado si aplica.
+- [x] Tests de registry pasan.
 
 ## 3. Frontend
 
-- [ ] Settings shell lista secciones y estados.
-- [ ] Rutas reales abren correctamente.
-- [ ] Modulos futuros muestran estado no disponible.
-- [ ] No hay botones submit en modulos futuros.
-- [ ] Textos en espanol y sentence case.
+- [x] Settings shell lista secciones y estados.
+- [x] Rutas reales abren correctamente.
+- [x] Modulos futuros muestran estado no disponible.
+- [x] No hay botones submit en modulos futuros.
+- [x] Textos en espanol y sentence case.
 
 ## 4. Boundaries
 
-- [ ] MOD00 no importa servicios privados de otros modulos.
-- [ ] No hay SQL cross-module.
-- [ ] No hay JSONB generico para settings federados.
+- [x] MOD00 no importa servicios privados de otros modulos.
+- [x] No hay SQL cross-module.
+- [x] No hay JSONB generico para settings federados.
 
 ## 5. E2E y cierre
 
-- [ ] Playwright cubre shell de settings.
-- [ ] Caso de modulo futuro no disponible cubierto.
-- [ ] Informe MOD00 actualizado.
+- [x] Playwright cubre shell de settings.
+- [x] Caso de modulo futuro no disponible cubierto.
+- [x] Informe MOD00 actualizado.

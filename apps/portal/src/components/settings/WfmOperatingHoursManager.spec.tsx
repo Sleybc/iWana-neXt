@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { BusinessHoursWeekday, UserRole } from '@iwana/shared';
-import { usersApi, wfmApi } from '@/lib/api-client';
+import { BusinessHoursWeekday, OrganizationSiteCapability } from '@iwana/shared';
+import { wfmApi } from '@/lib/api-client';
 import { WfmOperatingHoursManager } from './WfmOperatingHoursManager';
 
 jest.mock('@/lib/api-client', () => {
@@ -20,10 +20,12 @@ jest.mock('@/lib/api-client', () => {
 
   return {
     ApiError: MockApiError,
-    usersApi: {
-      list: jest.fn(),
-    },
     wfmApi: {
+      dispatchSites: {
+        list: jest.fn(),
+        getBusinessHours: jest.fn(),
+        updateBusinessHours: jest.fn(),
+      },
       businessHours: {
         getCompany: jest.fn(),
         updateCompany: jest.fn(),
@@ -36,12 +38,6 @@ jest.mock('@/lib/api-client', () => {
         getBusinessHours: jest.fn(),
         updateBusinessHours: jest.fn(),
       },
-      technicianBusinessOverrides: {
-        list: jest.fn(),
-        create: jest.fn(),
-        update: jest.fn(),
-        remove: jest.fn(),
-      },
       holidayBlackouts: {
         list: jest.fn(),
         create: jest.fn(),
@@ -52,11 +48,12 @@ jest.mock('@/lib/api-client', () => {
   };
 });
 
-const usersApiMock = usersApi as unknown as {
-  list: jest.Mock;
-};
-
 const wfmApiMock = wfmApi as unknown as {
+  dispatchSites: {
+    list: jest.Mock;
+    getBusinessHours: jest.Mock;
+    updateBusinessHours: jest.Mock;
+  };
   businessHours: {
     getCompany: jest.Mock;
     updateCompany: jest.Mock;
@@ -68,12 +65,6 @@ const wfmApiMock = wfmApi as unknown as {
     remove: jest.Mock;
     getBusinessHours: jest.Mock;
     updateBusinessHours: jest.Mock;
-  };
-  technicianBusinessOverrides: {
-    list: jest.Mock;
-    create: jest.Mock;
-    update: jest.Mock;
-    remove: jest.Mock;
   };
   holidayBlackouts: {
     list: jest.Mock;
@@ -138,53 +129,47 @@ function buildWeekWithSeconds() {
   }));
 }
 
-function buildTechnician() {
-  return {
-    id: 'tech-1',
-    email: 'tecnico@demo.co',
-    role: UserRole.TECHNICIAN,
-    status: 'ACTIVE',
-    tenantId: 'tenant-1',
-    mfaEnabled: true,
-    mfaRequired: false,
-    emailVerified: true,
-    passwordResetRequired: false,
-    lastLoginAt: null,
-    createdAt: '2026-05-01T00:00:00.000Z',
-    updatedAt: '2026-05-01T00:00:00.000Z',
-    deletedAt: null,
-    firstName: 'Luisa',
-    lastName: 'Campos',
-    phone: null,
-    jobTitle: 'Técnica de campo',
-    documentType: null,
-    documentNumber: null,
-    avatarUrl: null,
-  };
-}
-
 describe('WfmOperatingHoursManager', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    usersApiMock.list.mockResolvedValue({
-      data: [buildTechnician()],
-      meta: { nextCursor: null, total: 1 },
-    });
     wfmApiMock.businessHours.getCompany.mockResolvedValue(buildWeek());
-    wfmApiMock.operatingSites.list.mockResolvedValue([]);
-    wfmApiMock.operatingSites.getBusinessHours.mockResolvedValue(buildWeek());
-    wfmApiMock.technicianBusinessOverrides.list.mockResolvedValue([]);
+    wfmApiMock.dispatchSites.list.mockResolvedValue([]);
+    wfmApiMock.dispatchSites.getBusinessHours.mockResolvedValue(buildWeek());
+    wfmApiMock.dispatchSites.updateBusinessHours.mockResolvedValue(buildWeek());
     wfmApiMock.holidayBlackouts.list.mockResolvedValue([]);
+  });
+
+  it('should render organizational dispatch sites as the visible site source for operations', async () => {
+    wfmApiMock.dispatchSites.list.mockResolvedValue([
+      {
+        id: 'org-site-1',
+        name: 'Sede norte',
+        code: 'NOR',
+        capabilities: [OrganizationSiteCapability.TECH_DISPATCH],
+        isActive: true,
+        operatingSiteId: 'site-1',
+      },
+    ]);
+
+    render(<WfmOperatingHoursManager canEdit={true} />);
+
+    await waitFor(() => {
+      expect(wfmApiMock.dispatchSites.list).toHaveBeenCalled();
+    });
+    expect(await screen.findByText('Horarios operativos')).toBeInTheDocument();
+    expect(screen.getAllByLabelText('Sede empresarial').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Sedes operativas')).not.toBeInTheDocument();
   });
 
   it('should render the manager summary and company week', async () => {
     const { container } = render(<WfmOperatingHoursManager canEdit={true} />);
 
-    expect(await screen.findByText('Operación de campo')).toBeInTheDocument();
+    expect(await screen.findByText('Despacho técnico')).toBeInTheDocument();
     expect(screen.getByText('Horarios operativos')).toBeInTheDocument();
-    expect(screen.getByText('Horario base de empresa')).toBeInTheDocument();
-    expect(screen.getByText('Sin sedes operativas')).toBeInTheDocument();
+    expect(screen.getByText('Horario base de despacho técnico')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Guardar horario base' })).toBeInTheDocument();
+    expect(screen.queryByText('Excepciones por técnico')).not.toBeInTheDocument();
+    expect(screen.queryByText('Nueva excepción')).not.toBeInTheDocument();
     expect(container.querySelector('input[type="time"]')).toBeNull();
   });
 
@@ -194,137 +179,5 @@ describe('WfmOperatingHoursManager', () => {
     expect(await screen.findByText('Modo solo lectura')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Guardar horario base' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Crear sede' })).not.toBeInTheDocument();
-  });
-
-  it('should create an operating site from the inline form', async () => {
-    const createdSite = {
-      id: 'site-1',
-      tenantId: 'tenant-1',
-      name: 'Bogotá centro',
-      code: 'BOG-CEN',
-      address: 'Cra 10 # 10-10',
-      municipality: 'Bogotá',
-      sector: 'Centro',
-      latitude: null,
-      longitude: null,
-      isActive: true,
-      createdAt: '2026-05-16T00:00:00.000Z',
-      updatedAt: '2026-05-16T00:00:00.000Z',
-      deletedAt: null,
-    };
-
-    wfmApiMock.operatingSites.list.mockResolvedValueOnce([]).mockResolvedValueOnce([createdSite]);
-    wfmApiMock.operatingSites.create.mockResolvedValue(createdSite);
-
-    render(<WfmOperatingHoursManager canEdit={true} />);
-
-    await screen.findByText('Nueva sede operativa');
-
-    fireEvent.change(screen.getByLabelText('Nombre de la sede'), {
-      target: { value: 'Bogotá centro' },
-    });
-    fireEvent.change(screen.getByLabelText('Código operativo'), {
-      target: { value: 'bog-cen' },
-    });
-    fireEvent.change(screen.getByLabelText('Coordenadas (Lat, Lng)'), {
-      target: { value: '4.6097, -74.0817' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Crear sede' }));
-
-    await waitFor(() => {
-      expect(wfmApiMock.operatingSites.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: 'Bogotá centro',
-          code: 'BOG-CEN',
-          latitude: 4.6097,
-          longitude: -74.0817,
-        }),
-      );
-    });
-
-    expect(await screen.findByText('Bogotá centro')).toBeInTheDocument();
-  });
-
-  it('should collapse the operating sites list inside an accordion', async () => {
-    const existingSite = {
-      id: 'site-1',
-      tenantId: 'tenant-1',
-      name: 'Oficina El Colegio - Principal',
-      code: 'OECP',
-      address: 'Centro',
-      municipality: 'El Colegio',
-      sector: 'Principal',
-      latitude: null,
-      longitude: null,
-      isActive: true,
-      createdAt: '2026-05-16T00:00:00.000Z',
-      updatedAt: '2026-05-16T00:00:00.000Z',
-      deletedAt: null,
-    };
-
-    wfmApiMock.operatingSites.list.mockResolvedValue([existingSite]);
-
-    render(<WfmOperatingHoursManager canEdit={true} />);
-
-    const accordionTrigger = await screen.findByRole('button', { name: /Sedes registradas/i });
-
-    expect(screen.queryByText('Oficina El Colegio - Principal')).not.toBeInTheDocument();
-
-    fireEvent.click(accordionTrigger);
-
-    expect(await screen.findByText('Oficina El Colegio - Principal')).toBeInTheDocument();
-  });
-
-  it('should normalize site business hours with seconds before saving', async () => {
-    const existingSite = {
-      id: 'site-1',
-      tenantId: 'tenant-1',
-      name: 'Oficina El Colegio - Principal',
-      code: 'OECP',
-      address: 'Centro',
-      municipality: 'El Colegio',
-      sector: 'Principal',
-      latitude: null,
-      longitude: null,
-      isActive: true,
-      createdAt: '2026-05-16T00:00:00.000Z',
-      updatedAt: '2026-05-16T00:00:00.000Z',
-      deletedAt: null,
-    };
-
-    wfmApiMock.operatingSites.list.mockResolvedValue([existingSite]);
-    wfmApiMock.operatingSites.getBusinessHours.mockResolvedValue(buildWeekWithSeconds());
-    wfmApiMock.operatingSites.updateBusinessHours.mockResolvedValue(buildWeek());
-
-    render(<WfmOperatingHoursManager canEdit={true} />);
-
-    await screen.findByText('Horario por sede');
-    await waitFor(() => {
-      expect(wfmApiMock.operatingSites.getBusinessHours).toHaveBeenCalledWith('site-1');
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar horario de sede' }));
-
-    await waitFor(() => {
-      expect(wfmApiMock.operatingSites.updateBusinessHours).toHaveBeenCalledWith(
-        'site-1',
-        expect.objectContaining({
-          days: expect.arrayContaining([
-            expect.objectContaining({
-              weekday: BusinessHoursWeekday.MONDAY,
-              startTime: '08:00',
-              endTime: '18:00',
-              isEnabled: true,
-            }),
-            expect.objectContaining({
-              weekday: BusinessHoursWeekday.SUNDAY,
-              startTime: null,
-              endTime: null,
-              isEnabled: false,
-            }),
-          ]),
-        }),
-      );
-    });
   });
 });

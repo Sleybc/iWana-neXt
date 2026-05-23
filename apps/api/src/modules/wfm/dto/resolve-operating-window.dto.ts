@@ -12,11 +12,11 @@ export class ResolveOperatingWindowDto {
   dateLocal!: string;
 
   @ApiPropertyOptional({
-    description: 'Sede operativa opcional para especializar la resolución.',
+    description: 'Sede organizacional opcional para especializar la resolución.',
   })
   @IsOptional()
-  @IsUUID('4', { message: 'siteId debe ser un UUID válido.' })
-  siteId?: string | null;
+  @IsUUID('4', { message: 'organizationSiteId debe ser un UUID válido.' })
+  organizationSiteId?: string | null;
 
   @ApiPropertyOptional({
     description: 'Técnico opcional para aplicar overrides por usuario.',

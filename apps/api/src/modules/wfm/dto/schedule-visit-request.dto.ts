@@ -18,6 +18,7 @@ export const ScheduleVisitRequestSchema = z.object({
   scheduledEndAt: z.string().datetime({ offset: true }),
   assignedUserId: z.string().uuid(),
   operatingSiteId: z.string().uuid().optional().nullable(),
+  organizationSiteId: z.string().uuid().optional().nullable(),
   createWorkOrder: z.boolean().optional(),
   workOrderSummary: z.string().trim().max(160).optional(),
   workOrderNotes: z.string().trim().max(4000).nullable().optional(),
@@ -51,6 +52,14 @@ export class ScheduleVisitRequestDto {
   @IsOptional()
   @IsUUID()
   operatingSiteId?: string | null;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Sede Organization a resolver a una sede operativa WFM efectiva',
+  })
+  @IsOptional()
+  @IsUUID()
+  organizationSiteId?: string | null;
 
   @ApiPropertyOptional({
     example: true,

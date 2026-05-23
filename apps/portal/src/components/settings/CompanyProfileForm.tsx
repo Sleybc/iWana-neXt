@@ -57,13 +57,6 @@ function nullable(value: string | undefined): string | null {
   return normalized ? normalized : null;
 }
 
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat('es-CO', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value));
-}
-
 export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfileFormProps) {
   const [serverError, setServerError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -136,48 +129,6 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
         />
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="grid gap-4 rounded-2xl border border-gray-200 bg-[#f8faf5] p-4 dark:border-dark-border dark:bg-dark-surface-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              Nombre comercial
-            </p>
-            <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-              {profile.name}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              Slug
-            </p>
-            <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-              {profile.slug}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              Estado
-            </p>
-            <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-              {profile.status}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              Creado
-            </p>
-            <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-              {formatDate(profile.createdAt)}
-            </p>
-          </div>
-        </div>
-
-        <PortalAlert
-          variant="warning"
-          title="Naming administrado por plataforma"
-          description="El nombre comercial y el slug permanecen en solo lectura mientras el ownership de naming sigue reservado a plataforma."
-          icon={CircleAlert}
-        />
-
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-6">
           <div className="space-y-6">
             <section className="space-y-4">
@@ -240,7 +191,7 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
                 <div className="xl:col-span-2">
                   <Input
                     id="nitDv"
-                    label="Dígito de verificación"
+                    label="DV"
                     disabled={!canEdit}
                     placeholder="7"
                     error={errors.nitDv?.message}
@@ -299,7 +250,7 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-gray-500 dark:text-gray-400">
               {canEdit
-                ? 'Solo se guardan campos tenant-managed del perfil empresarial.'
+                ? 'Solo se guardan los campos que puedes editar en esta sección.'
                 : 'Tu rol tiene acceso solo lectura sobre esta sección.'}
             </p>
             {canEdit && (

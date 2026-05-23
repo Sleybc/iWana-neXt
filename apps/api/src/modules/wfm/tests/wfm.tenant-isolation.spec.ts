@@ -13,11 +13,19 @@ import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { WfmController } from '../wfm.controller';
+import { WfmOrganizationSitesReadPort } from '../ports/wfm-organization-sites-read.port';
+import { WfmTenantSettingsReadPort } from '../ports/wfm-tenant-settings-read.port';
 import { ScheduleEventsService } from '../services/schedule-events.service';
 import { ScheduleConflictService } from '../services/schedule-conflict.service';
 import { WorkOrdersService } from '../services/work-orders.service';
 import { TechnicianAvailabilityService } from '../services/technician-availability.service';
 import { WfmDashboardService } from '../services/wfm-dashboard.service';
+import { CompanyBusinessHoursService } from '../services/company-business-hours.service';
+import { HolidayBlackoutsService } from '../services/holiday-blackouts.service';
+import { OperatingWindowResolverService } from '../services/operating-window-resolver.service';
+import { ScheduleRecommendationsService } from '../services/schedule-recommendations.service';
+import { SiteBusinessHoursService } from '../services/site-business-hours.service';
+import { VisitRequestsService } from '../services/visit-requests.service';
 
 type TenantCtx = { tenantId: string; schemaName: string };
 
@@ -206,6 +214,14 @@ describe('WfmController tenant isolation', () => {
           useValue: { list: jest.fn(), create: jest.fn() },
         },
         { provide: WfmDashboardService, useValue: { getSummary: jest.fn() } },
+        { provide: VisitRequestsService, useValue: { listVisitRequests: jest.fn() } },
+        { provide: ScheduleRecommendationsService, useValue: { recommend: jest.fn() } },
+        { provide: CompanyBusinessHoursService, useValue: { getWeek: jest.fn() } },
+        { provide: SiteBusinessHoursService, useValue: { getWeek: jest.fn() } },
+        { provide: HolidayBlackoutsService, useValue: { list: jest.fn(), create: jest.fn() } },
+        { provide: WfmOrganizationSitesReadPort, useValue: { listDispatchSites: jest.fn() } },
+        { provide: WfmTenantSettingsReadPort, useValue: { getTimezone: jest.fn() } },
+        { provide: OperatingWindowResolverService, useValue: { resolve: jest.fn() } },
         JwtAuthGuard,
         RolesGuard,
       ],

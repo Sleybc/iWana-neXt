@@ -92,6 +92,7 @@ export class ScheduleRecommendationsService {
   async recommend(input: ScheduleRecommendationRequest): Promise<ScheduleRecommendationResult[]> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = ScheduleRecommendationRequestSchema.parse(input);
+    const effectiveOperatingSiteId = validated.organizationSiteId ?? null;
     const windowStartAt = new Date(validated.windowStartAt);
     const windowEndAt = new Date(validated.windowEndAt);
     const windowDays = (windowEndAt.getTime() - windowStartAt.getTime()) / (24 * 60 * MINUTE_MS);
@@ -137,6 +138,7 @@ export class ScheduleRecommendationsService {
         windowEndAt,
         timezone,
         tenantId,
+        effectiveOperatingSiteId,
       );
     });
   }
@@ -150,6 +152,7 @@ export class ScheduleRecommendationsService {
     windowEndAt: Date,
     timezone: string,
     tenantId: string,
+    effectiveOperatingSiteId: string | null,
   ): Promise<ScheduleRecommendationResult[]> {
     const eventsByTechnician = groupBy(events, (event) => event.assignedUserId);
     const availabilityByTechnician = groupBy(availability, (item) => item.userId);
@@ -185,12 +188,12 @@ export class ScheduleRecommendationsService {
             continue;
           }
 
-          const cacheKey = `${technicianId}:${input.operatingSiteId ?? 'global'}:${dateLocal}`;
+          const cacheKey = `${technicianId}:${effectiveOperatingSiteId ?? 'global'}:${dateLocal}`;
           const effectiveWindowPromise =
             operatingWindowCache.get(cacheKey) ??
             this.operatingWindowResolver.resolveWithManager(manager as any, {
               tenantId,
-              siteId: input.operatingSiteId ?? null,
+              organizationSiteId: effectiveOperatingSiteId,
               technicianId,
               dateLocal,
               timezone,

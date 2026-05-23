@@ -128,6 +128,28 @@ async function setupMocks(page: import('@playwright/test').Page) {
     const method = route.request().method();
     const pathname = new URL(url).pathname;
 
+    if (url.includes('/tenants/public-branding') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            displayName: 'ISP Demo',
+            showTenantName: true,
+            logoLightUrl: null,
+            logoDarkUrl: null,
+            sealLightUrl: null,
+            sealDarkUrl: null,
+            faviconLightUrl: null,
+            faviconDarkUrl: null,
+            loginBackgroundLightUrl: null,
+            loginBackgroundDarkUrl: null,
+          },
+        }),
+      });
+      return;
+    }
+
     if (url.includes('/auth/me') && method === 'GET') {
       await route.fulfill({
         status: 200,
@@ -180,6 +202,15 @@ async function setupMocks(page: import('@playwright/test').Page) {
       return;
     }
 
+    if (url.includes('/audit-logs') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [] }),
+      });
+      return;
+    }
+
     if (pathname.endsWith('/commercial/catalog') && method === 'GET') {
       const type = new URL(url).searchParams.get('type');
       if (type === 'PLAN') {
@@ -227,6 +258,31 @@ async function setupMocks(page: import('@playwright/test').Page) {
                 category: 'CPE',
                 isLoan: true,
                 requiresInventory: true,
+              },
+            ],
+            meta: { total: 1 },
+          }),
+        });
+        return;
+      }
+
+      if (type === 'SERVICE') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: [
+              {
+                id: 'srv-ip-publica',
+                type: 'SERVICE',
+                name: 'IP pública fija',
+                description: null,
+                taxClassificationId: null,
+                retentionApplicable: false,
+                isActive: true,
+                chargeType: 'RECURRING',
+                currentPrice: '25000.00',
+                installationFee: '0.00',
               },
             ],
             meta: { total: 1 },
@@ -407,6 +463,18 @@ async function setupMocks(page: import('@playwright/test').Page) {
             },
           },
         }),
+      });
+      return;
+    }
+
+    if (
+      pathname.endsWith(`/crm/expedientes/${mockExpedienteId}/contact-attempts`) &&
+      method === 'GET'
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [], total: 0 }),
       });
       return;
     }

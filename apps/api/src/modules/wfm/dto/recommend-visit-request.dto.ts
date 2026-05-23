@@ -25,6 +25,7 @@ export const RecommendVisitRequestSchema = z
       .max(12 * 60),
     candidateUserIds: z.array(z.string().uuid()).min(1).max(100),
     operatingSiteId: z.string().uuid().optional().nullable(),
+    organizationSiteId: z.string().uuid().optional().nullable(),
     windowStartAt: z.string().datetime({ offset: true }).optional(),
     windowEndAt: z.string().datetime({ offset: true }).optional(),
     searchHorizonDays: z.number().int().min(1).max(14).optional(),
@@ -69,6 +70,14 @@ export class RecommendVisitRequestDto {
   @IsOptional()
   @IsUUID()
   operatingSiteId?: string | null;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Sede Organization a resolver a una sede operativa WFM efectiva',
+  })
+  @IsOptional()
+  @IsUUID()
+  organizationSiteId?: string | null;
 
   @ApiPropertyOptional({ example: '2026-06-01T12:00:00Z' })
   @IsOptional()

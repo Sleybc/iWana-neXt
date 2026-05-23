@@ -8,6 +8,7 @@ import { z } from 'zod';
 export const UpdateVisitRequestContextSchema = z.object({
   description: z.string().optional().nullable(),
   operatingSiteId: z.string().uuid().optional().nullable(),
+  organizationSiteId: z.string().uuid().optional().nullable(),
   requestedWindowStartAt: z.string().datetime({ offset: true }).optional().nullable(),
   requestedWindowEndAt: z.string().datetime({ offset: true }).optional().nullable(),
   slaDueAt: z.string().datetime({ offset: true }).optional().nullable(),
@@ -40,6 +41,14 @@ export class UpdateVisitRequestContextDto {
   @IsOptional()
   @IsUUID()
   operatingSiteId?: string | null;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Sede Organization a resolver a una sede operativa WFM efectiva',
+  })
+  @IsOptional()
+  @IsUUID()
+  organizationSiteId?: string | null;
 
   @ApiPropertyOptional({
     example: '2026-06-01T09:00:00Z',

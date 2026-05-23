@@ -81,6 +81,28 @@ async function setupCommercialMocks(page: import('@playwright/test').Page) {
     const url = new URL(requestUrl);
     const pathname = url.pathname;
 
+    if (pathname.endsWith('/tenants/public-branding') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            displayName: 'ISP Demo',
+            showTenantName: true,
+            logoLightUrl: null,
+            logoDarkUrl: null,
+            sealLightUrl: null,
+            sealDarkUrl: null,
+            faviconLightUrl: null,
+            faviconDarkUrl: null,
+            loginBackgroundLightUrl: null,
+            loginBackgroundDarkUrl: null,
+          },
+        }),
+      });
+      return;
+    }
+
     if (pathname.endsWith('/auth/me') && method === 'GET') {
       await route.fulfill({
         status: 200,
@@ -199,6 +221,34 @@ async function setupCommercialMocks(page: import('@playwright/test').Page) {
 
     if (pathname.endsWith('/commercial/catalog') && method === 'GET') {
       const type = url.searchParams.get('type');
+
+      if (type === 'PLAN') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: [
+              {
+                id: 'plan-fibra-500',
+                type: 'PLAN',
+                name: 'Plan Fibra 500',
+                description: 'Plan residencial de referencia',
+                taxClassificationId: null,
+                retentionApplicable: false,
+                isActive: true,
+                technology: 'FTTH',
+                installationRule: 'ON_DEMAND',
+                downloadSpeedMbps: 500,
+                uploadSpeedMbps: 500,
+                currentPrice: '109900.00',
+                installationFee: '0.00',
+              },
+            ],
+            meta: { total: 1 },
+          }),
+        });
+        return;
+      }
 
       if (type === 'PRODUCT') {
         await route.fulfill({

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '@iwana/db';
+import { AccessControlModule } from '../access-control/access-control.module';
 import { AuditModule } from '../audit/audit.module';
 import { SearchQueueModule } from '../search/search-queue.module';
 import { TenantModule } from '../tenant/tenant.module';
@@ -22,6 +23,7 @@ import { UsersService } from './users.service';
   imports: [
     ConfigModule,
     TypeOrmModule.forFeature([User]),
+    AccessControlModule,
     AuditModule,
     TenantModule,
     SearchQueueModule,

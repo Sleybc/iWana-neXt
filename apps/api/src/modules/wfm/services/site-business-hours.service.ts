@@ -4,7 +4,7 @@ import { DataSource, IsNull } from 'typeorm';
 import {
   runInTenantSchema,
   TenantContext,
-  WfmOperatingSite,
+  OrganizationSite,
   WfmSiteBusinessHours,
 } from '@iwana/db';
 import { BusinessHoursWeekday } from '@iwana/shared';
@@ -33,31 +33,19 @@ type NormalizedBusinessHoursDay = {
 export class SiteBusinessHoursService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
-  async getWeek(siteId: string, actor: JwtPayload): Promise<NormalizedBusinessHoursDay[]> {
+  async getWeek(
+    organizationSiteId: string,
+    actor: JwtPayload,
+  ): Promise<NormalizedBusinessHoursDay[]> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      await this.assertSiteExists(qr.manager, siteId, tenantId);
-
-      const rows = await qr.manager.find(WfmSiteBusinessHours, {
-        where: { tenantId, siteId },
-        order: { weekday: 'ASC' },
-      });
-
-      return ORDERED_WEEKDAYS.map((weekday) => {
-        const row = rows.find((item) => item.weekday === weekday);
-        return {
-          weekday,
-          startTime: row?.startTime ?? null,
-          endTime: row?.endTime ?? null,
-          isEnabled: row?.isEnabled ?? false,
-        };
-      });
+      return this.getWeekForSite(qr.manager, tenantId, organizationSiteId);
     });
   }
 
   async replaceWeek(
-    siteId: string,
+    organizationSiteId: string,
     dto: UpdateSiteBusinessHoursDto,
     actor: JwtPayload,
   ): Promise<NormalizedBusinessHoursDay[]> {
@@ -65,23 +53,55 @@ export class SiteBusinessHoursService {
     const normalizedDays = this.normalizeWeek(dto.days);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      await this.assertSiteExists(qr.manager, siteId, tenantId);
-      await qr.manager.delete(WfmSiteBusinessHours, { tenantId, siteId });
-
-      const rows = normalizedDays.map((day) =>
-        qr.manager.create(WfmSiteBusinessHours, {
-          tenantId,
-          siteId,
-          weekday: day.weekday,
-          startTime: day.startTime,
-          endTime: day.endTime,
-          isEnabled: day.isEnabled,
-        }),
-      );
-
-      await qr.manager.save(WfmSiteBusinessHours, rows);
-      return normalizedDays;
+      return this.replaceWeekForSite(qr.manager, tenantId, organizationSiteId, normalizedDays);
     });
+  }
+
+  private async getWeekForSite(
+    manager: DataSource['manager'],
+    tenantId: string,
+    organizationSiteId: string,
+  ): Promise<NormalizedBusinessHoursDay[]> {
+    await this.assertSiteExists(manager, organizationSiteId, tenantId);
+
+    const rows = await manager.find(WfmSiteBusinessHours, {
+      where: { tenantId, organizationSiteId },
+      order: { weekday: 'ASC' },
+    });
+
+    return ORDERED_WEEKDAYS.map((weekday) => {
+      const row = rows.find((item) => item.weekday === weekday);
+      return {
+        weekday,
+        startTime: row?.startTime ?? null,
+        endTime: row?.endTime ?? null,
+        isEnabled: row?.isEnabled ?? false,
+      };
+    });
+  }
+
+  private async replaceWeekForSite(
+    manager: DataSource['manager'],
+    tenantId: string,
+    organizationSiteId: string,
+    normalizedDays: NormalizedBusinessHoursDay[],
+  ): Promise<NormalizedBusinessHoursDay[]> {
+    await this.assertSiteExists(manager, organizationSiteId, tenantId);
+    await manager.delete(WfmSiteBusinessHours, { tenantId, organizationSiteId });
+
+    const rows = normalizedDays.map((day) =>
+      manager.create(WfmSiteBusinessHours, {
+        tenantId,
+        organizationSiteId,
+        weekday: day.weekday,
+        startTime: day.startTime,
+        endTime: day.endTime,
+        isEnabled: day.isEnabled,
+      }),
+    );
+
+    await manager.save(WfmSiteBusinessHours, rows);
+    return normalizedDays;
   }
 
   private normalizeWeek(days: BusinessHoursDayDto[]): NormalizedBusinessHoursDay[] {
@@ -127,13 +147,17 @@ export class SiteBusinessHoursService {
     }
   }
 
-  private async assertSiteExists(manager: DataSource['manager'], siteId: string, tenantId: string) {
-    const site = await manager.findOne(WfmOperatingSite, {
-      where: { id: siteId, tenantId, deletedAt: IsNull() },
+  private async assertSiteExists(
+    manager: DataSource['manager'],
+    organizationSiteId: string,
+    tenantId: string,
+  ) {
+    const site = await manager.findOne(OrganizationSite, {
+      where: { id: organizationSiteId, tenantId, deletedAt: IsNull() },
     });
 
     if (!site) {
-      throw new NotFoundException('La sede operativa no existe para este tenant.');
+      throw new NotFoundException('La sede organizacional no existe para este tenant.');
     }
   }
 }

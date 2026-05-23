@@ -213,6 +213,28 @@ async function setupCrmMocks(page: import('@playwright/test').Page) {
     const method = route.request().method();
     const pathname = new URL(url).pathname;
 
+    if (url.includes('/tenants/public-branding') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            displayName: 'ISP Demo',
+            showTenantName: true,
+            logoLightUrl: null,
+            logoDarkUrl: null,
+            sealLightUrl: null,
+            sealDarkUrl: null,
+            faviconLightUrl: null,
+            faviconDarkUrl: null,
+            loginBackgroundLightUrl: null,
+            loginBackgroundDarkUrl: null,
+          },
+        }),
+      });
+      return;
+    }
+
     if (url.includes('/auth/me') && method === 'GET') {
       await route.fulfill({
         status: 200,
@@ -261,6 +283,15 @@ async function setupCrmMocks(page: import('@playwright/test').Page) {
             sealDarkUrl: null,
           },
         }),
+      });
+      return;
+    }
+
+    if (url.includes('/audit-logs') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [] }),
       });
       return;
     }
@@ -316,6 +347,33 @@ async function setupCrmMocks(page: import('@playwright/test').Page) {
                 category: 'CPE',
                 isLoan: true,
                 requiresInventory: true,
+                createdAt: '2026-03-26T10:00:00.000Z',
+                updatedAt: '2026-03-26T10:00:00.000Z',
+              },
+            ],
+            meta: { total: 1 },
+          }),
+        });
+        return;
+      }
+
+      if (type === 'SERVICE') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: [
+              {
+                id: 'srv-ip-publica',
+                type: 'SERVICE',
+                name: 'IP pública fija',
+                description: 'Servicio complementario',
+                taxClassificationId: null,
+                retentionApplicable: false,
+                isActive: true,
+                chargeType: 'RECURRING',
+                currentPrice: '25000.00',
+                installationFee: '0.00',
                 createdAt: '2026-03-26T10:00:00.000Z',
                 updatedAt: '2026-03-26T10:00:00.000Z',
               },

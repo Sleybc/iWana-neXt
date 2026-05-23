@@ -24,11 +24,23 @@ export { WorkOrderTask } from './work-order-task.entity';
 export { ScheduleRescheduleLog } from './schedule-reschedule-log.entity';
 export { TechnicianAvailability } from './technician-availability.entity';
 export { VisitRequest } from './visit-request.entity';
-export { WfmOperatingSite } from './wfm-operating-site.entity';
 export { WfmCompanyBusinessHours } from './wfm-company-business-hours.entity';
 export { WfmSiteBusinessHours } from './wfm-site-business-hours.entity';
-export { WfmTechnicianBusinessOverride } from './wfm-technician-business-override.entity';
 export { WfmHolidayBlackout } from './wfm-holiday-blackout.entity';
+export { WfmOperationalEventuality } from './wfm-operational-eventuality.entity';
+
+// MOD00 — Configuracion / Organizacion y control de acceso
+export { OrganizationSite } from './organization-site.entity';
+export { OrganizationSiteCapabilityEntity } from './organization-site-capability.entity';
+export { OrganizationSiteBusinessHour } from './organization-site-business-hour.entity';
+export { OrganizationCompanyBusinessHours } from './organization-company-business-hours.entity';
+export { OrganizationBusinessHoursException } from './organization-business-hours-exception.entity';
+export { OrganizationSiteAssignment } from './organization-site-assignment.entity';
+export { OrganizationSiteResponsibilityEntity } from './organization-site-responsibility.entity';
+export { AccessPermissionCatalog } from './access-permission-catalog.entity';
+export { AccessProfile } from './access-profile.entity';
+export { AccessProfilePermission } from './access-profile-permission.entity';
+export { UserAccessProfile } from './user-access-profile.entity';
 
 // MOD10 — Service Assurance
 export { SupportTicket } from './support-ticket.entity';

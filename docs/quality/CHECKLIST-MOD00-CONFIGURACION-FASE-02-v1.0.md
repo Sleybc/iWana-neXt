@@ -12,35 +12,35 @@
 
 ## 1. Stop/go inicial
 
-- [ ] Fase 01 cerrada o disponible en la rama.
-- [ ] ADR-040 y ADR-037 revisados.
-- [ ] No se planea eliminar `WfmOperatingSite`.
-- [ ] Estrategia de mapping definida antes de migrar datos.
+- [x] Fase 01 cerrada o disponible en la rama.
+- [x] ADR-040 y ADR-037 revisados.
+- [x] No se planea eliminar `WfmOperatingSite`.
+- [x] Estrategia de mapping definida antes de migrar datos.
 
 ## 2. Backend
 
-- [ ] WFM consume `OrganizationSiteReadPort`.
-- [ ] No hay repositorios Organization importados directamente en WFM.
-- [ ] `operatingSiteId` legacy sigue funcionando.
-- [ ] `organizationSiteId` se acepta solo donde esta aprobado.
-- [ ] Tests de compatibilidad WFM pasan.
+- [x] WFM consume `OrganizationSiteReadPort`.
+- [x] No hay repositorios Organization importados directamente en WFM.
+- [x] `operatingSiteId` legacy sigue funcionando.
+- [x] `organizationSiteId` se acepta solo donde esta aprobado.
+- [x] Tests de compatibilidad WFM pasan.
 
 ## 3. Database
 
-- [ ] Mapping reversible creado o alternativa documentada.
-- [ ] `down` migration no pierde referencias historicas.
-- [ ] Backfill documenta registros omitidos.
-- [ ] `pnpm --filter @iwana/db typecheck` validado.
+- [x] Mapping reversible creado o alternativa documentada.
+- [x] `down` migration no pierde referencias historicas.
+- [x] Backfill documenta registros omitidos.
+- [x] `pnpm --filter @iwana/db typecheck` validado.
 
 ## 4. Frontend
 
-- [ ] `/dashboard/settings/field-operations` existe.
-- [ ] Navegacion muestra `Operacion de campo`.
-- [ ] UI conserva settings WFM existentes.
-- [ ] No renderiza enums crudos.
+- [x] `/dashboard/settings/field-operations` existe.
+- [x] Navegacion muestra `Operacion de campo`.
+- [x] UI conserva settings WFM existentes.
+- [x] No renderiza enums crudos.
 
 ## 5. E2E y cierre
 
-- [ ] Playwright cubre Operacion de campo.
-- [ ] Informe MOD00 actualizado.
-- [ ] Bloqueos historicos documentados si existen.
+- [x] Playwright cubre Operacion de campo.
+- [x] Informe MOD00 actualizado.
+- [x] Bloqueos historicos documentados si existen.

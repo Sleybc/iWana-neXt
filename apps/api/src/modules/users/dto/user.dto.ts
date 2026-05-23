@@ -9,7 +9,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, ApiSchema } from '@nestjs/swagger';
 import { DocumentType, UserRole, UserStatus } from '@iwana/shared';
 
 /**
@@ -205,6 +205,7 @@ export class AdminChangeUserLoginEmailDto {
   syncCompanyContactEmail?: boolean;
 }
 
+@ApiSchema({ name: 'UsersResetPasswordDto' })
 export class ResetPasswordDto {
   @ApiPropertyOptional({
     description: 'Password nuevo. Si se omite, el backend genera uno temporal.',

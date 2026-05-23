@@ -25,7 +25,8 @@ function resolvePortalApiProxyBase(): string {
 const nextConfig: NextConfig = {
   output: 'standalone',
   transpilePackages: ['@iwana/ui', '@iwana/shared'],
-  cacheComponents: true,
+  cacheComponents: process.env.IWANA_DISABLE_CACHE_COMPONENTS !== '1',
+  allowedDevOrigins: ['127.0.0.1'],
   turbopack: {},
   async rewrites() {
     return [

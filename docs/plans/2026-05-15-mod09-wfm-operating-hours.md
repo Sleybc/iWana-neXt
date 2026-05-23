@@ -1,5 +1,7 @@
 # MOD09 WFM operating hours Implementation Plan
 
+> **Actualizacion 2026-05-22:** Las tareas relacionadas con `technician-business-overrides`, `WfmTechnicianBusinessOverride`, `TECHNICIAN_OVERRIDE` u overrides por tecnico quedan reemplazadas por `docs/adrs/ADR-041-Retiro-Excepciones-Tecnico-WFM.md` y `docs/plans/2026-05-22-retiro-excepciones-tecnico-wfm.md`. No ejecutar esas secciones historicas como trabajo vigente.
+
 **Version:** 1.0
 **Estado:** Aprobado para ejecucion
 **Fecha:** 2026-05-15
@@ -828,11 +830,11 @@ export function WfmOperatingHoursManager({ canEdit }: { canEdit: boolean }) {
     <section className="space-y-6">
       <SettingsSectionPanel
         title="Horarios WFM"
-        description="Configura sedes, semana base, overrides por técnico y festivos."
+        description="Configura sedes, semana base y festivos. Overrides por tecnico retirados por ADR-041."
       >
         {/* tabla/manager de sedes */}
         {/* grid semanal empresa */}
-        {/* overrides por técnico */}
+        {/* overrides por tecnico retirados por ADR-041 */}
         {/* festivos */}
       </SettingsSectionPanel>
     </section>
@@ -990,8 +992,8 @@ Expected: suites verdes en shared, db, api y portal.
 
 - Se reemplazo el hardcode horario por tablas tenant-aware.
 - Se agrego resolvedor unico de ventana efectiva.
-- Portal ahora administra sedes, horario base, horarios por sede, overrides y festivos.
-- Recomendaciones y persistencia comparten la misma precedencia: tecnico > festivo > sede > empresa.
+- Portal ahora administra sedes, horario base, horarios por sede y festivos; overrides por tecnico retirados por ADR-041.
+- Recomendaciones y persistencia comparten la precedencia vigente desde ADR-041: festivo > sede > empresa.
 ```
 
 - [ ] **Step 3: Registrar evidencia de calidad si la fase la exige**

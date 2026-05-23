@@ -2,6 +2,9 @@
 
 import {
   AcquisitionChannel,
+  AccessPermissionAvailability,
+  AccessPermissionCatalogVersion,
+  AccessPermissionKey,
   BusinessHoursWeekday,
   ConsentChannel,
   AttributionRole,
@@ -17,6 +20,12 @@ import {
   PersonType,
   PromotionScope,
   ProductCategory,
+  OrganizationSiteAssignmentType,
+  OrganizationSiteCapability,
+  OrganizationSiteResponsibility,
+  OrganizationSiteType,
+  SettingsSectionKey,
+  SettingsSectionStatus,
   ScheduleEventStatus,
   SlaBreachStatus,
   SubscriberStatus,
@@ -43,6 +52,7 @@ import {
   WorkOrderPriority,
   WorkOrderSourceContext,
   WorkOrderStatus,
+  UserRole,
 } from '@iwana/shared';
 import { persistTenantSlug, resolveTenantSlug } from './tenant-resolution';
 
@@ -2194,7 +2204,6 @@ export interface WfmScheduleEvent {
   id: string;
   tenantId: string;
   workOrderId: string | null;
-  operatingSiteId: string | null;
   type: WfmWorkType;
   status: ScheduleEventStatus;
   title: string;
@@ -2210,6 +2219,7 @@ export interface WfmScheduleEvent {
   longitude: string | null;
   expedienteId: string | null;
   subscriberId: string | null;
+  organizationSiteId: string | null;
   ticketId: string | null;
   contractId: string | null;
   createdBy: string;
@@ -2235,7 +2245,6 @@ export interface CreateWfmScheduleEventDto {
   scheduledStartAt: string;
   scheduledEndAt: string;
   assignedUserId: string;
-  operatingSiteId?: string | null | undefined;
   address?: string | null | undefined;
   municipality?: string | null | undefined;
   sector?: string | null | undefined;
@@ -2254,7 +2263,6 @@ export interface UpdateWfmScheduleEventDto {
   scheduledStartAt?: string | undefined;
   scheduledEndAt?: string | undefined;
   assignedUserId?: string | undefined;
-  operatingSiteId?: string | null | undefined;
   address?: string | null | undefined;
   municipality?: string | null | undefined;
   sector?: string | null | undefined;
@@ -2294,7 +2302,6 @@ export interface WfmScheduleRecommendationRequestDto {
   windowStartAt: string;
   windowEndAt: string;
   candidateUserIds: string[];
-  operatingSiteId?: string | null | undefined;
   municipality?: string | null | undefined;
   sector?: string | null | undefined;
   latitude?: number | null | undefined;
@@ -2343,7 +2350,7 @@ export interface WfmVisitRequest {
   sector: string | null;
   latitude: number | null;
   longitude: number | null;
-  operatingSiteId: string | null;
+  organizationSiteId?: string | null;
   expedienteId: string | null;
   subscriberId: string | null;
   ticketId: string | null;
@@ -2418,7 +2425,7 @@ export interface CreateWfmVisitRequestDto {
   sector?: string | null | undefined;
   latitude?: number | null | undefined;
   longitude?: number | null | undefined;
-  operatingSiteId?: string | null | undefined;
+  organizationSiteId?: string | null | undefined;
   expedienteId?: string | null | undefined;
   subscriberId?: string | null | undefined;
   ticketId?: string | null | undefined;
@@ -2435,7 +2442,7 @@ export interface UpdateWfmVisitRequestContextDto {
   sector?: string | null | undefined;
   latitude?: number | null | undefined;
   longitude?: number | null | undefined;
-  operatingSiteId?: string | null | undefined;
+  organizationSiteId?: string | null | undefined;
   expedienteId?: string | null | undefined;
   subscriberId?: string | null | undefined;
   ticketId?: string | null | undefined;
@@ -2448,7 +2455,7 @@ export interface RecommendWfmVisitRequestDto {
   windowStartAt?: string | undefined;
   windowEndAt?: string | undefined;
   searchHorizonDays?: number | undefined;
-  operatingSiteId?: string | null | undefined;
+  organizationSiteId?: string | null | undefined;
   municipality?: string | null | undefined;
   sector?: string | null | undefined;
   latitude?: number | null | undefined;
@@ -2460,7 +2467,7 @@ export interface ScheduleWfmVisitRequestDto {
   assignedUserId: string;
   scheduledStartAt: string;
   scheduledEndAt: string;
-  operatingSiteId?: string | null | undefined;
+  organizationSiteId?: string | null | undefined;
   createWorkOrder?: boolean | undefined;
   workOrderSummary?: string | undefined;
   workOrderNotes?: string | null | undefined;
@@ -2473,85 +2480,10 @@ export interface WfmBusinessHoursDay {
   isEnabled: boolean;
 }
 
-export interface WfmOperatingSite {
-  id: string;
-  tenantId: string;
-  name: string;
-  code: string;
-  address: string | null;
-  municipality: string | null;
-  sector: string | null;
-  latitude: string | null;
-  longitude: string | null;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: string | null;
-}
-
-export interface CreateWfmOperatingSiteDto {
-  name: string;
-  code: string;
-  address?: string | null | undefined;
-  municipality?: string | null | undefined;
-  sector?: string | null | undefined;
-  latitude?: number | null | undefined;
-  longitude?: number | null | undefined;
-  isActive?: boolean | undefined;
-}
-
-export interface UpdateWfmOperatingSiteDto {
-  name?: string | undefined;
-  code?: string | undefined;
-  address?: string | null | undefined;
-  municipality?: string | null | undefined;
-  sector?: string | null | undefined;
-  latitude?: number | null | undefined;
-  longitude?: number | null | undefined;
-  isActive?: boolean | undefined;
-}
-
-export interface WfmTechnicianBusinessOverride {
-  id: string;
-  tenantId: string;
-  userId: string;
-  siteId: string | null;
-  overrideDate: string | null;
-  weekday: BusinessHoursWeekday | null;
-  startTime: string | null;
-  endTime: string | null;
-  isEnabled: boolean;
-  reason: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CreateWfmTechnicianBusinessOverrideDto {
-  userId: string;
-  siteId?: string | null | undefined;
-  overrideDate?: string | null | undefined;
-  weekday?: BusinessHoursWeekday | null | undefined;
-  startTime?: string | null | undefined;
-  endTime?: string | null | undefined;
-  isEnabled?: boolean | undefined;
-  reason?: string | null | undefined;
-}
-
-export interface UpdateWfmTechnicianBusinessOverrideDto {
-  userId?: string | undefined;
-  siteId?: string | null | undefined;
-  overrideDate?: string | null | undefined;
-  weekday?: BusinessHoursWeekday | null | undefined;
-  startTime?: string | null | undefined;
-  endTime?: string | null | undefined;
-  isEnabled?: boolean | undefined;
-  reason?: string | null | undefined;
-}
-
 export interface WfmHolidayBlackout {
   id: string;
   tenantId: string;
-  siteId: string | null;
+  organizationSiteId: string | null;
   blackoutDate: string;
   isRecurring: boolean;
   name: string;
@@ -2562,7 +2494,7 @@ export interface WfmHolidayBlackout {
 }
 
 export interface CreateWfmHolidayBlackoutDto {
-  siteId?: string | null | undefined;
+  organizationSiteId?: string | null | undefined;
   blackoutDate: string;
   isRecurring?: boolean | undefined;
   name: string;
@@ -2571,7 +2503,7 @@ export interface CreateWfmHolidayBlackoutDto {
 }
 
 export interface UpdateWfmHolidayBlackoutDto {
-  siteId?: string | null | undefined;
+  organizationSiteId?: string | null | undefined;
   blackoutDate?: string | undefined;
   isRecurring?: boolean | undefined;
   name?: string | undefined;
@@ -2579,8 +2511,48 @@ export interface UpdateWfmHolidayBlackoutDto {
   isEnabled?: boolean | undefined;
 }
 
+export type OperationalEventualityType =
+  | 'extra_availability'
+  | 'operational_block'
+  | 'early_entry'
+  | 'extended_shift'
+  | 'emergency_response';
+
+export type OperationalEventualityStatus = 'pending' | 'confirmed' | 'cancelled';
+
+export interface OperationalEventuality {
+  id: string;
+  tenantId: string;
+  userId: string;
+  organizationSiteId: string | null;
+  type: OperationalEventualityType;
+  status: OperationalEventualityStatus;
+  startsAt: string;
+  endsAt: string;
+  reason: string | null;
+  origin: string | null;
+  requiresHrReview: boolean;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateOperationalEventualityDto {
+  userId: string;
+  organizationSiteId?: string | null;
+  type: OperationalEventualityType;
+  startsAt: string;
+  endsAt: string;
+  reason?: string | null;
+  origin?: string | null;
+  requiresHrReview?: boolean;
+}
+
+export interface UpdateOperationalEventualityStatusDto {
+  status: OperationalEventualityStatus;
+}
+
 export type WfmOperatingWindowSource =
-  | 'TECHNICIAN_OVERRIDE'
   | 'HOLIDAY_BLACKOUT'
   | 'SITE_HOURS'
   | 'COMPANY_HOURS'
@@ -2596,7 +2568,7 @@ export interface WfmOperatingWindowResult {
 
 export interface ResolveWfmOperatingWindowDto {
   dateLocal: string;
-  siteId?: string | null | undefined;
+  organizationSiteId?: string | null | undefined;
   technicianId?: string | null | undefined;
 }
 
@@ -2709,26 +2681,9 @@ export const wfmApi = {
       ),
   },
 
-  operatingSites: {
+  dispatchSites: {
     list: (tenantSlug?: string) =>
-      request<WfmOperatingSite[]>('/wfm/operating-sites', { returnFullResponse: true }, tenantSlug),
-
-    create: (dto: CreateWfmOperatingSiteDto, tenantSlug?: string) =>
-      request<WfmOperatingSite>(
-        '/wfm/operating-sites',
-        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
-        tenantSlug,
-      ),
-
-    update: (id: string, dto: UpdateWfmOperatingSiteDto, tenantSlug?: string) =>
-      request<WfmOperatingSite>(
-        `/wfm/operating-sites/${id}`,
-        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
-        tenantSlug,
-      ),
-
-    remove: (id: string, tenantSlug?: string) =>
-      request<void>(`/wfm/operating-sites/${id}`, { method: 'DELETE' }, tenantSlug),
+      request<WfmDispatchSite[]>('/wfm/dispatch-sites', { returnFullResponse: true }, tenantSlug),
 
     getBusinessHours: (siteId: string, tenantSlug?: string) =>
       request<WfmBusinessHoursDay[]>(
@@ -2763,32 +2718,6 @@ export const wfmApi = {
         { method: 'PUT', body: JSON.stringify(dto), returnFullResponse: true },
         tenantSlug,
       ),
-  },
-
-  technicianBusinessOverrides: {
-    list: (tenantSlug?: string) =>
-      request<WfmTechnicianBusinessOverride[]>(
-        '/wfm/technician-business-overrides',
-        { returnFullResponse: true },
-        tenantSlug,
-      ),
-
-    create: (dto: CreateWfmTechnicianBusinessOverrideDto, tenantSlug?: string) =>
-      request<WfmTechnicianBusinessOverride>(
-        '/wfm/technician-business-overrides',
-        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
-        tenantSlug,
-      ),
-
-    update: (id: string, dto: UpdateWfmTechnicianBusinessOverrideDto, tenantSlug?: string) =>
-      request<WfmTechnicianBusinessOverride>(
-        `/wfm/technician-business-overrides/${id}`,
-        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
-        tenantSlug,
-      ),
-
-    remove: (id: string, tenantSlug?: string) =>
-      request<void>(`/wfm/technician-business-overrides/${id}`, { method: 'DELETE' }, tenantSlug),
   },
 
   holidayBlackouts: {
@@ -3012,6 +2941,42 @@ export const wfmApi = {
       request<WfmTechnicianAvailability>(
         '/wfm/technicians/availability',
         { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+  },
+
+  operationalEventualities: {
+    list: (filters?: { userId?: string; organizationSiteId?: string }, tenantSlug?: string) => {
+      const searchParams = new URLSearchParams();
+      if (filters?.userId) searchParams.set('userId', filters.userId);
+      if (filters?.organizationSiteId)
+        searchParams.set('organizationSiteId', filters.organizationSiteId);
+      const query = searchParams.toString();
+      return request<OperationalEventuality[]>(
+        `/wfm/operational-eventualities${query ? `?${query}` : ''}`,
+        { returnFullResponse: true },
+        tenantSlug,
+      );
+    },
+
+    create: (dto: CreateOperationalEventualityDto, tenantSlug?: string) =>
+      request<OperationalEventuality>(
+        '/wfm/operational-eventualities',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    updateStatus: (id: string, dto: UpdateOperationalEventualityStatusDto, tenantSlug?: string) =>
+      request<OperationalEventuality>(
+        `/wfm/operational-eventualities/${id}/status`,
+        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
+
+    delete: (id: string, tenantSlug?: string) =>
+      request<void>(
+        `/wfm/operational-eventualities/${id}`,
+        { method: 'DELETE', returnFullResponse: true },
         tenantSlug,
       ),
   },
@@ -3388,6 +3353,177 @@ export interface CreateInternalUserDto {
   mfaRequired?: boolean;
 }
 
+export interface OrganizationSiteSummary {
+  id: string;
+  name: string;
+  code: string;
+  capabilities: OrganizationSiteCapability[];
+  isActive: boolean;
+}
+
+export interface WfmDispatchSite extends OrganizationSiteSummary {}
+
+export interface OrganizationSiteBusinessHourSnapshot {
+  weekday: BusinessHoursWeekday;
+  isOpen: boolean;
+  opensAt: string | null;
+  closesAt: string | null;
+}
+
+export interface OrganizationSiteAssignmentSnapshot {
+  userId: string;
+  assignmentType: OrganizationSiteAssignmentType;
+  validFrom: string;
+  validTo: string | null;
+  isActive: boolean;
+}
+
+export interface OrganizationSiteResponsibilitySnapshot {
+  userId: string;
+  responsibility: OrganizationSiteResponsibility;
+  validFrom: string;
+  validTo: string | null;
+}
+
+export interface OrganizationCompanyBusinessHoursDay {
+  weekday: BusinessHoursWeekday;
+  isOpen: boolean;
+  opensAt: string | null;
+  closesAt: string | null;
+}
+
+export interface OrganizationBusinessHoursExceptionSnapshot {
+  id: string;
+  organizationSiteId: string | null;
+  exceptionDate: string;
+  isRecurring: boolean;
+  isOpen: boolean;
+  opensAt: string | null;
+  closesAt: string | null;
+  name: string;
+  description: string | null;
+  createdAt: string;
+}
+
+export interface OrganizationSiteDetail extends OrganizationSiteSummary {
+  siteType: OrganizationSiteType;
+  address: string | null;
+  municipality: string | null;
+  department: string | null;
+  country: string;
+  latitude: number | null;
+  longitude: number | null;
+  isPrimary: boolean;
+  businessHoursMode: 'BASE' | 'OVERRIDE';
+  businessHours: OrganizationSiteBusinessHourSnapshot[];
+  businessHoursResolved: OrganizationSiteBusinessHourSnapshot[];
+  assignments: OrganizationSiteAssignmentSnapshot[];
+  responsibilities: OrganizationSiteResponsibilitySnapshot[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateOrganizationSiteDto {
+  name: string;
+  code: string;
+  siteType: OrganizationSiteType;
+  capabilities?: OrganizationSiteCapability[];
+  address?: string | null;
+  municipality?: string | null;
+  department?: string | null;
+  country?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  isPrimary?: boolean;
+  isActive?: boolean;
+}
+
+export interface UpdateOrganizationSiteDto extends Partial<CreateOrganizationSiteDto> {}
+
+export interface ReplaceSiteBusinessHoursDto {
+  businessHours: OrganizationSiteBusinessHourSnapshot[];
+}
+
+export interface ReplaceSiteAssignmentsDto {
+  assignments: OrganizationSiteAssignmentSnapshot[];
+}
+
+export interface ReplaceSiteResponsibilitiesDto {
+  responsibilities: OrganizationSiteResponsibilitySnapshot[];
+}
+
+export interface AccessPermissionCatalogEntry {
+  id: string;
+  tenantId: string;
+  permissionKey: AccessPermissionKey;
+  moduleKey: string;
+  action: string;
+  description: string;
+  catalogVersion: AccessPermissionCatalogVersion;
+  availability: AccessPermissionAvailability;
+  isSystem: boolean;
+  isActive: boolean;
+}
+
+export interface AccessPermissionsCatalog {
+  version: AccessPermissionCatalogVersion;
+  permissions: AccessPermissionCatalogEntry[];
+  compatibilityMatrix: Record<UserRole, AccessPermissionKey[]>;
+}
+
+export interface AccessProfileView {
+  id: string;
+  name: string;
+  description: string | null;
+  baseRoleConstraint: UserRole | null;
+  scopeSiteId: string | null;
+  isSystem: boolean;
+  isActive: boolean;
+  permissions: AccessPermissionKey[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAccessProfileDto {
+  name: string;
+  description?: string | null;
+  baseRoleConstraint: UserRole;
+  scopeSiteId?: string | null;
+  permissionKeys?: AccessPermissionKey[];
+}
+
+export interface UpdateAccessProfileDto extends Partial<CreateAccessProfileDto> {
+  isActive?: boolean;
+}
+
+export interface ReplaceProfilePermissionsDto {
+  permissionKeys: AccessPermissionKey[];
+}
+
+export interface ReplaceUserProfilesDto {
+  profileIds: string[];
+}
+
+export interface UserProfilesAssignment {
+  userId: string;
+  role: UserRole;
+  profileIds: string[];
+}
+
+export interface EffectivePermissionSource {
+  profileId: string;
+  profileName: string;
+  permissions: AccessPermissionKey[];
+}
+
+export interface EffectivePermissionsSummary {
+  userId: string;
+  role: UserRole;
+  effectivePermissions: AccessPermissionKey[];
+  recoveryPermissions: AccessPermissionKey[];
+  profileSources: EffectivePermissionSource[];
+}
+
 export interface UpdateInternalUserDto {
   status?: string | undefined;
   role?: string | undefined;
@@ -3400,6 +3536,198 @@ export interface UpdateInternalUserDto {
   avatarUrl?: string | undefined;
   mfaRequired?: boolean | undefined;
 }
+
+export interface SettingsSection {
+  key: SettingsSectionKey;
+  label: string;
+  description: string;
+  ownerModule: string;
+  status: SettingsSectionStatus;
+  route: string | null;
+  requiredPermissions: AccessPermissionKey[];
+}
+
+export const configurationApi = {
+  settingsSections: {
+    list: (tenantSlug?: string) =>
+      request<SettingsSection[]>('/configuration/settings-sections', undefined, tenantSlug),
+  },
+};
+
+export const organizationApi = {
+  list: (tenantSlug?: string) =>
+    request<OrganizationSiteSummary[]>('/organization/sites', undefined, tenantSlug),
+
+  get: (id: string, tenantSlug?: string) =>
+    request<OrganizationSiteDetail>(`/organization/sites/${id}`, undefined, tenantSlug),
+
+  delete: (id: string, tenantSlug?: string) =>
+    request<void>(`/organization/sites/${id}`, { method: 'DELETE' }, tenantSlug),
+
+  create: (dto: CreateOrganizationSiteDto, tenantSlug?: string) =>
+    request<OrganizationSiteDetail>(
+      '/organization/sites',
+      { method: 'POST', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  update: (id: string, dto: UpdateOrganizationSiteDto, tenantSlug?: string) =>
+    request<OrganizationSiteDetail>(
+      `/organization/sites/${id}`,
+      { method: 'PATCH', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  replaceBusinessHours: (id: string, dto: ReplaceSiteBusinessHoursDto, tenantSlug?: string) =>
+    request<OrganizationSiteDetail>(
+      `/organization/sites/${id}/business-hours`,
+      { method: 'PUT', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  replaceAssignments: (id: string, dto: ReplaceSiteAssignmentsDto, tenantSlug?: string) =>
+    request<OrganizationSiteDetail>(
+      `/organization/sites/${id}/assignments`,
+      { method: 'PUT', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  replaceResponsibilities: (id: string, dto: ReplaceSiteResponsibilitiesDto, tenantSlug?: string) =>
+    request<OrganizationSiteDetail>(
+      `/organization/sites/${id}/responsibilities`,
+      { method: 'PUT', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  clearSiteOverride: (siteId: string, tenantSlug?: string) =>
+    request<OrganizationSiteDetail>(
+      `/organization/sites/${siteId}/business-hours`,
+      { method: 'DELETE' },
+      tenantSlug,
+    ),
+
+  getCompanyHours: (tenantSlug?: string) =>
+    request<OrganizationCompanyBusinessHoursDay[]>(
+      '/organization/business-hours/company',
+      undefined,
+      tenantSlug,
+    ),
+
+  replaceCompanyHours: (
+    dto: { businessHours: OrganizationCompanyBusinessHoursDay[] },
+    tenantSlug?: string,
+  ) =>
+    request<OrganizationCompanyBusinessHoursDay[]>(
+      '/organization/business-hours/company',
+      { method: 'PUT', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  getExceptions: (siteId?: string, tenantSlug?: string) =>
+    request<OrganizationBusinessHoursExceptionSnapshot[]>(
+      `/organization/business-hours/exceptions${siteId ? `?siteId=${siteId}` : ''}`,
+      undefined,
+      tenantSlug,
+    ),
+
+  createException: (
+    dto: {
+      exceptionDate: string;
+      name: string;
+      isOpen: boolean;
+      isRecurring?: boolean;
+      opensAt?: string | null;
+      closesAt?: string | null;
+      organizationSiteId?: string | null;
+      description?: string | null;
+    },
+    tenantSlug?: string,
+  ) =>
+    request<OrganizationBusinessHoursExceptionSnapshot>(
+      '/organization/business-hours/exceptions',
+      { method: 'POST', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  updateException: (
+    id: string,
+    dto: {
+      exceptionDate?: string;
+      name?: string;
+      isOpen?: boolean;
+      isRecurring?: boolean;
+      opensAt?: string | null;
+      closesAt?: string | null;
+      description?: string | null;
+    },
+    tenantSlug?: string,
+  ) =>
+    request<OrganizationBusinessHoursExceptionSnapshot>(
+      `/organization/business-hours/exceptions/${id}`,
+      { method: 'PATCH', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  deleteException: (id: string, tenantSlug?: string) =>
+    request<{ message: string }>(
+      `/organization/business-hours/exceptions/${id}`,
+      { method: 'DELETE' },
+      tenantSlug,
+    ),
+};
+
+export const accessControlApi = {
+  listPermissions: (tenantSlug?: string) =>
+    request<AccessPermissionsCatalog>('/access-control/permissions', undefined, tenantSlug),
+
+  listProfiles: (tenantSlug?: string) =>
+    request<AccessProfileView[]>('/access-control/profiles', undefined, tenantSlug),
+
+  createProfile: (dto: CreateAccessProfileDto, tenantSlug?: string) =>
+    request<AccessProfileView>(
+      '/access-control/profiles',
+      { method: 'POST', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  updateProfile: (id: string, dto: UpdateAccessProfileDto, tenantSlug?: string) =>
+    request<AccessProfileView>(
+      `/access-control/profiles/${id}`,
+      { method: 'PATCH', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  deleteProfile: (id: string, tenantSlug?: string) =>
+    request<void>(`/access-control/profiles/${id}`, { method: 'DELETE' }, tenantSlug),
+
+  replaceProfilePermissions: (id: string, dto: ReplaceProfilePermissionsDto, tenantSlug?: string) =>
+    request<AccessProfileView>(
+      `/access-control/profiles/${id}/permissions`,
+      { method: 'PUT', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  replaceUserProfiles: (userId: string, dto: ReplaceUserProfilesDto, tenantSlug?: string) =>
+    request<UserProfilesAssignment>(
+      `/access-control/users/${userId}/profiles`,
+      { method: 'PUT', body: JSON.stringify(dto) },
+      tenantSlug,
+    ),
+
+  getMyEffectivePermissions: (tenantSlug?: string) =>
+    request<EffectivePermissionsSummary>(
+      '/access-control/me/effective-permissions',
+      undefined,
+      tenantSlug,
+    ),
+
+  getEffectivePermissions: (userId: string, tenantSlug?: string) =>
+    request<EffectivePermissionsSummary>(
+      `/access-control/users/${userId}/effective-permissions`,
+      undefined,
+      tenantSlug,
+    ),
+};
 
 export const usersApi = {
   list: (params?: ListUsersParams, tenantSlug?: string) => {

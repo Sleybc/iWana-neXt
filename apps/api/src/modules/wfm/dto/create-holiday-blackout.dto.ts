@@ -7,6 +7,11 @@ export class CreateHolidayBlackoutDto {
   @IsUUID()
   siteId?: string | null;
 
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  organizationSiteId?: string | null;
+
   @ApiProperty({ example: '2026-05-18' })
   @IsDateString({ strict: true })
   blackoutDate: string;

@@ -30,6 +30,7 @@ export const ScheduleRecommendationRequestSchema = z
     windowEndAt: z.string().datetime({ offset: true }),
     candidateUserIds: z.array(z.string().uuid()).min(1).max(100),
     operatingSiteId: z.string().uuid().optional().nullable(),
+    organizationSiteId: z.string().uuid().optional().nullable(),
     municipality: z.string().max(120).optional().nullable(),
     sector: z.string().max(120).optional().nullable(),
     latitude: z.number().min(-90).max(90).optional().nullable(),
@@ -81,6 +82,14 @@ export class ScheduleRecommendationRequestDto {
   @IsOptional()
   @IsUUID()
   operatingSiteId?: string | null;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Sede Organization a resolver a una sede operativa WFM efectiva',
+  })
+  @IsOptional()
+  @IsUUID()
+  organizationSiteId?: string | null;
 
   @ApiPropertyOptional({ maxLength: 120 })
   @IsOptional()

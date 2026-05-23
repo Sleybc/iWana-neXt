@@ -11,6 +11,9 @@ import { dataSourceOptions } from '@iwana/db';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 import { UsersModule } from './modules/users/users.module';
+import { ConfigurationModule } from './modules/configuration/configuration.module';
+import { OrganizationModule } from './modules/organization/organization.module';
+import { AccessControlModule } from './modules/access-control/access-control.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { AuditModule } from './modules/audit/audit.module';
 import { PlatformUsersModule } from './modules/platform-users/platform-users.module';
@@ -235,6 +238,15 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
 
     // Modulo de usuarios: CRUD de usuarios por tenant con RBAC y audit trail
     UsersModule,
+
+    // MOD00 Fase 03: shell federado de settings por metadata, sin ownership de datos cross-module
+    ConfigurationModule,
+
+    // MOD00 Fase 01: sedes organizacionales del tenant
+    OrganizationModule,
+
+    // MOD00 Fase 01: perfiles de acceso y catálogo de permisos tenant-aware
+    AccessControlModule,
 
     // Modulo de perfil del usuario de plataforma (SYSTEM_ADMIN / IWANA_SUPPORT)
     PlatformUsersModule,

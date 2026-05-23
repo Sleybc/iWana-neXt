@@ -12,36 +12,36 @@
 
 ## 1. Stop/go inicial
 
-- [ ] Fase 01 Access Profiles operativa.
-- [ ] ADR-019 y ADR-040 revisados.
-- [ ] `UserRole` se mantiene como base.
-- [ ] No se introduce IAM externo.
+- [x] Fase 01 Access Profiles operativa.
+- [x] ADR-019 y ADR-040 revisados.
+- [x] `UserRole` se mantiene como base.
+- [x] No se introduce IAM externo.
 
 ## 2. Backend
 
-- [ ] `@Permissions()` creado y probado.
-- [ ] `PermissionsGuard` corre despues de JWT/Tenant/Roles.
-- [ ] Servicio de permisos efectivos respeta perfiles activos y vigencias.
-- [ ] Anti-lockout impide remover ultimo admin efectivo.
-- [ ] 403 validado para usuario sin permiso granular.
+- [x] `@Permissions()` creado y probado.
+- [x] `PermissionsGuard` corre despues de JWT/Tenant/Roles.
+- [x] Servicio de permisos efectivos respeta perfiles activos y vigencias.
+- [x] Anti-lockout impide remover ultimo admin efectivo.
+- [x] 403 validado para usuario sin permiso granular.
 
 ## 3. Audit y datos
 
-- [ ] Auditoria registra actor, accion, target, oldValue/newValue.
-- [ ] Auditoria no contiene secretos, tokens ni PII innecesaria.
-- [ ] Migracion nueva solo si hay necesidad real.
-- [ ] Cache omitido o invalidacion documentada.
+- [x] Auditoria registra actor, accion, target, oldValue/newValue.
+- [x] Auditoria no contiene secretos, tokens ni PII innecesaria.
+- [x] Migracion nueva solo si hay necesidad real.
+- [x] Cache omitido o invalidacion documentada.
 
 ## 4. Frontend
 
-- [ ] UI muestra permisos efectivos con labels de negocio.
-- [ ] Cambios sensibles muestran evidencia o enlace real a auditoria.
-- [ ] No renderiza enums crudos.
-- [ ] Estados de error 403 son visibles.
+- [x] UI muestra permisos efectivos con labels de negocio.
+- [x] Cambios sensibles muestran evidencia o enlace real a auditoria.
+- [x] No renderiza enums crudos.
+- [x] Estados de error 403 son visibles.
 
 ## 5. E2E y cierre
 
-- [ ] Playwright cubre bloqueo por falta de permiso.
-- [ ] Playwright cubre anti-lockout.
-- [ ] Informe MOD00 actualizado.
-- [ ] Decision de cache documentada si aplica.
+- [x] Playwright cubre bloqueo por falta de permiso.
+- [x] Playwright cubre anti-lockout.
+- [x] Informe MOD00 actualizado.
+- [x] Decision de cache documentada si aplica.

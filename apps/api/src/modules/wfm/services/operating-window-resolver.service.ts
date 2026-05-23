@@ -6,14 +6,12 @@ import {
   TenantContext,
   WfmCompanyBusinessHours,
   WfmHolidayBlackout,
-  WfmSiteBusinessHours,
-  WfmTechnicianBusinessOverride,
 } from '@iwana/db';
 import { BusinessHoursWeekday } from '@iwana/shared';
 
 export interface ResolveOperatingWindowInput {
   tenantId: string;
-  siteId?: string | null;
+  organizationSiteId?: string | null;
   technicianId?: string | null;
   dateLocal: string;
   timezone: string;
@@ -21,12 +19,7 @@ export interface ResolveOperatingWindowInput {
 
 export interface OperatingWindowResult {
   status: 'OPEN' | 'CLOSED';
-  source:
-    | 'TECHNICIAN_OVERRIDE'
-    | 'HOLIDAY_BLACKOUT'
-    | 'SITE_HOURS'
-    | 'COMPANY_HOURS'
-    | 'MISSING_CONFIGURATION';
+  source: 'HOLIDAY_BLACKOUT' | 'COMPANY_HOURS' | 'MISSING_CONFIGURATION';
   startTime: string | null;
   endTime: string | null;
   reason: string | null;
@@ -50,21 +43,6 @@ export class OperatingWindowResolverService {
   ): Promise<OperatingWindowResult> {
     const weekday = toBusinessHoursWeekday(input.dateLocal);
 
-    const technicianDateOverride = await this.findTechnicianOverride(manager, input, weekday, true);
-    if (technicianDateOverride) {
-      return this.toOverrideResult(technicianDateOverride);
-    }
-
-    const technicianWeekdayOverride = await this.findTechnicianOverride(
-      manager,
-      input,
-      weekday,
-      false,
-    );
-    if (technicianWeekdayOverride) {
-      return this.toOverrideResult(technicianWeekdayOverride);
-    }
-
     const blackout = await this.findHolidayBlackout(manager, input);
     if (blackout) {
       return {
@@ -74,22 +52,6 @@ export class OperatingWindowResolverService {
         endTime: null,
         reason: blackout.name,
       };
-    }
-
-    const siteHours = await this.findSiteHours(
-      manager,
-      input.tenantId,
-      input.siteId ?? null,
-      weekday,
-    );
-    if (siteHours) {
-      return this.toBusinessHoursResult(
-        'SITE_HOURS',
-        siteHours.isEnabled,
-        siteHours.startTime,
-        siteHours.endTime,
-        'La sede operativa esta cerrada para la fecha consultada.',
-      );
     }
 
     const companyHours = await manager.findOne(WfmCompanyBusinessHours, {
@@ -114,34 +76,6 @@ export class OperatingWindowResolverService {
     };
   }
 
-  private async findTechnicianOverride(
-    manager: Pick<EntityManager, 'find'>,
-    input: ResolveOperatingWindowInput,
-    weekday: BusinessHoursWeekday,
-    exactDate: boolean,
-  ): Promise<WfmTechnicianBusinessOverride | null> {
-    if (!input.technicianId) {
-      return null;
-    }
-
-    const overrides = await manager.find(WfmTechnicianBusinessOverride, {
-      where: { tenantId: input.tenantId, userId: input.technicianId },
-    });
-
-    const applicable = overrides
-      .filter((item) => this.matchesSite(item.siteId, input.siteId ?? null))
-      .filter((item) =>
-        exactDate
-          ? item.overrideDate === input.dateLocal
-          : !item.overrideDate && item.weekday === weekday,
-      )
-      .sort((left, right) =>
-        this.sortBySiteSpecificity(left.siteId, right.siteId, input.siteId ?? null),
-      );
-
-    return applicable[0] ?? null;
-  }
-
   private async findHolidayBlackout(
     manager: Pick<EntityManager, 'find'>,
     input: ResolveOperatingWindowInput,
@@ -151,46 +85,21 @@ export class OperatingWindowResolverService {
     });
 
     const applicable = blackouts
-      .filter((item) => this.matchesSite(item.siteId, input.siteId ?? null))
+      .filter((item) => this.matchesSite(item.organizationSiteId, input.organizationSiteId ?? null))
       .filter((item) =>
         item.isRecurring
           ? item.blackoutDate.slice(5) === input.dateLocal.slice(5)
           : item.blackoutDate === input.dateLocal,
       )
       .sort((left, right) =>
-        this.sortBySiteSpecificity(left.siteId, right.siteId, input.siteId ?? null),
+        this.sortBySiteSpecificity(
+          left.organizationSiteId,
+          right.organizationSiteId,
+          input.organizationSiteId ?? null,
+        ),
       );
 
     return applicable[0] ?? null;
-  }
-
-  private async findSiteHours(
-    manager: Pick<EntityManager, 'findOne'>,
-    tenantId: string,
-    siteId: string | null,
-    weekday: BusinessHoursWeekday,
-  ): Promise<WfmSiteBusinessHours | null> {
-    if (!siteId) {
-      return null;
-    }
-
-    return manager.findOne(WfmSiteBusinessHours, {
-      where: { tenantId, siteId, weekday },
-    });
-  }
-
-  private toOverrideResult(override: WfmTechnicianBusinessOverride): OperatingWindowResult {
-    return {
-      status: override.isEnabled ? 'OPEN' : 'CLOSED',
-      source: 'TECHNICIAN_OVERRIDE',
-      startTime: override.isEnabled ? override.startTime : null,
-      endTime: override.isEnabled ? override.endTime : null,
-      reason:
-        override.reason ??
-        (override.isEnabled
-          ? 'Horario operativo resuelto por override del tecnico.'
-          : 'El tecnico no tiene disponibilidad operativa para la fecha consultada.'),
-    };
   }
 
   private toBusinessHoursResult(

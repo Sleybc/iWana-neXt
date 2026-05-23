@@ -1,8 +1,8 @@
 # CHECKLIST - MOD00 Configuracion Fase 01
 
-**Version:** 1.0  
+**Version:** 1.1
 **Estado:** Aprobado  
-**Fecha:** 2026-05-19  
+**Fecha:** 2026-05-21
 **Modo activo:** Mixto  
 **Modulo:** MOD00 Configuracion Control Plane  
 **Fase:** 01 - Organizacion/Sedes y Usuarios/Acceso  
@@ -42,6 +42,9 @@
 - [ ] Mutaciones usan `@Roles(UserRole.ADMIN)` con enum, no strings.
 - [ ] Lecturas de sedes permiten roles base aprobados.
 - [ ] Access Profiles no reemplaza `UserRole`.
+- [ ] Catalogo `MOD00_ACCESS_V1` sembrado de forma idempotente con permisos `ASSIGNABLE` y `RESERVED`.
+- [ ] Matriz de compatibilidad `UserRole` -> permisos aplicada al crear/editar perfiles y al asignarlos a usuarios.
+- [ ] Perfiles tenant-created declaran `baseRoleConstraint` en Fase 01.
 - [ ] Permisos desconocidos o incompatibles se rechazan en backend.
 - [ ] Mutaciones sensibles auditan oldValue/newValue sin secretos ni PII innecesaria.
 - [ ] WFM queda preparado por `OrganizationSiteReadPort`, sin leer tablas directo.

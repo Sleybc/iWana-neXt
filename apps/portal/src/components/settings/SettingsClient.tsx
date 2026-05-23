@@ -1,76 +1,54 @@
 'use client';
 
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
+import { type AccessPermissionKey } from '@iwana/shared';
+import { type SettingsSection } from '@/lib/api-client';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { useAuth } from '@/components/auth/AuthProvider';
-import {
-  ApiError,
-  tenantSelfApi,
-  type TenantSelf,
-  type TenantSelfSettings,
-} from '@/lib/api-client';
-import { BrandingForm } from './BrandingForm';
-import { CompanyProfileForm } from './CompanyProfileForm';
-import { OperationalSettingsForm } from './OperationalSettingsForm';
-import { SecuritySettingsCard } from './SecuritySettingsCard';
-import { SettingsTabPanel } from './SettingsTabPanel';
-import { SettingsTabs } from './SettingsTabs';
-import { WfmOperatingHoursManager } from './WfmOperatingHoursManager';
-import { SETTINGS_NAVIGATION, type SettingsTabId } from './settings-navigation';
+import { accessControlApi, ApiError, configurationApi } from '@/lib/api-client';
+import { SettingsSectionGrid } from './SettingsSectionGrid';
 import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 
-function mapError(error: unknown): string {
+function mapRegistryError(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 401) return 'Tu sesión expiró. Inicia sesión nuevamente.';
-    if (error.status === 403) return 'No tienes permisos para consultar esta configuración.';
+    if (error.status === 403) {
+      return 'Tu rol puede ver la vista base, pero no recibió metadata del shell federado.';
+    }
+
     return error.message;
   }
-  return 'No fue posible cargar la configuración empresarial. Intenta de nuevo.';
+
+  return 'No fue posible cargar las secciones federadas del centro de settings.';
+}
+
+function mapPermissionsError(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 403) {
+      return 'Tu sesión no puede validar permisos efectivos para operar el centro de settings.';
+    }
+
+    return error.message;
+  }
+
+  return 'No fue posible validar los permisos efectivos del usuario autenticado.';
 }
 
 function SettingsSkeleton() {
   return (
     <div className="space-y-6" aria-busy="true">
-      <PortalSkeletonBlock className="h-32" />
-      <PortalSkeletonBlock className="h-20" />
-      <PortalSkeletonBlock className="h-80" />
-      <PortalSkeletonBlock className="h-72" />
+      <PortalSkeletonBlock className="h-24" />
+      <PortalSkeletonBlock className="h-96" />
     </div>
   );
 }
 
 export function SettingsClient() {
   const { user, isLoading: authLoading } = useAuth();
-  const tabNamespace = useId();
-  const [profile, setProfile] = useState<TenantSelf | null>(null);
-  const [settings, setSettings] = useState<TenantSelfSettings | null>(null);
-  const [activeTab, setActiveTab] = useState<SettingsTabId>('general');
+  const [sections, setSections] = useState<SettingsSection[]>([]);
+  const [effectivePermissions, setEffectivePermissions] = useState<AccessPermissionKey[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const canEdit = user?.role === 'ADMIN';
-
-  const tabBadgeMap = useMemo(() => {
-    return {
-      general: null,
-      operations: null,
-      security: !settings?.features.mfa_required_all
-        ? { label: 'Atención', variant: 'warning' as const }
-        : null,
-      branding: !canEdit ? { label: 'Solo lectura', variant: 'info' as const } : null,
-    };
-  }, [canEdit, settings?.features.mfa_required_all]);
-
-  const getTabId = useCallback(
-    (tabId: SettingsTabId) => `${tabNamespace}-${tabId}-tab`,
-    [tabNamespace],
-  );
-
-  const getPanelId = useCallback(
-    (tabId: SettingsTabId) => `${tabNamespace}-${tabId}-panel`,
-    [tabNamespace],
-  );
 
   const loadSettings = useCallback(async () => {
     if (!user) {
@@ -83,26 +61,31 @@ export function SettingsClient() {
     setError(null);
 
     try {
-      const [profileResult, settingsResult] = await Promise.allSettled([
-        tenantSelfApi.getProfile(),
-        tenantSelfApi.getSettings(),
+      const [sectionsResult, permissionsResult] = await Promise.allSettled([
+        configurationApi.settingsSections.list(),
+        accessControlApi.getMyEffectivePermissions(),
       ]);
 
-      if (profileResult.status !== 'fulfilled') {
-        throw profileResult.reason;
-      }
-      if (settingsResult.status !== 'fulfilled') {
-        throw settingsResult.reason;
+      if (sectionsResult.status !== 'fulfilled') {
+        throw sectionsResult.reason;
       }
 
-      setProfile(profileResult.value);
-      setSettings(settingsResult.value);
+      if (permissionsResult.status !== 'fulfilled') {
+        throw new Error(mapPermissionsError(permissionsResult.reason));
+      }
+
+      setSections(sectionsResult.value);
+      setEffectivePermissions(permissionsResult.value.effectivePermissions);
     } catch (loadError) {
-      setError(mapError(loadError));
+      if (loadError instanceof Error && loadError.message) {
+        setError(loadError.message);
+      } else {
+        setError(mapRegistryError(loadError));
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [canEdit, user]);
+  }, [user]);
 
   useEffect(() => {
     if (authLoading) {
@@ -117,14 +100,14 @@ export function SettingsClient() {
       <div className="space-y-6">
         <PageHeader
           title="Configuración empresarial"
-          subtitle="Cargando perfil empresarial y configuración operativa"
+          subtitle="Cargando secciones federadas de configuración"
         />
         <SettingsSkeleton />
       </div>
     );
   }
 
-  if (error || !profile || !settings) {
+  if (error) {
     return (
       <div className="space-y-6">
         <PageHeader title="Configuración empresarial" subtitle="Error al cargar la vista" />
@@ -151,62 +134,10 @@ export function SettingsClient() {
     <div className="space-y-6">
       <PageHeader
         title="Configuración empresarial"
-        subtitle="Administra perfil, operación base, seguridad y marca."
+        subtitle="Elige una sección para consultar o administrar la configuración del tenant."
       />
 
-      <div className="w-full overflow-hidden rounded-2xl border border-white/70 bg-white/95 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">
-        <SettingsTabs
-          items={SETTINGS_NAVIGATION}
-          activeTab={activeTab}
-          onChange={setActiveTab}
-          getTabId={getTabId}
-          getPanelId={getPanelId}
-          getBadge={(tabId) => tabBadgeMap[tabId]}
-        />
-
-        <div className="p-4 md:p-6">
-          <div className="space-y-6">
-            <SettingsTabPanel
-              id={getPanelId('general')}
-              labelledBy={getTabId('general')}
-              isActive={activeTab === 'general'}
-            >
-              <CompanyProfileForm profile={profile} canEdit={canEdit} onUpdated={setProfile} />
-            </SettingsTabPanel>
-
-            <SettingsTabPanel
-              id={getPanelId('operations')}
-              labelledBy={getTabId('operations')}
-              isActive={activeTab === 'operations'}
-            >
-              <div className="space-y-6">
-                <OperationalSettingsForm
-                  settings={settings}
-                  canEdit={canEdit}
-                  onUpdated={setSettings}
-                />
-                <WfmOperatingHoursManager canEdit={canEdit} />
-              </div>
-            </SettingsTabPanel>
-
-            <SettingsTabPanel
-              id={getPanelId('security')}
-              labelledBy={getTabId('security')}
-              isActive={activeTab === 'security'}
-            >
-              <SecuritySettingsCard settings={settings} canEdit={canEdit} onUpdated={setSettings} />
-            </SettingsTabPanel>
-
-            <SettingsTabPanel
-              id={getPanelId('branding')}
-              labelledBy={getTabId('branding')}
-              isActive={activeTab === 'branding'}
-            >
-              <BrandingForm profile={profile} canEdit={canEdit} onUpdated={setProfile} />
-            </SettingsTabPanel>
-          </div>
-        </div>
-      </div>
+      <SettingsSectionGrid sections={sections} effectivePermissions={effectivePermissions} />
     </div>
   );
 }

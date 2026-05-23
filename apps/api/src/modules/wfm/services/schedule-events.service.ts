@@ -125,6 +125,7 @@ export class ScheduleEventsService {
     const validated = CreateScheduleEventSchema.parse(input);
     const startAt = new Date(validated.scheduledStartAt);
     const endAt = new Date(validated.scheduledEndAt);
+    const organizationSiteId = validated.organizationSiteId ?? null;
 
     // Validar duracion minima
     const startMs = startAt.getTime();
@@ -136,7 +137,7 @@ export class ScheduleEventsService {
     await this.assertInstallationScheduleWindow(
       validated.type,
       tenantId,
-      validated.operatingSiteId ?? null,
+      organizationSiteId,
       validated.assignedUserId,
       startAt,
       endAt,
@@ -162,7 +163,7 @@ export class ScheduleEventsService {
         scheduledStartAt: startAt,
         scheduledEndAt: endAt,
         assignedUserId: validated.assignedUserId,
-        operatingSiteId: validated.operatingSiteId ?? null,
+        organizationSiteId,
         address: validated.address ?? null,
         municipality: validated.municipality ?? null,
         sector: validated.sector ?? null,
@@ -220,15 +221,13 @@ export class ScheduleEventsService {
         );
       }
 
+      const organizationSiteId = validated.organizationSiteId ?? event.organizationSiteId ?? null;
+
       // Si se cambia el horario, verificar conflictos excluyendo el evento actual
       if (validated.scheduledStartAt || validated.scheduledEndAt) {
         const startAt = validated.scheduledStartAt ?? event.scheduledStartAt.toISOString();
         const endAt = validated.scheduledEndAt ?? event.scheduledEndAt.toISOString();
         const assignedUid = validated.assignedUserId ?? event.assignedUserId;
-        const operatingSiteId =
-          validated.operatingSiteId === undefined
-            ? (event.operatingSiteId ?? null)
-            : (validated.operatingSiteId ?? null);
 
         const nextStartAt = new Date(startAt);
         const nextEndAt = new Date(endAt);
@@ -241,7 +240,7 @@ export class ScheduleEventsService {
         await this.assertInstallationScheduleWindow(
           event.type,
           tenantId,
-          operatingSiteId,
+          organizationSiteId,
           assignedUid,
           nextStartAt,
           nextEndAt,
@@ -274,8 +273,8 @@ export class ScheduleEventsService {
       if (validated.scheduledEndAt !== undefined)
         updates.scheduledEndAt = new Date(validated.scheduledEndAt);
       if (validated.assignedUserId !== undefined) updates.assignedUserId = validated.assignedUserId;
-      if (validated.operatingSiteId !== undefined)
-        updates.operatingSiteId = validated.operatingSiteId;
+      if (validated.organizationSiteId !== undefined)
+        updates.organizationSiteId = organizationSiteId;
       if (validated.address !== undefined) updates.address = validated.address;
       if (validated.municipality !== undefined) updates.municipality = validated.municipality;
       if (validated.sector !== undefined) updates.sector = validated.sector;
@@ -365,7 +364,7 @@ export class ScheduleEventsService {
       await this.assertInstallationScheduleWindow(
         event.type,
         tenantId,
-        event.operatingSiteId ?? null,
+        event.organizationSiteId ?? null,
         event.assignedUserId,
         new Date(validated.scheduledStartAt),
         new Date(validated.scheduledEndAt),
@@ -416,7 +415,7 @@ export class ScheduleEventsService {
   private async assertInstallationScheduleWindow(
     type: WfmWorkType,
     tenantId: string,
-    operatingSiteId: string | null,
+    organizationSiteId: string | null,
     technicianId: string,
     startAt: Date,
     endAt: Date,
@@ -438,14 +437,14 @@ export class ScheduleEventsService {
     const window = manager
       ? await this.operatingWindowResolver.resolveWithManager(manager, {
           tenantId,
-          siteId: operatingSiteId,
+          organizationSiteId,
           technicianId,
           dateLocal,
           timezone,
         })
       : await this.operatingWindowResolver.resolve({
           tenantId,
-          siteId: operatingSiteId,
+          organizationSiteId,
           technicianId,
           dateLocal,
           timezone,

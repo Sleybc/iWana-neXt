@@ -23,6 +23,9 @@ export * from './commercial';
 export * from './enums/taxation';
 export * from './enums/parties';
 export * from './enums/wfm';
+export * from './enums/organization';
+export * from './enums/access-control';
+export * from './enums/configuration';
 export * from './taxation';
 
 // Interfaces

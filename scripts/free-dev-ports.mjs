@@ -1,6 +1,23 @@
 import { execSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
+import { setTimeout as delay } from 'node:timers/promises';
 
 const DEV_PORTS = [3000, 3001, 3002];
+const MAX_SWEEPS = 5;
+const SWEEP_DELAY_MS = 400;
+const repoRoot = process.cwd().replace(/\\/g, '/');
+const DEV_PROCESS_MARKERS = [
+  { path: `${repoRoot}/apps/api/`, command: 'nest.js start --watch' },
+  { path: `${repoRoot}/apps/worker/`, command: 'nest.js start --watch' },
+  { path: `${repoRoot}/apps/web/`, command: 'next dev --port 3001' },
+  { path: `${repoRoot}/apps/portal/`, command: 'next dev --port 3002' },
+  { command: 'node scripts/dev.mjs' },
+  { command: 'sh -c node scripts/dev.mjs' },
+  { command: '--filter @iwana/api dev' },
+  { command: '--filter @iwana/worker dev' },
+  { command: '--filter @iwana/web dev' },
+  { command: '--filter @iwana/portal dev' },
+];
 
 function parseWindowsPidsFromNetstat(stdout, ports) {
   const pids = new Set();
@@ -34,9 +51,7 @@ function parseWindowsJsonPids(raw) {
   const parsed = JSON.parse(text);
   if (parsed === null || parsed === undefined) return [];
   if (Array.isArray(parsed)) {
-    return parsed
-      .map((value) => Number(value))
-      .filter((pid) => Number.isFinite(pid) && pid > 0);
+    return parsed.map((value) => Number(value)).filter((pid) => Number.isFinite(pid) && pid > 0);
   }
 
   const one = Number(parsed);
@@ -50,13 +65,99 @@ function parseUnixPids(stdout) {
     .filter((pid) => Number.isFinite(pid) && pid > 0);
 }
 
+function parseLinuxFuserPids(stdout, port) {
+  return stdout
+    .replace(`${port}/tcp:`, '')
+    .split(/\s+/)
+    .map((token) => Number(token.trim()))
+    .filter((pid) => Number.isFinite(pid) && pid > 0);
+}
+
+function commandExists(command) {
+  try {
+    execSync(`command -v ${command}`, { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function parsePsEntries(stdout) {
+  return stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const match = line.match(/^(\d+)\s+(\d+)\s+(.*)$/);
+
+      if (!match) {
+        return null;
+      }
+
+      return {
+        pid: Number(match[1]),
+        ppid: Number(match[2]),
+        command: match[3],
+      };
+    })
+    .filter((entry) => entry && Number.isFinite(entry.pid) && entry.pid > 0);
+}
+
+function getUnixProcessTable() {
+  const output = execSync('ps -eo pid=,ppid=,args=', { encoding: 'utf8' });
+  return parsePsEntries(output);
+}
+
+export function getProtectedPids(entries, currentPid = process.pid, parentPid = process.ppid) {
+  const byPid = new Map(entries.map((entry) => [entry.pid, entry]));
+  const protectedPids = new Set([currentPid]);
+  let ancestorPid = parentPid;
+
+  while (Number.isFinite(ancestorPid) && ancestorPid > 0 && !protectedPids.has(ancestorPid)) {
+    protectedPids.add(ancestorPid);
+    ancestorPid = byPid.get(ancestorPid)?.ppid ?? 0;
+  }
+
+  return protectedPids;
+}
+
+export function findRepoWatcherPids(entries, protectedPids, markers = DEV_PROCESS_MARKERS) {
+  return entries
+    .filter((entry) => !protectedPids.has(entry.pid))
+    .filter((entry) =>
+      markers.some((marker) => {
+        if (marker.path && !entry.command.includes(marker.path)) {
+          return false;
+        }
+
+        return entry.command.includes(marker.command);
+      }),
+    )
+    .map((entry) => entry.pid);
+}
+
+function getRepoWatcherPids() {
+  if (process.platform === 'win32') {
+    return [];
+  }
+
+  try {
+    const entries = getUnixProcessTable();
+    const protectedPids = getProtectedPids(entries);
+
+    return findRepoWatcherPids(entries, protectedPids);
+  } catch {
+    return [];
+  }
+}
+
 function getPidsUsingPorts(ports) {
   if (process.platform === 'win32') {
     const portsCsv = ports.join(',');
     const psCommand =
-      "$ports = @(" +
+      '$ports = @(' +
       portsCsv +
-      "); Get-NetTCPConnection -State Listen -LocalPort $ports -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ConvertTo-Json -Compress";
+      '); Get-NetTCPConnection -State Listen -LocalPort $ports -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ConvertTo-Json -Compress';
 
     try {
       const output = execSync(`powershell -NoProfile -Command "${psCommand}"`, {
@@ -72,6 +173,18 @@ function getPidsUsingPorts(ports) {
 
   const pidSet = new Set();
   for (const port of ports) {
+    if (process.platform === 'linux' && commandExists('fuser')) {
+      try {
+        const output = execSync(`fuser -n tcp ${port} 2>/dev/null`, { encoding: 'utf8' });
+        for (const pid of parseLinuxFuserPids(output, port)) {
+          pidSet.add(pid);
+        }
+        continue;
+      } catch {
+        // Si fuser no encuentra resultados para un puerto, probamos el fallback.
+      }
+    }
+
     try {
       const output = execSync(`lsof -ti tcp:${port}`, { encoding: 'utf8' });
       for (const pid of parseUnixPids(output)) {
@@ -95,24 +208,49 @@ function killPid(pid) {
   process.kill(pid, 'SIGKILL');
 }
 
-function main() {
-  const pids = getPidsUsingPorts(DEV_PORTS);
+async function main() {
+  let foundAnyPid = false;
 
-  if (pids.length === 0) {
-    console.log('No hay procesos ocupando puertos de desarrollo (3000, 3001, 3002).');
-    return;
+  for (let sweep = 1; sweep <= MAX_SWEEPS; sweep += 1) {
+    const pids = [...new Set([...getPidsUsingPorts(DEV_PORTS), ...getRepoWatcherPids()])];
+
+    if (pids.length === 0) {
+      if (!foundAnyPid) {
+        console.log('No hay procesos ocupando puertos de desarrollo (3000, 3001, 3002).');
+      }
+      return;
+    }
+
+    foundAnyPid = true;
+    console.log(
+      `Liberando puertos de desarrollo (barrido ${sweep}/${MAX_SWEEPS}). PIDs detectados: ${pids.join(', ')}`,
+    );
+
+    for (const pid of pids) {
+      try {
+        killPid(pid);
+        console.log(`PID ${pid} detenido.`);
+      } catch {
+        console.warn(`No fue posible detener PID ${pid}.`);
+      }
+    }
+
+    await delay(SWEEP_DELAY_MS);
   }
 
-  console.log(`Liberando puertos de desarrollo. PIDs detectados: ${pids.join(', ')}`);
+  const remainingPids = [...new Set([...getPidsUsingPorts(DEV_PORTS), ...getRepoWatcherPids()])];
 
-  for (const pid of pids) {
-    try {
-      killPid(pid);
-      console.log(`PID ${pid} detenido.`);
-    } catch {
-      console.warn(`No fue posible detener PID ${pid}.`);
-    }
+  if (remainingPids.length > 0) {
+    console.warn(
+      `Persisten procesos en puertos de desarrollo tras ${MAX_SWEEPS} barridos: ${remainingPids.join(', ')}`,
+    );
+    process.exitCode = 1;
   }
 }
 
-main();
+const invokedPath = process.argv[1];
+const isMainModule = invokedPath ? import.meta.url === pathToFileURL(invokedPath).href : false;
+
+if (isMainModule) {
+  await main();
+}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { CheckCircle2, CircleAlert, PackagePlus, Pencil, Plus, Search, Trash2 } from 'lucide-react';
@@ -116,6 +116,7 @@ export function AdditionalProductsManager({ canEdit }: AdditionalProductsManager
   const [sortMode, setSortMode] = useState<ProductSortMode>('ACTIVE_NAME');
 
   const {
+    control,
     register,
     handleSubmit,
     reset,
@@ -656,13 +657,27 @@ export function AdditionalProductsManager({ canEdit }: AdditionalProductsManager
                   )}
                 </div>
 
-                <Select {...register('category')} label="Categoria" className="h-11">
-                  {CATEGORY_ORDER.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {PRODUCT_CATEGORY_LABELS[cat]}
-                    </option>
-                  ))}
-                </Select>
+                <Controller
+                  name="category"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      label="Categoria"
+                      className="h-11"
+                      name={field.name}
+                      value={field.value}
+                      onChange={(event) => field.onChange(event.target.value)}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                    >
+                      {CATEGORY_ORDER.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {PRODUCT_CATEGORY_LABELS[cat]}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                />
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200">
