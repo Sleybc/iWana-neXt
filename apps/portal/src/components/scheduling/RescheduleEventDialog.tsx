@@ -119,7 +119,7 @@ export function RescheduleEventDialog({
   const { operatingWindow, isLoadingOperatingWindow, operatingWindowError } = useOperatingWindow({
     workType: event?.type as WfmWorkType | undefined,
     dateLocal: scheduledDateLocal,
-    siteId: event?.operatingSiteId ?? null,
+    organizationSiteId: event?.organizationSiteId ?? null,
     technicianId: event?.assignedUserId ?? null,
   });
   const operatingWindowMessage = useMemo(

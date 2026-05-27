@@ -794,7 +794,9 @@ export function PendingVisitRequestsView() {
                   durationMinutes: draft.durationMinutes,
                   candidateUserIds: technicians.map((technician) => technician.id),
                   searchHorizonDays: draft.searchHorizonDays,
-                  operatingSiteId: selectedVisitRequest.operatingSiteId,
+                  ...(selectedVisitRequest.organizationSiteId
+                    ? { organizationSiteId: selectedVisitRequest.organizationSiteId }
+                    : {}),
                   municipality: draft.municipality,
                   sector: draft.sector,
                   maxResults: 8,
@@ -863,7 +865,9 @@ export function PendingVisitRequestsView() {
                 assignedUserId: selectedRecommendation.technicianId,
                 scheduledStartAt: selectedRecommendation.scheduledStartAt,
                 scheduledEndAt: selectedRecommendation.scheduledEndAt,
-                operatingSiteId: selectedVisitRequest.operatingSiteId,
+                ...(selectedVisitRequest.organizationSiteId
+                  ? { organizationSiteId: selectedVisitRequest.organizationSiteId }
+                  : {}),
                 createWorkOrder: scheduleCreateWorkOrder,
                 workOrderNotes: scheduleCreateWorkOrder
                   ? scheduleWorkOrderNotes.trim() || null

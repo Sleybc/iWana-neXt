@@ -68,9 +68,9 @@ export function TenantSummaryCard({ tenant, settings }: TenantSummaryCardProps) 
               <h2 className="mt-1 truncate text-xl font-semibold text-gray-900 dark:text-white">
                 {tenant.name}
               </h2>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
                 Identificador interno{' '}
-                <span className="rounded-lg bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] dark:bg-dark-surface-3">
+                <span className="rounded-lg bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] text-gray-800 dark:bg-dark-surface-3 dark:text-gray-100">
                   {tenant.slug}
                 </span>
               </p>
@@ -84,7 +84,7 @@ export function TenantSummaryCard({ tenant, settings }: TenantSummaryCardProps) 
 
         <div className="mt-5 grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-iwana-secondary-700 dark:text-iwana-secondary-300">
               Perfil empresarial
             </p>
             <div className="mt-3 overflow-hidden rounded-xl border border-gray-100 dark:border-dark-border-2">
@@ -107,7 +107,7 @@ export function TenantSummaryCard({ tenant, settings }: TenantSummaryCardProps) 
           </div>
 
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-iwana-secondary-700 dark:text-iwana-secondary-300">
               Configuración operativa
             </p>
             <div className="mt-3 overflow-hidden rounded-xl border border-gray-100 dark:border-dark-border-2">

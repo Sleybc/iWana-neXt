@@ -212,6 +212,42 @@ describe('OrganizationController HTTP', () => {
       });
   });
 
+  it('GET /api/v1/organization/sites expone el summary enriquecido en el contrato HTTP', async () => {
+    organizationServiceMock.findAll.mockResolvedValue([
+      {
+        id: '243f5a18-4adc-4ca5-8cce-f55b70a3412e',
+        name: 'Sede centro',
+        code: 'CENTRO',
+        siteType: OrganizationSiteType.OFFICE,
+        address: 'Cra 10 # 10-10',
+        municipality: 'Bogotá',
+        department: 'Cundinamarca',
+        capabilities: [OrganizationSiteCapability.ADMIN_OFFICE],
+        isActive: true,
+      },
+    ]);
+
+    await request(app.getHttpServer())
+      .get('/api/v1/organization/sites')
+      .set('Authorization', 'Bearer support-token')
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data).toEqual([
+          expect.objectContaining({
+            id: '243f5a18-4adc-4ca5-8cce-f55b70a3412e',
+            name: 'Sede centro',
+            code: 'CENTRO',
+            siteType: OrganizationSiteType.OFFICE,
+            address: 'Cra 10 # 10-10',
+            municipality: 'Bogotá',
+            department: 'Cundinamarca',
+            capabilities: [OrganizationSiteCapability.ADMIN_OFFICE],
+            isActive: true,
+          }),
+        ]);
+      });
+  });
+
   it('GET /api/v1/organization/sites retorna 401 sin JWT', async () => {
     await request(app.getHttpServer()).get('/api/v1/organization/sites').expect(401);
   });

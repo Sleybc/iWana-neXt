@@ -9,6 +9,7 @@ import {
   type OrganizationSiteSummary,
 } from '@/lib/api-client';
 import { PortalEmptyState, PortalPanel } from '@/components/shared/portal-ui';
+import { CALENDAR_SETTINGS_COPY } from './mod00-settings-labels';
 
 const tableHeadClass =
   'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500';
@@ -80,16 +81,16 @@ export function CalendarExceptionsPanel({
       });
       onCreated(created);
       setNewException(emptyDraft);
-      setFeedback('Excepción creada correctamente.');
+      setFeedback(CALENDAR_SETTINGS_COPY.exceptionsCreated);
     } catch {
-      setError('No fue posible crear la excepción. Intenta nuevamente.');
+      setError(CALENDAR_SETTINGS_COPY.exceptionsCreateError);
     } finally {
       setIsSaving(false);
     }
   }
 
   async function handleDelete(id: string) {
-    if (!(globalThis.confirm?.('¿Eliminar esta excepción de horario?') ?? true)) return;
+    if (!(globalThis.confirm?.(CALENDAR_SETTINGS_COPY.exceptionsDeleteConfirm) ?? true)) return;
 
     setIsSaving(true);
     setError(null);
@@ -98,9 +99,9 @@ export function CalendarExceptionsPanel({
     try {
       await organizationApi.deleteException(id);
       onDeleted(id);
-      setFeedback('Excepción eliminada.');
+      setFeedback(CALENDAR_SETTINGS_COPY.exceptionsDeleted);
     } catch {
-      setError('No fue posible eliminar la excepción. Intenta nuevamente.');
+      setError(CALENDAR_SETTINGS_COPY.exceptionsDeleteError);
     } finally {
       setIsSaving(false);
     }
@@ -120,7 +121,7 @@ export function CalendarExceptionsPanel({
       {canEdit ? (
         <div className="mb-4 rounded-2xl border border-gray-200 bg-[#f8faf5] p-4 dark:border-dark-border dark:bg-dark-surface-3">
           <p className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-200">
-            Registrar nueva excepción
+            {CALENDAR_SETTINGS_COPY.exceptionsCreateTitle}
           </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div>
@@ -221,7 +222,7 @@ export function CalendarExceptionsPanel({
               disabled={isSaving || !newException.name.trim() || !newException.exceptionDate}
             >
               <Plus className="mr-2 h-4 w-4" aria-hidden={true} />
-              Agregar excepción
+              {CALENDAR_SETTINGS_COPY.exceptionsCreateAction}
             </Button>
           </div>
         </div>
@@ -230,8 +231,8 @@ export function CalendarExceptionsPanel({
       {/* Tabla de excepciones existentes */}
       {exceptions.length === 0 ? (
         <PortalEmptyState
-          title="Sin excepciones registradas"
-          description="No hay festivos ni cierres especiales registrados para este tenant."
+          title={CALENDAR_SETTINGS_COPY.exceptionsEmptyTitle}
+          description={CALENDAR_SETTINGS_COPY.exceptionsEmptyDescription}
         />
       ) : (
         <div className="overflow-hidden rounded-2xl border border-gray-200 dark:border-dark-border">

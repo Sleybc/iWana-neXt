@@ -1,13 +1,14 @@
 import { UserRole, UserStatus } from '@iwana/shared';
+import { getSystemBaseRoleLabel } from './system-vocabulary';
 
 type BadgeVariant = 'success' | 'warning' | 'error' | 'info' | 'neutral';
 
 export const PORTAL_USER_ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.ADMIN]: 'Administrador',
-  [UserRole.NOC]: 'Operador NOC',
-  [UserRole.SUPPORT]: 'Soporte',
+  [UserRole.NOC]: 'Monitoreo operativo',
+  [UserRole.SUPPORT]: 'Soporte inicial',
   [UserRole.SALES]: 'Ventas',
-  [UserRole.TECHNICIAN]: 'Técnico',
+  [UserRole.TECHNICIAN]: 'Técnico de campo',
   [UserRole.ACCOUNTANT]: 'Contabilidad',
   [UserRole.HR]: 'Talento humano',
   [UserRole.SUBSCRIBER]: 'Suscriptor',
@@ -50,7 +51,7 @@ function formatEnumFallback(value: string): string {
 }
 
 export function getPortalUserRoleLabel(role: string): string {
-  return PORTAL_USER_ROLE_LABELS[role as UserRole] ?? formatEnumFallback(role);
+  return getSystemBaseRoleLabel(role);
 }
 
 export function getPortalUserStatusLabel(status: string): string {

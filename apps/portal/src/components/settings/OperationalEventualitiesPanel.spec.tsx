@@ -108,6 +108,7 @@ describe('OperationalEventualitiesPanel', () => {
       await waitFor(() => {
         expect(screen.getByTestId('portal-empty-state')).toBeInTheDocument();
       });
+      expect(screen.getByText(/Sin cambios registrados/)).toBeInTheDocument();
     });
 
     it('muestra error cuando la carga falla', async () => {
@@ -150,12 +151,14 @@ describe('OperationalEventualitiesPanel', () => {
   });
 
   describe('formulario de creación', () => {
-    it('muestra el formulario al hacer clic en Registrar eventualidad', async () => {
+    it('muestra el formulario al hacer clic en Registrar disponibilidad', async () => {
       render(<OperationalEventualitiesPanel canEdit={true} />);
 
       await waitFor(() => {
         expect(screen.getByTestId('add-eventuality-btn')).toBeInTheDocument();
       });
+
+      expect(screen.getByText('+ Registrar disponibilidad')).toBeInTheDocument();
 
       fireEvent.click(screen.getByTestId('add-eventuality-btn'));
 

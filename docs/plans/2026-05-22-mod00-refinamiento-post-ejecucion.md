@@ -15,6 +15,7 @@
 - ADR: `docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md`
 - PRD: `docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md`
 - HLD: `docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md`
+- Spec: `docs/specs/2026-05-25-mod00-roles-de-empresa-design.md`
 - Informe vivo: `docs/informes/INFORME-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md`
 
 ## Scope
@@ -23,6 +24,7 @@
 
 - Endurecer gobierno administrativo de Users con permiso granular adicional.
 - Separar asignacion de acceso a usuarios del CRUD del catalogo de perfiles.
+- Alinear la superficie visible del portal al modelo `categoria base + rol de empresa + permisos`, sin introducir roles backend dinamicos.
 - Aplicar enforcement real a `scope_site_id`.
 - Alinear el shell federado con permisos efectivos o estados no operables.
 - Cerrar el contrato `DELETE /organization/sites/:id`.

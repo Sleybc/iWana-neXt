@@ -1,8 +1,8 @@
 # INFORME - MOD00 Configuracion Control Plane - Aprobacion y Handoff Fase 01
 
-**Version:** 1.16
+**Version:** 1.44
 **Estado:** Activo
-**Fecha:** 2026-05-23
+**Fecha:** 2026-05-27
 **Modo activo:** Mixto  
 **Autor:** AI-EM-ARCH  
 **Modulo:** MOD00 Configuracion Control Plane  
@@ -35,6 +35,7 @@ La decision corrige la ambiguedad previa donde el control plane habia sido docum
 7. Billing futuro conserva recaudo, caja, cartera y facturacion.
 8. No se crean roles backend dinamicos desde la UI.
 9. No se renombra codigo fuente ni rutas OpenAPI por el cambio documental MOD03 -> MOD00.
+10. La semantica visible de acceso queda fijada como `categoria base + perfil de acceso + accesos`; `AccessProfile` se expone como perfil de acceso y `UserRole` como categoria base.
 
 ---
 
@@ -60,8 +61,16 @@ La decision corrige la ambiguedad previa donde el control plane habia sido docum
 | `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-05-v1.0.md`                 | Aprobado                | Prompt operativo Fase 05 unificacion visible de sedes WFM      |
 | `docs/plans/2026-05-21-mod00-configuracion-fase-05-unificacion-sedes.md`  | Aprobado                | Plan ejecutable Fase 05                                        |
 | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-05-v1.0.md`              | Aprobado                | Gate de calidad Fase 05                                        |
+| `docs/adrs/ADR-044-Separacion-OrganizationSite-NmsNode.md`                | Aprobado                | Boundary futuro entre sedes MOD00 y nodos tecnicos NMS         |
+| `docs/specs/2026-05-23-mod00-sedes-nodos-nms-design.md`                   | Aprobado                | Soporte funcional y tecnico para el refinamiento Site -> NMS   |
+| `docs/specs/2026-05-23-mod00-organization-site-modal-unificado-design.md` | Aprobado                | Refinamiento UX de tabla compacta y modal unificado de sedes   |
+| `docs/specs/2026-05-25-mod00-roles-de-empresa-design.md`                  | Aprobado para ejecucion | Refinamiento de categoria base + rol de empresa para fullstack |
 | `docs/specs/2026-05-15-mod09-wfm-operating-hours-design.md`               | Actualizado             | Addendum de compatibilidad WFM -> MOD00                        |
 | `docs/informes/INFORME-MOD03-AUDITORIA-ESTADO-v1.0.md`                    | Actualizado             | Antecedente historico MOD03                                    |
+
+Plan reciente ejecutado:
+
+- `docs/plans/2026-05-23-mod00-sedes-coordenadas-contacto-implementation.md` - refinamiento ejecutado para contrato, persistencia tenant y formulario portal de sedes en MOD00.
 
 Artefactos Fase 06 aprobados:
 
@@ -123,6 +132,26 @@ Actualizacion v1.6: se cerro la Fase 03 de settings federados con registry backe
 Actualizacion v1.7: se cerro la Fase 04 de gobierno avanzado con permisos granulares sobre `UserRole` base, anti-lockout para el ultimo camino ADMIN efectivo, resumen backend de permisos efectivos, evidencia real desde auditoria en portal y Playwright focalizado para falta de permiso granular y bloqueo anti-lockout.
 
 Actualizacion v1.8: se abrio la Fase 05 para unificar la nocion visible de sedes entre Organizacion y Operacion de campo. El primer corte ya expone `operatingSiteId` mapeado en `dispatch-sites`, usa sedes empresariales como fuente visible en portal WFM y deja documentado el cierre pendiente para llevar contratos administrativos WFM a soporte nativo de `organizationSiteId`.
+
+Actualizacion v1.17: se redacto el boundary propuesto entre `OrganizationSite` y futuro `NmsNode`. La direccion documentada mantiene sedes como maestro transversal de MOD00, reserva los nodos tecnicos para NMS y deja trazado que coordenadas y contacto operativo local pertenecen al dato maestro de sede. La propuesta queda en revision mediante `ADR-044` y la spec `2026-05-23-mod00-sedes-nodos-nms-design.md`.
+
+Actualizacion v1.18: CTO aprueba `ADR-044` y la spec asociada. Queda formalizado que MOD00 conserva sedes como maestro fisico/administrativo, NMS sera owner de nodos tecnicos propios y el siguiente refinamiento implementable de MOD00 debe agregar coordenadas y contacto operativo local al contrato y al formulario de sedes. Se crea el plan `docs/plans/2026-05-23-mod00-sedes-coordenadas-contacto-implementation.md` como handoff para ejecucion.
+
+Actualizacion v1.20: se alinea documentalmente el dominio de acceso a la lectura operativa validada con negocio: `UserRole` se presenta como categoria base, `AccessProfile` se expone como rol de empresa y el sistema debe ofrecer plantillas iniciales de roles de empresa para acelerar la adopcion. Se publica la spec `docs/specs/2026-05-25-mod00-roles-de-empresa-design.md` como handoff de ejecucion fullstack sin cambiar el boundary aprobado por ADR-040.
+
+Actualizacion v1.21: se ejecuta el refinamiento fullstack de roles de empresa sin alterar el boundary aprobado. El backend ahora siembra plantillas iniciales tenant-aware al listar perfiles, el portal expone la semantica visible `categoria base + rol de empresa + permisos`, la pantalla de usuarios permite asignar roles de empresa compatibles durante create/edit y la validacion queda cerrada con Jest focalizado y Playwright portal sobre settings access y users.
+
+Actualizacion v1.22: se corrige un drift de UX y handoff detectado al inspeccionar la pantalla real `/dashboard/settings/access` junto con producto. El PRD ya separaba ownership entre Access y Users, pero el spec y el plan vigentes todavia dejaban dentro de Access la asignacion de usuarios y los permisos efectivos por usuario. Queda aprobado que `/dashboard/settings/access` sea exclusivamente la superficie de plantillas iniciales, roles de empresa y permisos; la asignacion de roles a usuarios permanece en `/dashboard/users`. Se actualizan la spec `docs/specs/2026-05-25-mod00-roles-de-empresa-design.md` a v1.1 y el plan `docs/plans/2026-05-25-mod00-roles-de-empresa-implementation.md` como nuevo handoff ejecutable para fullstack.
+
+Actualizacion v1.40: se completa un nuevo refinamiento de lenguaje visible en `/dashboard/settings/access` para reducir nombres internos o poco claros en plantillas y categorias base. El portal ahora presenta etiquetas de negocio mas directas dentro de Access, mientras que el backend renombra las plantillas canonicas del sistema a `Monitoreo operativo`, `Soporte inicial`, `Técnico de campo`, `Contratista` y `Auditor`. Para evitar duplicados durante el cambio, el seed de plantillas deja de depender solo del nombre y tambien reconoce plantillas existentes por `baseRoleConstraint` del sistema antes de sincronizar el nombre canonico. La validacion queda cerrada con Jest focalizado en servicio y controlador HTTP, Jest del cliente portal y Playwright del flujo `portal-settings-access-governance`.
+
+Actualizacion v1.41: se formaliza la regla transversal de vocabulario del sistema mediante `.github/instructions/system-vocabulary.instructions.md` y la skill `.agents/skills/system-vocabulary-review/SKILL.md`. El portal centraliza labels compartidos en `apps/portal/src/lib/system-vocabulary.ts` y la pantalla `/dashboard/users` queda alineada con Access usando `Perfiles de acceso`, `categoria base`, `Monitoreo operativo`, `Soporte inicial` y `Técnico de campo` en lugar de nombres legacy o siglas internas. Esta regla aplica a nuevas auditorias, secciones, modulos, seeds, docs, tests y E2E con texto visible o semivisible.
+
+Actualizacion v1.42: se amplia la regla transversal de vocabulario para exigir no solo consistencia terminologica, sino lenguaje amigable y operable para usuario final no tecnico. La instruccion y la skill ahora obligan a escribir frases cortas, orientadas a accion, con explicacion simple cuando un termino tecnico sea inevitable. El criterio queda aplicable a UI, estados vacios, errores, seeds, auditorias, documentos, tests y E2E.
+
+Actualizacion v1.43: se formaliza la identidad operativa iWana como regla transversal para nuevas interfaces, se crea la skill `.agents/skills/iwana-identity-ui-review/SKILL.md` y se actualizan las instrucciones frontend/portal y `AGENTS.md`. La pantalla `/dashboard/settings/access` queda como referencia incremental: usa eyebrow compartido, search surface iWana, toolbar responsive, drawer con mejor jerarquia y vocabulario final basado en `perfiles de acceso`, `categoria base` y `accesos`.
+
+Actualizacion v1.44: se integra `ui-ux-pro-max` como apoyo consultivo para heuristicas UI/UX, tipografia, color, responsive, interaccion, accesibilidad y performance visual. La skill queda subordinada a `iwana-identity-ui-review`, al manual de identidad, a los tokens reales y a las primitives del repo; su uso recomendado es ampliar criterio sin desplazar la gobernanza visual iWana.
 
 ## 7. Resolucion de bloqueo tecnico Access Control
 
@@ -456,15 +485,15 @@ La fase queda condicionada a decision stop/go antes de codigo productivo:
 
 ## 21. Refinamiento arquitectonico Organization - modal unificado de sede y servicios
 
-### Fecha del refinamiento
+### Fecha del refinamiento - tabla compacta unificada
 
 2026-05-23
 
-### Estado
+### Estado - tabla compacta unificada
 
 Implementado y validado en backend y portal.
 
-### Decision EM-ARCH del refinamiento
+### Decision EM-ARCH del refinamiento - tabla compacta unificada
 
 Se documenta el siguiente refinamiento para la siguiente iteracion de MOD00:
 
@@ -482,7 +511,7 @@ La decision no cambia ownership ni boundaries fuera de MOD00. Su objetivo es red
 - `docs/adrs/ADR-043-Edicion-Atomica-Sede-Capacidades.md`
 - `docs/plans/2026-05-23-mod00-organization-site-modal-unificado.md`
 
-### Guardrails aprobados
+### Guardrails aprobados - tabla compacta unificada
 
 - `capabilities` omitido en `PATCH` conserva compatibilidad hacia atras.
 - `capabilities: []` en `PATCH` limpia el set activo de servicios.
@@ -516,3 +545,517 @@ Spec aprobado por usuario. Plan de implementación ejecutado para backend, porta
 ### Cierre de deuda residual
 
 - No quedan callers activos ni contrato expuesto para `PUT /organization/sites/:siteId/capabilities` dentro del slice de MOD00 validado en portal, API y E2E.
+
+## 22. Refinamiento arquitectonico Organization - tabla compacta unificada de sedes
+
+### Fecha de ejecucion
+
+2026-05-25
+
+### Estado del cierre
+
+Aprobado como direccion arquitectonica/UI. No requiere ADR nuevo.
+
+### Decision EM-ARCH del refinamiento
+
+Se aprueba acotar la superficie `Sedes registradas` a una sola tabla compacta de administracion, manteniendo el modal unificado como flujo de creacion y edicion.
+
+La decision fija estas reglas:
+
+1. `Sedes registradas` no debe usar un panel persistente separado de `Detalle de sede`.
+2. La vista principal debe mostrar solo columnas utiles para administracion base: `Sede`, `Tipo`, `Ubicacion`, `Servicios`, `Estado` y `Acciones`.
+3. Las acciones `Editar` y `Dar de baja` deben vivir por fila y no depender de seleccionar previamente una sede.
+4. Coordenadas, contacto operativo local y otros datos ampliados siguen existiendo en el formulario, pero no se promueven a columnas permanentes de la tabla.
+5. Horarios, recaudo, seguimiento de clientes y otros detalles operativos deben resolverse en modulos consumidores posteriores, no sobrecargando esta pantalla de MOD00.
+
+### Justificacion arquitectonica
+
+La sede sigue siendo el maestro transversal que despues alimentara otros modulos, pero esta pantalla no es el lugar correcto para visualizar toda su proyeccion operativa futura. En MOD00 la responsabilidad principal de esta superficie es crear, identificar y administrar sedes con baja friccion visual, manteniendo consistencia con ADR-040, ADR-043 y ADR-044.
+
+### Impacto documental
+
+- Se actualiza `docs/specs/2026-05-23-mod00-organization-site-modal-unificado-design.md` a version 1.1 y estado `Aprobado`.
+- Se actualiza `docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` para reflejar una tabla compacta unica sin panel persistente de detalle.
+- Este informe vivo incorpora la trazabilidad del refinamiento.
+- No se requiere actualizar PRD ni crear ADR nuevo.
+
+### Guardrails aprobados
+
+- La tabla principal de sedes se mantiene como superficie administrativa, no como tablero operativo profundo.
+- El modal unificado sigue siendo obligatorio para crear/editar sede y servicios en una sola intencion de usuario.
+- El refinamiento no cambia ownership, boundaries, permisos ni contratos cross-module.
+- Cualquier modulo futuro que consuma `OrganizationSite` debe proyectar su propio detalle operativo en su contexto y no reabrir un panel persistente en MOD00 por inercia.
+
+## 23. Ejecucion refinamiento roles de empresa
+
+### Fecha del refinamiento
+
+2026-05-25
+
+### Estado
+
+Ejecutado y validado.
+
+### Implementacion del refinamiento
+
+- En `apps/api/src/modules/access-control` se agregaron plantillas iniciales de roles de empresa (`MOD00_ACCESS_V1_SYSTEM_ROLE_TEMPLATES`) y se garantiza su seed idempotente al consultar perfiles, manteniendo `UserRole` como categoria base fija y `AccessProfile` como rol de empresa configurable.
+- En `apps/portal/src/components/settings` se renombro la experiencia visible de access governance a `Roles de empresa`, se separaron plantillas iniciales de roles personalizados y se alinearon textos de permisos efectivos y shortcuts con la semantica aprobada.
+- En `apps/portal/src/components/users` se incorporo seleccion de roles de empresa compatibles en los modales de crear y editar usuario, con preview de permisos efectivos y coordinacion segura de create/update + asignacion de perfiles desde `UsersClient`.
+- En `e2e/tests` se ajustaron mocks y expectativas para reflejar la nueva dependencia de Users respecto a Access Control y la nueva terminologia visible del portal.
+
+### Validacion ejecutada
+
+- Backend Jest focalizado en verde: `apps/api/src/modules/access-control/access-control.service.spec.ts` y `apps/api/src/modules/access-control/access-control.controller.http.spec.ts`.
+- Portal Jest focalizado en verde: `apps/portal/src/components/settings/AccessControlSettingsClient.spec.tsx`, `apps/portal/src/components/settings/SettingsClient.spec.tsx`, `apps/portal/src/components/users/company-role-preview.spec.ts`, `apps/portal/src/components/users/CreateUserModal.spec.tsx` y `apps/portal/src/components/users/EditUserModal.spec.tsx`.
+- Playwright portal en verde: `pnpm exec playwright test --config e2e/playwright.portal.config.ts e2e/tests/portal-settings-access-governance.spec.ts`.
+- Corrida Playwright combinada validada para el slice: `e2e/tests/portal-users.spec.ts` paso en la corrida conjunta junto con access governance despues de completar los mocks requeridos por Users.
+- `get_errors` sin diagnosticos en los archivos E2E ajustados al cierre del refinamiento.
+
+### Observaciones de seguimiento no bloqueantes
+
+- Revisar en iteracion posterior si `ensurePermissionCatalogSeeded()` debe seguir reactivando permisos existentes con `isActive = true` de forma incondicional.
+- Evaluar si `listProfiles()` debe excluir perfiles inactivos por defecto o mantenerlos visibles segun la politica operativa final.
+
+---
+
+## 24. Ejecucion completada: pantalla Access rediseñada
+
+### v1.23 — 2026-05-25 — Ejecucion completada: pantalla Access rediseñada
+
+**Autor:** AI-SR-FULL (Senior Developer Fullstack)
+**Tipo:** Implementacion frontend
+
+Se ejecuto el plan `docs/plans/2026-05-25-mod00-roles-de-empresa-implementation.md` en 5 tareas usando subagent-driven-development.
+
+**Cambios realizados en `apps/portal/src/components/settings/`:**
+
+- `AccessControlSettingsClient.tsx`: eliminados bloques `Asignacion de roles` y `EffectivePermissionsPanel`; plantillas convertidas en cards accionables con `Ver accesos` y `Usar como base`; `Crear rol` abre selector de dos opciones (`Usar una plantilla` / `Empezar desde cero`); editor de permisos agrupado por modulo con `Limpiar permisos` y `Restablecer cambios`; `ProfileChangeEvidence` movido fuera del grid como bloque standalone.
+- `mod00-settings-labels.ts`: `pageSubtitle` y `loadingSubtitle` alineados al nuevo scope.
+- `AccessControlSettingsClient.spec.tsx`: 5 tests nuevos, 3 tests actualizados; 11 tests pasan.
+
+**Correccion de tipo:** `draftPermissionKeys` cambiado de `string[]` a `AccessPermissionKey[]`; eliminado cast `never[]`.
+
+**E2E:**
+
+- `portal-settings-access-governance.spec.ts`: primer test renombrado a `muestra plantillas, roles y evidencia auditada sin asignacion de usuarios`; eliminadas aserciones de `EffectivePermissionsPanel`; validaciones actualizadas para reflejar cards con `Usar como base` e inexistencia de selector `Usuario`.
+- `portal-users.spec.ts`: test de regresion de ownership añadido — confirma que `/dashboard/users` expone tabla editable y selector de categoria base, documentando que la asignacion de roles vive en Users y no en Settings/Access.
+
+**Estado:** Definition of Done alcanzada. Tests Jest: 11/11. Boundary ADR-040 respetado.
+
+## 25. Refinamiento visual posterior: editor por modulo y retiro del catalogo
+
+### v1.24 — 2026-05-25 — Access centrado en permisos elegibles por modulo
+
+**Autor:** AI-SR-FULL (Senior Developer Fullstack)
+**Tipo:** Refinamiento UX frontend
+
+Se refino la pantalla `/dashboard/settings/access` para reducir saturacion visual y mejorar escalabilidad futura del editor de permisos.
+
+**Cambios realizados:**
+
+- `AccessControlSettingsClient.tsx`: se retiro por completo la seccion `Catalogo de permisos`; el panel `Permisos del rol` dejo de renderizar una lista vertical interminable y ahora usa tabs por modulo con contador `activos/total`, navegacion por teclado y foco en un solo dominio a la vez.
+- `AccessControlSettingsClient.spec.tsx`: el test del editor paso de validar agrupacion vertical a validar tabs por modulo y ausencia del catalogo completo.
+- `mod00-settings-labels.ts`: se retiraron labels huérfanos del catalogo ya eliminado.
+- `SettingsAccessShortcuts.tsx`: el copy del acceso rapido a Roles de empresa ya no menciona asignaciones por usuario y ahora describe permisos elegibles por modulo.
+- `portal-settings-access-governance.spec.ts`: se añadió validacion E2E para confirmar que la ruta ya no expone el heading `Catalogo de permisos`.
+
+**Validacion ejecutada:**
+
+- Jest focalizado: `AccessControlSettingsClient.spec.tsx` — 11/11 en verde.
+- Playwright focalizado: `portal-settings-access-governance.spec.ts` — 3/3 en verde.
+
+**Resultado:** la pantalla queda centrada en la tarea real del administrador tenant: diseñar roles usando solo permisos elegibles y navegables por modulo, sin referencia redundante al catalogo completo.
+
+### v1.25 — 2026-05-25 — Afinado del editor por modulo
+
+**Autor:** AI-SR-FULL (Senior Developer Fullstack)
+**Tipo:** Refinamiento UX frontend
+
+Se aplico un segundo ajuste de densidad sobre el editor de permisos para mejorar foco operativo dentro del modulo activo.
+
+**Cambios realizados:**
+
+- `AccessControlSettingsClient.tsx`: el modulo activo inicial ahora se elige segun el bloque con mas permisos ya asignados al rol, en lugar de caer siempre en el primer modulo elegible.
+- `AccessControlSettingsClient.tsx`: se agrego busqueda local dentro del modulo activo para filtrar rapidamente permisos por descripcion, con estado vacio explicito cuando no hay coincidencias.
+- `AccessControlSettingsClient.spec.tsx`: el test del editor ahora valida seleccion inicial inteligente del tab y filtro dentro del modulo visible.
+
+**Validacion ejecutada:**
+
+- Jest focalizado: `AccessControlSettingsClient.spec.tsx` — 11/11 en verde.
+- Playwright focalizado: `portal-settings-access-governance.spec.ts` — 3/3 en verde.
+
+**Resultado:** el administrador entra directamente al modulo mas relevante del rol seleccionado y ya no necesita escanear manualmente listas completas dentro del tab activo.
+
+### v1.26 — 2026-05-25 — Compactacion visual de plantillas iniciales
+
+**Autor:** AI-SR-FULL (Senior Developer Fullstack)
+**Tipo:** Refinamiento UX frontend
+
+Se ajusto la composicion del bloque `Plantillas iniciales` para reducir altura visual y mejorar densidad de escaneo en el primer viewport.
+
+**Cambios realizados:**
+
+- `AccessControlSettingsClient.tsx`: las cards de plantillas se compactaron con acciones `Ver accesos` y `Usar como base` alineadas en la franja superior de cada tarjeta.
+- `AccessControlSettingsClient.tsx`: la grilla paso a un comportamiento mas denso en desktop grande, con hasta 4 columnas cuando existe volumen suficiente de plantillas, pero degradando dinamicamente cuando hay menos tarjetas para no comprimir el contenido.
+- `AccessControlSettingsClient.tsx`: se redujo el footprint visual de los botones superiores y se estabilizo la altura de la descripcion para mantener ritmo uniforme entre tarjetas.
+
+**Validacion ejecutada:**
+
+- Jest focalizado: `AccessControlSettingsClient.spec.tsx` — 11/11 en verde.
+- Playwright focalizado: `portal-settings-access-governance.spec.ts` — 3/3 en verde.
+
+**Resultado:** el bloque de plantillas ocupa menos altura, mejora el escaneo operativo y conserva la accion primaria visible sin degradar responsive ni accesibilidad.
+
+### v1.27 — 2026-05-25 — Vista previa de plantilla desacoplada de la card
+
+**Autor:** AI-SR-FULL (Senior Developer Fullstack)
+**Tipo:** Refinamiento UX frontend
+
+Se retiro la expansion inline de `Ver accesos` dentro de cada card de plantilla para evitar saltos de altura y mantener la grilla estable.
+
+**Cambios realizados:**
+
+- `AccessControlSettingsClient.tsx`: la accion `Ver accesos` ya no expande contenido dentro de la tarjeta. Ahora abre un panel unico de vista previa debajo de la grilla de plantillas.
+- `AccessControlSettingsClient.tsx`: el panel de vista previa muestra nombre de la plantilla, descripcion, metadata compacta y lista de permisos en una superficie separada con accion `Cerrar vista previa`.
+- `AccessControlSettingsClient.tsx`: las cards conservan altura uniforme aun cuando se consulta una plantilla, mejorando el ritmo visual del bloque completo.
+
+**Validacion ejecutada:**
+
+- Jest focalizado: `AccessControlSettingsClient.spec.tsx` — 11/11 en verde.
+- Playwright focalizado: `portal-settings-access-governance.spec.ts` — 3/3 en verde.
+
+**Resultado:** las plantillas quedan mas estables visualmente, el escaneo del grid ya no se rompe al abrir detalles y la vista previa sigue disponible sin sacrificar densidad.
+
+---
+
+### v1.28 — 2026-05-25 — Cierre de 4 gaps de audit visual (mini-spec AI-SR-UI-SYS)
+
+**Autor:** AI-SR-FULL (Senior Developer Fullstack)
+**Tipo:** Cierre de deuda UX — 4 items del audit visual
+
+Conversion del mini-spec de cierre en plan de implementacion y ejecucion directa sobre `AccessControlSettingsClient.tsx`.
+
+**Cambios realizados:**
+
+- `mod00-settings-labels.ts`: agregada entrada `'access-control': 'Control de acceso'` al mapper `getAccessModuleLabel`. El modulo ya no aparece como clave tecnica cruda en las pestanas de permisos.
+- `AccessControlSettingsClient.tsx`: botones de plantilla con nombres accesibles contextuales — `aria-label={\`Ver accesos de ${profile.name}\`}` y `aria-label={\`Usar ${profile.name} como base\`}`. Texto visible sin cambio para mantener densidad de la card.
+- `AccessControlSettingsClient.tsx`: badge `Sistema` rebajado visualmente — eliminado fondo `bg-gray-100`, reducido a `text-[10px] font-normal uppercase tracking-wide text-gray-400`. Jerarquia visual ahora subordinada al nombre de la plantilla.
+- `AccessControlSettingsClient.tsx`: el panel de vista previa debajo de la grilla reemplazado por un **drawer lateral derecho** — patron identico a `AssuranceTicketDrawer.tsx`. Overlay `fixed inset-0 z-[1200] bg-black/45`, `aside` con `max-w-lg` posicionado `inset-y-0 right-0`. Escape cierra el drawer y restaura `overflow-hidden` del body. El drawer tiene header con nombre/descripcion/metadata, listado scrollable de permisos y footer con accion `Usar [nombre] como base` que abre el dialogo de creacion pre-relleno.
+
+**Validacion ejecutada:**
+
+- Jest focalizado: `AccessControlSettingsClient.spec.tsx` — 11/11 en verde.
+- Playwright focalizado: `portal-settings-access-governance.spec.ts` — 3/3 en verde.
+
+**Resultado:** los 4 gaps del audit visual quedan cerrados. La pantalla cumple ahora con los criterios de cierre del mini-spec de AI-SR-UI-SYS.
+
+---
+
+### v1.29 — 2026-05-26 — Tablist de módulos escalable con señales de overflow
+
+**Autor:** AI-SR-FULL (Senior Developer Fullstack)
+**Tipo:** Refinamiento UX frontend guiado por criterio AI-SR-UI-SYS
+
+Se evoluciono el tablist horizontal del editor de permisos para soportar crecimiento de módulos sin cambiar el modelo mental de la pantalla. La dirección elegida fue mantener scroll horizontal y mejorar descubribilidad/operabilidad.
+
+**Cambios realizados:**
+
+- `AccessControlSettingsClient.tsx`: agregado contenedor de tabs con detección de overflow horizontal mediante `scrollWidth`, `clientWidth` y `scrollLeft`.
+- `AccessControlSettingsClient.tsx`: añadidas señales visuales de continuidad con gradientes laterales y controles de desplazamiento izquierdo/derecho cuando existen módulos fuera de vista.
+- `AccessControlSettingsClient.tsx`: el tab activo ahora ejecuta `scrollIntoView()` de forma segura para mantenerse visible al navegar por click o teclado.
+- `AccessControlSettingsClient.tsx`: se mantuvo intacta la navegación accesible del tablist (`Arrow`, `Home`, `End`, roving focus, focus-visible`).
+- `AccessControlSettingsClient.spec.tsx`: nuevo test unitario para cubrir aparición de controles de scroll en overflow horizontal del tablist.
+
+**Validacion ejecutada:**
+
+- Jest focalizado: `AccessControlSettingsClient.spec.tsx` — 12/12 en verde.
+- Playwright focalizado: `portal-settings-access-governance.spec.ts` — 3/3 en verde.
+
+**Resultado:** el editor de permisos ya escala mejor cuando aumente la cantidad de módulos. El usuario conserva continuidad visual, descubre con mayor claridad que existen más pestañas y no pierde de vista el módulo activo.
+
+---
+
+### v1.30 — 2026-05-26 — Pulido visual del tablist según identidad iWana
+
+**Autor:** AI-SR-FULL (Senior Developer Fullstack)
+**Tipo:** Refinamiento visual frontend guiado por manual de identidad
+
+Se ajustó la presencia visual de las affordances del tablist de módulos para alinearlas mejor con la identidad corporativa iWana: minimalismo equilibrado, contraste suave, bordes redondeados y acentos de marca medidos.
+
+**Cambios realizados:**
+
+- `AccessControlSettingsClient.tsx`: el contenedor horizontal de tabs ahora usa la utilidad `no-scrollbar` del design system en lugar de utilidades inline de ocultación de scrollbar.
+- `AccessControlSettingsClient.tsx`: los gradientes laterales de overflow fueron suavizados para integrarse con las superficies del portal y con los acentos `iwana-primary` / `iwana-secondary` de forma sutil.
+- `AccessControlSettingsClient.tsx`: los botones laterales de scroll fueron refinados con borde leve de marca, fondo translúcido, blur suave y texto `iwana-primary-700`, reduciendo el aspecto de control técnico superpuesto.
+- `AccessControlSettingsClient.tsx`: se conservaron intactos el foco visible, el contraste accesible y la operabilidad por teclado previamente implementados.
+
+**Validacion ejecutada:**
+
+- Jest focalizado: `AccessControlSettingsClient.spec.tsx` — 12/12 en verde.
+- Playwright focalizado: `portal-settings-access-governance.spec.ts` — 3/3 en verde.
+- Diagnósticos de editor en `AccessControlSettingsClient.tsx` — sin errores.
+
+**Resultado:** el patrón escalable del tablist ahora se percibe más coherente con la imagen visual del proyecto y menos como una capa técnica añadida, sin perder claridad operativa ni accesibilidad.
+
+---
+
+### v1.31 — 2026-05-26 — Cabecera de “Permisos del rol” más alineada a iWana
+
+**Autor:** AI-SR-FULL (Senior Developer Fullstack)
+**Tipo:** Refinamiento visual frontend guiado por AI-SR-UI-SYS
+
+Se refinó la cabecera del panel `Permisos del rol` para reducir la sensación de bloque genérico y acercarla al lenguaje visual del portal: jerarquía más clara, copy más directo y toolbar de acciones con mejor integración formal.
+
+**Cambios realizados:**
+
+- `mod00-settings-labels.ts`: la descripción dinámica del panel se compactó a `Administra por módulo los permisos del rol de empresa [nombre]`, reduciendo carga verbal y mejorando escaneo.
+- `AccessControlSettingsClient.tsx`: el panel ahora usa `eyebrow="Control de acceso"`, alineándolo con la gramática visual del portal usada en otros bloques con identidad más marcada.
+- `AccessControlSettingsClient.tsx`: la barra de acciones (`Limpiar`, `Restablecer`, `Guardar`) se encapsuló en una superficie pill sutil con borde y fondo suave, en lugar de quedar flotando como grupo suelto.
+- `AccessControlSettingsClient.tsx`: los botones secundarios se redondearon para integrarse con la morfología iWana; el CTA `Guardar permisos` ganó una presencia más premium mediante sombra suave sin alterar su jerarquía funcional.
+
+**Validacion ejecutada:**
+
+- Jest focalizado: `AccessControlSettingsClient.spec.tsx` — 12/12 en verde.
+- Playwright focalizado: `portal-settings-access-governance.spec.ts` — 3/3 en verde.
+- Diagnósticos de editor en `AccessControlSettingsClient.tsx` y `mod00-settings-labels.ts` — sin errores.
+
+**Resultado:** la entrada al editor de permisos se percibe más coherente con el sistema visual iWana y con la identidad del portal, sin introducir más complejidad ni romper el flujo existente.
+
+---
+
+### v1.32 — 2026-05-26 — Tabla de roles personalizados con mejor jerarquía operativa
+
+**Autor:** AI-SR-FULL (Senior Developer Fullstack)
+**Tipo:** Refinamiento visual frontend guiado por AI-SR-UI-SYS + exploración de agentes
+
+Se refinó la tabla `Roles personalizados` para acercarla al nivel visual del panel de permisos: mejor lectura de selección, metadata más escaneable y acciones más compactas sin cambiar el comportamiento funcional.
+
+**Cambios realizados:**
+
+- `AccessControlSettingsClient.tsx`: las filas ahora muestran `hover` suave y transición de color, aportando feedback visual de interacción.
+- `AccessControlSettingsClient.tsx`: el rol seleccionado ganó un indicador más claro mediante borde izquierdo con acento `iwana-secondary` y refuerzo de superficie en la primera celda.
+- `AccessControlSettingsClient.tsx`: `Categoría base`, `Permisos` y `Estado` pasaron a presentarse como pills compactas para mejorar escaneo horizontal y consistencia con otros listados del portal.
+- `AccessControlSettingsClient.tsx`: las acciones inline (`Configurar`, `Editar`, eliminar) se agruparon en una superficie pill sutil, reduciendo ruido visual y reforzando coherencia con el toolbar del panel derecho.
+
+**Validacion ejecutada:**
+
+- Jest focalizado: `AccessControlSettingsClient.spec.tsx` — 12/12 en verde.
+- Playwright focalizado: `portal-settings-access-governance.spec.ts` — 3/3 en verde.
+- Diagnósticos de editor en `AccessControlSettingsClient.tsx` — sin errores.
+
+**Resultado:** la tabla se percibe menos plana, comunica mejor qué rol está activo y queda más alineada con el lenguaje visual operativo de iWana sin afectar el flujo ni la densidad útil.
+
+---
+
+### v1.33 — 2026-05-26 — Pase final de consistencia visual para cierre del portal
+
+**Autor:** AI-SR-FULL (Senior Developer Fullstack)
+**Tipo:** Cierre visual final frontend guiado por AI-SR-UI-SYS + agentes Explore
+
+Se ejecutó un pase final de consistencia para cerrar la tarea del portal en `Roles de empresa`, con foco en jerarquía de headers, gobernanza de tokens y alineación formal con la identidad iWana.
+
+**Cambios realizados:**
+
+- `AccessControlSettingsClient.tsx`: la sección de plantillas ganó `eyebrow="Plantillas base"`, reforzando su lectura como bloque de entrada separado y no como listado genérico.
+- `AccessControlSettingsClient.tsx`: el panel izquierdo de `Roles personalizados` ganó `eyebrow="Roles de empresa"`, alineando su jerarquía con el panel derecho `Control de acceso`.
+- `AccessControlSettingsClient.tsx`: se sustituyeron varios hardcodes de `#f8faf5` por tokens/clases semánticas basadas en `iwana-secondary-50`, mejorando consistencia con el manual de identidad.
+- `AccessControlSettingsClient.tsx`: las superficies tipo toolbar que habían quedado demasiado `pill` se normalizaron hacia `rounded-2xl`, más coherente con la gramática visual predominante del portal.
+
+**Validacion ejecutada:**
+
+- Jest focalizado: `AccessControlSettingsClient.spec.tsx` — 12/12 en verde.
+- Playwright focalizado: `portal-settings-access-governance.spec.ts` — 3/3 en verde.
+- Diagnósticos de editor en `AccessControlSettingsClient.tsx` — sin errores.
+
+**Resultado:** la pantalla `Roles de empresa` queda cerrada con una gramática visual más uniforme entre plantillas, tabla y panel de permisos, y con mejor adhesión al sistema visual iWana del portal.
+
+---
+
+### v1.34 — 2026-05-26 — Extracción de toolbar compartido para acciones del portal
+
+**Autor:** AI-SR-FULL (Senior Developer Fullstack)
+**Tipo:** Consolidación UI compartida del portal
+
+Como cierre técnico del refinamiento visual de `Roles de empresa`, se extrajo el patrón de toolbar de acciones a una primitiva compartida del portal para evitar duplicación local y estabilizar la gramática visual del módulo.
+
+**Cambios realizados:**
+
+- `portal-ui.tsx`: agregado `PortalActionToolbar`, una primitiva compartida para agrupar acciones operativas en una superficie `rounded-2xl` con borde y fondo suave alineados al sistema visual iWana.
+- `AccessControlSettingsClient.tsx`: el toolbar de acciones del panel `Permisos del rol` ahora consume `PortalActionToolbar` en lugar de markup inline.
+- `AccessControlSettingsClient.tsx`: el grupo de acciones de la tabla `Roles personalizados` también consume `PortalActionToolbar`, eliminando duplicación del patrón visual dentro del mismo módulo.
+
+**Validacion ejecutada:**
+
+- Jest focalizado: `AccessControlSettingsClient.spec.tsx` — 12/12 en verde.
+- Playwright focalizado: `portal-settings-access-governance.spec.ts` — 3/3 en verde.
+- Diagnósticos de editor en `portal-ui.tsx` y `AccessControlSettingsClient.tsx` — sin errores.
+
+**Resultado:** el módulo Access queda cerrado no solo a nivel visual, sino también con una mejora concreta de mantenibilidad dentro del portal: el patrón de toolbar ya vive en una primitiva reutilizable y coherente con la identidad iWana.
+
+---
+
+### v1.35 — 2026-05-26 — Overlay de modales corregido para todo el portal
+
+**Autor:** AI-SR-FULL (Senior Developer Fullstack)
+**Tipo:** Corrección visual transversal guiada por AI-SR-UI-SYS
+
+Tras revisar las capturas del portal, se corrigió la inconsistencia de los modales que no oscurecían o difuminaban correctamente el shell completo. La causa raíz estaba en el `Dialog` compartido de `@iwana/ui`: overlay sin portal a `document.body`, z-index insuficiente frente al sidebar del portal y tratamiento visual más débil que otros modales del producto.
+
+**Cambios realizados:**
+
+- `packages/ui/src/components/Dialog.tsx`: `DialogContent` ahora se renderiza vía `createPortal(..., document.body)`, evitando quedar atrapado en el stacking context del layout del portal.
+- `packages/ui/src/components/Dialog.tsx`: el overlay subió por encima del shell del portal con `z-10000` y el contenido con `z-10001`, superando el `Sidebar` (`z-[9999]`).
+- `packages/ui/src/components/Dialog.tsx`: el fondo del overlay se reforzó a `bg-black/55` y se añadió `backdrop-blur-sm`, alineando el modal compartido con la densidad visual ya usada en otros modales del portal.
+- `packages/ui/src/components/Dialog.tsx`: al abrir un diálogo se bloquea scroll del `body`, mejorando sensación modal y consistencia operativa.
+
+**Validacion ejecutada:**
+
+- Jest focalizado: `AccessControlSettingsClient.spec.tsx` — 12/12 en verde.
+- Playwright focalizado: `portal-settings-access-governance.spec.ts` — 3/3 en verde.
+- Diagnósticos de editor en `packages/ui/src/components/Dialog.tsx` — sin errores.
+
+**Resultado:** los modales del portal ahora oscurecen y difuminan correctamente toda la pantalla, incluyendo el shell lateral, eliminando la inconsistencia visual observada en las capturas.
+
+---
+
+### v1.36 — 2026-05-26 — Overlay del drawer de plantillas alineado al shell del portal
+
+**Autor:** AI-SR-FULL (Senior Developer Fullstack)
+**Tipo:** Corrección visual puntual guiada por AI-SR-UI-SYS
+
+Tras la corrección del `Dialog` compartido, se detectó un segundo caso independiente en `Roles de empresa`: el drawer lateral de vista previa de plantilla seguía usando un overlay local con `z-index` inferior al sidebar del portal, por lo que el shell lateral permanecía demasiado visible.
+
+**Cambios realizados:**
+
+- `AccessControlSettingsClient.tsx`: el overlay del drawer lateral de plantillas subió a `z-10000`, por encima del sidebar del portal (`z-[9999]`).
+- `AccessControlSettingsClient.tsx`: el panel lateral asociado subió a `z-10001` para mantener la relación overlay/contenido.
+- `AccessControlSettingsClient.tsx`: el overlay del drawer se reforzó visualmente a `bg-black/55` con `backdrop-blur-sm`, igualando el lenguaje modal ya aplicado al `Dialog` compartido.
+
+**Validacion ejecutada:**
+
+- Jest focalizado: `AccessControlSettingsClient.spec.tsx` — 12/12 en verde.
+- Playwright focalizado: `portal-settings-access-governance.spec.ts` — 3/3 en verde.
+- Diagnósticos de editor en `AccessControlSettingsClient.tsx` — sin errores.
+
+**Resultado:** la vista previa lateral de plantillas ahora oscurece correctamente todo el shell del portal y deja de verse “lavada” o por debajo de la navegación lateral.
+
+---
+
+### v1.37 — 2026-05-27 — Pasada integral de copy empresarial claro en Access
+
+**Autor:** AI-SR-FULL (Senior Developer Fullstack)
+**Tipo:** Refinamiento UX y lenguaje visible guiado por AI-SR-UI-SYS
+
+Se ejecutó una pasada integral de lenguaje visible sobre `/dashboard/settings/access` para reducir tecnicismo y alinear la narrativa del módulo con un modelo mental más claro para negocio: perfiles sugeridos, perfiles personalizados y accesos por sección.
+
+La dirección quedó documentada en `docs/specs/2026-05-27-mod00-access-copy-design.md` y se implementó sin cambiar contratos backend, estructura funcional ni boundaries aprobados.
+
+**Cambios realizados:**
+
+- `mod00-settings-labels.ts`: se reemplazó la semántica visible principal de `roles de empresa + permisos + plantillas` por `perfiles de acceso + accesos + perfiles sugeridos`.
+- `AccessControlSettingsClient.tsx`: se actualizaron títulos, descripciones, estados vacíos, CTA, labels, placeholders, copy de drawer y copy de diálogos para hablar en términos de negocio y no en taxonomía interna de Access Control.
+- `AccessControlSettingsClient.tsx`: el editor lateral ahora habla de `secciones` y `accesos`, manteniendo la misma lógica de tabs, filtros y guardado.
+- `AccessControlSettingsClient.spec.tsx` y `portal-settings-access-governance.spec.ts`: se alinearon los asserts accesibles y visibles con el nuevo copy del módulo.
+
+**Validacion ejecutada:**
+
+- Jest focalizado: `AccessControlSettingsClient.spec.tsx` — 12/12 en verde.
+- Playwright focalizado: `portal-settings-access-governance.spec.ts` — 3/3 en verde.
+- Diagnósticos de editor en `AccessControlSettingsClient.tsx`, `mod00-settings-labels.ts` y la nueva spec de diseño — sin errores.
+
+**Resultado:** el módulo Access mantiene el mismo comportamiento, pero ahora comunica con más claridad qué hace cada superficie y reduce el lenguaje interno que antes exigía contexto técnico para comprender la pantalla.
+
+---
+
+### v1.38 — 2026-05-27 — Reversión local del copy de plantillas en Access
+
+**Autor:** AI-SR-FULL (Senior Developer Fullstack)
+**Tipo:** Ajuste visual puntual guiado por inspección de UI
+
+Tras revisar la pantalla real de `/dashboard/settings/access`, se detectó que el nuevo copy aplicado al bloque de plantillas alargaba demasiado las tarjetas y debilitaba la lectura compacta de esa superficie. Por decisión de UX, ese slice puntual volvió al lenguaje anterior, sin revertir el resto de la pasada de copy del módulo.
+
+**Cambios realizados:**
+
+- `mod00-settings-labels.ts`: el panel volvió a `Plantillas iniciales` con su descripción anterior.
+- `AccessControlSettingsClient.tsx`: el bloque de tarjetas volvió a `Plantillas base`, badge `Sistema`, acciones `Ver accesos` y `Usar como base`, conteo en `permisos` y fallback textual anterior.
+- `AccessControlSettingsClient.tsx`: el drawer y la opción de creación desde plantilla también recuperaron su copy previo para mantener coherencia interna.
+- `AccessControlSettingsClient.spec.tsx` y `portal-settings-access-governance.spec.ts`: se realinearon los asserts del slice revertido.
+
+**Validacion ejecutada:**
+
+- Jest focalizado: `AccessControlSettingsClient.spec.tsx` — 12/12 en verde.
+- Playwright focalizado: `portal-settings-access-governance.spec.ts` — 3/3 en verde.
+
+**Resultado:** el módulo conserva el nuevo lenguaje empresarial en el resto de la pantalla, pero el bloque de plantillas recupera la compacidad y jerarquía visual que funcionaban mejor antes del cambio.
+
+---
+
+### v1.39 — 2026-05-27 — Limpieza final de términos técnicos visibles en Access
+
+**Autor:** AI-SR-FULL (Senior Developer Fullstack)
+**Tipo:** Refinamiento de lenguaje visible orientado a usuario final
+
+Se ajustó el lenguaje técnico que todavía podía filtrarse en `/dashboard/settings/access` desde el catálogo canónico y las plantillas del sistema. El objetivo fue evitar términos internos como `tenant`, `WFM`, `MOD00`, `guard`, `work orders`, `Users` o `matriz` en superficies visibles para negocio.
+
+**Cambios realizados:**
+
+- `access-control.constants.ts`: se simplificaron descripciones visibles del catálogo de permisos para hablar en términos de empresa, agenda de visitas, órdenes de trabajo y accesos disponibles.
+- `access-control.constants.ts`: las plantillas del sistema dejaron de usar descripciones con `tenant` y adoptaron copy empresarial claro.
+- `access-control.service.ts`: `ensureSystemRoleTemplatesSeeded()` ahora también refresca plantillas activas existentes cuando su descripción visible quedó desfasada frente al seed canónico.
+- `mod00-settings-labels.ts`: la etiqueta de módulo `wfm` pasó de `WFM` a `Operaciones de campo` para evitar siglas internas en la navegación del editor.
+
+**Validacion ejecutada:**
+
+- Jest focalizado backend: `access-control.service.spec.ts` — 7/7 en verde.
+- Jest focalizado backend: `access-control.controller.http.spec.ts` — 11/11 en verde.
+- Jest focalizado portal: `AccessControlSettingsClient.spec.tsx` — 12/12 en verde.
+- Playwright focalizado portal: `portal-settings-access-governance.spec.ts` — 3/3 en verde.
+
+**Resultado:** el módulo Access reduce de forma consistente el lenguaje interno de arquitectura o implementación y presenta un vocabulario más comprensible para un administrador de empresa desde la primera lectura.
+
+---
+
+### v1.43 — 2026-05-27 — Regla de identidad iWana y refinamiento operativo de Access
+
+**Autor:** AI-SR-FULL (Senior Developer Fullstack)  
+**Tipo:** Gobernanza visual, skill operativa y refinamiento UI incremental
+
+Se ejecutó la opción aprobada para convertir la identidad visual iWana en regla reutilizable y aplicarla de forma incremental en `/dashboard/settings/access`. La dirección conserva la naturaleza operativa B2B del portal: interfaces limpias, jerarquía clara, tokens iWana, accesibilidad AA y copy amigable para usuarios no técnicos.
+
+**Cambios realizados:**
+
+- `.github/instructions/frontend.instructions.md` y `.github/instructions/portal.instructions.md`: se agregaron reglas para aplicar la identidad operativa iWana en nuevas pantallas, secciones y módulos.
+- `.agents/skills/iwana-identity-ui-review/SKILL.md`: se creó una skill dedicada para revisar UI contra el manual de identidad, tokens reales, primitives portal, accesibilidad y vocabulario.
+- `AGENTS.md` y `.agents/skills/tailwind-patterns/SKILL.md`: se enlazó la nueva disciplina visual y se reforzó el uso de tokens, glass selectivo y utilities compartidas.
+- `packages/ui/src/styles/globals.css` y `portal-ui.tsx`: se agregaron `portal-eyebrow` y `portal-input-surface`, y `PortalActionToolbar` ahora responde mejor en mobile.
+- `AccessControlSettingsClient.tsx`, `mod00-settings-labels.ts`, `ProfileChangeEvidence.tsx`, `EffectivePermissionsPanel.tsx` y `SettingsAccessShortcuts.tsx`: se alineó el lenguaje visible hacia `perfiles de acceso`, `categoria base` y `accesos`, con drawer y busqueda visualmente más consistentes con iWana.
+
+**Validacion ejecutada:**
+
+- Jest focalizado: `AccessControlSettingsClient.spec.tsx` — 12/12 en verde.
+- Jest focalizado: `SettingsClient.spec.tsx` — 3/3 en verde.
+- Playwright focalizado: `portal-settings-access-governance.spec.ts` — 3/3 en verde.
+- Diagnósticos de editor en archivos tocados — sin errores.
+
+**Resultado:** la identidad iWana queda formalizada como criterio de diseño futuro y Access funciona como una referencia práctica: más coherente visualmente, más responsive y con vocabulario más amable para administradores de empresa.
+
+---
+
+### v1.44 — 2026-05-27 — Integracion consultiva de ui-ux-pro-max
+
+**Autor:** AI-SR-FULL (Senior Developer Fullstack)  
+**Tipo:** Gobernanza de skills y apoyo UI/UX
+
+Se incorporó `ui-ux-pro-max` al flujo de diseño del repo como biblioteca de apoyo para razonamiento UI/UX avanzado. Su alcance queda acotado: aporta heuristicas, patrones, tipografia, color, responsive, interaccion, accesibilidad y performance visual, pero no puede contradecir la identidad iWana ni el sistema visual implementado.
+
+**Cambios realizados:**
+
+- `AGENTS.md`: se añadió `ui-ux-pro-max` al dispatch de skills como apoyo UI/UX avanzado, subordinado a la identidad y componentes del repo.
+- `.github/instructions/frontend.instructions.md`: se documentó que la skill puede apoyar decisiones UI/UX amplias sin reemplazar manual de identidad, tokens ni primitives.
+- `.agents/skills/iwana-identity-ui-review/SKILL.md`: se agregó una sección de apoyo consultivo y precedencia para usar `ui-ux-pro-max` sin introducir drift visual.
+
+**Validacion ejecutada:**
+
+- Diagnósticos de editor en archivos tocados — sin errores.
+
+**Resultado:** el equipo gana una segunda mirada UI/UX más amplia, manteniendo a iWana como fuente de verdad visual y operativa.

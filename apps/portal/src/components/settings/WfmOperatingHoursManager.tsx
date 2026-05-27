@@ -18,6 +18,7 @@ import {
   PortalSectionHeader,
   PortalSkeletonBlock,
 } from '@/components/shared/portal-ui';
+import { WFM_SETTINGS_COPY } from './mod00-settings-labels';
 
 const ORDERED_WEEKDAYS = [
   BusinessHoursWeekday.MONDAY,
@@ -525,7 +526,7 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
       setCompanyWeek(normalizeWeek(nextCompanyWeek));
       setBlackouts(nextBlackouts);
     } catch (error) {
-      setLoadError(mapError(error, 'No fue posible cargar la configuración de despacho técnico.'));
+      setLoadError(mapError(error, WFM_SETTINGS_COPY.loadError));
     } finally {
       setIsLoading(false);
     }
@@ -557,8 +558,8 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
       setCompanyWeek(normalizeWeek(saved));
       setFeedback({
         variant: 'success',
-        title: 'Horario base actualizado',
-        description: 'La semana operativa de empresa quedó guardada.',
+        title: 'Horarios actualizados',
+        description: WFM_SETTINGS_COPY.companyWeekSaved,
       });
     } catch (error) {
       setFeedback({
@@ -596,7 +597,7 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
       setFeedback({
         variant: 'success',
         title: blackoutForm.id ? 'Cierre actualizado' : 'Cierre creado',
-        description: 'El festivo o cierre especial ya quedó registrado.',
+        description: WFM_SETTINGS_COPY.blackoutsSaved,
       });
     } catch (error) {
       setFeedback({
@@ -634,7 +635,7 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
       setFeedback({
         variant: 'success',
         title: 'Cierre eliminado',
-        description: 'El calendario especial del despacho técnico fue actualizado.',
+        description: WFM_SETTINGS_COPY.blackoutsDeleted,
       });
     } catch (error) {
       setFeedback({
@@ -676,9 +677,9 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
       <Card className="rounded-2xl border border-gray-200 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
         <CardHeader>
           <PortalSectionHeader
-            eyebrow="Despacho técnico"
+            eyebrow={WFM_SETTINGS_COPY.headerEyebrow}
             title="Horarios operativos"
-            description="Administra el horario base y los cierres especiales de la agenda técnica."
+            description={WFM_SETTINGS_COPY.headerDescription}
           />
         </CardHeader>
         <CardContent className="space-y-4">
@@ -686,7 +687,7 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
             <PortalAlert
               variant="info"
               title="Modo solo lectura"
-              description="Tu rol puede consultar la configuración de despacho técnico, pero no modificar horarios ni cierres."
+              description={WFM_SETTINGS_COPY.readOnlyDescription}
               icon={ShieldAlert}
             />
           )}
@@ -705,8 +706,8 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
       <Card className="rounded-2xl border border-gray-200 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
         <CardHeader>
           <PortalSectionHeader
-            title="Horario base de despacho técnico"
-            description="Horario base para programar visitas técnicas."
+            title={WFM_SETTINGS_COPY.companyWeekTitle}
+            description={WFM_SETTINGS_COPY.companyWeekDescription}
           />
         </CardHeader>
         <CardContent className="space-y-4">
@@ -716,10 +717,10 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
             onChange={(weekday, patch) => updateWeekDay(setCompanyWeek, weekday, patch)}
           />
           <div className="flex items-center justify-between gap-3">
-            <p className={MUTED_CLASS}>Cada día cerrado queda sin agenda disponible.</p>
+            <p className={MUTED_CLASS}>{WFM_SETTINGS_COPY.companyWeekHint}</p>
             {canEdit && (
               <Button type="button" loading={isSavingCompanyWeek} onClick={handleSaveCompanyWeek}>
-                Guardar horario base
+                {WFM_SETTINGS_COPY.companyWeekSaveAction}
               </Button>
             )}
           </div>
@@ -729,8 +730,8 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
       <Card className="rounded-2xl border border-gray-200 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
         <CardHeader>
           <PortalSectionHeader
-            title="Festivos y cierres especiales"
-            description="Bloquea fechas para toda la empresa o para una sede cuando no debe haber agenda disponible."
+            title={WFM_SETTINGS_COPY.blackoutsTitle}
+            description={WFM_SETTINGS_COPY.blackoutsDescription}
           />
         </CardHeader>
         <CardContent className="space-y-4">
@@ -738,7 +739,7 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
             <PortalEmptyState
               icon={CalendarDays}
               title="Sin cierres especiales"
-              description="Registra festivos nacionales, cierres por sede o mantenimientos operativos cuando corresponda."
+              description={WFM_SETTINGS_COPY.blackoutsEmptyDescription}
             />
           ) : (
             <div className="space-y-3">
@@ -754,7 +755,9 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
                           {blackout.name}
                         </h3>
                         <span className={BADGE_CLASS}>
-                          {blackout.isRecurring ? 'Recurrente' : 'Puntual'}
+                          {blackout.isRecurring
+                            ? WFM_SETTINGS_COPY.recurringBadge
+                            : WFM_SETTINGS_COPY.oneTimeBadge}
                         </span>
                         {!blackout.isEnabled && <span className={BADGE_CLASS}>Inactivo</span>}
                       </div>
@@ -804,9 +807,7 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
                   <p className="text-sm font-semibold text-gray-900 dark:text-white">
                     {blackoutForm.id ? 'Editar cierre especial' : 'Nuevo cierre especial'}
                   </p>
-                  <p className={MUTED_CLASS}>
-                    Los cierres bloquean la agenda del periodo o fecha configurados.
-                  </p>
+                  <p className={MUTED_CLASS}>{WFM_SETTINGS_COPY.blackoutFormDescription}</p>
                 </div>
                 {blackoutForm.id && (
                   <Button
@@ -875,7 +876,7 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
                         }))
                       }
                     />
-                    Recurrente
+                    {WFM_SETTINGS_COPY.recurringCheckbox}
                   </label>
                   <label className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 dark:border-dark-border dark:text-gray-300">
                     <input

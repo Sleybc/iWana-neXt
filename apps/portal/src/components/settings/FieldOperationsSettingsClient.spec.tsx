@@ -20,7 +20,7 @@ describe('FieldOperationsSettingsClient', () => {
     jest.clearAllMocks();
   });
 
-  it('should render the despacho técnico page with link to calendar for admins', () => {
+  it('should render the field operations page with link to calendar for admins', () => {
     useAuthMock.mockReturnValue({
       user: { id: 'user-1', role: UserRole.ADMIN },
       isLoading: false,
@@ -28,7 +28,8 @@ describe('FieldOperationsSettingsClient', () => {
 
     render(<FieldOperationsSettingsClient />);
 
-    expect(screen.getByText('Despacho técnico')).toBeInTheDocument();
+    expect(screen.getByText('Operaciones de campo')).toBeInTheDocument();
+    expect(screen.getByText('Horarios y jornadas')).toBeInTheDocument();
     expect(screen.getByText('Ir a Calendario operativo y jornadas →')).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'Ir a Calendario operativo y jornadas →' }),
@@ -43,7 +44,7 @@ describe('FieldOperationsSettingsClient', () => {
 
     render(<FieldOperationsSettingsClient />);
 
-    expect(screen.getByText('Sesión no disponible')).toBeInTheDocument();
+    expect(screen.getByText('Acceso requerido')).toBeInTheDocument();
     expect(screen.getByText('Vista temporalmente no disponible')).toBeInTheDocument();
   });
 });

@@ -7,31 +7,32 @@ import { type SettingsSection } from '@/lib/api-client';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { accessControlApi, ApiError, configurationApi } from '@/lib/api-client';
+import { SETTINGS_HUB_COPY } from './mod00-settings-labels';
 import { SettingsSectionGrid } from './SettingsSectionGrid';
 import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 
 function mapRegistryError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 403) {
-      return 'Tu rol puede ver la vista base, pero no recibió metadata del shell federado.';
+      return SETTINGS_HUB_COPY.registryForbidden;
     }
 
     return error.message;
   }
 
-  return 'No fue posible cargar las secciones federadas del centro de settings.';
+  return SETTINGS_HUB_COPY.registryUnavailable;
 }
 
 function mapPermissionsError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 403) {
-      return 'Tu sesión no puede validar permisos efectivos para operar el centro de settings.';
+      return SETTINGS_HUB_COPY.permissionsForbidden;
     }
 
     return error.message;
   }
 
-  return 'No fue posible validar los permisos efectivos del usuario autenticado.';
+  return SETTINGS_HUB_COPY.permissionsUnavailable;
 }
 
 function SettingsSkeleton() {
@@ -52,7 +53,7 @@ export function SettingsClient() {
 
   const loadSettings = useCallback(async () => {
     if (!user) {
-      setError('No fue posible resolver la sesión del portal.');
+      setError(SETTINGS_HUB_COPY.sessionUnavailable);
       setIsLoading(false);
       return;
     }
@@ -99,8 +100,8 @@ export function SettingsClient() {
     return (
       <div className="space-y-6">
         <PageHeader
-          title="Configuración empresarial"
-          subtitle="Cargando secciones federadas de configuración"
+          title={SETTINGS_HUB_COPY.pageTitle}
+          subtitle={SETTINGS_HUB_COPY.loadingSubtitle}
         />
         <SettingsSkeleton />
       </div>
@@ -110,7 +111,10 @@ export function SettingsClient() {
   if (error) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Configuración empresarial" subtitle="Error al cargar la vista" />
+        <PageHeader
+          title={SETTINGS_HUB_COPY.pageTitle}
+          subtitle={SETTINGS_HUB_COPY.errorSubtitle}
+        />
         <PortalAlert
           variant="error"
           title="Vista temporalmente no disponible"
@@ -121,7 +125,7 @@ export function SettingsClient() {
               onClick={() => void loadSettings()}
               className="text-sm font-medium text-red-700 underline decoration-red-300 underline-offset-4 hover:no-underline dark:text-red-300"
             >
-              Reintentar
+              {SETTINGS_HUB_COPY.retryAction}
             </button>
           }
           icon={AlertTriangle}
@@ -132,10 +136,7 @@ export function SettingsClient() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Configuración empresarial"
-        subtitle="Elige una sección para consultar o administrar la configuración del tenant."
-      />
+      <PageHeader title={SETTINGS_HUB_COPY.pageTitle} subtitle={SETTINGS_HUB_COPY.pageSubtitle} />
 
       <SettingsSectionGrid sections={sections} effectivePermissions={effectivePermissions} />
     </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '../lib/utils';
 
 interface DialogContextValue {
@@ -91,12 +92,62 @@ DialogTrigger.displayName = 'DialogTrigger';
 export interface DialogContentProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode;
   onInteractOutside?: () => void;
+  initialFocusRef?: React.RefObject<HTMLElement | null>;
+  enableFocusTrap?: boolean;
 }
 
 export const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
-  ({ className, children, onInteractOutside, ...props }, ref) => {
+  (
+    { className, children, onInteractOutside, initialFocusRef, enableFocusTrap = true, ...props },
+    ref,
+  ) => {
     const { open, setOpen } = useDialogContext('DialogContent');
     const contentRef = React.useRef<HTMLDivElement | null>(null);
+    const previousActiveElementRef = React.useRef<HTMLElement | null>(null);
+    const [mounted, setMounted] = React.useState(false);
+
+    const getFocusableElements = React.useCallback(() => {
+      const container = contentRef.current;
+
+      if (!container) {
+        return [] as HTMLElement[];
+      }
+
+      return Array.from(
+        container.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => !element.hasAttribute('disabled') && element.tabIndex !== -1);
+    }, []);
+
+    React.useEffect(() => {
+      setMounted(true);
+      return () => setMounted(false);
+    }, []);
+
+    React.useEffect(() => {
+      if (!open) {
+        return;
+      }
+
+      previousActiveElementRef.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+      const focusTarget =
+        initialFocusRef?.current ?? getFocusableElements()[0] ?? contentRef.current;
+
+      if (!focusTarget) {
+        return;
+      }
+
+      const focusFrame = window.requestAnimationFrame(() => {
+        focusTarget.focus();
+      });
+
+      return () => {
+        window.cancelAnimationFrame(focusFrame);
+      };
+    }, [getFocusableElements, initialFocusRef, open]);
 
     React.useEffect(() => {
       if (!open) return;
@@ -107,19 +158,81 @@ export const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps
           event.preventDefault();
           setOpen(false);
         }
+
+        if (event.key !== 'Tab' || !enableFocusTrap) {
+          return;
+        }
+
+        const container = contentRef.current;
+
+        if (!container) {
+          return;
+        }
+
+        const focusableElements = getFocusableElements();
+
+        if (focusableElements.length === 0) {
+          event.preventDefault();
+          container.focus();
+          return;
+        }
+
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+        const activeElement =
+          document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+        if (!firstElement || !lastElement) {
+          return;
+        }
+
+        if (!activeElement || !container.contains(activeElement)) {
+          event.preventDefault();
+          firstElement.focus();
+          return;
+        }
+
+        if (event.shiftKey && activeElement === firstElement) {
+          event.preventDefault();
+          lastElement.focus();
+          return;
+        }
+
+        if (!event.shiftKey && activeElement === lastElement) {
+          event.preventDefault();
+          firstElement.focus();
+        }
       };
 
       document.addEventListener('keydown', handleKeyDown);
       return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [open, setOpen]);
+    }, [enableFocusTrap, getFocusableElements, open, setOpen]);
 
-    if (!open) {
+    React.useEffect(() => {
+      if (!open || typeof document === 'undefined') {
+        return;
+      }
+
+      document.body.classList.add('overflow-hidden');
+
+      return () => {
+        document.body.classList.remove('overflow-hidden');
+
+        const previousActiveElement = previousActiveElementRef.current;
+
+        if (previousActiveElement?.isConnected) {
+          previousActiveElement.focus();
+        }
+      };
+    }, [open]);
+
+    if (!open || !mounted || typeof document === 'undefined') {
       return null;
     }
 
-    return (
+    return createPortal(
       <div
-        className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 px-4 py-6"
+        className="fixed inset-0 z-10000 flex items-center justify-center bg-black/55 px-4 py-6 backdrop-blur-sm"
         onMouseDown={() => {
           // Click sobre el overlay equivale a interacción fuera del contenido.
           onInteractOutside?.();
@@ -139,8 +252,9 @@ export const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps
           }}
           role="dialog"
           aria-modal="true"
+          tabIndex={-1}
           className={cn(
-            'relative z-[1001] max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-xl dark:border-dark-border dark:bg-dark-surface-2',
+            'relative z-10001 max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-dark-border dark:bg-dark-surface-2',
 
             className,
           )}
@@ -151,7 +265,8 @@ export const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps
         >
           {children}
         </div>
-      </div>
+      </div>,
+      document.body,
     );
   },
 );

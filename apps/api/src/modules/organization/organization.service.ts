@@ -511,6 +511,10 @@ export class OrganizationService {
       id: site.id,
       name: site.name,
       code: site.code,
+      siteType: site.siteType,
+      address: site.address,
+      municipality: site.municipality,
+      department: site.department,
       capabilities: groupedCapabilities.get(site.id) ?? [],
       isActive: site.isActive,
     }));

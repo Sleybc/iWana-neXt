@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { OrganizationSiteCapability } from '@iwana/shared';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { OrganizationSiteCapability, OrganizationSiteType } from '@iwana/shared';
 
 export class WfmOrganizationSiteDto {
   @ApiProperty({ format: 'uuid' })
@@ -10,6 +10,18 @@ export class WfmOrganizationSiteDto {
 
   @ApiProperty({ example: 'NORTE' })
   code: string;
+
+  @ApiProperty({ enum: OrganizationSiteType })
+  siteType: OrganizationSiteType;
+
+  @ApiPropertyOptional({ example: 'Cra 10 # 10-10', nullable: true })
+  address?: string | null;
+
+  @ApiPropertyOptional({ example: 'Bogotá', nullable: true })
+  municipality?: string | null;
+
+  @ApiPropertyOptional({ example: 'Cundinamarca', nullable: true })
+  department?: string | null;
 
   @ApiProperty({ enum: OrganizationSiteCapability, isArray: true })
   capabilities: OrganizationSiteCapability[];

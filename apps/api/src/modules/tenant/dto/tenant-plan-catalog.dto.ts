@@ -1,4 +1,5 @@
 import { Transform, Type } from 'class-transformer';
+import { ApiSchema } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsDateString,
@@ -17,6 +18,7 @@ function trimString({ value }: { value: unknown }): unknown {
   return typeof value === 'string' ? value.trim() : value;
 }
 
+@ApiSchema({ name: 'TenantCreatePlanCatalogItemDto' })
 export class CreatePlanCatalogItemDto {
   @IsString()
   @Transform(trimString)

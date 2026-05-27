@@ -3,11 +3,11 @@
 import { Clock3, Wrench } from 'lucide-react';
 import { cn } from '@iwana/ui';
 import { SettingsSectionStatus } from '@iwana/shared';
+import { SETTINGS_HUB_COPY } from './mod00-settings-labels';
 
 interface SettingsUnavailableStateProps {
   title: string;
   description: string;
-  ownerModule: string;
   status: SettingsSectionStatus;
   className?: string;
 }
@@ -33,7 +33,6 @@ const statusCopy = {
 export function SettingsUnavailableState({
   title,
   description,
-  ownerModule,
   status,
   className,
 }: SettingsUnavailableStateProps) {
@@ -65,13 +64,8 @@ export function SettingsUnavailableState({
         </div>
       </div>
       <div className="mt-4 rounded-2xl border border-white/80 bg-white/80 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-2/80">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-          Owner
-        </p>
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{ownerModule}</p>
-        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-          Esta sección no expone formularios ni escrituras hasta que el módulo owner publique un
-          contrato real.
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          {SETTINGS_HUB_COPY.unavailableDescription}
         </p>
       </div>
     </div>

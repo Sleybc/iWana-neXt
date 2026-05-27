@@ -11,7 +11,10 @@ import { EditUserModal } from './EditUserModal';
 import { DeleteUserDialog } from './DeleteUserDialog';
 import { ResetPasswordDialog } from './ResetPasswordDialog';
 import {
+  accessControlApi,
   usersApi,
+  type AccessPermissionsCatalog,
+  type AccessProfileView,
   type InternalUser,
   type ListUsersParams,
   type CreateInternalUserDto,
@@ -63,6 +66,9 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [newUserEmail, setNewUserEmail] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [accessCatalog, setAccessCatalog] = useState<AccessPermissionsCatalog | null>(null);
+  const [availableProfiles, setAvailableProfiles] = useState<AccessProfileView[]>([]);
+  const [selectedUserCompanyRoleIds, setSelectedUserCompanyRoleIds] = useState<string[]>([]);
 
   /** Texto ingresado por el usuario en el input de búsqueda (sin debounce) */
   const [searchValue, setSearchValue] = useState('');
@@ -101,6 +107,35 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
     void loadUsers(nextFilters);
   }, [isAdmin, loadUsers, searchParam]);
 
+  useEffect(() => {
+    if (!isAdmin) {
+      return;
+    }
+
+    let mounted = true;
+
+    Promise.all([accessControlApi.listPermissions(), accessControlApi.listProfiles()])
+      .then(([catalogResponse, profilesResponse]) => {
+        if (!mounted) {
+          return;
+        }
+
+        setAccessCatalog(catalogResponse);
+        setAvailableProfiles(profilesResponse);
+      })
+      .catch((err: unknown) => {
+        if (!mounted) {
+          return;
+        }
+
+        setActionError(mapError(err));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [isAdmin]);
+
   const handleFilterChange = (newFilters: ListUsersParams) => {
     void loadUsers({ ...newFilters, limit: PAGE_SIZE });
   };
@@ -126,7 +161,7 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
     }, 300);
   };
 
-  const handleCreate = async (dto: CreateInternalUserDto) => {
+  const handleCreate = async (dto: CreateInternalUserDto, companyRoleIds: string[]) => {
     setActionError(null);
     setActionSuccess(null);
     setTempPassword(null);
@@ -134,6 +169,9 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
     setIsSubmitting(true);
     try {
       const result = await usersApi.create(dto, crypto.randomUUID());
+      if (companyRoleIds.length > 0) {
+        await accessControlApi.replaceUserProfiles(result.id, { profileIds: companyRoleIds });
+      }
       setNewUserEmail(dto.email);
       if ('temporaryPassword' in result && result.temporaryPassword) {
         setTempPassword(result.temporaryPassword);
@@ -149,16 +187,28 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
     }
   };
 
-  const handleEdit = async (dto: UpdateInternalUserDto) => {
+  const handleEdit = async (dto: UpdateInternalUserDto, companyRoleIds: string[]) => {
     if (!selectedUser) return;
     setActionError(null);
     setActionSuccess(null);
     setIsSubmitting(true);
     try {
-      await usersApi.update(selectedUser.id, dto, crypto.randomUUID());
+      const userId = selectedUser.id;
+      const normalizedInitialCompanyRoleIds = [...selectedUserCompanyRoleIds].sort();
+      const normalizedNextCompanyRoleIds = [...companyRoleIds].sort();
+      const companyRolesChanged =
+        normalizedInitialCompanyRoleIds.join('|') !== normalizedNextCompanyRoleIds.join('|');
+
+      if (Object.keys(dto).length > 0) {
+        await usersApi.update(userId, dto, crypto.randomUUID());
+      }
+      if (companyRolesChanged) {
+        await accessControlApi.replaceUserProfiles(userId, { profileIds: companyRoleIds });
+      }
       setActionSuccess('Usuario actualizado correctamente.');
       setIsEditOpen(false);
       setSelectedUser(null);
+      setSelectedUserCompanyRoleIds([]);
       void loadUsers(filters);
     } catch (err: unknown) {
       setActionError(mapError(err));
@@ -207,12 +257,19 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
     }
   };
 
-  const openEdit = (userToEdit: InternalUser) => {
+  const openEdit = async (userToEdit: InternalUser) => {
     setSelectedUser(userToEdit);
     setActionError(null);
     setActionSuccess(null);
     setTempPassword(null);
     setNewUserEmail(null);
+    try {
+      const summary = await accessControlApi.getEffectivePermissions(userToEdit.id);
+      setSelectedUserCompanyRoleIds(summary.profileSources.map((source) => source.profileId));
+    } catch (err: unknown) {
+      setActionError(mapError(err));
+      setSelectedUserCompanyRoleIds([]);
+    }
     setIsEditOpen(true);
   };
 
@@ -247,6 +304,7 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
     setActionSuccess(null);
     setTempPassword(null);
     setNewUserEmail(null);
+    setSelectedUserCompanyRoleIds([]);
   };
 
   const dismissTempPassword = () => {
@@ -353,6 +411,8 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
         onSubmit={handleCreate}
         isSubmitting={isSubmitting}
         error={actionError}
+        accessCatalog={accessCatalog}
+        availableProfiles={availableProfiles}
         tempPassword={tempPassword}
         tempPasswordEmail={newUserEmail}
         onDismissSuccess={dismissTempPassword}
@@ -426,6 +486,9 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
             onEmailChanged={() => void loadUsers(filters)}
             isSubmitting={isSubmitting}
             error={actionError}
+            accessCatalog={accessCatalog}
+            availableProfiles={availableProfiles}
+            initialCompanyRoleIds={selectedUserCompanyRoleIds}
           />
 
           <DeleteUserDialog

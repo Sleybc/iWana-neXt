@@ -164,10 +164,10 @@ describe('WfmOperatingHoursManager', () => {
   it('should render the manager summary and company week', async () => {
     const { container } = render(<WfmOperatingHoursManager canEdit={true} />);
 
-    expect(await screen.findByText('Despacho técnico')).toBeInTheDocument();
+    expect(await screen.findByText('Programación de visitas')).toBeInTheDocument();
     expect(screen.getByText('Horarios operativos')).toBeInTheDocument();
-    expect(screen.getByText('Horario base de despacho técnico')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Guardar horario base' })).toBeInTheDocument();
+    expect(screen.getByText('Horario de atención para visitas')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Guardar horarios' })).toBeInTheDocument();
     expect(screen.queryByText('Excepciones por técnico')).not.toBeInTheDocument();
     expect(screen.queryByText('Nueva excepción')).not.toBeInTheDocument();
     expect(container.querySelector('input[type="time"]')).toBeNull();
@@ -177,7 +177,7 @@ describe('WfmOperatingHoursManager', () => {
     render(<WfmOperatingHoursManager canEdit={false} />);
 
     expect(await screen.findByText('Modo solo lectura')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Guardar horario base' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Guardar horarios' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Crear sede' })).not.toBeInTheDocument();
   });
 });

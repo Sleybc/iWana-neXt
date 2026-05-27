@@ -1,8 +1,8 @@
 # HLD - MOD00 Configuracion Control Plane
 
-**Version:** 1.2
+**Version:** 1.5
 **Estado:** Aprobado  
-**Fecha:** 2026-05-22
+**Fecha:** 2026-05-25
 **Modo activo:** Architect  
 **Autor:** AI-EM-ARCH  
 **PRD de referencia:** docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md  
@@ -19,7 +19,7 @@ MOD00 define Configuracion como control plane federado del tenant. El backend de
 El cambio no busca centralizar todos los datos operativos. Busca crear dos capacidades transversales administradas desde Configuracion:
 
 1. **Organizacion/Sedes:** dato maestro de sedes y ubicaciones operativas.
-2. **Usuarios y acceso:** perfiles configurables sobre roles base existentes.
+2. **Usuarios y acceso:** roles de empresa configurables sobre categorias base existentes.
 
 ---
 
@@ -36,14 +36,33 @@ El cambio no busca centralizar todos los datos operativos. Busca crear dos capac
 | PartiesModule         | Relacionado | Owner de identidad de negocio y roles de tercero                            |
 | Inventory futuro      | Consumer    | Consumira sedes con capacidad `WAREHOUSE`                                   |
 | Billing futuro        | Consumer    | Consumira sedes con capacidad `COLLECTION_POINT`                            |
+| NMS futuro            | Consumer    | Consumira nodos tecnicos propios y referenciara sedes sin absorber su owner |
 | apps/portal           | Principal   | UI de Configuracion v2                                                      |
 
 ### Boundary explicito
 
 - Configuracion no lee tablas internas de WFM, Inventory, Billing, Commercial o Assurance.
 - WFM no lee tablas de Organizacion directamente; usa puerto `OrganizationSiteReadPort` o adapter aprobado.
-- Users sigue siendo owner de cuentas; Access Profiles no reemplaza `UserRole`.
+- Users sigue siendo owner de cuentas; `AccessProfile` no reemplaza `UserRole`.
 - Parties no se mezcla con perfiles de acceso. `PartyRole` representa rol de negocio; `AccessProfile` representa permisos de sistema.
+
+### Addendum 2026-05-25 - terminologia operativa visible
+
+Se fija una separacion obligatoria entre termino tecnico y termino visible para producto:
+
+| Capa | Termino tecnico | Termino visible recomendado | Owner |
+| --- | --- | --- | --- |
+| Identidad estructural | `UserRole` | Categoria base | Users/Auth |
+| Agrupador configurable de permisos | `AccessProfile` | Rol de empresa | MOD00 Access Control |
+| Preset inicial | `AccessProfile.isSystem = true` | Plantilla inicial | MOD00 Access Control |
+| Accion autorizable | `AccessPermissionKey` | Permiso | Catalogo versionado |
+
+Reglas derivadas:
+
+1. El portal no debe exponer `AccessProfile` como "perfil configurable" cuando el contexto sea operacion administrativa del tenant.
+2. El portal no debe llamar "rol base" a una plantilla inicial de acceso porque ese termino ya corresponde al `UserRole` tecnico.
+3. La pantalla `/dashboard/settings/access` debe comportarse como CRUD y gobierno de roles de empresa; la pantalla `/dashboard/users` debe consumir dichos roles para asignacion operativa.
+4. La compatibilidad se sigue resolviendo por `baseRoleConstraint === user.role`; el cambio es semantico y de UX, no de modelo core.
 
 ---
 
@@ -183,6 +202,31 @@ Todas las tablas viven en schema tenant y se resuelven por `SET LOCAL search_pat
 
 Unique activo: `(tenant_id, site_id, capability)`.
 
+#### Addendum propuesto 2026-05-23 - boundary con NMS y enriquecimiento de sede
+
+El refinamiento documentado en `docs/adrs/ADR-044-Separacion-OrganizationSite-NmsNode.md` agrega estas reglas objetivo sin romper el modelo base aprobado de MOD00:
+
+1. `OrganizationSite` sigue siendo el maestro fisico y administrativo del tenant.
+2. `OrganizationSiteType` no incorpora `NODE` como tipo principal.
+3. El siguiente refinamiento de MOD00 debe agregar contacto operativo local del sitio con `contact_name` y `contact_phone`.
+4. Las coordenadas y el contacto del sitio se tratan como dato maestro de sede, no como atributo exclusivo de NMS.
+5. El futuro modulo NMS tendra entidad propia `nms_nodes` y relacion 1:N desde `organization_sites`.
+
+Modelo conceptual objetivo de NMS:
+
+| Campo                  | Tipo             | Regla                                                                  |
+| ---------------------- | ---------------- | ---------------------------------------------------------------------- |
+| `id`                   | uuid PK          | Identificador tecnico del nodo                                         |
+| `tenant_id`            | uuid             | Tenant logico                                                          |
+| `organization_site_id` | uuid nullable    | FK tenant-local a `organization_sites.id`; nullable solo por migracion |
+| `technical_code`       | varchar          | Codigo tecnico estable del nodo                                        |
+| `name`                 | varchar          | Nombre visible del nodo                                                |
+| `role`                 | varchar          | Rol tecnico del nodo dentro de NMS                                     |
+| `vendor`               | varchar nullable | Fabricante o familia tecnica                                           |
+| `is_active`            | boolean          | Estado operativo                                                       |
+
+`CommercialNode` de TenantModule permanece como concepto legacy de cobertura/comercial y no se promociona a sustituto de `OrganizationSite` ni de `NmsNode`.
+
 #### `organization_site_business_hours`
 
 | Campo       | Tipo          | Regla                |
@@ -223,6 +267,12 @@ Unique activo: `(tenant_id, site_id, weekday)`.
 
 ### 4.2 Access Control
 
+Decision adicional de exposicion:
+
+- `access_profiles` persiste el concepto tecnico de `AccessProfile`, pero hacia portal se documenta y renderiza como **rol de empresa**.
+- `user_access_profiles` representa la asignacion de roles de empresa a usuarios del tenant.
+- Los registros `is_system = true` se usan como plantillas iniciales duplicables o asignables segun la estrategia UX aprobada.
+
 #### `access_permission_catalog`
 
 | Campo            | Tipo         | Regla                                            |
@@ -244,8 +294,8 @@ Unique activo: `(tenant_id, site_id, weekday)`.
 | `name`                                     | varchar(120)     | Unico por tenant activo                   |
 | `description`                              | text nullable    | Descripcion opcional                      |
 | `base_role_constraint`                     | varchar nullable | Limita asignacion a `UserRole` especifico |
-| `scope_site_id`                            | uuid nullable    | Perfil acotado a sede                     |
-| `is_system`                                | boolean          | Perfiles seed no eliminables              |
+| `scope_site_id`                            | uuid nullable    | Rol de empresa acotado a sede             |
+| `is_system`                                | boolean          | Plantilla inicial no eliminable           |
 | `is_active`                                | boolean          | Default true                              |
 | `created_at` / `updated_at` / `deleted_at` | timestamptz      | Auditoria tecnica                         |
 
@@ -269,6 +319,14 @@ Unique activo: `(tenant_id, site_id, weekday)`.
 | `valid_from` | date          | Default current date           |
 | `valid_to`   | date nullable | Fin de vigencia opcional       |
 | `is_active`  | boolean       | Default true                   |
+
+### Addendum 2026-05-25 - flujo tecnico recomendado
+
+1. `UsersController` y portal Users mantienen el owner del CRUD de cuenta, categoria base, estado, MFA y credenciales.
+2. `AccessControlController` mantiene el owner del catalogo de permisos, CRUD de roles de empresa y plantillas iniciales.
+3. El flujo de alta/edicion de usuario debe consultar roles de empresa compatibles con la categoria base seleccionada y persistir la asignacion usando el contrato de Access Control.
+4. El calculo de permisos efectivos permanece en `EffectivePermissionsService` combinando baseline por categoria base y permisos agregados desde roles de empresa compatibles.
+5. No se habilita creacion dinamica de nuevos `UserRole`; cualquier necesidad fuera del enum vigente requiere ADR y aprobacion CTO.
 
 ---
 
@@ -421,6 +479,7 @@ El analisis de la ejecucion implementada deja aprobados los siguientes refinamie
 3. `scope_site_id` debe dejar de ser metadata persistida solamente y pasar a formar parte del enforcement real de permisos efectivos o policies de recurso.
 4. El shell federado de settings debe consumir `requiredPermissions` o devolver estados no operables explicitos para evitar navegacion hacia rutas que luego terminan en `403`.
 5. El contrato `DELETE /organization/sites/:id` debe cerrarse en API, pruebas y portal para alinear implementacion con HLD aprobado.
+6. La superficie de `Sedes registradas` debe consolidarse como una tabla compacta unica con acciones por fila, sin panel persistente de detalle, reservando el detalle operativo profundo para modulos consumidores posteriores.
 
 ---
 
@@ -448,9 +507,9 @@ apps/portal/src/components/settings/
 apps/portal/src/components/organization/
   OrganizationSitesClient.tsx
   OrganizationSitesTable.tsx
+  OrganizationSitesPanel.tsx
   OrganizationSiteFormDialog.tsx
-  OrganizationSiteDetail.tsx
-  OrganizationSiteCapabilities.tsx
+  OrganizationSiteServicesTab.tsx
   OrganizationSiteHoursEditor.tsx
   OrganizationSiteAssignments.tsx
 
@@ -461,6 +520,8 @@ apps/portal/src/components/access-control/
   PermissionMatrix.tsx
   UserProfileAssignments.tsx
 ```
+
+La vista principal de `Organizacion/Sedes` debe resolverse como una sola superficie administrativa: tabla compacta, resumen de servicios y acciones por fila. No se recomienda un panel persistente `OrganizationSiteDetail.tsx`; el detalle editable vive dentro del dialog de sede y el detalle operativo pertenece a modulos posteriores.
 
 ### UI rules
 

@@ -1,10 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Plus, RefreshCcw, Save, ShieldCheck, Trash2, UserCog } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, RefreshCcw, ShieldCheck, Trash2, X } from 'lucide-react';
 import {
   Button,
   Dialog,
@@ -16,36 +16,28 @@ import {
   Input,
   Select,
 } from '@iwana/ui';
-import { AccessPermissionAvailability, UserRole } from '@iwana/shared';
+import { AccessPermissionAvailability, AccessPermissionKey, UserRole } from '@iwana/shared';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
-  auditApi,
   accessControlApi,
   ApiError,
-  type AuditLogEntry,
-  usersApi,
   type AccessPermissionCatalogEntry,
   type AccessPermissionsCatalog,
   type AccessProfileView,
   type CreateAccessProfileDto,
-  type EffectivePermissionsSummary,
-  type InternalUser,
   type UpdateAccessProfileDto,
 } from '@/lib/api-client';
-import { EffectivePermissionsPanel } from '@/components/access-control/EffectivePermissionsPanel';
-import { ProfileChangeEvidence } from '@/components/access-control/ProfileChangeEvidence';
 import {
+  PortalActionToolbar,
   PortalAlert,
   PortalEmptyState,
   PortalPanel,
   PortalSkeletonBlock,
 } from '@/components/shared/portal-ui';
-import { PORTAL_TENANT_ASSIGNABLE_ROLES, getPortalUserRoleLabel } from '@/lib/user-labels';
-import {
-  getAccessModuleLabel,
-  getAccessPermissionAvailabilityLabel,
-} from './mod00-settings-labels';
+import { getAccessProfileDisplayName, getSystemBaseRoleLabel } from '@/lib/system-vocabulary';
+import { PORTAL_TENANT_ASSIGNABLE_ROLES } from '@/lib/user-labels';
+import { ACCESS_SETTINGS_COPY, getAccessModuleLabel } from './mod00-settings-labels';
 
 const tableHeadClass =
   'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500';
@@ -60,9 +52,14 @@ const profileFormSchema = z.object({
 
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
+type CreationDraftState = {
+  sourceName: string | null;
+  initialPermissionKeys: AccessPermissionKey[];
+};
+
 const roleOptions = PORTAL_TENANT_ASSIGNABLE_ROLES.map((role) => ({
   value: role,
-  label: getPortalUserRoleLabel(role),
+  label: getSystemBaseRoleLabel(role),
 }));
 
 function mapAccessControlError(error: unknown): string {
@@ -71,12 +68,12 @@ function mapAccessControlError(error: unknown): string {
     if (error.status === 403) {
       return error.message && error.message !== 'Forbidden resource'
         ? error.message
-        : 'Solo Administrador puede gestionar usuarios y acceso.';
+        : 'Solo las personas administradoras pueden gestionar perfiles de acceso.';
     }
     return error.message;
   }
 
-  return 'No fue posible cargar la vista de usuarios y acceso.';
+  return 'No fue posible cargar la vista de perfiles de acceso.';
 }
 
 function createDefaultProfileFormValues(): ProfileFormValues {
@@ -97,35 +94,33 @@ function toProfileFormValues(profile: AccessProfileView): ProfileFormValues {
   };
 }
 
-function getUserDisplayName(user: InternalUser): string {
-  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
-  return fullName || user.email;
-}
-
 export function AccessControlSettingsClient() {
   const { user, isLoading: authLoading } = useAuth();
   const [catalog, setCatalog] = useState<AccessPermissionsCatalog | null>(null);
   const [profiles, setProfiles] = useState<AccessProfileView[]>([]);
-  const [users, setUsers] = useState<InternalUser[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
-  const [selectedUserId, setSelectedUserId] = useState<string>('');
-  const [draftPermissionKeys, setDraftPermissionKeys] = useState<string[]>([]);
-  const [draftUserProfileIdsByUser, setDraftUserProfileIdsByUser] = useState<
-    Record<string, string[]>
-  >({});
+  const [draftPermissionKeys, setDraftPermissionKeys] = useState<AccessPermissionKey[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [effectivePermissions, setEffectivePermissions] =
-    useState<EffectivePermissionsSummary | null>(null);
-  const [effectivePermissionsError, setEffectivePermissionsError] = useState<string | null>(null);
-  const [isLoadingEffectivePermissions, setIsLoadingEffectivePermissions] = useState(false);
-  const [evidenceEntries, setEvidenceEntries] = useState<AuditLogEntry[]>([]);
-  const [evidenceError, setEvidenceError] = useState<string | null>(null);
-  const [isLoadingEvidence, setIsLoadingEvidence] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [creationSelectorOpen, setCreationSelectorOpen] = useState(false);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+  const [creationDraft, setCreationDraft] = useState<CreationDraftState | null>(null);
+  const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
+  const [activePermissionModule, setActivePermissionModule] = useState<string | null>(null);
+  const [permissionSearch, setPermissionSearch] = useState('');
+  const previewTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const previewCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const permissionTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const permissionTabsScrollRef = useRef<HTMLDivElement | null>(null);
+  const creationDraftRef = useRef<CreationDraftState | null>(null);
+  const [permissionTabsOverflow, setPermissionTabsOverflow] = useState({
+    hasOverflow: false,
+    canScrollLeft: false,
+    canScrollRight: false,
+  });
 
   const isAdmin = user?.role === UserRole.ADMIN;
 
@@ -134,28 +129,41 @@ export function AccessControlSettingsClient() {
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors },
   } = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
     defaultValues: createDefaultProfileFormValues(),
   });
 
+  const watchedName = watch('name');
+  const watchedDescription = watch('description');
+  const watchedBaseRoleConstraint = watch('baseRoleConstraint');
+  const watchedIsActive = watch('isActive');
+
+  useEffect(() => {
+    creationDraftRef.current = creationDraft;
+  }, [creationDraft]);
+
   const loadAccessControl = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const [permissionsCatalog, accessProfiles, usersResponse] = await Promise.all([
+      const [permissionsCatalog, accessProfiles] = await Promise.all([
         accessControlApi.listPermissions(),
         accessControlApi.listProfiles(),
-        usersApi.list({ limit: 100 }),
       ]);
 
       setCatalog(permissionsCatalog);
       setProfiles(accessProfiles);
-      setUsers(usersResponse.data);
 
-      const nextSelectedProfileId = selectedProfileId ?? accessProfiles[0]?.id ?? null;
+      if (creationDraftRef.current) {
+        return;
+      }
+
+      const customProfiles = accessProfiles.filter((p) => !p.isSystem);
+      const nextSelectedProfileId = selectedProfileId ?? customProfiles[0]?.id ?? null;
       setSelectedProfileId(nextSelectedProfileId);
 
       if (nextSelectedProfileId) {
@@ -196,141 +204,425 @@ export function AccessControlSettingsClient() {
     if (!isAdmin) {
       return;
     }
-
-    let mounted = true;
-    setIsLoadingEvidence(true);
-    setEvidenceError(null);
-
-    auditApi
-      .list({ limit: 20 })
-      .then((entries) => {
-        if (!mounted) {
-          return;
-        }
-
-        setEvidenceEntries(
-          entries.filter((entry) =>
-            ['access_profile', 'access_profile_permissions', 'user_access_profiles'].includes(
-              entry.entityType,
-            ),
-          ),
-        );
-      })
-      .catch((loadError) => {
-        if (!mounted) {
-          return;
-        }
-
-        setEvidenceError(mapAccessControlError(loadError));
-        setEvidenceEntries([]);
-      })
-      .finally(() => {
-        if (mounted) {
-          setIsLoadingEvidence(false);
-        }
-      });
-
-    return () => {
-      mounted = false;
-    };
   }, [isAdmin]);
-
-  useEffect(() => {
-    if (!selectedUserId) {
-      setEffectivePermissions(null);
-      setEffectivePermissionsError(null);
-      setIsLoadingEffectivePermissions(false);
-      return;
-    }
-
-    let mounted = true;
-    setIsLoadingEffectivePermissions(true);
-    setEffectivePermissionsError(null);
-
-    accessControlApi
-      .getEffectivePermissions(selectedUserId)
-      .then((summary) => {
-        if (mounted) {
-          setEffectivePermissions(summary);
-        }
-      })
-      .catch((loadError) => {
-        if (!mounted) {
-          return;
-        }
-
-        setEffectivePermissions(null);
-        setEffectivePermissionsError(mapAccessControlError(loadError));
-      })
-      .finally(() => {
-        if (mounted) {
-          setIsLoadingEffectivePermissions(false);
-        }
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [selectedUserId]);
-
-  useEffect(() => {
-    if (selectedUserId || users.length !== 1) {
-      return;
-    }
-
-    setSelectedUserId(users[0]!.id);
-  }, [selectedUserId, users]);
 
   const selectedProfile = useMemo(
     () => profiles.find((profile) => profile.id === selectedProfileId) ?? null,
     [profiles, selectedProfileId],
   );
 
-  const selectedUser = useMemo(
-    () => users.find((candidate) => candidate.id === selectedUserId) ?? null,
-    [selectedUserId, users],
-  );
+  const draftProfile = useMemo<AccessProfileView | null>(() => {
+    if (!creationDraft) {
+      return null;
+    }
+
+    const fallbackName = creationDraft.sourceName
+      ? `Basado en ${creationDraft.sourceName}`
+      : 'Nuevo perfil';
+
+    return {
+      id: 'draft-profile',
+      name: watchedName?.trim() || fallbackName,
+      description: watchedDescription?.trim() || null,
+      baseRoleConstraint: watchedBaseRoleConstraint ?? UserRole.NOC,
+      scopeSiteId: null,
+      isSystem: false,
+      isActive: watchedIsActive ?? true,
+      permissions: draftPermissionKeys,
+      createdAt: '',
+      updatedAt: '',
+    };
+  }, [
+    creationDraft,
+    draftPermissionKeys,
+    watchedBaseRoleConstraint,
+    watchedDescription,
+    watchedIsActive,
+    watchedName,
+  ]);
+
+  const profileForPermissions = draftProfile ?? selectedProfile;
 
   const permissionEntries = catalog?.permissions ?? [];
 
+  const getTemplatePermissionKeys = useCallback(
+    (profile: AccessProfileView): AccessPermissionKey[] => {
+      if (
+        profile.permissions.length > 0 ||
+        !profile.isSystem ||
+        !profile.baseRoleConstraint ||
+        !catalog
+      ) {
+        return profile.permissions;
+      }
+
+      return catalog.compatibilityMatrix[profile.baseRoleConstraint] ?? [];
+    },
+    [catalog],
+  );
+
+  const assignablePermissionEntries = useMemo(
+    () =>
+      permissionEntries.filter(
+        (permission) =>
+          permission.isActive &&
+          permission.availability === AccessPermissionAvailability.ASSIGNABLE,
+      ),
+    [permissionEntries],
+  );
+
+  const canEnablePermission = useCallback(
+    (permissionKey: AccessPermissionKey): boolean => {
+      if (permissionKey !== AccessPermissionKey.ACCESS_PROFILES_MANAGE) {
+        return true;
+      }
+
+      return profileForPermissions?.baseRoleConstraint === UserRole.ADMIN;
+    },
+    [profileForPermissions?.baseRoleConstraint],
+  );
+
   const selectablePermissionEntries = useMemo(() => {
-    if (!catalog || !selectedProfile?.baseRoleConstraint) {
+    if (!catalog || !profileForPermissions) {
+      return [] as AccessPermissionCatalogEntry[];
+    }
+
+    if (creationDraft || !profileForPermissions.isSystem) {
+      return assignablePermissionEntries;
+    }
+
+    if (!profileForPermissions.baseRoleConstraint) {
       return [] as AccessPermissionCatalogEntry[];
     }
 
     const allowedKeys = new Set(
-      catalog.compatibilityMatrix[selectedProfile.baseRoleConstraint] ?? [],
+      catalog.compatibilityMatrix[profileForPermissions.baseRoleConstraint] ?? [],
     );
 
-    return permissionEntries.filter(
-      (permission) =>
-        permission.isActive &&
-        permission.availability === AccessPermissionAvailability.ASSIGNABLE &&
-        allowedKeys.has(permission.permissionKey),
+    return assignablePermissionEntries.filter((permission) =>
+      allowedKeys.has(permission.permissionKey),
     );
-  }, [catalog, permissionEntries, selectedProfile]);
+  }, [assignablePermissionEntries, catalog, creationDraft, profileForPermissions]);
 
-  const draftUserProfileIds = selectedUserId
-    ? (draftUserProfileIdsByUser[selectedUserId] ?? [])
-    : [];
+  const permissionModules = useMemo(() => {
+    const groups: Array<{
+      moduleKey: string;
+      permissions: AccessPermissionCatalogEntry[];
+    }> = [];
+    const byModule = new Map<string, AccessPermissionCatalogEntry[]>();
 
-  const compatibleProfiles = useMemo(() => {
-    if (!selectedUser) {
-      return [] as AccessProfileView[];
+    for (const entry of selectablePermissionEntries) {
+      let bucket = byModule.get(entry.moduleKey);
+
+      if (!bucket) {
+        bucket = [];
+        byModule.set(entry.moduleKey, bucket);
+        groups.push({ moduleKey: entry.moduleKey, permissions: bucket });
+      }
+
+      bucket.push(entry);
     }
 
-    return profiles.filter(
-      (profile) => profile.isActive && profile.baseRoleConstraint === selectedUser.role,
+    return groups;
+  }, [selectablePermissionEntries]);
+
+  const activePermissionModuleConfig = useMemo(
+    () => permissionModules.find((module) => module.moduleKey === activePermissionModule) ?? null,
+    [activePermissionModule, permissionModules],
+  );
+
+  const filteredActivePermissions = useMemo(() => {
+    if (!activePermissionModuleConfig) {
+      return [] as AccessPermissionCatalogEntry[];
+    }
+
+    const normalizedSearch = permissionSearch.trim().toLocaleLowerCase('es');
+
+    if (!normalizedSearch) {
+      return activePermissionModuleConfig.permissions;
+    }
+
+    return activePermissionModuleConfig.permissions.filter((permission) =>
+      permission.description.toLocaleLowerCase('es').includes(normalizedSearch),
     );
-  }, [profiles, selectedUser]);
+  }, [activePermissionModuleConfig, permissionSearch]);
+
+  const systemTemplates = useMemo(() => profiles.filter((profile) => profile.isSystem), [profiles]);
+
+  const previewTemplate = useMemo(
+    () => systemTemplates.find((profile) => profile.id === previewTemplateId) ?? null,
+    [previewTemplateId, systemTemplates],
+  );
+
+  const templatesGridClassName = useMemo(() => {
+    if (systemTemplates.length >= 4) {
+      return 'grid gap-3 md:grid-cols-2 xl:grid-cols-4';
+    }
+
+    if (systemTemplates.length === 3) {
+      return 'grid gap-3 md:grid-cols-2 xl:grid-cols-3';
+    }
+
+    if (systemTemplates.length === 2) {
+      return 'grid gap-3 md:grid-cols-2';
+    }
+
+    return 'grid gap-3';
+  }, [systemTemplates.length]);
+
+  const customRoles = useMemo(() => profiles.filter((profile) => !profile.isSystem), [profiles]);
+
+  useEffect(() => {
+    if (!profileForPermissions || permissionModules.length === 0) {
+      setActivePermissionModule(null);
+      return;
+    }
+
+    const preferredPermissionKeys =
+      creationDraft?.initialPermissionKeys ?? selectedProfile?.permissions ?? [];
+
+    const preferredModule =
+      permissionModules.reduce<{
+        moduleKey: string;
+        permissions: AccessPermissionCatalogEntry[];
+        selectedCount: number;
+      } | null>((best, module) => {
+        const selectedCount = module.permissions.filter((permission) =>
+          preferredPermissionKeys.includes(permission.permissionKey),
+        ).length;
+
+        if (!best || selectedCount > best.selectedCount) {
+          return { ...module, selectedCount };
+        }
+
+        return best;
+      }, null) ?? null;
+
+    setActivePermissionModule(
+      preferredModule?.selectedCount
+        ? preferredModule.moduleKey
+        : (permissionModules[0]?.moduleKey ?? null),
+    );
+  }, [creationDraft, permissionModules, profileForPermissions, selectedProfile]);
+
+  useEffect(() => {
+    setPermissionSearch('');
+  }, [activePermissionModule, creationDraft, selectedProfileId]);
+
+  useEffect(() => {
+    if (canEnablePermission(AccessPermissionKey.ACCESS_PROFILES_MANAGE)) {
+      return;
+    }
+
+    setDraftPermissionKeys((current) =>
+      current.filter(
+        (permissionKey) => permissionKey !== AccessPermissionKey.ACCESS_PROFILES_MANAGE,
+      ),
+    );
+  }, [canEnablePermission]);
+
+  const updatePermissionTabsOverflow = useCallback(() => {
+    const element = permissionTabsScrollRef.current;
+
+    if (!element) {
+      setPermissionTabsOverflow({
+        hasOverflow: false,
+        canScrollLeft: false,
+        canScrollRight: false,
+      });
+      return;
+    }
+
+    const maxScrollLeft = Math.max(0, element.scrollWidth - element.clientWidth);
+    const hasOverflow = maxScrollLeft > 1;
+    const canScrollLeft = element.scrollLeft > 1;
+    const canScrollRight = element.scrollLeft < maxScrollLeft - 1;
+
+    setPermissionTabsOverflow({
+      hasOverflow,
+      canScrollLeft: hasOverflow && canScrollLeft,
+      canScrollRight: hasOverflow && canScrollRight,
+    });
+  }, []);
+
+  useEffect(() => {
+    const element = permissionTabsScrollRef.current;
+
+    if (!element) {
+      return;
+    }
+
+    updatePermissionTabsOverflow();
+
+    const handleScroll = () => {
+      updatePermissionTabsOverflow();
+    };
+
+    element.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('resize', handleScroll);
+
+    return () => {
+      element.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+    };
+  }, [permissionModules.length, updatePermissionTabsOverflow]);
+
+  useEffect(() => {
+    const moduleIndex = permissionModules.findIndex(
+      (module) => module.moduleKey === activePermissionModule,
+    );
+
+    if (moduleIndex < 0) {
+      return;
+    }
+
+    const activeTabElement = permissionTabRefs.current[moduleIndex];
+
+    if (!activeTabElement) {
+      return;
+    }
+
+    if (typeof activeTabElement.scrollIntoView === 'function') {
+      activeTabElement.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'nearest',
+      });
+    }
+
+    requestAnimationFrame(updatePermissionTabsOverflow);
+  }, [activePermissionModule, permissionModules, updatePermissionTabsOverflow]);
+
+  useEffect(() => {
+    if (!previewTemplateId) return;
+
+    document.body.classList.add('overflow-hidden');
+    const focusFrame = window.requestAnimationFrame(() => {
+      previewCloseButtonRef.current?.focus();
+    });
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') closePreviewTemplate();
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.body.classList.remove('overflow-hidden');
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [closePreviewTemplate, previewTemplateId]);
+
+  const focusPermissionTabAt = useCallback(
+    (index: number) => {
+      if (permissionModules.length === 0) {
+        return;
+      }
+
+      const nextIndex = (index + permissionModules.length) % permissionModules.length;
+      const nextModule = permissionModules[nextIndex];
+
+      if (!nextModule) {
+        return;
+      }
+
+      setActivePermissionModule(nextModule.moduleKey);
+      permissionTabRefs.current[nextIndex]?.focus();
+    },
+    [permissionModules],
+  );
+
+  const scrollPermissionTabs = useCallback((direction: 'left' | 'right') => {
+    const element = permissionTabsScrollRef.current;
+
+    if (!element) {
+      return;
+    }
+
+    const delta = Math.max(120, Math.round(element.clientWidth * 0.65));
+
+    element.scrollBy({
+      left: direction === 'right' ? delta : -delta,
+      behavior: 'smooth',
+    });
+  }, []);
+
+  function selectProfile(profile: AccessProfileView) {
+    setCreationDraft(null);
+    setIsDialogOpen(false);
+    setSelectedProfileId(profile.id);
+    setDraftPermissionKeys(profile.permissions);
+  }
+
+  function cancelCreationDraft() {
+    setCreationDraft(null);
+    setIsDialogOpen(false);
+    reset(createDefaultProfileFormValues());
+    setDraftPermissionKeys(selectedProfile?.permissions ?? []);
+  }
+
+  function beginCreationFromTemplate(profile: AccessProfileView) {
+    const visibleProfileName = getAccessProfileDisplayName(profile);
+    const initialPermissionKeys = getTemplatePermissionKeys(profile);
+
+    setCreationDraft({
+      sourceName: visibleProfileName,
+      initialPermissionKeys,
+    });
+    setSelectedProfileId(null);
+    setEditingProfileId(null);
+    reset({
+      name: `Basado en ${visibleProfileName}`,
+      description: profile.description ?? '',
+      baseRoleConstraint: profile.baseRoleConstraint ?? UserRole.NOC,
+      isActive: true,
+    });
+    setDraftPermissionKeys(initialPermissionKeys);
+    setCreationSelectorOpen(false);
+    setIsDialogOpen(true);
+    setFeedback(null);
+    setError(null);
+  }
+
+  function closePreviewTemplate(restoreFocus = true) {
+    setPreviewTemplateId(null);
+
+    if (!restoreFocus) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      if (previewTriggerRef.current?.isConnected) {
+        previewTriggerRef.current.focus();
+      }
+    });
+  }
 
   function openCreateDialog() {
+    setCreationSelectorOpen(true);
+  }
+
+  function startFromScratch() {
+    setCreationSelectorOpen(false);
+    setCreationDraft(null);
     setEditingProfileId(null);
     reset(createDefaultProfileFormValues());
+    setDraftPermissionKeys([]);
     setIsDialogOpen(true);
   }
 
+  function startFromTemplate() {
+    setCreationSelectorOpen(false);
+    setFeedback('Elige una plantilla y pulsa "Usar como base" para comenzar.');
+    setTimeout(() => {
+      document
+        .getElementById('templates-section')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  }
+
   function openEditDialog(profile: AccessProfileView) {
+    setCreationDraft(null);
     setEditingProfileId(profile.id);
     reset(toProfileFormValues(profile));
     setIsDialogOpen(true);
@@ -342,18 +634,24 @@ export function AccessControlSettingsClient() {
     setFeedback(null);
 
     try {
-      const payload: CreateAccessProfileDto | UpdateAccessProfileDto = {
+      const basePayload = {
         name: values.name.trim(),
         description: values.description?.trim() || null,
         baseRoleConstraint: values.baseRoleConstraint,
-        isActive: values.isActive,
       };
+
+      const payload: CreateAccessProfileDto | UpdateAccessProfileDto = editingProfileId
+        ? { ...basePayload, isActive: values.isActive }
+        : creationDraft
+          ? { ...basePayload, permissionKeys: draftPermissionKeys }
+          : basePayload;
 
       const profile = editingProfileId
         ? await accessControlApi.updateProfile(editingProfileId, payload as UpdateAccessProfileDto)
         : await accessControlApi.createProfile(payload as CreateAccessProfileDto);
 
       setIsDialogOpen(false);
+      setCreationDraft(null);
       setFeedback(
         editingProfileId ? 'Perfil actualizado correctamente.' : 'Perfil creado correctamente.',
       );
@@ -397,14 +695,14 @@ export function AccessControlSettingsClient() {
 
     try {
       const updated = await accessControlApi.replaceProfilePermissions(selectedProfile.id, {
-        permissionKeys: draftPermissionKeys as never[],
+        permissionKeys: draftPermissionKeys,
       });
       setProfiles((current) =>
         current.map((profile) => (profile.id === updated.id ? updated : profile)),
       );
       setSelectedProfileId(updated.id);
       setDraftPermissionKeys(updated.permissions);
-      setFeedback('Permisos del perfil actualizados correctamente.');
+      setFeedback('Accesos del perfil actualizados correctamente.');
     } catch (saveError) {
       setError(mapAccessControlError(saveError));
     } finally {
@@ -412,32 +710,7 @@ export function AccessControlSettingsClient() {
     }
   }
 
-  async function handleSaveUserProfiles() {
-    if (!selectedUserId) {
-      return;
-    }
-
-    setIsSaving(true);
-    setError(null);
-    setFeedback(null);
-
-    try {
-      const response = await accessControlApi.replaceUserProfiles(selectedUserId, {
-        profileIds: draftUserProfileIds,
-      });
-      setDraftUserProfileIdsByUser((current) => ({
-        ...current,
-        [selectedUserId]: response.profileIds,
-      }));
-      setFeedback('Selección de perfiles aplicada correctamente.');
-    } catch (saveError) {
-      setError(mapAccessControlError(saveError));
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  function togglePermission(permissionKey: string) {
+  function togglePermission(permissionKey: AccessPermissionKey) {
     setDraftPermissionKeys((current) =>
       current.includes(permissionKey)
         ? current.filter((item) => item !== permissionKey)
@@ -445,30 +718,12 @@ export function AccessControlSettingsClient() {
     );
   }
 
-  function toggleUserProfile(profileId: string) {
-    if (!selectedUserId) {
-      return;
-    }
-
-    setDraftUserProfileIdsByUser((current) => {
-      const nextDraft = current[selectedUserId] ?? [];
-      const profileIds = nextDraft.includes(profileId)
-        ? nextDraft.filter((item) => item !== profileId)
-        : [...nextDraft, profileId];
-
-      return {
-        ...current,
-        [selectedUserId]: profileIds,
-      };
-    });
-  }
-
   if (authLoading || isLoading) {
     return (
       <div className="space-y-6">
         <PageHeader
-          title="Usuarios y acceso"
-          subtitle="Cargando perfiles, permisos y base de usuarios internos"
+          title={ACCESS_SETTINGS_COPY.pageTitle}
+          subtitle={ACCESS_SETTINGS_COPY.loadingSubtitle}
         />
         <PortalSkeletonBlock className="h-36" />
         <PortalSkeletonBlock className="h-80" />
@@ -479,7 +734,7 @@ export function AccessControlSettingsClient() {
   if (!user) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Usuarios y acceso" subtitle="Sesión no disponible" />
+        <PageHeader title={ACCESS_SETTINGS_COPY.pageTitle} subtitle="Sesión no disponible" />
         <PortalAlert
           variant="error"
           title="No fue posible abrir la vista"
@@ -492,11 +747,11 @@ export function AccessControlSettingsClient() {
   if (!isAdmin) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Usuarios y acceso" subtitle="Acceso restringido" />
+        <PageHeader title={ACCESS_SETTINGS_COPY.pageTitle} subtitle="Acceso restringido" />
         <PortalAlert
           variant="info"
-          title="Solo lectura no disponible"
-          description="La Fase 01 expone esta sección únicamente para Administrador porque los contratos de lectura y mutación son ADMIN-only."
+          title={ACCESS_SETTINGS_COPY.restrictedTitle}
+          description={ACCESS_SETTINGS_COPY.restrictedDescription}
         />
       </div>
     );
@@ -505,8 +760,8 @@ export function AccessControlSettingsClient() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Usuarios y acceso"
-        subtitle="Gestiona perfiles complementarios, catálogo de permisos y la asignación hacia usuarios internos."
+        title={ACCESS_SETTINGS_COPY.pageTitle}
+        subtitle={ACCESS_SETTINGS_COPY.pageSubtitle}
         actions={
           <Button type="button" onClick={openCreateDialog}>
             <Plus className="mr-2 h-4 w-4" aria-hidden={true} />
@@ -537,15 +792,109 @@ export function AccessControlSettingsClient() {
         />
       ) : null}
 
+      {creationDraft ? (
+        <PortalAlert
+          variant="info"
+          title={ACCESS_SETTINGS_COPY.draftBannerTitle}
+          description={ACCESS_SETTINGS_COPY.draftBannerDescription(creationDraft.sourceName)}
+          action={
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setIsDialogOpen(true)}
+              >
+                Editar datos del nuevo perfil
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={cancelCreationDraft}>
+                Cancelar nuevo perfil
+              </Button>
+            </div>
+          }
+        />
+      ) : null}
+
+      {systemTemplates.length > 0 ? (
+        <div id="templates-section">
+          <PortalPanel
+            eyebrow="Plantillas base"
+            title={ACCESS_SETTINGS_COPY.templatesTitle}
+            description={ACCESS_SETTINGS_COPY.templatesDescription}
+          >
+            <div className={templatesGridClassName}>
+              {systemTemplates.map((profile) => {
+                const visibleProfileName = getAccessProfileDisplayName(profile);
+                const templatePermissionKeys = getTemplatePermissionKeys(profile);
+
+                return (
+                  <div
+                    key={profile.id}
+                    className="flex h-full flex-col gap-3 rounded-2xl border border-gray-200 bg-iwana-secondary-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <span className="portal-eyebrow-muted mb-1 inline-block">Sistema</span>
+                        <p className="text-base font-semibold leading-6 text-gray-900 dark:text-white">
+                          {visibleProfileName}
+                        </p>
+                      </div>
+
+                      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          aria-label={`Ver accesos de ${visibleProfileName}`}
+                          className="h-8 px-3 text-xs whitespace-nowrap"
+                          onClick={(event) => {
+                            previewTriggerRef.current = event.currentTarget;
+                            setPreviewTemplateId(profile.id);
+                          }}
+                        >
+                          Ver accesos
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          aria-label={`Usar ${visibleProfileName} como base`}
+                          className="h-8 px-3 text-xs whitespace-nowrap"
+                          onClick={() => beginCreationFromTemplate(profile)}
+                        >
+                          Usar como base
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="min-h-[3.25rem]">
+                      <p className="line-clamp-2 text-sm text-gray-500 dark:text-gray-400">
+                        {profile.description || 'Plantilla inicial del sistema'}
+                      </p>
+                    </div>
+
+                    <div className="mt-auto flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                      <span>{getSystemBaseRoleLabel(profile.baseRoleConstraint)}</span>
+                      <span>·</span>
+                      <span>{templatePermissionKeys.length} accesos</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </PortalPanel>
+        </div>
+      ) : null}
+
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
         <PortalPanel
-          title="Perfiles configurables"
-          description="Crea perfiles complementarios al rol base y ajusta su alcance operativo."
+          eyebrow="Perfiles personalizados"
+          title="Perfiles personalizados"
+          description={ACCESS_SETTINGS_COPY.profilesDescription}
         >
-          {profiles.length === 0 ? (
+          {customRoles.length === 0 ? (
             <PortalEmptyState
-              title="Sin perfiles configurados"
-              description="Todavía no hay perfiles configurables en este tenant."
+              title="Aún no has creado perfiles personalizados"
+              description={ACCESS_SETTINGS_COPY.profilesEmptyDescription}
               action={
                 <Button type="button" onClick={openCreateDialog}>
                   Crear perfil
@@ -554,281 +903,594 @@ export function AccessControlSettingsClient() {
               icon={ShieldCheck}
             />
           ) : (
-            <div className="overflow-hidden rounded-2xl border border-gray-200 dark:border-dark-border">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-                <thead className="bg-[#f8faf5] dark:bg-dark-surface-3">
-                  <tr>
-                    <th className={tableHeadClass}>Perfil</th>
-                    <th className={tableHeadClass}>Rol base</th>
-                    <th className={tableHeadClass}>Permisos</th>
-                    <th className={tableHeadClass}>Estado</th>
-                    <th className={tableHeadClass}>Acción</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2">
-                  {profiles.map((profile) => {
-                    const isSelected = profile.id === selectedProfileId;
+            <>
+              <div className="grid gap-3 md:hidden">
+                {customRoles.map((profile) => {
+                  const isSelected = !creationDraft && profile.id === selectedProfileId;
 
-                    return (
-                      <tr
-                        key={profile.id}
-                        className={isSelected ? 'bg-[#f8faf5] dark:bg-dark-surface-3/60' : ''}
-                      >
-                        <td className={cellClass}>
-                          <div>
-                            <p className="font-medium text-gray-900 dark:text-white">
-                              {profile.name}
-                            </p>
-                            <p className="text-sm text-gray-500">
-                              {profile.description || 'Sin descripción'}
-                            </p>
-                          </div>
-                        </td>
-                        <td className={cellClass}>
-                          {profile.baseRoleConstraint
-                            ? getPortalUserRoleLabel(profile.baseRoleConstraint)
-                            : 'Sin restricción'}
-                        </td>
-                        <td className={cellClass}>{profile.permissions.length}</td>
-                        <td className={cellClass}>{profile.isActive ? 'Activo' : 'Inactivo'}</td>
-                        <td className={cellClass}>
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              type="button"
-                              variant={isSelected ? 'secondary' : 'ghost'}
-                              size="sm"
-                              onClick={() => {
-                                setSelectedProfileId(profile.id);
-                                setDraftPermissionKeys(profile.permissions);
-                              }}
+                  return (
+                    <div
+                      key={`${profile.id}-mobile`}
+                      className={`rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2 ${isSelected ? 'ring-1 ring-iwana-secondary/40' : ''}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-900 dark:text-white">
+                            {profile.name}
+                          </p>
+                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            {profile.description || 'Sin descripción'}
+                          </p>
+                        </div>
+                        <span
+                          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${profile.isActive ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300' : 'border border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300'}`}
+                        >
+                          {profile.isActive ? 'Activo' : 'Inactivo'}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                        <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-3 py-1 font-medium text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
+                          {getSystemBaseRoleLabel(profile.baseRoleConstraint)}
+                        </span>
+                        <span className="inline-flex items-center rounded-full border border-iwana-primary/10 bg-iwana-primary-50 px-3 py-1 font-medium text-iwana-primary dark:border-iwana-primary-400/20 dark:bg-iwana-primary/10 dark:text-iwana-primary-300">
+                          {profile.permissions.length} accesos
+                        </span>
+                      </div>
+
+                      <PortalActionToolbar compact={true} className="mt-4 bg-iwana-secondary-50/80">
+                        <Button
+                          type="button"
+                          variant={isSelected ? 'secondary' : 'ghost'}
+                          size="sm"
+                          aria-label={`Editar accesos de ${profile.name}`}
+                          className="w-full justify-center rounded-2xl"
+                          onClick={() => selectProfile(profile)}
+                        >
+                          {isSelected ? 'En edición' : 'Editar accesos'}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`Editar perfil ${profile.name}`}
+                          className="w-full justify-center rounded-2xl"
+                          onClick={() => openEditDialog(profile)}
+                        >
+                          Editar
+                        </Button>
+                        {!profile.isSystem ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Eliminar perfil ${profile.name}`}
+                            className="w-full justify-center rounded-2xl hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-300"
+                            onClick={() => void handleDeleteProfile(profile.id)}
+                          >
+                            <Trash2 className="h-4 w-4" aria-hidden={true} />
+                          </Button>
+                        ) : null}
+                      </PortalActionToolbar>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="hidden overflow-hidden rounded-2xl border border-gray-200/90 dark:border-dark-border md:block">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
+                  <thead className="bg-iwana-secondary-50 dark:bg-dark-surface-3">
+                    <tr>
+                      <th scope="col" className={tableHeadClass}>
+                        Perfil
+                      </th>
+                      <th scope="col" className={tableHeadClass}>
+                        {ACCESS_SETTINGS_COPY.roleColumnLabel}
+                      </th>
+                      <th scope="col" className={tableHeadClass}>
+                        Accesos
+                      </th>
+                      <th scope="col" className={tableHeadClass}>
+                        Estado
+                      </th>
+                      <th scope="col" className={tableHeadClass}>
+                        Acciones
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2">
+                    {customRoles.map((profile) => {
+                      const isSelected = !creationDraft && profile.id === selectedProfileId;
+
+                      return (
+                        <tr
+                          key={profile.id}
+                          className={`transition-colors hover:bg-iwana-secondary-50/70 dark:hover:bg-dark-surface-3 ${isSelected ? 'bg-iwana-secondary-50 dark:bg-dark-surface-3/60' : ''}`}
+                        >
+                          <td
+                            className={`${cellClass} ${isSelected ? 'border-l-4 border-iwana-secondary bg-iwana-secondary-50/80 pl-3 dark:bg-dark-surface-3/40' : 'border-l-4 border-transparent'}`}
+                          >
+                            <div className="flex flex-col gap-0.5">
+                              <p className="font-medium text-gray-900 dark:text-white">
+                                {profile.name}
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {profile.description || 'Sin descripción'}
+                              </p>
+                            </div>
+                          </td>
+                          <td className={cellClass}>
+                            <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
+                              {getSystemBaseRoleLabel(profile.baseRoleConstraint)}
+                            </span>
+                          </td>
+                          <td className={cellClass}>
+                            <span className="inline-flex items-center rounded-full border border-iwana-primary/10 bg-iwana-primary-50 px-3 py-1 text-xs font-medium text-iwana-primary dark:border-iwana-primary-400/20 dark:bg-iwana-primary/10 dark:text-iwana-primary-300">
+                              {profile.permissions.length} accesos
+                            </span>
+                          </td>
+                          <td className={cellClass}>
+                            <span
+                              className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${profile.isActive ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300' : 'border border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300'}`}
                             >
-                              {isSelected ? 'Seleccionado' : 'Configurar'}
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => openEditDialog(profile)}
+                              {profile.isActive ? 'Activo' : 'Inactivo'}
+                            </span>
+                          </td>
+                          <td className={cellClass}>
+                            <PortalActionToolbar
+                              compact={true}
+                              align="end"
+                              className="bg-iwana-secondary-50/80"
                             >
-                              Editar
-                            </Button>
-                            {!profile.isSystem ? (
+                              <Button
+                                type="button"
+                                variant={isSelected ? 'secondary' : 'ghost'}
+                                size="sm"
+                                aria-label={`Editar accesos de ${profile.name}`}
+                                className="w-full justify-center rounded-2xl sm:w-auto"
+                                onClick={() => selectProfile(profile)}
+                              >
+                                {isSelected ? 'En edición' : 'Editar accesos'}
+                              </Button>
                               <Button
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => void handleDeleteProfile(profile.id)}
+                                aria-label={`Editar perfil ${profile.name}`}
+                                className="w-full justify-center rounded-2xl sm:w-auto"
+                                onClick={() => openEditDialog(profile)}
                               >
-                                <Trash2 className="h-4 w-4" aria-hidden={true} />
+                                Editar
                               </Button>
-                            ) : null}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                              {!profile.isSystem ? (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  aria-label={`Eliminar perfil ${profile.name}`}
+                                  className="w-full justify-center rounded-2xl hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-300 sm:w-auto"
+                                  onClick={() => void handleDeleteProfile(profile.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" aria-hidden={true} />
+                                </Button>
+                              ) : null}
+                            </PortalActionToolbar>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </PortalPanel>
 
         <div className="space-y-6">
           <PortalPanel
-            title="Permisos del perfil"
+            eyebrow="Accesos"
+            title={creationDraft ? 'Accesos del nuevo perfil' : 'Accesos del perfil'}
             description={
-              selectedProfile
-                ? `Ajusta el set activo para ${selectedProfile.name}.`
-                : 'Selecciona un perfil para revisar o modificar sus permisos.'
+              profileForPermissions
+                ? creationDraft
+                  ? ACCESS_SETTINGS_COPY.draftSelectedProfileDescription(profileForPermissions.name)
+                  : ACCESS_SETTINGS_COPY.selectedProfileDescription(profileForPermissions.name)
+                : ACCESS_SETTINGS_COPY.noProfileSelectedDescription
             }
+            headerClassName="gap-4"
             actions={
-              selectedProfile ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => void handleSaveProfilePermissions()}
-                  disabled={isSaving}
-                >
-                  <Save className="mr-2 h-4 w-4" aria-hidden={true} />
-                  Guardar permisos
-                </Button>
+              profileForPermissions ? (
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <PortalActionToolbar compact={true}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="rounded-full px-3 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-300"
+                      onClick={() => setDraftPermissionKeys([])}
+                      disabled={isSaving}
+                    >
+                      Limpiar accesos
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="rounded-full px-3"
+                      onClick={() =>
+                        setDraftPermissionKeys(
+                          creationDraft?.initialPermissionKeys ?? profileForPermissions.permissions,
+                        )
+                      }
+                      disabled={isSaving}
+                    >
+                      Restablecer cambios
+                    </Button>
+                    {creationDraft ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="rounded-full px-3"
+                        onClick={() => setIsDialogOpen(true)}
+                        disabled={isSaving}
+                      >
+                        Editar datos
+                      </Button>
+                    ) : null}
+                  </PortalActionToolbar>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    className="rounded-full px-4 shadow-[var(--shadow-iwana)]"
+                    onClick={() => {
+                      if (creationDraft) {
+                        void handleSubmit(onSubmit, () => setIsDialogOpen(true))();
+                        return;
+                      }
+
+                      void handleSaveProfilePermissions();
+                    }}
+                    disabled={isSaving}
+                  >
+                    {creationDraft ? 'Guardar perfil' : 'Guardar'}
+                  </Button>
+                </div>
               ) : undefined
             }
           >
-            {selectedProfile ? (
-              selectablePermissionEntries.length > 0 ? (
-                <div className="grid gap-3">
-                  {selectablePermissionEntries.map((permission) => (
-                    <label
-                      key={permission.id}
-                      className="flex items-start gap-3 rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-700 dark:border-dark-border dark:text-gray-200"
+            {profileForPermissions ? (
+              permissionModules.length > 0 ? (
+                <div className="space-y-4">
+                  <div className="relative">
+                    <div
+                      ref={permissionTabsScrollRef}
+                      data-testid="permission-modules-scroll"
+                      className="no-scrollbar overflow-x-auto border-b border-gray-200/80 pb-1 dark:border-dark-border"
                     >
-                      <input
-                        type="checkbox"
-                        checked={draftPermissionKeys.includes(permission.permissionKey)}
-                        onChange={() => togglePermission(permission.permissionKey)}
-                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-iwana-primary"
-                      />
-                      <span>
-                        <span className="block font-medium text-gray-900 dark:text-white">
-                          {permission.description}
-                        </span>
-                        <span className="mt-1 block text-xs uppercase tracking-[0.14em] text-gray-500">
-                          {getAccessModuleLabel(permission.moduleKey)}
-                        </span>
-                      </span>
-                    </label>
-                  ))}
+                      <nav
+                        role="tablist"
+                        aria-label="Secciones de acceso"
+                        className="-mb-px flex min-w-max gap-4"
+                      >
+                        {permissionModules.map((module, index) => {
+                          const isActive = module.moduleKey === activePermissionModule;
+                          const selectedCount = module.permissions.filter((permission) =>
+                            draftPermissionKeys.includes(permission.permissionKey),
+                          ).length;
+
+                          return (
+                            <button
+                              key={module.moduleKey}
+                              id={`access-permission-tab-${module.moduleKey}`}
+                              ref={(element) => {
+                                permissionTabRefs.current[index] = element;
+                              }}
+                              type="button"
+                              role="tab"
+                              aria-selected={isActive}
+                              aria-controls={`access-permission-panel-${module.moduleKey}`}
+                              tabIndex={isActive ? 0 : -1}
+                              className={
+                                isActive
+                                  ? 'relative border-b-[3px] border-iwana-secondary px-2 py-3 text-sm font-semibold whitespace-nowrap text-iwana-secondary-700 outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2 dark:border-iwana-secondary dark:text-iwana-secondary-300'
+                                  : 'relative border-b-[3px] border-transparent px-2 py-3 text-sm font-medium whitespace-nowrap text-gray-500 outline-none transition-colors hover:border-gray-200 hover:text-gray-800 focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2 dark:text-gray-400 dark:hover:border-dark-border dark:hover:text-gray-200'
+                              }
+                              onClick={() => setActivePermissionModule(module.moduleKey)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+                                  event.preventDefault();
+                                  focusPermissionTabAt(index + 1);
+                                }
+
+                                if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+                                  event.preventDefault();
+                                  focusPermissionTabAt(index - 1);
+                                }
+
+                                if (event.key === 'Home') {
+                                  event.preventDefault();
+                                  focusPermissionTabAt(0);
+                                }
+
+                                if (event.key === 'End') {
+                                  event.preventDefault();
+                                  focusPermissionTabAt(permissionModules.length - 1);
+                                }
+                              }}
+                            >
+                              {getAccessModuleLabel(module.moduleKey)}
+                              <span className="ml-2 text-xs font-normal normal-case text-gray-500 dark:text-gray-400">
+                                {selectedCount}/{module.permissions.length}
+                              </span>
+                              {isActive ? (
+                                <div className="absolute bottom-0 left-0 h-[3px] w-full rounded-t-full bg-iwana-secondary" />
+                              ) : null}
+                            </button>
+                          );
+                        })}
+                      </nav>
+                    </div>
+
+                    {permissionTabsOverflow.hasOverflow ? (
+                      <>
+                        <div
+                          aria-hidden={true}
+                          className={`pointer-events-none absolute inset-y-0 left-0 w-14 bg-gradient-to-r from-white via-white/94 to-iwana-primary-50/10 transition-opacity dark:from-dark-surface dark:via-dark-surface dark:to-transparent ${permissionTabsOverflow.canScrollLeft ? 'opacity-100' : 'opacity-0'}`}
+                        />
+                        <div
+                          aria-hidden={true}
+                          className={`pointer-events-none absolute inset-y-0 right-0 w-14 bg-gradient-to-l from-white via-white/94 to-iwana-secondary-50/60 transition-opacity dark:from-dark-surface dark:via-dark-surface dark:to-transparent ${permissionTabsOverflow.canScrollRight ? 'opacity-100' : 'opacity-0'}`}
+                        />
+
+                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-1">
+                          <button
+                            type="button"
+                            aria-label="Desplazar secciones a la izquierda"
+                            className="pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full border border-iwana-primary/10 bg-white/92 text-iwana-primary-700 shadow-[var(--shadow-iwana)] backdrop-blur-sm transition hover:border-iwana-primary/20 hover:bg-iwana-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-0 dark:border-dark-border dark:bg-dark-surface-2/92 dark:text-gray-200 dark:hover:bg-dark-surface-3"
+                            disabled={!permissionTabsOverflow.canScrollLeft}
+                            onClick={() => scrollPermissionTabs('left')}
+                          >
+                            <ChevronLeft className="h-4 w-4" aria-hidden={true} />
+                          </button>
+                        </div>
+
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-1">
+                          <button
+                            type="button"
+                            aria-label="Desplazar secciones a la derecha"
+                            className="pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full border border-iwana-primary/10 bg-white/92 text-iwana-primary-700 shadow-[var(--shadow-iwana)] backdrop-blur-sm transition hover:border-iwana-primary/20 hover:bg-iwana-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-0 dark:border-dark-border dark:bg-dark-surface-2/92 dark:text-gray-200 dark:hover:bg-dark-surface-3"
+                            disabled={!permissionTabsOverflow.canScrollRight}
+                            onClick={() => scrollPermissionTabs('right')}
+                          >
+                            <ChevronRight className="h-4 w-4" aria-hidden={true} />
+                          </button>
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
+
+                  {activePermissionModuleConfig ? (
+                    <div
+                      id={`access-permission-panel-${activePermissionModuleConfig.moduleKey}`}
+                      role="tabpanel"
+                      aria-labelledby={`access-permission-tab-${activePermissionModuleConfig.moduleKey}`}
+                      className="space-y-3"
+                    >
+                      <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-iwana-secondary-50 px-4 py-4 dark:border-dark-border dark:bg-dark-surface-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                            Ajusta solo los accesos de la sección{' '}
+                            <span className="font-medium text-gray-700 dark:text-gray-200">
+                              {getAccessModuleLabel(activePermissionModuleConfig.moduleKey)}
+                            </span>
+                            .
+                          </p>
+                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            {filteredActivePermissions.length} de{' '}
+                            {activePermissionModuleConfig.permissions.length} accesos visibles
+                          </p>
+                        </div>
+
+                        <div className="w-full md:max-w-xs">
+                          <label htmlFor="permission-search" className="sr-only">
+                            Buscar acceso dentro de esta sección
+                          </label>
+                          <Input
+                            id="permission-search"
+                            value={permissionSearch}
+                            onChange={(event) => setPermissionSearch(event.target.value)}
+                            placeholder="Buscar acceso dentro de esta sección"
+                            className="portal-input-surface h-11"
+                          />
+                        </div>
+                      </div>
+
+                      {filteredActivePermissions.length > 0 ? (
+                        <div className="grid gap-2">
+                          {filteredActivePermissions.map((permission) => {
+                            const isEnabled = canEnablePermission(permission.permissionKey);
+
+                            return (
+                              <label
+                                key={permission.id}
+                                className={`flex items-start gap-3 rounded-xl border border-gray-200 px-4 py-3 text-sm dark:border-dark-border ${isEnabled ? 'text-gray-700 dark:text-gray-200' : 'bg-gray-50 text-gray-500 dark:bg-dark-surface-3/60 dark:text-gray-400'}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={draftPermissionKeys.includes(permission.permissionKey)}
+                                  onChange={() => togglePermission(permission.permissionKey)}
+                                  disabled={!isEnabled}
+                                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-iwana-primary"
+                                />
+                                <span>
+                                  <span className="block font-medium text-gray-900 dark:text-white">
+                                    {permission.description}
+                                  </span>
+                                  {!isEnabled ? (
+                                    <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                                      Solo el perfil Administrador general puede crear, editar o
+                                      desactivar perfiles de acceso.
+                                    </span>
+                                  ) : null}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <PortalEmptyState
+                          title="No encontramos accesos en esta sección"
+                          description="Ajusta el texto de búsqueda o cambia de sección para seguir editando accesos."
+                        />
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <PortalEmptyState
-                  title="Sin permisos compatibles"
-                  description="El rol base actual no tiene permisos assignables adicionales en esta fase."
+                  title={ACCESS_SETTINGS_COPY.noCompatiblePermissionsTitle}
+                  description={ACCESS_SETTINGS_COPY.noCompatiblePermissionsDescription}
                 />
               )
             ) : (
               <PortalEmptyState
                 title="Sin perfil seleccionado"
-                description="Elige un perfil del listado para editar su set de permisos."
+                description={ACCESS_SETTINGS_COPY.noProfileSelectedDescription}
               />
             )}
           </PortalPanel>
-
-          <PortalPanel
-            title="Asignación a usuario"
-            description="Prepara una nueva selección de perfiles y reemplaza el set activo del usuario elegido."
-            actions={
-              selectedUserId ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => void handleSaveUserProfiles()}
-                  disabled={isSaving}
-                >
-                  <UserCog className="mr-2 h-4 w-4" aria-hidden={true} />
-                  Aplicar selección
-                </Button>
-              ) : undefined
-            }
-          >
-            <div className="space-y-4">
-              <PortalAlert
-                variant="info"
-                title="Decisión conservadora"
-                description="La API de Fase 01 no expone lectura del set actual de perfiles por usuario. La selección de esta pantalla representa el reemplazo que se enviará al guardar."
-              />
-
-              <div>
-                <label
-                  htmlFor="access-user-select"
-                  className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-                >
-                  Usuario
-                </label>
-                <Select
-                  id="access-user-select"
-                  value={selectedUserId}
-                  onChange={(event) => setSelectedUserId(event.target.value)}
-                  options={[
-                    { value: '', label: 'Selecciona un usuario' },
-                    ...users.map((item) => ({
-                      value: item.id,
-                      label: `${getUserDisplayName(item)} · ${getPortalUserRoleLabel(item.role)}`,
-                    })),
-                  ]}
-                />
-              </div>
-
-              {selectedUser ? (
-                compatibleProfiles.length > 0 ? (
-                  <div className="grid gap-3">
-                    {compatibleProfiles.map((profile) => (
-                      <label
-                        key={profile.id}
-                        className="flex items-start gap-3 rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-700 dark:border-dark-border dark:text-gray-200"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={draftUserProfileIds.includes(profile.id)}
-                          onChange={() => toggleUserProfile(profile.id)}
-                          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-iwana-primary"
-                        />
-                        <span>
-                          <span className="block font-medium text-gray-900 dark:text-white">
-                            {profile.name}
-                          </span>
-                          <span className="mt-1 block text-sm text-gray-500">
-                            {profile.description || 'Sin descripción'}
-                          </span>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                ) : (
-                  <PortalEmptyState
-                    title="Sin perfiles compatibles"
-                    description="No hay perfiles activos compatibles con el rol base del usuario seleccionado."
-                  />
-                )
-              ) : (
-                <PortalEmptyState
-                  title="Selecciona un usuario"
-                  description="Elige un usuario para preparar una nueva selección de perfiles."
-                />
-              )}
-            </div>
-          </PortalPanel>
-
-          <EffectivePermissionsPanel
-            summary={effectivePermissions}
-            catalog={catalog}
-            selectedUserLabel={selectedUser ? getUserDisplayName(selectedUser) : null}
-            isLoading={isLoadingEffectivePermissions}
-            error={effectivePermissionsError}
-          />
-
-          <ProfileChangeEvidence
-            entries={evidenceEntries}
-            isLoading={isLoadingEvidence}
-            error={evidenceError}
-          />
         </div>
       </div>
 
-      <PortalPanel
-        title="Catálogo de permisos"
-        description="Referencia operativa del catálogo tenant-aware disponible en MOD00_ACCESS_V1."
-      >
-        {permissionEntries.length > 0 ? (
-          <div className="overflow-hidden rounded-2xl border border-gray-200 dark:border-dark-border">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-              <thead className="bg-[#f8faf5] dark:bg-dark-surface-3">
-                <tr>
-                  <th className={tableHeadClass}>Módulo</th>
-                  <th className={tableHeadClass}>Descripción</th>
-                  <th className={tableHeadClass}>Disponibilidad</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2">
-                {permissionEntries.map((permission) => (
-                  <tr key={permission.id}>
-                    <td className={cellClass}>{getAccessModuleLabel(permission.moduleKey)}</td>
-                    <td className={cellClass}>{permission.description}</td>
-                    <td className={cellClass}>
-                      {getAccessPermissionAvailabilityLabel(permission.availability)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* Drawer lateral — Vista previa de plantilla */}
+      {previewTemplate ? (
+        <div
+          className="fixed inset-0 z-10000 bg-black/55 backdrop-blur-sm"
+          onClick={() => closePreviewTemplate()}
+        >
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="preview-template-title"
+            className="absolute inset-y-0 right-0 z-10001 flex w-full max-w-lg flex-col border-l border-gray-200 bg-white shadow-2xl dark:border-dark-border dark:bg-dark-surface-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between border-b border-gray-100 bg-white/95 px-5 py-4 backdrop-blur-sm dark:border-dark-border dark:bg-dark-surface-2/95">
+              <div className="min-w-0 flex-1">
+                <p className="portal-eyebrow">Accesos de la plantilla</p>
+                <h2
+                  id="preview-template-title"
+                  className="mt-0.5 text-base font-semibold text-gray-900 dark:text-white"
+                >
+                  {getAccessProfileDisplayName(previewTemplate)}
+                </h2>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {previewTemplate.description || 'Plantilla inicial del sistema'}
+                </p>
+              </div>
+              <button
+                ref={previewCloseButtonRef}
+                type="button"
+                aria-label="Cerrar vista previa"
+                onClick={() => closePreviewTemplate()}
+                className="ml-4 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-400 hover:bg-gray-50 hover:text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-400"
+              >
+                <X className="h-4 w-4" aria-hidden={true} />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 border-b border-gray-100 px-5 py-2.5 text-xs text-gray-500 dark:border-dark-border dark:text-gray-400">
+              <span>{getSystemBaseRoleLabel(previewTemplate.baseRoleConstraint)}</span>
+              <span>·</span>
+              <span>{getTemplatePermissionKeys(previewTemplate).length} accesos</span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              {getTemplatePermissionKeys(previewTemplate).length > 0 ? (
+                <ul className="space-y-2">
+                  {getTemplatePermissionKeys(previewTemplate).map((permKey) => {
+                    const entry = permissionEntries.find(
+                      (permission) => permission.permissionKey === permKey,
+                    );
+                    return (
+                      <li
+                        key={permKey}
+                        className="rounded-xl border border-gray-200 bg-iwana-secondary-50 px-3 py-2.5 text-sm text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200"
+                      >
+                        {entry?.description ?? permKey}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="text-sm text-gray-500">Sin accesos asignados a esta plantilla.</p>
+              )}
+            </div>
+
+            <div className="border-t border-gray-100 bg-white/95 px-5 py-4 backdrop-blur-sm dark:border-dark-border dark:bg-dark-surface-2/95">
+              <Button
+                type="button"
+                className="w-full"
+                onClick={() => {
+                  closePreviewTemplate(false);
+                  beginCreationFromTemplate(previewTemplate);
+                }}
+              >
+                Usar {getAccessProfileDisplayName(previewTemplate)} como base
+              </Button>
+            </div>
+          </aside>
+        </div>
+      ) : null}
+
+      <Dialog open={creationSelectorOpen} onOpenChange={setCreationSelectorOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Crear nuevo perfil</DialogTitle>
+            <DialogDescription>¿Cómo quieres crear este perfil?</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 pt-2">
+            <button
+              type="button"
+              onClick={startFromTemplate}
+              className="flex w-full items-start gap-4 rounded-2xl border border-gray-200 p-4 text-left hover:border-iwana-primary hover:bg-iwana-secondary-50 dark:border-dark-border dark:hover:bg-dark-surface-3"
+            >
+              <ShieldCheck
+                className="mt-0.5 h-5 w-5 shrink-0 text-iwana-primary"
+                aria-hidden={true}
+              />
+              <div>
+                <p className="font-semibold text-gray-900 dark:text-white">Usar una plantilla</p>
+                <p className="mt-0.5 text-sm text-gray-500">
+                  Parte de una plantilla del sistema para configurar el perfil más rápido.
+                </p>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={startFromScratch}
+              className="flex w-full items-start gap-4 rounded-2xl border border-gray-200 p-4 text-left hover:border-iwana-primary hover:bg-iwana-secondary-50 dark:border-dark-border dark:hover:bg-dark-surface-3"
+            >
+              <Plus className="mt-0.5 h-5 w-5 shrink-0 text-gray-500" aria-hidden={true} />
+              <div>
+                <p className="font-semibold text-gray-900 dark:text-white">Empezar desde cero</p>
+                <p className="mt-0.5 text-sm text-gray-500">
+                  Crea el perfil desde cero y define sus accesos paso a paso.
+                </p>
+              </div>
+            </button>
           </div>
-        ) : (
-          <PortalEmptyState
-            title="Sin catálogo disponible"
-            description="No fue posible resolver el catálogo de permisos del tenant."
-          />
-        )}
-      </PortalPanel>
+          <div className="flex justify-end pt-2">
+            <DialogClose asChild>
+              <Button type="button" variant="ghost">
+                Cancelar
+              </Button>
+            </DialogClose>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent aria-labelledby="access-profile-dialog-title">
@@ -838,8 +1500,8 @@ export function AccessControlSettingsClient() {
             </DialogTitle>
             <DialogDescription>
               {editingProfileId
-                ? 'Actualiza los datos base del perfil seleccionado.'
-                : 'Crea un perfil complementario al rol base del usuario interno.'}
+                ? ACCESS_SETTINGS_COPY.editProfileDescription
+                : ACCESS_SETTINGS_COPY.createProfileDescription}
             </DialogDescription>
           </DialogHeader>
 
@@ -875,7 +1537,7 @@ export function AccessControlSettingsClient() {
                 htmlFor="profile-role"
                 className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
               >
-                Rol base compatible
+                {ACCESS_SETTINGS_COPY.roleFieldLabel}
               </label>
               <Controller
                 name="baseRoleConstraint"

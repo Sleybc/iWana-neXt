@@ -5,6 +5,7 @@ import { Save } from 'lucide-react';
 import { Button } from '@iwana/ui';
 import { organizationApi, type OrganizationCompanyBusinessHoursDay } from '@/lib/api-client';
 import { PortalPanel } from '@/components/shared/portal-ui';
+import { CALENDAR_SETTINGS_COPY } from './mod00-settings-labels';
 import {
   BusinessHoursWeekEditor,
   buildBusinessHoursDraft,
@@ -41,9 +42,9 @@ export function CalendarOrganizationHoursPanel({ companyHours, canEdit, onUpdate
       });
       setDraft(buildBusinessHoursDraft(updated));
       onUpdated(updated);
-      setFeedback('Horario base de empresa actualizado correctamente.');
+      setFeedback(CALENDAR_SETTINGS_COPY.organizationSaveSuccess);
     } catch {
-      setError('No fue posible guardar el horario base. Intenta nuevamente.');
+      setError(CALENDAR_SETTINGS_COPY.organizationSaveError);
     } finally {
       setIsSaving(false);
     }
@@ -51,8 +52,8 @@ export function CalendarOrganizationHoursPanel({ companyHours, canEdit, onUpdate
 
   return (
     <PortalPanel
-      title="Horario base de atención y recaudo"
-      description="Horario semanal predeterminado para todo el tenant. Las sedes sin override activo lo usarán automáticamente."
+      title={CALENDAR_SETTINGS_COPY.organizationTitle}
+      description={CALENDAR_SETTINGS_COPY.organizationDescription}
       actions={
         canEdit ? (
           <Button
@@ -62,7 +63,7 @@ export function CalendarOrganizationHoursPanel({ companyHours, canEdit, onUpdate
             disabled={isSaving}
           >
             <Save className="mr-2 h-4 w-4" aria-hidden={true} />
-            Guardar horario base
+            {CALENDAR_SETTINGS_COPY.organizationSaveAction}
           </Button>
         ) : undefined
       }

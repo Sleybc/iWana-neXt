@@ -1,9 +1,13 @@
-import { OrganizationSiteCapability } from '@iwana/shared';
+import { OrganizationSiteCapability, OrganizationSiteType } from '@iwana/shared';
 
 export interface OrganizationSiteSummary {
   id: string;
   name: string;
   code: string;
+  siteType: OrganizationSiteType;
+  address: string | null;
+  municipality: string | null;
+  department: string | null;
   capabilities: OrganizationSiteCapability[];
   isActive: boolean;
 }

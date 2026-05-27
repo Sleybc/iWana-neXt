@@ -18,6 +18,7 @@ import { cn } from '@iwana/ui';
 import { AccessPermissionKey, SettingsSectionKey, SettingsSectionStatus } from '@iwana/shared';
 import { PortalPanel, interactiveFocusClassName } from '@/components/shared/portal-ui';
 import { type SettingsSection } from '@/lib/api-client';
+import { SETTINGS_HUB_COPY } from './mod00-settings-labels';
 import { SettingsUnavailableState } from './SettingsUnavailableState';
 
 interface SettingsSectionGridProps {
@@ -56,9 +57,9 @@ function hasAllRequiredPermissions(
 export function SettingsSectionGrid({ sections, effectivePermissions }: SettingsSectionGridProps) {
   return (
     <PortalPanel
-      eyebrow="Shell federado"
-      title="Secciones de configuración"
-      description="MOD00 organiza la navegación y cada módulo owner conserva sus datos, endpoints y estados reales."
+      eyebrow={SETTINGS_HUB_COPY.panelEyebrow}
+      title={SETTINGS_HUB_COPY.panelTitle}
+      description={SETTINGS_HUB_COPY.panelDescription}
     >
       <div className="grid gap-4 xl:grid-cols-2">
         {sections.map((section) => {
@@ -71,7 +72,6 @@ export function SettingsSectionGrid({ sections, effectivePermissions }: Settings
                 key={section.key}
                 title={section.label}
                 description={section.description}
-                ownerModule={section.ownerModule}
                 status={section.status}
               />
             );
@@ -89,9 +89,6 @@ export function SettingsSectionGrid({ sections, effectivePermissions }: Settings
                       <span className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
                         Acceso restringido
                       </span>
-                      <span className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:bg-dark-surface-3 dark:text-slate-200">
-                        {section.ownerModule}
-                      </span>
                     </div>
                     <div>
                       <p className="text-base font-semibold text-gray-900 dark:text-white">
@@ -102,8 +99,7 @@ export function SettingsSectionGrid({ sections, effectivePermissions }: Settings
                       </p>
                     </div>
                     <p className="text-sm leading-6 text-amber-900 dark:text-amber-200">
-                      Tu sesión no tiene los permisos granulares requeridos para operar esta
-                      sección.
+                      {SETTINGS_HUB_COPY.restrictedMessage}
                     </p>
                   </div>
                   <div className="rounded-2xl bg-white/80 p-3 text-amber-700 shadow-sm dark:bg-dark-surface-3 dark:text-amber-300">
@@ -129,9 +125,6 @@ export function SettingsSectionGrid({ sections, effectivePermissions }: Settings
                     <span className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
                       {statusLabelMap[section.status]}
                     </span>
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:bg-dark-surface-3 dark:text-slate-200">
-                      {section.ownerModule}
-                    </span>
                   </div>
                   <div>
                     <p className="text-base font-semibold text-gray-900 transition group-hover:text-iwana-primary dark:text-white">
@@ -141,7 +134,9 @@ export function SettingsSectionGrid({ sections, effectivePermissions }: Settings
                       {section.description}
                     </p>
                   </div>
-                  <p className="text-sm font-medium text-iwana-primary">Abrir sección</p>
+                  <p className="text-sm font-medium text-iwana-primary">
+                    {SETTINGS_HUB_COPY.openSectionAction}
+                  </p>
                 </div>
                 <div className="rounded-2xl bg-[#f8faf5] p-3 text-iwana-primary shadow-sm dark:bg-dark-surface-3">
                   <Icon className="h-5 w-5" aria-hidden={true} />
@@ -157,9 +152,11 @@ export function SettingsSectionGrid({ sections, effectivePermissions }: Settings
             <Blocks className="h-5 w-5" aria-hidden={true} />
           </div>
           <div>
-            <p className="font-medium text-gray-900 dark:text-white">Sin secciones registradas</p>
+            <p className="font-medium text-gray-900 dark:text-white">
+              {SETTINGS_HUB_COPY.emptyTitle}
+            </p>
             <p className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">
-              El shell federado no recibió metadata de secciones visibles para este tenant.
+              {SETTINGS_HUB_COPY.emptyDescription}
             </p>
           </div>
         </div>

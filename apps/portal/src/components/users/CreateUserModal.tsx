@@ -6,10 +6,15 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { CheckCircle2, Copy, UserPlus, X } from 'lucide-react';
-import { DocumentType } from '@iwana/shared';
-import type { CreateInternalUserDto } from '@/lib/api-client';
+import { type AccessPermissionKey, DocumentType, UserRole } from '@iwana/shared';
+import type {
+  AccessPermissionsCatalog,
+  AccessProfileView,
+  CreateInternalUserDto,
+} from '@/lib/api-client';
 import { getPortalUserRoleLabel, PORTAL_TENANT_ASSIGNABLE_ROLES } from '@/lib/user-labels';
 import { PortalAlert, PortalSectionHeader } from '@/components/shared/portal-ui';
+import { CompanyRolesAssignmentSection } from './CompanyRolesAssignmentSection';
 
 const createUserSchema = z.object({
   email: z.string().trim().email('Ingresa un correo valido.'),
@@ -28,9 +33,11 @@ type CreateUserFormValues = z.infer<typeof createUserSchema>;
 interface CreateUserModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (dto: CreateInternalUserDto) => Promise<void>;
+  onSubmit: (dto: CreateInternalUserDto, companyRoleIds: string[]) => Promise<void>;
   isSubmitting: boolean;
   error: string | null;
+  accessCatalog: AccessPermissionsCatalog | null;
+  availableProfiles: AccessProfileView[];
   tempPassword?: string | null;
   tempPasswordEmail?: string | null;
   onDismissSuccess?: () => void;
@@ -42,6 +49,8 @@ export function CreateUserModal({
   onSubmit,
   isSubmitting,
   error,
+  accessCatalog,
+  availableProfiles,
   tempPassword,
   tempPasswordEmail,
   onDismissSuccess,
@@ -49,11 +58,13 @@ export function CreateUserModal({
   const [serverError, setServerError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [selectedCompanyRoleIds, setSelectedCompanyRoleIds] = useState<string[]>([]);
 
   const {
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors, isDirty },
   } = useForm<CreateUserFormValues>({
     resolver: zodResolver(createUserSchema),
@@ -86,6 +97,7 @@ export function CreateUserModal({
       setServerError(null);
       setCopied(false);
       setShowSuccess(false);
+      setSelectedCompanyRoleIds([]);
     }
   }, [isOpen, reset]);
 
@@ -98,6 +110,30 @@ export function CreateUserModal({
       setShowSuccess(true);
     }
   }, [tempPassword, tempPasswordEmail]);
+
+  const selectedBaseRole = watch('role') as UserRole | '';
+
+  useEffect(() => {
+    if (!selectedBaseRole) {
+      setSelectedCompanyRoleIds([]);
+      return;
+    }
+
+    // Guard: si los perfiles aun no cargaron no filtrar la seleccion actual para evitar limpiar
+    // una seleccion valida ante un fallo de red transitorio.
+    if (availableProfiles.length === 0) return;
+
+    setSelectedCompanyRoleIds((current) =>
+      current.filter((profileId) =>
+        availableProfiles.some(
+          (profile) =>
+            profile.id === profileId &&
+            profile.isActive &&
+            profile.baseRoleConstraint === selectedBaseRole,
+        ),
+      ),
+    );
+  }, [availableProfiles, selectedBaseRole]);
 
   const onFormSubmit = async (values: CreateUserFormValues) => {
     setServerError(null);
@@ -117,8 +153,16 @@ export function CreateUserModal({
     if (values.documentNumber?.trim()) dto.documentNumber = values.documentNumber.trim();
     if (values.mfaRequired) dto.mfaRequired = values.mfaRequired;
 
-    await onSubmit(dto);
+    await onSubmit(dto, selectedCompanyRoleIds);
   };
+
+  function toggleCompanyRole(profileId: string) {
+    setSelectedCompanyRoleIds((current) =>
+      current.includes(profileId)
+        ? current.filter((item) => item !== profileId)
+        : [...current, profileId],
+    );
+  }
 
   const handleCopy = async () => {
     if (tempPassword) {
@@ -288,7 +332,7 @@ export function CreateUserModal({
                   htmlFor="create-role"
                   className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
                 >
-                  Rol <span className="text-red-500">*</span>
+                  Categoría base <span className="text-red-500">*</span>
                 </label>
                 {errors.role ? (
                   <select
@@ -298,7 +342,7 @@ export function CreateUserModal({
                     className="flex h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition-colors focus:outline-none focus:ring-2 focus:ring-iwana-primary focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white dark:focus:ring-iwana-primary"
                     aria-invalid="true"
                   >
-                    <option value="">Selecciona un rol</option>
+                    <option value="">Selecciona una categoría base</option>
                     {PORTAL_TENANT_ASSIGNABLE_ROLES.map((role) => (
                       <option key={role} value={role}>
                         {getPortalUserRoleLabel(role)}
@@ -312,7 +356,7 @@ export function CreateUserModal({
                     {...register('role')}
                     className="flex h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition-colors focus:outline-none focus:ring-2 focus:ring-iwana-primary focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white dark:focus:ring-iwana-primary"
                   >
-                    <option value="">Selecciona un rol</option>
+                    <option value="">Selecciona una categoría base</option>
                     {PORTAL_TENANT_ASSIGNABLE_ROLES.map((role) => (
                       <option key={role} value={role}>
                         {getPortalUserRoleLabel(role)}
@@ -325,6 +369,20 @@ export function CreateUserModal({
                     {errors.role.message}
                   </p>
                 )}
+              </div>
+
+              <div className="col-span-full">
+                <CompanyRolesAssignmentSection
+                  baseRole={selectedBaseRole || null}
+                  availableProfiles={availableProfiles}
+                  selectedProfileIds={selectedCompanyRoleIds}
+                  compatibilityMatrix={
+                    accessCatalog?.compatibilityMatrix ??
+                    ({} as Record<UserRole, AccessPermissionKey[]>)
+                  }
+                  catalog={accessCatalog}
+                  onToggleProfile={toggleCompanyRole}
+                />
               </div>
 
               <div>

@@ -13,13 +13,13 @@ const cards = [
   {
     href: '/dashboard/settings/organization',
     title: 'Organización',
-    description: 'Consulta sedes, capacidades y horario institucional del tenant autenticado.',
+    description: 'Consulta sedes, capacidades y horario institucional de la empresa.',
     icon: Building2,
   },
   {
     href: '/dashboard/settings/access',
-    title: 'Usuarios y acceso',
-    description: 'Administra perfiles de acceso y prepara la asignación de perfiles por usuario.',
+    title: 'Perfiles de acceso',
+    description: 'Administra perfiles de acceso, plantillas iniciales y accesos por sección.',
     icon: ShieldCheck,
   },
   {
@@ -36,7 +36,7 @@ export function SettingsAccessShortcuts({ canEdit }: SettingsAccessShortcutsProp
     <PortalPanel
       eyebrow="MOD00"
       title="Accesos de configuración"
-      description="Usa estas rutas para entrar a Organización, Operación de campo y Usuarios y acceso sin salir del centro de configuración."
+      description="Usa estas rutas para entrar a Organización, Operación de campo y Perfiles de acceso sin salir del centro de configuración."
     >
       <div className="grid gap-4 xl:grid-cols-3">
         {cards.map((card) => {

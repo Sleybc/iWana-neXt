@@ -85,11 +85,13 @@ export function OtpInput({
           className={cn(
             'w-12 h-12 text-center text-lg font-semibold rounded-xl border-2 transition-all duration-200',
             'focus:outline-none focus:ring-2 focus:ring-offset-1',
-            'disabled:opacity-50 disabled:cursor-not-allowed',
+            'disabled:pointer-events-none disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:text-gray-500 dark:disabled:border-dark-border dark:disabled:bg-dark-surface-3 dark:disabled:text-gray-500',
             error
-              ? 'border-[#EF4444] text-[#EF4444] focus:ring-[#EF4444]'
-              : 'border-[#D1D5DB] text-[#17163A] focus:border-[#17163A] focus:ring-[#17163A]',
-            digits[i] && !error && 'border-[#17163A] bg-[#EEEEFA]',
+              ? 'border-iwana-error text-iwana-error focus:ring-iwana-error dark:border-iwana-error dark:text-iwana-error'
+              : 'border-gray-300 text-iwana-primary focus:border-iwana-primary focus:ring-iwana-primary dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-white dark:focus:border-iwana-primary-300 dark:focus:ring-iwana-primary-300',
+            digits[i] &&
+              !error &&
+              'border-iwana-primary bg-iwana-primary-50 dark:border-iwana-primary-300 dark:bg-iwana-primary-900/20',
           )}
         />
       ))}

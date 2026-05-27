@@ -12,6 +12,7 @@ import {
   type OrganizationSiteSummary,
 } from '@/lib/api-client';
 import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
+import { CALENDAR_SETTINGS_COPY } from './mod00-settings-labels';
 import { CalendarOrganizationHoursPanel } from './CalendarOrganizationHoursPanel';
 import { CalendarSiteHoursPanel } from './CalendarSiteHoursPanel';
 import { CalendarExceptionsPanel } from './CalendarExceptionsPanel';
@@ -92,7 +93,7 @@ export function CalendarSettingsClient() {
       <div className="space-y-6">
         <PageHeader
           title="Calendario operativo y jornadas"
-          subtitle="Cargando horarios y excepciones del tenant"
+          subtitle={CALENDAR_SETTINGS_COPY.loadingSubtitle}
         />
         <PortalSkeletonBlock className="h-36" />
         <PortalSkeletonBlock className="h-80" />
@@ -131,7 +132,7 @@ export function CalendarSettingsClient() {
     <div className="space-y-6">
       <PageHeader
         title="Calendario operativo y jornadas"
-        subtitle="Gestiona el horario base del tenant, overrides por sede y festivos o cierres especiales."
+        subtitle={CALENDAR_SETTINGS_COPY.pageSubtitle}
         actions={
           <button
             type="button"

@@ -7,7 +7,7 @@ import { ApiError, wfmApi, type WfmOperatingWindowResult } from '@/lib/api-clien
 interface UseOperatingWindowInput {
   workType?: WfmWorkType | null | undefined;
   dateLocal?: string | null | undefined;
-  siteId?: string | null | undefined;
+  organizationSiteId?: string | null | undefined;
   technicianId?: string | null | undefined;
   enabled?: boolean | undefined;
 }
@@ -36,8 +36,6 @@ export function getOperatingWindowMessage(window: WfmOperatingWindowResult | nul
   return (
     window.reason ??
     {
-      TECHNICIAN_OVERRIDE:
-        'El técnico no tiene disponibilidad operativa para la fecha seleccionada.',
       HOLIDAY_BLACKOUT: 'La fecha seleccionada está cerrada por festivo o cierre especial.',
       SITE_HOURS: 'La sede operativa está cerrada para la fecha seleccionada.',
       COMPANY_HOURS: 'La empresa está cerrada para la fecha seleccionada.',
@@ -50,7 +48,7 @@ export function getOperatingWindowMessage(window: WfmOperatingWindowResult | nul
 export function useOperatingWindow({
   workType,
   dateLocal,
-  siteId,
+  organizationSiteId,
   technicianId,
   enabled = true,
 }: UseOperatingWindowInput) {
@@ -73,7 +71,7 @@ export function useOperatingWindow({
     void wfmApi.operatingWindow
       .resolve({
         dateLocal,
-        siteId: siteId ?? undefined,
+        organizationSiteId: organizationSiteId ?? undefined,
         technicianId: technicianId ?? undefined,
       })
       .then((result) => {
@@ -96,7 +94,7 @@ export function useOperatingWindow({
     return () => {
       cancelled = true;
     };
-  }, [dateLocal, enabled, siteId, technicianId, workType]);
+  }, [dateLocal, enabled, organizationSiteId, technicianId, workType]);
 
   return {
     operatingWindow,

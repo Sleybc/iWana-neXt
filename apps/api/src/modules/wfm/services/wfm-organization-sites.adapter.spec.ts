@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { OrganizationSiteCapability, UserRole } from '@iwana/shared';
+import { OrganizationSiteCapability, OrganizationSiteType, UserRole } from '@iwana/shared';
 import { OrganizationSiteReadPort } from '../../organization/ports/organization-site-read.port';
 import { WfmOrganizationSitesAdapter } from './wfm-organization-sites.adapter';
 
@@ -20,6 +20,10 @@ describe('WfmOrganizationSitesAdapter', () => {
         id: '4a98ba31-9c6f-4a3b-a21d-f0b6de5e7161',
         name: 'Centro operativo norte',
         code: 'NORTE',
+        siteType: OrganizationSiteType.TECH_BASE,
+        address: 'Av. Industrial 45-12',
+        municipality: 'Bogotá',
+        department: 'Cundinamarca',
         capabilities: [OrganizationSiteCapability.TECH_DISPATCH],
         isActive: true,
       },
@@ -40,6 +44,10 @@ describe('WfmOrganizationSitesAdapter', () => {
         id: '4a98ba31-9c6f-4a3b-a21d-f0b6de5e7161',
         name: 'Centro operativo norte',
         code: 'NORTE',
+        siteType: OrganizationSiteType.TECH_BASE,
+        address: 'Av. Industrial 45-12',
+        municipality: 'Bogotá',
+        department: 'Cundinamarca',
         capabilities: [OrganizationSiteCapability.TECH_DISPATCH],
         isActive: true,
       },

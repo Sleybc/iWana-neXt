@@ -82,6 +82,64 @@ describe('OrganizationService', () => {
     };
   }
 
+  function createSiteSummary(
+    overrides: Partial<Awaited<ReturnType<OrganizationService['findAll']>>[number]> = {},
+  ) {
+    return {
+      id: 'site-1',
+      name: 'Sede norte',
+      code: 'NORTE',
+      siteType: OrganizationSiteType.OFFICE,
+      address: 'Cra 10 # 10-10',
+      municipality: 'Bogotá',
+      department: 'Cundinamarca',
+      capabilities: [],
+      isActive: true,
+      ...overrides,
+    };
+  }
+
+  it('should return enriched summary fields in findAll', async () => {
+    const siteEntity = {
+      id: 'site-1',
+      tenantId: 'tenant-test',
+      name: 'Sede norte',
+      code: 'NORTE',
+      siteType: OrganizationSiteType.OFFICE,
+      address: 'Cra 10 # 10-10',
+      municipality: 'Bogotá',
+      department: 'Cundinamarca',
+      isActive: true,
+    };
+    const capabilityEntity = {
+      siteId: 'site-1',
+      capability: OrganizationSiteCapability.NOC,
+      isEnabled: true,
+    };
+    const manager = {
+      find: jest.fn().mockImplementation(async (entity) => {
+        if (entity === OrganizationSite) {
+          return [siteEntity];
+        }
+
+        if (entity === OrganizationSiteCapabilityEntity) {
+          return [capabilityEntity];
+        }
+
+        return [];
+      }),
+    };
+    mockTenantRun(manager);
+
+    const result = await service.findAll();
+
+    expect(result).toEqual([
+      createSiteSummary({
+        capabilities: [OrganizationSiteCapability.NOC],
+      }),
+    ]);
+  });
+
   it('should reject creating a second primary site for the tenant', async () => {
     const manager = {
       findOne: jest

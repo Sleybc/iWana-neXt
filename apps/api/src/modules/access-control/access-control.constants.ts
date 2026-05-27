@@ -14,6 +14,13 @@ interface PermissionSeedDefinition {
   availability: AccessPermissionAvailability;
 }
 
+interface SystemRoleTemplateDefinition {
+  name: string;
+  description: string;
+  baseRoleConstraint: UserRole;
+  permissionKeys: AccessPermissionKey[];
+}
+
 const version = AccessPermissionCatalogVersion.MOD00_ACCESS_V1;
 
 export const MOD00_ACCESS_V1_CATALOG: PermissionSeedDefinition[] = [
@@ -29,7 +36,7 @@ export const MOD00_ACCESS_V1_CATALOG: PermissionSeedDefinition[] = [
     permissionKey: AccessPermissionKey.SETTINGS_MANAGE,
     moduleKey: 'settings',
     action: 'manage',
-    description: 'Administrar configuración general de MOD00',
+    description: 'Administrar la configuración general',
     catalogVersion: version,
     availability: AccessPermissionAvailability.ASSIGNABLE,
   },
@@ -37,7 +44,7 @@ export const MOD00_ACCESS_V1_CATALOG: PermissionSeedDefinition[] = [
     permissionKey: AccessPermissionKey.ORGANIZATION_SITES_READ,
     moduleKey: 'organization',
     action: 'read',
-    description: 'Ver sedes organizacionales',
+    description: 'Ver sedes de la empresa',
     catalogVersion: version,
     availability: AccessPermissionAvailability.ASSIGNABLE,
   },
@@ -69,7 +76,7 @@ export const MOD00_ACCESS_V1_CATALOG: PermissionSeedDefinition[] = [
     permissionKey: AccessPermissionKey.USERS_READ,
     moduleKey: 'users',
     action: 'read',
-    description: 'Ver usuarios internos del tenant',
+    description: 'Ver usuarios internos de la empresa',
     catalogVersion: version,
     availability: AccessPermissionAvailability.ASSIGNABLE,
   },
@@ -77,7 +84,7 @@ export const MOD00_ACCESS_V1_CATALOG: PermissionSeedDefinition[] = [
     permissionKey: AccessPermissionKey.USERS_MANAGE,
     moduleKey: 'users',
     action: 'manage',
-    description: 'Gestionar usuarios internos desde el contrato aprobado de Users',
+    description: 'Crear, editar y desactivar usuarios internos',
     catalogVersion: version,
     availability: AccessPermissionAvailability.ASSIGNABLE,
   },
@@ -85,7 +92,7 @@ export const MOD00_ACCESS_V1_CATALOG: PermissionSeedDefinition[] = [
     permissionKey: AccessPermissionKey.ACCESS_PERMISSIONS_READ,
     moduleKey: 'access',
     action: 'read',
-    description: 'Ver catálogo de permisos y matriz disponible',
+    description: 'Ver los accesos disponibles para cada perfil',
     catalogVersion: version,
     availability: AccessPermissionAvailability.ASSIGNABLE,
   },
@@ -93,7 +100,7 @@ export const MOD00_ACCESS_V1_CATALOG: PermissionSeedDefinition[] = [
     permissionKey: AccessPermissionKey.ACCESS_PROFILES_READ,
     moduleKey: 'access',
     action: 'read',
-    description: 'Ver perfiles configurables',
+    description: 'Ver perfiles de acceso',
     catalogVersion: version,
     availability: AccessPermissionAvailability.ASSIGNABLE,
   },
@@ -101,7 +108,7 @@ export const MOD00_ACCESS_V1_CATALOG: PermissionSeedDefinition[] = [
     permissionKey: AccessPermissionKey.ACCESS_PROFILES_MANAGE,
     moduleKey: 'access',
     action: 'manage',
-    description: 'Crear, editar y desactivar perfiles configurables',
+    description: 'Crear, editar y desactivar perfiles de acceso',
     catalogVersion: version,
     availability: AccessPermissionAvailability.ASSIGNABLE,
   },
@@ -109,7 +116,7 @@ export const MOD00_ACCESS_V1_CATALOG: PermissionSeedDefinition[] = [
     permissionKey: AccessPermissionKey.ACCESS_ASSIGNMENTS_MANAGE,
     moduleKey: 'access',
     action: 'manage',
-    description: 'Asignar perfiles de acceso a usuarios del tenant',
+    description: 'Asignar perfiles de acceso a usuarios de la empresa',
     catalogVersion: version,
     availability: AccessPermissionAvailability.ASSIGNABLE,
   },
@@ -117,7 +124,7 @@ export const MOD00_ACCESS_V1_CATALOG: PermissionSeedDefinition[] = [
     permissionKey: AccessPermissionKey.WFM_SCHEDULE_READ,
     moduleKey: 'wfm',
     action: 'read',
-    description: 'Ver agenda WFM cuando el módulo exponga guard granular',
+    description: 'Ver agenda de visitas',
     catalogVersion: version,
     availability: AccessPermissionAvailability.ASSIGNABLE,
   },
@@ -125,7 +132,7 @@ export const MOD00_ACCESS_V1_CATALOG: PermissionSeedDefinition[] = [
     permissionKey: AccessPermissionKey.WFM_SCHEDULE_MANAGE,
     moduleKey: 'wfm',
     action: 'manage',
-    description: 'Gestionar agenda WFM cuando el módulo exponga guard granular',
+    description: 'Gestionar agenda de visitas',
     catalogVersion: version,
     availability: AccessPermissionAvailability.ASSIGNABLE,
   },
@@ -133,7 +140,7 @@ export const MOD00_ACCESS_V1_CATALOG: PermissionSeedDefinition[] = [
     permissionKey: AccessPermissionKey.WFM_WORK_ORDERS_EXECUTE,
     moduleKey: 'wfm',
     action: 'execute',
-    description: 'Ejecutar work orders asignadas cuando WFM exponga guard granular',
+    description: 'Ejecutar órdenes de trabajo asignadas',
     catalogVersion: version,
     availability: AccessPermissionAvailability.ASSIGNABLE,
   },
@@ -288,3 +295,42 @@ export const ROLE_ASSIGNABLE_PERMISSION_MATRIX: Record<UserRole, AccessPermissio
   [UserRole.SYSTEM_ADMIN]: [],
   [UserRole.IWANA_SUPPORT]: [],
 };
+
+export const MOD00_ACCESS_V1_SYSTEM_ROLE_TEMPLATES: SystemRoleTemplateDefinition[] = [
+  {
+    name: 'Administrador general',
+    description: 'Plantilla inicial para la administración general de la empresa.',
+    baseRoleConstraint: UserRole.ADMIN,
+    permissionKeys: ROLE_ASSIGNABLE_PERMISSION_MATRIX[UserRole.ADMIN],
+  },
+  {
+    name: 'Monitoreo operativo',
+    description: 'Plantilla inicial para monitoreo operativo.',
+    baseRoleConstraint: UserRole.NOC,
+    permissionKeys: ROLE_ASSIGNABLE_PERMISSION_MATRIX[UserRole.NOC],
+  },
+  {
+    name: 'Soporte inicial',
+    description: 'Plantilla inicial para soporte operativo.',
+    baseRoleConstraint: UserRole.SUPPORT,
+    permissionKeys: ROLE_ASSIGNABLE_PERMISSION_MATRIX[UserRole.SUPPORT],
+  },
+  {
+    name: 'Técnico de campo',
+    description: 'Plantilla inicial para agenda y ejecucion de trabajo de campo.',
+    baseRoleConstraint: UserRole.TECHNICIAN,
+    permissionKeys: ROLE_ASSIGNABLE_PERMISSION_MATRIX[UserRole.TECHNICIAN],
+  },
+  {
+    name: 'Contratista',
+    description: 'Plantilla inicial para operacion de campo limitada.',
+    baseRoleConstraint: UserRole.CONTRACTOR,
+    permissionKeys: ROLE_ASSIGNABLE_PERMISSION_MATRIX[UserRole.CONTRACTOR],
+  },
+  {
+    name: 'Auditor',
+    description: 'Plantilla inicial de consulta para auditoría.',
+    baseRoleConstraint: UserRole.AUDITOR,
+    permissionKeys: ROLE_ASSIGNABLE_PERMISSION_MATRIX[UserRole.AUDITOR],
+  },
+];

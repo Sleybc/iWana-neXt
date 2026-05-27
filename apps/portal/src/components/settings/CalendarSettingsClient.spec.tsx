@@ -110,19 +110,36 @@ describe('CalendarSettingsClient', () => {
   it('renderiza el título de la sección tras cargar los datos', async () => {
     render(<CalendarSettingsClient />);
 
-    expect(await screen.findByText('Calendario operativo y jornadas')).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        'Define el horario general de tu organización, ajustes por sede y festivos especiales.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Define el horario general de tu organización, ajustes por sede y festivos especiales.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('renderiza el panel de horario base de empresa', async () => {
     render(<CalendarSettingsClient />);
 
-    expect(await screen.findByText('Horario base de atención y recaudo')).toBeInTheDocument();
+    expect(await screen.findByText('Horario general de atención y recaudo')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Horario semanal general para toda la organización. Las sedes que no tengan horario propio usarán este horario automáticamente.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('renderiza el panel de horario por sede', async () => {
     render(<CalendarSettingsClient />);
 
     expect(await screen.findByText('Horario por sede')).toBeInTheDocument();
+    expect(
+      screen.getByText('Elige si una sede usa el horario general o tiene su propio horario.'),
+    ).toBeInTheDocument();
   });
 
   it('renderiza el panel de festivos y cierres especiales', async () => {

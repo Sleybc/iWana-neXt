@@ -6,9 +6,11 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { CheckCircle2, Copy, PencilLine, ShieldAlert, X } from 'lucide-react';
-import { UserRole, DocumentType } from '@iwana/shared';
+import { type AccessPermissionKey, DocumentType, UserRole } from '@iwana/shared';
 import {
   usersApi,
+  type AccessPermissionsCatalog,
+  type AccessProfileView,
   type InternalUser,
   type UpdateInternalUserDto,
   ApiError,
@@ -21,6 +23,7 @@ import {
   PORTAL_USER_STATUSES,
 } from '@/lib/user-labels';
 import { PortalAlert, PortalSectionHeader } from '@/components/shared/portal-ui';
+import { CompanyRolesAssignmentSection } from './CompanyRolesAssignmentSection';
 
 const editUserSchema = z.object({
   email: z.string().trim().email('Ingresa un correo valido.'),
@@ -46,10 +49,13 @@ interface EditUserModalProps {
   isOpen: boolean;
   user: InternalUser;
   onClose: () => void;
-  onSubmit: (dto: UpdateInternalUserDto) => Promise<void>;
+  onSubmit: (dto: UpdateInternalUserDto, companyRoleIds: string[]) => Promise<void>;
   onEmailChanged?: () => void;
   isSubmitting: boolean;
   error: string | null;
+  accessCatalog: AccessPermissionsCatalog | null;
+  availableProfiles: AccessProfileView[];
+  initialCompanyRoleIds: string[];
 }
 
 function mapError(err: unknown): string {
@@ -79,11 +85,16 @@ export function EditUserModal({
   onEmailChanged,
   isSubmitting,
   error,
+  accessCatalog,
+  availableProfiles,
+  initialCompanyRoleIds,
 }: EditUserModalProps) {
   const [serverError, setServerError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [isSavingEmail, setIsSavingEmail] = useState(false);
   const [emailToConfirm, setEmailToConfirm] = useState<string | null>(null);
+  const [selectedCompanyRoleIds, setSelectedCompanyRoleIds] =
+    useState<string[]>(initialCompanyRoleIds);
 
   // Estados para restablecimiento de contrasena
   const [resetPasswordText, setResetPasswordText] = useState('');
@@ -96,6 +107,7 @@ export function EditUserModal({
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors, isDirty },
   } = useForm<EditUserFormValues>({
     resolver: zodResolver(editUserSchema),
@@ -134,16 +146,46 @@ export function EditUserModal({
       setResetPasswordResult(null);
       setResetPasswordError(null);
       setCopied(false);
+      setSelectedCompanyRoleIds(initialCompanyRoleIds);
     }
-  }, [isOpen, user, reset]);
+  }, [initialCompanyRoleIds, isOpen, user, reset]);
 
   useEffect(() => {
     if (error) setServerError(error);
   }, [error]);
 
+  const selectedBaseRole = watch('role') as UserRole | undefined;
+
+  useEffect(() => {
+    if (!selectedBaseRole) {
+      setSelectedCompanyRoleIds([]);
+      return;
+    }
+
+    // Guard: si los perfiles aun no cargaron no filtrar la seleccion actual; de lo contrario
+    // un fallo de red limpiaria involuntariamente los roles ya asignados al usuario.
+    if (availableProfiles.length === 0) return;
+
+    setSelectedCompanyRoleIds((current) =>
+      current.filter((profileId) =>
+        availableProfiles.some(
+          (profile) =>
+            profile.id === profileId &&
+            profile.isActive &&
+            profile.baseRoleConstraint === selectedBaseRole,
+        ),
+      ),
+    );
+  }, [availableProfiles, selectedBaseRole]);
+
   const onFormSubmit = async (values: EditUserFormValues) => {
     setServerError(null);
     const dto: UpdateInternalUserDto = {};
+    const normalizedInitialCompanyRoleIds = [...initialCompanyRoleIds].sort();
+    const normalizedSelectedCompanyRoleIds = [...selectedCompanyRoleIds].sort();
+    const companyRolesChanged =
+      normalizedInitialCompanyRoleIds.join('|') !== normalizedSelectedCompanyRoleIds.join('|');
+
     if (values.status && values.status !== user.status) dto.status = values.status;
     if (values.role && values.role !== user.role) dto.role = values.role;
     if (values.firstName?.trim() !== (user.firstName ?? ''))
@@ -163,13 +205,21 @@ export function EditUserModal({
     if (values.documentNumber?.trim() !== (user.documentNumber ?? ''))
       dto.documentNumber = values.documentNumber?.trim() || undefined;
 
-    if (Object.keys(dto).length === 0) {
+    if (Object.keys(dto).length === 0 && !companyRolesChanged) {
       onClose();
       return;
     }
 
-    await onSubmit(dto);
+    await onSubmit(dto, normalizedSelectedCompanyRoleIds);
   };
+
+  function toggleCompanyRole(profileId: string) {
+    setSelectedCompanyRoleIds((current) =>
+      current.includes(profileId)
+        ? current.filter((item) => item !== profileId)
+        : [...current, profileId],
+    );
+  }
 
   const handleSaveEmail = async (email: string) => {
     if (email === user.email) return;
@@ -397,7 +447,7 @@ export function EditUserModal({
                 htmlFor="edit-role"
                 className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
               >
-                Rol
+                Categoría base
               </label>
               <select
                 id="edit-role"
@@ -422,6 +472,20 @@ export function EditUserModal({
                   No editable para roles protegidos
                 </p>
               )}
+            </div>
+
+            <div className="col-span-full">
+              <CompanyRolesAssignmentSection
+                baseRole={selectedBaseRole ?? null}
+                availableProfiles={availableProfiles}
+                selectedProfileIds={selectedCompanyRoleIds}
+                compatibilityMatrix={
+                  accessCatalog?.compatibilityMatrix ??
+                  ({} as Record<UserRole, AccessPermissionKey[]>)
+                }
+                catalog={accessCatalog}
+                onToggleProfile={toggleCompanyRole}
+              />
             </div>
 
             {/*
@@ -691,7 +755,12 @@ export function EditUserModal({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || !isDirty}
+              disabled={
+                isSubmitting ||
+                (!isDirty &&
+                  [...initialCompanyRoleIds].sort().join('|') ===
+                    [...selectedCompanyRoleIds].sort().join('|'))
+              }
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-iwana-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-iwana-primary-600 disabled:opacity-50 dark:bg-iwana-primary-400 dark:hover:bg-iwana-primary-300"
             >
               {isSubmitting ? (

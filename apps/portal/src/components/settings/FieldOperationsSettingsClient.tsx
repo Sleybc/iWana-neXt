@@ -6,6 +6,7 @@ import { UserRole } from '@iwana/shared';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { PortalAlert, PortalPanel, PortalSkeletonBlock } from '@/components/shared/portal-ui';
+import { FIELD_OPERATIONS_SETTINGS_COPY } from './mod00-settings-labels';
 
 function FieldOperationsSkeleton() {
   return (
@@ -24,8 +25,8 @@ export function FieldOperationsSettingsClient() {
     return (
       <div className="space-y-6">
         <PageHeader
-          title="Despacho técnico"
-          subtitle="Cargando horarios y cierres de la agenda técnica"
+          title={FIELD_OPERATIONS_SETTINGS_COPY.pageTitle}
+          subtitle={FIELD_OPERATIONS_SETTINGS_COPY.loadingSubtitle}
         />
         <FieldOperationsSkeleton />
       </div>
@@ -35,11 +36,14 @@ export function FieldOperationsSettingsClient() {
   if (!user) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Despacho técnico" subtitle="Sesión no disponible" />
+        <PageHeader
+          title={FIELD_OPERATIONS_SETTINGS_COPY.pageTitle}
+          subtitle={FIELD_OPERATIONS_SETTINGS_COPY.authRequiredSubtitle}
+        />
         <PortalAlert
           variant="error"
           title="Vista temporalmente no disponible"
-          description="No fue posible resolver la sesión del portal para cargar la operación de campo."
+          description={FIELD_OPERATIONS_SETTINGS_COPY.authRequiredDescription}
           icon={AlertTriangle}
         />
       </div>
@@ -51,22 +55,22 @@ export function FieldOperationsSettingsClient() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Despacho técnico"
-        subtitle="Configuración de operación de campo y agenda técnica."
+        title={FIELD_OPERATIONS_SETTINGS_COPY.pageTitle}
+        subtitle={FIELD_OPERATIONS_SETTINGS_COPY.pageSubtitle}
       />
       <PortalPanel
-        title="Ventana técnica y jornadas"
-        description="Los horarios de despacho, overrides por sede y cierres especiales se gestionan en el Calendario operativo."
+        title={FIELD_OPERATIONS_SETTINGS_COPY.panelTitle}
+        description={FIELD_OPERATIONS_SETTINGS_COPY.panelDescription}
       >
         <div className="flex items-center justify-between rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
           <div>
             <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
               {canEdit
-                ? 'Edita horarios y cierres WFM desde la sección dedicada.'
-                : 'Consulta los horarios WFM en el Calendario operativo.'}
+                ? FIELD_OPERATIONS_SETTINGS_COPY.canEditHint
+                : FIELD_OPERATIONS_SETTINGS_COPY.readOnlyHint}
             </p>
             <p className="mt-0.5 text-xs text-gray-500">
-              Ventana técnica, horario base de despacho y festivos especiales.
+              {FIELD_OPERATIONS_SETTINGS_COPY.helperText}
             </p>
           </div>
           <Link

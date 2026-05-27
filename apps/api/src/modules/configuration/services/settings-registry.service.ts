@@ -10,7 +10,7 @@ export class SettingsRegistryService {
         key: SettingsSectionKey.ORGANIZATION,
         label: 'Perfil empresarial y organización',
         description:
-          'Concentra perfil empresarial, configuración operativa base, sedes y horario institucional del tenant.',
+          'Concentra perfil empresarial, configuración operativa base y sedes registradas.',
         ownerModule: 'MOD00 / Organización',
         status: SettingsSectionStatus.AVAILABLE,
         route: '/dashboard/settings/organization',

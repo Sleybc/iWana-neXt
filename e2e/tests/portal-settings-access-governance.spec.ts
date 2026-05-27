@@ -70,6 +70,18 @@ async function bootstrapAccessGovernancePage(
   ];
   const profiles = scenario.profiles ?? [
     {
+      id: 'template-admin',
+      name: 'Administrador general',
+      description: 'Plantilla inicial para la administración general de la empresa.',
+      baseRoleConstraint: 'ADMIN',
+      scopeSiteId: null,
+      isSystem: true,
+      isActive: true,
+      permissions: ['settings.read', 'access.profiles.manage'],
+      createdAt: '2026-05-21T00:00:00.000Z',
+      updatedAt: '2026-05-21T00:00:00.000Z',
+    },
+    {
       id: 'profile-1',
       name: 'Perfil noc lectura',
       description: 'Perfil inicial',
@@ -316,28 +328,30 @@ async function bootstrapAccessGovernancePage(
   });
 
   await page.goto(`${baseURL}/dashboard/settings/access`);
-  await expect(page.getByRole('heading', { name: 'Usuarios y acceso' })).toBeVisible();
+  await expect(page.locator('h1').getByText('Perfiles de acceso')).toBeVisible();
 }
 
 test.describe('Portal access governance', () => {
-  test('muestra permisos efectivos y evidencia auditada real', async ({ page, baseURL }) => {
+  test('muestra plantillas, roles y evidencia auditada sin asignacion de usuarios', async ({
+    page,
+    baseURL,
+  }) => {
     await bootstrapAccessGovernancePage(page, baseURL);
-    const effectivePermissionsPanel = page
-      .locator('section')
-      .filter({ hasText: 'Permisos efectivos' });
-    const evidencePanel = page
-      .locator('section')
-      .filter({ hasText: 'Cambios sensibles recientes' });
 
-    await expect(page.getByText('Permisos efectivos')).toBeVisible();
-    await expect(effectivePermissionsPanel.getByText('Perfil noc lectura')).toBeVisible();
-    await expect(
-      effectivePermissionsPanel.getByText('Ver centro de Configuración').first(),
-    ).toBeVisible();
-    await expect(page.getByText('Cambios sensibles recientes')).toBeVisible();
-    await expect(
-      evidencePanel.getByText('Actualización · access_profile_permissions'),
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Plantillas iniciales' })).toBeVisible();
+    await expect(page.getByText('Administrador general', { exact: true })).toBeVisible();
+
+    // Las tarjetas de plantilla tienen botones de acción
+    const usarComoBaseButtons = page.getByRole('button', { name: /Usar.*como base/i });
+    await expect(usarComoBaseButtons.first()).toBeVisible();
+
+    // No hay selector de usuario en esta pantalla (exact para no colisionar con "Menú de usuario" del header)
+    await expect(page.getByLabel('Usuario', { exact: true })).not.toBeVisible();
+
+    await expect(page.getByRole('heading', { name: 'Catálogo de accesos' })).toHaveCount(0);
+
+    // El historial de cambios (evidencia) está presente
+    await expect(page.getByText('Historial de cambios')).toBeVisible();
   });
 
   test('visibiliza el bloqueo por falta de permiso granular', async ({ page, baseURL }) => {
@@ -348,7 +362,7 @@ test.describe('Portal access governance', () => {
       },
     });
 
-    await page.getByRole('button', { name: 'Guardar permisos' }).click();
+    await page.getByRole('button', { name: 'Guardar' }).click();
 
     await expect(
       page.getByText('Falta access.profiles.manage para actualizar el perfil.'),
@@ -417,7 +431,7 @@ test.describe('Portal access governance', () => {
       },
     });
 
-    await page.getByRole('button', { name: 'Guardar permisos' }).click();
+    await page.getByRole('button', { name: 'Guardar' }).click();
 
     await expect(
       page.getByText('LAST_ADMIN_ACCESS_LOCKOUT: el ultimo camino ADMIN perderia manage.'),

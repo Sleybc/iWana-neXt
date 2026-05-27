@@ -7,6 +7,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { ApiSchema } from '@nestjs/swagger';
 
 /**
  * DTO de login.
@@ -85,6 +86,7 @@ export class ForgotPasswordDto {
  * El email es opcional: si se incluye, se envia un correo de confirmacion al completar.
  * Si no se incluye, el restablecimiento procede igualmente (la logica no depende del email).
  */
+@ApiSchema({ name: 'AuthResetPasswordDto' })
 export class ResetPasswordDto {
   @IsString()
   token: string;

@@ -94,6 +94,8 @@ interface PendingTenantMfaLogin {
 }
 
 let pendingTenantMfaLogin: PendingTenantMfaLogin | null = null;
+let refreshAccessTokenPromise: Promise<string> | null = null;
+let terminalSessionError: ApiError | null = null;
 
 export class ApiError extends Error {
   constructor(
@@ -148,6 +150,10 @@ export function isStoredTokenValid(): boolean {
 }
 
 export function persistAccessToken(token: string): void {
+  if (token) {
+    terminalSessionError = null;
+  }
+
   if (typeof window === 'undefined') {
     return;
   }
@@ -210,6 +216,7 @@ export interface AuditLogEntry {
   id: string;
   tenantId: string;
   userId: string | null;
+  actor?: AuditActorInfo | null;
   action: string;
   entityType: string;
   entityId: string;
@@ -219,6 +226,34 @@ export interface AuditLogEntry {
   userAgent: string | null;
   requestId: string | null;
   createdAt: string;
+}
+
+export interface AuditActorInfo {
+  id: string | null;
+  type: 'tenant' | 'platform' | 'system' | 'unknown';
+  displayName: string;
+  role?: string;
+  status?: string;
+  isDeleted?: boolean;
+}
+
+export interface AuditLogQueryParams {
+  cursor?: string;
+  limit?: number;
+  entityType?: string;
+  entityId?: string;
+  userId?: string;
+  action?: string;
+  fromDate?: string;
+  toDate?: string;
+}
+
+export interface AuditLogListResponse {
+  data: AuditLogEntry[];
+  meta: {
+    nextCursor: string | null;
+    total: number;
+  };
 }
 
 export function setPendingTenantMfaLogin(payload: PendingTenantMfaLogin): void {
@@ -253,23 +288,44 @@ function getTenantSlug(tenantSlugOverride?: string): string {
 }
 
 async function refreshAccessToken(tenantSlug: string): Promise<string> {
-  const res = await fetch(`${resolveApiBase()}/auth/refresh`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Tenant-Slug': tenantSlug,
-    },
-    credentials: 'include',
-  });
-
-  if (!res.ok) {
-    persistAccessToken('');
-    throw new ApiError(401, 'SESSION_EXPIRED', 'La sesión expiró. Inicia sesión de nuevo.');
+  if (terminalSessionError) {
+    throw terminalSessionError;
   }
 
-  const body = (await res.json()) as ApiEnvelope<{ accessToken: string }>;
-  persistAccessToken(body.data.accessToken);
-  return body.data.accessToken;
+  if (refreshAccessTokenPromise) {
+    return refreshAccessTokenPromise;
+  }
+
+  refreshAccessTokenPromise = (async () => {
+    const res = await fetch(`${resolveApiBase()}/auth/refresh`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Tenant-Slug': tenantSlug,
+      },
+      credentials: 'include',
+    });
+
+    if (!res.ok) {
+      persistAccessToken('');
+      terminalSessionError = new ApiError(
+        401,
+        'SESSION_EXPIRED',
+        'La sesión expiró. Inicia sesión de nuevo.',
+      );
+      throw terminalSessionError;
+    }
+
+    const body = (await res.json()) as ApiEnvelope<{ accessToken: string }>;
+    persistAccessToken(body.data.accessToken);
+    return body.data.accessToken;
+  })();
+
+  try {
+    return await refreshAccessTokenPromise;
+  } finally {
+    refreshAccessTokenPromise = null;
+  }
 }
 
 async function request<T>(
@@ -279,6 +335,11 @@ async function request<T>(
 ): Promise<T> {
   const resolvedTenantSlug = getTenantSlug(tenantSlugOverride);
   const token = readStoredAccessToken();
+
+  if (terminalSessionError && !options?.skipAuth && !options?.skipRefreshRetry) {
+    throw terminalSessionError;
+  }
+
   const headers = new Headers(options?.headers);
   const isFormDataBody = typeof FormData !== 'undefined' && options?.body instanceof FormData;
 
@@ -572,20 +633,51 @@ export const authApi = {
   clearMfaSetupToken: clearMfaSetupTokenFromStorage,
 };
 
-export const auditApi = {
-  list: (params?: { limit?: number; cursor?: string }, tenantSlug?: string) => {
-    const searchParams = new URLSearchParams();
-    if (params?.limit !== undefined) {
-      searchParams.set('limit', String(params.limit));
-    }
-    if (params?.cursor) {
-      searchParams.set('cursor', params.cursor);
-    }
+function buildAuditLogSearchParams(params?: AuditLogQueryParams): string {
+  const searchParams = new URLSearchParams();
+  if (params?.limit !== undefined) {
+    searchParams.set('limit', String(params.limit));
+  }
+  if (params?.cursor) {
+    searchParams.set('cursor', params.cursor);
+  }
+  if (params?.entityType) {
+    searchParams.set('entityType', params.entityType);
+  }
+  if (params?.entityId) {
+    searchParams.set('entityId', params.entityId);
+  }
+  if (params?.userId) {
+    searchParams.set('userId', params.userId);
+  }
+  if (params?.action) {
+    searchParams.set('action', params.action);
+  }
+  if (params?.fromDate) {
+    searchParams.set('fromDate', params.fromDate);
+  }
+  if (params?.toDate) {
+    searchParams.set('toDate', params.toDate);
+  }
 
-    const query = searchParams.toString();
+  return searchParams.toString();
+}
+
+export const auditApi = {
+  list: (params?: AuditLogQueryParams, tenantSlug?: string) => {
+    const query = buildAuditLogSearchParams(params);
     return request<AuditLogEntry[]>(
       `/audit-logs${query ? `?${query}` : ''}`,
       undefined,
+      tenantSlug,
+    );
+  },
+
+  listPage: (params?: AuditLogQueryParams, tenantSlug?: string) => {
+    const query = buildAuditLogSearchParams(params);
+    return request<AuditLogListResponse>(
+      `/audit-logs${query ? `?${query}` : ''}`,
+      { returnFullResponse: true },
       tenantSlug,
     );
   },
@@ -3366,6 +3458,10 @@ export interface OrganizationSiteSummary {
   id: string;
   name: string;
   code: string;
+  siteType: OrganizationSiteType;
+  address: string | null;
+  municipality: string | null;
+  department: string | null;
   capabilities: OrganizationSiteCapability[];
   isActive: boolean;
 }

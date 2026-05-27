@@ -91,6 +91,10 @@ const organizationSummary = [
     id: 'site-1',
     name: 'Sede centro',
     code: 'CENTRO',
+    siteType: OrganizationSiteType.OFFICE,
+    address: 'Cra 10 # 10-10',
+    municipality: 'Bogotá',
+    department: 'Cundinamarca',
     capabilities: [OrganizationSiteCapability.ADMIN_OFFICE],
     isActive: true,
   },
@@ -103,12 +107,21 @@ const organizationDetail = {
   municipality: 'Bogotá',
   department: 'Cundinamarca',
   country: 'CO',
-  latitude: null,
-  longitude: null,
+  latitude: 4.583729568298588,
+  longitude: -74.44546953713595,
   contactName: null,
   contactPhone: null,
   isPrimary: true,
+  businessHoursMode: 'BASE' as const,
   businessHours: [
+    {
+      weekday: BusinessHoursWeekday.MONDAY,
+      isOpen: true,
+      opensAt: '08:00:00',
+      closesAt: '18:00:00',
+    },
+  ],
+  businessHoursResolved: [
     {
       weekday: BusinessHoursWeekday.MONDAY,
       isOpen: true,
@@ -151,7 +164,10 @@ describe('OrganizationSettingsClient', () => {
     accessControlApi.getMyEffectivePermissions.mockResolvedValue({
       userId: 'user-1',
       role: UserRole.ADMIN,
-      effectivePermissions: [AccessPermissionKey.ORGANIZATION_SITES_READ],
+      effectivePermissions: [
+        AccessPermissionKey.ORGANIZATION_SITES_READ,
+        AccessPermissionKey.ORGANIZATION_SITES_MANAGE,
+      ],
       recoveryPermissions: [],
       profileSources: [],
     });
@@ -173,28 +189,68 @@ describe('OrganizationSettingsClient', () => {
     organizationApi.delete.mockResolvedValue(undefined);
   });
 
-  it('should render site detail without the duplicated capabilities editor', async () => {
+  it('should render a compact site table with row actions and no detail panel', async () => {
     render(<OrganizationSettingsClient />);
 
-    expect(await screen.findByText('Sede centro')).toBeInTheDocument();
-    expect(await screen.findAllByText('Gestión administrativa')).toHaveLength(2);
+    const row = await screen.findByRole('row', {
+      name: /Sede centro CENTRO Oficina Cra 10 # 10-10 Bogotá, Cundinamarca/i,
+    });
+
+    expect(within(row).getByText('Oficina')).toBeInTheDocument();
+    expect(within(row).getByText('Cra 10 # 10-10')).toBeInTheDocument();
+    expect(within(row).getByText('Bogotá, Cundinamarca')).toBeInTheDocument();
+    expect(
+      within(row).getByRole('button', { name: /Editar sede Sede centro/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(row).getByRole('button', { name: /Dar de baja sede Sede centro/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Detalle de sede')).not.toBeInTheDocument();
     expect(screen.queryByText('Servicios de la sede')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Ver detalle/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Guardar servicios' })).not.toBeInTheDocument();
     expect(screen.queryByText('Ir a Calendario operativo y jornadas →')).not.toBeInTheDocument();
+  });
+
+  it('should render the compact site table in read-only mode without edit or delete actions', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'user-2', role: UserRole.SUPPORT },
+      isLoading: false,
+    });
+
+    render(<OrganizationSettingsClient />);
+
+    const row = await screen.findByRole('row', {
+      name: /Sede centro CENTRO Oficina Cra 10 # 10-10 Bogotá, Cundinamarca/i,
+    });
+
+    expect(screen.getByText('Sedes registradas')).toBeInTheDocument();
+    expect(within(row).getByText('Oficina')).toBeInTheDocument();
+    expect(within(row).getByText('Cra 10 # 10-10')).toBeInTheDocument();
+    expect(within(row).getByText('Bogotá, Cundinamarca')).toBeInTheDocument();
+    expect(within(row).getByText('Sin acciones disponibles')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Crear sede' })).not.toBeInTheDocument();
+    expect(
+      within(row).queryByRole('button', { name: /Editar sede Sede centro/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(row).queryByRole('button', { name: /Dar de baja sede Sede centro/i }),
+    ).not.toBeInTheDocument();
   });
 
   it('should reset capabilities on create and submit them in the same payload', async () => {
     const { organizationApi } = jest.requireMock('@/lib/api-client') as {
       organizationApi: {
+        get: jest.Mock;
         create: jest.Mock;
       };
     };
 
     render(<OrganizationSettingsClient />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Editar sede' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Editar sede Sede centro/i }));
 
-    let dialog = within(screen.getByRole('dialog'));
+    let dialog = within(await screen.findByRole('dialog'));
 
     fireEvent.click(dialog.getByRole('tab', { name: 'Servicios' }));
 
@@ -220,6 +276,9 @@ describe('OrganizationSettingsClient', () => {
 
     fireEvent.change(dialog.getByLabelText('Nombre'), { target: { value: 'Sede norte' } });
     fireEvent.change(dialog.getByLabelText('Código'), { target: { value: 'NORTE' } });
+    fireEvent.change(dialog.getByLabelText('Coordenadas'), {
+      target: { value: '4.6486259, -74.0651466' },
+    });
     fireEvent.change(dialog.getByLabelText('Nombre de contacto'), {
       target: { value: 'Contacto Test' },
     });
@@ -229,14 +288,15 @@ describe('OrganizationSettingsClient', () => {
     fireEvent.click(dialog.getByRole('button', { name: 'Crear sede' }));
 
     await waitFor(() => {
+      expect(organizationApi.get).toHaveBeenCalledWith('site-1');
       expect(organizationApi.create).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'Sede norte',
           code: 'NORTE',
           siteType: OrganizationSiteType.OFFICE,
           capabilities: [],
-          latitude: 0,
-          longitude: 0,
+          latitude: 4.6486259,
+          longitude: -74.0651466,
           contactName: 'Contacto Test',
           contactPhone: '+573001112233',
         }),
@@ -247,15 +307,16 @@ describe('OrganizationSettingsClient', () => {
   it('should hydrate capabilities on edit and submit them with update', async () => {
     const { organizationApi } = jest.requireMock('@/lib/api-client') as {
       organizationApi: {
+        get: jest.Mock;
         update: jest.Mock;
       };
     };
 
     render(<OrganizationSettingsClient />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Editar sede' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Editar sede Sede centro/i }));
 
-    const dialog = within(screen.getByRole('dialog'));
+    const dialog = within(await screen.findByRole('dialog'));
 
     fireEvent.change(dialog.getByLabelText('Nombre de contacto'), {
       target: { value: 'Contacto Test' },
@@ -273,10 +334,47 @@ describe('OrganizationSettingsClient', () => {
     fireEvent.click(dialog.getByRole('button', { name: 'Guardar cambios' }));
 
     await waitFor(() => {
+      expect(organizationApi.get).toHaveBeenCalledWith('site-1');
       expect(organizationApi.update).toHaveBeenCalledWith(
         'site-1',
         expect.objectContaining({
           capabilities: [OrganizationSiteCapability.ADMIN_OFFICE, OrganizationSiteCapability.NOC],
+        }),
+      );
+    });
+  });
+
+  it('should submit rounded coordinates from the combined field during update', async () => {
+    const { organizationApi } = jest.requireMock('@/lib/api-client') as {
+      organizationApi: {
+        update: jest.Mock;
+      };
+    };
+
+    render(<OrganizationSettingsClient />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Editar sede Sede centro/i }));
+
+    const dialog = within(await screen.findByRole('dialog'));
+
+    expect(dialog.getByLabelText('Coordenadas')).toHaveValue('4.5837296, -74.4454695');
+
+    fireEvent.change(dialog.getByLabelText('Nombre de contacto'), {
+      target: { value: 'Angelica Cruz' },
+    });
+    fireEvent.change(dialog.getByLabelText('Teléfono de contacto'), {
+      target: { value: '3229411662' },
+    });
+    fireEvent.click(dialog.getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() => {
+      expect(organizationApi.update).toHaveBeenCalledWith(
+        'site-1',
+        expect.objectContaining({
+          latitude: 4.5837296,
+          longitude: -74.4454695,
+          contactName: 'Angelica Cruz',
+          contactPhone: '3229411662',
         }),
       );
     });
@@ -296,9 +394,9 @@ describe('OrganizationSettingsClient', () => {
 
     render(<OrganizationSettingsClient />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Editar sede' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Editar sede Sede centro/i }));
 
-    const dialog = within(screen.getByRole('dialog'));
+    const dialog = within(await screen.findByRole('dialog'));
 
     fireEvent.change(dialog.getByLabelText('Nombre de contacto'), {
       target: { value: 'Contacto Test' },
@@ -341,6 +439,33 @@ describe('OrganizationSettingsClient', () => {
     expect(screen.queryByText('Sedes registradas')).not.toBeInTheDocument();
   });
 
+  it('should keep the compact table visible for admin read-only without row actions', async () => {
+    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
+      accessControlApi: {
+        getMyEffectivePermissions: jest.Mock;
+      };
+    };
+
+    accessControlApi.getMyEffectivePermissions.mockResolvedValue({
+      userId: 'user-1',
+      role: UserRole.ADMIN,
+      effectivePermissions: [AccessPermissionKey.ORGANIZATION_SITES_READ],
+      recoveryPermissions: [],
+      profileSources: [],
+    });
+
+    render(<OrganizationSettingsClient />);
+
+    expect(await screen.findByText('Sedes registradas')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Crear sede' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Editar sede Sede centro/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Dar de baja sede Sede centro/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it('should skip loading organization sites when effective permissions do not grant access', async () => {
     const { accessControlApi, organizationApi } = jest.requireMock('@/lib/api-client') as {
       accessControlApi: {
@@ -366,7 +491,7 @@ describe('OrganizationSettingsClient', () => {
     expect(organizationApi.list).not.toHaveBeenCalled();
   });
 
-  it('should soft-delete the selected site and refresh the list', async () => {
+  it('should soft-delete the site from its row action and refresh the list', async () => {
     const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
     const { organizationApi } = jest.requireMock('@/lib/api-client') as {
       organizationApi: {
@@ -383,7 +508,7 @@ describe('OrganizationSettingsClient', () => {
 
     render(<OrganizationSettingsClient />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Dar de baja sede' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Dar de baja sede Sede centro/i }));
 
     await waitFor(() => {
       expect(organizationApi.delete).toHaveBeenCalledWith('site-1');
@@ -394,7 +519,9 @@ describe('OrganizationSettingsClient', () => {
     });
 
     expect(await screen.findByText('Sede dada de baja correctamente.')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Dar de baja sede' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Dar de baja sede Sede centro/i }),
+    ).not.toBeInTheDocument();
 
     confirmSpy.mockRestore();
   });

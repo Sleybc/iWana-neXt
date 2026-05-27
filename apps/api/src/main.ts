@@ -93,7 +93,7 @@ async function bootstrap(): Promise<void> {
   app.enableCors({
     origin: corsOrigins,
     credentials: true, // Necesario para enviar/recibir cookies
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
 
   // OpenAPI — Swagger UI disponible en /api/v1/docs

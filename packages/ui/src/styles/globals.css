@@ -211,6 +211,21 @@ body {
     font-family: var(--font-display);
     font-weight: 100;
   }
+
+  /* Eyebrow operativo iWana — discreto, consistente y AA sobre fondos claros */
+  .portal-eyebrow {
+    @apply text-[10px] font-semibold uppercase tracking-widest text-iwana-secondary-700 dark:text-iwana-secondary-400;
+  }
+
+  /* Eyebrow operativo iWana — variante muted para fondos coloreados */
+  .portal-eyebrow-muted {
+    @apply text-[10px] font-semibold uppercase tracking-widest text-gray-500 dark:text-gray-400;
+  }
+
+  /* Campo operativo iWana para busquedas y filtros compactos */
+  .portal-input-surface {
+    @apply rounded-2xl border-gray-200 bg-white shadow-sm hover:border-iwana-primary-200 focus-visible:ring-iwana-primary dark:border-dark-border dark:bg-dark-surface-3;
+  }
 }
 
 /* ================================================================

@@ -106,7 +106,8 @@ describe('SettingsClient', () => {
       {
         key: SettingsSectionKey.ORGANIZATION,
         label: 'Perfil empresarial y organización',
-        description: 'Perfil empresarial, configuración operativa base y sedes.',
+        description:
+          'Concentra perfil empresarial, configuración operativa base y sedes registradas.',
         ownerModule: 'MOD00 / Organización',
         status: SettingsSectionStatus.AVAILABLE,
         route: '/dashboard/settings/organization',
@@ -117,9 +118,9 @@ describe('SettingsClient', () => {
       },
       {
         key: SettingsSectionKey.ACCESS,
-        label: 'Usuarios y acceso',
-        description: 'Perfiles y permisos.',
-        ownerModule: 'MOD00 / Access control',
+        label: 'Perfiles de acceso',
+        description: 'Perfiles de acceso, accesos y plantillas iniciales.',
+        ownerModule: 'Configuración / Accesos',
         status: SettingsSectionStatus.AVAILABLE,
         route: '/dashboard/settings/access',
         requiredPermissions: [
@@ -139,7 +140,7 @@ describe('SettingsClient', () => {
     ]);
   });
 
-  it('should render the federated shell with real routes and future states', async () => {
+  it('should render available sections with real routes and future states', async () => {
     render(<SettingsClient />);
 
     expect(await screen.findByText('Secciones de configuración')).toBeInTheDocument();
@@ -149,7 +150,7 @@ describe('SettingsClient', () => {
       '/dashboard/settings/organization',
     );
     expect(screen.queryByRole('link', { name: /Operación de campo/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Usuarios y acceso/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /Perfiles de acceso/i })).toHaveAttribute(
       'href',
       '/dashboard/settings/access',
     );
@@ -173,13 +174,11 @@ describe('SettingsClient', () => {
 
     expect(await screen.findByText('Secciones de configuración')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Operación de campo/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /Usuarios y acceso/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Perfiles de acceso/i })).not.toBeInTheDocument();
     expect(
       screen.queryByRole('link', { name: /Perfil empresarial y organización/i }),
     ).not.toBeInTheDocument();
     expect(screen.getAllByText('Acceso restringido')).toHaveLength(2);
-    expect(
-      screen.getAllByText(/Tu sesión no tiene los permisos granulares requeridos/i),
-    ).toHaveLength(2);
+    expect(screen.getAllByText(/Tu perfil no tiene acceso a esta sección/i)).toHaveLength(2);
   });
 });

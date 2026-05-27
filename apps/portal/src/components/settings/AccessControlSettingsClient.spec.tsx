@@ -29,14 +29,6 @@ jest.mock('@/lib/api-client', () => ({
     updateProfile: jest.fn(),
     deleteProfile: jest.fn(),
     replaceProfilePermissions: jest.fn(),
-    replaceUserProfiles: jest.fn(),
-    getEffectivePermissions: jest.fn(),
-  },
-  auditApi: {
-    list: jest.fn(),
-  },
-  usersApi: {
-    list: jest.fn(),
   },
 }));
 
@@ -45,10 +37,17 @@ function createCompatibilityMatrix() {
     Object.values(UserRole).map((role) => [role, []]),
   ) as unknown as Record<UserRole, AccessPermissionKey[]>;
 
+  matrix[UserRole.ADMIN] = [
+    AccessPermissionKey.SETTINGS_READ,
+    AccessPermissionKey.ORGANIZATION_SITES_READ,
+  ];
+
   matrix[UserRole.NOC] = [
     AccessPermissionKey.SETTINGS_READ,
     AccessPermissionKey.ORGANIZATION_SITES_READ,
   ];
+
+  matrix[UserRole.TECHNICIAN] = [AccessPermissionKey.WFM_WORK_ORDERS_EXECUTE];
 
   return matrix;
 }
@@ -68,11 +67,71 @@ const permissionsCatalog = {
       isSystem: true,
       isActive: true,
     },
+    {
+      id: 'perm-2',
+      tenantId: 'tenant-1',
+      permissionKey: AccessPermissionKey.ORGANIZATION_SITES_READ,
+      moduleKey: 'organization',
+      action: 'read',
+      description: 'Ver sedes de la organización',
+      catalogVersion: AccessPermissionCatalogVersion.MOD00_ACCESS_V1,
+      availability: AccessPermissionAvailability.ASSIGNABLE,
+      isSystem: true,
+      isActive: true,
+    },
+    {
+      id: 'perm-3',
+      tenantId: 'tenant-1',
+      permissionKey: AccessPermissionKey.WFM_WORK_ORDERS_EXECUTE,
+      moduleKey: 'wfm',
+      action: 'execute',
+      description: 'Ejecutar órdenes de trabajo asignadas',
+      catalogVersion: AccessPermissionCatalogVersion.MOD00_ACCESS_V1,
+      availability: AccessPermissionAvailability.ASSIGNABLE,
+      isSystem: true,
+      isActive: true,
+    },
+    {
+      id: 'perm-4',
+      tenantId: 'tenant-1',
+      permissionKey: AccessPermissionKey.ACCESS_PROFILES_MANAGE,
+      moduleKey: 'access-control',
+      action: 'manage',
+      description: 'Administrar perfiles de acceso',
+      catalogVersion: AccessPermissionCatalogVersion.MOD00_ACCESS_V1,
+      availability: AccessPermissionAvailability.ASSIGNABLE,
+      isSystem: true,
+      isActive: true,
+    },
   ],
   compatibilityMatrix: createCompatibilityMatrix(),
 };
 
 const profiles = [
+  {
+    id: 'template-admin',
+    name: 'Administrador general',
+    description: 'Plantilla inicial para la administración general de la empresa.',
+    baseRoleConstraint: UserRole.ADMIN,
+    scopeSiteId: null,
+    isSystem: true,
+    isActive: true,
+    permissions: [AccessPermissionKey.SETTINGS_READ],
+    createdAt: '2026-05-21T00:00:00.000Z',
+    updatedAt: '2026-05-21T00:00:00.000Z',
+  },
+  {
+    id: 'template-tech',
+    name: 'Técnico de campo',
+    description: 'Plantilla inicial para agenda y ejecucion de trabajo de campo.',
+    baseRoleConstraint: UserRole.TECHNICIAN,
+    scopeSiteId: null,
+    isSystem: true,
+    isActive: true,
+    permissions: [],
+    createdAt: '2026-05-21T00:00:00.000Z',
+    updatedAt: '2026-05-21T00:00:00.000Z',
+  },
   {
     id: 'profile-1',
     name: 'Perfil NOC lectura',
@@ -85,51 +144,27 @@ const profiles = [
     createdAt: '2026-05-21T00:00:00.000Z',
     updatedAt: '2026-05-21T00:00:00.000Z',
   },
+  {
+    id: 'profile-2',
+    name: 'Perfil Organización',
+    description: 'Perfil orientado a sedes',
+    baseRoleConstraint: UserRole.NOC,
+    scopeSiteId: null,
+    isSystem: false,
+    isActive: true,
+    permissions: [AccessPermissionKey.ORGANIZATION_SITES_READ],
+    createdAt: '2026-05-21T00:00:00.000Z',
+    updatedAt: '2026-05-21T00:00:00.000Z',
+  },
 ];
-
-const usersResponse = {
-  data: [
-    {
-      id: 'user-1',
-      email: 'noc@test.com',
-      role: UserRole.NOC,
-      status: 'ACTIVE',
-      tenantId: 'tenant-1',
-      mfaEnabled: false,
-      mfaRequired: false,
-      emailVerified: true,
-      passwordResetRequired: false,
-      lastLoginAt: null,
-      createdAt: '2026-05-21T00:00:00.000Z',
-      updatedAt: '2026-05-21T00:00:00.000Z',
-      deletedAt: null,
-      firstName: 'Nora',
-      lastName: 'Campos',
-      phone: null,
-      jobTitle: 'NOC',
-      documentType: null,
-      documentNumber: null,
-      avatarUrl: null,
-    },
-  ],
-  meta: { nextCursor: null, total: 1 },
-};
 
 describe('AccessControlSettingsClient', () => {
   beforeEach(() => {
-    const { accessControlApi, auditApi, usersApi } = jest.requireMock('@/lib/api-client') as {
+    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
       accessControlApi: {
         listPermissions: jest.Mock;
         listProfiles: jest.Mock;
         createProfile: jest.Mock;
-        replaceUserProfiles: jest.Mock;
-        getEffectivePermissions: jest.Mock;
-      };
-      auditApi: {
-        list: jest.Mock;
-      };
-      usersApi: {
-        list: jest.Mock;
       };
     };
 
@@ -142,40 +177,16 @@ describe('AccessControlSettingsClient', () => {
       name: 'Perfil soporte',
       baseRoleConstraint: UserRole.SUPPORT,
     });
-    accessControlApi.replaceUserProfiles.mockResolvedValue({
-      userId: 'user-1',
-      role: UserRole.NOC,
-      profileIds: ['profile-1'],
+
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: jest.fn(),
     });
-    accessControlApi.getEffectivePermissions.mockResolvedValue({
-      userId: 'user-1',
-      role: UserRole.NOC,
-      effectivePermissions: [AccessPermissionKey.SETTINGS_READ],
-      recoveryPermissions: [],
-      profileSources: [
-        {
-          profileId: 'profile-1',
-          profileName: 'Perfil NOC lectura',
-          permissions: [AccessPermissionKey.SETTINGS_READ],
-        },
-      ],
+
+    Object.defineProperty(HTMLElement.prototype, 'scrollBy', {
+      configurable: true,
+      value: jest.fn(),
     });
-    auditApi.list.mockResolvedValue([
-      {
-        id: 'audit-1',
-        tenantId: 'tenant-1',
-        actorUserId: 'admin-1',
-        action: 'UPDATE',
-        entityType: 'access_profile_permissions',
-        entityId: 'profile-1',
-        oldValue: { permissions: [] },
-        newValue: { permissions: [AccessPermissionKey.SETTINGS_READ] },
-        ipAddress: null,
-        userAgent: null,
-        createdAt: '2026-05-21T00:00:00.000Z',
-      },
-    ]);
-    usersApi.list.mockResolvedValue(usersResponse);
   });
 
   it('should show restricted state for non admin users', async () => {
@@ -192,15 +203,14 @@ describe('AccessControlSettingsClient', () => {
 
     render(<AccessControlSettingsClient />);
 
-    expect(screen.getByText('Solo lectura no disponible')).toBeInTheDocument();
+    expect(screen.getByText('Vista disponible para administradores')).toBeInTheDocument();
     expect(accessControlApi.listProfiles).not.toHaveBeenCalled();
   });
 
-  it('should create a profile and render the user assignment panel', async () => {
+  it('should create a profile and show creation feedback', async () => {
     const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
       accessControlApi: {
         createProfile: jest.Mock;
-        replaceUserProfiles: jest.Mock;
       };
     };
 
@@ -211,7 +221,14 @@ describe('AccessControlSettingsClient', () => {
 
     render(<AccessControlSettingsClient />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Crear perfil' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Plantillas iniciales' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Perfiles personalizados' })).toBeInTheDocument();
+    expect(screen.getByText('Administrador general')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Crear perfil' }));
+    fireEvent.click(screen.getByText('Empezar desde cero'));
 
     const dialog = within(screen.getByRole('dialog'));
 
@@ -219,7 +236,7 @@ describe('AccessControlSettingsClient', () => {
     fireEvent.change(dialog.getByLabelText('Descripción'), {
       target: { value: 'Perfil para soporte' },
     });
-    fireEvent.change(dialog.getByLabelText('Rol base compatible'), {
+    fireEvent.change(dialog.getByLabelText('Categoría base permitida'), {
       target: { value: UserRole.SUPPORT },
     });
     fireEvent.click(dialog.getByRole('button', { name: 'Crear perfil' }));
@@ -233,33 +250,352 @@ describe('AccessControlSettingsClient', () => {
       );
     });
 
-    expect(screen.getByText('Asignación a usuario')).toBeInTheDocument();
-    expect(screen.getByText('Decisión conservadora')).toBeInTheDocument();
-    // expect(screen.getByText('Selecciona un usuario')).toBeInTheDocument(); // Removed user selector interaction
+    expect(accessControlApi.createProfile).toHaveBeenCalledWith(
+      expect.not.objectContaining({ isActive: expect.anything() }),
+    );
+
+    expect(await screen.findByText('Perfil creado correctamente.')).toBeInTheDocument();
   });
 
-  it('should render effective permissions and sensitive changes evidence', async () => {
-    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
-      accessControlApi: {
-        getEffectivePermissions: jest.Mock;
-      };
-    };
-
+  it('opens a creation selector with template and blank-start options', async () => {
     useAuthMock.mockReturnValue({
-      user: { id: 'user-1', role: UserRole.ADMIN },
+      user: { id: 'admin-1', role: UserRole.ADMIN },
       isLoading: false,
     });
 
     render(<AccessControlSettingsClient />);
 
-    expect(await screen.findByText('Cambios sensibles recientes')).toBeInTheDocument();
-    expect(screen.getByText('Actualización · access_profile_permissions')).toBeInTheDocument();
+    await screen.findByRole('heading', { name: 'Perfiles personalizados' });
 
-    await waitFor(() => {
-      expect(accessControlApi.getEffectivePermissions).toHaveBeenCalledWith('user-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Crear perfil' }));
+
+    expect(screen.getByText('Usar una plantilla')).toBeInTheDocument();
+    expect(screen.getByText('Empezar desde cero')).toBeInTheDocument();
+  });
+
+  it('opens dialog pre-filled when Empezar desde cero is chosen', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
     });
 
-    expect(await screen.findByText('Permisos efectivos')).toBeInTheDocument();
-    expect(screen.getAllByText('Ver centro de Configuración').length).toBeGreaterThan(0);
+    render(<AccessControlSettingsClient />);
+
+    await screen.findByRole('heading', { name: 'Perfiles personalizados' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Crear perfil' }));
+    fireEvent.click(screen.getByText('Empezar desde cero'));
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('opens profile data dialog when a system template is chosen as base', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    await screen.findByRole('heading', { name: 'Perfiles personalizados' });
+
+    fireEvent.click(
+      screen.getAllByRole('button', { name: /Usar Administrador general como base/i })[0]!,
+    );
+
+    const dialog = await screen.findByRole('dialog');
+
+    expect(within(dialog).getByLabelText('Nombre')).toHaveValue('Basado en Administrador general');
+    expect(within(dialog).getByLabelText('Descripción')).toHaveValue(
+      'Plantilla inicial para la administración general de la empresa.',
+    );
+  });
+
+  it('should render custom roles in the roles table', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    await screen.findByRole('heading', { name: 'Plantillas iniciales' });
+
+    expect((await screen.findAllByText('Perfil NOC lectura')).length).toBeGreaterThan(0);
+  });
+
+  it('does not render user assignment controls inside roles screen', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    await screen.findByRole('heading', { name: 'Perfiles de acceso' });
+
+    expect(screen.queryByRole('heading', { name: 'Asignación de roles' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Accesos efectivos' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Usuario')).not.toBeInTheDocument();
+  });
+
+  it('shows templates and custom roles as the primary entry points', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Plantillas iniciales' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Perfiles personalizados' })).toBeInTheDocument();
+    expect(screen.getByText(/Crea perfiles de acceso/i)).toBeInTheDocument();
+  });
+
+  it('renders actionable system templates', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    expect(await screen.findByText('Administrador general')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Ver accesos de/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: /Usar.*como base/i }).length).toBeGreaterThan(0);
+  });
+
+  it('enters draft mode from a system template and shows the full assignable catalog with template defaults checked', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    await screen.findByRole('button', { name: /Usar Técnico de campo como base/i });
+    await screen.findByRole('heading', { name: 'Perfiles personalizados' });
+
+    fireEvent.click(
+      screen.getAllByRole('button', { name: /Usar Técnico de campo como base/i })[0]!,
+    );
+
+    await screen.findByRole('status');
+    expect(
+      await screen.findByRole('button', { name: 'Editar datos del nuevo perfil' }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByLabelText('Ejecutar órdenes de trabajo asignadas')).toBeChecked();
+    });
+    fireEvent.click(await screen.findByRole('tab', { name: /Control de acceso/i }));
+    expect(await screen.findByLabelText(/Administrar perfiles de acceso/i)).toBeDisabled();
+    expect(await screen.findByLabelText(/Administrar perfiles de acceso/i)).not.toBeChecked();
+    expect(await screen.findByRole('tab', { name: /Control de acceso/i })).toBeInTheDocument();
+    expect(await screen.findByRole('tab', { name: /Operaciones de campo/i })).toBeInTheDocument();
+  });
+
+  it('creates a new profile from a template with its selected permission keys', async () => {
+    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
+      accessControlApi: {
+        createProfile: jest.Mock;
+      };
+    };
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    await screen.findByRole('button', { name: /Usar Técnico de campo como base/i });
+    await screen.findByRole('heading', { name: 'Perfiles personalizados' });
+
+    fireEvent.click(
+      screen.getAllByRole('button', { name: /Usar Técnico de campo como base/i })[0]!,
+    );
+
+    expect((await screen.findAllByText(/Basado en Técnico de campo/i)).length).toBeGreaterThan(0);
+    fireEvent.click(await screen.findByRole('tab', { name: /Control de acceso/i }));
+    expect(await screen.findByLabelText(/Administrar perfiles de acceso/i)).toBeDisabled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Guardar perfil' }));
+
+    await waitFor(() => {
+      expect(accessControlApi.createProfile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Basado en Técnico de campo',
+          baseRoleConstraint: UserRole.TECHNICIAN,
+          permissionKeys: [AccessPermissionKey.WFM_WORK_ORDERS_EXECUTE],
+        }),
+      );
+    });
+  });
+
+  it('shows template permissions preview when Ver accesos is clicked', async () => {
+    const requestAnimationFrameSpy = jest
+      .spyOn(window, 'requestAnimationFrame')
+      .mockImplementation((callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      });
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    const verAccesosButton = await screen.findByRole('button', {
+      name: /Ver accesos de Técnico de campo/i,
+    });
+
+    fireEvent.click(verAccesosButton);
+
+    expect(screen.getByText(/Accesos de la plantilla/i)).toBeInTheDocument();
+    expect(screen.getByText('Ejecutar órdenes de trabajo asignadas')).toBeInTheDocument();
+
+    const closeButton = screen.getByRole('button', { name: 'Cerrar vista previa' });
+    fireEvent.click(closeButton);
+
+    await waitFor(() => {
+      expect(verAccesosButton).toHaveFocus();
+    });
+
+    requestAnimationFrameSpy.mockRestore();
+  });
+
+  it('selects the module with active permissions first and allows filtering inside the tab', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    expect((await screen.findAllByText('Perfil Organización')).length).toBeGreaterThan(0);
+
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Editar accesos de Perfil Organización' })[0]!,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /Organización/i })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+    });
+
+    expect(screen.getByRole('tab', { name: /Configuración/i })).toBeInTheDocument();
+    expect(screen.queryByText('Catálogo de accesos')).not.toBeInTheDocument();
+    expect(screen.getByText('Ver sedes de la organización')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Buscar acceso dentro de esta sección'), {
+      target: { value: 'sedes' },
+    });
+
+    expect(screen.getByText('Ver sedes de la organización')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Buscar acceso dentro de esta sección'), {
+      target: { value: 'centro' },
+    });
+
+    expect(screen.getByText('No encontramos accesos en esta sección')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: /Configuración/i }));
+
+    expect(screen.getByRole('tab', { name: /Configuración/i })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByText('Ver centro de Configuración')).toBeInTheDocument();
+  });
+
+  it('shows horizontal scroll controls when permission modules overflow', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    const scrollByMock = jest.fn(function scrollByMock(
+      this: HTMLElement,
+      options?: ScrollToOptions,
+    ) {
+      const nextLeft = typeof options?.left === 'number' ? options.left : 0;
+      Object.defineProperty(this, 'scrollLeft', {
+        configurable: true,
+        value: Math.max(0, nextLeft),
+        writable: true,
+      });
+      fireEvent.scroll(this);
+    });
+
+    Object.defineProperty(HTMLElement.prototype, 'scrollBy', {
+      configurable: true,
+      value: scrollByMock,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    expect((await screen.findAllByText('Perfil Organización')).length).toBeGreaterThan(0);
+
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Editar accesos de Perfil Organización' })[0]!,
+    );
+
+    const scrollContainer = await screen.findByTestId('permission-modules-scroll');
+
+    Object.defineProperty(scrollContainer, 'clientWidth', {
+      configurable: true,
+      value: 240,
+    });
+    Object.defineProperty(scrollContainer, 'scrollWidth', {
+      configurable: true,
+      value: 640,
+    });
+    Object.defineProperty(scrollContainer, 'scrollLeft', {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+
+    fireEvent(window, new Event('resize'));
+    fireEvent.scroll(scrollContainer);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Desplazar secciones a la derecha' }),
+      ).toBeInTheDocument();
+    });
+
+    const scrollRightButton = screen.getByRole('button', {
+      name: 'Desplazar secciones a la derecha',
+    });
+    fireEvent.click(scrollRightButton);
+
+    expect(scrollByMock).toHaveBeenCalled();
+  });
+
+  it('renders contextual aria labels for profile actions', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    expect((await screen.findAllByText('Perfil NOC lectura')).length).toBeGreaterThan(0);
+
+    expect(
+      screen.getAllByRole('button', { name: 'Editar accesos de Perfil NOC lectura' }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole('button', { name: 'Editar perfil Perfil NOC lectura' }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole('button', { name: 'Eliminar perfil Perfil NOC lectura' }).length,
+    ).toBeGreaterThan(0);
   });
 });

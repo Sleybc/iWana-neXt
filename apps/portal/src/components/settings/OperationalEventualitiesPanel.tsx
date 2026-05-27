@@ -16,10 +16,10 @@ import { PortalPanel, PortalEmptyState } from '@/components/shared/portal-ui';
 
 const EVENTUALITY_TYPE_LABELS: Record<OperationalEventualityType, string> = {
   extra_availability: 'Disponibilidad extra',
-  operational_block: 'Bloqueo operativo',
+  operational_block: 'Cierre temporal',
   early_entry: 'Entrada anticipada',
-  extended_shift: 'Extensión de jornada',
-  emergency_response: 'Respuesta a emergencia',
+  extended_shift: 'Extensión de horario',
+  emergency_response: 'Atención de emergencia',
 };
 
 const EVENTUALITY_STATUS_LABELS: Record<OperationalEventualityStatus, string> = {
@@ -107,7 +107,7 @@ export function OperationalEventualitiesPanel({ canEdit }: Props) {
 
   async function handleCreate() {
     if (!draft.userId || !draft.type || !draft.startsAt || !draft.endsAt) {
-      setError('Completa los campos obligatorios: técnico, tipo, inicio y fin.');
+      setError('Completa todos los campos obligatorios.');
       return;
     }
     if (draft.startsAt >= draft.endsAt) {
@@ -184,8 +184,8 @@ export function OperationalEventualitiesPanel({ canEdit }: Props) {
 
   return (
     <PortalPanel
-      title="Eventualidades operativas"
-      description="Disponibilidad extra, bloqueos, entradas anticipadas, extensiones de jornada y respuestas a emergencia."
+      title="Cambios de disponibilidad"
+      description="Registra disponibilidad extra, cierres temporales, entradas anticipadas, extensiones de horario y atenciones de emergencia."
     >
       {feedback && (
         <p className="mb-3 rounded-xl bg-green-50 px-4 py-2 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-300">
@@ -207,17 +207,17 @@ export function OperationalEventualitiesPanel({ canEdit }: Props) {
               onClick={() => setShowForm(true)}
               data-testid="add-eventuality-btn"
             >
-              + Registrar eventualidad
+              + Registrar disponibilidad
             </Button>
           ) : (
             <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-surface-2">
               <p className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-200">
-                Nueva eventualidad operativa
+                Nuevo registro de disponibilidad
               </p>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                    Técnico *
+                    Personal *
                   </label>
                   <select
                     className={selectClass}
@@ -225,7 +225,7 @@ export function OperationalEventualitiesPanel({ canEdit }: Props) {
                     onChange={(e) => updateDraft('userId', e.target.value)}
                     data-testid="eventuality-user-select"
                   >
-                    <option value="">Selecciona un técnico</option>
+                    <option value="">Selecciona una persona</option>
                     {users.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.firstName && u.lastName ? `${u.firstName} ${u.lastName}` : u.email}
@@ -321,7 +321,7 @@ export function OperationalEventualitiesPanel({ canEdit }: Props) {
                   htmlFor="requires-hr-review"
                   className="text-sm text-gray-700 dark:text-gray-300"
                 >
-                  Requiere revisión de RRHH
+                  Requiere revisión de Recursos Humanos
                 </label>
               </div>
               <div className="mt-4 flex gap-2">
@@ -354,8 +354,8 @@ export function OperationalEventualitiesPanel({ canEdit }: Props) {
         <p className="py-8 text-center text-sm text-gray-400">Cargando eventualidades…</p>
       ) : items.length === 0 ? (
         <PortalEmptyState
-          title="Sin eventualidades"
-          description="No hay eventualidades operativas registradas."
+          title="Sin cambios registrados"
+          description="No hay cambios de disponibilidad registrados."
         />
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-dark-border">
@@ -366,7 +366,7 @@ export function OperationalEventualitiesPanel({ canEdit }: Props) {
             <thead className="bg-gray-50 dark:bg-dark-surface-2">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Técnico
+                  Personal
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                   Tipo

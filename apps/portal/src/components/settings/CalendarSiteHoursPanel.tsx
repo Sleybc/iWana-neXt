@@ -15,6 +15,7 @@ import {
   buildBusinessHoursDraft,
   type BusinessHourDay,
 } from './BusinessHoursWeekEditor';
+import { CALENDAR_SETTINGS_COPY } from './mod00-settings-labels';
 
 const inputClassName =
   'h-11 rounded-2xl border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-iwana-secondary focus:outline-none focus:ring-2 focus:ring-iwana-secondary/20 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-100';
@@ -76,9 +77,9 @@ export function CalendarSiteHoursPanel({ sites, canEdit }: Props) {
       });
       setSiteDetail(updated);
       setDraft(buildBusinessHoursDraft(updated.businessHours));
-      setFeedback('Override de horario guardado correctamente.');
+      setFeedback(CALENDAR_SETTINGS_COPY.siteSaveSuccess);
     } catch {
-      setError('No fue posible guardar el override. Intenta nuevamente.');
+      setError(CALENDAR_SETTINGS_COPY.siteSaveError);
     } finally {
       setIsSaving(false);
     }
@@ -87,13 +88,7 @@ export function CalendarSiteHoursPanel({ sites, canEdit }: Props) {
   async function handleClearOverride() {
     if (!siteDetail) return;
 
-    if (
-      !(
-        globalThis.confirm?.(
-          '¿Confirmas que esta sede debe volver a usar el horario base de empresa?',
-        ) ?? true
-      )
-    ) {
+    if (!(globalThis.confirm?.(CALENDAR_SETTINGS_COPY.siteClearConfirm) ?? true)) {
       return;
     }
 
@@ -105,9 +100,9 @@ export function CalendarSiteHoursPanel({ sites, canEdit }: Props) {
       const updated = await organizationApi.clearSiteOverride(siteDetail.id);
       setSiteDetail(updated);
       setDraft(buildBusinessHoursDraft(updated.businessHours));
-      setFeedback('Sede vuelve a usar el horario base de empresa.');
+      setFeedback(CALENDAR_SETTINGS_COPY.siteClearSuccess);
     } catch {
-      setError('No fue posible eliminar el override. Intenta nuevamente.');
+      setError(CALENDAR_SETTINGS_COPY.siteClearError);
     } finally {
       setIsSaving(false);
     }
@@ -117,11 +112,11 @@ export function CalendarSiteHoursPanel({ sites, canEdit }: Props) {
     return (
       <PortalPanel
         title="Horario por sede"
-        description="Configura overrides de horario para sedes específicas."
+        description={CALENDAR_SETTINGS_COPY.sitePanelDescription}
       >
         <PortalEmptyState
           title="Sin sedes registradas"
-          description="Crea al menos una sede para configurar su horario individual."
+          description={CALENDAR_SETTINGS_COPY.siteEmptyDescription}
         />
       </PortalPanel>
     );
@@ -130,7 +125,7 @@ export function CalendarSiteHoursPanel({ sites, canEdit }: Props) {
   return (
     <PortalPanel
       title="Horario por sede"
-      description="Configura si una sede usa el horario base de empresa o tiene un override personalizado activo."
+      description={CALENDAR_SETTINGS_COPY.sitePanelDescription}
       actions={
         canEdit && siteDetail ? (
           <div className="flex flex-wrap gap-2">
@@ -151,7 +146,7 @@ export function CalendarSiteHoursPanel({ sites, canEdit }: Props) {
               disabled={isSaving}
             >
               <Save className="mr-2 h-4 w-4" aria-hidden={true} />
-              Guardar override
+              {CALENDAR_SETTINGS_COPY.siteSaveAction}
             </Button>
           </div>
         ) : undefined
@@ -185,11 +180,11 @@ export function CalendarSiteHoursPanel({ sites, canEdit }: Props) {
           {/* Indicador de modo activo */}
           {siteDetail.businessHoursMode === 'OVERRIDE' ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-              Override activo — esta sede no usa el horario base de empresa.
+              {CALENDAR_SETTINGS_COPY.siteOverrideActive}
             </div>
           ) : (
             <div className="rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-2 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
-              Sin override activo — usando horario base de empresa. Configura días para crear uno.
+              {CALENDAR_SETTINGS_COPY.siteOverrideInactive}
             </div>
           )}
 

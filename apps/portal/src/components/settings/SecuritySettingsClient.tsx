@@ -7,6 +7,7 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { ApiError, tenantSelfApi, type TenantSelfSettings } from '@/lib/api-client';
 import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
+import { SECURITY_SETTINGS_COPY } from './mod00-settings-labels';
 import { SecuritySettingsCard } from './SecuritySettingsCard';
 
 function mapSecurityError(error: unknown): string {
@@ -16,7 +17,7 @@ function mapSecurityError(error: unknown): string {
     return error.message;
   }
 
-  return 'No fue posible cargar la política de seguridad.';
+  return SECURITY_SETTINGS_COPY.unavailableMessage;
 }
 
 export function SecuritySettingsClient() {
@@ -55,7 +56,7 @@ export function SecuritySettingsClient() {
   if (authLoading || isLoading) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Seguridad" subtitle="Cargando política de acceso y MFA" />
+        <PageHeader title="Seguridad" subtitle={SECURITY_SETTINGS_COPY.loadingSubtitle} />
         <PortalSkeletonBlock className="h-72" />
       </div>
     );
@@ -77,10 +78,7 @@ export function SecuritySettingsClient() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Seguridad"
-        subtitle="Administra la política MFA y consulta flags de seguridad del tenant."
-      />
+      <PageHeader title="Seguridad" subtitle={SECURITY_SETTINGS_COPY.pageSubtitle} />
       <SecuritySettingsCard
         settings={settings}
         canEdit={user?.role === UserRole.ADMIN}

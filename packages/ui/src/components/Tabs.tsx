@@ -68,7 +68,7 @@ function TabsList({ className, ...props }: React.HTMLAttributes<HTMLDivElement>)
 }
 
 const tabsTriggerVariants = cva(
-  'relative inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm data-[state=active]:dark:bg-dark-surface-2 data-[state=active]:dark:text-white',
+  'relative inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary disabled:pointer-events-none disabled:cursor-not-allowed disabled:text-gray-400 data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm data-[state=active]:dark:bg-dark-surface-2 data-[state=active]:dark:text-white dark:disabled:text-gray-500',
   {
     variants: {
       variant: {

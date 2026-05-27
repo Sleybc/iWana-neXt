@@ -135,6 +135,14 @@ Activa esta skill para tareas como:
 - estados disabled, loading y error distinguibles
 - no depender solo del color para comunicar estado
 
+### Identidad operativa iWana
+
+- Usa `iwana-primary` para estructura y confianza; usa `iwana-secondary` como acento visual, no como texto sobre blanco.
+- Para texto con acento sobre fondo claro, usa `iwana-secondary-700` por contraste AA.
+- Mantén superficies limpias y suaves: radios iWana, sombras sutiles y bordes de baja intensidad.
+- Usa `iwana-glass` o `backdrop-blur` solo en overlays, drawers, controles flotantes o capas sobre contenido. No lo apliques masivamente en tablas, formularios o paneles estaticos.
+- Evita proliferar valores arbitrarios como `tracking-[0.22em]`; si el patron se repite, conviertelo en utility o primitive compartida.
+
 ## Checklist de revision
 
 - El componente mantiene coherencia visual con el sistema del repo.
@@ -152,6 +160,7 @@ Busca y corrige estas señales:
 - multiples valores arbitrarios sin razon clara
 - mismo patron repetido en varios componentes
 - estilos que contradicen tokens o primitives existentes
+- uso decorativo de blur, gradientes o glass sin mejorar jerarquia ni accion
 - interacciones sin focus visible o estados inconsistentes
 
 ## Anti-patrones

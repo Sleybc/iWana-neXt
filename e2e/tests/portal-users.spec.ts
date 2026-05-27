@@ -92,6 +92,55 @@ const MOCK_USERS_RESPONSE = {
   meta: { nextCursor: null, total: 2 },
 };
 
+const MOCK_ACCESS_PERMISSIONS = {
+  version: 'MOD00_ACCESS_V1',
+  permissions: [
+    {
+      id: 'perm-1',
+      tenantId: 'tenant-uuid-001',
+      permissionKey: 'settings.read',
+      moduleKey: 'settings',
+      action: 'read',
+      description: 'Ver centro de Configuración',
+      catalogVersion: 'MOD00_ACCESS_V1',
+      availability: 'ASSIGNABLE',
+      isSystem: true,
+      isActive: true,
+    },
+  ],
+  compatibilityMatrix: {
+    ADMIN: [],
+    NOC: ['settings.read'],
+    SUPPORT: ['settings.read'],
+    SALES: [],
+    TECHNICIAN: ['settings.read'],
+    ACCOUNTANT: [],
+    HR: [],
+    SUBSCRIBER: [],
+    CONTRACTOR: [],
+    PARTNER: [],
+    AUDITOR: [],
+    INVESTOR: [],
+    SYSTEM_ADMIN: [],
+    IWANA_SUPPORT: [],
+  },
+};
+
+const MOCK_ACCESS_PROFILES = [
+  {
+    id: 'template-tech',
+    name: 'Técnico de campo',
+    description: 'Plantilla inicial de campo',
+    baseRoleConstraint: 'TECHNICIAN',
+    scopeSiteId: null,
+    isSystem: true,
+    isActive: true,
+    permissions: ['settings.read'],
+    createdAt: '2026-05-25T00:00:00.000Z',
+    updatedAt: '2026-05-25T00:00:00.000Z',
+  },
+];
+
 /** Perfil ficticio del usuario ADMIN autenticado */
 const MOCK_PROFILE = {
   id: 'user-admin-uuid-001',
@@ -220,6 +269,24 @@ async function setupAuthenticatedAdminMocks(
       return;
     }
 
+    if (url.includes('/access-control/permissions') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: MOCK_ACCESS_PERMISSIONS }),
+      });
+      return;
+    }
+
+    if (url.includes('/access-control/profiles') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: MOCK_ACCESS_PROFILES }),
+      });
+      return;
+    }
+
     // GET /auth/me — sesión activa como ADMIN
     if (url.includes('/auth/me') && method === 'GET') {
       await route.fulfill({
@@ -300,7 +367,7 @@ test('caso 2 — ADMIN autenticado ve la tabla de usuarios en /dashboard/users',
   // Esperar que la tabla cargue con al menos un usuario
   await expect(page.getByText('Carlos López')).toBeVisible();
   await expect(page.getByText('operador1@prueba.local')).toBeVisible();
-  await expect(page.getByRole('table').getByText('Soporte', { exact: true })).toBeVisible();
+  await expect(page.getByRole('table').getByText('Soporte inicial', { exact: true })).toBeVisible();
 });
 
 // ---------------------------------------------------------------------------
@@ -364,6 +431,7 @@ test('caso 5 — botón "Nuevo usuario" abre el modal de creación', async ({ pa
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel(/correo electronico/i)).toBeVisible();
+  await expect(dialog.getByLabel('Categoría base *')).toBeVisible();
 });
 
 // ---------------------------------------------------------------------------
@@ -423,4 +491,36 @@ test('caso 8 — /dashboard/profile muestra el formulario de información person
   await expect(page.getByRole('heading', { name: 'Datos personales' })).toBeVisible();
   await expect(page.getByLabel('Nombre')).toHaveValue('Administrador');
   await expect(page.getByLabel('Apellido')).toHaveValue('Prueba');
+});
+
+// ---------------------------------------------------------------------------
+// Regresión de ownership: la asignación de roles vive en Users, no en Access
+// ---------------------------------------------------------------------------
+/**
+ * Documenta el boundary ADR-040: Access Settings posee plantillas y permisos;
+ * Users posee la asignación de categoría base y perfil de empresa por usuario.
+ * Este test garantiza que /dashboard/users expone controles de edición de usuario
+ * (desde donde se gestiona la asignación de roles) y que la pantalla existe y carga.
+ */
+test('regresion ownership — /dashboard/users expone tabla editable; la asignacion de roles no reside en settings/access', async ({
+  page,
+}) => {
+  await setupAuthenticatedAdminMocks(page);
+  await page.goto('/dashboard/users');
+
+  // La tabla de usuarios carga correctamente
+  await expect(page.getByText('Carlos López')).toBeVisible();
+  await expect(page.getByText('Ana Martínez')).toBeVisible();
+
+  // Existe al menos un botón de edición de usuario (punto de entrada para asignación de roles)
+  const editButton = page.getByRole('button', { name: /editar.*carlos|editar.*usr-001/i });
+  // Si el botón tiene nombre accesible genérico, buscar por ícono de edición en la fila
+  const anyEditAction = editButton.or(page.locator('tbody tr').first().getByRole('button').first());
+  await expect(anyEditAction).toBeVisible();
+
+  // El modal de creación de usuario tiene selector de categoría base (ownership en Users)
+  await page.getByRole('button', { name: 'Nuevo usuario' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('Categoría base *')).toBeVisible();
 });

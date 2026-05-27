@@ -39,6 +39,9 @@ describe('SettingsSectionGrid', () => {
 
     expect(screen.getByText('No configurado')).toBeInTheDocument();
     expect(screen.getByText('Próximamente')).toBeInTheDocument();
+    expect(
+      screen.getAllByText('Esta sección todavía no está lista para usarse en el portal.'),
+    ).toHaveLength(2);
     expect(screen.queryByRole('link', { name: /Comercial/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Billing/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
@@ -68,6 +71,7 @@ describe('SettingsSectionGrid', () => {
     );
 
     expect(screen.getByText('Acceso restringido')).toBeInTheDocument();
+    expect(screen.getByText('Tu perfil no tiene acceso a esta sección.')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Usuarios y acceso/i })).not.toBeInTheDocument();
   });
 

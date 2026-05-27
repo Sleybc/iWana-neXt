@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, ApiSchema, OmitType } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsEnum,
@@ -83,6 +83,7 @@ export class CreateCatalogItemDto {
   chargeType?: ChargeType;
 }
 
+@ApiSchema({ name: 'CommercialCreatePlanCatalogItemDto' })
 export class CreatePlanCatalogItemDto extends OmitType(CreateCatalogItemDto, ['type'] as const) {}
 
 export class CreateProductCatalogItemDto extends OmitType(CreateCatalogItemDto, [

@@ -1,8 +1,8 @@
 # PRD - MOD00 Configuracion Control Plane
 
-**Version:** 1.2
+**Version:** 1.4
 **Estado:** Aprobado  
-**Fecha:** 2026-05-22
+**Fecha:** 2026-05-23
 **Modo activo:** Mixto  
 **Autor:** AI-EM-ARCH  
 **Modulo:** MOD00 Configuracion Control Plane  
@@ -46,7 +46,7 @@ Definir MOD00 Configuracion como **control plane federado** del tenant, con Orga
 
 - Nueva arquitectura de Configuracion como centro administrativo del tenant.
 - Seccion **Organizacion** con sedes/ubicaciones, capacidades, horarios institucionales, responsables y asignaciones de usuarios.
-- Seccion **Usuarios y acceso** con usuarios, roles base, perfiles configurables y permisos por modulo.
+- Seccion **Usuarios y acceso** con usuarios, categorias base del sistema, roles de empresa configurables y permisos por modulo.
 - Catalogo inicial de permisos por modulo para Configuracion, Organizacion, Users, WFM, CRM, Commercial, Assurance, Inventory y Billing futuro.
 - Migracion aditiva de WFM para consumir sedes organizacionales en una fase posterior.
 - UI de portal organizada por secciones y subrutas, no una unica pantalla sobrecargada.
@@ -89,8 +89,8 @@ Casos de uso prioritarios:
 2. El ADMIN define horario institucional de la sede.
 3. El ADMIN asigna responsables: inventario, recaudo, operacion y administracion.
 4. El ADMIN asigna usuarios a una sede.
-5. El ADMIN crea un perfil `Tecnico instalador fibra` con permisos WFM especificos.
-6. El ADMIN asigna el perfil a usuarios con rol base `TECHNICIAN`.
+5. El ADMIN crea un rol de empresa `Tecnico instalador fibra` con permisos WFM especificos.
+6. El ADMIN asigna el rol de empresa a usuarios con categoria base `TECHNICIAN`.
 7. WFM consume sedes organizacionales para seleccionar sede de despacho.
 8. Inventory futuro consume sedes con capacidad `WAREHOUSE`.
 9. Billing futuro consume sedes con capacidad `COLLECTION_POINT`.
@@ -121,20 +121,30 @@ Casos de uso prioritarios:
 | RF-ORG-07 | El sistema debe permitir asignar usuarios a sede con vigencia y rol operativo local.                                                                     | MVP       |
 | RF-ORG-08 | Toda escritura sobre sedes, capacidades, horarios o responsables debe auditarse.                                                                         | MVP       |
 
-### 4.3 Usuarios, perfiles y permisos
+### 4.2.1 Addendum propuesto 2026-05-23 - sedes y nodos NMS
 
-| ID        | Requerimiento                                                                                                                                                                    | Prioridad |
-| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| RF-ACC-01 | Configuracion debe mostrar roles base del sistema como solo lectura operacional.                                                                                                 | MVP       |
-| RF-ACC-02 | El tenant puede crear perfiles configurables basados en permisos permitidos.                                                                                                     | MVP       |
-| RF-ACC-03 | Un perfil debe tener nombre, descripcion, estado, permisos y alcance opcional por sede.                                                                                          | MVP       |
-| RF-ACC-04 | Un usuario puede tener uno o mas perfiles dentro del tenant.                                                                                                                     | MVP       |
-| RF-ACC-05 | Los permisos deben declararse por modulo con claves estables tipo `wfm.schedule.manage`.                                                                                         | MVP       |
-| RF-ACC-06 | El backend debe impedir asignar permisos incompatibles con el rol base del usuario.                                                                                              | MVP       |
-| RF-ACC-07 | Cambios de perfiles y asignaciones deben auditar oldValue/newValue.                                                                                                              | MVP       |
-| RF-ACC-08 | La UI no debe permitir crear roles backend dinamicos equivalentes a `UserRole`.                                                                                                  | MVP       |
-| RF-ACC-09 | El catalogo inicial de permisos debe versionarse como `MOD00_ACCESS_V1` y distinguir permisos asignables de permisos reservados.                                                 | MVP       |
-| RF-ACC-10 | En Fase 01, todo perfil configurable tenant-created debe declarar `baseRoleConstraint`; el backend valida permisos contra ese rol y contra el rol real del usuario al asignarlo. | MVP       |
+Este addendum queda sujeto a `docs/adrs/ADR-044-Separacion-OrganizationSite-NmsNode.md` y documenta la direccion objetivo para el siguiente refinamiento de MOD00.
+
+- `RF-ORG-09` — Toda sede nueva o editada debe capturar coordenadas y contacto operativo local del sitio como dato maestro, sujeto a migracion aditiva aprobada. Prioridad: `MVP+`.
+- `RF-ORG-10` — El concepto de nodo tecnico consumido por NMS no debe modelarse como `siteType` principal de `OrganizationSite`. Prioridad: `MVP+`.
+- `RF-ORG-11` — Un modulo NMS futuro puede relacionar uno o varios nodos tecnicos con una sede organizacional mediante entidad y contrato propios. Prioridad: `MVP+`.
+- `RF-ORG-12` — `CommercialNode` legacy de cobertura/comercial no se reutiliza como sustituto de sede organizacional ni como nodo tecnico NMS. Prioridad: `MVP+`.
+
+### 4.3 Usuarios, roles de empresa y permisos
+
+- `RF-ACC-01` — Configuracion debe mostrar roles base del sistema como solo lectura operacional. Prioridad: `MVP`.
+- `RF-ACC-02` — El tenant puede crear roles de empresa configurables, implementados sobre perfiles configurables y basados en permisos permitidos. Prioridad: `MVP`.
+- `RF-ACC-03` — Un rol de empresa debe tener nombre, descripcion, categoria base compatible, estado, permisos y alcance opcional por sede. Prioridad: `MVP`.
+- `RF-ACC-04` — Un usuario puede tener uno o mas roles de empresa dentro del tenant, siempre que sean compatibles con su categoria base. Prioridad: `MVP`.
+- `RF-ACC-05` — Los permisos deben declararse por modulo con claves estables tipo `wfm.schedule.manage`. Prioridad: `MVP`.
+- `RF-ACC-06` — El backend debe impedir asignar permisos incompatibles con el rol base del usuario. Prioridad: `MVP`.
+- `RF-ACC-07` — Cambios de perfiles y asignaciones deben auditar `oldValue/newValue`. Prioridad: `MVP`.
+- `RF-ACC-08` — La UI no debe permitir crear roles backend dinamicos equivalentes a `UserRole`. Prioridad: `MVP`.
+- `RF-ACC-09` — El catalogo inicial de permisos debe versionarse como `MOD00_ACCESS_V1` y distinguir permisos asignables de permisos reservados. Prioridad: `MVP`.
+- `RF-ACC-10` — En Fase 01, todo rol de empresa tenant-created debe declarar `baseRoleConstraint`; el backend valida permisos contra esa categoria y contra la categoria real del usuario al asignarlo. Prioridad: `MVP`.
+- `RF-ACC-11` — El sistema debe exponer plantillas iniciales de roles de empresa para que el tenant no empiece desde cero. Prioridad: `MVP+`.
+- `RF-ACC-12` — La pantalla de Usuarios debe consumir roles de empresa compatibles al crear o editar usuarios y permitir asignarlos sin salir del flujo operativo. Prioridad: `MVP+`.
+- `RF-ACC-13` — La UI debe presentar `UserRole` como categoria base y `AccessProfile` como rol de empresa; no debe reutilizar el termino rol base para las plantillas iniciales. Prioridad: `MVP`.
 
 Aclaraciones operativas obligatorias del dominio de acceso:
 
@@ -151,6 +161,23 @@ Reglas de seguridad para Fase 01:
 - Un perfil configurable no sustituye el rol base `ADMIN` en endpoints de gobierno del tenant.
 - `SYSTEM_ADMIN` e `IWANA_SUPPORT` son roles de plataforma y no se asignan desde portal tenant.
 - `SUBSCRIBER`, `PARTNER` e `INVESTOR` quedan fuera de perfiles administrativos MOD00 en Fase 01.
+
+### 4.3.2 Addendum de refinamiento 2026-05-25 - categoria base, roles de empresa y plantillas iniciales
+
+Para evitar ambiguedad entre seguridad, negocio y UX, se fija la siguiente lectura operativa obligatoria:
+
+- `UserRole` se presenta al administrador como **categoria base**.
+- `AccessProfile` se presenta al administrador como **rol de empresa**.
+- Las semillas que el sistema expone por defecto para acelerar la adopcion se presentan como **plantillas iniciales de roles de empresa**.
+- El termino **rol base** queda reservado al lenguaje tecnico del backend y no debe reutilizarse en la UI para nombrar presets o plantillas iniciales.
+
+Consecuencias de este refinamiento:
+
+1. **Usuarios y acceso** se consolida como la superficie dueña del CRUD de roles de empresa, de sus permisos y de sus plantillas iniciales.
+2. **Usuarios** se consolida como la superficie operativa de alta y mantenimiento de cuentas, consumiendo las categorias base y los roles de empresa compatibles para asignacion.
+3. El sistema debe ofrecer un set inicial de plantillas de roles de empresa como punto de partida, por ejemplo: Administrador general, NOC monitoreo, Soporte nivel 1, Tecnico instalador, Contratista tecnico y Auditor operativo.
+4. Las plantillas iniciales pueden duplicarse y adaptarse por tenant, pero no sustituyen el catalogo tecnico `UserRole` ni habilitan crear enums backend dinamicos.
+5. La vista de Usuarios debe poder mostrar permisos efectivos resultantes de categoria base + roles de empresa antes de confirmar cambios.
 
 ### 4.3.1 Addendum de refinamiento post-ejecucion 2026-05-22
 
@@ -215,9 +242,11 @@ Tras revisar la ejecucion de Fase 01-05 y validar la aclaracion de negocio, se f
 | ---------------------------- | ---------------------------- |
 | Cuenta autenticada           | Users/Auth                   |
 | Rol base del sistema         | Shared/Auth/Users            |
-| Perfil configurable          | Configuracion/Access Control |
+| Rol de empresa configurable  | Configuracion/Access Control |
 | Tercero empleado/contratista | Parties + RRHH futuro        |
 | Sede organizacional          | Configuracion/Organizacion   |
+| Nodo tecnico NMS             | NMS futuro                   |
+| Nodo comercial/cobertura     | TenantModule legacy / MOD03  |
 | Ventana de despacho tecnico  | WFM                          |
 | Inventario fisico            | Inventory futuro             |
 | Recaudo/caja                 | Billing futuro               |
@@ -237,8 +266,8 @@ Configuracion debe evolucionar de tabs simples hacia una estructura de centro ad
     /hours
     /responsibilities
   /access
-    /users
-    /profiles
+    /roles
+    /assignments
     /permissions
   /security
   /branding

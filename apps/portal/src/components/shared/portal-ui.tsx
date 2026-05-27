@@ -30,6 +30,13 @@ interface PortalSectionHeaderProps {
   className?: string | undefined;
 }
 
+interface PortalActionToolbarProps {
+  children: ReactNode;
+  className?: string | undefined;
+  compact?: boolean | undefined;
+  align?: 'start' | 'end' | undefined;
+}
+
 interface PortalAlertProps {
   variant: PortalAlertVariant;
   title: string;
@@ -91,7 +98,7 @@ const alertVariantStyles: Record<
     defaultIcon: CheckCircle2,
   },
   info: {
-    root: 'border-gray-200 bg-[#f8faf5] dark:border-dark-border dark:bg-dark-surface-3',
+    root: 'border-gray-200 bg-iwana-secondary-50 dark:border-dark-border dark:bg-dark-surface-3',
     iconWrap:
       'bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300',
     iconColor: 'text-iwana-primary dark:text-iwana-primary-300',
@@ -126,11 +133,7 @@ export function PortalPanel({
           )}
         >
           <div className="min-w-0">
-            {eyebrow && (
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-                {eyebrow}
-              </p>
-            )}
+            {eyebrow && <p className="portal-eyebrow">{eyebrow}</p>}
             {title && (
               <h2
                 className={cn(
@@ -171,11 +174,7 @@ export function PortalSectionHeader({
       className={cn('flex flex-col gap-3 md:flex-row md:items-start md:justify-between', className)}
     >
       <div className="min-w-0">
-        {eyebrow && (
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-            {eyebrow}
-          </p>
-        )}
+        {eyebrow && <p className="portal-eyebrow">{eyebrow}</p>}
         <h2
           className={cn('text-base font-semibold text-gray-900 dark:text-white', eyebrow && 'mt-1')}
         >
@@ -190,6 +189,26 @@ export function PortalSectionHeader({
   );
 }
 
+export function PortalActionToolbar({
+  children,
+  className,
+  compact = false,
+  align = 'start',
+}: PortalActionToolbarProps) {
+  return (
+    <div
+      className={cn(
+        'flex w-full flex-col items-stretch rounded-2xl border border-gray-200/80 bg-iwana-secondary-50/90 p-1 dark:border-dark-border dark:bg-dark-surface-3/60 sm:w-auto sm:flex-row sm:items-center',
+        compact ? 'gap-1' : 'gap-2',
+        align === 'end' && 'sm:justify-end',
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function PortalAlert({
   variant,
   title,
@@ -200,9 +219,14 @@ export function PortalAlert({
 }: PortalAlertProps) {
   const styles = alertVariantStyles[variant];
   const Icon = icon ?? styles.defaultIcon;
+  const liveRole = variant === 'error' || variant === 'warning' ? 'alert' : 'status';
+  const liveMode = liveRole === 'alert' ? 'assertive' : 'polite';
 
   return (
     <div
+      role={liveRole}
+      aria-live={liveMode}
+      aria-atomic="true"
       className={cn('flex items-start gap-3 rounded-2xl border px-4 py-3', styles.root, className)}
     >
       <div
@@ -214,14 +238,7 @@ export function PortalAlert({
         <Icon className={cn('h-5 w-5', styles.iconColor)} aria-hidden={true} />
       </div>
       <div className="min-w-0 flex-1">
-        <p
-          className={cn(
-            'text-[11px] font-semibold uppercase tracking-[0.22em]',
-            styles.eyebrowColor,
-          )}
-        >
-          {title}
-        </p>
+        <p className={cn('portal-eyebrow', styles.eyebrowColor)}>{title}</p>
         {description && (
           <div className="mt-1 space-y-2">
             <div className={cn('text-sm', styles.titleColor)}>{description}</div>
@@ -244,7 +261,7 @@ export function PortalEmptyState({
   return (
     <div
       className={cn(
-        'flex items-start gap-3 rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-4 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300',
+        'flex items-start gap-3 rounded-2xl border border-gray-200 bg-iwana-secondary-50 px-4 py-4 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300',
         className,
       )}
     >

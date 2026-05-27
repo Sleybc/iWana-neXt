@@ -3,6 +3,7 @@
 import { ShieldCheck } from 'lucide-react';
 import { PortalEmptyState, PortalPanel } from '@/components/shared/portal-ui';
 import { type AccessPermissionsCatalog, type EffectivePermissionsSummary } from '@/lib/api-client';
+import { getSystemBaseRoleLabel } from '@/lib/system-vocabulary';
 
 interface EffectivePermissionsPanelProps {
   summary: EffectivePermissionsSummary | null;
@@ -31,11 +32,11 @@ export function EffectivePermissionsPanel({
 }: EffectivePermissionsPanelProps) {
   return (
     <PortalPanel
-      title="Permisos efectivos"
+      title="Accesos efectivos"
       description={
         selectedUserLabel
-          ? `Resumen del acceso real para ${selectedUserLabel}.`
-          : 'Selecciona un usuario para revisar el acceso efectivo calculado por backend.'
+          ? `Resumen consolidado de accesos para ${selectedUserLabel}.`
+          : 'Selecciona un usuario para ver sus accesos efectivos.'
       }
     >
       {isLoading ? (
@@ -49,7 +50,7 @@ export function EffectivePermissionsPanel({
       {!isLoading && !error && !summary ? (
         <PortalEmptyState
           title="Selecciona un usuario"
-          description="El resumen mostrará permisos base del rol y permisos concedidos por perfiles activos."
+          description="Aquí verás los accesos incluidos en su categoría base y los accesos adicionales otorgados por sus perfiles."
           icon={ShieldCheck}
         />
       ) : null}
@@ -57,14 +58,14 @@ export function EffectivePermissionsPanel({
       {!isLoading && !error && summary ? (
         <div className="space-y-4">
           <div className="rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-              Rol base
+            <p className="portal-eyebrow">Categoría base</p>
+            <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">
+              {getSystemBaseRoleLabel(summary.role)}
             </p>
-            <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">{summary.role}</p>
           </div>
 
           <div className="space-y-2">
-            <p className="text-sm font-medium text-gray-900 dark:text-white">Permisos vigentes</p>
+            <p className="text-sm font-medium text-gray-900 dark:text-white">Accesos asignados</p>
             <div className="flex flex-wrap gap-2">
               {summary.effectivePermissions.map((permissionKey) => (
                 <span
@@ -78,10 +79,12 @@ export function EffectivePermissionsPanel({
           </div>
 
           <div className="space-y-2">
-            <p className="text-sm font-medium text-gray-900 dark:text-white">Origen del acceso</p>
+            <p className="text-sm font-medium text-gray-900 dark:text-white">
+              Cómo obtuvo estos accesos
+            </p>
             {summary.recoveryPermissions.length > 0 ? (
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-100">
-                <p className="font-medium">Permisos base del rol</p>
+                <p className="font-medium">Accesos incluidos en la categoría base</p>
                 <p className="mt-1 text-sm">
                   {summary.recoveryPermissions
                     .map((permissionKey) => resolvePermissionLabel(permissionKey, catalog))
@@ -103,7 +106,7 @@ export function EffectivePermissionsPanel({
                     ? source.permissions
                         .map((permissionKey) => resolvePermissionLabel(permissionKey, catalog))
                         .join(' · ')
-                    : 'Sin permisos activos adicionales.'}
+                    : 'Sin accesos adicionales.'}
                 </p>
               </div>
             ))}

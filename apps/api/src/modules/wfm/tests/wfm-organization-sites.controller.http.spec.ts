@@ -17,6 +17,7 @@ import { WfmTenantSettingsReadPort } from '../ports/wfm-tenant-settings-read.por
 import { CompanyBusinessHoursService } from '../services/company-business-hours.service';
 import { HolidayBlackoutsService } from '../services/holiday-blackouts.service';
 import { OperatingWindowResolverService } from '../services/operating-window-resolver.service';
+import { OperationalEventualitiesService } from '../services/operational-eventualities.service';
 import { ScheduleEventsService } from '../services/schedule-events.service';
 import { ScheduleRecommendationsService } from '../services/schedule-recommendations.service';
 import { SiteBusinessHoursService } from '../services/site-business-hours.service';
@@ -130,6 +131,7 @@ describe('Wfm organization sites HTTP', () => {
         { provide: CompanyBusinessHoursService, useValue: {} },
         { provide: SiteBusinessHoursService, useValue: {} },
         { provide: HolidayBlackoutsService, useValue: {} },
+        { provide: OperationalEventualitiesService, useValue: {} },
         { provide: WfmTenantSettingsReadPort, useValue: {} },
         { provide: OperatingWindowResolverService, useValue: {} },
         { provide: WfmOrganizationSitesReadPort, useValue: wfmOrganizationSitesReadPortMock },
@@ -178,6 +180,45 @@ describe('Wfm organization sites HTTP', () => {
           expect.objectContaining({
             id: '4a98ba31-9c6f-4a3b-a21d-f0b6de5e7161',
             code: 'NORTE',
+          }),
+        ]);
+        expect(wfmOrganizationSitesReadPortMock.listDispatchSites).toHaveBeenCalledWith(
+          expect.objectContaining({ tenantId: 'tenant-001', role: UserRole.SUPPORT }),
+        );
+      });
+  });
+
+  it('propaga el summary enriquecido de sedes de despacho sin regressión cross-module', async () => {
+    wfmOrganizationSitesReadPortMock.listDispatchSites.mockResolvedValue([
+      {
+        id: '4a98ba31-9c6f-4a3b-a21d-f0b6de5e7161',
+        name: 'Centro operativo norte',
+        code: 'NORTE',
+        siteType: 'OFFICE',
+        address: 'Cra 10 # 10-10',
+        municipality: 'Bogotá',
+        department: 'Cundinamarca',
+        capabilities: [OrganizationSiteCapability.TECH_DISPATCH],
+        isActive: true,
+      },
+    ]);
+
+    await request(app.getHttpServer())
+      .get('/api/v1/wfm/dispatch-sites')
+      .set('Authorization', 'Bearer support-token')
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual([
+          expect.objectContaining({
+            id: '4a98ba31-9c6f-4a3b-a21d-f0b6de5e7161',
+            name: 'Centro operativo norte',
+            code: 'NORTE',
+            siteType: 'OFFICE',
+            address: 'Cra 10 # 10-10',
+            municipality: 'Bogotá',
+            department: 'Cundinamarca',
+            capabilities: [OrganizationSiteCapability.TECH_DISPATCH],
+            isActive: true,
           }),
         ]);
         expect(wfmOrganizationSitesReadPortMock.listDispatchSites).toHaveBeenCalledWith(

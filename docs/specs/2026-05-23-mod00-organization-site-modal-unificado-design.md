@@ -1,8 +1,8 @@
 # Design — MOD00 modal unificado de sede y servicios
 
-**Version:** 1.0
-**Estado:** En revision
-**Fecha:** 2026-05-23
+**Version:** 1.1
+**Estado:** Aprobado
+**Fecha:** 2026-05-25
 **Modo activo:** Architect
 **Origen:** Conversacion de refinamiento UX y contrato API para `/dashboard/settings/organization`
 **ADR rector:** `docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md`
@@ -17,6 +17,8 @@
 ## 1. Objetivo
 
 Reducir saturacion visual y friccion operativa en la seccion **Perfil empresarial y organizacion** unificando en un solo modal la configuracion de datos base de una sede y sus servicios activos.
+
+La vista principal de `Sedes registradas` debe mantenerse como una superficie administrativa liviana: la sede se crea y se gestiona aqui, pero el detalle operativo profundo se reserva para los modulos que despues consumiran `OrganizationSite`.
 
 El refinamiento debe cumplir estas metas al mismo tiempo:
 
@@ -81,9 +83,13 @@ Se aprueba como direccion de diseño la siguiente combinacion:
 2. **layout por tabs** dentro del modal: `Informacion de la sede` y `Servicios`;
 3. **payload unico** desde portal para datos base y servicios;
 4. **transaccion unica** en backend cuando el request incluya `capabilities`;
-5. **retiro del endpoint separado** `PUT /organization/sites/:siteId/capabilities` una vez migrado el flujo del portal.
+5. **tabla compacta unificada** como superficie principal de `Sedes registradas`;
+6. **acciones por fila** para `Editar` y `Dar de baja`, sin seleccion previa obligatoria;
+7. **retiro del endpoint separado** `PUT /organization/sites/:siteId/capabilities` una vez migrado el flujo del portal.
 
 No se elige wizard de 2 pasos porque introduce una complejidad de estado innecesaria para una tarea de administracion frecuente. Tampoco se elige accordion como patron principal porque vuelve secundarios los servicios y mantiene el riesgo de que el usuario no los configure en la misma operacion.
+
+Tampoco se elige una tabla densa o una fila expandible como patron base: para MOD00 la sede se administra aqui, pero horarios, recaudo, seguimiento y otros detalles operativos pertenecen a modulos posteriores y no deben forzar una superficie sobredimensionada en esta pantalla.
 
 ---
 
@@ -143,7 +149,7 @@ La pantalla principal debe quedar concentrada en:
 
 1. perfil empresarial;
 2. configuracion operativa;
-3. tabla de sedes como superficie dominante.
+3. tabla compacta de sedes como superficie dominante.
 
 Se retiran de la vista persistente:
 
@@ -151,6 +157,17 @@ Se retiran de la vista persistente:
 - el panel `Servicios de la sede` como editor lateral siempre visible.
 
 La tabla de sedes se mantiene como lista maestra. Las acciones primarias quedan asociadas a cada sede mediante el modal unificado.
+
+Columnas visibles recomendadas para desktop:
+
+- `Sede`: nombre y codigo;
+- `Tipo`;
+- `Ubicacion`: direccion resumida o municipio/departamento cuando aplique;
+- `Servicios`: resumen de capacidades activas;
+- `Estado`;
+- `Acciones`.
+
+No se muestran como columnas permanentes en esta superficie: coordenadas, contacto operativo local, horarios, responsables, recaudo ni seguimiento. Esos datos viven en el modal o en modulos posteriores cuando la sede ya alimente capacidades operativas concretas.
 
 ### 6.2 Modal unificado
 
@@ -258,6 +275,7 @@ sequenceDiagram
 3. La interfaz debe conservar `Controller` para componentes de seleccion que dependan de `react-hook-form` y estado controlado.
 4. El tab `Servicios` no debe ocultarse ni moverse a un segundo modal.
 5. En responsive, los tabs deben seguir siendo legibles en anchos pequeños; si el componente visual del repo no responde bien, se debe usar una variante segmentada simple sin cambiar la decision estructural.
+6. La tabla principal no debe obligar a seleccionar una sede para exponer acciones basicas; `Editar` y `Dar de baja` deben estar disponibles por fila.
 
 ---
 
@@ -328,6 +346,8 @@ Artefactos a mantener alineados:
 
 No se requiere nuevo PRD, porque el cambio no altera stack, ownership macro ni alcance funcional de MOD00; refina la experiencia y el patron transaccional dentro de Organizacion.
 
+No se requiere nuevo ADR: la decision no cambia boundaries, tenancy, seguridad ni contratos cross-module; solo acota mejor la superficie administrativa principal de `Sedes registradas`.
+
 ---
 
 ## 15. Criterio de salida
@@ -335,7 +355,8 @@ No se requiere nuevo PRD, porque el cambio no altera stack, ownership macro ni a
 La implementacion futura de este spec se considerara correcta cuando:
 
 1. la vista principal de Organizacion ya no dependa de un editor lateral persistente de servicios;
-2. el modal de sede permita crear o editar datos base y servicios sin salir del flujo;
-3. el backend soporte `capabilities` opcional en create/update con transaccion unica;
-4. el endpoint legacy de capacidades quede retirado del backend y del cliente tipado;
-5. pruebas API, portal y E2E cubran el flujo unificado.
+2. la vista principal de `Sedes registradas` se resuelva con una sola tabla compacta sin panel persistente de detalle;
+3. el modal de sede permita crear o editar datos base y servicios sin salir del flujo;
+4. el backend soporte `capabilities` opcional en create/update con transaccion unica;
+5. el endpoint legacy de capacidades quede retirado del backend y del cliente tipado;
+6. pruebas API, portal y E2E cubran el flujo unificado.

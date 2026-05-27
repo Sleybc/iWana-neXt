@@ -126,7 +126,7 @@ export function VisitRequestRecommendationPanel({
   const { operatingWindow, isLoadingOperatingWindow, operatingWindowError } = useOperatingWindow({
     workType: selectedVisitRequest?.workType,
     dateLocal: contextDraft.requestedWindowStartDate || null,
-    siteId: selectedVisitRequest?.operatingSiteId ?? null,
+    organizationSiteId: selectedVisitRequest?.organizationSiteId ?? null,
     enabled: Boolean(selectedVisitRequest),
   });
   const operatingWindowMessage = getOperatingWindowMessage(operatingWindow);

@@ -152,8 +152,11 @@ describe('UserService', () => {
 - Frontend App Router y arquitectura de pantalla: `nextjs-app-router-patterns` + `frontend-dev-guidelines`
 - Componentes, design system y tokens: `core-components` + `tailwind-patterns`
 - Direccion visual SaaS, propuestas esteticas fuertes y review visual sistemico: `senior-ui-systems-designer`
+- Identidad visual iWana en nuevas interfaces, secciones o modulos: `iwana-identity-ui-review` + `senior-ui-systems-designer`
+- Apoyo UI/UX avanzado, heuristicas, patrones, tipografia, color, responsive y performance visual: `ui-ux-pro-max`, siempre subordinada a `iwana-identity-ui-review`, `core-components`, `tailwind-patterns` y tokens reales del repo.
 - Accesibilidad visual y validacion WCAG: `wcag-audit-patterns`
 - Formularios, i18n y UX de detalle: complementar con `i18n-localization` y la skill del dominio afectado
+- Vocabulario visible, copy de producto, labels, seeds, auditorias, secciones o modulos nuevos: `system-vocabulary-review`
 
 ---
 

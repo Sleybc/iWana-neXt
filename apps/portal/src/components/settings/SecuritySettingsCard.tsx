@@ -5,6 +5,7 @@ import { CheckCircle2, CircleAlert } from 'lucide-react';
 import { Button, Card, CardContent, CardHeader } from '@iwana/ui';
 import { tenantSelfApi, type TenantSelfSettings } from '@/lib/api-client';
 import { PortalAlert, PortalSectionHeader } from '@/components/shared/portal-ui';
+import { SECURITY_SETTINGS_COPY } from './mod00-settings-labels';
 
 interface SecuritySettingsCardProps {
   settings: TenantSelfSettings;
@@ -34,10 +35,10 @@ export function SecuritySettingsCard({ settings, canEdit, onUpdated }: SecurityS
         features: { mfa_required_all: mfaRequiredAll },
       });
       onUpdated(updated);
-      setSuccess('Política de seguridad actualizada correctamente.');
+      setSuccess(SECURITY_SETTINGS_COPY.successMessage);
       setIsDirty(false);
     } catch {
-      setServerError('No fue posible guardar la política de seguridad. Intenta de nuevo.');
+      setServerError(SECURITY_SETTINGS_COPY.errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -49,7 +50,7 @@ export function SecuritySettingsCard({ settings, canEdit, onUpdated }: SecurityS
         <PortalSectionHeader
           className="gap-0"
           title="Seguridad"
-          description="Política MFA editable y flags gestionados por plataforma."
+          description={SECURITY_SETTINGS_COPY.panelDescription}
         />
       </CardHeader>
       <CardContent className="space-y-5">
@@ -60,7 +61,7 @@ export function SecuritySettingsCard({ settings, canEdit, onUpdated }: SecurityS
                 MFA obligatorio para toda la organización
               </p>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Si se activa, los usuarios deberán completar MFA para operar en el portal.
+                Si se activa, los usuarios deberán verificar su identidad antes de entrar al portal.
               </p>
             </div>
             <label className="relative inline-flex cursor-pointer items-center">
@@ -92,23 +93,23 @@ export function SecuritySettingsCard({ settings, canEdit, onUpdated }: SecurityS
             </p>
             <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
               {settings.features.billing
-                ? 'Habilitada por plataforma'
-                : 'Deshabilitada por plataforma'}
+                ? SECURITY_SETTINGS_COPY.billingEnabled
+                : SECURITY_SETTINGS_COPY.billingDisabled}
             </p>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Este flag es solo lectura desde el portal empresarial.
+              {SECURITY_SETTINGS_COPY.billingDescription}
             </p>
           </div>
 
           <div className="rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              Ownership
+              {SECURITY_SETTINGS_COPY.subscribersLabel}
             </p>
             <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
-              Parámetros comerciales administrados por plataforma
+              {SECURITY_SETTINGS_COPY.subscribersTitle}
             </p>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              maxSubscribers y enablement comercial permanecen fuera de este flujo self-service.
+              {SECURITY_SETTINGS_COPY.subscribersDescription}
             </p>
           </div>
         </div>
@@ -132,9 +133,7 @@ export function SecuritySettingsCard({ settings, canEdit, onUpdated }: SecurityS
 
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            {canEdit
-              ? 'Solo el rol ADMIN puede actualizar la política MFA de la empresa.'
-              : 'Tu rol puede consultar esta política, pero no modificarla.'}
+            {canEdit ? SECURITY_SETTINGS_COPY.adminHint : SECURITY_SETTINGS_COPY.readOnlyHint}
           </p>
           {canEdit && (
             <Button
@@ -143,7 +142,7 @@ export function SecuritySettingsCard({ settings, canEdit, onUpdated }: SecurityS
               disabled={!isDirty || isSubmitting}
               onClick={() => void handleSubmit()}
             >
-              Guardar seguridad
+              {SECURITY_SETTINGS_COPY.saveAction}
             </Button>
           )}
         </div>

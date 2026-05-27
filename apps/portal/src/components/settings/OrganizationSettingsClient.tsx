@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -58,6 +58,82 @@ const tableHeadClass =
 const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
 const inputClassName =
   'h-11 rounded-2xl border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-iwana-secondary focus:outline-none focus:ring-2 focus:ring-iwana-secondary/20 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-100';
+const coordinateTokenPattern = /^[+-]?\d+(?:[.,]\d+)?$/u;
+
+function roundCoordinate(value: number): number {
+  return Number(value.toFixed(7));
+}
+
+function formatCoordinate(value: number | null): string {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return '';
+  }
+
+  return roundCoordinate(value).toString();
+}
+
+function formatCoordinatePair(latitude: number | null, longitude: number | null): string {
+  if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+    return '';
+  }
+
+  return `${formatCoordinate(latitude)}, ${formatCoordinate(longitude)}`;
+}
+
+function parseCoordinateToken(value: string): number | null {
+  const normalized = value.trim().replace(/\s+/gu, '');
+
+  if (!coordinateTokenPattern.test(normalized)) {
+    return null;
+  }
+
+  const parsed = Number(normalized.replace(',', '.'));
+
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  return roundCoordinate(parsed);
+}
+
+function parseCoordinatePair(value: string): { latitude: number; longitude: number } | null {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  let latitudeSource: string | undefined;
+  let longitudeSource: string | undefined;
+
+  if (trimmed.includes(';')) {
+    [latitudeSource, longitudeSource] = trimmed.split(';').map((part) => part.trim());
+  } else {
+    const pairMatch = trimmed.match(/^\s*([+-]?\d+(?:\.\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?)\s*$/u);
+
+    if (pairMatch) {
+      latitudeSource = pairMatch[1];
+      longitudeSource = pairMatch[2];
+    }
+  }
+
+  if (!latitudeSource || !longitudeSource) {
+    return null;
+  }
+
+  const latitude = parseCoordinateToken(latitudeSource);
+  const longitude = parseCoordinateToken(longitudeSource);
+
+  if (latitude === null || longitude === null) {
+    return null;
+  }
+
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+    return null;
+  }
+
+  return { latitude, longitude };
+}
 
 const siteFormSchema = z.object({
   name: z.string().trim().min(2, 'Minimo 2 caracteres.').max(160, 'Maximo 160 caracteres.'),
@@ -71,8 +147,14 @@ const siteFormSchema = z.object({
   address: z.string().trim().max(240, 'Maximo 240 caracteres.').optional(),
   municipality: z.string().trim().max(120, 'Maximo 120 caracteres.').optional(),
   department: z.string().trim().max(120, 'Maximo 120 caracteres.').optional(),
-  latitude: z.number({ required_error: 'La latitud es requerida' }),
-  longitude: z.number({ required_error: 'La longitud es requerida' }),
+  coordinates: z
+    .string()
+    .trim()
+    .min(1, 'Las coordenadas son requeridas.')
+    .refine(
+      (value) => parseCoordinatePair(value) !== null,
+      'Usa el formato "latitud, longitud" o "latitud; longitud" si usas coma decimal.',
+    ),
   contactName: z.string().min(1, 'El nombre de contacto es requerido').max(160),
   contactPhone: z.string().min(1, 'El teléfono de contacto es requerido').max(32),
   isPrimary: z.boolean(),
@@ -122,8 +204,7 @@ function createDefaultSiteFormValues(): SiteFormValues {
     address: '',
     municipality: '',
     department: '',
-    latitude: 0,
-    longitude: 0,
+    coordinates: '',
     contactName: '',
     contactPhone: '',
     isPrimary: false,
@@ -139,12 +220,37 @@ function toSiteFormValues(site: OrganizationSiteDetail): SiteFormValues {
     address: site.address ?? '',
     municipality: site.municipality ?? '',
     department: site.department ?? '',
-    latitude: typeof site.latitude === 'number' ? site.latitude : 0,
-    longitude: typeof site.longitude === 'number' ? site.longitude : 0,
+    coordinates: formatCoordinatePair(site.latitude, site.longitude),
     contactName: site.contactName ?? '',
     contactPhone: site.contactPhone ?? '',
     isPrimary: site.isPrimary,
     isActive: site.isActive,
+  };
+}
+
+function formatSiteLocation(
+  site: Pick<OrganizationSiteSummary, 'address' | 'municipality' | 'department'>,
+) {
+  const address = site.address?.trim() ?? '';
+  const region = [site.municipality, site.department].filter(Boolean).join(', ');
+
+  if (address) {
+    return {
+      primary: address,
+      secondary: region || null,
+    };
+  }
+
+  if (region) {
+    return {
+      primary: region,
+      secondary: null,
+    };
+  }
+
+  return {
+    primary: 'Sin ubicación registrada',
+    secondary: null,
   };
 }
 
@@ -161,9 +267,8 @@ export function OrganizationSettingsClient() {
   const [profile, setProfile] = useState<TenantSelf | null>(null);
   const [settings, setSettings] = useState<TenantSelfSettings | null>(null);
   const [sites, setSites] = useState<OrganizationSiteSummary[]>([]);
-  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
-  const [selectedSite, setSelectedSite] = useState<OrganizationSiteDetail | null>(null);
   const [draftCapabilities, setDraftCapabilities] = useState<OrganizationSiteCapability[]>([]);
+  const [hasManageSitesPermission, setHasManageSitesPermission] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -175,113 +280,83 @@ export function OrganizationSettingsClient() {
 
   const canEdit = user?.role === UserRole.ADMIN;
   const canRead = user?.role ? organizationReadableRoles.has(user.role as UserRole) : false;
-  const canManageSites = canEdit && !sitesError;
+  const canManageSites = canEdit && hasManageSitesPermission && !sitesError;
 
   const {
     control,
     register,
     handleSubmit,
     reset,
+    setError: setFieldError,
     formState: { errors },
   } = useForm<SiteFormValues>({
     resolver: zodResolver(siteFormSchema),
     defaultValues: createDefaultSiteFormValues(),
   });
 
-  const loadSiteDetail = useCallback(async (siteId: string) => {
-    const detail = await organizationApi.get(siteId);
-    setSelectedSiteId(siteId);
-    setSelectedSite(detail);
-  }, []);
+  const loadOrganization = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    setSitesError(null);
+    setHasManageSitesPermission(false);
 
-  const loadOrganization = useCallback(
-    async (preferredSiteId?: string) => {
-      setIsLoading(true);
-      setError(null);
-      setSitesError(null);
+    try {
+      const [profileResult, settingsResult, permissionsResult] = await Promise.allSettled([
+        tenantSelfApi.getProfile(),
+        tenantSelfApi.getSettings(),
+        canEdit && user ? accessControlApi.getMyEffectivePermissions() : Promise.resolve(null),
+      ]);
 
-      try {
-        const [profileResult, settingsResult, permissionsResult] = await Promise.allSettled([
-          tenantSelfApi.getProfile(),
-          tenantSelfApi.getSettings(),
-          canEdit && user ? accessControlApi.getMyEffectivePermissions() : Promise.resolve(null),
-        ]);
-
-        if (profileResult.status !== 'fulfilled') {
-          throw profileResult.reason;
-        }
-
-        if (settingsResult.status !== 'fulfilled') {
-          throw settingsResult.reason;
-        }
-
-        setProfile(profileResult.value);
-        setSettings(settingsResult.value);
-
-        const canReadSitesFromPermissions =
-          permissionsResult.status === 'fulfilled' && permissionsResult.value
-            ? permissionsResult.value.effectivePermissions.includes(
-                AccessPermissionKey.ORGANIZATION_SITES_READ,
-              )
-            : null;
-
-        if (canReadSitesFromPermissions === false) {
-          setSites([]);
-          setSelectedSiteId(null);
-          setSelectedSite(null);
-          setDraftCapabilities([]);
-          setSitesError('No tienes permisos para ver o editar las sedes.');
-          return;
-        }
-
-        const sitesResult = await Promise.allSettled([organizationApi.list()]);
-        const sitesResponse = sitesResult[0];
-
-        if (sitesResponse.status !== 'fulfilled') {
-          setSites([]);
-          setSelectedSiteId(null);
-          setSelectedSite(null);
-          setDraftCapabilities([]);
-          setSitesError(mapSitesError(sitesResponse.reason));
-          return;
-        }
-
-        const summary = sitesResponse.value;
-        setSites(summary);
-
-        const preferredExistingSiteId =
-          preferredSiteId && summary.some((site) => site.id === preferredSiteId)
-            ? preferredSiteId
-            : null;
-        const currentExistingSiteId =
-          selectedSiteId && summary.some((site) => site.id === selectedSiteId)
-            ? selectedSiteId
-            : null;
-        const nextSiteId =
-          preferredExistingSiteId ?? currentExistingSiteId ?? summary[0]?.id ?? null;
-
-        if (nextSiteId) {
-          try {
-            await loadSiteDetail(nextSiteId);
-          } catch (detailError) {
-            setSelectedSiteId(null);
-            setSelectedSite(null);
-            setDraftCapabilities([]);
-            setSitesError(mapSitesError(detailError));
-          }
-        } else {
-          setSelectedSiteId(null);
-          setSelectedSite(null);
-          setDraftCapabilities([]);
-        }
-      } catch (loadError) {
-        setError(mapOrganizationError(loadError));
-      } finally {
-        setIsLoading(false);
+      if (profileResult.status !== 'fulfilled') {
+        throw profileResult.reason;
       }
-    },
-    [canEdit, loadSiteDetail, selectedSiteId, user],
-  );
+
+      if (settingsResult.status !== 'fulfilled') {
+        throw settingsResult.reason;
+      }
+
+      setProfile(profileResult.value);
+      setSettings(settingsResult.value);
+
+      const canReadSitesFromPermissions =
+        permissionsResult.status === 'fulfilled' && permissionsResult.value
+          ? permissionsResult.value.effectivePermissions.includes(
+              AccessPermissionKey.ORGANIZATION_SITES_READ,
+            )
+          : null;
+      const canManageSitesFromPermissions =
+        permissionsResult.status === 'fulfilled' && permissionsResult.value
+          ? permissionsResult.value.effectivePermissions.includes(
+              AccessPermissionKey.ORGANIZATION_SITES_MANAGE,
+            )
+          : false;
+
+      setHasManageSitesPermission(canManageSitesFromPermissions);
+
+      if (canReadSitesFromPermissions === false) {
+        setSites([]);
+        setDraftCapabilities([]);
+        setSitesError('No tienes permisos para ver o editar las sedes.');
+        return;
+      }
+
+      const sitesResult = await Promise.allSettled([organizationApi.list()]);
+      const sitesResponse = sitesResult[0];
+
+      if (sitesResponse.status !== 'fulfilled') {
+        setSites([]);
+        setDraftCapabilities([]);
+        setSitesError(mapSitesError(sitesResponse.reason));
+        return;
+      }
+
+      setSites(sitesResponse.value);
+    } catch (loadError) {
+      setError(mapOrganizationError(loadError));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [canEdit, user]);
 
   useEffect(() => {
     if (authLoading) {
@@ -302,11 +377,6 @@ export function OrganizationSettingsClient() {
     void loadOrganization();
   }, [authLoading, canRead, loadOrganization, user]);
 
-  const selectedSiteSummary = useMemo(
-    () => sites.find((site) => site.id === selectedSiteId) ?? null,
-    [selectedSiteId, sites],
-  );
-
   function openCreateDialog() {
     setEditingSiteId(null);
     reset(createDefaultSiteFormValues());
@@ -315,16 +385,20 @@ export function OrganizationSettingsClient() {
     setIsDialogOpen(true);
   }
 
-  function openEditDialog() {
-    if (!selectedSite) {
-      return;
-    }
+  async function openEditDialog(siteId: string) {
+    setError(null);
+    setFeedback(null);
 
-    setEditingSiteId(selectedSite.id);
-    reset(toSiteFormValues(selectedSite));
-    setDraftCapabilities(selectedSite.capabilities);
-    setDialogTab('informacion');
-    setIsDialogOpen(true);
+    try {
+      const site = await organizationApi.get(siteId);
+      setEditingSiteId(site.id);
+      reset(toSiteFormValues(site));
+      setDraftCapabilities(site.capabilities);
+      setDialogTab('informacion');
+      setIsDialogOpen(true);
+    } catch (loadError) {
+      setError(mapSitesError(loadError));
+    }
   }
 
   function handleDialogOpenChange(open: boolean) {
@@ -341,6 +415,16 @@ export function OrganizationSettingsClient() {
     setFeedback(null);
 
     try {
+      const coordinates = parseCoordinatePair(values.coordinates);
+
+      if (!coordinates) {
+        setFieldError('coordinates', {
+          type: 'manual',
+          message: 'Usa el formato "latitud, longitud" o "latitud; longitud" si usas coma decimal.',
+        });
+        return;
+      }
+
       const payload: CreateOrganizationSiteDto | UpdateOrganizationSiteDto = {
         name: values.name.trim(),
         code: values.code.trim().toUpperCase(),
@@ -349,8 +433,8 @@ export function OrganizationSettingsClient() {
         address: values.address?.trim() || null,
         municipality: values.municipality?.trim() || null,
         department: values.department?.trim() || null,
-        latitude: values.latitude,
-        longitude: values.longitude,
+        latitude: coordinates.latitude,
+        longitude: coordinates.longitude,
         contactName: values.contactName,
         contactPhone: values.contactPhone,
         isPrimary: values.isPrimary,
@@ -363,7 +447,7 @@ export function OrganizationSettingsClient() {
 
       setIsDialogOpen(false);
       setFeedback(editingSiteId ? 'Sede actualizada correctamente.' : 'Sede creada correctamente.');
-      await loadOrganization(site.id);
+      await loadOrganization();
     } catch (submitError) {
       setError(mapOrganizationError(submitError));
     } finally {
@@ -371,12 +455,8 @@ export function OrganizationSettingsClient() {
     }
   }
 
-  async function handleDeleteSite() {
-    if (!selectedSite) {
-      return;
-    }
-
-    if (!(globalThis.confirm?.(`Dar de baja la sede ${selectedSite.name}?`) ?? true)) {
+  async function handleDeleteSite(siteId: string, siteName: string) {
+    if (!(globalThis.confirm?.(`Dar de baja la sede ${siteName}?`) ?? true)) {
       return;
     }
 
@@ -385,7 +465,7 @@ export function OrganizationSettingsClient() {
     setFeedback(null);
 
     try {
-      await organizationApi.delete(selectedSite.id);
+      await organizationApi.delete(siteId);
       setFeedback('Sede dada de baja correctamente.');
       await loadOrganization();
     } catch (deleteError) {
@@ -469,7 +549,7 @@ export function OrganizationSettingsClient() {
           action={
             <button
               type="button"
-              onClick={() => void loadOrganization(selectedSiteId ?? undefined)}
+              onClick={() => void loadOrganization()}
               className="inline-flex items-center gap-2 text-sm font-medium text-red-700 underline decoration-red-300 underline-offset-4 hover:no-underline dark:text-red-300"
             >
               <RefreshCcw className="h-4 w-4" aria-hidden={true} />
@@ -494,178 +574,115 @@ export function OrganizationSettingsClient() {
       ) : null}
 
       {!sitesError ? (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-          <PortalPanel
-            title="Sedes registradas"
-            description="Revisa y administra las sedes de tu empresa."
-          >
-            {sites.length === 0 ? (
-              <PortalEmptyState
-                title="Sin sedes registradas"
-                description="Todavía no hay sedes creadas."
-                action={
-                  canManageSites ? (
-                    <Button type="button" onClick={openCreateDialog}>
-                      Crear primera sede
-                    </Button>
-                  ) : undefined
-                }
-                icon={Building2}
-              />
-            ) : (
-              <div className="overflow-hidden rounded-2xl border border-gray-200 dark:border-dark-border">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-                  <thead className="bg-[#f8faf5] dark:bg-dark-surface-3">
-                    <tr>
-                      <th className={tableHeadClass}>Sede</th>
-                      <th className={tableHeadClass}>Tipo</th>
-                      <th className={tableHeadClass}>Servicios</th>
-                      <th className={tableHeadClass}>Estado</th>
-                      <th className={tableHeadClass}>Acción</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2">
-                    {sites.map((site) => {
-                      const isActiveRow = site.id === selectedSiteId;
+        <PortalPanel
+          title="Sedes registradas"
+          description="Revisa y administra las sedes de tu empresa."
+        >
+          {sites.length === 0 ? (
+            <PortalEmptyState
+              title="Sin sedes registradas"
+              description="Todavía no hay sedes creadas."
+              action={
+                canManageSites ? (
+                  <Button type="button" onClick={openCreateDialog}>
+                    Crear primera sede
+                  </Button>
+                ) : undefined
+              }
+              icon={Building2}
+            />
+          ) : (
+            <div className="overflow-hidden rounded-2xl border border-gray-200 dark:border-dark-border">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
+                <thead className="bg-[#f8faf5] dark:bg-dark-surface-3">
+                  <tr>
+                    <th className={tableHeadClass}>Sede</th>
+                    <th className={tableHeadClass}>Tipo</th>
+                    <th className={tableHeadClass}>Ubicación</th>
+                    <th className={tableHeadClass}>Servicios</th>
+                    <th className={tableHeadClass}>Estado</th>
+                    <th className={tableHeadClass}>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2">
+                  {sites.map((site) => {
+                    const location = formatSiteLocation(site);
 
-                      return (
-                        <tr
-                          key={site.id}
-                          className={isActiveRow ? 'bg-[#f8faf5] dark:bg-dark-surface-3/60' : ''}
-                        >
-                          <td className={cellClass}>
-                            <div>
-                              <p className="font-medium text-gray-900 dark:text-white">
-                                {site.name}
+                    return (
+                      <tr key={site.id}>
+                        <td className={cellClass}>
+                          <div>
+                            <p className="font-medium text-gray-900 dark:text-white">{site.name}</p>
+                            <p className="text-xs uppercase tracking-[0.14em] text-gray-500">
+                              {site.code}
+                            </p>
+                          </div>
+                        </td>
+                        <td className={cellClass}>{getOrganizationSiteTypeLabel(site.siteType)}</td>
+                        <td className={cellClass}>
+                          <div>
+                            <p className="font-medium text-gray-900 dark:text-white">
+                              {location.primary}
+                            </p>
+                            {location.secondary ? (
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {location.secondary}
                               </p>
-                              <p className="text-xs uppercase tracking-[0.14em] text-gray-500">
-                                {site.code}
-                              </p>
-                            </div>
-                          </td>
-                          <td className={cellClass}>
-                            {selectedSiteSummary?.id === site.id && selectedSite
-                              ? getOrganizationSiteTypeLabel(selectedSite.siteType)
-                              : 'Ver detalle'}
-                          </td>
-                          <td className={cellClass}>
-                            <div className="flex flex-wrap gap-2">
-                              {site.capabilities.length > 0 ? (
-                                site.capabilities.map((capability) => (
-                                  <span
-                                    key={capability}
-                                    className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 dark:bg-dark-surface-3 dark:text-gray-300"
-                                  >
-                                    {getOrganizationSiteCapabilityLabel(capability)}
-                                  </span>
-                                ))
-                              ) : (
-                                <span className="text-sm text-gray-500">Sin servicios activos</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className={cellClass}>{site.isActive ? 'Activa' : 'Inactiva'}</td>
-                          <td className={cellClass}>
-                            <div className="flex justify-end">
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className={cellClass}>
+                          <div className="flex flex-wrap gap-2">
+                            {site.capabilities.length > 0 ? (
+                              site.capabilities.map((capability) => (
+                                <span
+                                  key={capability}
+                                  className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 dark:bg-dark-surface-3 dark:text-gray-300"
+                                >
+                                  {getOrganizationSiteCapabilityLabel(capability)}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-sm text-gray-500">Sin servicios activos</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className={cellClass}>{site.isActive ? 'Activa' : 'Inactiva'}</td>
+                        <td className={cellClass}>
+                          {canManageSites ? (
+                            <div className="flex flex-wrap justify-end gap-2">
                               <Button
                                 type="button"
-                                variant={isActiveRow ? 'secondary' : 'ghost'}
+                                variant="secondary"
                                 size="sm"
-                                onClick={() => void loadSiteDetail(site.id)}
+                                onClick={() => void openEditDialog(site.id)}
                               >
-                                {isActiveRow ? 'Seleccionada' : 'Ver detalle'}
+                                Editar sede
+                                <span className="sr-only"> {site.name}</span>
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => void handleDeleteSite(site.id, site.name)}
+                                disabled={isSaving}
+                              >
+                                Dar de baja sede
+                                <span className="sr-only"> {site.name}</span>
                               </Button>
                             </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </PortalPanel>
-
-          <PortalPanel
-            title="Detalle de sede"
-            description={
-              selectedSite
-                ? 'Consulta la información clave y los servicios activos de la sede seleccionada.'
-                : 'Selecciona una sede para revisar su contexto operativo.'
-            }
-            actions={
-              canManageSites && selectedSite ? (
-                <div className="flex flex-wrap gap-2">
-                  <Button type="button" variant="secondary" onClick={openEditDialog}>
-                    Editar sede
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => void handleDeleteSite()}
-                    disabled={isSaving}
-                  >
-                    Dar de baja sede
-                  </Button>
-                </div>
-              ) : undefined
-            }
-          >
-            {selectedSite ? (
-              <div className="space-y-4 text-sm text-gray-600 dark:text-gray-300">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
-                      Tipo
-                    </p>
-                    <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">
-                      {getOrganizationSiteTypeLabel(selectedSite.siteType)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
-                      Ubicación
-                    </p>
-                    <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">
-                      {[selectedSite.municipality, selectedSite.department]
-                        .filter(Boolean)
-                        .join(', ') || 'Sin ubicación registrada'}
-                    </p>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
-                    Servicios activos
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {selectedSite.capabilities.length > 0 ? (
-                      selectedSite.capabilities.map((capability) => (
-                        <span
-                          key={capability}
-                          className="rounded-full bg-[#f8faf5] px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-dark-surface-3 dark:text-gray-200"
-                        >
-                          {getOrganizationSiteCapabilityLabel(capability)}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-sm text-gray-500">Sin servicios activos</span>
-                    )}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
-                  {canEdit
-                    ? 'Edita la sede para actualizar su información y sus servicios en una sola operación.'
-                    : 'Tu rol puede consultar esta información, pero no modificarla.'}
-                </div>
-              </div>
-            ) : (
-              <PortalEmptyState
-                title="Sin sede seleccionada"
-                description="Elige una sede del listado para revisar sus datos principales."
-              />
-            )}
-          </PortalPanel>
-        </div>
+                          ) : (
+                            <span className="text-sm text-gray-500">Sin acciones disponibles</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </PortalPanel>
       ) : null}
 
       <Dialog open={isDialogOpen} onOpenChange={handleDialogOpenChange}>
@@ -767,40 +784,26 @@ export function OrganizationSettingsClient() {
                     </label>
                     <Input id="site-department" {...register('department')} className="h-11" />
                   </div>
-                  <div>
+                  <div className="md:col-span-2">
                     <label
-                      htmlFor="site-latitude"
+                      htmlFor="site-coordinates"
                       className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
                     >
-                      Latitud
+                      Coordenadas
                     </label>
                     <Input
-                      id="site-latitude"
-                      type="number"
-                      step="any"
-                      {...register('latitude', { valueAsNumber: true })}
+                      id="site-coordinates"
+                      type="text"
+                      placeholder="4.5837296, -74.4454695"
+                      {...register('coordinates')}
                       className="h-11"
                     />
-                    {errors.latitude?.message ? (
-                      <p className="mt-1 text-sm text-red-600">{errors.latitude.message}</p>
-                    ) : null}
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="site-longitude"
-                      className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-                    >
-                      Longitud
-                    </label>
-                    <Input
-                      id="site-longitude"
-                      type="number"
-                      step="any"
-                      {...register('longitude', { valueAsNumber: true })}
-                      className="h-11"
-                    />
-                    {errors.longitude?.message ? (
-                      <p className="mt-1 text-sm text-red-600">{errors.longitude.message}</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Usa el formato latitud, longitud. Si escribes coma decimal, separa ambos
+                      valores con punto y coma.
+                    </p>
+                    {errors.coordinates?.message ? (
+                      <p className="mt-1 text-sm text-red-600">{errors.coordinates.message}</p>
                     ) : null}
                   </div>
                   <div>

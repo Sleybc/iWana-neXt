@@ -236,6 +236,32 @@ describe('AccessControlController HTTP', () => {
       .expect(403);
   });
 
+  it('GET /api/v1/access-control/profiles retorna plantillas iniciales del sistema', async () => {
+    accessControlServiceMock.listProfiles.mockResolvedValue([
+      {
+        id: 'template-admin',
+        name: 'Administrador general',
+        description: 'Plantilla inicial para la administración general de la empresa.',
+        baseRoleConstraint: UserRole.ADMIN,
+        scopeSiteId: null,
+        isSystem: true,
+        isActive: true,
+        permissions: [AccessPermissionKey.USERS_MANAGE],
+        createdAt: new Date('2026-05-25T00:00:00.000Z'),
+        updatedAt: new Date('2026-05-25T00:00:00.000Z'),
+      },
+    ]);
+
+    await request(app.getHttpServer())
+      .get('/api/v1/access-control/profiles')
+      .set('Authorization', 'Bearer admin-token')
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data[0].isSystem).toBe(true);
+        expect(body.data[0].name).toBe('Administrador general');
+      });
+  });
+
   it('POST /api/v1/access-control/profiles crea perfil válido', async () => {
     accessControlServiceMock.createProfile.mockResolvedValue({ id: 'profile-1' });
 
