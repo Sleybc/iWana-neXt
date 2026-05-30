@@ -438,7 +438,7 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
               <span className="font-medium text-gray-900 dark:text-white">{newUserEmail}</span>.
               Deberá cambiarla en el próximo inicio de sesión.
             </p>
-            <div className="mt-4 flex items-center gap-2 rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
+            <div className="mt-4 flex items-center gap-2 rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
               <code className="flex-1 break-all font-mono text-sm text-gray-900 dark:text-white select-all">
                 {tempPassword}
               </code>

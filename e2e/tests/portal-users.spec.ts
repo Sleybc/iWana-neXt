@@ -493,6 +493,16 @@ test('caso 8 — /dashboard/profile muestra el formulario de información person
   await expect(page.getByLabel('Apellido')).toHaveValue('Prueba');
 });
 
+test('regresion perfil — mi perfil no expone la politica MFA global del tenant', async ({
+  page,
+}) => {
+  await setupAuthenticatedAdminMocks(page);
+  await page.goto('/dashboard/profile');
+
+  await expect(page.getByRole('heading', { name: 'Mi perfil' })).toBeVisible();
+  await expect(page.getByLabel('Activar MFA obligatorio')).toHaveCount(0);
+});
+
 // ---------------------------------------------------------------------------
 // Regresión de ownership: la asignación de roles vive en Users, no en Access
 // ---------------------------------------------------------------------------

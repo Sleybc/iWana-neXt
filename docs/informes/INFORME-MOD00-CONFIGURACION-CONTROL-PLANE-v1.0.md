@@ -1,8 +1,8 @@
 # INFORME - MOD00 Configuracion Control Plane - Aprobacion y Handoff Fase 01
 
-**Version:** 1.44
+**Version:** 1.51
 **Estado:** Activo
-**Fecha:** 2026-05-27
+**Fecha:** 2026-05-30
 **Modo activo:** Mixto  
 **Autor:** AI-EM-ARCH  
 **Modulo:** MOD00 Configuracion Control Plane  
@@ -269,7 +269,7 @@ Actualizacion v1.44: se integra `ui-ux-pro-max` como apoyo consultivo para heuri
 
 - CA-CFG3-01: settings lista secciones con owner y estado desde backend y portal.
 - CA-CFG3-02: Organización, Access y Field Operations abren rutas reales validadas en pruebas unitarias y E2E.
-- CA-CFG3-03: Comercial y Billing se muestran como estados no disponibles sin formularios falsos ni submit actions dentro del shell.
+- CA-CFG3-03: Billing se mantiene como estado no disponible y Comercial deja de publicarse dentro del shell, sin formularios falsos ni rutas ambiguas en Configuración.
 - CA-CFG3-04: el registry backend devuelve metadata estática y no introduce lecturas cross-module ni ownership artificial en MOD00.
 - CA-CFG3-05: la UI conserva textos visibles en español y sentence case para labels, estados y navegación.
 
@@ -1059,3 +1059,423 @@ Se incorporó `ui-ux-pro-max` al flujo de diseño del repo como biblioteca de ap
 - Diagnósticos de editor en archivos tocados — sin errores.
 
 **Resultado:** el equipo gana una segunda mirada UI/UX más amplia, manteniendo a iWana como fuente de verdad visual y operativa.
+
+---
+
+### v1.45 — 2026-05-27 — Auditoria EM-Architect sobre Seguridad, Users, Access y Mi perfil
+
+**Autor:** AI-EM-ARCH  
+**Tipo:** Auditoria de ownership, racionalizacion de control plane y plan de transicion
+
+Se ejecuto una auditoria funcional y arquitectonica del subdominio visible de seguridad del portal usando las skills `architect-review`, `docs-architect` y `writing-plans`, apoyada por agentes Explore para contraste de codigo, docs y E2E.
+
+**Hallazgos principales:**
+
+- La ruta `/dashboard/settings/security` expone hoy una sola politica global: `mfa_required_all`.
+- La misma politica global ya esta duplicada en `/dashboard/profile`, lo que contradice el ownership esperado de una vista personal.
+- `/dashboard/users` concentra correctamente operaciones por cuenta: reset de contraseña, estado, MFA por usuario y asignacion de roles de empresa.
+- `/dashboard/settings/access` ya es la superficie aprobada de gobierno de acceso del tenant; por coherencia, la politica MFA global debe aterrizar ahi y no como modulo independiente ni dentro de `Mi perfil`.
+
+**Decision documental propuesta:**
+
+1. Se crea `docs/adrs/ADR-045-Consolidacion-Politica-MFA-Global-en-Access.md` en estado **En revision**.
+2. Se aprueba como direccion recomendada de arquitectura visible:
+   - `Mi perfil` = seguridad personal.
+   - `Users` = cuentas internas y operaciones por usuario.
+   - `Access` = gobierno de acceso y politica MFA global del tenant.
+3. La ruta `/dashboard/settings/security` queda recomendada para deprecacion controlada con transicion legacy hacia Access.
+
+**Artefacto de ejecucion creado:**
+
+- `docs/plans/2026-05-27-mod00-consolidacion-politica-mfa-en-access.md`
+
+**Blast radius validado:**
+
+- portal settings shell y registry de MOD00;
+- `ProfileClient` y el toggle global duplicado;
+- pruebas E2E de `portal-settings-empresa`, `portal-settings-federated-shell` y `portal-users`;
+- documentacion pendiente de ajuste posterior a aprobacion CTO: PRD/HLD de MOD00 y HLD de MOD04.
+
+**Decision de gobierno:**
+
+No se actualizaron aun los PRD/HLD aprobados como fuente de verdad operacional porque la reubicacion visible de la politica MFA y la deprecacion de la ruta `Seguridad` requieren validacion CTO segun ADR-045. El informe vivo, el ADR en revision y el plan ya dejan trazabilidad suficiente para pasar a decision formal.
+
+**Resultado:** queda resuelta la ambiguedad de analisis. La recomendacion EM-Architect no es conservar tres superficies para la misma capacidad, sino consolidar la politica global MFA en Access y retirar la duplicacion en Profile y la ruta Security una vez ADR-045 sea aprobada.
+
+---
+
+### v1.46 — 2026-05-27 — Ejecucion Sr. Fullstack de consolidacion MFA global en Access
+
+**Autor:** AI-SR-FULL  
+**Tipo:** Ejecucion fullstack, limpieza de deuda visible y validacion focalizada
+
+Se ejecuto el plan de consolidacion de la politica MFA global del tenant dentro de `Access`, manteniendo el contrato persistido `mfa_required_all` y retirando la duplicacion visible entre `Security` y `Mi perfil`.
+
+**Cambios implementados:**
+
+- `apps/portal/src/components/settings/AccessControlSettingsClient.tsx` ahora carga `tenantSelfApi.getSettings()`, expone el bloque `Politicas de autenticacion` y guarda `mfa_required_all` desde `/dashboard/settings/access`.
+- `apps/portal/src/components/settings/mod00-settings-labels.ts` centraliza el copy operativo del nuevo bloque MFA dentro de Access.
+- `apps/portal/src/components/profile/ProfileClient.tsx` deja de renderizar la politica MFA global y conserva solo informacion personal, alertas y credenciales propias.
+- `apps/portal/src/app/dashboard/settings/security/page.tsx` pasa a redireccionar de forma server-side hacia `/dashboard/settings/access#politicas-de-autenticacion`.
+- `apps/api/src/modules/configuration/services/settings-registry.service.ts` deja de publicar `SettingsSectionKey.SECURITY` en el shell federado.
+- Se elimina deuda de UI huérfana: `SecuritySettingsClient`, `SecuritySettingsCard`, su spec asociado y `MfaRequiredToggle`.
+
+**Validacion ejecutada:**
+
+- Jest portal focalizado en `AccessControlSettingsClient.spec.tsx` — verde con cobertura del bloque MFA en Access y su guardado.
+- HTTP spec backend `configuration.controller.http.spec.ts` — verde, confirmando que `SECURITY` ya no sale en el registry.
+- Playwright focalizado `portal-users.spec.ts` — verde en la regresion que valida que `Mi perfil` ya no expone `Activar MFA obligatorio`.
+- Playwright focalizado `portal-settings-federated-shell.spec.ts` — verde, confirmando ausencia de `Seguridad` en el shell y redirect legacy correcto.
+- Playwright focalizado `portal-settings-empresa.spec.ts` — verdes los casos nuevos para guardar la politica MFA desde Access y validar la redireccion legacy desde `/dashboard/settings/security`.
+- Diagnosticos de editor en archivos tocados — sin errores.
+
+**Deuda residual explicitada:**
+
+- Los PRD/HLD aprobados siguen pendientes de actualizacion formal hasta que ADR-045 cambie de `En revision` a decision aprobada por CTO.
+- `e2e/tests/portal-settings-empresa.spec.ts` mantiene casos legacy ajenos a este slice con drift acumulado de mocks/selectores. La consolidacion MFA quedo cubierta por casos focalizados nuevos y estables.
+
+**Resultado:** queda ejecutada la consolidacion visible de la politica MFA global en `Access`, `Mi perfil` recupera ownership personal y la ruta `Security` pasa a estado legacy con transicion controlada.
+
+---
+
+### v1.47 — 2026-05-27 — Cierre de barrido posterior sobre Security, enum y artefactos maestros
+
+**Autor:** AI-SR-FULL  
+**Tipo:** Hardening tecnico menor y alineacion documental final
+
+Se ejecuto un segundo barrido focalizado para cerrar la deuda menor que quedaba tras la consolidacion MFA en Access.
+
+**Cambios realizados:**
+
+- `apps/portal/src/components/settings/SettingsSectionGrid.tsx` deja de mapear `SettingsSectionKey.SECURITY` en el icon map del shell, manteniendo fallback defensivo sin reintroducir la seccion.
+- `docs/adrs/ADR-045-Consolidacion-Politica-MFA-Global-en-Access.md` pasa a estado **Aprobado** y documenta la implementacion ya ejecutada.
+- `docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` deja de listar `Seguridad` como seccion activa del shell y fija que la politica MFA global vive dentro de `Usuarios y acceso`.
+- `docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` documenta que Access es el owner visible de la politica MFA global y que `/dashboard/settings/security` solo existe como redirect legacy.
+
+**Validacion ejecutada:**
+
+- Diagnosticos del editor sin errores en `SettingsSectionGrid.tsx`.
+- Jest focalizado en `SettingsSectionGrid.spec.tsx` y `SettingsClient.spec.tsx` — verde.
+- Barrido de referencias residuales sin nuevas contradicciones funcionales activas.
+
+**Resultado:** queda cerrado el barrido posterior. El runtime ya no conserva referencias visibles a `Security` como seccion activa y los artefactos maestros de MOD00 quedan alineados con la implementacion vigente.
+
+---
+
+### v1.48 — 2026-05-28 — Token reusable para la superficie suave de Configuracion
+
+**Autor:** AI-SR-FULL  
+**Tipo:** Refinamiento de design system y alineacion documental
+
+Se formalizo el tono `#F8FAF5` usado en las tarjetas del hub `/dashboard/settings` como token semantico reusable del sistema visual iWana, evitando que siga viviendo como hardcode aislado.
+
+**Cambios realizados:**
+
+- `packages/ui/src/styles/globals.css`: se agrega `--color-iwana-surface-soft` como token oficial de superficie suave.
+- `apps/portal/src/components/settings/SettingsSectionGrid.tsx`: el hub de Configuracion reemplaza `#f8faf5` por clases basadas en `bg-iwana-surface-soft`, manteniendo la misma jerarquia visual ya validada en UI.
+- `docs/identity/Manual_Implementacion_Identidad_Iwana.md`: se documenta el nuevo token, su valor y su uso recomendado para cards operables, fondos de apoyo y estados vacios activos sin desplazar la card blanca como superficie base.
+
+**Validacion ejecutada:**
+
+- Jest focalizado: `apps/portal/src/components/settings/SettingsSectionGrid.spec.tsx`.
+
+---
+
+### v1.49 — 2026-05-29 — Handoff EM-Architect para refinamiento UI/UX de Calendario operativo y jornadas
+
+**Autor:** AI-EM-ARCH  
+**Tipo:** Gobernanza de ejecucion, handoff fullstack y trazabilidad posterior a Fase 06
+
+Se ejecuto una nueva auditoria visual y funcional sobre `/dashboard/settings/calendar` usando el perfil unificado EM + Architect, la skill `writing-plans`, la skill `docs-architect`, la disciplina `iwana-identity-ui-review`, apoyo consultivo `ui-ux-pro-max` y agentes Explore para contraste de codigo, docs y superficie renderizada.
+
+**Decision de gobierno:**
+
+1. no se reutiliza la Fase 06 cerrada como contenedor del refinamiento;
+2. el trabajo se ejecuta como una iteracion nueva, enfocada en jerarquia visual, copy, responsive y accesibilidad;
+3. el boundary aprobado por ADR-040 y ADR-042 permanece intacto;
+4. cualquier necesidad de backend nuevo o refactor funcional profundo en WFM se trata como bloqueo fuera de este slice.
+
+**Artefactos creados para ejecucion fullstack:**
+
+- `docs/specs/2026-05-29-mod00-calendario-operativo-jornadas-redesign-design.md` — actualizada a v1.1 con trazabilidad ejecutable.
+- `docs/plans/2026-05-29-mod00-refinamiento-calendario-operativo-jornadas.md`
+- `docs/prompts/PROMPT-MOD00-CALENDARIO-OPERATIVO-REDISENO-UI-v1.0.md`
+- `docs/quality/CHECKLIST-MOD00-CALENDARIO-OPERATIVO-REDISENO-UI-v1.0.md`
+
+**Direccion aprobada para el fullstack:**
+
+- reforzar el shell de calendario como consola operativa legible;
+- hacer responsive el editor semanal sin romper su contrato;
+- dar mas jerarquia a horario base y horarios por sede;
+- subordinar formularios secundarios de excepciones y eventualidades;
+- contextualizar WFM como capa de programacion de visitas, no como duplicado del horario empresarial.
+
+**Riesgos explicitados en el handoff:**
+
+- no reabrir ownership ni API;
+- no resolver mobile con scroll horizontal como unica estrategia;
+- no convertir el slice en reescritura funcional de `WfmOperatingHoursManager`;
+- no introducir lenguaje tecnico o de ausencias personales en UI final.
+
+**Resultado:** queda lista una cadena documental completa y trazable para que Sr. Dev Fullstack ejecute el refinamiento sin ambiguedad y sin contaminar la evidencia historica de Fase 06.
+
+**Validacion documental ejecutada:**
+
+- diagnosticos del editor sin errores en los artefactos nuevos y actualizados;
+- convencion documental alineada con `docs/**` y trazabilidad enlazada a ADR, PRD, HLD, spec e informe vivo.
+- Diagnosticos del editor sin errores en `globals.css`, `SettingsSectionGrid.tsx` y este informe.
+
+---
+
+### v1.50 — 2026-05-30 — Cierre ejecutado del refinamiento UI/UX de Calendario operativo y jornadas
+
+**Autor:** AI-SR-FULL  
+**Tipo:** Ejecucion validada, cierre documental y evidencia final
+
+Se cierra la iteracion de refinamiento UI/UX posterior a Fase 06 sobre `/dashboard/settings/calendar` con implementacion real, validacion ejecutable y artefactos de control actualizados.
+
+**Resultado funcional consolidado:**
+
+1. `CalendarSettingsClient` reordena la experiencia como consola operativa legible y tolera cargas parciales por bloque sin degradar toda la pantalla.
+2. `BusinessHoursWeekEditor` resuelve el uso responsive sin mismatch de hidratacion y mantiene testids estables para desktop y mobile.
+3. `CalendarOrganizationHoursPanel` y `CalendarSiteHoursPanel` refuerzan el flujo principal con mejor jerarquia, feedback estable y acciones secundarias subordinadas.
+4. `CalendarExceptionsPanel`, `OperationalEventualitiesPanel` y `WfmOperatingHoursManager` dejan formularios secundarios cerrados por defecto y privilegian el escaneo del listado.
+5. `CalendarWfmPanel` deja explicito que la configuracion WFM solo afecta visitas programadas y no el horario base empresarial.
+
+**Validacion ejecutada con evidencia real:**
+
+- `pnpm --filter @iwana/portal typecheck` ✅
+- Jest focalizado portal para calendario ✅ 8 suites, 75 pruebas en verde
+- `pnpm exec playwright test --config e2e/playwright.portal.config.ts e2e/tests/portal-settings-calendar.spec.ts` ✅ 8 de 8 pruebas en verde
+- `get_errors` sin errores en `e2e/tests/portal-settings-calendar.spec.ts` ✅
+
+**Ajuste clave del cierre E2E:**
+
+- se alinearon los mocks de Playwright con los contratos reales de `api-client`, en especial el consumo de usuarios y eventualidades operativas;
+- se reemplazaron esperas fragiles por selectores accesibles y no ambiguos en el bloque de cambios puntuales;
+- se confirma que `/dashboard/settings/calendar` ya no depende del endpoint legacy `operating-sites` en este flujo.
+
+**Artefactos cerrados en esta iteracion:**
+
+- `docs/specs/2026-05-29-mod00-calendario-operativo-jornadas-redesign-design.md` → v1.2, estado Aprobado
+- `docs/quality/CHECKLIST-MOD00-CALENDARIO-OPERATIVO-REDISENO-UI-v1.0.md` → cerrada con evidencia ejecutada
+- `e2e/tests/portal-settings-calendar.spec.ts` → validado en verde
+
+**Bloqueos residuales:** ninguno dentro del alcance UI/UX y validacion del calendario operativo.
+
+**Resultado:** la superficie suave que ya funcionaba bien en Configuracion queda convertida en decision reusable de design system, con nombre semantico, documentacion y un primer consumidor oficial dentro del portal.
+
+---
+
+### v1.51 — 2026-05-30 — Redistribucion ejecutada de contenedores y densidad en Calendario operativo
+
+**Autor:** AI-SR-FULL  
+**Tipo:** Ejecucion validada, redistribucion visual y cierre documental incremental
+
+Se ejecuta la iteracion complementaria definida en `docs/plans/2026-05-30-mod00-calendario-operativo-distribucion-contenedores-ui.md` para reducir densidad, mejorar ritmo visual y unificar la jerarquia del submodulo `/dashboard/settings/calendar` sin reabrir ownership, contratos ni rutas.
+
+**Cambios realizados:**
+
+- `CalendarSettingsClient` separa el shell en bloque principal y bloque complementario, y mueve el estado operativo a una franja compacta fuera del header.
+- El resumen superior queda resuelto en esta iteracion como franja textual compacta; los indicadores enriquecidos quedan diferidos para una pasada posterior si agregan contexto real sin volver a densificar el header.
+- `CalendarOrganizationHoursPanel` y `CalendarSiteHoursPanel` dejan el editor semanal como tarea dominante y rebajan alerts persistentes o contexto introductorio a superficies ligeras.
+- `CalendarExceptionsPanel` y `OperationalEventualitiesPanel` consolidan el patron list-first con disclosures accesibles, sin duplicar acciones de cierre y manteniendo los formularios subordinados.
+- `CalendarWfmPanel` y `WfmOperatingHoursManager` eliminan contexto duplicado, reducen la sensacion de panel dentro de panel y conservan la gestion global de cierres aun cuando falle la carga de sedes de visitas.
+- `OperationalEventualitiesPanel` degrada de forma parcial cuando falla el directorio de personas: mantiene visible la tabla con fallback de nombre y bloquea solo el alta hasta recuperar los datos necesarios.
+- `e2e/tests/portal-settings-calendar.spec.ts` ahora valida la lectura por capas con `calendar-operational-status`, `calendar-shell-primary` y `calendar-shell-secondary`, en vez de depender solo del orden de headings.
+
+**Validacion ejecutada:**
+
+- `pnpm --filter @iwana/portal typecheck` ✅
+- Jest focalizado portal para calendario ✅ 7 suites, 60 pruebas en verde
+- `pnpm exec playwright test --config e2e/playwright.portal.config.ts e2e/tests/portal-settings-calendar.spec.ts` ✅ 8 de 8 pruebas en verde
+
+**Artefactos actualizados:**
+
+- `docs/specs/2026-05-29-mod00-calendario-operativo-jornadas-redesign-design.md` → v1.3, estado Aprobado
+- `docs/quality/CHECKLIST-MOD00-CALENDARIO-OPERATIVO-REDISENO-UI-v1.0.md` → evidencia actualizada con redistribucion de contenedores
+- `e2e/tests/portal-settings-calendar.spec.ts` → validado con la nueva jerarquia observable del shell
+
+**Bloqueos residuales:** ninguno dentro del alcance frontend y de validacion de esta iteracion.
+
+---
+
+### v1.54 — 2026-05-30 — Shell unificado sin divisiones en Calendario operativo
+
+**Autor:** AI-SR-FULL  
+**Tipo:** Correccion de layout, densidad y jerarquia visual
+
+Se corrigio la distribucion del shell de `/dashboard/settings/calendar` para eliminar el hueco entre bloques y retirar la linea divisoria que separaba artificialmente los pasos inferiores.
+
+**Cambios realizados:**
+
+- `CalendarSettingsClient` deja de usar dos grids independientes para los paneles funcionales.
+- El calendario ahora usa un unico shell en dos columnas: la columna izquierda agrupa `Horario base de la empresa` y `Cierres por fecha y aperturas especiales`; la columna derecha agrupa `Horarios por sede` y `Cambios puntuales de disponibilidad`.
+- Se eliminan del shell las clases `border-t` y `pt-4` que generaban la linea horizontal y la separacion visual innecesaria entre contenedores.
+- `CalendarSettingsClient.spec.tsx` y `portal-settings-calendar.spec.ts` actualizan sus expectativas para validar la nueva distribucion compacta.
+
+**Validacion ejecutada:**
+
+- `CalendarSettingsClient.spec.tsx` ✅ 10 pruebas en verde
+- `pnpm --filter @iwana/portal typecheck` ✅
+- `pnpm exec playwright test --config e2e/playwright.portal.config.ts e2e/tests/portal-settings-calendar.spec.ts` ✅ 8 de 8 pruebas en verde
+
+**Resultado:** Paso 3 queda bajo Paso 1, Paso 4 queda bajo Paso 2 y la pantalla deja de mostrar una division visual artificial entre esos bloques.
+
+---
+
+### v1.55 — 2026-05-30 — Columnas compactas sin separacion vertical remanente
+
+**Autor:** AI-SR-FULL  
+**Tipo:** Refinamiento visual de densidad y continuidad
+
+Se aplico un ajuste adicional sobre el shell del calendario para eliminar la separacion residual entre los dos paneles apilados de cada columna.
+
+**Cambios realizados:**
+
+- Las columnas izquierda y derecha del shell pasan de `space-y-4` a una pila compacta sin hueco vertical entre paneles.
+- Se recortan los radios internos de las tarjetas apiladas y se elimina el borde superior del segundo panel de cada columna para evitar la sensacion de division entre bloques contiguos.
+- El E2E de calendario ahora verifica tambien que la distancia vertical entre paneles consecutivos en cada columna sea `<= 1px`.
+
+**Validacion ejecutada:**
+
+- `pnpm exec playwright test --config e2e/playwright.portal.config.ts e2e/tests/portal-settings-calendar.spec.ts` ✅ 8 de 8 pruebas en verde
+
+**Resultado:** cada columna del calendario se percibe como una pila continua, sin huecos intermedios ni separaciones visibles entre el panel superior y el inferior.
+
+---
+
+### v1.56 — 2026-05-30 — Selector de hora/minuto mas compacto en horarios
+
+**Autor:** AI-SR-FULL  
+**Tipo:** Refinamiento visual de control reutilizable
+
+Se ajusto la primitive `TimeFieldSelect` para reducir el ancho excesivo del selector desplegable de `Hora` y `Min.` cuando solo muestra valores de dos digitos.
+
+**Cambios realizados:**
+
+- El popover del selector reduce su ancho total y el padding exterior.
+- Las columnas de `Hora` y `Min.` usan menor separacion interna.
+- Las opciones internas dejan de reservar ancho sobrante y ahora centran mejor los valores de dos digitos junto al check de seleccion.
+- Se agrega un caso E2E que valida que las opciones desplegadas no excedan el ancho esperado en el editor semanal.
+
+**Validacion ejecutada:**
+
+- `pnpm exec playwright test --config e2e/playwright.portal.config.ts e2e/tests/portal-settings-calendar.spec.ts --grep "selector de hora compacto"` ✅
+- `pnpm exec playwright test --config e2e/playwright.portal.config.ts e2e/tests/portal-settings-calendar.spec.ts` ✅ 9 de 9 pruebas en verde
+
+**Resultado:** el selector de tiempo conserva la interaccion actual, pero elimina espacio visual innecesario en listas pensadas para valores de dos digitos.
+
+---
+
+### v1.57 — 2026-05-30 — Trigger compacto mas estrecho en TimeFieldSelect
+
+**Autor:** AI-SR-FULL  
+**Tipo:** Refinamiento visual de densidad en control reutilizable
+
+Se redujo el ancho del estado cerrado de `TimeFieldSelect` cuando se usa en modo compacto, para evitar que los botones `07:00`, `18:00` y equivalentes ocupen mas espacio del necesario dentro de grillas operativas.
+
+**Cambios realizados:**
+
+- El trigger compacto pasa a un ancho fijo menor, con menos padding lateral y menor separacion entre valor e iconos.
+- El valor visible usa `tabular-nums` para conservar lectura estable con menor ancho.
+- La prueba E2E del selector compacto ahora valida tambien el ancho del trigger cerrado.
+
+**Validacion ejecutada:**
+
+- `pnpm exec playwright test --config e2e/playwright.portal.config.ts e2e/tests/portal-settings-calendar.spec.ts --grep "selector de hora compacto"` ✅
+- `pnpm exec playwright test --config e2e/playwright.portal.config.ts e2e/tests/portal-settings-calendar.spec.ts` ✅ 9 de 9 pruebas en verde
+
+**Resultado:** el selector cerrado ocupa menos espacio horizontal y la tabla semanal gana aire sin perder legibilidad ni interaccion.
+
+---
+
+### v1.58 — 2026-05-30 — Scrollbar contenido dentro del selector de hora
+
+**Autor:** AI-SR-FULL  
+**Tipo:** Correccion visual de contencion en control reutilizable
+
+Se corrigio el desborde visual de la barra de scroll en las listas de `Hora` y `Min.` del `TimeFieldSelect`, donde la barra aparecia saliendo del contenedor redondeado.
+
+**Cambios realizados:**
+
+- El borde redondeado y el scroll dejan de vivir en el mismo nodo.
+- Cada columna del popover ahora usa un wrapper con `overflow-hidden` para recortar visualmente la barra.
+- El scroll vertical queda en una capa interna con gutter estable y padding derecho para mantener la barra dentro del contenedor.
+
+**Validacion ejecutada:**
+
+- `pnpm exec playwright test --config e2e/playwright.portal.config.ts e2e/tests/portal-settings-calendar.spec.ts --grep "selector de hora compacto"` ✅
+- `pnpm exec playwright test --config e2e/playwright.portal.config.ts e2e/tests/portal-settings-calendar.spec.ts` ✅ 9 de 9 pruebas en verde
+
+**Resultado:** la barra de desplazamiento queda visualmente contenida dentro de cada lista y deja de romper el borde del selector.
+
+---
+
+### v1.53 — 2026-05-30 — Alineacion visual de controles en Cambios puntuales
+
+**Autor:** AI-SR-FULL  
+**Tipo:** Correccion de UI, coherencia con design system y validacion ejecutada
+
+Se corrigio el formulario de `Cambios puntuales de disponibilidad` en `/dashboard/settings/calendar` porque seguia mezclando controles nativos del navegador con primitives del sistema visual. La causa raiz eran dos `select` nativos y dos campos `datetime-local`, que abrían listas y calendarios fuera del lenguaje visual de iWana.
+
+**Cambios realizados:**
+
+- `OperationalEventualitiesPanel` migra `Persona afectada` y `Tipo de ajuste` a `Select` de `@iwana/ui`.
+- `Inicio del cambio` y `Fin del cambio` dejan de usar `datetime-local` y pasan a una composicion `DatePicker` + `TimeFieldSelect`, manteniendo el mismo payload ISO al guardar.
+- `OperationalEventualitiesPanel.spec.tsx` se adapta al nuevo contrato del formulario con mocks controlados de `Select`, `DatePicker` y `TimeFieldSelect`.
+- `e2e/tests/portal-settings-calendar.spec.ts` actualiza el flujo de alta para interactuar con los controles visibles del sistema en lugar de rellenar inputs nativos.
+
+**Validacion ejecutada:**
+
+- `OperationalEventualitiesPanel.spec.tsx` ✅ 19 pruebas en verde
+- `pnpm --filter @iwana/portal typecheck` ✅
+- `pnpm exec playwright test --config e2e/playwright.portal.config.ts e2e/tests/portal-settings-calendar.spec.ts` ✅ 8 de 8 pruebas en verde
+
+**Resultado:** el Paso 4 ya no abre calendarios ni listas desplegables del navegador y queda visualmente alineado con el sistema de componentes compartido del portal.
+
+---
+
+### v1.52 — 2026-05-30 — Retiro de Programacion de visitas del Calendario operativo
+
+**Autor:** AI-SR-FULL  
+**Tipo:** Correccion funcional de UX, limpieza de copy y cierre documental incremental
+
+Se retira el contenedor `Programacion de visitas` de `/dashboard/settings/calendar` porque duplicaba la fuente de verdad del horario operativo. La pantalla queda enfocada en cuatro capas: horario base de empresa, horarios por sede, cierres por fecha y cambios puntuales de disponibilidad.
+
+**Cambios realizados:**
+
+- `CalendarSettingsClient` elimina `CalendarWfmPanel` del shell secundario y mantiene la distribucion compacta en dos columnas con `CalendarExceptionsPanel` y `OperationalEventualitiesPanel`.
+- `CalendarWfmPanel.tsx` y `CalendarWfmPanel.spec.tsx` se eliminan porque eran el wrapper exclusivo del contenedor retirado.
+- `CALENDAR_SETTINGS_COPY` elimina menciones visibles a programacion de visitas dentro del calendario y renumera `Cambios puntuales` como Paso 4.
+- `CalendarSettingsClient.spec.tsx` valida que el bloque secundario ya no renderiza `Programacion de visitas`.
+- La spec viva `docs/specs/2026-05-29-mod00-calendario-operativo-jornadas-redesign-design.md` pasa a v1.4 y documenta el modelo de cuatro capas.
+
+**Validacion ejecutada:**
+
+- `CalendarSettingsClient.spec.tsx` ✅ 10 pruebas en verde
+- `pnpm --filter @iwana/portal typecheck` ✅
+
+**Resultado:** la agenda de visitas deja de ser un calendario paralelo en MOD00 y queda como consumidor del calendario operativo resuelto, evitando ambiguedad entre horario base, horario por sede y reglas de agenda.
+
+---
+
+### v1.49 — 2026-05-28 — Regla explicita entre superficie suave y acento secundario
+
+**Autor:** AI-SR-FULL  
+**Tipo:** Cierre de criterio visual y gobernanza del design system
+
+Se completo la auditoria posterior a la migracion del tono `#F8FAF5` para diferenciar de forma explicita dos roles visuales que estaban mezclados en el portal: superficies suaves de apoyo y acentos verdes de seleccion.
+
+**Decision tomada:**
+
+- `iwana-surface-soft` queda como fondo base para cards suaves, contenedores auxiliares, toolbars, empty states y paneles de contexto ligero.
+- `iwana-secondary-50` se conserva solo para acentos de interaccion o enfasis: tabs activas, filtros seleccionados, pills temporales como `En edición` y algunos hovers donde el verde comunica estado o foco funcional.
+
+**Evidencia del barrido final:**
+
+- Las primitivas compartidas `PortalActionToolbar`, `PortalAlert` variante `info` y `PortalEmptyState` migraron a `iwana-surface-soft`.
+- Los usos restantes con `iwana-secondary-50` en `AccessControlSettingsClient`, `OffersManager`, `AdditionalProductsManager` y `AdditionalServicesManager` corresponden a estados activos o señales de seleccion, no a fondos base.
+- Se actualiza el manual de identidad para que esta separacion no dependa de memoria oral ni criterio local por pantalla.
+
+**Resultado:** queda cerrada la taxonomia visual del tono suave aprobado. El portal ya no usa `iwana-secondary-50` como superficie neutra por defecto y conserva ese color solo cuando realmente actua como acento semantico.

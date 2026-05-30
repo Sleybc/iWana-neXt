@@ -74,7 +74,7 @@ export function CommercialTabLayout({ canEdit }: CommercialTabLayoutProps) {
 
   return (
     <div className="flex w-full flex-1 flex-col overflow-hidden rounded-2xl border border-white/70 bg-white/95 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">
-      <div className="overflow-x-auto border-b border-gray-100 bg-[#f8faf5]/90 px-4 dark:border-dark-border dark:bg-dark-surface-3/40 md:px-6">
+      <div className="overflow-x-auto border-b border-gray-100 bg-iwana-surface-soft/90 px-4 dark:border-dark-border dark:bg-dark-surface-3/40 md:px-6">
         <nav
           role="tablist"
           aria-label="Subsecciones comerciales"

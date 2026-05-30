@@ -53,7 +53,7 @@ const helperListItemClass =
 
 const portalLabelClass = 'text-sm font-bold text-[#181818] dark:text-white';
 const portalInputBaseClass =
-  'h-14 w-full rounded-2xl border bg-[#f8faf5] pl-12 text-base text-slate-900 placeholder:text-slate-400 transition-all focus:border-transparent focus:outline-none focus:ring-2 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-500';
+  'h-14 w-full rounded-2xl border bg-iwana-surface-soft pl-12 text-base text-slate-900 placeholder:text-slate-400 transition-all focus:border-transparent focus:outline-none focus:ring-2 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-500';
 const portalInputWithLeadingIconClass = `${portalInputBaseClass} pr-4`;
 const portalInputWithBothIconsClass = `${portalInputBaseClass} pr-12`;
 const portalIconLeadingClass =
@@ -65,7 +65,7 @@ const portalErrorClass = 'border-red-500 focus:ring-red-500';
 const portalPrimaryButtonClass =
   'mt-4 flex !h-14 w-full items-center justify-center gap-2 rounded-2xl !bg-[#A5C330] text-lg font-bold !text-[#181818] shadow-lg shadow-[#A5C330]/20 transition-all hover:!bg-[#94b126] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70';
 const platformInfoBoxClass =
-  'rounded-[24px] border border-[#E8E7F0] bg-[linear-gradient(135deg,rgba(248,250,245,0.96),rgba(255,255,255,0.92))] p-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3 dark:shadow-none';
+  'rounded-[24px] border border-[#E8E7F0] bg-[linear-gradient(135deg,var(--color-iwana-surface-soft),rgba(255,255,255,0.92))] p-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3 dark:shadow-none';
 const secureFooterClass =
   'mt-8 flex flex-col items-center gap-2 border-t border-slate-100 pt-6 text-center dark:border-dark-border';
 

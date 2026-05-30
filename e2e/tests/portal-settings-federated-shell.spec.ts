@@ -126,7 +126,7 @@ async function setupSettingsShellMocks(page: Page) {
     });
   });
 
-  await page.route('**/api/v1/access-control/users/*/effective-permissions', async (route) => {
+  await page.route('**/api/v1/access-control/me/effective-permissions', async (route) => {
     await assertTenantHeader(route);
     await route.fulfill({
       status: 200,
@@ -135,7 +135,11 @@ async function setupSettingsShellMocks(page: Page) {
         data: {
           userId: MOCK_USER_ID,
           role: 'ADMIN',
-          effectivePermissions: ['settings.read'],
+          effectivePermissions: [
+            'settings.read',
+            'organization.sites.read',
+            'access.permissions.read',
+          ],
           recoveryPermissions: [],
           profileSources: [],
         },
@@ -238,16 +242,6 @@ async function setupSettingsShellMocks(page: Page) {
             requiredPermissions: ['settings.read', 'access.permissions.read'],
           },
           {
-            key: 'security',
-            label: 'Seguridad',
-            description:
-              'Consolida políticas visibles del tenant sin mover ownership de Auth ni Users.',
-            ownerModule: 'Auth / Users',
-            status: 'AVAILABLE',
-            route: '/dashboard/settings/security',
-            requiredPermissions: ['settings.read'],
-          },
-          {
             key: 'branding',
             label: 'Marca',
             description: 'Gestiona identidad visual y activos corporativos del tenant autenticado.',
@@ -263,15 +257,6 @@ async function setupSettingsShellMocks(page: Page) {
             ownerModule: 'MOD09 / WFM',
             status: 'AVAILABLE',
             route: '/dashboard/settings/field-operations',
-            requiredPermissions: ['settings.read'],
-          },
-          {
-            key: 'commercial',
-            label: 'Comercial',
-            description: 'El owner existe, pero el contrato aún no está expuesto.',
-            ownerModule: 'MOD06 / Comercial',
-            status: 'NOT_CONFIGURED',
-            route: null,
             requiredPermissions: ['settings.read'],
           },
           {
@@ -440,12 +425,11 @@ test.describe('Portal settings federated shell', () => {
     ).toBeVisible();
     await expect(shellPanel.getByRole('link', { name: /Organización/i })).toBeVisible();
     await expect(shellPanel.getByRole('link', { name: /Usuarios y acceso/i })).toBeVisible();
-    await expect(shellPanel.getByRole('link', { name: /Seguridad/i })).toBeVisible();
+    await expect(shellPanel.getByRole('link', { name: /Seguridad/i })).toHaveCount(0);
     await expect(shellPanel.getByRole('link', { name: /Marca/i })).toBeVisible();
     await expect(shellPanel.getByRole('link', { name: /Operación de campo/i })).toBeVisible();
-    await expect(shellPanel.getByText('No configurado', { exact: true })).toBeVisible();
     await expect(shellPanel.getByText('Próximamente', { exact: true })).toBeVisible();
-    await expect(shellPanel.getByText('Comercial', { exact: true })).toBeVisible();
+    await expect(shellPanel.getByText('Comercial', { exact: true })).toHaveCount(0);
     await expect(shellPanel.getByText('Billing', { exact: true })).toBeVisible();
     await expect(shellPanel.getByRole('link', { name: /Comercial/i })).toHaveCount(0);
     await expect(shellPanel.getByRole('link', { name: /Billing/i })).toHaveCount(0);
@@ -460,18 +444,18 @@ test.describe('Portal settings federated shell', () => {
     await page.goto('/dashboard/settings');
     await shellPanel.getByRole('link', { name: /Usuarios y acceso/i }).click();
     await expect(page).toHaveURL(/\/dashboard\/settings\/access$/);
-    await expect(page.getByRole('heading', { name: 'Usuarios y acceso' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Perfiles de acceso' })).toBeVisible();
+    await expect(page.getByText('Políticas de autenticación')).toBeVisible();
 
     await page.goto('/dashboard/settings');
     await shellPanel.getByRole('link', { name: /Operación de campo/i }).click();
     await expect(page).toHaveURL(/\/dashboard\/settings\/field-operations$/);
-    await expect(page.getByRole('heading', { name: 'Operación de campo' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Operaciones de campo' })).toBeVisible();
     await expect(page.getByText('Excepciones por técnico')).toHaveCount(0);
 
-    await page.goto('/dashboard/settings');
-    await shellPanel.getByRole('link', { name: /Seguridad/i }).click();
-    await expect(page).toHaveURL(/\/dashboard\/settings\/security$/);
-    await expect(page.getByRole('heading', { level: 1, name: 'Seguridad' })).toBeVisible();
+    await page.goto('/dashboard/settings/security');
+    await expect(page).toHaveURL(/\/dashboard\/settings\/access(#.*)?$/);
+    await expect(page.getByText('Políticas de autenticación')).toBeVisible();
 
     await page.goto('/dashboard/settings');
     await shellPanel.getByRole('link', { name: /Marca/i }).click();

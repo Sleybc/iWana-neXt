@@ -47,7 +47,7 @@ export function SettingsAccessShortcuts({ canEdit }: SettingsAccessShortcutsProp
               key={card.href}
               href={card.href}
               className={cn(
-                'group rounded-2xl border border-gray-200 bg-[#f8faf5] p-4 transition hover:border-iwana-secondary/50 hover:bg-white dark:border-dark-border dark:bg-dark-surface-3 dark:hover:border-iwana-secondary/40 dark:hover:bg-dark-surface-2',
+                'group rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 transition hover:border-iwana-secondary/50 hover:bg-white dark:border-dark-border dark:bg-dark-surface-3 dark:hover:border-iwana-secondary/40 dark:hover:bg-dark-surface-2',
               )}
             >
               <div className="flex items-start justify-between gap-3">

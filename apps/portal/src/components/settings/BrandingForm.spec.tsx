@@ -87,6 +87,18 @@ function buildProfile(overrides: Partial<TenantSelf> = {}): TenantSelf {
   };
 }
 
+async function expandIdentityAccordion(): Promise<void> {
+  const identityToggle = screen.getByRole('button', { name: /Nombres e identidad/i });
+
+  if (identityToggle.getAttribute('aria-expanded') === 'false') {
+    fireEvent.click(identityToggle);
+  }
+
+  await waitFor(() => {
+    expect(screen.getByLabelText('Producto')).toBeVisible();
+  });
+}
+
 describe('BrandingForm', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -103,16 +115,11 @@ describe('BrandingForm', () => {
     const onUpdated = jest.fn();
     render(<BrandingForm profile={buildProfile()} canEdit onUpdated={onUpdated} />);
 
-    const urlInputs = screen.getAllByLabelText('URL HTTPS externa');
-    const firstUrlInput = urlInputs[0];
-
-    expect(firstUrlInput).toBeDefined();
-
-    fireEvent.change(firstUrlInput as HTMLElement, {
+    fireEvent.change(screen.getByLabelText('URL HTTPS para sello compacto · variante clara'), {
       target: { value: 'https://cdn.demo.co/branding/seal-light.svg' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar identidad visual' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar marca' }));
 
     await waitFor(() => {
       expect(tenantSelfApiMock.updateBranding).toHaveBeenCalledWith({
@@ -122,7 +129,7 @@ describe('BrandingForm', () => {
     });
 
     expect(onUpdated).toHaveBeenCalledWith(updatedProfile);
-    expect(screen.getByText('Branding empresarial actualizado correctamente.')).toBeInTheDocument();
+    expect(screen.getAllByText('La marca se actualizó correctamente.').length).toBeGreaterThan(0);
   });
 
   it('sube activo del slot y refresca perfil para aplicar la asignacion', async () => {
@@ -155,7 +162,9 @@ describe('BrandingForm', () => {
     });
 
     expect(onUpdated).toHaveBeenCalledWith(updatedProfile);
-    expect(screen.getByText('Activo subido y asignado correctamente.')).toBeInTheDocument();
+    expect(
+      screen.getAllByText('El activo se subió y asignó correctamente.').length,
+    ).toBeGreaterThan(0);
   });
 
   it('bloquea upload cuando la validación del slot falla', async () => {
@@ -175,7 +184,7 @@ describe('BrandingForm', () => {
 
     expect(tenantSelfApiMock.uploadBrandingAsset).not.toHaveBeenCalled();
     await waitFor(() => {
-      expect(screen.getByText((text) => text.includes('1280x720'))).toBeInTheDocument();
+      expect(screen.getAllByText((text) => text.includes('1280x720')).length).toBeGreaterThan(0);
     });
   });
 
@@ -192,6 +201,8 @@ describe('BrandingForm', () => {
     const onUpdated = jest.fn();
     render(<BrandingForm profile={buildProfile()} canEdit onUpdated={onUpdated} />);
 
+    await expandIdentityAccordion();
+
     fireEvent.change(screen.getByLabelText('Producto'), {
       target: { value: 'ISP Demo Pro' },
     });
@@ -205,7 +216,7 @@ describe('BrandingForm', () => {
       target: { value: 'Portal empresarial para la operación de ISP Demo Pro en iWana neXt.' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar identidad visual' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar marca' }));
 
     await waitFor(() => {
       expect(tenantSelfApiMock.updateBranding).toHaveBeenCalledWith({
@@ -220,12 +231,85 @@ describe('BrandingForm', () => {
     expect(onUpdated).toHaveBeenCalledWith(updatedProfile);
   });
 
+  it('organiza los activos visuales en una grilla responsive 1/2/4', () => {
+    render(<BrandingForm profile={buildProfile()} canEdit onUpdated={jest.fn()} />);
+
+    expect(screen.getByTestId('branding-assets-grid')).toHaveClass(
+      'grid',
+      'grid-cols-1',
+      'md:grid-cols-2',
+      'xl:grid-cols-4',
+    );
+    expect(screen.getByText('Sello compacto')).toBeInTheDocument();
+    expect(screen.getByText('Logo horizontal')).toBeInTheDocument();
+    expect(screen.getByText('Favicon')).toBeInTheDocument();
+    expect(screen.getByText('Fondo del login')).toBeInTheDocument();
+  });
+
+  it('muestra nombres e identidad en un acordeón colapsado inicialmente', async () => {
+    render(<BrandingForm profile={buildProfile()} canEdit onUpdated={jest.fn()} />);
+
+    const identityToggle = screen.getByRole('button', { name: /Nombres e identidad/i });
+
+    expect(identityToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByLabelText('Producto')).not.toBeInTheDocument();
+
+    fireEvent.click(identityToggle);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Nombres e identidad/i })).toHaveAttribute(
+        'aria-expanded',
+        'true',
+      );
+      expect(screen.getByLabelText('Producto')).toBeVisible();
+      expect(screen.getByLabelText('Superficie')).toBeVisible();
+      expect(screen.getByLabelText('Título público')).toBeVisible();
+      expect(screen.getByLabelText('Descripción pública')).toBeVisible();
+    });
+  });
+
+  it('usa el título público efectivo en la vista previa de pestaña', () => {
+    render(
+      <BrandingForm
+        profile={buildProfile({
+          brandingMetadataTitle: 'ISP Demo Pro — Portal empresarial',
+        })}
+        canEdit
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText('ISP Demo Pro — Portal empresarial').length).toBeGreaterThan(0);
+  });
+
+  it('usa el nombre de producto efectivo en la vista previa de navegación', () => {
+    render(
+      <BrandingForm
+        profile={buildProfile({
+          brandingProductName: 'ISP Demo Pro',
+        })}
+        canEdit
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText('ISP Demo Pro').length).toBeGreaterThan(0);
+  });
+
   it('restaura branding base limpiando assets y metadata tenant', async () => {
     tenantSelfApiMock.updateBranding.mockResolvedValue(buildProfile());
 
     render(
       <BrandingForm
         profile={buildProfile({
+          logoLightUrl: 'https://cdn.demo.co/logo-light.png',
+          logoDarkUrl: 'https://cdn.demo.co/logo-dark.png',
+          sealLightUrl: 'https://cdn.demo.co/seal-light.png',
+          sealDarkUrl: 'https://cdn.demo.co/seal-dark.png',
+          faviconLightUrl: 'https://cdn.demo.co/favicon-light.png',
+          faviconDarkUrl: 'https://cdn.demo.co/favicon-dark.png',
+          loginBackgroundLightUrl: 'https://cdn.demo.co/login-bg-light.png',
+          loginBackgroundDarkUrl: 'https://cdn.demo.co/login-bg-dark.png',
           brandingProductName: 'ISP Demo Pro',
           brandingSurfaceName: 'Portal empresarial',
           brandingMetadataTitle: 'ISP Demo Pro — Portal empresarial',
@@ -238,6 +322,11 @@ describe('BrandingForm', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Restaurar base' }));
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(tenantSelfApiMock.updateBranding).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Restaurar base' })[1] as HTMLElement);
 
     await waitFor(() => {
       expect(tenantSelfApiMock.updateBranding).toHaveBeenCalledWith(
@@ -257,5 +346,17 @@ describe('BrandingForm', () => {
         }),
       );
     });
+  });
+
+  it('expone controles accesibles para subir archivos y usar URLs externas', () => {
+    render(<BrandingForm profile={buildProfile()} canEdit onUpdated={jest.fn()} />);
+
+    expect(
+      screen.getByLabelText('Subir archivo para Sello compacto, variante clara'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('URL HTTPS para sello compacto · variante clara'),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText(/Requisitos recomendados:/i).length).toBeGreaterThan(0);
   });
 });

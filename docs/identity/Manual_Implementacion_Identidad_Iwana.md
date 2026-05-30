@@ -125,6 +125,7 @@ export const iwanaColors = {
   background: "#FFFFFF",
   foreground: "#17163A",
   muted: "#AEAEAD",
+  surfaceSoft: "#F8FAF5",
   accent: "#A5C330",
 
   // Estados
@@ -134,6 +135,10 @@ export const iwanaColors = {
   info: "#3B82F6",
 };
 ```
+
+Token semantico aprobado: `iwana-surface-soft` (`#F8FAF5`). Se usa para superficies suaves de apoyo, como cards operables de navegacion, fondos de icono en hubs administrativos y estados vacios activos que necesitan un matiz fresco sin competir con una card destacada. La card base del sistema sigue siendo blanca y `iwana-secondary-50` se reserva para acentos decorativos o destacados mas notorios.
+
+Decision complementaria de uso: `iwana-secondary-50` no debe volver a usarse como fondo base de paneles, toolbars, empty states ni contenedores administrativos. Su lugar queda acotado a acentos de interaccion o enfasis, por ejemplo tabs activas, filtros seleccionados, pills de estado transitorio o hovers que necesitan una senal visual mas marcada que `iwana-surface-soft`.
 
 ### 2.2 Tipografía Sistemática
 
@@ -260,6 +265,7 @@ export const iwanaSpacing = {
   --color-iwana-background: rgb(255 255 255);
   --color-iwana-foreground: rgb(23 22 58);
   --color-iwana-muted: rgb(245 245 245);
+  --color-iwana-surface-soft: rgb(248 250 245);
   --color-iwana-success: rgb(34 197 94);
   --color-iwana-warning: rgb(245 158 11);
   --color-iwana-error: rgb(239 68 68);
@@ -316,6 +322,7 @@ export const iwanaSpacing = {
     --iwana-neutral: 174 174 173;
     --iwana-background: 255 255 255;
     --iwana-foreground: 23 22 58;
+    --iwana-surface-soft: 248 250 245;
 
     /* Espaciado base */
     --iwana-spacing-unit: 0.25rem;
@@ -996,14 +1003,14 @@ export const designSystemChangelog = {
 
 Este manual proporciona las bases técnicas completas para implementar la identidad corporativa de iWana Network en aplicaciones digitales. La combinación de design tokens sistemáticos, componentes reutilizables y procesos de calidad asegura que cada implementación mantenga la fidelidad de marca mientras permite escalabilidad y mantenibilidad técnica.
 
-### Beneficios de esta Implementación:
+### Beneficios de esta Implementación
 
 1. **Consistencia Garantizada:** Tokens centralizados previenen desviaciones
 2. **Desarrollo Acelerado:** Componentes reutilizables reducen tiempo de desarrollo
 3. **Calidad Asegurada:** Procesos de verificación mantienen estándares
 4. **Escalabilidad Técnica:** Arquitectura permite crecimiento controlado
 
-### Próximos Pasos:
+### Próximos Pasos
 
 1. Implementar configuración base siguiendo checklist
 2. Desarrollar componentes adicionales según necesidades

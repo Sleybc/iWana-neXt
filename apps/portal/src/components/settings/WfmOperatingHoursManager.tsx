@@ -1,10 +1,10 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, CircleAlert, Clock3, ShieldAlert } from 'lucide-react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, CalendarDays, CircleAlert, Clock3, ShieldAlert } from 'lucide-react';
 import { z } from 'zod';
 import { BusinessHoursWeekday } from '@iwana/shared';
-import { Button, Card, CardContent, CardHeader, DatePicker, Select } from '@iwana/ui';
+import { Button, DatePicker, Select } from '@iwana/ui';
 import {
   ApiError,
   wfmApi,
@@ -19,6 +19,7 @@ import {
   PortalSkeletonBlock,
 } from '@/components/shared/portal-ui';
 import { WFM_SETTINGS_COPY } from './mod00-settings-labels';
+import { TimeFieldSelect } from './TimeFieldSelect';
 
 const ORDERED_WEEKDAYS = [
   BusinessHoursWeekday.MONDAY,
@@ -46,15 +47,6 @@ const LABEL_CLASS = 'mb-1.5 block text-sm font-medium text-gray-700 dark:text-gr
 const MUTED_CLASS = 'text-sm leading-6 text-gray-500 dark:text-gray-400';
 const BADGE_CLASS =
   'inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-400';
-const HOUR_OPTIONS = Array.from({ length: 24 }, (_, index) => {
-  const value = String(index).padStart(2, '0');
-  return { value, label: value };
-});
-const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, index) => {
-  const value = String(index).padStart(2, '0');
-  return { value, label: value };
-});
-
 type WeekEditorDay = {
   weekday: BusinessHoursWeekday;
   startTime: string;
@@ -304,103 +296,6 @@ function mapError(error: unknown, fallback: string): string {
   return fallback;
 }
 
-function splitTimeValue(value: string): { hour: string; minute: string } {
-  const [rawHour = '', rawMinute = ''] = value.split(':');
-
-  return {
-    hour: /^\d{2}$/.test(rawHour) ? rawHour : '',
-    minute: /^\d{2}$/.test(rawMinute) ? rawMinute : '',
-  };
-}
-
-function mergeTimeValue(
-  currentValue: string,
-  part: 'hour' | 'minute',
-  nextPartValue: string,
-): string {
-  if (!nextPartValue) {
-    return '';
-  }
-
-  const currentParts = splitTimeValue(currentValue);
-  const nextHour = part === 'hour' ? nextPartValue : currentParts.hour || '00';
-  const nextMinute = part === 'minute' ? nextPartValue : currentParts.minute || '00';
-
-  return `${nextHour}:${nextMinute}`;
-}
-
-interface TimeSelectFieldProps {
-  value: string;
-  disabled: boolean;
-  ariaLabelPrefix: string;
-  onChange: (nextValue: string) => void;
-  compact?: boolean;
-}
-
-function TimeSelectField({
-  value,
-  disabled,
-  ariaLabelPrefix,
-  onChange,
-  compact = false,
-}: TimeSelectFieldProps) {
-  const current = splitTimeValue(value);
-  // justify-center + gap-1: texto y chevron agrupados en el centro del trigger, sin separación.
-  const selectClassName = compact
-    ? 'h-10 min-w-0 justify-center gap-1 rounded-[1.15rem] px-2 py-2 text-sm shadow-none [&>span]:font-normal [&>span]:normal-case [&>span]:tracking-normal [&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:shrink-0'
-    : 'min-w-0';
-  const menuClassName = compact
-    ? 'rounded-[1.35rem] p-1.5 [&_[role=option]]:min-h-10 [&_[role=option]]:justify-center [&_[role=option]]:px-2 [&_[role=option]]:text-center [&_[role=option]>span]:w-full [&_[role=option]>span]:text-center'
-    : 'rounded-2xl p-1.5 [&_[role=option]]:min-h-11 [&_[role=option]]:justify-center [&_[role=option]]:px-3 [&_[role=option]]:text-center [&_[role=option]>span]:w-full [&_[role=option]>span]:text-center';
-
-  return (
-    <div
-      className={
-        compact
-          ? 'grid grid-cols-[60px_auto_60px] items-center justify-center gap-1.5'
-          : 'grid max-w-[220px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2'
-      }
-    >
-      <Select
-        aria-label={`${ariaLabelPrefix} hora`}
-        className={selectClassName}
-        disabled={disabled}
-        options={HOUR_OPTIONS}
-        menuClassName={menuClassName}
-        menuHorizontalAlign="center"
-        menuMaxHeight={compact ? '240px' : '260px'}
-        menuWidth={compact ? 92 : 112}
-        placeholder="hh"
-        value={current.hour}
-        onChange={(event) => onChange(mergeTimeValue(value, 'hour', event.target.value))}
-      />
-      <span
-        aria-hidden="true"
-        className={
-          compact
-            ? 'text-sm font-medium text-gray-400 dark:text-gray-500'
-            : 'text-base font-semibold text-gray-400 dark:text-gray-500'
-        }
-      >
-        :
-      </span>
-      <Select
-        aria-label={`${ariaLabelPrefix} minutos`}
-        className={selectClassName}
-        disabled={disabled}
-        options={MINUTE_OPTIONS}
-        menuClassName={menuClassName}
-        menuHorizontalAlign="center"
-        menuMaxHeight={compact ? '240px' : '260px'}
-        menuWidth={compact ? 92 : 112}
-        placeholder="mm"
-        value={current.minute}
-        onChange={(event) => onChange(mergeTimeValue(value, 'minute', event.target.value))}
-      />
-    </div>
-  );
-}
-
 interface WeekGridProps {
   week: WeekEditorDay[];
   onChange: (weekday: BusinessHoursWeekday, patch: Partial<WeekEditorDay>) => void;
@@ -410,7 +305,7 @@ interface WeekGridProps {
 function WeekGrid({ week, onChange, readOnly }: WeekGridProps) {
   return (
     <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-dark-border">
-      <div className="grid min-w-[680px] grid-cols-[minmax(120px,1.3fr)_120px_168px_168px] gap-px bg-gray-200 dark:bg-dark-border">
+      <div className="grid min-w-[640px] grid-cols-[minmax(120px,1.35fr)_120px_152px_152px] gap-px bg-gray-200 dark:bg-dark-border">
         <div className="bg-gray-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:bg-dark-surface-3 dark:text-gray-400">
           Día
         </div>
@@ -445,20 +340,22 @@ function WeekGrid({ week, onChange, readOnly }: WeekGridProps) {
               />
             </div>
             <div className="flex items-center justify-center bg-white px-3 py-3 dark:bg-dark-surface-2">
-              <TimeSelectField
-                ariaLabelPrefix={`Hora inicial ${WEEKDAY_LABELS[day.weekday]}`}
+              <TimeFieldSelect
+                ariaLabel={`Hora inicial ${WEEKDAY_LABELS[day.weekday]}`}
                 value={day.startTime}
                 compact
                 disabled={readOnly || !day.isEnabled}
+                dataTestId={`wfm-start-${day.weekday.toLowerCase()}`}
                 onChange={(nextValue) => onChange(day.weekday, { startTime: nextValue })}
               />
             </div>
             <div className="flex items-center justify-center bg-white px-3 py-3 dark:bg-dark-surface-2">
-              <TimeSelectField
-                ariaLabelPrefix={`Hora final ${WEEKDAY_LABELS[day.weekday]}`}
+              <TimeFieldSelect
+                ariaLabel={`Hora final ${WEEKDAY_LABELS[day.weekday]}`}
                 value={day.endTime}
                 compact
                 disabled={readOnly || !day.isEnabled}
+                dataTestId={`wfm-end-${day.weekday.toLowerCase()}`}
                 onChange={(nextValue) => onChange(day.weekday, { endTime: nextValue })}
               />
             </div>
@@ -471,18 +368,25 @@ function WeekGrid({ week, onChange, readOnly }: WeekGridProps) {
 
 interface WfmOperatingHoursManagerProps {
   canEdit: boolean;
+  compactFraming?: boolean;
 }
 
-export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerProps) {
+export function WfmOperatingHoursManager({
+  canEdit,
+  compactFraming = false,
+}: WfmOperatingHoursManagerProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [dispatchSitesWarning, setDispatchSitesWarning] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
   const [dispatchSites, setDispatchSites] = useState<WfmDispatchSite[]>([]);
   const [companyWeek, setCompanyWeek] = useState<WeekEditorDay[]>(createEmptyWeek());
   const [blackouts, setBlackouts] = useState<WfmHolidayBlackout[]>([]);
   const [blackoutForm, setBlackoutForm] = useState<BlackoutFormState>(createEmptyBlackoutForm());
+  const [showBlackoutForm, setShowBlackoutForm] = useState(false);
   const [isSavingCompanyWeek, setIsSavingCompanyWeek] = useState(false);
   const [isSavingBlackout, setIsSavingBlackout] = useState(false);
+  const blackoutNameInputRef = useRef<HTMLInputElement | null>(null);
 
   const dispatchSiteOptions = useMemo(
     () =>
@@ -508,21 +412,51 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
     () => [{ value: '', label: 'Toda la empresa' }, ...dispatchSiteOptions],
     [dispatchSiteOptions],
   );
+  const blackoutSiteOptions = useMemo(() => {
+    if (
+      !blackoutForm.siteId ||
+      companyWideSiteOptions.some((option) => option.value === blackoutForm.siteId)
+    ) {
+      return companyWideSiteOptions;
+    }
+
+    return [
+      ...companyWideSiteOptions,
+      {
+        value: blackoutForm.siteId,
+        label: WFM_SETTINGS_COPY.blackoutsUnavailableSiteLabel,
+      },
+    ];
+  }, [blackoutForm.siteId, companyWideSiteOptions]);
 
   const siteSelectorMenuClassName =
     'rounded-2xl p-1.5 [&_[role=option]]:min-h-11 [&_[role=option]]:px-3';
+  const managerClassName = compactFraming ? 'space-y-3' : 'space-y-4';
+  const companyWeekSectionClassName = compactFraming
+    ? 'space-y-4'
+    : 'rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-dark-border dark:bg-dark-surface-2';
+  const blackoutsSectionClassName = compactFraming
+    ? 'space-y-4 border-t border-gray-100 pt-4 dark:border-dark-border'
+    : 'rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-dark-border dark:bg-dark-surface-2';
 
   const loadManager = useCallback(async () => {
     setIsLoading(true);
     setLoadError(null);
+    setDispatchSitesWarning(null);
 
     try {
-      const [[nextCompanyWeek, nextBlackouts], nextDispatchSites] = await Promise.all([
+      const [[nextCompanyWeek, nextBlackouts], nextDispatchSitesResult] = await Promise.all([
         Promise.all([wfmApi.businessHours.getCompany(), wfmApi.holidayBlackouts.list()]),
-        wfmApi.dispatchSites.list().catch(() => []),
+        wfmApi.dispatchSites.list().then(
+          (value) => ({ ok: true as const, value }),
+          () => ({ ok: false as const, value: [] as WfmDispatchSite[] }),
+        ),
       ]);
 
-      setDispatchSites(nextDispatchSites);
+      setDispatchSites(nextDispatchSitesResult.value);
+      if (!nextDispatchSitesResult.ok) {
+        setDispatchSitesWarning(WFM_SETTINGS_COPY.blackoutsSitesUnavailableDescription);
+      }
       setCompanyWeek(normalizeWeek(nextCompanyWeek));
       setBlackouts(nextBlackouts);
     } catch (error) {
@@ -535,6 +469,12 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
   useEffect(() => {
     void loadManager();
   }, [loadManager]);
+
+  useEffect(() => {
+    if (showBlackoutForm) {
+      blackoutNameInputRef.current?.focus();
+    }
+  }, [showBlackoutForm]);
 
   const updateWeekDay = useCallback(
     (
@@ -593,6 +533,7 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
         : wfmApi.holidayBlackouts.create(payload));
 
       setBlackoutForm(createEmptyBlackoutForm());
+      setShowBlackoutForm(false);
       await loadManager();
       setFeedback({
         variant: 'success',
@@ -620,10 +561,11 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
       description: blackout.description ?? '',
       isEnabled: blackout.isEnabled,
     });
+    setShowBlackoutForm(true);
   };
 
   const handleDeleteBlackout = async (blackout: WfmHolidayBlackout) => {
-    if (!(globalThis.confirm?.(`Eliminar el cierre ${blackout.name}?`) ?? true)) {
+    if (!(globalThis.confirm?.(WFM_SETTINGS_COPY.blackoutDeleteConfirm(blackout.name)) ?? true)) {
       return;
     }
 
@@ -673,44 +615,41 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
   }
 
   return (
-    <div className="space-y-6">
-      <Card className="rounded-2xl border border-gray-200 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
-        <CardHeader>
-          <PortalSectionHeader
-            eyebrow={WFM_SETTINGS_COPY.headerEyebrow}
-            title="Horarios operativos"
-            description={WFM_SETTINGS_COPY.headerDescription}
-          />
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {!canEdit && (
-            <PortalAlert
-              variant="info"
-              title="Modo solo lectura"
-              description={WFM_SETTINGS_COPY.readOnlyDescription}
-              icon={ShieldAlert}
-            />
-          )}
+    <div className={managerClassName}>
+      {!compactFraming && (
+        <PortalAlert
+          variant="info"
+          title={WFM_SETTINGS_COPY.contextTitle}
+          description={WFM_SETTINGS_COPY.contextDescription}
+          icon={Clock3}
+        />
+      )}
 
-          {feedback && (
-            <PortalAlert
-              variant={feedback.variant}
-              title={feedback.title}
-              description={feedback.description}
-              icon={feedback.variant === 'success' ? Clock3 : CircleAlert}
-            />
-          )}
-        </CardContent>
-      </Card>
+      {!canEdit && (
+        <PortalAlert
+          variant="info"
+          title="Modo solo lectura"
+          description={WFM_SETTINGS_COPY.readOnlyDescription}
+          icon={ShieldAlert}
+        />
+      )}
 
-      <Card className="rounded-2xl border border-gray-200 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
-        <CardHeader>
-          <PortalSectionHeader
-            title={WFM_SETTINGS_COPY.companyWeekTitle}
-            description={WFM_SETTINGS_COPY.companyWeekDescription}
-          />
-        </CardHeader>
-        <CardContent className="space-y-4">
+      {feedback && (
+        <PortalAlert
+          variant={feedback.variant}
+          title={feedback.title}
+          description={feedback.description}
+          icon={feedback.variant === 'success' ? Clock3 : CircleAlert}
+        />
+      )}
+
+      <section className={companyWeekSectionClassName} data-testid="wfm-company-week-section">
+        <PortalSectionHeader
+          eyebrow={WFM_SETTINGS_COPY.companyWeekEyebrow}
+          title={WFM_SETTINGS_COPY.companyWeekTitle}
+          description={WFM_SETTINGS_COPY.companyWeekDescription}
+        />
+        <div className="mt-4 space-y-4">
           <WeekGrid
             week={companyWeek}
             readOnly={!canEdit}
@@ -724,17 +663,25 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
               </Button>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <Card className="rounded-2xl border border-gray-200 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
-        <CardHeader>
-          <PortalSectionHeader
-            title={WFM_SETTINGS_COPY.blackoutsTitle}
-            description={WFM_SETTINGS_COPY.blackoutsDescription}
-          />
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <section className={blackoutsSectionClassName} data-testid="wfm-blackouts-section">
+        <PortalSectionHeader
+          eyebrow={WFM_SETTINGS_COPY.blackoutsEyebrow}
+          title={WFM_SETTINGS_COPY.blackoutsTitle}
+          description={WFM_SETTINGS_COPY.blackoutsDescription}
+        />
+        <div className="mt-4 space-y-4">
+          {dispatchSitesWarning ? (
+            <PortalAlert
+              variant="warning"
+              title={WFM_SETTINGS_COPY.blackoutsSitesUnavailableTitle}
+              description={dispatchSitesWarning}
+              icon={AlertTriangle}
+            />
+          ) : null}
+
           {blackouts.length === 0 ? (
             <PortalEmptyState
               icon={CalendarDays}
@@ -759,12 +706,16 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
                             ? WFM_SETTINGS_COPY.recurringBadge
                             : WFM_SETTINGS_COPY.oneTimeBadge}
                         </span>
-                        {!blackout.isEnabled && <span className={BADGE_CLASS}>Inactivo</span>}
+                        {!blackout.isEnabled && (
+                          <span className={BADGE_CLASS}>
+                            {WFM_SETTINGS_COPY.blackoutInactiveBadge}
+                          </span>
+                        )}
                       </div>
                       <p className={`mt-1 ${MUTED_CLASS}`}>
                         {blackout.blackoutDate}
                         {blackout.organizationSiteId
-                          ? ` · ${siteNameMap.get(blackout.organizationSiteId) ?? blackout.organizationSiteId}`
+                          ? ` · ${siteNameMap.get(blackout.organizationSiteId) ?? WFM_SETTINGS_COPY.blackoutsUnavailableSiteLabel}`
                           : ' · Aplica a toda la empresa'}
                       </p>
                       {blackout.description && (
@@ -798,129 +749,154 @@ export function WfmOperatingHoursManager({ canEdit }: WfmOperatingHoursManagerPr
           )}
 
           {canEdit && (
-            <form
-              onSubmit={handleSubmitBlackout}
-              className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-3"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                    {blackoutForm.id ? 'Editar cierre especial' : 'Nuevo cierre especial'}
-                  </p>
-                  <p className={MUTED_CLASS}>{WFM_SETTINGS_COPY.blackoutFormDescription}</p>
-                </div>
-                {blackoutForm.id && (
+            <div className="rounded-2xl border border-dashed border-gray-200 bg-iwana-surface-soft/80 p-4 dark:border-dark-border dark:bg-dark-surface-3/60">
+              {!showBlackoutForm ? (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="portal-eyebrow">{WFM_SETTINGS_COPY.blackoutsFormTitle}</p>
+                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                      {WFM_SETTINGS_COPY.blackoutsFormHelper}
+                    </p>
+                  </div>
                   <Button
                     type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setBlackoutForm(createEmptyBlackoutForm())}
+                    variant="secondary"
+                    aria-expanded={showBlackoutForm}
+                    aria-controls="wfm-blackout-form"
+                    onClick={() => setShowBlackoutForm(true)}
+                    data-testid="wfm-show-blackout-form-btn"
                   >
-                    Limpiar
+                    {WFM_SETTINGS_COPY.blackoutsShowFormAction}
                   </Button>
-                )}
-              </div>
+                </div>
+              ) : (
+                <form
+                  id="wfm-blackout-form"
+                  onSubmit={handleSubmitBlackout}
+                  className="space-y-4"
+                  data-testid="wfm-blackout-form"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="portal-eyebrow">{WFM_SETTINGS_COPY.blackoutsFormTitle}</p>
+                      <p className={MUTED_CLASS}>{WFM_SETTINGS_COPY.blackoutFormDescription}</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowBlackoutForm(false);
+                        setBlackoutForm(createEmptyBlackoutForm());
+                      }}
+                    >
+                      {WFM_SETTINGS_COPY.blackoutsHideFormAction}
+                    </Button>
+                  </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label htmlFor="wfm-blackout-name" className={LABEL_CLASS}>
-                    Nombre del cierre
-                  </label>
-                  <input
-                    id="wfm-blackout-name"
-                    className={INPUT_CLASS}
-                    value={blackoutForm.name}
-                    onChange={(event) =>
-                      setBlackoutForm((current) => ({ ...current, name: event.target.value }))
-                    }
-                  />
-                </div>
-                <div>
-                  <DatePicker
-                    id="wfm-blackout-date"
-                    label="Fecha"
-                    placeholder="dd/mm/aaaa"
-                    value={toDateFromLocalDateValue(blackoutForm.blackoutDate)}
-                    onChange={(date) =>
-                      setBlackoutForm((current) => ({
-                        ...current,
-                        blackoutDate: toLocalDateValue(date),
-                      }))
-                    }
-                    buttonClassName="h-[46px] rounded-[1.15rem] border-gray-200 px-4 shadow-none"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="wfm-blackout-site" className={LABEL_CLASS}>
-                    Sede empresarial
-                  </label>
-                  <Select
-                    id="wfm-blackout-site"
-                    options={companyWideSiteOptions}
-                    menuClassName={siteSelectorMenuClassName}
-                    value={blackoutForm.siteId}
-                    onChange={(event) =>
-                      setBlackoutForm((current) => ({ ...current, siteId: event.target.value }))
-                    }
-                  />
-                </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <label className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 dark:border-dark-border dark:text-gray-300">
-                    <input
-                      type="checkbox"
-                      checked={blackoutForm.isRecurring}
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label htmlFor="wfm-blackout-name" className={LABEL_CLASS}>
+                        Nombre del cierre
+                      </label>
+                      <input
+                        id="wfm-blackout-name"
+                        ref={blackoutNameInputRef}
+                        className={INPUT_CLASS}
+                        value={blackoutForm.name}
+                        onChange={(event) =>
+                          setBlackoutForm((current) => ({ ...current, name: event.target.value }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <DatePicker
+                        id="wfm-blackout-date"
+                        label="Fecha"
+                        placeholder="dd/mm/aaaa"
+                        value={toDateFromLocalDateValue(blackoutForm.blackoutDate)}
+                        onChange={(date) =>
+                          setBlackoutForm((current) => ({
+                            ...current,
+                            blackoutDate: toLocalDateValue(date),
+                          }))
+                        }
+                        buttonClassName="h-[46px] rounded-[1.15rem] border-gray-200 px-4 shadow-none"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="wfm-blackout-site" className={LABEL_CLASS}>
+                        Sede empresarial
+                      </label>
+                      <Select
+                        id="wfm-blackout-site"
+                        options={blackoutSiteOptions}
+                        menuClassName={siteSelectorMenuClassName}
+                        value={blackoutForm.siteId}
+                        onChange={(event) =>
+                          setBlackoutForm((current) => ({ ...current, siteId: event.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <label className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 dark:border-dark-border dark:text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={blackoutForm.isRecurring}
+                          onChange={(event) =>
+                            setBlackoutForm((current) => ({
+                              ...current,
+                              isRecurring: event.target.checked,
+                            }))
+                          }
+                        />
+                        {WFM_SETTINGS_COPY.recurringCheckbox}
+                      </label>
+                      <label className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 dark:border-dark-border dark:text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={blackoutForm.isEnabled}
+                          onChange={(event) =>
+                            setBlackoutForm((current) => ({
+                              ...current,
+                              isEnabled: event.target.checked,
+                            }))
+                          }
+                        />
+                        Activo
+                      </label>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label htmlFor="wfm-blackout-description" className={LABEL_CLASS}>
+                      Descripción
+                    </label>
+                    <textarea
+                      id="wfm-blackout-description"
+                      className={INPUT_CLASS}
+                      rows={3}
+                      value={blackoutForm.description}
                       onChange={(event) =>
                         setBlackoutForm((current) => ({
                           ...current,
-                          isRecurring: event.target.checked,
+                          description: event.target.value,
                         }))
                       }
                     />
-                    {WFM_SETTINGS_COPY.recurringCheckbox}
-                  </label>
-                  <label className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 dark:border-dark-border dark:text-gray-300">
-                    <input
-                      type="checkbox"
-                      checked={blackoutForm.isEnabled}
-                      onChange={(event) =>
-                        setBlackoutForm((current) => ({
-                          ...current,
-                          isEnabled: event.target.checked,
-                        }))
-                      }
-                    />
-                    Activo
-                  </label>
-                </div>
-              </div>
+                  </div>
 
-              <div>
-                <label htmlFor="wfm-blackout-description" className={LABEL_CLASS}>
-                  Descripción
-                </label>
-                <textarea
-                  id="wfm-blackout-description"
-                  className={INPUT_CLASS}
-                  rows={3}
-                  value={blackoutForm.description}
-                  onChange={(event) =>
-                    setBlackoutForm((current) => ({
-                      ...current,
-                      description: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-
-              <div className="flex items-center justify-end">
-                <Button type="submit" loading={isSavingBlackout}>
-                  {blackoutForm.id ? 'Guardar cierre' : 'Crear cierre'}
-                </Button>
-              </div>
-            </form>
+                  <div className="flex items-center justify-end">
+                    <Button type="submit" loading={isSavingBlackout}>
+                      {blackoutForm.id ? 'Guardar cierre' : 'Crear cierre'}
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </div>
   );
 }

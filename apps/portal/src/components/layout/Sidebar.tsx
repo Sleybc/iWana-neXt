@@ -8,7 +8,6 @@ import {
   LayoutDashboard,
   Settings,
   Users,
-  ShieldCheck,
   BarChart3,
   BriefcaseBusiness,
   HandCoins,
@@ -77,13 +76,6 @@ const navGroups: NavGroup[] = [
     items: [
       { href: '/dashboard/settings', label: 'Configuración', icon: Settings },
       { href: '/dashboard/users', label: 'Usuarios', icon: Users },
-      {
-        href: '/security',
-        label: 'Seguridad',
-        icon: ShieldCheck,
-        disabled: true,
-        badge: 'Siguiente fase',
-      },
       {
         href: '/reports',
         label: 'Reportes',

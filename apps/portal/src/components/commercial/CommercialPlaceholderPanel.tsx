@@ -51,7 +51,7 @@ export function CommercialPlaceholderPanel({
             <div
               key={section.title}
               className={cn(
-                'rounded-2xl border border-gray-200 bg-[#f8faf5] p-4 shadow-sm',
+                'rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 shadow-sm',
                 'dark:border-dark-border dark:bg-dark-surface-3',
               )}
             >

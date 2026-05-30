@@ -271,7 +271,7 @@ export function SubscribersListClient() {
                 records.map((subscriber) => (
                   <tr
                     key={subscriber.id}
-                    className="border-b border-gray-100 last:border-b-0 hover:bg-[#f8faf5]/80 dark:border-dark-border dark:hover:bg-dark-surface-3/50"
+                    className="border-b border-gray-100 last:border-b-0 hover:bg-iwana-surface-soft/80 dark:border-dark-border dark:hover:bg-dark-surface-3/50"
                   >
                     <td className={cellClass}>
                       <Link

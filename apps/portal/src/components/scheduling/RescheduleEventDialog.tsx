@@ -436,7 +436,7 @@ export function RescheduleEventDialog({
               disabled={isSubmitting}
               startIcon={<Clock3 className="h-4 w-4" />}
               helperText="Se calcula automáticamente a partir de la nueva hora de llegada y la duración estimada."
-              className="cursor-default bg-[#f8faf5] font-medium text-gray-700 dark:bg-dark-surface-2 dark:text-gray-100"
+              className="cursor-default bg-iwana-surface-soft font-medium text-gray-700 dark:bg-dark-surface-2 dark:text-gray-100"
             />
           </section>
 

@@ -33,7 +33,7 @@ export function AuthPremiumShell({
 }: AuthPremiumShellProps) {
   return (
     <main
-      className="relative min-h-screen overflow-hidden bg-[#181818]"
+      className="relative min-h-screen overflow-hidden bg-dark-surface"
       aria-label={ariaLabel}
       style={
         backgroundUrl
@@ -45,20 +45,20 @@ export function AuthPremiumShell({
           : undefined
       }
     >
-      <div className="absolute inset-0 opacity-[0.06] bg-[radial-gradient(#A5C330_1px,transparent_1px)] bg-[length:34px_34px]" />
+      <div className="absolute inset-0 bg-[radial-gradient(#A5C330_1px,transparent_1px)] bg-size-[34px_34px] opacity-[0.06]" />
 
       <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
         <section
           data-testid={shellTestId}
           data-variant={shellDataVariant}
           className={cn(
-            'w-full max-w-[1160px] overflow-hidden rounded-[32px] border border-white/15 bg-[#0B1124]/62 shadow-[0_28px_120px_rgba(0,0,0,0.62)] backdrop-blur-xl',
+            'w-full max-w-290 overflow-hidden rounded-4xl border border-white/15 bg-[#0B1124]/62 shadow-[0_28px_120px_rgba(0,0,0,0.62)] backdrop-blur-xl',
             shellClassName,
           )}
         >
           <div
             className={cn(
-              'grid min-h-[650px] grid-cols-1 lg:grid-cols-[0.95fr_1.05fr]',
+              'grid min-h-162.5 grid-cols-1 lg:grid-cols-[0.95fr_1.05fr]',
               gridClassName,
             )}
           >

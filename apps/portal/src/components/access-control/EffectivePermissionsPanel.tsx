@@ -57,7 +57,7 @@ export function EffectivePermissionsPanel({
 
       {!isLoading && !error && summary ? (
         <div className="space-y-4">
-          <div className="rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
+          <div className="rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
             <p className="portal-eyebrow">Categoría base</p>
             <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">
               {getSystemBaseRoleLabel(summary.role)}

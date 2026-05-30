@@ -4,7 +4,7 @@ export const AUTH_FORM_PANEL_PREMIUM_CLASS =
 export const AUTH_FORM_LABEL_CLASS = 'text-sm font-bold text-[#181818] dark:text-white';
 
 export const AUTH_FORM_INPUT_BASE_CLASS =
-  'h-14 w-full rounded-2xl border bg-[#f8faf5] pl-12 text-base text-slate-900 placeholder:text-slate-400 transition-all focus:border-transparent focus:outline-none focus:ring-2 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-500';
+  'h-14 w-full rounded-2xl border bg-iwana-surface-soft pl-12 text-base text-slate-900 placeholder:text-slate-400 transition-all focus:border-transparent focus:outline-none focus:ring-2 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-500';
 
 export const AUTH_FORM_INPUT_WITH_LEADING_ICON_CLASS = `${AUTH_FORM_INPUT_BASE_CLASS} pr-4`;
 export const AUTH_FORM_INPUT_WITH_BOTH_ICONS_CLASS = `${AUTH_FORM_INPUT_BASE_CLASS} pr-12`;

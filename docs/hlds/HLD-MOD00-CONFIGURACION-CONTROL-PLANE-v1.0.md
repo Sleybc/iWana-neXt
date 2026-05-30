@@ -1,8 +1,8 @@
 # HLD - MOD00 Configuracion Control Plane
 
-**Version:** 1.5
+**Version:** 1.6
 **Estado:** Aprobado  
-**Fecha:** 2026-05-25
+**Fecha:** 2026-05-27
 **Modo activo:** Architect  
 **Autor:** AI-EM-ARCH  
 **PRD de referencia:** docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md  
@@ -359,6 +359,8 @@ Base path recomendado: `/api/v1/configuration` para shell y `/api/v1/organizatio
 | PUT    | `/access-control/profiles/:id/permissions` | Reemplazar permisos           | ADMIN      |
 | PUT    | `/access-control/users/:userId/profiles`   | Asignar perfiles a usuario    | ADMIN      |
 
+La politica MFA global del tenant se expone de forma visible dentro de `/dashboard/settings/access` como subseccion `Politicas de autenticacion`, reutilizando el contrato self-service vigente de Tenant/Auth para `mfa_required_all`. La ruta `/dashboard/settings/security` queda como redireccion legacy y no debe publicarse en el registry federado.
+
 ### 5.3 Puertos
 
 ```ts
@@ -496,13 +498,18 @@ apps/portal/src/app/dashboard/settings/access/page.tsx
 apps/portal/src/app/dashboard/settings/access/profiles/page.tsx
 ```
 
+Ruta legacy permitida solo para transicion:
+
+```text
+apps/portal/src/app/dashboard/settings/security/page.tsx -> redirect('/dashboard/settings/access#politicas-de-autenticacion')
+```
+
 ### Componentes recomendados
 
 ```text
 apps/portal/src/components/settings/
   SettingsShell.tsx
   SettingsSectionCard.tsx
-  settings-navigation.ts
 
 apps/portal/src/components/organization/
   OrganizationSitesClient.tsx
@@ -522,6 +529,8 @@ apps/portal/src/components/access-control/
 ```
 
 La vista principal de `Organizacion/Sedes` debe resolverse como una sola superficie administrativa: tabla compacta, resumen de servicios y acciones por fila. No se recomienda un panel persistente `OrganizationSiteDetail.tsx`; el detalle editable vive dentro del dialog de sede y el detalle operativo pertenece a modulos posteriores.
+
+La vista `Usuarios y acceso` actua tambien como owner visible de la politica MFA global del tenant. `Mi perfil` conserva seguridad personal y `/dashboard/settings/security` no debe reaparecer como seccion independiente del shell.
 
 ### UI rules
 

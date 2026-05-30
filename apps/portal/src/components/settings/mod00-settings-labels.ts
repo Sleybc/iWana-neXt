@@ -11,7 +11,7 @@ export const ORGANIZATION_SITE_TYPE_LABELS: Record<OrganizationSiteType, string>
   [OrganizationSiteType.TECH_BASE]: 'Base técnica',
   [OrganizationSiteType.CUSTOMER_SERVICE]: 'Atención al cliente',
   [OrganizationSiteType.COLLECTION_POINT]: 'Punto de recaudo',
-  [OrganizationSiteType.NOC]: 'Centro NOC',
+  [OrganizationSiteType.NOC]: 'Monitoreo operativo',
   [OrganizationSiteType.MIXED]: 'Sede mixta',
 };
 
@@ -21,7 +21,7 @@ export const ORGANIZATION_SITE_CAPABILITY_LABELS: Record<OrganizationSiteCapabil
   [OrganizationSiteCapability.WAREHOUSE]: 'Bodega',
   [OrganizationSiteCapability.COLLECTION_POINT]: 'Recaudo',
   [OrganizationSiteCapability.ADMIN_OFFICE]: 'Gestión administrativa',
-  [OrganizationSiteCapability.NOC]: 'Operación NOC',
+  [OrganizationSiteCapability.NOC]: 'Monitoreo operativo',
   [OrganizationSiteCapability.SALES_OFFICE]: 'Ventas',
 };
 
@@ -75,12 +75,28 @@ export const SETTINGS_HUB_COPY = {
 } as const;
 
 export const ACCESS_SETTINGS_COPY = {
-  pageTitle: 'Perfiles de acceso',
+  pageTitle: 'Perfiles de acceso y autenticación',
   loadingSubtitle: 'Cargando perfiles de acceso y sus accesos',
   restrictedTitle: 'Vista disponible para administradores',
   restrictedDescription: 'Solo las personas administradoras pueden acceder a esta sección.',
   pageSubtitle:
-    'Crea perfiles de acceso, define lo que puede usar cada uno y apóyate en perfiles sugeridos para empezar más rápido.',
+    'Administra perfiles de acceso, plantillas iniciales y la política MFA global de tu empresa desde un solo lugar.',
+  authPolicyEyebrow: 'Políticas de autenticación',
+  authPolicyTitle: 'MFA global de la empresa',
+  authPolicyDescription:
+    'Define si toda la empresa debe configurar verificación en dos pasos antes de entrar al portal.',
+  authPolicyToggleTitle: 'MFA obligatorio para toda la empresa',
+  authPolicyToggleLabel: 'Activar MFA obligatorio',
+  authPolicyToggleDescription:
+    'Si se activa, cada persona deberá verificar su identidad antes de entrar al portal.',
+  authPolicyStatusEnabled: 'MFA global activo',
+  authPolicyStatusDisabled: 'MFA global opcional',
+  authPolicySaveAction: 'Guardar política',
+  authPolicySaveSuccess: 'Política MFA actualizada correctamente.',
+  authPolicyLoadError: 'No fue posible cargar la política de autenticación.',
+  authPolicySaveError: 'No fue posible guardar la política de autenticación. Intenta de nuevo.',
+  authPolicyAdminHint:
+    'Este ajuste aplica a toda la empresa y solo puede cambiarlo un administrador.',
   templatesTitle: 'Plantillas iniciales',
   templatesDescription:
     'Estas plantillas del sistema te dan un punto de partida para crear o ajustar perfiles de acceso.',
@@ -107,58 +123,170 @@ export const ACCESS_SETTINGS_COPY = {
   roleFieldLabel: 'Categoría base permitida',
 } as const;
 
-export const SECURITY_SETTINGS_COPY = {
-  loadingSubtitle: 'Cargando configuración de seguridad',
-  pageSubtitle: 'Configura la autenticación de dos factores y revisa las opciones de seguridad.',
-  panelDescription: 'Autenticación de dos factores y opciones de seguridad.',
-  unavailableMessage: 'No fue posible cargar la configuración de seguridad.',
-  billingEnabled: 'Activa',
-  billingDisabled: 'Inactiva',
-  billingDescription: 'Esta opción se administra centralmente y no puede cambiarse aquí.',
-  subscribersLabel: 'Límite de suscriptores',
-  subscribersTitle: 'Gestionado por nuestro equipo',
-  subscribersDescription:
-    'El número máximo de suscriptores y otras opciones comerciales se administran fuera de esta pantalla.',
-  adminHint: 'Solo los administradores pueden cambiar esta configuración.',
-  readOnlyHint: 'Puedes consultar esta configuración, pero no cambiarla.',
-  saveAction: 'Guardar cambios',
-  successMessage: 'Configuración de seguridad actualizada correctamente.',
-  errorMessage: 'No fue posible guardar la configuración de seguridad. Intenta de nuevo.',
+export const OPERATIONAL_EVENTUALITY_TYPE_LABELS = {
+  extra_availability: 'Disponibilidad extra',
+  operational_block: 'Cierre temporal',
+  early_entry: 'Entrada anticipada',
+  extended_shift: 'Extensión de horario',
+  emergency_response: 'Atención de emergencia',
+} as const;
+
+export const OPERATIONAL_EVENTUALITY_STATUS_LABELS = {
+  pending: 'Pendiente',
+  confirmed: 'Confirmada',
+  cancelled: 'Cancelada',
 } as const;
 
 export const CALENDAR_SETTINGS_COPY = {
+  pageTitle: 'Calendario operativo y jornadas',
   loadingSubtitle: 'Cargando tu calendario',
   pageSubtitle:
-    'Define el horario general de tu organización, ajustes por sede y festivos especiales.',
-  organizationTitle: 'Horario general de atención y recaudo',
+    'Ordena el horario base de tu empresa y luego ajusta sedes, cierres por fecha y cambios puntuales desde una sola vista.',
+  pageStatusEyebrow: 'Estado operativo',
+  pagePartialStatus:
+    'Algunos bloques no se pudieron cargar. Actualiza la vista antes de confirmar el estado operativo o guardar cambios.',
+  refreshAction: 'Actualizar',
+  sessionUnavailableSubtitle: 'Sesión no disponible',
+  sessionUnavailableTitle: 'No fue posible abrir la vista',
+  sessionUnavailableDescription: 'Inicia sesión nuevamente para consultar esta sección.',
+  restrictedSubtitle: 'Acceso restringido',
+  restrictedTitle: 'Sin autorización',
+  restrictedDescription: 'Tu rol no puede consultar el calendario operativo.',
+  organizationEyebrow: 'Paso 1 · Horario base',
+  organizationTitle: 'Horario base de la empresa',
   organizationDescription:
-    'Horario semanal general para toda la organización. Las sedes que no tengan horario propio usarán este horario automáticamente.',
+    'Define el horario semanal que servirá como referencia para toda la empresa y para las sedes que no tengan un ajuste propio.',
+  organizationStatusTitle: 'Horario de referencia activo',
+  organizationStatusDescription:
+    'Las sedes sin ajuste propio usarán este horario como base operativa.',
   organizationSaveAction: 'Guardar horario general',
   organizationSaveSuccess: 'Horario general actualizado correctamente.',
   organizationSaveError: 'No fue posible guardar el horario general. Intenta nuevamente.',
-  sitePanelDescription: 'Elige si una sede usa el horario general o tiene su propio horario.',
+  organizationLoadError:
+    'No pudimos cargar el horario base. Este bloque queda bloqueado hasta que vuelvas a actualizar.',
+  siteEyebrow: 'Paso 2 · Horarios por sede',
+  sitePanelTitle: 'Horarios por sede',
+  sitePanelDescription:
+    'Revisa qué sede sigue el horario base y cuál necesita un ajuste propio antes de guardar cambios.',
+  siteSelectorLabel: 'Sede',
+  siteSelectorHint:
+    'Elige una sede para revisar si usa el horario base o si necesita un horario propio.',
+  siteEmptyTitle: 'Sin sedes registradas',
   siteEmptyDescription: 'Crea al menos una sede para configurar su horario.',
+  siteDetailLoadError: 'No fue posible cargar el detalle de la sede. Intenta nuevamente.',
+  siteDetailRetryAction: 'Reintentar detalle de la sede',
+  siteLoadingStatus: 'Cargando detalle de la sede seleccionada.',
   siteSaveAction: 'Guardar horario de la sede',
   siteSaveSuccess: 'Horario personalizado guardado correctamente.',
   siteSaveError: 'No fue posible guardar el horario personalizado. Intenta nuevamente.',
+  siteLoadError:
+    'No pudimos cargar las sedes. Este bloque queda bloqueado hasta que vuelvas a actualizar.',
   siteClearConfirm:
-    '¿Quitar el horario personalizado? Esta sede volverá a usar el horario general de la organización.',
-  siteClearSuccess: 'La sede volvió a usar el horario general de la organización.',
+    '¿Quitar el horario personalizado? Esta sede volverá a usar el horario general de la empresa.',
+  siteClearAction: 'Volver al horario base',
+  siteClearSuccess: 'La sede volvió a usar el horario general de la empresa.',
   siteClearError: 'No fue posible quitar el horario personalizado. Intenta nuevamente.',
   siteOverrideActive: 'Horario personalizado activo: esta sede usa su propio horario.',
   siteOverrideInactive:
-    'Sin horario personalizado: esta sede usa el horario general de la organización. Configura los días para crear uno.',
-  exceptionsCreateTitle: 'Registrar nuevo festivo o cierre especial',
+    'Sin horario personalizado: esta sede usa el horario general de la empresa. Configura los días para crear uno.',
+  siteSelectedEyebrow: 'Sede seleccionada',
+  siteSelectedTitle: (siteName: string, siteCode: string) => `${siteName} (${siteCode})`,
+  siteOverrideAlertTitle: 'Horario propio activo',
+  siteOverrideAlertDescription:
+    'Los cambios que guardes aquí solo afectan a esta sede. Si ya no necesita un horario propio, puedes volver al horario base.',
+  siteBaseAlertTitle: 'Usa el horario base',
+  siteBaseAlertDescription:
+    'Si guardas cambios en este bloque, crearás un horario propio solo para esta sede.',
+  exceptionsEyebrow: 'Paso 3 · Cierres por fecha',
+  exceptionsTitle: 'Cierres por fecha y aperturas especiales',
+  exceptionsDescription:
+    'Registra fechas concretas en las que la atención cambia por festivos, cierres o aperturas extraordinarias.',
+  exceptionsCreateTitle: 'Registrar una fecha especial',
+  exceptionsFormDescription:
+    'Úsalo solo cuando necesites un cierre, festivo o apertura puntual. El listado sigue siendo la referencia principal.',
+  exceptionsShowFormAction: 'Registrar fecha especial',
+  exceptionsHideFormAction: 'Cancelar registro',
+  exceptionsNameLabel: 'Nombre del cierre o apertura',
+  exceptionsDateLabel: 'Fecha afectada',
+  exceptionsSiteLabel: 'Sede afectada (opcional)',
+  exceptionsSiteAllLabel: 'Todas las sedes',
+  exceptionsOpenLabel: 'Abrir ese día',
+  exceptionsRecurringLabel: 'Repetir cada año',
+  exceptionsOpensAtLabel: 'Desde',
+  exceptionsClosesAtLabel: 'Hasta',
+  exceptionsNamePlaceholder: 'Ej: Día festivo nacional',
   exceptionsCreateAction: 'Agregar festivo o cierre',
   exceptionsCreated: 'Festivo o cierre especial creado correctamente.',
   exceptionsCreateError: 'No fue posible crear el festivo o cierre especial. Intenta nuevamente.',
+  exceptionsOpenHoursRequired: 'Si abres ese día, define hora de inicio y de fin.',
+  exceptionsOpenHoursOrder: 'La hora de cierre debe ser posterior a la hora de inicio.',
+  exceptionsLoadError:
+    'No pudimos cargar los cierres por fecha. Este bloque queda bloqueado hasta que vuelvas a actualizar.',
   exceptionsDeleteConfirm: '¿Eliminar este festivo o cierre especial?',
   exceptionsDeleted: 'Festivo o cierre especial eliminado.',
   exceptionsDeleteError:
     'No fue posible eliminar este festivo o cierre especial. Intenta nuevamente.',
+  exceptionsDeleteAction: 'Eliminar',
+  exceptionsTableNameColumn: 'Nombre',
+  exceptionsTableDateColumn: 'Fecha',
+  exceptionsTableStatusColumn: 'Estado',
+  exceptionsTableSiteColumn: 'Sede',
+  exceptionsTableActionColumn: 'Acción',
+  exceptionsRecurringBadge: 'Recurrente anual',
+  exceptionsOpenStatus: 'Abierto',
+  exceptionsClosedStatus: 'Cerrado',
   exceptionsEmptyTitle: 'Sin festivos ni cierres especiales',
-  exceptionsEmptyDescription:
-    'No hay festivos ni cierres especiales registrados para tu organización.',
+  exceptionsEmptyDescription: 'No hay festivos ni cierres especiales registrados para tu empresa.',
+  eventualitiesEyebrow: 'Paso 4 · Cambios puntuales',
+  eventualitiesTitle: 'Cambios puntuales de disponibilidad',
+  eventualitiesDescription:
+    'Registra ajustes temporales para personas o turnos sin alterar el horario base de la empresa.',
+  eventualitiesLoadingStatus: 'Cargando cambios puntuales de disponibilidad.',
+  eventualitiesLoadError:
+    'No se pudieron cargar los cambios puntuales de disponibilidad. Intenta de nuevo.',
+  eventualitiesUsersUnavailableTitle: 'Directorio de personal no disponible',
+  eventualitiesUsersUnavailableDescription:
+    'Puedes revisar la lista actual, pero espera a que esta vista se actualice antes de registrar un nuevo cambio puntual.',
+  eventualitiesValidationRequired: 'Completa los campos obligatorios.',
+  eventualitiesValidationDates: 'La fecha de inicio debe ser anterior a la fecha de fin.',
+  eventualitiesFormTitle: 'Registrar un cambio puntual',
+  eventualitiesFormDescription:
+    'Úsalo cuando necesites ajustar una persona o un turno fuera del horario habitual. El listado sigue siendo la referencia principal.',
+  eventualitiesShowFormAction: 'Registrar cambio puntual',
+  eventualitiesHideFormAction: 'Cancelar registro',
+  eventualitiesTableUserColumn: 'Personal',
+  eventualitiesTableTypeColumn: 'Tipo',
+  eventualitiesTableStartsAtColumn: 'Inicio',
+  eventualitiesTableEndsAtColumn: 'Fin',
+  eventualitiesTableStatusColumn: 'Estado',
+  eventualitiesTableActionsColumn: 'Acciones',
+  eventualitiesConfirmAction: 'Confirmar',
+  eventualitiesCancelAction: 'Cancelar',
+  eventualitiesDeleteAction: 'Eliminar',
+  eventualitiesUnknownUserLabel: 'Persona no disponible',
+  eventualitiesUserLabel: 'Persona afectada *',
+  eventualitiesUserPlaceholder: 'Selecciona una persona',
+  eventualitiesTypeLabel: 'Tipo de ajuste *',
+  eventualitiesTypePlaceholder: 'Selecciona un tipo',
+  eventualitiesStartsAtLabel: 'Inicio del cambio *',
+  eventualitiesEndsAtLabel: 'Fin del cambio *',
+  eventualitiesReasonLabel: 'Motivo operativo',
+  eventualitiesReasonPlaceholder: 'Motivo (opcional)',
+  eventualitiesOriginLabel: 'Origen del aviso',
+  eventualitiesOriginPlaceholder: 'Origen (opcional)',
+  eventualitiesRequiresReviewLabel: 'Requiere revisión administrativa',
+  eventualitiesSaveAction: 'Guardar cambio',
+  eventualitiesSavingAction: 'Guardando cambio…',
+  eventualitiesCreated: 'Cambio puntual registrado.',
+  eventualitiesCreateError: 'No se pudo registrar el cambio puntual.',
+  eventualitiesConfirmed: 'Cambio puntual confirmado.',
+  eventualitiesCancelled: 'Cambio puntual cancelado.',
+  eventualitiesDeleted: 'Cambio puntual eliminado.',
+  eventualitiesStatusError: 'No se pudo actualizar el estado.',
+  eventualitiesDeleteConfirm: '¿Eliminar este cambio puntual de disponibilidad?',
+  eventualitiesDeleteError: 'No se pudo eliminar el cambio puntual.',
+  eventualitiesEmptyTitle: 'Sin cambios puntuales registrados',
+  eventualitiesEmptyDescription: 'No hay cambios puntuales de disponibilidad registrados.',
 } as const;
 
 export const FIELD_OPERATIONS_SETTINGS_COPY = {
@@ -178,27 +306,72 @@ export const FIELD_OPERATIONS_SETTINGS_COPY = {
 
 export const WFM_SETTINGS_COPY = {
   loadError: 'No fue posible cargar la configuración de horarios.',
-  companyWeekSaved: 'Los horarios fueron guardados correctamente.',
-  blackoutsSaved: 'Los festivos y cierres especiales ya fueron actualizados.',
-  blackoutsDeleted: 'La lista de festivos y cierres especiales fue actualizada.',
-  headerEyebrow: 'Programación de visitas',
-  headerDescription:
-    'Administra los horarios de trabajo y los cierres especiales para la programación de visitas.',
+  companyWeekSaved: 'El horario de visitas fue actualizado correctamente.',
+  blackoutsSaved: 'Los cierres que bloquean visitas ya fueron actualizados.',
+  blackoutsDeleted: 'La lista de cierres que bloquean visitas fue actualizada.',
+  contextTitle: 'Este bloque solo afecta visitas programadas',
+  contextDescription:
+    'Los cambios que hagas aquí aplican a la agenda de visitas técnicas. El horario base de la empresa se sigue gestionando en los pasos anteriores.',
   readOnlyDescription: 'Tu rol puede consultar estos horarios, pero no modificarlos.',
-  companyWeekTitle: 'Horario de atención para visitas',
+  companyWeekEyebrow: 'Semana operativa',
+  companyWeekTitle: 'Horario operativo para visitas',
   companyWeekDescription: 'Define los días y horas disponibles para programar visitas.',
   companyWeekHint: 'Los días desmarcados no tendrán citas disponibles.',
   companyWeekSaveAction: 'Guardar horarios',
-  blackoutsTitle: 'Festivos y días sin disponibilidad',
+  blackoutsEyebrow: 'Cierres y bloqueos',
+  blackoutsTitle: 'Cierres que bloquean visitas',
   blackoutsDescription:
     'Bloquea fechas para toda la empresa o para una sede cuando no deba haber citas disponibles.',
   blackoutsEmptyDescription:
     'Registra festivos, cierres por sede o mantenimientos cuando corresponda.',
+  blackoutsFormTitle: 'Registrar un cierre para visitas',
+  blackoutsShowFormAction: 'Registrar cierre',
+  blackoutsHideFormAction: 'Cancelar registro',
+  blackoutsFormHelper:
+    'Usa este registro solo cuando necesites bloquear visitas por una fecha puntual o recurrente.',
+  blackoutsSitesUnavailableTitle: 'Sedes de visitas no disponibles',
+  blackoutsSitesUnavailableDescription:
+    'No pudimos cargar las sedes de visitas. Revisa la lista actual, pero espera a que esta vista se actualice antes de registrar o editar cierres por sede.',
+  blackoutsUnavailableSiteLabel: 'Sede no disponible en esta carga',
   recurringBadge: 'Cada año',
   oneTimeBadge: 'Una vez',
   blackoutFormDescription: 'En estas fechas no habrá citas disponibles para reservar.',
+  blackoutDeleteConfirm: (name: string) => `¿Eliminar el cierre ${name}?`,
+  blackoutInactiveBadge: 'Inactivo',
   recurringCheckbox: 'Cada año',
 } as const;
+
+interface CalendarOperationalStatusInput {
+  openDaysCount: number;
+  activeSitesCount: number;
+  exceptionCount: number;
+}
+
+function formatCalendarCount(value: number, singular: string, plural: string): string {
+  return `${value} ${value === 1 ? singular : plural}`;
+}
+
+export function getCalendarOperationalStatusSummary({
+  openDaysCount,
+  activeSitesCount,
+  exceptionCount,
+}: CalendarOperationalStatusInput): string {
+  return [
+    formatCalendarCount(
+      openDaysCount,
+      'día abierto en horario base',
+      'días abiertos en horario base',
+    ),
+    formatCalendarCount(activeSitesCount, 'sede activa', 'sedes activas'),
+    formatCalendarCount(
+      exceptionCount,
+      'cierre por fecha registrado',
+      'cierres por fecha registrados',
+    ),
+  ]
+    .join(', ')
+    .replace(/, ([^,]*)$/, ' y $1.');
+}
 
 export function getOrganizationSiteTypeLabel(value: OrganizationSiteType): string {
   return ORGANIZATION_SITE_TYPE_LABELS[value] ?? value;

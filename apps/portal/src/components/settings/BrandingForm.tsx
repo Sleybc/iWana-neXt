@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
+  AlertTriangle,
   Camera,
   CheckCircle2,
   CircleAlert,
@@ -14,7 +15,17 @@ import {
   Save,
   Trash2,
 } from 'lucide-react';
-import { Button, Input } from '@iwana/ui';
+import {
+  Button,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  SectionAccordion,
+} from '@iwana/ui';
 import {
   tenantSelfApi,
   type BrandingThemeVariant,
@@ -292,12 +303,25 @@ function resolveSourceLabel(profile: TenantSelf, variant: BrandingVariantConfig)
   return 'Sin configurar';
 }
 
+function resolveUsageLabel(usage: BrandingUsage): string {
+  return BRANDING_GROUPS.find((group) => group.usage === usage)?.title.toLowerCase() ?? 'activo';
+}
+
+function resolveThemeLabel(themeVariant: BrandingThemeVariant): string {
+  return themeVariant === 'light' ? 'variante clara' : 'variante oscura';
+}
+
 export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps) {
   const [serverError, setServerError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [uploadingSlot, setUploadingSlot] = useState<string | null>(null);
   const [clearingSlot, setClearingSlot] = useState<string | null>(null);
   const [isResettingBase, setIsResettingBase] = useState(false);
+  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
+  const [liveMessage, setLiveMessage] = useState('');
+  const [identityAccordionOpenIds, setIdentityAccordionOpenIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const {
     register,
@@ -349,6 +373,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
     emitBrandingUpdated(updated);
     setServerError(null);
     setSuccess(successMessage);
+    setLiveMessage(successMessage);
   };
 
   const onSubmit = async (values: BrandingFormValues) => {
@@ -408,14 +433,17 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
 
     if (Object.keys(payload).length === 0) {
       setSuccess('No hay cambios pendientes por guardar.');
+      setLiveMessage('No hay cambios pendientes por guardar.');
       return;
     }
 
     try {
       const updated = await tenantSelfApi.updateBranding(payload);
-      applyUpdatedProfile(updated, 'Branding empresarial actualizado correctamente.');
+      applyUpdatedProfile(updated, 'La marca se actualizó correctamente.');
     } catch {
-      setServerError('No fue posible guardar el branding. Intenta de nuevo.');
+      const errorMessage = 'No fue posible guardar la marca. Intenta de nuevo.';
+      setServerError(errorMessage);
+      setLiveMessage(errorMessage);
     }
   };
 
@@ -431,10 +459,12 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
     const slotKey = `${usage}-${themeVariant}`;
     setServerError(null);
     setSuccess(null);
+    setLiveMessage(`Subiendo ${resolveUsageLabel(usage)} en ${resolveThemeLabel(themeVariant)}.`);
 
     const validationError = await validateBrandingFileForUpload(file, usage);
     if (validationError) {
       setServerError(validationError);
+      setLiveMessage(validationError);
       return;
     }
 
@@ -443,11 +473,12 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
     try {
       await tenantSelfApi.uploadBrandingAsset({ usage, themeVariant, file });
       const updated = await tenantSelfApi.getProfile();
-      applyUpdatedProfile(updated, 'Activo subido y asignado correctamente.');
+      applyUpdatedProfile(updated, 'El activo se subió y asignó correctamente.');
     } catch {
-      setServerError(
-        'No fue posible subir el activo. Verifica las reglas del slot y vuelve a intentar.',
-      );
+      const errorMessage =
+        'No fue posible subir el activo. Revisa los requisitos del archivo y vuelve a intentar.';
+      setServerError(errorMessage);
+      setLiveMessage(errorMessage);
     } finally {
       setUploadingSlot(null);
     }
@@ -464,9 +495,11 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
         [variant.urlField]: null,
         [variant.assetField]: null,
       } as UpdateTenantSelfBrandingDto);
-      applyUpdatedProfile(updated, `${variant.label} eliminada del branding.`);
+      applyUpdatedProfile(updated, `Se eliminó la imagen de ${variant.label.toLowerCase()}.`);
     } catch {
-      setServerError('No fue posible limpiar este slot de branding.');
+      const errorMessage = 'No fue posible limpiar este activo de marca.';
+      setServerError(errorMessage);
+      setLiveMessage(errorMessage);
     } finally {
       setClearingSlot(null);
     }
@@ -502,9 +535,12 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
 
     try {
       const updated = await tenantSelfApi.updateBranding(basePayload);
-      applyUpdatedProfile(updated, 'Branding base restaurado correctamente.');
+      applyUpdatedProfile(updated, 'La marca base se restauró correctamente.');
+      setRestoreDialogOpen(false);
     } catch {
-      setServerError('No fue posible restaurar el branding base.');
+      const errorMessage = 'No fue posible restaurar la marca base.';
+      setServerError(errorMessage);
+      setLiveMessage(errorMessage);
     } finally {
       setIsResettingBase(false);
     }
@@ -512,6 +548,10 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
 
   return (
     <div className="space-y-6">
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {liveMessage}
+      </div>
+
       {serverError && (
         <PortalAlert
           variant="error"
@@ -539,10 +579,9 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="softDestructive"
                   size="sm"
-                  onClick={() => void handleRestoreBaseBranding()}
-                  loading={isResettingBase}
+                  onClick={() => setRestoreDialogOpen(true)}
                   disabled={!canEdit || isSubmitting || isResettingBase}
                 >
                   <RotateCcw className="h-4 w-4" aria-hidden="true" />
@@ -550,12 +589,13 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                 </Button>
                 <Button
                   type="submit"
+                  variant="secondary"
                   size="sm"
                   loading={isSubmitting}
                   disabled={isSubmitting || !isDirty}
                 >
                   <Save className="h-4 w-4" aria-hidden="true" />
-                  Guardar identidad visual
+                  Guardar marca
                 </Button>
               </div>
             ) : null
@@ -568,119 +608,162 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                   Activos visuales
                 </h3>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Sube un activo o pega una URL HTTPS por slot cuando lo necesites.
+                  Organiza cada activo por tipo y define su variante clara u oscura desde una sola
+                  vista.
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                {BRANDING_GROUPS.flatMap((group) =>
-                  group.variants.map((variant) => {
-                    const slotKey = `${group.usage}-${variant.themeVariant}`;
-                    const fieldError = errors[variant.urlField];
-                    const previewUrl =
-                      watchedValues[variant.urlField]?.trim() ||
-                      profile[variant.resolvedUrlField] ||
-                      '';
-                    const isSlotUploading = uploadingSlot === slotKey;
-                    const isSlotClearing = clearingSlot === `${variant.urlField}-clear`;
-                    const hasConfiguredValue = Boolean(
-                      previewUrl ||
-                      profile[variant.assetField] ||
-                      profile[variant.resolvedUrlField],
-                    );
-                    const assetDirectory =
-                      previewUrl.substring(0, previewUrl.lastIndexOf('/') + 1) || '/';
-
-                    return (
-                      <div
-                        key={slotKey}
-                        className="space-y-3 rounded-lg border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-border dark:bg-dark-surface-3"
-                      >
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                            {group.title} - {variant.label}
-                          </p>
-                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                            Fuente actual: {resolveSourceLabel(profile, variant)}
-                          </p>
-                        </div>
-
-                        <label
-                          htmlFor={`${slotKey}-file`}
-                          className="group relative block cursor-pointer overflow-hidden rounded-lg border-2 border-dashed border-gray-200 bg-white transition-colors hover:border-iwana-primary/40 dark:border-dark-border dark:bg-dark-surface-2"
+              <div
+                data-testid="branding-assets-grid"
+                className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4"
+              >
+                {BRANDING_GROUPS.map((group) => (
+                  <section
+                    key={group.usage}
+                    className="flex h-full flex-col gap-4 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3"
+                  >
+                    <div className="space-y-2">
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
+                          {group.title}
+                        </h4>
+                        <p
+                          id={`${group.usage}-description`}
+                          className="mt-1 text-sm text-gray-600 dark:text-gray-300"
                         >
-                          {previewUrl ? (
-                            <div className={group.widePreview ? 'h-32 p-2' : 'h-32 p-4'}>
-                              <img
-                                src={previewUrl}
-                                alt={`${group.title} ${variant.label}`}
-                                className="h-full w-full object-contain"
-                              />
-                            </div>
-                          ) : (
-                            <div className="flex h-32 flex-col items-center justify-center gap-2 text-gray-400">
-                              <ImageUp className="h-8 w-8" aria-hidden="true" />
-                              <span className="text-xs">Subir imagen</span>
-                            </div>
-                          )}
-
-                          {canEdit && (
-                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-lg bg-black/45 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                              <Camera className="h-5 w-5 text-white" aria-hidden="true" />
-                              <span className="text-xs font-medium text-white">
-                                {previewUrl ? 'Cambiar imagen' : 'Seleccionar archivo'}
-                              </span>
-                            </div>
-                          )}
-
-                          {isSlotUploading && (
-                            <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-white/80 text-sm text-gray-500 dark:bg-dark-surface-2/80 dark:text-gray-300">
-                              Subiendo...
-                            </div>
-                          )}
-                        </label>
-
-                        <input
-                          id={`${slotKey}-file`}
-                          type="file"
-                          accept={BRANDING_SLOT_RULES[group.usage].allowedMimes.join(',')}
-                          disabled={!canEdit || isSubmitting || isSlotUploading || isSlotClearing}
-                          className="sr-only"
-                          onChange={(event) => {
-                            const selectedFile = event.target.files?.[0];
-                            void handleUpload(group.usage, variant.themeVariant, selectedFile);
-                            event.currentTarget.value = '';
-                          }}
-                        />
-
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
                           {group.description}
                         </p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          Reglas: {BRANDING_SLOT_RULES[group.usage].helpText}
-                        </p>
+                      </div>
 
-                        {previewUrl ? (
-                          <a
-                            href={assetDirectory}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1.5 overflow-hidden rounded-md border border-gray-100 bg-white px-3 py-2 text-xs text-gray-500 transition-colors hover:text-iwana-primary dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-400 dark:hover:text-iwana-primary"
-                            title={`Abrir directorio: ${assetDirectory}`}
+                      <div
+                        id={`${group.usage}-guidance`}
+                        className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-300"
+                      >
+                        <span className="font-medium text-gray-900 dark:text-white">
+                          Requisitos recomendados:
+                        </span>{' '}
+                        {group.guidance}
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      {group.variants.map((variant) => {
+                        const slotKey = `${group.usage}-${variant.themeVariant}`;
+                        const fieldError = errors[variant.urlField];
+                        const previewUrl =
+                          watchedValues[variant.urlField]?.trim() ||
+                          profile[variant.resolvedUrlField] ||
+                          '';
+                        const isSlotUploading = uploadingSlot === slotKey;
+                        const isSlotClearing = clearingSlot === `${variant.urlField}-clear`;
+                        const hasConfiguredValue = Boolean(
+                          previewUrl ||
+                          profile[variant.assetField] ||
+                          profile[variant.resolvedUrlField],
+                        );
+                        const assetDirectory =
+                          previewUrl.substring(0, previewUrl.lastIndexOf('/') + 1) || '/';
+                        const slotSourceId = `${slotKey}-source`;
+                        const slotStatusId = `${slotKey}-status`;
+                        const slotGuidanceId = `${group.usage}-guidance`;
+                        const slotDescriptionId = `${group.usage}-description`;
+
+                        return (
+                          <div
+                            key={slotKey}
+                            aria-busy={isSlotUploading}
+                            className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2"
                           >
-                            <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                            <span className="min-w-0 truncate font-mono">{assetDirectory}</span>
-                          </a>
-                        ) : null}
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                                {variant.label}
+                              </p>
+                              <p
+                                id={slotSourceId}
+                                className="mt-1 text-xs text-gray-600 dark:text-gray-300"
+                              >
+                                Fuente actual: {resolveSourceLabel(profile, variant)}
+                              </p>
+                              <p id={slotStatusId} className="sr-only">
+                                {isSlotUploading
+                                  ? `Subiendo ${group.title.toLowerCase()} en ${variant.label.toLowerCase()}.`
+                                  : `Estado actual: ${resolveSourceLabel(profile, variant)}.`}
+                              </p>
+                            </div>
 
-                        <details className="text-sm">
-                          <summary className="cursor-pointer select-none text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">
-                            o pega una URL HTTPS directamente
-                          </summary>
-                          <div className="mt-2">
+                            <label
+                              htmlFor={`${slotKey}-file`}
+                              className="group relative block cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed border-gray-200 bg-white transition-colors hover:border-iwana-primary/40 dark:border-dark-border dark:bg-dark-surface-3"
+                            >
+                              {previewUrl ? (
+                                <div className={group.widePreview ? 'h-32 p-2' : 'h-32 p-4'}>
+                                  <img
+                                    src={previewUrl}
+                                    alt={`${group.title} ${variant.label}`}
+                                    className="h-full w-full object-contain"
+                                  />
+                                </div>
+                              ) : (
+                                <div className="flex h-32 flex-col items-center justify-center gap-2 text-gray-400">
+                                  <ImageUp className="h-8 w-8" aria-hidden="true" />
+                                  <span className="text-xs">Subir imagen</span>
+                                </div>
+                              )}
+
+                              {canEdit && (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-lg bg-black/45 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                                  <Camera className="h-5 w-5 text-white" aria-hidden="true" />
+                                  <span className="text-xs font-medium text-white">
+                                    {previewUrl ? 'Cambiar imagen' : 'Seleccionar archivo'}
+                                  </span>
+                                </div>
+                              )}
+
+                              {isSlotUploading && (
+                                <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-white/80 text-sm text-gray-500 dark:bg-dark-surface-2/80 dark:text-gray-300">
+                                  Subiendo...
+                                </div>
+                              )}
+                            </label>
+
+                            <input
+                              id={`${slotKey}-file`}
+                              type="file"
+                              accept={BRANDING_SLOT_RULES[group.usage].allowedMimes.join(',')}
+                              disabled={
+                                !canEdit || isSubmitting || isSlotUploading || isSlotClearing
+                              }
+                              className="sr-only"
+                              aria-label={`Subir archivo para ${group.title}, ${variant.label.toLowerCase()}`}
+                              aria-describedby={`${slotDescriptionId} ${slotGuidanceId} ${slotSourceId} ${slotStatusId}`}
+                              onChange={(event) => {
+                                const selectedFile = event.target.files?.[0];
+                                void handleUpload(group.usage, variant.themeVariant, selectedFile);
+                                event.currentTarget.value = '';
+                              }}
+                            />
+
+                            <p className="text-sm text-gray-600 dark:text-gray-300">
+                              Sube un archivo o usa una URL HTTPS para esta variante.
+                            </p>
+
+                            {previewUrl ? (
+                              <a
+                                href={assetDirectory}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label={`Abrir directorio del recurso para ${group.title}, ${variant.label.toLowerCase()}`}
+                                className="flex items-center gap-1.5 overflow-hidden rounded-md border border-gray-100 bg-white px-3 py-2 text-xs text-gray-500 transition-colors hover:text-iwana-primary dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-400 dark:hover:text-iwana-primary"
+                                title={`Abrir directorio: ${assetDirectory}`}
+                              >
+                                <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                                <span className="min-w-0 truncate font-mono">{assetDirectory}</span>
+                              </a>
+                            ) : null}
+
                             <Input
                               id={variant.urlField}
-                              label="URL HTTPS externa"
+                              label={`URL HTTPS para ${group.title.toLowerCase()} · ${variant.label.toLowerCase()}`}
                               placeholder={variant.placeholder}
                               disabled={!canEdit || isSubmitting || isSlotUploading}
                               error={
@@ -688,66 +771,74 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                                   ? fieldError.message
                                   : undefined
                               }
-                              helperText="Déjalo vacío para mantener el asset actual. Guarda cambios para aplicar URLs externas."
+                              helperText="Déjalo vacío para conservar la fuente actual. Guarda la marca para aplicar URLs externas."
+                              aria-describedby={`${variant.urlField}-helper ${slotDescriptionId} ${slotGuidanceId}`}
                               {...register(variant.urlField)}
                             />
-                          </div>
-                        </details>
 
-                        <div className="flex justify-end">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => void handleClearSlot(variant)}
-                            disabled={
-                              !canEdit || !hasConfiguredValue || isSlotClearing || isSubmitting
-                            }
-                            loading={isSlotClearing}
-                          >
-                            <Trash2 className="h-4 w-4" aria-hidden="true" />
-                            Eliminar imagen
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  }),
-                )}
+                            <div className="flex justify-end">
+                              <Button
+                                type="button"
+                                variant="softDestructive"
+                                size="sm"
+                                onClick={() => void handleClearSlot(variant)}
+                                disabled={
+                                  !canEdit || !hasConfiguredValue || isSlotClearing || isSubmitting
+                                }
+                                loading={isSlotClearing}
+                              >
+                                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                                Limpiar variante
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
               </div>
             </section>
 
-            <section className="space-y-4 rounded-lg border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-border dark:bg-dark-surface-3">
+            <section className="space-y-4 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                  Preview del menú lateral y favicon
+                  Vista previa de navegación y pestaña
                 </h3>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  El portal refleja sello y favicon en caliente cuando guardas o subes un activo.
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                  Revisa cómo se verá la marca en el menú lateral y en la pestaña del navegador.
                 </p>
               </div>
 
-              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                <div className="space-y-3">
-                  <div className="flex w-fit items-center gap-3 rounded-lg bg-iwana-primary px-3 py-2">
-                    <TenantSeal
-                      sealLightUrl={watchedValues.sealLightUrl?.trim() || profile.sealLightUrl}
-                      sealDarkUrl={watchedValues.sealDarkUrl?.trim() || profile.sealDarkUrl}
-                      name={profile.name}
-                      size="sm"
-                    />
-                    {watchedShowTenantName && (
-                      <span className="max-w-[180px] truncate text-sm font-bold text-white">
-                        {profile.name}
-                      </span>
-                    )}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="flex h-full flex-col rounded-2xl border border-gray-200 bg-white px-4 py-4 dark:border-dark-border dark:bg-dark-surface-2">
+                  <p className="mb-3 text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Vista previa de navegación
+                  </p>
+                  <div className="flex min-h-[88px] flex-1 items-center rounded-2xl border border-gray-200 bg-iwana-surface-soft px-3 py-3 dark:border-dark-border dark:bg-dark-surface-3">
+                    <div className="flex min-h-12 w-fit items-center gap-3 rounded-2xl bg-iwana-primary px-3 py-2">
+                      <TenantSeal
+                        sealLightUrl={watchedValues.sealLightUrl?.trim() || profile.sealLightUrl}
+                        sealDarkUrl={watchedValues.sealDarkUrl?.trim() || profile.sealDarkUrl}
+                        name={identityPreview.productName}
+                        size="sm"
+                      />
+                      {watchedShowTenantName && (
+                        <span className="max-w-[180px] truncate text-sm font-bold text-white">
+                          {identityPreview.productName}
+                        </span>
+                      )}
+                    </div>
                   </div>
+                </div>
 
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
-                    <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                      Vista previa de pestaña
-                    </p>
-                    <div className="flex items-center gap-2 rounded-md bg-white px-2 py-1.5 dark:bg-dark-surface-4">
-                      <div className="h-5 w-5 overflow-hidden rounded-sm bg-white dark:bg-dark-surface-3">
+                <div className="flex h-full flex-col rounded-2xl border border-gray-200 bg-white px-4 py-4 dark:border-dark-border dark:bg-dark-surface-2">
+                  <p className="mb-3 text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Vista previa de pestaña
+                  </p>
+                  <div className="flex min-h-[88px] flex-1 items-center rounded-2xl border border-gray-200 bg-iwana-surface-soft px-3 py-3 dark:border-dark-border dark:bg-dark-surface-3">
+                    <div className="flex min-h-12 items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 dark:border-dark-border dark:bg-dark-surface-2">
+                      <div className="h-8 w-8 overflow-hidden rounded-md bg-white dark:bg-dark-surface-2">
                         {watchedValues.faviconLightUrl?.trim() || profile.faviconLightUrl ? (
                           <img
                             src={
@@ -762,20 +853,23 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                               watchedValues.sealLightUrl?.trim() || profile.sealLightUrl
                             }
                             sealDarkUrl={watchedValues.sealDarkUrl?.trim() || profile.sealDarkUrl}
-                            name={profile.name}
+                            name={identityPreview.productName}
                             size="sm"
                           />
                         )}
                       </div>
-                      <span className="max-w-[180px] truncate text-xs font-medium text-gray-700 dark:text-gray-200">
-                        Portal de {profile.name}
+                      <span
+                        className="max-w-[180px] truncate text-sm font-medium text-gray-700 dark:text-gray-200"
+                        title={identityPreview.metadataTitle}
+                      >
+                        {identityPreview.metadataTitle}
                       </span>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-gray-100 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2">
+              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2">
                 <input
                   type="checkbox"
                   disabled={!canEdit}
@@ -794,100 +888,158 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
               </label>
             </section>
 
-            <section className="space-y-4 rounded-lg border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-border dark:bg-dark-surface-3">
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                  Nombres e identidad
-                </h3>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Definen cómo aparece tu empresa en el navegador y en la comunicación pública del
-                  portal.
-                </p>
-              </div>
+            <SectionAccordion
+              variant="card"
+              openIds={identityAccordionOpenIds}
+              onOpenIdsChange={(ids) => setIdentityAccordionOpenIds(new Set(ids))}
+              items={[
+                {
+                  id: 'identity-metadata',
+                  label: 'Nombres e identidad',
+                  description:
+                    'Definen cómo aparece tu empresa en el navegador y en la comunicación pública del portal.',
+                  children: (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <Input
+                          label="Producto"
+                          placeholder="Ej: ISP Demo"
+                          disabled={!canEdit || isSubmitting}
+                          error={
+                            typeof errors.brandingProductName?.message === 'string'
+                              ? errors.brandingProductName.message
+                              : undefined
+                          }
+                          helperText="Nombre visible del tenant en el login público."
+                          {...register('brandingProductName')}
+                        />
+                        <Input
+                          label="Superficie"
+                          placeholder="Ej: Portal empresarial"
+                          disabled={!canEdit || isSubmitting}
+                          error={
+                            typeof errors.brandingSurfaceName?.message === 'string'
+                              ? errors.brandingSurfaceName.message
+                              : undefined
+                          }
+                          helperText="Nombre de la superficie pública del acceso."
+                          {...register('brandingSurfaceName')}
+                        />
+                        <Input
+                          label="Título público"
+                          placeholder="Ej: ISP Demo — Portal empresarial"
+                          disabled={!canEdit || isSubmitting}
+                          error={
+                            typeof errors.brandingMetadataTitle?.message === 'string'
+                              ? errors.brandingMetadataTitle.message
+                              : undefined
+                          }
+                          helperText="Se usa como título en login y pestaña del navegador."
+                          {...register('brandingMetadataTitle')}
+                        />
+                        <Input
+                          label="Descripción pública"
+                          placeholder="Ej: Portal empresarial para la operación de ISP Demo en iWana neXt."
+                          disabled={!canEdit || isSubmitting}
+                          error={
+                            typeof errors.brandingMetadataDescription?.message === 'string'
+                              ? errors.brandingMetadataDescription.message
+                              : undefined
+                          }
+                          helperText="Narrativa pública usada en el login del portal."
+                          {...register('brandingMetadataDescription')}
+                        />
+                      </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <Input
-                  label="Producto"
-                  placeholder="Ej: ISP Demo"
-                  disabled={!canEdit || isSubmitting}
-                  error={
-                    typeof errors.brandingProductName?.message === 'string'
-                      ? errors.brandingProductName.message
-                      : undefined
-                  }
-                  helperText="Nombre visible del tenant en el login público."
-                  {...register('brandingProductName')}
-                />
-                <Input
-                  label="Superficie"
-                  placeholder="Ej: Portal empresarial"
-                  disabled={!canEdit || isSubmitting}
-                  error={
-                    typeof errors.brandingSurfaceName?.message === 'string'
-                      ? errors.brandingSurfaceName.message
-                      : undefined
-                  }
-                  helperText="Nombre de la superficie pública del acceso."
-                  {...register('brandingSurfaceName')}
-                />
-                <Input
-                  label="Título público"
-                  placeholder="Ej: ISP Demo — Portal empresarial"
-                  disabled={!canEdit || isSubmitting}
-                  error={
-                    typeof errors.brandingMetadataTitle?.message === 'string'
-                      ? errors.brandingMetadataTitle.message
-                      : undefined
-                  }
-                  helperText="Se usa como título en login y pestaña del navegador."
-                  {...register('brandingMetadataTitle')}
-                />
-                <Input
-                  label="Descripción pública"
-                  placeholder="Ej: Portal empresarial para la operación de ISP Demo en iWana neXt."
-                  disabled={!canEdit || isSubmitting}
-                  error={
-                    typeof errors.brandingMetadataDescription?.message === 'string'
-                      ? errors.brandingMetadataDescription.message
-                      : undefined
-                  }
-                  helperText="Narrativa pública usada en el login del portal."
-                  {...register('brandingMetadataDescription')}
-                />
-              </div>
-
-              <dl className="grid grid-cols-1 gap-3 rounded-lg border border-gray-100 bg-white p-4 text-sm dark:border-dark-border dark:bg-dark-surface-2 md:grid-cols-2">
-                <div>
-                  <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">Producto</dt>
-                  <dd className="mt-1 font-semibold text-gray-900 dark:text-white">
-                    {identityPreview.productName}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">Superficie</dt>
-                  <dd className="mt-1 font-semibold text-gray-900 dark:text-white">
-                    {identityPreview.surfaceName}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">
-                    Título en navegador
-                  </dt>
-                  <dd className="mt-1 font-medium text-gray-900 dark:text-white">
-                    {identityPreview.metadataTitle}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">Descripción</dt>
-                  <dd className="mt-1 text-gray-600 dark:text-gray-300">
-                    {identityPreview.metadataDescription}
-                  </dd>
-                </div>
-              </dl>
-            </section>
+                      <dl className="grid grid-cols-1 gap-3 rounded-2xl border border-gray-200 bg-white p-4 text-sm dark:border-dark-border dark:bg-dark-surface-2 md:grid-cols-2">
+                        <div>
+                          <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">
+                            Producto
+                          </dt>
+                          <dd className="mt-1 font-semibold text-gray-900 dark:text-white">
+                            {identityPreview.productName}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">
+                            Superficie
+                          </dt>
+                          <dd className="mt-1 font-semibold text-gray-900 dark:text-white">
+                            {identityPreview.surfaceName}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">
+                            Título en navegador
+                          </dt>
+                          <dd className="mt-1 font-medium text-gray-900 dark:text-white">
+                            {identityPreview.metadataTitle}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs uppercase tracking-[0.12em] text-gray-400">
+                            Descripción
+                          </dt>
+                          <dd className="mt-1 text-gray-600 dark:text-gray-300">
+                            {identityPreview.metadataDescription}
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
+                  ),
+                },
+              ]}
+            />
           </div>
         </SettingsSectionPanel>
       </form>
+
+      <Dialog open={restoreDialogOpen} onOpenChange={setRestoreDialogOpen}>
+        <DialogContent className="sm:max-w-lg" aria-labelledby="branding-restore-title">
+          <DialogHeader>
+            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300">
+              <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <DialogTitle id="branding-restore-title">Restaurar marca base</DialogTitle>
+            <DialogDescription>
+              Esta acción eliminará logos, sellos, favicons, fondos y metadata pública para volver a
+              la identidad base del portal.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-red-200 bg-red-50/80 p-4 text-sm text-red-900 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-100">
+              Confirma solo si deseas limpiar toda la configuración de marca de esta empresa.
+            </div>
+
+            {serverError && isResettingBase === false ? (
+              <PortalAlert
+                variant="error"
+                title="No fue posible restaurar la marca"
+                description={serverError}
+                icon={CircleAlert}
+              />
+            ) : null}
+
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <DialogClose asChild>
+                <Button type="button" variant="secondary" disabled={isResettingBase}>
+                  Cancelar
+                </Button>
+              </DialogClose>
+              <Button
+                type="button"
+                variant="softDestructive"
+                loading={isResettingBase}
+                disabled={isResettingBase}
+                onClick={() => void handleRestoreBaseBranding()}
+              >
+                Restaurar base
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

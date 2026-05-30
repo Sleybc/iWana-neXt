@@ -36,6 +36,6 @@ describe('portal-ui', () => {
       />,
     );
 
-    expect(container.firstChild).toHaveClass('bg-iwana-secondary-50');
+    expect(container.firstChild).toHaveClass('bg-iwana-surface-soft');
   });
 });

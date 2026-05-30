@@ -59,14 +59,27 @@ const MOCK_SITES = [
   {
     id: 'site-001',
     name: 'Sede Norte',
-    address: 'Calle 10 # 1-20',
-    city: 'Bogotá',
-    department: 'Cundinamarca',
-    countryCode: 'CO',
+    code: 'NORTE',
+    capabilities: [],
     isActive: true,
-    useCompanyHours: true,
   },
 ];
+
+const MOCK_SITE_DETAIL = {
+  id: 'site-001',
+  name: 'Sede Norte',
+  code: 'NORTE',
+  capabilities: [],
+  isActive: true,
+  siteType: 'OFFICE',
+  address: 'Calle 10 # 1-20',
+  municipality: null,
+  department: null,
+  isPrimary: true,
+  businessHours: MOCK_COMPANY_HOURS,
+  businessHoursResolved: MOCK_COMPANY_HOURS,
+  businessHoursMode: 'BASE',
+};
 
 const MOCK_EXCEPTIONS = [
   {
@@ -80,13 +93,6 @@ const MOCK_EXCEPTIONS = [
     organizationSiteId: null,
   },
 ];
-
-const MOCK_OPERATING_HOURS = {
-  startTime: '07:00',
-  endTime: '17:00',
-  timezone: 'America/Bogota',
-  days: MOCK_COMPANY_HOURS,
-};
 
 const MOCK_EVENTUALITIES = [
   {
@@ -135,6 +141,73 @@ async function setAdminSession(page: Page) {
     },
     { token: buildAccessToken(), slug: MOCK_TENANT_SLUG },
   );
+}
+
+function parseInputDate(value: string): Date | null {
+  const [yearPart, monthPart, dayPart] = value.split('-');
+  if (!yearPart || !monthPart || !dayPart) {
+    return null;
+  }
+
+  const year = Number(yearPart);
+  const month = Number(monthPart);
+  const day = Number(dayPart);
+
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+    return null;
+  }
+
+  const parsed = new Date(year, month - 1, day);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function selectDateFromPicker(
+  page: Page,
+  scope: import('@playwright/test').Locator,
+  triggerId: string,
+  value: string,
+) {
+  const targetDate = parseInputDate(value);
+  if (!targetDate) {
+    throw new Error(`Fecha inválida para DatePicker: ${value}`);
+  }
+
+  const trigger = scope.locator(`#${triggerId}`).first();
+  await expect(trigger).toBeVisible();
+  await trigger.click();
+
+  const popover = page.locator('[data-state="open"][data-side]').last();
+  await expect(popover).toBeVisible();
+
+  const today = new Date();
+  const monthDelta =
+    (targetDate.getFullYear() - today.getFullYear()) * 12 +
+    (targetDate.getMonth() - today.getMonth());
+
+  if (monthDelta > 0) {
+    for (let index = 0; index < monthDelta; index += 1) {
+      await popover.getByRole('button', { name: /siguiente|next/i }).click();
+    }
+  }
+
+  if (monthDelta < 0) {
+    for (let index = 0; index < Math.abs(monthDelta); index += 1) {
+      await popover.getByRole('button', { name: /anterior|previous/i }).click();
+    }
+  }
+
+  const targetLabel = targetDate.toLocaleDateString('es-CO', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
+  const escapedLabel = escapeRegExp(targetLabel);
+  await popover.getByRole('button', { name: new RegExp(`\\b${escapedLabel}\\b`, 'i') }).click();
 }
 
 async function setupCalendarMocks(page: Page) {
@@ -221,6 +294,23 @@ async function setupCalendarMocks(page: Page) {
   });
 
   await page.route('**/api/v1/access-control/users/*/effective-permissions', async (route) => {
+    await assertTenantHeader(route);
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          userId: MOCK_USER_ID,
+          role: 'ADMIN',
+          effectivePermissions: ['settings.read'],
+          recoveryPermissions: [],
+          profileSources: [],
+        },
+      }),
+    });
+  });
+
+  await page.route('**/api/v1/access-control/me/effective-permissions', async (route) => {
     await assertTenantHeader(route);
     await route.fulfill({
       status: 200,
@@ -374,6 +464,15 @@ async function setupCalendarMocks(page: Page) {
     });
   });
 
+  await page.route('**/api/v1/organization/sites/*', async (route) => {
+    await assertTenantHeader(route);
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: MOCK_SITE_DETAIL }),
+    });
+  });
+
   await page.route('**/api/v1/organization/sites/*/business-hours', async (route) => {
     await assertTenantHeader(route);
     await route.fulfill({
@@ -454,12 +553,12 @@ async function setupCalendarMocks(page: Page) {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(MOCK_OPERATING_HOURS),
+      body: JSON.stringify([]),
     });
   });
 
   // Usuarios para selector de eventualidades
-  await page.route('**/api/v1/users?*', async (route) => {
+  await page.route('**/api/v1/users*', async (route) => {
     await assertTenantHeader(route);
     await route.fulfill({
       status: 200,
@@ -567,20 +666,131 @@ test.describe('portal-settings-calendar', () => {
     await expect(page).toHaveURL(/\/dashboard\/settings\/calendar/, { timeout: 10_000 });
   });
 
-  test('ADMIN ve los paneles principales en /dashboard/settings/calendar', async ({ page }) => {
+  test('ADMIN ve la grilla compacta con Paso 3 bajo Paso 1 y Paso 4 bajo Paso 2', async ({
+    page,
+  }) => {
     await setAdminSession(page);
     await setupCalendarMocks(page);
 
     await page.goto('/dashboard/settings/calendar');
 
-    // Título de la página
     await expect(page.getByRole('heading', { name: /calendario operativo/i })).toBeVisible({
       timeout: 10_000,
     });
 
-    // Paneles principales visibles
-    await expect(page.getByText('Horario base empresa')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText('Eventualidades operativas')).toBeVisible({ timeout: 10_000 });
+    const statusBlock = page.getByTestId('calendar-operational-status');
+    const shellGrid = page.getByTestId('calendar-shell-grid');
+    const primaryGroup = page.getByTestId('calendar-shell-primary');
+    const secondaryGroup = page.getByTestId('calendar-shell-secondary');
+    const primaryPanels = primaryGroup.locator(':scope > section');
+    const secondaryPanels = secondaryGroup.locator(':scope > section');
+    const organizationHeading = primaryGroup.getByRole('heading', {
+      name: 'Horario base de la empresa',
+    });
+    const exceptionsHeading = primaryGroup.getByRole('heading', {
+      name: 'Cierres por fecha y aperturas especiales',
+    });
+    const siteHeading = secondaryGroup.getByRole('heading', { name: 'Horarios por sede' });
+    const eventualitiesHeading = secondaryGroup.getByRole('heading', {
+      name: 'Cambios puntuales de disponibilidad',
+    });
+
+    await expect(statusBlock).toBeVisible({ timeout: 10_000 });
+    await expect(shellGrid).toBeVisible({ timeout: 10_000 });
+    await expect(organizationHeading).toBeVisible();
+    await expect(exceptionsHeading).toBeVisible();
+    await expect(siteHeading).toBeVisible();
+    await expect(
+      primaryGroup.getByRole('heading', { name: 'Programación de visitas' }),
+    ).toHaveCount(0);
+    await expect(eventualitiesHeading).toBeVisible();
+
+    const shellBox = await shellGrid.boundingBox();
+    const primaryBox = await primaryGroup.boundingBox();
+    const secondaryBox = await secondaryGroup.boundingBox();
+    const organizationPanelBox = await primaryPanels.nth(0).boundingBox();
+    const exceptionsPanelBox = await primaryPanels.nth(1).boundingBox();
+    const sitePanelBox = await secondaryPanels.nth(0).boundingBox();
+    const eventualitiesPanelBox = await secondaryPanels.nth(1).boundingBox();
+    const organizationBox = await organizationHeading.boundingBox();
+    const exceptionsBox = await exceptionsHeading.boundingBox();
+    const siteBox = await siteHeading.boundingBox();
+    const eventualitiesBox = await eventualitiesHeading.boundingBox();
+
+    expect(shellBox).not.toBeNull();
+    expect(primaryBox).not.toBeNull();
+    expect(secondaryBox).not.toBeNull();
+    expect(organizationPanelBox).not.toBeNull();
+    expect(exceptionsPanelBox).not.toBeNull();
+    expect(sitePanelBox).not.toBeNull();
+    expect(eventualitiesPanelBox).not.toBeNull();
+    expect(organizationBox).not.toBeNull();
+    expect(exceptionsBox).not.toBeNull();
+    expect(siteBox).not.toBeNull();
+    expect(eventualitiesBox).not.toBeNull();
+
+    expect((primaryBox?.x ?? -1) < (secondaryBox?.x ?? -1)).toBe(true);
+    expect((exceptionsBox?.y ?? -1) > (organizationBox?.y ?? -1)).toBe(true);
+    expect((eventualitiesBox?.y ?? -1) > (siteBox?.y ?? -1)).toBe(true);
+    expect(
+      Math.abs(
+        (organizationPanelBox?.y ?? 0) +
+          (organizationPanelBox?.height ?? 0) -
+          (exceptionsPanelBox?.y ?? 0),
+      ),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(
+        (sitePanelBox?.y ?? 0) + (sitePanelBox?.height ?? 0) - (eventualitiesPanelBox?.y ?? 0),
+      ),
+    ).toBeLessThanOrEqual(1);
+  });
+
+  test('ADMIN ve un selector de hora compacto sin columnas sobredimensionadas', async ({
+    page,
+  }) => {
+    await setAdminSession(page);
+    await setupCalendarMocks(page);
+
+    await page.goto('/dashboard/settings/calendar');
+
+    const mondayStart = page.getByTestId('bh-opens-monday');
+    await expect(mondayStart).toBeVisible({ timeout: 10_000 });
+
+    const triggerBox = await mondayStart.boundingBox();
+    expect(triggerBox).not.toBeNull();
+    expect(triggerBox?.width ?? 0).toBeLessThanOrEqual(100);
+
+    await mondayStart.click();
+
+    const hourOption = page.getByTestId('bh-opens-monday-hour-07');
+    const minuteOption = page.getByTestId('bh-opens-monday-minute-00');
+
+    await expect(hourOption).toBeVisible();
+    await expect(minuteOption).toBeVisible();
+
+    const hourBox = await hourOption.boundingBox();
+    const minuteBox = await minuteOption.boundingBox();
+
+    expect(hourBox).not.toBeNull();
+    expect(minuteBox).not.toBeNull();
+    expect(hourBox?.width ?? 0).toBeLessThanOrEqual(88);
+    expect(minuteBox?.width ?? 0).toBeLessThanOrEqual(88);
+  });
+
+  test('la vista mobile mantiene el editor semanal usable y los formularios secundarios cerrados por defecto', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await setAdminSession(page);
+    await setupCalendarMocks(page);
+
+    await page.goto('/dashboard/settings/calendar');
+
+    await expect(page.getByTestId('bh-layout-mobile').first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('exception-form')).not.toBeVisible();
+    await expect(page.getByTestId('eventuality-form')).not.toBeVisible();
+    await expect(page.getByTestId('wfm-blackout-form')).not.toBeVisible();
   });
 
   test('ADMIN ve la tabla de eventualidades con datos existentes', async ({ page }) => {
@@ -594,7 +804,7 @@ test.describe('portal-settings-calendar', () => {
 
     // La eventualidad de fixture debe aparecer
     await expect(page.getByText('Disponibilidad extra')).toBeVisible();
-    await expect(page.getByText('Refuerzo matutino')).toBeVisible();
+    await expect(page.getByText('Carlos Técnico')).toBeVisible();
   });
 
   test('ADMIN puede registrar una nueva eventualidad operativa', async ({ page }) => {
@@ -607,17 +817,31 @@ test.describe('portal-settings-calendar', () => {
     await expect(page.getByTestId('add-eventuality-btn')).toBeVisible({ timeout: 10_000 });
     await page.getByTestId('add-eventuality-btn').click();
 
+    const eventualityForm = page.getByTestId('eventuality-form');
+
     // Llenar formulario
-    await page.getByTestId('eventuality-type-select').selectOption('extra_availability');
-    await page.getByTestId('eventuality-user-select').selectOption('tech-001');
-    await page.getByTestId('eventuality-starts-at').fill('2026-05-25T07:00');
-    await page.getByTestId('eventuality-ends-at').fill('2026-05-25T09:00');
+    await eventualityForm.getByRole('combobox', { name: 'Tipo de ajuste *' }).click();
+    await page.getByRole('option', { name: 'Disponibilidad extra' }).click();
+
+    await eventualityForm.getByRole('combobox', { name: 'Persona afectada *' }).click();
+    await page.getByRole('option', { name: 'Carlos Técnico' }).click();
+
+    await selectDateFromPicker(page, eventualityForm, 'eventuality-starts-at-id', '2026-05-25');
+    await page.getByTestId('eventuality-starts-at-time').click();
+    await page.getByTestId('eventuality-starts-at-time-hour-07').click();
+    await page.getByTestId('eventuality-starts-at-time-minute-00').click();
+
+    await selectDateFromPicker(page, eventualityForm, 'eventuality-ends-at-id', '2026-05-25');
+    await page.getByTestId('eventuality-ends-at-time').click();
+    await page.getByTestId('eventuality-ends-at-time-hour-09').click();
+    await page.getByTestId('eventuality-ends-at-time-minute-00').click();
+
     await page.getByTestId('eventuality-reason').fill('Refuerzo de emergencia');
 
     await page.getByTestId('save-eventuality-btn').click();
 
     // Verificar que se hizo la llamada al API
-    await expect(page.getByText('Eventualidad registrada.')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('Cambio puntual registrado.')).toBeVisible({ timeout: 5_000 });
     expect(requestLog.eventualityCreateCalls).toBe(1);
   });
 
@@ -644,7 +868,9 @@ test.describe('portal-settings-calendar', () => {
     await page.goto('/dashboard/settings/calendar');
 
     // Esperar carga de la página
-    await expect(page.getByText('Eventualidades operativas')).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page.getByRole('heading', { name: 'Cambios puntuales de disponibilidad' }),
+    ).toBeVisible({ timeout: 10_000 });
 
     // Estos términos NO deben aparecer en el calendario operativo
     await expect(page.getByText(/licencia/i)).not.toBeVisible();
@@ -660,7 +886,9 @@ test.describe('portal-settings-calendar', () => {
     await page.goto('/dashboard/settings/calendar');
 
     // Esperar carga completa
-    await expect(page.getByText('Eventualidades operativas')).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page.getByRole('heading', { name: 'Cambios puntuales de disponibilidad' }),
+    ).toBeVisible({ timeout: 10_000 });
 
     expect(requestLog.legacyOperatingSiteRequests).toBe(0);
   });

@@ -406,7 +406,7 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
               )}
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-[#f8faf5] px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-iwana-surface-soft px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
               <p className="text-sm text-gray-600 dark:text-gray-300">
                 Gestiona servicios del catalogo comercial con una vista operativa para ventas,
                 soporte y facturacion.
@@ -537,7 +537,7 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
           </DialogHeader>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-            <section className="space-y-4 rounded-2xl border border-gray-100 bg-[#f8faf5] p-4 dark:border-dark-border dark:bg-dark-surface-3">
+            <section className="space-y-4 rounded-2xl border border-gray-100 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
               <div>
                 <p className="text-sm font-semibold text-gray-900 dark:text-white">
                   Informacion basica

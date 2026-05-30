@@ -15,7 +15,11 @@ import {
   DialogTitle,
   Input,
 } from '@iwana/ui';
-import type { CoverageNodeConfig, CreateCommercialNodeDto, UpdateCommercialNodeDto } from '@/lib/api-client';
+import type {
+  CoverageNodeConfig,
+  CreateCommercialNodeDto,
+  UpdateCommercialNodeDto,
+} from '@/lib/api-client';
 
 const nodeSchema = z.object({
   name: z.string().trim().min(1, 'El nombre es obligatorio.').max(150, 'Maximo 150 caracteres.'),
@@ -99,7 +103,9 @@ export function CoverageNodeDialog({
               <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
                 Nodo comercial
               </p>
-              <DialogTitle id="node-dialog-title">{node ? 'Editar nodo' : 'Nuevo nodo'}</DialogTitle>
+              <DialogTitle id="node-dialog-title">
+                {node ? 'Editar nodo' : 'Nuevo nodo'}
+              </DialogTitle>
             </div>
           </div>
           <DialogDescription id="node-dialog-description">
@@ -143,7 +149,7 @@ export function CoverageNodeDialog({
             />
           </div>
 
-          <label className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 bg-[#f8faf5] px-3 py-2 text-sm font-medium text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
+          <label className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 bg-iwana-surface-soft px-3 py-2 text-sm font-medium text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
             <input type="checkbox" disabled={!canEdit || isSubmitting} {...register('isActive')} />
             Nodo activo
           </label>

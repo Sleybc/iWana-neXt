@@ -90,6 +90,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
       autoComplete,
       title,
       'aria-label': ariaLabel,
+      'aria-describedby': ariaDescribedBy,
       'aria-labelledby': ariaLabelledBy,
       ...props
     },
@@ -99,7 +100,14 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
     const nativeSelectId = `${selectId}-native`;
     const labelId = `${selectId}-label`;
     const invalidState = error ? ({ 'aria-invalid': 'true' } as const) : {};
-    const describedBy = error ? `${selectId}-error` : helperText ? `${selectId}-helper` : undefined;
+    const describedBy =
+      [
+        ariaDescribedBy,
+        error ? `${selectId}-error` : undefined,
+        !error && helperText ? `${selectId}-helper` : undefined,
+      ]
+        .filter(Boolean)
+        .join(' ') || undefined;
     const normalizedOptions = React.useMemo(() => {
       if (options?.length) {
         return options.map<NormalizedOption>((option) => ({

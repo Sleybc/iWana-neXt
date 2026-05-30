@@ -32,16 +32,6 @@ export class SettingsRegistryService {
         ],
       },
       {
-        key: SettingsSectionKey.SECURITY,
-        label: 'Seguridad',
-        description:
-          'Consolida políticas visibles del tenant sin mover ownership de Auth ni Users.',
-        ownerModule: 'Auth / Users',
-        status: SettingsSectionStatus.AVAILABLE,
-        route: '/dashboard/settings/security',
-        requiredPermissions: [AccessPermissionKey.SETTINGS_READ],
-      },
-      {
         key: SettingsSectionKey.BRANDING,
         label: 'Marca',
         description: 'Gestiona identidad visual y activos corporativos del tenant autenticado.',
@@ -58,16 +48,6 @@ export class SettingsRegistryService {
         ownerModule: 'MOD00 / Organización + MOD09 / WFM',
         status: SettingsSectionStatus.AVAILABLE,
         route: '/dashboard/settings/calendar',
-        requiredPermissions: [AccessPermissionKey.SETTINGS_READ],
-      },
-      {
-        key: SettingsSectionKey.COMMERCIAL,
-        label: 'Comercial',
-        description:
-          'El owner existe, pero el contrato de configuración federada aún no está expuesto.',
-        ownerModule: 'MOD06 / Comercial',
-        status: SettingsSectionStatus.NOT_CONFIGURED,
-        route: null,
         requiredPermissions: [AccessPermissionKey.SETTINGS_READ],
       },
       {

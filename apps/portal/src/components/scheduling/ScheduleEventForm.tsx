@@ -605,7 +605,7 @@ export function ScheduleEventForm({
           disabled={isSubmitting}
           startIcon={<Clock3 className="h-4 w-4" />}
           helperText="Se calcula automáticamente a partir de la hora de llegada y la duración estimada."
-          className="cursor-default bg-[#f8faf5] font-medium text-gray-700 dark:bg-dark-surface-2 dark:text-gray-100"
+          className="cursor-default bg-iwana-surface-soft font-medium text-gray-700 dark:bg-dark-surface-2 dark:text-gray-100"
         />
 
         {type === WfmWorkType.INSTALLATION && operatingWindowError && (
@@ -926,7 +926,7 @@ export function ScheduleEventForm({
         />
       </div>
 
-      <label className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-3 text-sm text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
+      <label className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 text-sm text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
         <input
           type="checkbox"
           disabled={isSubmitting || Boolean(lockOperationalFlow)}

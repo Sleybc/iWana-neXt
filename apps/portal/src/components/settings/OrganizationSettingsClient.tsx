@@ -594,7 +594,7 @@ export function OrganizationSettingsClient() {
           ) : (
             <div className="overflow-hidden rounded-2xl border border-gray-200 dark:border-dark-border">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-                <thead className="bg-[#f8faf5] dark:bg-dark-surface-3">
+                <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
                   <tr>
                     <th className={tableHeadClass}>Sede</th>
                     <th className={tableHeadClass}>Tipo</th>
@@ -863,7 +863,7 @@ export function OrganizationSettingsClient() {
               </TabsContent>
 
               <TabsContent value="servicios" className="space-y-4">
-                <div className="rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-3 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
+                <div className="rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
                   Selecciona los servicios que estarán habilitados para esta sede. El cambio se
                   guardará junto con la información principal.
                 </div>

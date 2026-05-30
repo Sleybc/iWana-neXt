@@ -8,7 +8,6 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { userApi, dashboardApi, type UserProfile, type DashboardAlert } from '@/lib/api-client';
 import { getPortalUserRoleLabel } from '@/lib/user-labels';
 import { ChangePasswordForm } from './ChangePasswordForm';
-import { MfaRequiredToggle } from './MfaRequiredToggle';
 import { PersonalInfoForm } from './PersonalInfoForm';
 import { ProfileHeader } from './ProfileHeader';
 import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
@@ -21,7 +20,6 @@ export function ProfileClient() {
   const { user } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [alerts, setAlerts] = useState<DashboardAlert[]>([]);
-  const [mfaRequiredAll, setMfaRequiredAll] = useState(false);
   const [tenantCountry, setTenantCountry] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +48,6 @@ export function ProfileClient() {
 
       if (summaryData.status === 'fulfilled' && summaryData.value) {
         setAlerts(summaryData.value.alerts);
-        setMfaRequiredAll(summaryData.value.settings.features.mfa_required_all);
         setTenantCountry(summaryData.value.settings.country);
       }
     } catch {
@@ -69,7 +66,7 @@ export function ProfileClient() {
       <div className="space-y-6">
         <PageHeader
           title="Mi perfil"
-          subtitle="Estamos preparando tu perfil y los controles de seguridad."
+          subtitle="Estamos preparando tus datos personales y tus credenciales de acceso."
         />
         <div className="grid w-full gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.9fr)] lg:items-start">
           <div className="space-y-6 lg:col-span-2">
@@ -112,7 +109,10 @@ export function ProfileClient() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Mi perfil" subtitle="Gestiona tu información personal y seguridad" />
+      <PageHeader
+        title="Mi perfil"
+        subtitle="Gestiona tu información personal y tus credenciales de acceso"
+      />
       <div className="w-full space-y-6">
         <ProfileHeader profile={profile} roleLabel={getPortalUserRoleLabel(user.role)} />
 
@@ -134,18 +134,6 @@ export function ProfileClient() {
                 </p>
                 <OnboardingAlerts alerts={alerts} />
               </section>
-            )}
-
-            {user.role === 'ADMIN' && (
-              <MfaRequiredToggle
-                mfaRequiredAll={mfaRequiredAll}
-                onUpdated={(val) => {
-                  setMfaRequiredAll(val);
-                  if (val) {
-                    setAlerts((prev) => prev.filter((a) => a.id !== 'mfa-not-required'));
-                  }
-                }}
-              />
             )}
 
             <ChangePasswordForm />

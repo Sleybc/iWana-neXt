@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Save } from 'lucide-react';
 import { Button } from '@iwana/ui';
 import { organizationApi, type OrganizationCompanyBusinessHoursDay } from '@/lib/api-client';
-import { PortalPanel } from '@/components/shared/portal-ui';
+import { PortalAlert, PortalPanel } from '@/components/shared/portal-ui';
 import { CALENDAR_SETTINGS_COPY } from './mod00-settings-labels';
 import {
   BusinessHoursWeekEditor,
@@ -25,6 +25,25 @@ export function CalendarOrganizationHoursPanel({ companyHours, canEdit, onUpdate
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const preserveFeedbackOnNextSyncRef = useRef(false);
+
+  useEffect(() => {
+    setDraft(buildBusinessHoursDraft(companyHours));
+    setError(null);
+
+    if (preserveFeedbackOnNextSyncRef.current) {
+      preserveFeedbackOnNextSyncRef.current = false;
+      return;
+    }
+
+    setFeedback(null);
+  }, [companyHours]);
+
+  function handleDraftChange(nextDraft: BusinessHourDay[]) {
+    setDraft(nextDraft);
+    setFeedback(null);
+    setError(null);
+  }
 
   async function handleSave() {
     setIsSaving(true);
@@ -41,6 +60,7 @@ export function CalendarOrganizationHoursPanel({ companyHours, canEdit, onUpdate
         })),
       });
       setDraft(buildBusinessHoursDraft(updated));
+      preserveFeedbackOnNextSyncRef.current = true;
       onUpdated(updated);
       setFeedback(CALENDAR_SETTINGS_COPY.organizationSaveSuccess);
     } catch {
@@ -52,28 +72,37 @@ export function CalendarOrganizationHoursPanel({ companyHours, canEdit, onUpdate
 
   return (
     <PortalPanel
+      className="border-iwana-primary/15 shadow-sm shadow-iwana-primary/5"
+      eyebrow={CALENDAR_SETTINGS_COPY.organizationEyebrow}
       title={CALENDAR_SETTINGS_COPY.organizationTitle}
       description={CALENDAR_SETTINGS_COPY.organizationDescription}
       actions={
         canEdit ? (
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => void handleSave()}
-            disabled={isSaving}
-          >
+          <Button type="button" onClick={() => void handleSave()} disabled={isSaving}>
             <Save className="mr-2 h-4 w-4" aria-hidden={true} />
             {CALENDAR_SETTINGS_COPY.organizationSaveAction}
           </Button>
         ) : undefined
       }
+      contentClassName="space-y-4"
     >
-      {feedback ? (
-        <p className="mb-3 text-sm text-green-700 dark:text-green-400">{feedback}</p>
-      ) : null}
-      {error ? <p className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</p> : null}
+      {feedback ? <PortalAlert variant="success" title={feedback} /> : null}
+      {error ? <PortalAlert variant="error" title={error} /> : null}
 
-      <BusinessHoursWeekEditor days={draft} canEdit={canEdit} onChange={setDraft} />
+      <div className="rounded-2xl border border-gray-200/80 bg-iwana-surface-soft/70 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3/50">
+        <p className="portal-eyebrow text-iwana-secondary-700 dark:text-iwana-secondary-400">
+          {CALENDAR_SETTINGS_COPY.organizationStatusTitle}
+        </p>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+          {CALENDAR_SETTINGS_COPY.organizationStatusDescription}
+        </p>
+      </div>
+
+      <BusinessHoursWeekEditor
+        days={draft}
+        canEdit={canEdit && !isSaving}
+        onChange={handleDraftChange}
+      />
     </PortalPanel>
   );
 }

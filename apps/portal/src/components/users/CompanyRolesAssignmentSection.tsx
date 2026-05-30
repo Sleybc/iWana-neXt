@@ -55,7 +55,7 @@ export function CompanyRolesAssignmentSection({
   });
 
   return (
-    <div className="space-y-4 rounded-2xl border border-gray-200 bg-[#f8faf5] p-4 dark:border-dark-border dark:bg-dark-surface-3">
+    <div className="space-y-4 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
       <PortalSectionHeader
         className="gap-0"
         eyebrow="Acceso operativo"

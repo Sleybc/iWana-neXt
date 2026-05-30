@@ -1,5 +1,5 @@
-import { SecuritySettingsClient } from '@/components/settings/SecuritySettingsClient';
+import { redirect } from 'next/navigation';
 
 export default function SecuritySettingsPage() {
-  return <SecuritySettingsClient />;
+  redirect('/dashboard/settings/access#politicas-de-autenticacion');
 }

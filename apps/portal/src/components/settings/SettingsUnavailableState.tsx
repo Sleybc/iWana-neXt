@@ -42,7 +42,7 @@ export function SettingsUnavailableState({
   return (
     <div
       className={cn(
-        'rounded-2xl border border-dashed border-gray-200 bg-[#f8faf5] p-5 dark:border-dark-border dark:bg-dark-surface-3',
+        'rounded-2xl border border-dashed border-gray-200 bg-iwana-surface-soft p-5 dark:border-dark-border dark:bg-dark-surface-3',
         className,
       )}
     >

@@ -357,7 +357,6 @@ Validaciones relevantes:
 - `Seguridad`
 - `Marca`
 - `Operacion de campo`
-- `Comercial`
 - `Facturacion`
 - `Inventario`
 - `Integraciones`

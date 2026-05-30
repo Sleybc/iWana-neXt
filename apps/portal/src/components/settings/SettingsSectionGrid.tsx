@@ -26,10 +26,9 @@ interface SettingsSectionGridProps {
   effectivePermissions: AccessPermissionKey[];
 }
 
-const iconMap = {
+const iconMap: Partial<Record<SettingsSectionKey, typeof Building2>> = {
   [SettingsSectionKey.ORGANIZATION]: Building2,
   [SettingsSectionKey.ACCESS]: ShieldCheck,
-  [SettingsSectionKey.SECURITY]: ShieldCheck,
   [SettingsSectionKey.BRANDING]: Palette,
   [SettingsSectionKey.FIELD_OPERATIONS]: Wrench,
   [SettingsSectionKey.CALENDAR]: CalendarDays,
@@ -37,7 +36,7 @@ const iconMap = {
   [SettingsSectionKey.BILLING]: CreditCard,
   [SettingsSectionKey.INVENTORY]: Package,
   [SettingsSectionKey.INTEGRATIONS]: Waypoints,
-} satisfies Record<SettingsSectionKey, typeof Building2>;
+};
 
 const statusLabelMap = {
   [SettingsSectionStatus.AVAILABLE]: 'Disponible',
@@ -63,7 +62,7 @@ export function SettingsSectionGrid({ sections, effectivePermissions }: Settings
     >
       <div className="grid gap-4 xl:grid-cols-2">
         {sections.map((section) => {
-          const Icon = iconMap[section.key];
+          const Icon = iconMap[section.key] ?? Blocks;
           const isOperable = hasAllRequiredPermissions(section, effectivePermissions);
 
           if (section.status !== SettingsSectionStatus.AVAILABLE || !section.route) {
@@ -116,7 +115,7 @@ export function SettingsSectionGrid({ sections, effectivePermissions }: Settings
               href={section.route}
               className={cn(
                 interactiveFocusClassName,
-                'group rounded-2xl border border-gray-200 bg-white p-5 transition hover:border-iwana-primary/35 hover:bg-[#f8faf5] dark:border-dark-border dark:bg-dark-surface-2 dark:hover:border-iwana-primary/30 dark:hover:bg-dark-surface-3',
+                'group rounded-2xl border border-gray-200 bg-white p-5 transition hover:border-iwana-primary/35 hover:bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-2 dark:hover:border-iwana-primary/30 dark:hover:bg-dark-surface-3',
               )}
             >
               <div className="flex items-start justify-between gap-4">
@@ -138,7 +137,7 @@ export function SettingsSectionGrid({ sections, effectivePermissions }: Settings
                     {SETTINGS_HUB_COPY.openSectionAction}
                   </p>
                 </div>
-                <div className="rounded-2xl bg-[#f8faf5] p-3 text-iwana-primary shadow-sm dark:bg-dark-surface-3">
+                <div className="rounded-2xl bg-iwana-surface-soft p-3 text-iwana-primary shadow-sm dark:bg-dark-surface-3">
                   <Icon className="h-5 w-5" aria-hidden={true} />
                 </div>
               </div>
@@ -147,7 +146,7 @@ export function SettingsSectionGrid({ sections, effectivePermissions }: Settings
         })}
       </div>
       {sections.length === 0 ? (
-        <div className="mt-4 flex items-start gap-3 rounded-2xl border border-dashed border-gray-200 bg-[#f8faf5] px-4 py-4 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
+        <div className="mt-4 flex items-start gap-3 rounded-2xl border border-dashed border-gray-200 bg-iwana-surface-soft px-4 py-4 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300">
             <Blocks className="h-5 w-5" aria-hidden={true} />
           </div>

@@ -157,11 +157,6 @@ describe('ConfigurationController HTTP', () => {
               ],
             }),
             expect.objectContaining({
-              key: SettingsSectionKey.SECURITY,
-              status: SettingsSectionStatus.AVAILABLE,
-              route: '/dashboard/settings/security',
-            }),
-            expect.objectContaining({
               key: SettingsSectionKey.BRANDING,
               status: SettingsSectionStatus.AVAILABLE,
               route: '/dashboard/settings/branding',
@@ -178,6 +173,12 @@ describe('ConfigurationController HTTP', () => {
               requiredPermissions: [AccessPermissionKey.SETTINGS_READ],
             }),
           ]),
+        );
+        expect(body.data).not.toContainEqual(
+          expect.objectContaining({
+            key: 'security',
+            route: '/dashboard/settings/security',
+          }),
         );
       });
   });

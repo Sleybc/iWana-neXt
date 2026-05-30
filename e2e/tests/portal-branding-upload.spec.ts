@@ -319,4 +319,40 @@ test.describe('Portal branding upload', () => {
       fileName: 'seal-light.png',
     });
   });
+
+  test('abre y cierra la confirmación de restaurar base con teclado', async ({ page }) => {
+    await setupBrandingUploadMocks(page);
+    await setAuthSession(page);
+
+    await page.goto('/dashboard/settings/branding');
+    await page.waitForLoadState('networkidle');
+
+    const restoreButton = page.getByRole('button', { name: 'Restaurar base' }).first();
+    await restoreButton.focus();
+    await page.keyboard.press('Enter');
+
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Restaurar marca base' })).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toBeHidden();
+  });
+
+  test('mantiene acciones de marca visibles en viewport móvil con tema oscuro', async ({
+    page,
+  }) => {
+    await setupBrandingUploadMocks(page);
+    await setAuthSession(page);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.goto('/dashboard/settings/branding');
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.getByRole('heading', { name: 'Identidad visual' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Guardar marca' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Restaurar base' }).first()).toBeVisible();
+    await expect(page.locator('#seal-light-file')).toHaveCount(1);
+    await expect(page.getByLabel('URL HTTPS para sello compacto · variante clara')).toBeVisible();
+  });
 });

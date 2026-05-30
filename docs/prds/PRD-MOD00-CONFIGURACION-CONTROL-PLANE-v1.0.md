@@ -1,8 +1,8 @@
 # PRD - MOD00 Configuracion Control Plane
 
-**Version:** 1.4
+**Version:** 1.5
 **Estado:** Aprobado  
-**Fecha:** 2026-05-23
+**Fecha:** 2026-05-27
 **Modo activo:** Mixto  
 **Autor:** AI-EM-ARCH  
 **Modulo:** MOD00 Configuracion Control Plane  
@@ -101,12 +101,12 @@ Casos de uso prioritarios:
 
 ### 4.1 Control plane de Configuracion
 
-| ID        | Requerimiento                                                                                                                                         | Prioridad |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| RF-CFG-01 | La ruta `/dashboard/settings` debe actuar como centro de configuracion con secciones visibles y navegables.                                           | MVP       |
-| RF-CFG-02 | La navegacion debe separar Organizacion, Usuarios y acceso, Seguridad, Marca, Operacion de campo, Comercial, Facturacion, Inventario e Integraciones. | MVP       |
-| RF-CFG-03 | Las secciones futuras pueden mostrarse como no disponibles si su modulo aun no existe, sin simular funcionalidad.                                     | MVP       |
-| RF-CFG-04 | Cada seccion debe declarar el modulo owner de los datos que administra o consume.                                                                     | MVP       |
+- RF-CFG-01 — La ruta `/dashboard/settings` debe actuar como centro de configuracion con secciones visibles y navegables. Prioridad: MVP.
+- RF-CFG-02 — La navegacion debe separar Organizacion, Usuarios y acceso, Marca, Operacion de campo y modulos futuros visibles. Prioridad: MVP.
+- RF-CFG-03 — Las secciones futuras pueden mostrarse como no disponibles si su modulo aun no existe, sin simular funcionalidad. Prioridad: MVP.
+- RF-CFG-04 — Cada seccion debe declarar el modulo owner de los datos que administra o consume. Prioridad: MVP.
+
+La politica global MFA del tenant se consolida dentro de `Usuarios y acceso`; `Seguridad` no se considera una seccion activa independiente del shell federado.
 
 ### 4.2 Organizacion y sedes
 
@@ -269,7 +269,6 @@ Configuracion debe evolucionar de tabs simples hacia una estructura de centro ad
     /roles
     /assignments
     /permissions
-  /security
   /branding
   /field-operations
   /commercial
@@ -277,6 +276,8 @@ Configuracion debe evolucionar de tabs simples hacia una estructura de centro ad
   /inventory
   /integrations
 ```
+
+La ruta legacy `/dashboard/settings/security` puede mantenerse solo como redireccion controlada hacia `/dashboard/settings/access#politicas-de-autenticacion`; no se considera una seccion activa del shell federado.
 
 MVP recomendado:
 

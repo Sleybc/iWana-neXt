@@ -159,8 +159,8 @@ const mockSettingsSections = [
   {
     key: 'commercial',
     label: 'Comercial',
-    description: 'Configuración comercial unificada.',
-    ownerModule: 'MOD08 / Comercial',
+    description: 'Catálogo comercial, precios vigentes y reglas operativas.',
+    ownerModule: 'MOD06 / Comercial',
     status: 'AVAILABLE',
     route: '/dashboard/commercial',
     requiredPermissions: [],

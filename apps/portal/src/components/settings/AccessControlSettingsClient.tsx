@@ -22,10 +22,12 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import {
   accessControlApi,
   ApiError,
+  tenantSelfApi,
   type AccessPermissionCatalogEntry,
   type AccessPermissionsCatalog,
   type AccessProfileView,
   type CreateAccessProfileDto,
+  type TenantSelfSettings,
   type UpdateAccessProfileDto,
 } from '@/lib/api-client';
 import {
@@ -76,6 +78,24 @@ function mapAccessControlError(error: unknown): string {
   return 'No fue posible cargar la vista de perfiles de acceso.';
 }
 
+function mapAuthenticationPolicyError(
+  error: unknown,
+  fallback: string = ACCESS_SETTINGS_COPY.authPolicyLoadError,
+): string {
+  if (error instanceof ApiError) {
+    if (error.status === 401) return 'Tu sesión expiró. Inicia sesión nuevamente.';
+    if (error.status === 403) {
+      return error.message && error.message !== 'Forbidden resource'
+        ? error.message
+        : 'Solo las personas administradoras pueden cambiar la política de autenticación.';
+    }
+
+    return error.message;
+  }
+
+  return fallback;
+}
+
 function createDefaultProfileFormValues(): ProfileFormValues {
   return {
     name: '',
@@ -98,12 +118,15 @@ export function AccessControlSettingsClient() {
   const { user, isLoading: authLoading } = useAuth();
   const [catalog, setCatalog] = useState<AccessPermissionsCatalog | null>(null);
   const [profiles, setProfiles] = useState<AccessProfileView[]>([]);
+  const [tenantSettings, setTenantSettings] = useState<TenantSelfSettings | null>(null);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [draftPermissionKeys, setDraftPermissionKeys] = useState<AccessPermissionKey[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isPolicySaving, setIsPolicySaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [policyError, setPolicyError] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [creationSelectorOpen, setCreationSelectorOpen] = useState(false);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
@@ -111,6 +134,7 @@ export function AccessControlSettingsClient() {
   const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
   const [activePermissionModule, setActivePermissionModule] = useState<string | null>(null);
   const [permissionSearch, setPermissionSearch] = useState('');
+  const [draftMfaRequiredAll, setDraftMfaRequiredAll] = useState(false);
   const previewTriggerRef = useRef<HTMLButtonElement | null>(null);
   const previewCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const permissionTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -123,6 +147,8 @@ export function AccessControlSettingsClient() {
   });
 
   const isAdmin = user?.role === UserRole.ADMIN;
+  const tenantMfaRequiredAll = tenantSettings?.features.mfa_required_all ?? false;
+  const isPolicyDirty = tenantSettings ? draftMfaRequiredAll !== tenantMfaRequiredAll : false;
 
   const {
     control,
@@ -181,6 +207,18 @@ export function AccessControlSettingsClient() {
     }
   }, [selectedProfileId]);
 
+  const loadAuthenticationPolicy = useCallback(async () => {
+    setPolicyError(null);
+
+    try {
+      const settings = await tenantSelfApi.getSettings();
+      setTenantSettings(settings);
+    } catch (loadError) {
+      setTenantSettings(null);
+      setPolicyError(mapAuthenticationPolicyError(loadError));
+    }
+  }, []);
+
   useEffect(() => {
     if (authLoading) {
       return;
@@ -197,14 +235,18 @@ export function AccessControlSettingsClient() {
       return;
     }
 
-    void loadAccessControl();
-  }, [authLoading, isAdmin, loadAccessControl, user]);
+    void Promise.all([loadAccessControl(), loadAuthenticationPolicy()]);
+  }, [authLoading, isAdmin, loadAccessControl, loadAuthenticationPolicy, user]);
 
   useEffect(() => {
     if (!isAdmin) {
       return;
     }
   }, [isAdmin]);
+
+  useEffect(() => {
+    setDraftMfaRequiredAll(tenantMfaRequiredAll);
+  }, [tenantMfaRequiredAll]);
 
   const selectedProfile = useMemo(
     () => profiles.find((profile) => profile.id === selectedProfileId) ?? null,
@@ -547,6 +589,31 @@ export function AccessControlSettingsClient() {
     });
   }, []);
 
+  const handleSaveAuthenticationPolicy = useCallback(async () => {
+    if (!tenantSettings) {
+      return;
+    }
+
+    setIsPolicySaving(true);
+    setPolicyError(null);
+    setFeedback(null);
+
+    try {
+      const updated = await tenantSelfApi.updateSettings({
+        features: { mfa_required_all: draftMfaRequiredAll },
+      });
+
+      setTenantSettings(updated);
+      setFeedback(ACCESS_SETTINGS_COPY.authPolicySaveSuccess);
+    } catch (saveError) {
+      setPolicyError(
+        mapAuthenticationPolicyError(saveError, ACCESS_SETTINGS_COPY.authPolicySaveError),
+      );
+    } finally {
+      setIsPolicySaving(false);
+    }
+  }, [draftMfaRequiredAll, tenantSettings]);
+
   function selectProfile(profile: AccessProfileView) {
     setCreationDraft(null);
     setIsDialogOpen(false);
@@ -815,6 +882,80 @@ export function AccessControlSettingsClient() {
         />
       ) : null}
 
+      <div id="politicas-de-autenticacion">
+        <PortalPanel
+          eyebrow={ACCESS_SETTINGS_COPY.authPolicyEyebrow}
+          title={ACCESS_SETTINGS_COPY.authPolicyTitle}
+          description={ACCESS_SETTINGS_COPY.authPolicyDescription}
+          className="border-iwana-secondary/20 bg-white dark:border-iwana-secondary/15 dark:bg-dark-surface-2"
+          actions={
+            <span className="inline-flex items-center rounded-full border border-iwana-secondary/30 bg-white px-3 py-1 text-xs font-semibold text-iwana-secondary-700 dark:border-iwana-secondary/20 dark:bg-dark-surface-3 dark:text-iwana-secondary-300">
+              {draftMfaRequiredAll
+                ? ACCESS_SETTINGS_COPY.authPolicyStatusEnabled
+                : ACCESS_SETTINGS_COPY.authPolicyStatusDisabled}
+            </span>
+          }
+        >
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
+              <label
+                htmlFor="access-auth-policy-mfa"
+                className="flex items-start justify-between gap-4"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                    {ACCESS_SETTINGS_COPY.authPolicyToggleTitle}
+                  </p>
+                  <p
+                    id="access-auth-policy-mfa-description"
+                    className="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                  >
+                    {ACCESS_SETTINGS_COPY.authPolicyToggleDescription}
+                  </p>
+                </div>
+                <input
+                  id="access-auth-policy-mfa"
+                  type="checkbox"
+                  aria-label={ACCESS_SETTINGS_COPY.authPolicyToggleLabel}
+                  aria-describedby="access-auth-policy-mfa-description"
+                  checked={draftMfaRequiredAll}
+                  disabled={!tenantSettings || isPolicySaving}
+                  onChange={(event) => {
+                    setDraftMfaRequiredAll(event.target.checked);
+                    setPolicyError(null);
+                    setFeedback(null);
+                  }}
+                  className="mt-1 h-4 w-4 rounded border-gray-300 text-iwana-primary"
+                />
+              </label>
+            </div>
+
+            {policyError ? (
+              <PortalAlert
+                variant="error"
+                title="No fue posible actualizar la política"
+                description={policyError}
+              />
+            ) : null}
+
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {ACCESS_SETTINGS_COPY.authPolicyAdminHint}
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => void handleSaveAuthenticationPolicy()}
+                disabled={!tenantSettings || !isPolicyDirty || isPolicySaving}
+                loading={isPolicySaving}
+              >
+                {ACCESS_SETTINGS_COPY.authPolicySaveAction}
+              </Button>
+            </div>
+          </div>
+        </PortalPanel>
+      </div>
+
       {systemTemplates.length > 0 ? (
         <div id="templates-section">
           <PortalPanel
@@ -830,7 +971,7 @@ export function AccessControlSettingsClient() {
                 return (
                   <div
                     key={profile.id}
-                    className="flex h-full flex-col gap-3 rounded-2xl border border-gray-200 bg-iwana-secondary-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3"
+                    className="flex h-full flex-col gap-3 rounded-2xl border border-iwana-secondary/20 bg-iwana-surface-soft px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
@@ -911,7 +1052,7 @@ export function AccessControlSettingsClient() {
                   return (
                     <div
                       key={`${profile.id}-mobile`}
-                      className={`rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2 ${isSelected ? 'ring-1 ring-iwana-secondary/40' : ''}`}
+                      className={`rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2 ${isSelected ? 'border-l-4 border-l-iwana-secondary bg-iwana-surface-soft pl-3' : ''}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -922,11 +1063,18 @@ export function AccessControlSettingsClient() {
                             {profile.description || 'Sin descripción'}
                           </p>
                         </div>
-                        <span
-                          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${profile.isActive ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300' : 'border border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300'}`}
-                        >
-                          {profile.isActive ? 'Activo' : 'Inactivo'}
-                        </span>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <span
+                            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${profile.isActive ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300' : 'border border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300'}`}
+                          >
+                            {profile.isActive ? 'Activo' : 'Inactivo'}
+                          </span>
+                          {isSelected ? (
+                            <span className="inline-flex items-center rounded-full border border-iwana-secondary/30 bg-iwana-secondary-50 px-3 py-1 text-xs font-semibold text-iwana-secondary-700 dark:border-iwana-secondary/20 dark:bg-iwana-secondary/10 dark:text-iwana-secondary-300">
+                              En edición
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
 
                       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
@@ -938,16 +1086,19 @@ export function AccessControlSettingsClient() {
                         </span>
                       </div>
 
-                      <PortalActionToolbar compact={true} className="mt-4 bg-iwana-secondary-50/80">
+                      <PortalActionToolbar
+                        compact={true}
+                        className="mt-4 bg-gray-50/90 dark:bg-dark-surface-3"
+                      >
                         <Button
                           type="button"
-                          variant={isSelected ? 'secondary' : 'ghost'}
+                          variant="ghost"
                           size="sm"
                           aria-label={`Editar accesos de ${profile.name}`}
                           className="w-full justify-center rounded-2xl"
                           onClick={() => selectProfile(profile)}
                         >
-                          {isSelected ? 'En edición' : 'Editar accesos'}
+                          Editar accesos
                         </Button>
                         <Button
                           type="button"
@@ -979,7 +1130,7 @@ export function AccessControlSettingsClient() {
 
               <div className="hidden overflow-hidden rounded-2xl border border-gray-200/90 dark:border-dark-border md:block">
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-                  <thead className="bg-iwana-secondary-50 dark:bg-dark-surface-3">
+                  <thead className="bg-white dark:bg-dark-surface-3">
                     <tr>
                       <th scope="col" className={tableHeadClass}>
                         Perfil
@@ -1005,10 +1156,10 @@ export function AccessControlSettingsClient() {
                       return (
                         <tr
                           key={profile.id}
-                          className={`transition-colors hover:bg-iwana-secondary-50/70 dark:hover:bg-dark-surface-3 ${isSelected ? 'bg-iwana-secondary-50 dark:bg-dark-surface-3/60' : ''}`}
+                          className={`transition-colors hover:bg-gray-50 dark:hover:bg-dark-surface-3 ${isSelected ? 'bg-iwana-surface-soft dark:bg-dark-surface-3/60' : ''}`}
                         >
                           <td
-                            className={`${cellClass} ${isSelected ? 'border-l-4 border-iwana-secondary bg-iwana-secondary-50/80 pl-3 dark:bg-dark-surface-3/40' : 'border-l-4 border-transparent'}`}
+                            className={`${cellClass} ${isSelected ? 'border-l-4 border-iwana-secondary bg-iwana-surface-soft pl-3 dark:bg-dark-surface-3/40' : 'border-l-4 border-transparent'}`}
                           >
                             <div className="flex flex-col gap-0.5">
                               <p className="font-medium text-gray-900 dark:text-white">
@@ -1030,27 +1181,34 @@ export function AccessControlSettingsClient() {
                             </span>
                           </td>
                           <td className={cellClass}>
-                            <span
-                              className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${profile.isActive ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300' : 'border border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300'}`}
-                            >
-                              {profile.isActive ? 'Activo' : 'Inactivo'}
-                            </span>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span
+                                className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${profile.isActive ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300' : 'border border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300'}`}
+                              >
+                                {profile.isActive ? 'Activo' : 'Inactivo'}
+                              </span>
+                              {isSelected ? (
+                                <span className="inline-flex items-center rounded-full border border-iwana-secondary/30 bg-iwana-secondary-50 px-3 py-1 text-xs font-semibold text-iwana-secondary-700 dark:border-iwana-secondary/20 dark:bg-iwana-secondary/10 dark:text-iwana-secondary-300">
+                                  En edición
+                                </span>
+                              ) : null}
+                            </div>
                           </td>
                           <td className={cellClass}>
                             <PortalActionToolbar
                               compact={true}
                               align="end"
-                              className="bg-iwana-secondary-50/80"
+                              className="bg-gray-50/90 dark:bg-dark-surface-3"
                             >
                               <Button
                                 type="button"
-                                variant={isSelected ? 'secondary' : 'ghost'}
+                                variant="ghost"
                                 size="sm"
                                 aria-label={`Editar accesos de ${profile.name}`}
                                 className="w-full justify-center rounded-2xl sm:w-auto"
                                 onClick={() => selectProfile(profile)}
                               >
-                                {isSelected ? 'En edición' : 'Editar accesos'}
+                                Editar accesos
                               </Button>
                               <Button
                                 type="button"
@@ -1241,7 +1399,7 @@ export function AccessControlSettingsClient() {
                         />
                         <div
                           aria-hidden={true}
-                          className={`pointer-events-none absolute inset-y-0 right-0 w-14 bg-gradient-to-l from-white via-white/94 to-iwana-secondary-50/60 transition-opacity dark:from-dark-surface dark:via-dark-surface dark:to-transparent ${permissionTabsOverflow.canScrollRight ? 'opacity-100' : 'opacity-0'}`}
+                          className={`pointer-events-none absolute inset-y-0 right-0 w-14 bg-gradient-to-l from-white via-white/94 to-iwana-surface-soft/60 transition-opacity dark:from-dark-surface dark:via-dark-surface dark:to-transparent ${permissionTabsOverflow.canScrollRight ? 'opacity-100' : 'opacity-0'}`}
                         />
 
                         <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-1">
@@ -1278,7 +1436,7 @@ export function AccessControlSettingsClient() {
                       aria-labelledby={`access-permission-tab-${activePermissionModuleConfig.moduleKey}`}
                       className="space-y-3"
                     >
-                      <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-iwana-secondary-50 px-4 py-4 dark:border-dark-border dark:bg-dark-surface-3 md:flex-row md:items-center md:justify-between">
+                      <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-4 dark:border-dark-border dark:bg-dark-surface-3 md:flex-row md:items-center md:justify-between">
                         <div>
                           <p className="text-sm text-gray-500 dark:text-gray-400">
                             Ajusta solo los accesos de la sección{' '}
@@ -1417,7 +1575,7 @@ export function AccessControlSettingsClient() {
                     return (
                       <li
                         key={permKey}
-                        className="rounded-xl border border-gray-200 bg-iwana-secondary-50 px-3 py-2.5 text-sm text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200"
+                        className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200"
                       >
                         {entry?.description ?? permKey}
                       </li>
@@ -1455,7 +1613,7 @@ export function AccessControlSettingsClient() {
             <button
               type="button"
               onClick={startFromTemplate}
-              className="flex w-full items-start gap-4 rounded-2xl border border-gray-200 p-4 text-left hover:border-iwana-primary hover:bg-iwana-secondary-50 dark:border-dark-border dark:hover:bg-dark-surface-3"
+              className="flex w-full items-start gap-4 rounded-2xl border border-gray-200 bg-white p-4 text-left hover:border-iwana-primary hover:bg-gray-50 dark:border-dark-border dark:hover:bg-dark-surface-3"
             >
               <ShieldCheck
                 className="mt-0.5 h-5 w-5 shrink-0 text-iwana-primary"
@@ -1471,7 +1629,7 @@ export function AccessControlSettingsClient() {
             <button
               type="button"
               onClick={startFromScratch}
-              className="flex w-full items-start gap-4 rounded-2xl border border-gray-200 p-4 text-left hover:border-iwana-primary hover:bg-iwana-secondary-50 dark:border-dark-border dark:hover:bg-dark-surface-3"
+              className="flex w-full items-start gap-4 rounded-2xl border border-gray-200 bg-white p-4 text-left hover:border-iwana-primary hover:bg-gray-50 dark:border-dark-border dark:hover:bg-dark-surface-3"
             >
               <Plus className="mt-0.5 h-5 w-5 shrink-0 text-gray-500" aria-hidden={true} />
               <div>

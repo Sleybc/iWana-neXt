@@ -204,10 +204,10 @@ export default function CoverageMap({
         </div>
 
         <div className="flex flex-wrap gap-2 text-xs font-semibold">
-          <span className="rounded-full border border-gray-200 bg-[#f8faf5] px-3 py-1 text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
+          <span className="rounded-full border border-gray-200 bg-iwana-surface-soft px-3 py-1 text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
             {nodes.length} nodo{nodes.length !== 1 ? 's' : ''}
           </span>
-          <span className="rounded-full border border-gray-200 bg-[#f8faf5] px-3 py-1 text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
+          <span className="rounded-full border border-gray-200 bg-iwana-surface-soft px-3 py-1 text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
             {zones.length} zona{zones.length !== 1 ? 's' : ''}
           </span>
         </div>

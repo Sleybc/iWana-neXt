@@ -30,6 +30,10 @@ jest.mock('@/lib/api-client', () => ({
     deleteProfile: jest.fn(),
     replaceProfilePermissions: jest.fn(),
   },
+  tenantSelfApi: {
+    getSettings: jest.fn(),
+    updateSettings: jest.fn(),
+  },
 }));
 
 function createCompatibilityMatrix() {
@@ -158,13 +162,24 @@ const profiles = [
   },
 ];
 
+const tenantSettings = {
+  features: {
+    mfa_required_all: false,
+    billing: true,
+  },
+};
+
 describe('AccessControlSettingsClient', () => {
   beforeEach(() => {
-    const { accessControlApi } = jest.requireMock('@/lib/api-client') as {
+    const { accessControlApi, tenantSelfApi } = jest.requireMock('@/lib/api-client') as {
       accessControlApi: {
         listPermissions: jest.Mock;
         listProfiles: jest.Mock;
         createProfile: jest.Mock;
+      };
+      tenantSelfApi: {
+        getSettings: jest.Mock;
+        updateSettings: jest.Mock;
       };
     };
 
@@ -177,6 +192,8 @@ describe('AccessControlSettingsClient', () => {
       name: 'Perfil soporte',
       baseRoleConstraint: UserRole.SUPPORT,
     });
+    tenantSelfApi.getSettings.mockResolvedValue(tenantSettings);
+    tenantSelfApi.updateSettings.mockResolvedValue(tenantSettings);
 
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
       configurable: true,
@@ -257,6 +274,76 @@ describe('AccessControlSettingsClient', () => {
     expect(await screen.findByText('Perfil creado correctamente.')).toBeInTheDocument();
   });
 
+  it('muestra la politica MFA global dentro de access para administradores', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Perfiles de acceso y autenticación' }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText('Políticas de autenticación')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'MFA global de la empresa' })).toBeInTheDocument();
+    expect(screen.getByText('MFA global opcional')).toBeInTheDocument();
+    expect(screen.getByLabelText('Activar MFA obligatorio')).toBeInTheDocument();
+  });
+
+  it('guarda la politica MFA global desde access', async () => {
+    const { tenantSelfApi } = jest.requireMock('@/lib/api-client') as {
+      tenantSelfApi: {
+        updateSettings: jest.Mock;
+      };
+    };
+
+    tenantSelfApi.updateSettings.mockResolvedValue({
+      features: {
+        mfa_required_all: true,
+        billing: true,
+      },
+    });
+
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    const toggle = await screen.findByLabelText('Activar MFA obligatorio');
+    fireEvent.click(toggle);
+
+    expect(screen.getByText('MFA global activo')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar política' }));
+
+    await waitFor(() => {
+      expect(tenantSelfApi.updateSettings).toHaveBeenCalledWith({
+        features: { mfa_required_all: true },
+      });
+    });
+
+    expect(await screen.findByText('Política MFA actualizada correctamente.')).toBeInTheDocument();
+  });
+
+  it('muestra En edición como estado del perfil seleccionado y mantiene la accion editar accesos', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'admin-1', role: UserRole.ADMIN },
+      isLoading: false,
+    });
+
+    render(<AccessControlSettingsClient />);
+
+    await screen.findByRole('heading', { name: 'Perfiles personalizados' });
+
+    expect(screen.getAllByText('En edición').length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole('button', { name: /Editar accesos de Perfil NOC lectura/i }).length,
+    ).toBeGreaterThan(0);
+  });
+
   it('opens a creation selector with template and blank-start options', async () => {
     useAuthMock.mockReturnValue({
       user: { id: 'admin-1', role: UserRole.ADMIN },
@@ -332,7 +419,7 @@ describe('AccessControlSettingsClient', () => {
 
     render(<AccessControlSettingsClient />);
 
-    await screen.findByRole('heading', { name: 'Perfiles de acceso' });
+    await screen.findByRole('heading', { name: 'Perfiles de acceso y autenticación' });
 
     expect(screen.queryByRole('heading', { name: 'Asignación de roles' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Accesos efectivos' })).not.toBeInTheDocument();
@@ -351,7 +438,11 @@ describe('AccessControlSettingsClient', () => {
       await screen.findByRole('heading', { name: 'Plantillas iniciales' }),
     ).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Perfiles personalizados' })).toBeInTheDocument();
-    expect(screen.getByText(/Crea perfiles de acceso/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Administra perfiles de acceso, plantillas iniciales y la política MFA global/i,
+      ),
+    ).toBeInTheDocument();
   });
 
   it('renders actionable system templates', async () => {

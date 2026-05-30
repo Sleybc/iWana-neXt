@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { UserRole } from '@iwana/shared';
 import { CalendarSettingsClient } from './CalendarSettingsClient';
 
@@ -33,13 +33,12 @@ jest.mock('@/lib/api-client', () => ({
 // Suprime errores de consola de react-dom en tests de error boundary
 jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
-jest.mock('./CalendarWfmPanel', () => ({
-  CalendarWfmPanel: () => <div data-testid="calendar-wfm-panel">Ventana técnica WFM</div>,
-}));
-
 jest.mock('./OperationalEventualitiesPanel', () => ({
   OperationalEventualitiesPanel: () => (
-    <div data-testid="operational-eventualities-panel">Eventualidades operativas</div>
+    <div data-testid="operational-eventualities-panel">
+      <p>Paso 4 · Cambios puntuales</p>
+      <p>Cambios puntuales de disponibilidad</p>
+    </div>
   ),
 }));
 
@@ -112,23 +111,31 @@ describe('CalendarSettingsClient', () => {
 
     expect(
       await screen.findByText(
-        'Define el horario general de tu organización, ajustes por sede y festivos especiales.',
+        'Ordena el horario base de tu empresa y luego ajusta sedes, cierres por fecha y cambios puntuales desde una sola vista.',
       ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Define el horario general de tu organización, ajustes por sede y festivos especiales.',
+        'Ordena el horario base de tu empresa y luego ajusta sedes, cierres por fecha y cambios puntuales desde una sola vista.',
       ),
     ).toBeInTheDocument();
+    expect(screen.getByText('Estado operativo')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        '1 día abierto en horario base, 1 sede activa y 1 cierre por fecha registrado.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('calendar-operational-status')).toBeInTheDocument();
   });
 
   it('renderiza el panel de horario base de empresa', async () => {
     render(<CalendarSettingsClient />);
 
-    expect(await screen.findByText('Horario general de atención y recaudo')).toBeInTheDocument();
+    expect(await screen.findByText('Paso 1 · Horario base')).toBeInTheDocument();
+    expect(await screen.findByText('Horario base de la empresa')).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Horario semanal general para toda la organización. Las sedes que no tengan horario propio usarán este horario automáticamente.',
+        'Define el horario semanal que servirá como referencia para toda la empresa y para las sedes que no tengan un ajuste propio.',
       ),
     ).toBeInTheDocument();
   });
@@ -136,16 +143,41 @@ describe('CalendarSettingsClient', () => {
   it('renderiza el panel de horario por sede', async () => {
     render(<CalendarSettingsClient />);
 
-    expect(await screen.findByText('Horario por sede')).toBeInTheDocument();
+    expect(await screen.findByText('Paso 2 · Horarios por sede')).toBeInTheDocument();
+    expect(await screen.findByText('Horarios por sede')).toBeInTheDocument();
     expect(
-      screen.getByText('Elige si una sede usa el horario general o tiene su propio horario.'),
+      screen.getByText(
+        'Revisa qué sede sigue el horario base y cuál necesita un ajuste propio antes de guardar cambios.',
+      ),
     ).toBeInTheDocument();
   });
 
   it('renderiza el panel de festivos y cierres especiales', async () => {
     render(<CalendarSettingsClient />);
 
-    expect(await screen.findByText('Festivos y cierres especiales')).toBeInTheDocument();
+    expect(await screen.findByText('Paso 3 · Cierres por fecha')).toBeInTheDocument();
+    expect(await screen.findByText('Cierres por fecha y aperturas especiales')).toBeInTheDocument();
+  });
+
+  it('agrupa horarios estructurales y relega capas operativas secundarias', async () => {
+    render(<CalendarSettingsClient />);
+
+    await screen.findByText('Horario base de la empresa');
+
+    expect(screen.getByTestId('calendar-shell-grid')).toBeInTheDocument();
+
+    const primaryGroup = screen.getByTestId('calendar-shell-primary');
+    const secondaryGroup = screen.getByTestId('calendar-shell-secondary');
+
+    expect(within(primaryGroup).getByText('Horario base de la empresa')).toBeInTheDocument();
+    expect(
+      within(primaryGroup).getByText('Cierres por fecha y aperturas especiales'),
+    ).toBeInTheDocument();
+    expect(within(secondaryGroup).getByText('Horarios por sede')).toBeInTheDocument();
+    expect(within(secondaryGroup).queryByText('Programación de visitas')).not.toBeInTheDocument();
+    expect(
+      within(secondaryGroup).getByText('Cambios puntuales de disponibilidad'),
+    ).toBeInTheDocument();
   });
 
   it('llama a getCompanyHours, list y getExceptions al montar', async () => {
@@ -184,6 +216,34 @@ describe('CalendarSettingsClient', () => {
     expect(
       await screen.findByText('No fue posible cargar el calendario operativo. Intenta nuevamente.'),
     ).toBeInTheDocument();
+  });
+
+  it('bloquea solo el bloque afectado cuando falla una carga parcial', async () => {
+    const { organizationApi } = jest.requireMock('@/lib/api-client') as {
+      organizationApi: {
+        getCompanyHours: jest.Mock;
+      };
+    };
+
+    organizationApi.getCompanyHours.mockRejectedValue(new Error('error'));
+
+    render(<CalendarSettingsClient />);
+
+    expect(
+      await screen.findByText(
+        'No pudimos cargar el horario base. Este bloque queda bloqueado hasta que vuelvas a actualizar.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Algunos bloques no se pudieron cargar. Actualiza la vista antes de confirmar el estado operativo o guardar cambios.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Guardar horario general' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('Horarios por sede')).toBeInTheDocument();
+    expect(screen.getByText('Cierres por fecha y aperturas especiales')).toBeInTheDocument();
   });
 
   it('muestra alerta de acceso restringido para roles sin permiso', () => {

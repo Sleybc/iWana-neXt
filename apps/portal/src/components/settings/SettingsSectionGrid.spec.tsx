@@ -16,10 +16,10 @@ describe('SettingsSectionGrid', () => {
   it('muestra estados no disponibles sin links ni acciones de escritura', () => {
     const sections: SettingsSection[] = [
       {
-        key: SettingsSectionKey.COMMERCIAL,
-        label: 'Comercial',
+        key: SettingsSectionKey.INVENTORY,
+        label: 'Inventario',
         description: 'Contrato pendiente.',
-        ownerModule: 'MOD06 / Comercial',
+        ownerModule: 'MOD10 / Inventory',
         status: SettingsSectionStatus.NOT_CONFIGURED,
         route: null,
         requiredPermissions: [],
@@ -42,7 +42,7 @@ describe('SettingsSectionGrid', () => {
     expect(
       screen.getAllByText('Esta sección todavía no está lista para usarse en el portal.'),
     ).toHaveLength(2);
-    expect(screen.queryByRole('link', { name: /Comercial/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Inventario/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Billing/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });

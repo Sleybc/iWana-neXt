@@ -62,7 +62,7 @@ export function FieldOperationsSettingsClient() {
         title={FIELD_OPERATIONS_SETTINGS_COPY.panelTitle}
         description={FIELD_OPERATIONS_SETTINGS_COPY.panelDescription}
       >
-        <div className="flex items-center justify-between rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
+        <div className="flex items-center justify-between rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
           <div>
             <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
               {canEdit

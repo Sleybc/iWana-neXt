@@ -1,6 +1,6 @@
 // apps/portal/src/components/dashboard/QuickActionsPanel.tsx
 import Link from 'next/link';
-import { Settings, Users, ShieldCheck, BarChart3, ArrowRight, Zap, HandCoins } from 'lucide-react';
+import { Settings, Users, BarChart3, ArrowRight, Zap, HandCoins } from 'lucide-react';
 import { DashboardPanel } from './DashboardPanel';
 
 interface QuickAction {
@@ -40,13 +40,6 @@ const quickActions: QuickAction[] = [
     href: '/dashboard/users',
     icon: Users,
     available: true,
-  },
-  {
-    label: 'Seguridad',
-    description: 'Políticas de acceso y MFA',
-    href: '/security',
-    icon: ShieldCheck,
-    available: false,
   },
   {
     label: 'Reportes',
@@ -92,7 +85,7 @@ export function QuickActionsPanel() {
           return (
             <div
               key={action.href}
-              className="flex items-center justify-between rounded-xl border border-gray-200 bg-[#f8faf5] px-4 py-4 text-sm dark:border-dark-border dark:bg-dark-surface-3"
+              className="flex items-center justify-between rounded-xl border border-gray-200 bg-iwana-surface-soft px-4 py-4 text-sm dark:border-dark-border dark:bg-dark-surface-3"
               aria-disabled="true"
             >
               <span className="flex items-center gap-3">

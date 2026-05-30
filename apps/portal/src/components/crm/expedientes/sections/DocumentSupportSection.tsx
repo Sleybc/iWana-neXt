@@ -336,7 +336,7 @@ export function DocumentSupportSection({
         </div>
       ) : null}
 
-      <div className="rounded-[18px] border border-gray-100 bg-[#f8faf5] px-4 py-4 dark:border-dark-border dark:bg-dark-surface-3/60">
+      <div className="rounded-[18px] border border-gray-100 bg-iwana-surface-soft px-4 py-4 dark:border-dark-border dark:bg-dark-surface-3/60">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
             <p className="text-sm font-semibold text-gray-900 dark:text-white">

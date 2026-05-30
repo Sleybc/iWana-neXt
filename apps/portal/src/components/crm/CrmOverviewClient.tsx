@@ -176,7 +176,7 @@ export function CrmOverviewClient() {
           </CardHeader>
           <CardContent className="space-y-3 pt-4">
             {loading ? (
-              <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-4 dark:border-dark-border dark:bg-dark-surface-3">
+              <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-4 dark:border-dark-border dark:bg-dark-surface-3">
                 <Loader2 className="h-4 w-4 animate-spin text-iwana-primary" aria-hidden="true" />
                 <PortalSkeletonBlock className="h-10 flex-1 rounded-xl" />
               </div>
@@ -221,7 +221,7 @@ export function CrmOverviewClient() {
           </CardHeader>
           <CardContent className="space-y-3 pt-4">
             {loading ? (
-              <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-5 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
+              <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-5 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
                 <Loader2 className="h-4 w-4 animate-spin text-iwana-primary" aria-hidden="true" />
                 Preparando la lectura compacta del pipeline.
               </div>

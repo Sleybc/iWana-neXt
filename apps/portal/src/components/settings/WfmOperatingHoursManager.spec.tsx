@@ -156,28 +156,104 @@ describe('WfmOperatingHoursManager', () => {
     await waitFor(() => {
       expect(wfmApiMock.dispatchSites.list).toHaveBeenCalled();
     });
-    expect(await screen.findByText('Horarios operativos')).toBeInTheDocument();
-    expect(screen.getAllByLabelText('Sede empresarial').length).toBeGreaterThan(0);
+    expect(await screen.findByText('Horario operativo para visitas')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar cierre' }));
+    expect(screen.getByLabelText('Sede empresarial')).toBeInTheDocument();
     expect(screen.queryByText('Sedes operativas')).not.toBeInTheDocument();
+  });
+
+  it('should degrade safely when visit sites cannot be loaded in compact framing', async () => {
+    wfmApiMock.dispatchSites.list.mockRejectedValueOnce(new Error('network'));
+    wfmApiMock.holidayBlackouts.list.mockResolvedValueOnce([
+      {
+        id: 'blackout-1',
+        organizationSiteId: 'site-1',
+        blackoutDate: '2026-07-10',
+        isRecurring: false,
+        name: 'Mantenimiento local',
+        description: null,
+        isEnabled: true,
+      },
+    ]);
+
+    render(<WfmOperatingHoursManager canEdit={true} compactFraming />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Sedes de visitas no disponibles')).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByText('Este bloque solo afecta visitas programadas'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('site-1')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Registrar cierre' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Editar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Eliminar' })).toBeInTheDocument();
   });
 
   it('should render the manager summary and company week', async () => {
     const { container } = render(<WfmOperatingHoursManager canEdit={true} />);
 
-    expect(await screen.findByText('Programación de visitas')).toBeInTheDocument();
-    expect(screen.getByText('Horarios operativos')).toBeInTheDocument();
-    expect(screen.getByText('Horario de atención para visitas')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Este bloque solo afecta visitas programadas'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Semana operativa')).toBeInTheDocument();
+    expect(screen.getByText('Horario operativo para visitas')).toBeInTheDocument();
+    expect(screen.getByText('Cierres que bloquean visitas')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Guardar horarios' })).toBeInTheDocument();
-    expect(screen.queryByText('Excepciones por técnico')).not.toBeInTheDocument();
-    expect(screen.queryByText('Nueva excepción')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('wfm-blackout-form')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Registrar cierre' })).toBeInTheDocument();
     expect(container.querySelector('input[type="time"]')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Hora inicial Lunes' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('combobox', { name: 'Hora inicial Lunes hora' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('combobox', { name: 'Hora inicial Lunes minutos' }),
+    ).not.toBeInTheDocument();
   });
 
-  it('should show readonly guidance when the role cannot edit', async () => {
-    render(<WfmOperatingHoursManager canEdit={false} />);
+  it('should show readonly guidance when the role cannot edit in compact framing', async () => {
+    render(<WfmOperatingHoursManager canEdit={false} compactFraming />);
 
     expect(await screen.findByText('Modo solo lectura')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Este bloque solo afecta visitas programadas'),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Guardar horarios' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Crear sede' })).not.toBeInTheDocument();
+  });
+
+  it('should keep a single dominant frame when compact framing is enabled', async () => {
+    render(<WfmOperatingHoursManager canEdit={true} compactFraming />);
+
+    expect(await screen.findByText('Horario operativo para visitas')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Este bloque solo afecta visitas programadas'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('wfm-company-week-section')).toBeInTheDocument();
+    expect(screen.getByTestId('wfm-blackouts-section')).toBeInTheDocument();
+    expect(screen.getByText('Cierres que bloquean visitas')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Registrar cierre' })).toBeInTheDocument();
+  });
+
+  it('should subordinate the blackout form until the user requests it', async () => {
+    render(<WfmOperatingHoursManager canEdit={true} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Registrar cierre' })).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('button', { name: 'Registrar cierre' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    expect(screen.queryByTestId('wfm-blackout-form')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar cierre' }));
+
+    expect(screen.getByTestId('wfm-blackout-form')).toBeInTheDocument();
+    expect(screen.getByLabelText('Nombre del cierre')).toHaveFocus();
+    expect(screen.getByText('Registrar un cierre para visitas')).toBeInTheDocument();
   });
 });

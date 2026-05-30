@@ -98,7 +98,7 @@ const alertVariantStyles: Record<
     defaultIcon: CheckCircle2,
   },
   info: {
-    root: 'border-gray-200 bg-iwana-secondary-50 dark:border-dark-border dark:bg-dark-surface-3',
+    root: 'border-gray-200 bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-3',
     iconWrap:
       'bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300',
     iconColor: 'text-iwana-primary dark:text-iwana-primary-300',
@@ -198,7 +198,7 @@ export function PortalActionToolbar({
   return (
     <div
       className={cn(
-        'flex w-full flex-col items-stretch rounded-2xl border border-gray-200/80 bg-iwana-secondary-50/90 p-1 dark:border-dark-border dark:bg-dark-surface-3/60 sm:w-auto sm:flex-row sm:items-center',
+        'flex w-full flex-col items-stretch rounded-2xl border border-gray-200/80 bg-iwana-surface-soft/90 p-1 dark:border-dark-border dark:bg-dark-surface-3/60 sm:w-auto sm:flex-row sm:items-center',
         compact ? 'gap-1' : 'gap-2',
         align === 'end' && 'sm:justify-end',
         className,
@@ -261,7 +261,7 @@ export function PortalEmptyState({
   return (
     <div
       className={cn(
-        'flex items-start gap-3 rounded-2xl border border-gray-200 bg-iwana-secondary-50 px-4 py-4 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300',
+        'flex items-start gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-4 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300',
         className,
       )}
     >

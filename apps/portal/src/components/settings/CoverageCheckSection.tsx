@@ -57,7 +57,7 @@ export function CoverageCheckSection({ canEdit, onCheck }: CoverageCheckSectionP
 
   return (
     <section className="space-y-4" data-testid="coverage-check-section">
-      <div className="rounded-2xl border border-gray-100 bg-[#f8faf5] p-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
+      <div className="rounded-2xl border border-gray-100 bg-iwana-surface-soft p-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300">
             <MapPinned className="h-5 w-5" aria-hidden="true" />

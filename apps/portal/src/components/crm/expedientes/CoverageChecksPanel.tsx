@@ -263,7 +263,7 @@ export function CoverageChecksPanel({ expedienteId }: CoverageChecksPanelProps) 
           <Loader2 className="h-6 w-6 animate-spin text-iwana-primary" aria-hidden="true" />
         </div>
       ) : checks.length === 0 ? (
-        <div className="rounded-2xl border border-gray-200 bg-[#f8faf5] px-4 py-8 text-center shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
+        <div className="rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-8 text-center shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
           <MapPin className="mx-auto h-8 w-8 text-gray-400" aria-hidden="true" />
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
             No hay verificaciones de cobertura registradas.

@@ -209,7 +209,7 @@ export function CreateUserModal({
             <button
               type="button"
               onClick={onClose}
-              className="flex h-10 w-10 items-center justify-center rounded-2xl text-gray-400 transition-colors hover:bg-[#f8faf5] hover:text-gray-700 dark:hover:bg-dark-surface-3 dark:hover:text-gray-200"
+              className="flex h-10 w-10 items-center justify-center rounded-2xl text-gray-400 transition-colors hover:bg-iwana-surface-soft hover:text-gray-700 dark:hover:bg-dark-surface-3 dark:hover:text-gray-200"
               aria-label="Cerrar"
             >
               <X className="h-5 w-5" aria-hidden="true" />
@@ -271,7 +271,7 @@ export function CreateUserModal({
           </div>
         ) : (
           <form onSubmit={handleSubmit(onFormSubmit)} noValidate className="space-y-4">
-            <div className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-[#f8faf5] p-4 dark:border-dark-border dark:bg-dark-surface-3">
+            <div className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300">
                 <UserPlus className="h-5 w-5" aria-hidden="true" />
               </div>

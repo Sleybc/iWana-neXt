@@ -30,30 +30,12 @@ const SETTINGS_SECTIONS = [
     requiredPermissions: [],
   },
   {
-    key: 'security',
-    label: 'Seguridad',
-    description: 'Políticas de acceso y MFA.',
-    ownerModule: 'Auth / Users',
-    status: 'AVAILABLE',
-    route: '/dashboard/settings/security',
-    requiredPermissions: [],
-  },
-  {
     key: 'branding',
     label: 'Marca',
     description: 'Identidad visual del portal empresarial.',
     ownerModule: 'Tenant / Branding',
     status: 'AVAILABLE',
     route: '/dashboard/settings/branding',
-    requiredPermissions: [],
-  },
-  {
-    key: 'commercial',
-    label: 'Comercial',
-    description: 'Configuración comercial unificada.',
-    ownerModule: 'MOD08 / Comercial',
-    status: 'NOT_CONFIGURED',
-    route: null,
     requiredPermissions: [],
   },
 ];
@@ -348,7 +330,7 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
       return;
     }
 
-    if (/\/access-control\/users\/[^/]+\/effective-permissions$/.test(url) && method === 'GET') {
+    if (url.includes('/access-control/me/effective-permissions') && method === 'GET') {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -356,10 +338,93 @@ async function setupSettingsMocks(page: Page, role: 'ADMIN' | 'NOC' = 'ADMIN') {
           data: {
             userId: 'user-uuid-admin-test',
             role,
-            effectivePermissions: ['settings.read'],
+            effectivePermissions: [
+              'settings.read',
+              'organization.sites.read',
+              'access.permissions.read',
+            ],
             recoveryPermissions: [],
             profileSources: [],
           },
+        }),
+      });
+      return;
+    }
+
+    if (url.includes('/access-control/permissions') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            version: 'MOD00_ACCESS_V1',
+            permissions: [
+              {
+                id: 'perm-settings-read',
+                tenantId: 'tenant-uuid-test',
+                permissionKey: 'settings.read',
+                moduleKey: 'settings',
+                action: 'read',
+                description: 'Ver centro de Configuración',
+                catalogVersion: 'MOD00_ACCESS_V1',
+                availability: 'ASSIGNABLE',
+                isSystem: true,
+                isActive: true,
+              },
+              {
+                id: 'perm-access-manage',
+                tenantId: 'tenant-uuid-test',
+                permissionKey: 'access.profiles.manage',
+                moduleKey: 'access-control',
+                action: 'manage',
+                description: 'Administrar perfiles de acceso',
+                catalogVersion: 'MOD00_ACCESS_V1',
+                availability: 'ASSIGNABLE',
+                isSystem: true,
+                isActive: true,
+              },
+            ],
+            compatibilityMatrix: {
+              ADMIN: ['settings.read', 'access.profiles.manage'],
+              NOC: ['settings.read'],
+              SUPPORT: ['settings.read'],
+              SALES: [],
+              TECHNICIAN: ['settings.read'],
+              ACCOUNTANT: [],
+              HR: [],
+              SUBSCRIBER: [],
+              CONTRACTOR: [],
+              PARTNER: [],
+              AUDITOR: [],
+              INVESTOR: [],
+              SYSTEM_ADMIN: [],
+              IWANA_SUPPORT: [],
+            },
+          },
+        }),
+      });
+      return;
+    }
+
+    if (url.includes('/access-control/profiles') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [
+            {
+              id: 'template-admin',
+              name: 'Administrador general',
+              description: 'Plantilla inicial para la administración general de la empresa.',
+              baseRoleConstraint: 'ADMIN',
+              scopeSiteId: null,
+              isSystem: true,
+              isActive: true,
+              permissions: ['settings.read'],
+              createdAt: '2026-05-21T00:00:00.000Z',
+              updatedAt: '2026-05-21T00:00:00.000Z',
+            },
+          ],
         }),
       });
       return;
@@ -836,12 +901,12 @@ test.describe('Configuración empresarial del portal', () => {
     expect(requestLog.settingsPatches[0]).not.toHaveProperty('maxSubscribers');
     expect(requestLog.settingsPatches[0]).not.toHaveProperty('billing');
 
-    await page.goto('/dashboard/settings/security');
+    await page.goto('/dashboard/settings/access');
     await page.waitForLoadState('networkidle');
     const mfaToggle = page.getByLabel('Activar MFA obligatorio');
     await mfaToggle.scrollIntoViewIfNeeded();
     await mfaToggle.check({ force: true });
-    await page.getByRole('button', { name: 'Guardar seguridad' }).click();
+    await page.getByRole('button', { name: 'Guardar política' }).click();
 
     await expect(page.getByText('Política de seguridad actualizada correctamente.')).toBeVisible();
     expect(requestLog.settingsPatches.at(-1)).toEqual(
@@ -852,6 +917,41 @@ test.describe('Configuración empresarial del portal', () => {
     expect(requestLog.legacyOperatingSiteRequests).toBe(0);
     expect(requestLog.platformCalls).toHaveLength(0);
     expect(requestLog.summaryRequests).toBe(0);
+  });
+
+  test('ADMIN puede guardar la politica MFA global desde Access', async ({ page }) => {
+    const { requestLog } = await setupSettingsMocks(page, 'ADMIN');
+    await setAuthSession(page, 'ADMIN');
+
+    await page.goto('/dashboard/settings/access');
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.getByRole('heading', { name: 'Perfiles de acceso' })).toBeVisible();
+    await expect(page.getByText('Políticas de autenticación')).toBeVisible();
+
+    const mfaToggle = page.getByLabel('Activar MFA obligatorio');
+    await mfaToggle.scrollIntoViewIfNeeded();
+    await mfaToggle.check({ force: true });
+    await page.getByRole('button', { name: 'Guardar política' }).click();
+
+    await expect(page.getByText('Política de seguridad actualizada correctamente.')).toBeVisible();
+    expect(requestLog.settingsPatches.at(-1)).toEqual(
+      expect.objectContaining({
+        features: { mfa_required_all: true },
+      }),
+    );
+  });
+
+  test('La ruta legacy de Security redirige a Access y mantiene visible la politica MFA', async ({
+    page,
+  }) => {
+    await setupSettingsMocks(page, 'ADMIN');
+    await setAuthSession(page, 'ADMIN');
+
+    await page.goto('/dashboard/settings/security');
+    await expect(page).toHaveURL(/\/dashboard\/settings\/access(#.*)?$/);
+    await expect(page.getByRole('heading', { name: 'Perfiles de acceso' })).toBeVisible();
+    await expect(page.getByText('Políticas de autenticación')).toBeVisible();
   });
 
   test('ADMIN puede guardar sello y desactivar nombre en sidebar', async ({ page }) => {
@@ -901,7 +1001,9 @@ test.describe('Configuración empresarial del portal', () => {
 
     await page.goto('/dashboard/settings/security');
     await page.waitForLoadState('networkidle');
-    await expect(page.getByRole('button', { name: 'Guardar seguridad' })).toHaveCount(0);
+    await expect(page).toHaveURL(/\/dashboard\/settings\/access(#.*)?$/);
+    await expect(page.getByText('Vista disponible para administradores')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Guardar política' })).toHaveCount(0);
     expect(requestLog.legacyOperatingSiteRequests).toBe(0);
     expect(requestLog.summaryRequests).toBe(0);
     expect(requestLog.platformCalls).toHaveLength(0);
@@ -933,10 +1035,7 @@ test.describe('Configuración empresarial del portal', () => {
       'href',
       '/dashboard/settings/field-operations',
     );
-    await expect(shellPanel.getByRole('link', { name: /Seguridad/i })).toHaveAttribute(
-      'href',
-      '/dashboard/settings/security',
-    );
+    await expect(shellPanel.getByRole('link', { name: /Seguridad/i })).toHaveCount(0);
     await expect(shellPanel.getByRole('link', { name: /Marca/i })).toHaveAttribute(
       'href',
       '/dashboard/settings/branding',
@@ -963,14 +1062,19 @@ test.describe('Configuración empresarial del portal', () => {
     await page.goto('/dashboard/settings');
     await page.getByRole('link', { name: /Operación de campo/i }).click();
     await expect(page).toHaveURL(/\/dashboard\/settings\/field-operations$/);
-    await expect(page.getByRole('heading', { name: 'Operación de campo' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Operaciones de campo' })).toBeVisible();
     await expect(page.getByText('Excepciones por técnico')).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Configuración operativa' })).toHaveCount(0);
 
     await page.goto('/dashboard/settings');
-    await page.getByRole('link', { name: /Seguridad/i }).click();
-    await expect(page).toHaveURL(/\/dashboard\/settings\/security$/);
-    await expect(page.getByRole('heading', { level: 1, name: 'Seguridad' })).toBeVisible();
+    await page.getByRole('link', { name: /Usuarios y acceso/i }).click();
+    await expect(page).toHaveURL(/\/dashboard\/settings\/access$/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Perfiles de acceso' })).toBeVisible();
+    await expect(page.getByText('Políticas de autenticación')).toBeVisible();
+
+    await page.goto('/dashboard/settings/security');
+    await expect(page).toHaveURL(/\/dashboard\/settings\/access(#.*)?$/);
+    await expect(page.getByText('Políticas de autenticación')).toBeVisible();
 
     await page.goto('/dashboard/settings');
     await page.getByRole('link', { name: /Marca/i }).click();

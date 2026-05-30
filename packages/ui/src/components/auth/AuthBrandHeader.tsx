@@ -37,7 +37,7 @@ export function AuthBrandHeader({
     <div className={cn('flex items-center gap-3', className)}>
       <div
         className={cn(
-          'flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-[#A5C330] text-[#181818]',
+          'flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-[#A5C330] text-dark-surface',
           logoContainerClassName,
         )}
       >

@@ -69,21 +69,19 @@ function canFetchPublicBranding(slug: string): boolean {
 
 export function LoginExperience() {
   const [tenantSlug, setTenantSlug] = useState('');
-  const [tenantSlugCommitted, setTenantSlugCommitted] = useState('');
   const [branding, setBranding] = useState<TenantPublicBranding | null>(null);
   const [isBrandingLoading, setIsBrandingLoading] = useState(false);
   const [isDark, setIsDark] = useState(false);
   const tenantResolution = resolveTenantSlug(tenantSlug);
   const brandingLookupSlug = tenantResolution.isLocked
     ? tenantResolution.slug
-    : normalizeTenantSlug(tenantSlugCommitted);
+    : normalizeTenantSlug(tenantSlug);
   const deferredBrandingLookupSlug = useDeferredValue(brandingLookupSlug);
 
   useEffect(() => {
     const initialResolution = resolveTenantSlug();
     if (initialResolution.slug) {
       setTenantSlug(initialResolution.slug);
-      setTenantSlugCommitted(initialResolution.slug);
     }
   }, []);
 
@@ -198,7 +196,6 @@ export function LoginExperience() {
           tenantSlug={tenantSlug}
           tenantLocked={tenantResolution.isLocked}
           onTenantSlugChange={setTenantSlug}
-          onTenantSlugCommit={setTenantSlugCommitted}
         />
       }
     />

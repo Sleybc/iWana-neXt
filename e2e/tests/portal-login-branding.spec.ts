@@ -70,7 +70,9 @@ test.describe('Portal login branding público', () => {
     const { requestedSlugs } = await setupLoginBrandingMocks(page);
 
     await page.goto('/auth/login');
-    await page.getByPlaceholder('ejemplo: isp-demo').fill('isp-demo');
+    const tenantInput = page.getByPlaceholder('ejemplo: isp-demo');
+    await tenantInput.fill('isp-demo');
+    await tenantInput.blur();
 
     await expect.poll(() => requestedSlugs.includes('isp-demo')).toBe(true);
     await expect(page.getByRole('heading', { name: 'Bienvenido a ISP Demo' })).toBeVisible();
@@ -92,7 +94,9 @@ test.describe('Portal login branding público', () => {
     const { requestedSlugs } = await setupLoginBrandingMocks(page);
 
     await page.goto('/auth/login');
-    await page.getByPlaceholder('ejemplo: isp-demo').fill('tenant-inexistente');
+    const tenantInput = page.getByPlaceholder('ejemplo: isp-demo');
+    await tenantInput.fill('tenant-inexistente');
+    await tenantInput.blur();
 
     await expect.poll(() => requestedSlugs.includes('tenant-inexistente')).toBe(true);
     await expect(page.getByRole('heading', { name: 'Bienvenido al portal' })).toBeVisible();
