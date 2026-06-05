@@ -35,6 +35,7 @@ describe('WfmDashboardService', () => {
         let callCount = 0;
         const mockQr = {
           manager: {
+            query: jest.fn().mockResolvedValue([]),
             createQueryBuilder: () => ({
               select: jest.fn().mockReturnThis(),
               addSelect: jest.fn().mockReturnThis(),
@@ -50,6 +51,18 @@ describe('WfmDashboardService', () => {
                 if (callCount === 1) return Promise.resolve({ todayCount: '5' });
                 if (callCount === 2) return Promise.resolve({ overdueCount: '2' });
                 if (callCount === 3) return Promise.resolve({ upcomingCount: '12' });
+                if (callCount === 4) return Promise.resolve({ activeCount: '5' });
+                if (callCount === 5) return Promise.resolve({ enRouteCount: '1' });
+                if (callCount === 6) return Promise.resolve({ atRiskCount: '2' });
+                if (callCount === 7) {
+                  return Promise.resolve({
+                    total_open: '4',
+                    ready_to_schedule_count: '2',
+                    needs_context_count: '1',
+                    overdue_sla_count: '1',
+                    high_priority_open_count: '2',
+                  });
+                }
                 return Promise.resolve({});
               }),
               getRawMany: jest.fn().mockResolvedValue([
@@ -68,6 +81,13 @@ describe('WfmDashboardService', () => {
         todayCount: 5,
         overdueCount: 2,
         upcomingCount: 12,
+        pendingInbox: {
+          totalOpen: 4,
+          readyToScheduleCount: 2,
+          needsContextCount: 1,
+          overdueSlaCount: 1,
+          highPriorityOpenCount: 2,
+        },
         technicianLoad: expect.arrayContaining([
           expect.objectContaining({ assignedUserId: 'tech-001', todayCount: 3 }),
           expect.objectContaining({ assignedUserId: 'tech-002', todayCount: 2 }),
@@ -79,6 +99,7 @@ describe('WfmDashboardService', () => {
       mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
         const mockQr = {
           manager: {
+            query: jest.fn().mockResolvedValue([]),
             createQueryBuilder: () => ({
               select: jest.fn().mockReturnThis(),
               addSelect: jest.fn().mockReturnThis(),
@@ -102,6 +123,13 @@ describe('WfmDashboardService', () => {
       expect(summary.todayCount).toBe(0);
       expect(summary.overdueCount).toBe(0);
       expect(summary.upcomingCount).toBe(0);
+      expect(summary.pendingInbox).toEqual({
+        totalOpen: 0,
+        readyToScheduleCount: 0,
+        needsContextCount: 0,
+        overdueSlaCount: 0,
+        highPriorityOpenCount: 0,
+      });
       expect(summary.technicianLoad).toHaveLength(0);
     });
 
@@ -114,6 +142,13 @@ describe('WfmDashboardService', () => {
           { activeCount: '4' },
           { enRouteCount: '1' },
           { atRiskCount: '2' },
+          {
+            total_open: '5',
+            ready_to_schedule_count: '3',
+            needs_context_count: '1',
+            overdue_sla_count: '1',
+            high_priority_open_count: '2',
+          },
         ];
         const rawManyResponses = [
           [
@@ -143,6 +178,7 @@ describe('WfmDashboardService', () => {
         ];
         const mockQr = {
           manager: {
+            query: jest.fn().mockResolvedValue([]),
             createQueryBuilder: () => ({
               select: jest.fn().mockReturnThis(),
               addSelect: jest.fn().mockReturnThis(),
@@ -174,6 +210,13 @@ describe('WfmDashboardService', () => {
         activeCount: 4,
         enRouteCount: 1,
         atRiskCount: 2,
+        pendingInbox: {
+          totalOpen: 5,
+          readyToScheduleCount: 3,
+          needsContextCount: 1,
+          overdueSlaCount: 1,
+          highPriorityOpenCount: 2,
+        },
         technicianLoad: [
           {
             assignedUserId: 'tech-001',
@@ -222,9 +265,17 @@ describe('WfmDashboardService', () => {
           { activeCount: '0' },
           { enRouteCount: '0' },
           { atRiskCount: '0' },
+          {
+            total_open: '0',
+            ready_to_schedule_count: '0',
+            needs_context_count: '0',
+            overdue_sla_count: '0',
+            high_priority_open_count: '0',
+          },
         ];
         const mockQr = {
           manager: {
+            query: jest.fn().mockResolvedValue([]),
             createQueryBuilder: () => ({
               select: jest.fn().mockReturnThis(),
               addSelect: jest.fn().mockReturnThis(),
@@ -271,9 +322,17 @@ describe('WfmDashboardService', () => {
           { activeCount: '0' },
           { enRouteCount: '0' },
           { atRiskCount: '0' },
+          {
+            total_open: '0',
+            ready_to_schedule_count: '0',
+            needs_context_count: '0',
+            overdue_sla_count: '0',
+            high_priority_open_count: '0',
+          },
         ];
         const mockQr = {
           manager: {
+            query: jest.fn().mockResolvedValue([]),
             createQueryBuilder: () => ({
               select: jest.fn().mockReturnThis(),
               addSelect: jest.fn().mockReturnThis(),
@@ -297,6 +356,69 @@ describe('WfmDashboardService', () => {
       await service.getSummary();
 
       expect(setParameterMock).toHaveBeenCalledWith('now', expect.any(Date));
+    });
+
+    it('should derive pending inbox readiness from address and municipality in the summary query', async () => {
+      const addSelectMock = jest.fn().mockReturnThis();
+      const queryMock = jest.fn().mockResolvedValue([]);
+
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
+        const rawOneResponses = [
+          { todayCount: '0' },
+          { overdueCount: '0' },
+          { upcomingCount: '0' },
+          { activeCount: '0' },
+          { enRouteCount: '0' },
+          { atRiskCount: '0' },
+          {
+            total_open: '0',
+            ready_to_schedule_count: '0',
+            needs_context_count: '0',
+            overdue_sla_count: '0',
+            high_priority_open_count: '0',
+          },
+        ];
+        const mockQr = {
+          manager: {
+            query: queryMock,
+            createQueryBuilder: () => ({
+              select: jest.fn().mockReturnThis(),
+              addSelect: addSelectMock,
+              setParameter: jest.fn().mockReturnThis(),
+              from: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              andWhere: jest.fn().mockReturnThis(),
+              groupBy: jest.fn().mockReturnThis(),
+              orderBy: jest.fn().mockReturnThis(),
+              limit: jest.fn().mockReturnThis(),
+              getRawOne: jest
+                .fn()
+                .mockImplementation(() => Promise.resolve(rawOneResponses.shift() ?? null)),
+              getRawMany: jest.fn().mockResolvedValue([]),
+            }),
+          },
+        };
+        return fn(mockQr as any);
+      });
+
+      await service.getSummary();
+
+      expect(queryMock).toHaveBeenCalledWith(expect.stringContaining('UPDATE visit_requests vr'), [
+        'tenant-001',
+      ]);
+
+      const readinessExpression = addSelectMock.mock.calls.find(
+        (call) => call[1] === 'ready_to_schedule_count',
+      )?.[0];
+      const needsContextExpression = addSelectMock.mock.calls.find(
+        (call) => call[1] === 'needs_context_count',
+      )?.[0];
+
+      expect(String(readinessExpression)).toContain("NULLIF(TRIM(vr.address), '') IS NOT NULL");
+      expect(String(readinessExpression)).toContain(
+        "NULLIF(TRIM(vr.municipality), '') IS NOT NULL",
+      );
+      expect(String(needsContextExpression)).toContain("NULLIF(TRIM(vr.address), '') IS NOT NULL");
     });
   });
 });

@@ -746,6 +746,71 @@ export default function ExpedienteDetailPage() {
           </div>
         </div>
       )}
+      {/* Acción recomendada ahora */}
+      <div className="rounded-[20px] border border-iwana-primary/20 bg-iwana-primary/5 p-4 shadow-iwana-soft dark:border-iwana-primary-300/20 dark:bg-iwana-primary-400/10">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold tracking-wide text-gray-500 dark:text-gray-400">
+              Acción recomendada ahora
+            </p>
+            <p className="text-sm font-semibold text-iwana-primary dark:text-iwana-primary-200">
+              {pipelineRecommendation?.suggestedStatus
+                ? `Avanzar a ${getStatusMeta(pipelineRecommendation.suggestedStatus).label}`
+                : 'Revisar transición de pipeline para continuar la oportunidad.'}
+            </p>
+            <p className="text-xs text-gray-600 dark:text-gray-300">
+              Prioriza la siguiente acción operativa antes de continuar con ajustes secundarios.
+            </p>
+            {pipelineRecommendation?.blockingRequirements.length ? (
+              <div className="pt-1">
+                <p className="text-xs font-semibold text-red-700 dark:text-red-300">
+                  Bloqueantes para avanzar: {pipelineRecommendation.blockingRequirements.length}
+                </p>
+                <ul className="mt-1 space-y-0.5">
+                  {pipelineRecommendation.blockingRequirements.slice(0, 2).map((requirement) => (
+                    <li
+                      key={`${requirement.sectionKey}-${requirement.fieldKey}`}
+                      className="text-xs text-red-700 dark:text-red-300"
+                    >
+                      • {requirement.sectionLabel}: {requirement.fieldLabel}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {pipelineRecommendation?.informationalRequirements.length ? (
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                Recomendado para cerrar mejor:{' '}
+                {pipelineRecommendation.informationalRequirements.length} pendiente(s).
+              </p>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {pipelineRecommendation?.suggestedStatus && (
+              <Button
+                type="button"
+                onClick={() =>
+                  handleTransition(pipelineRecommendation.suggestedStatus as ExpedienteStatus)
+                }
+                disabled={
+                  pipelineRecommendation.suggestedStatus === 'LISTO_PARA_INSTALACION' &&
+                  installationReadiness?.canTransition === false
+                }
+              >
+                Aplicar sugerencia
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => router.push(buildSchedulingHref(id))}
+            >
+              <CalendarCheck2 className="h-4 w-4" aria-hidden="true" />
+              Agendar instalación
+            </Button>
+          </div>
+        </div>
+      </div>
       {/* Progreso general */}
       <div className="rounded-[20px] border border-gray-50 bg-white p-6 shadow-[var(--shadow-iwana-soft)] dark:border-dark-border dark:bg-dark-surface-2">
         <div className="flex items-center space-x-2 mb-5 text-iwana-primary dark:text-white">

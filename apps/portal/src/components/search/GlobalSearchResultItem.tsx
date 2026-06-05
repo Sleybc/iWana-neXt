@@ -15,7 +15,7 @@ import type { GlobalSearchItem } from '@/lib/api-client';
 const moduleIconByRoute: Record<string, typeof LayoutDashboard> = {
   '/dashboard': LayoutDashboard,
   '/dashboard/commercial': HandCoins,
-  '/dashboard/crm': BriefcaseBusiness,
+  '/dashboard/crm/expedientes': BriefcaseBusiness,
   '/dashboard/crm/subscribers': Users,
   '/dashboard/settings': Settings,
   '/dashboard/users': UserRound,

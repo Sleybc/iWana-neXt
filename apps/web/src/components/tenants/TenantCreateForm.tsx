@@ -185,9 +185,9 @@ export function TenantCreateForm() {
 
   const statusLabel = useMemo(() => {
     if (!createdTenant) return null;
-    if (createdTenant.status === 'ACTIVE') return 'Provisioning completado.';
-    if (createdTenant.status === 'PROVISIONING_FAILED') return 'El provisioning falló.';
-    return 'Provisionando empresa...';
+    if (createdTenant.status === 'ACTIVE') return 'Configuración completada.';
+    if (createdTenant.status === 'PROVISIONING_FAILED') return 'La configuración no se completó.';
+    return 'Configurando empresa...';
   }, [createdTenant]);
 
   const allValues = watch();
@@ -281,7 +281,9 @@ export function TenantCreateForm() {
       const created = await tenantApi.create(payload);
       setCreatedTenant(created);
       // Feedback inmediato de creación exitosa — igual que ProfileForm
-      setSuccessMessage(`Empresa "${created.name}" creada correctamente. Provisionando schema...`);
+      setSuccessMessage(
+        `Empresa "${created.name}" creada correctamente. Iniciando configuración...`,
+      );
 
       if (created.status === 'PROVISIONING') {
         setIsPolling(true);
@@ -294,10 +296,12 @@ export function TenantCreateForm() {
           setSuccessMessage(`Empresa "${finalTenant.name}" activa y lista para usar.`);
         } else if (finalTenant.status === 'PROVISIONING_FAILED') {
           setSuccessMessage(null);
-          setError(`El provisioning de "${finalTenant.name}" falló. Revisa los logs del worker.`);
+          setError(
+            `No fue posible completar la configuración de "${finalTenant.name}". Reintenta en unos minutos.`,
+          );
         } else {
           setSuccessMessage(
-            `Empresa creada. El provisioning está tomando más tiempo del esperado.`,
+            'Empresa creada. La configuración está tomando más tiempo del esperado.',
           );
         }
       }
@@ -734,7 +738,7 @@ export function TenantCreateForm() {
 
             {createdTenant.status === 'PROVISIONING_FAILED' && (
               <p className="text-sm text-red-600 dark:text-red-400">
-                El provisioning falló. Revisa logs del worker.
+                La configuración no se completó. Reintenta en unos minutos.
               </p>
             )}
           </FormPanel>

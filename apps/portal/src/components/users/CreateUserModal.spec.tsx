@@ -25,6 +25,108 @@ const compatibilityMatrix: Record<UserRole, AccessPermissionKey[]> = {
 };
 
 describe('CreateUserModal', () => {
+  it('should show and hide success state based on temp password props', async () => {
+    const { rerender } = render(
+      <CreateUserModal
+        isOpen={true}
+        onClose={jest.fn()}
+        onSubmit={jest.fn().mockResolvedValue(undefined)}
+        isSubmitting={false}
+        error={null}
+        accessCatalog={null}
+        availableProfiles={[]}
+        tempPassword={null}
+        tempPasswordEmail={null}
+      />,
+    );
+
+    await screen.findByRole('dialog', { name: 'Crear usuario interno' });
+    expect(screen.queryByText('Clave temporal')).not.toBeInTheDocument();
+
+    rerender(
+      <CreateUserModal
+        isOpen={true}
+        onClose={jest.fn()}
+        onSubmit={jest.fn().mockResolvedValue(undefined)}
+        isSubmitting={false}
+        error={null}
+        accessCatalog={null}
+        availableProfiles={[]}
+        tempPassword="temporal-123"
+        tempPasswordEmail="nuevo@empresa.com"
+      />,
+    );
+
+    expect(await screen.findByText('Clave temporal')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Entendido' })).toBeInTheDocument();
+
+    rerender(
+      <CreateUserModal
+        isOpen={true}
+        onClose={jest.fn()}
+        onSubmit={jest.fn().mockResolvedValue(undefined)}
+        isSubmitting={false}
+        error={null}
+        accessCatalog={null}
+        availableProfiles={[]}
+        tempPassword={null}
+        tempPasswordEmail={null}
+      />,
+    );
+
+    await screen.findByRole('dialog', { name: 'Crear usuario interno' });
+    expect(screen.queryByText('Clave temporal')).not.toBeInTheDocument();
+  });
+
+  it('should clear temporary password and close modal on success dismiss', async () => {
+    const onClose = jest.fn();
+    const onDismissSuccess = jest.fn();
+
+    render(
+      <CreateUserModal
+        isOpen={true}
+        onClose={onClose}
+        onSubmit={jest.fn().mockResolvedValue(undefined)}
+        isSubmitting={false}
+        error={null}
+        accessCatalog={null}
+        availableProfiles={[]}
+        tempPassword="temporal-123"
+        tempPasswordEmail="nuevo@empresa.com"
+        onDismissSuccess={onDismissSuccess}
+      />,
+    );
+
+    await screen.findByText('Clave temporal');
+    fireEvent.click(screen.getByRole('button', { name: 'Entendido' }));
+
+    expect(onDismissSuccess).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('should close the dialog when pressing Escape', async () => {
+    const onClose = jest.fn();
+
+    render(
+      <CreateUserModal
+        isOpen={true}
+        onClose={onClose}
+        onSubmit={jest.fn().mockResolvedValue(undefined)}
+        isSubmitting={false}
+        error={null}
+        accessCatalog={null}
+        availableProfiles={[]}
+      />,
+    );
+
+    await screen.findByRole('dialog', { name: 'Crear usuario interno' });
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('should return selected company roles with the create payload', async () => {
     const onSubmit = jest.fn().mockResolvedValue(undefined);
 

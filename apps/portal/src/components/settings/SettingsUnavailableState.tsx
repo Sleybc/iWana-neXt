@@ -42,7 +42,7 @@ export function SettingsUnavailableState({
   return (
     <div
       className={cn(
-        'rounded-2xl border border-dashed border-gray-200 bg-iwana-surface-soft p-5 dark:border-dark-border dark:bg-dark-surface-3',
+        'rounded-2xl border border-dashed border-gray-200 bg-iwana-surface-soft/80 p-4 dark:border-dark-border dark:bg-dark-surface-3/80',
         className,
       )}
     >
@@ -63,7 +63,7 @@ export function SettingsUnavailableState({
           </div>
         </div>
       </div>
-      <div className="mt-4 rounded-2xl border border-white/80 bg-white/80 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-2/80">
+      <div className="mt-3 rounded-2xl border border-white/80 bg-white/80 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-2/80">
         <p className="text-sm text-gray-600 dark:text-gray-300">
           {SETTINGS_HUB_COPY.unavailableDescription}
         </p>

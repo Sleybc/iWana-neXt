@@ -128,7 +128,7 @@ export default function PortalDashboardLayout({ children }: { children: ReactNod
       {/* OVERLAY para mobile — cierra el drawer al hacer click externo */}
       {sidebarMobileOpen && (
         <div
-          className="fixed inset-0 z-[9998] bg-black/50 lg:hidden"
+          className="fixed inset-0 z-35 bg-black/50 lg:hidden"
           onClick={() => setSidebarMobileOpen(false)}
           aria-hidden="true"
         />

@@ -8,15 +8,16 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { ApiError, tenantSelfApi, type TenantSelf } from '@/lib/api-client';
 import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 import { BrandingForm } from './BrandingForm';
+import { BRANDING_SETTINGS_COPY } from './mod00-settings-labels';
 
 function mapBrandingError(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 401) return 'Tu sesión expiró. Inicia sesión nuevamente.';
-    if (error.status === 403) return 'No tienes permisos para consultar marca.';
+    if (error.status === 401) return BRANDING_SETTINGS_COPY.authExpired;
+    if (error.status === 403) return BRANDING_SETTINGS_COPY.forbidden;
     return error.message;
   }
 
-  return 'No fue posible cargar la configuración de marca.';
+  return BRANDING_SETTINGS_COPY.loadError;
 }
 
 export function BrandingSettingsClient() {
@@ -28,7 +29,7 @@ export function BrandingSettingsClient() {
   const loadProfile = useCallback(async () => {
     if (!user) {
       setIsLoading(false);
-      setError('No fue posible resolver la sesión del portal.');
+      setError(BRANDING_SETTINGS_COPY.sessionUnavailable);
       return;
     }
 
@@ -55,7 +56,10 @@ export function BrandingSettingsClient() {
   if (authLoading || isLoading) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Marca" subtitle="Cargando identidad visual del tenant" />
+        <PageHeader
+          title={BRANDING_SETTINGS_COPY.pageTitle}
+          subtitle={BRANDING_SETTINGS_COPY.loadingSubtitle}
+        />
         <PortalSkeletonBlock className="h-96" />
       </div>
     );
@@ -64,7 +68,10 @@ export function BrandingSettingsClient() {
   if (error || !profile) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Marca" subtitle="Error al cargar la vista" />
+        <PageHeader
+          title={BRANDING_SETTINGS_COPY.pageTitle}
+          subtitle={BRANDING_SETTINGS_COPY.errorSubtitle}
+        />
         <PortalAlert
           variant="error"
           title="Vista temporalmente no disponible"
@@ -78,8 +85,8 @@ export function BrandingSettingsClient() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Marca"
-        subtitle="Administra identidad visual, activos y metadata pública del portal empresarial."
+        title={BRANDING_SETTINGS_COPY.pageTitle}
+        subtitle={BRANDING_SETTINGS_COPY.pageSubtitle}
       />
       <BrandingForm
         profile={profile}

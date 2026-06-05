@@ -54,25 +54,87 @@ export const SETTINGS_HUB_COPY = {
   pageTitle: 'Configuración empresarial',
   loadingSubtitle: 'Cargando opciones de configuración',
   errorSubtitle: 'No pudimos cargar esta vista',
-  pageSubtitle: 'Elige una sección para consultar o administrar la configuración de tu empresa.',
+  pageSubtitle:
+    'Revisa las áreas clave de tu empresa, prioriza pendientes y entra directo a la sección que necesitas.',
   sessionUnavailable: 'No pudimos validar tu sesión en el portal.',
   registryForbidden:
     'Tu perfil puede entrar a esta vista, pero todavía no tiene acceso a las secciones disponibles.',
   registryUnavailable: 'No fue posible cargar las opciones de configuración.',
   permissionsForbidden: 'No pudimos confirmar qué secciones puedes usar con esta cuenta.',
   permissionsUnavailable: 'No fue posible validar los accesos de esta cuenta.',
+  priorityEyebrow: 'Recomendado ahora',
+  priorityTitle: 'Refuerza el acceso de tu empresa',
+  priorityDescription:
+    'Activa reglas de acceso y revisa quién puede entrar, aprobar cambios o administrar la operación.',
+  priorityAction: 'Revisar accesos',
   panelEyebrow: 'Configuración',
   panelTitle: 'Secciones de configuración',
   panelDescription:
     'Aquí encontrarás las áreas que puedes consultar o administrar dentro del portal.',
-  restrictedMessage: 'Tu perfil no tiene acceso a esta sección.',
+  restrictedMessage:
+    'Tu perfil no puede administrar esta área ahora. Solicita apoyo a una persona administradora si necesitas usarla.',
   emptyTitle: 'Aún no hay secciones disponibles',
   emptyDescription:
     'Cuando haya nuevas opciones de configuración para tu empresa, aparecerán aquí.',
   unavailableDescription: 'Esta sección todavía no está lista para usarse en el portal.',
+  futureEyebrow: 'Más opciones',
+  futureTitle: 'Próximas capacidades',
+  futureDescription: 'Estas áreas aparecerán aquí cuando estén listas para usarse en el portal.',
   retryAction: 'Reintentar',
   openSectionAction: 'Abrir sección',
 } as const;
+
+export const SETTINGS_HUB_SECTION_COPY: Partial<
+  Record<
+    string,
+    {
+      title: string;
+      description: string;
+      actionLabel?: string;
+      emphasis?: 'primary' | 'secondary';
+    }
+  >
+> = {
+  organization: {
+    title: 'Perfil empresarial y organización',
+    description: 'Datos de la empresa, configuración base y sedes registradas.',
+    actionLabel: 'Revisar empresa',
+    emphasis: 'primary',
+  },
+  access: {
+    title: 'Usuarios y acceso',
+    description: 'Perfiles de acceso, autenticación y control de quién puede usar cada área.',
+    actionLabel: 'Revisar accesos',
+    emphasis: 'primary',
+  },
+  calendar: {
+    title: 'Calendario operativo y jornadas',
+    description: 'Horarios de atención, jornadas por sede y cambios puntuales de operación.',
+    actionLabel: 'Revisar calendario',
+    emphasis: 'secondary',
+  },
+  branding: {
+    title: 'Marca',
+    description: 'Imagen institucional y activos visuales de la empresa.',
+    actionLabel: 'Revisar marca',
+    emphasis: 'secondary',
+  },
+  billing: {
+    title: 'Facturación',
+    description:
+      'Aquí podrás revisar y ajustar la configuración de facturación cuando esta capacidad esté disponible.',
+  },
+  inventory: {
+    title: 'Inventario',
+    description:
+      'Aquí podrás administrar reglas y parámetros de inventario cuando esta capacidad esté disponible.',
+  },
+  integrations: {
+    title: 'Integraciones',
+    description:
+      'Aquí podrás conectar y revisar integraciones empresariales cuando estén habilitadas.',
+  },
+};
 
 export const ACCESS_SETTINGS_COPY = {
   pageTitle: 'Perfiles de acceso y autenticación',
@@ -80,21 +142,22 @@ export const ACCESS_SETTINGS_COPY = {
   restrictedTitle: 'Vista disponible para administradores',
   restrictedDescription: 'Solo las personas administradoras pueden acceder a esta sección.',
   pageSubtitle:
-    'Administra perfiles de acceso, plantillas iniciales y la política MFA global de tu empresa desde un solo lugar.',
+    'Administra perfiles de acceso, plantillas iniciales y la verificación en dos pasos (MFA) global de tu empresa desde un solo lugar.',
   authPolicyEyebrow: 'Políticas de autenticación',
-  authPolicyTitle: 'MFA global de la empresa',
+  authPolicyTitle: 'Verificación en dos pasos global',
   authPolicyDescription:
     'Define si toda la empresa debe configurar verificación en dos pasos antes de entrar al portal.',
-  authPolicyToggleTitle: 'MFA obligatorio para toda la empresa',
-  authPolicyToggleLabel: 'Activar MFA obligatorio',
+  authPolicyToggleTitle: 'Verificación en dos pasos obligatoria para toda la empresa',
+  authPolicyToggleLabel: 'Activar verificación en dos pasos obligatoria',
   authPolicyToggleDescription:
     'Si se activa, cada persona deberá verificar su identidad antes de entrar al portal.',
-  authPolicyStatusEnabled: 'MFA global activo',
-  authPolicyStatusDisabled: 'MFA global opcional',
+  authPolicyStatusEnabled: 'Verificación en dos pasos global activa',
+  authPolicyStatusDisabled: 'Verificación en dos pasos global opcional',
   authPolicySaveAction: 'Guardar política',
-  authPolicySaveSuccess: 'Política MFA actualizada correctamente.',
-  authPolicyLoadError: 'No fue posible cargar la política de autenticación.',
-  authPolicySaveError: 'No fue posible guardar la política de autenticación. Intenta de nuevo.',
+  authPolicySaveSuccess: 'Política de verificación en dos pasos actualizada correctamente.',
+  authPolicyLoadError: 'No fue posible cargar la política de verificación en dos pasos.',
+  authPolicySaveError:
+    'No fue posible guardar la política de verificación en dos pasos. Intenta de nuevo.',
   authPolicyAdminHint:
     'Este ajuste aplica a toda la empresa y solo puede cambiarlo un administrador.',
   templatesTitle: 'Plantillas iniciales',
@@ -302,6 +365,104 @@ export const FIELD_OPERATIONS_SETTINGS_COPY = {
   canEditHint: 'Edita horarios y cierres desde el Calendario operativo.',
   readOnlyHint: 'Consulta los horarios y cierres en el Calendario operativo.',
   helperText: 'Horario general, cambios por sede y festivos especiales.',
+} as const;
+
+export const BRANDING_SETTINGS_COPY = {
+  pageTitle: 'Marca',
+  loadingSubtitle: 'Cargando identidad visual de la empresa',
+  errorSubtitle: 'Error al cargar la vista',
+  pageSubtitle:
+    'Administra la identidad visual, los activos y los textos públicos del portal empresarial.',
+  sessionUnavailable: 'No fue posible resolver la sesión del portal.',
+  authExpired: 'Tu sesión expiró. Inicia sesión nuevamente.',
+  forbidden: 'No tienes permisos para consultar la marca de la empresa.',
+  loadError: 'No fue posible cargar la configuración de marca.',
+  formDescription: 'Administra los activos de marca y los textos públicos del portal empresarial.',
+  logoDescription:
+    'Se usa en el acceso público y en superficies de identificación extendida de la empresa.',
+  loginBackgroundDescription:
+    'Se usa como acento visual del acceso público del portal para reforzar la identidad de la empresa.',
+  faviconAlt: 'Favicon de la empresa',
+  showCompanyNameDescription:
+    'Si se desactiva, el menú mostrará solo el sello sin texto. El acceso público seguirá la política configurada para mostrar el nombre comercial.',
+  identitySectionDescription:
+    'Definen cómo aparece tu empresa en el navegador y en la comunicación pública del portal.',
+  productHelperText: 'Nombre visible de la empresa en el acceso público.',
+} as const;
+
+export const ORGANIZATION_SETTINGS_COPY = {
+  pageTitle: 'Perfil empresarial y organización',
+  pageSubtitle: 'Gestiona los datos de tu empresa, ajustes generales y sedes.',
+  companyProfileTitle: 'Perfil empresarial',
+  companyProfileDescription: 'Datos legales y de contacto de la empresa.',
+  companyProfileContactSection: 'Perfil y contacto',
+  companyProfileIdentitySection: 'Identificación y ubicación',
+  companyProfileSaveSuccess: 'Perfil empresarial actualizado correctamente.',
+  companyProfileSaveError: 'No fue posible guardar el perfil empresarial. Intenta de nuevo.',
+  companyProfileErrorTitle: 'No fue posible guardar el perfil',
+  companyProfileSuccessTitle: 'Perfil actualizado',
+  companyProfileEditableHint: 'Solo se guardan los campos que puedes editar en esta sección.',
+  companyProfileReadOnlyHint: 'Tu rol tiene acceso solo lectura sobre esta sección.',
+  companyProfileSaveAction: 'Guardar perfil empresarial',
+  operationalTitle: 'Configuración operativa',
+  operationalDescription: 'Región, idioma y moneda base del portal.',
+  operationalLocationSection: 'Ubicación',
+  operationalPreferencesSection: 'Preferencias',
+  operationalTimezoneLabel: 'Zona horaria',
+  operationalCountryLabel: 'País operativo',
+  operationalLanguageLabel: 'Idioma',
+  operationalCurrencyLabel: 'Moneda',
+  operationalReadOnlyHint: 'Puedes consultar esta información, pero no cambiarla.',
+  operationalEditableHint: 'Los cambios se aplicarán de inmediato al portal.',
+  operationalSaveSuccess: 'Configuración operativa actualizada correctamente.',
+  operationalSaveError: 'No fue posible guardar la configuración operativa. Intenta de nuevo.',
+  operationalErrorTitle: 'No fue posible guardar la configuración',
+  operationalSuccessTitle: 'Configuración actualizada',
+  operationalSaveAction: 'Guardar configuración operativa',
+  sitesPanelTitle: 'Sedes registradas',
+  sitesPanelDescription: 'Revisa y administra las sedes de tu empresa.',
+  emptySitesTitle: 'Sin sedes registradas',
+  emptySitesDescription: 'Todavía no hay sedes creadas.',
+  createSiteAction: 'Crear sede',
+  createFirstSiteAction: 'Crear primera sede',
+  noServices: 'Sin servicios activos',
+  activeStatus: 'Activa',
+  inactiveStatus: 'Inactiva',
+  noActions: 'Sin acciones disponibles',
+  editSiteAction: 'Editar sede',
+  deactivateSiteAction: 'Dar de baja sede',
+  createDialogTitle: 'Crear sede',
+  editDialogTitle: 'Editar sede',
+  createDialogDescription:
+    'Registra una nueva sede para tu empresa y define sus servicios activos.',
+  editDialogDescription:
+    'Actualiza la información principal y los servicios de la sede seleccionada.',
+  informationTab: 'Información de la sede',
+  servicesTab: 'Servicios',
+} as const;
+
+export const SETTINGS_ACCESS_SHORTCUTS_COPY = {
+  eyebrow: 'Configuración',
+  title: 'Rutas rápidas de configuración',
+  description:
+    'Usa estas rutas para entrar a Empresa y organización, Operaciones de campo y Perfiles de acceso sin salir del centro de configuración.',
+  administrationBadge: 'Administración',
+  readOnlyBadge: 'Consulta',
+  cards: {
+    organization: {
+      title: 'Empresa y organización',
+      description: 'Consulta sedes, servicios disponibles y horario institucional de la empresa.',
+    },
+    access: {
+      title: 'Perfiles de acceso',
+      description: 'Administra perfiles de acceso, plantillas iniciales y accesos por sección.',
+    },
+    fieldOperations: {
+      title: 'Operaciones de campo',
+      description:
+        'Abre la configuración operativa de las operaciones de campo y consulta la referencia de despacho técnico sin salir del centro de configuración.',
+    },
+  },
 } as const;
 
 export const WFM_SETTINGS_COPY = {

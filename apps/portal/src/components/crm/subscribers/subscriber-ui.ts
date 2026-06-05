@@ -7,6 +7,7 @@ import {
   VatTreatment,
 } from '@iwana/shared';
 import type { SubscriberRecord } from '@/lib/api-client';
+import { portalActiveBadgeVariant } from '@/lib/portal-status-badge-rules';
 import { DEPARTAMENTOS } from '@/components/crm/expedientes/expediente-ui';
 
 const LOCATION_CONNECTORS = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e', 'o', 'u']);
@@ -93,7 +94,7 @@ export const SUBSCRIBER_STATUS_META: Record<
 > = {
   LEAD: { label: 'Lead', variant: 'neutral' },
   PROSPECT: { label: 'Prospecto', variant: 'info' },
-  ACTIVE: { label: 'Activo', variant: 'success' },
+  ACTIVE: { label: 'Activo', variant: portalActiveBadgeVariant },
   SUSPENDED: { label: 'Suspendido', variant: 'warning' },
   CANCELLED: { label: 'Cancelado', variant: 'error' },
 };

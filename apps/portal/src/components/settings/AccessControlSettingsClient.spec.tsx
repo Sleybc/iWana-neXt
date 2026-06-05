@@ -274,7 +274,7 @@ describe('AccessControlSettingsClient', () => {
     expect(await screen.findByText('Perfil creado correctamente.')).toBeInTheDocument();
   });
 
-  it('muestra la politica MFA global dentro de access para administradores', async () => {
+  it('muestra la política global de verificación en dos pasos para administradores', async () => {
     useAuthMock.mockReturnValue({
       user: { id: 'admin-1', role: UserRole.ADMIN },
       isLoading: false,
@@ -286,12 +286,16 @@ describe('AccessControlSettingsClient', () => {
       await screen.findByRole('heading', { name: 'Perfiles de acceso y autenticación' }),
     ).toBeInTheDocument();
     expect(await screen.findByText('Políticas de autenticación')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'MFA global de la empresa' })).toBeInTheDocument();
-    expect(screen.getByText('MFA global opcional')).toBeInTheDocument();
-    expect(screen.getByLabelText('Activar MFA obligatorio')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Verificación en dos pasos global' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Verificación en dos pasos global opcional')).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('Activar verificación en dos pasos obligatoria'),
+    ).toBeInTheDocument();
   });
 
-  it('guarda la politica MFA global desde access', async () => {
+  it('guarda la política global de verificación en dos pasos', async () => {
     const { tenantSelfApi } = jest.requireMock('@/lib/api-client') as {
       tenantSelfApi: {
         updateSettings: jest.Mock;
@@ -312,10 +316,10 @@ describe('AccessControlSettingsClient', () => {
 
     render(<AccessControlSettingsClient />);
 
-    const toggle = await screen.findByLabelText('Activar MFA obligatorio');
+    const toggle = await screen.findByLabelText('Activar verificación en dos pasos obligatoria');
     fireEvent.click(toggle);
 
-    expect(screen.getByText('MFA global activo')).toBeInTheDocument();
+    expect(screen.getByText('Verificación en dos pasos global activa')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Guardar política' }));
 
@@ -325,7 +329,9 @@ describe('AccessControlSettingsClient', () => {
       });
     });
 
-    expect(await screen.findByText('Política MFA actualizada correctamente.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Política de verificación en dos pasos actualizada correctamente.'),
+    ).toBeInTheDocument();
   });
 
   it('muestra En edición como estado del perfil seleccionado y mantiene la accion editar accesos', async () => {
@@ -440,7 +446,7 @@ describe('AccessControlSettingsClient', () => {
     expect(screen.getByRole('heading', { name: 'Perfiles personalizados' })).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Administra perfiles de acceso, plantillas iniciales y la política MFA global/i,
+        /Administra perfiles de acceso, plantillas iniciales y la verificación en dos pasos \(MFA\) global/i,
       ),
     ).toBeInTheDocument();
   });

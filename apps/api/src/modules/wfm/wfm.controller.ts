@@ -28,9 +28,6 @@ import { ScheduleRecommendationsService } from './services/schedule-recommendati
 import { WorkOrdersService } from './services/work-orders.service';
 import { TechnicianAvailabilityService } from './services/technician-availability.service';
 import { WfmDashboardService } from './services/wfm-dashboard.service';
-import { CompanyBusinessHoursService } from './services/company-business-hours.service';
-import { SiteBusinessHoursService } from './services/site-business-hours.service';
-import { HolidayBlackoutsService } from './services/holiday-blackouts.service';
 import { OperationalEventualitiesService } from './services/operational-eventualities.service';
 import { WfmOrganizationSiteDto } from './dto';
 import {
@@ -41,7 +38,6 @@ import { WfmOrganizationSitesReadPort } from './ports/wfm-organization-sites-rea
 import { WfmTenantSettingsReadPort } from './ports/wfm-tenant-settings-read.port';
 import { OperatingWindowResolverService } from './services/operating-window-resolver.service';
 import {
-  CreateHolidayBlackoutDto,
   CancelVisitRequestDto,
   CreateScheduleEventDto,
   CreateVisitRequestDto,
@@ -58,11 +54,8 @@ import {
   RescheduleEventDto,
   TransitionScheduleEventDto,
   TransitionWorkOrderDto,
-  UpdateCompanyBusinessHoursDto,
-  UpdateHolidayBlackoutDto,
   ResolveOperatingWindowDto,
   UpdateScheduleEventDto,
-  UpdateSiteBusinessHoursDto,
   UpdateVisitRequestContextDto,
   VisitRequestFilterOptionsQueryDto,
   VisitRequestFilterOptionsResponseDto,
@@ -80,9 +73,6 @@ export class WfmController {
     private readonly workOrdersService: WorkOrdersService,
     private readonly technicianAvailabilityService: TechnicianAvailabilityService,
     private readonly dashboardService: WfmDashboardService,
-    private readonly companyBusinessHoursService: CompanyBusinessHoursService,
-    private readonly siteBusinessHoursService: SiteBusinessHoursService,
-    private readonly holidayBlackoutsService: HolidayBlackoutsService,
     private readonly operationalEventualitiesService: OperationalEventualitiesService,
     @Inject(WfmOrganizationSitesReadPort)
     private readonly organizationSitesReadPort: WfmOrganizationSitesReadPort,
@@ -99,80 +89,6 @@ export class WfmController {
   @ApiResponse({ status: 200, type: [WfmOrganizationSiteDto] })
   async listDispatchSites(@CurrentUser() actor: JwtPayload) {
     return this.organizationSitesReadPort.listDispatchSites(actor);
-  }
-
-  @Get('business-hours/company')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Obtener horario base de empresa por dia de semana' })
-  getCompanyBusinessHours(@CurrentUser() actor: JwtPayload) {
-    return this.companyBusinessHoursService.getWeek(actor);
-  }
-
-  @Put('business-hours/company')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Reemplazar horario base de empresa por dia de semana' })
-  replaceCompanyBusinessHours(
-    @Body() dto: UpdateCompanyBusinessHoursDto,
-    @CurrentUser() actor: JwtPayload,
-  ) {
-    return this.companyBusinessHoursService.replaceWeek(dto, actor);
-  }
-
-  @Get('operating-sites/:siteId/business-hours')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Obtener horario semanal de una sede operativa' })
-  getSiteBusinessHours(
-    @Param('siteId', ParseUUIDPipe) siteId: string,
-    @CurrentUser() actor: JwtPayload,
-  ) {
-    return this.siteBusinessHoursService.getWeek(siteId, actor);
-  }
-
-  @Put('operating-sites/:siteId/business-hours')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Reemplazar horario semanal de una sede operativa' })
-  replaceSiteBusinessHours(
-    @Param('siteId', ParseUUIDPipe) siteId: string,
-    @Body() dto: UpdateSiteBusinessHoursDto,
-    @CurrentUser() actor: JwtPayload,
-  ) {
-    return this.siteBusinessHoursService.replaceWeek(siteId, dto, actor);
-  }
-
-  @Get('holiday-blackouts')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Listar festivos y cierres especiales WFM' })
-  listHolidayBlackouts(@CurrentUser() actor: JwtPayload) {
-    return this.holidayBlackoutsService.list(actor);
-  }
-
-  @Post('holiday-blackouts')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Crear un festivo o cierre especial WFM' })
-  createHolidayBlackout(@Body() dto: CreateHolidayBlackoutDto, @CurrentUser() actor: JwtPayload) {
-    return this.holidayBlackoutsService.create(dto, actor);
-  }
-
-  @Patch('holiday-blackouts/:id')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Actualizar un festivo o cierre especial WFM' })
-  updateHolidayBlackout(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateHolidayBlackoutDto,
-    @CurrentUser() actor: JwtPayload,
-  ) {
-    return this.holidayBlackoutsService.update(id, dto, actor);
-  }
-
-  @Delete('holiday-blackouts/:id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Eliminar un festivo o cierre especial WFM' })
-  async deleteHolidayBlackout(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() actor: JwtPayload,
-  ) {
-    await this.holidayBlackoutsService.remove(id, actor);
   }
 
   @Post('operating-window/resolve')

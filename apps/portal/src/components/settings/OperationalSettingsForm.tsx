@@ -8,6 +8,7 @@ import { CheckCircle2, CircleAlert } from 'lucide-react';
 import { Button, Card, CardContent, CardHeader, Select } from '@iwana/ui';
 import { tenantSelfApi, type TenantSelfSettings } from '@/lib/api-client';
 import { PortalAlert, PortalSectionHeader } from '@/components/shared/portal-ui';
+import { ORGANIZATION_SETTINGS_COPY } from './mod00-settings-labels';
 
 const operationalSettingsSchema = z.object({
   timezone: z.string().min(1, 'Selecciona una zona horaria.'),
@@ -109,9 +110,9 @@ export function OperationalSettingsForm({
     try {
       const updated = await tenantSelfApi.updateSettings(values);
       onUpdated(updated);
-      setSuccess('Configuración operativa actualizada correctamente.');
+      setSuccess(ORGANIZATION_SETTINGS_COPY.operationalSaveSuccess);
     } catch {
-      setServerError('No fue posible guardar la configuración operativa. Intenta de nuevo.');
+      setServerError(ORGANIZATION_SETTINGS_COPY.operationalSaveError);
     }
   };
 
@@ -120,8 +121,8 @@ export function OperationalSettingsForm({
       <CardHeader>
         <PortalSectionHeader
           className="gap-0"
-          title="Configuración operativa"
-          description="Región, idioma y moneda base del portal."
+          title={ORGANIZATION_SETTINGS_COPY.operationalTitle}
+          description={ORGANIZATION_SETTINGS_COPY.operationalDescription}
         />
       </CardHeader>
 
@@ -130,11 +131,13 @@ export function OperationalSettingsForm({
         {!canEdit ? (
           <div className="space-y-5">
             {/* Grupo Ubicación */}
-            <p className={`mb-3 ${SUBSECTION_LABEL}`}>Ubicación</p>
+            <p className={`mb-3 ${SUBSECTION_LABEL}`}>
+              {ORGANIZATION_SETTINGS_COPY.operationalLocationSection}
+            </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
                 <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-                  Zona horaria
+                  {ORGANIZATION_SETTINGS_COPY.operationalTimezoneLabel}
                 </span>
                 <span className="mt-0.5 block text-sm font-medium text-gray-900 dark:text-white">
                   {labelFor(TIMEZONE_OPTIONS, settings.timezone)}
@@ -142,7 +145,7 @@ export function OperationalSettingsForm({
               </div>
               <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
                 <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-                  País operativo
+                  {ORGANIZATION_SETTINGS_COPY.operationalCountryLabel}
                 </span>
                 <span className="mt-0.5 block text-sm font-medium text-gray-900 dark:text-white">
                   {labelFor(COUNTRY_OPTIONS, settings.country)}
@@ -153,11 +156,13 @@ export function OperationalSettingsForm({
             <hr className="my-4 border-gray-100 dark:border-dark-border" />
 
             {/* Grupo Preferencias */}
-            <p className={`mb-3 ${SUBSECTION_LABEL}`}>Preferencias</p>
+            <p className={`mb-3 ${SUBSECTION_LABEL}`}>
+              {ORGANIZATION_SETTINGS_COPY.operationalPreferencesSection}
+            </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
                 <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-                  Idioma
+                  {ORGANIZATION_SETTINGS_COPY.operationalLanguageLabel}
                 </span>
                 <span className="mt-0.5 block text-sm font-medium text-gray-900 dark:text-white">
                   {labelFor(LANGUAGE_OPTIONS, settings.language)}
@@ -165,7 +170,7 @@ export function OperationalSettingsForm({
               </div>
               <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
                 <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-                  Moneda
+                  {ORGANIZATION_SETTINGS_COPY.operationalCurrencyLabel}
                 </span>
                 <span className="mt-0.5 block text-sm font-medium text-gray-900 dark:text-white">
                   {labelFor(CURRENCY_OPTIONS, settings.currency)}
@@ -174,18 +179,20 @@ export function OperationalSettingsForm({
             </div>
 
             <p className="text-xs text-gray-400 dark:text-gray-500">
-              Puedes consultar esta información, pero no cambiarla.
+              {ORGANIZATION_SETTINGS_COPY.operationalReadOnlyHint}
             </p>
           </div>
         ) : (
           /* Vista edición: formulario sin panel anidado */
           <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
             {/* Grupo: Ubicación */}
-            <p className={`mb-3 ${SUBSECTION_LABEL}`}>Ubicación</p>
+            <p className={`mb-3 ${SUBSECTION_LABEL}`}>
+              {ORGANIZATION_SETTINGS_COPY.operationalLocationSection}
+            </p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="timezone" className={LABEL_CLASS}>
-                  Zona horaria
+                  {ORGANIZATION_SETTINGS_COPY.operationalTimezoneLabel}
                 </label>
                 <Controller
                   name="timezone"
@@ -209,7 +216,7 @@ export function OperationalSettingsForm({
               </div>
               <div>
                 <label htmlFor="country" className={LABEL_CLASS}>
-                  País operativo
+                  {ORGANIZATION_SETTINGS_COPY.operationalCountryLabel}
                 </label>
                 <Controller
                   name="country"
@@ -234,11 +241,13 @@ export function OperationalSettingsForm({
             <hr className="my-4 border-gray-100 dark:border-dark-border" />
 
             {/* Grupo: Preferencias */}
-            <p className={`mb-3 ${SUBSECTION_LABEL}`}>Preferencias</p>
+            <p className={`mb-3 ${SUBSECTION_LABEL}`}>
+              {ORGANIZATION_SETTINGS_COPY.operationalPreferencesSection}
+            </p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="language" className={LABEL_CLASS}>
-                  Idioma
+                  {ORGANIZATION_SETTINGS_COPY.operationalLanguageLabel}
                 </label>
                 <Controller
                   name="language"
@@ -262,7 +271,7 @@ export function OperationalSettingsForm({
               </div>
               <div>
                 <label htmlFor="currency" className={LABEL_CLASS}>
-                  Moneda
+                  {ORGANIZATION_SETTINGS_COPY.operationalCurrencyLabel}
                 </label>
                 <Controller
                   name="currency"
@@ -290,7 +299,7 @@ export function OperationalSettingsForm({
             {serverError && (
               <PortalAlert
                 variant="error"
-                title="No fue posible guardar la configuración"
+                title={ORGANIZATION_SETTINGS_COPY.operationalErrorTitle}
                 description={serverError}
                 icon={CircleAlert}
               />
@@ -298,7 +307,7 @@ export function OperationalSettingsForm({
             {success && !serverError && (
               <PortalAlert
                 variant="success"
-                title="Configuración actualizada"
+                title={ORGANIZATION_SETTINGS_COPY.operationalSuccessTitle}
                 description={success}
                 icon={CheckCircle2}
               />
@@ -307,10 +316,10 @@ export function OperationalSettingsForm({
             {/* Footer y CTA */}
             <div className="flex items-center justify-between gap-3">
               <p className="text-xs text-gray-400 dark:text-gray-500">
-                Los cambios se aplicarán de inmediato al portal.
+                {ORGANIZATION_SETTINGS_COPY.operationalEditableHint}
               </p>
               <Button type="submit" loading={isSubmitting} disabled={isSubmitting || !isDirty}>
-                Guardar configuración operativa
+                {ORGANIZATION_SETTINGS_COPY.operationalSaveAction}
               </Button>
             </div>
           </form>

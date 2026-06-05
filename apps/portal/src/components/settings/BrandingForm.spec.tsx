@@ -296,7 +296,35 @@ describe('BrandingForm', () => {
     expect(screen.getAllByText('ISP Demo Pro').length).toBeGreaterThan(0);
   });
 
-  it('restaura branding base limpiando assets y metadata tenant', async () => {
+  it('normaliza el copy visible para evitar lenguaje interno', async () => {
+    render(
+      <BrandingForm
+        profile={buildProfile({ faviconLightUrl: 'https://cdn.demo.co/favicon-light.png' })}
+        canEdit
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    await expandIdentityAccordion();
+
+    expect(
+      screen.getByText(
+        'Se usa en el acceso público y en superficies de identificación extendida de la empresa.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Se usa como acento visual del acceso público del portal para reforzar la identidad de la empresa.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByAltText('Favicon de la empresa')).toBeInTheDocument();
+    expect(
+      screen.getByText('Nombre visible de la empresa en el acceso público.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/tenant/i)).not.toBeInTheDocument();
+  });
+
+  it('restaura la marca base limpiando activos y metadatos empresariales', async () => {
     tenantSelfApiMock.updateBranding.mockResolvedValue(buildProfile());
 
     render(

@@ -25,7 +25,7 @@ export class AssuranceFieldServiceAdapter extends AssuranceFieldServicePort {
     }
 
     await this.queue.add('request-field-service', req, {
-      jobId: `assurance-field-service:${req.tenantId}:${req.ticketId}`,
+      jobId: `assurance-field-service-${req.tenantId}-${req.ticketId}`,
       removeOnComplete: true,
       removeOnFail: false,
     });

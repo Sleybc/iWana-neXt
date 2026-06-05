@@ -40,4 +40,35 @@ describe('OperationalSettingsForm', () => {
     expect(selects[2]).toHaveTextContent(/Colombia/);
     expect(selects[3]).toHaveTextContent(/COP/);
   });
+
+  it('should render normalized enterprise copy in read-only mode', () => {
+    render(
+      <OperationalSettingsForm
+        settings={{
+          timezone: 'America/Bogota',
+          currency: 'COP',
+          language: 'es-CO',
+          country: 'CO',
+          fiberInstallationThresholdMeters: 200,
+          features: {
+            billing: false,
+            mfa_required_all: true,
+          },
+        }}
+        canEdit={false}
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Configuración operativa')).toBeInTheDocument();
+    expect(screen.getByText('Región, idioma y moneda base del portal.')).toBeInTheDocument();
+    expect(screen.getByText('Ubicación')).toBeInTheDocument();
+    expect(screen.getByText('Preferencias')).toBeInTheDocument();
+    expect(
+      screen.getByText('Puedes consultar esta información, pero no cambiarla.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Guardar configuración operativa' }),
+    ).not.toBeInTheDocument();
+  });
 });

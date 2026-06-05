@@ -36,7 +36,7 @@ describe('PortalDashboardLayout', () => {
     document.title = 'Inicial';
   });
 
-  it('actualiza document.title usando brandingMetadataTitle del tenant autenticado', async () => {
+  it('actualiza document.title usando brandingMetadataTitle de la empresa autenticada', async () => {
     getMeMock.mockResolvedValue({
       id: 'tenant-1',
       name: 'iWana',

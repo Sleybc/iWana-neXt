@@ -798,6 +798,48 @@ export class ExpedienteService {
     return entity;
   }
 
+  async findDisplayNameById(id: string): Promise<string | null> {
+    const { schemaName } = TenantContext.getOrThrow();
+
+    const entity = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      qr.manager.findOne(ExpedienteRecord, {
+        where: { id },
+        select: ['id', 'fullName', 'firstName', 'lastName', 'companyName'],
+      }),
+    );
+
+    return entity ? this.resolveDisplayName(entity) : null;
+  }
+
+  async findDisplayNameByShortCode(
+    code: string,
+  ): Promise<{ id: string; displayName: string } | null> {
+    const { schemaName } = TenantContext.getOrThrow();
+    const normalizedCode = code.trim().slice(0, 8).toUpperCase();
+
+    if (!/^[A-Z0-9]{8}$/.test(normalizedCode)) {
+      return null;
+    }
+
+    const entity = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      qr.manager
+        .createQueryBuilder(ExpedienteRecord, 'expediente')
+        .select([
+          'expediente.id',
+          'expediente.fullName',
+          'expediente.firstName',
+          'expediente.lastName',
+          'expediente.companyName',
+        ])
+        .where('UPPER(SUBSTRING(expediente.id::text, 1, 8)) = :code', { code: normalizedCode })
+        .getOne(),
+    );
+
+    const displayName = entity ? this.resolveDisplayName(entity) : null;
+
+    return entity && displayName ? { id: entity.id, displayName } : null;
+  }
+
   /**
    * Actualizar una sección específica del expediente
    * CA-02 - Solo esa sección se modifica, completitud se recalcula
@@ -2233,6 +2275,26 @@ export class ExpedienteService {
     }
 
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  }
+
+  private resolveDisplayName(
+    expediente: Pick<ExpedienteRecord, 'fullName' | 'firstName' | 'lastName' | 'companyName'>,
+  ): string | null {
+    const fullName = expediente.fullName?.trim();
+    if (fullName) {
+      return fullName;
+    }
+
+    const personName = [expediente.firstName, expediente.lastName]
+      .map((value) => value?.trim())
+      .filter((value): value is string => Boolean(value))
+      .join(' ');
+
+    if (personName) {
+      return personName;
+    }
+
+    return expediente.companyName?.trim() || null;
   }
 
   private async resolveActorName(schemaName: string, userId: string): Promise<string | null> {

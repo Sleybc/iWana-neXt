@@ -28,6 +28,13 @@ const summary = {
   activeCount: 2,
   enRouteCount: 1,
   atRiskCount: 1,
+  pendingInbox: {
+    totalOpen: 6,
+    readyToScheduleCount: 4,
+    needsContextCount: 2,
+    overdueSlaCount: 1,
+    highPriorityOpenCount: 3,
+  },
   alerts: [
     {
       id: 'overdue-evt-1',
@@ -53,7 +60,7 @@ const summary = {
 } as any;
 
 describe('SchedulingOverview', () => {
-  it('renders command center KPIs, alerts, timeline and load strip', () => {
+  it('renderiza seguimiento, alertas y timeline operativo', () => {
     render(
       <SchedulingOverview
         summary={summary}
@@ -65,12 +72,11 @@ describe('SchedulingOverview', () => {
       />,
     );
 
-    expect(screen.getByText('Command center')).toBeInTheDocument();
-    expect(screen.getByText('Activos')).toBeInTheDocument();
+    expect(screen.getByText('Personas asignadas')).toBeInTheDocument();
+    expect(screen.getByText('Alertas de agenda')).toBeInTheDocument();
     expect(screen.getByText('Evento atrasado')).toBeInTheDocument();
     expect(screen.getAllByText('Luisa Campos').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Instalación GPON barrio norte').length).toBeGreaterThan(0);
-    expect(screen.getByText('Saturación alta')).toBeInTheDocument();
   });
 
   it('opens event detail from alert and timeline actions', () => {
@@ -88,9 +94,7 @@ describe('SchedulingOverview', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /Abrir alerta Evento atrasado/i }));
-    fireEvent.click(
-      screen.getByRole('button', { name: /Abrir evento Instalación GPON barrio norte/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /Evento Instalación GPON barrio norte/i }));
 
     expect(onSelectEvent).toHaveBeenCalledTimes(2);
   });

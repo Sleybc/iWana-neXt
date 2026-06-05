@@ -2,6 +2,7 @@
 import { Badge, Card, CardContent } from '@iwana/ui';
 import { Building2, MapPin, Globe } from 'lucide-react';
 import type { TenantSelf, TenantSelfSettings } from '@/lib/api-client';
+import { portalActiveBadgeVariant } from '@/lib/portal-status-badge-rules';
 
 interface TenantSummaryCardProps {
   tenant: TenantSelf;
@@ -9,8 +10,8 @@ interface TenantSummaryCardProps {
 }
 
 /** Mapea el estado del tenant a variante visual de Badge */
-function statusVariant(status: TenantSelf['status']): 'success' | 'warning' | 'error' | 'neutral' {
-  if (status === 'ACTIVE') return 'success';
+function statusVariant(status: TenantSelf['status']): 'lime' | 'warning' | 'error' | 'neutral' {
+  if (status === 'ACTIVE') return portalActiveBadgeVariant;
   if (status === 'SUSPENDED') return 'error';
   if (status === 'PROVISIONING') return 'warning';
   if (status === 'PROVISIONING_FAILED') return 'error';

@@ -50,9 +50,9 @@ export function SchedulingToolbar({
 
   return (
     <PortalPanel
-      eyebrow="Programacion"
-      title="Agenda operativa"
-      description="Filtra por rango, técnico, tipo o estado para priorizar la ejecución diaria."
+      eyebrow="Agenda"
+      title="Control de agenda"
+      description="Filtra por fecha, persona, tipo o estado para encontrar la tarea que necesitas."
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="secondary" onClick={onRefresh} loading={isRefreshing}>
@@ -62,80 +62,86 @@ export function SchedulingToolbar({
           {canManage && (
             <Button type="button" onClick={onOpenCreate}>
               <Plus className="h-4 w-4" aria-hidden="true" />
-              Crear evento
+              Agendar tarea
             </Button>
           )}
         </div>
       }
     >
-      <div className="grid gap-3 lg:grid-cols-[repeat(5,minmax(0,1fr))_auto] lg:items-end">
-        <DatePicker
-          id="scheduling-from-date"
-          label="Desde"
-          value={toDateFromLocalDateValue(filters.fromDate)}
-          onChange={(date) => update('fromDate', date ? toLocalDateValue(date) : '')}
-        />
-        <DatePicker
-          id="scheduling-to-date"
-          label="Hasta"
-          value={toDateFromLocalDateValue(filters.toDate)}
-          onChange={(date) => update('toDate', date ? toLocalDateValue(date) : '')}
-        />
-        <Select
-          id="scheduling-technician-filter"
-          label="Técnico"
-          value={filters.technicianId}
-          placeholder="Todos"
-          options={technicianOptions}
-          onChange={(event) => update('technicianId', event.target.value)}
-        />
-        <Select
-          id="scheduling-type-filter"
-          label="Tipo"
-          value={filters.type}
-          placeholder="Todos"
-          options={WFM_WORK_TYPE_OPTIONS}
-          onChange={(event) => update('type', event.target.value as SchedulingFilters['type'])}
-        />
-        <Select
-          id="scheduling-status-filter"
-          label="Estado"
-          value={filters.status}
-          placeholder="Todos"
-          options={SCHEDULE_EVENT_STATUS_OPTIONS}
-          onChange={(event) => update('status', event.target.value as SchedulingFilters['status'])}
-        />
+      <div className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <DatePicker
+            id="scheduling-from-date"
+            label="Desde"
+            value={toDateFromLocalDateValue(filters.fromDate)}
+            onChange={(date) => update('fromDate', date ? toLocalDateValue(date) : '')}
+          />
+          <DatePicker
+            id="scheduling-to-date"
+            label="Hasta"
+            value={toDateFromLocalDateValue(filters.toDate)}
+            onChange={(date) => update('toDate', date ? toLocalDateValue(date) : '')}
+          />
+          <Select
+            id="scheduling-technician-filter"
+            label="Técnico"
+            value={filters.technicianId}
+            placeholder="Todos"
+            options={technicianOptions}
+            onChange={(event) => update('technicianId', event.target.value)}
+          />
+          <Select
+            id="scheduling-type-filter"
+            label="Tipo"
+            value={filters.type}
+            placeholder="Todos"
+            options={WFM_WORK_TYPE_OPTIONS}
+            onChange={(event) => update('type', event.target.value as SchedulingFilters['type'])}
+          />
+          <Select
+            id="scheduling-status-filter"
+            label="Estado"
+            value={filters.status}
+            placeholder="Todos"
+            options={SCHEDULE_EVENT_STATUS_OPTIONS}
+            onChange={(event) =>
+              update('status', event.target.value as SchedulingFilters['status'])
+            }
+          />
+        </div>
 
-        <div className="flex items-center gap-2 lg:justify-end">
-          {canViewCommandCenter && (
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            {canViewCommandCenter && (
+              <Button
+                type="button"
+                variant={filters.view === 'command-center' ? 'primary' : 'secondary'}
+                onClick={() => setView('command-center')}
+                aria-pressed={filters.view === 'command-center'}
+              >
+                <LayoutDashboard className="h-4 w-4" aria-hidden="true" />
+                Resumen
+              </Button>
+            )}
             <Button
               type="button"
-              variant={filters.view === 'command-center' ? 'primary' : 'secondary'}
-              onClick={() => setView('command-center')}
-              aria-pressed={filters.view === 'command-center'}
+              variant={filters.view === 'calendar' ? 'primary' : 'secondary'}
+              onClick={() => setView('calendar')}
+              aria-pressed={filters.view === 'calendar'}
             >
-              <LayoutDashboard className="h-4 w-4" aria-hidden="true" />
-              Command center
+              <CalendarDays className="h-4 w-4" aria-hidden="true" />
+              Agenda
             </Button>
-          )}
-          <Button
-            type="button"
-            variant={filters.view === 'calendar' ? 'primary' : 'secondary'}
-            onClick={() => setView('calendar')}
-            aria-pressed={filters.view === 'calendar'}
-          >
-            <CalendarDays className="h-4 w-4" aria-hidden="true" />
-            Calendario
-          </Button>
-          <Button
-            type="button"
-            variant={filters.view === 'list' ? 'primary' : 'secondary'}
-            onClick={() => setView('list')}
-            aria-pressed={filters.view === 'list'}
-          >
-            <List className="h-4 w-4" aria-hidden="true" />
-            Lista
-          </Button>
+            <Button
+              type="button"
+              variant={filters.view === 'list' ? 'primary' : 'secondary'}
+              onClick={() => setView('list')}
+              aria-pressed={filters.view === 'list'}
+            >
+              <List className="h-4 w-4" aria-hidden="true" />
+              Lista
+            </Button>
+          </div>
         </div>
       </div>
     </PortalPanel>

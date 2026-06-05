@@ -15,8 +15,8 @@ const statusConfig: Record<
   { label: string; variant: 'success' | 'warning' | 'error' | 'neutral' }
 > = {
   ACTIVE: { label: 'Activo', variant: 'success' },
-  PROVISIONING: { label: 'Provisionando...', variant: 'warning' },
-  PROVISIONING_FAILED: { label: 'Error', variant: 'error' },
+  PROVISIONING: { label: 'Configurando...', variant: 'warning' },
+  PROVISIONING_FAILED: { label: 'Configuración fallida', variant: 'error' },
   SUSPENDED: { label: 'Suspendido', variant: 'warning' },
   INACTIVE: { label: 'Inactivo', variant: 'neutral' },
   MARKED_FOR_DELETION: { label: 'En eliminación', variant: 'error' },

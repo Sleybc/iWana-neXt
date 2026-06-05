@@ -146,7 +146,7 @@ const scheduleEventFormSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['workOrderSummary'],
-        message: 'Resume la work order embebida.',
+        message: 'Resume la orden de trabajo asociada.',
       });
     }
   });
@@ -389,7 +389,14 @@ export function ScheduleEventForm({
         <PortalAlert variant="error" title="No fue posible crear el evento" description={error} />
       )}
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <section className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Tarea</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Describe qué se va a realizar en campo y con qué tipo de trabajo.
+          </p>
+        </div>
+
         <Controller
           name="type"
           control={control}
@@ -406,33 +413,41 @@ export function ScheduleEventForm({
           )}
         />
 
-        <Controller
-          name="assignedUserId"
-          control={control}
-          render={({ field }) => (
-            <Select
-              id="schedule-event-technician"
-              label="Técnico responsable"
-              value={field.value}
-              placeholder="Selecciona un técnico"
-              options={technicianOptions}
-              onChange={(event) => field.onChange(event.target.value)}
-              disabled={isSubmitting}
-              {...(errors.assignedUserId?.message ? { error: errors.assignedUserId.message } : {})}
-            />
-          )}
+        <Input
+          id="schedule-event-title"
+          label="Título operativo"
+          error={errors.title?.message}
+          disabled={isSubmitting}
+          {...register('title')}
         />
-      </div>
 
-      <Input
-        id="schedule-event-title"
-        label="Título operativo"
-        error={errors.title?.message}
-        disabled={isSubmitting}
-        {...register('title')}
-      />
+        <div>
+          <label
+            htmlFor="schedule-event-description"
+            className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
+          >
+            Descripción
+          </label>
+          <textarea
+            id="schedule-event-description"
+            rows={4}
+            disabled={isSubmitting}
+            className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-white"
+            {...register('description')}
+          />
+          {errors.description?.message && (
+            <p
+              className="mt-1 text-xs text-red-600 dark:text-red-400"
+              role="alert"
+              id="schedule-description-error"
+            >
+              {errors.description.message}
+            </p>
+          )}
+        </div>
+      </section>
 
-      <section className="space-y-4 rounded-2xl border border-gray-200 bg-[#fbfcf8] p-4 dark:border-dark-border dark:bg-dark-surface-3">
+      <section className="space-y-4 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
         <div className="space-y-1">
           <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Programación</h3>
           <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -587,7 +602,11 @@ export function ScheduleEventForm({
           )}
 
           {errors.durationMinutes?.message && (
-            <p className="text-xs text-[#EF4444]" role="alert">
+            <p
+              className="text-xs text-red-600 dark:text-red-400"
+              role="alert"
+              id="schedule-duration-error"
+            >
               {errors.durationMinutes.message}
             </p>
           )}
@@ -633,6 +652,32 @@ export function ScheduleEventForm({
             Resolviendo la ventana operativa configurada para la fecha seleccionada...
           </p>
         )}
+      </section>
+
+      <section className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Persona asignada</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Define quién atenderá la tarea según disponibilidad y tipo de visita.
+          </p>
+        </div>
+
+        <Controller
+          name="assignedUserId"
+          control={control}
+          render={({ field }) => (
+            <Select
+              id="schedule-event-technician"
+              label="Técnico responsable"
+              value={field.value}
+              placeholder="Selecciona un técnico"
+              options={technicianOptions}
+              onChange={(event) => field.onChange(event.target.value)}
+              disabled={isSubmitting}
+              {...(errors.assignedUserId?.message ? { error: errors.assignedUserId.message } : {})}
+            />
+          )}
+        />
       </section>
 
       {onFindRecommendations && (
@@ -727,7 +772,7 @@ export function ScheduleEventForm({
                 }
               }}
             >
-              Buscar mejores franjas
+              Buscar horarios sugeridos
             </Button>
           </div>
 
@@ -755,7 +800,7 @@ export function ScheduleEventForm({
                       isSelected &&
                       scheduledStartTimeLocal === toLocalTimeValue(recommendation.scheduledStartAt)
                         ? 'border-iwana-primary bg-iwana-primary-50/70 dark:border-iwana-primary-300 dark:bg-iwana-primary-400/10'
-                        : 'border-gray-200 bg-[#fbfcf8] hover:border-iwana-primary/40 dark:border-dark-border dark:bg-dark-surface-3'
+                        : 'border-gray-200 bg-iwana-surface-soft hover:border-iwana-primary/40 dark:border-dark-border dark:bg-dark-surface-3'
                     }`}
                     onClick={() => {
                       const startAt = new Date(recommendation.scheduledStartAt);
@@ -811,239 +856,238 @@ export function ScheduleEventForm({
         </section>
       )}
 
-      <div>
-        <label
-          htmlFor="schedule-event-description"
-          className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
-        >
-          Descripción
-        </label>
-        <textarea
-          id="schedule-event-description"
-          rows={4}
-          disabled={isSubmitting}
-          className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-white"
-          {...register('description')}
-        />
-        {errors.description?.message && (
-          <p className="mt-1 text-xs text-[#EF4444]" role="alert">
-            {errors.description.message}
+      <section className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Ubicación</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Registra dirección y referencias geográficas para facilitar la visita.
           </p>
-        )}
-      </div>
+        </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Input
-          id="schedule-event-address"
-          label="Dirección"
-          error={errors.address?.message}
-          disabled={isSubmitting}
-          {...register('address')}
-        />
-        <Input
-          id="schedule-event-municipality"
-          label="Municipio"
-          error={errors.municipality?.message}
-          disabled={isSubmitting}
-          {...register('municipality')}
-        />
-        <Input
-          id="schedule-event-sector"
-          label="Sector / vereda"
-          error={errors.sector?.message}
-          disabled={isSubmitting}
-          {...register('sector')}
-        />
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <Input
-          id="schedule-event-latitude"
-          label="Latitud"
-          placeholder="4.7110"
-          error={errors.latitude?.message}
-          disabled={isSubmitting}
-          {...register('latitude')}
-        />
-        <Input
-          id="schedule-event-longitude"
-          label="Longitud"
-          placeholder="-74.0721"
-          error={errors.longitude?.message}
-          disabled={isSubmitting}
-          {...register('longitude')}
-        />
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <Input
-          id="schedule-event-ticket"
-          label="Ticket o referencia"
-          error={errors.ticketId?.message}
-          disabled={isSubmitting || Boolean(lockOperationalFlow)}
-          {...register('ticketId')}
-        />
-        <Input
-          id="schedule-event-contract"
-          label="Contrato"
-          helperText="UUID opcional del contrato vinculado."
-          error={errors.contractId?.message}
-          disabled={isSubmitting}
-          {...register('contractId')}
-        />
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        {expedienteDisplayLabel ? (
-          <>
-            <input type="hidden" {...register('expedienteId')} />
-            <Input
-              id="schedule-event-expediente"
-              label="Expediente"
-              helperText="Referencia corta del expediente CRM. El vínculo interno usa el identificador real."
-              value={expedienteDisplayLabel}
-              readOnly
-              disabled={isSubmitting}
-            />
-          </>
-        ) : (
+        <div className="grid gap-4 md:grid-cols-2">
           <Input
-            id="schedule-event-expediente"
-            label="Expediente"
-            helperText="Identificador interno opcional del expediente comercial."
-            error={errors.expedienteId?.message}
+            id="schedule-event-address"
+            label="Dirección"
+            error={errors.address?.message}
             disabled={isSubmitting}
-            {...register('expedienteId')}
+            {...register('address')}
           />
-        )}
-        <Input
-          id="schedule-event-subscriber"
-          label="Suscriptor"
-          helperText="UUID opcional del suscriptor vinculado."
-          error={errors.subscriberId?.message}
-          disabled={isSubmitting}
-          {...register('subscriberId')}
-        />
-      </div>
-
-      <label className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 text-sm text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
-        <input
-          type="checkbox"
-          disabled={isSubmitting || Boolean(lockOperationalFlow)}
-          {...register('createWorkOrder')}
-        />
-        <span>
-          <span className="block font-medium text-gray-900 dark:text-white">
-            Crear work order embebida
-          </span>
-          <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-            Activa una OT ligera para dar continuidad operativa al evento recién creado.
-          </span>
-        </span>
-      </label>
-
-      {createWorkOrder && (
-        <div className="space-y-4 rounded-2xl border border-gray-200 bg-[#fbfcf8] p-4 dark:border-dark-border dark:bg-dark-surface-3">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Controller
-              name="workOrderPriority"
-              control={control}
-              render={({ field }) => (
-                <Select
-                  id="schedule-work-order-priority"
-                  label="Prioridad"
-                  value={field.value}
-                  options={WORK_ORDER_PRIORITY_OPTIONS}
-                  onChange={(event) => field.onChange(event.target.value as WorkOrderPriority)}
-                  disabled={isSubmitting}
-                />
-              )}
-            />
-            <Controller
-              name="workOrderType"
-              control={control}
-              render={({ field }) => (
-                <Select
-                  id="schedule-work-order-type"
-                  label="Tipo de OT"
-                  value={field.value}
-                  placeholder="Heredar del evento"
-                  options={WFM_WORK_TYPE_OPTIONS}
-                  onChange={(event) => field.onChange(event.target.value as WfmWorkType | '')}
-                  disabled={isSubmitting}
-                />
-              )}
-            />
-          </div>
-
-          <Controller
-            name="workOrderSourceContext"
-            control={control}
-            render={({ field }) => (
-              <Select
-                id="schedule-work-order-source-context"
-                label="Origen"
-                value={field.value}
-                options={WORK_ORDER_SOURCE_CONTEXT_OPTIONS}
-                onChange={(event) => field.onChange(event.target.value as WorkOrderSourceContext)}
-                disabled={isSubmitting}
-              />
-            )}
-          />
-
           <Input
-            id="schedule-work-order-summary"
-            label="Resumen operativo"
-            error={errors.workOrderSummary?.message}
+            id="schedule-event-municipality"
+            label="Municipio"
+            error={errors.municipality?.message}
             disabled={isSubmitting}
-            {...register('workOrderSummary')}
+            {...register('municipality')}
           />
-          {workOrderSourceRefDisplayLabel ? (
+          <Input
+            id="schedule-event-sector"
+            label="Sector / vereda"
+            error={errors.sector?.message}
+            disabled={isSubmitting}
+            {...register('sector')}
+          />
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <Input
+            id="schedule-event-latitude"
+            label="Latitud"
+            placeholder="4.7110"
+            error={errors.latitude?.message}
+            disabled={isSubmitting}
+            {...register('latitude')}
+          />
+          <Input
+            id="schedule-event-longitude"
+            label="Longitud"
+            placeholder="-74.0721"
+            error={errors.longitude?.message}
+            disabled={isSubmitting}
+            {...register('longitude')}
+          />
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+            Datos relacionados
+          </h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Vincula ticket, contrato, expediente y otros datos para continuidad operativa.
+          </p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <Input
+            id="schedule-event-ticket"
+            label="Ticket o referencia"
+            error={errors.ticketId?.message}
+            disabled={isSubmitting || Boolean(lockOperationalFlow)}
+            {...register('ticketId')}
+          />
+          <Input
+            id="schedule-event-contract"
+            label="Contrato"
+            helperText="UUID opcional del contrato vinculado."
+            error={errors.contractId?.message}
+            disabled={isSubmitting}
+            {...register('contractId')}
+          />
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          {expedienteDisplayLabel ? (
             <>
-              <input type="hidden" {...register('workOrderSourceRef')} />
+              <input type="hidden" {...register('expedienteId')} />
               <Input
-                id="schedule-work-order-source-ref"
-                label="Referencia de origen"
-                helperText="Referencia corta visible del origen CRM. El vínculo interno conserva el identificador real."
-                value={workOrderSourceRefDisplayLabel}
+                id="schedule-event-expediente"
+                label="Expediente"
+                helperText="Referencia corta del expediente CRM. El vínculo interno usa el identificador real."
+                value={expedienteDisplayLabel}
                 readOnly
                 disabled={isSubmitting}
               />
             </>
           ) : (
             <Input
-              id="schedule-work-order-source-ref"
-              label="Referencia de origen"
-              error={errors.workOrderSourceRef?.message}
+              id="schedule-event-expediente"
+              label="Expediente"
+              helperText="Identificador interno opcional del expediente comercial."
+              error={errors.expedienteId?.message}
               disabled={isSubmitting}
-              {...register('workOrderSourceRef')}
+              {...register('expedienteId')}
             />
           )}
-
-          <div>
-            <label
-              htmlFor="schedule-work-order-notes"
-              className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
-            >
-              Notas internas
-            </label>
-            <textarea
-              id="schedule-work-order-notes"
-              rows={3}
-              disabled={isSubmitting}
-              className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-white"
-              {...register('workOrderNotes')}
-            />
-          </div>
+          <Input
+            id="schedule-event-subscriber"
+            label="Suscriptor"
+            helperText="UUID opcional del suscriptor vinculado."
+            error={errors.subscriberId?.message}
+            disabled={isSubmitting}
+            {...register('subscriberId')}
+          />
         </div>
-      )}
+
+        <label className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 text-sm text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
+          <input
+            type="checkbox"
+            disabled={isSubmitting || Boolean(lockOperationalFlow)}
+            {...register('createWorkOrder')}
+          />
+          <span>
+            <span className="block font-medium text-gray-900 dark:text-white">
+              Crear orden de trabajo asociada
+            </span>
+            <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+              Activa una OT ligera para dar continuidad operativa al evento recién creado.
+            </span>
+          </span>
+        </label>
+
+        {createWorkOrder && (
+          <div className="space-y-4 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Controller
+                name="workOrderPriority"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    id="schedule-work-order-priority"
+                    label="Prioridad"
+                    value={field.value}
+                    options={WORK_ORDER_PRIORITY_OPTIONS}
+                    onChange={(event) => field.onChange(event.target.value as WorkOrderPriority)}
+                    disabled={isSubmitting}
+                  />
+                )}
+              />
+              <Controller
+                name="workOrderType"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    id="schedule-work-order-type"
+                    label="Tipo de OT"
+                    value={field.value}
+                    placeholder="Heredar del evento"
+                    options={WFM_WORK_TYPE_OPTIONS}
+                    onChange={(event) => field.onChange(event.target.value as WfmWorkType | '')}
+                    disabled={isSubmitting}
+                  />
+                )}
+              />
+            </div>
+
+            <Controller
+              name="workOrderSourceContext"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  id="schedule-work-order-source-context"
+                  label="Origen"
+                  value={field.value}
+                  options={WORK_ORDER_SOURCE_CONTEXT_OPTIONS}
+                  onChange={(event) => field.onChange(event.target.value as WorkOrderSourceContext)}
+                  disabled={isSubmitting}
+                />
+              )}
+            />
+
+            <Input
+              id="schedule-work-order-summary"
+              label="Resumen operativo"
+              error={errors.workOrderSummary?.message}
+              disabled={isSubmitting}
+              {...register('workOrderSummary')}
+            />
+            {workOrderSourceRefDisplayLabel ? (
+              <>
+                <input type="hidden" {...register('workOrderSourceRef')} />
+                <Input
+                  id="schedule-work-order-source-ref"
+                  label="Referencia de origen"
+                  helperText="Referencia corta visible del origen CRM. El vínculo interno conserva el identificador real."
+                  value={workOrderSourceRefDisplayLabel}
+                  readOnly
+                  disabled={isSubmitting}
+                />
+              </>
+            ) : (
+              <Input
+                id="schedule-work-order-source-ref"
+                label="Referencia de origen"
+                error={errors.workOrderSourceRef?.message}
+                disabled={isSubmitting}
+                {...register('workOrderSourceRef')}
+              />
+            )}
+
+            <div>
+              <label
+                htmlFor="schedule-work-order-notes"
+                className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
+              >
+                Notas internas
+              </label>
+              <textarea
+                id="schedule-work-order-notes"
+                rows={3}
+                disabled={isSubmitting}
+                className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-white"
+                {...register('workOrderNotes')}
+              />
+            </div>
+          </div>
+        )}
+      </section>
 
       <div className="flex justify-end gap-3">
         <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>
           Cancelar
         </Button>
         <Button type="submit" loading={isSubmitting}>
-          Crear evento
+          Agendar tarea
         </Button>
       </div>
     </form>

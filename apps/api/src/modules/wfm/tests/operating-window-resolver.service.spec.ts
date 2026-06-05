@@ -11,9 +11,8 @@ jest.mock('@iwana/db', () => ({
     }),
   },
   runInTenantSchema: jest.fn(),
-  WfmHolidayBlackout: class WfmHolidayBlackout {},
-  WfmSiteBusinessHours: class WfmSiteBusinessHours {},
-  WfmCompanyBusinessHours: class WfmCompanyBusinessHours {},
+  OrganizationBusinessHoursException: class OrganizationBusinessHoursException {},
+  OrganizationCompanyBusinessHours: class OrganizationCompanyBusinessHours {},
 }));
 
 describe('OperatingWindowResolverService', () => {
@@ -42,18 +41,18 @@ describe('OperatingWindowResolverService', () => {
             {
               tenantId: 'tenant-001',
               organizationSiteId: null,
-              blackoutDate: '2026-05-18',
+              exceptionDate: '2026-05-18',
               isRecurring: false,
               name: 'Festivo nacional',
-              isEnabled: true,
+              isOpen: false,
             },
           ],
           companyHours: {
             tenantId: 'tenant-001',
             weekday: BusinessHoursWeekday.SUNDAY,
-            startTime: '09:00',
-            endTime: '17:00',
-            isEnabled: true,
+            opensAt: '09:00',
+            closesAt: '17:00',
+            isOpen: true,
           },
         }),
       } as any),
@@ -79,10 +78,10 @@ describe('OperatingWindowResolverService', () => {
             {
               tenantId: 'tenant-001',
               organizationSiteId: null,
-              blackoutDate: '2026-05-18',
+              exceptionDate: '2026-05-18',
               isRecurring: false,
               name: 'Festivo nacional',
-              isEnabled: true,
+              isOpen: false,
             },
           ],
         }),
@@ -108,9 +107,9 @@ describe('OperatingWindowResolverService', () => {
           companyHours: {
             tenantId: 'tenant-001',
             weekday: BusinessHoursWeekday.TUESDAY,
-            startTime: '09:00',
-            endTime: '17:00',
-            isEnabled: true,
+            opensAt: '09:00',
+            closesAt: '17:00',
+            isOpen: true,
           },
         }),
       } as any),
@@ -136,9 +135,9 @@ describe('OperatingWindowResolverService', () => {
           companyHours: {
             tenantId: 'tenant-001',
             weekday: BusinessHoursWeekday.WEDNESDAY,
-            startTime: '08:00',
-            endTime: '18:00',
-            isEnabled: true,
+            opensAt: '08:00',
+            closesAt: '18:00',
+            isOpen: true,
           },
         }),
       } as any),
@@ -191,7 +190,7 @@ function buildManager(data: {
     find: jest.fn().mockImplementation((entity) => {
       const name = entity?.name;
 
-      if (name === 'WfmHolidayBlackout') {
+      if (name === 'OrganizationBusinessHoursException') {
         return Promise.resolve(data.blackouts ?? []);
       }
 
@@ -199,11 +198,7 @@ function buildManager(data: {
     }),
     findOne: jest.fn().mockImplementation((entity) => {
       const name = entity?.name;
-      if (name === 'WfmSiteBusinessHours') {
-        return Promise.resolve(data.siteHours ?? null);
-      }
-
-      if (name === 'WfmCompanyBusinessHours') {
+      if (name === 'OrganizationCompanyBusinessHours') {
         return Promise.resolve(data.companyHours ?? null);
       }
 

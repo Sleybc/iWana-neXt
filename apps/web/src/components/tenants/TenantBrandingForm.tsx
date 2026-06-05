@@ -327,9 +327,9 @@ export function TenantBrandingForm({ tenantId, tenant, onUpdated }: TenantBrandi
 
     try {
       const updated = await tenantApi.updateBranding(tenantId, payload);
-      applyUpdatedTenant(updated, 'Branding del tenant actualizado correctamente.');
+      applyUpdatedTenant(updated, 'Branding de la empresa actualizado correctamente.');
     } catch {
-      setServerError('No fue posible guardar el branding del tenant.');
+      setServerError('No fue posible guardar el branding de la empresa.');
     }
   };
 
@@ -401,7 +401,7 @@ export function TenantBrandingForm({ tenantId, tenant, onUpdated }: TenantBrandi
           </div>
         </div>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Gestiona la identidad pública del tenant desde plataforma. Cada slot admite URL HTTPS o
+          Gestiona la identidad pública de la empresa desde plataforma. Cada slot admite URL HTTPS o
           asset subido y asignado directamente.
         </p>
       </CardHeader>

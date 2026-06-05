@@ -96,7 +96,7 @@ describe('LoginExperience (portal)', () => {
     expect(screen.getByLabelText('tenant-locked-prop')).toHaveValue('false');
   });
 
-  it('bloquea empresa cuando NEXT_PUBLIC_TENANT_SLUG está definida', async () => {
+  it('bloquea la empresa cuando la configuracion global la fija', async () => {
     process.env.NEXT_PUBLIC_TENANT_SLUG = 'env-tenant';
 
     render(<LoginExperience />);

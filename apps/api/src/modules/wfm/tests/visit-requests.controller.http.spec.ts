@@ -27,10 +27,8 @@ import { VisitRequestsService } from '../services/visit-requests.service';
 import { WorkOrdersService } from '../services/work-orders.service';
 import { TechnicianAvailabilityService } from '../services/technician-availability.service';
 import { WfmDashboardService } from '../services/wfm-dashboard.service';
-import { CompanyBusinessHoursService } from '../services/company-business-hours.service';
-import { HolidayBlackoutsService } from '../services/holiday-blackouts.service';
 import { OperatingWindowResolverService } from '../services/operating-window-resolver.service';
-import { SiteBusinessHoursService } from '../services/site-business-hours.service';
+import { OperationalEventualitiesService } from '../services/operational-eventualities.service';
 
 const VISIT_REQUEST_ID = '550e8400-e29b-41d4-a716-446655440001';
 
@@ -152,9 +150,7 @@ describe('VisitRequestsController (HTTP Contract)', () => {
         { provide: WorkOrdersService, useValue: {} },
         { provide: TechnicianAvailabilityService, useValue: {} },
         { provide: WfmDashboardService, useValue: {} },
-        { provide: CompanyBusinessHoursService, useValue: {} },
-        { provide: SiteBusinessHoursService, useValue: {} },
-        { provide: HolidayBlackoutsService, useValue: {} },
+        { provide: OperationalEventualitiesService, useValue: {} },
         { provide: WfmOrganizationSitesReadPort, useValue: { listDispatchSites: jest.fn() } },
         { provide: WfmTenantSettingsReadPort, useValue: { getTimezone: jest.fn() } },
         { provide: OperatingWindowResolverService, useValue: { resolve: jest.fn() } },

@@ -17,7 +17,7 @@ describe('SettingsSectionGrid', () => {
     const sections: SettingsSection[] = [
       {
         key: SettingsSectionKey.INVENTORY,
-        label: 'Inventario',
+        label: 'Inventory',
         description: 'Contrato pendiente.',
         ownerModule: 'MOD10 / Inventory',
         status: SettingsSectionStatus.NOT_CONFIGURED,
@@ -37,6 +37,10 @@ describe('SettingsSectionGrid', () => {
 
     render(<SettingsSectionGrid sections={sections} effectivePermissions={[]} />);
 
+    expect(screen.getByText('Inventario')).toBeInTheDocument();
+    expect(screen.getByText('Facturación')).toBeInTheDocument();
+    expect(screen.queryByText('Inventory')).not.toBeInTheDocument();
+    expect(screen.queryByText('Billing')).not.toBeInTheDocument();
     expect(screen.getByText('No configurado')).toBeInTheDocument();
     expect(screen.getByText('Próximamente')).toBeInTheDocument();
     expect(
@@ -71,7 +75,11 @@ describe('SettingsSectionGrid', () => {
     );
 
     expect(screen.getByText('Acceso restringido')).toBeInTheDocument();
-    expect(screen.getByText('Tu perfil no tiene acceso a esta sección.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Tu perfil no puede administrar esta área ahora. Solicita apoyo a una persona administradora si necesitas usarla.',
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Usuarios y acceso/i })).not.toBeInTheDocument();
   });
 

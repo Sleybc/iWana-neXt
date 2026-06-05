@@ -13,7 +13,8 @@
     "migration:run": "typeorm migration:run -d dist/data-source.js",
     "migration:revert": "typeorm migration:revert -d dist/data-source.js",
     "migration:show": "typeorm migration:show -d dist/data-source.js",
-    "migration:tenant:run": "node dist/cli/tenant-migrate.js"
+    "migration:tenant:run": "node dist/cli/tenant-migrate.js",
+    "reconcile:visit-request-statuses": "node dist/cli/reconcile-visit-request-statuses.js"
   },
   "dependencies": {
     "pg": "^8.16.0",

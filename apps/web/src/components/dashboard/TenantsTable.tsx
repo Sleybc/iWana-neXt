@@ -65,8 +65,8 @@ const statusPillClasses: Record<TenantStatus, string> = {
 /** Etiquetas legibles por estado de tenant. */
 const statusLabels: Record<TenantStatus, string> = {
   ACTIVE: 'Activo',
-  PROVISIONING: 'Provisionando',
-  PROVISIONING_FAILED: 'Error provisión',
+  PROVISIONING: 'Configurando',
+  PROVISIONING_FAILED: 'Configuración fallida',
   SUSPENDED: 'Suspendido',
   INACTIVE: 'Inactivo',
   MARKED_FOR_DELETION: 'En eliminación',
@@ -161,7 +161,7 @@ function ActionsDropdown({
 
         {canRetry && (
           <DropdownMenuItem variant="warning" onClick={() => onRetryProvisioning!(tenantId)}>
-            Reintentar provisioning
+            Reintentar configuración
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>

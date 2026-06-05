@@ -1,15 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { WfmWorkType, WorkOrderSourceContext } from '@iwana/shared';
 import {
   Badge,
   Button,
-  Card,
-  CardContent,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -38,20 +36,21 @@ import { ScheduleEventDrawer } from './ScheduleEventDrawer';
 import { ScheduleEventForm, type ScheduleEventFormInitialValues } from './ScheduleEventForm';
 import { ScheduleList } from './ScheduleList';
 import { SchedulingOverview } from './SchedulingOverview';
+import { SchedulingSummaryStrip } from './SchedulingSummaryStrip';
 import { SchedulingToolbar } from './SchedulingToolbar';
 import { TechnicianWorkList } from './TechnicianWorkList';
 import { RescheduleEventDialog } from './RescheduleEventDialog';
 import { syncExpedienteAfterScheduleEvent } from './scheduling-expediente-sync';
+import { useSchedulingDerivedState } from './useSchedulingDerivedState';
 import {
-  buildCalendarDays,
   buildDefaultSchedulingFilters,
-  buildTechnicianOptions,
   canManageScheduling,
   canViewScheduling,
   canViewSchedulingCommandCenter,
   formatSchedulingExpedienteLabel,
   formatWfmDayLabel,
   getScheduleEventStatusLabel,
+  getWorkOrderStatusLabel,
   getWfmWorkTypeLabel,
   isScheduleEventTerminalStatus,
   toApiDateRange,
@@ -130,33 +129,6 @@ function buildExpedienteInitialValues(
   };
 }
 
-function MetricCard({
-  eyebrow,
-  title,
-  value,
-  description,
-}: {
-  eyebrow: string;
-  title: string;
-  value: string;
-  description: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="space-y-3 p-5">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-          {eyebrow}
-        </p>
-        <div>
-          <p className="text-2xl font-semibold text-gray-900 dark:text-white">{value}</p>
-          <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-200">{title}</p>
-        </div>
-        <p className="text-sm text-gray-500 dark:text-gray-400">{description}</p>
-      </CardContent>
-    </Card>
-  );
-}
-
 function SchedulingSkeleton() {
   return (
     <div className="space-y-6" aria-busy="true">
@@ -218,18 +190,13 @@ export function SchedulingClient() {
   const canView = canViewScheduling(user?.role);
   const canManage = canManageScheduling(user?.role);
   const canViewCommandCenter = canViewSchedulingCommandCenter(user?.role);
-  const techniciansById = useMemo(
-    () => new Map(technicians.map((technician) => [technician.id, technician])),
-    [technicians],
-  );
-  const technicianOptions = useMemo(() => buildTechnicianOptions(technicians), [technicians]);
-  const calendarDays = useMemo(
-    () => buildCalendarDays(events, filters),
-    [events, filters.fromDate, filters.toDate],
-  );
-  const selectedTechnician = selectedEvent
-    ? (techniciansById.get(selectedEvent.assignedUserId) ?? null)
-    : null;
+  const { techniciansById, technicianOptions, calendarDays, selectedTechnician } =
+    useSchedulingDerivedState({
+      technicians,
+      events,
+      filters,
+      selectedEvent,
+    });
   const hasPendingCreateQueryContext =
     searchParams.get('open') === 'create' && Boolean(searchParams.get('expedienteId'));
 
@@ -348,7 +315,9 @@ export function SchedulingClient() {
         setSelectedWorkOrder(workOrderDetail);
       } catch (workOrderError) {
         setSelectedWorkOrder(null);
-        setDrawerActionError(mapSchedulingError(workOrderError));
+        setDrawerActionError(
+          `La orden de trabajo vinculada no está disponible en este momento. ${mapSchedulingError(workOrderError)}`,
+        );
       }
     } catch (detailError) {
       setSelectedEvent(null);
@@ -412,34 +381,52 @@ export function SchedulingClient() {
     if (summaryResult.status === 'fulfilled') {
       setSummary(summaryResult.value ?? null);
     } else {
-      setSummary(null);
-      warnings.push('El resumen WFM no está disponible.');
+      warnings.push(
+        'No fue posible actualizar el resumen de operaciones de campo. Se mantiene la última versión disponible.',
+      );
     }
 
     if (availabilityResult.status === 'fulfilled') {
       setAvailability(Array.isArray(availabilityResult.value) ? availabilityResult.value : []);
     } else {
-      setAvailability([]);
-      warnings.push('La disponibilidad de técnicos no está disponible.');
+      warnings.push(
+        'No fue posible actualizar la disponibilidad técnica. Se mantiene la última versión disponible.',
+      );
     }
 
     if (techniciansResult.status === 'fulfilled') {
       setTechnicians(techniciansResult.value);
     } else {
-      setTechnicians([]);
-      warnings.push('El directorio técnico no está disponible.');
+      warnings.push(
+        'No fue posible actualizar el directorio técnico. Se mantiene la última versión disponible.',
+      );
     }
 
     if (workOrdersResult.status === 'fulfilled') {
       setWorkOrders(Array.isArray(workOrdersResult.value) ? workOrdersResult.value : []);
     } else {
-      setWorkOrders([]);
-      warnings.push('La lista de work orders no está disponible.');
+      warnings.push(
+        'No fue posible actualizar la lista de ordenes de trabajo. Se mantiene la última versión disponible.',
+      );
     }
 
     setInfoMessage(warnings.length > 0 ? warnings.join(' ') : null);
     setIsLoading(false);
   }, [canViewCommandCenter, filters]);
+
+  useEffect(() => {
+    if (!infoMessage) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setInfoMessage((current) => (current === infoMessage ? null : current));
+    }, 8000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [infoMessage]);
 
   useEffect(() => {
     if (authLoading || !user) {
@@ -512,8 +499,8 @@ export function SchedulingClient() {
     return (
       <div className="space-y-6">
         <PageHeader
-          title="Programacion"
-          subtitle="Cargando agenda operativa y datos del bloque WFM del tenant autenticado."
+          title="Centro de agendamiento"
+          subtitle="Cargando pendientes, agenda y seguimiento de operaciones de campo."
         />
         <SchedulingSkeleton />
       </div>
@@ -523,11 +510,11 @@ export function SchedulingClient() {
   if (!user) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Programacion" subtitle="Error al cargar el módulo" />
+        <PageHeader title="Centro de agendamiento" subtitle="Error al cargar el módulo" />
         <PortalAlert
           variant="error"
           title="Módulo temporalmente no disponible"
-          description="No fue posible resolver la sesión del portal para cargar Programacion. Inicia sesión nuevamente para recuperar el acceso al bloque WFM."
+          description="No fue posible resolver la sesión del portal para cargar el centro de agendamiento. Inicia sesión nuevamente para recuperar el acceso al bloque de operaciones de campo."
           icon={AlertTriangle}
         />
       </div>
@@ -537,7 +524,7 @@ export function SchedulingClient() {
   if (!canView) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Programacion" subtitle="Acceso restringido" />
+        <PageHeader title="Centro de agendamiento" subtitle="Acceso restringido" />
         <PortalAlert
           variant="warning"
           title="Vista no autorizada"
@@ -548,27 +535,21 @@ export function SchedulingClient() {
     );
   }
 
-  const todayLoad = summary ? String(summary.todayCount) : 'No disponible';
-  const overdueLoad = summary ? String(summary.overdueCount) : 'No disponible';
-  const upcomingLoad = summary ? String(summary.upcomingCount) : 'No disponible';
-  const activeTechnicians = summary ? String(summary.technicianLoad.length) : 'No disponible';
-
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Programacion"
-        subtitle="Coordina agenda operativa, atención técnica y work orders ligeras del tenant autenticado."
+        title="Centro de agendamiento"
+        subtitle="Revisa pendientes, confirma agenda y da seguimiento a las tareas de campo desde una sola vista."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="primary" className="px-3 py-1 text-[11px] uppercase tracking-[0.18em]">
               {formatWfmDayLabel(new Date())}
             </Badge>
-            <Button asChild type="button" variant="secondary">
-              <Link href="/dashboard/scheduling/pending-visits">Bandeja pendiente</Link>
-            </Button>
           </div>
         }
       />
+
+      <SchedulingSummaryStrip summary={summary} isLoading={isLoading && events.length === 0} />
 
       {feedback && (
         <PortalAlert
@@ -597,35 +578,6 @@ export function SchedulingClient() {
         />
       ) : (
         <>
-          {filters.view !== 'command-center' && (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <MetricCard
-                eyebrow="Agenda"
-                title="Eventos hoy"
-                value={todayLoad}
-                description="Eventos activos proyectados para la jornada actual."
-              />
-              <MetricCard
-                eyebrow="Backlog"
-                title="Eventos vencidos"
-                value={overdueLoad}
-                description="Pendientes cuyo cierre ya superó la franja comprometida."
-              />
-              <MetricCard
-                eyebrow="Horizonte"
-                title="Próximos 7 días"
-                value={upcomingLoad}
-                description="Carga operativa futura dentro de la ventana seleccionada."
-              />
-              <MetricCard
-                eyebrow="Capacidad"
-                title="Técnicos con carga"
-                value={activeTechnicians}
-                description="Técnicos con eventos activos reportados por el dashboard WFM."
-              />
-            </div>
-          )}
-
           <SchedulingToolbar
             filters={filters}
             technicianOptions={technicianOptions}
@@ -661,23 +613,32 @@ export function SchedulingClient() {
 
           {isLoading && events.length === 0 ? (
             <SchedulingSkeleton />
+          ) : filters.view === 'command-center' && canViewCommandCenter ? (
+            <div className="space-y-6">
+              <SchedulingOverview
+                summary={summary}
+                events={events}
+                techniciansById={techniciansById}
+                selectedDayKey={filters.fromDate}
+                onSelectEvent={(event) => void loadEventDetails(event.id)}
+                onFilterTechnician={(technicianId) => {
+                  setFeedback(null);
+                  setFilters((current) => ({ ...current, technicianId }));
+                }}
+              />
+
+              <TechnicianWorkList
+                technicians={technicians}
+                workOrders={workOrders}
+                summary={summary}
+                availability={availability}
+                selectedTechnicianId={filters.technicianId}
+              />
+            </div>
           ) : (
             <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
               <div className="space-y-6">
-                {filters.view === 'command-center' && canViewCommandCenter ? (
-                  <SchedulingOverview
-                    summary={summary}
-                    events={events}
-                    techniciansById={techniciansById}
-                    selectedDayKey={filters.fromDate}
-                    selectedTechnicianId={filters.technicianId}
-                    onSelectEvent={(event) => void loadEventDetails(event.id)}
-                    onFilterTechnician={(technicianId) => {
-                      setFeedback(null);
-                      setFilters((current) => ({ ...current, technicianId }));
-                    }}
-                  />
-                ) : filters.view === 'calendar' ? (
+                {filters.view === 'calendar' ? (
                   <ScheduleCalendar
                     days={calendarDays}
                     techniciansById={techniciansById}
@@ -715,10 +676,10 @@ export function SchedulingClient() {
       >
         <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
-            <DialogTitle>Crear evento operativo</DialogTitle>
+            <DialogTitle>Agendar tarea</DialogTitle>
             <DialogDescription>
               {createContextLabel ??
-                'Registra una nueva actividad técnica y, si aplica, genera una work order ligera dentro del mismo flujo.'}
+                'Registra una nueva tarea y, si aplica, crea la orden de trabajo asociada dentro del mismo flujo.'}
             </DialogDescription>
           </DialogHeader>
           <ScheduleEventForm
@@ -747,7 +708,7 @@ export function SchedulingClient() {
                 let feedbackMessage = `${createdEvent.title} quedó registrado como ${getWfmWorkTypeLabel(createdEvent.type).toLowerCase()}.`;
                 let transitionWarning: string | null = null;
 
-                // Vincular work order al ticket de instalación (si ambos existen)
+                // Vincular orden de trabajo al ticket de instalación (si ambos existen)
                 if (installationTicketId && createdEvent.workOrderId) {
                   try {
                     await assuranceApi.tickets.linkWorkOrder(installationTicketId, {
@@ -756,7 +717,7 @@ export function SchedulingClient() {
                   } catch (linkWoError) {
                     // No bloqueante: loguear pero continuar
                     console.warn(
-                      'No fue posible vincular la work order al ticket de instalación:',
+                      'No fue posible vincular la orden de trabajo al ticket de instalación:',
                       linkWoError,
                     );
                   }
@@ -861,7 +822,7 @@ export function SchedulingClient() {
           try {
             await wfmApi.workOrders.transitionStatus(selectedWorkOrder.id, { status });
             setFeedback(
-              `La work order quedó en estado ${status.toLowerCase().replace(/_/g, ' ')}.`,
+              `La orden de trabajo quedó en estado ${getWorkOrderStatusLabel(status).toLowerCase()}.`,
             );
             await loadData();
             if (selectedEventId) {
@@ -879,6 +840,13 @@ export function SchedulingClient() {
         actionError={drawerActionError}
         isEventTransitioning={isEventTransitioning}
         isWorkOrderTransitioning={isWorkOrderTransitioning}
+        onRetry={() => {
+          if (!selectedEventId) {
+            return Promise.resolve();
+          }
+
+          return loadEventDetails(selectedEventId);
+        }}
       />
 
       <RescheduleEventDialog

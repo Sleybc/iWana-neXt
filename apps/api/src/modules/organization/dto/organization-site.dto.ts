@@ -346,7 +346,6 @@ export const createBusinessHoursExceptionSchema =
   businessHoursExceptionBaseSchema.superRefine(validateExceptionHours);
 
 export const updateBusinessHoursExceptionSchema = businessHoursExceptionBaseSchema
-  .omit({ organizationSiteId: true })
   .partial()
   .superRefine((value, ctx) => {
     if (value.isOpen !== undefined) {

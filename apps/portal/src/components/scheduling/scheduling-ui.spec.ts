@@ -7,7 +7,7 @@ import {
 } from './scheduling-ui';
 
 describe('scheduling-ui', () => {
-  it('formatea la referencia corta del expediente para WFM', () => {
+  it('formatea la referencia corta del expediente para operaciones de campo', () => {
     expect(formatSchedulingExpedienteLabel('fcda817a-6340-4b83-bdd3-8bb4caa6cae9')).toBe(
       'FCDA817A',
     );
@@ -21,7 +21,7 @@ describe('scheduling-ui', () => {
     ).toBe('Evento originado desde CRM para la oportunidad FCDA817A.');
   });
 
-  it('muestra referencias cortas para expediente y work order CRM', () => {
+  it('muestra referencias cortas para expediente y orden de trabajo CRM', () => {
     expect(
       getEventReferenceLabel({
         ticketId: null,

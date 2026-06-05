@@ -26,6 +26,27 @@ const baseUser = {
 };
 
 describe('UsersTable', () => {
+  it('muestra un estado vacío accionable cuando no hay usuarios', () => {
+    render(
+      <UsersTable
+        users={[]}
+        isLoading={false}
+        meta={{ nextCursor: null, total: 0 }}
+        onEdit={jest.fn()}
+        onDelete={jest.fn()}
+        onResetPassword={jest.fn()}
+        onFilterChange={jest.fn()}
+        onLoadMore={jest.fn()}
+        searchValue=""
+        onSearchChange={jest.fn()}
+        currentUserId="other-user"
+      />,
+    );
+
+    expect(screen.getByText('Sin usuarios registrados')).toBeInTheDocument();
+    expect(screen.getByText(/ajusta los filtros o crea el primer usuario/i)).toBeInTheDocument();
+  });
+
   it('muestra acciones icon-only con nombre accesible y CTA de cargar más', () => {
     const onEdit = jest.fn();
     const onDelete = jest.fn();

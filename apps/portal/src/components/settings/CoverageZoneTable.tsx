@@ -2,6 +2,7 @@
 
 import { Badge, Button } from '@iwana/ui';
 import type { CoverageZoneConfig } from '@/lib/api-client';
+import { getPortalActiveBadgeVariant } from '@/lib/portal-status-badge-rules';
 
 interface CoverageZoneTableProps {
   zones: CoverageZoneConfig[];
@@ -73,7 +74,7 @@ export function CoverageZoneTable({
               <td className={cellClass}>{zone.centerLongitude.toFixed(6)}</td>
               <td className={cellClass}>{zone.radiusKm.toFixed(2)}</td>
               <td className={cellClass}>
-                <Badge variant={zone.isActive ? 'success' : 'neutral'}>
+                <Badge variant={getPortalActiveBadgeVariant(zone.isActive)}>
                   {zone.isActive ? 'Activa' : 'Inactiva'}
                 </Badge>
               </td>

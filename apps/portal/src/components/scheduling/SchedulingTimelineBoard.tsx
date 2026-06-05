@@ -4,14 +4,8 @@ import { Clock3 } from 'lucide-react';
 import { Badge } from '@iwana/ui';
 import type { InternalUser, WfmScheduleEvent } from '@/lib/api-client';
 import { PortalEmptyState, PortalPanel } from '@/components/shared/portal-ui';
-import {
-  buildTimelineGroups,
-  formatWfmTime,
-  getScheduleEventStatusLabel,
-  getScheduleEventStatusVariant,
-  getWfmWorkTypeLabel,
-  getWfmWorkTypeVariant,
-} from './scheduling-ui';
+import { buildTimelineGroups } from './scheduling-ui';
+import { ScheduleEventCard } from './ScheduleEventCard';
 
 interface SchedulingTimelineBoardProps {
   events: WfmScheduleEvent[];
@@ -30,9 +24,9 @@ export function SchedulingTimelineBoard({
 
   return (
     <PortalPanel
-      eyebrow="Timeline diario"
-      title="Supervisión por técnico"
-      description="Bloques ordenados por hora para abrir detalle operativo sin drag-and-drop."
+      eyebrow="Seguimiento del día"
+      title="Personas asignadas"
+      description="Bloques ordenados por hora para abrir detalle operativo sin arrastrar y soltar."
     >
       {groups.length === 0 ? (
         <PortalEmptyState
@@ -45,7 +39,7 @@ export function SchedulingTimelineBoard({
           {groups.map((group) => (
             <section
               key={group.technicianId}
-              className="rounded-2xl border border-gray-200 bg-[#fbfcf8] p-4 dark:border-dark-border dark:bg-dark-surface-3"
+              className="rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3"
               aria-label={`Timeline de ${group.technicianName}`}
             >
               <div className="mb-3 flex items-center justify-between gap-3">
@@ -61,31 +55,13 @@ export function SchedulingTimelineBoard({
               </div>
               <div className="space-y-2">
                 {group.events.map((event) => (
-                  <button
+                  <ScheduleEventCard
                     key={event.id}
-                    type="button"
-                    onClick={() => onSelectEvent(event)}
-                    aria-label={`Abrir evento ${event.title}`}
-                    className="w-full rounded-2xl border border-gray-200 bg-white p-3 text-left transition hover:border-iwana-primary/30 hover:bg-iwana-primary-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2 dark:border-dark-border dark:bg-dark-surface-2 dark:hover:border-iwana-primary-300/40"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-medium text-gray-900 dark:text-white">{event.title}</p>
-                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                          {formatWfmTime(event.scheduledStartAt)} -{' '}
-                          {formatWfmTime(event.scheduledEndAt)}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Badge variant={getWfmWorkTypeVariant(event.type)}>
-                          {getWfmWorkTypeLabel(event.type)}
-                        </Badge>
-                        <Badge variant={getScheduleEventStatusVariant(event.status)}>
-                          {getScheduleEventStatusLabel(event.status)}
-                        </Badge>
-                      </div>
-                    </div>
-                  </button>
+                    event={event}
+                    technician={techniciansById.get(group.technicianId) ?? null}
+                    variant="timeline"
+                    onSelect={onSelectEvent}
+                  />
                 ))}
               </div>
             </section>

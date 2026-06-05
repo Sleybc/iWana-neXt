@@ -189,7 +189,7 @@ describe('ScheduleEventForm', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Crear evento' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Agendar tarea' }));
 
     expect(await screen.findByText('El título es obligatorio.')).toBeInTheDocument();
     expect(screen.getByText('Selecciona un técnico válido.')).toBeInTheDocument();
@@ -212,13 +212,13 @@ describe('ScheduleEventForm', () => {
 
     fillRequiredFields();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Crear evento' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Agendar tarea' }));
 
     expect(await screen.findByText('La duración mínima es de 15 minutos.')).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it('exige resumen cuando se habilita work order embebida', async () => {
+  it('exige resumen cuando se habilita orden de trabajo asociada', async () => {
     const onSubmit = jest.fn();
 
     render(
@@ -232,11 +232,11 @@ describe('ScheduleEventForm', () => {
     );
 
     fillRequiredFields();
-    fireEvent.click(screen.getByRole('checkbox', { name: /Crear work order embebida/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Crear orden de trabajo asociada/i }));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Crear evento' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Agendar tarea' }));
 
-    expect(await screen.findByText('Resume la work order embebida.')).toBeInTheDocument();
+    expect(await screen.findByText('Resume la orden de trabajo asociada.')).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
@@ -258,7 +258,7 @@ describe('ScheduleEventForm', () => {
       target: { value: 'abc' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Crear evento' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Agendar tarea' }));
 
     expect(await screen.findByText('La latitud debe ser un número válido.')).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
@@ -284,7 +284,7 @@ describe('ScheduleEventForm', () => {
 
     fillRequiredFields();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Crear evento' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Agendar tarea' }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(

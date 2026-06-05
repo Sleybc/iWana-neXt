@@ -8,7 +8,7 @@ import type { GlobalSearchGroup, GlobalSearchItem } from '@/lib/api-client';
 const quickLinks: Array<{ href: string; label: string }> = [
   { href: '/dashboard', label: 'Inicio' },
   { href: '/dashboard/commercial', label: 'Comercial' },
-  { href: '/dashboard/crm', label: 'CRM' },
+  { href: '/dashboard/crm/expedientes', label: 'CRM' },
   { href: '/dashboard/crm/subscribers', label: 'Suscriptores' },
   { href: '/dashboard/assurance', label: 'Mesa de ayuda' },
   { href: '/dashboard/settings', label: 'Configuración' },

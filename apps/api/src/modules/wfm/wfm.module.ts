@@ -7,13 +7,11 @@ import {
   ScheduleRescheduleLog,
   TechnicianAvailability,
   VisitRequest,
-  WfmCompanyBusinessHours,
-  WfmHolidayBlackout,
-  WfmSiteBusinessHours,
   WfmOperationalEventuality,
 } from '@iwana/db';
 import { OrganizationModule } from '../organization/organization.module';
 import { TenantModule } from '../tenant/tenant.module';
+import { ExpedientesModule } from '../crm/expedientes/expedientes.module';
 import { WfmController } from './wfm.controller';
 import { OperationalEventualitiesService } from './services/operational-eventualities.service';
 import { ScheduleConflictService } from './services/schedule-conflict.service';
@@ -23,9 +21,6 @@ import { WorkOrdersService } from './services/work-orders.service';
 import { TechnicianAvailabilityService } from './services/technician-availability.service';
 import { WfmDashboardService } from './services/wfm-dashboard.service';
 import { ScheduleRecommendationsService } from './services/schedule-recommendations.service';
-import { CompanyBusinessHoursService } from './services/company-business-hours.service';
-import { SiteBusinessHoursService } from './services/site-business-hours.service';
-import { HolidayBlackoutsService } from './services/holiday-blackouts.service';
 import { OperatingWindowResolverService } from './services/operating-window-resolver.service';
 import { WfmWorkOrderReadPort } from './ports/wfm-work-order-read.port';
 import { WfmWorkOrderReadAdapter } from './ports/wfm-work-order-read.adapter';
@@ -43,6 +38,7 @@ import { WfmOrganizationSitesAdapter } from './services/wfm-organization-sites.a
   imports: [
     TenantModule,
     OrganizationModule,
+    ExpedientesModule,
     TypeOrmModule.forFeature([
       ScheduleEvent,
       WorkOrder,
@@ -50,9 +46,6 @@ import { WfmOrganizationSitesAdapter } from './services/wfm-organization-sites.a
       ScheduleRescheduleLog,
       TechnicianAvailability,
       VisitRequest,
-      WfmCompanyBusinessHours,
-      WfmSiteBusinessHours,
-      WfmHolidayBlackout,
       WfmOperationalEventuality,
     ]),
   ],
@@ -65,9 +58,6 @@ import { WfmOrganizationSitesAdapter } from './services/wfm-organization-sites.a
     TechnicianAvailabilityService,
     WfmDashboardService,
     ScheduleRecommendationsService,
-    CompanyBusinessHoursService,
-    SiteBusinessHoursService,
-    HolidayBlackoutsService,
     OperatingWindowResolverService,
     OperationalEventualitiesService,
     WfmOrganizationSitesAdapter,

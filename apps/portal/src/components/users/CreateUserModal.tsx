@@ -7,13 +7,14 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { CheckCircle2, Copy, UserPlus, X } from 'lucide-react';
 import { type AccessPermissionKey, DocumentType, UserRole } from '@iwana/shared';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@iwana/ui';
 import type {
   AccessPermissionsCatalog,
   AccessProfileView,
   CreateInternalUserDto,
 } from '@/lib/api-client';
 import { getPortalUserRoleLabel, PORTAL_TENANT_ASSIGNABLE_ROLES } from '@/lib/user-labels';
-import { PortalAlert, PortalSectionHeader } from '@/components/shared/portal-ui';
+import { PortalAlert } from '@/components/shared/portal-ui';
 import { CompanyRolesAssignmentSection } from './CompanyRolesAssignmentSection';
 
 const createUserSchema = z.object({
@@ -106,9 +107,9 @@ export function CreateUserModal({
   }, [error]);
 
   useEffect(() => {
-    if (tempPassword && tempPasswordEmail) {
-      setShowSuccess(true);
-    }
+    // Mantener el estado de exito sincronizado con las props evita estados stale
+    // cuando el padre limpia la clave temporal al cerrar el flujo.
+    setShowSuccess(Boolean(tempPassword && tempPasswordEmail));
   }, [tempPassword, tempPasswordEmail]);
 
   const selectedBaseRole = watch('role') as UserRole | '';
@@ -181,30 +182,27 @@ export function CreateUserModal({
   if (!isOpen) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !showSuccess) onClose();
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open && !showSuccess) {
+          onClose();
+        }
       }}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="create-user-title"
     >
-      <div className="relative mx-4 max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-dark-border dark:bg-dark-surface-2">
-        <h2 id="create-user-title" className="sr-only">
-          {showSuccess ? 'Usuario creado' : 'Crear usuario interno'}
-        </h2>
-        <div className="mb-6 flex items-center justify-between">
-          <PortalSectionHeader
-            className="flex-1 gap-0"
-            eyebrow="Gestión de accesos"
-            title={showSuccess ? 'Usuario creado' : 'Crear usuario interno'}
-            description={
-              showSuccess
-                ? undefined
-                : 'Registra un nuevo colaborador con su rol, datos base y política inicial de MFA.'
-            }
-          />
+      <DialogContent aria-labelledby="create-user-title">
+        <DialogHeader className="mb-6 flex flex-row items-start justify-between gap-4 space-y-0">
+          <div className="min-w-0 flex-1">
+            <p className="portal-eyebrow">Gestión de accesos</p>
+            <DialogTitle id="create-user-title" className="mt-1">
+              {showSuccess ? 'Usuario creado' : 'Crear usuario interno'}
+            </DialogTitle>
+            {!showSuccess ? (
+              <DialogDescription className="mt-1 leading-6">
+                Registra un nuevo colaborador con su rol, datos base y política inicial de MFA.
+              </DialogDescription>
+            ) : null}
+          </div>
           {!showSuccess && (
             <button
               type="button"
@@ -215,7 +213,7 @@ export function CreateUserModal({
               <X className="h-5 w-5" aria-hidden="true" />
             </button>
           )}
-        </div>
+        </DialogHeader>
 
         {showSuccess && tempPassword ? (
           <div className="space-y-4">
@@ -577,7 +575,7 @@ export function CreateUserModal({
             </div>
           </form>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

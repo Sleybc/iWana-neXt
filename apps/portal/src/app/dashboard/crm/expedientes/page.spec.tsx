@@ -168,7 +168,8 @@ describe('ExpedientesPage', () => {
       expect(crmApiMock.listExpedientes).toHaveBeenCalledWith(
         expect.objectContaining({ view: 'open', limit: 100 }),
       );
-      expect(screen.getByText('6')).toBeInTheDocument();
+      expect(screen.getByText('Resumen ejecutivo')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Abiertas 6' })).toBeInTheDocument();
     });
     expect(screen.getByText('Abiertas')).toBeInTheDocument();
 

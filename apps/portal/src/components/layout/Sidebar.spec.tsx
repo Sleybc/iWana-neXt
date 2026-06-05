@@ -25,7 +25,7 @@ jest.mock('./TenantSeal', () => ({
 }));
 
 describe('Sidebar', () => {
-  it('usa brandingProductName como nombre visible del tenant cuando existe', () => {
+  it('usa brandingProductName como nombre visible de la empresa cuando existe', () => {
     render(
       <Sidebar
         desktopCollapsed={false}

@@ -33,7 +33,7 @@ const visitRequestStatusMeta: Record<
   [VisitRequestStatus.NEEDS_CONTEXT]: {
     label: 'Falta contexto',
     variant: 'error',
-    description: 'Hace falta completar ubicación o ventana para recomendar.',
+    description: 'Hace falta completar dirección o municipio para recomendar.',
   },
   [VisitRequestStatus.READY_TO_SCHEDULE]: {
     label: 'Lista para agendar',
@@ -43,7 +43,7 @@ const visitRequestStatusMeta: Record<
   [VisitRequestStatus.SCHEDULED]: {
     label: 'Agendada',
     variant: 'primary',
-    description: 'La solicitud ya generó evento y work order.',
+    description: 'La solicitud ya generó evento y orden de trabajo.',
   },
   [VisitRequestStatus.CANCELLED]: {
     label: 'Cancelada',
@@ -169,4 +169,10 @@ export function getVisitRequestMissingFields(visitRequest: WfmVisitRequest): str
   }
 
   return missing;
+}
+
+export function getVisitRequestPresentationStatus(
+  visitRequest: WfmVisitRequest,
+): VisitRequestStatus {
+  return visitRequest.status;
 }

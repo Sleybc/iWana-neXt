@@ -156,6 +156,20 @@ async function selectVisitDuration(label = '2 h') {
   fireEvent.click(await screen.findByRole('option', { name: label }));
 }
 
+async function selectSearchHorizon(label: string) {
+  fireEvent.click(screen.getByRole('combobox', { name: 'Horizonte de búsqueda' }));
+  fireEvent.click(await screen.findByRole('option', { name: label }));
+}
+
+async function openDispatchPanelFromInbox(title = 'Instalación GPON barrio norte') {
+  const matches = await screen.findAllByRole('button', { name: new RegExp(title, 'i') });
+  const target = matches[0];
+  if (!target) {
+    throw new Error(`No se encontró la solicitud para abrir despacho: ${title}`);
+  }
+  fireEvent.click(target);
+}
+
 describe('PendingVisitRequestsView', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -443,12 +457,9 @@ describe('PendingVisitRequestsView', () => {
 
     expect((await screen.findAllByText('Instalación GPON barrio norte')).length).toBeGreaterThan(0);
 
+    await openDispatchPanelFromInbox();
+
     const recommendButton = screen.getByRole('button', { name: 'Calcular recomendaciones' });
-    expect(recommendButton).toBeDisabled();
-
-    fireEvent.click(screen.getByRole('combobox', { name: 'Duración estimada' }));
-    fireEvent.click(await screen.findByRole('option', { name: '2 h' }));
-
     expect(recommendButton).toBeEnabled();
 
     fireEvent.click(recommendButton);
@@ -469,8 +480,34 @@ describe('PendingVisitRequestsView', () => {
 
     expect(wfmApi.visitRequests.updateContext).toHaveBeenCalled();
 
-    expect(await screen.findByText('Score 91')).toBeInTheDocument();
+    expect(await screen.findByText('Puntuación: 91')).toBeInTheDocument();
     expect(screen.getAllByText('Luisa Campos').length).toBeGreaterThan(0);
+  });
+
+  it('mantiene el horizonte seleccionado despues de calcular recomendaciones', async () => {
+    render(<PendingVisitRequestsView />);
+
+    expect((await screen.findAllByText('Instalación GPON barrio norte')).length).toBeGreaterThan(0);
+
+    await openDispatchPanelFromInbox();
+    await selectSearchHorizon('Hoy');
+
+    const horizonSelect = screen.getByRole('combobox', { name: 'Horizonte de búsqueda' });
+    expect(horizonSelect).toHaveTextContent('Hoy');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Calcular recomendaciones' }));
+
+    await waitFor(() => {
+      expect(wfmApi.visitRequests.recommend).toHaveBeenCalledWith(
+        'vr-1',
+        expect.objectContaining({ searchHorizonDays: 1 }),
+      );
+    });
+
+    expect(await screen.findByText('Puntuación: 91')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Horizonte de búsqueda' })).toHaveTextContent(
+      'Hoy',
+    );
   });
 
   it('carga filtros territoriales con conteos en la bandeja', async () => {
@@ -624,20 +661,74 @@ describe('PendingVisitRequestsView', () => {
     render(<PendingVisitRequestsView />);
 
     expect((await screen.findAllByText('Instalación 2A8C632D')).length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole('button', { name: /Contexto operativo y ventana/i }));
+    await openDispatchPanelFromInbox('Instalación 2A8C632D');
+    fireEvent.click(screen.getByRole('button', { name: /Ajustes de contexto/i }));
 
     expect(await screen.findByDisplayValue('El Colegio')).toBeInTheDocument();
     expect(screen.getByDisplayValue('Vda la Virginia')).toBeInTheDocument();
+  });
+
+  it('respeta el estado canónico del backend y no duplica contexto operativo en la tabla', async () => {
+    wfmApi.visitRequests.list.mockResolvedValueOnce({
+      items: [
+        {
+          id: 'vr-canonical-1',
+          tenantId: 'tenant-1',
+          status: VisitRequestStatus.NEEDS_CONTEXT,
+          originContext: WorkOrderSourceContext.CRM,
+          originRef: 'EXP-CANON-1',
+          originLabel: 'Oportunidad EXP-CANON-1',
+          workType: WfmWorkType.INSTALLATION,
+          priority: WorkOrderPriority.NORMAL,
+          title: 'Instalación canon backend',
+          description: 'El backend aún marca falta de contexto.',
+          requestedWindowStartAt: null,
+          requestedWindowEndAt: null,
+          slaDueAt: null,
+          address: 'Cra 10 # 10 - 10',
+          municipality: 'Bogotá',
+          sector: 'Chapinero',
+          latitude: null,
+          longitude: null,
+          operatingSiteId: '66666666-6666-4666-8666-666666666666',
+          organizationSiteId: '77777777-7777-4777-8777-777777777777',
+          expedienteId: '550e8400-e29b-41d4-a716-446655440223',
+          subscriberId: null,
+          ticketId: null,
+          contractId: null,
+          scheduleEventId: null,
+          workOrderId: null,
+          requestedByUserId: 'user-1',
+          scheduledByUserId: null,
+          scheduledAt: null,
+          cancelledAt: null,
+          cancelledByUserId: null,
+          cancelReason: null,
+          createdAt: '2026-05-31T10:00:00.000Z',
+          updatedAt: '2026-05-31T10:00:00.000Z',
+          deletedAt: null,
+        },
+      ],
+      meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
+    });
+
+    render(<PendingVisitRequestsView />);
+
+    expect((await screen.findAllByText('Instalación canon backend')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Falta contexto').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Contexto operativo')).not.toBeInTheDocument();
+    expect(screen.queryByText('Listo para agendar')).not.toBeInTheDocument();
   });
 
   it('sincroniza CRM y Assurance cuando agenda una solicitud originada en CRM', async () => {
     render(<PendingVisitRequestsView />);
 
     expect((await screen.findAllByText('Instalación GPON barrio norte')).length).toBeGreaterThan(0);
+    await openDispatchPanelFromInbox();
     await selectVisitDuration();
     fireEvent.click(await screen.findByRole('button', { name: 'Calcular recomendaciones' }));
 
-    expect(await screen.findByText('Score 91')).toBeInTheDocument();
+    expect(await screen.findByText('Puntuación: 91')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar franja seleccionada' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Confirmar agenda' }));
@@ -734,9 +825,10 @@ describe('PendingVisitRequestsView', () => {
 
     render(<PendingVisitRequestsView />);
 
+    await openDispatchPanelFromInbox('Instalación ya agendada');
     expect(await screen.findByText('Solicitud cerrada para despacho')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Calcular recomendaciones' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: /Contexto operativo y ventana/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Ajustes de contexto/i }));
     expect(screen.getByRole('button', { name: 'Guardar contexto' })).toBeDisabled();
   });
 });

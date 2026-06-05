@@ -18,6 +18,7 @@ import {
   CreatePromotionModal,
   type PromotionTargetItem,
 } from '@/components/commercial/CreatePromotionModal';
+import { portalActiveCountBadgeVariant } from '@/lib/portal-status-badge-rules';
 import { PortalAlert, PortalEmptyState, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 
 interface PromotionsManagerProps {
@@ -188,7 +189,7 @@ export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
 
           <div className="flex items-center gap-2">
             <Badge
-              variant="neutral"
+              variant={portalActiveCountBadgeVariant}
               className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]"
             >
               {activePromotions.length} activa{activePromotions.length === 1 ? '' : 's'}

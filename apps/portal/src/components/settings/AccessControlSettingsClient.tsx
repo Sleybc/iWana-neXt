@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ChevronLeft, ChevronRight, Plus, RefreshCcw, ShieldCheck, Trash2, X } from 'lucide-react';
 import {
+  Badge,
   Button,
   Dialog,
   DialogClose,
@@ -38,6 +39,7 @@ import {
   PortalSkeletonBlock,
 } from '@/components/shared/portal-ui';
 import { getAccessProfileDisplayName, getSystemBaseRoleLabel } from '@/lib/system-vocabulary';
+import { getPortalActiveBadgeVariant } from '@/lib/portal-status-badge-rules';
 import { PORTAL_TENANT_ASSIGNABLE_ROLES } from '@/lib/user-labels';
 import { ACCESS_SETTINGS_COPY, getAccessModuleLabel } from './mod00-settings-labels';
 
@@ -1064,11 +1066,9 @@ export function AccessControlSettingsClient() {
                           </p>
                         </div>
                         <div className="flex flex-wrap items-center justify-end gap-2">
-                          <span
-                            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${profile.isActive ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300' : 'border border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300'}`}
-                          >
+                          <Badge variant={getPortalActiveBadgeVariant(profile.isActive)}>
                             {profile.isActive ? 'Activo' : 'Inactivo'}
-                          </span>
+                          </Badge>
                           {isSelected ? (
                             <span className="inline-flex items-center rounded-full border border-iwana-secondary/30 bg-iwana-secondary-50 px-3 py-1 text-xs font-semibold text-iwana-secondary-700 dark:border-iwana-secondary/20 dark:bg-iwana-secondary/10 dark:text-iwana-secondary-300">
                               En edición
@@ -1182,11 +1182,9 @@ export function AccessControlSettingsClient() {
                           </td>
                           <td className={cellClass}>
                             <div className="flex flex-wrap items-center gap-2">
-                              <span
-                                className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${profile.isActive ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300' : 'border border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300'}`}
-                              >
+                              <Badge variant={getPortalActiveBadgeVariant(profile.isActive)}>
                                 {profile.isActive ? 'Activo' : 'Inactivo'}
-                              </span>
+                              </Badge>
                               {isSelected ? (
                                 <span className="inline-flex items-center rounded-full border border-iwana-secondary/30 bg-iwana-secondary-50 px-3 py-1 text-xs font-semibold text-iwana-secondary-700 dark:border-iwana-secondary/20 dark:bg-iwana-secondary/10 dark:text-iwana-secondary-300">
                                   En edición

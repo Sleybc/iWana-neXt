@@ -135,7 +135,7 @@ export function LoginForm({
         </div>
         {tenantLocked && (
           <p className="text-xs text-slate-500 dark:text-gray-400">
-            Empresa bloqueada por configuración de entorno (`NEXT_PUBLIC_TENANT_SLUG`).
+            Empresa bloqueada por configuración global del sistema.
           </p>
         )}
         {tenantError && <span className={AUTH_FORM_ERROR_CLASS}>{tenantError}</span>}

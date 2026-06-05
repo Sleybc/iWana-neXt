@@ -10,7 +10,7 @@ export default function PlatformForgotPasswordPage() {
     <main className="relative min-h-screen w-full flex flex-col lg:flex-row overflow-hidden bg-[#181818]">
       <LoginBrandPanel
         title="Recuperación administrada"
-        subtitle="El acceso de plataforma se gestiona por un canal controlado para SYSTEM_ADMIN e IWANA_SUPPORT."
+        subtitle="El acceso de plataforma se gestiona por un canal controlado del equipo responsable."
       />
 
       <div className="w-full lg:w-1/2 bg-[#181818] flex items-center justify-center p-6 lg:p-12 relative">
@@ -25,8 +25,7 @@ export default function PlatformForgotPasswordPage() {
               el incidente con el equipo responsable.
             </p>
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              Mantener este flujo fuera del autoservicio evita exponer recuperación sobre usuarios
-              del schema público sin un contrato backend aprobado.
+              Este flujo permanece fuera del autoservicio para proteger el acceso administrativo.
             </div>
           </div>
 

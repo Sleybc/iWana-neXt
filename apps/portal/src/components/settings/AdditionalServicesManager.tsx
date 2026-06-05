@@ -29,6 +29,10 @@ import {
   type UpdateAdditionalServiceDto,
 } from '@/lib/api-client';
 import { ChargeType } from '@iwana/shared';
+import {
+  getPortalActiveBadgeVariant,
+  portalActiveCountBadgeVariant,
+} from '@/lib/portal-status-badge-rules';
 import { PortalAlert, PortalEmptyState, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 
 const SERVICE_CHARGE_TYPES = [
@@ -305,7 +309,7 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
               {totalServices} total
             </Badge>
             <Badge
-              variant="success"
+              variant={portalActiveCountBadgeVariant}
               className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]"
             >
               {activeServicesCount} activo{activeServicesCount === 1 ? '' : 's'}
@@ -474,7 +478,7 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
                         </td>
                         <td className={cellClass}>
                           <Badge
-                            variant={service.isActive ? 'success' : 'neutral'}
+                            variant={getPortalActiveBadgeVariant(service.isActive)}
                             className="text-xs"
                           >
                             {service.isActive ? 'Activo' : 'Inactivo'}

@@ -29,6 +29,10 @@ import {
   type UpdateAdditionalProductDto,
 } from '@/lib/api-client';
 import { ProductCategory, PRODUCT_CATEGORY_LABELS } from '@iwana/shared';
+import {
+  getPortalActiveBadgeVariant,
+  portalActiveCountBadgeVariant,
+} from '@/lib/portal-status-badge-rules';
 import { PortalAlert, PortalEmptyState, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 
 const PRODUCT_CATEGORY_VALUES = [
@@ -334,7 +338,7 @@ export function AdditionalProductsManager({ canEdit }: AdditionalProductsManager
               {totalProducts} total
             </Badge>
             <Badge
-              variant="success"
+              variant={portalActiveCountBadgeVariant}
               className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]"
             >
               {activeProductsCount} activo{activeProductsCount === 1 ? '' : 's'}
@@ -567,7 +571,7 @@ export function AdditionalProductsManager({ canEdit }: AdditionalProductsManager
                         <td className={cellClass}>{product.isLoan ? 'Comodato' : 'Venta'}</td>
                         <td className={cellClass}>
                           <Badge
-                            variant={product.isActive ? 'success' : 'neutral'}
+                            variant={getPortalActiveBadgeVariant(product.isActive)}
                             className="text-xs"
                           >
                             {product.isActive ? 'Activo' : 'Inactivo'}

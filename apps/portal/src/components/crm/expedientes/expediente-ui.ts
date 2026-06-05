@@ -1,4 +1,5 @@
 import type { ExpedienteStatus } from '@/lib/api-client';
+import { portalActiveBadgeVariant } from '@/lib/portal-status-badge-rules';
 
 export type StatusBadgeVariant =
   | 'success'
@@ -33,7 +34,7 @@ export const EXPEDIENTE_STATUS_META: Record<
   EN_COTIZACION: { label: 'En cotización', variant: 'info' },
   LISTO_PARA_INSTALACION: { label: 'Listo para instalación', variant: 'lime' },
   INSTALACION_AGENDADA: { label: 'Instalación agendada', variant: 'success' },
-  CLIENTE_ACTIVO: { label: 'Activo', variant: 'success' },
+  CLIENTE_ACTIVO: { label: 'Activo', variant: portalActiveBadgeVariant },
   DESCARTADO: { label: 'Descartado', variant: 'neutral' },
 };
 
@@ -131,6 +132,47 @@ export function getContactChannelBadgeVariant(channel: string): StatusBadgeVaria
   const primaryChannels = ['TELEFONO', 'PHONE', 'WHATSAPP', 'EMAIL', 'PRESENCIAL', 'IN_PERSON'];
   const normalized = channel.toUpperCase();
   return primaryChannels.includes(normalized) ? 'primary' : 'neutral';
+}
+
+export type ExpedienteTimelineKind =
+  | 'contact'
+  | 'responsibility'
+  | 'attribution'
+  | 'pipeline'
+  | 'system';
+
+export function getExpedienteTimelineKindMeta(kind: ExpedienteTimelineKind): {
+  label: string;
+  accentClassName: string;
+} {
+  switch (kind) {
+    case 'contact':
+      return {
+        label: 'Intento de contacto',
+        accentClassName: 'border-l-iwana-primary',
+      };
+    case 'responsibility':
+      return {
+        label: 'Cambio de responsable',
+        accentClassName: 'border-l-iwana-secondary-700',
+      };
+    case 'attribution':
+      return {
+        label: 'Atribución comercial',
+        accentClassName: 'border-l-amber-500',
+      };
+    case 'pipeline':
+      return {
+        label: 'Cambio de estado',
+        accentClassName: 'border-l-iwana-primary',
+      };
+    case 'system':
+    default:
+      return {
+        label: 'Actividad del sistema',
+        accentClassName: 'border-l-gray-300 dark:border-l-gray-600',
+      };
+  }
 }
 
 export const PERSON_TYPE_OPTIONS = [

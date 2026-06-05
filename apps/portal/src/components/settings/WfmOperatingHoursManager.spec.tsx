@@ -129,7 +129,7 @@ function buildWeekWithSeconds() {
   }));
 }
 
-describe('WfmOperatingHoursManager', () => {
+describe('Gestor de operaciones de campo', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     wfmApiMock.businessHours.getCompany.mockResolvedValue(buildWeek());

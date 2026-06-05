@@ -9,6 +9,124 @@
 
 Se ejecutó la implementación transversal de enablement operativo para habilitar perfil de plataforma, settings funcionales de tenant, flujo de alta de primera empresa y gestión operativa de usuarios internos. El cierre incluyó la corrección del flujo MFA de plataforma en web, la activación real de acciones de usuarios por tenant y la ampliación del E2E de bootstrap administrativo.
 
+### Addendum correctivo 2026-06-03 — Sprint 2 rediseño expediente CRM
+
+Se continuó la ejecución del rediseño UX/UI del expediente CRM en `apps/portal` para consolidar jerarquía operativa en Vista general, Gestión y Seguimiento, manteniendo alcance frontend-only y sin cambios contractuales backend.
+
+Implementación aplicada:
+
+- `apps/portal/src/app/dashboard/crm/expedientes/[id]/page.tsx`
+  - Bloque `Acción recomendada ahora` reforzado con conectividad explícita a faltantes bloqueantes y recomendados del pipeline.
+  - Resumen corto de bloqueantes con etiquetas de sección/campo para orientar la siguiente acción de gestión.
+- `apps/portal/src/components/crm/expedientes/sections/ExpedienteSections.tsx`
+  - Prioridad visual por sección consolidada con codificación semántica `Crítica`, `Atención`, `Completa`.
+  - Badge de prioridad con color semántico en cada header de sección.
+- `apps/portal/src/components/crm/expedientes/SeguimientoTab.tsx`
+  - Nuevo resumen de `panel activo` para dar contexto inmediato de la acción operativa en curso.
+  - Mantiene tipología de timeline por tipo de evento y mejora foco de ejecución para operadores.
+
+Validación ejecutada:
+
+- `pnpm --filter @iwana/portal exec tsc -p tsconfig.json --noEmit`
+- `runTests` focalizado sobre `apps/portal/src/app/dashboard/crm/expedientes/page.spec.tsx`
+- `get_errors` en archivos tocados sin hallazgos
+
+Resultado:
+
+- Mayor claridad de siguiente paso en Vista general con conexión directa a faltantes reales.
+- Gestión con prioridad visual consistente y escaneo más rápido por sección.
+- Seguimiento con mejor orientación contextual para acciones rápidas.
+
+### Addendum correctivo 2026-06-03 — Sprint 3 parcial (timeline reusable)
+
+Se ejecutó un avance de Sprint 3 en `apps/portal` para desacoplar el timeline operativo del expediente en un componente reusable y reducir complejidad interna de `SeguimientoTab`.
+
+Implementación aplicada:
+
+- Nuevo componente: `apps/portal/src/components/crm/expedientes/ExpedienteTimelinePanel.tsx`
+  - Centraliza filtros, paginación y render de eventos tipificados de la bitácora.
+  - Expone tipos reutilizables (`TimelineEntry`, `TimelineFilter`, `TimelinePageSize`) para futuras pantallas.
+- Refactor de `apps/portal/src/components/crm/expedientes/SeguimientoTab.tsx`
+  - Reemplaza render inline del timeline por `ExpedienteTimelinePanel`.
+  - Mantiene comportamiento funcional y semántica visual previa sin cambios de negocio.
+
+Validación ejecutada:
+
+- `pnpm --filter @iwana/portal exec tsc -p tsconfig.json --noEmit`
+- `runTests` focalizado en:
+  - `apps/portal/src/components/crm/expedientes/SeguimientoTab.spec.tsx`
+  - `apps/portal/src/components/crm/expedientes/expediente-ui.spec.ts`
+  - `apps/portal/src/components/crm/expedientes/sections/ExpedienteSections.spec.tsx`
+
+Resultado:
+
+- Menor acoplamiento en `SeguimientoTab` y base lista para reutilizar timeline en otros módulos operativos.
+
+### Addendum correctivo 2026-06-03 — Cierre Sprint 3 expediente CRM
+
+Se completó el cierre de Sprint 3 del rediseño de expediente CRM con refactor reusable del timeline y cobertura de integración del detalle de expediente en App Router.
+
+Implementación aplicada:
+
+- Refactor reusable del timeline operativo:
+  - `apps/portal/src/components/crm/expedientes/ExpedienteTimelinePanel.tsx`
+  - `apps/portal/src/components/crm/expedientes/SeguimientoTab.tsx`
+- Cobertura de integración del detalle de expediente:
+  - `apps/portal/src/app/dashboard/crm/expedientes/[id]/page.spec.tsx`
+  - Casos validados: render de bloque `Acción recomendada ahora`, cambio de tabs principales y ejecución de transición sugerida.
+
+Validación ejecutada:
+
+- `pnpm --filter @iwana/portal exec tsc -p tsconfig.json --noEmit`
+- `runTests` focalizado en:
+  - `apps/portal/src/app/dashboard/crm/expedientes/[id]/page.spec.tsx`
+  - `apps/portal/src/components/crm/expedientes/SeguimientoTab.spec.tsx`
+  - `apps/portal/src/components/crm/expedientes/expediente-ui.spec.ts`
+  - `apps/portal/src/components/crm/expedientes/sections/ExpedienteSections.spec.tsx`
+
+Resultado:
+
+- Sprint 3 del expediente CRM cerrado con refactor mantenible y evidencia automatizada de comportamiento crítico en detalle de oportunidad.
+
+### Addendum correctivo 2026-06-03 — Normalización transversal de estados activos en portal
+
+Se consolidó una regla visual única para representar estados operativos `Activo/Inactivo` en `apps/portal`, evitando variaciones entre módulos y reduciendo regresiones de UI cuando se agregan nuevos listados o badges.
+
+Implementación aplicada:
+
+- Nueva utilidad transversal: `apps/portal/src/lib/portal-status-badge-rules.ts`
+  - `portalActiveBadgeVariant`
+  - `portalInactiveBadgeVariant`
+  - `portalActiveCountBadgeVariant`
+  - `getPortalActiveBadgeVariant(isActive)`
+- Migración de módulo comercial y settings comerciales hacia esa utilidad (planes, productos, servicios, combos, promociones, compatibilidad y reglas de aplicación tributaria).
+- Extensión a otros contextos con estado activo real:
+  - Cobertura (`CoverageNodeTable`, `CoverageZoneTable`)
+  - Usuarios tenant (`lib/user-labels.ts`, `UsersTable`, `ProfileHeader`)
+  - Resumen de empresa (`TenantSummaryCard`)
+  - CRM suscriptores y expedientes (`subscriber-ui.ts`, `expediente-ui.ts`)
+  - Configuración de accesos (`AccessControlSettingsClient`)
+
+Decisiones de alcance:
+
+- Se aplicó solo donde `Activo/Inactivo` representa estado operacional de entidad.
+- Se excluyeron badges `success` que significan resultado exitoso, completitud o feedback de operación, para no mezclar semánticas.
+
+Limpieza realizada:
+
+- Se eliminó el shim local `apps/portal/src/components/commercial/commercial-badge-rules.ts` una vez completada la migración a la utilidad transversal.
+
+Validación ejecutada:
+
+- `pnpm --filter @iwana/portal exec tsc -p tsconfig.json --noEmit`
+- Suites focalizadas de portal (commercial, settings, users, profile, coverage, access control) en verde.
+
+Resultado:
+
+- Estado visual `Activo/Inactivo` unificado en el portal para objetos operativos.
+- Menor riesgo de drift de color entre módulos y mayor consistencia del sistema visual iWana.
+- Se formalizó checklist reusable de revisión UI para PRs en `docs/quality/CHECKLIST-TRANSVERSAL-PORTAL-UI-REVIEW-v1.0.md`.
+
 ### Addendum documental 2026-05-19 — Limpieza de superficies IA para flujo Copilot
 
 Se simplifico la gobernanza operativa de asistentes IA para dejar GitHub Copilot como unica herramienta activa del workspace y reducir drift entre documentos. `AGENTS.md` queda ratificado como fuente maestra; `.github/copilot-instructions.md` pasa a bootstrap minimo; las instrucciones contextuales de `.github/instructions/` mantienen sus `applyTo` pero remiten a `AGENTS.md` y conservan solo reglas locales por superficie.

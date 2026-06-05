@@ -946,6 +946,13 @@ export class OrganizationService {
 
       const before = this.sanitizeException(existing);
 
+      if (dto.organizationSiteId !== undefined) {
+        if (dto.organizationSiteId) {
+          await this.findSiteEntity(qr.manager, ctx.tenantId, dto.organizationSiteId);
+        }
+        existing.organizationSiteId = dto.organizationSiteId ?? null;
+      }
+
       if (dto.exceptionDate !== undefined) existing.exceptionDate = dto.exceptionDate;
       if (dto.isRecurring !== undefined) existing.isRecurring = dto.isRecurring;
       if (dto.isOpen !== undefined) existing.isOpen = dto.isOpen;

@@ -2,6 +2,7 @@
 
 import { Badge, Button } from '@iwana/ui';
 import type { CoverageNodeConfig } from '@/lib/api-client';
+import { getPortalActiveBadgeVariant } from '@/lib/portal-status-badge-rules';
 
 interface CoverageNodeTableProps {
   nodes: CoverageNodeConfig[];
@@ -69,7 +70,7 @@ export function CoverageNodeTable({
               <td className={cellClass}>{node.latitude.toFixed(6)}</td>
               <td className={cellClass}>{node.longitude.toFixed(6)}</td>
               <td className={cellClass}>
-                <Badge variant={node.isActive ? 'success' : 'neutral'}>
+                <Badge variant={getPortalActiveBadgeVariant(node.isActive)}>
                   {node.isActive ? 'Activo' : 'Inactivo'}
                 </Badge>
               </td>

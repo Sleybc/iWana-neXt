@@ -22,7 +22,8 @@ export class SearchQueueService {
       SEARCH_INDEX_JOB_REBUILD,
       { force },
       {
-        jobId: `${SEARCH_INDEX_JOB_REBUILD}:${force ? 'force' : 'soft'}`,
+        // BullMQ no permite ':' en custom jobId.
+        jobId: `${SEARCH_INDEX_JOB_REBUILD}-${force ? 'force' : 'soft'}`,
         removeOnComplete: true,
       },
     );
@@ -33,7 +34,7 @@ export class SearchQueueService {
       SEARCH_INDEX_JOB_TENANT_UPSERT,
       { tenantId },
       {
-        jobId: `${SEARCH_INDEX_JOB_TENANT_UPSERT}:${tenantId}`,
+        jobId: `${SEARCH_INDEX_JOB_TENANT_UPSERT}-${tenantId}`,
         removeOnComplete: true,
       },
     );
@@ -44,7 +45,7 @@ export class SearchQueueService {
       SEARCH_INDEX_JOB_USER_UPSERT,
       { tenantId, userId },
       {
-        jobId: `${SEARCH_INDEX_JOB_USER_UPSERT}:${tenantId}:${userId}`,
+        jobId: `${SEARCH_INDEX_JOB_USER_UPSERT}-${tenantId}-${userId}`,
         removeOnComplete: true,
       },
     );
@@ -55,7 +56,7 @@ export class SearchQueueService {
       SEARCH_INDEX_JOB_USER_DELETE,
       { userId },
       {
-        jobId: `${SEARCH_INDEX_JOB_USER_DELETE}:${userId}`,
+        jobId: `${SEARCH_INDEX_JOB_USER_DELETE}-${userId}`,
         removeOnComplete: true,
       },
     );

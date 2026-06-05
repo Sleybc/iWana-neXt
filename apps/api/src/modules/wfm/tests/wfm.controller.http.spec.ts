@@ -21,10 +21,8 @@ import { WorkOrdersService } from '../services/work-orders.service';
 import { TechnicianAvailabilityService } from '../services/technician-availability.service';
 import { WfmDashboardService } from '../services/wfm-dashboard.service';
 import { ScheduleRecommendationsService } from '../services/schedule-recommendations.service';
-import { CompanyBusinessHoursService } from '../services/company-business-hours.service';
-import { HolidayBlackoutsService } from '../services/holiday-blackouts.service';
 import { OperatingWindowResolverService } from '../services/operating-window-resolver.service';
-import { SiteBusinessHoursService } from '../services/site-business-hours.service';
+import { OperationalEventualitiesService } from '../services/operational-eventualities.service';
 import { WfmTenantSettingsReadPort } from '../ports/wfm-tenant-settings-read.port';
 
 jest.mock('../../auth/guards/jwt-auth.guard', () => ({
@@ -212,9 +210,15 @@ describe('WfmController HTTP', () => {
         { provide: TechnicianAvailabilityService, useValue: technicianAvailabilityServiceMock },
         { provide: WfmDashboardService, useValue: dashboardServiceMock },
         { provide: ScheduleRecommendationsService, useValue: scheduleRecommendationsServiceMock },
-        { provide: CompanyBusinessHoursService, useValue: { getWeek: jest.fn() } },
-        { provide: SiteBusinessHoursService, useValue: { getWeek: jest.fn() } },
-        { provide: HolidayBlackoutsService, useValue: { list: jest.fn(), create: jest.fn() } },
+        {
+          provide: OperationalEventualitiesService,
+          useValue: {
+            create: jest.fn(),
+            findAllByTenant: jest.fn(),
+            updateStatus: jest.fn(),
+            softDelete: jest.fn(),
+          },
+        },
         { provide: WfmOrganizationSitesReadPort, useValue: { listDispatchSites: jest.fn() } },
         { provide: WfmTenantSettingsReadPort, useValue: { getTimezone: jest.fn() } },
         { provide: OperatingWindowResolverService, useValue: { resolve: jest.fn() } },
@@ -569,6 +573,17 @@ describe('WfmController HTTP', () => {
         todayCount: 10,
         overdueCount: 2,
         upcomingCount: 15,
+        activeCount: 8,
+        enRouteCount: 3,
+        atRiskCount: 4,
+        pendingInbox: {
+          totalOpen: 7,
+          readyToScheduleCount: 4,
+          needsContextCount: 2,
+          overdueSlaCount: 1,
+          highPriorityOpenCount: 3,
+        },
+        alerts: [],
         technicianLoad: [{ assignedUserId: 'tech-001', todayCount: 5 }],
       });
 
@@ -580,6 +595,7 @@ describe('WfmController HTTP', () => {
           expect(body).toHaveProperty('todayCount', 10);
           expect(body).toHaveProperty('overdueCount', 2);
           expect(body).toHaveProperty('upcomingCount', 15);
+          expect(body).toHaveProperty('pendingInbox.totalOpen', 7);
           expect(Array.isArray(body.technicianLoad)).toBe(true);
         });
     });
@@ -592,6 +608,13 @@ describe('WfmController HTTP', () => {
         activeCount: 8,
         enRouteCount: 3,
         atRiskCount: 4,
+        pendingInbox: {
+          totalOpen: 7,
+          readyToScheduleCount: 4,
+          needsContextCount: 2,
+          overdueSlaCount: 1,
+          highPriorityOpenCount: 3,
+        },
         alerts: [
           {
             id: 'overdue-evt-001',

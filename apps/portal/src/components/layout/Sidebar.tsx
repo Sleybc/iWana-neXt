@@ -65,7 +65,7 @@ const navGroups: NavGroup[] = [
     items: [
       { href: '/dashboard', label: 'Inicio', icon: LayoutDashboard },
       { href: '/dashboard/commercial', label: 'Comercial', icon: HandCoins },
-      { href: '/dashboard/crm', label: 'CRM', icon: BriefcaseBusiness },
+      { href: '/dashboard/crm/expedientes', label: 'CRM', icon: BriefcaseBusiness },
       { href: '/dashboard/crm/subscribers', label: 'Suscriptores', icon: Users },
       { href: '/dashboard/scheduling', label: 'Programacion', icon: CalendarClock },
       { href: '/dashboard/assurance', label: 'Mesa de ayuda', icon: LifeBuoy },
@@ -224,10 +224,10 @@ export const Sidebar = ({
       ref={sidebar}
       aria-label="Navegación principal"
       className={cn(
-        'fixed left-0 top-0 z-[9999] flex h-screen flex-col overflow-y-hidden border-r border-transparent bg-white transition-all duration-200 ease-linear dark:border-transparent dark:bg-dark-surface-2',
+        'fixed left-0 top-0 z-40 flex h-screen flex-col overflow-y-hidden border-r border-transparent bg-white transition-all duration-200 ease-linear dark:border-transparent dark:bg-dark-surface-2',
         'lg:static lg:translate-x-0',
         desktopCollapsed ? 'lg:w-[90px]' : 'lg:w-[290px]',
-        mobileOpen ? 'translate-x-0 w-[290px]' : '-translate-x-full w-[290px] lg:translate-x-0',
+        mobileOpen ? 'translate-x-0 w-[290px]' : 'max-lg:-translate-x-full w-[290px]',
       )}
     >
       {/* SIDEBAR HEADER */}

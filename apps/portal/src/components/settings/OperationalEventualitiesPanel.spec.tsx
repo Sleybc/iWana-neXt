@@ -228,7 +228,7 @@ describe('OperationalEventualitiesPanel', () => {
       });
     });
 
-    it('muestra empty state cuando no hay eventualidades', async () => {
+    it('muestra estado vacío cuando no hay cambios puntuales', async () => {
       mockList.mockResolvedValue([]);
 
       render(<OperationalEventualitiesPanel canEdit={false} />);
@@ -398,7 +398,7 @@ describe('OperationalEventualitiesPanel', () => {
       expect(screen.getByLabelText('Fin del cambio *')).toBeInTheDocument();
     });
 
-    it('crea eventualidad con datos válidos', async () => {
+    it('crea un cambio puntual con datos válidos', async () => {
       const newItem = { ...MOCK_ITEMS[0], id: 'ev-2' };
       mockCreate.mockResolvedValue(newItem);
 
@@ -475,8 +475,8 @@ describe('OperationalEventualitiesPanel', () => {
     });
   });
 
-  describe('acciones sobre eventualidades', () => {
-    it('confirma una eventualidad pendiente', async () => {
+  describe('acciones sobre cambios puntuales', () => {
+    it('confirma un cambio puntual pendiente', async () => {
       mockUpdateStatus.mockResolvedValue({ ...MOCK_ITEMS[0], status: 'confirmed' });
 
       render(<OperationalEventualitiesPanel canEdit={true} />);
@@ -493,7 +493,7 @@ describe('OperationalEventualitiesPanel', () => {
       expect(screen.getByText('Cambio puntual confirmado.')).toBeInTheDocument();
     });
 
-    it('cancela una eventualidad pendiente', async () => {
+    it('cancela un cambio puntual pendiente', async () => {
       mockUpdateStatus.mockResolvedValue({ ...MOCK_ITEMS[0], status: 'cancelled' });
 
       render(<OperationalEventualitiesPanel canEdit={true} />);

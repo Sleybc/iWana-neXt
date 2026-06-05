@@ -21,7 +21,11 @@ import {
   PORTAL_TENANT_ROLE_FILTER_OPTIONS,
   PORTAL_USER_STATUS_FILTER_OPTIONS,
 } from '@/lib/user-labels';
-import { PortalSectionHeader } from '@/components/shared/portal-ui';
+import {
+  PortalActionToolbar,
+  PortalEmptyState,
+  PortalSectionHeader,
+} from '@/components/shared/portal-ui';
 
 interface UsersTableProps {
   users: InternalUser[];
@@ -172,7 +176,7 @@ export function UsersTable({
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-100 bg-[#f6f8f4] dark:border-dark-border dark:bg-dark-surface-3">
+            <tr className="border-b border-gray-100 bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-3">
               <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
                 Usuario
               </th>
@@ -230,7 +234,11 @@ export function UsersTable({
             {!isLoading && users.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-12 text-center text-gray-500 dark:text-gray-400">
-                  No se encontraron usuarios.
+                  <PortalEmptyState
+                    title="Sin usuarios registrados"
+                    description="Ajusta los filtros o crea el primer usuario para comenzar a gestionar accesos internos."
+                    className="mx-auto max-w-xl text-left"
+                  />
                 </td>
               </tr>
             )}
@@ -293,10 +301,14 @@ export function UsersTable({
                   {formatDate(user.createdAt)}
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-1">
+                  <PortalActionToolbar
+                    compact={true}
+                    align="end"
+                    className="ml-auto !inline-flex !w-fit sm:!w-fit"
+                  >
                     <Button
                       type="button"
-                      variant="secondary"
+                      variant="ghost"
                       size="icon"
                       onClick={() => onEdit(user)}
                       aria-label={`Editar usuario ${user.email}`}
@@ -317,10 +329,11 @@ export function UsersTable({
                     </Button>
                     <Button
                       type="button"
-                      variant="softDestructive"
+                      variant="ghost"
                       size="icon"
                       onClick={() => onDelete(user)}
                       disabled={!canDelete(user)}
+                      className="hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
                       aria-label={`Eliminar usuario ${user.email}`}
                       title={
                         !canDelete(user)
@@ -332,7 +345,7 @@ export function UsersTable({
                     >
                       <Trash2 className="h-4 w-4" aria-hidden="true" />
                     </Button>
-                  </div>
+                  </PortalActionToolbar>
                 </td>
               </tr>
             ))}

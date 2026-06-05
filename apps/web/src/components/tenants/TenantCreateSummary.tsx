@@ -30,7 +30,7 @@ function getInitials(name: string): string {
 const PROV_CONFIG = {
   idle: {
     label: 'En espera',
-    detail: 'El schema de la empresa se creará al confirmar.',
+    detail: 'La configuración inicial de la empresa se completará al confirmar.',
     Icon: Clock,
     colorClass: 'text-gray-500 dark:text-gray-400',
     borderClass: 'border-gray-100 dark:border-dark-border',
@@ -38,8 +38,8 @@ const PROV_CONFIG = {
     spin: false,
   },
   PROVISIONING: {
-    label: 'Provisionando...',
-    detail: 'Creando schema y configuración inicial.',
+    label: 'Configurando...',
+    detail: 'Preparando configuración inicial y acceso de la empresa.',
     Icon: Loader2,
     colorClass: 'text-blue-600 dark:text-blue-400',
     borderClass: 'border-blue-200 dark:border-blue-800',
@@ -48,7 +48,7 @@ const PROV_CONFIG = {
   },
   ACTIVE: {
     label: 'Activo',
-    detail: 'Schema creado y listo para operar.',
+    detail: 'Configuración aplicada y lista para operar.',
     Icon: CheckCircle2,
     colorClass: 'text-emerald-600 dark:text-emerald-400',
     borderClass: 'border-emerald-200 dark:border-emerald-800',
@@ -56,8 +56,8 @@ const PROV_CONFIG = {
     spin: false,
   },
   PROVISIONING_FAILED: {
-    label: 'Error de provisioning',
-    detail: 'Revisa los logs del worker para más detalles.',
+    label: 'Error de configuración',
+    detail: 'No fue posible completar la configuración inicial. Intenta nuevamente.',
     Icon: AlertTriangle,
     colorClass: 'text-red-600 dark:text-red-400',
     borderClass: 'border-red-200 dark:border-red-800',

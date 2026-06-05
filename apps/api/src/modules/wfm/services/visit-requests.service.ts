@@ -48,6 +48,7 @@ import {
 import { OperatingWindowResolverService } from './operating-window-resolver.service';
 import { ScheduleConflictService } from './schedule-conflict.service';
 import { WorkOrdersService } from './work-orders.service';
+import { ExpedienteService } from '../../crm/expedientes/expediente.service';
 
 const RESTRICTED_ROLES: UserRole[] = [UserRole.TECHNICIAN, UserRole.CONTRACTOR];
 
@@ -71,7 +72,7 @@ type VisitRequestListResponse = {
   };
 };
 
-type VisitRequestResponse = VisitRequest;
+type VisitRequestResponse = VisitRequest & { customerDisplayName: string | null };
 
 type VisitRequestSchedulingContext = {
   address?: string | null | undefined;
@@ -89,6 +90,7 @@ export class VisitRequestsService {
     private readonly operatingWindowResolver: OperatingWindowResolverService,
     private readonly conflictService: ScheduleConflictService,
     private readonly workOrdersService: WorkOrdersService,
+    private readonly expedienteService: ExpedienteService,
   ) {}
 
   async listVisitRequests(
@@ -105,13 +107,15 @@ export class VisitRequestsService {
     });
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.reconcileOpenVisitRequestStatuses(qr.manager, tenantId);
+
       const qb = qr.manager
         .createQueryBuilder(VisitRequest, 'vr')
         .where('vr.tenant_id = :tenantId', { tenantId })
         .andWhere('vr.deleted_at IS NULL');
 
       if (validated.status) {
-        qb.andWhere('vr.status = :status', { status: validated.status });
+        this.applyVisitRequestStatusFilter(qb, validated.status);
       }
       if (validated.originContext) {
         qb.andWhere('vr.origin_context = :originContext', {
@@ -171,6 +175,8 @@ export class VisitRequestsService {
     });
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.reconcileOpenVisitRequestStatuses(qr.manager, tenantId);
+
       const municipalityQb = qr.manager
         .createQueryBuilder(VisitRequest, 'vr')
         .select(
@@ -226,6 +232,8 @@ export class VisitRequestsService {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.reconcileOpenVisitRequestStatuses(qr.manager, tenantId);
+
       const visitRequest = await qr.manager.findOne(VisitRequest, {
         where: { id, tenantId },
       });
@@ -355,31 +363,56 @@ export class VisitRequestsService {
         );
       }
 
+      const hasField = (field: keyof UpdateVisitRequestContextInput): boolean =>
+        Object.prototype.hasOwnProperty.call(validated, field);
+
+      const organizationSiteId = hasField('organizationSiteId')
+        ? (validated.organizationSiteId ?? null)
+        : (visitRequest.organizationSiteId ?? null);
+
       const mergedContext = {
         ...visitRequest,
         ...validated,
-        organizationSiteId: validated.organizationSiteId ?? visitRequest.organizationSiteId ?? null,
+        organizationSiteId,
       };
 
       const updates: Partial<VisitRequest> = {
-        description: validated.description ?? visitRequest.description,
-        organizationSiteId: mergedContext.organizationSiteId,
-        requestedWindowStartAt: validated.requestedWindowStartAt
-          ? new Date(validated.requestedWindowStartAt)
+        description: hasField('description')
+          ? (validated.description ?? null)
+          : visitRequest.description,
+        organizationSiteId,
+        requestedWindowStartAt: hasField('requestedWindowStartAt')
+          ? validated.requestedWindowStartAt
+            ? new Date(validated.requestedWindowStartAt)
+            : null
           : visitRequest.requestedWindowStartAt,
-        requestedWindowEndAt: validated.requestedWindowEndAt
-          ? new Date(validated.requestedWindowEndAt)
+        requestedWindowEndAt: hasField('requestedWindowEndAt')
+          ? validated.requestedWindowEndAt
+            ? new Date(validated.requestedWindowEndAt)
+            : null
           : visitRequest.requestedWindowEndAt,
-        slaDueAt: validated.slaDueAt ? new Date(validated.slaDueAt) : visitRequest.slaDueAt,
-        address: validated.address ?? visitRequest.address,
-        municipality: validated.municipality ?? visitRequest.municipality,
-        sector: validated.sector ?? visitRequest.sector,
-        latitude: validated.latitude ?? visitRequest.latitude,
-        longitude: validated.longitude ?? visitRequest.longitude,
-        expedienteId: validated.expedienteId ?? visitRequest.expedienteId,
-        subscriberId: validated.subscriberId ?? visitRequest.subscriberId,
-        ticketId: validated.ticketId ?? visitRequest.ticketId,
-        contractId: validated.contractId ?? visitRequest.contractId,
+        slaDueAt: hasField('slaDueAt')
+          ? validated.slaDueAt
+            ? new Date(validated.slaDueAt)
+            : null
+          : visitRequest.slaDueAt,
+        address: hasField('address') ? (validated.address ?? null) : visitRequest.address,
+        municipality: hasField('municipality')
+          ? (validated.municipality ?? null)
+          : visitRequest.municipality,
+        sector: hasField('sector') ? (validated.sector ?? null) : visitRequest.sector,
+        latitude: hasField('latitude') ? (validated.latitude ?? null) : visitRequest.latitude,
+        longitude: hasField('longitude') ? (validated.longitude ?? null) : visitRequest.longitude,
+        expedienteId: hasField('expedienteId')
+          ? (validated.expedienteId ?? null)
+          : visitRequest.expedienteId,
+        subscriberId: hasField('subscriberId')
+          ? (validated.subscriberId ?? null)
+          : visitRequest.subscriberId,
+        ticketId: hasField('ticketId') ? (validated.ticketId ?? null) : visitRequest.ticketId,
+        contractId: hasField('contractId')
+          ? (validated.contractId ?? null)
+          : visitRequest.contractId,
         status: this.deriveStatusFromContext(mergedContext, visitRequest.status),
       };
 
@@ -397,6 +430,7 @@ export class VisitRequestsService {
 
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = RecommendVisitRequestSchema.parse(input);
+    const timezone = await this.tenantSettingsReadPort.getTimezone(tenantId);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const visitRequest = await qr.manager.findOne(VisitRequest, {
@@ -409,13 +443,21 @@ export class VisitRequestsService {
 
       this.ensureActorCanAccessVisitRequest(actor, visitRequest);
 
-      const resolvedWindowStartAt =
-        validated.windowStartAt ?? visitRequest.requestedWindowStartAt?.toISOString();
-      const resolvedWindowEndAt =
-        validated.windowEndAt ?? visitRequest.requestedWindowEndAt?.toISOString();
-      const horizonWindow = this.resolveSearchHorizonWindow(validated.searchHorizonDays);
-      const effectiveWindowStartAt = resolvedWindowStartAt ?? horizonWindow?.windowStartAt;
-      const effectiveWindowEndAt = resolvedWindowEndAt ?? horizonWindow?.windowEndAt;
+      const horizonWindow = this.resolveSearchHorizonWindow(validated.searchHorizonDays, timezone);
+      const hasExplicitWindow = Boolean(validated.windowStartAt || validated.windowEndAt);
+      const shouldPrioritizeHorizon =
+        !hasExplicitWindow && validated.searchHorizonDays !== undefined;
+      const persistedWindowStartAt = visitRequest.requestedWindowStartAt?.toISOString();
+      const persistedWindowEndAt = visitRequest.requestedWindowEndAt?.toISOString();
+      const effectiveWindowStartAt = shouldPrioritizeHorizon
+        ? (horizonWindow?.windowStartAt ?? null)
+        : (validated.windowStartAt ??
+          persistedWindowStartAt ??
+          horizonWindow?.windowStartAt ??
+          null);
+      const effectiveWindowEndAt = shouldPrioritizeHorizon
+        ? (horizonWindow?.windowEndAt ?? null)
+        : (validated.windowEndAt ?? persistedWindowEndAt ?? horizonWindow?.windowEndAt ?? null);
       const resolvedMunicipality = validated.municipality ?? visitRequest.municipality;
       const resolvedSector = validated.sector ?? visitRequest.sector;
       const resolvedLatitude = validated.latitude ?? visitRequest.latitude;
@@ -501,7 +543,9 @@ export class VisitRequestsService {
         );
       }
 
-      if (visitRequest.status !== VisitRequestStatus.READY_TO_SCHEDULE) {
+      const effectiveStatus = this.getEffectiveVisitRequestStatus(visitRequest);
+
+      if (effectiveStatus !== VisitRequestStatus.READY_TO_SCHEDULE) {
         throw new BadRequestException('La solicitud no esta lista para agendar');
       }
 
@@ -745,15 +789,57 @@ export class VisitRequestsService {
   private async enrichVisitRequest<T extends VisitRequest>(
     visitRequest: T,
     _manager: EntityManager,
-  ): Promise<T> {
-    return visitRequest;
+  ): Promise<T & { customerDisplayName: string | null }> {
+    const normalizedVisitRequest = this.normalizeVisitRequestStatus(visitRequest);
+    const customerDisplayName = await this.resolveCustomerDisplayName(normalizedVisitRequest);
+    return { ...normalizedVisitRequest, customerDisplayName };
   }
 
   private async enrichVisitRequests<T extends VisitRequest>(
     visitRequests: T[],
-    _manager: EntityManager,
-  ): Promise<T[]> {
-    return visitRequests;
+    manager: EntityManager,
+  ): Promise<Array<T & { customerDisplayName: string | null }>> {
+    return Promise.all(
+      visitRequests.map((visitRequest) => this.enrichVisitRequest(visitRequest, manager)),
+    );
+  }
+
+  private async resolveCustomerDisplayName(visitRequest: VisitRequest): Promise<string | null> {
+    if (visitRequest.originContext !== WorkOrderSourceContext.CRM) {
+      return null;
+    }
+
+    const expedienteId = this.resolveCrmExpedienteId(visitRequest);
+    if (expedienteId) {
+      return this.expedienteService.findDisplayNameById(expedienteId);
+    }
+
+    const opportunityCode = this.resolveCrmOpportunityCode(visitRequest.originLabel);
+    if (!opportunityCode) {
+      return null;
+    }
+
+    const match = await this.expedienteService.findDisplayNameByShortCode(opportunityCode);
+    return match?.displayName ?? null;
+  }
+
+  private resolveCrmExpedienteId(visitRequest: VisitRequest): string | null {
+    const idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+    if (visitRequest.expedienteId && idPattern.test(visitRequest.expedienteId)) {
+      return visitRequest.expedienteId;
+    }
+
+    if (visitRequest.originRef && idPattern.test(visitRequest.originRef)) {
+      return visitRequest.originRef;
+    }
+
+    return null;
+  }
+
+  private resolveCrmOpportunityCode(originLabel: string | null): string | null {
+    const match = originLabel?.trim().match(/^Oportunidad\s+([A-Za-z0-9-]+)/i);
+    return match?.[1] ? match[1].toUpperCase() : null;
   }
 
   private ensureActorCanAccessGlobalVisitRequests(actor: JwtPayload): void {
@@ -826,17 +912,97 @@ export class VisitRequestsService {
   ): VisitRequestStatus {
     const hasAddress = Boolean(input.address && input.address.trim().length > 0);
     const hasMunicipality = Boolean(input.municipality && input.municipality.trim().length > 0);
-    const hasWindow = Boolean(input.requestedWindowStartAt && input.requestedWindowEndAt);
 
-    if (hasAddress && hasMunicipality && hasWindow) {
+    if (hasAddress && hasMunicipality) {
       return VisitRequestStatus.READY_TO_SCHEDULE;
     }
 
-    if (!hasAddress && !hasMunicipality && !hasWindow) {
+    if (!hasAddress && !hasMunicipality) {
       return VisitRequestStatus.NEEDS_CONTEXT;
     }
 
     return VisitRequestStatus.NEEDS_CONTEXT;
+  }
+
+  private getEffectiveVisitRequestStatus(
+    visitRequest: Pick<VisitRequest, 'status' | 'address' | 'municipality'>,
+  ): VisitRequestStatus {
+    if (
+      visitRequest.status === VisitRequestStatus.READY_TO_SCHEDULE ||
+      visitRequest.status === VisitRequestStatus.NEEDS_CONTEXT
+    ) {
+      return this.deriveStatusFromContext(visitRequest, visitRequest.status);
+    }
+
+    return visitRequest.status;
+  }
+
+  private normalizeVisitRequestStatus<T extends VisitRequest>(visitRequest: T): T {
+    const effectiveStatus = this.getEffectiveVisitRequestStatus(visitRequest);
+
+    if (effectiveStatus === visitRequest.status) {
+      return visitRequest;
+    }
+
+    return {
+      ...visitRequest,
+      status: effectiveStatus,
+    } as T;
+  }
+
+  private buildEffectiveStatusSql(alias: string): string {
+    return `CASE
+      WHEN ${alias}.status IN ('${VisitRequestStatus.READY_TO_SCHEDULE}', '${VisitRequestStatus.NEEDS_CONTEXT}')
+      THEN CASE
+        WHEN NULLIF(TRIM(${alias}.address), '') IS NOT NULL
+         AND NULLIF(TRIM(${alias}.municipality), '') IS NOT NULL
+        THEN '${VisitRequestStatus.READY_TO_SCHEDULE}'::visit_request_status
+        ELSE '${VisitRequestStatus.NEEDS_CONTEXT}'::visit_request_status
+      END
+      ELSE ${alias}.status
+    END`;
+  }
+
+  private buildStatusReconciliationSql(alias: string): string {
+    return `CASE
+      WHEN NULLIF(TRIM(${alias}.address), '') IS NOT NULL
+       AND NULLIF(TRIM(${alias}.municipality), '') IS NOT NULL
+      THEN '${VisitRequestStatus.READY_TO_SCHEDULE}'::visit_request_status
+      ELSE '${VisitRequestStatus.NEEDS_CONTEXT}'::visit_request_status
+    END`;
+  }
+
+  private async reconcileOpenVisitRequestStatuses(
+    manager: EntityManager,
+    tenantId: string,
+  ): Promise<void> {
+    const nextStatusSql = this.buildStatusReconciliationSql('vr');
+
+    await manager.query(
+      `UPDATE visit_requests vr
+       SET status = ${nextStatusSql},
+           updated_at = NOW()
+       WHERE vr.tenant_id = $1
+         AND vr.deleted_at IS NULL
+         AND vr.status IN ('${VisitRequestStatus.READY_TO_SCHEDULE}'::visit_request_status, '${VisitRequestStatus.NEEDS_CONTEXT}'::visit_request_status)
+         AND vr.status IS DISTINCT FROM ${nextStatusSql}`,
+      [tenantId],
+    );
+  }
+
+  private applyVisitRequestStatusFilter(
+    qb: ReturnType<EntityManager['createQueryBuilder']>,
+    status: VisitRequestStatus,
+  ): void {
+    if (
+      status === VisitRequestStatus.READY_TO_SCHEDULE ||
+      status === VisitRequestStatus.NEEDS_CONTEXT
+    ) {
+      qb.andWhere(`${this.buildEffectiveStatusSql('vr')} = :status`, { status });
+      return;
+    }
+
+    qb.andWhere('vr.status = :status', { status });
   }
 
   private applyFilterOptionsStatusScope(
@@ -893,20 +1059,91 @@ export class VisitRequestsService {
 
   private resolveSearchHorizonWindow(
     searchHorizonDays?: number,
+    timezone = 'UTC',
   ): { windowStartAt: string; windowEndAt: string } | null {
     if (!searchHorizonDays) {
       return null;
     }
 
     const now = new Date();
-    const end = new Date(now);
-    end.setUTCDate(end.getUTCDate() + searchHorizonDays);
-    end.setUTCHours(23, 59, 59, 999);
+    const currentLocalDate = getLocalDateString(now, timezone);
+
+    if (!currentLocalDate) {
+      return null;
+    }
+
+    const [yearPart, monthPart, dayPart] = currentLocalDate.split('-');
+    const year = Number(yearPart);
+    const month = Number(monthPart);
+    const day = Number(dayPart);
+
+    if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+      return null;
+    }
+
+    const targetLocalDate = new Date(Date.UTC(year, month - 1, day + searchHorizonDays - 1));
+    const end = this.toUtcInstantFromLocalDateTime(
+      timezone,
+      targetLocalDate.getUTCFullYear(),
+      targetLocalDate.getUTCMonth() + 1,
+      targetLocalDate.getUTCDate(),
+      23,
+      59,
+      59,
+      999,
+    );
 
     return {
       windowStartAt: now.toISOString(),
       windowEndAt: end.toISOString(),
     };
+  }
+
+  private toUtcInstantFromLocalDateTime(
+    timezone: string,
+    year: number,
+    month: number,
+    day: number,
+    hour: number,
+    minute: number,
+    second: number,
+    millisecond: number,
+  ): Date {
+    const localAsUtc = Date.UTC(year, month - 1, day, hour, minute, second, millisecond);
+    const firstOffset = this.getTimeZoneOffsetMs(new Date(localAsUtc), timezone);
+    const firstResult = new Date(localAsUtc - firstOffset);
+    const secondOffset = this.getTimeZoneOffsetMs(firstResult, timezone);
+
+    return new Date(localAsUtc - secondOffset);
+  }
+
+  private getTimeZoneOffsetMs(date: Date, timezone: string): number {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    });
+    const parts = formatter.formatToParts(date);
+    const values = Object.fromEntries(
+      parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]),
+    );
+
+    const localAsUtc = Date.UTC(
+      Number(values.year),
+      Number(values.month) - 1,
+      Number(values.day),
+      Number(values.hour),
+      Number(values.minute),
+      Number(values.second),
+      date.getUTCMilliseconds(),
+    );
+
+    return localAsUtc - date.getTime();
   }
 }
 

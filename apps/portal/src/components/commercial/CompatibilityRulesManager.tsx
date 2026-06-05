@@ -27,6 +27,10 @@ import {
   type PlanCatalogItem,
   type UpdateCompatibilityRuleDto,
 } from '@/lib/api-client';
+import {
+  getPortalActiveBadgeVariant,
+  portalActiveCountBadgeVariant,
+} from '@/lib/portal-status-badge-rules';
 import { PortalAlert, PortalEmptyState, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 
 interface CompatibilityRulesManagerProps {
@@ -261,7 +265,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
 
           <div className="flex items-center gap-2">
             <Badge
-              variant="neutral"
+              variant={portalActiveCountBadgeVariant}
               className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]"
             >
               {activeCount} activa{activeCount === 1 ? '' : 's'}
@@ -337,7 +341,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
                     </td>
                     <td className={cellClass}>
                       <Badge
-                        variant={rule.isActive ? 'success' : 'neutral'}
+                        variant={getPortalActiveBadgeVariant(rule.isActive)}
                         className="rounded-full px-2 py-0.5 text-[11px]"
                       >
                         {rule.isActive ? 'Activo' : 'Inactivo'}

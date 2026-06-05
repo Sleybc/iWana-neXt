@@ -144,16 +144,31 @@ describe('SettingsClient', () => {
     render(<SettingsClient />);
 
     expect(await screen.findByText('Secciones de configuración')).toBeInTheDocument();
+    expect(screen.getByText('Recomendado ahora')).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: /Revisar accesos/i })).toHaveLength(2);
+    expect(
+      screen
+        .getAllByRole('link', { name: /Revisar accesos/i })
+        .every((link) => link.getAttribute('href')?.includes('/dashboard/settings/access')),
+    ).toBe(true);
+    expect(screen.getByText('Refuerza el acceso de tu empresa')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Prioriza esta revisión para reforzar la seguridad y el gobierno de acceso de la empresa.',
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText('Secciones de configuración')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Organización/i })).toHaveAttribute(
       'href',
       '/dashboard/settings/organization',
     );
     expect(screen.queryByRole('link', { name: /Operación de campo/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Perfiles de acceso/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /Usuarios y acceso/i })).toHaveAttribute(
       'href',
       '/dashboard/settings/access',
     );
+    expect(screen.getByText('Facturación')).toBeInTheDocument();
+    expect(screen.queryByText('Billing')).not.toBeInTheDocument();
     expect(screen.getByText('Próximamente')).toBeInTheDocument();
     expect(screen.queryByRole('tab')).not.toBeInTheDocument();
     expect(screen.queryByText('Guardar perfil empresarial')).not.toBeInTheDocument();
@@ -174,11 +189,11 @@ describe('SettingsClient', () => {
 
     expect(await screen.findByText('Secciones de configuración')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Operación de campo/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /Perfiles de acceso/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Usuarios y acceso/i })).not.toBeInTheDocument();
     expect(
       screen.queryByRole('link', { name: /Perfil empresarial y organización/i }),
     ).not.toBeInTheDocument();
     expect(screen.getAllByText('Acceso restringido')).toHaveLength(2);
-    expect(screen.getAllByText(/Tu perfil no tiene acceso a esta sección/i)).toHaveLength(2);
+    expect(screen.getAllByText(/Solicita apoyo a una persona administradora/i)).toHaveLength(2);
   });
 });

@@ -1,8 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
-import { ScheduleEventStatus } from '@iwana/shared';
+import { ScheduleEventStatus, VisitRequestStatus, WorkOrderPriority } from '@iwana/shared';
 
 /** Carga de un tecnico para el resumen del dashboard. */
 export type WfmTechnicianLoadRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
@@ -41,6 +41,13 @@ export interface WfmDashboardSummary {
   activeCount: number;
   enRouteCount: number;
   atRiskCount: number;
+  pendingInbox: {
+    totalOpen: number;
+    readyToScheduleCount: number;
+    needsContextCount: number;
+    overdueSlaCount: number;
+    highPriorityOpenCount: number;
+  };
   alerts: WfmDashboardAlert[];
   technicianLoad: TechnicianLoadItem[];
 }
@@ -57,6 +64,12 @@ const EXPECTED_DAILY_MINUTES = 480;
 const STARTING_SOON_MINUTES = 60;
 const ALERT_LIMIT = 12;
 const ACTIVE_STATUS_FILTER = 'se.status = ANY(CAST(:statuses AS schedule_event_status[]))';
+const PENDING_VISIT_OPEN_STATUSES = [
+  VisitRequestStatus.PENDING,
+  VisitRequestStatus.NEEDS_CONTEXT,
+  VisitRequestStatus.READY_TO_SCHEDULE,
+];
+const HIGH_PRIORITIES = [WorkOrderPriority.HIGH, WorkOrderPriority.URGENT];
 
 function toCount(value: unknown): number {
   const parsed = Number.parseInt(String(value ?? '0'), 10);
@@ -74,8 +87,32 @@ function toIsoString(value: Date | string | null | undefined): string | null {
   return value instanceof Date ? value.toISOString() : value;
 }
 
+function buildEffectiveVisitRequestStatusSql(alias: string): string {
+  return `CASE
+    WHEN ${alias}.status IN ('${VisitRequestStatus.READY_TO_SCHEDULE}', '${VisitRequestStatus.NEEDS_CONTEXT}')
+    THEN CASE
+      WHEN NULLIF(TRIM(${alias}.address), '') IS NOT NULL
+       AND NULLIF(TRIM(${alias}.municipality), '') IS NOT NULL
+      THEN '${VisitRequestStatus.READY_TO_SCHEDULE}'::visit_request_status
+      ELSE '${VisitRequestStatus.NEEDS_CONTEXT}'::visit_request_status
+    END
+    ELSE ${alias}.status
+  END`;
+}
+
+function buildVisitRequestStatusReconciliationSql(alias: string): string {
+  return `CASE
+    WHEN NULLIF(TRIM(${alias}.address), '') IS NOT NULL
+     AND NULLIF(TRIM(${alias}.municipality), '') IS NOT NULL
+    THEN '${VisitRequestStatus.READY_TO_SCHEDULE}'::visit_request_status
+    ELSE '${VisitRequestStatus.NEEDS_CONTEXT}'::visit_request_status
+  END`;
+}
+
 @Injectable()
 export class WfmDashboardService {
+  private readonly logger = new Logger(WfmDashboardService.name);
+
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   /** Devuelve metricas de agenda para el dashboard operativo del tenant. */
@@ -161,6 +198,80 @@ export class WfmDashboardService {
         .andWhere('se.scheduled_start_at >= :now', { now })
         .andWhere('se.scheduled_start_at <= :startingSoonEnd', { startingSoonEnd })
         .getRawOne();
+
+      let pendingInbox = {
+        totalOpen: 0,
+        readyToScheduleCount: 0,
+        needsContextCount: 0,
+        overdueSlaCount: 0,
+        highPriorityOpenCount: 0,
+      };
+
+      try {
+        const reconciledStatusSql = buildVisitRequestStatusReconciliationSql('vr');
+
+        await qr.manager.query(
+          `UPDATE visit_requests vr
+           SET status = ${reconciledStatusSql},
+               updated_at = NOW()
+           WHERE vr.tenant_id = $1
+             AND vr.deleted_at IS NULL
+             AND vr.status IN ('${VisitRequestStatus.READY_TO_SCHEDULE}'::visit_request_status, '${VisitRequestStatus.NEEDS_CONTEXT}'::visit_request_status)
+             AND vr.status IS DISTINCT FROM ${reconciledStatusSql}`,
+          [tenantId],
+        );
+
+        const effectiveStatusSql = buildEffectiveVisitRequestStatusSql('vr');
+        const pendingInboxResult = await qr.manager
+          .createQueryBuilder()
+          .select('COUNT(*)', 'total_open')
+          .addSelect(
+            `SUM(CASE WHEN ${effectiveStatusSql} = :readyToScheduleStatus THEN 1 ELSE 0 END)`,
+            'ready_to_schedule_count',
+          )
+          .addSelect(
+            `SUM(CASE WHEN ${effectiveStatusSql} = :needsContextStatus THEN 1 ELSE 0 END)`,
+            'needs_context_count',
+          )
+          .addSelect(
+            'SUM(CASE WHEN vr.sla_due_at IS NOT NULL AND vr.sla_due_at < :now THEN 1 ELSE 0 END)',
+            'overdue_sla_count',
+          )
+          .addSelect(
+            'SUM(CASE WHEN vr.priority = ANY(CAST(:highPriorities AS work_order_priority[])) THEN 1 ELSE 0 END)',
+            'high_priority_open_count',
+          )
+          .from('visit_requests', 'vr')
+          .where('vr.tenant_id = :tenantId', { tenantId })
+          .andWhere('vr.deleted_at IS NULL')
+          .andWhere('vr.status = ANY(CAST(:openStatuses AS visit_request_status[]))', {
+            openStatuses: PENDING_VISIT_OPEN_STATUSES,
+          })
+          .setParameter('readyToScheduleStatus', VisitRequestStatus.READY_TO_SCHEDULE)
+          .setParameter('needsContextStatus', VisitRequestStatus.NEEDS_CONTEXT)
+          .setParameter('highPriorities', HIGH_PRIORITIES)
+          .setParameter('now', now)
+          .getRawOne<{
+            total_open?: string;
+            ready_to_schedule_count?: string;
+            needs_context_count?: string;
+            overdue_sla_count?: string;
+            high_priority_open_count?: string;
+          }>();
+
+        pendingInbox = {
+          totalOpen: toCount(pendingInboxResult?.total_open),
+          readyToScheduleCount: toCount(pendingInboxResult?.ready_to_schedule_count),
+          needsContextCount: toCount(pendingInboxResult?.needs_context_count),
+          overdueSlaCount: toCount(pendingInboxResult?.overdue_sla_count),
+          highPriorityOpenCount: toCount(pendingInboxResult?.high_priority_open_count),
+        };
+      } catch (error) {
+        this.logger.warn(
+          `No fue posible resolver el resumen de bandeja pendiente para el tenant ${tenantId}.`,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
 
       // Carga por tecnico para hoy
       const technicianLoadRows: {
@@ -293,6 +404,7 @@ export class WfmDashboardService {
         activeCount: toCount(activeResult?.activeCount),
         enRouteCount: toCount(enRouteResult?.enRouteCount),
         atRiskCount: toCount(atRiskResult?.atRiskCount),
+        pendingInbox,
         alerts: [...overdueAlerts, ...draftSoonAlerts, ...highLoadAlerts].slice(0, ALERT_LIMIT),
         technicianLoad,
       };

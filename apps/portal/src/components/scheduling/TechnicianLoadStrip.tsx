@@ -63,6 +63,11 @@ export function TechnicianLoadStrip({
                 </div>
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-surface-4">
                   <div
+                    role="progressbar"
+                    aria-label={`${technician ? getTechnicianDisplayName(technician) : 'Técnico'} ${item.utilizationPercent}% de saturación`}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.min(100, item.utilizationPercent)}
                     className="h-full rounded-full bg-iwana-primary"
                     style={{ width: `${Math.min(100, item.utilizationPercent)}%` }}
                   />

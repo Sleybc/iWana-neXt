@@ -8,6 +8,7 @@ import { CheckCircle2, CircleAlert } from 'lucide-react';
 import { Button, Card, CardContent, CardHeader, Input } from '@iwana/ui';
 import { tenantSelfApi, type TenantSelf } from '@/lib/api-client';
 import { PortalAlert, PortalSectionHeader } from '@/components/shared/portal-ui';
+import { ORGANIZATION_SETTINGS_COPY } from './mod00-settings-labels';
 
 const profileSchema = z.object({
   contactEmail: z.string().trim().email('Ingresa un correo válido.'),
@@ -113,9 +114,9 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
       });
 
       onUpdated(updated);
-      setSuccess('Perfil empresarial actualizado correctamente.');
+      setSuccess(ORGANIZATION_SETTINGS_COPY.companyProfileSaveSuccess);
     } catch {
-      setServerError('No fue posible guardar el perfil empresarial. Intenta de nuevo.');
+      setServerError(ORGANIZATION_SETTINGS_COPY.companyProfileSaveError);
     }
   };
 
@@ -124,15 +125,17 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
       <CardHeader>
         <PortalSectionHeader
           className="gap-0"
-          title="Perfil empresarial"
-          description="Datos legales y de contacto de la empresa."
+          title={ORGANIZATION_SETTINGS_COPY.companyProfileTitle}
+          description={ORGANIZATION_SETTINGS_COPY.companyProfileDescription}
         />
       </CardHeader>
       <CardContent className="space-y-5">
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-6">
           <div className="space-y-6">
             <section className="space-y-4">
-              <p className={SECTION_LABEL}>Perfil y contacto</p>
+              <p className={SECTION_LABEL}>
+                {ORGANIZATION_SETTINGS_COPY.companyProfileContactSection}
+              </p>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12">
                 <div className="xl:col-span-6">
                   <Input
@@ -177,7 +180,9 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
             </section>
 
             <section className="space-y-4">
-              <p className={SECTION_LABEL}>Identificación y ubicación</p>
+              <p className={SECTION_LABEL}>
+                {ORGANIZATION_SETTINGS_COPY.companyProfileIdentitySection}
+              </p>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12">
                 <div className="xl:col-span-4">
                   <Input
@@ -233,7 +238,7 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
           {serverError && (
             <PortalAlert
               variant="error"
-              title="No fue posible guardar el perfil"
+              title={ORGANIZATION_SETTINGS_COPY.companyProfileErrorTitle}
               description={serverError}
               icon={CircleAlert}
             />
@@ -241,7 +246,7 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
           {success && !serverError && (
             <PortalAlert
               variant="success"
-              title="Perfil actualizado"
+              title={ORGANIZATION_SETTINGS_COPY.companyProfileSuccessTitle}
               description={success}
               icon={CheckCircle2}
             />
@@ -250,12 +255,12 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-gray-500 dark:text-gray-400">
               {canEdit
-                ? 'Solo se guardan los campos que puedes editar en esta sección.'
-                : 'Tu rol tiene acceso solo lectura sobre esta sección.'}
+                ? ORGANIZATION_SETTINGS_COPY.companyProfileEditableHint
+                : ORGANIZATION_SETTINGS_COPY.companyProfileReadOnlyHint}
             </p>
             {canEdit && (
               <Button type="submit" loading={isSubmitting} disabled={isSubmitting || !isDirty}>
-                Guardar perfil empresarial
+                {ORGANIZATION_SETTINGS_COPY.companyProfileSaveAction}
               </Button>
             )}
           </div>

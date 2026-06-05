@@ -5,7 +5,6 @@ import { useEffect, useState } from 'react';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@iwana/ui';
 import { AcquisitionChannel } from '@iwana/shared';
 import {
-  AlertTriangle,
   ArrowRight,
   Building2,
   CircleDashed,
@@ -25,6 +24,11 @@ import {
   InternalUser,
 } from '@/lib/api-client';
 import { PageHeader } from '@/components/layout/PageHeader';
+import {
+  PortalAlert,
+  portalTabActiveClassName,
+  portalTabInactiveClassName,
+} from '@/components/shared/portal-ui';
 import {
   ACQUISITION_CHANNEL_OPTIONS,
   getStatusMeta,
@@ -241,6 +245,41 @@ export default function ExpedientesPage() {
     { view: 'archive' as const },
   ];
 
+  const totalPipelineCount = Object.values(summary).reduce((sum, value) => sum + (value ?? 0), 0);
+
+  const summaryCards = [
+    {
+      label: 'Total',
+      value: loading ? '...' : String(totalPipelineCount),
+      helper: 'Oportunidades en el pipeline de la empresa',
+    },
+    {
+      label: 'Prospección',
+      value: loading
+        ? '...'
+        : String((summary.NUEVO_POTENCIAL ?? 0) + (summary.PRECALIFICADO ?? 0)),
+      helper: 'Nuevos y precalificados',
+    },
+    {
+      label: 'Evaluación',
+      value: loading
+        ? '...'
+        : String((summary.VALIDANDO_COBERTURA ?? 0) + (summary.EN_COTIZACION ?? 0)),
+      helper: 'Cobertura y cotización',
+    },
+    {
+      label: 'Cierre',
+      value: loading
+        ? '...'
+        : String(
+            (summary.LISTO_PARA_INSTALACION ?? 0) +
+              (summary.INSTALACION_AGENDADA ?? 0) +
+              (summary.CLIENTE_ACTIVO ?? 0),
+          ),
+      helper: 'Instalación, agendados y activos',
+    },
+  ];
+
   return (
     <div className="space-y-6 pb-6">
       <PageHeader
@@ -249,11 +288,34 @@ export default function ExpedientesPage() {
         actions={<Badge variant="primary">{total} oportunidades</Badge>}
       />
 
+      <Card className="border border-gray-100 bg-white shadow-[var(--shadow-iwana-card)] dark:border-dark-border dark:bg-dark-surface-2">
+        <CardHeader className="border-b border-gray-100 dark:border-dark-border">
+          <CardTitle className="text-base font-bold">Resumen ejecutivo</CardTitle>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Lectura compacta del pipeline para conservar la vista de contexto sin abrir otra
+            pantalla.
+          </p>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 gap-2 pt-4 sm:gap-3 xl:grid-cols-4">
+          {summaryCards.map((item) => (
+            <div
+              key={item.label}
+              className="rounded-2xl border border-gray-100 bg-iwana-surface-soft px-4 py-4 dark:border-dark-border dark:bg-dark-surface-3"
+            >
+              <p className="portal-eyebrow-muted">{item.label}</p>
+              <p className="mt-1.5 text-xl font-bold tracking-tight text-iwana-primary sm:mt-2 sm:text-2xl dark:text-white">
+                {item.value}
+              </p>
+              <p className="mt-1 hidden text-sm text-gray-500 dark:text-gray-400 sm:block">
+                {item.helper}
+              </p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
       {error && (
-        <div className="flex items-start gap-3 rounded-[24px] border border-red-200 bg-red-50/90 px-5 py-4 text-sm text-red-700 shadow-[var(--shadow-iwana-card)] dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          <span>{error}</span>
-        </div>
+        <PortalAlert variant="error" title="No fue posible cargar el CRM" description={error} />
       )}
 
       <Card>
@@ -269,7 +331,7 @@ export default function ExpedientesPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleCreateNew} className="space-y-4" noValidate>
-            <div className="grid gap-4 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-end">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
               <Input
                 id="expediente-full-name"
                 label="Nombre completo"
@@ -339,7 +401,7 @@ export default function ExpedientesPage() {
                   ))}
                 </Select>
               </div>
-              <Button type="submit" loading={creating} className="h-10">
+              <Button type="submit" loading={creating} className="h-10 w-full sm:w-auto">
                 {!creating && <Plus className="h-4 w-4" aria-hidden="true" />}
                 {creating ? 'Creando...' : 'Crear'}
               </Button>
@@ -371,9 +433,7 @@ export default function ExpedientesPage() {
                     setGlobalSearchEnabled(false);
                   }}
                   className={`flex items-center gap-2 rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'border-b-2 border-iwana-primary text-iwana-primary dark:text-iwana-secondary'
-                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                    isActive ? portalTabActiveClassName : portalTabInactiveClassName
                   }`}
                 >
                   <span>{label}</span>
@@ -478,7 +538,7 @@ export default function ExpedientesPage() {
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50 dark:border-dark-border dark:bg-dark-surface-3">
+                  <tr className="border-b border-gray-100 bg-iwana-surface-soft/80 dark:border-dark-border dark:bg-dark-surface-3">
                     <th className="px-5 py-3 text-left font-medium text-gray-500 dark:text-gray-400">
                       Potencial
                     </th>
@@ -508,7 +568,7 @@ export default function ExpedientesPage() {
                       >
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-iwana-primary/10 dark:bg-iwana-primary/20">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-iwana-primary/10 dark:bg-iwana-primary/20">
                               {expediente.personType === 'PERSONA_NATURAL' ? (
                                 <User
                                   className="h-5 w-5 text-iwana-primary dark:text-iwana-primary-300"
@@ -545,7 +605,7 @@ export default function ExpedientesPage() {
                           )}
                         </td>
                         <td className="px-5 py-4 text-gray-700 dark:text-gray-200">
-                          <Badge variant="primary">
+                          <Badge variant="neutral">
                             {formatAcquisitionChannel(expediente.acquisitionChannel)}
                           </Badge>
                           {expediente.sourceDetail && (
@@ -557,7 +617,7 @@ export default function ExpedientesPage() {
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
                             <MapPin
-                              className="h-4 w-4 text-iwana-secondary-700 dark:text-iwana-secondary"
+                              className="h-4 w-4 text-iwana-secondary-700 dark:text-iwana-secondary-400"
                               aria-hidden="true"
                             />
                             <span>

@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@iwana/ui';
 import type { InternalUser } from '@/lib/api-client';
 
 interface DeleteUserDialogProps {
@@ -49,35 +50,31 @@ export function DeleteUserDialog({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose();
+        }
       }}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="delete-user-title"
     >
-      <div className="relative mx-4 w-full max-w-md rounded-2xl border border-white/70 bg-white/95 p-6 shadow-2xl dark:border-dark-border dark:bg-dark-surface-2/95">
-        <div className="mb-6 flex items-center gap-4">
+      <DialogContent aria-labelledby="delete-user-title" className="max-w-md">
+        <DialogHeader className="mb-6 flex flex-row items-start gap-4 space-y-0">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">
             <AlertTriangle className="h-6 w-6" aria-hidden="true" />
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-red-700 dark:text-red-300">
               Acción sensible
             </p>
-            <h2
-              id="delete-user-title"
-              className="mt-1 text-lg font-semibold text-iwana-primary dark:text-white"
-            >
+            <DialogTitle id="delete-user-title" className="mt-1 text-iwana-primary dark:text-white">
               Eliminar usuario
-            </h2>
-            <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+            </DialogTitle>
+            <DialogDescription className="mt-0.5">
               Esta acción no se puede deshacer.
-            </p>
+            </DialogDescription>
           </div>
-        </div>
+        </DialogHeader>
 
         <div className="mb-6 rounded-2xl border border-gray-100 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
           <div className="flex items-center gap-3">
@@ -195,7 +192,7 @@ export function DeleteUserDialog({
             )}
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

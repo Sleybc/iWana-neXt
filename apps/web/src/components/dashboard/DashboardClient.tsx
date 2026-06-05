@@ -37,6 +37,19 @@ function mapError(error: unknown): string {
   return 'No fue posible cargar el dashboard.';
 }
 
+function getTenantStatusLabel(status: TenantListItem['status']): string {
+  const statusLabels: Record<TenantListItem['status'], string> = {
+    ACTIVE: 'activa',
+    PROVISIONING: 'configuración en curso',
+    PROVISIONING_FAILED: 'configuración con error',
+    SUSPENDED: 'suspendida',
+    INACTIVE: 'inactiva',
+    MARKED_FOR_DELETION: 'en eliminación',
+  };
+
+  return statusLabels[status];
+}
+
 export function DashboardClient() {
   const searchParams = useSearchParams();
   const [tenants, setTenants] = useState<TenantListItem[]>([]);
@@ -108,7 +121,7 @@ export function DashboardClient() {
               : null;
 
         return {
-          label: `Empresa "${tenant.name}" — ${tenant.status.toLowerCase()}`,
+          label: `Empresa "${tenant.name}" — ${getTenantStatusLabel(tenant.status)}`,
           value: formatRelativeDate(tenant.updatedAt),
           ...(valueClassName ? { valueClassName } : {}),
         };
@@ -158,9 +171,9 @@ export function DashboardClient() {
                   })}
                 />
                 <MetricCard
-                  title="Provisionando"
+                  title="Configurando"
                   value={isLoading ? '...' : String(summary.provisioning)}
-                  change="Empresas en provisioning"
+                  change="Empresas en configuración"
                   icon={BriefcaseBusiness}
                   tone="success"
                   {...(!isLoading && {
@@ -203,7 +216,7 @@ export function DashboardClient() {
             <SystemStatusPanel
               indicators={[
                 {
-                  label: 'API Gateway',
+                  label: 'Conexión de API',
                   status: error ? 'warning' : 'ok',
                   detail: error ? 'Error consultando API' : 'Conectado',
                 },
@@ -213,12 +226,12 @@ export function DashboardClient() {
                   detail: `${visibleTenants.length} visibles de ${summary.total}`,
                 },
                 {
-                  label: 'BullMQ / Redis',
+                  label: 'Cola de tareas',
                   status: summary.provisioning > 0 ? 'warning' : 'ok',
-                  detail: `${summary.provisioning} en provisioning`,
+                  detail: `${summary.provisioning} en configuración`,
                 },
                 {
-                  label: 'Provisioning',
+                  label: 'Configuración inicial',
                   status: summary.failed > 0 ? 'error' : 'ok',
                   detail: `${summary.failed} con error`,
                 },

@@ -34,7 +34,7 @@ export const TopHeader = ({
   } as const;
 
   return (
-    <header className="sticky top-0 z-[999] flex w-full border-b border-transparent bg-white dark:border-transparent dark:bg-dark-surface-2">
+    <header className="sticky top-0 z-30 flex w-full border-b border-transparent bg-white dark:border-transparent dark:bg-dark-surface-2">
       <div className="flex flex-grow items-center justify-between px-4 py-3 md:px-6">
         {/* IZQUIERDA: botón hamburger + logo mobile */}
         <div className="flex items-center gap-3">

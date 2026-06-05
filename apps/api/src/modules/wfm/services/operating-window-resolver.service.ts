@@ -2,10 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import {
+  OrganizationBusinessHoursException,
+  OrganizationCompanyBusinessHours,
   runInTenantSchema,
   TenantContext,
-  WfmCompanyBusinessHours,
-  WfmHolidayBlackout,
 } from '@iwana/db';
 import { BusinessHoursWeekday } from '@iwana/shared';
 
@@ -54,15 +54,15 @@ export class OperatingWindowResolverService {
       };
     }
 
-    const companyHours = await manager.findOne(WfmCompanyBusinessHours, {
+    const companyHours = await manager.findOne(OrganizationCompanyBusinessHours, {
       where: { tenantId: input.tenantId, weekday },
     });
     if (companyHours) {
       return this.toBusinessHoursResult(
         'COMPANY_HOURS',
-        companyHours.isEnabled,
-        companyHours.startTime,
-        companyHours.endTime,
+        companyHours.isOpen,
+        companyHours.opensAt,
+        companyHours.closesAt,
         'La empresa esta cerrada para la fecha consultada.',
       );
     }
@@ -79,17 +79,18 @@ export class OperatingWindowResolverService {
   private async findHolidayBlackout(
     manager: Pick<EntityManager, 'find'>,
     input: ResolveOperatingWindowInput,
-  ): Promise<WfmHolidayBlackout | null> {
-    const blackouts = await manager.find(WfmHolidayBlackout, {
-      where: { tenantId: input.tenantId, isEnabled: true },
+  ): Promise<OrganizationBusinessHoursException | null> {
+    const exceptions = await manager.find(OrganizationBusinessHoursException, {
+      where: { tenantId: input.tenantId },
     });
 
-    const applicable = blackouts
+    const applicable = exceptions
+      .filter((item) => item.isOpen === false)
       .filter((item) => this.matchesSite(item.organizationSiteId, input.organizationSiteId ?? null))
       .filter((item) =>
         item.isRecurring
-          ? item.blackoutDate.slice(5) === input.dateLocal.slice(5)
-          : item.blackoutDate === input.dateLocal,
+          ? item.exceptionDate.slice(5) === input.dateLocal.slice(5)
+          : item.exceptionDate === input.dateLocal,
       )
       .sort((left, right) =>
         this.sortBySiteSpecificity(

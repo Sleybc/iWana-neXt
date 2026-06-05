@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { AlertTriangle, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@iwana/ui';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { UsersTable } from './UsersTable';
 import { CreateUserModal } from './CreateUserModal';
@@ -419,25 +420,17 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
       />
 
       {/* Modal de contraseña temporal tras reset desde la tabla */}
-      {tempPassword && newUserEmail && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="reset-success-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-        >
-          <div className="w-full max-w-sm rounded-2xl border border-white/70 bg-white/95 p-6 shadow-2xl dark:border-dark-border dark:bg-dark-surface-2">
-            <h2
-              id="reset-success-title"
-              className="text-base font-semibold text-iwana-primary dark:text-white"
-            >
-              Contraseña temporal generada
-            </h2>
-            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-              Entrega esta contraseña a{' '}
-              <span className="font-medium text-gray-900 dark:text-white">{newUserEmail}</span>.
-              Deberá cambiarla en el próximo inicio de sesión.
-            </p>
+      {!isCreateOpen && tempPassword && newUserEmail && (
+        <Dialog open={true} onOpenChange={(open) => !open && dismissTempPassword()}>
+          <DialogContent aria-labelledby="reset-success-title" className="max-w-sm">
+            <DialogHeader className="space-y-1">
+              <DialogTitle id="reset-success-title">Contraseña temporal generada</DialogTitle>
+              <DialogDescription>
+                Entrega esta contraseña a{' '}
+                <span className="font-medium text-gray-900 dark:text-white">{newUserEmail}</span>.
+                Deberá cambiarla en el próximo inicio de sesión.
+              </DialogDescription>
+            </DialogHeader>
             <div className="mt-4 flex items-center gap-2 rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
               <code className="flex-1 break-all font-mono text-sm text-gray-900 dark:text-white select-all">
                 {tempPassword}
@@ -472,8 +465,8 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
             >
               Entendido
             </button>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
 
       {selectedUser && (

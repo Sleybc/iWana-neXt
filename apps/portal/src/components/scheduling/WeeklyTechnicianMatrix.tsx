@@ -200,7 +200,7 @@ export function WeeklyTechnicianMatrix({
                             </p>
                             <button
                               type="button"
-                              className="mt-2 rounded-lg bg-emerald-700 px-2 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-dark-surface-2"
+                              className="mt-2 rounded-lg bg-iwana-primary px-2 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-iwana-primary-800 focus:outline-none focus:ring-2 focus:ring-iwana-primary focus:ring-offset-2 dark:focus:ring-offset-dark-surface-2"
                               onClick={() => {
                                 if (recommendationKey) {
                                   onSelectRecommendation(recommendationKey);

@@ -17,6 +17,10 @@ import {
   CreateBundleModal,
   type BundleCatalogSelectableItem,
 } from '@/components/commercial/CreateBundleModal';
+import {
+  getPortalActiveBadgeVariant,
+  portalActiveCountBadgeVariant,
+} from '@/lib/portal-status-badge-rules';
 import { PortalAlert, PortalEmptyState, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 
 interface BundlesManagerProps {
@@ -199,7 +203,7 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
 
           <div className="flex items-center gap-2">
             <Badge
-              variant="neutral"
+              variant={portalActiveCountBadgeVariant}
               className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]"
             >
               {activeBundles.length} activo{activeBundles.length === 1 ? '' : 's'}
@@ -260,7 +264,7 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
                     </td>
                     <td className={cellClass}>
                       <Badge
-                        variant={bundle.isActive ? 'success' : 'neutral'}
+                        variant={getPortalActiveBadgeVariant(bundle.isActive)}
                         className="rounded-full px-2 py-0.5 text-[11px]"
                       >
                         {bundle.isActive ? 'Activo' : 'Inactivo'}

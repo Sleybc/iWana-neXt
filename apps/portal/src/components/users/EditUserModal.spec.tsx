@@ -25,6 +25,95 @@ const compatibilityMatrix: Record<UserRole, AccessPermissionKey[]> = {
 };
 
 describe('EditUserModal', () => {
+  it('should render separate sections for profile data and credentials', async () => {
+    render(
+      <EditUserModal
+        isOpen={true}
+        user={{
+          id: 'user-1',
+          email: 'tecnico@empresa.com',
+          role: UserRole.TECHNICIAN,
+          status: 'ACTIVE',
+          tenantId: 'tenant-1',
+          mfaEnabled: false,
+          mfaRequired: false,
+          emailVerified: true,
+          passwordResetRequired: false,
+          lastLoginAt: null,
+          createdAt: '2026-05-25T00:00:00.000Z',
+          updatedAt: '2026-05-25T00:00:00.000Z',
+          deletedAt: null,
+          firstName: 'Tania',
+          lastName: 'Tecnica',
+          phone: null,
+          jobTitle: 'Tecnica',
+          documentType: null,
+          documentNumber: null,
+          avatarUrl: null,
+        }}
+        onClose={jest.fn()}
+        onSubmit={jest.fn().mockResolvedValue(undefined)}
+        isSubmitting={false}
+        error={null}
+        accessCatalog={null}
+        availableProfiles={[]}
+        initialCompanyRoleIds={[]}
+      />,
+    );
+
+    await screen.findByRole('dialog', { name: 'Editar usuario' });
+
+    expect(screen.getByText('Perfil y accesos')).toBeInTheDocument();
+    expect(screen.getByText('Credenciales y acceso')).toBeInTheDocument();
+    expect(screen.getByLabelText('Restablecer contrasena')).toBeInTheDocument();
+  });
+
+  it('should close the dialog when pressing Escape', async () => {
+    const onClose = jest.fn();
+
+    render(
+      <EditUserModal
+        isOpen={true}
+        user={{
+          id: 'user-1',
+          email: 'tecnico@empresa.com',
+          role: UserRole.TECHNICIAN,
+          status: 'ACTIVE',
+          tenantId: 'tenant-1',
+          mfaEnabled: false,
+          mfaRequired: false,
+          emailVerified: true,
+          passwordResetRequired: false,
+          lastLoginAt: null,
+          createdAt: '2026-05-25T00:00:00.000Z',
+          updatedAt: '2026-05-25T00:00:00.000Z',
+          deletedAt: null,
+          firstName: 'Tania',
+          lastName: 'Tecnica',
+          phone: null,
+          jobTitle: 'Tecnica',
+          documentType: null,
+          documentNumber: null,
+          avatarUrl: null,
+        }}
+        onClose={onClose}
+        onSubmit={jest.fn().mockResolvedValue(undefined)}
+        isSubmitting={false}
+        error={null}
+        accessCatalog={null}
+        availableProfiles={[]}
+        initialCompanyRoleIds={[]}
+      />,
+    );
+
+    await screen.findByRole('dialog', { name: 'Editar usuario' });
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('should preserve initial company role ids when available profiles have not loaded', async () => {
     const onSubmit = jest.fn().mockResolvedValue(undefined);
 

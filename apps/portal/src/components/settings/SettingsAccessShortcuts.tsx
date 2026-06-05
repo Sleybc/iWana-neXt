@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Building2, ShieldCheck, Wrench } from 'lucide-react';
 import { cn } from '@iwana/ui';
 import { PortalPanel } from '@/components/shared/portal-ui';
+import { SETTINGS_ACCESS_SHORTCUTS_COPY } from './mod00-settings-labels';
 
 interface SettingsAccessShortcutsProps {
   canEdit: boolean;
@@ -12,21 +13,20 @@ interface SettingsAccessShortcutsProps {
 const cards = [
   {
     href: '/dashboard/settings/organization',
-    title: 'Organización',
-    description: 'Consulta sedes, capacidades y horario institucional de la empresa.',
+    title: SETTINGS_ACCESS_SHORTCUTS_COPY.cards.organization.title,
+    description: SETTINGS_ACCESS_SHORTCUTS_COPY.cards.organization.description,
     icon: Building2,
   },
   {
     href: '/dashboard/settings/access',
-    title: 'Perfiles de acceso',
-    description: 'Administra perfiles de acceso, plantillas iniciales y accesos por sección.',
+    title: SETTINGS_ACCESS_SHORTCUTS_COPY.cards.access.title,
+    description: SETTINGS_ACCESS_SHORTCUTS_COPY.cards.access.description,
     icon: ShieldCheck,
   },
   {
     href: '/dashboard/settings/field-operations',
-    title: 'Operación de campo',
-    description:
-      'Abre la configuración operativa de WFM y consulta la referencia de despacho técnico sin salir del centro de settings.',
+    title: SETTINGS_ACCESS_SHORTCUTS_COPY.cards.fieldOperations.title,
+    description: SETTINGS_ACCESS_SHORTCUTS_COPY.cards.fieldOperations.description,
     icon: Wrench,
   },
 ];
@@ -34,9 +34,9 @@ const cards = [
 export function SettingsAccessShortcuts({ canEdit }: SettingsAccessShortcutsProps) {
   return (
     <PortalPanel
-      eyebrow="MOD00"
-      title="Accesos de configuración"
-      description="Usa estas rutas para entrar a Organización, Operación de campo y Perfiles de acceso sin salir del centro de configuración."
+      eyebrow={SETTINGS_ACCESS_SHORTCUTS_COPY.eyebrow}
+      title={SETTINGS_ACCESS_SHORTCUTS_COPY.title}
+      description={SETTINGS_ACCESS_SHORTCUTS_COPY.description}
     >
       <div className="grid gap-4 xl:grid-cols-3">
         {cards.map((card) => {
@@ -54,7 +54,9 @@ export function SettingsAccessShortcuts({ canEdit }: SettingsAccessShortcutsProp
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <span className="rounded-full bg-iwana-primary/10 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-iwana-primary">
-                      {canEdit ? 'Administración' : 'Consulta'}
+                      {canEdit
+                        ? SETTINGS_ACCESS_SHORTCUTS_COPY.administrationBadge
+                        : SETTINGS_ACCESS_SHORTCUTS_COPY.readOnlyBadge}
                     </span>
                   </div>
                   <div>

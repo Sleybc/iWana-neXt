@@ -29,6 +29,7 @@ import {
   type TaxRuleApplication,
   type UpdateTaxRuleApplicationDto,
 } from '@/lib/api-client';
+import { getPortalActiveBadgeVariant } from '@/lib/portal-status-badge-rules';
 
 interface TaxApplicationRulesManagerProps {
   canEdit: boolean;
@@ -241,7 +242,7 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
                     </span>
                   </div>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-                    <Badge variant={app.isActive ? 'success' : 'neutral'} className="text-xs">
+                    <Badge variant={getPortalActiveBadgeVariant(app.isActive)} className="text-xs">
                       {app.isActive ? 'Activa' : 'Inactiva'}
                     </Badge>
                     <span>Tratamiento: {TREATMENT_LABELS[app.treatment] ?? app.treatment}</span>

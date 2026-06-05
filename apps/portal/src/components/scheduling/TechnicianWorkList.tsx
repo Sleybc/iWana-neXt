@@ -40,6 +40,9 @@ export function TechnicianWorkList({
   availability,
   selectedTechnicianId,
 }: TechnicianWorkListProps) {
+  const maxVisibleTechnicians = 8;
+  const maxVisibleWorkOrders = 3;
+  const maxVisibleAvailability = 2;
   const operationalUsers = filterOperationalTechnicians(technicians);
   const activeUserIds = new Set<string>([
     ...(summary?.technicianLoad.map((item) => item.assignedUserId) ?? []),
@@ -47,29 +50,39 @@ export function TechnicianWorkList({
     ...availability.map((item) => item.userId),
   ]);
 
-  const visibleUsers = selectedTechnicianId
+  const filteredUsers = selectedTechnicianId
     ? operationalUsers.filter((user) => user.id === selectedTechnicianId)
-    : (activeUserIds.size > 0
-        ? operationalUsers.filter((user) => activeUserIds.has(user.id))
-        : operationalUsers
-      ).slice(0, 8);
+    : activeUserIds.size > 0
+      ? operationalUsers.filter((user) => activeUserIds.has(user.id))
+      : operationalUsers;
+  const visibleUsers = selectedTechnicianId
+    ? filteredUsers
+    : filteredUsers.slice(0, maxVisibleTechnicians);
+  const hiddenUsersCount = Math.max(filteredUsers.length - visibleUsers.length, 0);
 
   return (
     <PortalPanel
       eyebrow="Capacidad técnica"
       title="Carga por técnico"
-      description="Consolida agenda del día, work orders abiertas y bloqueos del rango activo."
+      description="Consolida agenda del día, ordenes de trabajo abiertas y bloqueos del rango activo."
       actions={
-        <Badge variant="neutral" className="px-3 py-1 text-[11px] uppercase tracking-[0.18em]">
-          {visibleUsers.length} visibles
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="neutral" className="px-3 py-1 text-[11px] uppercase tracking-[0.18em]">
+            {visibleUsers.length} visibles
+          </Badge>
+          {hiddenUsersCount > 0 && (
+            <Badge variant="info" className="px-3 py-1 text-[11px] uppercase tracking-[0.18em]">
+              +{hiddenUsersCount} adicionales
+            </Badge>
+          )}
+        </div>
       }
       className="h-full"
     >
       {visibleUsers.length === 0 ? (
         <PortalEmptyState
           title="Sin técnicos visibles"
-          description="No hay técnicos o contratistas cargados para el tenant en este momento."
+          description="No hay técnicos o contratistas cargados para la empresa en este momento."
           icon={HardHat}
         />
       ) : (
@@ -88,7 +101,7 @@ export function TechnicianWorkList({
             return (
               <section
                 key={user.id}
-                className="rounded-2xl border border-gray-200 bg-[#fbfcf8] p-4 dark:border-dark-border dark:bg-dark-surface-3"
+                className="rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -110,15 +123,15 @@ export function TechnicianWorkList({
                 <div className="mt-4 space-y-3">
                   <div>
                     <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
-                      Work orders activas
+                      Ordenes de trabajo activas
                     </p>
                     {assignedWorkOrders.length === 0 ? (
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        Sin work orders abiertas para este técnico.
+                        Sin ordenes de trabajo abiertas para este técnico.
                       </p>
                     ) : (
                       <div className="space-y-2">
-                        {assignedWorkOrders.slice(0, 3).map((workOrder) => (
+                        {assignedWorkOrders.slice(0, maxVisibleWorkOrders).map((workOrder) => (
                           <div
                             key={workOrder.id}
                             className="rounded-2xl border border-gray-200 bg-white px-3 py-3 dark:border-dark-border dark:bg-dark-surface-2"
@@ -143,6 +156,12 @@ export function TechnicianWorkList({
                             </div>
                           </div>
                         ))}
+                        {assignedWorkOrders.length > maxVisibleWorkOrders && (
+                          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                            +{assignedWorkOrders.length - maxVisibleWorkOrders} ordenes de trabajo
+                            adicionales
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
@@ -157,7 +176,7 @@ export function TechnicianWorkList({
                       </p>
                     ) : (
                       <div className="space-y-2">
-                        {userAvailability.slice(0, 2).map((item) => (
+                        {userAvailability.slice(0, maxVisibleAvailability).map((item) => (
                           <div
                             key={item.id}
                             className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-white px-3 py-3 dark:border-dark-border dark:bg-dark-surface-2"
@@ -181,6 +200,11 @@ export function TechnicianWorkList({
                             </div>
                           </div>
                         ))}
+                        {userAvailability.length > maxVisibleAvailability && (
+                          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                            +{userAvailability.length - maxVisibleAvailability} franjas adicionales
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>

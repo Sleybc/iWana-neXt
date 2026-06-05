@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { CheckCircle2, Copy, PencilLine, ShieldAlert, X } from 'lucide-react';
 import { type AccessPermissionKey, DocumentType, UserRole } from '@iwana/shared';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@iwana/ui';
 import {
   usersApi,
   type AccessPermissionsCatalog,
@@ -22,7 +23,7 @@ import {
   PORTAL_TENANT_ASSIGNABLE_ROLES,
   PORTAL_USER_STATUSES,
 } from '@/lib/user-labels';
-import { PortalAlert, PortalSectionHeader } from '@/components/shared/portal-ui';
+import { PortalAlert } from '@/components/shared/portal-ui';
 import { CompanyRolesAssignmentSection } from './CompanyRolesAssignmentSection';
 
 const editUserSchema = z.object({
@@ -269,26 +270,23 @@ export function EditUserModal({
   const isProtectedRole = isAdmin || hasPlatformRole;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose();
+        }
       }}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="edit-user-title"
     >
-      <div className="relative mx-4 max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-dark-border dark:bg-dark-surface-2">
-        <h2 id="edit-user-title" className="sr-only">
-          Editar usuario
-        </h2>
-        <div className="mb-6 flex items-center justify-between">
-          <PortalSectionHeader
-            className="flex-1 gap-0"
-            eyebrow="Perfil interno"
-            title="Editar usuario"
-            description={user.email}
-          />
+      <DialogContent aria-labelledby="edit-user-title">
+        <DialogHeader className="mb-6 flex flex-row items-start justify-between gap-4 space-y-0">
+          <div className="min-w-0 flex-1">
+            <p className="portal-eyebrow">Perfil interno</p>
+            <DialogTitle id="edit-user-title" className="mt-1">
+              Editar usuario
+            </DialogTitle>
+            <DialogDescription className="mt-1 leading-6">{user.email}</DialogDescription>
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -297,7 +295,7 @@ export function EditUserModal({
           >
             <X className="h-5 w-5" aria-hidden="true" />
           </button>
-        </div>
+        </DialogHeader>
 
         <form onSubmit={handleSubmit(onFormSubmit)} noValidate className="space-y-4">
           <div className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
@@ -315,324 +313,340 @@ export function EditUserModal({
             </div>
           </div>
 
-          <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
-            {/*
-              Correo electronico: siempre ancho completo
-            */}
-            <div className="col-span-full">
-              <label
-                htmlFor="edit-email"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-              >
-                Correo electronico
-              </label>
-              <div className="flex items-center gap-2">
-                {errors.email ? (
-                  <input
-                    id="edit-email"
-                    type="email"
-                    disabled={isSubmitting}
-                    {...register('email')}
-                    className={inputClass + ' flex-1'}
-                    aria-invalid="true"
-                  />
-                ) : (
-                  <input
-                    id="edit-email"
-                    type="email"
-                    disabled={isSubmitting}
-                    {...register('email')}
-                    className={inputClass + ' flex-1'}
-                  />
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    const email =
-                      (document.getElementById('edit-email') as HTMLInputElement)?.value ?? '';
-                    if (email === user.email) return;
-                    setEmailToConfirm(email);
-                  }}
-                  disabled={isSubmitting || isSavingEmail}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-iwana-primary px-4 py-2 text-sm font-medium text-white hover:bg-iwana-primary-600 disabled:opacity-50 transition-colors shrink-0 dark:bg-iwana-primary-400 dark:hover:bg-iwana-primary-300"
-                >
-                  {isSavingEmail ? 'Guardando...' : 'Restablecer'}
-                </button>
-              </div>
-              {errors.email && (
-                <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-                  {errors.email.message}
-                </p>
-              )}
-              {emailError && (
-                <p className="mt-1 text-xs text-red-600 dark:text-red-400">{emailError}</p>
-              )}
+          <section className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-3/60">
+            <div className="mb-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">
+                Perfil y accesos
+              </p>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                Actualiza la identidad operativa, la categoría base y los perfiles de acceso del
+                colaborador.
+              </p>
             </div>
 
-            {/*
-              Confirmacion de cambio de email
-            */}
-            {emailToConfirm && (
-              <PortalAlert
-                className="col-span-full"
-                variant="warning"
-                title="Confirmar restablecimiento de email"
-                description={
-                  <>
-                    Estás a punto de cambiar el email de <strong>{user.email}</strong> a{' '}
-                    <strong>{emailToConfirm}</strong>. A partir de ahora, el inicio de sesion se
-                    hara con el nuevo email.
-                  </>
-                }
-                icon={ShieldAlert}
-                action={
-                  <div className="flex items-center justify-end gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setEmailToConfirm(null)}
-                      className="inline-flex items-center justify-center rounded-2xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-4"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void handleSaveEmail(emailToConfirm);
-                        setEmailToConfirm(null);
-                      }}
-                      disabled={isSavingEmail}
-                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-amber-700 disabled:opacity-50 dark:bg-amber-500 dark:hover:bg-amber-400"
-                    >
-                      {isSavingEmail ? 'Guardando...' : 'Confirmar restablecimiento'}
-                    </button>
-                  </div>
-                }
-              />
-            )}
+            <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+              {/*
+                Correo electronico: siempre ancho completo
+              */}
+              <div className="col-span-full">
+                <label
+                  htmlFor="edit-email"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
+                >
+                  Correo electronico
+                </label>
+                <div className="flex items-center gap-2">
+                  {errors.email ? (
+                    <input
+                      id="edit-email"
+                      type="email"
+                      disabled={isSubmitting}
+                      {...register('email')}
+                      className={inputClass + ' flex-1'}
+                      aria-invalid="true"
+                    />
+                  ) : (
+                    <input
+                      id="edit-email"
+                      type="email"
+                      disabled={isSubmitting}
+                      {...register('email')}
+                      className={inputClass + ' flex-1'}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const email =
+                        (document.getElementById('edit-email') as HTMLInputElement)?.value ?? '';
+                      if (email === user.email) return;
+                      setEmailToConfirm(email);
+                    }}
+                    disabled={isSubmitting || isSavingEmail}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-iwana-primary px-4 py-2 text-sm font-medium text-white hover:bg-iwana-primary-600 disabled:opacity-50 transition-colors shrink-0 dark:bg-iwana-primary-400 dark:hover:bg-iwana-primary-300"
+                  >
+                    {isSavingEmail ? 'Guardando...' : 'Restablecer'}
+                  </button>
+                </div>
+                {errors.email && (
+                  <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                    {errors.email.message}
+                  </p>
+                )}
+                {emailError && (
+                  <p className="mt-1 text-xs text-red-600 dark:text-red-400">{emailError}</p>
+                )}
+              </div>
 
-            {/*
+              {/*
+                Confirmacion de cambio de email
+              */}
+              {emailToConfirm && (
+                <PortalAlert
+                  className="col-span-full"
+                  variant="warning"
+                  title="Confirmar restablecimiento de email"
+                  description={
+                    <>
+                      Estás a punto de cambiar el email de <strong>{user.email}</strong> a{' '}
+                      <strong>{emailToConfirm}</strong>. A partir de ahora, el inicio de sesion se
+                      hara con el nuevo email.
+                    </>
+                  }
+                  icon={ShieldAlert}
+                  action={
+                    <div className="flex items-center justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setEmailToConfirm(null)}
+                        className="inline-flex items-center justify-center rounded-2xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-4"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void handleSaveEmail(emailToConfirm);
+                          setEmailToConfirm(null);
+                        }}
+                        disabled={isSavingEmail}
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-amber-700 disabled:opacity-50 dark:bg-amber-500 dark:hover:bg-amber-400"
+                      >
+                        {isSavingEmail ? 'Guardando...' : 'Confirmar restablecimiento'}
+                      </button>
+                    </div>
+                  }
+                />
+              )}
+
+              {/*
               Estado y rol en 2 columnas
             */}
-            <div>
-              <label
-                htmlFor="edit-status"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-              >
-                Estado
-              </label>
-              <select
-                id="edit-status"
-                disabled={isSubmitting || isProtectedRole}
-                {...register('status')}
-                className={inputClass + ' cursor-not-allowed'}
-                title={
-                  isProtectedRole ? 'No puedes cambiar el estado de usuarios protegidos' : undefined
-                }
-              >
-                {PORTAL_USER_STATUSES.map((status) => (
-                  <option key={status} value={status}>
-                    {getPortalUserStatusLabel(status)}
-                  </option>
-                ))}
-              </select>
-              {isProtectedRole && (
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  No editable para roles protegidos
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label
-                htmlFor="edit-role"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-              >
-                Categoría base
-              </label>
-              <select
-                id="edit-role"
-                disabled={isSubmitting || isProtectedRole}
-                {...register('role')}
-                className={inputClass + ' cursor-not-allowed'}
-                title={
-                  isProtectedRole ? 'No puedes cambiar el rol de usuarios protegidos' : undefined
-                }
-              >
-                {PORTAL_PLATFORM_ROLES.has(user.role as UserRole) && (
-                  <option value={user.role}>{getPortalUserRoleLabel(user.role)}</option>
+              <div>
+                <label
+                  htmlFor="edit-status"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
+                >
+                  Estado
+                </label>
+                <select
+                  id="edit-status"
+                  disabled={isSubmitting || isProtectedRole}
+                  {...register('status')}
+                  className={inputClass + ' cursor-not-allowed'}
+                  title={
+                    isProtectedRole
+                      ? 'No puedes cambiar el estado de usuarios protegidos'
+                      : undefined
+                  }
+                >
+                  {PORTAL_USER_STATUSES.map((status) => (
+                    <option key={status} value={status}>
+                      {getPortalUserStatusLabel(status)}
+                    </option>
+                  ))}
+                </select>
+                {isProtectedRole && (
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    No editable para roles protegidos
+                  </p>
                 )}
-                {PORTAL_TENANT_ASSIGNABLE_ROLES.map((role) => (
-                  <option key={role} value={role}>
-                    {getPortalUserRoleLabel(role)}
-                  </option>
-                ))}
-              </select>
-              {isProtectedRole && (
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  No editable para roles protegidos
-                </p>
-              )}
-            </div>
+              </div>
 
-            <div className="col-span-full">
-              <CompanyRolesAssignmentSection
-                baseRole={selectedBaseRole ?? null}
-                availableProfiles={availableProfiles}
-                selectedProfileIds={selectedCompanyRoleIds}
-                compatibilityMatrix={
-                  accessCatalog?.compatibilityMatrix ??
-                  ({} as Record<UserRole, AccessPermissionKey[]>)
-                }
-                catalog={accessCatalog}
-                onToggleProfile={toggleCompanyRole}
-              />
-            </div>
+              <div>
+                <label
+                  htmlFor="edit-role"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
+                >
+                  Categoría base
+                </label>
+                <select
+                  id="edit-role"
+                  disabled={isSubmitting || isProtectedRole}
+                  {...register('role')}
+                  className={inputClass + ' cursor-not-allowed'}
+                  title={
+                    isProtectedRole ? 'No puedes cambiar el rol de usuarios protegidos' : undefined
+                  }
+                >
+                  {PORTAL_PLATFORM_ROLES.has(user.role as UserRole) && (
+                    <option value={user.role}>{getPortalUserRoleLabel(user.role)}</option>
+                  )}
+                  {PORTAL_TENANT_ASSIGNABLE_ROLES.map((role) => (
+                    <option key={role} value={role}>
+                      {getPortalUserRoleLabel(role)}
+                    </option>
+                  ))}
+                </select>
+                {isProtectedRole && (
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    No editable para roles protegidos
+                  </p>
+                )}
+              </div>
 
-            {/*
+              <div className="col-span-full">
+                <CompanyRolesAssignmentSection
+                  baseRole={selectedBaseRole ?? null}
+                  availableProfiles={availableProfiles}
+                  selectedProfileIds={selectedCompanyRoleIds}
+                  compatibilityMatrix={
+                    accessCatalog?.compatibilityMatrix ??
+                    ({} as Record<UserRole, AccessPermissionKey[]>)
+                  }
+                  catalog={accessCatalog}
+                  onToggleProfile={toggleCompanyRole}
+                />
+              </div>
+
+              {/*
               Cargo y nombre en 2 columnas
             */}
-            <div>
-              <label
-                htmlFor="edit-jobTitle"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-              >
-                Cargo
-              </label>
-              <input
-                id="edit-jobTitle"
-                type="text"
-                disabled={isSubmitting}
-                {...register('jobTitle')}
-                className={inputClass}
-              />
-            </div>
+              <div>
+                <label
+                  htmlFor="edit-jobTitle"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
+                >
+                  Cargo
+                </label>
+                <input
+                  id="edit-jobTitle"
+                  type="text"
+                  disabled={isSubmitting}
+                  {...register('jobTitle')}
+                  className={inputClass}
+                />
+              </div>
 
-            <div>
-              <label
-                htmlFor="edit-firstName"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-              >
-                Nombre
-              </label>
-              <input
-                id="edit-firstName"
-                type="text"
-                disabled={isSubmitting}
-                {...register('firstName')}
-                className={inputClass}
-              />
-            </div>
+              <div>
+                <label
+                  htmlFor="edit-firstName"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
+                >
+                  Nombre
+                </label>
+                <input
+                  id="edit-firstName"
+                  type="text"
+                  disabled={isSubmitting}
+                  {...register('firstName')}
+                  className={inputClass}
+                />
+              </div>
 
-            {/*
+              {/*
               Apellido y telefono en 2 columnas
             */}
-            <div>
-              <label
-                htmlFor="edit-lastName"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-              >
-                Apellido
-              </label>
-              <input
-                id="edit-lastName"
-                type="text"
-                disabled={isSubmitting}
-                {...register('lastName')}
-                className={inputClass}
-              />
-            </div>
+              <div>
+                <label
+                  htmlFor="edit-lastName"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
+                >
+                  Apellido
+                </label>
+                <input
+                  id="edit-lastName"
+                  type="text"
+                  disabled={isSubmitting}
+                  {...register('lastName')}
+                  className={inputClass}
+                />
+              </div>
 
-            <div>
-              <label
-                htmlFor="edit-phone"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-              >
-                Telefono
-              </label>
-              <input
-                id="edit-phone"
-                type="tel"
-                disabled={isSubmitting}
-                {...register('phone')}
-                className={inputClass}
-              />
-              {errors.phone && (
-                <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-                  {errors.phone.message}
-                </p>
-              )}
-            </div>
+              <div>
+                <label
+                  htmlFor="edit-phone"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
+                >
+                  Telefono
+                </label>
+                <input
+                  id="edit-phone"
+                  type="tel"
+                  disabled={isSubmitting}
+                  {...register('phone')}
+                  className={inputClass}
+                />
+                {errors.phone && (
+                  <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                    {errors.phone.message}
+                  </p>
+                )}
+              </div>
 
-            {/*
+              {/*
               Tipo de documento y numero de documento en 2 columnas
             */}
-            <div>
-              <label
-                htmlFor="edit-documentType"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-              >
-                Tipo de documento
-              </label>
-              <select
-                id="edit-documentType"
-                disabled={isSubmitting}
-                {...register('documentType')}
-                className={inputClass}
-              >
-                <option value="">Selecciona</option>
-                {Object.values(DocumentType).map((dt) => (
-                  <option key={dt} value={dt}>
-                    {dt}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label
-                htmlFor="edit-documentNumber"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-              >
-                Numero de documento
-              </label>
-              <input
-                id="edit-documentNumber"
-                type="text"
-                placeholder="123456789"
-                disabled={isSubmitting}
-                {...register('documentNumber')}
-                className={inputClass}
-              />
-            </div>
-
-            {/*
-              MFA: ancho completo
-            */}
-            <div className="col-span-full">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
+              <div>
+                <label
+                  htmlFor="edit-documentType"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
+                >
+                  Tipo de documento
+                </label>
+                <select
+                  id="edit-documentType"
                   disabled={isSubmitting}
-                  {...register('mfaRequired')}
-                  className="h-4 w-4 rounded border-gray-300 text-iwana-primary focus:ring-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:focus:ring-iwana-primary"
+                  {...register('documentType')}
+                  className={inputClass}
+                >
+                  <option value="">Selecciona</option>
+                  {Object.values(DocumentType).map((dt) => (
+                    <option key={dt} value={dt}>
+                      {dt}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="edit-documentNumber"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
+                >
+                  Numero de documento
+                </label>
+                <input
+                  id="edit-documentNumber"
+                  type="text"
+                  placeholder="123456789"
+                  disabled={isSubmitting}
+                  {...register('documentNumber')}
+                  className={inputClass}
                 />
-                <span className="text-sm text-gray-700 dark:text-gray-300">
-                  Requerir autenticacion de dos factores (MFA)
-                </span>
-              </label>
+              </div>
+
+              {/*
+                MFA: ancho completo
+              */}
+              <div className="col-span-full">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    disabled={isSubmitting}
+                    {...register('mfaRequired')}
+                    className="h-4 w-4 rounded border-gray-300 text-iwana-primary focus:ring-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:focus:ring-iwana-primary"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    Requerir autenticacion de dos factores (MFA)
+                  </span>
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-amber-200/80 bg-amber-50/40 p-4 dark:border-amber-800 dark:bg-amber-900/10">
+            <div className="mb-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700 dark:text-amber-300">
+                Credenciales y acceso
+              </p>
+              <p className="mt-1 text-sm text-amber-900/80 dark:text-amber-100/80">
+                Usa este bloque solo para restablecer una contraseña puntual o entregar una temporal
+                controlada.
+              </p>
             </div>
 
-            {/*
-              Separador
-            */}
-            <div className="col-span-full">
-              <hr className="border-gray-200 dark:border-dark-border" />
-            </div>
-
-            {/*
-              Restablecer contrasena: ancho completo
-            */}
-            <div className="col-span-full">
+            <div className="space-y-4">
               <label
                 htmlFor="reset-password"
                 className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
@@ -699,11 +713,8 @@ export function EditUserModal({
               )}
             </div>
 
-            {/*
-              Resultado de contrasena
-            */}
             {resetPasswordResult && (
-              <div className="col-span-full rounded-2xl border border-emerald-200/80 bg-emerald-50/90 p-4 dark:border-emerald-800 dark:bg-emerald-900/20">
+              <div className="mt-4 rounded-2xl border border-emerald-200/80 bg-emerald-50/90 p-4 dark:border-emerald-800 dark:bg-emerald-900/20">
                 <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-300">
                   Nueva contrasena
                 </p>
@@ -734,7 +745,7 @@ export function EditUserModal({
                 </p>
               </div>
             )}
-          </div>
+          </section>
 
           {serverError && (
             <PortalAlert
@@ -793,7 +804,7 @@ export function EditUserModal({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -202,7 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new ApiError(
             400,
             'TENANT_SLUG_REQUIRED',
-            'El tenant es obligatorio para completar el MFA.',
+            'La empresa es obligatoria para completar la verificación en dos pasos.',
           );
         }
 

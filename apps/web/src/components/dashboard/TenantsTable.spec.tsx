@@ -9,7 +9,7 @@ jest.mock('next/navigation', () => ({
   }),
 }));
 
-describe('TenantsTable', () => {
+describe('Tabla de empresas de plataforma', () => {
   const tenants = [
     {
       id: 'tenant-1',

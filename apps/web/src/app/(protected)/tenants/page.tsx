@@ -87,10 +87,10 @@ export default function TenantsPage() {
       try {
         await tenantApi.retryProvisioning(id);
         await loadTenants();
-        showNotification('success', 'Provisioning reencolado correctamente');
+        showNotification('success', 'Configuración reintentada correctamente');
       } catch (err) {
         console.error('Error retrying provisioning:', err);
-        showNotification('error', 'Error al reintentar provisioning');
+        showNotification('error', 'Error al reintentar la configuración');
       } finally {
         setActionInProgress(null);
       }

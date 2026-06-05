@@ -88,7 +88,7 @@ function buildTenant(overrides: Partial<TenantListItem> = {}): TenantListItem {
   };
 }
 
-describe('TenantBrandingForm', () => {
+describe('Formulario de branding de la empresa', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     validateBrandingFileForUploadMock.mockResolvedValue(null);
@@ -123,10 +123,12 @@ describe('TenantBrandingForm', () => {
     });
 
     expect(onUpdated).toHaveBeenCalledWith(updatedTenant);
-    expect(screen.getByText('Branding del tenant actualizado correctamente.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Branding de la empresa actualizado correctamente.'),
+    ).toBeInTheDocument();
   });
 
-  it('sube un activo y recarga el tenant para refrescar el formulario', async () => {
+  it('sube un activo y recarga la empresa para refrescar el formulario', async () => {
     tenantApiMock.uploadBrandingAsset.mockResolvedValue({ id: 'asset-1' });
 
     const updatedTenant = buildTenant({

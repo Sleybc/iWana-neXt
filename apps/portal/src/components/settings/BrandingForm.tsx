@@ -37,6 +37,7 @@ import { BRANDING_SLOT_RULES, validateBrandingFileForUpload } from '@/lib/brandi
 import { TenantSeal } from '@/components/layout/TenantSeal';
 import { PortalAlert } from '@/components/shared/portal-ui';
 import { SettingsSectionPanel } from './SettingsSectionPanel';
+import { BRANDING_SETTINGS_COPY } from './mod00-settings-labels';
 
 const BRANDING_EVENT_NAME = 'tenant-branding-updated';
 
@@ -163,8 +164,7 @@ const BRANDING_GROUPS: BrandingGroupConfig[] = [
   {
     usage: 'logo',
     title: 'Logo horizontal',
-    description:
-      'Se usa en la autenticación pública y en superficies de identificación extendida del tenant.',
+    description: BRANDING_SETTINGS_COPY.logoDescription,
     guidance: BRANDING_SLOT_RULES.logo.helpText,
     variants: [
       {
@@ -213,8 +213,7 @@ const BRANDING_GROUPS: BrandingGroupConfig[] = [
   {
     usage: 'login_background',
     title: 'Fondo del login',
-    description:
-      'Se usa como acento visual del acceso público del portal para reforzar la identidad del tenant.',
+    description: BRANDING_SETTINGS_COPY.loginBackgroundDescription,
     guidance: BRANDING_SLOT_RULES.login_background.helpText,
     widePreview: true,
     variants: [
@@ -573,7 +572,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-8">
         <SettingsSectionPanel
           title="Identidad visual"
-          description="Administra los activos de marca y la metadata pública del portal empresarial."
+          description={BRANDING_SETTINGS_COPY.formDescription}
           toolbar={
             canEdit ? (
               <div className="flex flex-wrap gap-2">
@@ -844,7 +843,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                             src={
                               watchedValues.faviconLightUrl?.trim() || profile.faviconLightUrl || ''
                             }
-                            alt="Favicon del tenant"
+                            alt={BRANDING_SETTINGS_COPY.faviconAlt}
                             className="h-full w-full object-contain"
                           />
                         ) : (
@@ -881,8 +880,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                     Mostrar nombre comercial junto al sello en el menú lateral
                   </p>
                   <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                    Si se desactiva, el menú mostrará solo el sello sin texto. El login público
-                    seguirá la política configurada por showTenantName.
+                    {BRANDING_SETTINGS_COPY.showCompanyNameDescription}
                   </p>
                 </div>
               </label>
@@ -896,8 +894,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                 {
                   id: 'identity-metadata',
                   label: 'Nombres e identidad',
-                  description:
-                    'Definen cómo aparece tu empresa en el navegador y en la comunicación pública del portal.',
+                  description: BRANDING_SETTINGS_COPY.identitySectionDescription,
                   children: (
                     <div className="space-y-4">
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -910,7 +907,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                               ? errors.brandingProductName.message
                               : undefined
                           }
-                          helperText="Nombre visible del tenant en el login público."
+                          helperText={BRANDING_SETTINGS_COPY.productHelperText}
                           {...register('brandingProductName')}
                         />
                         <Input

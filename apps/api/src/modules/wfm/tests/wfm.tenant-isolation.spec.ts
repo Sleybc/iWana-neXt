@@ -20,11 +20,9 @@ import { ScheduleConflictService } from '../services/schedule-conflict.service';
 import { WorkOrdersService } from '../services/work-orders.service';
 import { TechnicianAvailabilityService } from '../services/technician-availability.service';
 import { WfmDashboardService } from '../services/wfm-dashboard.service';
-import { CompanyBusinessHoursService } from '../services/company-business-hours.service';
-import { HolidayBlackoutsService } from '../services/holiday-blackouts.service';
 import { OperatingWindowResolverService } from '../services/operating-window-resolver.service';
+import { OperationalEventualitiesService } from '../services/operational-eventualities.service';
 import { ScheduleRecommendationsService } from '../services/schedule-recommendations.service';
-import { SiteBusinessHoursService } from '../services/site-business-hours.service';
 import { VisitRequestsService } from '../services/visit-requests.service';
 
 type TenantCtx = { tenantId: string; schemaName: string };
@@ -214,11 +212,9 @@ describe('WfmController tenant isolation', () => {
           useValue: { list: jest.fn(), create: jest.fn() },
         },
         { provide: WfmDashboardService, useValue: { getSummary: jest.fn() } },
+        { provide: OperationalEventualitiesService, useValue: {} },
         { provide: VisitRequestsService, useValue: { listVisitRequests: jest.fn() } },
         { provide: ScheduleRecommendationsService, useValue: { recommend: jest.fn() } },
-        { provide: CompanyBusinessHoursService, useValue: { getWeek: jest.fn() } },
-        { provide: SiteBusinessHoursService, useValue: { getWeek: jest.fn() } },
-        { provide: HolidayBlackoutsService, useValue: { list: jest.fn(), create: jest.fn() } },
         { provide: WfmOrganizationSitesReadPort, useValue: { listDispatchSites: jest.fn() } },
         { provide: WfmTenantSettingsReadPort, useValue: { getTimezone: jest.fn() } },
         { provide: OperatingWindowResolverService, useValue: { resolve: jest.fn() } },

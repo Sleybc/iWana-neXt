@@ -264,7 +264,7 @@ export function RescheduleEventDialog({
             </p>
           )}
 
-          <section className="space-y-4 rounded-2xl border border-gray-200 bg-[#fbfcf8] p-4 dark:border-dark-border dark:bg-dark-surface-3">
+          <section className="space-y-4 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
             <div className="space-y-1">
               <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Programación</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -418,7 +418,7 @@ export function RescheduleEventDialog({
               )}
 
               {errors.durationMinutes?.message && (
-                <p className="text-xs text-[#EF4444]" role="alert">
+                <p className="text-xs text-red-600 dark:text-red-400" role="alert">
                   {errors.durationMinutes.message}
                 </p>
               )}

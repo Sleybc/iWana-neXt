@@ -6,6 +6,7 @@ import { VisitRequestsService } from './visit-requests.service';
 import { ScheduleConflictService } from './schedule-conflict.service';
 import { OperatingWindowResolverService } from './operating-window-resolver.service';
 import { WorkOrdersService } from './work-orders.service';
+import { ExpedienteService } from '../../crm/expedientes/expediente.service';
 import {
   UserRole,
   VisitRequestStatus,
@@ -39,6 +40,7 @@ function buildManager(overrides: Record<string, jest.Mock> = {}) {
   return {
     findOne: jest.fn(),
     createQueryBuilder: jest.fn(),
+    query: jest.fn().mockResolvedValue([]),
     create: jest.fn().mockImplementation((_entity, data) => data),
     save: jest.fn().mockImplementation(async (_entity, entity) => ({
       id: 'vr-generated',
@@ -64,9 +66,22 @@ function buildRawQueryBuilder(rawRows: Array<Record<string, unknown>>) {
   };
 }
 
+function buildEntityQueryBuilder(items: unknown[], total: number) {
+  return {
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    orderBy: jest.fn().mockReturnThis(),
+    addOrderBy: jest.fn().mockReturnThis(),
+    skip: jest.fn().mockReturnThis(),
+    take: jest.fn().mockReturnThis(),
+    getManyAndCount: jest.fn().mockResolvedValue([items, total]),
+  };
+}
+
 describe('VisitRequestsService', () => {
   let service: VisitRequestsService;
   let workOrdersService: { createWithinManager: jest.Mock };
+  let expedienteService: { findDisplayNameById: jest.Mock; findDisplayNameByShortCode: jest.Mock };
   let tenantService: { getTimezone: jest.Mock };
   let operatingWindowResolver: { resolveWithManager: jest.Mock };
 
@@ -77,6 +92,11 @@ describe('VisitRequestsService', () => {
 
     workOrdersService = {
       createWithinManager: jest.fn(),
+    };
+
+    expedienteService = {
+      findDisplayNameById: jest.fn().mockResolvedValue(null),
+      findDisplayNameByShortCode: jest.fn().mockResolvedValue(null),
     };
 
     tenantService = {
@@ -101,6 +121,7 @@ describe('VisitRequestsService', () => {
         { provide: OperatingWindowResolverService, useValue: operatingWindowResolver },
         { provide: ScheduleConflictService, useValue: { hasConflictWithManager: jest.fn() } },
         { provide: WorkOrdersService, useValue: workOrdersService },
+        { provide: ExpedienteService, useValue: expedienteService },
       ],
     }).compile();
 
@@ -166,7 +187,142 @@ describe('VisitRequestsService', () => {
       } as never,
     );
 
-    expect(result).toEqual({ ...duplicate });
+    expect(result).toEqual({ ...duplicate, customerDisplayName: null });
+  });
+
+  it('enriquece solicitudes CRM con el nombre del cliente desde expedienteId', async () => {
+    const visitRequest = {
+      id: 'vr-crm-name',
+      tenantId: TENANT_CONTEXT.tenantId,
+      status: VisitRequestStatus.READY_TO_SCHEDULE,
+      originContext: WorkOrderSourceContext.CRM,
+      originRef: null,
+      originLabel: 'Oportunidad ABCD1234',
+      workType: WfmWorkType.INSTALLATION,
+      priority: WorkOrderPriority.NORMAL,
+      title: 'Instalación ABCD1234',
+      expedienteId: '550e8400-e29b-41d4-a716-446655440000',
+    };
+    const manager = buildManager({
+      findOne: jest.fn().mockResolvedValue(visitRequest),
+    });
+
+    expedienteService.findDisplayNameById.mockResolvedValue('Cliente Operativo');
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    const result = await service.getVisitRequestById('vr-crm-name', {
+      sub: 'admin-001',
+      role: UserRole.ADMIN,
+    } as never);
+
+    expect(expedienteService.findDisplayNameById).toHaveBeenCalledWith(
+      '550e8400-e29b-41d4-a716-446655440000',
+    );
+    expect(result.customerDisplayName).toBe('Cliente Operativo');
+  });
+
+  it('enriquece solicitudes CRM legacy con nombre por codigo de oportunidad', async () => {
+    const visitRequest = {
+      id: 'vr-crm-code',
+      tenantId: TENANT_CONTEXT.tenantId,
+      status: VisitRequestStatus.READY_TO_SCHEDULE,
+      originContext: WorkOrderSourceContext.CRM,
+      originRef: null,
+      originLabel: 'Oportunidad 30CE4263',
+      workType: WfmWorkType.INSTALLATION,
+      priority: WorkOrderPriority.NORMAL,
+      title: 'Instalación 30CE4263',
+      expedienteId: null,
+    };
+    const manager = buildManager({
+      findOne: jest.fn().mockResolvedValue(visitRequest),
+    });
+
+    expedienteService.findDisplayNameByShortCode.mockResolvedValue({
+      id: '30ce4263-e29b-41d4-a716-446655440000',
+      displayName: 'Alcaldía San Antonio del Tequendama',
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    const result = await service.getVisitRequestById('vr-crm-code', {
+      sub: 'admin-001',
+      role: UserRole.ADMIN,
+    } as never);
+
+    expect(expedienteService.findDisplayNameByShortCode).toHaveBeenCalledWith('30CE4263');
+    expect(result.customerDisplayName).toBe('Alcaldía San Antonio del Tequendama');
+  });
+
+  it('normaliza a READY_TO_SCHEDULE una solicitud stale al obtenerla por id', async () => {
+    const visitRequest = {
+      id: 'vr-stale-get',
+      tenantId: TENANT_CONTEXT.tenantId,
+      status: VisitRequestStatus.NEEDS_CONTEXT,
+      originContext: WorkOrderSourceContext.CRM,
+      originRef: null,
+      originLabel: 'Oportunidad STALE001',
+      workType: WfmWorkType.INSTALLATION,
+      priority: WorkOrderPriority.NORMAL,
+      title: 'Instalación stale',
+      expedienteId: null,
+      address: 'Cra 1 # 2-3',
+      municipality: 'Bogotá',
+    };
+    const manager = buildManager({
+      findOne: jest.fn().mockResolvedValue(visitRequest),
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    const result = await service.getVisitRequestById('vr-stale-get', {
+      sub: 'admin-001',
+      role: UserRole.ADMIN,
+    } as never);
+
+    expect(result.status).toBe(VisitRequestStatus.READY_TO_SCHEDULE);
+  });
+
+  it('normaliza estados stale al listar solicitudes', async () => {
+    const staleVisitRequest = {
+      id: 'vr-stale-list',
+      tenantId: TENANT_CONTEXT.tenantId,
+      status: VisitRequestStatus.NEEDS_CONTEXT,
+      originContext: WorkOrderSourceContext.CRM,
+      originRef: 'exp-003',
+      originLabel: 'Oportunidad STALE-LIST',
+      workType: WfmWorkType.INSTALLATION,
+      priority: WorkOrderPriority.NORMAL,
+      title: 'Instalación stale list',
+      address: 'Cra 1 # 2-3',
+      municipality: 'Bogotá',
+    };
+    const qb = buildEntityQueryBuilder([staleVisitRequest], 1);
+    const manager = buildManager({
+      createQueryBuilder: jest.fn().mockReturnValue(qb),
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    const result = await service.listVisitRequests({ page: 1, limit: 20 }, {
+      sub: 'admin-001',
+      role: UserRole.ADMIN,
+    } as never);
+
+    expect(result.items[0]?.status).toBe(VisitRequestStatus.READY_TO_SCHEDULE);
+    expect(manager.query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE visit_requests vr'),
+      [TENANT_CONTEXT.tenantId],
+    );
   });
 
   it('persiste organizationSiteId cuando llega en la solicitud', async () => {
@@ -259,6 +415,56 @@ describe('VisitRequestsService', () => {
     expect(result.scheduleEventId).toBe('se-001');
   });
 
+  it('permite agendar una solicitud stale cuando el contexto real ya está listo', async () => {
+    const visitRequest = {
+      id: 'vr-stale-schedule',
+      tenantId: TENANT_CONTEXT.tenantId,
+      status: VisitRequestStatus.NEEDS_CONTEXT,
+      workType: WfmWorkType.INSTALLATION,
+      priority: WorkOrderPriority.HIGH,
+      title: 'Instalación stale schedule',
+      description: 'Coordinar visita con portería',
+      organizationSiteId: null,
+      address: 'Cra 1 # 2-3',
+      municipality: 'Bogotá',
+      sector: 'Centro',
+      latitude: null,
+      longitude: null,
+      expedienteId: null,
+      subscriberId: null,
+      ticketId: null,
+      contractId: null,
+      originContext: WorkOrderSourceContext.CRM,
+      originRef: 'exp-stale-schedule',
+    };
+    const savedEvent = { id: 'se-002', workOrderId: null };
+    const manager = buildManager({
+      findOne: jest.fn().mockResolvedValue(visitRequest),
+      save: jest.fn().mockResolvedValue(savedEvent),
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    const result = await service.scheduleVisitRequest(
+      'vr-stale-schedule',
+      {
+        assignedUserId: '550e8400-e29b-41d4-a716-446655440000',
+        scheduledStartAt: '2026-06-01T14:00:00Z',
+        scheduledEndAt: '2026-06-01T15:00:00Z',
+        createWorkOrder: false,
+      },
+      {
+        sub: 'admin-001',
+        role: UserRole.ADMIN,
+      } as never,
+    );
+
+    expect(result.scheduleEventId).toBe('se-002');
+    expect(result.status).toBe(VisitRequestStatus.SCHEDULED);
+  });
+
   it('rechaza agendar instalaciones fuera del horario operativo del tenant', async () => {
     const visitRequest = {
       id: 'vr-ready-outside-window',
@@ -314,7 +520,7 @@ describe('VisitRequestsService', () => {
     ).rejects.toThrow('La instalacion debe quedar dentro del horario operativo configurado.');
   });
 
-  it('mueve una solicitud PENDING a NEEDS_CONTEXT cuando se guarda contexto parcial', async () => {
+  it('mueve una solicitud PENDING a READY_TO_SCHEDULE cuando ya tiene direccion y municipio', async () => {
     const visitRequest = {
       id: 'vr-pending',
       tenantId: TENANT_CONTEXT.tenantId,
@@ -356,8 +562,72 @@ describe('VisitRequestsService', () => {
     expect(manager.update).toHaveBeenCalledWith(
       expect.anything(),
       { id: 'vr-pending', tenantId: TENANT_CONTEXT.tenantId },
-      expect.objectContaining({ status: VisitRequestStatus.NEEDS_CONTEXT }),
+      expect.objectContaining({ status: VisitRequestStatus.READY_TO_SCHEDULE }),
     );
+    expect(result.status).toBe(VisitRequestStatus.READY_TO_SCHEDULE);
+  });
+
+  it('limpia campos de contexto cuando recibe null explicito', async () => {
+    const visitRequest = {
+      id: 'vr-clear-context',
+      tenantId: TENANT_CONTEXT.tenantId,
+      status: VisitRequestStatus.READY_TO_SCHEDULE,
+      address: 'Cra 8 # 10-20',
+      municipality: 'Bogotá',
+      requestedWindowStartAt: new Date('2026-06-01T13:00:00.000Z'),
+      requestedWindowEndAt: new Date('2026-06-01T18:00:00.000Z'),
+      description: 'Coordinar con portería',
+      sector: 'Centro',
+      latitude: null,
+      longitude: null,
+      expedienteId: null,
+      subscriberId: null,
+      ticketId: null,
+      contractId: null,
+      organizationSiteId: null,
+      originContext: WorkOrderSourceContext.CRM,
+    };
+    const manager = buildManager({
+      findOne: jest.fn().mockResolvedValue(visitRequest),
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    const result = await service.updateVisitRequestContext(
+      'vr-clear-context',
+      {
+        address: null,
+        municipality: null,
+        description: null,
+        requestedWindowStartAt: null,
+        requestedWindowEndAt: null,
+        sector: null,
+      },
+      {
+        sub: 'admin-001',
+        role: UserRole.ADMIN,
+      } as never,
+    );
+
+    expect(manager.update).toHaveBeenCalledWith(
+      expect.anything(),
+      { id: 'vr-clear-context', tenantId: TENANT_CONTEXT.tenantId },
+      expect.objectContaining({
+        address: null,
+        municipality: null,
+        description: null,
+        requestedWindowStartAt: null,
+        requestedWindowEndAt: null,
+        sector: null,
+        status: VisitRequestStatus.NEEDS_CONTEXT,
+      }),
+    );
+    expect(result.address).toBeNull();
+    expect(result.municipality).toBeNull();
+    expect(result.requestedWindowStartAt).toBeNull();
+    expect(result.requestedWindowEndAt).toBeNull();
     expect(result.status).toBe(VisitRequestStatus.NEEDS_CONTEXT);
   });
 
@@ -494,5 +764,96 @@ describe('VisitRequestsService', () => {
     expect(new Date(result.windowEndAt).getTime()).toBeGreaterThan(
       new Date(result.windowStartAt).getTime(),
     );
+  });
+
+  it('prioriza el horizonte de busqueda sobre la ventana persistida cuando no llega ventana explicita', async () => {
+    const persistedStartAt = new Date('2030-01-01T08:00:00.000Z');
+    const persistedEndAt = new Date('2030-01-02T18:00:00.000Z');
+    const visitRequest = {
+      id: 'vr-ready-with-window',
+      tenantId: TENANT_CONTEXT.tenantId,
+      status: VisitRequestStatus.READY_TO_SCHEDULE,
+      workType: WfmWorkType.INSTALLATION,
+      address: 'Cra 1 # 2-3',
+      municipality: 'Bogotá',
+      sector: 'Centro',
+      latitude: null,
+      longitude: null,
+      requestedWindowStartAt: persistedStartAt,
+      requestedWindowEndAt: persistedEndAt,
+      originContext: WorkOrderSourceContext.CRM,
+    };
+    const manager = buildManager({
+      findOne: jest.fn().mockResolvedValue(visitRequest),
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    const result = await service.prepareVisitRequestRecommendation(
+      'vr-ready-with-window',
+      {
+        durationMinutes: 120,
+        candidateUserIds: ['550e8400-e29b-41d4-a716-446655440000'],
+        searchHorizonDays: 1,
+      },
+      {
+        sub: 'admin-001',
+        role: UserRole.ADMIN,
+      } as never,
+    );
+
+    expect(result.windowStartAt).not.toBe(persistedStartAt.toISOString());
+    expect(result.windowEndAt).not.toBe(persistedEndAt.toISOString());
+    expect(new Date(result.windowEndAt).getTime()).toBeGreaterThan(
+      new Date(result.windowStartAt).getTime(),
+    );
+  });
+
+  it('limita el horizonte Hoy al cierre del dia local del tenant', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-06-05T15:00:00.000Z'));
+
+    const visitRequest = {
+      id: 'vr-ready-today',
+      tenantId: TENANT_CONTEXT.tenantId,
+      status: VisitRequestStatus.READY_TO_SCHEDULE,
+      workType: WfmWorkType.INSTALLATION,
+      address: 'Cra 1 # 2-3',
+      municipality: 'Bogotá',
+      sector: 'Centro',
+      latitude: null,
+      longitude: null,
+      requestedWindowStartAt: null,
+      requestedWindowEndAt: null,
+      originContext: WorkOrderSourceContext.CRM,
+    };
+    const manager = buildManager({
+      findOne: jest.fn().mockResolvedValue(visitRequest),
+    });
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    try {
+      const result = await service.prepareVisitRequestRecommendation(
+        'vr-ready-today',
+        {
+          durationMinutes: 120,
+          candidateUserIds: ['550e8400-e29b-41d4-a716-446655440000'],
+          searchHorizonDays: 1,
+        },
+        {
+          sub: 'admin-001',
+          role: UserRole.ADMIN,
+        } as never,
+      );
+
+      expect(result.windowStartAt).toBe('2026-06-05T15:00:00.000Z');
+      expect(result.windowEndAt).toBe('2026-06-06T04:59:59.999Z');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

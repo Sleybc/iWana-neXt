@@ -98,7 +98,7 @@ export function ScheduleVisitRequestConfirmDialog({
                 />
                 <span>
                   <span className="block font-semibold text-gray-900 dark:text-white">
-                    Crear work order operativa
+                    Crear orden de trabajo operativa
                   </span>
                   <span className="block text-xs text-gray-500 dark:text-gray-400">
                     Desactívala si por ahora solo quieres reservar la franja en agenda.
@@ -108,7 +108,7 @@ export function ScheduleVisitRequestConfirmDialog({
 
               <Input
                 id="confirm-visit-request-work-order-notes"
-                label="Notas para la work order"
+                label="Notas para la orden de trabajo"
                 value={workOrderNotes}
                 disabled={!createWorkOrder}
                 placeholder="Ej. Coordinar ingreso con portería o validar material antes de salir"

@@ -270,7 +270,8 @@ describe('OrganizationSettingsClient', () => {
     fireEvent.click(dialog.getByRole('tab', { name: 'Servicios' }));
 
     expect(dialog.getByRole('checkbox', { name: 'Gestión administrativa' })).not.toBeChecked();
-    expect(dialog.getByRole('checkbox', { name: 'Operación NOC' })).not.toBeChecked();
+    expect(dialog.getByRole('checkbox', { name: 'Monitoreo operativo' })).not.toBeChecked();
+    expect(dialog.queryByRole('checkbox', { name: 'Operación NOC' })).not.toBeInTheDocument();
 
     fireEvent.click(dialog.getByRole('tab', { name: 'Información de la sede' }));
 
@@ -328,9 +329,10 @@ describe('OrganizationSettingsClient', () => {
     fireEvent.click(dialog.getByRole('tab', { name: 'Servicios' }));
 
     expect(dialog.getByRole('checkbox', { name: 'Gestión administrativa' })).toBeChecked();
-    expect(dialog.getByRole('checkbox', { name: 'Operación NOC' })).not.toBeChecked();
+    expect(dialog.getByRole('checkbox', { name: 'Monitoreo operativo' })).not.toBeChecked();
+    expect(dialog.queryByRole('checkbox', { name: 'Operación NOC' })).not.toBeInTheDocument();
 
-    fireEvent.click(dialog.getByRole('checkbox', { name: 'Operación NOC' }));
+    fireEvent.click(dialog.getByRole('checkbox', { name: 'Monitoreo operativo' }));
     fireEvent.click(dialog.getByRole('button', { name: 'Guardar cambios' }));
 
     await waitFor(() => {
@@ -437,6 +439,24 @@ describe('OrganizationSettingsClient', () => {
     expect(screen.getByText('Sedes no disponibles')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Crear sede' })).not.toBeInTheDocument();
     expect(screen.queryByText('Sedes registradas')).not.toBeInTheDocument();
+  });
+
+  it('should keep normalized operational labels in organization sites', async () => {
+    render(<OrganizationSettingsClient />);
+
+    expect(await screen.findByText('Sedes registradas')).toBeInTheDocument();
+    expect(screen.getByText('Perfil empresarial y organización')).toBeInTheDocument();
+    expect(
+      screen.getByText('Gestiona los datos de tu empresa, ajustes generales y sedes.'),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Crear sede' }));
+
+    const dialog = within(await screen.findByRole('dialog'));
+    fireEvent.click(dialog.getByRole('tab', { name: 'Servicios' }));
+
+    expect(dialog.getByRole('checkbox', { name: 'Monitoreo operativo' })).toBeInTheDocument();
+    expect(dialog.queryByRole('checkbox', { name: 'Operación NOC' })).not.toBeInTheDocument();
   });
 
   it('should keep the compact table visible for admin read-only without row actions', async () => {

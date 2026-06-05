@@ -49,6 +49,7 @@ import {
   PortalSkeletonBlock,
 } from '@/components/shared/portal-ui';
 import {
+  ORGANIZATION_SETTINGS_COPY,
   getOrganizationSiteCapabilityLabel,
   getOrganizationSiteTypeLabel,
 } from './mod00-settings-labels';
@@ -525,13 +526,13 @@ export function OrganizationSettingsClient() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Perfil empresarial y organización"
-        subtitle="Gestiona los datos de tu empresa, ajustes generales y sedes."
+        title={ORGANIZATION_SETTINGS_COPY.pageTitle}
+        subtitle={ORGANIZATION_SETTINGS_COPY.pageSubtitle}
         actions={
           canManageSites ? (
             <Button type="button" onClick={openCreateDialog}>
               <Plus className="mr-2 h-4 w-4" aria-hidden={true} />
-              Crear sede
+              {ORGANIZATION_SETTINGS_COPY.createSiteAction}
             </Button>
           ) : undefined
         }
@@ -575,17 +576,17 @@ export function OrganizationSettingsClient() {
 
       {!sitesError ? (
         <PortalPanel
-          title="Sedes registradas"
-          description="Revisa y administra las sedes de tu empresa."
+          title={ORGANIZATION_SETTINGS_COPY.sitesPanelTitle}
+          description={ORGANIZATION_SETTINGS_COPY.sitesPanelDescription}
         >
           {sites.length === 0 ? (
             <PortalEmptyState
-              title="Sin sedes registradas"
-              description="Todavía no hay sedes creadas."
+              title={ORGANIZATION_SETTINGS_COPY.emptySitesTitle}
+              description={ORGANIZATION_SETTINGS_COPY.emptySitesDescription}
               action={
                 canManageSites ? (
                   <Button type="button" onClick={openCreateDialog}>
-                    Crear primera sede
+                    {ORGANIZATION_SETTINGS_COPY.createFirstSiteAction}
                   </Button>
                 ) : undefined
               }
@@ -643,11 +644,17 @@ export function OrganizationSettingsClient() {
                                 </span>
                               ))
                             ) : (
-                              <span className="text-sm text-gray-500">Sin servicios activos</span>
+                              <span className="text-sm text-gray-500">
+                                {ORGANIZATION_SETTINGS_COPY.noServices}
+                              </span>
                             )}
                           </div>
                         </td>
-                        <td className={cellClass}>{site.isActive ? 'Activa' : 'Inactiva'}</td>
+                        <td className={cellClass}>
+                          {site.isActive
+                            ? ORGANIZATION_SETTINGS_COPY.activeStatus
+                            : ORGANIZATION_SETTINGS_COPY.inactiveStatus}
+                        </td>
                         <td className={cellClass}>
                           {canManageSites ? (
                             <div className="flex flex-wrap justify-end gap-2">
@@ -657,7 +664,7 @@ export function OrganizationSettingsClient() {
                                 size="sm"
                                 onClick={() => void openEditDialog(site.id)}
                               >
-                                Editar sede
+                                {ORGANIZATION_SETTINGS_COPY.editSiteAction}
                                 <span className="sr-only"> {site.name}</span>
                               </Button>
                               <Button
@@ -667,12 +674,14 @@ export function OrganizationSettingsClient() {
                                 onClick={() => void handleDeleteSite(site.id, site.name)}
                                 disabled={isSaving}
                               >
-                                Dar de baja sede
+                                {ORGANIZATION_SETTINGS_COPY.deactivateSiteAction}
                                 <span className="sr-only"> {site.name}</span>
                               </Button>
                             </div>
                           ) : (
-                            <span className="text-sm text-gray-500">Sin acciones disponibles</span>
+                            <span className="text-sm text-gray-500">
+                              {ORGANIZATION_SETTINGS_COPY.noActions}
+                            </span>
                           )}
                         </td>
                       </tr>
@@ -689,20 +698,26 @@ export function OrganizationSettingsClient() {
         <DialogContent aria-labelledby="organization-site-dialog-title" className="max-w-3xl">
           <DialogHeader>
             <DialogTitle id="organization-site-dialog-title">
-              {editingSiteId ? 'Editar sede' : 'Crear sede'}
+              {editingSiteId
+                ? ORGANIZATION_SETTINGS_COPY.editDialogTitle
+                : ORGANIZATION_SETTINGS_COPY.createDialogTitle}
             </DialogTitle>
             <DialogDescription>
               {editingSiteId
-                ? 'Actualiza la información principal y los servicios de la sede seleccionada.'
-                : 'Registra una nueva sede para tu empresa y define sus servicios activos.'}
+                ? ORGANIZATION_SETTINGS_COPY.editDialogDescription
+                : ORGANIZATION_SETTINGS_COPY.createDialogDescription}
             </DialogDescription>
           </DialogHeader>
 
           <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
             <Tabs value={dialogTab} onValueChange={setDialogTab}>
               <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="informacion">Información de la sede</TabsTrigger>
-                <TabsTrigger value="servicios">Servicios</TabsTrigger>
+                <TabsTrigger value="informacion">
+                  {ORGANIZATION_SETTINGS_COPY.informationTab}
+                </TabsTrigger>
+                <TabsTrigger value="servicios">
+                  {ORGANIZATION_SETTINGS_COPY.servicesTab}
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="informacion" className="space-y-4">

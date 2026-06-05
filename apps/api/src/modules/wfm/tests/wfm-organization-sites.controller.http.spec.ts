@@ -14,13 +14,10 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { WfmController } from '../wfm.controller';
 import { WfmOrganizationSitesReadPort } from '../ports/wfm-organization-sites-read.port';
 import { WfmTenantSettingsReadPort } from '../ports/wfm-tenant-settings-read.port';
-import { CompanyBusinessHoursService } from '../services/company-business-hours.service';
-import { HolidayBlackoutsService } from '../services/holiday-blackouts.service';
 import { OperatingWindowResolverService } from '../services/operating-window-resolver.service';
 import { OperationalEventualitiesService } from '../services/operational-eventualities.service';
 import { ScheduleEventsService } from '../services/schedule-events.service';
 import { ScheduleRecommendationsService } from '../services/schedule-recommendations.service';
-import { SiteBusinessHoursService } from '../services/site-business-hours.service';
 import { TechnicianAvailabilityService } from '../services/technician-availability.service';
 import { VisitRequestsService } from '../services/visit-requests.service';
 import { WfmDashboardService } from '../services/wfm-dashboard.service';
@@ -128,9 +125,6 @@ describe('Wfm organization sites HTTP', () => {
         { provide: WorkOrdersService, useValue: {} },
         { provide: TechnicianAvailabilityService, useValue: {} },
         { provide: WfmDashboardService, useValue: {} },
-        { provide: CompanyBusinessHoursService, useValue: {} },
-        { provide: SiteBusinessHoursService, useValue: {} },
-        { provide: HolidayBlackoutsService, useValue: {} },
         { provide: OperationalEventualitiesService, useValue: {} },
         { provide: WfmTenantSettingsReadPort, useValue: {} },
         { provide: OperatingWindowResolverService, useValue: {} },

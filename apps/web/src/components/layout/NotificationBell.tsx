@@ -20,8 +20,8 @@ interface OperationalNotification {
 
 const STATUS_LABELS: Record<TenantListItem['status'], string> = {
   ACTIVE: 'Activa',
-  PROVISIONING: 'Provisioning en curso',
-  PROVISIONING_FAILED: 'Provisioning fallido',
+  PROVISIONING: 'Configuración en curso',
+  PROVISIONING_FAILED: 'Configuración fallida',
   SUSPENDED: 'Suspendida',
   INACTIVE: 'Inactiva',
   MARKED_FOR_DELETION: 'En eliminación',

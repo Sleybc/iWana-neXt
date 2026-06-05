@@ -274,7 +274,7 @@ export function AssuranceClient() {
       <div className="space-y-6">
         <PageHeader
           title="Mesa de ayuda"
-          subtitle="Cargando tickets, SLA y trazabilidad operativa del tenant autenticado"
+          subtitle="Cargando tickets, SLA y trazabilidad operativa de la empresa autenticada"
         />
         <AssuranceSkeleton />
       </div>
@@ -339,7 +339,7 @@ export function AssuranceClient() {
               label="Abiertos"
               value={summary?.openCount ?? null}
               icon={Ticket}
-              description="Casos sin cierre definitivo en el tenant."
+              description="Casos sin cierre definitivo en la empresa."
             />
             <MetricCard
               label="En progreso"

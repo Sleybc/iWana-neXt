@@ -32,6 +32,10 @@ import {
 } from '@/lib/api-client';
 import { InstallationRule } from '@iwana/shared';
 import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
+import {
+  getPortalActiveBadgeVariant,
+  portalActiveCountBadgeVariant,
+} from '@/lib/portal-status-badge-rules';
 
 interface PlanCatalogManagerProps {
   canEdit: boolean;
@@ -590,7 +594,7 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant="primary">
+            <Badge variant={portalActiveCountBadgeVariant}>
               {activePlansCount} activo{activePlansCount === 1 ? '' : 's'}
             </Badge>
             {canEdit && (
@@ -705,7 +709,7 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
                       {canEdit && (
                         <>
                           <td className={cellClass}>
-                            <Badge variant={plan.isActive ? 'success' : 'neutral'}>
+                            <Badge variant={getPortalActiveBadgeVariant(plan.isActive)}>
                               {plan.isActive ? 'Activo' : 'Inactivo'}
                             </Badge>
                           </td>

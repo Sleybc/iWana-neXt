@@ -37,6 +37,9 @@ jest.mock('@/lib/api-client', () => {
       list: jest.fn(),
     },
     wfmApi: {
+      visitRequests: {
+        list: jest.fn(),
+      },
       events: {
         list: jest.fn(),
         get: jest.fn(),
@@ -70,6 +73,9 @@ const usersApiMock = usersApi as unknown as {
 };
 
 const wfmApiMock = wfmApi as unknown as {
+  visitRequests: {
+    list: jest.Mock;
+  };
   events: {
     list: jest.Mock;
     get: jest.Mock;
@@ -183,12 +189,23 @@ describe('SchedulingClient', () => {
       activeCount: 1,
       enRouteCount: 0,
       atRiskCount: 0,
+      pendingInbox: {
+        totalOpen: 1,
+        readyToScheduleCount: 1,
+        needsContextCount: 0,
+        overdueSlaCount: 0,
+        highPriorityOpenCount: 1,
+      },
       alerts: [],
       technicianLoad: [{ assignedUserId: 'tech-1', todayCount: 1 }],
     });
     wfmApiMock.technicians.listAvailability.mockResolvedValue([]);
     wfmApiMock.workOrders.list.mockResolvedValue([]);
     wfmApiMock.events.list.mockResolvedValue([]);
+    wfmApiMock.visitRequests.list.mockResolvedValue({
+      items: [],
+      meta: { total: 0, page: 1, limit: 5, totalPages: 1 },
+    });
     wfmApiMock.recommendations.create.mockResolvedValue([]);
   });
 
@@ -197,8 +214,8 @@ describe('SchedulingClient', () => {
 
     render(<SchedulingClient />);
 
-    expect(screen.getByText('Programacion')).toBeInTheDocument();
-    expect(screen.getByText(/Cargando agenda operativa/i)).toBeInTheDocument();
+    expect(screen.getByText('Centro de agendamiento')).toBeInTheDocument();
+    expect(screen.getByText(/Cargando pendientes, agenda y seguimiento/i)).toBeInTheDocument();
   });
 
   it('renderiza error bloqueante cuando falla la carga principal de eventos', async () => {
@@ -253,7 +270,7 @@ describe('SchedulingClient', () => {
     expect(screen.getAllByText('Luisa Campos').length).toBeGreaterThan(0);
   });
 
-  it('muestra command center por defecto para ADMIN y abre detalle desde una alerta', async () => {
+  it('muestra resumen por defecto para ADMIN y abre detalle desde una alerta', async () => {
     wfmApiMock.dashboard.getSummary.mockResolvedValue({
       todayCount: 1,
       overdueCount: 1,
@@ -261,6 +278,13 @@ describe('SchedulingClient', () => {
       activeCount: 1,
       enRouteCount: 0,
       atRiskCount: 1,
+      pendingInbox: {
+        totalOpen: 2,
+        readyToScheduleCount: 1,
+        needsContextCount: 1,
+        overdueSlaCount: 1,
+        highPriorityOpenCount: 1,
+      },
       alerts: [
         {
           id: 'overdue-evt-1',
@@ -289,7 +313,7 @@ describe('SchedulingClient', () => {
 
     render(<SchedulingClient />);
 
-    expect(await screen.findByText('Command center')).toBeInTheDocument();
+    expect(await screen.findByText('Resumen')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: /Abrir alerta Evento atrasado/i }));
 
     await waitFor(() => {
@@ -297,7 +321,7 @@ describe('SchedulingClient', () => {
     });
   });
 
-  it('no solicita summary global ni muestra command center para TECHNICIAN', async () => {
+  it('no solicita summary global ni muestra opción de resumen para TECHNICIAN', async () => {
     useAuthMock.mockReturnValue({
       user: buildAuthUser(UserRole.TECHNICIAN),
       isLoading: false,
@@ -312,6 +336,6 @@ describe('SchedulingClient', () => {
 
     expect(wfmApiMock.dashboard.getSummary).not.toHaveBeenCalled();
     expect(wfmApiMock.technicians.listAvailability).not.toHaveBeenCalled();
-    expect(screen.queryByText('Command center')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Resumen' })).not.toBeInTheDocument();
   });
 });

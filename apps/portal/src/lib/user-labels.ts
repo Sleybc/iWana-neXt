@@ -1,7 +1,8 @@
 import { UserRole, UserStatus } from '@iwana/shared';
+import { portalActiveBadgeVariant } from '@/lib/portal-status-badge-rules';
 import { getSystemBaseRoleLabel } from './system-vocabulary';
 
-type BadgeVariant = 'success' | 'warning' | 'error' | 'info' | 'neutral';
+type BadgeVariant = 'success' | 'warning' | 'error' | 'info' | 'neutral' | 'lime';
 
 export const PORTAL_USER_ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.ADMIN]: 'Administrador',
@@ -28,7 +29,7 @@ export const PORTAL_USER_STATUS_LABELS: Record<UserStatus, string> = {
 };
 
 export const PORTAL_USER_STATUS_VARIANTS: Record<UserStatus, BadgeVariant> = {
-  [UserStatus.ACTIVE]: 'success',
+  [UserStatus.ACTIVE]: portalActiveBadgeVariant,
   [UserStatus.PENDING_VERIFICATION]: 'warning',
   [UserStatus.SUSPENDED]: 'error',
   [UserStatus.INACTIVE]: 'neutral',

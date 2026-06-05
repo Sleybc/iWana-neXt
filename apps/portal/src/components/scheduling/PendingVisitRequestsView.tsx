@@ -190,6 +190,7 @@ function buildCrmVisitRequestDraft(
   ticketId: string,
 ): CreateWfmVisitRequestDto {
   const expedienteLabel = formatSchedulingExpedienteLabel(response.data.id);
+  const customerName = toOptionalTrimmedText(response.data.fullName) ?? expedienteLabel;
   const operationalNotes = [response.data.specialAccessNotes, response.data.technicalObservations]
     .filter((value): value is string => Boolean(value?.trim()))
     .join(' | ')
@@ -198,12 +199,12 @@ function buildCrmVisitRequestDraft(
   return {
     originContext: WorkOrderSourceContext.CRM,
     originRef: response.data.id,
-    originLabel: `Oportunidad ${expedienteLabel}`,
+    originLabel: `Cliente ${customerName}`.slice(0, 160),
     workType: WfmWorkType.INSTALLATION,
     priority: WorkOrderPriority.NORMAL,
-    title: `Instalación ${expedienteLabel}`.slice(0, 160),
+    title: `Instalación para ${customerName}`.slice(0, 160),
     description:
-      operationalNotes || `Solicitud creada desde CRM para la oportunidad ${expedienteLabel}.`,
+      operationalNotes || `Solicitud creada desde CRM para ${customerName} (${expedienteLabel}).`,
     address: toOptionalTrimmedText(response.data.address),
     municipality: toOptionalTrimmedText(
       formatVisitRequestLocationLabel(response.data.municipality),
@@ -256,6 +257,117 @@ function getRecommendationKey(recommendation: WfmScheduleRecommendation): string
   return `${recommendation.technicianId}::${recommendation.scheduledStartAt}`;
 }
 
+function resolveCrmExpedienteId(visitRequest: WfmVisitRequest): string | null {
+  if (visitRequest.originContext !== WorkOrderSourceContext.CRM) {
+    return null;
+  }
+
+  if (visitRequest.expedienteId && CRM_EXPEDIENTE_ID_PATTERN.test(visitRequest.expedienteId)) {
+    return visitRequest.expedienteId;
+  }
+
+  if (visitRequest.originRef && CRM_EXPEDIENTE_ID_PATTERN.test(visitRequest.originRef)) {
+    return visitRequest.originRef;
+  }
+
+  return null;
+}
+
+function resolveCrmOpportunityCode(visitRequest: WfmVisitRequest): string | null {
+  if (visitRequest.originContext !== WorkOrderSourceContext.CRM) {
+    return null;
+  }
+
+  const originLabel = toOptionalTrimmedText(visitRequest.originLabel);
+  if (!originLabel) {
+    return null;
+  }
+
+  const match = originLabel.match(/^Oportunidad\s+([A-Za-z0-9-]+)/i);
+  if (!match?.[1]) {
+    return null;
+  }
+
+  return match[1].toUpperCase();
+}
+
+function toExpedienteDisplayName(expediente: {
+  fullName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  companyName?: string | null;
+}): string | null {
+  const fullName = toOptionalTrimmedText(expediente.fullName);
+  if (fullName) {
+    return fullName;
+  }
+
+  const firstName = toOptionalTrimmedText(expediente.firstName);
+  const lastName = toOptionalTrimmedText(expediente.lastName);
+  const personName = [firstName, lastName].filter(Boolean).join(' ').trim();
+  if (personName) {
+    return personName;
+  }
+
+  const companyName = toOptionalTrimmedText(expediente.companyName);
+  return companyName ?? null;
+}
+
+async function findExpedienteByOpportunityCode(opportunityCode: string) {
+  const SEARCH_PAGE_LIMIT = 50;
+  const SEARCH_MAX_PAGES = 10;
+
+  for (let page = 1; page <= SEARCH_MAX_PAGES; page += 1) {
+    const listResponse = await crmApi.listExpedientes({
+      search: opportunityCode,
+      view: 'all',
+      includeCompleted: true,
+      page,
+      limit: SEARCH_PAGE_LIMIT,
+    });
+
+    const matchedExpediente = listResponse.data.find((expediente) => {
+      const expedienteCode = formatSchedulingExpedienteLabel(expediente.id).toUpperCase();
+      return expedienteCode === opportunityCode;
+    });
+
+    if (matchedExpediente) {
+      return matchedExpediente;
+    }
+
+    if (listResponse.data.length < SEARCH_PAGE_LIMIT) {
+      break;
+    }
+  }
+
+  const FULL_SCAN_PAGE_LIMIT = 200;
+  const FULL_SCAN_MAX_PAGES = 30;
+
+  for (let page = 1; page <= FULL_SCAN_MAX_PAGES; page += 1) {
+    const listResponse = await crmApi.listExpedientes({
+      view: 'all',
+      includeCompleted: true,
+      page,
+      limit: FULL_SCAN_PAGE_LIMIT,
+    });
+
+    const matchedExpediente = listResponse.data.find((expediente) => {
+      const expedienteCode = formatSchedulingExpedienteLabel(expediente.id).toUpperCase();
+      return expedienteCode === opportunityCode;
+    });
+
+    if (matchedExpediente) {
+      return matchedExpediente;
+    }
+
+    if (listResponse.data.length < FULL_SCAN_PAGE_LIMIT) {
+      break;
+    }
+  }
+
+  return null;
+}
+
 export function PendingVisitRequestsView() {
   const pathname = usePathname();
   const router = useRouter();
@@ -266,6 +378,7 @@ export function PendingVisitRequestsView() {
   );
   const [response, setResponse] = useState<ListWfmVisitRequestsResponse | null>(null);
   const [selectedVisitRequestId, setSelectedVisitRequestId] = useState<string | null>(null);
+  const [isDispatchPanelOpen, setIsDispatchPanelOpen] = useState(false);
   const [technicians, setTechnicians] = useState<InternalUser[]>([]);
   const [events, setEvents] = useState<WfmScheduleEvent[]>([]);
   const [availability, setAvailability] = useState<WfmTechnicianAvailability[]>([]);
@@ -293,8 +406,10 @@ export function PendingVisitRequestsView() {
   const [createDraft, setCreateDraft] = useState<CreateVisitRequestDraft>(() => buildCreateDraft());
   const [scheduleCreateWorkOrder, setScheduleCreateWorkOrder] = useState(true);
   const [scheduleWorkOrderNotes, setScheduleWorkOrderNotes] = useState('');
+  const [crmCustomerNames, setCrmCustomerNames] = useState<Record<string, string>>({});
   const handledCrmBootstrapRef = useRef<string | null>(null);
   const pinnedCrmVisitRequestRef = useRef<WfmVisitRequest | null>(null);
+  const crmCustomerLookupInFlightRef = useRef<Set<string>>(new Set());
   const inboxLoadSequenceRef = useRef(0);
 
   const canAccess = canAccessPendingVisits(user?.role);
@@ -303,6 +418,42 @@ export function PendingVisitRequestsView() {
     () => response?.items.find((item) => item.id === selectedVisitRequestId) ?? null,
     [response?.items, selectedVisitRequestId],
   );
+  const selectedVisitRequestCustomerName = useMemo(() => {
+    if (
+      !selectedVisitRequest ||
+      selectedVisitRequest.originContext !== WorkOrderSourceContext.CRM
+    ) {
+      return null;
+    }
+
+    const backendCustomerName = toOptionalTrimmedText(selectedVisitRequest.customerDisplayName);
+    if (backendCustomerName) {
+      return backendCustomerName;
+    }
+
+    const selectedExpedienteId = resolveCrmExpedienteId(selectedVisitRequest);
+    if (selectedExpedienteId) {
+      const resolvedName = crmCustomerNames[selectedExpedienteId];
+      if (resolvedName) {
+        return resolvedName;
+      }
+    }
+
+    const selectedOpportunityCode = resolveCrmOpportunityCode(selectedVisitRequest);
+    if (selectedOpportunityCode) {
+      const resolvedName = crmCustomerNames[selectedOpportunityCode];
+      if (resolvedName) {
+        return resolvedName;
+      }
+    }
+
+    const normalizedOriginLabel = toOptionalTrimmedText(selectedVisitRequest.originLabel);
+    if (normalizedOriginLabel && normalizedOriginLabel.toLowerCase().startsWith('cliente ')) {
+      return normalizedOriginLabel.slice('Cliente '.length).trim();
+    }
+
+    return null;
+  }, [crmCustomerNames, selectedVisitRequest]);
   const selectedRecommendation = useMemo(
     () =>
       recommendations.find(
@@ -567,6 +718,117 @@ export function PendingVisitRequestsView() {
   }, [selectedVisitRequest]);
 
   useEffect(() => {
+    const items = response?.items ?? [];
+    const pendingExpedienteIds = items
+      .map((item) => resolveCrmExpedienteId(item))
+      .filter((expedienteId): expedienteId is string => Boolean(expedienteId))
+      .filter(
+        (expedienteId) =>
+          !crmCustomerNames[expedienteId] &&
+          !crmCustomerLookupInFlightRef.current.has(`id:${expedienteId}`),
+      );
+
+    const pendingOpportunityCodes = items
+      .filter((item) => !resolveCrmExpedienteId(item))
+      .map((item) => resolveCrmOpportunityCode(item))
+      .filter((code): code is string => Boolean(code))
+      .filter(
+        (code) =>
+          !crmCustomerNames[code] && !crmCustomerLookupInFlightRef.current.has(`code:${code}`),
+      );
+
+    if (pendingExpedienteIds.length === 0 && pendingOpportunityCodes.length === 0) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    pendingExpedienteIds.forEach((expedienteId) => {
+      crmCustomerLookupInFlightRef.current.add(`id:${expedienteId}`);
+
+      void crmApi
+        .getExpediente(expedienteId)
+        .then((expedienteResponse) => {
+          if (isCancelled) {
+            return;
+          }
+
+          const fullName = toExpedienteDisplayName(expedienteResponse.data);
+          if (!fullName) {
+            return;
+          }
+
+          const expedienteCode = formatSchedulingExpedienteLabel(
+            expedienteResponse.data.id,
+          ).toUpperCase();
+
+          setCrmCustomerNames((current) => {
+            if (current[expedienteId] === fullName && current[expedienteCode] === fullName) {
+              return current;
+            }
+
+            return {
+              ...current,
+              [expedienteId]: fullName,
+              [expedienteCode]: fullName,
+            };
+          });
+        })
+        .catch(() => {
+          // Si no podemos resolver el nombre, conservamos el título operativo actual.
+        })
+        .finally(() => {
+          crmCustomerLookupInFlightRef.current.delete(`id:${expedienteId}`);
+        });
+    });
+
+    pendingOpportunityCodes.forEach((opportunityCode) => {
+      crmCustomerLookupInFlightRef.current.add(`code:${opportunityCode}`);
+
+      void findExpedienteByOpportunityCode(opportunityCode)
+        .then((matchedExpediente) => {
+          if (isCancelled) {
+            return;
+          }
+
+          if (!matchedExpediente) {
+            return;
+          }
+
+          const fullName = toExpedienteDisplayName(matchedExpediente);
+          if (!fullName) {
+            return;
+          }
+
+          setCrmCustomerNames((current) => {
+            if (
+              current[opportunityCode] === fullName &&
+              current[matchedExpediente.id] === fullName
+            ) {
+              return current;
+            }
+
+            return {
+              ...current,
+              [opportunityCode]: fullName,
+              [matchedExpediente.id]: fullName,
+            };
+          });
+        })
+        .catch(() => {
+          // Si no podemos resolver por código de oportunidad, conservamos fallback visual actual.
+        })
+        .finally(() => {
+          crmCustomerLookupInFlightRef.current.delete(`code:${opportunityCode}`);
+        });
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [crmCustomerNames, response?.items]);
+
+  useEffect(() => {
     if (authLoading || !user) {
       return;
     }
@@ -604,7 +866,7 @@ export function PendingVisitRequestsView() {
       <div className="space-y-6">
         <PageHeader
           title="Visitas pendientes"
-          subtitle="Cargando bandeja operativa y capacidad semanal del bloque WFM."
+          subtitle="Cargando bandeja operativa y capacidad semanal del bloque de operaciones de campo."
         />
         <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1.4fr)_minmax(340px,1fr)]">
           <PortalSkeletonBlock className="h-[720px]" />
@@ -714,58 +976,61 @@ export function PendingVisitRequestsView() {
         />
       )}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_390px]">
-        <div className="space-y-4">
-          {activeMode === 'matrix' && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-100">
-              <span>
-                Modo recomendación: elige una franja desde la matriz o la lista del panel.
-              </span>
-              <Button type="button" variant="secondary" onClick={() => setActiveMode('inbox')}>
-                Volver a bandeja
-              </Button>
-            </div>
-          )}
+      <div className="space-y-4">
+        {activeMode === 'matrix' && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-100">
+            <span>Modo recomendación: elige una franja desde la matriz o la lista del panel.</span>
+            <Button type="button" variant="secondary" onClick={() => setActiveMode('inbox')}>
+              Volver a bandeja
+            </Button>
+          </div>
+        )}
 
-          {activeMode === 'inbox' ? (
-            <PendingVisitRequestInbox
-              filters={filters}
-              response={response}
-              selectedVisitRequestId={selectedVisitRequestId}
-              filterOptions={filterOptions}
-              isLoading={isLoadingInbox}
-              isLoadingFilterOptions={isLoadingFilterOptions}
-              onFiltersChange={(next) => {
-                setFeedback(null);
-                setFilters(next);
-              }}
-              onSelect={setSelectedVisitRequestId}
-              onRefresh={() => {
-                setFeedback(null);
-                if (!isSalesRole) {
-                  void loadInbox();
-                  void loadFilterOptions();
-                }
-                void loadMatrix();
-              }}
-            />
-          ) : isLoadingMatrix && events.length === 0 && technicians.length === 0 ? (
-            <PortalSkeletonBlock className="h-[720px]" />
-          ) : (
-            <WeeklyTechnicianMatrix
-              technicians={technicians}
-              events={events}
-              availability={availability}
-              rangeStart={matrixRange.startAt}
-              recommendations={recommendations}
-              selectedRecommendationId={selectedRecommendationId}
-              onSelectRecommendation={setSelectedRecommendationId}
-            />
-          )}
-        </div>
+        {activeMode === 'inbox' ? (
+          <PendingVisitRequestInbox
+            filters={filters}
+            response={response}
+            crmCustomerNames={crmCustomerNames}
+            selectedVisitRequestId={selectedVisitRequestId}
+            filterOptions={filterOptions}
+            isLoading={isLoadingInbox}
+            isLoadingFilterOptions={isLoadingFilterOptions}
+            onFiltersChange={(next) => {
+              setFeedback(null);
+              setFilters(next);
+            }}
+            onSelect={(visitRequestId) => {
+              setSelectedVisitRequestId(visitRequestId);
+              setIsDispatchPanelOpen(true);
+            }}
+            onRefresh={() => {
+              setFeedback(null);
+              if (!isSalesRole) {
+                void loadInbox();
+                void loadFilterOptions();
+              }
+              void loadMatrix();
+            }}
+          />
+        ) : isLoadingMatrix && events.length === 0 && technicians.length === 0 ? (
+          <PortalSkeletonBlock className="h-[720px]" />
+        ) : (
+          <WeeklyTechnicianMatrix
+            technicians={technicians}
+            events={events}
+            availability={availability}
+            rangeStart={matrixRange.startAt}
+            recommendations={recommendations}
+            selectedRecommendationId={selectedRecommendationId}
+            onSelectRecommendation={setSelectedRecommendationId}
+          />
+        )}
+      </div>
 
+      {selectedVisitRequest && isDispatchPanelOpen && (
         <VisitRequestRecommendationPanel
           selectedVisitRequest={selectedVisitRequest}
+          customerDisplayName={selectedVisitRequestCustomerName}
           techniciansById={techniciansById}
           recommendations={recommendations}
           selectedRecommendationId={selectedRecommendationId}
@@ -838,8 +1103,15 @@ export function PendingVisitRequestsView() {
             }
           }}
           onOpenConfirm={() => setIsConfirmOpen(true)}
+          onClose={() => {
+            setIsDispatchPanelOpen(false);
+            setRecommendations([]);
+            setSelectedRecommendationId(null);
+            setRecommendationError(null);
+            setActiveMode('inbox');
+          }}
         />
-      </div>
+      )}
 
       <ScheduleVisitRequestConfirmDialog
         open={isConfirmOpen}
@@ -889,7 +1161,7 @@ export function PendingVisitRequestsView() {
                   });
                 } catch (linkWorkOrderError) {
                   followUpWarnings.push(
-                    `La agenda quedó creada, pero no fue posible vincular la work order al ticket. ${mapPendingVisitError(linkWorkOrderError)}`,
+                    `La agenda quedó creada, pero no fue posible vincular la orden de trabajo al ticket. ${mapPendingVisitError(linkWorkOrderError)}`,
                   );
                 }
 
@@ -925,6 +1197,7 @@ export function PendingVisitRequestsView() {
             setFeedback(feedbackMessage);
             setInfoMessage(followUpWarnings.length > 0 ? followUpWarnings.join(' ') : null);
             setIsConfirmOpen(false);
+            setIsDispatchPanelOpen(false);
 
             if (isSalesRole) {
               setResponse((current) => upsertVisitRequestResponse(current, scheduledVisitRequest));

@@ -87,7 +87,7 @@ describe('SettingsPage', () => {
     mockRefreshBranding.mockResolvedValue(undefined);
   });
 
-  it('muestra branding propio de la consola web sin listar empresas tenant', async () => {
+  it('muestra branding propio de la consola web sin listar empresas', async () => {
     render(<SettingsPage />);
 
     const brandingTab = screen.getByRole('button', { name: 'Branding' });

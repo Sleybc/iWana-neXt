@@ -24,8 +24,8 @@ export function SchedulingAlertRail({
   return (
     <PortalPanel
       eyebrow="Alertas"
-      title="Riesgo operativo"
-      description="Señales determinísticas sobre agenda y carga, sin persistencia nueva."
+      title="Alertas de agenda"
+      description="Alertas calculadas con la información disponible sobre horarios, carga y seguimiento."
     >
       {alerts.length === 0 ? (
         <PortalEmptyState

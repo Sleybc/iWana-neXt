@@ -621,7 +621,7 @@ Esta acción no se puede deshacer. ¿Está absolutamente seguro?
           ) : (
             <FormPanel>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                No fue posible cargar el branding actual del tenant.
+                No fue posible cargar el branding actual de la empresa.
               </p>
             </FormPanel>
           )}

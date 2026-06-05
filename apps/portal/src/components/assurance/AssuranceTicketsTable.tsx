@@ -54,7 +54,7 @@ export function AssuranceTicketsTable({
         <PortalSectionHeader
           eyebrow="Mesa de ayuda"
           title="Cola operativa de tickets"
-          description="Filtra por estado, prioridad, tipo o cola para operar la bandeja del tenant autenticado."
+          description="Filtra por estado, prioridad, tipo o cola para operar la bandeja de la empresa autenticada."
           actions={
             <div className="flex flex-wrap items-center gap-2">
               <Badge

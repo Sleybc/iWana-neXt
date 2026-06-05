@@ -68,13 +68,8 @@ function resolveApiBase(): string {
     return configuredApiBase.replace(/\/$/, '');
   }
 
-  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-    return `${window.location.protocol}//127.0.0.1:3000/api/v1`;
-  }
-
-  // El servidor del portal mantiene el mismo origen y delega el salto al backend
-  // al rewrite de Next.js. En el navegador, durante desarrollo local, evitamos el
-  // proxy para no depender del dev server de Next mientras la API recompila.
+  // Mantener mismo origen evita conexiones directas a puertos locales no disponibles
+  // y centraliza el proxy en los rewrites del portal.
   return '/api/v1';
 }
 const ACCESS_TOKEN_STORAGE_KEY = 'iwana.portal.access-token';
@@ -283,7 +278,7 @@ function getTenantSlug(tenantSlugOverride?: string): string {
   throw new ApiError(
     400,
     'TENANT_SLUG_REQUIRED',
-    'Falta la empresa. Ingresa el identificador de la empresa en el login o configura NEXT_PUBLIC_TENANT_SLUG.',
+    'Falta la empresa. Ingresa el identificador de la empresa en el inicio de sesión o usa la configuración global definida por tu equipo.',
   );
 }
 
@@ -2439,6 +2434,7 @@ export interface WfmVisitRequest {
   originContext: WorkOrderSourceContext;
   originRef: string | null;
   originLabel: string | null;
+  customerDisplayName?: string | null;
   workType: WfmWorkType;
   priority: WorkOrderPriority;
   title: string;
@@ -2612,6 +2608,45 @@ export interface UpdateWfmHolidayBlackoutDto {
   isEnabled?: boolean | undefined;
 }
 
+function mapOrganizationHoursDayToWfm(
+  day: OrganizationCompanyBusinessHoursDay | OrganizationSiteBusinessHourSnapshot,
+): WfmBusinessHoursDay {
+  return {
+    weekday: day.weekday,
+    startTime: day.opensAt,
+    endTime: day.closesAt,
+    isEnabled: day.isOpen,
+  };
+}
+
+function mapWfmHoursDayToOrganization(
+  day: WfmBusinessHoursDay,
+): OrganizationCompanyBusinessHoursDay {
+  return {
+    weekday: day.weekday,
+    isOpen: day.isEnabled,
+    opensAt: day.isEnabled ? day.startTime : null,
+    closesAt: day.isEnabled ? day.endTime : null,
+  };
+}
+
+function mapOrganizationExceptionToWfmBlackout(
+  exception: OrganizationBusinessHoursExceptionSnapshot,
+): WfmHolidayBlackout {
+  return {
+    id: exception.id,
+    tenantId: '',
+    organizationSiteId: exception.organizationSiteId,
+    blackoutDate: exception.exceptionDate,
+    isRecurring: exception.isRecurring,
+    name: exception.name,
+    description: exception.description,
+    isEnabled: !exception.isOpen,
+    createdAt: exception.createdAt,
+    updatedAt: exception.createdAt,
+  };
+}
+
 export type OperationalEventualityType =
   | 'extra_availability'
   | 'operational_block'
@@ -2733,6 +2768,14 @@ export interface WfmDashboardAlert {
   scheduledStartAt: string | null;
 }
 
+export interface WfmPendingInboxSummary {
+  totalOpen: number;
+  readyToScheduleCount: number;
+  needsContextCount: number;
+  overdueSlaCount: number;
+  highPriorityOpenCount: number;
+}
+
 export interface WfmDashboardSummary {
   todayCount: number;
   overdueCount: number;
@@ -2740,6 +2783,7 @@ export interface WfmDashboardSummary {
   activeCount: number;
   enRouteCount: number;
   atRiskCount: number;
+  pendingInbox: WfmPendingInboxSummary;
   alerts: WfmDashboardAlert[];
   technicianLoad: WfmDashboardTechnicianLoad[];
 }
@@ -2787,64 +2831,110 @@ export const wfmApi = {
       request<WfmDispatchSite[]>('/wfm/dispatch-sites', { returnFullResponse: true }, tenantSlug),
 
     getBusinessHours: (siteId: string, tenantSlug?: string) =>
-      request<WfmBusinessHoursDay[]>(
-        `/wfm/operating-sites/${siteId}/business-hours`,
+      request<OrganizationSiteDetail>(
+        `/organization/sites/${siteId}`,
         { returnFullResponse: true },
         tenantSlug,
-      ),
+      ).then((site) => site.businessHoursResolved.map((day) => mapOrganizationHoursDayToWfm(day))),
 
     updateBusinessHours: (
       siteId: string,
       dto: { days: WfmBusinessHoursDay[] },
       tenantSlug?: string,
     ) =>
-      request<WfmBusinessHoursDay[]>(
-        `/wfm/operating-sites/${siteId}/business-hours`,
-        { method: 'PUT', body: JSON.stringify(dto), returnFullResponse: true },
+      request<OrganizationSiteDetail>(
+        `/organization/sites/${siteId}/business-hours`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            businessHours: dto.days.map((day) => mapWfmHoursDayToOrganization(day)),
+          }),
+          returnFullResponse: true,
+        },
         tenantSlug,
-      ),
+      ).then((site) => site.businessHoursResolved.map((day) => mapOrganizationHoursDayToWfm(day))),
   },
 
   businessHours: {
     getCompany: (tenantSlug?: string) =>
-      request<WfmBusinessHoursDay[]>(
-        '/wfm/business-hours/company',
+      request<OrganizationCompanyBusinessHoursDay[]>(
+        '/organization/business-hours/company',
         { returnFullResponse: true },
         tenantSlug,
-      ),
+      ).then((days) => days.map((day) => mapOrganizationHoursDayToWfm(day))),
 
     updateCompany: (dto: { days: WfmBusinessHoursDay[] }, tenantSlug?: string) =>
-      request<WfmBusinessHoursDay[]>(
-        '/wfm/business-hours/company',
-        { method: 'PUT', body: JSON.stringify(dto), returnFullResponse: true },
+      request<OrganizationCompanyBusinessHoursDay[]>(
+        '/organization/business-hours/company',
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            businessHours: dto.days.map((day) => mapWfmHoursDayToOrganization(day)),
+          }),
+          returnFullResponse: true,
+        },
         tenantSlug,
-      ),
+      ).then((days) => days.map((day) => mapOrganizationHoursDayToWfm(day))),
   },
 
   holidayBlackouts: {
     list: (tenantSlug?: string) =>
-      request<WfmHolidayBlackout[]>(
-        '/wfm/holiday-blackouts',
+      request<OrganizationBusinessHoursExceptionSnapshot[]>(
+        '/organization/business-hours/exceptions',
         { returnFullResponse: true },
         tenantSlug,
+      ).then((exceptions) =>
+        exceptions
+          .filter((exception) => !exception.isOpen)
+          .map((exception) => mapOrganizationExceptionToWfmBlackout(exception)),
       ),
 
     create: (dto: CreateWfmHolidayBlackoutDto, tenantSlug?: string) =>
-      request<WfmHolidayBlackout>(
-        '/wfm/holiday-blackouts',
-        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      request<OrganizationBusinessHoursExceptionSnapshot>(
+        '/organization/business-hours/exceptions',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            organizationSiteId: dto.organizationSiteId,
+            exceptionDate: dto.blackoutDate,
+            isRecurring: dto.isRecurring,
+            isOpen: !(dto.isEnabled ?? true),
+            opensAt: null,
+            closesAt: null,
+            name: dto.name,
+            description: dto.description,
+          }),
+          returnFullResponse: true,
+        },
         tenantSlug,
-      ),
+      ).then((exception) => mapOrganizationExceptionToWfmBlackout(exception)),
 
     update: (id: string, dto: UpdateWfmHolidayBlackoutDto, tenantSlug?: string) =>
-      request<WfmHolidayBlackout>(
-        `/wfm/holiday-blackouts/${id}`,
-        { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+      request<OrganizationBusinessHoursExceptionSnapshot>(
+        `/organization/business-hours/exceptions/${id}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            organizationSiteId: dto.organizationSiteId,
+            exceptionDate: dto.blackoutDate,
+            isRecurring: dto.isRecurring,
+            isOpen: dto.isEnabled === undefined ? undefined : !dto.isEnabled,
+            opensAt: null,
+            closesAt: null,
+            name: dto.name,
+            description: dto.description,
+          }),
+          returnFullResponse: true,
+        },
         tenantSlug,
-      ),
+      ).then((exception) => mapOrganizationExceptionToWfmBlackout(exception)),
 
     remove: (id: string, tenantSlug?: string) =>
-      request<void>(`/wfm/holiday-blackouts/${id}`, { method: 'DELETE' }, tenantSlug),
+      request<void>(
+        `/organization/business-hours/exceptions/${id}`,
+        { method: 'DELETE' },
+        tenantSlug,
+      ),
   },
 
   visitRequests: {
@@ -3182,7 +3272,7 @@ const PORTAL_SEARCH_MODULES: PortalSearchModule[] = [
     title: 'CRM',
     description: 'Pipeline y oportunidades comerciales de la empresa',
     keywords: ['crm', 'oportunidades', 'pipeline', 'expedientes'],
-    route: '/dashboard/crm',
+    route: '/dashboard/crm/expedientes',
   },
   {
     id: 'subscribers',
@@ -3761,6 +3851,7 @@ export const organizationApi = {
   updateException: (
     id: string,
     dto: {
+      organizationSiteId?: string | null;
       exceptionDate?: string;
       name?: string;
       isOpen?: boolean;

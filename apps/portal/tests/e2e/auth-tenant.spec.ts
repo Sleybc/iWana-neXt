@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Portal Tenant Auth E2E', () => {
+test.describe('Autenticación del portal', () => {
   // Configuración base para el entorno de pruebas del portal
   const PORTAL_URL = process.env.PORTAL_BASE_URL ?? 'http://localhost:3002';
   const TENANT_SLUG = 'isp-demo';
@@ -10,7 +10,7 @@ test.describe('Portal Tenant Auth E2E', () => {
     await page.goto(`${PORTAL_URL}/auth/login`);
   });
 
-  test('debe permitir login exitoso y navegar al dashboard', async ({ page }) => {
+  test('debe permitir iniciar sesión y navegar al panel', async ({ page }) => {
     // Registrar mocks ANTES de interactuar — buena práctica Playwright
     await page.route('**/api/v1/auth/login', async (route) => {
       expect(route.request().headers()['x-tenant-slug']).toBe(TENANT_SLUG);
@@ -54,9 +54,7 @@ test.describe('Portal Tenant Auth E2E', () => {
     await expect(page).toHaveURL(new RegExp('.*/dashboard'));
   });
 
-  test('debe redirigir a verificacion MFA si la cuenta lo requiere (mfa_required)', async ({
-    page,
-  }) => {
+  test('debe redirigir a verificacion en dos pasos si la cuenta lo requiere', async ({ page }) => {
     // Registrar mock ANTES de interactuar
     await page.route('**/api/v1/auth/login', async (route) => {
       await route.fulfill({
@@ -80,7 +78,7 @@ test.describe('Portal Tenant Auth E2E', () => {
     await expect(page.getByText('Verificación en dos pasos')).toBeVisible();
   });
 
-  test('debe redirigir a configurar MFA si es primer acceso de rol critico (mfa_setup_required)', async ({
+  test('debe redirigir a configurar la verificacion en dos pasos si es primer acceso de rol critico', async ({
     page,
   }) => {
     // Registrar mock ANTES de interactuar
@@ -107,9 +105,7 @@ test.describe('Portal Tenant Auth E2E', () => {
     await expect(page.getByText('Configurar autenticación segura')).toBeVisible();
   });
 
-  test('debe redirigir a cambio de contraseña si backend lo exige (password_reset_required)', async ({
-    page,
-  }) => {
+  test('debe redirigir a cambio de contraseña si el backend lo exige', async ({ page }) => {
     // Registrar mocks ANTES de interactuar
     await page.route('**/api/v1/auth/login', async (route) => {
       await route.fulfill({
@@ -150,7 +146,7 @@ test.describe('Portal Tenant Auth E2E', () => {
     await expect(page).toHaveURL(new RegExp('.*/auth/change-password'));
   });
 
-  test('debe redirigir a cambio de contraseña tras completar MFA cuando sigue siendo primer ingreso', async ({
+  test('debe redirigir a cambio de contraseña tras completar la verificacion en dos pasos cuando sigue siendo primer ingreso', async ({
     page,
   }) => {
     let loginAttempts = 0;

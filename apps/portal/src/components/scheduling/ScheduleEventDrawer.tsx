@@ -50,6 +50,7 @@ interface ScheduleEventDrawerProps {
   actionError: string | null;
   isEventTransitioning: boolean;
   isWorkOrderTransitioning: boolean;
+  onRetry: () => Promise<void>;
 }
 
 export function ScheduleEventDrawer({
@@ -67,6 +68,7 @@ export function ScheduleEventDrawer({
   actionError,
   isEventTransitioning,
   isWorkOrderTransitioning,
+  onRetry,
 }: ScheduleEventDrawerProps) {
   const [nextEventStatus, setNextEventStatus] = useState('');
   const [nextWorkOrderStatus, setNextWorkOrderStatus] = useState('');
@@ -103,7 +105,7 @@ export function ScheduleEventDrawer({
         <DialogHeader>
           <DialogTitle>{event?.title || 'Detalle del evento'}</DialogTitle>
           <DialogDescription>
-            Revisa datos operativos, ejecuta transiciones y consulta la work order vinculada.
+            Revisa datos operativos, ejecuta transiciones y consulta la orden de trabajo vinculada.
           </DialogDescription>
         </DialogHeader>
 
@@ -120,6 +122,11 @@ export function ScheduleEventDrawer({
             variant="error"
             title="No fue posible cargar el detalle"
             description={error}
+            action={
+              <Button type="button" variant="secondary" onClick={() => void onRetry()}>
+                Reintentar
+              </Button>
+            }
           />
         ) : !event ? (
           <PortalEmptyState
@@ -139,7 +146,7 @@ export function ScheduleEventDrawer({
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <section className="rounded-2xl border border-gray-200 bg-[#fbfcf8] p-4 dark:border-dark-border dark:bg-dark-surface-3">
+              <section className="rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
                 <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
                   Contexto operativo
                 </p>
@@ -175,7 +182,7 @@ export function ScheduleEventDrawer({
                 </div>
               </section>
 
-              <section className="rounded-2xl border border-gray-200 bg-[#fbfcf8] p-4 dark:border-dark-border dark:bg-dark-surface-3">
+              <section className="rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
@@ -220,11 +227,11 @@ export function ScheduleEventDrawer({
               </section>
             </div>
 
-            <section className="rounded-2xl border border-gray-200 bg-[#fbfcf8] p-4 dark:border-dark-border dark:bg-dark-surface-3">
+            <section className="rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
-                    Work order vinculada
+                    Orden de trabajo vinculada
                   </p>
                   <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
                     Si la OT existe, puedes revisar prioridad, origen y su estado operativo actual.
@@ -235,13 +242,13 @@ export function ScheduleEventDrawer({
 
               {!event.workOrderId ? (
                 <PortalEmptyState
-                  title="Sin work order vinculada"
+                  title="Sin orden de trabajo vinculada"
                   description="Este evento aún no tiene una OT ligera asociada desde la agenda del portal."
                 />
               ) : !workOrder ? (
                 <PortalAlert
                   variant="warning"
-                  title="Work order no disponible"
+                  title="Orden de trabajo no disponible"
                   description="La OT vinculada no pudo cargarse. Actualiza la vista para reintentar."
                 />
               ) : (
@@ -269,7 +276,7 @@ export function ScheduleEventDrawer({
 
                     <div className="space-y-2 rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2">
                       <p className="text-sm text-gray-600 dark:text-gray-300">
-                        {workOrder.notes || 'Sin notas internas para la work order.'}
+                        {workOrder.notes || 'Sin notas internas para la orden de trabajo.'}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         Referencia: {workOrder.sourceRef || 'No disponible'}
@@ -283,7 +290,7 @@ export function ScheduleEventDrawer({
                   <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
                     <Select
                       id="work-order-transition-status"
-                      label="Transición de la work order"
+                      label="Transición de la orden de trabajo"
                       value={nextWorkOrderStatus}
                       placeholder="Selecciona un estado"
                       options={workOrderTransitionOptions}

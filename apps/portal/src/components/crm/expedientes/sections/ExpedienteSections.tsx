@@ -106,6 +106,22 @@ export function ExpedienteSections({
     (s) => (sectionCompletionById[s.id] ?? 0) >= 100,
   ).length;
 
+  const getSectionPriorityLabel = (completionPct: number): string => {
+    if (completionPct >= 100) return 'Completa';
+    if (completionPct >= 50) return 'Atención';
+    return 'Crítica';
+  };
+
+  const getSectionPriorityClassName = (priority: string): string => {
+    if (priority === 'Crítica') {
+      return 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300';
+    }
+    if (priority === 'Atención') {
+      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300';
+    }
+    return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300';
+  };
+
   const renderSectionContent = (sectionId: SectionId) => {
     switch (sectionId) {
       case 'identification':
@@ -182,7 +198,7 @@ export function ExpedienteSections({
     return {
       id: section.id,
       label: section.label,
-      description: section.description,
+      description: `${section.description} · Prioridad: ${getSectionPriorityLabel(completionPct)}`,
       icon: <Icon className="h-5 w-5" />,
       progress: completionPct,
       children: (
@@ -210,7 +226,7 @@ export function ExpedienteSections({
     {
       id: 'document_support',
       label: 'Soportes documentales',
-      description: 'Evidencias requeridas para validar y cerrar el expediente.',
+      description: `Evidencias requeridas para validar y cerrar el expediente. · Prioridad: ${getSectionPriorityLabel(documentSupportCompletion)}`,
       icon: <FolderOpen className="h-5 w-5" />,
       progress: documentSupportCompletion,
       children: (
@@ -227,6 +243,7 @@ export function ExpedienteSections({
     const section = SECTIONS.find((s) => s.id === sectionId)!;
     const Icon = section.icon;
     const completionPct = sectionCompletionById[section.id] ?? 0;
+    const priorityLabel = getSectionPriorityLabel(completionPct);
     const sectionContent = renderSectionContent(sectionId);
     const showSaveButton = true;
 
@@ -245,9 +262,16 @@ export function ExpedienteSections({
               {section.description}
             </p>
           </div>
-          <span className="text-xs font-semibold tabular-nums text-iwana-secondary-700 dark:text-iwana-secondary-400">
-            {completionPct}%
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold tabular-nums text-iwana-secondary-700 dark:text-iwana-secondary-400">
+              {completionPct}%
+            </span>
+            <span
+              className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${getSectionPriorityClassName(priorityLabel)}`}
+            >
+              {priorityLabel}
+            </span>
+          </div>
         </div>
         <div className="px-5 py-5">
           {sectionContent}
