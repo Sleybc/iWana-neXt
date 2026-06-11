@@ -8,6 +8,7 @@ agent: "agent"
 Actualiza el informe vivo correspondiente del workspace con base en el cambio indicado.
 
 Instrucciones:
+- Este prompt es agnostico de proveedor: cualquier asistente debe seguir `AGENTS.md`, el bootstrap vigente y las skills aplicables del workspace.
 - Identifica primero el informe vigente mas relacionado en `docs/informes/`.
 - Si existe un informe vivo aplicable, actualizalo en lugar de crear uno nuevo.
 - Si no existe uno claramente relacionado, propon el archivo correcto siguiendo la convencion documental del repo.

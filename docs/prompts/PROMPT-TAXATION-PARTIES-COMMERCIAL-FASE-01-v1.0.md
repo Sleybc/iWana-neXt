@@ -11,7 +11,7 @@
 
 ## 0. Modo de operación
 
-- Sigue AGENTS.md y CLAUDE.md al pie de la letra.
+- Sigue `AGENTS.md`, `.github/copilot-instructions.md` y las instrucciones por path aplicables al pie de la letra.
 - Usa `pnpm` siempre. Nunca `npm` ni `yarn`.
 - Lee skills aplicables antes de tocar código: `nestjs-expert`, `postgresql`, `database-migration`, `openapi-spec-generation`, `nextjs-app-router-patterns`, `frontend-dev-guidelines`, `tailwind-patterns`, `testing-patterns`, `playwright-skill`, `auth-implementation-patterns`, `backend-security-coder`, `frontend-security-coder`, `docs-architect`.
 - Cualquier conflicto entre artefactos fuente se escala con `[ESCALACION AL CTO]`. No inventes síntesis.
@@ -47,7 +47,7 @@ Lee y respeta en este orden:
 11. `docs/specs/2026-04-20-reglas-comerciales-design.md` (con addendum 2026-04-21)
 12. `docs/adrs/ADR-025-Subscriber-Modelo-Dos-Dimensiones.md`
 13. `docs/adrs/ADR-028-Extraccion-Modulo-Comercial.md`
-14. `AGENTS.md`, `CLAUDE.md`, `docs/prds/Stack_Tecnologico.md`
+14. `AGENTS.md`, `.github/copilot-instructions.md`, `docs/prds/Stack_Tecnologico.md`
 
 Si algún artefacto falta o contradice otro, **detente y escala**.
 

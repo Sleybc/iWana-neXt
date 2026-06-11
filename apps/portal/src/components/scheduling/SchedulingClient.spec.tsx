@@ -1,15 +1,47 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { ScheduleEventStatus, UserRole, WfmWorkType } from '@iwana/shared';
+import {
+  ScheduleEventStatus,
+  UserRole,
+  VisitRequestStatus,
+  WfmWorkType,
+  WorkOrderPriority,
+  WorkOrderSourceContext,
+} from '@iwana/shared';
 import { SchedulingClient } from './SchedulingClient';
 import { ApiError, usersApi, wfmApi } from '@/lib/api-client';
 
 const useAuthMock = jest.fn();
 const replaceMock = jest.fn();
+const useOperatingWindowMock = jest.fn();
+let searchParamsMock = new URLSearchParams();
+let pathnameMock = '/dashboard/scheduling/agenda';
+
+jest.mock('./useOperatingWindow', () => ({
+  useOperatingWindow: (...args: unknown[]) => useOperatingWindowMock(...args),
+  getOperatingWindowMessage: (
+    window: {
+      status?: 'OPEN' | 'CLOSED';
+      startTime?: string | null;
+      endTime?: string | null;
+      reason?: string | null;
+    } | null,
+  ) => {
+    if (!window) {
+      return null;
+    }
+
+    if (window.status === 'OPEN' && window.startTime && window.endTime) {
+      return `Ventana operativa vigente: ${window.startTime} a ${window.endTime}.`;
+    }
+
+    return window.reason ?? null;
+  },
+}));
 
 jest.mock('next/navigation', () => ({
-  usePathname: () => '/dashboard/scheduling',
+  usePathname: () => pathnameMock,
   useRouter: () => ({ replace: replaceMock }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => searchParamsMock,
 }));
 
 jest.mock('@/components/auth/AuthProvider', () => ({
@@ -36,9 +68,24 @@ jest.mock('@/lib/api-client', () => {
     usersApi: {
       list: jest.fn(),
     },
+    assuranceApi: {
+      tickets: {
+        findOrCreateInstallation: jest.fn(),
+        linkWorkOrder: jest.fn(),
+      },
+    },
+    crmApi: {
+      getExpediente: jest.fn(),
+      linkInstallationOperationalRefs: jest.fn(),
+      transitionExpedienteStatus: jest.fn(),
+    },
     wfmApi: {
       visitRequests: {
         list: jest.fn(),
+        get: jest.fn(),
+        updateContext: jest.fn(),
+        recommend: jest.fn(),
+        schedule: jest.fn(),
       },
       events: {
         list: jest.fn(),
@@ -75,6 +122,10 @@ const usersApiMock = usersApi as unknown as {
 const wfmApiMock = wfmApi as unknown as {
   visitRequests: {
     list: jest.Mock;
+    get: jest.Mock;
+    updateContext: jest.Mock;
+    recommend: jest.Mock;
+    schedule: jest.Mock;
   };
   events: {
     list: jest.Mock;
@@ -170,10 +221,59 @@ function buildEvent() {
   };
 }
 
+function buildPendingVisitRequest() {
+  return {
+    id: 'vr-1',
+    tenantId: 'tenant-1',
+    status: VisitRequestStatus.READY_TO_SCHEDULE,
+    originContext: WorkOrderSourceContext.CRM,
+    originRef: 'EXP-001',
+    originLabel: 'Oportunidad EXP-001',
+    customerDisplayName: 'María Gómez',
+    workType: WfmWorkType.INSTALLATION,
+    priority: WorkOrderPriority.HIGH,
+    title: 'Instalación GPON barrio norte',
+    description: 'Cliente listo para ventana PM.',
+    address: 'Cra 10 # 10 - 10',
+    municipality: 'Bogotá',
+    sector: 'Chapinero',
+    latitude: null,
+    longitude: null,
+    requestedWindowStartAt: '2026-06-01T14:00:00.000Z',
+    requestedWindowEndAt: '2026-06-01T18:00:00.000Z',
+    organizationSiteId: '77777777-7777-4777-8777-777777777777',
+    expedienteId: '550e8400-e29b-41d4-a716-446655440111',
+    subscriberId: null,
+    ticketId: 'TK-001',
+    workOrderId: null,
+    assignedEventId: null,
+    scheduledStartAt: null,
+    scheduledEndAt: null,
+    createdBy: 'user-1',
+    updatedBy: 'user-1',
+    createdAt: '2026-05-30T12:00:00.000Z',
+    updatedAt: '2026-05-30T12:00:00.000Z',
+    deletedAt: null,
+  };
+}
+
 describe('SchedulingClient', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     replaceMock.mockReset();
+    searchParamsMock = new URLSearchParams();
+    pathnameMock = '/dashboard/scheduling/agenda';
+    useOperatingWindowMock.mockReturnValue({
+      operatingWindow: {
+        status: 'OPEN',
+        source: 'COMPANY_HOURS',
+        startTime: '07:00',
+        endTime: '18:00',
+        reason: null,
+      },
+      isLoadingOperatingWindow: false,
+      operatingWindowError: null,
+    });
     useAuthMock.mockReturnValue({
       user: buildAuthUser(),
       isLoading: false,
@@ -206,22 +306,24 @@ describe('SchedulingClient', () => {
       items: [],
       meta: { total: 0, page: 1, limit: 5, totalPages: 1 },
     });
+    wfmApiMock.visitRequests.get.mockResolvedValue(buildPendingVisitRequest());
+    wfmApiMock.visitRequests.recommend.mockResolvedValue([]);
     wfmApiMock.recommendations.create.mockResolvedValue([]);
   });
 
   it('muestra estado de carga mientras resuelve la sesión del portal', () => {
     useAuthMock.mockReturnValue({ user: null, isLoading: true });
 
-    render(<SchedulingClient />);
+    render(<SchedulingClient surface="agenda" />);
 
-    expect(screen.getByText('Centro de agendamiento')).toBeInTheDocument();
-    expect(screen.getByText(/Cargando pendientes, agenda y seguimiento/i)).toBeInTheDocument();
+    expect(screen.getByText('Agenda')).toBeInTheDocument();
+    expect(screen.getByText(/Cargando la agenda operativa/i)).toBeInTheDocument();
   });
 
   it('renderiza error bloqueante cuando falla la carga principal de eventos', async () => {
     wfmApiMock.events.list.mockRejectedValue(new ApiError(503, 'UNAVAILABLE', 'Servicio caído'));
 
-    render(<SchedulingClient />);
+    render(<SchedulingClient surface="agenda" />);
 
     await waitFor(() => {
       expect(screen.getByText('No fue posible cargar la programación')).toBeInTheDocument();
@@ -232,37 +334,31 @@ describe('SchedulingClient', () => {
   });
 
   it('muestra estado vacío cuando no hay eventos en la lista del rango', async () => {
-    render(<SchedulingClient />);
+    render(<SchedulingClient surface="agenda" />);
 
-    await waitFor(() => {
-      expect(wfmApiMock.events.list).toHaveBeenCalledTimes(1);
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Lista' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Lista' }));
 
     expect(await screen.findByText('Sin eventos en el rango')).toBeInTheDocument();
   });
 
-  it('no revienta cuando la carga de eventos retorna undefined y cae a lista vacía', async () => {
-    wfmApiMock.events.list.mockResolvedValue(undefined);
+  it('no muestra la sección de carga por técnico en la agenda principal', async () => {
+    wfmApiMock.events.list.mockResolvedValue([buildEvent()]);
 
-    render(<SchedulingClient />);
+    render(<SchedulingClient surface="agenda" />);
 
     await waitFor(() => {
       expect(wfmApiMock.events.list).toHaveBeenCalledTimes(1);
     });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Lista' }));
-
-    expect(await screen.findByText('Sin eventos en el rango')).toBeInTheDocument();
+    expect(screen.queryByText('Carga por técnico')).not.toBeInTheDocument();
+    expect(screen.queryByText('Capacidad técnica')).not.toBeInTheDocument();
   });
 
   it('mapea tipo, estado y técnico al renderizar eventos cargados', async () => {
     wfmApiMock.events.list.mockResolvedValue([buildEvent()]);
 
-    render(<SchedulingClient />);
+    render(<SchedulingClient surface="agenda" />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Lista' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Lista' }));
 
     expect(await screen.findByText('Instalación GPON barrio norte')).toBeInTheDocument();
     expect((await screen.findAllByText('Instalación')).length).toBeGreaterThan(0);
@@ -270,72 +366,54 @@ describe('SchedulingClient', () => {
     expect(screen.getAllByText('Luisa Campos').length).toBeGreaterThan(0);
   });
 
-  it('muestra resumen por defecto para ADMIN y abre detalle desde una alerta', async () => {
-    wfmApiMock.dashboard.getSummary.mockResolvedValue({
-      todayCount: 1,
-      overdueCount: 1,
-      upcomingCount: 2,
-      activeCount: 1,
-      enRouteCount: 0,
-      atRiskCount: 1,
-      pendingInbox: {
-        totalOpen: 2,
-        readyToScheduleCount: 1,
-        needsContextCount: 1,
-        overdueSlaCount: 1,
-        highPriorityOpenCount: 1,
-      },
-      alerts: [
-        {
-          id: 'overdue-evt-1',
-          type: 'OVERDUE_EVENT',
-          severity: 'critical',
-          title: 'Evento atrasado',
-          description: 'Instalación GPON barrio norte',
-          eventId: 'evt-1',
-          assignedUserId: 'tech-1',
-          scheduledStartAt: '2026-05-07T13:00:00.000Z',
-        },
-      ],
-      technicianLoad: [
-        {
-          assignedUserId: 'tech-1',
-          todayCount: 1,
-          overdueCount: 1,
-          totalScheduledMinutes: 420,
-          utilizationPercent: 88,
-          riskLevel: 'HIGH',
-        },
-      ],
+  it('abre una solicitud pendiente fijada desde query y conserva la vista diaria', async () => {
+    searchParamsMock = new URLSearchParams({
+      source: 'pending-visits',
+      visitRequestId: 'vr-1',
+      focusDate: '2026-06-01',
     });
-    wfmApiMock.events.list.mockResolvedValue([buildEvent()]);
-    wfmApiMock.events.get.mockResolvedValue(buildEvent());
 
-    render(<SchedulingClient />);
+    render(<SchedulingClient surface="agenda" />);
 
-    expect(await screen.findByText('Resumen')).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole('button', { name: /Abrir alerta Evento atrasado/i }));
-
+    expect(await screen.findByText('Solicitud fijada desde pendientes')).toBeInTheDocument();
+    expect(await screen.findByText('Despacho de la solicitud')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Día' })).toHaveAttribute('aria-pressed', 'true');
+    expect(
+      screen.getByRole('button', { name: /Prefiero agendar manualmente/i }),
+    ).toBeInTheDocument();
     await waitFor(() => {
-      expect(wfmApiMock.events.get).toHaveBeenCalledWith('evt-1');
+      expect(wfmApiMock.visitRequests.get).toHaveBeenCalledWith('vr-1');
     });
   });
 
-  it('no solicita summary global ni muestra opción de resumen para TECHNICIAN', async () => {
+  it('renderiza el resumen operativo y no muestra calendario completo en dashboard', async () => {
+    pathnameMock = '/dashboard/scheduling';
+    wfmApiMock.events.list.mockResolvedValue([buildEvent()]);
+    wfmApiMock.visitRequests.list.mockResolvedValue({
+      items: [buildPendingVisitRequest()],
+      meta: { total: 1, page: 1, limit: 12, totalPages: 1 },
+    });
+
+    render(<SchedulingClient surface="dashboard" />);
+
+    expect(await screen.findByText('Programación')).toBeInTheDocument();
+    expect(await screen.findByText('Decisiones pendientes')).toBeInTheDocument();
+    expect(screen.getByText('Trabajos en riesgo')).toBeInTheDocument();
+    expect(screen.queryByText('Agenda del día')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Lista' })).not.toBeInTheDocument();
+  });
+
+  it('redirige a TECHNICIAN desde el resumen hacia agenda', async () => {
+    pathnameMock = '/dashboard/scheduling';
     useAuthMock.mockReturnValue({
       user: buildAuthUser(UserRole.TECHNICIAN),
       isLoading: false,
     });
-    wfmApiMock.events.list.mockResolvedValue([buildEvent()]);
 
-    render(<SchedulingClient />);
+    render(<SchedulingClient surface="dashboard" />);
 
     await waitFor(() => {
-      expect(wfmApiMock.events.list).toHaveBeenCalledTimes(1);
+      expect(replaceMock).toHaveBeenCalledWith('/dashboard/scheduling/agenda');
     });
-
-    expect(wfmApiMock.dashboard.getSummary).not.toHaveBeenCalled();
-    expect(wfmApiMock.technicians.listAvailability).not.toHaveBeenCalled();
-    expect(screen.queryByRole('button', { name: 'Resumen' })).not.toBeInTheDocument();
   });
 });

@@ -26,10 +26,12 @@ export function canScheduleInstallation({
 
 export function buildSchedulingHref(expedienteId: string): string {
   const searchParams = new URLSearchParams({
+    open: 'create',
+    type: 'INSTALLATION',
     expedienteId,
   });
 
-  return `/dashboard/scheduling/pending-visits?${searchParams.toString()}`;
+  return `/dashboard/scheduling/agenda?${searchParams.toString()}`;
 }
 
 function normalizeRequirementLabel(value: string): string {

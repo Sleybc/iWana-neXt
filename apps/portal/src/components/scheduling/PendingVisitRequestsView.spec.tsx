@@ -63,17 +63,12 @@ jest.mock('@/lib/api-client', () => {
     ApiError: MockApiError,
     crmApi: {
       getExpediente: jest.fn(),
-      linkInstallationOperationalRefs: jest.fn(),
-      transitionExpedienteStatus: jest.fn(),
+      listExpedientes: jest.fn(),
     },
     assuranceApi: {
       tickets: {
         findOrCreateInstallation: jest.fn(),
-        linkWorkOrder: jest.fn(),
       },
-    },
-    usersApi: {
-      list: jest.fn(),
     },
     wfmApi: {
       visitRequests: {
@@ -81,58 +76,33 @@ jest.mock('@/lib/api-client', () => {
         filterOptions: jest.fn(),
         create: jest.fn(),
         updateContext: jest.fn(),
-        recommend: jest.fn(),
-        schedule: jest.fn(),
       },
       events: {
         list: jest.fn(),
-      },
-      technicians: {
-        listAvailability: jest.fn(),
       },
     },
   };
 });
 
-const { crmApi, assuranceApi, usersApi, wfmApi } = jest.requireMock('@/lib/api-client') as {
+const { crmApi, assuranceApi, wfmApi } = jest.requireMock('@/lib/api-client') as {
   crmApi: {
     getExpediente: jest.Mock;
-    linkInstallationOperationalRefs: jest.Mock;
-    transitionExpedienteStatus: jest.Mock;
+    listExpedientes: jest.Mock;
   };
   assuranceApi: {
     tickets: {
       findOrCreateInstallation: jest.Mock;
-      linkWorkOrder: jest.Mock;
     };
   };
-  usersApi: { list: jest.Mock };
   wfmApi: {
     visitRequests: {
       list: jest.Mock;
       filterOptions: jest.Mock;
       create: jest.Mock;
       updateContext: jest.Mock;
-      recommend: jest.Mock;
-      schedule: jest.Mock;
     };
     events: {
       list: jest.Mock;
-    };
-    technicians: {
-      listAvailability: jest.Mock;
-    };
-  };
-} & {
-  crmApi: {
-    getExpediente: jest.Mock;
-    linkInstallationOperationalRefs: jest.Mock;
-    transitionExpedienteStatus: jest.Mock;
-  };
-  assuranceApi: {
-    tickets: {
-      findOrCreateInstallation: jest.Mock;
-      linkWorkOrder: jest.Mock;
     };
   };
 };
@@ -151,28 +121,48 @@ function buildAuthUser(role = UserRole.ADMIN) {
   };
 }
 
-async function selectVisitDuration(label = '2 h') {
-  fireEvent.click(screen.getByRole('combobox', { name: 'Duración estimada' }));
-  fireEvent.click(await screen.findByRole('option', { name: label }));
-}
-
-async function selectSearchHorizon(label: string) {
-  fireEvent.click(screen.getByRole('combobox', { name: 'Horizonte de búsqueda' }));
-  fireEvent.click(await screen.findByRole('option', { name: label }));
-}
-
-async function openDispatchPanelFromInbox(title = 'Instalación GPON barrio norte') {
-  const matches = await screen.findAllByRole('button', { name: new RegExp(title, 'i') });
-  const target = matches[0];
-  if (!target) {
-    throw new Error(`No se encontró la solicitud para abrir despacho: ${title}`);
-  }
-  fireEvent.click(target);
+function buildVisitRequest(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'vr-1',
+    tenantId: 'tenant-1',
+    status: VisitRequestStatus.READY_TO_SCHEDULE,
+    originContext: WorkOrderSourceContext.CRM,
+    originRef: 'EXP-001',
+    originLabel: 'Oportunidad EXP-001',
+    customerDisplayName: 'María Gómez',
+    workType: WfmWorkType.INSTALLATION,
+    priority: WorkOrderPriority.HIGH,
+    title: 'Instalación GPON barrio norte',
+    description: 'Cliente listo para ventana PM.',
+    address: 'Cra 10 # 10 - 10',
+    municipality: 'Bogotá',
+    sector: 'Chapinero',
+    latitude: null,
+    longitude: null,
+    requestedWindowStartAt: '2026-06-01T14:00:00.000Z',
+    requestedWindowEndAt: '2026-06-01T18:00:00.000Z',
+    organizationSiteId: '77777777-7777-4777-8777-777777777777',
+    expedienteId: '550e8400-e29b-41d4-a716-446655440111',
+    subscriberId: null,
+    ticketId: 'TK-001',
+    workOrderId: null,
+    assignedEventId: null,
+    scheduledStartAt: null,
+    scheduledEndAt: null,
+    createdBy: 'user-1',
+    updatedBy: 'user-1',
+    createdAt: '2026-05-30T12:00:00.000Z',
+    updatedAt: '2026-05-30T12:00:00.000Z',
+    deletedAt: null,
+    ...overrides,
+  };
 }
 
 describe('PendingVisitRequestsView', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    replaceMock.mockReset();
+    searchParamsMock = new URLSearchParams();
     useOperatingWindowMock.mockReturnValue({
       operatingWindow: {
         status: 'OPEN',
@@ -184,651 +174,128 @@ describe('PendingVisitRequestsView', () => {
       isLoadingOperatingWindow: false,
       operatingWindowError: null,
     });
-    replaceMock.mockReset();
-    searchParamsMock = new URLSearchParams();
     useAuthMock.mockReturnValue({ user: buildAuthUser(), isLoading: false });
-    usersApi.list.mockResolvedValue({
-      data: [
-        {
-          id: 'tech-1',
-          email: 'tecnico@demo.co',
-          role: UserRole.TECHNICIAN,
-          status: 'ACTIVE',
-          tenantId: 'tenant-1',
-          mfaEnabled: true,
-          mfaRequired: false,
-          emailVerified: true,
-          passwordResetRequired: false,
-          lastLoginAt: null,
-          createdAt: '2026-05-01T00:00:00.000Z',
-          updatedAt: '2026-05-01T00:00:00.000Z',
-          deletedAt: null,
-          firstName: 'Luisa',
-          lastName: 'Campos',
-          phone: null,
-          jobTitle: 'Técnica',
-          documentType: null,
-          documentNumber: null,
-          avatarUrl: null,
-        },
-      ],
-      meta: { nextCursor: null, total: 1 },
-    });
     wfmApi.visitRequests.list.mockResolvedValue({
-      items: [
-        {
-          id: 'vr-1',
-          tenantId: 'tenant-1',
-          status: VisitRequestStatus.READY_TO_SCHEDULE,
-          originContext: WorkOrderSourceContext.CRM,
-          originRef: 'EXP-001',
-          originLabel: 'Oportunidad EXP-001',
-          workType: WfmWorkType.INSTALLATION,
-          priority: WorkOrderPriority.HIGH,
-          title: 'Instalación GPON barrio norte',
-          description: 'Cliente listo para ventana PM.',
-          requestedWindowStartAt: '2026-06-01T13:00:00.000Z',
-          requestedWindowEndAt: '2026-06-01T18:00:00.000Z',
-          slaDueAt: '2026-06-02T23:59:59.000Z',
-          address: 'Cra 10 # 10 - 10',
-          municipality: 'Bogotá',
-          sector: 'Chapinero',
-          latitude: null,
-          longitude: null,
-          operatingSiteId: '66666666-6666-4666-8666-666666666666',
-          organizationSiteId: '77777777-7777-4777-8777-777777777777',
-          expedienteId: '550e8400-e29b-41d4-a716-446655440111',
-          subscriberId: null,
-          ticketId: null,
-          contractId: null,
-          scheduleEventId: null,
-          workOrderId: null,
-          requestedByUserId: 'user-1',
-          scheduledByUserId: null,
-          scheduledAt: null,
-          cancelledAt: null,
-          cancelledByUserId: null,
-          cancelReason: null,
-          createdAt: '2026-05-31T10:00:00.000Z',
-          updatedAt: '2026-05-31T10:00:00.000Z',
-          deletedAt: null,
-        },
-      ],
+      items: [buildVisitRequest()],
       meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
     });
     wfmApi.visitRequests.filterOptions.mockResolvedValue({
-      municipalities: [{ value: 'Bogotá', label: 'Bogotá', count: 1 }],
-      sectors: [{ value: 'Chapinero', label: 'Chapinero', municipality: 'Bogotá', count: 1 }],
+      municipalities: [],
+      sectors: [],
     });
     wfmApi.events.list.mockResolvedValue([]);
-    wfmApi.technicians.listAvailability.mockResolvedValue([]);
     crmApi.getExpediente.mockResolvedValue({
       data: {
         id: '550e8400-e29b-41d4-a716-446655440111',
-        tenantId: 'tenant-1',
-        status: 'LISTO_PARA_INSTALACION',
-        previousStatus: null,
-        statusChangedAt: '2026-05-31T10:00:00.000Z',
-        discardReason: null,
         fullName: 'María Gómez',
-        documentType: null,
-        phonePrimaryEncrypted: null,
-        emailPrimaryEncrypted: null,
+      },
+    });
+    crmApi.listExpedientes.mockResolvedValue({ data: [] });
+  });
+
+  it('muestra la bandeja con detalle lateral y no renderiza la matriz semanal', async () => {
+    render(<PendingVisitRequestsView />);
+
+    expect(await screen.findByText('Pendiente por agendar')).toBeInTheDocument();
+    expect(await screen.findByText('Contexto operativo')).toBeInTheDocument();
+    expect(screen.queryByText('Capacidad por técnico')).not.toBeInTheDocument();
+    expect(screen.queryByText('Matriz semanal')).not.toBeInTheDocument();
+    expect(screen.queryByText('Calcular recomendaciones')).not.toBeInTheDocument();
+  });
+
+  it('guarda el contexto ligero desde el panel lateral', async () => {
+    wfmApi.visitRequests.updateContext.mockResolvedValue(buildVisitRequest());
+
+    render(<PendingVisitRequestsView />);
+
+    await screen.findByText('Pendiente por agendar');
+    await waitFor(() => {
+      expect(screen.getByLabelText('Dirección operativa', { selector: 'input' })).toHaveValue(
+        'Cra 10 # 10 - 10',
+      );
+      expect(screen.getByLabelText('Municipio', { selector: 'input' })).toHaveValue('Bogotá');
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar contexto' }));
+
+    await waitFor(() => {
+      expect(wfmApi.visitRequests.updateContext).toHaveBeenCalledWith('vr-1', {
         address: 'Cra 10 # 10 - 10',
         municipality: 'Bogotá',
-        department: 'Cundinamarca',
-        latitude: null,
-        longitude: null,
-        neighborhood: 'Chapinero',
-        zoneType: 'Urbano',
-        source: 'CRM',
-        acquisitionChannel: 'DIGITAL',
-        interestedPlanId: null,
-        completenessCommercial: 100,
-        completenessLegal: 100,
-        completenessTechnical: 100,
-        completenessOperational: 80,
-        completenessOverall: 88,
-        pipelineProgress: 88,
-        subscriberSummary: null,
-        createdAt: '2026-05-01T00:00:00.000Z',
-        updatedAt: '2026-05-31T10:00:00.000Z',
-      },
-      completeness: {
-        overall: 88,
-        installationReadiness: { canTransition: true, missingFields: [], title: '', message: '' },
-      },
-      sectionCompleteness: [],
-      installationReadiness: { canTransition: true, missingFields: [], title: '', message: '' },
-      missingRequirements: [],
-      pipelineRecommendation: { nextStatus: 'INSTALACION_AGENDADA', reason: '' },
-    });
-    assuranceApi.tickets.findOrCreateInstallation.mockResolvedValue({
-      ticket: { id: 'TK-100' },
-      created: true,
-    });
-    crmApi.linkInstallationOperationalRefs.mockResolvedValue({});
-    crmApi.transitionExpedienteStatus.mockResolvedValue({});
-    assuranceApi.tickets.linkWorkOrder.mockResolvedValue({});
-    wfmApi.visitRequests.recommend.mockResolvedValue([
-      {
-        technicianId: 'tech-1',
-        scheduledStartAt: '2026-06-01T14:00:00.000Z',
-        scheduledEndAt: '2026-06-01T16:00:00.000Z',
-        score: 91,
-        labels: ['Recomendado'],
-        scoreBreakdown: {
-          distance: 30,
-          municipality: 25,
-          sector: 20,
-          routeContinuity: 10,
-          load: 4,
-          earliest: 2,
-        },
-        distanceKm: 1.1,
-        nearestEventId: null,
-        totalScheduledMinutes: 120,
-        eventCount: 1,
-      },
-    ]);
-    wfmApi.visitRequests.create.mockResolvedValue({
-      id: 'vr-crm-1',
-      tenantId: 'tenant-1',
-      status: VisitRequestStatus.NEEDS_CONTEXT,
-      originContext: WorkOrderSourceContext.CRM,
-      originRef: '550e8400-e29b-41d4-a716-446655440111',
-      originLabel: 'Oportunidad EXP-550E8400',
-      workType: WfmWorkType.INSTALLATION,
-      priority: WorkOrderPriority.NORMAL,
-      title: 'Instalación EXP-550E8400',
-      description: 'Solicitud creada desde CRM para la oportunidad EXP-550E8400.',
-      requestedWindowStartAt: null,
-      requestedWindowEndAt: null,
-      slaDueAt: null,
-      address: 'Cra 10 # 10 - 10',
-      municipality: 'Bogotá',
-      sector: 'Chapinero',
-      latitude: null,
-      longitude: null,
-      operatingSiteId: '66666666-6666-4666-8666-666666666666',
-      organizationSiteId: '77777777-7777-4777-8777-777777777777',
-      expedienteId: '550e8400-e29b-41d4-a716-446655440111',
-      subscriberId: null,
-      ticketId: 'TK-100',
-      contractId: null,
-      scheduleEventId: null,
-      workOrderId: null,
-      requestedByUserId: 'user-1',
-      scheduledByUserId: null,
-      scheduledAt: null,
-      cancelledAt: null,
-      cancelledByUserId: null,
-      cancelReason: null,
-      createdAt: '2026-05-31T10:00:00.000Z',
-      updatedAt: '2026-05-31T10:00:00.000Z',
-      deletedAt: null,
-    });
-    wfmApi.visitRequests.updateContext.mockResolvedValue({
-      id: 'vr-1',
-      tenantId: 'tenant-1',
-      status: VisitRequestStatus.READY_TO_SCHEDULE,
-      originContext: WorkOrderSourceContext.CRM,
-      originRef: 'EXP-001',
-      originLabel: 'Oportunidad EXP-001',
-      workType: WfmWorkType.INSTALLATION,
-      priority: WorkOrderPriority.HIGH,
-      title: 'Instalación GPON barrio norte',
-      description: 'Cliente listo para ventana PM.',
-      requestedWindowStartAt: '2026-06-01T13:00:00.000Z',
-      requestedWindowEndAt: '2026-06-01T18:00:00.000Z',
-      slaDueAt: '2026-06-02T23:59:59.000Z',
-      address: 'Cra 10 # 10 - 10',
-      municipality: 'Bogotá',
-      sector: 'Chapinero',
-      latitude: null,
-      longitude: null,
-      operatingSiteId: '66666666-6666-4666-8666-666666666666',
-      organizationSiteId: '77777777-7777-4777-8777-777777777777',
-      expedienteId: '550e8400-e29b-41d4-a716-446655440111',
-      subscriberId: null,
-      ticketId: 'TK-100',
-      contractId: null,
-      scheduleEventId: null,
-      workOrderId: null,
-      requestedByUserId: 'user-1',
-      scheduledByUserId: null,
-      scheduledAt: null,
-      cancelledAt: null,
-      cancelledByUserId: null,
-      cancelReason: null,
-      createdAt: '2026-05-31T10:00:00.000Z',
-      updatedAt: '2026-05-31T10:00:00.000Z',
-      deletedAt: null,
-    });
-    wfmApi.visitRequests.schedule.mockResolvedValue({
-      id: 'vr-1',
-      tenantId: 'tenant-1',
-      status: VisitRequestStatus.SCHEDULED,
-      originContext: WorkOrderSourceContext.CRM,
-      originRef: 'EXP-001',
-      originLabel: 'Oportunidad EXP-001',
-      workType: WfmWorkType.INSTALLATION,
-      priority: WorkOrderPriority.HIGH,
-      title: 'Instalación GPON barrio norte',
-      description: 'Cliente listo para ventana PM.',
-      requestedWindowStartAt: '2026-06-01T13:00:00.000Z',
-      requestedWindowEndAt: '2026-06-01T18:00:00.000Z',
-      slaDueAt: '2026-06-02T23:59:59.000Z',
-      address: 'Cra 10 # 10 - 10',
-      municipality: 'Bogotá',
-      sector: 'Chapinero',
-      latitude: null,
-      longitude: null,
-      operatingSiteId: '66666666-6666-4666-8666-666666666666',
-      organizationSiteId: '77777777-7777-4777-8777-777777777777',
-      expedienteId: '550e8400-e29b-41d4-a716-446655440111',
-      subscriberId: null,
-      ticketId: 'TK-100',
-      contractId: null,
-      scheduleEventId: 'evt-1',
-      workOrderId: 'wo-1',
-      requestedByUserId: 'user-1',
-      scheduledByUserId: 'user-1',
-      scheduledAt: '2026-06-01T12:00:00.000Z',
-      cancelledAt: null,
-      cancelledByUserId: null,
-      cancelReason: null,
-      createdAt: '2026-05-31T10:00:00.000Z',
-      updatedAt: '2026-06-01T12:00:00.000Z',
-      deletedAt: null,
-    });
-  });
-
-  it('renderiza acceso restringido para TECHNICIAN', async () => {
-    useAuthMock.mockReturnValue({ user: buildAuthUser(UserRole.TECHNICIAN), isLoading: false });
-
-    render(<PendingVisitRequestsView />);
-
-    expect(await screen.findByText('Vista no autorizada')).toBeInTheDocument();
-  });
-
-  it('carga la solicitud y calcula recomendaciones desde la bandeja', async () => {
-    render(<PendingVisitRequestsView />);
-
-    expect((await screen.findAllByText('Instalación GPON barrio norte')).length).toBeGreaterThan(0);
-
-    await openDispatchPanelFromInbox();
-
-    const recommendButton = screen.getByRole('button', { name: 'Calcular recomendaciones' });
-    expect(recommendButton).toBeEnabled();
-
-    fireEvent.click(recommendButton);
-
-    await waitFor(() => {
-      expect(wfmApi.visitRequests.recommend).toHaveBeenCalledWith(
-        'vr-1',
-        expect.objectContaining({
-          durationMinutes: 120,
-          candidateUserIds: ['tech-1'],
-          searchHorizonDays: 7,
-          organizationSiteId: '77777777-7777-4777-8777-777777777777',
-          municipality: 'Bogotá',
-          sector: 'Chapinero',
-        }),
-      );
-    });
-
-    expect(wfmApi.visitRequests.updateContext).toHaveBeenCalled();
-
-    expect(await screen.findByText('Puntuación: 91')).toBeInTheDocument();
-    expect(screen.getAllByText('Luisa Campos').length).toBeGreaterThan(0);
-  });
-
-  it('mantiene el horizonte seleccionado despues de calcular recomendaciones', async () => {
-    render(<PendingVisitRequestsView />);
-
-    expect((await screen.findAllByText('Instalación GPON barrio norte')).length).toBeGreaterThan(0);
-
-    await openDispatchPanelFromInbox();
-    await selectSearchHorizon('Hoy');
-
-    const horizonSelect = screen.getByRole('combobox', { name: 'Horizonte de búsqueda' });
-    expect(horizonSelect).toHaveTextContent('Hoy');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Calcular recomendaciones' }));
-
-    await waitFor(() => {
-      expect(wfmApi.visitRequests.recommend).toHaveBeenCalledWith(
-        'vr-1',
-        expect.objectContaining({ searchHorizonDays: 1 }),
-      );
-    });
-
-    expect(await screen.findByText('Puntuación: 91')).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Horizonte de búsqueda' })).toHaveTextContent(
-      'Hoy',
-    );
-  });
-
-  it('carga filtros territoriales con conteos en la bandeja', async () => {
-    render(<PendingVisitRequestsView />);
-
-    expect(await screen.findByText('Bogotá (1)')).toBeInTheDocument();
-    expect(wfmApi.visitRequests.filterOptions).toHaveBeenCalled();
-  });
-
-  it('materializa la solicitud CRM desde expedienteId en la URL y limpia el query', async () => {
-    searchParamsMock = new URLSearchParams({
-      expedienteId: '550e8400-e29b-41d4-a716-446655440111',
-    });
-
-    render(<PendingVisitRequestsView />);
-
-    await waitFor(() => {
-      expect(crmApi.getExpediente).toHaveBeenCalledWith('550e8400-e29b-41d4-a716-446655440111');
-    });
-
-    expect(assuranceApi.tickets.findOrCreateInstallation).toHaveBeenCalledWith({
-      expedienteId: '550e8400-e29b-41d4-a716-446655440111',
-      expedienteFullName: 'María Gómez',
-    });
-    expect(wfmApi.visitRequests.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        originContext: WorkOrderSourceContext.CRM,
-        expedienteId: '550e8400-e29b-41d4-a716-446655440111',
-        municipality: 'Bogotá',
         sector: 'Chapinero',
-        ticketId: 'TK-100',
-      }),
-    );
-    expect(replaceMock).toHaveBeenCalledWith('/dashboard/scheduling/pending-visits');
-  });
-
-  it('mantiene visible y seleccionada la solicitud CRM nueva aunque la recarga inmediata no la devuelva', async () => {
-    searchParamsMock = new URLSearchParams({
-      expedienteId: '550e8400-e29b-41d4-a716-446655440111',
-    });
-
-    const staleInboxResponse = {
-      items: [
-        {
-          id: 'vr-1',
-          tenantId: 'tenant-1',
-          status: VisitRequestStatus.READY_TO_SCHEDULE,
-          originContext: WorkOrderSourceContext.CRM,
-          originRef: 'EXP-001',
-          originLabel: 'Oportunidad EXP-001',
-          workType: WfmWorkType.INSTALLATION,
-          priority: WorkOrderPriority.HIGH,
-          title: 'Instalación GPON barrio norte',
-          description: 'Cliente listo para ventana PM.',
-          requestedWindowStartAt: '2026-06-01T13:00:00.000Z',
-          requestedWindowEndAt: '2026-06-01T18:00:00.000Z',
-          slaDueAt: '2026-06-02T23:59:59.000Z',
-          address: 'Cra 10 # 10 - 10',
-          municipality: 'Bogotá',
-          sector: 'Chapinero',
-          latitude: null,
-          longitude: null,
-          operatingSiteId: '66666666-6666-4666-8666-666666666666',
-          organizationSiteId: '77777777-7777-4777-8777-777777777777',
-          expedienteId: '550e8400-e29b-41d4-a716-446655440111',
-          subscriberId: null,
-          ticketId: null,
-          contractId: null,
-          scheduleEventId: null,
-          workOrderId: null,
-          requestedByUserId: 'user-1',
-          scheduledByUserId: null,
-          scheduledAt: null,
-          cancelledAt: null,
-          cancelledByUserId: null,
-          cancelReason: null,
-          createdAt: '2026-05-31T10:00:00.000Z',
-          updatedAt: '2026-05-31T10:00:00.000Z',
-          deletedAt: null,
-        },
-      ],
-      meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
-    };
-    let resolveInitialInbox!: (value: typeof staleInboxResponse) => void;
-    const initialInboxRequest = new Promise<typeof staleInboxResponse>((resolve) => {
-      resolveInitialInbox = resolve;
-    });
-
-    wfmApi.visitRequests.list.mockReset();
-    wfmApi.visitRequests.list
-      .mockReturnValueOnce(initialInboxRequest)
-      .mockResolvedValue(staleInboxResponse);
-
-    render(<PendingVisitRequestsView />);
-
-    expect((await screen.findAllByText('Instalación EXP-550E8400')).length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Oportunidad EXP-550E8400').length).toBeGreaterThan(0);
-
-    resolveInitialInbox(staleInboxResponse);
-
-    await waitFor(() => {
-      expect(screen.getAllByText('Instalación EXP-550E8400').length).toBeGreaterThan(0);
-    });
-    expect(screen.getAllByText('Oportunidad EXP-550E8400').length).toBeGreaterThan(0);
-  });
-
-  it('humaniza municipio y sector en el formulario de contexto cuando llegan en snake case', async () => {
-    wfmApi.visitRequests.list.mockResolvedValueOnce({
-      items: [
-        {
-          id: 'vr-raw-1',
-          tenantId: 'tenant-1',
-          status: VisitRequestStatus.NEEDS_CONTEXT,
-          originContext: WorkOrderSourceContext.CRM,
-          originRef: 'EXP-RAW-1',
-          originLabel: 'Oportunidad EXP-RAW-1',
-          workType: WfmWorkType.INSTALLATION,
-          priority: WorkOrderPriority.NORMAL,
-          title: 'Instalación 2A8C632D',
-          description: 'Solicitud creada desde CRM.',
-          requestedWindowStartAt: null,
-          requestedWindowEndAt: null,
-          slaDueAt: null,
-          address: 'FCA LA CAROLINA',
-          municipality: 'EL_COLEGIO',
-          sector: 'VDA_LA_VIRGINIA',
-          latitude: null,
-          longitude: null,
-          operatingSiteId: '66666666-6666-4666-8666-666666666666',
-          organizationSiteId: '77777777-7777-4777-8777-777777777777',
-          expedienteId: '550e8400-e29b-41d4-a716-446655440222',
-          subscriberId: null,
-          ticketId: 'TK-200',
-          contractId: null,
-          scheduleEventId: null,
-          workOrderId: null,
-          requestedByUserId: 'user-1',
-          scheduledByUserId: null,
-          scheduledAt: null,
-          cancelledAt: null,
-          cancelledByUserId: null,
-          cancelReason: null,
-          createdAt: '2026-05-31T10:00:00.000Z',
-          updatedAt: '2026-05-31T10:00:00.000Z',
-          deletedAt: null,
-        },
-      ],
-      meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
-    });
-
-    render(<PendingVisitRequestsView />);
-
-    expect((await screen.findAllByText('Instalación 2A8C632D')).length).toBeGreaterThan(0);
-    await openDispatchPanelFromInbox('Instalación 2A8C632D');
-    fireEvent.click(screen.getByRole('button', { name: /Ajustes de contexto/i }));
-
-    expect(await screen.findByDisplayValue('El Colegio')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('Vda la Virginia')).toBeInTheDocument();
-  });
-
-  it('respeta el estado canónico del backend y no duplica contexto operativo en la tabla', async () => {
-    wfmApi.visitRequests.list.mockResolvedValueOnce({
-      items: [
-        {
-          id: 'vr-canonical-1',
-          tenantId: 'tenant-1',
-          status: VisitRequestStatus.NEEDS_CONTEXT,
-          originContext: WorkOrderSourceContext.CRM,
-          originRef: 'EXP-CANON-1',
-          originLabel: 'Oportunidad EXP-CANON-1',
-          workType: WfmWorkType.INSTALLATION,
-          priority: WorkOrderPriority.NORMAL,
-          title: 'Instalación canon backend',
-          description: 'El backend aún marca falta de contexto.',
-          requestedWindowStartAt: null,
-          requestedWindowEndAt: null,
-          slaDueAt: null,
-          address: 'Cra 10 # 10 - 10',
-          municipality: 'Bogotá',
-          sector: 'Chapinero',
-          latitude: null,
-          longitude: null,
-          operatingSiteId: '66666666-6666-4666-8666-666666666666',
-          organizationSiteId: '77777777-7777-4777-8777-777777777777',
-          expedienteId: '550e8400-e29b-41d4-a716-446655440223',
-          subscriberId: null,
-          ticketId: null,
-          contractId: null,
-          scheduleEventId: null,
-          workOrderId: null,
-          requestedByUserId: 'user-1',
-          scheduledByUserId: null,
-          scheduledAt: null,
-          cancelledAt: null,
-          cancelledByUserId: null,
-          cancelReason: null,
-          createdAt: '2026-05-31T10:00:00.000Z',
-          updatedAt: '2026-05-31T10:00:00.000Z',
-          deletedAt: null,
-        },
-      ],
-      meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
-    });
-
-    render(<PendingVisitRequestsView />);
-
-    expect((await screen.findAllByText('Instalación canon backend')).length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Falta contexto').length).toBeGreaterThan(0);
-    expect(screen.queryByText('Contexto operativo')).not.toBeInTheDocument();
-    expect(screen.queryByText('Listo para agendar')).not.toBeInTheDocument();
-  });
-
-  it('sincroniza CRM y Assurance cuando agenda una solicitud originada en CRM', async () => {
-    render(<PendingVisitRequestsView />);
-
-    expect((await screen.findAllByText('Instalación GPON barrio norte')).length).toBeGreaterThan(0);
-    await openDispatchPanelFromInbox();
-    await selectVisitDuration();
-    fireEvent.click(await screen.findByRole('button', { name: 'Calcular recomendaciones' }));
-
-    expect(await screen.findByText('Puntuación: 91')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar franja seleccionada' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar agenda' }));
-
-    await waitFor(() => {
-      expect(assuranceApi.tickets.linkWorkOrder).toHaveBeenCalledWith('TK-100', {
-        workOrderId: 'wo-1',
+        description: 'Cliente listo para ventana PM.',
+        requestedWindowStartAt: '2026-06-01T14:00:00.000Z',
+        requestedWindowEndAt: '2026-06-01T18:00:00.000Z',
       });
     });
-
-    expect(crmApi.linkInstallationOperationalRefs).toHaveBeenCalledWith(
-      '550e8400-e29b-41d4-a716-446655440111',
-      {
-        ticketId: 'TK-100',
-        workOrderId: 'wo-1',
-      },
-    );
-    expect(crmApi.transitionExpedienteStatus).toHaveBeenCalledWith(
-      '550e8400-e29b-41d4-a716-446655440111',
-      {
-        targetStatus: 'INSTALACION_AGENDADA',
-        reason: 'Instalación agendada desde WFM',
-      },
-    );
-    expect(wfmApi.visitRequests.schedule).toHaveBeenCalledWith('vr-1', {
-      assignedUserId: 'tech-1',
-      scheduledStartAt: '2026-06-01T14:00:00.000Z',
-      scheduledEndAt: '2026-06-01T16:00:00.000Z',
-      organizationSiteId: '77777777-7777-4777-8777-777777777777',
-      createWorkOrder: true,
-      workOrderNotes: 'Cliente listo para ventana PM.',
-    });
+    expect(
+      await screen.findByText(
+        'La solicitud Instalación GPON barrio norte actualizó su contexto operativo.',
+      ),
+    ).toBeInTheDocument();
   });
 
-  it('permite a SALES operar solo el flujo CRM asistido sin cargar la bandeja global', async () => {
+  it('construye el handoff hacia scheduling con la solicitud fijada', async () => {
+    render(<PendingVisitRequestsView />);
+
+    const openInAgenda = await screen.findByRole('link', { name: 'Abrir en agenda' });
+    expect(openInAgenda).toHaveAttribute(
+      'href',
+      '/dashboard/scheduling/agenda?source=pending-visits&visitRequestId=vr-1&focusDate=2026-06-01',
+    );
+  });
+
+  it('materializa una solicitud desde CRM cuando llega el expediente por query', async () => {
     searchParamsMock = new URLSearchParams({
       expedienteId: '550e8400-e29b-41d4-a716-446655440111',
     });
-    useAuthMock.mockReturnValue({ user: buildAuthUser(UserRole.SALES), isLoading: false });
+    crmApi.getExpediente.mockResolvedValue({
+      data: {
+        id: '550e8400-e29b-41d4-a716-446655440111',
+        fullName: 'María Gómez',
+        status: 'LISTO_PARA_INSTALACION',
+        completenessOverall: 90,
+        pipelineProgress: 90,
+        address: 'Cra 10 # 10 - 10',
+        municipality: 'Bogotá',
+        neighborhood: 'Chapinero',
+        zoneType: null,
+        latitude: null,
+        longitude: null,
+        subscriberSummary: null,
+        specialAccessNotes: null,
+        technicalObservations: null,
+      },
+      completeness: {
+        overall: 90,
+        installationReadiness: {
+          canTransition: true,
+        },
+      },
+      installationReadiness: {
+        canTransition: true,
+      },
+    });
+    assuranceApi.tickets.findOrCreateInstallation.mockResolvedValue({
+      ticket: { id: 'TK-009' },
+    });
+    wfmApi.visitRequests.create.mockResolvedValue(
+      buildVisitRequest({
+        id: 'vr-bootstrap',
+        originRef: '550e8400-e29b-41d4-a716-446655440111',
+        ticketId: 'TK-009',
+      }),
+    );
 
     render(<PendingVisitRequestsView />);
 
     await waitFor(() => {
-      expect(crmApi.getExpediente).toHaveBeenCalledWith('550e8400-e29b-41d4-a716-446655440111');
+      expect(wfmApi.visitRequests.create).toHaveBeenCalledTimes(1);
     });
-
-    expect(wfmApi.visitRequests.list).not.toHaveBeenCalled();
-    expect(await screen.findByText('Modo CRM asistido')).toBeInTheDocument();
-  });
-
-  it('bloquea edición y recomendación cuando la solicitud está en estado terminal', async () => {
-    wfmApi.visitRequests.list.mockResolvedValueOnce({
-      items: [
-        {
-          id: 'vr-closed-1',
-          tenantId: 'tenant-1',
-          status: VisitRequestStatus.SCHEDULED,
-          originContext: WorkOrderSourceContext.CRM,
-          originRef: 'EXP-LOCK-1',
-          originLabel: 'Oportunidad EXP-LOCK-1',
-          workType: WfmWorkType.INSTALLATION,
-          priority: WorkOrderPriority.NORMAL,
-          title: 'Instalación ya agendada',
-          description: 'No debe permitir nuevas recomendaciones.',
-          requestedWindowStartAt: '2026-06-01T13:00:00.000Z',
-          requestedWindowEndAt: '2026-06-01T18:00:00.000Z',
-          slaDueAt: null,
-          address: 'Cra 10 # 10 - 10',
-          municipality: 'Bogotá',
-          sector: 'Chapinero',
-          latitude: null,
-          longitude: null,
-          operatingSiteId: '66666666-6666-4666-8666-666666666666',
-          organizationSiteId: '77777777-7777-4777-8777-777777777777',
-          expedienteId: '550e8400-e29b-41d4-a716-446655440999',
-          subscriberId: null,
-          ticketId: null,
-          contractId: null,
-          scheduleEventId: 'evt-closed-1',
-          workOrderId: 'wo-closed-1',
-          requestedByUserId: 'user-1',
-          scheduledByUserId: 'user-1',
-          scheduledAt: '2026-06-01T12:00:00.000Z',
-          cancelledAt: null,
-          cancelledByUserId: null,
-          cancelReason: null,
-          createdAt: '2026-05-31T10:00:00.000Z',
-          updatedAt: '2026-06-01T12:00:00.000Z',
-          deletedAt: null,
-        },
-      ],
-      meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
-    });
-
-    render(<PendingVisitRequestsView />);
-
-    await openDispatchPanelFromInbox('Instalación ya agendada');
-    expect(await screen.findByText('Solicitud cerrada para despacho')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Calcular recomendaciones' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: /Ajustes de contexto/i }));
-    expect(screen.getByRole('button', { name: 'Guardar contexto' })).toBeDisabled();
+    expect(
+      await screen.findByText(
+        'La solicitud Instalación GPON barrio norte quedó abierta en la bandeja.',
+      ),
+    ).toBeInTheDocument();
+    expect(replaceMock).toHaveBeenCalledWith('/dashboard/scheduling/pending-visits');
   });
 });

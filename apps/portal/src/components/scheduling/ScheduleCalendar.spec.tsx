@@ -29,6 +29,7 @@ describe('ScheduleCalendar', () => {
     render(
       <ScheduleCalendar
         days={[day as any]}
+        view="week"
         techniciansById={
           new Map([['tech-1', { id: 'tech-1', firstName: 'Luisa', lastName: 'Campos' } as any]])
         }
@@ -44,7 +45,14 @@ describe('ScheduleCalendar', () => {
   });
 
   it('muestra estado vacío cuando no hay días visibles', () => {
-    render(<ScheduleCalendar days={[]} techniciansById={new Map()} onSelectEvent={jest.fn()} />);
+    render(
+      <ScheduleCalendar
+        days={[]}
+        view="month"
+        techniciansById={new Map()}
+        onSelectEvent={jest.fn()}
+      />,
+    );
     expect(screen.getByText('No hay días visibles')).toBeInTheDocument();
   });
 });

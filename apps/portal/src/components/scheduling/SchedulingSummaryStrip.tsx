@@ -86,15 +86,15 @@ export function SchedulingSummaryStrip({
     } satisfies WfmDashboardSummary['pendingInbox']);
 
   const pendingValue = formatMetric(pendingInbox.totalOpen, isLoading);
-  const todayValue = formatMetric(summary?.todayCount, isLoading);
-  const assignedValue = formatMetric(summary?.technicianLoad.length, isLoading);
-  const alertsValue = formatMetric(summary?.alerts.length ?? summary?.atRiskCount, isLoading);
+  const readyValue = formatMetric(pendingInbox.readyToScheduleCount, isLoading);
+  const overdueValue = formatMetric(pendingInbox.overdueSlaCount, isLoading);
+  const atRiskValue = formatMetric(summary?.atRiskCount ?? summary?.alerts.length, isLoading);
 
   return (
-    <section aria-label="Resumen de agendamiento" className="space-y-3">
+    <section aria-label="Resumen operativo" className="space-y-3">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
-          Estado actual del centro de agendamiento
+          Pulso ejecutivo de programación
         </p>
         <Badge variant="neutral" className="px-3 py-1 text-[11px] uppercase tracking-[0.12em]">
           Lectura en tiempo real
@@ -104,34 +104,34 @@ export function SchedulingSummaryStrip({
       <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
         <SummaryCard
           eyebrow="Bandeja"
-          title="Pendientes por agendar"
+          title="Pendientes por programar"
           value={pendingValue}
-          description={`Listas para agendar: ${formatMetric(pendingInbox.readyToScheduleCount, isLoading)} · Faltan datos: ${formatMetric(pendingInbox.needsContextCount, isLoading)}`}
-          detail={`Con tiempo comprometido vencido: ${formatMetric(pendingInbox.overdueSlaCount, isLoading)}`}
+          description={`Solicitudes abiertas que siguen esperando decisión operativa.`}
+          detail={`Faltan datos en ${formatMetric(pendingInbox.needsContextCount, isLoading)} caso(s).`}
           actionHref="/dashboard/scheduling/pending-visits"
           actionLabel="Abrir bandeja"
           highlighted
         />
 
         <SummaryCard
-          eyebrow="Agenda"
-          title="Eventos de hoy"
-          value={todayValue}
-          description="Tareas activas de la jornada para seguimiento inmediato."
+          eyebrow="Listas"
+          title="Listas para programar"
+          value={readyValue}
+          description="Ya tienen contexto suficiente para asignar técnico y franja."
         />
 
         <SummaryCard
-          eyebrow="Capacidad"
-          title="Personas asignadas"
-          value={assignedValue}
-          description="Equipo con carga operativa dentro del rango seleccionado."
+          eyebrow="Compromiso"
+          title="Tiempo comprometido vencido"
+          value={overdueValue}
+          description="Solicitudes abiertas que ya excedieron su tiempo esperado de respuesta."
         />
 
         <SummaryCard
-          eyebrow="Alertas"
-          title="Alertas de agenda"
-          value={alertsValue}
-          description="Situaciones que requieren atencion para mantener continuidad operativa."
+          eyebrow="Riesgo"
+          title="Trabajos en riesgo"
+          value={atRiskValue}
+          description="Eventos o alertas que requieren intervención para sostener la continuidad."
         />
       </div>
     </section>

@@ -1,19 +1,25 @@
 # RUNBOOK-AI-WORKFLOW-COPILOT
 
 **Version:** 1.0  
-**Estado:** Aprobado  
+**Estado:** Deprecado  
 **Fecha:** 2026-05-19  
 **Modo activo:** Mixto
 
 ## Proposito
 
-Definir la superficie activa de asistencia IA del repo para reducir duplicacion documental y evitar drift entre herramientas.
+Documento historico de la etapa en la que GitHub Copilot fue la superficie primaria del repo. Se conserva solo para trazabilidad.
 
 ## Flujo Vigente
 
-GitHub Copilot en VS Code es el asistente activo. `AGENTS.md` es la fuente maestra para gobernanza, stack, comandos, skills, gotchas, entregables y boundaries.
+Este runbook ya no describe el estado vigente. La superficie activa actual se documenta en `AGENTS.md`, `.github/copilot-instructions.md` y [RUNBOOK-AI-WORKFLOW-MULTIAGENT-v1.1.md](/home/sley/Documentos/appiw/docs/runbooks/RUNBOOK-AI-WORKFLOW-MULTIAGENT-v1.1.md).
 
-## Superficies Activas
+## Estado actual
+
+- No usar este archivo como instruccion operativa vigente.
+- Mantenerlo solo como evidencia historica de la fase Copilot-first.
+- Para trabajo actual con Copilot, OpenCode o Codex, seguir el runbook multi-asistente.
+
+## Referencia historica
 
 - `.github/copilot-instructions.md`: bootstrap minimo de Copilot.
 - `.github/instructions/*.instructions.md`: reglas contextuales por path.

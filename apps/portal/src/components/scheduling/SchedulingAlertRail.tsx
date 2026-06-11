@@ -14,19 +14,21 @@ interface SchedulingAlertRailProps {
   alerts: WfmDashboardAlert[];
   onOpenEvent: (eventId: string) => void;
   onFilterTechnician: (technicianId: string) => void;
+  eyebrow?: string;
+  title?: string;
+  description?: string;
 }
 
 export function SchedulingAlertRail({
   alerts,
   onOpenEvent,
   onFilterTechnician,
+  eyebrow = 'Alertas',
+  title = 'Alertas de agenda',
+  description = 'Alertas calculadas con la información disponible sobre horarios, carga y seguimiento.',
 }: SchedulingAlertRailProps) {
   return (
-    <PortalPanel
-      eyebrow="Alertas"
-      title="Alertas de agenda"
-      description="Alertas calculadas con la información disponible sobre horarios, carga y seguimiento."
-    >
+    <PortalPanel eyebrow={eyebrow} title={title} description={description}>
       {alerts.length === 0 ? (
         <PortalEmptyState
           title="Sin alertas activas"

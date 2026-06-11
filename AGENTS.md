@@ -9,28 +9,52 @@
 
 ## AI Workflow Activo
 
-**Asistente activo:** GitHub Copilot en VS Code.
+**Asistentes activos:** GitHub Copilot (VS Code), OpenCode (CLI / TUI / web) y Codex. Los tres estan subordinados a `AGENTS.md`, no se prefiere uno sobre otro salvo que el usuario lo indique explicitamente para una tarea concreta.
 
 **Superficies activas:**
 
-- `.github/copilot-instructions.md` — bootstrap minimo para Copilot.
-- `.github/instructions/*.instructions.md` — reglas contextuales por path.
-- `.github/prompts/*.prompt.md` — prompts operativos reutilizables.
-- `.agents/skills/` — skills bajo demanda; este archivo prevalece sobre cualquier skill individual.
+- `.github/copilot-instructions.md` — bootstrap agnostico de IA, leido por Copilot automaticamente y referenciado por OpenCode desde `instructions`. Codex tambien debe consumirlo como capa de arranque despues de `AGENTS.md`. Cualquier IA que arranque en el workspace debe leerlo.
+- `.opencode/opencode.json` — declaracion explicita de OpenCode: `instructions`, `skills.paths` y `mcp` (chrome-devtools, context7, playwright). Es la superficie de paridad con Copilot.
+- `.github/instructions/*.instructions.md` — reglas contextuales por path; aplican en su `applyTo` para ambas IAs.
+- `.github/prompts/*.prompt.md` — prompts operativos reutilizables; disponibles para cualquier asistente compatible con prompts markdown del workspace.
+- `.agents/skills/` — catalogo activo de skills. `INDEX.md` y `MANIFEST.json` son la fuente de verdad. OpenCode las descubre via `skills.paths`; Copilot y Codex las usan segun el mecanismo de skills disponible en su cliente o sesion.
 
 **Superficies pasivas por ahora:**
 
-- `CLAUDE.md` — deprecado hasta que Claude Code vuelva a ser herramienta activa.
-- `.opencode/` — contingencia recuperable, no fuente activa de gobernanza.
+- `CLAUDE.md` — deprecado hasta que Claude Code vuelva a ser herramienta activa. No se usa como fuente de verdad aunque el archivo exista en el repo.
 
-### Reactivacion De Herramientas Pasivas
+### Precedencia entre IAs y superficies
 
-Si `CLAUDE.md` u OpenCode vuelven a estar activos:
+Orden efectivo cuando una IA arranca en el workspace y ejecuta una tarea:
+
+1. `AGENTS.md` — fuente maestra, prevalece sobre todo lo demas.
+2. `.github/copilot-instructions.md` — bootstrap agnostico que apunta a este documento y resume flujo, recordsatorios criticos y reglas de precedencia.
+3. PRD/HLD/ADR vigente del modulo afectado.
+4. `.github/instructions/*.instructions.md` — reglas contextuales por path, complementan a este documento en su `applyTo`.
+5. `.agents/skills/INDEX.md` y la skill individual activada por descripcion.
+6. Configuracion especifica del cliente (`.opencode/opencode.json`, ajustes de Copilot, variables de entorno) — auxiliar, nunca debe contradecir los puntos anteriores.
+
+Si dos artefactos chocan en multi-tenancy, seguridad, boundaries o stack, no sintetices por conveniencia: documenta el conflicto y escala.
+
+### Reactivacion o desactivacion de herramientas IA
+
+Si una IA nueva se suma al workflow o una existente se desactiva:
 
 1. Comparar su bootstrap contra este documento.
 2. Reemplazar reglas duplicadas por referencias a `AGENTS.md`.
 3. Actualizar este documento si cambia la precedencia, el stack, los boundaries o la seguridad.
-4. Validar PRD, HLD y ADR vigentes antes de ejecutar tareas productivas.
+4. Si OpenCode se desactiva, vaciar `.opencode/opencode.json` (dejar solo `$schema`) o borrarlo, y restaurar `.opencode/DISABLED.md` si se conserva trazabilidad historica.
+5. Validar PRD, HLD y ADR vigentes antes de ejecutar tareas productivas con la IA reactivada.
+
+### Matriz operativa por capacidad
+
+| Capacidad | Fuente principal | Regla operativa |
+| --- | --- | --- |
+| Skills | `.agents/skills/INDEX.md` + `.agents/skills/MANIFEST.json` | Reutilizables por cualquier asistente que soporte skills del workspace; no crear catalogos paralelos por cliente. |
+| Prompts | `.github/prompts/` | Prompts reutilizables y agnosticos de proveedor; deben remitir a `AGENTS.md`, artefactos del modulo y restricciones reales. |
+| Reglas por path | `.github/instructions/*.instructions.md` | Complementan a `AGENTS.md`; aplican por `applyTo`, no reemplazan la gobernanza global. |
+| MCP | `.opencode/opencode.json` para OpenCode | Los MCP son cliente-dependientes: OpenCode los declara en config versionada; en Codex dependen de la sesion activa y no de un archivo ficticio del repo. |
+| Agentes / subagentes | Skills de workflow existentes | Preferir `brainstorming`, `writing-plans`, `architect-review` y `subagent-driven-development` antes que inventar agentes custom paralelos del repo. |
 
 ### Prompts Operativos
 

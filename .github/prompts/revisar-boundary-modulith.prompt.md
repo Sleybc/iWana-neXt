@@ -8,6 +8,7 @@ agent: "agent"
 Realiza una revision enfocada en boundaries del modulith para el cambio indicado.
 
 Instrucciones:
+- Este prompt es agnostico de proveedor: cualquier asistente debe seguir `AGENTS.md`, el bootstrap vigente y las skills aplicables del workspace.
 - Evalua el cambio con mentalidad de review arquitectonico, no de implementacion.
 - Revisa si hay:
   - acceso directo a tablas o entidades de otro modulo

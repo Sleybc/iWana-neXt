@@ -15,7 +15,7 @@ Lee estos artefactos en este orden — no asumas nada sin leerlos:
 1. `docs/hlds/HLD-MOD08-PARTIES-v1.0.md` — fuente de verdad de F2
 2. `docs/adrs/ADR-030-Modelo-Party-Multi-Rol.md`
 3. `docs/adrs/ADR-025-Subscriber-Modelo-Dos-Dimensiones.md`
-4. `AGENTS.md`, `CLAUDE.md`
+4. `AGENTS.md`, `.github/copilot-instructions.md`
 
 ---
 

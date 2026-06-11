@@ -12,6 +12,9 @@ interface SchedulingTimelineBoardProps {
   techniciansById: Map<string, InternalUser>;
   selectedDayKey: string;
   onSelectEvent: (event: WfmScheduleEvent) => void;
+  eyebrow?: string;
+  title?: string;
+  description?: string;
 }
 
 export function SchedulingTimelineBoard({
@@ -19,15 +22,14 @@ export function SchedulingTimelineBoard({
   techniciansById,
   selectedDayKey,
   onSelectEvent,
+  eyebrow = 'Seguimiento del día',
+  title = 'Personas asignadas',
+  description = 'Bloques ordenados por hora para abrir detalle operativo sin arrastrar y soltar.',
 }: SchedulingTimelineBoardProps) {
   const groups = buildTimelineGroups(events, techniciansById, selectedDayKey);
 
   return (
-    <PortalPanel
-      eyebrow="Seguimiento del día"
-      title="Personas asignadas"
-      description="Bloques ordenados por hora para abrir detalle operativo sin arrastrar y soltar."
-    >
+    <PortalPanel eyebrow={eyebrow} title={title} description={description}>
       {groups.length === 0 ? (
         <PortalEmptyState
           title="Sin eventos para el día"

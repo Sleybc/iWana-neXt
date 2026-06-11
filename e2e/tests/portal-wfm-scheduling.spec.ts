@@ -1220,12 +1220,14 @@ test('admin crea, reagenda y completa un evento con orden de trabajo desde Progr
 
   await page.goto('/dashboard/scheduling');
 
-  await expect(page.getByRole('heading', { name: 'Programacion' })).toBeVisible();
-  await page.getByRole('button', { name: 'Calendario' }).click();
+  await expect(page.getByRole('heading', { name: 'Programación' })).toBeVisible();
+  await expect(page.getByText('Pulso ejecutivo de programación')).toBeVisible();
+  await page.getByRole('link', { name: 'Abrir agenda' }).click();
+  await expect(page.getByRole('heading', { name: 'Agenda' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Instalacion inicial de fibra' })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Crear evento' }).click();
-  await expect(page.getByText('Crear evento operativo')).toBeVisible();
+  await page.getByRole('button', { name: 'Agendar tarea' }).click();
+  await expect(page.getByText('Agendar tarea')).toBeVisible();
 
   await page.getByRole('combobox', { name: 'Tipo de trabajo' }).click();
   await page.getByRole('option', { name: 'Instalación' }).click();
@@ -1233,12 +1235,12 @@ test('admin crea, reagenda y completa un evento con orden de trabajo desde Progr
   await page.getByRole('option', { name: 'Luisa Campos' }).click();
   await page.getByLabel('Título operativo').fill('Alta fibra barrio sur');
   const createDialog = page.getByRole('dialog').filter({
-    has: page.getByRole('heading', { name: 'Crear evento operativo' }),
+    has: page.getByRole('heading', { name: 'Agendar tarea' }),
   });
   await page.locator('label').filter({ hasText: 'Crear orden de trabajo asociada' }).click();
   await expect(page.getByLabel('Resumen operativo')).toBeVisible();
   await page.getByLabel('Resumen operativo').fill('Instalacion residencial nueva');
-  await page.getByRole('dialog').getByRole('button', { name: 'Crear evento' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Agendar tarea' }).click();
 
   await expect(page.getByRole('heading', { name: 'Alta fibra barrio sur' })).toBeVisible();
 
@@ -1276,11 +1278,11 @@ test('admin abre Programación desde CRM y agenda instalación con la nueva fran
   await setupSchedulingMocks(page, 'ADMIN', { enableCrmInstallationFlow: true });
 
   await page.goto(
-    `/dashboard/scheduling?open=create&type=INSTALLATION&expedienteId=${CRM_EXPEDIENTE_ID}`,
+    `/dashboard/scheduling/agenda?open=create&type=INSTALLATION&expedienteId=${CRM_EXPEDIENTE_ID}`,
   );
 
   const createDialog = page.getByRole('dialog').filter({
-    has: page.getByRole('heading', { name: 'Crear evento operativo' }),
+    has: page.getByRole('heading', { name: 'Agendar tarea' }),
   });
 
   await expect(page.getByText(`Agendando instalación para ${CRM_EXPEDIENTE_NAME}.`)).toBeVisible();
@@ -1314,7 +1316,7 @@ test('admin confirma una visita pendiente desde la bandeja WFM', async ({ page }
     .first()
     .click();
 
-  const stepTwoToggle = page.getByRole('button', { name: /Contexto operativo y ventana/i });
+  const stepTwoToggle = page.getByRole('button', { name: /Ajustes de contexto/i });
   await stepTwoToggle.click();
   await page.getByRole('textbox', { name: 'Dirección operativa' }).fill('Calle 45 # 12-30');
   await page.getByRole('textbox', { name: 'Municipio' }).fill('Bogotá');
@@ -1371,16 +1373,124 @@ test('admin confirma una visita pendiente desde la bandeja WFM', async ({ page }
   await expect(scheduledVisitRow.getByText('Agendada')).toBeVisible();
 });
 
+test('admin abre el formulario manual y valida campos obligatorios', async ({ page }) => {
+  await seedPortalSession(page, 'ADMIN', 'admin-001');
+  await setupSchedulingMocks(page, 'ADMIN');
+
+  await page.goto('/dashboard/scheduling/pending-visits');
+
+  await expect(page.getByRole('heading', { name: 'Visitas pendientes' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: /Instalación GPON barrio norte/i })).toBeVisible();
+  await page
+    .getByRole('button', { name: /Instalación GPON barrio norte/i })
+    .first()
+    .click();
+
+  await expect(page.getByRole('button', { name: /Prefiero agendar manualmente/i })).toBeVisible();
+  await page.getByRole('button', { name: /Prefiero agendar manualmente/i }).click();
+
+  await expect(page.getByLabel('Técnico')).toBeVisible();
+  await expect(page.getByLabel('Fecha')).toBeVisible();
+  await expect(page.getByLabel('Hora de inicio')).toBeVisible();
+  await expect(page.getByLabel('Duración (min)')).toBeVisible();
+
+  await page.getByLabel('Fecha').fill('');
+  await page.getByLabel('Duración (min)').fill('');
+
+  await page.getByRole('button', { name: 'Revisar agenda manual' }).click();
+
+  await expect(page.getByText('Selecciona un técnico para continuar.')).toBeVisible();
+  await expect(page.getByText('Define una fecha válida para la agenda manual.')).toBeVisible();
+  await expect(
+    page.getByText('Define una hora de inicio válida para la agenda manual.'),
+  ).toBeVisible();
+  await expect(page.getByText('La duración mínima es de 15 minutos.')).toBeVisible();
+});
+
+test('admin agenda manualmente sin pasar por recomendaciones', async ({ page }) => {
+  await seedPortalSession(page, 'ADMIN', 'admin-001');
+  await setupSchedulingMocks(page, 'ADMIN');
+
+  await page.goto('/dashboard/scheduling/pending-visits');
+
+  await expect(page.getByRole('heading', { name: 'Visitas pendientes' })).toBeVisible();
+  await page
+    .getByRole('button', { name: /Instalación GPON barrio norte/i })
+    .first()
+    .click();
+
+  await page.getByRole('button', { name: /Prefiero agendar manualmente/i }).click();
+
+  await expect(page.getByLabel('Técnico')).toBeVisible();
+
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowIso = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+
+  await page.getByRole('combobox', { name: 'Técnico' }).click();
+  await page.getByRole('option', { name: /Luisa Campos/ }).click();
+
+  await page.getByLabel('Fecha').fill(tomorrowIso);
+  await page.getByLabel('Hora de inicio').fill('14:00');
+  await page.getByLabel('Duración (min)').fill('120');
+
+  const schedulePromise = page.waitForResponse(
+    (response) =>
+      response.url().includes('/visit-requests/') &&
+      response.url().includes('/schedule') &&
+      response.request().method() === 'POST',
+  );
+
+  await page.getByRole('button', { name: 'Revisar agenda manual' }).click();
+  await expect(page.getByText('Agenda manual validada')).toBeVisible();
+  await page.getByRole('button', { name: 'Confirmar agenda' }).click();
+
+  const response = await schedulePromise;
+  expect(response.status()).toBe(201);
+
+  await expect(
+    page.getByText('La solicitud Instalación GPON barrio norte quedó agendada correctamente.'),
+  ).toBeVisible();
+});
+
+test('admin conserva la bandeja pura al cerrar el detalle de una solicitud', async ({ page }) => {
+  await seedPortalSession(page, 'ADMIN', 'admin-001');
+  await setupSchedulingMocks(page, 'ADMIN');
+
+  await page.goto('/dashboard/scheduling/pending-visits');
+
+  await expect(page.getByRole('heading', { name: 'Visitas pendientes' })).toBeVisible();
+  await page
+    .getByRole('button', { name: /Instalación GPON barrio norte/i })
+    .first()
+    .click();
+
+  await page.getByRole('combobox', { name: 'Duración estimada' }).click();
+  await page.getByRole('option', { name: '2 h' }).click();
+  await page.getByRole('button', { name: 'Calcular recomendaciones' }).click();
+  await expect(page.getByText('Puntuación: 91').first()).toBeVisible();
+
+  await page.locator('button[aria-label="Cerrar panel"]').click();
+
+  await expect(page.getByText('Pendiente por agendar')).toBeVisible();
+  await expect(
+    page.getByText(
+      'Selecciona una solicitud de la bandeja para revisar contexto y enviarla a la agenda central.',
+    ),
+  ).toBeVisible();
+  await expect(page.getByText('Matriz semanal')).toHaveCount(0);
+  await expect(page.getByText('Capacidad por técnico')).toHaveCount(0);
+});
+
 test('technician solo visualiza trabajos asignados en su agenda', async ({ page }) => {
   await seedPortalSession(page, 'TECHNICIAN', TECHNICIAN_ID);
   await setupSchedulingMocks(page, 'TECHNICIAN');
 
   await page.goto('/dashboard/scheduling');
 
-  await expect(page.getByRole('heading', { name: 'Programacion' })).toBeVisible();
-  await expect(page.getByText('Centro operativo')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Agenda' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Instalacion inicial de fibra' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Crear evento' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Agendar tarea' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Lista' }).click();
   await expect(page.getByRole('gridcell', { name: 'Luisa Campos' }).first()).toBeVisible();
@@ -1392,11 +1502,11 @@ test('admin conserva una agenda operativa usable en viewport movil', async ({ pa
   await seedPortalSession(page, 'ADMIN', 'admin-001');
   await setupSchedulingMocks(page, 'ADMIN');
 
-  await page.goto('/dashboard/scheduling');
+  await page.goto('/dashboard/scheduling/agenda');
 
-  await expect(page.getByRole('heading', { name: 'Programacion' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Agenda' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Actualizar' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Crear evento' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Agendar tarea' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Lista' }).click();
   await expect(page.getByRole('button', { name: /Ver detalle de/i })).toBeVisible();
@@ -1412,27 +1522,21 @@ test('admin conserva una agenda operativa usable en viewport movil', async ({ pa
   ).toBeVisible();
 });
 
-test('admin visualiza centro operativo y abre detalle desde timeline', async ({ page }) => {
+test('admin visualiza resumen operativo y abre detalle desde la jornada', async ({ page }) => {
   await seedPortalSession(page, 'ADMIN', 'admin-001');
   await setupSchedulingMocks(page, 'ADMIN');
 
   await page.goto('/dashboard/scheduling');
 
-  await expect(page.getByRole('button', { name: 'Centro operativo' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Calendario' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Lista' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Ir a bandeja pendiente' })).toBeVisible();
-
-  await page.getByRole('link', { name: 'Ir a bandeja pendiente' }).click();
+  await expect(page.getByRole('heading', { name: 'Programación' })).toBeVisible();
+  await expect(page.getByText('Decisiones pendientes')).toBeVisible();
+  await expect(page.getByText('Riesgos que requieren atención')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Abrir agenda' })).toBeVisible();
+  await page.goto('/dashboard/scheduling/pending-visits');
   await expect(page.getByRole('heading', { name: 'Visitas pendientes' })).toBeVisible();
 
   await page.goto('/dashboard/scheduling');
-
-  await selectDateFromPicker(page, page, 'Desde', buildDateInput(1));
-  await selectDateFromPicker(page, page, 'Hasta', buildDateInput(1));
-  await page.getByRole('button', { name: 'Actualizar' }).click();
-
-  await page.getByRole('button', { name: 'Abrir evento Instalacion inicial de fibra' }).click();
+  await page.getByRole('button', { name: /Evento Instalacion inicial de fibra/i }).click();
   await expect(
     page
       .getByRole('dialog')

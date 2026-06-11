@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, ChevronDown, Clock3, Sparkles, X } from 'lucide-react';
+import { AlertTriangle, CalendarPlus, ChevronDown, Clock3, Sparkles, X } from 'lucide-react';
 import { Badge, Button, DatePicker, Input, Select } from '@iwana/ui';
 import type {
   InternalUser,
@@ -19,11 +19,15 @@ import {
   getWfmWorkTypeLabel,
 } from './scheduling-ui';
 import {
+  buildScheduleWindow,
   getDefaultDurationForWorkType,
   getScheduleTimeOptionsForWorkType,
+  isScheduleWindowAllowedForWorkType,
   toDateFromLocalDateValue,
   toIsoFromLocalDateAndTime,
   toLocalDateTimeParts,
+  toLocalDateValue,
+  toLocalTimeValue,
 } from './schedule-event-time';
 import { getOperatingWindowMessage, useOperatingWindow } from './useOperatingWindow';
 import {
@@ -38,6 +42,7 @@ import {
   getVisitRequestStatusVariant,
   isTerminalVisitRequestStatus,
 } from './pending-visits-ui';
+import type { MatrixCellSelection, MatrixManualScheduleDraft } from './matrix-scheduling-selection';
 
 interface VisitRequestRecommendationPanelProps {
   selectedVisitRequest: WfmVisitRequest | null;
@@ -45,14 +50,24 @@ interface VisitRequestRecommendationPanelProps {
   techniciansById: Map<string, InternalUser>;
   recommendations: WfmScheduleRecommendation[];
   selectedRecommendationId: string | null;
+  matrixCellSelection?: MatrixCellSelection | null;
+  manualSelectionDraft?: MatrixManualScheduleDraft | null;
   isLoadingRecommendations: boolean;
   recommendationError: string | null;
   isSavingContext: boolean;
   onRecommend: (payload: VisitRecommendationDraft) => Promise<void>;
   onSelectRecommendation: (recommendationId: string) => void;
+  onManualSelectionChange?: (draft: MatrixManualScheduleDraft | null) => void;
   onSaveContext: (payload: UpdateWfmVisitRequestContextDto) => Promise<void>;
   onOpenConfirm: () => void;
+  presentation?: 'drawer' | 'inline';
   onClose?: () => void;
+}
+
+export interface ManualSchedulePayload {
+  assignedUserId: string;
+  scheduledStartAt: string;
+  scheduledEndAt: string;
 }
 
 export interface VisitRecommendationDraft {
@@ -141,13 +156,17 @@ export function VisitRequestRecommendationPanel({
   techniciansById,
   recommendations,
   selectedRecommendationId,
+  matrixCellSelection = null,
+  manualSelectionDraft = null,
   isLoadingRecommendations,
   recommendationError,
   isSavingContext,
   onRecommend,
   onSelectRecommendation,
+  onManualSelectionChange = () => undefined,
   onSaveContext,
   onOpenConfirm,
+  presentation = 'drawer',
   onClose,
 }: VisitRequestRecommendationPanelProps) {
   const [contextDraft, setContextDraft] = useState<ContextDraft>(() => toContextDraft(null));
@@ -155,6 +174,12 @@ export function VisitRequestRecommendationPanel({
   const [durationMinutes, setDurationMinutes] = useState('');
   const [searchHorizonDays, setSearchHorizonDays] = useState('7');
   const [isContextExpanded, setIsContextExpanded] = useState(false);
+  const [isManualFormOpen, setIsManualFormOpen] = useState(false);
+  const [manualTechnicianId, setManualTechnicianId] = useState('');
+  const [manualDate, setManualDate] = useState('');
+  const [manualStartTime, setManualStartTime] = useState('');
+  const [manualDuration, setManualDuration] = useState('');
+  const [manualErrors, setManualErrors] = useState<string[]>([]);
   const hasDurationSelection = durationMinutes.trim().length > 0;
   const { operatingWindow, isLoadingOperatingWindow, operatingWindowError } = useOperatingWindow({
     workType: selectedVisitRequest?.workType,
@@ -167,6 +192,144 @@ export function VisitRequestRecommendationPanel({
     selectedVisitRequest?.workType,
     operatingWindow,
   );
+  const {
+    operatingWindow: manualOperatingWindow,
+    isLoadingOperatingWindow: isLoadingManualOperatingWindow,
+    operatingWindowError: manualOperatingWindowError,
+  } = useOperatingWindow({
+    workType: selectedVisitRequest?.workType,
+    dateLocal: manualDate || null,
+    organizationSiteId: selectedVisitRequest?.organizationSiteId ?? null,
+    technicianId: manualTechnicianId || null,
+    enabled: Boolean(selectedVisitRequest) && (isManualFormOpen || Boolean(manualSelectionDraft)),
+  });
+  const manualOperatingWindowMessage = getOperatingWindowMessage(manualOperatingWindow);
+  const manualSuggestedTimeOptions = getScheduleTimeOptionsForWorkType(
+    selectedVisitRequest?.workType,
+    manualOperatingWindow,
+    Number(manualDuration),
+  ).slice(0, 16);
+
+  const manualEndPreview = (() => {
+    if (!manualStartTime || !manualDuration) {
+      return null;
+    }
+    const duration = Number(manualDuration);
+    if (!Number.isFinite(duration) || duration <= 0) {
+      return null;
+    }
+    const startIso = toIsoFromLocalDateAndTime(manualDate, manualStartTime);
+    if (!startIso) {
+      return null;
+    }
+    const endDate = new Date(new Date(startIso).getTime() + duration * 60 * 1000);
+    if (Number.isNaN(endDate.getTime())) {
+      return null;
+    }
+    return formatWfmDateTime(endDate.toISOString());
+  })();
+  const manualScheduleWindow = buildScheduleWindow(
+    manualDate,
+    manualStartTime,
+    Number(manualDuration),
+  );
+  const manualWindowWarning =
+    selectedVisitRequest?.workType === 'INSTALLATION' && manualDate
+      ? manualOperatingWindow?.status === 'CLOSED'
+        ? (manualOperatingWindowMessage ??
+          'La fecha seleccionada no tiene una ventana operativa habilitada.')
+        : manualScheduleWindow &&
+            !isScheduleWindowAllowedForWorkType(
+              selectedVisitRequest.workType,
+              {
+                startAt: manualScheduleWindow.startAt,
+                endAt: manualScheduleWindow.endAt,
+              },
+              manualOperatingWindow,
+            )
+          ? 'La hora elegida queda fuera de la ventana operativa configurada para instalaciones.'
+          : null
+      : null;
+
+  function buildManualSelectionForConfirm():
+    | { draft: MatrixManualScheduleDraft; errors: string[] }
+    | { draft: null; errors: string[] } {
+    const errors: string[] = [];
+
+    if (missingFields.length > 0) {
+      errors.push('Completa dirección y municipio antes de agendar manualmente.');
+    }
+
+    if (!manualTechnicianId) {
+      errors.push('Selecciona un técnico para continuar.');
+    }
+
+    if (!manualDate || !toDateFromLocalDateValue(manualDate)) {
+      errors.push('Define una fecha válida para la agenda manual.');
+    }
+
+    if (!manualStartTime) {
+      errors.push('Define una hora de inicio válida para la agenda manual.');
+    }
+
+    const duration = Number(manualDuration);
+    if (!manualDuration || !Number.isFinite(duration) || duration < 15) {
+      errors.push('La duración mínima es de 15 minutos.');
+    }
+
+    if (errors.length > 0) {
+      return { draft: null, errors };
+    }
+
+    const startIso = toIsoFromLocalDateAndTime(manualDate, manualStartTime);
+    if (!startIso) {
+      return { draft: null, errors: ['Define una hora de inicio válida para la agenda manual.'] };
+    }
+
+    const selectedRecommendation = recommendations.find(
+      (recommendation) => getRecommendationKey(recommendation) === selectedRecommendationId,
+    );
+    const source =
+      selectedRecommendation &&
+      selectedRecommendation.technicianId === manualTechnicianId &&
+      toLocalDateValue(selectedRecommendation.scheduledStartAt) === manualDate &&
+      toLocalTimeValue(selectedRecommendation.scheduledStartAt) === manualStartTime
+        ? 'recommendation'
+        : 'manual';
+
+    return {
+      draft: {
+        technicianId: manualTechnicianId,
+        date: manualDate,
+        dayLabel: matrixCellSelection?.dayLabel ?? manualSelectionDraft?.dayLabel ?? manualDate,
+        availabilityLabel:
+          matrixCellSelection?.availabilityLabel ??
+          manualSelectionDraft?.availabilityLabel ??
+          'Selección manual en revisión',
+        riskMessages: matrixCellSelection?.riskMessages ?? manualSelectionDraft?.riskMessages ?? [],
+        startTime: manualStartTime,
+        duration: manualDuration,
+        source,
+      },
+      errors: [],
+    };
+  }
+
+  const handleManualSubmit = () => {
+    if (!selectedVisitRequest) {
+      return;
+    }
+
+    const result = buildManualSelectionForConfirm();
+    if (!result.draft || result.errors.length > 0) {
+      setManualErrors(result.errors);
+      return;
+    }
+
+    setManualErrors([]);
+    onManualSelectionChange(result.draft);
+    onOpenConfirm();
+  };
 
   useEffect(() => {
     setContextDraft(toContextDraft(selectedVisitRequest));
@@ -178,14 +341,118 @@ export function VisitRequestRecommendationPanel({
       ? getVisitRequestMissingFields(selectedVisitRequest)
       : [];
 
-    setDurationMinutes(
-      selectedVisitRequest
-        ? String(getDefaultDurationForWorkType(selectedVisitRequest.workType))
-        : '',
-    );
+    const defaultDuration = selectedVisitRequest
+      ? String(getDefaultDurationForWorkType(selectedVisitRequest.workType))
+      : '';
+
+    setDurationMinutes(defaultDuration);
     setSearchHorizonDays('7');
     setIsContextExpanded(nextMissingFields.length > 0);
+    setIsManualFormOpen(false);
+    setManualTechnicianId('');
+    setManualDate(
+      selectedVisitRequest?.requestedWindowStartAt
+        ? toLocalDateValue(selectedVisitRequest.requestedWindowStartAt)
+        : '',
+    );
+    setManualStartTime('');
+    setManualDuration(defaultDuration);
+    setManualErrors([]);
   }, [selectedVisitRequest?.id, selectedVisitRequest?.workType]);
+
+  useEffect(() => {
+    if (!manualSelectionDraft) {
+      return;
+    }
+
+    setIsManualFormOpen(true);
+    setManualTechnicianId(manualSelectionDraft.technicianId);
+    setManualDate(manualSelectionDraft.date);
+    setManualStartTime(manualSelectionDraft.startTime);
+    setManualDuration(manualSelectionDraft.duration);
+    setManualErrors([]);
+  }, [
+    manualSelectionDraft?.date,
+    manualSelectionDraft?.duration,
+    manualSelectionDraft?.source,
+    manualSelectionDraft?.startTime,
+    manualSelectionDraft?.technicianId,
+  ]);
+
+  useEffect(() => {
+    if (!selectedVisitRequest) {
+      return;
+    }
+
+    if (!manualTechnicianId && !manualDate && !manualStartTime) {
+      if (manualSelectionDraft) {
+        onManualSelectionChange(null);
+      }
+      return;
+    }
+
+    if (!manualTechnicianId || !manualDate) {
+      return;
+    }
+
+    const selectedRecommendation = recommendations.find(
+      (recommendation) => getRecommendationKey(recommendation) === selectedRecommendationId,
+    );
+    const source =
+      selectedRecommendation &&
+      selectedRecommendation.technicianId === manualTechnicianId &&
+      toLocalDateValue(selectedRecommendation.scheduledStartAt) === manualDate &&
+      toLocalTimeValue(selectedRecommendation.scheduledStartAt) === manualStartTime
+        ? 'recommendation'
+        : manualSelectionDraft?.source === 'recommendation' &&
+            manualSelectionDraft.technicianId === manualTechnicianId &&
+            manualSelectionDraft.date === manualDate &&
+            manualSelectionDraft.startTime === manualStartTime
+          ? 'recommendation'
+          : 'manual';
+
+    const nextDraft: MatrixManualScheduleDraft = {
+      technicianId: manualTechnicianId,
+      date: manualDate,
+      dayLabel: matrixCellSelection?.dayLabel ?? manualSelectionDraft?.dayLabel ?? manualDate,
+      availabilityLabel:
+        matrixCellSelection?.availabilityLabel ??
+        manualSelectionDraft?.availabilityLabel ??
+        'Selección manual en revisión',
+      riskMessages: matrixCellSelection?.riskMessages ?? manualSelectionDraft?.riskMessages ?? [],
+      startTime: manualStartTime,
+      duration: manualDuration,
+      source,
+    };
+
+    if (
+      manualSelectionDraft &&
+      manualSelectionDraft.technicianId === nextDraft.technicianId &&
+      manualSelectionDraft.date === nextDraft.date &&
+      manualSelectionDraft.dayLabel === nextDraft.dayLabel &&
+      manualSelectionDraft.availabilityLabel === nextDraft.availabilityLabel &&
+      manualSelectionDraft.startTime === nextDraft.startTime &&
+      manualSelectionDraft.duration === nextDraft.duration &&
+      manualSelectionDraft.source === nextDraft.source &&
+      manualSelectionDraft.riskMessages.join('||') === nextDraft.riskMessages.join('||')
+    ) {
+      return;
+    }
+
+    onManualSelectionChange(nextDraft);
+  }, [
+    manualDate,
+    manualDuration,
+    manualStartTime,
+    manualTechnicianId,
+    manualSelectionDraft,
+    matrixCellSelection?.availabilityLabel,
+    matrixCellSelection?.dayLabel,
+    matrixCellSelection?.riskMessages,
+    recommendations,
+    selectedRecommendationId,
+    selectedVisitRequest,
+  ]);
 
   if (!selectedVisitRequest) {
     return null;
@@ -194,509 +461,795 @@ export function VisitRequestRecommendationPanel({
   const missingFields = getVisitRequestMissingFields(selectedVisitRequest);
   const presentationStatus = getVisitRequestPresentationStatus(selectedVisitRequest);
   const isTerminalVisitRequest = isTerminalVisitRequestStatus(selectedVisitRequest.status);
+  const selectedMatrixTechnician = matrixCellSelection
+    ? (techniciansById.get(matrixCellSelection.technicianId) ?? null)
+    : null;
   const selectedRecommendation = recommendations.find(
     (recommendation) => getRecommendationKey(recommendation) === selectedRecommendationId,
+  );
+  const hasReadyManualSelection = Boolean(
+    manualSelectionDraft?.technicianId &&
+    manualSelectionDraft.date &&
+    manualSelectionDraft.startTime &&
+    manualSelectionDraft.duration &&
+    Number(manualSelectionDraft.duration) >= 15,
   );
   const displayTitle =
     customerDisplayName && selectedVisitRequest.originContext === 'CRM'
       ? customerDisplayName
       : selectedVisitRequest.title;
+  const footerLabel = selectedRecommendation
+    ? 'Confirmar franja seleccionada'
+    : hasReadyManualSelection
+      ? 'Confirmar agenda seleccionada'
+      : 'Selecciona una franja para continuar';
+
+  const panel = (
+    <aside
+      className={
+        presentation === 'inline'
+          ? 'flex h-full min-h-[720px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-dark-border dark:bg-dark-surface-2'
+          : 'relative z-10 flex h-dvh w-full max-w-[560px] flex-col border-l border-gray-200 bg-white shadow-2xl dark:border-dark-border dark:bg-dark-surface-1'
+      }
+    >
+      <header className="border-b border-gray-200 px-3 py-3 dark:border-dark-border">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+              Despacho de la solicitud
+            </p>
+            <p className="mt-1 text-base font-semibold text-gray-900 dark:text-white">
+              {displayTitle}
+            </p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {customerDisplayName ?? getVisitRequestReferenceLabel(selectedVisitRequest)}
+            </p>
+            {customerDisplayName && (
+              <p className="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">
+                {getVisitRequestReferenceLabel(selectedVisitRequest)}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => onClose?.()}
+            className="rounded-full border border-gray-200 p-1.5 text-gray-500 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:border-dark-border dark:text-gray-300 dark:hover:bg-dark-surface-3"
+            aria-label="Cerrar panel"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          {presentationStatus === 'NEEDS_CONTEXT' && missingFields.length > 0
+            ? `Para recomendar faltan: ${missingFields.join(', ')}.`
+            : getVisitRequestStatusDescription(presentationStatus)}
+        </p>
+      </header>
+
+      <div className="flex-1 space-y-3 overflow-y-auto p-3">
+        <div className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border dark:bg-dark-surface-2">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <Badge variant={getVisitRequestStatusVariant(presentationStatus)}>
+              {getVisitRequestStatusLabel(presentationStatus)}
+            </Badge>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="neutral">
+              {getVisitRequestOriginLabel(selectedVisitRequest.originContext)}
+            </Badge>
+            <Badge variant="info">{getWfmWorkTypeLabel(selectedVisitRequest.workType)}</Badge>
+            <Badge variant={getWorkOrderPriorityVariant(selectedVisitRequest.priority)}>
+              {getWorkOrderPriorityLabel(selectedVisitRequest.priority)}
+            </Badge>
+          </div>
+
+          <dl className="grid gap-2 text-sm text-gray-600 dark:text-gray-300">
+            <div className="border-t border-gray-200 pt-3 dark:border-dark-border">
+              <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
+                Dirección operativa
+              </dt>
+              <dd className="mt-1 text-sm text-gray-700 dark:text-gray-200">
+                {selectedVisitRequest.address || 'Sin dirección operativa'}
+              </dd>
+            </div>
+            <div className="border-t border-gray-200 pt-3 dark:border-dark-border">
+              <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
+                Territorio
+              </dt>
+              <dd className="mt-1 text-sm text-gray-700 dark:text-gray-200">
+                {formatVisitRequestTerritory(
+                  selectedVisitRequest.municipality,
+                  selectedVisitRequest.sector,
+                )}
+              </dd>
+            </div>
+            <div className="border-t border-gray-200 pt-3 dark:border-dark-border">
+              <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
+                Nota operativa
+              </dt>
+              <dd className="mt-1 text-sm text-gray-700 dark:text-gray-200">
+                {selectedVisitRequest.description || 'Sin nota operativa'}
+              </dd>
+            </div>
+          </dl>
+        </div>
+
+        {matrixCellSelection && (
+          <div className="space-y-3 rounded-2xl border border-iwana-secondary-200 bg-iwana-surface-soft p-4 dark:border-iwana-secondary-900/30 dark:bg-dark-surface-2">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                  Selección desde matriz
+                </p>
+                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                  {selectedMatrixTechnician
+                    ? getTechnicianDisplayName(selectedMatrixTechnician)
+                    : matrixCellSelection.technicianId}{' '}
+                  · {matrixCellSelection.dayLabel}
+                </p>
+              </div>
+              <Badge variant={matrixCellSelection.riskMessages.length > 0 ? 'warning' : 'info'}>
+                {matrixCellSelection.riskMessages.length > 0
+                  ? 'Requiere validación'
+                  : 'Lista para afinar'}
+              </Badge>
+            </div>
+            <div className="grid gap-2 text-sm text-gray-600 dark:text-gray-300">
+              <p>
+                <span className="font-semibold text-gray-900 dark:text-white">Estado del día:</span>{' '}
+                {matrixCellSelection.availabilityLabel}
+              </p>
+              {manualSelectionDraft?.startTime && (
+                <p>
+                  <span className="font-semibold text-gray-900 dark:text-white">Hora elegida:</span>{' '}
+                  {manualSelectionDraft.startTime}
+                  {manualSelectionDraft.source === 'manual' ? ' · libre' : ' · sugerida'}
+                </p>
+              )}
+            </div>
+            {manualSelectionDraft?.source === 'manual' && (
+              <PortalAlert
+                variant="warning"
+                title="Hora definida manualmente"
+                description="La disponibilidad definitiva se valida al confirmar contra ventana operativa y conflictos del técnico."
+              />
+            )}
+            {matrixCellSelection.riskMessages.length > 0 && (
+              <PortalAlert
+                variant="warning"
+                title="Advertencias del día seleccionado"
+                description={
+                  <ul className="list-disc space-y-1 pl-5">
+                    {matrixCellSelection.riskMessages.map((message) => (
+                      <li key={message}>{message}</li>
+                    ))}
+                  </ul>
+                }
+              />
+            )}
+          </div>
+        )}
+
+        {missingFields.length > 0 && (
+          <PortalAlert
+            variant="warning"
+            title="Completa contexto antes de recomendar"
+            description={`Aún faltan: ${missingFields.join(', ')}. Abre el bloque de contexto para completarlos.`}
+            icon={AlertTriangle}
+          />
+        )}
+
+        {isTerminalVisitRequest && (
+          <PortalAlert
+            variant="info"
+            title="Solicitud cerrada para despacho"
+            description="Esta solicitud está en estado terminal y ya no permite completar contexto ni recalcular recomendaciones."
+          />
+        )}
+
+        {contextError && (
+          <PortalAlert
+            variant="error"
+            title="No se pudo guardar el contexto"
+            description={contextError}
+          />
+        )}
+
+        {selectedVisitRequest.workType === 'INSTALLATION' && operatingWindowError && (
+          <PortalAlert
+            variant="warning"
+            title="No fue posible resolver la ventana operativa"
+            description={operatingWindowError}
+          />
+        )}
+
+        {selectedVisitRequest.workType === 'INSTALLATION' &&
+          !operatingWindowError &&
+          operatingWindowMessage && (
+            <PortalAlert
+              variant={operatingWindow?.status === 'OPEN' ? 'info' : 'warning'}
+              title={
+                operatingWindow?.status === 'OPEN'
+                  ? 'Ventana operativa aplicada'
+                  : 'Fecha cerrada para recomendar'
+              }
+              description={operatingWindowMessage}
+            />
+          )}
+
+        <div className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
+          <div className="flex items-start gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                Paso 1
+              </p>
+              <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                Define duración y búsqueda
+              </p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Primero define cuánto durará la instalación. Después calcula las recomendaciones.
+              </p>
+            </div>
+          </div>
+          <div className="grid gap-3">
+            <Select
+              id="visit-request-duration-minutes"
+              label="Duración estimada"
+              value={durationMinutes}
+              disabled={isTerminalVisitRequest}
+              placeholder="Selecciona una duración"
+              options={durationOptions}
+              onChange={(event) => setDurationMinutes(event.target.value)}
+            />
+            <Select
+              id="visit-request-search-horizon"
+              label="Horizonte de búsqueda"
+              value={searchHorizonDays}
+              disabled={isTerminalVisitRequest}
+              options={horizonOptions}
+              onChange={(event) => setSearchHorizonDays(event.target.value)}
+            />
+          </div>
+          <p className="text-xs text-gray-600 dark:text-gray-300">
+            {!hasDurationSelection
+              ? 'Selecciona primero la duración estimada para habilitar las recomendaciones.'
+              : selectedVisitRequest.workType === 'INSTALLATION' && isLoadingOperatingWindow
+                ? 'Estamos resolviendo la ventana operativa configurada para la fecha solicitada.'
+                : selectedVisitRequest.workType === 'INSTALLATION' &&
+                    operatingWindow?.status === 'CLOSED'
+                  ? (operatingWindowMessage ??
+                    'La fecha seleccionada no tiene una ventana operativa habilitada.')
+                  : missingFields.length > 0
+                    ? 'El cálculo ya puede usar la duración elegida, pero aún debes completar el contexto operativo faltante.'
+                    : 'Cuando confirmes la búsqueda, el sistema propondrá las mejores franjas por territorio y continuidad de ruta.'}
+          </p>
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              onClick={async () => {
+                try {
+                  setContextError(null);
+                  await onSaveContext(buildContextPayload(contextDraft));
+                  await onRecommend({
+                    durationMinutes: Number(durationMinutes),
+                    searchHorizonDays: Number(searchHorizonDays),
+                    municipality: contextDraft.municipality || undefined,
+                    sector: contextDraft.sector || undefined,
+                  });
+                } catch (error) {
+                  setContextError(error instanceof Error ? error.message : 'Error inesperado.');
+                }
+              }}
+              loading={isLoadingRecommendations}
+              disabled={
+                missingFields.length > 0 ||
+                isTerminalVisitRequest ||
+                !hasDurationSelection ||
+                (selectedVisitRequest.workType === 'INSTALLATION' &&
+                  (!!operatingWindowError || operatingWindow?.status === 'CLOSED'))
+              }
+            >
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
+              Calcular recomendaciones
+            </Button>
+          </div>
+
+          {recommendationError && (
+            <PortalAlert
+              variant="error"
+              title="No fue posible calcular recomendaciones"
+              description={recommendationError}
+            />
+          )}
+
+          {recommendations.length === 0 ? (
+            <PortalEmptyState
+              title="Sin recomendaciones todavía"
+              description="Cuando la solicitud esté lista, el panel mostrará técnicos y franjas ordenadas por cercanía territorial y continuidad de ruta."
+              icon={Sparkles}
+            />
+          ) : (
+            <div className="space-y-2">
+              {recommendations.map((recommendation) => {
+                const technician = techniciansById.get(recommendation.technicianId) ?? null;
+                const recommendationKey = getRecommendationKey(recommendation);
+                const isSelected = recommendationKey === selectedRecommendationId;
+
+                return (
+                  <button
+                    key={`${recommendation.technicianId}-${recommendation.scheduledStartAt}`}
+                    type="button"
+                    onClick={() => onSelectRecommendation(recommendationKey)}
+                    className={`w-full rounded-xl border px-3 py-2.5 text-left transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2 ${
+                      isSelected
+                        ? 'border-emerald-500 bg-emerald-50 dark:border-emerald-600 dark:bg-emerald-950/30'
+                        : 'border-gray-300 bg-white hover:border-gray-400 hover:bg-gray-50 dark:border-dark-border dark:bg-dark-surface-2 dark:hover:bg-dark-surface-3'
+                    }`}
+                  >
+                    <div className="flex items-baseline justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                          {technician
+                            ? getTechnicianDisplayName(technician)
+                            : recommendation.technicianId}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          {formatWfmDateTime(recommendation.scheduledStartAt)} -{' '}
+                          {formatWfmDateTime(recommendation.scheduledEndAt)}
+                        </p>
+                      </div>
+                      <span className="whitespace-nowrap text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                        Puntuación: {recommendation.score}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      <span>
+                        {recommendation.distanceKm !== null
+                          ? `${recommendation.distanceKm.toFixed(1)} km`
+                          : 'Sin georreferencia'}
+                      </span>
+                      <span aria-hidden="true">•</span>
+                      <span>Carga: {recommendation.totalScheduledMinutes} min</span>
+                      {recommendation.labels.length > 0 && (
+                        <>
+                          <span aria-hidden="true">•</span>
+                          <span className="italic">{recommendation.labels.join(', ')}</span>
+                        </>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
+          <button
+            type="button"
+            className="flex w-full items-start justify-between gap-3 rounded-2xl text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2 dark:hover:bg-dark-surface-3"
+            aria-expanded={isManualFormOpen}
+            aria-controls="visit-request-manual-schedule-panel"
+            onClick={() => {
+              setIsManualFormOpen((current) => !current);
+              setManualErrors([]);
+            }}
+          >
+            <div>
+              <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+                Salida directa
+              </p>
+              <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                Prefiero agendar manualmente
+              </p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Define técnico, fecha, hora de inicio y duración para crear la agenda sin pasar por
+                las recomendaciones.
+              </p>
+            </div>
+            <ChevronDown
+              className={`mt-1 h-4 w-4 shrink-0 text-gray-400 transition-opacity duration-200 ${
+                isManualFormOpen ? 'opacity-60' : 'opacity-100'
+              }`}
+              aria-hidden="true"
+            />
+          </button>
+
+          {isManualFormOpen && (
+            <div
+              id="visit-request-manual-schedule-panel"
+              className="space-y-3 border-t border-gray-100 pt-3 dark:border-dark-border"
+            >
+              {missingFields.length > 0 && (
+                <PortalAlert
+                  variant="warning"
+                  title="Completa contexto antes de agendar manualmente"
+                  description={`Aún faltan: ${missingFields.join(', ')}.`}
+                  icon={AlertTriangle}
+                />
+              )}
+
+              {selectedVisitRequest.workType === 'INSTALLATION' &&
+                !operatingWindowError &&
+                operatingWindow?.status === 'CLOSED' && (
+                  <PortalAlert
+                    variant="warning"
+                    title="Fecha cerrada para agendar"
+                    description={
+                      operatingWindowMessage ??
+                      'La fecha seleccionada no tiene una ventana operativa habilitada.'
+                    }
+                  />
+                )}
+
+              {selectedVisitRequest.workType === 'INSTALLATION' && manualOperatingWindowError && (
+                <PortalAlert
+                  variant="warning"
+                  title="No fue posible validar la ventana operativa del técnico"
+                  description={manualOperatingWindowError}
+                />
+              )}
+
+              {selectedVisitRequest.workType === 'INSTALLATION' &&
+                !manualOperatingWindowError &&
+                manualWindowWarning && (
+                  <PortalAlert
+                    variant="warning"
+                    title="La hora requiere validación adicional"
+                    description={manualWindowWarning}
+                  />
+                )}
+
+              <Select
+                id="visit-request-manual-technician"
+                label="Técnico"
+                value={manualTechnicianId}
+                disabled={isTerminalVisitRequest}
+                placeholder="Selecciona un técnico"
+                options={Array.from(techniciansById.values()).map((technician) => ({
+                  value: technician.id,
+                  label: getTechnicianDisplayName(technician),
+                }))}
+                onChange={(event) => {
+                  setManualTechnicianId(event.target.value);
+                  setManualErrors([]);
+                }}
+              />
+
+              <div className="grid gap-3">
+                <Input
+                  id="visit-request-manual-date"
+                  label="Fecha"
+                  type="date"
+                  value={manualDate}
+                  disabled={isTerminalVisitRequest}
+                  onChange={(event) => {
+                    setManualDate(event.target.value);
+                    setManualErrors([]);
+                  }}
+                />
+                <Input
+                  id="visit-request-manual-start-time"
+                  label="Hora de inicio"
+                  type="time"
+                  value={manualStartTime}
+                  disabled={isTerminalVisitRequest}
+                  onChange={(event) => {
+                    setManualStartTime(event.target.value);
+                    setManualErrors([]);
+                  }}
+                />
+                <Input
+                  id="visit-request-manual-duration"
+                  label="Duración (min)"
+                  type="number"
+                  min={15}
+                  step={15}
+                  value={manualDuration}
+                  disabled={isTerminalVisitRequest}
+                  onChange={(event) => {
+                    setManualDuration(event.target.value);
+                    setManualErrors([]);
+                  }}
+                />
+              </div>
+
+              <div className="space-y-2 rounded-2xl border border-gray-200 bg-gray-50/60 p-3 dark:border-dark-border dark:bg-dark-surface-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
+                    Horas sugeridas
+                  </p>
+                  {selectedVisitRequest.workType === 'INSTALLATION' &&
+                    isLoadingManualOperatingWindow && (
+                      <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                        Validando ventana...
+                      </span>
+                    )}
+                </div>
+                {manualSuggestedTimeOptions.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {manualSuggestedTimeOptions.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary ${
+                          manualStartTime === option.value
+                            ? 'border-emerald-400 bg-emerald-50 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-100'
+                            : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-dark-border dark:bg-dark-surface-1 dark:text-gray-200 dark:hover:bg-dark-surface-2'
+                        }`}
+                        onClick={() => {
+                          setManualStartTime(option.value);
+                          setManualErrors([]);
+                        }}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    No hay horas sugeridas para la duración actual. Puedes escribir una hora manual
+                    y validarla al confirmar.
+                  </p>
+                )}
+              </div>
+
+              {manualEndPreview && (
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Hora de fin calculada: {manualEndPreview}
+                </p>
+              )}
+
+              {manualErrors.length > 0 && (
+                <PortalAlert
+                  variant="error"
+                  title="No se pudo confirmar la agenda manual"
+                  description={
+                    <ul className="list-disc space-y-1 pl-5">
+                      {manualErrors.map((message) => (
+                        <li key={message}>{message}</li>
+                      ))}
+                    </ul>
+                  }
+                />
+              )}
+
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  disabled={isTerminalVisitRequest}
+                  onClick={handleManualSubmit}
+                >
+                  <CalendarPlus className="h-4 w-4" aria-hidden="true" />
+                  Revisar agenda manual
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
+          <button
+            type="button"
+            className="flex w-full items-start justify-between gap-3 rounded-2xl text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2 dark:hover:bg-dark-surface-3"
+            aria-expanded={isContextExpanded}
+            aria-controls="visit-request-context-panel"
+            onClick={() => setIsContextExpanded((current) => !current)}
+          >
+            <div>
+              <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+                Paso 2
+              </p>
+              <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                Ajustes de contexto (opcional)
+              </p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {missingFields.length > 0
+                  ? `Pendiente por completar: ${missingFields.join(', ')}.`
+                  : 'Úsalo solo si necesitas ajustar dirección, territorio, ventana o nota operativa antes de confirmar.'}
+              </p>
+            </div>
+            <ChevronDown
+              className={`mt-1 h-4 w-4 shrink-0 text-gray-400 transition-opacity duration-200 ${
+                isContextExpanded ? 'opacity-60' : 'opacity-100'
+              }`}
+              aria-hidden="true"
+            />
+          </button>
+
+          {isContextExpanded && (
+            <div
+              id="visit-request-context-panel"
+              className="mt-3 space-y-3 border-t border-gray-100 pt-3 dark:border-dark-border"
+            >
+              <Input
+                id="visit-request-address"
+                label="Dirección operativa"
+                value={contextDraft.address}
+                disabled={isTerminalVisitRequest}
+                onChange={(event) =>
+                  setContextDraft((current) => ({ ...current, address: event.target.value }))
+                }
+              />
+              <div className="grid gap-3">
+                <Input
+                  id="visit-request-municipality"
+                  label="Municipio"
+                  value={contextDraft.municipality}
+                  disabled={isTerminalVisitRequest}
+                  onChange={(event) =>
+                    setContextDraft((current) => ({
+                      ...current,
+                      municipality: event.target.value,
+                    }))
+                  }
+                />
+                <Input
+                  id="visit-request-sector"
+                  label="Sector"
+                  value={contextDraft.sector}
+                  disabled={isTerminalVisitRequest}
+                  onChange={(event) =>
+                    setContextDraft((current) => ({ ...current, sector: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="grid gap-3 rounded-lg border border-gray-200 p-3 dark:border-dark-border">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
+                  Franja preferida del cliente (opcional)
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Completa este bloque solo si el cliente pidió una franja específica.
+                </p>
+                <div className="grid gap-3">
+                  <DatePicker
+                    id="visit-request-window-start-date"
+                    label="Desde (fecha)"
+                    value={toDateFromLocalDateValue(contextDraft.requestedWindowStartDate)}
+                    disabled={isTerminalVisitRequest}
+                    onChange={(date) =>
+                      setContextDraft((current) => ({
+                        ...current,
+                        requestedWindowStartDate: date
+                          ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+                          : '',
+                      }))
+                    }
+                  />
+                  <Select
+                    id="visit-request-window-start-time"
+                    label="Desde qué hora puede recibir la visita"
+                    value={contextDraft.requestedWindowStartTime}
+                    disabled={isTerminalVisitRequest}
+                    placeholder="Selecciona una hora"
+                    options={requestTimeOptions}
+                    onChange={(event) =>
+                      setContextDraft((current) => ({
+                        ...current,
+                        requestedWindowStartTime: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="grid gap-3">
+                  <DatePicker
+                    id="visit-request-window-end-date"
+                    label="Hasta (fecha)"
+                    value={toDateFromLocalDateValue(contextDraft.requestedWindowEndDate)}
+                    disabled={isTerminalVisitRequest}
+                    onChange={(date) =>
+                      setContextDraft((current) => ({
+                        ...current,
+                        requestedWindowEndDate: date
+                          ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+                          : '',
+                      }))
+                    }
+                  />
+                  <Select
+                    id="visit-request-window-end-time"
+                    label="Hasta qué hora puede recibir la visita"
+                    value={contextDraft.requestedWindowEndTime}
+                    disabled={isTerminalVisitRequest}
+                    placeholder="Selecciona una hora"
+                    options={requestTimeOptions}
+                    onChange={(event) =>
+                      setContextDraft((current) => ({
+                        ...current,
+                        requestedWindowEndTime: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+              <label className="grid gap-1 text-sm font-medium text-gray-700 dark:text-gray-300">
+                Nota operativa
+                <textarea
+                  value={contextDraft.description}
+                  disabled={isTerminalVisitRequest}
+                  onChange={(event) =>
+                    setContextDraft((current) => ({
+                      ...current,
+                      description: event.target.value,
+                    }))
+                  }
+                  rows={3}
+                  className="rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-2 dark:text-white"
+                />
+              </label>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={isTerminalVisitRequest || isSavingContext}
+                  onClick={() => {
+                    setContextError(null);
+                    setContextDraft((current) => ({
+                      ...current,
+                      requestedWindowStartDate: '',
+                      requestedWindowStartTime: '',
+                      requestedWindowEndDate: '',
+                      requestedWindowEndTime: '',
+                    }));
+                  }}
+                >
+                  Limpiar formulario
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  loading={isSavingContext}
+                  disabled={isTerminalVisitRequest}
+                  onClick={async () => {
+                    try {
+                      setContextError(null);
+                      await onSaveContext(buildContextPayload(contextDraft));
+                    } catch (error) {
+                      setContextError(error instanceof Error ? error.message : 'Error inesperado.');
+                    }
+                  }}
+                >
+                  Guardar contexto
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <footer className="border-t border-gray-200 p-3 dark:border-dark-border">
+        <Button
+          type="button"
+          className="w-full"
+          variant="primary"
+          disabled={(!selectedRecommendation && !hasReadyManualSelection) || isTerminalVisitRequest}
+          onClick={onOpenConfirm}
+        >
+          <Clock3 className="h-4 w-4" aria-hidden="true" />
+          {footerLabel}
+        </Button>
+      </footer>
+    </aside>
+  );
+
+  if (presentation === 'inline') {
+    return panel;
+  }
 
   if (typeof document === 'undefined') {
     return null;
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[120] flex justify-end">
+    <div className="fixed inset-0 z-[120] flex justify-end xl:hidden">
       <button
         type="button"
         aria-label="Cerrar panel de despacho"
         className="absolute inset-0 bg-black/45 backdrop-blur-sm"
         onClick={() => onClose?.()}
       />
-
-      <aside className="relative z-10 flex h-dvh w-full max-w-[560px] flex-col border-l border-gray-200 bg-white shadow-2xl dark:border-dark-border dark:bg-dark-surface-1">
-        <header className="border-b border-gray-200 px-3 py-3 dark:border-dark-border">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-                Despacho de la solicitud
-              </p>
-              <p className="mt-1 text-base font-semibold text-gray-900 dark:text-white">
-                {displayTitle}
-              </p>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {customerDisplayName ?? getVisitRequestReferenceLabel(selectedVisitRequest)}
-              </p>
-              {customerDisplayName && (
-                <p className="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">
-                  {getVisitRequestReferenceLabel(selectedVisitRequest)}
-                </p>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => onClose?.()}
-              className="rounded-full border border-gray-200 p-1.5 text-gray-500 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:border-dark-border dark:text-gray-300 dark:hover:bg-dark-surface-3"
-              aria-label="Cerrar panel"
-            >
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
-          </div>
-          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-            {presentationStatus === 'NEEDS_CONTEXT' && missingFields.length > 0
-              ? `Para recomendar faltan: ${missingFields.join(', ')}.`
-              : getVisitRequestStatusDescription(presentationStatus)}
-          </p>
-        </header>
-
-        <div className="flex-1 space-y-3 overflow-y-auto p-3">
-          <div className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border dark:bg-dark-surface-2">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <Badge variant={getVisitRequestStatusVariant(presentationStatus)}>
-                {getVisitRequestStatusLabel(presentationStatus)}
-              </Badge>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="neutral">
-                {getVisitRequestOriginLabel(selectedVisitRequest.originContext)}
-              </Badge>
-              <Badge variant="info">{getWfmWorkTypeLabel(selectedVisitRequest.workType)}</Badge>
-              <Badge variant={getWorkOrderPriorityVariant(selectedVisitRequest.priority)}>
-                {getWorkOrderPriorityLabel(selectedVisitRequest.priority)}
-              </Badge>
-            </div>
-
-            <dl className="grid gap-2 text-sm text-gray-600 dark:text-gray-300">
-              <div className="border-t border-gray-200 pt-3 dark:border-dark-border">
-                <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
-                  Dirección operativa
-                </dt>
-                <dd className="mt-1 text-sm text-gray-700 dark:text-gray-200">
-                  {selectedVisitRequest.address || 'Sin dirección operativa'}
-                </dd>
-              </div>
-              <div className="border-t border-gray-200 pt-3 dark:border-dark-border">
-                <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
-                  Territorio
-                </dt>
-                <dd className="mt-1 text-sm text-gray-700 dark:text-gray-200">
-                  {formatVisitRequestTerritory(
-                    selectedVisitRequest.municipality,
-                    selectedVisitRequest.sector,
-                  )}
-                </dd>
-              </div>
-              <div className="border-t border-gray-200 pt-3 dark:border-dark-border">
-                <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
-                  Nota operativa
-                </dt>
-                <dd className="mt-1 text-sm text-gray-700 dark:text-gray-200">
-                  {selectedVisitRequest.description || 'Sin nota operativa'}
-                </dd>
-              </div>
-            </dl>
-          </div>
-
-          {missingFields.length > 0 && (
-            <PortalAlert
-              variant="warning"
-              title="Completa contexto antes de recomendar"
-              description={`Aún faltan: ${missingFields.join(', ')}. Abre el bloque de contexto para completarlos.`}
-              icon={AlertTriangle}
-            />
-          )}
-
-          {isTerminalVisitRequest && (
-            <PortalAlert
-              variant="info"
-              title="Solicitud cerrada para despacho"
-              description="Esta solicitud está en estado terminal y ya no permite completar contexto ni recalcular recomendaciones."
-            />
-          )}
-
-          {contextError && (
-            <PortalAlert
-              variant="error"
-              title="No se pudo guardar el contexto"
-              description={contextError}
-            />
-          )}
-
-          {selectedVisitRequest.workType === 'INSTALLATION' && operatingWindowError && (
-            <PortalAlert
-              variant="warning"
-              title="No fue posible resolver la ventana operativa"
-              description={operatingWindowError}
-            />
-          )}
-
-          {selectedVisitRequest.workType === 'INSTALLATION' &&
-            !operatingWindowError &&
-            operatingWindowMessage && (
-              <PortalAlert
-                variant={operatingWindow?.status === 'OPEN' ? 'info' : 'warning'}
-                title={
-                  operatingWindow?.status === 'OPEN'
-                    ? 'Ventana operativa aplicada'
-                    : 'Fecha cerrada para recomendar'
-                }
-                description={operatingWindowMessage}
-              />
-            )}
-
-          <div className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
-            <div className="flex items-start gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase text-iwana-secondary-700 dark:text-iwana-secondary-400">
-                  Paso 1
-                </p>
-                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                  Define duración y búsqueda
-                </p>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Primero define cuánto durará la instalación. Después calcula las recomendaciones.
-                </p>
-              </div>
-            </div>
-            <div className="grid gap-3">
-              <Select
-                id="visit-request-duration-minutes"
-                label="Duración estimada"
-                value={durationMinutes}
-                disabled={isTerminalVisitRequest}
-                placeholder="Selecciona una duración"
-                options={durationOptions}
-                onChange={(event) => setDurationMinutes(event.target.value)}
-              />
-              <Select
-                id="visit-request-search-horizon"
-                label="Horizonte de búsqueda"
-                value={searchHorizonDays}
-                disabled={isTerminalVisitRequest}
-                options={horizonOptions}
-                onChange={(event) => setSearchHorizonDays(event.target.value)}
-              />
-            </div>
-            <p className="text-xs text-gray-600 dark:text-gray-300">
-              {!hasDurationSelection
-                ? 'Selecciona primero la duración estimada para habilitar las recomendaciones.'
-                : selectedVisitRequest.workType === 'INSTALLATION' && isLoadingOperatingWindow
-                  ? 'Estamos resolviendo la ventana operativa configurada para la fecha solicitada.'
-                  : selectedVisitRequest.workType === 'INSTALLATION' &&
-                      operatingWindow?.status === 'CLOSED'
-                    ? (operatingWindowMessage ??
-                      'La fecha seleccionada no tiene una ventana operativa habilitada.')
-                    : missingFields.length > 0
-                      ? 'El cálculo ya puede usar la duración elegida, pero aún debes completar el contexto operativo faltante.'
-                      : 'Cuando confirmes la búsqueda, el sistema propondrá las mejores franjas por territorio y continuidad de ruta.'}
-            </p>
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                onClick={async () => {
-                  try {
-                    setContextError(null);
-                    await onSaveContext(buildContextPayload(contextDraft));
-                    await onRecommend({
-                      durationMinutes: Number(durationMinutes),
-                      searchHorizonDays: Number(searchHorizonDays),
-                      municipality: contextDraft.municipality || undefined,
-                      sector: contextDraft.sector || undefined,
-                    });
-                  } catch (error) {
-                    setContextError(error instanceof Error ? error.message : 'Error inesperado.');
-                  }
-                }}
-                loading={isLoadingRecommendations}
-                disabled={
-                  missingFields.length > 0 ||
-                  isTerminalVisitRequest ||
-                  !hasDurationSelection ||
-                  (selectedVisitRequest.workType === 'INSTALLATION' &&
-                    (!!operatingWindowError || operatingWindow?.status === 'CLOSED'))
-                }
-              >
-                <Sparkles className="h-4 w-4" aria-hidden="true" />
-                Calcular recomendaciones
-              </Button>
-            </div>
-
-            {recommendationError && (
-              <PortalAlert
-                variant="error"
-                title="No fue posible calcular recomendaciones"
-                description={recommendationError}
-              />
-            )}
-
-            {recommendations.length === 0 ? (
-              <PortalEmptyState
-                title="Sin recomendaciones todavía"
-                description="Cuando la solicitud esté lista, el panel mostrará técnicos y franjas ordenadas por cercanía territorial y continuidad de ruta."
-                icon={Sparkles}
-              />
-            ) : (
-              <div className="space-y-2">
-                {recommendations.map((recommendation) => {
-                  const technician = techniciansById.get(recommendation.technicianId) ?? null;
-                  const recommendationKey = getRecommendationKey(recommendation);
-                  const isSelected = recommendationKey === selectedRecommendationId;
-
-                  return (
-                    <button
-                      key={`${recommendation.technicianId}-${recommendation.scheduledStartAt}`}
-                      type="button"
-                      onClick={() => onSelectRecommendation(recommendationKey)}
-                      className={`w-full rounded-xl border px-3 py-2.5 text-left transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2 ${
-                        isSelected
-                          ? 'border-emerald-500 bg-emerald-50 dark:border-emerald-600 dark:bg-emerald-950/30'
-                          : 'border-gray-300 bg-white hover:border-gray-400 hover:bg-gray-50 dark:border-dark-border dark:bg-dark-surface-2 dark:hover:bg-dark-surface-3'
-                      }`}
-                    >
-                      <div className="flex items-baseline justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                            {technician
-                              ? getTechnicianDisplayName(technician)
-                              : recommendation.technicianId}
-                          </p>
-                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                            {formatWfmDateTime(recommendation.scheduledStartAt)} -{' '}
-                            {formatWfmDateTime(recommendation.scheduledEndAt)}
-                          </p>
-                        </div>
-                        <span className="whitespace-nowrap text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                          Puntuación: {recommendation.score}
-                        </span>
-                      </div>
-                      <div className="mt-1.5 flex flex-wrap gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-                        <span>
-                          {recommendation.distanceKm !== null
-                            ? `${recommendation.distanceKm.toFixed(1)} km`
-                            : 'Sin georreferencia'}
-                        </span>
-                        <span aria-hidden="true">•</span>
-                        <span>Carga: {recommendation.totalScheduledMinutes} min</span>
-                        {recommendation.labels.length > 0 && (
-                          <>
-                            <span aria-hidden="true">•</span>
-                            <span className="italic">{recommendation.labels.join(', ')}</span>
-                          </>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
-            <button
-              type="button"
-              className="flex w-full items-start justify-between gap-3 rounded-2xl text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2 dark:hover:bg-dark-surface-3"
-              aria-expanded={isContextExpanded}
-              aria-controls="visit-request-context-panel"
-              onClick={() => setIsContextExpanded((current) => !current)}
-            >
-              <div>
-                <p className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-                  Paso 2
-                </p>
-                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                  Ajustes de contexto (opcional)
-                </p>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  {missingFields.length > 0
-                    ? `Pendiente por completar: ${missingFields.join(', ')}.`
-                    : 'Úsalo solo si necesitas ajustar dirección, territorio, ventana o nota operativa antes de confirmar.'}
-                </p>
-              </div>
-              <ChevronDown
-                className={`mt-1 h-4 w-4 shrink-0 text-gray-400 transition-opacity duration-200 ${
-                  isContextExpanded ? 'opacity-60' : 'opacity-100'
-                }`}
-                aria-hidden="true"
-              />
-            </button>
-
-            {isContextExpanded && (
-              <div
-                id="visit-request-context-panel"
-                className="mt-3 space-y-3 border-t border-gray-100 pt-3 dark:border-dark-border"
-              >
-                <Input
-                  id="visit-request-address"
-                  label="Dirección operativa"
-                  value={contextDraft.address}
-                  disabled={isTerminalVisitRequest}
-                  onChange={(event) =>
-                    setContextDraft((current) => ({ ...current, address: event.target.value }))
-                  }
-                />
-                <div className="grid gap-3">
-                  <Input
-                    id="visit-request-municipality"
-                    label="Municipio"
-                    value={contextDraft.municipality}
-                    disabled={isTerminalVisitRequest}
-                    onChange={(event) =>
-                      setContextDraft((current) => ({
-                        ...current,
-                        municipality: event.target.value,
-                      }))
-                    }
-                  />
-                  <Input
-                    id="visit-request-sector"
-                    label="Sector"
-                    value={contextDraft.sector}
-                    disabled={isTerminalVisitRequest}
-                    onChange={(event) =>
-                      setContextDraft((current) => ({ ...current, sector: event.target.value }))
-                    }
-                  />
-                </div>
-                <div className="grid gap-3 rounded-lg border border-gray-200 p-3 dark:border-dark-border">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
-                    Franja preferida del cliente (opcional)
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Completa este bloque solo si el cliente pidió una franja específica.
-                  </p>
-                  <div className="grid gap-3">
-                    <DatePicker
-                      id="visit-request-window-start-date"
-                      label="Desde (fecha)"
-                      value={toDateFromLocalDateValue(contextDraft.requestedWindowStartDate)}
-                      disabled={isTerminalVisitRequest}
-                      onChange={(date) =>
-                        setContextDraft((current) => ({
-                          ...current,
-                          requestedWindowStartDate: date
-                            ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-                            : '',
-                        }))
-                      }
-                    />
-                    <Select
-                      id="visit-request-window-start-time"
-                      label="Desde qué hora puede recibir la visita"
-                      value={contextDraft.requestedWindowStartTime}
-                      disabled={isTerminalVisitRequest}
-                      placeholder="Selecciona una hora"
-                      options={requestTimeOptions}
-                      onChange={(event) =>
-                        setContextDraft((current) => ({
-                          ...current,
-                          requestedWindowStartTime: event.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                  <div className="grid gap-3">
-                    <DatePicker
-                      id="visit-request-window-end-date"
-                      label="Hasta (fecha)"
-                      value={toDateFromLocalDateValue(contextDraft.requestedWindowEndDate)}
-                      disabled={isTerminalVisitRequest}
-                      onChange={(date) =>
-                        setContextDraft((current) => ({
-                          ...current,
-                          requestedWindowEndDate: date
-                            ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-                            : '',
-                        }))
-                      }
-                    />
-                    <Select
-                      id="visit-request-window-end-time"
-                      label="Hasta qué hora puede recibir la visita"
-                      value={contextDraft.requestedWindowEndTime}
-                      disabled={isTerminalVisitRequest}
-                      placeholder="Selecciona una hora"
-                      options={requestTimeOptions}
-                      onChange={(event) =>
-                        setContextDraft((current) => ({
-                          ...current,
-                          requestedWindowEndTime: event.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                </div>
-                <label className="grid gap-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Nota operativa
-                  <textarea
-                    value={contextDraft.description}
-                    disabled={isTerminalVisitRequest}
-                    onChange={(event) =>
-                      setContextDraft((current) => ({
-                        ...current,
-                        description: event.target.value,
-                      }))
-                    }
-                    rows={3}
-                    className="rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-2 dark:text-white"
-                  />
-                </label>
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={isTerminalVisitRequest || isSavingContext}
-                    onClick={() => {
-                      setContextError(null);
-                      setContextDraft((current) => ({
-                        ...current,
-                        requestedWindowStartDate: '',
-                        requestedWindowStartTime: '',
-                        requestedWindowEndDate: '',
-                        requestedWindowEndTime: '',
-                      }));
-                    }}
-                  >
-                    Limpiar formulario
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    loading={isSavingContext}
-                    disabled={isTerminalVisitRequest}
-                    onClick={async () => {
-                      try {
-                        setContextError(null);
-                        await onSaveContext(buildContextPayload(contextDraft));
-                      } catch (error) {
-                        setContextError(
-                          error instanceof Error ? error.message : 'Error inesperado.',
-                        );
-                      }
-                    }}
-                  >
-                    Guardar contexto
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <footer className="border-t border-gray-200 p-3 dark:border-dark-border">
-          <Button
-            type="button"
-            className="w-full"
-            variant="primary"
-            disabled={!selectedRecommendation || isTerminalVisitRequest}
-            onClick={onOpenConfirm}
-          >
-            <Clock3 className="h-4 w-4" aria-hidden="true" />
-            Confirmar franja seleccionada
-          </Button>
-        </footer>
-      </aside>
+      {panel}
     </div>,
     document.body,
   );

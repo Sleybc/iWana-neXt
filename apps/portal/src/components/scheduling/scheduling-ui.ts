@@ -18,7 +18,7 @@ import type {
 import { formatExpedienteDisplayRef, formatExpedienteShortLabel } from '@/lib/expediente-labels';
 import { getPortalUserRoleLabel } from '@/lib/user-labels';
 
-export type SchedulingView = 'command-center' | 'calendar' | 'list';
+export type SchedulingView = 'day' | 'week' | 'month' | 'list';
 
 type BadgeVariant = NonNullable<BadgeProps['variant']>;
 
@@ -216,12 +216,6 @@ const SCHEDULING_VIEW_ROLES = new Set<string>([
 
 const SCHEDULING_MANAGE_ROLES = new Set<string>([UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT]);
 
-const SCHEDULING_COMMAND_CENTER_ROLES = new Set<string>([
-  UserRole.ADMIN,
-  UserRole.NOC,
-  UserRole.SUPPORT,
-]);
-
 export const SCHEDULE_EVENT_STATUS_OPTIONS: SelectOption<ScheduleEventStatus>[] = Object.entries(
   eventStatusMeta,
 ).map(([value, meta]) => ({ value: value as ScheduleEventStatus, label: meta.label }));
@@ -395,10 +389,6 @@ export function canManageScheduling(role: string | null | undefined): boolean {
   return Boolean(role && SCHEDULING_MANAGE_ROLES.has(role));
 }
 
-export function canViewSchedulingCommandCenter(role: string | null | undefined): boolean {
-  return Boolean(role && SCHEDULING_COMMAND_CENTER_ROLES.has(role));
-}
-
 export function filterOperationalTechnicians(users: InternalUser[]): InternalUser[] {
   return users
     .filter((user) => user.role === UserRole.TECHNICIAN || user.role === UserRole.CONTRACTOR)
@@ -425,21 +415,114 @@ export function buildTechnicianOptions(users: InternalUser[]): SelectOption[] {
   }));
 }
 
-export function buildDefaultSchedulingFilters(
-  view: SchedulingView = 'calendar',
-): SchedulingFilters {
-  const today = new Date();
-  const start = startOfDay(today);
+function buildMonthRange(anchorDate: Date): { fromDate: string; toDate: string } {
+  const start = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1);
+  const end = new Date(anchorDate.getFullYear(), anchorDate.getMonth() + 1, 0);
+
+  return {
+    fromDate: toLocalDayKey(start),
+    toDate: toLocalDayKey(end),
+  };
+}
+
+function buildWeekRange(anchorDate: Date): { fromDate: string; toDate: string } {
+  const start = startOfDay(anchorDate);
   const end = addDays(start, 6);
 
   return {
     fromDate: toLocalDayKey(start),
     toDate: toLocalDayKey(end),
+  };
+}
+
+function buildDayRange(anchorDate: Date): { fromDate: string; toDate: string } {
+  const start = startOfDay(anchorDate);
+
+  return {
+    fromDate: toLocalDayKey(start),
+    toDate: toLocalDayKey(start),
+  };
+}
+
+export function getSchedulingAnchorDate(
+  filters: Pick<SchedulingFilters, 'fromDate'>,
+  fallback = new Date(),
+): Date {
+  return filters.fromDate ? new Date(`${filters.fromDate}T00:00:00`) : startOfDay(fallback);
+}
+
+export function buildSchedulingRangeForView(
+  view: SchedulingView,
+  anchorValue: string | Date = new Date(),
+): Pick<SchedulingFilters, 'fromDate' | 'toDate'> {
+  const anchorDate =
+    typeof anchorValue === 'string' ? new Date(`${anchorValue}T00:00:00`) : startOfDay(anchorValue);
+
+  if (view === 'day') {
+    return buildDayRange(anchorDate);
+  }
+
+  if (view === 'month') {
+    return buildMonthRange(anchorDate);
+  }
+
+  return buildWeekRange(anchorDate);
+}
+
+export function buildDefaultSchedulingFilters(view: SchedulingView = 'day'): SchedulingFilters {
+  return {
+    ...buildSchedulingRangeForView(view, new Date()),
     technicianId: '',
     type: '',
     status: '',
     view,
   };
+}
+
+export function shiftSchedulingAnchorDate(
+  view: SchedulingView,
+  anchorValue: string | Date,
+  direction: -1 | 1,
+): Date {
+  const anchorDate =
+    typeof anchorValue === 'string' ? new Date(`${anchorValue}T00:00:00`) : startOfDay(anchorValue);
+
+  if (view === 'day') {
+    return addDays(anchorDate, direction);
+  }
+
+  if (view === 'month') {
+    return new Date(anchorDate.getFullYear(), anchorDate.getMonth() + direction, 1);
+  }
+
+  return addDays(anchorDate, direction * 7);
+}
+
+const monthFormatter = new Intl.DateTimeFormat('es-CO', {
+  month: 'long',
+  year: 'numeric',
+});
+
+const shortRangeFormatter = new Intl.DateTimeFormat('es-CO', {
+  day: 'numeric',
+  month: 'short',
+});
+
+export function formatSchedulingRangeLabel(
+  filters: Pick<SchedulingFilters, 'fromDate' | 'toDate' | 'view'>,
+): string {
+  const fromDate = filters.fromDate ? new Date(`${filters.fromDate}T00:00:00`) : new Date();
+  const toDate = filters.toDate ? new Date(`${filters.toDate}T00:00:00`) : fromDate;
+
+  if (filters.view === 'month') {
+    return monthFormatter.format(fromDate);
+  }
+
+  if (filters.view === 'day') {
+    return formatWfmDayLabel(fromDate);
+  }
+
+  return `${shortRangeFormatter.format(fromDate)} - ${shortRangeFormatter.format(toDate)}`;
 }
 
 export function toApiDateRange(filters: Pick<SchedulingFilters, 'fromDate' | 'toDate'>): {

@@ -1,6 +1,7 @@
 'use client';
 
 import { RefreshCcw } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { Badge, Button, Select } from '@iwana/ui';
 import { VisitRequestStatus, WorkOrderPriority, WorkOrderSourceContext } from '@iwana/shared';
 import type {
@@ -36,6 +37,7 @@ interface PendingVisitRequestInboxProps {
   onFiltersChange: (next: PendingVisitFilters) => void;
   onSelect: (visitRequestId: string) => void;
   onRefresh: () => void;
+  extraActions?: ReactNode;
   compactMode?: boolean;
   maxItems?: number;
   onOpenFullInbox?: (() => void) | undefined;
@@ -188,6 +190,7 @@ export function PendingVisitRequestInbox({
   onFiltersChange,
   onSelect,
   onRefresh,
+  extraActions,
   compactMode = false,
   maxItems = 5,
   onOpenFullInbox,
@@ -195,9 +198,9 @@ export function PendingVisitRequestInbox({
   const items = response?.items ?? [];
   const meta = response?.meta;
   const visibleItems = compactMode ? items.slice(0, maxItems) : items;
-  const panelTitle = compactMode ? 'Bandeja rápida' : 'Pendiente por agendar';
+  const panelTitle = compactMode ? 'Decisiones pendientes' : 'Pendiente por agendar';
   const panelDescription = compactMode
-    ? 'Atajos de solicitudes abiertas para despachar sin salir del resumen.'
+    ? 'Solicitudes que ya exigen decisión operativa sin abrir todavía la bandeja completa.'
     : 'Prioriza por estado, origen, prioridad y territorio antes de confirmar agenda.';
   const municipalityOptions = toTerritoryOptions(filterOptions, 'municipalities');
   const sectorOptions = toTerritoryOptions(filterOptions, 'sectors');
@@ -209,6 +212,7 @@ export function PendingVisitRequestInbox({
       description={panelDescription}
       actions={
         <div className="flex flex-wrap items-center gap-2">
+          {extraActions}
           {compactMode && onOpenFullInbox ? (
             <Button type="button" variant="ghost" onClick={onOpenFullInbox}>
               Ver bandeja completa

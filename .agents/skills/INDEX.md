@@ -22,7 +22,7 @@ Estados admitidos:
 3. Este indice
 4. La skill individual
 
-`CLAUDE.md` y `.opencode/` estan pasivos por ahora y no participan en la precedencia activa.
+`CLAUDE.md` sigue pasivo. `.opencode/` participa como configuracion cliente activa de OpenCode, pero no sustituye la precedencia documental del repo. Codex comparte la misma gobernanza via `AGENTS.md` y `.github/copilot-instructions.md`.
 
 ## Skills core activas
 
@@ -187,3 +187,4 @@ Sin entradas vigentes tras la restauracion ejecutada el 2026-03-12.
 - Toda reincorporacion debe hacerse por alta controlada en `.agents/skills/` y sincronizacion de `skills-lock.json` cuando aplique.
 - Toda modificacion sustancial del catalogo debe reflejarse en docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md.
 - Toda skill activa debe mantener frontmatter valido con `name` y `description` como minimo.
+- `skills-lock.json` puede limitar sets operativos en clientes que lo soporten, pero no reemplaza el catalogo fuente del workspace para OpenCode o Codex.
