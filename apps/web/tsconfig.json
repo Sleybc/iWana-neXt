@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../../packages/config/tsconfig.nextjs.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "plugins": [{ "name": "next" }],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@iwana/ui": ["../../packages/ui/src/index.ts"],
+      "@iwana/shared": ["../../packages/shared/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*", "next.config.ts", ".next/types/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

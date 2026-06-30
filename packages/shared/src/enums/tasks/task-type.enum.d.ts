@@ -1,0 +1,10 @@
+export declare enum TaskType {
+    CUSTOMER_SUPPORT = "CUSTOMER_SUPPORT",
+    INTERNAL_OPERATION = "INTERNAL_OPERATION",
+    INSTALLATION = "INSTALLATION",
+    FIELD_VISIT = "FIELD_VISIT",
+    BACKOFFICE = "BACKOFFICE",
+    COLLECTION = "COLLECTION",
+    REVIEW = "REVIEW"
+}
+//# sourceMappingURL=task-type.enum.d.ts.map

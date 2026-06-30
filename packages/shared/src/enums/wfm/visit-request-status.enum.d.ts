@@ -1,0 +1,10 @@
+export declare enum VisitRequestStatus {
+    PENDING = "PENDING",
+    NEEDS_CONTEXT = "NEEDS_CONTEXT",
+    READY_TO_SCHEDULE = "READY_TO_SCHEDULE",
+    SCHEDULED = "SCHEDULED",
+    CANCELLED = "CANCELLED",
+    REJECTED = "REJECTED",
+    EXPIRED = "EXPIRED"
+}
+//# sourceMappingURL=visit-request-status.enum.d.ts.map

@@ -1,0 +1,6 @@
+* text=auto
+
+# Hooks y scripts deben mantenerse en LF para evitar fallos en shell.
+.husky/* text eol=lf
+.husky/_/* text eol=lf
+*.sh text eol=lf

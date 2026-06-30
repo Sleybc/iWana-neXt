@@ -1,0 +1,23 @@
+{
+  "name": "@iwana/storage",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "node ../../scripts/clean-paths.mjs dist && tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "clean": "node ../../scripts/clean-paths.mjs dist"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.797.0",
+    "@aws-sdk/s3-request-presigner": "^3.797.0"
+  },
+  "devDependencies": {
+    "@iwana/config": "workspace:*",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}

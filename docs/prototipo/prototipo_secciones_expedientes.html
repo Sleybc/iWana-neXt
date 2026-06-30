@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mockup Iwana - Secciones CRM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['"Exo 2"', 'sans-serif'] },
+                    colors: {
+                        iwana: {
+                            primary: '#17163A',
+                            secondary: '#A5C330',
+                            bg: '#F8F8FB',
+                        }
+                    },
+                    boxShadow: {
+                        'iwana-soft': '0 4px 20px -2px rgba(23, 22, 58, 0.05)',
+                        'iwana-active': '0 8px 30px -5px rgba(23, 22, 58, 0.12)',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-iwana-bg p-8 text-iwana-primary flex justify-center">
+
+    <!-- Contenedor Principal de la Tarjeta -->
+    <div class="bg-white rounded-[24px] p-8 shadow-iwana-soft w-full max-w-4xl border border-gray-100">
+        
+        <!-- Cabecera de la sección -->
+        <div class="mb-6 flex justify-between items-end">
+            <div>
+                <h2 class="text-xl font-bold tracking-tight mb-1">Secciones de la oportunidad</h2>
+                <p class="text-sm text-gray-500">Completa las 8 zonas de información para avanzar el caso comercial.</p>
+            </div>
+            <div class="text-right">
+                <span class="text-xs text-gray-400 font-bold uppercase tracking-wider">Progreso</span>
+                <p class="text-lg font-bold text-iwana-secondary">4 de 8 completadas</p>
+            </div>
+        </div>
+
+        <!-- LISTA DE SECCIONES (El rediseño) -->
+        <div class="space-y-3">
+
+            <!-- 1. ÍTEM EXPANDIDO (ESTADO ACTIVO/EDITANDO) -->
+            <!-- Nota: Tiene borde de color, sombra más fuerte y fondo blanco puro -->
+            <div class="rounded-2xl border border-iwana-primary/20 shadow-iwana-active bg-white transition-all overflow-hidden">
+                <!-- Header del acordeón -->
+                <div class="p-5 flex items-center justify-between cursor-pointer border-b border-gray-50">
+                    <div class="flex items-center space-x-4">
+                        <div class="w-10 h-10 rounded-full bg-[#EDF8CC] text-[#6A7A1C] flex items-center justify-center">
+                            <i class="ph ph-identification-card text-xl"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-[15px] text-iwana-primary">Identificación</h3>
+                            <p class="text-xs text-gray-500">Datos base del titular o razón social.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <!-- Badge Iwana para Completado -->
+                        <span class="px-3 py-1 rounded-full bg-[#EDF8CC] text-[#48531D] text-xs font-bold flex items-center">
+                            <i class="ph-bold ph-check mr-1"></i> 100%
+                        </span>
+                        <div class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors">
+                            <i class="ph ph-caret-up text-gray-400"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CONTENIDO DEL FORMULARIO (Diseño Minimalista) -->
+                <div class="p-6 bg-gray-50/30">
+                    <div class="grid grid-cols-2 gap-6">
+                        <!-- Input Select -->
+                        <div>
+                            <label for="tipo-persona" class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2">Tipo de Persona</label>
+                            <select id="tipo-persona" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-iwana-secondary focus:border-transparent appearance-none transition-all cursor-pointer">
+                                <option>Persona Natural</option>
+                                <option>Persona Jurídica</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Input Text -->
+                        <div>
+                            <label for="tipo-documento" class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2">Tipo de Documento</label>
+                            <select id="tipo-documento" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-iwana-secondary focus:border-transparent appearance-none transition-all cursor-pointer">
+                                <option>Cédula de Ciudadanía (CC)</option>
+                                <option>NIT</option>
+                            </select>
+                        </div>
+
+                        <div class="col-span-2">
+                            <label for="numero-documento" class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2">Número de Documento</label>
+                            <input id="numero-documento" type="text" value="1029384756" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-iwana-secondary focus:border-transparent transition-all">
+                        </div>
+                    </div>
+                    
+                    <!-- Botón de guardado interno -->
+                    <div class="mt-6 flex justify-end">
+                        <button class="bg-iwana-primary text-white px-5 py-2 rounded-xl text-sm font-semibold hover:bg-iwana-primary/90 transition-colors shadow-sm">
+                            Guardar cambios
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. ÍTEM CERRADO (COMPLETADO) -->
+            <!-- Nota: Diseño limpio, sin bordes toscos, invita a saber que ya está listo -->
+            <div class="rounded-2xl border border-transparent bg-gray-50/50 hover:bg-gray-50 p-5 flex items-center justify-between cursor-pointer transition-all group">
+                <div class="flex items-center space-x-4">
+                    <div class="w-10 h-10 rounded-full bg-white text-iwana-secondary shadow-sm flex items-center justify-center">
+                        <i class="ph ph-phone text-xl"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold text-[15px] group-hover:text-iwana-secondary transition-colors">Contacto</h3>
+                        <p class="text-xs text-gray-500">Canales directos para seguimiento.</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span class="px-3 py-1 rounded-full bg-[#EDF8CC] text-[#48531D] text-xs font-bold flex items-center">
+                        <i class="ph-bold ph-check mr-1"></i> 100%
+                    </span>
+                    <i class="ph ph-caret-down text-gray-400"></i>
+                </div>
+            </div>
+
+            <!-- 3. ÍTEM CERRADO (PENDIENTE 0%) -->
+            <!-- Nota: Ícono gris, badge gris, indica sutilmente que falta trabajo aquí -->
+            <div class="rounded-2xl border border-gray-100 bg-white hover:border-iwana-secondary/30 p-5 flex items-center justify-between cursor-pointer transition-all group shadow-sm">
+                <div class="flex items-center space-x-4">
+                    <div class="w-10 h-10 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center group-hover:bg-iwana-secondary/10 group-hover:text-iwana-secondary transition-colors">
+                        <i class="ph ph-wrench text-xl"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold text-[15px] group-hover:text-iwana-primary transition-colors">Viabilidad técnica</h3>
+                        <p class="text-xs text-gray-500">Resultado técnico y recomendación operativa.</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <!-- Badge Gris para cero progreso -->
+                    <span class="px-3 py-1 rounded-full bg-gray-100 text-gray-500 text-xs font-bold">
+                        0%
+                    </span>
+                    <i class="ph ph-caret-down text-gray-300 group-hover:text-iwana-primary transition-colors"></i>
+                </div>
+            </div>
+
+            <!-- 4. ÍTEM CERRADO (PENDIENTE 0%) -->
+            <div class="rounded-2xl border border-gray-100 bg-white hover:border-iwana-secondary/30 p-5 flex items-center justify-between cursor-pointer transition-all group shadow-sm">
+                <div class="flex items-center space-x-4">
+                    <div class="w-10 h-10 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center group-hover:bg-iwana-secondary/10 group-hover:text-iwana-secondary transition-colors">
+                        <i class="ph ph-receipt text-xl"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold text-[15px] group-hover:text-iwana-primary transition-colors">Facturación</h3>
+                        <p class="text-xs text-gray-500">Parámetros de pago y ciclo administrativo.</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span class="px-3 py-1 rounded-full bg-gray-100 text-gray-500 text-xs font-bold">
+                        0%
+                    </span>
+                    <i class="ph ph-caret-down text-gray-300 group-hover:text-iwana-primary transition-colors"></i>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+</body>
+</html>

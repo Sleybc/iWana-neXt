@@ -1,0 +1,61 @@
+# Dependencias
+node_modules/
+.pnpm-store/
+
+# Builds
+dist/
+build/
+.next/
+.turbo/
+
+# Storage local de desarrollo — uploads generados por MediaService
+apps/api/storage/
+
+# Variables de entorno — NUNCA versionar secretos
+.env
+.env.local
+.env.*
+.env.*.local
+
+# Secretos JWT y certificados — NUNCA versionar
+secrets/*.pem
+secrets/*.key
+secrets/*.p12
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# SO
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Tests
+coverage/
+test-results/
+playwright-report/
+blob-report/
+*.trace
+*.har
+
+# Playwright MCP artifacts
+.playwright-mcp/
+
+# Next.js
+.next/
+out/
+
+# Cache
+*.tsbuildinfo
+.eslintcache
+.claude/worktrees/
+
+# Worktrees
+.worktrees/

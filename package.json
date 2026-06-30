@@ -1,0 +1,46 @@
+{
+  "name": "iwana-next",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "iWana neXt — ISP/OSS/BSS/NMS Platform Colombia",
+  "packageManager": "pnpm@10.32.1",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "db:migrate:all": "pnpm --filter @iwana/db build && pnpm --filter @iwana/db migration:run && pnpm --filter @iwana/db migration:tenant:run",
+    "dev:free-ports": "node scripts/free-dev-ports.mjs",
+    "test:tooling": "node --test scripts/dev.test.mjs scripts/free-dev-ports.test.mjs",
+    "dev": "node scripts/dev.mjs",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "test:e2e": "playwright test --config e2e/playwright.web.config.ts",
+    "test:e2e:headed": "playwright test --config e2e/playwright.web.config.ts --headed",
+    "test:e2e:portal": "playwright test --config e2e/playwright.portal.config.ts",
+    "test:e2e:all": "pnpm test:e2e && pnpm test:e2e:portal",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean && node scripts/clean-paths.mjs node_modules .turbo test-results apps/portal/test-results apps/api/coverage",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.11.1",
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0",
+    "@playwright/test": "^1.58.2",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^9.0.0",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0",
+    "prettier": "^3.0.0",
+    "turbo": "latest",
+    "typescript": "^5.9.0"
+  },
+  "dependencies": {
+    "cross-env": "^10.1.0"
+  }
+}

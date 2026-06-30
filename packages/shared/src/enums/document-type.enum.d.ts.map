@@ -1,0 +1,1 @@
+{"version":3,"file":"document-type.enum.d.ts","sourceRoot":"","sources":["document-type.enum.ts"],"names":[],"mappings":"AAAA,gDAAgD;AAChD,oBAAY,YAAY;IACtB,EAAE,OAAO,CAAE,uBAAuB;IAClC,EAAE,OAAO,CAAE,wBAAwB;IACnC,SAAS,cAAc,CAAE,YAAY;IACrC,GAAG,QAAQ,CAAE,kCAAkC;IAC/C,GAAG,QAAQ,CAAE,kCAAkC;IAC/C,WAAW,gBAAgB;CAC5B"}

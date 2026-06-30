@@ -1,0 +1,21 @@
+{
+  "name": "@iwana/shared",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "clean": "node ../../scripts/clean-paths.mjs dist"
+  },
+  "devDependencies": {
+    "@iwana/config": "workspace:*",
+    "typescript": "^5.9.0"
+  },
+  "dependencies": {
+    "zod": "^3.24.2"
+  }
+}

@@ -1,0 +1,287 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { UserRole } from '@iwana/shared';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import {
+  CreateInventoryItemDto,
+  CreateInventoryItemSchema,
+  CreateInventoryCategoryDto,
+  CreateInventoryCategorySchema,
+  CreateStockLocationDto,
+  CreateStockLocationSchema,
+  ExecutionOrderMovementDto,
+  ExecutionOrderMovementSchema,
+  InternalConsumptionDto,
+  InternalConsumptionSchema,
+  ListCatalogOptionsQueryDto,
+  ListCatalogOptionsQuerySchema,
+  ListInventoryCategoriesQueryDto,
+  ListInventoryCategoriesQuerySchema,
+  ListInventoryItemsQueryDto,
+  ListInventoryItemsQuerySchema,
+  ListSerializedAssetsQueryDto,
+  ListSerializedAssetsQuerySchema,
+  ListStockBalancesQueryDto,
+  ListStockBalancesQuerySchema,
+  ListStockLocationsQueryDto,
+  ListStockLocationsQuerySchema,
+  ReturnAssetDto,
+  ReturnAssetSchema,
+  SaleMovementDto,
+  SaleMovementSchema,
+  TransferStockDto,
+  TransferStockSchema,
+  UpdateInventoryItemDto,
+  UpdateInventoryItemSchema,
+  UpdateInventoryCategoryDto,
+  UpdateInventoryCategorySchema,
+  WriteOffAssetDto,
+  WriteOffAssetSchema,
+} from './dto';
+import { InventoryDashboardService } from './services/inventory-dashboard.service';
+import { InventoryCategoryService } from './services/inventory-category.service';
+import { InventoryItemService } from './services/inventory-item.service';
+import { SerializedAssetService } from './services/serialized-asset.service';
+import { StockBalanceService } from './services/stock-balance.service';
+import { StockLedgerService } from './services/stock-ledger.service';
+import { StockLocationService } from './services/stock-location.service';
+
+@ApiTags('inventory')
+@ApiBearerAuth('access-token')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Controller('inventory')
+export class InventoryController {
+  constructor(
+    private readonly inventoryItemService: InventoryItemService,
+    private readonly inventoryCategoryService: InventoryCategoryService,
+    private readonly stockLocationService: StockLocationService,
+    private readonly serializedAssetService: SerializedAssetService,
+    private readonly stockBalanceService: StockBalanceService,
+    private readonly stockLedgerService: StockLedgerService,
+    private readonly inventoryDashboardService: InventoryDashboardService,
+  ) {}
+
+  @Get('items')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Listar items del inventario' })
+  listItems(
+    @Query(new ZodValidationPipe(ListInventoryItemsQuerySchema)) query: ListInventoryItemsQueryDto,
+  ) {
+    return this.inventoryItemService.list(ListInventoryItemsQuerySchema.parse(query));
+  }
+
+  @Get('items/catalog/options')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Obtener opciones de catalogo para Compras' })
+  listCatalogOptions(
+    @Query(new ZodValidationPipe(ListCatalogOptionsQuerySchema)) query: ListCatalogOptionsQueryDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.inventoryItemService.listCatalogOptions(
+      ListCatalogOptionsQuerySchema.parse(query),
+      actor,
+    );
+  }
+
+  @Get('items/:id')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Obtener detalle de item del inventario' })
+  getItem(@Param('id', ParseUUIDPipe) id: string) {
+    return this.inventoryItemService.getById(id);
+  }
+
+  @Post('items')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Crear item del inventario' })
+  createItem(
+    @Body(new ZodValidationPipe(CreateInventoryItemSchema)) body: CreateInventoryItemDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.inventoryItemService.create(CreateInventoryItemSchema.parse(body), actor);
+  }
+
+  @Patch('items/:id')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Actualizar item del inventario' })
+  updateItem(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(UpdateInventoryItemSchema)) body: UpdateInventoryItemDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.inventoryItemService.update(id, UpdateInventoryItemSchema.parse(body), actor);
+  }
+
+  @Get('categories')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Listar categorias de inventario' })
+  listCategories(
+    @Query(new ZodValidationPipe(ListInventoryCategoriesQuerySchema))
+    query: ListInventoryCategoriesQueryDto,
+  ) {
+    return this.inventoryCategoryService.list(ListInventoryCategoriesQuerySchema.parse(query));
+  }
+
+  @Get('categories/:id')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Obtener detalle de categoria de inventario' })
+  getCategory(@Param('id', ParseUUIDPipe) id: string) {
+    return this.inventoryCategoryService.getById(id);
+  }
+
+  @Post('categories')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Crear categoria de inventario' })
+  createCategory(
+    @Body(new ZodValidationPipe(CreateInventoryCategorySchema)) body: CreateInventoryCategoryDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.inventoryCategoryService.create(CreateInventoryCategorySchema.parse(body), actor);
+  }
+
+  @Patch('categories/:id')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Actualizar categoria de inventario' })
+  updateCategory(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(UpdateInventoryCategorySchema)) body: UpdateInventoryCategoryDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.inventoryCategoryService.update(
+      id,
+      UpdateInventoryCategorySchema.parse(body),
+      actor,
+    );
+  }
+
+  @Get('locations')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Listar ubicaciones de stock' })
+  listLocations(
+    @Query(new ZodValidationPipe(ListStockLocationsQuerySchema)) query: ListStockLocationsQueryDto,
+  ) {
+    return this.stockLocationService.list(ListStockLocationsQuerySchema.parse(query));
+  }
+
+  @Post('locations')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Crear ubicación de stock' })
+  createLocation(
+    @Body(new ZodValidationPipe(CreateStockLocationSchema)) body: CreateStockLocationDto,
+  ) {
+    return this.stockLocationService.create(CreateStockLocationSchema.parse(body));
+  }
+
+  @Get('assets')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Listar activos serializados' })
+  listAssets(
+    @Query(new ZodValidationPipe(ListSerializedAssetsQuerySchema))
+    query: ListSerializedAssetsQueryDto,
+  ) {
+    return this.serializedAssetService.list(ListSerializedAssetsQuerySchema.parse(query));
+  }
+
+  @Get('assets/:id')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Obtener detalle de activo serializado' })
+  getAsset(@Param('id', ParseUUIDPipe) id: string) {
+    return this.serializedAssetService.getById(id);
+  }
+
+  @Get('balances')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Consultar balances de stock' })
+  listBalances(
+    @Query(new ZodValidationPipe(ListStockBalancesQuerySchema)) query: ListStockBalancesQueryDto,
+  ) {
+    return this.stockBalanceService.list(ListStockBalancesQuerySchema.parse(query));
+  }
+
+  @Post('transfers')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Transferir stock entre ubicaciones' })
+  transfer(
+    @Body(new ZodValidationPipe(TransferStockSchema)) body: TransferStockDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.stockLedgerService.transfer(TransferStockSchema.parse(body), actor);
+  }
+
+  @Post('movements/execution-order')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Registrar movimiento desde una OT' })
+  movementFromExecutionOrder(
+    @Body(new ZodValidationPipe(ExecutionOrderMovementSchema)) body: ExecutionOrderMovementDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.stockLedgerService.recordExecutionOrderMovement(
+      ExecutionOrderMovementSchema.parse(body),
+      actor,
+    );
+  }
+
+  @Post('movements/sale')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Registrar salida por venta' })
+  sale(
+    @Body(new ZodValidationPipe(SaleMovementSchema)) body: SaleMovementDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.stockLedgerService.recordSale(SaleMovementSchema.parse(body), actor);
+  }
+
+  @Post('movements/internal-consumption')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Registrar consumo interno' })
+  internalConsumption(
+    @Body(new ZodValidationPipe(InternalConsumptionSchema)) body: InternalConsumptionDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.stockLedgerService.recordInternalConsumption(
+      InternalConsumptionSchema.parse(body),
+      actor,
+    );
+  }
+
+  @Post('returns')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Registrar retorno de inventario o activo' })
+  registerReturn(
+    @Body(new ZodValidationPipe(ReturnAssetSchema)) body: ReturnAssetDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.stockLedgerService.recordReturn(ReturnAssetSchema.parse(body), actor);
+  }
+
+  @Post('write-offs')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Registrar baja de inventario o activo' })
+  writeOff(
+    @Body(new ZodValidationPipe(WriteOffAssetSchema)) body: WriteOffAssetDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.stockLedgerService.recordWriteOff(WriteOffAssetSchema.parse(body), actor);
+  }
+
+  @Get('dashboard')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Obtener KPIs del dashboard de inventario' })
+  getDashboard() {
+    return this.inventoryDashboardService.getSummary();
+  }
+}

@@ -1,0 +1,6 @@
+export enum ArcoRequestType {
+  ACCESS = 'ACCESS',
+  RECTIFICATION = 'RECTIFICATION',
+  DELETION = 'DELETION',
+  PORTABILITY = 'PORTABILITY',
+}

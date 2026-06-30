@@ -1,0 +1,8 @@
+export enum OpportunityStage {
+  DISCOVERY = 'DISCOVERY',
+  FEASIBILITY = 'FEASIBILITY',
+  PROPOSAL = 'PROPOSAL',
+  NEGOTIATION = 'NEGOTIATION',
+  WON = 'WON',
+  LOST = 'LOST',
+}

@@ -1,0 +1,125 @@
+/**
+ * DTOs para los contratos self-service del tenant autenticado.
+ * Usados por GET /api/v1/tenants/me y GET /api/v1/tenants/me/settings.
+ *
+ * Estos contratos son distintos al TenantResponseDto de plataforma:
+ * exponen solo los campos relevantes para el panel empresarial del tenant.
+ *
+ * HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §3.2
+ */
+
+import { TenantStatus } from '@iwana/shared';
+
+/**
+ * Datos base del tenant autenticado para el dashboard empresarial.
+ * No incluye schemaName, maxSubscribers ni campos de plataforma.
+ */
+export class TenantSelfResponseDto {
+  id: string;
+  name: string;
+  slug: string;
+  status: TenantStatus;
+  contactEmail: string;
+  legalName: string | null;
+  nit: string | null;
+  nitDv: string | null;
+  city: string | null;
+  department: string | null;
+  countryCode: string | null;
+  phone: string | null;
+  website: string | null;
+  createdAt: Date;
+
+  // Branding del tenant
+  logoLightUrl: string | null;
+  logoLightAssetId: string | null;
+  logoDarkUrl: string | null;
+  logoDarkAssetId: string | null;
+  sealLightUrl: string | null;
+  sealLightAssetId: string | null;
+  sealDarkUrl: string | null;
+  sealDarkAssetId: string | null;
+  faviconLightUrl: string | null;
+  faviconLightAssetId: string | null;
+  faviconDarkUrl: string | null;
+  faviconDarkAssetId: string | null;
+  loginBackgroundLightUrl: string | null;
+  loginBackgroundLightAssetId: string | null;
+  loginBackgroundDarkUrl: string | null;
+  loginBackgroundDarkAssetId: string | null;
+  showTenantName: boolean;
+  brandingProductName: string | null;
+  brandingSurfaceName: string | null;
+  brandingMetadataTitle: string | null;
+  brandingMetadataDescription: string | null;
+}
+
+/** Respuesta pública mínima para aplicar branding en el login del portal. */
+export class TenantPublicBrandingResponseDto {
+  displayName: string;
+  productName: string;
+  surfaceName: string;
+  metadataTitle: string;
+  metadataDescription: string;
+  showTenantName: boolean;
+  logoLightUrl: string | null;
+  logoDarkUrl: string | null;
+  sealLightUrl: string | null;
+  sealDarkUrl: string | null;
+  faviconLightUrl: string | null;
+  faviconDarkUrl: string | null;
+  loginBackgroundLightUrl: string | null;
+  loginBackgroundDarkUrl: string | null;
+}
+
+/**
+ * Configuración operativa del tenant autenticado.
+ * Devuelve los campos funcionales visibles en el panel empresarial.
+ */
+export class TenantSelfSettingsResponseDto {
+  timezone: string;
+  currency: string;
+  language: string;
+  country: string;
+  fiberInstallationThresholdMeters: number;
+  features: {
+    billing: boolean;
+    mfa_required_all: boolean;
+  };
+}
+
+/**
+ * Alerta de onboarding del dashboard del tenant.
+ * Generada a partir del estado actual del tenant y sus configuraciones.
+ */
+export class DashboardAlertDto {
+  id: string;
+  severity: 'info' | 'warning' | 'error';
+  title: string;
+  description: string;
+  href?: string;
+}
+
+/**
+ * Métricas del dashboard para el tenant autenticado.
+ * Los campos opcionales son null cuando la fuente aún no existe.
+ */
+export class DashboardMetricsDto {
+  configuredUsers: number | null;
+  mfaCoverage: number | null;
+  pendingAlerts: number;
+  auditEventsLast7d: number | null;
+}
+
+/**
+ * Respuesta del summary del dashboard empresarial.
+ * Agrega datos del tenant, métricas y alertas de onboarding.
+ *
+ * HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §3.4 (TenantDashboardSummary)
+ */
+export class DashboardSummaryResponseDto {
+  tenant: TenantSelfResponseDto;
+  settings: TenantSelfSettingsResponseDto;
+  metrics: DashboardMetricsDto;
+  alerts: DashboardAlertDto[];
+}

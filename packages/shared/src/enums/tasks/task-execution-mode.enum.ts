@@ -1,0 +1,6 @@
+export enum TaskExecutionMode {
+  IMMEDIATE = 'IMMEDIATE',
+  DUE_DATE = 'DUE_DATE',
+  SCHEDULED = 'SCHEDULED',
+  FIELD_SERVICE = 'FIELD_SERVICE',
+}

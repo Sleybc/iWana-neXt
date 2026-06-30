@@ -1,0 +1,145 @@
+import type { ChangeEvent } from 'react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { TicketFieldDecision, TicketPriority, UserRole } from '@iwana/shared';
+import { AssuranceClient } from './AssuranceClient';
+import { assuranceApi, wfmApi } from '@/lib/api-client';
+import { createAssuranceVisitRequestAndRoute } from '@/components/scheduling/visit-request-origin-orchestration';
+
+const mockRouterPush = jest.fn();
+
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: mockRouterPush }),
+}));
+
+jest.mock('@/components/auth/AuthProvider', () => ({
+  useAuth: () => ({
+    user: { id: 'user-1', role: UserRole.ADMIN, tenantId: 'tenant-1' },
+    isLoading: false,
+  }),
+}));
+
+jest.mock('@/components/scheduling/visit-request-origin-orchestration', () => ({
+  createAssuranceVisitRequestAndRoute: jest.fn(),
+}));
+
+jest.mock('@/lib/api-client', () => {
+  class MockApiError extends Error {
+    status: number;
+    code: string;
+
+    constructor(status: number, code: string, message: string) {
+      super(message);
+      this.name = 'ApiError';
+      this.status = status;
+      this.code = code;
+    }
+  }
+
+  return {
+    ApiError: MockApiError,
+    assuranceApi: {
+      tickets: {
+        list: jest.fn().mockResolvedValue({ data: [], total: 0, page: 1, limit: 20 }),
+        create: jest.fn(),
+        requestFieldService: jest.fn(),
+      },
+      dashboard: {
+        getSummary: jest.fn().mockResolvedValue({
+          openTickets: 0,
+          breachedTickets: 0,
+          fieldServiceTickets: 0,
+          averageResolutionMinutes: 0,
+        }),
+      },
+      slaPolicies: {
+        list: jest.fn().mockResolvedValue([]),
+      },
+    },
+    usersApi: {
+      list: jest.fn().mockResolvedValue({ data: [], meta: { nextCursor: null, total: 0 } }),
+    },
+    wfmApi: {
+      visitRequests: {
+        create: jest.fn(),
+      },
+    },
+  };
+});
+
+jest.mock('@iwana/ui', () => {
+  const actual = jest.requireActual('@iwana/ui');
+
+  return {
+    ...actual,
+    Select: ({
+      id,
+      label,
+      value,
+      onChange,
+      options = [],
+      placeholder,
+    }: {
+      id?: string;
+      label?: string;
+      value?: string;
+      onChange?: (event: ChangeEvent<HTMLSelectElement>) => void;
+      options?: Array<{ value: string; label: string }>;
+      placeholder?: string;
+    }) => (
+      <div>
+        {label && <label htmlFor={id}>{label}</label>}
+        <select id={id} aria-label={label} value={value} onChange={onChange}>
+          <option value="">{placeholder ?? 'Selecciona'}</option>
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    ),
+  };
+});
+
+const createTicketMock = jest.mocked(assuranceApi.tickets.create);
+const createAssuranceVisitRequestAndRouteMock = jest.mocked(createAssuranceVisitRequestAndRoute);
+
+describe('AssuranceClient', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('creates a ticket and routes to pending visits when field service is requested later', async () => {
+    const user = userEvent.setup();
+    createTicketMock.mockResolvedValue({
+      id: 'TK-001',
+      ticketNumber: 'TK-001',
+      subject: 'Sin servicio',
+      priority: TicketPriority.NORMAL,
+      fieldDecision: TicketFieldDecision.FIELD_SERVICE_REQUIRED,
+      description: null,
+    } as never);
+    createAssuranceVisitRequestAndRouteMock.mockResolvedValue({
+      visitRequest: { id: 'vr-001' } as never,
+      href: '/dashboard/scheduling/pending-visits?selectedVisitRequestId=vr-001',
+    });
+
+    render(<AssuranceClient />);
+
+    await user.click(await screen.findByRole('button', { name: 'Nuevo ticket' }));
+    await user.type(screen.getByLabelText('Asunto operativo'), 'Sin servicio');
+    await user.selectOptions(
+      screen.getByLabelText('Decisión de campo'),
+      TicketFieldDecision.FIELD_SERVICE_REQUIRED,
+    );
+    await user.selectOptions(screen.getByLabelText('Siguiente paso'), 'send-to-pending');
+    await user.click(screen.getByRole('button', { name: 'Crear ticket' }));
+
+    await waitFor(() => {
+      expect(mockRouterPush).toHaveBeenCalledWith(
+        '/dashboard/scheduling/pending-visits?selectedVisitRequestId=vr-001',
+      );
+    });
+  });
+});

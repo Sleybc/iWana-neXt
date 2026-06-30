@@ -1,0 +1,104 @@
+'use client';
+
+import { PurchaseRequestPriority, PurchaseRequestStatus, PurchaseRequestType } from '@iwana/shared';
+import type { PurchaseRequestRecord } from '@/lib/api-client';
+
+export type PurchaseKpiPreset =
+  | 'pendingQuotes'
+  | 'pendingApproval'
+  | 'readyForPo'
+  | 'pendingReceipt'
+  | 'urgent'
+  | 'overdue';
+
+export interface PurchaseRequestFilters {
+  requestType?: PurchaseRequestType;
+  status?: PurchaseRequestStatus;
+  priority?: PurchaseRequestPriority;
+  search?: string;
+  kpiPreset?: PurchaseKpiPreset;
+}
+
+export function isPurchaseRequestOverdue(request: PurchaseRequestRecord): boolean {
+  if (!request.neededByDate) {
+    return false;
+  }
+
+  return (
+    new Date(request.neededByDate) < new Date() &&
+    request.status !== PurchaseRequestStatus.CONVERTED_TO_PO &&
+    request.status !== PurchaseRequestStatus.CANCELLED &&
+    request.status !== PurchaseRequestStatus.REJECTED
+  );
+}
+
+export function kpiPresetToFilters(preset: PurchaseKpiPreset): PurchaseRequestFilters {
+  switch (preset) {
+    case 'pendingQuotes':
+      return { kpiPreset: preset, status: PurchaseRequestStatus.PENDING_QUOTES };
+    case 'pendingApproval':
+      return { kpiPreset: preset, status: PurchaseRequestStatus.PENDING_APPROVAL };
+    case 'readyForPo':
+      return { kpiPreset: preset, status: PurchaseRequestStatus.APPROVED };
+    case 'pendingReceipt':
+      return { kpiPreset: preset, status: PurchaseRequestStatus.CONVERTED_TO_PO };
+    case 'urgent':
+      return { kpiPreset: preset, priority: PurchaseRequestPriority.URGENT };
+    case 'overdue':
+      return { kpiPreset: preset };
+    default:
+      return { kpiPreset: preset };
+  }
+}
+
+export function resolveActiveKpiPreset(filters: PurchaseRequestFilters): PurchaseKpiPreset | null {
+  if (filters.kpiPreset) {
+    return filters.kpiPreset;
+  }
+
+  if (filters.status === PurchaseRequestStatus.PENDING_QUOTES) return 'pendingQuotes';
+  if (filters.status === PurchaseRequestStatus.PENDING_APPROVAL) return 'pendingApproval';
+  if (filters.status === PurchaseRequestStatus.APPROVED) return 'readyForPo';
+  if (filters.status === PurchaseRequestStatus.CONVERTED_TO_PO) return 'pendingReceipt';
+  if (filters.priority === PurchaseRequestPriority.URGENT) return 'urgent';
+
+  return null;
+}
+
+export function filterPurchaseRequests(
+  requests: PurchaseRequestRecord[],
+  filters: PurchaseRequestFilters,
+): PurchaseRequestRecord[] {
+  return requests.filter((request) => {
+    if (filters.requestType && request.requestType !== filters.requestType) return false;
+    if (filters.status && request.status !== filters.status) return false;
+    if (filters.priority && request.priority !== filters.priority) return false;
+    if (filters.kpiPreset === 'overdue' && !isPurchaseRequestOverdue(request)) return false;
+    if (filters.search) {
+      const needle = filters.search.trim().toLowerCase();
+      const haystack =
+        `${request.requestNumber} ${request.title} ${request.requestingArea ?? ''}`.toLowerCase();
+      if (!haystack.includes(needle)) return false;
+    }
+    return true;
+  });
+}
+
+export function hasActivePurchaseFilters(filters: PurchaseRequestFilters): boolean {
+  return Boolean(
+    filters.requestType ||
+    filters.status ||
+    filters.priority ||
+    filters.search?.trim() ||
+    filters.kpiPreset,
+  );
+}
+
+export const PURCHASE_KPI_LABELS: Record<PurchaseKpiPreset, string> = {
+  pendingQuotes: 'Por cotizar',
+  pendingApproval: 'Por aprobar',
+  readyForPo: 'Listas para OC',
+  pendingReceipt: 'Por recibir',
+  urgent: 'Urgentes',
+  overdue: 'Vencidas',
+};

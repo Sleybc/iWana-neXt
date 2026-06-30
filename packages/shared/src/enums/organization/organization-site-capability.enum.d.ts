@@ -1,0 +1,10 @@
+export declare enum OrganizationSiteCapability {
+    CUSTOMER_SERVICE = "CUSTOMER_SERVICE",
+    TECH_DISPATCH = "TECH_DISPATCH",
+    WAREHOUSE = "WAREHOUSE",
+    COLLECTION_POINT = "COLLECTION_POINT",
+    ADMIN_OFFICE = "ADMIN_OFFICE",
+    NOC = "NOC",
+    SALES_OFFICE = "SALES_OFFICE"
+}
+//# sourceMappingURL=organization-site-capability.enum.d.ts.map

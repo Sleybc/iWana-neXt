@@ -1,0 +1,1 @@
+{"version":3,"file":"009_extend_tenant_branding_v2.d.ts","sourceRoot":"","sources":["009_extend_tenant_branding_v2.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,kBAAkB,EAAE,WAAW,EAAE,MAAM,SAAS,CAAC;AAE1D;;;;;;GAMG;AACH,qBAAa,mCAAoC,YAAW,kBAAkB;IAC5E,IAAI,SAAyC;IAEhC,EAAE,CAAC,WAAW,EAAE,WAAW,GAAG,OAAO,CAAC,IAAI,CAAC;IA0J3C,IAAI,CAAC,WAAW,EAAE,WAAW,GAAG,OAAO,CAAC,IAAI,CAAC;CA0C3D"}

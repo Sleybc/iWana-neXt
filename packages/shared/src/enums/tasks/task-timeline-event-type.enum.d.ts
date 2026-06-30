@@ -1,0 +1,12 @@
+export declare enum TaskTimelineEventType {
+    CREATED = "CREATED",
+    ASSIGNED = "ASSIGNED",
+    REASSIGNED = "REASSIGNED",
+    STATUS_CHANGED = "STATUS_CHANGED",
+    SCHEDULE_LINKED = "SCHEDULE_LINKED",
+    WORK_ORDER_LINKED = "WORK_ORDER_LINKED",
+    BLOCKED = "BLOCKED",
+    RESOLVED = "RESOLVED",
+    CANCELLED = "CANCELLED"
+}
+//# sourceMappingURL=task-timeline-event-type.enum.d.ts.map

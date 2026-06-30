@@ -1,0 +1,237 @@
+/* globals.css — Sistema de diseno iWana neXt */
+/* Tailwind 4 CSS-first: sin tailwind.config.js */
+
+/* Tipografia: Exo 2 (display/UI) + JetBrains Mono (codigo) */
+/* Pesos: 100 Thin, 300 Light, 400 Regular, 500 Medium, 600 SemiBold, 700 Bold — segun manual identidad iWana */
+@import url('https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,100;0,300;0,400;0,500;0,600;0,700;1,100;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* Tailwind 4 — activacion CSS-first */
+@import "tailwindcss";
+
+/* Escaneo de fuentes de clases Tailwind en el monorepo.
+   Tailwind 4 no escanea node_modules por defecto.
+   Se declaran explicitamente los paths de componentes y apps consumidoras. */
+@source "../components/**/*.{ts,tsx}";
+@source "../tokens.ts";
+@source "../../../../apps/web/src/**/*.{ts,tsx}";
+@source "../../../../apps/portal/src/**/*.{ts,tsx}";
+
+/* ================================================================
+   Design Tokens iWana neXt — @theme Tailwind 4
+   NOTA ACCESIBILIDAD: --color-iwana-secondary (#A5C330) NO pasa
+   WCAG AA sobre blanco. Para texto usar --color-iwana-secondary-700
+   (#6A7A1C) con contraste 6.2:1.
+   ================================================================ */
+@theme {
+  /* Tipografia — Exo 2 Bold/Thin segun Manual Identidad Corporativa iWana */
+  --font-sans:    'Exo 2', 'SF Pro Display', system-ui, sans-serif;
+  --font-display: 'Exo 2', sans-serif;
+  --font-mono:    var(--font-jetbrains-mono), 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Color primario — Azul Noche iWana (escala oficial Manual de Identidad) */
+  --color-iwana-primary:     #17163A;
+  --color-iwana-primary-50:  #F8F8FB;
+  --color-iwana-primary-100: #E8E7F0;
+  --color-iwana-primary-200: #D1CFE1;
+  --color-iwana-primary-300: #A8A4C8;
+  --color-iwana-primary-400: #7B75AB;
+  --color-iwana-primary-500: #5A5190;
+  --color-iwana-primary-600: #4A4176;
+  --color-iwana-primary-700: #3D3461;
+  --color-iwana-primary-800: #342E52;
+  --color-iwana-primary-900: #17163A;
+  --color-iwana-primary-950: #0F0E24;
+
+  /* Color secundario — Lima iWana (escala oficial Manual de Identidad) */
+  /* SOLO decorativo — ver nota accesibilidad arriba */
+  --color-iwana-secondary:     #A5C330;
+  --color-iwana-secondary-50:  #F7FCE8;
+  --color-iwana-secondary-100: #EDF8CC;
+  --color-iwana-secondary-200: #DCF19F;
+  --color-iwana-secondary-300: #C5E668;
+  --color-iwana-secondary-400: #B2D93C;
+  --color-iwana-secondary-500: #A5C330;
+  --color-iwana-secondary-600: #8BA020;
+  /* Texto accesible sobre blanco — contraste 6.2:1 (WCAG AA) */
+  --color-iwana-secondary-700: #6A7A1C;
+  --color-iwana-secondary-800: #55621C;
+  --color-iwana-secondary-900: #48531D;
+  --color-iwana-secondary-950: #252E0B;
+
+  /* Color neutral — Gris iWana (R:174 G:174 B:173, Manual de Identidad) */
+  --color-iwana-neutral:     #AEAEAD;
+  --color-iwana-neutral-50:  #F9F9F9;
+  --color-iwana-neutral-100: #F1F1F1;
+  --color-iwana-neutral-200: #E4E4E4;
+  --color-iwana-neutral-300: #D1D1D1;
+  --color-iwana-neutral-400: #B8B8B8;
+  --color-iwana-neutral-500: #AEAEAD;
+  --color-iwana-neutral-600: #8A8A8A;
+  --color-iwana-neutral-700: #6F6F6F;
+  --color-iwana-neutral-800: #5C5C5C;
+  --color-iwana-neutral-900: #4F4F4F;
+  --color-iwana-neutral-950: #2E2E2E;
+
+  /* Tokens semanticos de superficie */
+  --color-iwana-background: #FFFFFF;
+  --color-iwana-foreground: #17163A;
+  --color-iwana-muted:      #F5F5F5;
+  --color-iwana-surface-soft: #F8FAF5;
+  --color-iwana-accent:     #A5C330;
+
+  /* Colores semanticos — valores base iWana */
+  --color-iwana-success: #22C55E;
+  --color-iwana-warning: #F59E0B;
+  --color-iwana-error:   #EF4444;
+  --color-iwana-info:    #3B82F6;
+
+  /* Colores semanticos TailAdmin — compatibles con Tailwind 4 CSS-first */
+  /* Escala de tonos para pill badges, trend badges y estados de UI */
+  --color-success-50:  oklch(0.97 0.03 145);
+  --color-success-400: oklch(0.80 0.14 145);
+  --color-success-500: oklch(0.72 0.15 145);
+  --color-success-600: oklch(0.62 0.16 145);
+  --color-success-700: oklch(0.52 0.17 145);
+  --color-error-50:    oklch(0.97 0.03 25);
+  --color-error-400:   oklch(0.72 0.16 25);
+  --color-error-500:   oklch(0.65 0.18 25);
+  --color-error-600:   oklch(0.55 0.20 25);
+  --color-error-700:   oklch(0.48 0.18 25);
+  --color-warning-50:  oklch(0.98 0.03 80);
+  --color-warning-400: oklch(0.85 0.14 80);
+  --color-warning-500: oklch(0.78 0.15 80);
+  --color-warning-600: oklch(0.68 0.17 80);
+  --color-warning-700: oklch(0.60 0.16 80);
+
+  /* Radio de bordes */
+  --radius-sm:   0.375rem;
+  --radius-md:   0.5rem;
+  --radius-lg:   0.75rem;
+  --radius-xl:   1rem;
+  --radius-2xl:  1.5rem;
+  --radius-full: 9999px;
+
+  /* ================================================================
+     Tokens dark mode — Superficie iWana neXt
+     Escala neutra desde #181818 (base) hasta #333333 (hover).
+     NORMA: En dark mode usar SIEMPRE estos tokens.
+     PROHIBIDO usar dark:bg-gray-{700,800,900,950} en codigo nuevo.
+     Ver: docs/adrs/ADR-026 y AGENTS.md reglas de diseno.
+     ================================================================ */
+  --color-dark-surface:   #181818;   /* fondo base: layout, page wrapper */
+  --color-dark-surface-2: #222222;   /* elevacion 1: cards, panels, topheader */
+  --color-dark-surface-3: #2A2A2A;   /* elevacion 2: inputs, botones, dropdowns */
+  --color-dark-surface-4: #333333;   /* elevacion 3: hover states, avatar */
+
+  --color-dark-border:    #2E2E2E;   /* border principal (reemplaza gray-800) */
+  --color-dark-border-2:  #383838;   /* border secundario (reemplaza gray-700) */
+
+  /* Sombras iWana — escala definida en Manual de Implementacion */
+  /* Base (Manual secc. 3.1) */
+  --shadow-iwana:        0 1px 3px 0 rgba(23, 22, 58, 0.10), 0 1px 2px 0 rgba(23, 22, 58, 0.06);
+  --shadow-iwana-lg:     0 10px 15px -3px rgba(23, 22, 58, 0.10), 0 4px 6px -2px rgba(23, 22, 58, 0.05);
+  /* Extendidas — usadas en Card, PageHeader y contenedores elevados */
+  --shadow-iwana-soft:   0 10px 40px -10px rgba(23, 22, 58, 0.08);
+  --shadow-iwana-active: 0 8px 30px -5px rgba(23, 22, 58, 0.12);
+  --shadow-iwana-card:   0 1px 3px 0 rgba(23, 22, 58, 0.10), 0 1px 2px 0 rgba(23, 22, 58, 0.06);
+}
+
+/* ================================================================
+   Estilos base
+   ================================================================ */
+body {
+  font-family: var(--font-sans);
+  color: var(--color-iwana-primary);
+  background-color: #FFFFFF;
+}
+
+/* Dark mode base — aplicado via clase .dark en <html> */
+.dark body {
+  color: #F0F0F0;
+  background-color: var(--color-dark-surface);
+}
+
+/* ================================================================
+   Utilidades shell — necesarias para el layout del dashboard
+   ================================================================ */
+
+/* Ocultar scrollbar manteniendo funcionalidad */
+.no-scrollbar {
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ================================================================
+   Scrollbar personalizado iWana (Manual Implementacion secc. 3.2)
+   ================================================================ */
+::-webkit-scrollbar {
+  width: 0.375rem; /* 6px */
+  height: 0.375rem;
+}
+::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--color-iwana-neutral) 15%, transparent);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-iwana-primary) 20%, transparent);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-iwana-primary) 35%, transparent);
+}
+
+/* ================================================================
+   Utilidades de marca iWana (Manual Implementacion secc. 3.2)
+   ================================================================ */
+@layer components {
+  /* Efecto glassmorphism — fondos traslucidos con blur */
+  .iwana-glass {
+    background: color-mix(in srgb, #FFFFFF 80%, transparent);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  /* Degradado de marca horizontal */
+  .iwana-gradient {
+    background: linear-gradient(135deg, var(--color-iwana-primary) 0%, var(--color-iwana-secondary) 100%);
+  }
+
+  /* Texto con degradado de marca */
+  .iwana-text-gradient {
+    background: linear-gradient(90deg, var(--color-iwana-primary) 0%, var(--color-iwana-secondary-700) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Tipografia Thin — para heroes y titulares de alto impacto */
+  .font-thin-exo {
+    font-family: var(--font-display);
+    font-weight: 100;
+  }
+
+  /* Eyebrow operativo iWana — discreto, consistente y AA sobre fondos claros */
+  .portal-eyebrow {
+    @apply text-[10px] font-semibold uppercase tracking-widest text-iwana-secondary-700 dark:text-iwana-secondary-400;
+  }
+
+  /* Eyebrow operativo iWana — variante muted para fondos coloreados */
+  .portal-eyebrow-muted {
+    @apply text-[10px] font-semibold uppercase tracking-widest text-gray-500 dark:text-gray-400;
+  }
+
+  /* Campo operativo iWana para busquedas y filtros compactos */
+  .portal-input-surface {
+    @apply rounded-2xl border-gray-200 bg-white shadow-sm hover:border-iwana-primary-200 focus-visible:ring-iwana-primary dark:border-dark-border dark:bg-dark-surface-3;
+  }
+}
+
+/* ================================================================
+   Tailwind 4 — Variante dark mode por clase en <html>
+   Activa estilos oscuros cuando el elemento html tiene clase 'dark'
+   ================================================================ */
+@variant dark (&:where(.dark, .dark *));
+

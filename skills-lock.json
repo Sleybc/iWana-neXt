@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "skills": {
+    "dispatching-parallel-agents": {
+      "source": ".agents/skills/dispatching-parallel-agents",
+      "sourceType": "workspace"
+    },
+    "executing-plans": {
+      "source": ".agents/skills/executing-plans",
+      "sourceType": "workspace"
+    },
+    "finishing-a-development-branch": {
+      "source": ".agents/skills/finishing-a-development-branch",
+      "sourceType": "workspace"
+    },
+    "receiving-code-review": {
+      "source": ".agents/skills/receiving-code-review",
+      "sourceType": "workspace"
+    },
+    "requesting-code-review": {
+      "source": ".agents/skills/requesting-code-review",
+      "sourceType": "workspace"
+    },
+    "skill-creator": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "skillPath": "skills/skill-creator/SKILL.md",
+      "computedHash": "5ea13a6d9f0d4bb694405d79acd00cadec0d21bb138c4dd10fcf3c500cb835c2"
+    },
+    "subagent-driven-development": {
+      "source": ".agents/skills/subagent-driven-development",
+      "sourceType": "workspace"
+    },
+    "systematic-debugging": {
+      "source": ".agents/skills/systematic-debugging",
+      "sourceType": "workspace"
+    },
+    "ui-ux-pro-max": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/ui-ux-pro-max/SKILL.md",
+      "computedHash": "0a413bf988d06481f69bb81df2070741c3ba12dd9f1be2706d57f259c905992d"
+    },
+    "verification-before-completion": {
+      "source": ".agents/skills/verification-before-completion",
+      "sourceType": "workspace"
+    },
+    "writing-plans": {
+      "source": ".agents/skills/writing-plans",
+      "sourceType": "workspace"
+    },
+    "writing-skills": {
+      "source": ".agents/skills/writing-skills",
+      "sourceType": "workspace"
+    }
+  }
+}

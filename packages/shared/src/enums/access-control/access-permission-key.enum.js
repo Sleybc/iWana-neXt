@@ -1,0 +1,34 @@
+'use strict';
+Object.defineProperty(exports, '__esModule', { value: true });
+exports.AccessPermissionKey = void 0;
+var AccessPermissionKey;
+(function (AccessPermissionKey) {
+  AccessPermissionKey['SETTINGS_READ'] = 'settings.read';
+  AccessPermissionKey['SETTINGS_MANAGE'] = 'settings.manage';
+  AccessPermissionKey['ORGANIZATION_SITES_READ'] = 'organization.sites.read';
+  AccessPermissionKey['ORGANIZATION_SITES_MANAGE'] = 'organization.sites.manage';
+  AccessPermissionKey['ORGANIZATION_HOURS_MANAGE'] = 'organization.hours.manage';
+  AccessPermissionKey['ORGANIZATION_ASSIGNMENTS_MANAGE'] = 'organization.assignments.manage';
+  AccessPermissionKey['USERS_READ'] = 'users.read';
+  AccessPermissionKey['USERS_MANAGE'] = 'users.manage';
+  AccessPermissionKey['ACCESS_PERMISSIONS_READ'] = 'access.permissions.read';
+  AccessPermissionKey['ACCESS_PROFILES_READ'] = 'access.profiles.read';
+  AccessPermissionKey['ACCESS_PROFILES_MANAGE'] = 'access.profiles.manage';
+  AccessPermissionKey['ACCESS_ASSIGNMENTS_MANAGE'] = 'access.assignments.manage';
+  AccessPermissionKey['WFM_SCHEDULE_READ'] = 'wfm.schedule.read';
+  AccessPermissionKey['WFM_SCHEDULE_MANAGE'] = 'wfm.schedule.manage';
+  AccessPermissionKey['WFM_WORK_ORDERS_EXECUTE'] = 'wfm.work_orders.execute';
+  AccessPermissionKey['CRM_CUSTOMERS_READ'] = 'crm.customers.read';
+  AccessPermissionKey['CRM_CUSTOMERS_MANAGE'] = 'crm.customers.manage';
+  AccessPermissionKey['COMMERCIAL_CATALOG_READ'] = 'commercial.catalog.read';
+  AccessPermissionKey['COMMERCIAL_CATALOG_MANAGE'] = 'commercial.catalog.manage';
+  AccessPermissionKey['ASSURANCE_TICKETS_READ'] = 'assurance.tickets.read';
+  AccessPermissionKey['ASSURANCE_TICKETS_MANAGE'] = 'assurance.tickets.manage';
+  AccessPermissionKey['INVENTORY_STOCK_READ'] = 'inventory.stock.read';
+  AccessPermissionKey['INVENTORY_STOCK_MANAGE'] = 'inventory.stock.manage';
+  AccessPermissionKey['BILLING_PAYMENTS_READ'] = 'billing.payments.read';
+  AccessPermissionKey['BILLING_PAYMENTS_REGISTER'] = 'billing.payments.register';
+  AccessPermissionKey['BILLING_INVOICES_READ'] = 'billing.invoices.read';
+  AccessPermissionKey['BILLING_INVOICES_MANAGE'] = 'billing.invoices.manage';
+})(AccessPermissionKey || (exports.AccessPermissionKey = AccessPermissionKey = {}));
+//# sourceMappingURL=access-permission-key.enum.js.map

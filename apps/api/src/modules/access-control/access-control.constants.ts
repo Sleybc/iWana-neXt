@@ -1,0 +1,336 @@
+import {
+  AccessPermissionAvailability,
+  AccessPermissionCatalogVersion,
+  AccessPermissionKey,
+  UserRole,
+} from '@iwana/shared';
+
+interface PermissionSeedDefinition {
+  permissionKey: AccessPermissionKey;
+  moduleKey: string;
+  action: string;
+  description: string;
+  catalogVersion: AccessPermissionCatalogVersion;
+  availability: AccessPermissionAvailability;
+}
+
+interface SystemRoleTemplateDefinition {
+  name: string;
+  description: string;
+  baseRoleConstraint: UserRole;
+  permissionKeys: AccessPermissionKey[];
+}
+
+const version = AccessPermissionCatalogVersion.MOD00_ACCESS_V1;
+
+export const MOD00_ACCESS_V1_CATALOG: PermissionSeedDefinition[] = [
+  {
+    permissionKey: AccessPermissionKey.SETTINGS_READ,
+    moduleKey: 'settings',
+    action: 'read',
+    description: 'Ver centro de Configuración',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.SETTINGS_MANAGE,
+    moduleKey: 'settings',
+    action: 'manage',
+    description: 'Administrar la configuración general',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.ORGANIZATION_SITES_READ,
+    moduleKey: 'organization',
+    action: 'read',
+    description: 'Ver sedes de la empresa',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.ORGANIZATION_SITES_MANAGE,
+    moduleKey: 'organization',
+    action: 'manage',
+    description: 'Crear, editar, activar/desactivar y eliminar sedes',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.ORGANIZATION_HOURS_MANAGE,
+    moduleKey: 'organization',
+    action: 'manage',
+    description: 'Gestionar horarios institucionales de sedes',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.ORGANIZATION_ASSIGNMENTS_MANAGE,
+    moduleKey: 'organization',
+    action: 'manage',
+    description: 'Gestionar asignaciones y responsables de sedes',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.USERS_READ,
+    moduleKey: 'users',
+    action: 'read',
+    description: 'Ver usuarios internos de la empresa',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.USERS_MANAGE,
+    moduleKey: 'users',
+    action: 'manage',
+    description: 'Crear, editar y desactivar usuarios internos',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.ACCESS_PERMISSIONS_READ,
+    moduleKey: 'access',
+    action: 'read',
+    description: 'Ver los accesos disponibles para cada perfil',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.ACCESS_PROFILES_READ,
+    moduleKey: 'access',
+    action: 'read',
+    description: 'Ver perfiles de acceso',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.ACCESS_PROFILES_MANAGE,
+    moduleKey: 'access',
+    action: 'manage',
+    description: 'Crear, editar y desactivar perfiles de acceso',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.ACCESS_ASSIGNMENTS_MANAGE,
+    moduleKey: 'access',
+    action: 'manage',
+    description: 'Asignar perfiles de acceso a usuarios de la empresa',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.WFM_SCHEDULE_READ,
+    moduleKey: 'wfm',
+    action: 'read',
+    description: 'Ver agenda de visitas',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.WFM_SCHEDULE_MANAGE,
+    moduleKey: 'wfm',
+    action: 'manage',
+    description: 'Gestionar agenda de visitas',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.WFM_WORK_ORDERS_EXECUTE,
+    moduleKey: 'wfm',
+    action: 'execute',
+    description: 'Ejecutar órdenes de trabajo asignadas',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.CRM_CUSTOMERS_READ,
+    moduleKey: 'crm',
+    action: 'read',
+    description: 'Ver expedientes CRM en fase futura',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.RESERVED,
+  },
+  {
+    permissionKey: AccessPermissionKey.CRM_CUSTOMERS_MANAGE,
+    moduleKey: 'crm',
+    action: 'manage',
+    description: 'Gestionar expedientes CRM en fase futura',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.RESERVED,
+  },
+  {
+    permissionKey: AccessPermissionKey.COMMERCIAL_CATALOG_READ,
+    moduleKey: 'commercial',
+    action: 'read',
+    description: 'Ver catálogo comercial en fase futura',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.RESERVED,
+  },
+  {
+    permissionKey: AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE,
+    moduleKey: 'commercial',
+    action: 'manage',
+    description: 'Gestionar catálogo comercial en fase futura',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.RESERVED,
+  },
+  {
+    permissionKey: AccessPermissionKey.ASSURANCE_TICKETS_READ,
+    moduleKey: 'assurance',
+    action: 'read',
+    description: 'Ver tickets/PQR en fase futura',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.RESERVED,
+  },
+  {
+    permissionKey: AccessPermissionKey.ASSURANCE_TICKETS_MANAGE,
+    moduleKey: 'assurance',
+    action: 'manage',
+    description: 'Gestionar tickets/PQR en fase futura',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.RESERVED,
+  },
+  {
+    permissionKey: AccessPermissionKey.INVENTORY_STOCK_READ,
+    moduleKey: 'inventory',
+    action: 'read',
+    description: 'Ver inventario futuro',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.RESERVED,
+  },
+  {
+    permissionKey: AccessPermissionKey.INVENTORY_STOCK_MANAGE,
+    moduleKey: 'inventory',
+    action: 'manage',
+    description: 'Gestionar inventario futuro',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.RESERVED,
+  },
+  {
+    permissionKey: AccessPermissionKey.BILLING_PAYMENTS_READ,
+    moduleKey: 'billing',
+    action: 'read',
+    description: 'Ver recaudos futuros',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.RESERVED,
+  },
+  {
+    permissionKey: AccessPermissionKey.BILLING_PAYMENTS_REGISTER,
+    moduleKey: 'billing',
+    action: 'register',
+    description: 'Registrar recaudo futuro',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.RESERVED,
+  },
+  {
+    permissionKey: AccessPermissionKey.BILLING_INVOICES_READ,
+    moduleKey: 'billing',
+    action: 'read',
+    description: 'Ver facturas futuras',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.RESERVED,
+  },
+  {
+    permissionKey: AccessPermissionKey.BILLING_INVOICES_MANAGE,
+    moduleKey: 'billing',
+    action: 'manage',
+    description: 'Gestionar facturación futura',
+    catalogVersion: version,
+    availability: AccessPermissionAvailability.RESERVED,
+  },
+];
+
+export const ROLE_ASSIGNABLE_PERMISSION_MATRIX: Record<UserRole, AccessPermissionKey[]> = {
+  [UserRole.ADMIN]: MOD00_ACCESS_V1_CATALOG.filter(
+    (entry) => entry.availability === AccessPermissionAvailability.ASSIGNABLE,
+  ).map((entry) => entry.permissionKey),
+  [UserRole.NOC]: [
+    AccessPermissionKey.SETTINGS_READ,
+    AccessPermissionKey.ORGANIZATION_SITES_READ,
+    AccessPermissionKey.WFM_SCHEDULE_READ,
+  ],
+  [UserRole.SUPPORT]: [
+    AccessPermissionKey.SETTINGS_READ,
+    AccessPermissionKey.ORGANIZATION_SITES_READ,
+    AccessPermissionKey.USERS_READ,
+    AccessPermissionKey.WFM_SCHEDULE_READ,
+  ],
+  [UserRole.SALES]: [
+    AccessPermissionKey.SETTINGS_READ,
+    AccessPermissionKey.ORGANIZATION_SITES_READ,
+  ],
+  [UserRole.TECHNICIAN]: [
+    AccessPermissionKey.SETTINGS_READ,
+    AccessPermissionKey.ORGANIZATION_SITES_READ,
+    AccessPermissionKey.WFM_SCHEDULE_READ,
+    AccessPermissionKey.WFM_WORK_ORDERS_EXECUTE,
+  ],
+  [UserRole.ACCOUNTANT]: [
+    AccessPermissionKey.SETTINGS_READ,
+    AccessPermissionKey.ORGANIZATION_SITES_READ,
+  ],
+  [UserRole.HR]: [
+    AccessPermissionKey.SETTINGS_READ,
+    AccessPermissionKey.ORGANIZATION_SITES_READ,
+    AccessPermissionKey.USERS_READ,
+  ],
+  [UserRole.SUBSCRIBER]: [],
+  [UserRole.CONTRACTOR]: [
+    AccessPermissionKey.SETTINGS_READ,
+    AccessPermissionKey.ORGANIZATION_SITES_READ,
+    AccessPermissionKey.WFM_SCHEDULE_READ,
+    AccessPermissionKey.WFM_WORK_ORDERS_EXECUTE,
+  ],
+  [UserRole.PARTNER]: [],
+  [UserRole.AUDITOR]: [
+    AccessPermissionKey.SETTINGS_READ,
+    AccessPermissionKey.ORGANIZATION_SITES_READ,
+    AccessPermissionKey.USERS_READ,
+    AccessPermissionKey.ACCESS_PERMISSIONS_READ,
+    AccessPermissionKey.ACCESS_PROFILES_READ,
+  ],
+  [UserRole.INVESTOR]: [],
+  [UserRole.SYSTEM_ADMIN]: [],
+  [UserRole.IWANA_SUPPORT]: [],
+};
+
+export const MOD00_ACCESS_V1_SYSTEM_ROLE_TEMPLATES: SystemRoleTemplateDefinition[] = [
+  {
+    name: 'Administrador general',
+    description: 'Plantilla inicial para la administración general de la empresa.',
+    baseRoleConstraint: UserRole.ADMIN,
+    permissionKeys: ROLE_ASSIGNABLE_PERMISSION_MATRIX[UserRole.ADMIN],
+  },
+  {
+    name: 'Monitoreo operativo',
+    description: 'Plantilla inicial para monitoreo operativo.',
+    baseRoleConstraint: UserRole.NOC,
+    permissionKeys: ROLE_ASSIGNABLE_PERMISSION_MATRIX[UserRole.NOC],
+  },
+  {
+    name: 'Soporte inicial',
+    description: 'Plantilla inicial para soporte operativo.',
+    baseRoleConstraint: UserRole.SUPPORT,
+    permissionKeys: ROLE_ASSIGNABLE_PERMISSION_MATRIX[UserRole.SUPPORT],
+  },
+  {
+    name: 'Técnico de campo',
+    description: 'Plantilla inicial para agenda y ejecucion de trabajo de campo.',
+    baseRoleConstraint: UserRole.TECHNICIAN,
+    permissionKeys: ROLE_ASSIGNABLE_PERMISSION_MATRIX[UserRole.TECHNICIAN],
+  },
+  {
+    name: 'Contratista',
+    description: 'Plantilla inicial para operacion de campo limitada.',
+    baseRoleConstraint: UserRole.CONTRACTOR,
+    permissionKeys: ROLE_ASSIGNABLE_PERMISSION_MATRIX[UserRole.CONTRACTOR],
+  },
+  {
+    name: 'Auditor',
+    description: 'Plantilla inicial de consulta para auditoría.',
+    baseRoleConstraint: UserRole.AUDITOR,
+    permissionKeys: ROLE_ASSIGNABLE_PERMISSION_MATRIX[UserRole.AUDITOR],
+  },
+];

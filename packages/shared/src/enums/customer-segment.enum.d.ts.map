@@ -1,0 +1,1 @@
+{"version":3,"file":"customer-segment.enum.d.ts","sourceRoot":"","sources":["customer-segment.enum.ts"],"names":[],"mappings":"AAAA;;;;GAIG;AACH,oBAAY,eAAe;IACzB,WAAW,gBAAgB,CAAE,6CAA6C;IAC1E,IAAI,SAAS,CAAE,4CAA4C;IAC3D,IAAI,SAAS,CAAE,qCAAqC;IACpD,SAAS,cAAc,CAAE,sDAAsD;IAC/E,UAAU,eAAe,CAAE,mDAAmD;IAC9E,SAAS,cAAc;CACxB"}

@@ -1,0 +1,1 @@
+{"version":3,"file":"user-access-profile.entity.d.ts","sourceRoot":"","sources":["user-access-profile.entity.ts"],"names":[],"mappings":"AAEA,qBAMa,iBAAiB;IAE5B,EAAE,EAAE,MAAM,CAAC;IAGX,QAAQ,EAAE,MAAM,CAAC;IAGjB,MAAM,EAAE,MAAM,CAAC;IAGf,SAAS,EAAE,MAAM,CAAC;IAGlB,SAAS,EAAE,MAAM,CAAC;IAGlB,OAAO,EAAE,MAAM,GAAG,IAAI,CAAC;IAGvB,QAAQ,EAAE,OAAO,CAAC;CACnB"}

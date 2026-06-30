@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edición de Cliente - Iwana CRM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Exo 2"', 'sans-serif'],
+                    },
+                    colors: {
+                        iwana: {
+                            primary: '#17163A',
+                            secondary: '#A5C330',
+                            neutral: '#AEAEAD',
+                            bg: '#F8F8FB',
+                        }
+                    },
+                    boxShadow: {
+                        'iwana-soft': '0 10px 40px -10px rgba(23, 22, 58, 0.08)',
+                        'iwana-inner': 'inset 0 2px 4px 0 rgba(23, 22, 58, 0.02)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Exo 2', sans-serif; background-color: #F8F8FB; }
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background-color: #E4E4E4; border-radius: 10px; }
+        .custom-scroll::-webkit-scrollbar-thumb:hover { background-color: #D1D1D1; }
+        
+        /* Estilos base para inputs iWana */
+        .iwana-input {
+            @apply w-full bg-gray-50/50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-iwana-primary transition-all focus:bg-white focus:ring-2 focus:ring-iwana-secondary/50 focus:border-iwana-secondary outline-none;
+        }
+        .iwana-label {
+            @apply text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 block;
+        }
+        
+        /* Checkbox custom */
+        .iwana-checkbox {
+            @apply w-4 h-4 text-iwana-secondary bg-gray-50 border-gray-300 rounded focus:ring-iwana-secondary focus:ring-2 cursor-pointer;
+        }
+    </style>
+</head>
+<body class="text-iwana-primary h-screen flex overflow-hidden">
+
+    <!-- SIDEBAR (Menú lateral minimizado/estándar) -->
+    <aside class="w-20 lg:w-64 bg-iwana-primary text-white flex flex-col transition-all duration-300">
+        <div class="h-20 flex items-center justify-center lg:justify-start lg:px-6 border-b border-white/10">
+            <div class="bg-iwana-secondary text-iwana-primary font-bold rounded-lg p-2 flex items-center justify-center h-8 w-8 lg:mr-3">iW</div>
+            <span class="text-xl font-bold tracking-wide hidden lg:block">iWana</span>
+        </div>
+        <div class="p-4 flex-1 overflow-y-auto">
+            <p class="text-xs text-white/50 font-semibold uppercase tracking-wider mb-4 px-2 hidden lg:block">Menú</p>
+            <nav class="space-y-2">
+                <a href="#" class="flex items-center justify-center lg:justify-start space-x-3 px-3 py-2.5 rounded-xl bg-white/10 text-white relative">
+                    <div class="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-iwana-secondary rounded-r-full"></div>
+                    <i class="ph ph-users text-xl text-iwana-secondary"></i>
+                    <span class="font-medium hidden lg:block">Clientes</span>
+                </a>
+                <a href="#" class="flex items-center justify-center lg:justify-start space-x-3 px-3 py-2.5 rounded-xl text-white/70 hover:bg-white/5 hover:text-white transition-colors">
+                    <i class="ph ph-briefcase text-xl"></i>
+                    <span class="font-medium hidden lg:block">CRM</span>
+                </a>
+            </nav>
+        </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 flex flex-col h-screen overflow-hidden relative">
+        
+        <!-- Decoración de fondo -->
+        <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-iwana-secondary/5 rounded-full blur-3xl -z-10 pointer-events-none translate-x-1/3 -translate-y-1/3"></div>
+
+        <!-- Top Header -->
+        <header class="h-20 px-8 flex items-center justify-between z-10 border-b border-gray-100 bg-white/50 backdrop-blur-sm">
+            <div class="relative w-96 hidden md:block">
+                <i class="ph ph-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                <input type="text" placeholder="Buscar en el CRM..." class="w-full bg-white border border-gray-100 rounded-2xl py-2.5 pl-11 pr-4 text-sm shadow-sm focus:ring-2 focus:ring-iwana-secondary outline-none transition-all">
+            </div>
+
+            <div class="flex items-center space-x-4">
+                <button type="button" aria-label="Abrir notificaciones" title="Abrir notificaciones" class="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm text-gray-600 hover:text-iwana-primary transition-colors">
+                    <i class="ph ph-bell text-xl"></i>
+                </button>
+                <div class="flex items-center space-x-3 bg-white pl-2 pr-4 py-1 rounded-full shadow-sm cursor-pointer border border-gray-50">
+                    <img src="https://ui-avatars.com/api/?name=Liliana+Paola&background=A5C330&color=17163A" alt="Avatar" class="w-8 h-8 rounded-full">
+                    <div class="flex flex-col hidden sm:flex">
+                        <span class="text-sm font-semibold leading-tight">Liliana Paola</span>
+                        <span class="text-[10px] text-gray-500 leading-tight">Administrador</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Área desplazable de la forma -->
+        <div class="flex-1 overflow-y-auto px-4 lg:px-8 pb-12 custom-scroll z-10">
+            
+            <!-- Encabezado de la página (Breadcrumb y Acciones) -->
+            <div class="flex flex-col md:flex-row md:items-end justify-between mb-6 mt-6 gap-4">
+                <div>
+                    <!-- Breadcrumbs -->
+                    <nav class="flex items-center text-sm text-gray-500 font-medium mb-2">
+                        <a href="#" class="hover:text-iwana-secondary transition-colors">Clientes</a>
+                        <i class="ph ph-caret-right text-xs mx-2 text-gray-300"></i>
+                        <span class="text-iwana-primary font-semibold">Angy Paola Martinez Ruiz</span>
+                        <i class="ph ph-caret-right text-xs mx-2 text-gray-300"></i>
+                        <span class="text-gray-400">Editar</span>
+                    </nav>
+                    <div class="flex items-center space-x-3">
+                        <h1 class="text-3xl font-bold">Angy Paola Martinez</h1>
+                        <button class="text-gray-400 hover:text-iwana-secondary transition-colors" title="Ver expediente">
+                            <i class="ph ph-folder-open text-2xl"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Acciones Superiores -->
+                <div class="flex items-center space-x-3">
+                    <button class="text-gray-500 font-bold px-6 py-2.5 rounded-2xl hover:bg-gray-100 transition-all text-sm">
+                        Cancelar
+                    </button>
+                    <button class="bg-iwana-secondary text-iwana-primary font-bold px-8 py-2.5 rounded-2xl shadow-iwana-soft hover:-translate-y-0.5 hover:shadow-lg transition-all text-sm flex items-center space-x-2">
+                        <i class="ph ph-floppy-disk text-lg"></i>
+                        <span>Guardar</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- GRID PRINCIPAL DE FORMULARIO -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                <!-- COLUMNA IZQUIERDA (General & Contacto) -->
+                <div class="lg:col-span-5 space-y-6">
+                    
+                    <!-- Card: General -->
+                    <div class="bg-white rounded-[20px] p-6 shadow-iwana-soft border border-gray-50">
+                        <div class="flex items-center space-x-2 mb-6 border-b border-gray-50 pb-4">
+                            <i class="ph ph-identification-card text-xl text-iwana-secondary"></i>
+                            <h2 class="text-lg font-bold">Datos Generales</h2>
+                        </div>
+                        
+                        <div class="space-y-4">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="iwana-label" for="proto-nombres">Nombres</label>
+                                    <input id="proto-nombres" type="text" value="Angy Paola" class="iwana-input">
+                                </div>
+                                <div>
+                                    <label class="iwana-label" for="proto-apellidos">Apellidos</label>
+                                    <input id="proto-apellidos" type="text" value="Martinez Ruiz" class="iwana-input">
+                                </div>
+                            </div>
+
+                            <div class="flex items-center space-x-6 py-2">
+                                <label class="flex items-center space-x-2 cursor-pointer group">
+                                    <input type="checkbox" class="iwana-checkbox">
+                                    <span class="text-sm font-medium text-gray-600 group-hover:text-iwana-primary transition-colors">Cliente potencial</span>
+                                    <i class="ph ph-question text-gray-300"></i>
+                                </label>
+                                <label class="flex items-center space-x-2 cursor-pointer group">
+                                    <input type="checkbox" class="iwana-checkbox">
+                                    <span class="text-sm font-medium text-gray-600 group-hover:text-iwana-primary transition-colors">Compañía</span>
+                                </label>
+                            </div>
+
+                            <div>
+                                <label class="iwana-label" for="proto-remision">Remisión</label>
+                                <input id="proto-remision" type="text" placeholder="Escriba aquí..." class="iwana-input">
+                            </div>
+
+                            <div>
+                                <button type="button" title="Añadir etiqueta o nota" aria-label="Añadir etiqueta o nota" class="text-sm text-iwana-secondary font-semibold flex items-center hover:underline mt-2">
+                                    <i class="ph ph-plus mr-1"></i> Añadir etiqueta, nota
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Card: Contacto -->
+                    <div class="bg-white rounded-[20px] p-6 shadow-iwana-soft border border-gray-50">
+                        <div class="flex items-center space-x-2 mb-6 border-b border-gray-50 pb-4">
+                            <i class="ph ph-address-book text-xl text-iwana-secondary"></i>
+                            <h2 class="text-lg font-bold">Información de Contacto</h2>
+                        </div>
+
+                        <div class="space-y-5">
+                            <!-- Email Principal -->
+                            <div>
+                                <label class="iwana-label" for="proto-email-principal">Correo Electrónico</label>
+                                <div class="flex space-x-2">
+                                    <input id="proto-email-principal" type="email" value="ruizangy038@gmail.com" class="iwana-input">
+                                    <button type="button" title="Añadir correo electrónico" aria-label="Añadir correo electrónico" class="bg-iwana-primary/5 text-iwana-primary hover:bg-iwana-primary/10 rounded-xl px-4 transition-colors flex items-center justify-center border border-transparent">
+                                        <i class="ph ph-plus text-lg"></i>
+                                    </button>
+                                </div>
+                                <label class="flex items-center space-x-2 mt-3 cursor-pointer">
+                                    <input type="checkbox" checked class="iwana-checkbox">
+                                    <span class="text-xs text-gray-500">Usar como nombre de usuario</span>
+                                    <i class="ph ph-question text-gray-300"></i>
+                                </label>
+                            </div>
+
+                            <hr class="border-gray-100">
+
+                            <!-- Teléfono -->
+                            <div>
+                                <label class="iwana-label" for="proto-telefono-movil">Teléfono Móvil</label>
+                                <input id="proto-telefono-movil" type="text" value="3213145564" class="iwana-input">
+                            </div>
+
+                            <div>
+                                <label class="iwana-label" for="proto-contacto-nombre">Nombre de Contacto</label>
+                                <input id="proto-contacto-nombre" type="text" placeholder="Nombre (opcional)" class="iwana-input bg-gray-50/30">
+                            </div>
+
+                            <!-- Tags -->
+                            <div class="flex items-center space-x-2 pt-1">
+                                <i class="ph ph-tag text-gray-400"></i>
+                                <span class="bg-gray-100 text-gray-600 text-xs font-semibold px-3 py-1 rounded-lg flex items-center">
+                                    Cliente <button type="button" title="Eliminar etiqueta Cliente" aria-label="Eliminar etiqueta Cliente" class="ml-1 text-gray-400 hover:text-red-500"><i class="ph ph-x"></i></button>
+                                </span>
+                                <span class="bg-gray-100 text-gray-600 text-xs font-semibold px-3 py-1 rounded-lg flex items-center">
+                                    General <button type="button" title="Eliminar etiqueta General" aria-label="Eliminar etiqueta General" class="ml-1 text-gray-400 hover:text-red-500"><i class="ph ph-x"></i></button>
+                                </span>
+                            </div>
+
+                            <!-- Inputs Secundarios (Deshabilitados/Vacíos visualmente) -->
+                            <div class="relative pt-4">
+                                <div class="flex items-center space-x-2 mb-3">
+                                    <input id="proto-correo-secundario" type="text" placeholder="Correo secundario" aria-label="Correo secundario" class="iwana-input">
+                                    <button type="button" title="Eliminar correo secundario" aria-label="Eliminar correo secundario" class="text-gray-400 hover:text-red-500 transition-colors p-2"><i class="ph ph-trash text-lg"></i></button>
+                                </div>
+                                <input id="proto-telefono-secundario" type="text" value="3213872919" aria-label="Teléfono secundario" class="iwana-input mb-3">
+                                <div class="grid grid-cols-2 gap-3">
+                                    <input id="proto-contacto-secundario-nombre" type="text" placeholder="Nombre" aria-label="Nombre del contacto secundario" class="iwana-input">
+                                    <input id="proto-contacto-secundario-tipo" type="text" placeholder="Tipo de contacto" aria-label="Tipo de contacto secundario" class="iwana-input">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- COLUMNA DERECHA (Ubicación y Secciones Colapsables) -->
+                <div class="lg:col-span-7 space-y-6">
+                    
+                    <!-- Card: Ubicación -->
+                    <div class="bg-white rounded-[20px] p-6 shadow-iwana-soft border border-gray-50">
+                        <div class="flex items-center space-x-2 mb-6 border-b border-gray-50 pb-4">
+                            <i class="ph ph-map-pin text-xl text-iwana-secondary"></i>
+                            <h2 class="text-lg font-bold">Ubicación y Georeferencia</h2>
+                        </div>
+
+                        <div class="space-y-4">
+                            <!-- Campos de dirección -->
+                            <div>
+                                <label class="iwana-label" for="proto-direccion-principal">Dirección Principal</label>
+                                <input id="proto-direccion-principal" type="text" value="VDA VANCOUVER CA LA ESQUINA CANCHAS DE TEJO BELLAVISTA, San Antoni" class="iwana-input">
+                            </div>
+                            
+                            <div class="grid grid-cols-12 gap-4">
+                                <div class="col-span-12 md:col-span-5">
+                                    <label class="iwana-label" for="proto-barrio">Detalle / Barrio</label>
+                                    <input id="proto-barrio" type="text" value="VDA VANCOUVER CA LA ESQL" class="iwana-input">
+                                </div>
+                                <div class="col-span-12 md:col-span-4">
+                                    <label class="iwana-label" for="proto-municipio">Ciudad / Municipio</label>
+                                    <input id="proto-municipio" type="text" value="San Antonio del Tequendama" class="iwana-input">
+                                </div>
+                                <div class="col-span-12 md:col-span-3">
+                                    <label class="iwana-label" for="proto-codigo-postal">Código Postal</label>
+                                    <input id="proto-codigo-postal" type="text" value="252620" class="iwana-input">
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="iwana-label" for="proto-calle">Calle / Avenida</label>
+                                    <input id="proto-calle" type="text" value="Calle 2" class="iwana-input text-gray-400" disabled>
+                                </div>
+                                <div>
+                                    <label class="iwana-label" for="proto-pais">País</label>
+                                    <div class="relative">
+                                        <select id="proto-pais" class="iwana-input appearance-none cursor-pointer pr-10">
+                                            <option>Colombia</option>
+                                        </select>
+                                        <i class="ph ph-caret-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Botón Acción Especial -->
+                            <div class="pt-2 pb-2">
+                                <button type="button" title="Ejecutar geo-codificación de la dirección" aria-label="Ejecutar geo-codificación de la dirección" class="w-full bg-iwana-primary text-white font-bold text-sm py-3 rounded-xl hover:bg-iwana-primary/90 transition-colors flex items-center justify-center space-x-2 shadow-sm">
+                                    <i class="ph ph-crosshair text-lg text-iwana-secondary"></i>
+                                    <span>Dirección de Geo-Codificación</span>
+                                </button>
+                            </div>
+
+                            <!-- Coordenadas -->
+                            <div class="grid grid-cols-2 gap-4 bg-gray-50/50 p-4 rounded-xl border border-gray-100">
+                                <div>
+                                    <label class="iwana-label text-[10px]" for="proto-latitud">Latitud</label>
+                                    <input id="proto-latitud" type="text" value="4.588509834166" class="iwana-input font-mono text-sm bg-white">
+                                </div>
+                                <div>
+                                    <label class="iwana-label text-[10px]" for="proto-longitud">Longitud</label>
+                                    <input id="proto-longitud" type="text" value="-74.350018526333" class="iwana-input font-mono text-sm bg-white">
+                                </div>
+                            </div>
+
+                            <!-- Placeholder del Mapa -->
+                            <div class="w-full h-[300px] bg-[#E5E3DF] rounded-xl overflow-hidden relative border border-gray-200">
+                                <!-- Imagen estática simulando Leaflet -->
+                                <img src="https://api.maptiler.com/maps/basic-v2/static/-74.35,4.58,14/800x400.png?key=get_your_own_OpIi9ZULNHzrESv6T2vL" 
+                                     alt="Mapa georeferencia" 
+                                     class="w-full h-full object-cover opacity-60 mix-blend-multiply"
+                                     onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNmM2Y0ZjYiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5Y2EzYWYiIHRleHQtYW5jaG9yPSJtaWRkbGUiPkltYWdlbiBkZSBNYXBhIFNpbXVsYWRhPC90ZXh0Pjwvc3ZnPg==';">
+                                
+                                <!-- Pin animado -->
+                                <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-full flex flex-col items-center">
+                                    <div class="bg-iwana-secondary w-8 h-8 rounded-full border-4 border-white shadow-lg flex items-center justify-center animate-bounce z-10">
+                                        <div class="w-2 h-2 bg-white rounded-full"></div>
+                                    </div>
+                                    <div class="w-2 h-1 bg-black/20 rounded-full blur-[2px] mt-1"></div>
+                                </div>
+
+                                <!-- Controles mapa Leaflet falsos -->
+                                <div class="absolute top-3 left-3 bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col overflow-hidden">
+                                    <button type="button" title="Acercar mapa" aria-label="Acercar mapa" class="w-8 h-8 flex items-center justify-center hover:bg-gray-50 border-b border-gray-200"><i class="ph ph-plus"></i></button>
+                                    <button type="button" title="Alejar mapa" aria-label="Alejar mapa" class="w-8 h-8 flex items-center justify-center hover:bg-gray-50"><i class="ph ph-minus"></i></button>
+                                </div>
+                                <div class="absolute bottom-2 right-2 text-[10px] bg-white/80 px-2 py-1 rounded">
+                                    © OpenStreetMap contributors
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Acordeones Inferiores -->
+                    <div class="space-y-4">
+                        <!-- Atributos Personalizados (Abierto) -->
+                        <div class="bg-white rounded-[20px] p-6 shadow-iwana-soft border border-gray-50">
+                            <div class="flex items-center justify-between cursor-pointer group">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-8 h-8 rounded-full bg-iwana-secondary/10 text-iwana-secondary flex items-center justify-center">
+                                        <i class="ph ph-sliders-horizontal text-lg"></i>
+                                    </div>
+                                    <h3 class="font-bold text-[15px] group-hover:text-iwana-secondary transition-colors">Atributos Personalizados</h3>
+                                </div>
+                                <i class="ph ph-caret-up text-gray-400"></i>
+                            </div>
+                            
+                            <div class="mt-6 pt-6 border-t border-gray-50">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-6 items-center">
+                                    <!-- Campos en layout de tabla como la imagen -->
+                                    <div class="col-span-1 md:col-span-2 flex items-center">
+                                        <label class="w-1/3 text-sm text-gray-500 font-medium text-right pr-4" for="proto-estrato">Estrato</label>
+                                        <input id="proto-estrato" type="text" class="iwana-input w-2/3">
+                                    </div>
+                                    <div class="col-span-1 md:col-span-2 flex items-center">
+                                        <label class="w-1/3 text-sm text-gray-500 font-medium text-right pr-4" for="proto-cedula">Cédula</label>
+                                        <input id="proto-cedula" type="text" class="iwana-input w-2/3">
+                                    </div>
+                                    
+                                    <div class="col-span-1 md:col-span-2 flex justify-end py-2">
+                                        <button type="button" title="Añadir atributo personalizado" aria-label="Añadir atributo personalizado" class="text-xs font-bold text-gray-400 border border-gray-200 rounded-lg px-4 py-2 hover:bg-gray-50 transition-colors uppercase tracking-wide">
+                                            + Añadir atributo personalizado
+                                        </button>
+                                    </div>
+
+                                    <div class="col-span-1 md:col-span-2 flex items-center mt-2">
+                                        <label class="w-1/3 text-sm text-gray-500 font-medium text-right pr-4" for="proto-id-cliente">ID de Cliente</label>
+                                        <input id="proto-id-cliente" type="text" value="1070330017" class="iwana-input w-2/3 font-mono bg-gray-50">
+                                    </div>
+                                    <div class="col-span-1 md:col-span-2 flex items-center">
+                                        <label class="w-1/3 text-sm text-gray-500 font-medium text-right pr-4" for="proto-isp-previo">ISP previo</label>
+                                        <input id="proto-isp-previo" type="text" class="iwana-input w-2/3">
+                                    </div>
+                                    <div class="col-span-1 md:col-span-2 flex items-center">
+                                        <label class="w-1/3 text-sm text-gray-500 font-medium text-right pr-4" for="proto-fecha-registro">Fecha de registro <span class="text-red-500">*</span></label>
+                                        <div class="w-2/3 relative">
+                                            <input id="proto-fecha-registro" type="text" value="7 abr. 2026" class="iwana-input pr-10">
+                                            <i class="ph ph-calendar-blank absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Config Facturación (Cerrado) -->
+                        <div class="bg-white rounded-[20px] px-6 py-4 shadow-sm border border-gray-50 hover:shadow-md hover:border-iwana-secondary/30 transition-all cursor-pointer group">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center space-x-3">
+                                    <i class="ph ph-plus text-iwana-secondary font-bold"></i>
+                                    <h3 class="font-bold text-[14px] text-gray-600 uppercase tracking-wide group-hover:text-iwana-primary transition-colors">Configuraciones de facturación personalizadas</h3>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Impuestos (Cerrado) -->
+                        <div class="bg-white rounded-[20px] px-6 py-4 shadow-sm border border-gray-50 hover:shadow-md hover:border-iwana-secondary/30 transition-all cursor-pointer group">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center space-x-3">
+                                    <i class="ph ph-plus text-iwana-secondary font-bold"></i>
+                                    <h3 class="font-bold text-[14px] text-gray-600 uppercase tracking-wide group-hover:text-iwana-primary transition-colors">Impuestos</h3>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Acciones Inferiores Repetidas para UX -->
+            <div class="flex justify-end items-center space-x-3 mt-10 mb-8 pt-6 border-t border-gray-200">
+                <button class="text-gray-500 font-bold px-6 py-2.5 rounded-2xl hover:bg-gray-100 transition-all text-sm">
+                    Cancelar
+                </button>
+                <button class="bg-iwana-secondary text-iwana-primary font-bold px-8 py-2.5 rounded-2xl shadow-iwana-soft hover:-translate-y-0.5 hover:shadow-lg transition-all text-sm">
+                    Guardar Cambios
+                </button>
+            </div>
+
+        </div>
+    </main>
+
+</body>
+</html>
