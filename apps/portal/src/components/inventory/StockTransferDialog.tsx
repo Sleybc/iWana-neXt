@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { StockBalanceCondition, StockLocationType } from '@iwana/shared';
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, Input } from '@iwana/ui';
 import type {
   InventoryItemRecord,
@@ -9,6 +10,7 @@ import type {
   TransferStockDto,
 } from '@/lib/api-client';
 import { PortalAlert } from '@/components/shared/portal-ui';
+import { formatInventoryQuantity } from './inventory-labels';
 
 interface StockTransferDialogProps {
   open: boolean;
@@ -39,6 +41,8 @@ export function StockTransferDialog({
   const [destinationLocationId, setDestinationLocationId] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [serialNumber, setSerialNumber] = useState('');
+  const [handoffReference, setHandoffReference] = useState('');
+  const [handoffNotes, setHandoffNotes] = useState('');
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
@@ -48,20 +52,83 @@ export function StockTransferDialog({
       setDestinationLocationId('');
       setQuantity('1');
       setSerialNumber('');
+      setHandoffReference('');
+      setHandoffNotes('');
       setNotes('');
     }
   }, [open]);
 
-  const sourceBalances = useMemo(
+  const positiveBalances = useMemo(
     () =>
       balances.filter(
         (balance) =>
           (!itemId || balance.itemId === itemId) &&
-          (!sourceLocationId || balance.locationId === sourceLocationId) &&
+          balance.condition === StockBalanceCondition.NEW &&
+          !balance.lotId &&
           Number.parseFloat(balance.quantityOnHand) > 0,
       ),
-    [balances, itemId, sourceLocationId],
+    [balances, itemId],
   );
+
+  const sourceLocationOptions = useMemo(() => {
+    const locationIds = new Set(positiveBalances.map((balance) => balance.locationId));
+    return locations.filter((location) => locationIds.has(location.id));
+  }, [locations, positiveBalances]);
+
+  const sourceBalances = useMemo(
+    () => positiveBalances.filter((balance) => balance.locationId === sourceLocationId),
+    [positiveBalances, sourceLocationId],
+  );
+
+  const availableQuantity = useMemo(
+    () =>
+      sourceBalances.reduce(
+        (total, balance) => total + Number.parseFloat(balance.quantityOnHand),
+        0,
+      ),
+    [sourceBalances],
+  );
+
+  const requestedQuantity = serialNumber.trim() ? 1 : Number(quantity || '0');
+  const selectedDestination = useMemo(
+    () => locations.find((location) => location.id === destinationLocationId) ?? null,
+    [destinationLocationId, locations],
+  );
+
+  const destinationCurrentOnHand = useMemo(
+    () =>
+      balances
+        .filter((balance) => balance.locationId === destinationLocationId)
+        .reduce((total, balance) => total + Number.parseFloat(balance.quantityOnHand), 0),
+    [balances, destinationLocationId],
+  );
+
+  const destinationRemainingCapacity = useMemo(() => {
+    if (
+      !selectedDestination ||
+      !selectedDestination.maxCapacity ||
+      ![StockLocationType.MOBILE_TECHNICIAN, StockLocationType.MOBILE_CREW].includes(
+        selectedDestination.type,
+      )
+    ) {
+      return null;
+    }
+
+    return Number.parseFloat(selectedDestination.maxCapacity) - destinationCurrentOnHand;
+  }, [destinationCurrentOnHand, selectedDestination]);
+
+  const exceedsAvailable = requestedQuantity > availableQuantity;
+  const exceedsDestinationCapacity =
+    destinationRemainingCapacity != null && requestedQuantity > destinationRemainingCapacity;
+
+  useEffect(() => {
+    if (
+      sourceLocationId &&
+      !sourceLocationOptions.some((location) => location.id === sourceLocationId)
+    ) {
+      setSourceLocationId('');
+    }
+  }, [sourceLocationId, sourceLocationOptions]);
 
   async function handleSubmit() {
     if (!itemId || !sourceLocationId || !destinationLocationId) {
@@ -72,8 +139,10 @@ export function StockTransferDialog({
       itemId,
       sourceLocationId,
       destinationLocationId,
-      quantity: Number(quantity || '0'),
+      quantity: requestedQuantity,
       serialNumber: serialNumber.trim() || null,
+      handoffReference: handoffReference.trim(),
+      handoffNotes: handoffNotes.trim() || null,
       notes: notes.trim() || null,
     });
   }
@@ -113,7 +182,7 @@ export function StockTransferDialog({
                 className={fieldClassName}
               >
                 <option value="">Selecciona una ubicación</option>
-                {locations.map((location) => (
+                {sourceLocationOptions.map((location) => (
                   <option key={location.id} value={location.id}>
                     {location.code} · {location.name}
                   </option>
@@ -157,6 +226,27 @@ export function StockTransferDialog({
               helperText="Si es un activo serializado, la cantidad efectiva será 1."
             />
 
+            <Input
+              label="Acta o evidencia"
+              value={handoffReference}
+              onChange={(event) => setHandoffReference(event.target.value)}
+              helperText="Referencia de acta, soporte o cadena de custodia sin PII."
+            />
+
+            <div className="md:col-span-2">
+              <label className="space-y-1 text-sm">
+                <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
+                  Observaciones de entrega
+                </span>
+                <textarea
+                  rows={2}
+                  value={handoffNotes}
+                  onChange={(event) => setHandoffNotes(event.target.value)}
+                  className={fieldClassName}
+                />
+              </label>
+            </div>
+
             <div className="md:col-span-2">
               <label className="space-y-1 text-sm">
                 <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
@@ -172,24 +262,45 @@ export function StockTransferDialog({
             </div>
           </div>
 
-          {sourceLocationId && (
+          {sourceLocationId ? (
             <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300">
-              <p className="font-medium text-gray-900 dark:text-white">Saldos visibles en origen</p>
+              <p className="font-medium text-gray-900 dark:text-white">Disponibilidad validada</p>
               <p className="mt-1">
-                {sourceBalances.length > 0
-                  ? `${sourceBalances.length} registros con saldo positivo para la selección actual.`
-                  : 'No se encontraron saldos positivos con esos filtros.'}
+                Disponible en origen (saldo nuevo sin lote):{' '}
+                {formatInventoryQuantity(availableQuantity)}.
               </p>
+              {destinationRemainingCapacity != null ? (
+                <p className="mt-1">
+                  Cupo restante en destino móvil:{' '}
+                  {formatInventoryQuantity(Math.max(destinationRemainingCapacity, 0))}.
+                </p>
+              ) : null}
             </div>
-          )}
+          ) : null}
 
-          {error && (
+          {exceedsAvailable ? (
+            <PortalAlert
+              variant="warning"
+              title="La transferencia supera el saldo visible"
+              description="Ajusta la cantidad o selecciona otra bodega origen con saldo nuevo sin lote disponible."
+            />
+          ) : null}
+
+          {exceedsDestinationCapacity ? (
+            <PortalAlert
+              variant="warning"
+              title="La bodega destino no tiene cupo suficiente"
+              description="Reduce la cantidad o elige una bodega móvil con capacidad restante."
+            />
+          ) : null}
+
+          {error ? (
             <PortalAlert
               variant="error"
               title="No fue posible transferir el stock"
               description={error}
             />
-          )}
+          ) : null}
 
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
@@ -202,7 +313,10 @@ export function StockTransferDialog({
                 !itemId ||
                 !sourceLocationId ||
                 !destinationLocationId ||
-                Number(quantity || '0') <= 0
+                requestedQuantity <= 0 ||
+                !handoffReference.trim() ||
+                exceedsAvailable ||
+                exceedsDestinationCapacity
               }
               loading={isSubmitting}
             >

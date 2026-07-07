@@ -5680,6 +5680,36 @@ export interface InventoryDashboardSummary {
   serializedAssetsCount: number;
   balancesCount: number;
   totalOnHand: number;
+  balancesByLocation: InventoryBalanceByLocationSummary[];
+  balancesByCategory: InventoryBalanceByCategorySummary[];
+  serializedAssetsByStatus: InventoryAssetsByStatusSummary[];
+  serializedAssetsByResponsibleType: InventoryAssetsByResponsibleTypeSummary[];
+}
+
+export interface InventoryBalanceByLocationSummary {
+  locationId: string;
+  locationCode: string;
+  locationName: string;
+  totalOnHand: number;
+  uniqueItems: number;
+}
+
+export interface InventoryBalanceByCategorySummary {
+  categoryId: string;
+  categoryCodePrefix: string;
+  categoryName: string;
+  totalOnHand: number;
+  uniqueItems: number;
+}
+
+export interface InventoryAssetsByStatusSummary {
+  status: SerializedAssetStatus;
+  count: number;
+}
+
+export interface InventoryAssetsByResponsibleTypeSummary {
+  responsibleType: InventoryResponsibleType;
+  count: number;
 }
 
 export interface InventoryItemRecord {
@@ -5741,6 +5771,7 @@ export interface InventoryCategoryRecord {
   id: string;
   tenantId: string;
   code: string;
+  codePrefix: string;
   name: string;
   description: string | null;
   status: InventoryCategoryStatus;
@@ -6021,7 +6052,7 @@ export interface ListInventoryItemsParams {
 }
 
 export interface CreateInventoryItemDto {
-  sku: string;
+  sku?: string;
   name: string;
   description?: string | null;
   brand?: string | null;
@@ -6061,6 +6092,7 @@ export interface ListInventoryCategoriesParams {
 
 export interface CreateInventoryCategoryDto {
   code: string;
+  codePrefix: string;
   name: string;
   description?: string | null;
   status?: InventoryCategoryStatus;
@@ -6068,6 +6100,18 @@ export interface CreateInventoryCategoryDto {
 }
 
 export type UpdateInventoryCategoryDto = Partial<CreateInventoryCategoryDto>;
+
+export interface SuggestInventoryCategoryPrefixParams {
+  name: string;
+  codePrefix?: string;
+  excludeCategoryId?: string;
+}
+
+export interface SuggestInventoryCategoryPrefixResult {
+  code: string;
+  codePrefix: string;
+  sortOrder: number;
+}
 
 export interface ListCatalogOptionsParams {
   search?: string;
@@ -6083,6 +6127,13 @@ export interface CreateStockLocationDto {
   code: string;
   name: string;
   type: StockLocationType;
+  status?: StockLocationStatus;
+  responsibleRefId?: string | null;
+  maxCapacity?: number | null;
+}
+
+export interface UpdateStockLocationDto {
+  name?: string;
   status?: StockLocationStatus;
   responsibleRefId?: string | null;
   maxCapacity?: number | null;
@@ -6110,6 +6161,8 @@ export interface TransferStockDto {
   serializedAssetId?: string | null;
   serialNumber?: string | null;
   condition?: StockBalanceCondition;
+  handoffReference: string;
+  handoffNotes?: string | null;
   notes?: string | null;
   idempotencyKey?: string | null;
 }
@@ -6295,6 +6348,13 @@ export const inventoryApi = {
       tenantSlug,
     ),
 
+  deleteItem: (id: string, tenantSlug?: string) =>
+    request<void>(
+      `/inventory/items/${id}`,
+      { method: 'DELETE', returnFullResponse: true },
+      tenantSlug,
+    ),
+
   listCatalogOptions: (params?: ListCatalogOptionsParams, tenantSlug?: string) =>
     request<InventoryCatalogOptionRecord[]>(
       `/inventory/items/catalog/options${buildInventoryQuery({
@@ -6309,6 +6369,17 @@ export const inventoryApi = {
       `/inventory/categories${buildInventoryQuery({
         search: params?.search,
         status: params?.status,
+      })}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  suggestCategoryPrefix: (params: SuggestInventoryCategoryPrefixParams, tenantSlug?: string) =>
+    request<SuggestInventoryCategoryPrefixResult>(
+      `/inventory/categories/suggest-prefix${buildInventoryQuery({
+        name: params.name,
+        codePrefix: params.codePrefix,
+        excludeCategoryId: params.excludeCategoryId,
       })}`,
       { returnFullResponse: true },
       tenantSlug,
@@ -6350,6 +6421,13 @@ export const inventoryApi = {
     request<StockLocationRecord>(
       '/inventory/locations',
       { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  updateLocation: (id: string, dto: UpdateStockLocationDto, tenantSlug?: string) =>
+    request<StockLocationRecord>(
+      `/inventory/locations/${id}`,
+      { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
       tenantSlug,
     ),
 

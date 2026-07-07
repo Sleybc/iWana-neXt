@@ -1,28 +1,32 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  Input,
-} from '@iwana/ui';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Badge, Button, Input, Select } from '@iwana/ui';
 import { InventoryCategoryStatus } from '@iwana/shared';
 import type {
   CreateInventoryCategoryDto,
   InventoryCategoryRecord,
   UpdateInventoryCategoryDto,
 } from '@/lib/api-client';
-import { PortalAlert } from '@/components/shared/portal-ui';
+import { inventoryApi } from '@/lib/api-client';
+import { PortalAlert, portalTextareaClassName } from '@/components/shared/portal-ui';
+import { PortalDiscardChangesDialog } from '@/components/shared/PortalDiscardChangesDialog';
+import { useDiscardChangesGuard } from '@/components/shared/use-discard-changes-guard';
+import { usePortalSideDrawerA11y } from '@/components/shared/use-portal-side-drawer-a11y';
 import { getInventoryCategoryStatusLabel } from './inventory-category-labels';
-
-const fieldClassName =
-  'w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-white';
+import {
+  buildTakenCodePrefixSet,
+  isValidCategoryCodePrefix,
+  resolveCategoryCreateValues,
+  resolveCategorySortOrder,
+  sanitizeAlnumUpper,
+  suggestCategoryCodePrefix,
+  suggestNextCategorySortOrder,
+} from './inventory-category-code';
 
 interface CategoryFormState {
   code: string;
+  codePrefix: string;
   name: string;
   description: string;
   status: InventoryCategoryStatus;
@@ -32,6 +36,7 @@ interface CategoryFormState {
 function defaultFormState(): CategoryFormState {
   return {
     code: '',
+    codePrefix: '',
     name: '',
     description: '',
     status: InventoryCategoryStatus.ACTIVE,
@@ -42,6 +47,7 @@ function defaultFormState(): CategoryFormState {
 function formFromCategory(category: InventoryCategoryRecord): CategoryFormState {
   return {
     code: category.code,
+    codePrefix: category.codePrefix,
     name: category.name,
     description: category.description ?? '',
     status: category.status,
@@ -49,7 +55,7 @@ function formFromCategory(category: InventoryCategoryRecord): CategoryFormState 
   };
 }
 
-function buildPayload(form: CategoryFormState): CreateInventoryCategoryDto {
+function buildUpdatePayload(form: CategoryFormState): UpdateInventoryCategoryDto {
   return {
     code: form.code.trim(),
     name: form.name.trim(),
@@ -62,6 +68,7 @@ function buildPayload(form: CategoryFormState): CreateInventoryCategoryDto {
 interface InventoryCategoryDrawerProps {
   open: boolean;
   category: InventoryCategoryRecord | null;
+  existingCategories?: InventoryCategoryRecord[];
   isSubmitting: boolean;
   error: string | null;
   onClose: () => void;
@@ -72,122 +79,372 @@ interface InventoryCategoryDrawerProps {
 export function InventoryCategoryDrawer({
   open,
   category,
+  existingCategories = [],
   isSubmitting,
   error,
   onClose,
   onCreate,
   onUpdate,
 }: InventoryCategoryDrawerProps) {
+  const drawerRef = useRef<HTMLElement>(null);
   const [form, setForm] = useState<CategoryFormState>(defaultFormState());
+  const [baselineForm, setBaselineForm] = useState<CategoryFormState | null>(null);
+  const [codePrefixTouched, setCodePrefixTouched] = useState(false);
+  const [sortOrderTouched, setSortOrderTouched] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const isEditing = category !== null;
   const hasProducts = (category?.productCount ?? 0) > 0;
+  const takenCodePrefixes = useMemo(
+    () => buildTakenCodePrefixSet(existingCategories, category?.id),
+    [category?.id, existingCategories],
+  );
 
   useEffect(() => {
     if (!open) {
+      setBaselineForm(null);
       return;
     }
 
     setValidationError(null);
-    setForm(category ? formFromCategory(category) : defaultFormState());
+    setCodePrefixTouched(false);
+    setSortOrderTouched(false);
+    const initialForm = category
+      ? formFromCategory(category)
+      : {
+          ...defaultFormState(),
+          sortOrder: String(suggestNextCategorySortOrder(existingCategories)),
+        };
+    setBaselineForm(initialForm);
+    setForm(initialForm);
   }, [open, category]);
+
+  useEffect(() => {
+    if (!open || isEditing || !form.name.trim()) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      const params = {
+        name: form.name.trim(),
+        ...(codePrefixTouched && form.codePrefix.trim()
+          ? { codePrefix: form.codePrefix.trim() }
+          : {}),
+      };
+
+      void inventoryApi
+        .suggestCategoryPrefix(params)
+        .then((suggestion) => {
+          setForm((current) => ({
+            ...current,
+            codePrefix: codePrefixTouched ? current.codePrefix : suggestion.codePrefix,
+            sortOrder: sortOrderTouched ? current.sortOrder : String(suggestion.sortOrder),
+          }));
+        })
+        .catch(() => {
+          setForm((current) => ({
+            ...current,
+            codePrefix: codePrefixTouched
+              ? current.codePrefix
+              : suggestCategoryCodePrefix(form.name.trim(), takenCodePrefixes),
+          }));
+        });
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [
+    open,
+    isEditing,
+    form.name,
+    form.codePrefix,
+    codePrefixTouched,
+    sortOrderTouched,
+    takenCodePrefixes,
+  ]);
+
+  const isDirty = isEditing
+    ? baselineForm !== null && JSON.stringify(form) !== JSON.stringify(baselineForm)
+    : form.name.trim().length > 0 ||
+      form.description.trim().length > 0 ||
+      codePrefixTouched ||
+      sortOrderTouched;
+
+  const { discardOpen, requestClose, confirmDiscard, cancelDiscard } = useDiscardChangesGuard({
+    open,
+    isDirty,
+    onClose,
+  });
+
+  usePortalSideDrawerA11y(open && !discardOpen, drawerRef, requestClose);
+
+  function shouldAutoSuggestPrefix(formState: CategoryFormState): boolean {
+    return !codePrefixTouched || !formState.codePrefix.trim();
+  }
+
+  function shouldAutoSuggestSortOrder(formState: CategoryFormState): boolean {
+    return !sortOrderTouched;
+  }
+
+  function buildCreatePayload(formState: CategoryFormState): CreateInventoryCategoryDto {
+    const { code, codePrefix } = resolveCategoryCreateValues(
+      formState.name,
+      formState.codePrefix,
+      takenCodePrefixes,
+      shouldAutoSuggestPrefix(formState),
+    );
+
+    return {
+      code,
+      codePrefix,
+      name: formState.name.trim(),
+      description: formState.description.trim() || null,
+      status: formState.status,
+      sortOrder: resolveCategorySortOrder(
+        formState.sortOrder,
+        existingCategories,
+        shouldAutoSuggestSortOrder(formState),
+      ),
+    };
+  }
+
+  function updateName(value: string) {
+    setForm((current) => {
+      const next = { ...current, name: value };
+      if (!codePrefixTouched && value.trim()) {
+        next.codePrefix = suggestCategoryCodePrefix(value.trim(), takenCodePrefixes);
+      }
+      return next;
+    });
+  }
+
+  function updateCodePrefix(value: string) {
+    const sanitized = sanitizeAlnumUpper(value).slice(0, 3);
+    setCodePrefixTouched(true);
+    setForm((current) => ({ ...current, codePrefix: sanitized }));
+  }
+
+  function updateSortOrder(value: string) {
+    setSortOrderTouched(true);
+    setForm((current) => ({ ...current, sortOrder: value }));
+  }
 
   function updateForm<K extends keyof CategoryFormState>(key: K, value: CategoryFormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
   async function handleSubmit() {
-    if (!form.code.trim() || !form.name.trim()) {
-      setValidationError('Completa el código y el nombre de la categoría.');
+    if (!form.name.trim()) {
+      setValidationError('Completa el nombre de la categoría.');
+      return;
+    }
+
+    if (!isEditing) {
+      const trimmedPrefix = form.codePrefix.trim();
+      if (codePrefixTouched && trimmedPrefix) {
+        const sanitizedPrefix = sanitizeAlnumUpper(trimmedPrefix).slice(0, 3);
+        if (!isValidCategoryCodePrefix(sanitizedPrefix)) {
+          setValidationError(
+            'El prefijo de producto debe tener entre 2 y 3 caracteres alfanuméricos en mayúscula.',
+          );
+          return;
+        }
+      }
+
+      const { code, codePrefix } = resolveCategoryCreateValues(
+        form.name,
+        form.codePrefix,
+        takenCodePrefixes,
+        shouldAutoSuggestPrefix(form),
+      );
+
+      if (!code) {
+        setValidationError('El nombre debe incluir al menos una letra o un número.');
+        return;
+      }
+
+      if (!isValidCategoryCodePrefix(codePrefix)) {
+        setValidationError(
+          'El prefijo de producto debe tener entre 2 y 3 caracteres alfanuméricos en mayúscula.',
+        );
+        return;
+      }
+    } else if (!form.code.trim()) {
+      setValidationError('Completa el código de la categoría.');
       return;
     }
 
     setValidationError(null);
-    const payload = buildPayload(form);
 
     if (isEditing && category) {
-      await onUpdate(category.id, payload);
+      await onUpdate(category.id, buildUpdatePayload(form));
       return;
     }
 
-    await onCreate(payload);
+    await onCreate(buildCreatePayload(form));
   }
 
+  if (!open) {
+    return null;
+  }
+
+  const title = isEditing ? 'Editar categoría' : 'Nueva categoría';
+
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>{isEditing ? 'Editar categoría' : 'Nueva categoría'}</DialogTitle>
-        </DialogHeader>
+    <div className="fixed inset-0 z-[1200] bg-black/45">
+      <button
+        type="button"
+        tabIndex={-1}
+        className="absolute inset-0 cursor-default"
+        aria-label="Cerrar categoría"
+        onClick={requestClose}
+      />
+      <aside
+        ref={drawerRef}
+        role="dialog"
+        aria-labelledby="inventory-category-drawer-title"
+        aria-describedby="inventory-category-drawer-description"
+        aria-modal="true"
+        tabIndex={-1}
+        className="absolute inset-y-0 right-0 z-[1201] flex w-full max-w-2xl flex-col border-l border-gray-200 bg-white shadow-2xl outline-none dark:border-dark-border dark:bg-dark-surface-2"
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-6 py-5 dark:border-dark-border">
+          <div className="min-w-0">
+            <p className="portal-eyebrow">Catálogo</p>
+            <h2
+              id="inventory-category-drawer-title"
+              className="mt-1 text-xl font-semibold text-gray-900 dark:text-white"
+            >
+              {title}
+            </h2>
+            <p
+              id="inventory-category-drawer-description"
+              className="mt-2 text-sm text-gray-500 dark:text-gray-400"
+            >
+              Define cómo se clasifican los productos y cómo se emite el prefijo de nuevos SKU.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge
+                variant={form.status === InventoryCategoryStatus.ACTIVE ? 'primary' : 'neutral'}
+              >
+                {getInventoryCategoryStatusLabel(form.status)}
+              </Badge>
+              {isEditing ? (
+                <Badge variant="neutral">{category?.productCount ?? 0} productos</Badge>
+              ) : null}
+            </div>
+          </div>
+          <Button type="button" variant="secondary" onClick={requestClose} disabled={isSubmitting}>
+            Cerrar
+          </Button>
+        </div>
 
-        <div className="space-y-4">
-          {error ? <PortalAlert variant="error" title="No fue posible guardar" description={error} /> : null}
-          {validationError ? (
-            <PortalAlert variant="warning" title="Revisa el formulario" description={validationError} />
-          ) : null}
-          {isEditing && hasProducts ? (
-            <PortalAlert
-              variant="info"
-              title="Categoría en uso"
-              description="Esta categoría tiene productos asociados. Solo puedes editarla o inactivarla."
-            />
-          ) : null}
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <div className="space-y-4">
+            {error ? (
+              <PortalAlert variant="error" title="No fue posible guardar" description={error} />
+            ) : null}
+            {validationError ? (
+              <PortalAlert
+                variant="warning"
+                title="Revisa el formulario"
+                description={validationError}
+              />
+            ) : null}
+            {isEditing && hasProducts ? (
+              <PortalAlert
+                variant="info"
+                title="Categoría en uso"
+                description="Esta categoría tiene productos asociados. Solo puedes editarla o inactivarla."
+              />
+            ) : null}
 
-          <Input
-            label="Código"
-            value={form.code}
-            onChange={(event) => updateForm('code', event.target.value)}
-            disabled={isEditing && hasProducts}
-          />
-          <Input
-            label="Nombre"
-            value={form.name}
-            onChange={(event) => updateForm('name', event.target.value)}
-          />
-          <label className="space-y-1 text-sm">
-            <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-              Descripción corta
-            </span>
-            <textarea
-              value={form.description}
-              onChange={(event) => updateForm('description', event.target.value)}
-              className={`${fieldClassName} min-h-24`}
+            <Input
+              label="Nombre"
+              value={form.name}
+              onChange={(event) => updateName(event.target.value)}
             />
-          </label>
-          <label className="space-y-1 text-sm">
-            <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">Estado</span>
-            <select
+            {!isEditing ? (
+              <div className="space-y-1">
+                <Input
+                  label="Prefijo de producto"
+                  value={form.codePrefix}
+                  onChange={(event) => updateCodePrefix(event.target.value)}
+                />
+                <p className="text-xs text-iwana-secondary-700 dark:text-gray-400">
+                  Se genera automáticamente desde el nombre y se usa para crear los códigos de los
+                  productos (ej. CFO-SER-ONT-ZTE-F601). Puedes ajustarlo antes de guardar; no se
+                  puede cambiar después.
+                </p>
+              </div>
+            ) : (
+              <>
+                <Input
+                  label="Código"
+                  value={form.code}
+                  onChange={(event) => updateForm('code', event.target.value)}
+                  disabled={hasProducts}
+                />
+                <div className="space-y-1">
+                  <Input label="Prefijo de producto" value={form.codePrefix} disabled />
+                  <p className="text-xs text-iwana-secondary-700 dark:text-gray-400">
+                    Prefijo usado en los códigos de producto de esta categoría. No se puede
+                    modificar después de crear la categoría.
+                  </p>
+                </div>
+              </>
+            )}
+            <label className="space-y-1 text-sm">
+              <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
+                Descripción corta
+              </span>
+              <textarea
+                rows={3}
+                value={form.description}
+                onChange={(event) => updateForm('description', event.target.value)}
+                className={portalTextareaClassName}
+              />
+            </label>
+            <Select
+              label="Estado"
               value={form.status}
+              options={Object.values(InventoryCategoryStatus).map((value) => ({
+                value,
+                label: getInventoryCategoryStatusLabel(value),
+              }))}
               onChange={(event) =>
                 updateForm('status', event.target.value as InventoryCategoryStatus)
               }
-              className={fieldClassName}
-            >
-              {Object.values(InventoryCategoryStatus).map((value) => (
-                <option key={value} value={value}>
-                  {getInventoryCategoryStatusLabel(value)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Input
-            label="Orden"
-            type="number"
-            min={0}
-            value={form.sortOrder}
-            onChange={(event) => updateForm('sortOrder', event.target.value)}
-          />
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
-              Cancelar
-            </Button>
-            <Button type="button" loading={isSubmitting} onClick={() => void handleSubmit()}>
-              {isEditing ? 'Guardar cambios' : 'Crear categoría'}
-            </Button>
+            />
+            <Input
+              label="Orden"
+              type="number"
+              min={0}
+              value={form.sortOrder}
+              onChange={(event) => updateSortOrder(event.target.value)}
+            />
+            {!isEditing ? (
+              <p className="text-xs text-iwana-secondary-700 dark:text-gray-400">
+                Se asigna automáticamente al final del listado. Puedes cambiarlo si necesitas otra
+                posición.
+              </p>
+            ) : null}
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+
+        <div className="flex justify-end gap-2 border-t border-gray-200 px-6 py-4 dark:border-dark-border">
+          <Button type="button" variant="secondary" onClick={requestClose} disabled={isSubmitting}>
+            Cancelar
+          </Button>
+          <Button type="button" loading={isSubmitting} onClick={() => void handleSubmit()}>
+            {isEditing ? 'Guardar cambios' : 'Crear categoría'}
+          </Button>
+        </div>
+      </aside>
+
+      <PortalDiscardChangesDialog
+        open={discardOpen}
+        onConfirm={confirmDiscard}
+        onCancel={cancelDiscard}
+      />
+    </div>
   );
 }

@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -32,6 +34,9 @@ import {
   ListCatalogOptionsQuerySchema,
   ListInventoryCategoriesQueryDto,
   ListInventoryCategoriesQuerySchema,
+  SuggestInventoryCategoryPrefixQueryDto,
+  SuggestInventoryCategoryPrefixQuerySchema,
+  SuggestInventoryCategoryPrefixResponseDto,
   ListInventoryItemsQueryDto,
   ListInventoryItemsQuerySchema,
   ListSerializedAssetsQueryDto,
@@ -50,6 +55,8 @@ import {
   UpdateInventoryItemSchema,
   UpdateInventoryCategoryDto,
   UpdateInventoryCategorySchema,
+  UpdateStockLocationDto,
+  UpdateStockLocationSchema,
   WriteOffAssetDto,
   WriteOffAssetSchema,
 } from './dto';
@@ -126,6 +133,14 @@ export class InventoryController {
     return this.inventoryItemService.update(id, UpdateInventoryItemSchema.parse(body), actor);
   }
 
+  @Delete('items/:id')
+  @HttpCode(204)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Eliminar item del inventario' })
+  deleteItem(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: JwtPayload) {
+    return this.inventoryItemService.delete(id, actor);
+  }
+
   @Get('categories')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
   @ApiOperation({ summary: 'Listar categorias de inventario' })
@@ -134,6 +149,18 @@ export class InventoryController {
     query: ListInventoryCategoriesQueryDto,
   ) {
     return this.inventoryCategoryService.list(ListInventoryCategoriesQuerySchema.parse(query));
+  }
+
+  @Get('categories/suggest-prefix')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Sugerir codigo y prefijo de categoria de inventario' })
+  suggestCategoryPrefix(
+    @Query(new ZodValidationPipe(SuggestInventoryCategoryPrefixQuerySchema))
+    query: SuggestInventoryCategoryPrefixQueryDto,
+  ): Promise<SuggestInventoryCategoryPrefixResponseDto> {
+    return this.inventoryCategoryService.suggestPrefix(
+      SuggestInventoryCategoryPrefixQuerySchema.parse(query),
+    );
   }
 
   @Get('categories/:id')
@@ -184,6 +211,16 @@ export class InventoryController {
     @Body(new ZodValidationPipe(CreateStockLocationSchema)) body: CreateStockLocationDto,
   ) {
     return this.stockLocationService.create(CreateStockLocationSchema.parse(body));
+  }
+
+  @Patch('locations/:id')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Actualizar ubicación de stock' })
+  updateLocation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(UpdateStockLocationSchema)) body: UpdateStockLocationDto,
+  ) {
+    return this.stockLocationService.update(id, UpdateStockLocationSchema.parse(body));
   }
 
   @Get('assets')

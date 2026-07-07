@@ -216,6 +216,8 @@ describe('UserService', () => {
 9. **Color contrast** → Use `iwana-secondary-700` for text on white (AA compliance)
 10. **Portal localStorage — two tokens** → `iwana.portal.access-token` (full session) and `iwana.portal.mfa-setup-token` (limited scope, MFA setup only); `mfaSetup()` and `mfaVerifySetup()` read the second token directly, bypassing `request()`
 11. **TenantContext.getOrThrow()** → Throws a generic `Error` (→ 500), not `UnauthorizedException` (→ 401); a missing context on a protected route surfaces as 500, not 401
+12. **InventoryItem SKU inmutable** → El `sku` de `InventoryItem` no se modifica tras la creacion; `PATCH /inventory/items/:id` ignora cualquier valor de `sku` enviado. Si se omite el `sku` en `POST /inventory/items`, se autogenera como `{CAT}-{TIPO}-{NOMBRE}-{MARCA}-{MODELO}` (segmentos normalizados, marca/modelo opcionales, max 60 chars) con sufijo `-001` ante colision `23505`.
+13. **InventoryCategory codePrefix controlado** → El `codePrefix` de `InventoryCategory` (varchar(3), regex `^[A-Z0-9]{2,3}$`, unico por tenant) alimenta nuevas emisiones de SKU. No recalcular SKUs existentes cuando cambie una regla de prefijo; documentar cualquier migracion de prefijos como compatibilidad v2.
 
 ---
 

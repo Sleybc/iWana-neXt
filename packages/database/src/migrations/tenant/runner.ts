@@ -10,6 +10,9 @@ import { RefineInventoryPurchasingWorkspace0490000000000 } from './049_refine_in
 import { ExtendGoodsReceiptStatusForPurchasing0500000000000 } from './050_extend_goods_receipt_status_for_purchasing';
 import { ExpandInventoryItemMasterCatalog0510000000000 } from './051_expand_inventory_item_master_catalog';
 import { CreateInventoryCategories0520000000000 } from './052_create_inventory_categories';
+import { AddCategoryCodePrefix0530000000000 } from './053_add_category_code_prefix';
+import { RepairCategoryCodePrefixLegible0540000000000 } from './054_repair_category_code_prefix_legible';
+import { ShortenCategoryCodePrefix0550000000000 } from './055_shorten_category_code_prefix';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
 import { CreateExpedienteRecords1700000000001 } from './001_create_expediente_records';
@@ -97,6 +100,9 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   ExtendGoodsReceiptStatusForPurchasing0500000000000,
   ExpandInventoryItemMasterCatalog0510000000000,
   CreateInventoryCategories0520000000000,
+  AddCategoryCodePrefix0530000000000,
+  RepairCategoryCodePrefixLegible0540000000000,
+  ShortenCategoryCodePrefix0550000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

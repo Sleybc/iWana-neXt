@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DataSource } from 'typeorm';
 import {
@@ -64,6 +64,7 @@ describe('InventoryItemService', () => {
         id: '11111111-1111-4111-8111-111111111111',
         tenantId: 'tenant-001',
         code: 'MATERIALS',
+        codePrefix: 'MAT',
         name: 'Materiales',
         status: 'ACTIVE',
       }),
@@ -197,7 +198,7 @@ describe('InventoryItemService', () => {
     await expect(service.getById('missing-id')).rejects.toThrow(NotFoundException);
   });
 
-  it('updates item flags and rejects sku conflicts', async () => {
+  it('ignores sku on update (immutable) and updates other fields', async () => {
     const existing = {
       id: 'item-001',
       tenantId: 'tenant-001',
@@ -212,23 +213,35 @@ describe('InventoryItemService', () => {
       purchaseToBaseUomFactor: null,
       reorderPoint: '0',
       status: InventoryItemStatus.ACTIVE,
+      purchasable: true,
     };
+
+    const savedItem = { ...existing, purchasable: false };
 
     runInTenantSchemaMock.mockImplementation(async (_ds, _schema, work) => {
       const manager = {
-        findOne: jest
-          .fn()
-          .mockResolvedValueOnce(existing)
-          .mockResolvedValueOnce({ id: 'item-002', sku: 'ONT-002' }),
-        save: jest.fn(),
+        findOne: jest.fn().mockResolvedValueOnce(existing).mockResolvedValueOnce({
+          id: '11111111-1111-4111-8111-111111111111',
+          tenantId: 'tenant-001',
+          code: 'CPE',
+          codePrefix: 'CPE',
+          name: 'CPE',
+          status: 'ACTIVE',
+        }),
+        save: jest.fn().mockResolvedValue(savedItem),
       };
 
       return work({ manager } as never);
     });
 
-    await expect(
-      service.update('item-001', { sku: 'ONT-002', purchasable: false }, actor),
-    ).rejects.toThrow(ConflictException);
+    const result = await service.update(
+      'item-001',
+      { sku: 'ONT-999', purchasable: false } as Parameters<InventoryItemService['update']>[1],
+      actor,
+    );
+
+    expect(result.sku).toBe('ONT-001');
+    expect(result.purchasable).toBe(false);
   });
 
   it('lists only active purchasable catalog options with supplier names', async () => {
@@ -276,6 +289,73 @@ describe('InventoryItemService', () => {
         actorUserId: actor.sub,
         resultCount: 1,
       }),
+    );
+  });
+
+  it('deletes inventory item when it has no dependencies', async () => {
+    const remove = jest.fn().mockResolvedValue({ affected: 1 });
+    const findOne = jest.fn().mockResolvedValue({
+      id: 'item-delete',
+      tenantId: 'tenant-001',
+      sku: 'NET-STK-RTR-TPL-AC50',
+    });
+    const query = jest.fn().mockResolvedValue([
+      {
+        has_balances: false,
+        has_lots: false,
+        has_assets: false,
+        has_po_lines: false,
+        has_movements: false,
+        has_receipts: false,
+        has_writeoffs: false,
+      },
+    ]);
+
+    runInTenantSchemaMock.mockImplementation(async (_ds, _schema, work) => {
+      const manager = {
+        findOne,
+        query,
+        delete: remove,
+      };
+      return work({ manager } as never);
+    });
+
+    await expect(service.delete('item-delete', actor)).resolves.toBeUndefined();
+    expect(remove).toHaveBeenCalledWith(InventoryItem, {
+      id: 'item-delete',
+      tenantId: 'tenant-001',
+    });
+  });
+
+  it('rejects delete when inventory item has dependencies', async () => {
+    const findOne = jest.fn().mockResolvedValue({
+      id: 'item-delete',
+      tenantId: 'tenant-001',
+      sku: 'NET-STK-RTR-TPL-AC50',
+    });
+    const query = jest.fn().mockResolvedValue([
+      {
+        has_balances: true,
+        has_lots: false,
+        has_assets: false,
+        has_po_lines: false,
+        has_movements: false,
+        has_receipts: false,
+        has_writeoffs: false,
+      },
+    ]);
+
+    runInTenantSchemaMock.mockImplementation(async (_ds, _schema, work) => {
+      const manager = {
+        findOne,
+        query,
+        delete: jest.fn(),
+      };
+      return work({ manager } as never);
+    });
+
+    await expect(service.delete('item-delete', actor)).rejects.toThrow(
+      'No se puede eliminar el producto porque tiene stock, activos o movimientos asociados.',
     );
   });
 });

@@ -46,3 +46,15 @@ export function resolveCatalogSupplierPrefill(
       option.preferredSupplierName ?? supplierLabels[option.preferredSupplierRefId] ?? '',
   };
 }
+
+export function buildCatalogBulkRowLabel(option: InventoryCatalogOptionRecord): string {
+  return `${option.sku} - ${option.name}`;
+}
+
+export function resolveCatalogSupplierLabel(
+  option: InventoryCatalogOptionRecord,
+  supplierLabels: Record<string, string> = {},
+): string {
+  const prefill = resolveCatalogSupplierPrefill(option, supplierLabels);
+  return prefill.suggestedPartyName || 'Sin proveedor sugerido';
+}

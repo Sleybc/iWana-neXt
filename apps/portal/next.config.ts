@@ -7,7 +7,7 @@ function resolvePortalApiProxyBase(): string {
     return configuredApiBase.replace(/\/$/, '');
   }
 
-  return 'http://localhost:3000/api/v1';
+  return 'http://127.0.0.1:3000/api/v1';
 }
 
 /**

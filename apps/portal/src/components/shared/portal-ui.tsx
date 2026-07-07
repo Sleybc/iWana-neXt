@@ -1,9 +1,58 @@
 import type { ComponentType, ReactNode } from 'react';
-import { AlertTriangle, CheckCircle2, CircleAlert, Info } from 'lucide-react';
-import { cn } from '@iwana/ui';
+import { AlertTriangle, CheckCircle2, CircleAlert, Info, Search } from 'lucide-react';
+import { Input, cn } from '@iwana/ui';
 
 export const interactiveFocusClassName =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-dark-surface-2';
+
+export const portalTextareaClassName = cn(
+  'portal-input-surface min-h-24 w-full px-3 py-2 text-sm text-gray-900 dark:text-white',
+  interactiveFocusClassName,
+);
+
+export const portalTableRowHoverClassName =
+  'transition-colors hover:bg-iwana-surface-soft/80 dark:hover:bg-dark-surface-3';
+
+export const portalDataTableShellClassName =
+  'overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-dark-border dark:bg-dark-surface-2';
+
+interface PortalSearchFieldProps {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  label?: string;
+  className?: string;
+}
+
+export function PortalSearchField({
+  id,
+  value,
+  onChange,
+  placeholder,
+  label,
+  className,
+}: PortalSearchFieldProps) {
+  return (
+    <div className={cn('relative min-w-[200px]', className)}>
+      <label htmlFor={id} className="sr-only">
+        {label ?? placeholder ?? 'Buscar'}
+      </label>
+      <Search
+        className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+        aria-hidden="true"
+      />
+      <Input
+        id={id}
+        type="search"
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-12 pl-11"
+      />
+    </div>
+  );
+}
 
 export const portalTabActiveClassName =
   'border-b-2 border-iwana-primary text-iwana-primary dark:text-iwana-secondary';

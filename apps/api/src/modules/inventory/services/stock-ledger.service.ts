@@ -1,7 +1,14 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
-import { StockMovement, StockMovementLine, TenantContext, runInTenantSchema } from '@iwana/db';
+import {
+  StockBalance,
+  StockLocation,
+  StockMovement,
+  StockMovementLine,
+  TenantContext,
+  runInTenantSchema,
+} from '@iwana/db';
 import {
   AssetLifecycleEventType,
   ExecutionOrderItemAction,
@@ -9,6 +16,7 @@ import {
   InventoryResponsibleType,
   SerializedAssetStatus,
   StockBalanceCondition,
+  StockLocationType,
   StockMovementOrigin,
 } from '@iwana/shared';
 import {
@@ -23,6 +31,11 @@ import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { AssetLifecycleService } from './asset-lifecycle.service';
 import { SerializedAssetService } from './serialized-asset.service';
 import { StockBalanceService } from './stock-balance.service';
+
+const MOBILE_TRANSFER_LOCATION_TYPES = new Set<StockLocationType>([
+  StockLocationType.MOBILE_TECHNICIAN,
+  StockLocationType.MOBILE_CREW,
+]);
 
 export interface StockLedgerLineInput {
   itemId: string;
@@ -66,6 +79,18 @@ export interface StockMovementResult {
 
 function toQuantity(value: number): string {
   return value.toFixed(2);
+}
+
+function toNumeric(value: string | number | null | undefined): number {
+  if (typeof value === 'number') {
+    return value;
+  }
+
+  if (!value) {
+    return 0;
+  }
+
+  return Number.parseFloat(value);
 }
 
 async function withTransaction<T>(
@@ -218,51 +243,89 @@ export class StockLedgerService {
   }
 
   async transfer(input: TransferStockInput, actor: JwtPayload): Promise<StockMovementResult> {
-    return this.recordMovement(
-      {
-        origin: StockMovementOrigin.TRANSFER,
-        originContext: 'inventory.transfer',
-        originRefId: input.serializedAssetId ?? input.itemId,
-        idempotencyKey:
-          input.idempotencyKey?.trim() ??
-          `transfer:${input.sourceLocationId}:${input.destinationLocationId}:${input.itemId}:${input.serializedAssetId ?? input.serialNumber ?? input.quantity}`,
-        notes: input.notes ?? null,
-        lines: [
-          {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      withTransaction(qr.manager, async (manager) => {
+        const quantity = input.serializedAssetId || input.serialNumber ? 1 : input.quantity;
+
+        if (!input.handoffReference?.trim()) {
+          throw new BadRequestException('La transferencia requiere acta o evidencia de entrega.');
+        }
+
+        const [sourceLocation, destinationLocation, sourceAvailable] = await Promise.all([
+          this.findLocation(manager, tenantId, input.sourceLocationId),
+          this.findLocation(manager, tenantId, input.destinationLocationId),
+          this.getAvailableQuantity(manager, tenantId, {
             itemId: input.itemId,
             locationId: input.sourceLocationId,
-            quantity: input.serializedAssetId || input.serialNumber ? -1 : -input.quantity,
             lotId: input.lotId ?? null,
-            serializedAssetId: input.serializedAssetId ?? null,
-            serialNumber: input.serialNumber ?? null,
             condition: input.condition,
-          },
-          {
-            itemId: input.itemId,
-            locationId: input.destinationLocationId,
-            quantity: input.serializedAssetId || input.serialNumber ? 1 : input.quantity,
-            lotId: input.lotId ?? null,
-            serializedAssetId: input.serializedAssetId ?? null,
-            serialNumber: input.serialNumber ?? null,
-            condition: input.condition,
-          },
-        ],
-        assetTransitions:
+          }),
+        ]);
+
+        if (!sourceLocation) {
+          throw new NotFoundException('La ubicación origen no existe.');
+        }
+
+        if (!destinationLocation) {
+          throw new NotFoundException('La ubicación destino no existe.');
+        }
+
+        if (sourceAvailable < quantity) {
+          throw new BadRequestException(
+            'La cantidad solicitada excede el saldo disponible en origen.',
+          );
+        }
+
+        await this.assertDestinationCapacity(manager, tenantId, destinationLocation, quantity);
+
+        const assetTransitions =
           input.serializedAssetId || input.serialNumber
-            ? [
-                {
-                  serializedAssetId: input.serializedAssetId ?? null,
-                  serialNumber: input.serialNumber ?? null,
-                  toStatus: SerializedAssetStatus.ASSIGNED_TO_TECHNICIAN,
-                  currentLocationId: input.destinationLocationId,
-                  currentResponsibleType: InventoryResponsibleType.TECHNICIAN,
-                  currentResponsibleRefId: input.destinationLocationId,
-                  eventType: AssetLifecycleEventType.TRANSFERRED,
-                },
-              ]
-            : [],
-      },
-      actor,
+            ? await this.buildTransferAssetTransitions(
+                manager,
+                tenantId,
+                destinationLocation,
+                input,
+              )
+            : [];
+
+        return this.recordMovementWithManager(
+          manager,
+          tenantId,
+          {
+            origin: StockMovementOrigin.TRANSFER,
+            originContext: 'inventory.transfer',
+            originRefId: input.serializedAssetId ?? input.itemId,
+            idempotencyKey:
+              input.idempotencyKey?.trim() ??
+              `transfer:${input.sourceLocationId}:${input.destinationLocationId}:${input.itemId}:${input.serializedAssetId ?? input.serialNumber ?? input.quantity}`,
+            notes: this.buildTransferNotes(input),
+            lines: [
+              {
+                itemId: input.itemId,
+                locationId: input.sourceLocationId,
+                quantity: -quantity,
+                lotId: input.lotId ?? null,
+                serializedAssetId: input.serializedAssetId ?? null,
+                serialNumber: input.serialNumber ?? null,
+                condition: input.condition,
+              },
+              {
+                itemId: input.itemId,
+                locationId: input.destinationLocationId,
+                quantity,
+                lotId: input.lotId ?? null,
+                serializedAssetId: input.serializedAssetId ?? null,
+                serialNumber: input.serialNumber ?? null,
+                condition: input.condition,
+              },
+            ],
+            assetTransitions,
+          },
+          actor,
+        );
+      }),
     );
   }
 
@@ -400,6 +463,7 @@ export class StockLedgerService {
 
   async recordReturn(input: ReturnAssetInput, actor: JwtPayload): Promise<StockMovementResult> {
     const quantity = input.serializedAssetId || input.serialNumber ? 1 : input.quantity;
+    const keepsAssetInTransit = input.targetStatus === SerializedAssetStatus.IN_TRANSIT;
 
     return this.recordMovement(
       {
@@ -419,14 +483,18 @@ export class StockLedgerService {
             serializedAssetId: input.serializedAssetId ?? null,
             serialNumber: input.serialNumber ?? null,
           },
-          {
-            itemId: input.itemId,
-            locationId: input.destinationLocationId,
-            quantity,
-            lotId: input.lotId ?? null,
-            serializedAssetId: input.serializedAssetId ?? null,
-            serialNumber: input.serialNumber ?? null,
-          },
+          ...(keepsAssetInTransit
+            ? []
+            : [
+                {
+                  itemId: input.itemId,
+                  locationId: input.destinationLocationId,
+                  quantity,
+                  lotId: input.lotId ?? null,
+                  serializedAssetId: input.serializedAssetId ?? null,
+                  serialNumber: input.serialNumber ?? null,
+                },
+              ]),
         ],
         assetTransitions:
           input.serializedAssetId || input.serialNumber
@@ -435,8 +503,10 @@ export class StockLedgerService {
                   serializedAssetId: input.serializedAssetId ?? null,
                   serialNumber: input.serialNumber ?? null,
                   toStatus: input.targetStatus,
-                  currentLocationId: input.destinationLocationId,
-                  currentResponsibleType: InventoryResponsibleType.WAREHOUSE,
+                  currentLocationId: keepsAssetInTransit ? null : input.destinationLocationId,
+                  currentResponsibleType: keepsAssetInTransit
+                    ? InventoryResponsibleType.NONE
+                    : InventoryResponsibleType.WAREHOUSE,
                   currentResponsibleRefId: null,
                   eventType: AssetLifecycleEventType.RETURNED,
                 },
@@ -487,6 +557,184 @@ export class StockLedgerService {
       },
       actor,
     );
+  }
+
+  private async findLocation(
+    manager: EntityManager,
+    tenantId: string,
+    locationId: string,
+  ): Promise<StockLocation | null> {
+    return manager.findOne(StockLocation, {
+      where: { id: locationId, tenantId },
+    });
+  }
+
+  private async getAvailableQuantity(
+    manager: EntityManager,
+    tenantId: string,
+    input: {
+      itemId: string;
+      locationId: string;
+      lotId?: string | null;
+      condition?: StockBalanceCondition;
+    },
+  ): Promise<number> {
+    const balances = await manager.find(StockBalance, {
+      where: {
+        tenantId,
+        itemId: input.itemId,
+        locationId: input.locationId,
+        condition: input.condition ?? StockBalanceCondition.NEW,
+      },
+    });
+
+    return balances
+      .filter((balance) => (balance.lotId ?? null) === (input.lotId ?? null))
+      .reduce((total, balance) => total + toNumeric(balance.quantityOnHand), 0);
+  }
+
+  private async getLocationOnHand(
+    manager: EntityManager,
+    tenantId: string,
+    locationId: string,
+  ): Promise<number> {
+    const balances = await manager.find(StockBalance, {
+      where: { tenantId, locationId },
+    });
+
+    return balances.reduce((total, balance) => total + toNumeric(balance.quantityOnHand), 0);
+  }
+
+  private async assertDestinationCapacity(
+    manager: EntityManager,
+    tenantId: string,
+    destinationLocation: StockLocation,
+    incomingQuantity: number,
+  ): Promise<void> {
+    if (!MOBILE_TRANSFER_LOCATION_TYPES.has(destinationLocation.type)) {
+      return;
+    }
+
+    if (!destinationLocation.responsibleRefId) {
+      throw new BadRequestException('La bodega móvil destino requiere responsable.');
+    }
+
+    if (!destinationLocation.maxCapacity) {
+      return;
+    }
+
+    const currentOnHand = await this.getLocationOnHand(manager, tenantId, destinationLocation.id);
+    const nextOnHand = currentOnHand + incomingQuantity;
+
+    if (nextOnHand > toNumeric(destinationLocation.maxCapacity)) {
+      throw new BadRequestException('La bodega móvil destino supera su capacidad máxima.');
+    }
+  }
+
+  private async buildTransferAssetTransitions(
+    manager: EntityManager,
+    tenantId: string,
+    destinationLocation: StockLocation,
+    input: TransferStockInput,
+  ): Promise<StockLedgerAssetTransitionInput[]> {
+    const asset = await this.serializedAssetService.resolveForMovementWithManager(
+      manager,
+      tenantId,
+      {
+        serializedAssetId: input.serializedAssetId ?? null,
+        serialNumber: input.serialNumber ?? null,
+      },
+    );
+
+    if (!asset) {
+      throw new NotFoundException('Activo serializado no encontrado.');
+    }
+
+    if (asset.inventoryItemId !== input.itemId) {
+      throw new BadRequestException('El serial indicado no corresponde al ítem seleccionado.');
+    }
+
+    if (asset.currentLocationId !== input.sourceLocationId) {
+      throw new BadRequestException(
+        'El activo serializado no está disponible en la bodega origen.',
+      );
+    }
+
+    const custody = this.resolveTransferCustody(asset.currentStatus, destinationLocation);
+
+    return [
+      {
+        serializedAssetId: input.serializedAssetId ?? asset.id,
+        serialNumber: input.serialNumber ?? asset.serialNumber ?? null,
+        toStatus: custody.toStatus,
+        currentLocationId: input.destinationLocationId,
+        currentResponsibleType: custody.currentResponsibleType,
+        currentResponsibleRefId: custody.currentResponsibleRefId,
+        eventType: AssetLifecycleEventType.TRANSFERRED,
+      },
+    ];
+  }
+
+  private resolveTransferCustody(
+    currentStatus: SerializedAssetStatus,
+    destinationLocation: StockLocation,
+  ): {
+    toStatus: SerializedAssetStatus;
+    currentResponsibleType: InventoryResponsibleType;
+    currentResponsibleRefId: string | null;
+  } {
+    switch (destinationLocation.type) {
+      case StockLocationType.MOBILE_TECHNICIAN:
+        return {
+          toStatus: SerializedAssetStatus.ASSIGNED_TO_TECHNICIAN,
+          currentResponsibleType: InventoryResponsibleType.TECHNICIAN,
+          currentResponsibleRefId: destinationLocation.responsibleRefId ?? null,
+        };
+      case StockLocationType.MOBILE_CREW:
+        return {
+          toStatus: SerializedAssetStatus.ASSIGNED_TO_TECHNICIAN,
+          currentResponsibleType: InventoryResponsibleType.CREW,
+          currentResponsibleRefId: destinationLocation.responsibleRefId ?? null,
+        };
+      case StockLocationType.CUSTOMER_SITE:
+        return {
+          toStatus:
+            currentStatus === SerializedAssetStatus.ASSIGNED_TO_TECHNICIAN
+              ? SerializedAssetStatus.INSTALLED_COMODATO
+              : currentStatus,
+          currentResponsibleType: InventoryResponsibleType.CUSTOMER,
+          currentResponsibleRefId: destinationLocation.responsibleRefId ?? destinationLocation.id,
+        };
+      case StockLocationType.SCRAP:
+        return {
+          toStatus: currentStatus,
+          currentResponsibleType: InventoryResponsibleType.NONE,
+          currentResponsibleRefId: null,
+        };
+      case StockLocationType.MAIN_WAREHOUSE:
+      case StockLocationType.QUARANTINE:
+      case StockLocationType.REPAIR:
+      case StockLocationType.INTERNAL_CONSUMPTION:
+      default:
+        return {
+          toStatus:
+            currentStatus === SerializedAssetStatus.ASSIGNED_TO_TECHNICIAN
+              ? SerializedAssetStatus.AVAILABLE
+              : currentStatus,
+          currentResponsibleType: InventoryResponsibleType.WAREHOUSE,
+          currentResponsibleRefId: null,
+        };
+    }
+  }
+
+  private buildTransferNotes(input: TransferStockInput): string {
+    const notes = [
+      `Acta: ${input.handoffReference.trim()}`,
+      input.handoffNotes?.trim(),
+      input.notes?.trim(),
+    ].filter((value): value is string => Boolean(value && value.length > 0));
+
+    return notes.join(' | ');
   }
 
   private async generateMovementNumber(

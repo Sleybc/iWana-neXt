@@ -7,6 +7,7 @@ import {
   InventoryTrackingMode,
   PurchaseRequestLineSourceKind,
   PurchaseRequestType,
+  SerializedAssetStatus,
   StockLocationType,
   UserRole,
 } from '@iwana/shared';
@@ -117,10 +118,16 @@ describe('InventoryController HTTP', () => {
     create: jest.fn().mockResolvedValue({ id: 'item-001' }),
     getById: jest.fn().mockResolvedValue({ id: 'item-001' }),
     update: jest.fn().mockResolvedValue({ id: 'item-001', purchasable: false }),
+    delete: jest.fn().mockResolvedValue(undefined),
     listCatalogOptions: jest.fn().mockResolvedValue([]),
   };
   const inventoryCategoryServiceMock = {
     list: jest.fn().mockResolvedValue([]),
+    suggestPrefix: jest.fn().mockResolvedValue({
+      code: 'CONSUMIBLESRD',
+      codePrefix: 'CRD',
+      sortOrder: 2,
+    }),
     getById: jest.fn().mockResolvedValue({ id: 'cat-001', productCount: 0 }),
     create: jest.fn().mockResolvedValue({ id: 'cat-001', productCount: 0 }),
     update: jest.fn().mockResolvedValue({ id: 'cat-001', productCount: 2 }),
@@ -128,6 +135,7 @@ describe('InventoryController HTTP', () => {
   const stockLocationServiceMock = {
     list: jest.fn().mockResolvedValue([]),
     create: jest.fn().mockResolvedValue({ id: 'loc-001' }),
+    update: jest.fn().mockResolvedValue({ id: 'loc-001', status: 'ACTIVE' }),
   };
   const serializedAssetServiceMock = {
     list: jest.fn().mockResolvedValue([]),
@@ -145,7 +153,17 @@ describe('InventoryController HTTP', () => {
     recordWriteOff: jest.fn().mockResolvedValue({ movement: { id: 'mov-006' } }),
   };
   const inventoryDashboardServiceMock = {
-    getSummary: jest.fn().mockResolvedValue({ itemsCount: 0 }),
+    getSummary: jest.fn().mockResolvedValue({
+      itemsCount: 0,
+      locationsCount: 0,
+      serializedAssetsCount: 0,
+      balancesCount: 0,
+      totalOnHand: 0,
+      balancesByLocation: [],
+      balancesByCategory: [],
+      serializedAssetsByStatus: [],
+      serializedAssetsByResponsibleType: [],
+    }),
   };
   const purchasingServiceMock = {
     listRequests: jest.fn().mockResolvedValue([]),
@@ -224,6 +242,7 @@ describe('InventoryController HTTP', () => {
       .set('Authorization', 'Bearer support-token')
       .send({
         code: 'FIBER',
+        codePrefix: 'FIB',
         name: 'Fibra optica',
         status: InventoryCategoryStatus.ACTIVE,
       })
@@ -239,6 +258,17 @@ describe('InventoryController HTTP', () => {
       .expect(200);
 
     expect(inventoryCategoryServiceMock.list).toHaveBeenCalledWith({ search: 'fibra' });
+  });
+
+  it('suggests inventory category prefix for support role', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/inventory/categories/suggest-prefix?name=Consumibles%20RD')
+      .set('Authorization', 'Bearer support-token')
+      .expect(200);
+
+    expect(inventoryCategoryServiceMock.suggestPrefix).toHaveBeenCalledWith({
+      name: 'Consumibles RD',
+    });
   });
 
   it('lists catalog options for support role', async () => {
@@ -276,6 +306,20 @@ describe('InventoryController HTTP', () => {
     expect(inventoryItemServiceMock.update).toHaveBeenCalledWith(
       itemId,
       { purchasable: false },
+      expect.objectContaining({ sub: 'support-001' }),
+    );
+  });
+
+  it('deletes inventory item for support role', async () => {
+    const itemId = '11111111-1111-4111-8111-111111111111';
+
+    await request(app.getHttpServer())
+      .delete(`/api/v1/inventory/items/${itemId}`)
+      .set('Authorization', 'Bearer support-token')
+      .expect(204);
+
+    expect(inventoryItemServiceMock.delete).toHaveBeenCalledWith(
+      itemId,
       expect.objectContaining({ sub: 'support-001' }),
     );
   });
@@ -388,5 +432,68 @@ describe('InventoryController HTTP', () => {
         type: StockLocationType.MAIN_WAREHOUSE,
       })
       .expect(201);
+  });
+
+  it('updates stock location name and capacity', async () => {
+    const locationId = '11111111-1111-4111-8111-111111111111';
+    const responsibleRefId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/inventory/locations/${locationId}`)
+      .set('Authorization', 'Bearer support-token')
+      .send({
+        name: 'Bodega principal ajustada',
+        responsibleRefId,
+        maxCapacity: 25,
+      })
+      .expect(200);
+
+    expect(stockLocationServiceMock.update).toHaveBeenCalledWith(locationId, {
+      name: 'Bodega principal ajustada',
+      responsibleRefId,
+      maxCapacity: 25,
+    });
+  });
+
+  it('returns 400 when stock location responsibleRefId is not a uuid', async () => {
+    const locationId = '11111111-1111-4111-8111-111111111111';
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/inventory/locations/${locationId}`)
+      .set('Authorization', 'Bearer support-token')
+      .send({
+        responsibleRefId: 'tech-001',
+      })
+      .expect(400);
+  });
+
+  it('archives stock location', async () => {
+    const locationId = '11111111-1111-4111-8111-111111111111';
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/inventory/locations/${locationId}`)
+      .set('Authorization', 'Bearer support-token')
+      .send({
+        status: 'ARCHIVED',
+      })
+      .expect(200);
+
+    expect(stockLocationServiceMock.update).toHaveBeenCalledWith(locationId, {
+      status: 'ARCHIVED',
+    });
+  });
+
+  it('returns 400 when a return tries to set a terminal status directly', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/inventory/returns')
+      .set('Authorization', 'Bearer support-token')
+      .send({
+        itemId: '11111111-1111-4111-8111-111111111111',
+        sourceLocationId: '22222222-2222-4222-8222-222222222222',
+        destinationLocationId: '33333333-3333-4333-8333-333333333333',
+        quantity: 1,
+        targetStatus: SerializedAssetStatus.AVAILABLE,
+      })
+      .expect(400);
   });
 });

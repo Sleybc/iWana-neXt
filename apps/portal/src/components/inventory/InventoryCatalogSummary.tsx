@@ -20,14 +20,14 @@ interface MetricCardConfig {
 const METRIC_CARDS: MetricCardConfig[] = [
   {
     eyebrow: 'Cobertura',
-    title: 'Activos',
+    title: 'Productos activos',
     description: 'Referencias maestras vigentes en el catálogo.',
     accent: 'primary',
   },
   {
     eyebrow: 'Abastecimiento',
-    title: 'Comprables',
-    description: 'Artículos habilitados para solicitudes de compra.',
+    title: 'Para compras',
+    description: 'Productos habilitados para solicitudes de compra.',
     accent: 'primary',
   },
   {
@@ -45,18 +45,18 @@ const METRIC_CARDS: MetricCardConfig[] = [
   {
     eyebrow: 'Proveeduría',
     title: 'Con proveedor sugerido',
-    description: 'Artículos con proveedor preferido configurado.',
+    description: 'Productos con proveedor preferido configurado.',
     accent: 'neutral',
   },
 ];
 
 function accentClassName(accent: MetricCardConfig['accent']): string {
   return accent === 'primary'
-    ? 'border-iwana-primary/20 bg-iwana-primary-50/70 dark:border-iwana-primary-400/30 dark:bg-iwana-primary-900/15'
+    ? 'border-iwana-primary/20 bg-iwana-primary-50 dark:border-iwana-primary-400/30 dark:bg-iwana-primary-900/15'
     : accent === 'warning'
-      ? 'border-amber-200 bg-amber-50/80 dark:border-amber-500/20 dark:bg-amber-950/20'
+      ? 'border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-950/20'
       : accent === 'danger'
-        ? 'border-rose-200 bg-rose-50/80 dark:border-rose-500/20 dark:bg-rose-950/20'
+        ? 'border-red-200 bg-red-50 dark:border-red-500/20 dark:bg-red-950/20'
         : 'border-gray-200 bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-3';
 }
 
@@ -97,7 +97,7 @@ export function InventoryCatalogSummary({
     return (
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {METRIC_CARDS.map((card) => (
-          <PortalSkeletonBlock key={card.title} className="min-h-[168px] rounded-3xl" />
+          <PortalSkeletonBlock key={card.title} className="min-h-[168px] rounded-2xl" />
         ))}
       </div>
     );
@@ -108,7 +108,7 @@ export function InventoryCatalogSummary({
       {METRIC_CARDS.map((card, index) => (
         <article
           key={card.title}
-          className={`flex min-h-[168px] flex-col rounded-3xl border px-4 py-4 shadow-sm ${accentClassName(card.accent)}`}
+          className={`flex min-h-[168px] flex-col rounded-2xl border px-4 py-4 ${accentClassName(card.accent)}`}
         >
           <p className="portal-eyebrow-muted">{card.eyebrow}</p>
           <p className="mt-2 text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">

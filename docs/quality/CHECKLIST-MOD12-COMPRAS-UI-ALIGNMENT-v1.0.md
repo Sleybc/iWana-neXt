@@ -63,3 +63,10 @@
 - [x] Informe `INFORME-MOD12-COMPRAS-UI-ALIGNMENT-FASE-A-v1.0.md`.
 - [x] Informe `INFORME-MOD12-COMPRAS-UI-ALIGNMENT-FASE-B-v1.0.md`.
 - [x] Spec marcado Ejecutado (Fase A + B).
+
+## 6. Captura masiva
+
+- [x] Tabs `Sugeridos` y `Catalogo` activos en nueva solicitud.
+- [x] Seleccion persistente entre tabs y filtros.
+- [x] Borrador compacto con lineas seleccionadas.
+- [x] CTA principal visible en desktop y mobile.

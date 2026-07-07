@@ -29,6 +29,7 @@ export * from './enums/configuration';
 export * from './enums/tasks';
 export * from './enums/operations';
 export * from './enums/inventory';
+export * from './inventory';
 export * from './taxation';
 
 // Interfaces

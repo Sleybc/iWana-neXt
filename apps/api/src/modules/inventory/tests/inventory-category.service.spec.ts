@@ -69,6 +69,7 @@ describe('InventoryCategoryService', () => {
             id: 'cat-001',
             tenantId: 'tenant-001',
             code: 'CPE',
+            codePrefix: 'CPE',
             name: 'CPE',
             description: null,
             status: InventoryCategoryStatus.ACTIVE,
@@ -105,11 +106,12 @@ describe('InventoryCategoryService', () => {
     expect(result[0]?.productCount).toBe(3);
   });
 
-  it('creates category and emits domain event', async () => {
+  it('creates category with codePrefix and emits domain event', async () => {
     const save = jest.fn().mockResolvedValue({
       id: 'cat-002',
       tenantId: 'tenant-001',
       code: 'FIBER',
+      codePrefix: 'FIB',
       name: 'Fibra',
       status: InventoryCategoryStatus.ACTIVE,
     });
@@ -127,6 +129,7 @@ describe('InventoryCategoryService', () => {
     const created = await service.create(
       {
         code: 'FIBER',
+        codePrefix: 'FIB',
         name: 'Fibra',
         description: 'Accesorios de fibra',
       } as Parameters<InventoryCategoryService['create']>[0],
@@ -134,6 +137,10 @@ describe('InventoryCategoryService', () => {
     );
 
     expect(created.productCount).toBe(0);
+    expect(save).toHaveBeenCalledWith(
+      InventoryCategory,
+      expect.objectContaining({ code: 'FIBER', codePrefix: 'FIB' }),
+    );
     expect(eventEmitter.emit).toHaveBeenCalledWith(
       INVENTORY_EVENTS.CATEGORY_CREATED,
       expect.objectContaining({
@@ -153,7 +160,34 @@ describe('InventoryCategoryService', () => {
     });
 
     await expect(
-      service.create({ code: 'CPE', name: 'CPE' } as Parameters<InventoryCategoryService['create']>[0], actor),
+      service.create(
+        { code: 'CPE', codePrefix: 'CPE', name: 'CPE' } as Parameters<
+          InventoryCategoryService['create']
+        >[0],
+        actor,
+      ),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('rejects duplicate category codePrefix on create', async () => {
+    runInTenantSchemaMock.mockImplementation(async (_ds, _schema, work) => {
+      const manager = {
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ id: 'existing-prefix' }),
+      };
+
+      return work({ manager } as never);
+    });
+
+    await expect(
+      service.create(
+        { code: 'FIBER2', codePrefix: 'FIB', name: 'Fibra 2' } as Parameters<
+          InventoryCategoryService['create']
+        >[0],
+        actor,
+      ),
     ).rejects.toThrow(ConflictException);
   });
 
@@ -174,6 +208,7 @@ describe('InventoryCategoryService', () => {
       id: 'cat-001',
       tenantId: 'tenant-001',
       code: 'CPE',
+      codePrefix: 'CPE',
       name: 'CPE',
       description: null,
       status: InventoryCategoryStatus.ACTIVE,
@@ -201,5 +236,31 @@ describe('InventoryCategoryService', () => {
         categoryId: 'cat-001',
       }),
     );
+  });
+
+  describe('suggestPrefix', () => {
+    it('suggests legible unique prefix and next sort order', async () => {
+      runInTenantSchemaMock.mockImplementation(async (_dataSource, _schemaName, callback) =>
+        callback({
+          manager: {
+            find: jest.fn().mockResolvedValue([
+              {
+                id: 'cat-fo',
+                codePrefix: 'CFO',
+                sortOrder: 0,
+              },
+            ]),
+          },
+        } as never),
+      );
+
+      const result = await service.suggestPrefix({ name: 'Consumibles RD' });
+
+      expect(result).toEqual({
+        code: 'CONSUMIBLESRD',
+        codePrefix: 'CRD',
+        sortOrder: 1,
+      });
+    });
   });
 });

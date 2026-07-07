@@ -15,6 +15,8 @@ const ITEM_ID = 'item-001';
 const CAT_CPE_ID = 'cat-cpe-001';
 const LOC_MAIN = 'loc-001';
 const LOC_TECH = 'loc-002';
+const LOC_MOBILE_CAPPED = 'loc-003';
+const MOBILE_RESPONSIBLE_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const PR_SEED_ID = 'pr-seed-001';
 
 function buildToken(): string {
@@ -51,12 +53,38 @@ async function seedPortalSession(page: import('@playwright/test').Page) {
   );
 }
 
+async function openPurchaseComposer(main: import('@playwright/test').Locator) {
+  await main.getByRole('tab', { name: 'Compras' }).click();
+  await main.getByRole('button', { name: 'Nueva solicitud' }).click();
+  await expect(main.getByText('Nueva solicitud de compra')).toBeVisible();
+}
+
+async function addCatalogProductToDraft(
+  main: import('@playwright/test').Locator,
+  productPattern: RegExp,
+) {
+  await main.getByRole('tab', { name: /^Catalogo/i }).click();
+  await main.getByRole('checkbox', { name: productPattern }).check();
+  await main.getByRole('button', { name: /Agregar 1 producto/i }).click();
+}
+
+async function selectComboboxOption(
+  page: import('@playwright/test').Page,
+  combobox: import('@playwright/test').Locator,
+  optionLabel: string,
+) {
+  await combobox.click();
+  await page.getByRole('option', { name: optionLabel }).click();
+}
+
 type InventoryMockState = {
   purchaseRequests: Array<Record<string, unknown>>;
   purchaseOrders: Array<Record<string, unknown>>;
   purchaseOrderLines: Array<Record<string, unknown>>;
   catalogItems: Array<Record<string, unknown>>;
   categories: Array<Record<string, unknown>>;
+  locations: Array<Record<string, unknown>>;
+  balances: Array<Record<string, unknown>>;
   transferCount: number;
   returnCount: number;
 };
@@ -66,6 +94,7 @@ function buildCategory(overrides: Record<string, unknown> = {}) {
     id: CAT_CPE_ID,
     tenantId: 'tenant-inventory-001',
     code: 'CPE',
+    codePrefix: 'CPE',
     name: 'CPE',
     description: 'Equipos en premisa del cliente',
     status: 'ACTIVE',
@@ -142,6 +171,38 @@ function buildPurchaseRequest(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function buildLocation(overrides: Record<string, unknown> = {}) {
+  return {
+    id: LOC_MAIN,
+    tenantId: 'tenant-inventory-001',
+    code: 'BOD-01',
+    name: 'Bodega principal',
+    type: 'MAIN_WAREHOUSE',
+    status: 'ACTIVE',
+    responsibleRefId: null,
+    maxCapacity: null,
+    createdAt: nowIso(-3000),
+    updatedAt: nowIso(-3000),
+    ...overrides,
+  };
+}
+
+function buildBalance(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'bal-001',
+    tenantId: 'tenant-inventory-001',
+    itemId: ITEM_ID,
+    locationId: LOC_MAIN,
+    lotId: null,
+    condition: 'NEW',
+    quantityOnHand: '8',
+    quantityReserved: '0',
+    createdAt: nowIso(-1000),
+    updatedAt: nowIso(-1000),
+    ...overrides,
+  };
+}
+
 function createInventoryMockState(): InventoryMockState {
   return {
     purchaseRequests: [buildPurchaseRequest()],
@@ -149,6 +210,37 @@ function createInventoryMockState(): InventoryMockState {
     purchaseOrderLines: [],
     catalogItems: [buildCatalogItem()],
     categories: [buildCategory()],
+    locations: [
+      buildLocation(),
+      buildLocation({
+        id: LOC_TECH,
+        code: 'TEC-01',
+        name: 'Custodia técnico',
+        type: 'MOBILE_TECHNICIAN',
+        responsibleRefId: MOBILE_RESPONSIBLE_ID,
+        maxCapacity: null,
+        createdAt: nowIso(-2500),
+        updatedAt: nowIso(-2500),
+      }),
+      buildLocation({
+        id: LOC_MOBILE_CAPPED,
+        code: 'MOV-03',
+        name: 'Móvil con tope',
+        type: 'MOBILE_TECHNICIAN',
+        responsibleRefId: MOBILE_RESPONSIBLE_ID,
+        maxCapacity: '5',
+        createdAt: nowIso(-2400),
+        updatedAt: nowIso(-2400),
+      }),
+    ],
+    balances: [
+      buildBalance(),
+      buildBalance({
+        id: 'bal-002',
+        locationId: LOC_MOBILE_CAPPED,
+        quantityOnHand: '4.5',
+      }),
+    ],
     transferCount: 0,
     returnCount: 0,
   };
@@ -233,6 +325,36 @@ async function setupInventoryMocks(
           serializedAssetsCount: 28,
           balancesCount: 16,
           totalOnHand: 142,
+          balancesByLocation: [
+            {
+              locationId: LOC_MAIN,
+              locationCode: 'BOD-01',
+              locationName: 'Bodega principal',
+              totalOnHand: 8,
+              uniqueItems: 1,
+            },
+          ],
+          balancesByCategory: [
+            {
+              categoryId: CAT_CPE_ID,
+              categoryCodePrefix: 'CPE',
+              categoryName: 'CPE',
+              totalOnHand: 8,
+              uniqueItems: 1,
+            },
+          ],
+          serializedAssetsByStatus: [
+            {
+              status: 'AVAILABLE',
+              count: 1,
+            },
+          ],
+          serializedAssetsByResponsibleType: [
+            {
+              responsibleType: 'WAREHOUSE',
+              count: 1,
+            },
+          ],
         }),
       });
       return;
@@ -285,9 +407,14 @@ async function setupInventoryMocks(
 
     if (pathname.endsWith('/inventory/categories') && method === 'POST') {
       const body = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
+      const codePrefix = String(
+        body.codePrefix ?? String(body.code ?? `CAT${state.categories.length + 1}`).slice(0, 3),
+      ).toUpperCase();
+      const code = String(body.code ?? codePrefix);
       const created = buildCategory({
         id: `cat-${state.categories.length + 1}`,
-        code: body.code ?? `CAT-${state.categories.length + 1}`,
+        code,
+        codePrefix,
         name: body.name ?? 'Categoría nueva',
         description: body.description ?? null,
         status: body.status ?? 'ACTIVE',
@@ -343,32 +470,53 @@ async function setupInventoryMocks(
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            id: LOC_MAIN,
-            tenantId: 'tenant-inventory-001',
-            code: 'BOD-01',
-            name: 'Bodega principal',
-            type: 'MAIN_WAREHOUSE',
-            status: 'ACTIVE',
-            responsibleRefId: null,
-            maxCapacity: null,
-            createdAt: nowIso(-3000),
-            updatedAt: nowIso(-3000),
-          },
-          {
-            id: LOC_TECH,
-            tenantId: 'tenant-inventory-001',
-            code: 'TEC-01',
-            name: 'Custodia técnico',
-            type: 'MOBILE_TECHNICIAN',
-            status: 'ACTIVE',
-            responsibleRefId: 'tech-001',
-            maxCapacity: null,
-            createdAt: nowIso(-2500),
-            updatedAt: nowIso(-2500),
-          },
-        ]),
+        body: JSON.stringify(state.locations),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/inventory/locations') && method === 'POST') {
+      const body = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
+      const created = buildLocation({
+        id: `loc-${state.locations.length + 1}`,
+        code: body.code ?? `BOD-${state.locations.length + 1}`,
+        name: body.name ?? 'Bodega nueva',
+        type: body.type ?? 'MAIN_WAREHOUSE',
+        status: body.status ?? 'ACTIVE',
+        responsibleRefId: body.responsibleRefId ?? null,
+        maxCapacity: body.maxCapacity ?? null,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      });
+      state.locations.unshift(created);
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify(created),
+      });
+      return;
+    }
+
+    const locationUpdateMatch = pathname.match(/\/inventory\/locations\/([^/]+)$/);
+    if (locationUpdateMatch && method === 'PATCH') {
+      const locationId = locationUpdateMatch[1];
+      const body = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
+      const entry = state.locations.find((item) => item.id === locationId);
+      if (!entry) {
+        await route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+        return;
+      }
+
+      if (body.name !== undefined) entry.name = body.name;
+      if (body.status !== undefined) entry.status = body.status;
+      if (body.responsibleRefId !== undefined) entry.responsibleRefId = body.responsibleRefId;
+      if (body.maxCapacity !== undefined) entry.maxCapacity = body.maxCapacity;
+      entry.updatedAt = nowIso();
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(entry),
       });
       return;
     }
@@ -409,20 +557,7 @@ async function setupInventoryMocks(
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            id: 'bal-001',
-            tenantId: 'tenant-inventory-001',
-            itemId: ITEM_ID,
-            locationId: LOC_MAIN,
-            lotId: null,
-            condition: 'NEW',
-            quantityOnHand: '8',
-            quantityReserved: '0',
-            createdAt: nowIso(-1000),
-            updatedAt: nowIso(-1000),
-          },
-        ]),
+        body: JSON.stringify(state.balances),
       });
       return;
     }
@@ -727,25 +862,22 @@ test.describe('Portal Inventario / SCM', () => {
 
     await main.getByRole('button', { name: 'Nuevo producto' }).click();
     const drawer = page.getByRole('dialog');
-    await drawer.getByLabel('SKU').fill('PATCH-24');
     await drawer.getByLabel('Nombre').fill('Patch cord 24m');
     await drawer.getByRole('button', { name: 'Crear producto' }).click();
 
-    await expect(main.getByText('PATCH-24')).toBeVisible();
+    await expect(main.getByText('Patch cord 24m')).toBeVisible();
 
-    await main.getByRole('tab', { name: 'Compras' }).click();
+    await openPurchaseComposer(main);
+    await addCatalogProductToDraft(main, /Seleccionar .* - Patch cord 24m/i);
     await main.getByLabel('Título').fill('Compra patch cord');
     await main.getByLabel('Área solicitante').fill('Operaciones');
-    await main.getByLabel('Buscar producto').fill('PATCH-24');
-    await main.getByRole('combobox', { name: 'Producto del catálogo' }).click();
-    await page.getByRole('option', { name: /PATCH-24/i }).click();
     await main
-      .getByLabel('Justificación')
+      .getByLabel('Justificacion')
       .fill('Reposición de patch cords para cuadrillas de campo');
     await main.getByRole('button', { name: 'Crear solicitud' }).click();
 
     await expect(main.getByText('PR-0002')).toBeVisible();
-    expect(state.catalogItems.some((item) => item.sku === 'PATCH-24')).toBe(true);
+    expect(state.catalogItems.some((item) => item.name === 'Patch cord 24m')).toBe(true);
   });
 
   test('crea categoria, producto y lo usa en solicitud de compra', async ({ page }) => {
@@ -756,48 +888,47 @@ test.describe('Portal Inventario / SCM', () => {
     const main = page.locator('main');
 
     await main.getByRole('tab', { name: 'Catálogo' }).click();
-    await main.getByRole('button', { name: 'Categorías' }).click();
+    await main.getByRole('tab', { name: 'Categorías' }).click();
     await main.getByRole('button', { name: 'Nueva categoría' }).click();
 
     const categoryDrawer = page.getByRole('dialog');
-    await categoryDrawer.getByLabel('Código').fill('FIBER');
     await categoryDrawer.getByLabel('Nombre').fill('Fibra óptica');
+    await categoryDrawer.getByLabel('Prefijo de producto').fill('FIB');
     await categoryDrawer.getByRole('button', { name: 'Crear categoría' }).click();
 
     await expect(main.getByText('Fibra óptica')).toBeVisible();
 
-    const createdCategory = state.categories.find((category) => category.code === 'FIBER');
+    const createdCategory = state.categories.find((category) => category.name === 'Fibra óptica');
     expect(createdCategory).toBeDefined();
 
-    await main.getByRole('button', { name: 'Productos' }).click();
+    await main.getByRole('tab', { name: 'Productos' }).click();
     await main.getByRole('button', { name: 'Nuevo producto' }).click();
 
     const productDrawer = page.getByRole('dialog');
-    await productDrawer.getByLabel('SKU').fill('FOC-12');
     await productDrawer.getByLabel('Nombre').fill('Cable fibra 12 hilos');
-    await productDrawer.locator('select').filter({ hasText: 'Fibra óptica' }).selectOption({
-      label: 'Fibra óptica',
-    });
+    await selectComboboxOption(
+      page,
+      productDrawer.getByRole('combobox', { name: 'Categoría' }),
+      'Fibra óptica',
+    );
     await productDrawer.getByRole('button', { name: 'Crear producto' }).click();
 
-    await expect(main.getByText('FOC-12')).toBeVisible();
+    await expect(main.getByText('Cable fibra 12 hilos')).toBeVisible();
 
-    await main.getByRole('tab', { name: 'Compras' }).click();
+    await openPurchaseComposer(main);
+    await addCatalogProductToDraft(main, /Seleccionar .* - Cable fibra 12 hilos/i);
     await main.getByLabel('Título').fill('Compra fibra proyecto norte');
     await main.getByLabel('Área solicitante').fill('Ingeniería');
-    await main.getByLabel('Buscar producto').fill('FOC-12');
-    await main.getByRole('combobox', { name: 'Producto del catálogo' }).click();
-    await page.getByRole('option', { name: /FOC-12/i }).click();
     await main
-      .getByLabel('Justificación')
+      .getByLabel('Justificacion')
       .fill('Material de fibra para ampliación de red troncal en zona norte');
     await main.getByRole('button', { name: 'Crear solicitud' }).click();
 
     await expect(main.getByText('PR-0002')).toBeVisible();
-    expect(state.catalogItems.some((item) => item.sku === 'FOC-12')).toBe(true);
-    expect(state.catalogItems.find((item) => item.sku === 'FOC-12')?.categoryName).toBe(
-      'Fibra óptica',
-    );
+    expect(state.catalogItems.some((item) => item.name === 'Cable fibra 12 hilos')).toBe(true);
+    expect(
+      state.catalogItems.find((item) => item.name === 'Cable fibra 12 hilos')?.categoryName,
+    ).toBe('Fibra óptica');
   });
 
   test('muestra workspace de compras y permite crear solicitud con líneas', async ({ page }) => {
@@ -811,10 +942,12 @@ test.describe('Portal Inventario / SCM', () => {
     await expect(main.getByText('Resumen de compras')).toBeVisible();
     await expect(main.getByText('Por cotizar')).toBeVisible();
 
+    await main.getByRole('button', { name: 'Nueva solicitud' }).click();
+    await addCatalogProductToDraft(main, /Seleccionar ONT-HG8245 - ONT Huawei HG8245/i);
     await main.getByLabel('Título').fill('Compra ONT marzo');
     await main.getByLabel('Área solicitante').fill('Operaciones');
     await main
-      .getByLabel('Justificación')
+      .getByLabel('Justificacion')
       .fill('Reposición programada por consumo de campo en zona norte');
     await main.getByRole('button', { name: 'Crear solicitud' }).click();
 
@@ -885,6 +1018,7 @@ test.describe('Portal Inventario / SCM', () => {
     await transferDialog.locator('select').nth(0).selectOption(ITEM_ID);
     await transferDialog.locator('select').nth(1).selectOption(LOC_MAIN);
     await transferDialog.locator('select').nth(2).selectOption(LOC_TECH);
+    await transferDialog.getByLabel('Acta o evidencia').fill('ACT-E2E-001');
     await transferDialog.getByRole('button', { name: 'Registrar transferencia' }).click();
 
     await expect(main.getByText('Transferencia registrada en MOV-000010.')).toBeVisible();
@@ -904,15 +1038,22 @@ test.describe('Portal Inventario / SCM', () => {
     await page.goto('/dashboard/inventory');
     const main = page.locator('main');
 
-    await main.getByRole('tab', { name: 'Compras' }).click();
+    await openPurchaseComposer(main);
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Tipo de compra' }),
+      'Proyecto',
+    );
+    await addCatalogProductToDraft(main, /Seleccionar ONT-HG8245 - ONT Huawei HG8245/i);
+    await main.getByRole('button', { name: 'Agregar línea manual' }).click();
+    await main
+      .getByRole('textbox', { name: 'Descripcion manual' })
+      .fill('Cableado auxiliar de ampliación');
     await main.getByLabel('Título').fill('Proyecto ampliación red');
     await main.getByLabel('Área solicitante').fill('Ingeniería');
-    await main.locator('#purchase-type').click();
-    await page.getByRole('option', { name: 'Proyecto' }).click();
     await main
-      .getByLabel('Justificación')
+      .getByLabel('Justificacion')
       .fill('Adquisición de materiales para ampliación de red en zona norte del municipio');
-    await main.getByRole('button', { name: 'Agregar línea' }).click();
     await main.getByRole('button', { name: 'Crear solicitud' }).click();
 
     await expect(main.getByText('PR-0002')).toBeVisible();
@@ -948,5 +1089,120 @@ test.describe('Portal Inventario / SCM', () => {
     await workbench.getByRole('button', { name: 'Aprobar solicitud' }).click();
 
     await expect(main.getByRole('cell', { name: 'Aprobada', exact: true })).toBeVisible();
+  });
+});
+
+test.describe('Portal Inventario / Bodegas', () => {
+  test.beforeEach(async ({ page }) => {
+    const state = createInventoryMockState();
+    await setupInventoryMocks(page, state);
+    await seedPortalSession(page);
+    (page as unknown as { inventoryMockState: InventoryMockState }).inventoryMockState = state;
+  });
+
+  test('abre slice de bodegas con deep-link tab=locations', async ({ page }) => {
+    await page.goto('/dashboard/inventory?tab=locations');
+    const main = page.locator('main');
+
+    await expect(main.getByRole('tab', { name: 'Bodegas', selected: true })).toBeVisible();
+    await expect(main.getByText('Matriz de bodegas')).toBeVisible();
+    await expect(main.getByText('BOD-01')).toBeVisible();
+  });
+
+  test('filtra custodias móviles con custody=mobile', async ({ page }) => {
+    await page.goto('/dashboard/inventory?tab=locations&custody=mobile');
+    const main = page.locator('main');
+
+    await expect(main.getByText('Custodia técnico')).toBeVisible();
+    await expect(main.getByText('Móvil con tope')).toBeVisible();
+    await expect(main.getByText('BOD-01')).toHaveCount(0);
+  });
+
+  test('crea bodega desde UI', async ({ page }) => {
+    const state = (page as unknown as { inventoryMockState: InventoryMockState })
+      .inventoryMockState;
+
+    await page.goto('/dashboard/inventory?tab=locations');
+    const main = page.locator('main');
+
+    await main.getByRole('button', { name: 'Crear bodega' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Código').fill('CUAR-01');
+    await dialog.getByLabel('Nombre').fill('Cuarentena operativa');
+    await dialog.getByLabel('Tipo').selectOption({ label: 'Cuarentena' });
+    await dialog.getByRole('button', { name: 'Crear bodega' }).click();
+
+    await expect(main.getByText('CUAR-01')).toBeVisible();
+    expect(state.locations.some((location) => location.code === 'CUAR-01')).toBe(true);
+  });
+
+  test('edita capacidad y responsable de bodega existente', async ({ page }) => {
+    const state = (page as unknown as { inventoryMockState: InventoryMockState })
+      .inventoryMockState;
+
+    await page.goto('/dashboard/inventory?tab=locations');
+    const main = page.locator('main');
+
+    await main.getByRole('button', { name: 'Editar Bodega principal' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Responsable operativo').fill(MOBILE_RESPONSIBLE_ID);
+    await dialog.getByLabel('Capacidad máxima').fill('24');
+    await dialog.getByRole('button', { name: 'Guardar cambios' }).click();
+
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(
+      main.locator('tr').filter({ hasText: 'BOD-01' }).getByText(MOBILE_RESPONSIBLE_ID),
+    ).toBeVisible();
+    const updated = state.locations.find((location) => location.id === LOC_MAIN);
+    expect(updated?.responsibleRefId).toBe(MOBILE_RESPONSIBLE_ID);
+    expect(updated?.maxCapacity).toBe(24);
+  });
+
+  test('bloquea transferencia que excede saldo visible', async ({ page }) => {
+    await page.goto('/dashboard/inventory?tab=locations');
+    const main = page.locator('main');
+
+    await main.getByRole('button', { name: 'Transferir stock' }).click();
+    const transferDialog = page.getByRole('dialog');
+    await transferDialog.locator('select').nth(0).selectOption(ITEM_ID);
+    await transferDialog.locator('select').nth(1).selectOption(LOC_MAIN);
+    await transferDialog.locator('select').nth(2).selectOption(LOC_TECH);
+    await transferDialog.getByLabel('Cantidad').fill('99');
+    await transferDialog.getByLabel('Acta o evidencia').fill('ACT-OVER-001');
+
+    await expect(
+      transferDialog.getByText('La transferencia supera el saldo visible'),
+    ).toBeVisible();
+    await expect(
+      transferDialog.getByRole('button', { name: 'Registrar transferencia' }),
+    ).toBeDisabled();
+  });
+
+  test('bloquea transferencia sin cupo en bodega móvil', async ({ page }) => {
+    await page.goto('/dashboard/inventory?tab=locations');
+    const main = page.locator('main');
+
+    await main.getByRole('button', { name: 'Transferir stock' }).click();
+    const transferDialog = page.getByRole('dialog');
+    await transferDialog.locator('select').nth(0).selectOption(ITEM_ID);
+    await transferDialog.locator('select').nth(1).selectOption(LOC_MAIN);
+    await transferDialog.locator('select').nth(2).selectOption(LOC_MOBILE_CAPPED);
+    await transferDialog.getByLabel('Cantidad').fill('2');
+    await transferDialog.getByLabel('Acta o evidencia').fill('ACT-CAP-001');
+
+    await expect(
+      transferDialog.getByText('La bodega destino no tiene cupo suficiente'),
+    ).toBeVisible();
+    await expect(
+      transferDialog.getByRole('button', { name: 'Registrar transferencia' }),
+    ).toBeDisabled();
+  });
+
+  test('permite drill-down de balances por ubicación', async ({ page }) => {
+    await page.goto('/dashboard/inventory?tab=locations');
+    const main = page.locator('main');
+
+    await main.getByRole('button', { name: 'Ver balances de Bodega principal' }).click();
+    await expect(main.getByText(/ONT-HG8245 · ONT Huawei HG8245/i)).toBeVisible();
   });
 });

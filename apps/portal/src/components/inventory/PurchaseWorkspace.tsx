@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@iwana/ui';
+import { useMemo, useState } from 'react';
 import type {
   AddSupplierQuoteDto,
   CreatePurchaseOrderDto,
@@ -9,6 +8,7 @@ import type {
   GoodsReceiptResultRecord,
   InventoryCatalogOptionRecord,
   InventoryItemRecord,
+  StockBalanceRecord,
   PurchaseOrderLineRecord,
   PurchaseOrderRecord,
   PurchaseRequestDetailRecord,
@@ -19,6 +19,8 @@ import type {
 } from '@/lib/api-client';
 import { purchasingApi } from '@/lib/api-client';
 import { PortalPanel } from '@/components/shared/portal-ui';
+import { PurchaseCreateModeHeader } from './PurchaseCreateModeHeader';
+import { PurchaseCreateModeShell } from './PurchaseCreateModeShell';
 import { PurchaseOrderDrawer } from './PurchaseOrderDrawer';
 import { PurchaseRequestComposer } from './PurchaseRequestComposer';
 import { PurchaseRequestWorkbenchDrawer } from './PurchaseRequestWorkbenchDrawer';
@@ -33,25 +35,21 @@ import {
 } from './purchase-filters';
 import type { PurchaseWorkbenchTab } from './purchase-workbench';
 
-function useMinWidth(minWidth: number): boolean {
-  const [matches, setMatches] = useState(false);
+type PurchaseWorkspaceMode = 'inbox' | 'create';
 
-  useEffect(() => {
-    const mediaQuery = window.matchMedia(`(min-width: ${minWidth}px)`);
-    const update = () => setMatches(mediaQuery.matches);
-    update();
-    mediaQuery.addEventListener('change', update);
-    return () => mediaQuery.removeEventListener('change', update);
-  }, [minWidth]);
-
-  return matches;
+interface PurchaseCreateRequestResult {
+  ok: boolean;
+  requestId?: string;
 }
 
 interface PurchaseWorkspaceProps {
   requests: PurchaseRequestRecord[];
   items: InventoryItemRecord[];
+  balances: StockBalanceRecord[];
   catalogOptions: InventoryCatalogOptionRecord[];
+  purchaseItemFrequency?: Record<string, number>;
   supplierLabels?: Record<string, string>;
+  isCatalogSearching?: boolean;
   locations: StockLocationRecord[];
   latestOrder: PurchaseOrderRecord | null;
   latestOrderLines: PurchaseOrderLineRecord[];
@@ -68,20 +66,24 @@ interface PurchaseWorkspaceProps {
   approveError: string | null;
   orderError: string | null;
   receiptError: string | null;
-  onCreateRequest: (payload: CreatePurchaseRequestDto) => Promise<void>;
+  onCreateRequest: (payload: CreatePurchaseRequestDto) => Promise<PurchaseCreateRequestResult>;
   onAddQuote: (requestId: string, payload: AddSupplierQuoteDto) => Promise<void>;
   onApproveRequest: (requestId: string, exceptionReason?: string) => Promise<void>;
   onCreateOrder: (payload: CreatePurchaseOrderDto) => Promise<void>;
   onReceiveOrder: (purchaseOrderId: string, payload: ReceivePurchaseOrderDto) => Promise<void>;
   onPrepareOrderDrawer: (requestId: string) => Promise<void>;
   onRefresh: () => Promise<void>;
+  onCatalogSearch?: (search: string) => void;
 }
 
 export function PurchaseWorkspace({
   requests,
   items,
+  balances,
   catalogOptions,
+  purchaseItemFrequency = {},
   supplierLabels = {},
+  isCatalogSearching = false,
   locations,
   latestOrder,
   latestOrderLines,
@@ -105,6 +107,7 @@ export function PurchaseWorkspace({
   onReceiveOrder,
   onPrepareOrderDrawer,
   onRefresh,
+  onCatalogSearch,
 }: PurchaseWorkspaceProps) {
   const [filters, setFilters] = useState<PurchaseRequestFilters>({});
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
@@ -115,9 +118,10 @@ export function PurchaseWorkspace({
   const [supplierLoading, setSupplierLoading] = useState(false);
   const [supplierError, setSupplierError] = useState<string | null>(null);
   const [orderDrawerOpen, setOrderDrawerOpen] = useState(false);
-  const [composerOpen, setComposerOpen] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState<PurchaseWorkspaceMode>('inbox');
+  const [composerDirty, setComposerDirty] = useState(false);
+  const [draftLineCount, setDraftLineCount] = useState(0);
   const [workbenchTab, setWorkbenchTab] = useState<PurchaseWorkbenchTab>('summary');
-  const isDesktopComposer = useMinWidth(1280);
 
   const filteredCount = useMemo(
     () => filterPurchaseRequests(requests, filters).length,
@@ -173,34 +177,71 @@ export function PurchaseWorkspace({
     });
   }
 
-  async function handleCreateRequest(payload: CreatePurchaseRequestDto) {
-    await onCreateRequest(payload);
-    setComposerOpen(false);
+  function openCreateMode() {
+    setSelectedRequestId(null);
+    setDetail(null);
+    setDetailError(null);
+    setSupplierSummary(null);
+    setSupplierError(null);
+    setWorkspaceMode('create');
+  }
+
+  function closeCreateMode(force = false) {
+    if (!force && composerDirty) {
+      const confirmed = window.confirm(
+        'Hay cambios sin guardar en la solicitud. ¿Quieres volver a la bandeja y descartar este borrador?',
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setWorkspaceMode('inbox');
+    setComposerDirty(false);
+    setDraftLineCount(0);
+  }
+
+  async function handleCreateRequest(
+    payload: CreatePurchaseRequestDto,
+  ): Promise<PurchaseCreateRequestResult> {
+    const result = await onCreateRequest(payload);
+    if (result.ok) {
+      closeCreateMode(true);
+    }
+    return result;
   }
 
   const composer = (
     <PurchaseRequestComposer
       catalogOptions={catalogOptions}
+      items={items}
+      balances={balances}
+      purchaseItemFrequency={purchaseItemFrequency}
       supplierLabels={supplierLabels}
+      isCatalogSearching={isCatalogSearching}
       isSubmitting={isSubmittingRequest}
       error={createError}
       layout="embedded"
+      presentation="create-mode"
+      onDirtyChange={setComposerDirty}
+      onDraftLineCountChange={setDraftLineCount}
+      {...(onCatalogSearch ? { onCatalogSearch } : {})}
       onSubmit={handleCreateRequest}
     />
   );
 
   return (
     <div className="space-y-6">
-      <PurchaseWorkspaceSummary
-        requests={requests}
-        filters={filters}
-        isLoading={isLoading}
-        onKpiFilterChange={handleKpiFilterChange}
-      />
+      {workspaceMode === 'inbox' ? (
+        <PurchaseWorkspaceSummary
+          requests={requests}
+          filters={filters}
+          isLoading={isLoading}
+          onKpiFilterChange={handleKpiFilterChange}
+        />
+      ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-        {isDesktopComposer ? <div>{composer}</div> : null}
-
+      {workspaceMode === 'inbox' ? (
         <PortalPanel
           eyebrow="Operación"
           title="Bandeja de solicitudes"
@@ -215,7 +256,7 @@ export function PurchaseWorkspace({
               onFiltersChange={setFilters}
               onRefresh={() => void onRefresh()}
               onClearFilters={() => setFilters({})}
-              onOpenComposer={() => setComposerOpen(true)}
+              onOpenComposer={openCreateMode}
             />
             <PurchaseRequestsTable
               requests={requests}
@@ -223,25 +264,25 @@ export function PurchaseWorkspace({
               selectedRequestId={selectedRequestId}
               isLoading={isLoading}
               onSelectRequest={(requestId) => void openWorkbench(requestId)}
-              onCreateRequest={() => setComposerOpen(true)}
+              onCreateRequest={openCreateMode}
             />
           </div>
         </PortalPanel>
-      </div>
-
-      {!isDesktopComposer ? (
-        <Dialog open={composerOpen} onOpenChange={setComposerOpen}>
-          <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Nueva solicitud de compra</DialogTitle>
-            </DialogHeader>
-            {composer}
-          </DialogContent>
-        </Dialog>
-      ) : null}
+      ) : (
+        <PurchaseCreateModeShell
+          header={
+            <PurchaseCreateModeHeader
+              draftLineCount={draftLineCount}
+              onBack={() => closeCreateMode()}
+            />
+          }
+        >
+          {composer}
+        </PurchaseCreateModeShell>
+      )}
 
       <PurchaseRequestWorkbenchDrawer
-        open={Boolean(selectedRequestId)}
+        open={workspaceMode === 'inbox' && Boolean(selectedRequestId)}
         detail={detail}
         items={items}
         locations={locations}

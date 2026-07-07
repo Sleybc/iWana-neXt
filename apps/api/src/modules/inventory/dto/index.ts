@@ -160,15 +160,20 @@ function refineInventoryItemMaster<T extends z.ZodTypeAny>(schema: T) {
 }
 
 export const CreateInventoryItemSchema = refineInventoryItemMaster(
-  z.object(inventoryItemMasterFields).superRefine((value, ctx) => {
-    if (!value.categoryId && !value.category) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Debe indicar una categoria para el producto.',
-        path: ['categoryId'],
-      });
-    }
-  }),
+  z
+    .object({
+      ...inventoryItemMasterFields,
+      sku: z.string().trim().max(60).optional().default(''),
+    })
+    .superRefine((value, ctx) => {
+      if (!value.categoryId && !value.category) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Debe indicar una categoria para el producto.',
+          path: ['categoryId'],
+        });
+      }
+    }),
 );
 
 export type CreateInventoryItemInput = z.infer<typeof CreateInventoryItemSchema>;
@@ -176,7 +181,6 @@ export type CreateInventoryItemInput = z.infer<typeof CreateInventoryItemSchema>
 export const UpdateInventoryItemSchema = refineInventoryItemMaster(
   z
     .object({
-      sku: inventoryItemMasterFields.sku.optional(),
       name: inventoryItemMasterFields.name.optional(),
       description: inventoryItemMasterFields.description,
       brand: inventoryItemMasterFields.brand,
@@ -230,9 +234,7 @@ export const ListInventoryCategoriesQuerySchema = z.object({
   status: z.nativeEnum(InventoryCategoryStatus).optional(),
 });
 
-export type ListInventoryCategoriesQueryInput = z.infer<
-  typeof ListInventoryCategoriesQuerySchema
->;
+export type ListInventoryCategoriesQueryInput = z.infer<typeof ListInventoryCategoriesQuerySchema>;
 
 export class ListInventoryCategoriesQueryDto {
   @ApiPropertyOptional()
@@ -246,6 +248,13 @@ export class ListInventoryCategoriesQueryDto {
 
 export const CreateInventoryCategorySchema = z.object({
   code: z.string().trim().min(1).max(80),
+  codePrefix: z
+    .string()
+    .trim()
+    .regex(
+      /^[A-Z0-9]{2,3}$/,
+      'El prefijo debe tener entre 2 y 3 caracteres alfanumericos en mayuscula.',
+    ),
   name: z.string().trim().min(1).max(160),
   description: optionalTrimmedString(2000),
   status: z.nativeEnum(InventoryCategoryStatus).optional().default(InventoryCategoryStatus.ACTIVE),
@@ -272,6 +281,14 @@ export class CreateInventoryCategoryDto {
   @ApiProperty()
   @Allow()
   code!: string;
+
+  @ApiProperty({
+    description:
+      'Prefijo corto (2-3 caracteres alfanumericos en mayuscula) usado para autogenerar SKU de productos. Inmutable tras la creacion.',
+    example: 'CFO',
+  })
+  @Allow()
+  codePrefix!: string;
 
   @ApiProperty()
   @Allow()
@@ -312,10 +329,53 @@ export class UpdateInventoryCategoryDto {
   sortOrder?: number;
 }
 
-export class CreateInventoryItemDto {
+export const SuggestInventoryCategoryPrefixQuerySchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  codePrefix: z.string().trim().max(3).optional(),
+  excludeCategoryId: z.string().uuid().optional(),
+});
+
+export type SuggestInventoryCategoryPrefixQueryInput = z.infer<
+  typeof SuggestInventoryCategoryPrefixQuerySchema
+>;
+
+export class SuggestInventoryCategoryPrefixQueryDto {
+  @ApiProperty({ description: 'Nombre de la categoria para derivar codigo y prefijo.' })
+  @Allow()
+  name!: string;
+
+  @ApiPropertyOptional({
+    description: 'Prefijo manual opcional. Si colisiona, el servicio devuelve una variante unica.',
+  })
+  @Allow()
+  codePrefix?: string;
+
+  @ApiPropertyOptional({ description: 'Categoria a excluir al calcular unicidad (edicion).' })
+  @Allow()
+  excludeCategoryId?: string;
+}
+
+export class SuggestInventoryCategoryPrefixResponseDto {
   @ApiProperty()
   @Allow()
-  sku!: string;
+  code!: string;
+
+  @ApiProperty()
+  @Allow()
+  codePrefix!: string;
+
+  @ApiProperty()
+  @Allow()
+  sortOrder!: number;
+}
+
+export class CreateInventoryItemDto {
+  @ApiPropertyOptional({
+    description:
+      'Codigo del producto. Si se omite o envia vacio, se autogenera como {prefijo-categoria}-NNNNNN.',
+  })
+  @Allow()
+  sku?: string;
 
   @ApiProperty()
   @Allow()
@@ -435,7 +495,7 @@ export class UpdateInventoryItemDto extends CreateInventoryItemDto {}
 export const ListStockLocationsQuerySchema = z.object({
   type: z.nativeEnum(StockLocationType).optional(),
   status: z.nativeEnum(StockLocationStatus).optional(),
-  responsibleRefId: z.string().trim().min(1).max(160).optional(),
+  responsibleRefId: z.string().uuid().optional(),
 });
 
 export type ListStockLocationsQueryInput = z.infer<typeof ListStockLocationsQuerySchema>;
@@ -459,7 +519,7 @@ export const CreateStockLocationSchema = z.object({
   name: z.string().trim().min(1).max(200),
   type: z.nativeEnum(StockLocationType),
   status: z.nativeEnum(StockLocationStatus).optional().default(StockLocationStatus.ACTIVE),
-  responsibleRefId: optionalUuidLike(),
+  responsibleRefId: z.string().uuid().optional().nullable(),
   maxCapacity: nonNegativeNumber.optional().nullable(),
 });
 
@@ -479,6 +539,44 @@ export class CreateStockLocationDto {
   type!: StockLocationType;
 
   @ApiPropertyOptional({ enum: StockLocationStatus, default: StockLocationStatus.ACTIVE })
+  @Allow()
+  status?: StockLocationStatus;
+
+  @ApiPropertyOptional()
+  @Allow()
+  responsibleRefId?: string | null;
+
+  @ApiPropertyOptional()
+  @Allow()
+  maxCapacity?: number | null;
+}
+
+export const UpdateStockLocationSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200).optional(),
+    status: z.nativeEnum(StockLocationStatus).optional(),
+    responsibleRefId: z.string().uuid().optional().nullable(),
+    maxCapacity: nonNegativeNumber.optional().nullable(),
+  })
+  .refine(
+    (value) =>
+      value.name !== undefined ||
+      value.status !== undefined ||
+      value.responsibleRefId !== undefined ||
+      value.maxCapacity !== undefined,
+    {
+      message: 'Debes enviar al menos un campo para actualizar la ubicación.',
+    },
+  );
+
+export type UpdateStockLocationInput = z.infer<typeof UpdateStockLocationSchema>;
+
+export class UpdateStockLocationDto {
+  @ApiPropertyOptional()
+  @Allow()
+  name?: string;
+
+  @ApiPropertyOptional({ enum: StockLocationStatus })
   @Allow()
   status?: StockLocationStatus;
 
@@ -1047,6 +1145,8 @@ export const TransferStockSchema = z.object({
   serializedAssetId: optionalUuidLike(),
   serialNumber: optionalTrimmedString(160),
   condition: z.nativeEnum(StockBalanceCondition).optional().default(StockBalanceCondition.NEW),
+  handoffReference: z.string().trim().min(1).max(160),
+  handoffNotes: optionalTrimmedString(1000),
   notes: optionalTrimmedString(4000),
   idempotencyKey: optionalTrimmedString(160),
 });
@@ -1085,6 +1185,14 @@ export class TransferStockDto {
   @ApiPropertyOptional({ enum: StockBalanceCondition, default: StockBalanceCondition.NEW })
   @Allow()
   condition?: StockBalanceCondition;
+
+  @ApiProperty()
+  @Allow()
+  handoffReference!: string;
+
+  @ApiPropertyOptional()
+  @Allow()
+  handoffNotes?: string | null;
 
   @ApiPropertyOptional()
   @Allow()
@@ -1251,6 +1359,11 @@ export class InternalConsumptionDto {
   idempotencyKey?: string | null;
 }
 
+export const ALLOWED_RETURN_TARGET_STATUSES = [
+  SerializedAssetStatus.IN_TRANSIT,
+  SerializedAssetStatus.IN_TESTING,
+] as const;
+
 export const ReturnAssetSchema = z.object({
   itemId: z.string().trim().min(1).max(160),
   sourceLocationId: z.string().trim().min(1).max(160),
@@ -1259,7 +1372,7 @@ export const ReturnAssetSchema = z.object({
   serializedAssetId: optionalUuidLike(),
   serialNumber: optionalTrimmedString(160),
   lotId: optionalUuidLike(),
-  targetStatus: z.nativeEnum(SerializedAssetStatus),
+  targetStatus: z.enum(ALLOWED_RETURN_TARGET_STATUSES),
   notes: optionalTrimmedString(4000),
   idempotencyKey: optionalTrimmedString(160),
 });

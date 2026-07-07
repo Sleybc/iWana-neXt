@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager, QueryFailedError } from 'typeorm';
 import { InventoryCategory, InventoryItem, TenantContext, runInTenantSchema } from '@iwana/db';
 import {
   InventoryItemCategory,
@@ -15,6 +15,7 @@ import {
   InventoryItemStatus,
   InventoryCategoryStatus,
   InventoryTrackingMode,
+  buildCompositeSku,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import {
@@ -36,6 +37,24 @@ import {
 } from '../events/inventory.events';
 import { SupplierPartyPort } from '../ports/supplier-party.port';
 import { InventoryCategoryService } from './inventory-category.service';
+
+const SKU_GENERATION_RETRY_LIMIT = 3;
+
+type UniqueConstraintDriverError = {
+  code?: string;
+  constraint?: string;
+};
+
+function isSkuUniqueViolation(
+  error: unknown,
+): error is QueryFailedError & { driverError: UniqueConstraintDriverError } {
+  if (!(error instanceof QueryFailedError)) {
+    return false;
+  }
+
+  const driverError = error.driverError as UniqueConstraintDriverError;
+  return driverError.code === '23505' && driverError.constraint === 'uq_inventory_items_tenant_sku';
+}
 
 export interface InventoryItemResponse {
   id: string;
@@ -100,7 +119,10 @@ function legacyCategoryFromCode(code: string): InventoryItemCategory {
   return InventoryItemCategory.OTHER;
 }
 
-function mapItemToResponse(item: InventoryItem, category: InventoryCategory): InventoryItemResponse {
+function mapItemToResponse(
+  item: InventoryItem,
+  category: InventoryCategory,
+): InventoryItemResponse {
   return {
     id: item.id,
     tenantId: item.tenantId,
@@ -211,7 +233,6 @@ function mapUpdateInputToEntity(
 ): Partial<InventoryItem> {
   const patch: Partial<InventoryItem> = {};
 
-  if (validated.sku !== undefined) patch.sku = validated.sku;
   if (validated.name !== undefined) patch.name = validated.name;
   if (validated.description !== undefined) patch.description = validated.description ?? null;
   if (validated.brand !== undefined) patch.brand = validated.brand ?? null;
@@ -340,9 +361,7 @@ export class InventoryItemService {
     return undefined;
   }
 
-  private async loadCategoryMap(
-    categoryIds: string[],
-  ): Promise<Map<string, InventoryCategory>> {
+  private async loadCategoryMap(categoryIds: string[]): Promise<Map<string, InventoryCategory>> {
     const uniqueIds = [...new Set(categoryIds.filter(Boolean))];
     if (uniqueIds.length === 0) {
       return new Map();
@@ -557,25 +576,69 @@ export class InventoryItemService {
     const category = await this.resolveCategoryForCreate(validated);
 
     const item = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const existing = await qr.manager.findOne(InventoryItem, {
-        where: {
-          tenantId,
-          sku: validated.sku,
-        },
-      });
+      if (validated.sku) {
+        const existing = await qr.manager.findOne(InventoryItem, {
+          where: {
+            tenantId,
+            sku: validated.sku,
+          },
+        });
 
-      if (existing) {
-        throw new ConflictException('Ya existe un item de inventario con ese SKU.');
+        if (existing) {
+          throw new ConflictException('Ya existe un item de inventario con ese SKU.');
+        }
+
+        return qr.manager.save(
+          InventoryItem,
+          qr.manager.create(InventoryItem, mapCreateInputToEntity(tenantId, validated, category)),
+        );
       }
 
-      return qr.manager.save(
-        InventoryItem,
-        qr.manager.create(InventoryItem, mapCreateInputToEntity(tenantId, validated, category)),
-      );
+      for (let attempt = 0; attempt < SKU_GENERATION_RETRY_LIMIT; attempt += 1) {
+        const generatedSku = this.generateSku(category.codePrefix, validated, attempt);
+        const inputWithSku: CreateInventoryItemInput = { ...validated, sku: generatedSku };
+
+        try {
+          return await qr.manager.save(
+            InventoryItem,
+            qr.manager.create(
+              InventoryItem,
+              mapCreateInputToEntity(tenantId, inputWithSku, category),
+            ),
+          );
+        } catch (error) {
+          if (attempt === SKU_GENERATION_RETRY_LIMIT - 1 && isSkuUniqueViolation(error)) {
+            throw new ConflictException('No fue posible generar un SKU unico para el producto.');
+          }
+
+          if (!isSkuUniqueViolation(error)) {
+            throw error;
+          }
+        }
+      }
+
+      throw new ConflictException('No fue posible generar un SKU unico para el producto.');
     });
 
     this.emitItemCreated(item, actor);
     return mapItemToResponse(item, category);
+  }
+
+  private generateSku(
+    codePrefix: string,
+    input: CreateInventoryItemInput,
+    attempt: number,
+  ): string {
+    return buildCompositeSku(
+      {
+        categoryCodePrefix: codePrefix,
+        itemKind: input.itemKind,
+        name: input.name,
+        brand: input.brand,
+        model: input.model,
+      },
+      attempt,
+    );
   }
 
   async update(
@@ -593,16 +656,6 @@ export class InventoryItemService {
 
       if (!existing) {
         throw new NotFoundException('El articulo de inventario solicitado no existe.');
-      }
-
-      if (validated.sku && validated.sku !== existing.sku) {
-        const duplicate = await qr.manager.findOne(InventoryItem, {
-          where: { tenantId, sku: validated.sku },
-        });
-
-        if (duplicate) {
-          throw new ConflictException('Ya existe un item de inventario con ese SKU.');
-        }
       }
 
       const category = await this.resolveCategoryForUpdate(validated, existing);
@@ -672,6 +725,63 @@ export class InventoryItemService {
 
     this.emitItemUpdated(result.saved, actor);
     return mapItemToResponse(result.saved, result.resolvedCategory);
+  }
+
+  async delete(id: string, actor: JwtPayload): Promise<void> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+
+    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const existing = await qr.manager.findOne(InventoryItem, {
+        where: { id, tenantId },
+      });
+
+      if (!existing) {
+        throw new NotFoundException('El articulo de inventario solicitado no existe.');
+      }
+
+      await this.assertItemCanBeDeleted(qr.manager, tenantId, id);
+      await qr.manager.delete(InventoryItem, { id, tenantId });
+    });
+
+    this.logger.log({
+      msg: 'inventory.item-deleted',
+      tenantId,
+      inventoryItemId: id,
+      actorUserId: actor.sub,
+      operation: 'delete',
+    });
+  }
+
+  private async assertItemCanBeDeleted(
+    manager: EntityManager,
+    tenantId: string,
+    itemId: string,
+  ): Promise<void> {
+    const [flags] = (await manager.query(
+      `
+        SELECT
+          EXISTS(SELECT 1 FROM stock_balances WHERE tenant_id = $1 AND item_id = $2) AS has_balances,
+          EXISTS(SELECT 1 FROM stock_lots WHERE tenant_id = $1 AND item_id = $2) AS has_lots,
+          EXISTS(
+            SELECT 1 FROM serialized_assets WHERE tenant_id = $1 AND inventory_item_id = $2
+          ) AS has_assets,
+          EXISTS(SELECT 1 FROM purchase_order_lines WHERE tenant_id = $1 AND item_id = $2) AS has_po_lines,
+          EXISTS(SELECT 1 FROM stock_movement_lines WHERE tenant_id = $1 AND item_id = $2) AS has_movements,
+          EXISTS(SELECT 1 FROM goods_receipt_lines WHERE tenant_id = $1 AND item_id = $2) AS has_receipts,
+          EXISTS(SELECT 1 FROM inventory_write_offs WHERE tenant_id = $1 AND item_id = $2) AS has_writeoffs
+      `,
+      [tenantId, itemId],
+    )) as Array<Record<string, boolean>>;
+
+    if (!flags) {
+      return;
+    }
+
+    if (Object.values(flags).some(Boolean)) {
+      throw new BadRequestException(
+        'No se puede eliminar el producto porque tiene stock, activos o movimientos asociados.',
+      );
+    }
   }
 
   async listCatalogOptions(

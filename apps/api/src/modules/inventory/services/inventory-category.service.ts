@@ -9,16 +9,26 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { InventoryCategory, InventoryItem, TenantContext, runInTenantSchema } from '@iwana/db';
-import { InventoryCategoryStatus } from '@iwana/shared';
-import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
+import {
+  InventoryCategoryStatus,
+  buildTakenCodePrefixSet,
+  deriveCategoryCode,
+  ensureUniqueCategoryCodePrefix,
+  sanitizeAlnumUpper,
+  suggestCategoryCodePrefix,
+  suggestNextCategorySortOrder,
+} from '@iwana/shared';
 import {
   CreateInventoryCategoryInput,
   CreateInventoryCategorySchema,
   ListInventoryCategoriesQueryInput,
   ListInventoryCategoriesQuerySchema,
+  SuggestInventoryCategoryPrefixQueryInput,
+  SuggestInventoryCategoryPrefixQuerySchema,
   UpdateInventoryCategoryInput,
   UpdateInventoryCategorySchema,
 } from '../dto';
+import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import {
   INVENTORY_EVENTS,
   type InventoryCategoryCreatedEvent,
@@ -28,6 +38,12 @@ import {
 
 export interface InventoryCategoryWithProductCount extends InventoryCategory {
   productCount: number;
+}
+
+export interface SuggestInventoryCategoryPrefixResult {
+  code: string;
+  codePrefix: string;
+  sortOrder: number;
 }
 
 @Injectable()
@@ -93,18 +109,25 @@ export class InventoryCategoryService {
     this.eventEmitter.emit(INVENTORY_EVENTS.CATEGORY_STATUS_CHANGED, payload);
   }
 
-  async list(query: ListInventoryCategoriesQueryInput): Promise<InventoryCategoryWithProductCount[]> {
+  async list(
+    query: ListInventoryCategoriesQueryInput,
+  ): Promise<InventoryCategoryWithProductCount[]> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = ListInventoryCategoriesQuerySchema.parse(query);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
         .createQueryBuilder(InventoryCategory, 'category')
-        .leftJoin(InventoryItem, 'item', 'item.category_id = category.id AND item.tenant_id = category.tenant_id')
+        .leftJoin(
+          InventoryItem,
+          'item',
+          'item.category_id = category.id AND item.tenant_id = category.tenant_id',
+        )
         .select([
           'category.id',
           'category.tenantId',
           'category.code',
+          'category.codePrefix',
           'category.name',
           'category.description',
           'category.status',
@@ -120,10 +143,9 @@ export class InventoryCategoryService {
 
       if (validated.search) {
         const term = `%${validated.search.toLowerCase()}%`;
-        qb.andWhere(
-          '(LOWER(category.code) LIKE :term OR LOWER(category.name) LIKE :term)',
-          { term },
-        );
+        qb.andWhere('(LOWER(category.code) LIKE :term OR LOWER(category.name) LIKE :term)', {
+          term,
+        });
       }
 
       if (validated.status) {
@@ -159,6 +181,36 @@ export class InventoryCategoryService {
     });
   }
 
+  async suggestPrefix(
+    input: SuggestInventoryCategoryPrefixQueryInput,
+  ): Promise<SuggestInventoryCategoryPrefixResult> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const validated = SuggestInventoryCategoryPrefixQuerySchema.parse(input);
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const categories = await qr.manager.find(InventoryCategory, {
+        where: { tenantId },
+        select: ['id', 'codePrefix', 'sortOrder'],
+      });
+
+      const takenPrefixes = buildTakenCodePrefixSet(categories, validated.excludeCategoryId);
+      const manualPrefix = validated.codePrefix
+        ? sanitizeAlnumUpper(validated.codePrefix).slice(0, 8)
+        : '';
+
+      const codePrefix =
+        manualPrefix.length >= 2
+          ? ensureUniqueCategoryCodePrefix(manualPrefix, takenPrefixes, validated.name)
+          : suggestCategoryCodePrefix(validated.name, takenPrefixes);
+
+      return {
+        code: deriveCategoryCode(validated.name),
+        codePrefix,
+        sortOrder: suggestNextCategorySortOrder(categories),
+      };
+    });
+  }
+
   async create(
     input: CreateInventoryCategoryInput,
     actor: JwtPayload,
@@ -167,12 +219,20 @@ export class InventoryCategoryService {
     const validated = CreateInventoryCategorySchema.parse(input);
 
     const category = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const existing = await qr.manager.findOne(InventoryCategory, {
+      const existingByCode = await qr.manager.findOne(InventoryCategory, {
         where: { tenantId, code: validated.code },
       });
 
-      if (existing) {
+      if (existingByCode) {
         throw new ConflictException('Ya existe una categoria con ese codigo.');
+      }
+
+      const existingByPrefix = await qr.manager.findOne(InventoryCategory, {
+        where: { tenantId, codePrefix: validated.codePrefix },
+      });
+
+      if (existingByPrefix) {
+        throw new ConflictException('Ya existe una categoria con ese prefijo de SKU.');
       }
 
       return qr.manager.save(
@@ -180,6 +240,7 @@ export class InventoryCategoryService {
         qr.manager.create(InventoryCategory, {
           tenantId,
           code: validated.code,
+          codePrefix: validated.codePrefix,
           name: validated.name,
           description: validated.description ?? null,
           status: validated.status,

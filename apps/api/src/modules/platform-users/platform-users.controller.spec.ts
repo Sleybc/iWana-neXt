@@ -1,5 +1,4 @@
 import { INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs/common';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { PlatformRole } from '@iwana/shared';
@@ -58,10 +57,10 @@ describe('PlatformUsersController HTTP', () => {
   let app: INestApplication;
 
   const platformUsersServiceMock = {
-    getProfile: jest.fn<() => Promise<Record<string, unknown>>>(),
-    updateProfile: jest.fn<() => Promise<Record<string, unknown>>>(),
-    changeLoginEmail: jest.fn<() => Promise<Record<string, unknown>>>(),
-    changePassword: jest.fn<() => Promise<void>>(),
+    getProfile: jest.fn(),
+    updateProfile: jest.fn(),
+    changeLoginEmail: jest.fn(),
+    changePassword: jest.fn(),
   };
 
   const authServiceMock = {

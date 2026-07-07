@@ -227,6 +227,23 @@ export function getInventoryItemStatusLabel(value: InventoryItemStatus): string 
   return resolveLabel(value, INVENTORY_ITEM_STATUS_LABELS);
 }
 
+export type InventoryBadgeVariant = 'neutral' | 'primary' | 'warning' | 'error' | 'success';
+
+export function getInventoryItemStatusBadgeVariant(
+  value: InventoryItemStatus,
+): InventoryBadgeVariant {
+  switch (value) {
+    case InventoryItemStatus.ACTIVE:
+      return 'success';
+    case InventoryItemStatus.INACTIVE:
+      return 'neutral';
+    case InventoryItemStatus.DISCONTINUED:
+      return 'warning';
+    default:
+      return 'neutral';
+  }
+}
+
 export function getInventoryTrackingModeLabel(value: InventoryTrackingMode): string {
   return resolveLabel(value, INVENTORY_TRACKING_MODE_LABELS);
 }

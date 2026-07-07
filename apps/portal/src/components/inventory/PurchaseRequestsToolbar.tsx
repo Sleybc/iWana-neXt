@@ -125,12 +125,7 @@ export function PurchaseRequestsToolbar({
         <p className="text-sm text-gray-600 dark:text-gray-300">{resultsLabel}</p>
         <div className="flex flex-wrap items-center gap-2">
           {onOpenComposer ? (
-            <Button
-              type="button"
-              variant="secondary"
-              className="xl:hidden"
-              onClick={onOpenComposer}
-            >
+            <Button type="button" variant="secondary" onClick={onOpenComposer}>
               Nueva solicitud
             </Button>
           ) : null}

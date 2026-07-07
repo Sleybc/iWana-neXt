@@ -95,4 +95,58 @@ describe('SerializedAssetService', () => {
     expect(result.currentStatus).toBe(SerializedAssetStatus.AVAILABLE);
     expect(result.currentLocationId).toBe('loc-warehouse');
   });
+
+  it('routes customer returns through in-transit before diagnostics', async () => {
+    const asset = {
+      id: 'asset-002',
+      tenantId: 'tenant-001',
+      currentStatus: SerializedAssetStatus.INSTALLED_COMODATO,
+      currentLocationId: 'loc-customer',
+      currentResponsibleType: InventoryResponsibleType.CUSTOMER,
+      currentResponsibleRefId: 'subscriber-001',
+      subscriberRefId: 'subscriber-001',
+      contractRefId: 'contract-001',
+    };
+    const manager = {
+      findOne: jest.fn().mockResolvedValue(asset),
+      save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+    };
+
+    const result = await service.transitionAssetWithManager(manager as never, {
+      tenantId: 'tenant-001',
+      serializedAssetId: 'asset-002',
+      toStatus: SerializedAssetStatus.IN_TRANSIT,
+      currentLocationId: 'loc-return-hub',
+      currentResponsibleType: InventoryResponsibleType.WAREHOUSE,
+      currentResponsibleRefId: null,
+    });
+
+    expect(result.currentStatus).toBe(SerializedAssetStatus.IN_TRANSIT);
+    expect(result.currentLocationId).toBe('loc-return-hub');
+  });
+
+  it('rejects direct customer returns to available without transit/diagnostics', async () => {
+    const asset = {
+      id: 'asset-003',
+      tenantId: 'tenant-001',
+      currentStatus: SerializedAssetStatus.INSTALLED_COMODATO,
+      currentLocationId: 'loc-customer',
+      currentResponsibleType: InventoryResponsibleType.CUSTOMER,
+      currentResponsibleRefId: 'subscriber-002',
+      subscriberRefId: 'subscriber-002',
+      contractRefId: 'contract-002',
+    };
+    const manager = {
+      findOne: jest.fn().mockResolvedValue(asset),
+      save: jest.fn(),
+    };
+
+    await expect(
+      service.transitionAssetWithManager(manager as never, {
+        tenantId: 'tenant-001',
+        serializedAssetId: 'asset-003',
+        toStatus: SerializedAssetStatus.AVAILABLE,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
 });
