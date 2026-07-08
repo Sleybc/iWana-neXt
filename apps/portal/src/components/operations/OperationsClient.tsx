@@ -2,13 +2,14 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@iwana/ui';
 import {
   ExecutionOrderItemAction,
   ExecutionOrderResult,
   InventoryDisposition,
   TaskExecutionMode,
+  TaskOriginContext,
   TaskStatus,
 } from '@iwana/shared';
 import type {
@@ -89,6 +90,7 @@ function requiresScheduling(task: OperationalTaskRecord | null): boolean {
 
 export function OperationsClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [tasks, setTasks] = useState<OperationalTaskRecord[]>([]);
   const [users, setUsers] = useState<InternalUser[]>([]);
   const [statusFilter, setStatusFilter] = useState<TaskStatus | ''>('');
@@ -138,6 +140,11 @@ export function OperationsClient() {
     () => requiresScheduling(lastCreatedTask),
     [lastCreatedTask],
   );
+  const linkedTicketId = searchParams.get('ticketId');
+  const fromAssurance = searchParams.get('fromAssurance') === '1';
+  const initialTicketId = linkedTicketId?.trim() ? linkedTicketId : null;
+  const initialOriginContext =
+    initialTicketId && fromAssurance ? TaskOriginContext.ASSURANCE : undefined;
 
   const loadTasks = useCallback(async () => {
     setIsRefreshing(true);
@@ -242,7 +249,9 @@ export function OperationsClient() {
       if (options?.followUpAction) {
         const result = await createTaskVisitRequestAndRoute({
           taskId: createdTask.id,
+          taskType: createdTask.type,
           title: createdTask.title,
+          ticketId: createdTask.ticketId ?? null,
           municipality: null,
           address: null,
           nextAction: options.followUpAction,
@@ -332,6 +341,7 @@ export function OperationsClient() {
   async function handleCloseExecutionOrder(payload: {
     result: ExecutionOrderResult;
     closeNotes?: string | null;
+    customerSignatureRef?: string | null;
   }) {
     if (!selectedExecutionOrder) return;
     setIsSubmittingExecutionOrder(true);
@@ -368,6 +378,15 @@ export function OperationsClient() {
           title="Crear tarea"
           description="Registra el trabajo primero en Operaciones para conservar trazabilidad, responsable y destinatario."
         >
+          {initialTicketId && fromAssurance && (
+            <PortalAlert
+              variant="info"
+              title="Tarea vinculada a ticket"
+              description="El formulario quedó prellenado para crear una tarea asociada al ticket de mesa de ayuda."
+              className="mb-4"
+            />
+          )}
+
           {lastCreatedTask && (
             <PortalAlert
               variant="success"
@@ -392,6 +411,8 @@ export function OperationsClient() {
             responsibleOptions={responsibleOptions}
             internalAreaOptions={INTERNAL_AREA_OPTIONS}
             internalUserOptions={responsibleOptions}
+            {...(initialTicketId ? { initialTicketId } : {})}
+            {...(initialOriginContext ? { initialOriginContext } : {})}
             onSubmit={handleCreate}
             isSubmitting={isSubmitting}
             error={createError}

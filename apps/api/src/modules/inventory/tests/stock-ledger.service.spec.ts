@@ -1,6 +1,8 @@
 import { DataSource } from 'typeorm';
 import { runInTenantSchema } from '@iwana/db';
 import {
+  ExecutionOrderItemAction,
+  InventoryDisposition,
   InventoryResponsibleType,
   SerializedAssetStatus,
   StockBalanceCondition,
@@ -560,6 +562,266 @@ describe('StockLedgerService', () => {
         currentLocationId: null,
         currentResponsibleType: InventoryResponsibleType.NONE,
         toStatus: SerializedAssetStatus.IN_TRANSIT,
+      }),
+    );
+  });
+
+  it('recordExecutionOrderMovement con INSTALLED_AT_CUSTOMER acredita CUSTOMER_SITE del suscriptor', async () => {
+    const manager = {
+      findOne: jest.fn().mockResolvedValue(null),
+      find: jest.fn().mockResolvedValue([]),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue({ movementNumber: 'MOV-000199' }),
+      }),
+      create: jest.fn((_entity, payload) => payload),
+      save: jest.fn().mockImplementation(async (_entity, payload) => {
+        if ('movementNumber' in payload) {
+          return { id: 'mov-200', ...payload };
+        }
+
+        return {
+          id: `line-${payload.locationId}`,
+          ...payload,
+        };
+      }),
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+    };
+    const stockBalanceService = {
+      applyDeltaWithManager: jest.fn().mockResolvedValue(undefined),
+    };
+    const customerSiteLocationResolver = {
+      resolveOrCreateWithManager: jest.fn().mockResolvedValue('loc-customer-site'),
+    };
+    (runInTenantSchema as jest.Mock).mockImplementation(async (_dataSource, _schemaName, work) =>
+      work({ manager }),
+    );
+
+    const service = new StockLedgerService(
+      {} as DataSource,
+      stockBalanceService as never,
+      {
+        resolveForMovementWithManager: jest.fn(),
+        transitionAssetWithManager: jest.fn(),
+      } as never,
+      { recordWithManager: jest.fn() } as never,
+      customerSiteLocationResolver as never,
+    );
+
+    const result = await service.recordExecutionOrderMovement(
+      {
+        executionOrderId: 'eo-001',
+        itemId: 'item-001',
+        technicianCustodyId: 'loc-technician',
+        quantity: 1,
+        action: ExecutionOrderItemAction.INSTALL,
+        finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
+        subscriberId: 'sub-0001-abcd-efgh',
+      },
+      actor,
+    );
+
+    expect(customerSiteLocationResolver.resolveOrCreateWithManager).toHaveBeenCalledWith(
+      manager,
+      'tenant-001',
+      'sub-0001-abcd-efgh',
+    );
+    expect(result.lines).toEqual([
+      expect.objectContaining({
+        locationId: 'loc-technician',
+        quantity: '-1.00',
+      }),
+      expect.objectContaining({
+        locationId: 'loc-customer-site',
+        quantity: '1.00',
+      }),
+    ]);
+    expect(stockBalanceService.applyDeltaWithManager).toHaveBeenNthCalledWith(
+      1,
+      manager,
+      expect.objectContaining({
+        itemId: 'item-001',
+        locationId: 'loc-technician',
+        delta: -1,
+      }),
+    );
+    expect(stockBalanceService.applyDeltaWithManager).toHaveBeenNthCalledWith(
+      2,
+      manager,
+      expect.objectContaining({
+        itemId: 'item-001',
+        locationId: 'loc-customer-site',
+        delta: 1,
+      }),
+    );
+  });
+
+  it('recordExecutionOrderMovement con RETURNED_TO_WAREHOUSE acredita MAIN_WAREHOUSE', async () => {
+    const manager = {
+      findOne: jest.fn().mockImplementation(async (_entity, options: { where?: any }) => {
+        if (options?.where?.type === StockLocationType.MAIN_WAREHOUSE) {
+          return {
+            id: 'loc-main-warehouse',
+            tenantId: 'tenant-001',
+            type: StockLocationType.MAIN_WAREHOUSE,
+          };
+        }
+
+        return null;
+      }),
+      find: jest.fn().mockResolvedValue([]),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue({ movementNumber: 'MOV-000299' }),
+      }),
+      create: jest.fn((_entity, payload) => payload),
+      save: jest.fn().mockImplementation(async (_entity, payload) => {
+        if ('movementNumber' in payload) {
+          return { id: 'mov-300', ...payload };
+        }
+
+        return {
+          id: `line-${payload.locationId}-${payload.quantity}`,
+          ...payload,
+        };
+      }),
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+    };
+    const stockBalanceService = {
+      applyDeltaWithManager: jest.fn().mockResolvedValue(undefined),
+    };
+    (runInTenantSchema as jest.Mock).mockImplementation(async (_dataSource, _schemaName, work) =>
+      work({ manager }),
+    );
+
+    const service = new StockLedgerService(
+      {} as DataSource,
+      stockBalanceService as never,
+      {
+        resolveForMovementWithManager: jest.fn(),
+        transitionAssetWithManager: jest.fn(),
+      } as never,
+      { recordWithManager: jest.fn() } as never,
+    );
+
+    const result = await service.recordExecutionOrderMovement(
+      {
+        executionOrderId: 'eo-002',
+        itemId: 'item-002',
+        technicianCustodyId: 'loc-technician',
+        quantity: 1,
+        action: ExecutionOrderItemAction.RETURN,
+        finalDisposition: InventoryDisposition.RETURNED_TO_WAREHOUSE,
+      },
+      actor,
+    );
+
+    expect(result.lines).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ locationId: 'loc-technician', quantity: '-1.00' }),
+        expect.objectContaining({ locationId: 'loc-main-warehouse', quantity: '1.00' }),
+      ]),
+    );
+    expect(stockBalanceService.applyDeltaWithManager).toHaveBeenNthCalledWith(
+      1,
+      manager,
+      expect.objectContaining({
+        itemId: 'item-002',
+        locationId: 'loc-technician',
+        delta: -1,
+      }),
+    );
+    expect(stockBalanceService.applyDeltaWithManager).toHaveBeenNthCalledWith(
+      2,
+      manager,
+      expect.objectContaining({
+        itemId: 'item-002',
+        locationId: 'loc-main-warehouse',
+        delta: 1,
+      }),
+    );
+  });
+
+  it('recordExecutionOrderMovement con RETURNED_TO_TECHNICIAN_STOCK deja neto 0 en custodia móvil', async () => {
+    let savedLineCount = 0;
+    const manager = {
+      findOne: jest.fn().mockResolvedValue(null),
+      find: jest.fn().mockResolvedValue([]),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue({ movementNumber: 'MOV-000399' }),
+      }),
+      create: jest.fn((_entity, payload) => payload),
+      save: jest.fn().mockImplementation(async (_entity, payload) => {
+        if ('movementNumber' in payload) {
+          return { id: 'mov-400', ...payload };
+        }
+
+        return {
+          id: `line-${(savedLineCount += 1)}`,
+          ...payload,
+        };
+      }),
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+    };
+    const stockBalanceService = {
+      applyDeltaWithManager: jest.fn().mockResolvedValue(undefined),
+    };
+    (runInTenantSchema as jest.Mock).mockImplementation(async (_dataSource, _schemaName, work) =>
+      work({ manager }),
+    );
+
+    const service = new StockLedgerService(
+      {} as DataSource,
+      stockBalanceService as never,
+      {
+        resolveForMovementWithManager: jest.fn(),
+        transitionAssetWithManager: jest.fn(),
+      } as never,
+      { recordWithManager: jest.fn() } as never,
+    );
+
+    const result = await service.recordExecutionOrderMovement(
+      {
+        executionOrderId: 'eo-003',
+        itemId: 'item-003',
+        technicianCustodyId: 'loc-technician',
+        quantity: 1,
+        action: ExecutionOrderItemAction.RETURN,
+        finalDisposition: InventoryDisposition.RETURNED_TO_TECHNICIAN_STOCK,
+      },
+      actor,
+    );
+
+    expect(result.lines).toHaveLength(2);
+    expect(result.lines).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ locationId: 'loc-technician', quantity: '-1.00' }),
+        expect.objectContaining({ locationId: 'loc-technician', quantity: '1.00' }),
+      ]),
+    );
+    expect(stockBalanceService.applyDeltaWithManager).toHaveBeenNthCalledWith(
+      1,
+      manager,
+      expect.objectContaining({
+        itemId: 'item-003',
+        locationId: 'loc-technician',
+        delta: -1,
+      }),
+    );
+    expect(stockBalanceService.applyDeltaWithManager).toHaveBeenNthCalledWith(
+      2,
+      manager,
+      expect.objectContaining({
+        itemId: 'item-003',
+        locationId: 'loc-technician',
+        delta: 1,
       }),
     );
   });

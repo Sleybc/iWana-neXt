@@ -24,6 +24,12 @@ import {
   CreateInventoryItemSchema,
   CreateInventoryCategoryDto,
   CreateInventoryCategorySchema,
+  CreateStockIssueDto,
+  CreateStockIssueSchema,
+  DispatchStockIssueDto,
+  DispatchStockIssueSchema,
+  CancelStockIssueDto,
+  CancelStockIssueSchema,
   CreateStockLocationDto,
   CreateStockLocationSchema,
   ExecutionOrderMovementDto,
@@ -43,6 +49,8 @@ import {
   ListSerializedAssetsQuerySchema,
   ListStockBalancesQueryDto,
   ListStockBalancesQuerySchema,
+  ListStockIssuesQueryDto,
+  ListStockIssuesQuerySchema,
   ListStockLocationsQueryDto,
   ListStockLocationsQuerySchema,
   ReturnAssetDto,
@@ -55,6 +63,8 @@ import {
   UpdateInventoryItemSchema,
   UpdateInventoryCategoryDto,
   UpdateInventoryCategorySchema,
+  UpdateStockIssueDto,
+  UpdateStockIssueSchema,
   UpdateStockLocationDto,
   UpdateStockLocationSchema,
   WriteOffAssetDto,
@@ -67,6 +77,7 @@ import { SerializedAssetService } from './services/serialized-asset.service';
 import { StockBalanceService } from './services/stock-balance.service';
 import { StockLedgerService } from './services/stock-ledger.service';
 import { StockLocationService } from './services/stock-location.service';
+import { StockIssueService } from './services/stock-issue.service';
 
 @ApiTags('inventory')
 @ApiBearerAuth('access-token')
@@ -80,6 +91,7 @@ export class InventoryController {
     private readonly serializedAssetService: SerializedAssetService,
     private readonly stockBalanceService: StockBalanceService,
     private readonly stockLedgerService: StockLedgerService,
+    private readonly stockIssueService: StockIssueService,
     private readonly inventoryDashboardService: InventoryDashboardService,
   ) {}
 
@@ -247,6 +259,66 @@ export class InventoryController {
     @Query(new ZodValidationPipe(ListStockBalancesQuerySchema)) query: ListStockBalancesQueryDto,
   ) {
     return this.stockBalanceService.list(ListStockBalancesQuerySchema.parse(query));
+  }
+
+  @Get('issues')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Listar salidas (StockIssue)' })
+  listIssues(
+    @Query(new ZodValidationPipe(ListStockIssuesQuerySchema)) query: ListStockIssuesQueryDto,
+  ) {
+    return this.stockIssueService.list(ListStockIssuesQuerySchema.parse(query));
+  }
+
+  @Post('issues')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Crear salida (StockIssue)' })
+  createIssue(
+    @Body(new ZodValidationPipe(CreateStockIssueSchema)) body: CreateStockIssueDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.stockIssueService.create(CreateStockIssueSchema.parse(body), actor);
+  }
+
+  @Get('issues/:id')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Obtener detalle de salida (StockIssue)' })
+  getIssue(@Param('id', ParseUUIDPipe) id: string) {
+    return this.stockIssueService.getById(id);
+  }
+
+  @Patch('issues/:id')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Actualizar salida (StockIssue)' })
+  updateIssue(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(UpdateStockIssueSchema)) body: UpdateStockIssueDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.stockIssueService.update(id, UpdateStockIssueSchema.parse(body), actor);
+  }
+
+  @Post('issues/:id/cancel')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Cancelar salida (StockIssue)' })
+  cancelIssue(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(CancelStockIssueSchema)) body: CancelStockIssueDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    CancelStockIssueSchema.parse(body);
+    return this.stockIssueService.cancel(id, actor);
+  }
+
+  @Post('issues/:id/dispatch')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Despachar salida (StockIssue)' })
+  dispatchIssue(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(DispatchStockIssueSchema)) body: DispatchStockIssueDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.stockIssueService.dispatch(id, DispatchStockIssueSchema.parse(body), actor);
   }
 
   @Post('transfers')

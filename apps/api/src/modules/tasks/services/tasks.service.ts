@@ -184,6 +184,18 @@ export class TasksService {
             actorUserId: actor.sub,
           });
 
+          if (validated.ticketId) {
+            await this.timelineService.recordWithManager(qr.manager, {
+              taskId: saved.id,
+              tenantId,
+              eventType: TaskTimelineEventType.TASK_CREATED_FROM_TICKET,
+              payload: {
+                ticketId: validated.ticketId,
+              },
+              actorUserId: actor.sub,
+            });
+          }
+
           return saved;
         });
       } catch (error) {
@@ -306,39 +318,51 @@ export class TasksService {
     const validated = TransitionTaskSchema.parse(input);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const task = await qr.manager.findOne(OperationalTask, { where: { id, tenantId } });
-      if (!task) {
-        throw new NotFoundException('Tarea no encontrada');
-      }
-      this.assertTaskAccess(task, actor);
-      this.assertTransitionAllowed(task, validated.status, actor);
-
-      task.status = validated.status;
-      if (validated.status === TaskStatus.RESOLVED) {
-        task.resolvedAt = new Date();
-        task.closedAt = null;
-      }
-      if (validated.status === TaskStatus.CANCELLED) {
-        task.closedAt = new Date();
-        task.resolvedAt = null;
-      }
-      if (![TaskStatus.RESOLVED, TaskStatus.CANCELLED].includes(validated.status)) {
-        task.resolvedAt = null;
-        task.closedAt = null;
-      }
-
-      const saved = await qr.manager.save(OperationalTask, task);
-
-      await this.timelineService.recordWithManager(qr.manager, {
-        taskId: id,
-        tenantId,
-        eventType: this.mapTransitionEventType(validated.status),
-        payload: { to: validated.status },
-        actorUserId: actor.sub,
-      });
-
-      return saved;
+      return this.transitionStatusWithManager(qr.manager, tenantId, id, validated, actor);
     });
+  }
+
+  async transitionStatusWithManager(
+    manager: EntityManager,
+    tenantId: string,
+    id: string,
+    input: TransitionTaskInput,
+    actor: JwtPayload,
+  ): Promise<OperationalTask> {
+    const validated = TransitionTaskSchema.parse(input);
+
+    const task = await manager.findOne(OperationalTask, { where: { id, tenantId } });
+    if (!task) {
+      throw new NotFoundException('Tarea no encontrada');
+    }
+    this.assertTaskAccess(task, actor);
+    this.assertTransitionAllowed(task, validated.status, actor);
+
+    task.status = validated.status;
+    if (validated.status === TaskStatus.RESOLVED) {
+      task.resolvedAt = new Date();
+      task.closedAt = null;
+    }
+    if (validated.status === TaskStatus.CANCELLED) {
+      task.closedAt = new Date();
+      task.resolvedAt = null;
+    }
+    if (![TaskStatus.RESOLVED, TaskStatus.CANCELLED].includes(validated.status)) {
+      task.resolvedAt = null;
+      task.closedAt = null;
+    }
+
+    const saved = await manager.save(OperationalTask, task);
+
+    await this.timelineService.recordWithManager(manager, {
+      taskId: id,
+      tenantId,
+      eventType: this.mapTransitionEventType(validated.status),
+      payload: { to: validated.status },
+      actorUserId: actor.sub,
+    });
+
+    return saved;
   }
 
   async linkScheduleEvent(

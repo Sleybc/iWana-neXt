@@ -79,3 +79,5 @@ export { GoodsReceiptLine } from './goods-receipt-line.entity';
 export { AssetLifecycleEvent } from './asset-lifecycle-event.entity';
 export { AssetLoanAssignment } from './asset-loan-assignment.entity';
 export { InventoryWriteOff } from './inventory-write-off.entity';
+export { StockIssue } from './stock-issue.entity';
+export { StockIssueLine } from './stock-issue-line.entity';

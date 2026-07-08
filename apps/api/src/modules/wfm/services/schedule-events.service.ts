@@ -229,6 +229,9 @@ export class ScheduleEventsService {
             assignedTechnicianId: validated.assignedUserId,
             originContext: WorkOrderSourceContext.MANUAL,
             originRefId: validated.ticketId ?? validated.expedienteId ?? null,
+            taskId: null,
+            ticketId: savedEvent.ticketId ?? null,
+            subscriberId: savedEvent.subscriberId ?? null,
             customerDisplayLabel: validated.title,
             serviceAddress: validated.address ?? null,
             municipality: validated.municipality ?? null,
@@ -269,6 +272,12 @@ export class ScheduleEventsService {
             assignedTechnicianId: validated.assignedUserId,
             originContext: validated.workOrder.sourceContext ?? WorkOrderSourceContext.MANUAL,
             originRefId: validated.workOrder.sourceRef ?? null,
+            taskId:
+              validated.workOrder.sourceContext === WorkOrderSourceContext.TASKS
+                ? (validated.workOrder.sourceRef ?? null)
+                : null,
+            ticketId: savedEvent.ticketId ?? null,
+            subscriberId: savedEvent.subscriberId ?? null,
             customerDisplayLabel: validated.title,
             serviceAddress: validated.address ?? null,
             municipality: validated.municipality ?? null,

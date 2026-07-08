@@ -29,6 +29,8 @@ export interface TaskFormProps {
   responsibleOptions: Array<{ value: string; label: string }>;
   internalAreaOptions: Array<{ value: string; label: string }>;
   internalUserOptions: Array<{ value: string; label: string }>;
+  initialTicketId?: string | null;
+  initialOriginContext?: TaskOriginContext;
   onSubmit: (payload: CreateOperationalTaskDto, options?: TaskFormSubmitOptions) => Promise<void>;
   isSubmitting: boolean;
   error: string | null;
@@ -38,10 +40,26 @@ function getScheduledRequired(executionMode: TaskExecutionMode): boolean {
   return [TaskExecutionMode.SCHEDULED, TaskExecutionMode.FIELD_SERVICE].includes(executionMode);
 }
 
+function buildDefaultValues() {
+  return {
+    title: '',
+    type: TaskType.INTERNAL_OPERATION,
+    priority: TaskPriority.NORMAL,
+    executionMode: TaskExecutionMode.IMMEDIATE,
+    dueAt: '',
+    responsibleRefId: '',
+    recipientType: TaskRecipientType.INTERNAL_AREA,
+    recipientRefId: '',
+    recipientLabel: '',
+  };
+}
+
 export function TaskForm({
   responsibleOptions,
   internalAreaOptions,
   internalUserOptions,
+  initialTicketId,
+  initialOriginContext,
   onSubmit,
   isSubmitting,
   error,
@@ -57,17 +75,7 @@ export function TaskForm({
     formState: { errors },
   } = useForm<TaskIntakeValues>({
     resolver: zodResolver(taskIntakeSchema),
-    defaultValues: {
-      title: '',
-      type: TaskType.INTERNAL_OPERATION,
-      priority: TaskPriority.NORMAL,
-      executionMode: TaskExecutionMode.IMMEDIATE,
-      dueAt: '',
-      responsibleRefId: '',
-      recipientType: TaskRecipientType.INTERNAL_AREA,
-      recipientRefId: '',
-      recipientLabel: '',
-    },
+    defaultValues: buildDefaultValues(),
   });
 
   const executionMode = watch('executionMode');
@@ -86,7 +94,9 @@ export function TaskForm({
         type: values.type,
         priority: values.priority,
         title: values.title.trim(),
-        originContext: TaskOriginContext.MANUAL,
+        originContext:
+          initialTicketId && initialOriginContext ? initialOriginContext : TaskOriginContext.MANUAL,
+        ticketId: initialTicketId ?? null,
         responsibleType: TaskResponsibleType.USER,
         responsibleRefId: values.responsibleRefId,
         recipientType: values.recipientType,
@@ -102,17 +112,7 @@ export function TaskForm({
     );
 
     setFollowUpAction(null);
-    reset({
-      title: '',
-      type: TaskType.INTERNAL_OPERATION,
-      priority: TaskPriority.NORMAL,
-      executionMode: TaskExecutionMode.IMMEDIATE,
-      dueAt: '',
-      responsibleRefId: '',
-      recipientType: TaskRecipientType.INTERNAL_AREA,
-      recipientRefId: '',
-      recipientLabel: '',
-    });
+    reset(buildDefaultValues());
   });
 
   return (

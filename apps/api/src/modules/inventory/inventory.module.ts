@@ -17,6 +17,8 @@ import {
   StockBalance,
   StockLocation,
   StockLot,
+  StockIssue,
+  StockIssueLine,
   StockMovement,
   StockMovementLine,
   SupplierQuote,
@@ -30,6 +32,7 @@ import { SupplierPartyPort, SupplierPartyPortAdapter } from './ports/supplier-pa
 import { InventoryController } from './inventory.controller';
 import { PurchasingController } from './purchasing.controller';
 import { AssetLifecycleService } from './services/asset-lifecycle.service';
+import { CustomerSiteLocationResolver } from './services/customer-site-location.resolver';
 import { GoodsReceiptService } from './services/goods-receipt.service';
 import { InventoryCategoryService } from './services/inventory-category.service';
 import { InventoryDashboardService } from './services/inventory-dashboard.service';
@@ -40,6 +43,7 @@ import { PurchasingService } from './services/purchasing.service';
 import { SerializedAssetService } from './services/serialized-asset.service';
 import { StockBalanceService } from './services/stock-balance.service';
 import { StockLedgerService } from './services/stock-ledger.service';
+import { StockIssueService } from './services/stock-issue.service';
 import { StockLocationService } from './services/stock-location.service';
 
 @Module({
@@ -52,6 +56,8 @@ import { StockLocationService } from './services/stock-location.service';
       StockBalance,
       StockLot,
       SerializedAsset,
+      StockIssue,
+      StockIssueLine,
       StockMovement,
       StockMovementLine,
       PurchaseRequest,
@@ -72,7 +78,9 @@ import { StockLocationService } from './services/stock-location.service';
     InventoryItemService,
     InventoryCategoryService,
     StockLocationService,
+    CustomerSiteLocationResolver,
     StockLedgerService,
+    StockIssueService,
     StockBalanceService,
     SerializedAssetService,
     PurchasingPolicyService,
@@ -96,7 +104,9 @@ import { StockLocationService } from './services/stock-location.service';
     InventoryItemService,
     InventoryCategoryService,
     StockLocationService,
+    CustomerSiteLocationResolver,
     StockLedgerService,
+    StockIssueService,
     StockBalanceService,
     SerializedAssetService,
     PurchasingPolicyService,

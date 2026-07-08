@@ -12,6 +12,8 @@ export interface ConsumeTechnicianCustodyInput {
   technicianCustodyId: string;
   quantity: number;
   serialNumber?: string | null;
+  subscriberId?: string | null;
+  customerSiteLocationId?: string | null;
   action: ExecutionOrderItemAction;
   finalDisposition: InventoryDisposition;
   stockMovementId?: string | null;
@@ -42,6 +44,8 @@ export class ExecutionOrderInventoryService {
           technicianCustodyId: input.technicianCustodyId,
           quantity: input.quantity,
           serialNumber: input.serialNumber ?? null,
+          subscriberId: input.subscriberId ?? null,
+          customerSiteLocationId: input.customerSiteLocationId ?? null,
           action: input.action,
           finalDisposition: input.finalDisposition,
           idempotencyKey: input.stockMovementId ?? null,

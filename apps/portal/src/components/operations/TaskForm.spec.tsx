@@ -1,7 +1,7 @@
 import type { ChangeEvent, ReactNode } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { TaskExecutionMode, TaskRecipientType } from '@iwana/shared';
+import { TaskExecutionMode, TaskOriginContext, TaskRecipientType } from '@iwana/shared';
 import { crmApi, subscribersApi } from '@/lib/api-client';
 import { TaskForm } from './TaskForm';
 
@@ -267,5 +267,41 @@ describe('TaskForm', () => {
     expect(screen.getByLabelText('Responsable')).toBeInTheDocument();
     expect(screen.getByLabelText('Tipo de destinatario')).toBeInTheDocument();
     expect(screen.queryByLabelText('Fecha de visita')).not.toBeInTheDocument();
+  });
+
+  it('submits ticketId and assurance origin when initialized from a ticket', async () => {
+    const onSubmit = jest.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+
+    render(
+      <TaskForm
+        responsibleOptions={[{ value: 'user-123', label: 'Laura Ruiz' }]}
+        internalAreaOptions={[{ value: 'operations-area', label: 'Operaciones' }]}
+        internalUserOptions={[{ value: 'user-123', label: 'Laura Ruiz' }]}
+        initialTicketId="ticket-123"
+        initialOriginContext={TaskOriginContext.ASSURANCE}
+        onSubmit={onSubmit}
+        isSubmitting={false}
+        error={null}
+      />,
+    );
+
+    await user.type(screen.getByLabelText('Titulo'), 'Escalar revisión de avería');
+    await user.selectOptions(screen.getByLabelText('Responsable'), 'user-123');
+    await user.selectOptions(screen.getByLabelText('Destinatario'), 'operations-area');
+    await user.click(screen.getByRole('button', { name: 'Crear tarea' }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Escalar revisión de avería',
+          ticketId: 'ticket-123',
+          originContext: TaskOriginContext.ASSURANCE,
+          responsibleRefId: 'user-123',
+          recipientRefId: 'operations-area',
+        }),
+        undefined,
+      );
+    });
   });
 });

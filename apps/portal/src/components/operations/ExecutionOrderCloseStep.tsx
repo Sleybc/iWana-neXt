@@ -5,19 +5,23 @@ import { Button, Select } from '@iwana/ui';
 import { ExecutionOrderResult } from '@iwana/shared';
 
 interface ExecutionOrderCloseStepProps {
+  requiresCustomerSignature?: boolean;
   disabled?: boolean;
   onSubmit: (payload: {
     result: ExecutionOrderResult;
     closeNotes?: string | null;
+    customerSignatureRef?: string | null;
   }) => Promise<void>;
 }
 
 export function ExecutionOrderCloseStep({
+  requiresCustomerSignature = false,
   disabled = false,
   onSubmit,
 }: ExecutionOrderCloseStepProps) {
   const [result, setResult] = useState<ExecutionOrderResult>(ExecutionOrderResult.EXECUTED);
   const [closeNotes, setCloseNotes] = useState('');
+  const [customerSignatureRef, setCustomerSignatureRef] = useState('');
 
   const resultOptions = useMemo(
     () => [
@@ -58,6 +62,19 @@ export function ExecutionOrderCloseStep({
           onChange={(event) => setCloseNotes(event.target.value)}
         />
       </label>
+      {requiresCustomerSignature ? (
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+          Evidencia de firma del cliente
+          <input
+            type="text"
+            className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-iwana-primary focus:ring-2 focus:ring-iwana-primary/20 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white"
+            value={customerSignatureRef}
+            disabled={disabled}
+            onChange={(event) => setCustomerSignatureRef(event.target.value)}
+            placeholder="ej. ev-sign-ot-001"
+          />
+        </label>
+      ) : null}
       <Button
         type="button"
         disabled={disabled}
@@ -65,6 +82,7 @@ export function ExecutionOrderCloseStep({
           await onSubmit({
             result,
             closeNotes: closeNotes.trim() || null,
+            customerSignatureRef: customerSignatureRef.trim() || null,
           });
         }}
       >

@@ -9,14 +9,44 @@
 
 import { expect, test } from '@playwright/test';
 
+const LOCATION_TYPE_PREFIXES: Record<string, string> = {
+  MAIN_WAREHOUSE: 'BOD',
+  MOBILE_TECHNICIAN: 'MOV',
+  MOBILE_CREW: 'CRW',
+  CUSTOMER_SITE: 'CLI',
+  OFFICE_STOCK: 'OFI',
+  NODE_STOCK: 'NOD',
+  QUARANTINE: 'CUA',
+  REPAIR: 'REP',
+  SCRAP: 'SCR',
+  INTERNAL_CONSUMPTION: 'INT',
+};
+
+function resolveNextLocationCodeInMock(existingCodes: string[], type: string): string {
+  const prefix = LOCATION_TYPE_PREFIXES[type] ?? 'BOD';
+  const pattern = new RegExp(`^${prefix}-(\\d{3})$`);
+  let maxSequence = 0;
+
+  for (const code of existingCodes) {
+    const match = code.match(pattern);
+    if (match) {
+      maxSequence = Math.max(maxSequence, Number.parseInt(match[1] ?? '0', 10));
+    }
+  }
+
+  return `${prefix}-${String(maxSequence + 1).padStart(3, '0')}`;
+}
+
 const MOCK_TENANT_SLUG = 'tenant-inventory-demo';
 const NOC_USER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const ITEM_ID = 'item-001';
+const ITEM_CONSUMABLE_ID = 'item-002';
 const CAT_CPE_ID = 'cat-cpe-001';
 const LOC_MAIN = 'loc-001';
 const LOC_TECH = 'loc-002';
 const LOC_MOBILE_CAPPED = 'loc-003';
 const MOBILE_RESPONSIBLE_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const MOBILE_RESPONSIBLE_NAME = 'Carlos Garzón';
 const PR_SEED_ID = 'pr-seed-001';
 
 function buildToken(): string {
@@ -68,6 +98,36 @@ async function addCatalogProductToDraft(
   await main.getByRole('button', { name: /Agregar 1 producto/i }).click();
 }
 
+async function fillStockTransferDialog(
+  page: import('@playwright/test').Page,
+  dialog: import('@playwright/test').Locator,
+  options: {
+    itemLabel: string;
+    originLabel: string;
+    destinationLabel: string;
+    serialNumber?: string;
+  },
+) {
+  await selectComboboxOption(
+    page,
+    dialog.getByRole('combobox', { name: 'Ítem' }),
+    options.itemLabel,
+  );
+  await selectComboboxOption(
+    page,
+    dialog.getByRole('combobox', { name: 'Bodega origen' }),
+    options.originLabel,
+  );
+  await selectComboboxOption(
+    page,
+    dialog.getByRole('combobox', { name: 'Custodia del técnico' }),
+    options.destinationLabel,
+  );
+  if (options.serialNumber) {
+    await dialog.getByLabel('Serial').fill(options.serialNumber);
+  }
+}
+
 async function selectComboboxOption(
   page: import('@playwright/test').Page,
   combobox: import('@playwright/test').Locator,
@@ -85,6 +145,9 @@ type InventoryMockState = {
   categories: Array<Record<string, unknown>>;
   locations: Array<Record<string, unknown>>;
   balances: Array<Record<string, unknown>>;
+  stockIssues: Array<Record<string, unknown>>;
+  stockIssueLines: Array<Record<string, unknown>>;
+  stockIssueDispatchCount: number;
   transferCount: number;
   returnCount: number;
 };
@@ -203,12 +266,60 @@ function buildBalance(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function buildTenantUser(overrides: Record<string, unknown> = {}) {
+  return {
+    id: MOBILE_RESPONSIBLE_ID,
+    email: 'carlos.garzon@inventory.local',
+    role: 'TECHNICIAN',
+    status: 'ACTIVE',
+    tenantId: 'tenant-inventory-001',
+    mfaEnabled: false,
+    mfaRequired: false,
+    isOperationalResource: true,
+    emailVerified: true,
+    passwordResetRequired: false,
+    lastLoginAt: null,
+    createdAt: nowIso(-4000),
+    updatedAt: nowIso(-4000),
+    deletedAt: null,
+    firstName: 'Carlos',
+    lastName: 'Garzón',
+    phone: null,
+    jobTitle: 'Técnico de campo',
+    documentType: null,
+    documentNumber: null,
+    avatarUrl: null,
+    ...overrides,
+  };
+}
+
+function buildTenantUsersList() {
+  return [
+    buildTenantUser(),
+    buildTenantUser({
+      id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      firstName: 'Ana',
+      lastName: 'Pérez',
+      email: 'ana.perez@inventory.local',
+    }),
+  ];
+}
+
 function createInventoryMockState(): InventoryMockState {
   return {
     purchaseRequests: [buildPurchaseRequest()],
     purchaseOrders: [],
     purchaseOrderLines: [],
-    catalogItems: [buildCatalogItem()],
+    catalogItems: [
+      buildCatalogItem(),
+      buildCatalogItem({
+        id: ITEM_CONSUMABLE_ID,
+        sku: 'CAB-DROP',
+        name: 'Cable drop',
+        itemKind: 'CONSUMABLE',
+        trackingMode: 'CONSUMABLE',
+      }),
+    ],
     categories: [buildCategory()],
     locations: [
       buildLocation(),
@@ -240,7 +351,15 @@ function createInventoryMockState(): InventoryMockState {
         locationId: LOC_MOBILE_CAPPED,
         quantityOnHand: '4.5',
       }),
+      buildBalance({
+        id: 'bal-003',
+        itemId: ITEM_CONSUMABLE_ID,
+        quantityOnHand: '8',
+      }),
     ],
+    stockIssues: [],
+    stockIssueLines: [],
+    stockIssueDispatchCount: 0,
     transferCount: 0,
     returnCount: 0,
   };
@@ -309,6 +428,21 @@ async function setupInventoryMocks(
             status: 'ACTIVE',
             contactEmail: 'tenant@inventory.local',
             brandingProductName: 'iWana Empresa',
+          },
+        }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/users') && method === 'GET') {
+      const users = buildTenantUsersList();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            data: users,
+            meta: { nextCursor: null, total: users.length },
           },
         }),
       });
@@ -477,11 +611,20 @@ async function setupInventoryMocks(
 
     if (pathname.endsWith('/inventory/locations') && method === 'POST') {
       const body = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
+      const type = typeof body.type === 'string' ? body.type : 'MAIN_WAREHOUSE';
+      const manualCode = typeof body.code === 'string' ? body.code.trim() : '';
+      const code =
+        manualCode.length > 0
+          ? manualCode
+          : resolveNextLocationCodeInMock(
+              state.locations.map((location) => String(location.code ?? '')),
+              type,
+            );
       const created = buildLocation({
         id: `loc-${state.locations.length + 1}`,
-        code: body.code ?? `BOD-${state.locations.length + 1}`,
+        code,
         name: body.name ?? 'Bodega nueva',
-        type: body.type ?? 'MAIN_WAREHOUSE',
+        type,
         status: body.status ?? 'ACTIVE',
         responsibleRefId: body.responsibleRefId ?? null,
         maxCapacity: body.maxCapacity ?? null,
@@ -558,6 +701,172 @@ async function setupInventoryMocks(
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify(state.balances),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/inventory/issues') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(state.stockIssues),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/inventory/issues') && method === 'POST') {
+      const body = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
+      const id = `issue-${String(state.stockIssues.length + 1).padStart(3, '0')}`;
+      const created = {
+        id,
+        tenantId: 'tenant-inventory-001',
+        type: body.type ?? 'TECHNICIAN_CUSTODY',
+        status: 'APPROVED',
+        sourceLocationId: body.sourceLocationId ?? LOC_MAIN,
+        destinationLocationId: body.destinationLocationId ?? LOC_TECH,
+        destinationRefId: body.destinationRefId ?? null,
+        originRefId: body.originRefId ?? null,
+        commercialRefId: body.commercialRefId ?? null,
+        reason: body.reason ?? null,
+        costCenter: body.costCenter ?? null,
+        handoffMethod: null,
+        handoffNotes: null,
+        handoffAttachments: null,
+        createdByUserId: NOC_USER_ID,
+        dispatchedByUserId: null,
+        closedAt: null,
+        stockMovementId: null,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      };
+      state.stockIssues.unshift(created);
+
+      const lines = (body.lines as Array<Record<string, unknown>> | undefined) ?? [];
+      lines.forEach((line, index) => {
+        state.stockIssueLines.push({
+          id: `${id}-line-${index + 1}`,
+          tenantId: 'tenant-inventory-001',
+          issueId: id,
+          itemId: line.itemId ?? ITEM_ID,
+          requestedQty: String(line.requestedQty ?? '1.00'),
+          dispatchedQty: null,
+          lotId: line.lotId ?? null,
+          serializedAssetId: line.serializedAssetId ?? null,
+          condition: line.condition ?? 'NEW',
+          createdAt: nowIso(),
+          updatedAt: nowIso(),
+        });
+      });
+
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...created,
+          lines: state.stockIssueLines.filter((line) => line.issueId === id),
+        }),
+      });
+      return;
+    }
+
+    const issueDetailMatch = pathname.match(/\/inventory\/issues\/([^/]+)$/);
+    if (issueDetailMatch && method === 'GET') {
+      const issueId = issueDetailMatch[1];
+      const issue = state.stockIssues.find((entry) => entry.id === issueId);
+      const lines = state.stockIssueLines.filter((line) => line.issueId === issueId);
+      await route.fulfill({
+        status: issue ? 200 : 404,
+        contentType: 'application/json',
+        body: JSON.stringify(issue ? { ...issue, lines } : {}),
+      });
+      return;
+    }
+
+    const issueDispatchMatch = pathname.match(/\/inventory\/issues\/([^/]+)\/dispatch$/);
+    if (issueDispatchMatch && method === 'POST') {
+      const issueId = issueDispatchMatch[1];
+      const issue = state.stockIssues.find((entry) => entry.id === issueId);
+      if (!issue) {
+        await route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+        return;
+      }
+      const body = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
+      const destination = state.locations.find(
+        (location) => location.id === issue.destinationLocationId,
+      );
+      const lines = state.stockIssueLines.filter((line) => line.issueId === issueId);
+
+      // Validación mock: saldo disponible en origen por item.
+      for (const line of lines) {
+        const requested = Number.parseFloat(String(line.requestedQty ?? '0'));
+        const available = state.balances
+          .filter(
+            (bal) =>
+              bal.locationId === issue.sourceLocationId &&
+              bal.itemId === line.itemId &&
+              (bal.lotId ?? null) === (line.lotId ?? null),
+          )
+          .reduce((total, bal) => total + Number.parseFloat(String(bal.quantityOnHand ?? '0')), 0);
+
+        if (available < requested) {
+          await route.fulfill({
+            status: 400,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              message: 'La cantidad solicitada excede el saldo disponible en la ubicación origen.',
+            }),
+          });
+          return;
+        }
+      }
+
+      // Validación mock: capacidad de bodegas móviles.
+      if (destination && ['MOBILE_TECHNICIAN', 'MOBILE_CREW'].includes(String(destination.type))) {
+        const maxCapacityRaw = destination.maxCapacity;
+        if (maxCapacityRaw != null) {
+          const maxCapacity = Number.parseFloat(String(maxCapacityRaw));
+          const currentOnHand = state.balances
+            .filter((bal) => bal.locationId === destination.id)
+            .reduce(
+              (total, bal) => total + Number.parseFloat(String(bal.quantityOnHand ?? '0')),
+              0,
+            );
+          const incoming = lines.reduce(
+            (total, line) => total + Number.parseFloat(String(line.requestedQty ?? '0')),
+            0,
+          );
+          if (currentOnHand + incoming > maxCapacity) {
+            await route.fulfill({
+              status: 400,
+              contentType: 'application/json',
+              body: JSON.stringify({
+                message: 'La bodega móvil destino supera su capacidad máxima.',
+              }),
+            });
+            return;
+          }
+        }
+      }
+
+      issue.status = 'DISPATCHED';
+      issue.dispatchedByUserId = NOC_USER_ID;
+      issue.handoffMethod = body.handoffMethod ?? 'ACTA';
+      issue.handoffNotes = body.handoffNotes ?? null;
+      issue.stockMovementId = issue.stockMovementId ?? `mov-issue-${issueId}`;
+      issue.closedAt = nowIso();
+      issue.updatedAt = nowIso();
+
+      state.stockIssueLines.forEach((line) => {
+        if (line.issueId === issueId) {
+          line.dispatchedQty = line.requestedQty;
+        }
+      });
+      state.stockIssueDispatchCount += 1;
+
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...issue, lines }),
       });
       return;
     }
@@ -961,9 +1270,43 @@ test.describe('Portal Inventario / SCM', () => {
     await main.getByRole('tab', { name: 'Bodegas' }).click();
     await expect(main.getByText('BOD-01')).toBeVisible();
 
+    await main.getByRole('tab', { name: 'Salidas' }).click();
+    await expect(main.getByRole('heading', { name: 'Salidas' })).toBeVisible();
+
     await main.getByRole('tab', { name: 'Activos' }).click();
     await expect(main.getByText('SN-001')).toBeVisible();
     await expect(main.getByText('Disponible')).toBeVisible();
+  });
+
+  test('crea salida a técnico y despacha generando movimiento', async ({ page }) => {
+    await page.goto('/dashboard/inventory');
+    const main = page.locator('main');
+
+    await main.getByRole('tab', { name: 'Salidas' }).click();
+    await expect(main.getByRole('heading', { name: 'Salidas' })).toBeVisible();
+
+    await main.getByRole('button', { name: 'Crear salida' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Crear salida' });
+    await expect(dialog).toBeVisible();
+
+    await dialog.locator('select').first().selectOption('TECHNICIAN_CUSTODY');
+    await dialog.locator('select').nth(1).selectOption(LOC_MAIN);
+    await dialog.locator('select').nth(2).selectOption(LOC_TECH);
+    await dialog.locator('select').nth(3).selectOption(ITEM_ID);
+    await dialog.getByLabel('Cantidad').fill('1');
+    await dialog.getByRole('button', { name: 'Crear salida' }).click();
+
+    await expect(
+      main.getByText('Salida creada. Puedes despacharla cuando esté lista.'),
+    ).toBeVisible();
+
+    await main.getByRole('button', { name: 'Ver' }).first().click();
+    const detail = page.getByRole('dialog', { name: 'Detalle de salida' });
+    await expect(detail).toBeVisible();
+    await detail.getByLabel('Método de entrega').fill('ACTA');
+    await detail.getByRole('button', { name: 'Confirmar despacho' }).click();
+
+    await expect(main.getByText(/Salida despachada\./i)).toBeVisible();
   });
 
   test('completa OC, recepción precargada, transferencia y retorno', async ({ page }) => {
@@ -1010,18 +1353,27 @@ test.describe('Portal Inventario / SCM', () => {
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog')).toHaveCount(0);
 
-    await main.getByRole('tab', { name: 'Bodegas' }).click();
-    await main.getByRole('button', { name: 'Transferir stock' }).click();
-    await page.getByRole('heading', { name: 'Transferir stock' }).waitFor();
+    await main.getByRole('tab', { name: 'Salidas' }).click();
+    await expect(main.getByRole('heading', { name: 'Salidas' })).toBeVisible();
 
-    const transferDialog = page.getByRole('dialog');
-    await transferDialog.locator('select').nth(0).selectOption(ITEM_ID);
-    await transferDialog.locator('select').nth(1).selectOption(LOC_MAIN);
-    await transferDialog.locator('select').nth(2).selectOption(LOC_TECH);
-    await transferDialog.getByLabel('Acta o evidencia').fill('ACT-E2E-001');
-    await transferDialog.getByRole('button', { name: 'Registrar transferencia' }).click();
+    await main.getByRole('button', { name: 'Crear salida' }).click();
+    const createDialog = page.getByRole('dialog', { name: 'Crear salida' });
+    await expect(createDialog).toBeVisible();
+    await createDialog.locator('select').first().selectOption('TECHNICIAN_CUSTODY');
+    await createDialog.locator('select').nth(1).selectOption(LOC_MAIN);
+    await createDialog.locator('select').nth(2).selectOption(LOC_TECH);
+    await createDialog.locator('select').nth(3).selectOption(ITEM_ID);
+    await createDialog.getByLabel('Cantidad').fill('1');
+    await createDialog.getByRole('button', { name: 'Crear salida' }).click();
 
-    await expect(main.getByText('Transferencia registrada en MOV-000010.')).toBeVisible();
+    await expect(main.getByText(/Salida creada/i)).toBeVisible();
+    await main.getByRole('button', { name: 'Despachar' }).first().click();
+    const detail = page.getByRole('dialog', { name: 'Detalle de salida' });
+    await expect(detail).toBeVisible();
+    await detail.getByLabel('Método de entrega').fill('ACTA');
+    await detail.getByRole('button', { name: 'Confirmar despacho' }).click();
+    await expect(main.getByText(/Salida despachada/i)).toBeVisible();
+    await detail.getByRole('button', { name: 'Cerrar' }).click();
 
     await main.getByRole('tab', { name: 'Movimientos' }).click();
     await main.getByRole('combobox', { name: 'Ítem' }).nth(1).selectOption(ITEM_ID);
@@ -1030,7 +1382,7 @@ test.describe('Portal Inventario / SCM', () => {
     await main.getByRole('button', { name: 'Registrar retorno' }).click();
 
     await expect(main.getByText('Retorno registrado en MOV-000011.')).toBeVisible();
-    expect(state.transferCount).toBe(1);
+    expect(state.stockIssueDispatchCount).toBe(1);
     expect(state.returnCount).toBe(1);
   });
 
@@ -1127,13 +1479,12 @@ test.describe('Portal Inventario / Bodegas', () => {
 
     await main.getByRole('button', { name: 'Crear bodega' }).click();
     const dialog = page.getByRole('dialog');
-    await dialog.getByLabel('Código').fill('CUAR-01');
-    await dialog.getByLabel('Nombre').fill('Cuarentena operativa');
-    await dialog.getByLabel('Tipo').selectOption({ label: 'Cuarentena' });
+    await dialog.getByLabel('Nombre de la bodega').fill('Cuarentena operativa');
+    await selectComboboxOption(page, dialog.getByRole('combobox', { name: 'Tipo' }), 'Cuarentena');
     await dialog.getByRole('button', { name: 'Crear bodega' }).click();
 
-    await expect(main.getByText('CUAR-01')).toBeVisible();
-    expect(state.locations.some((location) => location.code === 'CUAR-01')).toBe(true);
+    await expect(main.getByText('CUA-001')).toBeVisible();
+    expect(state.locations.some((location) => location.code === 'CUA-001')).toBe(true);
   });
 
   test('edita capacidad y responsable de bodega existente', async ({ page }) => {
@@ -1145,57 +1496,73 @@ test.describe('Portal Inventario / Bodegas', () => {
 
     await main.getByRole('button', { name: 'Editar Bodega principal' }).click();
     const dialog = page.getByRole('dialog');
-    await dialog.getByLabel('Responsable operativo').fill(MOBILE_RESPONSIBLE_ID);
+    await selectComboboxOption(
+      page,
+      dialog.getByRole('combobox', { name: 'Responsable operativo' }),
+      MOBILE_RESPONSIBLE_NAME,
+    );
     await dialog.getByLabel('Capacidad máxima').fill('24');
     await dialog.getByRole('button', { name: 'Guardar cambios' }).click();
 
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(
-      main.locator('tr').filter({ hasText: 'BOD-01' }).getByText(MOBILE_RESPONSIBLE_ID),
+      main.locator('tr').filter({ hasText: 'BOD-01' }).getByText(MOBILE_RESPONSIBLE_NAME),
     ).toBeVisible();
     const updated = state.locations.find((location) => location.id === LOC_MAIN);
     expect(updated?.responsibleRefId).toBe(MOBILE_RESPONSIBLE_ID);
     expect(updated?.maxCapacity).toBe(24);
   });
 
-  test('bloquea transferencia que excede saldo visible', async ({ page }) => {
+  test('bloquea salida que excede saldo visible', async ({ page }) => {
     await page.goto('/dashboard/inventory?tab=locations');
     const main = page.locator('main');
 
-    await main.getByRole('button', { name: 'Transferir stock' }).click();
-    const transferDialog = page.getByRole('dialog');
-    await transferDialog.locator('select').nth(0).selectOption(ITEM_ID);
-    await transferDialog.locator('select').nth(1).selectOption(LOC_MAIN);
-    await transferDialog.locator('select').nth(2).selectOption(LOC_TECH);
-    await transferDialog.getByLabel('Cantidad').fill('99');
-    await transferDialog.getByLabel('Acta o evidencia').fill('ACT-OVER-001');
+    await main.getByRole('tab', { name: 'Salidas' }).click();
+    await expect(main.getByRole('heading', { name: 'Salidas' })).toBeVisible();
+
+    await main.getByRole('button', { name: 'Crear salida' }).click();
+    const createDialog = page.getByRole('dialog', { name: 'Crear salida' });
+    await createDialog.locator('select').first().selectOption('TECHNICIAN_CUSTODY');
+    await createDialog.locator('select').nth(1).selectOption(LOC_MAIN);
+    await createDialog.locator('select').nth(2).selectOption(LOC_TECH);
+    await createDialog.locator('select').nth(3).selectOption(ITEM_CONSUMABLE_ID);
+    await createDialog.getByLabel('Cantidad').fill('99');
+    await createDialog.getByRole('button', { name: 'Crear salida' }).click();
+
+    await main.getByRole('button', { name: 'Despachar' }).first().click();
+    const detail = page.getByRole('dialog', { name: 'Detalle de salida' });
+    await detail.getByLabel('Método de entrega').fill('ACTA');
+    await detail.getByRole('button', { name: 'Confirmar despacho' }).click();
 
     await expect(
-      transferDialog.getByText('La transferencia supera el saldo visible'),
+      detail.getByText('La cantidad solicitada excede el saldo disponible en la ubicación origen.'),
     ).toBeVisible();
-    await expect(
-      transferDialog.getByRole('button', { name: 'Registrar transferencia' }),
-    ).toBeDisabled();
   });
 
-  test('bloquea transferencia sin cupo en bodega móvil', async ({ page }) => {
+  test('bloquea salida sin cupo en bodega móvil', async ({ page }) => {
     await page.goto('/dashboard/inventory?tab=locations');
     const main = page.locator('main');
 
-    await main.getByRole('button', { name: 'Transferir stock' }).click();
-    const transferDialog = page.getByRole('dialog');
-    await transferDialog.locator('select').nth(0).selectOption(ITEM_ID);
-    await transferDialog.locator('select').nth(1).selectOption(LOC_MAIN);
-    await transferDialog.locator('select').nth(2).selectOption(LOC_MOBILE_CAPPED);
-    await transferDialog.getByLabel('Cantidad').fill('2');
-    await transferDialog.getByLabel('Acta o evidencia').fill('ACT-CAP-001');
+    await main.getByRole('tab', { name: 'Salidas' }).click();
+    await expect(main.getByRole('heading', { name: 'Salidas' })).toBeVisible();
+
+    await main.getByRole('button', { name: 'Crear salida' }).click();
+    const createDialog = page.getByRole('dialog', { name: 'Crear salida' });
+    await createDialog.locator('select').first().selectOption('TECHNICIAN_CUSTODY');
+    await createDialog.locator('select').nth(1).selectOption(LOC_MAIN);
+    await createDialog.locator('select').nth(2).selectOption(LOC_MOBILE_CAPPED);
+    await createDialog.locator('select').nth(3).selectOption(ITEM_ID);
+    await createDialog.getByLabel('Cantidad').fill('1');
+    await createDialog.getByRole('button', { name: 'Crear salida' }).click();
+
+    await main.getByRole('button', { name: 'Despachar' }).first().click();
+    const detail = page.getByRole('dialog', { name: 'Detalle de salida' });
+    await detail.getByLabel('Método de entrega').fill('ACTA');
+    await detail.getByRole('button', { name: 'Confirmar despacho' }).click();
 
     await expect(
-      transferDialog.getByText('La bodega destino no tiene cupo suficiente'),
+      detail.getByText('La bodega móvil destino supera su capacidad máxima.'),
     ).toBeVisible();
-    await expect(
-      transferDialog.getByRole('button', { name: 'Registrar transferencia' }),
-    ).toBeDisabled();
   });
 
   test('permite drill-down de balances por ubicación', async ({ page }) => {

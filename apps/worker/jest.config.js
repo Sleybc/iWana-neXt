@@ -9,6 +9,7 @@ module.exports = {
       {
         tsconfig: {
           strictPropertyInitialization: false,
+          types: ['jest', 'node'],
           paths: {
             '@iwana/db': ['<rootDir>/../../../packages/database/src/index.ts'],
             '@iwana/shared': ['<rootDir>/../../../packages/shared/src/index.ts'],

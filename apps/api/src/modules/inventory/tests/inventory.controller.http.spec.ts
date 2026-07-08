@@ -27,6 +27,7 @@ import { SerializedAssetService } from '../services/serialized-asset.service';
 import { StockBalanceService } from '../services/stock-balance.service';
 import { StockLedgerService } from '../services/stock-ledger.service';
 import { StockLocationService } from '../services/stock-location.service';
+import { StockIssueService } from '../services/stock-issue.service';
 
 jest.mock('../../auth/guards/jwt-auth.guard', () => ({
   JwtAuthGuard: class JwtAuthGuard {
@@ -183,6 +184,14 @@ describe('InventoryController HTTP', () => {
   const goodsReceiptServiceMock = {
     receivePurchaseOrder: jest.fn().mockResolvedValue({ id: 'gr-001' }),
   };
+  const stockIssueServiceMock = {
+    list: jest.fn().mockResolvedValue([]),
+    create: jest.fn().mockResolvedValue({ id: 'issue-001' }),
+    getById: jest.fn().mockResolvedValue({ id: 'issue-001', lines: [] }),
+    update: jest.fn().mockResolvedValue({ id: 'issue-001', status: 'DRAFT' }),
+    cancel: jest.fn().mockResolvedValue({ id: 'issue-001', status: 'CANCELLED' }),
+    dispatch: jest.fn().mockResolvedValue({ id: 'issue-001', status: 'DISPATCHED' }),
+  };
 
   beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -194,6 +203,7 @@ describe('InventoryController HTTP', () => {
         { provide: SerializedAssetService, useValue: serializedAssetServiceMock },
         { provide: StockBalanceService, useValue: stockBalanceServiceMock },
         { provide: StockLedgerService, useValue: stockLedgerServiceMock },
+        { provide: StockIssueService, useValue: stockIssueServiceMock },
         { provide: InventoryDashboardService, useValue: inventoryDashboardServiceMock },
         { provide: PurchasingService, useValue: purchasingServiceMock },
         { provide: PurchasingQueryService, useValue: purchasingQueryServiceMock },
@@ -495,5 +505,88 @@ describe('InventoryController HTTP', () => {
         targetStatus: SerializedAssetStatus.AVAILABLE,
       })
       .expect(400);
+  });
+
+  it('creates stock issue for support role', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/inventory/issues')
+      .set('Authorization', 'Bearer support-token')
+      .send({
+        type: 'TECHNICIAN_CUSTODY',
+        sourceLocationId: '11111111-1111-4111-8111-111111111111',
+        destinationLocationId: '22222222-2222-4222-8222-222222222222',
+        lines: [
+          {
+            itemId: '33333333-3333-4333-8333-333333333333',
+            requestedQty: 1,
+          },
+        ],
+      })
+      .expect(201);
+
+    expect(stockIssueServiceMock.create).toHaveBeenCalled();
+  });
+
+  it('returns 400 for invalid stock issue payload', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/inventory/issues')
+      .set('Authorization', 'Bearer support-token')
+      .send({
+        type: 'TECHNICIAN_CUSTODY',
+        sourceLocationId: '11111111-1111-4111-8111-111111111111',
+        lines: [],
+      })
+      .expect(400);
+  });
+
+  it('lists stock issues for support role', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/inventory/issues?status=DRAFT&type=CREW_CUSTODY')
+      .set('Authorization', 'Bearer support-token')
+      .expect(200);
+
+    expect(stockIssueServiceMock.list).toHaveBeenCalledWith({
+      status: 'DRAFT',
+      type: 'CREW_CUSTODY',
+    });
+  });
+
+  it('gets stock issue detail for support role', async () => {
+    const issueId = '11111111-1111-4111-8111-111111111111';
+    await request(app.getHttpServer())
+      .get(`/api/v1/inventory/issues/${issueId}`)
+      .set('Authorization', 'Bearer support-token')
+      .expect(200);
+
+    expect(stockIssueServiceMock.getById).toHaveBeenCalledWith(issueId);
+  });
+
+  it('cancels stock issue for support role', async () => {
+    const issueId = '11111111-1111-4111-8111-111111111111';
+    await request(app.getHttpServer())
+      .post(`/api/v1/inventory/issues/${issueId}/cancel`)
+      .set('Authorization', 'Bearer support-token')
+      .send({})
+      .expect(201);
+
+    expect(stockIssueServiceMock.cancel).toHaveBeenCalledWith(
+      issueId,
+      expect.objectContaining({ sub: 'support-001' }),
+    );
+  });
+
+  it('dispatches stock issue for support role', async () => {
+    const issueId = '11111111-1111-4111-8111-111111111111';
+    await request(app.getHttpServer())
+      .post(`/api/v1/inventory/issues/${issueId}/dispatch`)
+      .set('Authorization', 'Bearer support-token')
+      .send({ handoffMethod: 'ACTA', handoffNotes: 'Entrega a técnico' })
+      .expect(201);
+
+    expect(stockIssueServiceMock.dispatch).toHaveBeenCalledWith(
+      issueId,
+      expect.objectContaining({ handoffMethod: 'ACTA' }),
+      expect.objectContaining({ sub: 'support-001' }),
+    );
   });
 });

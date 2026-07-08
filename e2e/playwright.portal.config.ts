@@ -42,6 +42,7 @@ export default defineConfig({
     timeout: 10_000,
   },
   fullyParallel: false,
+  workers: 1,
   reporter: [['list']],
   use: {
     baseURL: 'http://127.0.0.1:3002',
@@ -50,7 +51,9 @@ export default defineConfig({
     video: useSystemChrome ? 'off' : 'retain-on-failure',
   },
   webServer: {
-    command: 'pnpm --filter @iwana/portal dev',
+    // Turbopack dev hangs compiling /dashboard/assurance on Windows in this suite.
+    // Webpack dev matches the production build result and keeps E2E navigation stable.
+    command: 'pnpm --filter @iwana/portal exec next dev --webpack --port 3002',
     url: 'http://127.0.0.1:3002',
     reuseExistingServer: true,
     timeout: 120_000,

@@ -1,4 +1,11 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import {
@@ -13,6 +20,7 @@ import {
   ExecutionOrderResult,
   ExecutionOrderStatus,
   InventoryDisposition,
+  TaskStatus,
   WfmWorkType,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
@@ -30,6 +38,11 @@ import {
   ConsumeTechnicianCustodyInput,
   ExecutionOrderInventoryService,
 } from './execution-order-inventory.service';
+import {
+  ASSURANCE_EXECUTION_ORDER_NOTIFIER_PORT,
+  AssuranceExecutionOrderNotifierPort,
+} from '../ports/assurance-execution-order-notifier.port';
+import { TasksService } from './tasks.service';
 
 export interface CreateExecutionOrderFromSchedulingInput {
   visitRequestId?: string | null;
@@ -38,6 +51,9 @@ export interface CreateExecutionOrderFromSchedulingInput {
   assignedCrewId?: string | null;
   originContext: string;
   originRefId?: string | null;
+  taskId?: string | null;
+  ticketId?: string | null;
+  subscriberId?: string | null;
   customerDisplayLabel: string;
   serviceAddress?: string | null;
   municipality?: string | null;
@@ -51,9 +67,15 @@ export interface CreateExecutionOrderFromSchedulingInput {
 
 @Injectable()
 export class ExecutionOrdersService {
+  private readonly logger = new Logger(ExecutionOrdersService.name);
+
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly inventoryService: ExecutionOrderInventoryService,
+    @Optional() private readonly tasksService?: TasksService,
+    @Optional()
+    @Inject(ASSURANCE_EXECUTION_ORDER_NOTIFIER_PORT)
+    private readonly assuranceNotifier?: AssuranceExecutionOrderNotifierPort,
   ) {}
 
   async getById(id: string): Promise<ExecutionOrder> {
@@ -132,6 +154,9 @@ export class ExecutionOrdersService {
       assignedCrewId: input.assignedCrewId ?? null,
       originContext: input.originContext,
       originRefId: input.originRefId ?? null,
+      taskId: input.taskId ?? null,
+      ticketId: input.ticketId ?? null,
+      subscriberId: input.subscriberId ?? null,
       customerDisplayLabel: input.customerDisplayLabel,
       serviceAddress: input.serviceAddress ?? null,
       municipality: input.municipality ?? null,
@@ -260,6 +285,7 @@ export class ExecutionOrdersService {
           technicianCustodyId: validated.technicianCustodyId,
           quantity: validated.quantity,
           serialNumber: validated.serialNumber ?? null,
+          subscriberId: order.subscriberId ?? null,
           action: validated.action,
           finalDisposition: validated.finalDisposition,
           stockMovementId: validated.stockMovementId ?? null,
@@ -295,13 +321,89 @@ export class ExecutionOrdersService {
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const order = await this.requireOrder(qr.manager, tenantId, id);
+      const itemUsage = await qr.manager
+        .createQueryBuilder(ExecutionOrderItemUsage, 'usage')
+        .where('usage.execution_order_id = :executionOrderId', { executionOrderId: id })
+        .andWhere('usage.tenant_id = :tenantId', { tenantId })
+        .orderBy('usage.created_at', 'ASC')
+        .getMany();
+
+      const requiresCustomerSignature =
+        [ExecutionOrderResult.EXECUTED, ExecutionOrderResult.EXECUTED_WITH_OBSERVATIONS].includes(
+          validated.result,
+        ) &&
+        itemUsage.some(
+          (usage) => usage.finalDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER,
+        );
+
+      if (requiresCustomerSignature && !validated.customerSignatureRef) {
+        throw new BadRequestException(
+          'Debes registrar la evidencia de firma del cliente para cerrar esta OT.',
+        );
+      }
+
       order.result = validated.result;
       order.status = this.mapResultToStatus(validated.result);
       order.closedAt = new Date();
       order.closeNotes = validated.closeNotes ?? null;
       order.updatedByUserId = actor.sub;
-      return qr.manager.save(ExecutionOrder, order);
+      const saved = await qr.manager.save(ExecutionOrder, order);
+
+      if (validated.customerSignatureRef) {
+        await this.createEvidenceWithManager(
+          qr.manager,
+          tenantId,
+          order.id,
+          'CUSTOMER_SIGNATURE',
+          validated.customerSignatureRef,
+          actor,
+        );
+      }
+
+      if (order.taskId && this.tasksService) {
+        const nextTaskStatus = this.mapCloseResultToTaskStatus(validated.result);
+        if (nextTaskStatus) {
+          await this.tasksService.transitionStatusWithManager(
+            qr.manager,
+            tenantId,
+            order.taskId,
+            { status: nextTaskStatus },
+            actor,
+          );
+        }
+      }
+      if (order.ticketId) {
+        if (this.assuranceNotifier) {
+          await this.assuranceNotifier.notifyClosedWithManager(qr.manager, {
+            ticketId: order.ticketId,
+            executionOrderId: order.id,
+            result: validated.result,
+            tenantId,
+            actorUserId: actor.sub,
+          });
+        } else {
+          this.logger.warn(
+            `No hay notificador de assurance para ticketId=${order.ticketId} executionOrderId=${order.id}`,
+          );
+        }
+      }
+
+      return saved;
     });
+  }
+
+  private mapCloseResultToTaskStatus(result: ExecutionOrderResult): TaskStatus | null {
+    switch (result) {
+      case ExecutionOrderResult.EXECUTED:
+      case ExecutionOrderResult.EXECUTED_WITH_OBSERVATIONS:
+      case ExecutionOrderResult.REQUIRES_FOLLOW_UP:
+        return TaskStatus.RESOLVED;
+      case ExecutionOrderResult.NOT_EXECUTED:
+        return TaskStatus.READY;
+      case ExecutionOrderResult.CANCELLED:
+      default:
+        return null;
+    }
   }
 
   async createEvidence(
@@ -313,19 +415,37 @@ export class ExecutionOrdersService {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      await this.requireOrder(qr.manager, tenantId, executionOrderId);
-      return qr.manager.save(
-        ExecutionOrderEvidence,
-        qr.manager.create(ExecutionOrderEvidence, {
-          executionOrderId,
-          tenantId,
-          evidenceType,
-          fileName: null,
-          notes,
-          actorUserId: actor.sub,
-        }),
+      return this.createEvidenceWithManager(
+        qr.manager,
+        tenantId,
+        executionOrderId,
+        evidenceType,
+        notes,
+        actor,
       );
     });
+  }
+
+  private async createEvidenceWithManager(
+    manager: EntityManager,
+    tenantId: string,
+    executionOrderId: string,
+    evidenceType: string,
+    notes: string | null,
+    actor: JwtPayload,
+  ): Promise<ExecutionOrderEvidence> {
+    await this.requireOrder(manager, tenantId, executionOrderId);
+    return manager.save(
+      ExecutionOrderEvidence,
+      manager.create(ExecutionOrderEvidence, {
+        executionOrderId,
+        tenantId,
+        evidenceType,
+        fileName: null,
+        notes,
+        actorUserId: actor.sub,
+      }),
+    );
   }
 
   private async requireOrder(

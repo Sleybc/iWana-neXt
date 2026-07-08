@@ -66,6 +66,8 @@ import {
   PurchaseRequestType,
   SerializedAssetStatus,
   StockBalanceCondition,
+  StockIssueStatus,
+  StockIssueType,
   StockLocationStatus,
   StockLocationType,
   StockMovementOrigin,
@@ -5542,6 +5544,7 @@ export interface RegisterExecutionOrderItemUsageDto {
 export interface CloseExecutionOrderDto {
   result: ExecutionOrderResult;
   closeNotes?: string | null;
+  customerSignatureRef?: string | null;
 }
 
 export const tasksApi = {
@@ -6124,7 +6127,7 @@ export interface ListStockLocationsParams {
 }
 
 export interface CreateStockLocationDto {
-  code: string;
+  code?: string;
   name: string;
   type: StockLocationType;
   status?: StockLocationStatus;
@@ -6200,6 +6203,88 @@ export interface WriteOffAssetDto {
   reason: WriteOffReason;
   notes?: string | null;
   idempotencyKey?: string | null;
+}
+
+export interface StockIssueLineInputDto {
+  itemId: string;
+  requestedQty: number;
+  lotId?: string | null;
+  serializedAssetId?: string | null;
+  condition?: StockBalanceCondition;
+}
+
+export interface CreateStockIssueDto {
+  type: StockIssueType;
+  sourceLocationId: string;
+  destinationLocationId?: string | null;
+  destinationRefId?: string | null;
+  originRefId?: string | null;
+  commercialRefId?: string | null;
+  reason?: string | null;
+  costCenter?: string | null;
+  lines: StockIssueLineInputDto[];
+}
+
+export interface UpdateStockIssueDto extends Partial<CreateStockIssueDto> {
+  status?: Exclude<
+    StockIssueStatus,
+    StockIssueStatus.CANCELLED | StockIssueStatus.DISPATCHED | StockIssueStatus.RECEIVED
+  >;
+}
+
+export interface DispatchStockIssueDto {
+  handoffMethod: string;
+  handoffNotes?: string | null;
+  handoffAttachments?: unknown[];
+}
+
+export interface ListStockIssuesParams {
+  type?: StockIssueType;
+  status?: StockIssueStatus;
+  sourceLocationId?: string;
+  destinationLocationId?: string;
+}
+
+export interface StockIssueLineRecord {
+  id: string;
+  tenantId: string;
+  issueId: string;
+  itemId: string;
+  requestedQty: string;
+  dispatchedQty: string | null;
+  lotId: string | null;
+  serializedAssetId: string | null;
+  condition: StockBalanceCondition;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StockIssueRecord {
+  id: string;
+  tenantId: string;
+  type: StockIssueType;
+  status: StockIssueStatus;
+  sourceLocationId: string;
+  destinationLocationId: string | null;
+  destinationRefId: string | null;
+  originRefId: string | null;
+  commercialRefId: string | null;
+  reason: string | null;
+  costCenter: string | null;
+  handoffMethod: string | null;
+  handoffNotes: string | null;
+  handoffAttachments: unknown[] | null;
+  createdByUserId: string | null;
+  dispatchedByUserId: string | null;
+  closedAt: string | null;
+  stockMovementId: string | null;
+  linesCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StockIssueDetailRecord extends StockIssueRecord {
+  lines: StockIssueLineRecord[];
 }
 
 export interface ListPurchaseRequestsParams {
@@ -6492,6 +6577,53 @@ export const inventoryApi = {
   writeOff: (dto: WriteOffAssetDto, tenantSlug?: string) =>
     request<StockMovementResultRecord>(
       '/inventory/write-offs',
+      { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  listIssues: (params?: ListStockIssuesParams, tenantSlug?: string) =>
+    request<StockIssueRecord[]>(
+      `/inventory/issues${buildInventoryQuery({
+        type: params?.type,
+        status: params?.status,
+        sourceLocationId: params?.sourceLocationId,
+        destinationLocationId: params?.destinationLocationId,
+      })}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  createIssue: (dto: CreateStockIssueDto, tenantSlug?: string) =>
+    request<StockIssueDetailRecord>(
+      '/inventory/issues',
+      { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  getIssue: (id: string, tenantSlug?: string) =>
+    request<StockIssueDetailRecord>(
+      `/inventory/issues/${id}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  updateIssue: (id: string, dto: UpdateStockIssueDto, tenantSlug?: string) =>
+    request<StockIssueDetailRecord>(
+      `/inventory/issues/${id}`,
+      { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  cancelIssue: (id: string, tenantSlug?: string) =>
+    request<StockIssueRecord>(
+      `/inventory/issues/${id}/cancel`,
+      { method: 'POST', body: JSON.stringify({}), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  dispatchIssue: (id: string, dto: DispatchStockIssueDto, tenantSlug?: string) =>
+    request<StockIssueDetailRecord>(
+      `/inventory/issues/${id}/dispatch`,
       { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
       tenantSlug,
     ),

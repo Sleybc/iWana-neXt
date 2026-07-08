@@ -2,14 +2,20 @@ import { DataSource } from 'typeorm';
 import { runInTenantSchema } from '@iwana/db';
 import {
   ExecutionOrderItemAction,
+  ExecutionOrderResult,
   ExecutionOrderStatus,
   InventoryDisposition,
+  TaskStatus,
   UserRole,
   WfmWorkType,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { ExecutionOrderInventoryService } from '../services/execution-order-inventory.service';
 import { ExecutionOrdersService } from '../services/execution-orders.service';
+
+jest.mock('../services/tasks.service', () => ({
+  TasksService: class TasksService {},
+}));
 
 jest.mock('@iwana/db', () => ({
   TenantContext: {
@@ -78,6 +84,9 @@ describe('ExecutionOrdersService', () => {
         assignedTechnicianId: '33333333-3333-4333-8333-333333333333',
         originContext: 'TASKS',
         originRefId: 'task-001',
+        taskId: 'task-uuid',
+        ticketId: 'ticket-uuid',
+        subscriberId: 'sub-uuid',
         customerDisplayLabel: 'Cliente Torre Norte',
         serviceAddress: 'Calle 1 # 2 - 3',
         municipality: 'Bogotá',
@@ -93,6 +102,9 @@ describe('ExecutionOrdersService', () => {
     expect(result.status).toBe(ExecutionOrderStatus.ASSIGNED);
     expect(result.scheduleEventId).toBe('22222222-2222-4222-8222-222222222222');
     expect(result.assignedTechnicianId).toBe('33333333-3333-4333-8333-333333333333');
+    expect(result.taskId).toBe('task-uuid');
+    expect(result.ticketId).toBe('ticket-uuid');
+    expect(result.subscriberId).toBe('sub-uuid');
   });
 
   it('registers item usage from technician custody and records stock movement id', async () => {
@@ -131,5 +143,143 @@ describe('ExecutionOrdersService', () => {
     );
     expect(result.itemId).toBe('item-001');
     expect(result.stockMovementId).toBe('mov-001');
+  });
+
+  it('rejects close without customer signature when installed at customer usage exists', async () => {
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'eo-001',
+        tenantId: 'tenant-001',
+        taskId: null,
+        ticketId: null,
+        status: ExecutionOrderStatus.IN_PROGRESS,
+      }),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([
+          {
+            id: 'usage-001',
+            executionOrderId: 'eo-001',
+            tenantId: 'tenant-001',
+            finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
+          },
+        ]),
+      }),
+      save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+      create: jest.fn((_entity, payload) => payload),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+
+    await expect(
+      service.close(
+        'eo-001',
+        {
+          result: ExecutionOrderResult.EXECUTED,
+          closeNotes: 'Cierre sin firma',
+        },
+        actor,
+      ),
+    ).rejects.toThrow('Debes registrar la evidencia de firma del cliente');
+  });
+
+  it('notifies assurance when closing an order linked to a ticket', async () => {
+    const assuranceNotifier = {
+      notifyClosed: jest.fn().mockResolvedValue(undefined),
+      notifyClosedWithManager: jest.fn().mockResolvedValue(undefined),
+    };
+    service = new ExecutionOrdersService(
+      {} as DataSource,
+      inventoryService,
+      undefined,
+      assuranceNotifier,
+    );
+
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'eo-001',
+        tenantId: 'tenant-001',
+        taskId: null,
+        ticketId: 'ticket-uuid',
+        status: ExecutionOrderStatus.IN_PROGRESS,
+      }),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([]),
+      }),
+      save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+      create: jest.fn((_entity, payload) => payload),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+
+    await service.close(
+      'eo-001',
+      {
+        result: ExecutionOrderResult.EXECUTED,
+        closeNotes: 'Cierre con ticket vinculado',
+      },
+      actor,
+    );
+
+    expect(assuranceNotifier.notifyClosedWithManager).toHaveBeenCalledWith(
+      manager,
+      expect.objectContaining({
+        ticketId: 'ticket-uuid',
+        executionOrderId: 'eo-001',
+        result: ExecutionOrderResult.EXECUTED,
+        tenantId: 'tenant-001',
+        actorUserId: actor.sub,
+      }),
+    );
+  });
+
+  it('does not resolve the task when the execution order was not executed', async () => {
+    const tasksService = {
+      transitionStatusWithManager: jest.fn().mockResolvedValue(undefined),
+    };
+
+    service = new ExecutionOrdersService({} as DataSource, inventoryService, tasksService as never);
+
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'eo-001',
+        tenantId: 'tenant-001',
+        taskId: 'task-uuid',
+        ticketId: null,
+        status: ExecutionOrderStatus.IN_PROGRESS,
+      }),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([]),
+      }),
+      save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+      create: jest.fn((_entity, payload) => payload),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+
+    await service.close(
+      'eo-001',
+      {
+        result: ExecutionOrderResult.NOT_EXECUTED,
+        closeNotes: 'No se pudo ejecutar. Reprogramar.',
+      },
+      actor,
+    );
+
+    expect(tasksService.transitionStatusWithManager).toHaveBeenCalledWith(
+      manager,
+      'tenant-001',
+      'task-uuid',
+      { status: TaskStatus.READY },
+      actor,
+    );
   });
 });

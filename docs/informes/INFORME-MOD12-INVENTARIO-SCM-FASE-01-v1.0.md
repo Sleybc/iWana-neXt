@@ -170,4 +170,84 @@ Se declara **GO condicionado** para el slice de bodegas dentro de MOD12 Fase 01.
 
 ---
 
+## 9. Integración flujo operativo cableado (2026-07-07)
+
+Referencia: `docs/specs/2026-07-07-mod10-mod11-mod09-mod12-flujo-operativo-cableado-design.md`, plan Task 5–7.
+
+### 9.1 RF-INV-12 / RF-INV-13 — decisión post-OT
+
+| Requisito | Decisión implementada |
+| --- | --- |
+| RF-INV-12 Comodato en sitio cliente | `recordExecutionOrderMovement` con `INSTALLED_AT_CUSTOMER` genera asiento doble: salida custodia técnico + entrada `CUSTOMER_SITE` resuelto por `CustomerSiteLocationResolver` |
+| RF-INV-13 Trazabilidad comodato por suscriptor | Ubicación `CUSTOMER_SITE` con `responsibleRefId = subscriberId` (referencia opaca); sin PII en código ni logs |
+| Bloqueo transferencia manual a cliente | Portal `StockTransferDialog` + mensaje: «La carga en sitio del cliente se registra al cerrar la orden de trabajo con firma.» |
+
+### 9.2 Evidencia
+
+| Artefacto | Estado |
+| --- | --- |
+| `customer-site-location.resolver.ts` | Completado |
+| `stock-ledger.service.spec.ts` (INSTALLED_AT_CUSTOMER doble línea) | PASS |
+| `InventoryClient.spec.tsx` (bloqueo CUSTOMER_SITE) | PASS |
+| Migración `056_execution_order_traceability_refs.ts` | Completado (refs OT para `subscriberId`) |
+
+### 9.3 Estado final
+
+- Integración timeline Assurance al cierre OT: **completada** (`EXECUTION_ORDER_CLOSED`).
+- E2E `portal-field-flow-ticket-ot-inventory.spec.ts`: escenario operaciones (firma + inventario cliente) en verde.
+- E2E `portal-assurance.spec.ts`: ruta Assurance en verde; `ERR_ABORTED` cerrado con Webpack dev y ejecución serial (`workers: 1`).
+
+---
+
+## 10. Decision arquitectura - Salidas de bodega principal (2026-07-08)
+
+Referencia: `docs/specs/2026-07-08-mod12-salidas-bodega-principal-design.md` y plan `docs/plans/2026-07-08-mod12-salidas-bodega-principal.md`.
+
+### 10.1 Decision
+
+Se aprueba documentar un apartado propio de `Salidas` / `Despachos` dentro de MOD12. La decision separa el documento operativo (`StockIssue`) del efecto contable/fisico (`StockMovement`).
+
+`StockIssue` cubre intencion, destino, evidencia, estado, solicitante, aprobador/alistador y receptor. `StockMovement` conserva el ledger inmutable y sigue siendo la fuente de verdad de stock.
+
+### 10.2 Alcance recomendado
+
+| Tipo de salida | Tratamiento recomendado |
+| --- | --- |
+| Tecnico | `StockIssueType.TECHNICIAN_CUSTODY` + transferencia a `MOBILE_TECHNICIAN` |
+| Cuadrilla | `StockIssueType.CREW_CUSTODY` + transferencia a `MOBILE_CREW` |
+| Oficina | `OFFICE_STOCK` solo si la oficina tendra saldo auditable; si no, consumo interno |
+| Nodo | `NODE_STOCK` solo si el nodo tendra conteo/devolucion/reposicion; si no, OT o consumo interno |
+| Venta | `SALE_DISPATCH` + movimiento `SALE`, no transferencia generica |
+| Consumo interno | `INTERNAL_CONSUMPTION` con centro de costo/motivo |
+
+### 10.3 Reglas no negociables
+
+- `CUSTOMER_SITE` no es destino manual de salidas: cliente se afecta via OT + firma.
+- No crear bounded context nuevo; MOD12 sigue siendo owner bajo ADR-048.
+- No introducir FKs cross-module; usar referencias opacas.
+- `Movimientos` queda como auditoria; `Salidas` queda como mesa operativa.
+- Todo despacho debe terminar con `stockMovementId` o quedar cancelado sin afectar saldo.
+
+### 10.4 Estado
+
+**Implementado fullstack (API + Portal) el 2026-07-08** según `docs/plans/2026-07-08-mod12-salidas-bodega-principal.md`.
+
+Evidencia:
+
+- API:
+  - `POST /inventory/issues` (crear)
+  - `GET /inventory/issues` + `GET /inventory/issues/:id` (consulta)
+  - `PATCH /inventory/issues/:id` (actualización no terminal)
+  - `POST /inventory/issues/:id/cancel` (cancelación)
+  - `POST /inventory/issues/:id/dispatch` (despacho idempotente → ledger)
+- Portal:
+  - Tab `Salidas` entre `Bodegas` y `Activos` en `InventoryClient`.
+  - Workspace `StockIssuesWorkspace` con creación y despacho desde drawer de detalle.
+- Tests:
+  - API: `stock-issue.service.spec.ts`, `inventory.controller.http.spec.ts`
+  - Portal: `InventoryClient.spec.tsx`, `StockIssuesWorkspace.spec.tsx`
+  - E2E: `portal-inventory-scm.spec.ts` incluye escenario `crea salida a técnico y despacha`.
+
 _Informe generado durante ejecución de PROMPT-MOD12-INVENTARIO-SCM-FASE-01-v1.0.md_
+
+

@@ -54,11 +54,16 @@ export const INVENTORY_TRACKING_MODE_LABELS: Record<InventoryTrackingMode, strin
   [InventoryTrackingMode.FIXED_ASSET]: 'Activo fijo',
 };
 
+export const CUSTOMER_SITE_TRANSFER_BLOCKED_MESSAGE =
+  'La carga en sitio del cliente se registra al cerrar la orden de trabajo con firma.';
+
 export const STOCK_LOCATION_TYPE_LABELS: Record<StockLocationType, string> = {
   [StockLocationType.MAIN_WAREHOUSE]: 'Bodega principal',
   [StockLocationType.MOBILE_TECHNICIAN]: 'Móvil técnico',
   [StockLocationType.MOBILE_CREW]: 'Cuadrilla móvil',
   [StockLocationType.CUSTOMER_SITE]: 'Sitio del cliente',
+  [StockLocationType.OFFICE_STOCK]: 'Bodega de oficina',
+  [StockLocationType.NODE_STOCK]: 'Bodega de nodo',
   [StockLocationType.QUARANTINE]: 'Cuarentena',
   [StockLocationType.REPAIR]: 'Reparación',
   [StockLocationType.SCRAP]: 'Chatarra',
@@ -254,6 +259,35 @@ export function getStockLocationTypeLabel(value: StockLocationType): string {
 
 export function getStockLocationStatusLabel(value: StockLocationStatus): string {
   return resolveLabel(value, STOCK_LOCATION_STATUS_LABELS);
+}
+
+export function getStockLocationStatusBadgeVariant(
+  value: StockLocationStatus,
+): InventoryBadgeVariant {
+  switch (value) {
+    case StockLocationStatus.ACTIVE:
+      return 'success';
+    case StockLocationStatus.INACTIVE:
+      return 'warning';
+    case StockLocationStatus.ARCHIVED:
+      return 'neutral';
+    default:
+      return 'neutral';
+  }
+}
+
+export function getStockLocationTypeBadgeVariant(value: StockLocationType): InventoryBadgeVariant {
+  switch (value) {
+    case StockLocationType.MOBILE_TECHNICIAN:
+    case StockLocationType.MOBILE_CREW:
+      return 'primary';
+    case StockLocationType.QUARANTINE:
+    case StockLocationType.REPAIR:
+    case StockLocationType.SCRAP:
+      return 'warning';
+    default:
+      return 'neutral';
+  }
 }
 
 export function getStockBalanceConditionLabel(value: StockBalanceCondition): string {

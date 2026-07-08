@@ -184,7 +184,7 @@ export default function UsersPage() {
         total={totalUsers}
         hasNextPage={Boolean(nextCursor)}
         hasPrevPage={cursorHistory.length > 0}
-        tenantName={tenantSlug ? selectedTenantName : undefined}
+        {...(tenantSlug ? { tenantName: selectedTenantName } : {})}
         emptyStateTitle={emptyState.title}
         emptyStateDescription={emptyState.description}
         onPrev={() => {

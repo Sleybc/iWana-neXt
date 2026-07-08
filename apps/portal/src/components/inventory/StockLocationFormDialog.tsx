@@ -2,26 +2,33 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { StockLocationStatus, StockLocationType } from '@iwana/shared';
-import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, Input } from '@iwana/ui';
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Select,
+} from '@iwana/ui';
 import type {
   CreateStockLocationDto,
+  InternalUser,
   StockLocationRecord,
   UpdateStockLocationDto,
 } from '@/lib/api-client';
 import { PortalAlert } from '@/components/shared/portal-ui';
+import { buildInternalUserLabel, mapUsersToSelectOptions } from '@/lib/portal-user-options';
 import { getStockLocationStatusLabel, getStockLocationTypeLabel } from './inventory-labels';
-
-const fieldClassName =
-  'w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-white';
+import { resolveNextStockLocationCode } from './inventory-location-code';
 
 const MOBILE_LOCATION_TYPES = new Set<StockLocationType>([
   StockLocationType.MOBILE_TECHNICIAN,
   StockLocationType.MOBILE_CREW,
 ]);
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 interface StockLocationFormValues {
-  code: string;
   name: string;
   type: StockLocationType;
   status: StockLocationStatus;
@@ -32,6 +39,10 @@ interface StockLocationFormValues {
 interface StockLocationFormDialogProps {
   open: boolean;
   location?: StockLocationRecord | null;
+  existingLocations?: StockLocationRecord[];
+  operationalUsers: InternalUser[];
+  isLoadingUsers?: boolean;
+  usersLoadError?: string | null;
   isSubmitting: boolean;
   error: string | null;
   onClose: () => void;
@@ -41,7 +52,6 @@ interface StockLocationFormDialogProps {
 
 function buildInitialValues(location?: StockLocationRecord | null): StockLocationFormValues {
   return {
-    code: location?.code ?? '',
     name: location?.name ?? '',
     type: location?.type ?? StockLocationType.MAIN_WAREHOUSE,
     status: location?.status ?? StockLocationStatus.ACTIVE,
@@ -53,6 +63,10 @@ function buildInitialValues(location?: StockLocationRecord | null): StockLocatio
 export function StockLocationFormDialog({
   open,
   location,
+  existingLocations = [],
+  operationalUsers,
+  isLoadingUsers = false,
+  usersLoadError = null,
   isSubmitting,
   error,
   onClose,
@@ -64,10 +78,6 @@ export function StockLocationFormDialog({
   const selectedType = values.type;
   const requiresResponsible =
     values.status === StockLocationStatus.ACTIVE && MOBILE_LOCATION_TYPES.has(selectedType);
-  const normalizedResponsibleRefId = values.responsibleRefId.trim();
-  const hasResponsibleValue = normalizedResponsibleRefId.length > 0;
-  const hasValidResponsibleRefId =
-    !hasResponsibleValue || UUID_PATTERN.test(normalizedResponsibleRefId);
 
   useEffect(() => {
     if (!open) {
@@ -78,20 +88,40 @@ export function StockLocationFormDialog({
     setValues(buildInitialValues(location));
   }, [location, open]);
 
+  const responsibleOptions = useMemo(() => {
+    const emptyOption = requiresResponsible
+      ? { value: '', label: 'Selecciona responsable' }
+      : { value: '', label: 'Sin asignar' };
+
+    return mapUsersToSelectOptions(operationalUsers, emptyOption);
+  }, [operationalUsers, requiresResponsible]);
+
+  const selectedResponsibleLabel = useMemo(() => {
+    if (!values.responsibleRefId) {
+      return null;
+    }
+
+    const matchedUser = operationalUsers.find((user) => user.id === values.responsibleRefId);
+    return matchedUser ? buildInternalUserLabel(matchedUser) : null;
+  }, [operationalUsers, values.responsibleRefId]);
+
+  const codePreview = useMemo(() => {
+    if (isEditing) {
+      return null;
+    }
+
+    return resolveNextStockLocationCode(
+      existingLocations.map((entry) => entry.code),
+      values.type,
+    );
+  }, [existingLocations, isEditing, values.type]);
+
   const submitDisabled = useMemo(() => {
     if (!values.name.trim()) {
       return true;
     }
 
-    if (!isEditing && !values.code.trim()) {
-      return true;
-    }
-
-    if (requiresResponsible && !hasResponsibleValue) {
-      return true;
-    }
-
-    if (!hasValidResponsibleRefId) {
+    if (requiresResponsible && !values.responsibleRefId) {
       return true;
     }
 
@@ -99,19 +129,21 @@ export function StockLocationFormDialog({
       return true;
     }
 
+    if (isLoadingUsers) {
+      return true;
+    }
+
     return false;
   }, [
-    hasResponsibleValue,
-    hasValidResponsibleRefId,
-    isEditing,
+    isLoadingUsers,
     requiresResponsible,
-    values.code,
     values.maxCapacity,
     values.name,
+    values.responsibleRefId,
   ]);
 
   async function handleSubmit() {
-    const normalizedResponsible = normalizedResponsibleRefId || null;
+    const normalizedResponsible = values.responsibleRefId.trim() || null;
     const normalizedCapacity = values.maxCapacity.trim() ? Number(values.maxCapacity) : null;
 
     if (isEditing && location) {
@@ -125,7 +157,6 @@ export function StockLocationFormDialog({
     }
 
     await onCreate({
-      code: values.code.trim(),
       name: values.name.trim(),
       type: values.type,
       status: values.status,
@@ -138,82 +169,72 @@ export function StockLocationFormDialog({
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{isEditing ? 'Editar bodega' : 'Crear bodega'}</DialogTitle>
+          <p className="portal-eyebrow">Bodegas</p>
+          <DialogTitle className="mt-1">{isEditing ? 'Editar bodega' : 'Crear bodega'}</DialogTitle>
+          <DialogDescription>
+            {isEditing
+              ? 'Actualiza nombre, estado, responsable y capacidad sin modificar el código ni el tipo.'
+              : 'Define la bodega operativa. El código se asignará automáticamente según el tipo seleccionado.'}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
+          {isEditing ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              <Input label="Código" value={location?.code ?? ''} readOnly />
+              <Input label="Tipo" value={getStockLocationTypeLabel(values.type)} readOnly />
+            </div>
+          ) : null}
+
           <div className="grid gap-4 md:grid-cols-2">
-            {isEditing ? (
-              <>
-                <Input label="Código" value={values.code} readOnly />
-                <Input label="Tipo" value={getStockLocationTypeLabel(values.type)} readOnly />
-              </>
-            ) : (
-              <>
-                <Input
-                  label="Código"
-                  value={values.code}
-                  onChange={(event) =>
-                    setValues((current) => ({ ...current, code: event.target.value }))
-                  }
-                />
-                <label className="space-y-1 text-sm">
-                  <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                    Tipo
-                  </span>
-                  <select
-                    value={values.type}
-                    onChange={(event) =>
-                      setValues((current) => ({
-                        ...current,
-                        type: event.target.value as StockLocationType,
-                      }))
-                    }
-                    className={fieldClassName}
-                  >
-                    {Object.values(StockLocationType).map((type) => (
-                      <option key={type} value={type}>
-                        {getStockLocationTypeLabel(type)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </>
-            )}
+            {!isEditing ? (
+              <Select
+                label="Tipo"
+                className="md:col-span-2"
+                value={values.type}
+                options={Object.values(StockLocationType).map((type) => ({
+                  value: type,
+                  label: getStockLocationTypeLabel(type),
+                }))}
+                onChange={(event) =>
+                  setValues((current) => ({
+                    ...current,
+                    type: event.target.value as StockLocationType,
+                  }))
+                }
+              />
+            ) : null}
 
             <Input
-              label="Nombre"
+              label="Nombre de la bodega"
+              requiredIndicator
               value={values.name}
               onChange={(event) =>
                 setValues((current) => ({ ...current, name: event.target.value }))
               }
             />
 
-            <label className="space-y-1 text-sm">
-              <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                Estado
-              </span>
-              <select
-                value={values.status}
-                onChange={(event) =>
-                  setValues((current) => ({
-                    ...current,
-                    status: event.target.value as StockLocationStatus,
-                  }))
-                }
-                className={fieldClassName}
-              >
-                {Object.values(StockLocationStatus).map((status) => (
-                  <option key={status} value={status}>
-                    {getStockLocationStatusLabel(status)}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <Select
+              label="Estado"
+              value={values.status}
+              options={Object.values(StockLocationStatus).map((status) => ({
+                value: status,
+                label: getStockLocationStatusLabel(status),
+              }))}
+              onChange={(event) =>
+                setValues((current) => ({
+                  ...current,
+                  status: event.target.value as StockLocationStatus,
+                }))
+              }
+            />
 
-            <Input
+            <Select
               label="Responsable operativo"
+              className="md:col-span-2"
               value={values.responsibleRefId}
+              options={responsibleOptions}
+              disabled={isLoadingUsers}
               onChange={(event) =>
                 setValues((current) => ({
                   ...current,
@@ -221,13 +242,21 @@ export function StockLocationFormDialog({
                 }))
               }
               helperText={
-                !hasValidResponsibleRefId
-                  ? 'Debe ser un UUID válido del responsable.'
-                  : requiresResponsible
-                    ? 'Obligatorio para custodias móviles activas. Usa el UUID del responsable.'
-                    : 'Opcional para bodegas fijas o archivadas. Si lo envías, debe ser UUID.'
+                usersLoadError
+                  ? 'No fue posible cargar usuarios. Intenta cerrar y abrir el formulario.'
+                  : isLoadingUsers
+                    ? 'Cargando usuarios del tenant…'
+                    : requiresResponsible
+                      ? 'Obligatorio para custodias móviles activas.'
+                      : 'Opcional para bodegas fijas o archivadas.'
               }
             />
+
+            {selectedResponsibleLabel ? (
+              <p className="md:col-span-2 text-xs text-iwana-secondary-700 dark:text-gray-400">
+                Responsable seleccionado: {selectedResponsibleLabel}
+              </p>
+            ) : null}
 
             <Input
               label="Capacidad máxima"
@@ -242,6 +271,26 @@ export function StockLocationFormDialog({
             />
           </div>
 
+          {codePreview ? (
+            <div className="rounded-2xl border border-iwana-primary-100 bg-iwana-primary-50 p-3 text-sm dark:border-iwana-primary-900/50 dark:bg-iwana-primary-950/20">
+              <p className="font-medium text-iwana-secondary-700 dark:text-gray-200">
+                Código sugerido
+              </p>
+              <p className="mt-1 font-mono text-xs text-gray-900 dark:text-white">{codePreview}</p>
+              <p className="mt-1 text-xs text-iwana-secondary-700 dark:text-gray-400">
+                Se asignará automáticamente al crear la bodega.
+              </p>
+            </div>
+          ) : null}
+
+          {usersLoadError ? (
+            <PortalAlert
+              variant="warning"
+              title="Usuarios no disponibles"
+              description={usersLoadError}
+            />
+          ) : null}
+
           {error ? (
             <PortalAlert
               variant="error"
@@ -252,7 +301,7 @@ export function StockLocationFormDialog({
             />
           ) : null}
 
-          <div className="flex justify-end gap-3">
+          <div className="flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-dark-border">
             <Button type="button" variant="secondary" onClick={onClose}>
               Cancelar
             </Button>

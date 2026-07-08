@@ -28,7 +28,12 @@ import {
   type InventoryCatalogOptionRecord,
   type InventoryCategoryRecord,
   type InventoryItemRecord,
+  type InternalUser,
   inventoryApi,
+  type StockIssueRecord,
+  type StockIssueDetailRecord,
+  type CreateStockIssueDto,
+  type DispatchStockIssueDto,
   type CreateStockLocationDto,
   type ListInventoryItemsParams,
   purchasingApi,
@@ -43,6 +48,7 @@ import {
   type UpdateInventoryItemDto,
   type UpdateInventoryCategoryDto,
 } from '@/lib/api-client';
+import { buildUserLabelMap, loadTenantUsers } from '@/lib/portal-user-options';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   PortalAlert,
@@ -64,7 +70,8 @@ import { buildPurchaseItemFrequency } from './purchase-composer-preferences';
 import { SerializedAssetDetailDrawer } from './SerializedAssetDetailDrawer';
 import { StockLocationFormDialog } from './StockLocationFormDialog';
 import { StockLocationsMatrix, type LocationMatrixCustodyFilter } from './StockLocationsMatrix';
-import { StockTransferDialog } from './StockTransferDialog';
+
+import { StockIssuesWorkspace } from './StockIssuesWorkspace';
 import {
   buildTakenCodePrefixSet,
   isValidCategoryCodePrefix,
@@ -87,6 +94,7 @@ export type InventoryTab =
   | 'catalog'
   | 'purchasing'
   | 'locations'
+  | 'issues'
   | 'assets'
   | 'movements'
   | 'writeoffs';
@@ -101,6 +109,7 @@ const INVENTORY_TABS: InventoryTab[] = [
   'catalog',
   'purchasing',
   'locations',
+  'issues',
   'assets',
   'movements',
   'writeoffs',
@@ -149,6 +158,9 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const [summary, setSummary] = useState<InventoryDashboardSummary | null>(null);
   const [items, setItems] = useState<InventoryItemRecord[]>([]);
   const [locations, setLocations] = useState<StockLocationRecord[]>([]);
+  const [issues, setIssues] = useState<StockIssueRecord[]>([]);
+  const [tenantUsers, setTenantUsers] = useState<InternalUser[]>([]);
+  const [usersLoadError, setUsersLoadError] = useState<string | null>(null);
   const [assets, setAssets] = useState<SerializedAssetRecord[]>([]);
   const [balances, setBalances] = useState<StockBalanceRecord[]>([]);
   const [requests, setRequests] = useState<PurchaseRequestRecord[]>([]);
@@ -159,9 +171,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const [locationEditItem, setLocationEditItem] = useState<StockLocationRecord | null>(null);
   const [locationSubmitError, setLocationSubmitError] = useState<string | null>(null);
   const [isSubmittingLocation, setIsSubmittingLocation] = useState(false);
-  const [transferOpen, setTransferOpen] = useState(false);
-  const [transferError, setTransferError] = useState<string | null>(null);
-  const [isSubmittingTransfer, setIsSubmittingTransfer] = useState(false);
+
   const [assetDetail, setAssetDetail] = useState<SerializedAssetRecord | null>(null);
   const [assetDetailError, setAssetDetailError] = useState<string | null>(null);
   const [isLoadingAsset, setIsLoadingAsset] = useState(false);
@@ -273,6 +283,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     () => new Map(locations.map((location) => [location.id, location])),
     [locations],
   );
+  const userLabelById = useMemo(() => buildUserLabelMap(tenantUsers), [tenantUsers]);
 
   const lowStockItems = useMemo(() => {
     const quantityByItem = new Map<string, number>();
@@ -337,24 +348,36 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
           dashboardResponse,
           itemsResponse,
           locationsResponse,
+          issuesResponse,
           assetsResponse,
           balancesResponse,
           requestsResponse,
+          usersResult,
         ] = await Promise.all([
           inventoryApi.dashboard(),
           inventoryApi.listItems(),
           inventoryApi.listLocations(),
+          inventoryApi.listIssues(),
           inventoryApi.listAssets(),
           inventoryApi.listBalances(),
           purchasingApi.listRequests(),
+          loadTenantUsers()
+            .then((users) => ({ users, error: null as string | null }))
+            .catch(() => ({
+              users: [] as InternalUser[],
+              error: 'No fue posible cargar la lista de usuarios.',
+            })),
         ]);
 
         setSummary(dashboardResponse);
         setItems(itemsResponse);
         setLocations(locationsResponse);
+        setIssues(issuesResponse);
         setAssets(assetsResponse);
         setBalances(balancesResponse);
         setRequests(requestsResponse);
+        setTenantUsers(usersResult.users);
+        setUsersLoadError(usersResult.error);
         void loadPurchaseItemFrequency(requestsResponse);
       } catch (loadError) {
         setError(mapInventoryError(loadError));
@@ -951,19 +974,38 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     }
   }
 
-  async function handleTransfer(payload: Parameters<typeof inventoryApi.transfer>[0]) {
-    setIsSubmittingTransfer(true);
-    setTransferError(null);
+  async function handleCreateIssue(payload: CreateStockIssueDto) {
+    setMovementNotice(null);
+    setError(null);
     try {
-      const result = await inventoryApi.transfer(payload);
-      setMovementNotice(`Transferencia registrada en ${result.movement.movementNumber}.`);
-      setTransferOpen(false);
+      await inventoryApi.createIssue(payload);
+      setMovementNotice('Salida creada. Puedes despacharla cuando esté lista.');
       await loadData(true);
     } catch (submitError) {
-      setTransferError(mapInventoryError(submitError));
-    } finally {
-      setIsSubmittingTransfer(false);
+      setError(mapInventoryError(submitError));
+      throw submitError instanceof Error ? submitError : new Error(mapInventoryError(submitError));
     }
+  }
+
+  async function handleDispatchIssue(issueId: string, payload: DispatchStockIssueDto) {
+    setMovementNotice(null);
+    setError(null);
+    try {
+      const result = await inventoryApi.dispatchIssue(issueId, payload);
+      setMovementNotice(
+        result.stockMovementId
+          ? `Salida despachada. Movimiento ${result.stockMovementId}.`
+          : 'Salida despachada.',
+      );
+      await loadData(true);
+    } catch (submitError) {
+      setError(mapInventoryError(submitError));
+      throw submitError instanceof Error ? submitError : new Error(mapInventoryError(submitError));
+    }
+  }
+
+  async function handleOpenIssueDetail(issueId: string): Promise<StockIssueDetailRecord> {
+    return inventoryApi.getIssue(issueId);
   }
 
   async function handleCreateLocation(payload: CreateStockLocationDto) {
@@ -1125,6 +1167,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
           <TabsTrigger value="catalog">Catálogo</TabsTrigger>
           <TabsTrigger value="purchasing">Compras</TabsTrigger>
           <TabsTrigger value="locations">Bodegas</TabsTrigger>
+          <TabsTrigger value="issues">Salidas</TabsTrigger>
           <TabsTrigger value="assets">Activos</TabsTrigger>
           <TabsTrigger value="movements">Movimientos</TabsTrigger>
           <TabsTrigger value="writeoffs">Bajas</TabsTrigger>
@@ -1348,7 +1391,6 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
               <div className="flex flex-wrap gap-3">
                 <Button
                   type="button"
-                  variant="secondary"
                   onClick={() => {
                     setLocationEditItem(null);
                     setLocationSubmitError(null);
@@ -1357,11 +1399,12 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                 >
                   Crear bodega
                 </Button>
-                <Button type="button" onClick={() => setTransferOpen(true)}>
-                  Transferir stock
+                <Button type="button" variant="secondary" onClick={() => setActiveTab('issues')}>
+                  Ir a salidas
                 </Button>
               </div>
             }
+            contentClassName="space-y-4"
           >
             {isLoading ? (
               <PortalSkeletonBlock className="h-64" />
@@ -1370,6 +1413,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                 locations={locations}
                 balances={balances}
                 items={items}
+                userLabelById={userLabelById}
                 custodyFilter={locationCustodyFilter}
                 onCustodyFilterChange={handleLocationCustodyFilterChange}
                 onEditLocation={(location) => {
@@ -1380,6 +1424,20 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
               />
             )}
           </PortalPanel>
+        </TabsContent>
+
+        <TabsContent value="issues" className="space-y-6">
+          <StockIssuesWorkspace
+            items={items}
+            locations={locations}
+            issues={issues}
+            isLoading={isLoading}
+            error={error}
+            onCreate={handleCreateIssue}
+            onDispatch={handleDispatchIssue}
+            onOpenDetail={handleOpenIssueDetail}
+            onRefresh={() => void loadData(true)}
+          />
         </TabsContent>
 
         <TabsContent value="assets" className="space-y-6">
@@ -1825,6 +1883,10 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       <StockLocationFormDialog
         open={locationDialogOpen}
         location={locationEditItem}
+        existingLocations={locations}
+        operationalUsers={tenantUsers}
+        isLoadingUsers={isLoading}
+        usersLoadError={usersLoadError}
         isSubmitting={isSubmittingLocation}
         error={locationSubmitError}
         onClose={() => {
@@ -1834,17 +1896,6 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         }}
         onCreate={handleCreateLocation}
         onUpdate={handleUpdateLocation}
-      />
-
-      <StockTransferDialog
-        open={transferOpen}
-        items={items}
-        locations={locations}
-        balances={balances}
-        isSubmitting={isSubmittingTransfer}
-        error={transferError}
-        onClose={() => setTransferOpen(false)}
-        onSubmit={handleTransfer}
       />
 
       <SerializedAssetDetailDrawer

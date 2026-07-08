@@ -152,6 +152,7 @@ export const ASSURANCE_TIMELINE_EVENT_LABELS: Record<TicketTimelineEventType, st
   [TicketTimelineEventType.COMMENT_ADDED]: 'Comentario agregado',
   [TicketTimelineEventType.FIELD_SERVICE_REQUESTED]: 'Trabajo de campo solicitado',
   [TicketTimelineEventType.WORK_ORDER_LINKED]: 'Work order vinculada',
+  [TicketTimelineEventType.EXECUTION_ORDER_CLOSED]: 'Orden de trabajo cerrada',
   [TicketTimelineEventType.SLA_BREACHED]: 'Incidencia SLA',
   [TicketTimelineEventType.PQR_DEADLINE_SET]: 'Deadline PQR registrada',
   [TicketTimelineEventType.PRIORITY_CHANGED]: 'Prioridad actualizada',
@@ -298,6 +299,8 @@ export function getAssuranceTimelineDescription(
       return 'Se escaló el caso a trabajo de campo.';
     case TicketTimelineEventType.WORK_ORDER_LINKED:
       return `Work order ${formatAssuranceReference(typeof payload.workOrderId === 'string' ? payload.workOrderId : null)} vinculada al ticket.`;
+    case TicketTimelineEventType.EXECUTION_ORDER_CLOSED:
+      return `OT ${formatAssuranceReference(typeof payload.executionOrderId === 'string' ? payload.executionOrderId : null)} cerrada con resultado ${String(payload.result ?? 'sin resultado')}.`;
     case TicketTimelineEventType.COMMENT_ADDED:
       return payload.isInternal
         ? 'Comentario interno registrado.'

@@ -41,6 +41,15 @@ export class ExecutionOrder {
   @Column({ name: 'origin_ref_id', type: 'varchar', length: 160, nullable: true })
   originRefId: string | null;
 
+  @Column({ name: 'task_id', type: 'varchar', length: 160, nullable: true })
+  taskId: string | null;
+
+  @Column({ name: 'ticket_id', type: 'varchar', length: 160, nullable: true })
+  ticketId: string | null;
+
+  @Column({ name: 'subscriber_id', type: 'varchar', length: 160, nullable: true })
+  subscriberId: string | null;
+
   @Column({ name: 'customer_display_label', type: 'varchar', length: 200 })
   customerDisplayLabel: string;
 

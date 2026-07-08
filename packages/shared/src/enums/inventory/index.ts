@@ -7,6 +7,8 @@ export * from './inventory-item-status.enum';
 export * from './stock-location-type.enum';
 export * from './stock-location-status.enum';
 export * from './stock-movement-origin.enum';
+export * from './stock-issue-type.enum';
+export * from './stock-issue-status.enum';
 export * from './serialized-asset-status.enum';
 export * from './asset-lifecycle-event-type.enum';
 export * from './purchase-request-status.enum';

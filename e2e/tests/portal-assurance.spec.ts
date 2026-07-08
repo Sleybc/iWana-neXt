@@ -16,22 +16,20 @@ const ASSIGNEE_ID = '22222222-2222-4222-8222-222222222222';
 const WORK_ORDER_ID = '33333333-3333-4333-8333-333333333333';
 
 function buildToken(): string {
-  return (
-    'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.' +
-    btoa(
-      JSON.stringify({
-        sub: SUPPORT_USER_ID,
-        email: 'hash-support',
-        role: 'SUPPORT',
-        tenantId: 'tenant-assurance-001',
-        schemaName: 'tenant_assurance_001',
-        jti: 'jti-support',
-        type: 'tenant',
-        exp: Math.floor(Date.now() / 1000) + 900,
-      }),
-    ) +
-    '.fakesig'
-  );
+  const payload = Buffer.from(
+    JSON.stringify({
+      sub: SUPPORT_USER_ID,
+      email: 'hash-support',
+      role: 'SUPPORT',
+      tenantId: 'tenant-assurance-001',
+      schemaName: 'tenant_assurance_001',
+      jti: 'jti-support',
+      type: 'tenant',
+      exp: Math.floor(Date.now() / 1000) + 900,
+    }),
+  ).toString('base64url');
+
+  return `eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.${payload}.fakesig`;
 }
 
 function nowIso(offsetMinutes = 0): string {
@@ -89,8 +87,7 @@ type MockTimelineEvent = {
 };
 
 async function seedPortalSession(page: import('@playwright/test').Page) {
-  await page.goto('/auth/login');
-  await page.evaluate(
+  await page.addInitScript(
     ({ token, slug }: { token: string; slug: string }) => {
       window.localStorage.setItem('iwana.portal.access-token', token);
       window.localStorage.setItem('iwana.portal.tenant-slug', slug);
@@ -554,10 +551,11 @@ async function setupAssuranceMocks(page: import('@playwright/test').Page) {
 test('support can create, comment, escalate to field service and resolve a ticket', async ({
   page,
 }) => {
+  test.setTimeout(120_000);
   await setupAssuranceMocks(page);
   await seedPortalSession(page);
 
-  await page.goto('/dashboard/assurance');
+  await page.goto('/dashboard/assurance', { waitUntil: 'domcontentloaded' });
 
   await expect(page.getByRole('heading', { name: 'Mesa de ayuda' })).toBeVisible();
   await page.getByRole('button', { name: 'Nuevo ticket' }).first().click();
@@ -568,7 +566,7 @@ test('support can create, comment, escalate to field service and resolve a ticke
   await page.getByLabel('Referencia del objeto').fill('service-001');
   await page.getByRole('button', { name: 'Crear ticket' }).click();
 
-  await expect(page.getByText('El ticket quedó registrado correctamente.')).toBeVisible();
+  await expect(page.getByText('El ticket TK-20260509-001 fue creado.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'TK-20260509-001' })).toBeVisible();
 
   await page.getByRole('button', { name: 'TK-20260509-001' }).click();

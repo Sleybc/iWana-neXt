@@ -119,6 +119,29 @@ describe('AssuranceFieldServiceProcessor', () => {
     expect(manager.save).not.toHaveBeenCalled();
   });
 
+  it('no crea segunda visita Assurance si ya existe una activa para el mismo ticket', async () => {
+    const andWhere = jest.fn().mockReturnThis();
+    const getOne = jest.fn().mockResolvedValue({
+      id: 'vr-legacy-001',
+      workType: WfmWorkType.TECHNICAL_VISIT,
+      ticketId: 'ticket-001',
+    });
+    const createQueryBuilder = jest.fn().mockReturnValue({
+      where: jest.fn().mockReturnThis(),
+      andWhere,
+      orderBy: jest.fn().mockReturnThis(),
+      getOne,
+    });
+
+    const { processor, manager } = buildProcessor({ createQueryBuilder });
+
+    await processor.process({ name: 'request-field-service', data: buildPayload() } as never);
+
+    expect(andWhere).not.toHaveBeenCalledWith('vr.work_type = :workType', expect.anything());
+    expect(manager.create).not.toHaveBeenCalled();
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
   it('rechaza payloads con schemaName invalido', async () => {
     const { processor } = buildProcessor();
 

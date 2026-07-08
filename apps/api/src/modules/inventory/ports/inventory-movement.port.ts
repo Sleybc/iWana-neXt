@@ -9,6 +9,8 @@ export interface ConsumeFromExecutionOrderInput {
   technicianCustodyId: string;
   quantity: number;
   serialNumber?: string | null;
+  subscriberId?: string | null;
+  customerSiteLocationId?: string | null;
   action: ExecutionOrderItemAction;
   finalDisposition: InventoryDisposition;
   idempotencyKey?: string | null;

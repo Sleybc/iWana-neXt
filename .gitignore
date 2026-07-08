@@ -36,6 +36,7 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+.cursor/
 
 # Tests
 coverage/
@@ -56,6 +57,8 @@ out/
 *.tsbuildinfo
 .eslintcache
 .claude/worktrees/
+**/__pycache__/
+*.pyc
 
 # Worktrees
 .worktrees/

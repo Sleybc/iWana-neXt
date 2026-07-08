@@ -4,6 +4,7 @@ exports.TaskTimelineEventType = void 0;
 var TaskTimelineEventType;
 (function (TaskTimelineEventType) {
   TaskTimelineEventType['CREATED'] = 'CREATED';
+  TaskTimelineEventType['TASK_CREATED_FROM_TICKET'] = 'TASK_CREATED_FROM_TICKET';
   TaskTimelineEventType['ASSIGNED'] = 'ASSIGNED';
   TaskTimelineEventType['REASSIGNED'] = 'REASSIGNED';
   TaskTimelineEventType['STATUS_CHANGED'] = 'STATUS_CHANGED';

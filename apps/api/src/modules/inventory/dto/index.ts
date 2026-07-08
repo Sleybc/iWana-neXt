@@ -17,6 +17,8 @@ import {
   PurchaseRequestType,
   SerializedAssetStatus,
   StockBalanceCondition,
+  StockIssueStatus,
+  StockIssueType,
   StockLocationStatus,
   StockLocationType,
   WriteOffReason,
@@ -515,7 +517,7 @@ export class ListStockLocationsQueryDto {
 }
 
 export const CreateStockLocationSchema = z.object({
-  code: z.string().trim().min(1).max(60),
+  code: z.string().trim().min(1).max(60).optional(),
   name: z.string().trim().min(1).max(200),
   type: z.nativeEnum(StockLocationType),
   status: z.nativeEnum(StockLocationStatus).optional().default(StockLocationStatus.ACTIVE),
@@ -526,9 +528,11 @@ export const CreateStockLocationSchema = z.object({
 export type CreateStockLocationInput = z.infer<typeof CreateStockLocationSchema>;
 
 export class CreateStockLocationDto {
-  @ApiProperty()
+  @ApiPropertyOptional({
+    description: 'Si se omite, el servicio genera un código único por tipo (ej. BOD-001).',
+  })
   @Allow()
-  code!: string;
+  code?: string;
 
   @ApiProperty()
   @Allow()
@@ -636,6 +640,271 @@ export class ListStockBalancesQueryDto {
   @ApiPropertyOptional({ enum: StockBalanceCondition })
   @Allow()
   condition?: StockBalanceCondition;
+}
+
+const StockIssueLineSchema = z.object({
+  itemId: z.string().uuid(),
+  requestedQty: positiveNumber,
+  lotId: z.string().uuid().optional().nullable(),
+  serializedAssetId: z.string().uuid().optional().nullable(),
+  condition: z.nativeEnum(StockBalanceCondition).optional().default(StockBalanceCondition.NEW),
+});
+
+export const CreateStockIssueSchema = z
+  .object({
+    type: z.nativeEnum(StockIssueType),
+    sourceLocationId: z.string().uuid(),
+    destinationLocationId: z.string().uuid().optional().nullable(),
+    destinationRefId: optionalTrimmedString(160),
+    originRefId: optionalTrimmedString(160),
+    commercialRefId: optionalTrimmedString(160),
+    reason: optionalTrimmedString(2000),
+    costCenter: optionalTrimmedString(80),
+    lines: z.array(StockIssueLineSchema).min(1, 'Debe enviar al menos una línea.'),
+  })
+  .superRefine((value, ctx) => {
+    if (value.type === StockIssueType.SALE_DISPATCH) {
+      if (!value.originRefId?.trim() && !value.commercialRefId?.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Una salida por venta requiere originRefId o commercialRefId.',
+          path: ['commercialRefId'],
+        });
+      }
+    }
+
+    if (value.type === StockIssueType.INTERNAL_CONSUMPTION) {
+      if (!value.costCenter?.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'El consumo interno requiere costCenter.',
+          path: ['costCenter'],
+        });
+      }
+
+      if (!value.reason?.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'El consumo interno requiere reason.',
+          path: ['reason'],
+        });
+      }
+    }
+
+    if (
+      value.type === StockIssueType.TECHNICIAN_CUSTODY ||
+      value.type === StockIssueType.CREW_CUSTODY
+    ) {
+      if (!value.destinationLocationId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Este tipo de salida requiere destinationLocationId.',
+          path: ['destinationLocationId'],
+        });
+      }
+    }
+  });
+
+export type CreateStockIssueInput = z.infer<typeof CreateStockIssueSchema>;
+
+export class StockIssueLineDto {
+  @ApiProperty()
+  @Allow()
+  itemId!: string;
+
+  @ApiProperty({ description: 'Cantidad solicitada.' })
+  @Allow()
+  requestedQty!: number;
+
+  @ApiPropertyOptional()
+  @Allow()
+  lotId?: string | null;
+
+  @ApiPropertyOptional()
+  @Allow()
+  serializedAssetId?: string | null;
+
+  @ApiPropertyOptional({ enum: StockBalanceCondition, default: StockBalanceCondition.NEW })
+  @Allow()
+  condition?: StockBalanceCondition;
+}
+
+export class CreateStockIssueDto {
+  @ApiProperty({ enum: StockIssueType })
+  @Allow()
+  type!: StockIssueType;
+
+  @ApiProperty()
+  @Allow()
+  sourceLocationId!: string;
+
+  @ApiPropertyOptional()
+  @Allow()
+  destinationLocationId?: string | null;
+
+  @ApiPropertyOptional()
+  @Allow()
+  destinationRefId?: string | null;
+
+  @ApiPropertyOptional()
+  @Allow()
+  originRefId?: string | null;
+
+  @ApiPropertyOptional()
+  @Allow()
+  commercialRefId?: string | null;
+
+  @ApiPropertyOptional()
+  @Allow()
+  reason?: string | null;
+
+  @ApiPropertyOptional()
+  @Allow()
+  costCenter?: string | null;
+
+  @ApiProperty({ type: [StockIssueLineDto] })
+  @Allow()
+  lines!: StockIssueLineDto[];
+}
+
+export const UpdateStockIssueSchema = z
+  .object({
+    type: z.nativeEnum(StockIssueType).optional(),
+    status: z
+      .nativeEnum(StockIssueStatus)
+      .optional()
+      .refine(
+        (value) =>
+          value !== StockIssueStatus.DISPATCHED &&
+          value !== StockIssueStatus.RECEIVED &&
+          value !== StockIssueStatus.CANCELLED,
+        {
+          message:
+            'No se puede establecer un estado terminal por este endpoint. Use el despacho o cancelación.',
+        },
+      ),
+    sourceLocationId: z.string().uuid().optional(),
+    destinationLocationId: z.string().uuid().optional().nullable(),
+    destinationRefId: optionalTrimmedString(160),
+    originRefId: optionalTrimmedString(160),
+    commercialRefId: optionalTrimmedString(160),
+    reason: optionalTrimmedString(2000),
+    costCenter: optionalTrimmedString(80),
+    lines: z.array(StockIssueLineSchema).min(1).optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: 'Debe enviar al menos un campo para actualizar.',
+  })
+  .superRefine((value, ctx) => {
+    const type = value.type;
+    const destinationLocationId = value.destinationLocationId;
+
+    if (type === StockIssueType.SALE_DISPATCH) {
+      if (!value.originRefId?.trim() && !value.commercialRefId?.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Una salida por venta requiere originRefId o commercialRefId.',
+          path: ['commercialRefId'],
+        });
+      }
+    }
+
+    if (type === StockIssueType.INTERNAL_CONSUMPTION) {
+      if (!value.costCenter?.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'El consumo interno requiere costCenter.',
+          path: ['costCenter'],
+        });
+      }
+
+      if (!value.reason?.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'El consumo interno requiere reason.',
+          path: ['reason'],
+        });
+      }
+    }
+
+    if (type === StockIssueType.TECHNICIAN_CUSTODY || type === StockIssueType.CREW_CUSTODY) {
+      if (destinationLocationId === null || destinationLocationId === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Este tipo de salida requiere destinationLocationId.',
+          path: ['destinationLocationId'],
+        });
+      }
+    }
+  });
+
+export type UpdateStockIssueInput = z.infer<typeof UpdateStockIssueSchema>;
+
+export class UpdateStockIssueDto extends CreateStockIssueDto {
+  @ApiPropertyOptional({ enum: StockIssueStatus })
+  @Allow()
+  status?: StockIssueStatus;
+}
+
+export const DispatchStockIssueSchema = z.object({
+  handoffMethod: z.string().trim().min(1).max(32),
+  handoffNotes: optionalTrimmedString(1000),
+  handoffAttachments: z.array(z.unknown()).optional().default([]),
+});
+
+export type DispatchStockIssueInput = z.infer<typeof DispatchStockIssueSchema>;
+
+export class DispatchStockIssueDto {
+  @ApiProperty()
+  @Allow()
+  handoffMethod!: string;
+
+  @ApiPropertyOptional()
+  @Allow()
+  handoffNotes?: string | null;
+
+  @ApiPropertyOptional({ type: [Object], default: [] })
+  @Allow()
+  handoffAttachments?: unknown[];
+}
+
+export const CancelStockIssueSchema = z.object({
+  reason: optionalTrimmedString(2000),
+});
+
+export type CancelStockIssueInput = z.infer<typeof CancelStockIssueSchema>;
+
+export class CancelStockIssueDto {
+  @ApiPropertyOptional()
+  @Allow()
+  reason?: string | null;
+}
+
+export const ListStockIssuesQuerySchema = z.object({
+  type: z.nativeEnum(StockIssueType).optional(),
+  status: z.nativeEnum(StockIssueStatus).optional(),
+  sourceLocationId: z.string().uuid().optional(),
+  destinationLocationId: z.string().uuid().optional(),
+});
+
+export type ListStockIssuesQueryInput = z.infer<typeof ListStockIssuesQuerySchema>;
+
+export class ListStockIssuesQueryDto {
+  @ApiPropertyOptional({ enum: StockIssueType })
+  @Allow()
+  type?: StockIssueType;
+
+  @ApiPropertyOptional({ enum: StockIssueStatus })
+  @Allow()
+  status?: StockIssueStatus;
+
+  @ApiPropertyOptional()
+  @Allow()
+  sourceLocationId?: string;
+
+  @ApiPropertyOptional()
+  @Allow()
+  destinationLocationId?: string;
 }
 
 export const ListPurchaseRequestsQuerySchema = z.object({
@@ -1209,6 +1478,8 @@ export const ExecutionOrderMovementSchema = z.object({
   technicianCustodyId: z.string().trim().min(1).max(160),
   quantity: positiveNumber.default(1),
   serialNumber: optionalTrimmedString(160),
+  customerSiteLocationId: optionalTrimmedString(160),
+  subscriberId: optionalTrimmedString(160),
   action: z.nativeEnum(ExecutionOrderItemAction),
   finalDisposition: z.nativeEnum(InventoryDisposition),
   idempotencyKey: optionalTrimmedString(160),
@@ -1236,6 +1507,14 @@ export class ExecutionOrderMovementDto {
   @ApiPropertyOptional()
   @Allow()
   serialNumber?: string | null;
+
+  @ApiPropertyOptional()
+  @Allow()
+  customerSiteLocationId?: string | null;
+
+  @ApiPropertyOptional()
+  @Allow()
+  subscriberId?: string | null;
 
   @ApiProperty({ enum: ExecutionOrderItemAction })
   @Allow()

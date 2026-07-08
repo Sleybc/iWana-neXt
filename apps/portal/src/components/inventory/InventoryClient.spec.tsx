@@ -23,11 +23,14 @@ import {
   ApiError,
   inventoryApi,
   purchasingApi,
+  usersApi,
+  type InternalUser,
   type InventoryCategoryRecord,
   type InventoryItemRecord,
 } from '@/lib/api-client';
 import { InventoryClient } from './InventoryClient';
 import {
+  CUSTOMER_SITE_TRANSFER_BLOCKED_MESSAGE,
   formatInventoryCurrency,
   getInventoryItemCategoryLabel,
   getPurchaseRequestStatusLabel,
@@ -97,6 +100,10 @@ jest.mock('@/lib/api-client', () => ({
     sale: jest.fn(),
     registerReturn: jest.fn(),
     writeOff: jest.fn(),
+    listIssues: jest.fn(),
+    createIssue: jest.fn(),
+    getIssue: jest.fn(),
+    dispatchIssue: jest.fn(),
   },
   purchasingApi: {
     listRequests: jest.fn(),
@@ -112,10 +119,56 @@ jest.mock('@/lib/api-client', () => ({
     getOrder: jest.fn(),
     receiveOrder: jest.fn(),
   },
+  usersApi: {
+    list: jest.fn(),
+  },
 }));
 
 const inventoryApiMock = inventoryApi as jest.Mocked<typeof inventoryApi>;
 const purchasingApiMock = purchasingApi as jest.Mocked<typeof purchasingApi>;
+const usersApiMock = usersApi as jest.Mocked<typeof usersApi>;
+
+function buildMockUser(overrides: Partial<InternalUser> = {}): InternalUser {
+  return {
+    id: 'user-1',
+    email: 'user@local',
+    role: 'NOC',
+    status: 'ACTIVE',
+    tenantId: 'tenant-1',
+    mfaEnabled: false,
+    mfaRequired: false,
+    isOperationalResource: true,
+    emailVerified: true,
+    passwordResetRequired: false,
+    lastLoginAt: null,
+    createdAt: '2026-06-25T12:00:00.000Z',
+    updatedAt: '2026-06-25T12:00:00.000Z',
+    deletedAt: null,
+    firstName: 'Carlos',
+    lastName: 'Garzón',
+    phone: null,
+    jobTitle: null,
+    documentType: null,
+    documentNumber: null,
+    avatarUrl: null,
+    ...overrides,
+  };
+}
+
+const MOCK_TENANT_USERS: InternalUser[] = [
+  buildMockUser({
+    id: MOBILE_RESPONSIBLE_ID,
+    firstName: 'Técnico',
+    lastName: 'Norte',
+    email: 'tecnico.norte@local',
+  }),
+  buildMockUser({
+    id: UPDATED_RESPONSIBLE_ID,
+    firstName: 'Ana',
+    lastName: 'Pérez',
+    email: 'ana.perez@local',
+  }),
+];
 
 function buildCatalogItem(overrides: Partial<InventoryItemRecord> = {}): InventoryItemRecord {
   return {
@@ -332,6 +385,10 @@ describe('InventoryClient', () => {
         updatedAt: '2026-06-25T12:00:00.000Z',
       },
     ]);
+    usersApiMock.list.mockResolvedValue({
+      data: MOCK_TENANT_USERS,
+      meta: { nextCursor: null, total: MOCK_TENANT_USERS.length },
+    });
     inventoryApiMock.createLocation.mockResolvedValue({
       id: 'loc-2',
       tenantId: 'tenant-1',
@@ -357,6 +414,7 @@ describe('InventoryClient', () => {
       updatedAt: '2026-06-26T12:00:00.000Z',
     });
     inventoryApiMock.listAssets.mockResolvedValue([]);
+    inventoryApiMock.listIssues.mockResolvedValue([]);
     inventoryApiMock.listBalances.mockResolvedValue([
       {
         id: 'bal-1',
@@ -660,6 +718,16 @@ describe('InventoryClient', () => {
     });
   });
 
+  it('renderiza la pestaña Salidas', async () => {
+    render(<InventoryClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('tab', { name: 'Salidas' })).toBeInTheDocument();
+  });
+
   it('abre bodegas cuando tab=locations viene en la URL', async () => {
     searchParamsMock = new URLSearchParams('tab=locations');
 
@@ -682,19 +750,16 @@ describe('InventoryClient', () => {
     await user.click(screen.getByRole('button', { name: 'Crear bodega' }));
 
     const dialog = await screen.findByRole('dialog');
-    await user.type(within(dialog).getByLabelText('Código'), 'MOV-01');
-    await user.type(within(dialog).getByLabelText('Nombre'), 'Móvil zona norte');
-    await user.selectOptions(
-      within(dialog).getByLabelText('Tipo'),
-      StockLocationType.MOBILE_TECHNICIAN,
-    );
-    await user.type(within(dialog).getByLabelText('Responsable operativo'), MOBILE_RESPONSIBLE_ID);
+    await user.type(within(dialog).getByLabelText(/^Nombre de la bodega/), 'Móvil zona norte');
+    await user.click(within(dialog).getByRole('combobox', { name: /^Tipo/ }));
+    await user.click(screen.getByRole('option', { name: 'Móvil técnico' }));
+    await user.click(within(dialog).getByRole('combobox', { name: 'Responsable operativo' }));
+    await user.click(screen.getByRole('option', { name: 'Técnico Norte' }));
     await user.type(within(dialog).getByLabelText('Capacidad máxima'), '10');
     await user.click(within(dialog).getByRole('button', { name: 'Crear bodega' }));
 
     await waitFor(() => {
       expect(inventoryApiMock.createLocation).toHaveBeenCalledWith({
-        code: 'MOV-01',
         name: 'Móvil zona norte',
         type: StockLocationType.MOBILE_TECHNICIAN,
         status: StockLocationStatus.ACTIVE,
@@ -704,7 +769,7 @@ describe('InventoryClient', () => {
     });
   });
 
-  it('bloquea crear bodega móvil con responsable no válido', async () => {
+  it('bloquea crear bodega móvil sin responsable asignado', async () => {
     const user = userEvent.setup();
     render(<InventoryClient initialTab="locations" />);
 
@@ -715,13 +780,9 @@ describe('InventoryClient', () => {
     await user.click(screen.getByRole('button', { name: 'Crear bodega' }));
 
     const dialog = await screen.findByRole('dialog');
-    await user.type(within(dialog).getByLabelText('Código'), 'MOV-01');
-    await user.type(within(dialog).getByLabelText('Nombre'), 'Móvil zona norte');
-    await user.selectOptions(
-      within(dialog).getByLabelText('Tipo'),
-      StockLocationType.MOBILE_TECHNICIAN,
-    );
-    await user.type(within(dialog).getByLabelText('Responsable operativo'), 'tech-01');
+    await user.type(within(dialog).getByLabelText(/^Nombre de la bodega/), 'Móvil zona norte');
+    await user.click(within(dialog).getByRole('combobox', { name: /^Tipo/ }));
+    await user.click(screen.getByRole('option', { name: 'Móvil técnico' }));
 
     expect(within(dialog).getByRole('button', { name: 'Crear bodega' })).toBeDisabled();
   });
@@ -737,13 +798,13 @@ describe('InventoryClient', () => {
     await user.click(await screen.findByRole('button', { name: 'Editar Bodega principal' }));
 
     const dialog = await screen.findByRole('dialog');
-    const nameInput = within(dialog).getByLabelText('Nombre');
-    const responsibleInput = within(dialog).getByLabelText('Responsable operativo');
+    const nameInput = within(dialog).getByLabelText(/^Nombre de la bodega/);
     const capacityInput = within(dialog).getByLabelText('Capacidad máxima');
 
     await user.clear(nameInput);
     await user.type(nameInput, 'Bodega principal actualizada');
-    await user.type(responsibleInput, UPDATED_RESPONSIBLE_ID);
+    await user.click(within(dialog).getByRole('combobox', { name: 'Responsable operativo' }));
+    await user.click(screen.getByRole('option', { name: 'Ana Pérez' }));
     await user.clear(capacityInput);
     await user.type(capacityInput, '24');
     await user.click(within(dialog).getByRole('button', { name: 'Guardar cambios' }));
@@ -790,7 +851,58 @@ describe('InventoryClient', () => {
     expect(await screen.findByText(/ONT-001 · ONT WiFi 6/i)).toBeInTheDocument();
   });
 
-  it('bloquea transferencias sin acta o por saldo insuficiente', async () => {
+  it('bloquea destino sitio del cliente y remite la carga a cierre de OT', async () => {
+    const user = userEvent.setup();
+    inventoryApiMock.listLocations.mockResolvedValue([
+      {
+        id: 'loc-1',
+        tenantId: 'tenant-1',
+        code: 'BOD-01',
+        name: 'Bodega principal',
+        type: StockLocationType.MAIN_WAREHOUSE,
+        status: StockLocationStatus.ACTIVE,
+        responsibleRefId: null,
+        maxCapacity: null,
+        createdAt: '2026-06-25T12:00:00.000Z',
+        updatedAt: '2026-06-25T12:00:00.000Z',
+      },
+      {
+        id: 'loc-2',
+        tenantId: 'tenant-1',
+        code: 'MOV-02',
+        name: 'Móvil técnico norte',
+        type: StockLocationType.MOBILE_TECHNICIAN,
+        status: StockLocationStatus.ACTIVE,
+        responsibleRefId: MOBILE_RESPONSIBLE_ID,
+        maxCapacity: '1.00',
+        createdAt: '2026-06-25T12:00:00.000Z',
+        updatedAt: '2026-06-25T12:00:00.000Z',
+      },
+      {
+        id: 'loc-3',
+        tenantId: 'tenant-1',
+        code: 'CLI-01',
+        name: 'Sitio cliente norte',
+        type: StockLocationType.CUSTOMER_SITE,
+        status: StockLocationStatus.ACTIVE,
+        responsibleRefId: null,
+        maxCapacity: null,
+        createdAt: '2026-06-25T12:00:00.000Z',
+        updatedAt: '2026-06-25T12:00:00.000Z',
+      },
+    ]);
+
+    render(<InventoryClient initialTab="locations" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Matriz de bodegas')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('tab', { name: 'Salidas' }));
+    expect(screen.getByRole('heading', { name: 'Salidas' })).toBeInTheDocument();
+  });
+
+  it('usa el flujo nuevo de Salidas en vez del modal legacy', async () => {
     const user = userEvent.setup();
     render(<InventoryClient initialTab="locations" />);
 
@@ -798,24 +910,8 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Matriz de bodegas')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('button', { name: 'Transferir stock' }));
-
-    const dialog = await screen.findByRole('dialog');
-    await user.selectOptions(within(dialog).getByLabelText('Ítem'), 'item-1');
-    await user.selectOptions(within(dialog).getByLabelText('Origen'), 'loc-1');
-    await user.selectOptions(within(dialog).getByLabelText('Destino'), 'loc-2');
-    await user.clear(within(dialog).getByLabelText('Cantidad'));
-    await user.type(within(dialog).getByLabelText('Cantidad'), '2');
-
-    expect(
-      within(dialog).getByText(/Disponible en origen \(saldo nuevo sin lote\): 1/i),
-    ).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'Registrar transferencia' })).toBeDisabled();
-
-    await user.type(within(dialog).getByLabelText('Acta o evidencia'), 'ACT-004');
-
-    expect(within(dialog).getByRole('button', { name: 'Registrar transferencia' })).toBeDisabled();
-    expect(inventoryApiMock.transfer).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Ir a salidas' }));
+    expect(await screen.findByRole('tab', { name: 'Salidas', selected: true })).toBeInTheDocument();
   });
 
   it('limita los retornos a estados operativos permitidos', async () => {

@@ -44,7 +44,6 @@ export class AssuranceFieldServiceProcessor extends WorkerHost {
           originContext: WorkOrderSourceContext.ASSURANCE,
         })
         .andWhere('vr.origin_ref = :originRef', { originRef: payload.ticketId })
-        .andWhere('vr.work_type = :workType', { workType: WfmWorkType.SUPPORT })
         .andWhere('vr.deleted_at IS NULL')
         .andWhere('vr.status NOT IN (:...terminalStatuses)', {
           terminalStatuses: [

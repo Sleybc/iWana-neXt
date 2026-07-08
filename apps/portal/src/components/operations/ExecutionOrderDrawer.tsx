@@ -1,12 +1,8 @@
 'use client';
 
 import { Badge, Dialog, DialogContent, DialogHeader, DialogTitle } from '@iwana/ui';
-import type {
-  ExecutionOrderItemAction,
-  ExecutionOrderResult,
-  InventoryDisposition,
-} from '@iwana/shared';
-import { ExecutionOrderStatus } from '@iwana/shared';
+import type { ExecutionOrderItemAction, ExecutionOrderResult } from '@iwana/shared';
+import { ExecutionOrderStatus, InventoryDisposition } from '@iwana/shared';
 import type {
   ExecutionOrderActivityRecord,
   ExecutionOrderItemUsageRecord,
@@ -51,6 +47,7 @@ interface ExecutionOrderDrawerProps {
   onCloseOrder: (payload: {
     result: ExecutionOrderResult;
     closeNotes?: string | null;
+    customerSignatureRef?: string | null;
   }) => Promise<void>;
 }
 
@@ -68,6 +65,10 @@ export function ExecutionOrderDrawer({
   onRegisterItemUsage,
   onCloseOrder,
 }: ExecutionOrderDrawerProps) {
+  const requiresCustomerSignature = itemUsage.some(
+    (usage) => usage.finalDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER,
+  );
+
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="max-w-5xl">
@@ -77,15 +78,24 @@ export function ExecutionOrderDrawer({
 
         {isLoading ? (
           <p className="text-sm text-gray-600 dark:text-gray-300">Cargando orden de trabajo...</p>
-        ) : error ? (
-          <PortalAlert variant="error" title="No fue posible cargar la OT" description={error} />
         ) : !order ? (
-          <PortalEmptyState
-            title="Sin OT seleccionada"
-            description="Abre una orden de trabajo desde Programación u Operaciones."
-          />
+          error ? (
+            <PortalAlert variant="error" title="No fue posible cargar la OT" description={error} />
+          ) : (
+            <PortalEmptyState
+              title="Sin OT seleccionada"
+              description="Abre una orden de trabajo desde Programación u Operaciones."
+            />
+          )
         ) : (
           <div className="space-y-5">
+            {error ? (
+              <PortalAlert
+                variant="error"
+                title="No fue posible completar la operación"
+                description={error}
+              />
+            ) : null}
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="neutral">{order.executionOrderNumber}</Badge>
               <Badge variant="info">{order.workType}</Badge>
@@ -141,7 +151,11 @@ export function ExecutionOrderDrawer({
                   disabled={isSubmitting}
                   onSubmit={onRegisterItemUsage}
                 />
-                <ExecutionOrderCloseStep disabled={isSubmitting} onSubmit={onCloseOrder} />
+                <ExecutionOrderCloseStep
+                  disabled={isSubmitting}
+                  requiresCustomerSignature={requiresCustomerSignature}
+                  onSubmit={onCloseOrder}
+                />
               </div>
 
               <div className="space-y-4">

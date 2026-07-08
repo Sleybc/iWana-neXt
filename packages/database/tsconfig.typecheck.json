@@ -9,5 +9,6 @@
       "@iwana/config": ["../../packages/config/index.ts"]
     }
   },
-  "include": ["src/**/*", "../shared/src/**/*"]
+  "include": ["src/**/*", "../shared/src/**/*"],
+  "exclude": ["../shared/src/**/*.spec.ts", "../shared/src/**/*.test.ts"]
 }

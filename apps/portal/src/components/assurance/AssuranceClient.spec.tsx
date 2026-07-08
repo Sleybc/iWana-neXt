@@ -1,7 +1,7 @@
 import type { ChangeEvent } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { TicketFieldDecision, TicketPriority, UserRole } from '@iwana/shared';
+import { TicketFieldDecision, TicketPriority, TicketStatus, UserRole } from '@iwana/shared';
 import { AssuranceClient } from './AssuranceClient';
 import { assuranceApi, wfmApi } from '@/lib/api-client';
 import { createAssuranceVisitRequestAndRoute } from '@/components/scheduling/visit-request-origin-orchestration';
@@ -41,6 +41,9 @@ jest.mock('@/lib/api-client', () => {
     assuranceApi: {
       tickets: {
         list: jest.fn().mockResolvedValue({ data: [], total: 0, page: 1, limit: 20 }),
+        get: jest.fn(),
+        listComments: jest.fn().mockResolvedValue([]),
+        listTimeline: jest.fn().mockResolvedValue([]),
         create: jest.fn(),
         requestFieldService: jest.fn(),
       },
@@ -103,6 +106,8 @@ jest.mock('@iwana/ui', () => {
 });
 
 const createTicketMock = jest.mocked(assuranceApi.tickets.create);
+const listTicketsMock = jest.mocked(assuranceApi.tickets.list);
+const getTicketMock = jest.mocked(assuranceApi.tickets.get);
 const createAssuranceVisitRequestAndRouteMock = jest.mocked(createAssuranceVisitRequestAndRoute);
 
 describe('AssuranceClient', () => {
@@ -141,5 +146,62 @@ describe('AssuranceClient', () => {
         '/dashboard/scheduling/pending-visits?selectedVisitRequestId=vr-001',
       );
     });
+  });
+
+  it('navigates to operations with assurance prefill when creating a linked task from the drawer', async () => {
+    const user = userEvent.setup();
+    listTicketsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'ticket-123',
+          ticketNumber: 'TK-123',
+          subject: 'Falla intermitente',
+          status: TicketStatus.IN_PROGRESS,
+          priority: TicketPriority.HIGH,
+          type: 'INCIDENT',
+          queueName: 'SUPPORT_L2',
+          assignedUserId: null,
+          slaBreachStatus: 'OK',
+          requesterRefId: 'req-1',
+          subjectRefId: 'subj-1',
+          updatedAt: '2026-07-07T18:00:00.000Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      limit: 20,
+    } as never);
+    getTicketMock.mockResolvedValue({
+      id: 'ticket-123',
+      ticketNumber: 'TK-123',
+      subject: 'Falla intermitente',
+      status: TicketStatus.IN_PROGRESS,
+      priority: TicketPriority.HIGH,
+      type: 'INCIDENT',
+      queueName: 'SUPPORT_L2',
+      assignedUserId: null,
+      slaBreachStatus: 'OK',
+      requesterType: 'SUBSCRIBER',
+      requesterRefId: 'req-1',
+      subjectType: 'SERVICE',
+      subjectRefId: 'subj-1',
+      source: 'PORTAL',
+      fieldDecision: TicketFieldDecision.NOT_REQUIRED,
+      workOrderId: null,
+      slaFirstResponseAt: null,
+      slaResolveByAt: null,
+      updatedAt: '2026-07-07T18:00:00.000Z',
+      description: 'Ticket de prueba',
+    } as never);
+
+    render(<AssuranceClient />);
+
+    await user.click(await screen.findByRole('button', { name: 'Ver detalle' }));
+    await user.click(await screen.findByRole('tab', { name: 'Acciones' }));
+    await user.click(await screen.findByRole('button', { name: 'Crear tarea vinculada' }));
+
+    expect(mockRouterPush).toHaveBeenCalledWith(
+      '/dashboard/operations?ticketId=ticket-123&fromAssurance=1',
+    );
   });
 });

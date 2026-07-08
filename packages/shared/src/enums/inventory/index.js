@@ -36,6 +36,8 @@ __exportStar(require('./inventory-item-status.enum'), exports);
 __exportStar(require('./stock-location-type.enum'), exports);
 __exportStar(require('./stock-location-status.enum'), exports);
 __exportStar(require('./stock-movement-origin.enum'), exports);
+__exportStar(require('./stock-issue-type.enum'), exports);
+__exportStar(require('./stock-issue-status.enum'), exports);
 __exportStar(require('./serialized-asset-status.enum'), exports);
 __exportStar(require('./asset-lifecycle-event-type.enum'), exports);
 __exportStar(require('./purchase-request-status.enum'), exports);

@@ -10,6 +10,7 @@ import {
   TaskTimelineEvent,
 } from '@iwana/db';
 import { InventoryModule } from '../inventory/inventory.module';
+import { AssuranceModule } from '../assurance/assurance.module';
 import { UsersModule } from '../users/users.module';
 import { ExecutionOrdersController } from './execution-orders.controller';
 import { TasksController } from './tasks.controller';
@@ -22,6 +23,7 @@ import { TasksService } from './services/tasks.service';
 @Module({
   imports: [
     InventoryModule,
+    AssuranceModule,
     UsersModule,
     TypeOrmModule.forFeature([
       OperationalTask,

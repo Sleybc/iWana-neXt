@@ -43,6 +43,9 @@ export * from './dto/pagination.dto';
 export * from './constants/queue-names';
 export * from './constants/search-job-names';
 
+// Operations
+export * from './operations/task-type-to-wfm-work-type';
+
 // Schemas Zod (frontend)
 export * from './schemas/auth.schema';
 export * from './schemas/subscriber.schema';

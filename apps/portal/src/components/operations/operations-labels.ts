@@ -85,6 +85,7 @@ export const TASK_ORIGIN_CONTEXT_LABELS: Record<TaskOriginContext, string> = {
 
 export const TASK_TIMELINE_EVENT_LABELS: Record<TaskTimelineEventType, string> = {
   [TaskTimelineEventType.CREATED]: 'Creada',
+  [TaskTimelineEventType.TASK_CREATED_FROM_TICKET]: 'Creada desde ticket',
   [TaskTimelineEventType.ASSIGNED]: 'Asignada',
   [TaskTimelineEventType.REASSIGNED]: 'Reasignada',
   [TaskTimelineEventType.STATUS_CHANGED]: 'Cambio de estado',

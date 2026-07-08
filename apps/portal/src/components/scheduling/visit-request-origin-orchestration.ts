@@ -1,4 +1,6 @@
 import {
+  mapTaskTypeToWfmWorkType,
+  TaskType,
   WorkOrderPriority,
   WorkOrderSourceContext,
   WfmWorkType,
@@ -76,7 +78,7 @@ export async function createAssuranceVisitRequestAndRoute(input: {
     originContext: WorkOrderSourceContext.ASSURANCE,
     originRef: input.ticketId,
     originLabel: `Ticket ${input.ticketId}`,
-    workType: WfmWorkType.TECHNICAL_VISIT,
+    workType: WfmWorkType.SUPPORT,
     priority: mapAssurancePriorityToWorkOrder(input.priority),
     title: input.subject.slice(0, 160),
     ticketId: input.ticketId,
@@ -88,18 +90,26 @@ export async function createAssuranceVisitRequestAndRoute(input: {
 
 export async function createTaskVisitRequestAndRoute(input: {
   taskId: string;
+  taskType: TaskType;
   title: string;
+  ticketId?: string | null;
   municipality?: string | null;
   address?: string | null;
   nextAction: VisitRequestNextAction;
 }) {
+  const workType = mapTaskTypeToWfmWorkType(input.taskType);
+  if (workType === null) {
+    throw new Error('Este tipo de tarea no requiere solicitud de visita de campo.');
+  }
+
   const visitRequest = await wfmApi.visitRequests.create({
     originContext: WorkOrderSourceContext.TASKS,
     originRef: input.taskId,
     originLabel: `Tarea ${input.taskId}`.slice(0, 160),
-    workType: WfmWorkType.TECHNICAL_VISIT,
+    workType,
     priority: WorkOrderPriority.NORMAL,
     title: input.title.slice(0, 160),
+    ticketId: input.ticketId ?? null,
     municipality: input.municipality ?? null,
     address: input.address ?? null,
   });

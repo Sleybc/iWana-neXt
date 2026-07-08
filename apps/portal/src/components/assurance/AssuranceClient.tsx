@@ -559,6 +559,15 @@ export function AssuranceClient() {
         isLinkingWorkOrder={isLinkingWorkOrder}
         canManage={canManageAssurance}
         canOperate={canViewAssurance}
+        onCreateLinkedTask={() => {
+          if (!selectedTicket) return;
+          setIsDrawerOpen(false);
+          setActionError(null);
+          setActionFeedback(null);
+          router.push(
+            `/dashboard/operations?ticketId=${encodeURIComponent(selectedTicket.id)}&fromAssurance=1`,
+          );
+        }}
         onClose={() => {
           setIsDrawerOpen(false);
           setActionError(null);

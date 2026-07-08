@@ -686,6 +686,12 @@ export class VisitRequestsService {
             assignedTechnicianId: validated.assignedUserId,
             originContext: visitRequest.originContext,
             originRefId: visitRequest.originRef,
+            taskId:
+              visitRequest.originContext === WorkOrderSourceContext.TASKS
+                ? visitRequest.originRef
+                : null,
+            ticketId: visitRequest.ticketId ?? null,
+            subscriberId: visitRequest.subscriberId ?? null,
             customerDisplayLabel,
             serviceAddress: visitRequest.address ?? null,
             municipality: visitRequest.municipality ?? null,

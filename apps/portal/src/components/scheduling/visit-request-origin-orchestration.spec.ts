@@ -1,6 +1,13 @@
-import { WorkOrderPriority, WorkOrderSourceContext } from '@iwana/shared';
+import {
+  TaskType,
+  TicketPriority,
+  WorkOrderPriority,
+  WorkOrderSourceContext,
+  WfmWorkType,
+} from '@iwana/shared';
 import { assuranceApi, wfmApi } from '@/lib/api-client';
 import {
+  createAssuranceVisitRequestAndRoute,
   createCrmVisitRequestAndRoute,
   createTaskVisitRequestAndRoute,
 } from './visit-request-origin-orchestration';
@@ -20,6 +27,7 @@ jest.mock('@/lib/api-client', () => ({
 }));
 
 const findOrCreateInstallationMock = jest.mocked(assuranceApi.tickets.findOrCreateInstallation);
+const requestFieldServiceMock = jest.mocked(assuranceApi.tickets.requestFieldService);
 const visitRequestsCreateMock = jest.mocked(wfmApi.visitRequests.create);
 
 describe('visit-request-origin-orchestration', () => {
@@ -66,6 +74,7 @@ describe('visit-request-origin-orchestration', () => {
 
     const result = await createTaskVisitRequestAndRoute({
       taskId: 'task-001',
+      taskType: TaskType.FIELD_VISIT,
       title: 'Visita de tarea',
       municipality: 'Bogotá',
       address: 'Cra 1 # 2-3',
@@ -74,6 +83,36 @@ describe('visit-request-origin-orchestration', () => {
 
     expect(result.href).toBe(
       '/dashboard/scheduling/pending-visits?selectedVisitRequestId=vr-task-1',
+    );
+  });
+
+  it('creates assurance visit requests with SUPPORT work type', async () => {
+    requestFieldServiceMock.mockResolvedValue(undefined as never);
+    visitRequestsCreateMock.mockResolvedValue({
+      id: 'vr-assurance-1',
+      title: 'Visita soporte',
+      originContext: WorkOrderSourceContext.ASSURANCE,
+    } as never);
+
+    await createAssuranceVisitRequestAndRoute({
+      ticketId: 'ticket-001',
+      subject: 'Visita soporte',
+      priority: TicketPriority.HIGH,
+      notes: 'Revisar en sitio',
+      nextAction: 'schedule-now',
+    });
+
+    expect(requestFieldServiceMock).toHaveBeenCalledWith('ticket-001', {
+      notes: 'Revisar en sitio',
+    });
+    expect(visitRequestsCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        originContext: WorkOrderSourceContext.ASSURANCE,
+        originRef: 'ticket-001',
+        workType: WfmWorkType.SUPPORT,
+        priority: WorkOrderPriority.HIGH,
+        ticketId: 'ticket-001',
+      }),
     );
   });
 
@@ -86,7 +125,9 @@ describe('visit-request-origin-orchestration', () => {
 
     await createTaskVisitRequestAndRoute({
       taskId: 'task-002',
+      taskType: TaskType.FIELD_VISIT,
       title: 'Visita de tarea',
+      ticketId: 'ticket-002',
       nextAction: 'schedule-now',
     });
 
@@ -94,9 +135,65 @@ describe('visit-request-origin-orchestration', () => {
       expect.objectContaining({
         originContext: WorkOrderSourceContext.TASKS,
         originRef: 'task-002',
-        workType: 'TECHNICAL_VISIT',
+        workType: WfmWorkType.TECHNICAL_VISIT,
         priority: WorkOrderPriority.NORMAL,
+        ticketId: 'ticket-002',
       }),
     );
+  });
+
+  it('maps INSTALLATION task type to INSTALLATION work type', async () => {
+    visitRequestsCreateMock.mockResolvedValue({
+      id: 'vr-task-install',
+      title: 'Instalación de tarea',
+      originContext: WorkOrderSourceContext.TASKS,
+    } as never);
+
+    await createTaskVisitRequestAndRoute({
+      taskId: 'task-install',
+      taskType: TaskType.INSTALLATION,
+      title: 'Instalación de tarea',
+      nextAction: 'schedule-now',
+    });
+
+    expect(visitRequestsCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workType: WfmWorkType.INSTALLATION,
+      }),
+    );
+  });
+
+  it('maps CUSTOMER_SUPPORT task type to SUPPORT work type', async () => {
+    visitRequestsCreateMock.mockResolvedValue({
+      id: 'vr-task-support',
+      title: 'Soporte en campo',
+      originContext: WorkOrderSourceContext.TASKS,
+    } as never);
+
+    await createTaskVisitRequestAndRoute({
+      taskId: 'task-support',
+      taskType: TaskType.CUSTOMER_SUPPORT,
+      title: 'Soporte en campo',
+      nextAction: 'schedule-now',
+    });
+
+    expect(visitRequestsCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workType: WfmWorkType.SUPPORT,
+      }),
+    );
+  });
+
+  it('rejects BACKOFFICE task types without creating a visit request', async () => {
+    await expect(
+      createTaskVisitRequestAndRoute({
+        taskId: 'task-backoffice',
+        taskType: TaskType.BACKOFFICE,
+        title: 'Tarea administrativa',
+        nextAction: 'schedule-now',
+      }),
+    ).rejects.toThrow('Este tipo de tarea no requiere solicitud de visita de campo.');
+
+    expect(visitRequestsCreateMock).not.toHaveBeenCalled();
   });
 });

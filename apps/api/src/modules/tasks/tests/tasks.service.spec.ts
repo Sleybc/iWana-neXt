@@ -124,6 +124,63 @@ describe('TasksService', () => {
     );
   });
 
+  it('records a timeline event when a task is created from a ticket reference', async () => {
+    const manager = {
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
+      }),
+      create: jest.fn((_entity, payload) => payload),
+      save: jest.fn().mockImplementation(async (_entity, payload) => ({
+        id: 'task-002',
+        tenantId: 'tenant-001',
+        taskNumber: 'TSK-20260707-001',
+        createdAt: new Date('2026-07-07T18:00:00.000Z'),
+        updatedAt: new Date('2026-07-07T18:00:00.000Z'),
+        ...payload,
+      })),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+
+    await service.create(
+      {
+        type: TaskType.CUSTOMER_SUPPORT,
+        priority: TaskPriority.HIGH,
+        title: 'Atender ticket escalado',
+        originContext: TaskOriginContext.ASSURANCE,
+        responsibleType: TaskResponsibleType.USER,
+        responsibleRefId: 'user-123',
+        recipientType: TaskRecipientType.INTERNAL_AREA,
+        recipientRefId: 'support-area',
+        recipientLabel: 'Soporte',
+        executionMode: TaskExecutionMode.IMMEDIATE,
+        scheduledRequired: false,
+        ticketId: 'ticket-123',
+      },
+      actor,
+    );
+
+    expect(timelineService.recordWithManager).toHaveBeenNthCalledWith(
+      1,
+      manager,
+      expect.objectContaining({
+        eventType: TaskTimelineEventType.CREATED,
+      }),
+    );
+    expect(timelineService.recordWithManager).toHaveBeenNthCalledWith(
+      2,
+      manager,
+      expect.objectContaining({
+        eventType: TaskTimelineEventType.TASK_CREATED_FROM_TICKET,
+        payload: { ticketId: 'ticket-123' },
+        actorUserId: actor.sub,
+      }),
+    );
+  });
+
   it('filters list to own tasks for technician role', async () => {
     const techActor: JwtPayload = { ...actor, sub: 'tech-001', role: UserRole.TECHNICIAN };
     const andWhere = jest.fn().mockReturnThis();

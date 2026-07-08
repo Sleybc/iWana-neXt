@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import {
@@ -29,6 +29,7 @@ import {
 } from '../dto';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { AssetLifecycleService } from './asset-lifecycle.service';
+import { CustomerSiteLocationResolver } from './customer-site-location.resolver';
 import { SerializedAssetService } from './serialized-asset.service';
 import { StockBalanceService } from './stock-balance.service';
 
@@ -77,6 +78,51 @@ export interface StockMovementResult {
   lines: StockMovementLine[];
 }
 
+export interface StockIssueTransferLineInput {
+  itemId: string;
+  quantity: number;
+  lotId?: string | null;
+  serializedAssetId?: string | null;
+  serialNumber?: string | null;
+  condition?: StockBalanceCondition;
+}
+
+export interface RecordStockIssueTransferWithManagerInput {
+  sourceLocationId: string;
+  destinationLocationId: string;
+  idempotencyKey: string;
+  originRefId?: string | null;
+  handoffReference: string;
+  handoffNotes?: string | null;
+  notes?: string | null;
+  lines: StockIssueTransferLineInput[];
+}
+
+export interface RecordStockIssueSaleWithManagerInput {
+  locationId: string;
+  commercialRefId: string;
+  idempotencyKey: string;
+  notes?: string | null;
+  lines: Array<
+    Omit<StockIssueTransferLineInput, 'quantity'> & {
+      quantity: number;
+    }
+  >;
+}
+
+export interface RecordStockIssueInternalConsumptionWithManagerInput {
+  locationId: string;
+  costCenterRefId: string;
+  reason: string;
+  idempotencyKey: string;
+  notes?: string | null;
+  lines: Array<
+    Omit<StockIssueTransferLineInput, 'quantity'> & {
+      quantity: number;
+    }
+  >;
+}
+
 function toQuantity(value: number): string {
   return value.toFixed(2);
 }
@@ -111,6 +157,8 @@ export class StockLedgerService {
     private readonly stockBalanceService: StockBalanceService,
     private readonly serializedAssetService: SerializedAssetService,
     private readonly assetLifecycleService: AssetLifecycleService,
+    @Optional()
+    private readonly customerSiteLocationResolver?: CustomerSiteLocationResolver,
   ) {}
 
   async recordMovement(
@@ -329,50 +377,285 @@ export class StockLedgerService {
     );
   }
 
+  async recordStockIssueTransferWithManager(
+    manager: EntityManager,
+    tenantId: string,
+    input: RecordStockIssueTransferWithManagerInput,
+    actor: JwtPayload,
+  ): Promise<StockMovementResult> {
+    const quantityTotal = input.lines.reduce(
+      (total, line) => total + (line.serializedAssetId || line.serialNumber ? 1 : line.quantity),
+      0,
+    );
+
+    if (!input.handoffReference?.trim()) {
+      throw new BadRequestException('El despacho requiere acta o evidencia de entrega.');
+    }
+
+    if (input.lines.length === 0) {
+      throw new BadRequestException('El despacho debe incluir al menos una línea.');
+    }
+
+    const [sourceLocation, destinationLocation] = await Promise.all([
+      this.findLocation(manager, tenantId, input.sourceLocationId),
+      this.findLocation(manager, tenantId, input.destinationLocationId),
+    ]);
+
+    if (!sourceLocation) {
+      throw new NotFoundException('La ubicación origen no existe.');
+    }
+
+    if (!destinationLocation) {
+      throw new NotFoundException('La ubicación destino no existe.');
+    }
+
+    // Reutiliza las mismas reglas que transfer() para topes móviles y custodias.
+    await this.assertDestinationCapacity(manager, tenantId, destinationLocation, quantityTotal);
+
+    const movementLines: StockLedgerLineInput[] = [];
+    const assetTransitions: StockLedgerAssetTransitionInput[] = [];
+
+    for (const line of input.lines) {
+      const quantity = line.serializedAssetId || line.serialNumber ? 1 : line.quantity;
+
+      movementLines.push(
+        {
+          itemId: line.itemId,
+          locationId: input.sourceLocationId,
+          quantity: -quantity,
+          lotId: line.lotId ?? null,
+          serializedAssetId: line.serializedAssetId ?? null,
+          serialNumber: line.serialNumber ?? null,
+          condition: line.condition ?? StockBalanceCondition.NEW,
+        },
+        {
+          itemId: line.itemId,
+          locationId: input.destinationLocationId,
+          quantity,
+          lotId: line.lotId ?? null,
+          serializedAssetId: line.serializedAssetId ?? null,
+          serialNumber: line.serialNumber ?? null,
+          condition: line.condition ?? StockBalanceCondition.NEW,
+        },
+      );
+
+      if (line.serializedAssetId || line.serialNumber) {
+        const transitions = await this.buildTransferAssetTransitions(
+          manager,
+          tenantId,
+          destinationLocation,
+          {
+            itemId: line.itemId,
+            sourceLocationId: input.sourceLocationId,
+            destinationLocationId: input.destinationLocationId,
+            quantity: 1,
+            serializedAssetId: line.serializedAssetId ?? null,
+            serialNumber: line.serialNumber ?? null,
+            lotId: line.lotId ?? null,
+            condition: line.condition ?? StockBalanceCondition.NEW,
+            handoffReference: input.handoffReference,
+            handoffNotes: input.handoffNotes ?? null,
+            notes: input.notes ?? null,
+          },
+        );
+        assetTransitions.push(...transitions);
+      }
+    }
+
+    return this.recordMovementWithManager(
+      manager,
+      tenantId,
+      {
+        origin: StockMovementOrigin.TRANSFER,
+        originContext: 'inventory.stock-issue',
+        originRefId: input.originRefId ?? null,
+        idempotencyKey: input.idempotencyKey,
+        notes: [input.handoffReference.trim(), input.handoffNotes?.trim(), input.notes?.trim()]
+          .filter((value): value is string => Boolean(value && value.length > 0))
+          .join(' | '),
+        lines: movementLines,
+        assetTransitions,
+      },
+      actor,
+    );
+  }
+
+  async recordStockIssueSaleWithManager(
+    manager: EntityManager,
+    tenantId: string,
+    input: RecordStockIssueSaleWithManagerInput,
+    actor: JwtPayload,
+  ): Promise<StockMovementResult> {
+    if (input.lines.length === 0) {
+      throw new BadRequestException('La salida por venta debe incluir al menos una línea.');
+    }
+
+    const movementLines: StockLedgerLineInput[] = [];
+    const assetTransitions: StockLedgerAssetTransitionInput[] = [];
+
+    for (const line of input.lines) {
+      const quantity = line.serializedAssetId || line.serialNumber ? 1 : line.quantity;
+      movementLines.push({
+        itemId: line.itemId,
+        locationId: input.locationId,
+        quantity: -quantity,
+        lotId: line.lotId ?? null,
+        serializedAssetId: line.serializedAssetId ?? null,
+        serialNumber: line.serialNumber ?? null,
+        condition: line.condition ?? StockBalanceCondition.NEW,
+      });
+
+      if (line.serializedAssetId || line.serialNumber) {
+        assetTransitions.push({
+          serializedAssetId: line.serializedAssetId ?? null,
+          serialNumber: line.serialNumber ?? null,
+          toStatus: SerializedAssetStatus.SOLD,
+          currentLocationId: null,
+          currentResponsibleType: InventoryResponsibleType.NONE,
+          currentResponsibleRefId: null,
+          eventType: AssetLifecycleEventType.SOLD,
+        });
+      }
+    }
+
+    return this.recordMovementWithManager(
+      manager,
+      tenantId,
+      {
+        origin: StockMovementOrigin.SALE,
+        originContext: 'inventory.stock-issue',
+        originRefId: input.commercialRefId,
+        idempotencyKey: input.idempotencyKey,
+        notes: input.notes ?? null,
+        lines: movementLines,
+        assetTransitions,
+      },
+      actor,
+    );
+  }
+
+  async recordStockIssueInternalConsumptionWithManager(
+    manager: EntityManager,
+    tenantId: string,
+    input: RecordStockIssueInternalConsumptionWithManagerInput,
+    actor: JwtPayload,
+  ): Promise<StockMovementResult> {
+    if (input.lines.length === 0) {
+      throw new BadRequestException('El consumo interno debe incluir al menos una línea.');
+    }
+
+    const movementLines: StockLedgerLineInput[] = [];
+    const assetTransitions: StockLedgerAssetTransitionInput[] = [];
+
+    for (const line of input.lines) {
+      const quantity = line.serializedAssetId || line.serialNumber ? 1 : line.quantity;
+      movementLines.push({
+        itemId: line.itemId,
+        locationId: input.locationId,
+        quantity: -quantity,
+        lotId: line.lotId ?? null,
+        serializedAssetId: line.serializedAssetId ?? null,
+        serialNumber: line.serialNumber ?? null,
+        condition: line.condition ?? StockBalanceCondition.NEW,
+      });
+
+      if (line.serializedAssetId || line.serialNumber) {
+        assetTransitions.push({
+          serializedAssetId: line.serializedAssetId ?? null,
+          serialNumber: line.serialNumber ?? null,
+          toStatus: SerializedAssetStatus.INTERNAL_CONSUMED,
+          currentLocationId: null,
+          currentResponsibleType: InventoryResponsibleType.NONE,
+          currentResponsibleRefId: null,
+          eventType: AssetLifecycleEventType.CONSUMED,
+        });
+      }
+    }
+
+    return this.recordMovementWithManager(
+      manager,
+      tenantId,
+      {
+        origin: StockMovementOrigin.INTERNAL_CONSUMPTION,
+        originContext: 'inventory.stock-issue',
+        originRefId: input.costCenterRefId,
+        idempotencyKey: input.idempotencyKey,
+        notes: input.notes ?? input.reason,
+        lines: movementLines,
+        assetTransitions,
+      },
+      actor,
+    );
+  }
+
   async recordExecutionOrderMovement(
     input: ExecutionOrderMovementInput,
     actor: JwtPayload,
   ): Promise<StockMovementResult> {
     const quantity = input.serialNumber ? 1 : input.quantity;
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
 
-    return this.recordMovement(
-      {
-        origin: StockMovementOrigin.EXECUTION_ORDER,
-        originContext: 'tasks.execution-order',
-        originRefId: input.executionOrderId,
-        idempotencyKey:
-          input.idempotencyKey?.trim() ??
-          `eo:${input.executionOrderId}:${input.itemId}:${input.technicianCustodyId}:${input.action}:${input.serialNumber ?? quantity}`,
-        notes: `Movimiento originado desde OT (${input.action}).`,
-        lines: [
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      withTransaction(qr.manager, async (manager) => {
+        const customerSiteLocationId = await this.resolveExecutionOrderCustomerSiteLocation(
+          manager,
+          tenantId,
+          input,
+        );
+        const mainWarehouseLocationId =
+          input.finalDisposition === InventoryDisposition.RETURNED_TO_WAREHOUSE
+            ? await this.resolveMainWarehouseLocationId(manager, tenantId)
+            : null;
+
+        const currentLocationId = this.resolveExecutionOrderCurrentLocationId({
+          input,
+          customerSiteLocationId,
+          mainWarehouseLocationId,
+        });
+
+        return this.recordMovementWithManager(
+          manager,
+          tenantId,
           {
-            itemId: input.itemId,
-            locationId: input.technicianCustodyId,
-            quantity: -quantity,
-            serializedAssetId: null,
-            serialNumber: input.serialNumber ?? null,
+            origin: StockMovementOrigin.EXECUTION_ORDER,
+            originContext: 'tasks.execution-order',
+            originRefId: input.executionOrderId,
+            idempotencyKey:
+              input.idempotencyKey?.trim() ??
+              `eo:${input.executionOrderId}:${input.itemId}:${input.technicianCustodyId}:${input.action}:${input.serialNumber ?? quantity}`,
+            notes: `Movimiento originado desde OT (${input.action}).`,
+            lines: this.buildExecutionOrderMovementLines(
+              input,
+              quantity,
+              customerSiteLocationId,
+              mainWarehouseLocationId,
+            ),
+            assetTransitions:
+              input.serialNumber != null
+                ? [
+                    {
+                      serialNumber: input.serialNumber,
+                      toStatus: this.mapExecutionOrderDispositionToStatus(input.finalDisposition),
+                      currentLocationId,
+                      currentResponsibleType: this.mapExecutionOrderResponsibleType(
+                        input.finalDisposition,
+                      ),
+                      currentResponsibleRefId: this.mapExecutionOrderResponsibleRefId(
+                        input,
+                        customerSiteLocationId,
+                      ),
+                      subscriberRefId:
+                        input.finalDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER
+                          ? (input.subscriberId ?? null)
+                          : null,
+                      eventType: AssetLifecycleEventType.INSTALLED,
+                    },
+                  ]
+                : [],
           },
-        ],
-        assetTransitions:
-          input.serialNumber != null
-            ? [
-                {
-                  serialNumber: input.serialNumber,
-                  toStatus: this.mapExecutionOrderDispositionToStatus(input.finalDisposition),
-                  currentLocationId: this.mapExecutionOrderDispositionToLocation(input),
-                  currentResponsibleType: this.mapExecutionOrderResponsibleType(
-                    input.finalDisposition,
-                  ),
-                  currentResponsibleRefId:
-                    input.finalDisposition === InventoryDisposition.RETURNED_TO_TECHNICIAN_STOCK
-                      ? input.technicianCustodyId
-                      : null,
-                  eventType: AssetLifecycleEventType.INSTALLED,
-                },
-              ]
-            : [],
-      },
-      actor,
+          actor,
+        );
+      }),
     );
   }
 
@@ -786,13 +1069,139 @@ export class StockLedgerService {
     }
   }
 
-  private mapExecutionOrderDispositionToLocation(
+  private resolveExecutionOrderCurrentLocationId(input: {
+    input: ExecutionOrderMovementInput;
+    customerSiteLocationId: string | null;
+    mainWarehouseLocationId: string | null;
+  }): string | null {
+    switch (input.input.finalDisposition) {
+      case InventoryDisposition.INSTALLED_AT_CUSTOMER:
+        return input.customerSiteLocationId;
+      case InventoryDisposition.RETURNED_TO_TECHNICIAN_STOCK:
+        return input.input.technicianCustodyId;
+      case InventoryDisposition.RETURNED_TO_WAREHOUSE:
+        return input.mainWarehouseLocationId;
+      default:
+        return null;
+    }
+  }
+
+  private async resolveExecutionOrderCustomerSiteLocation(
+    manager: EntityManager,
+    tenantId: string,
     input: ExecutionOrderMovementInput,
+  ): Promise<string | null> {
+    if (input.finalDisposition !== InventoryDisposition.INSTALLED_AT_CUSTOMER) {
+      return null;
+    }
+
+    if (input.customerSiteLocationId?.trim()) {
+      return input.customerSiteLocationId.trim();
+    }
+
+    if (!input.subscriberId?.trim()) {
+      throw new BadRequestException(
+        'La instalación en sitio cliente requiere subscriberId o customerSiteLocationId.',
+      );
+    }
+
+    if (!this.customerSiteLocationResolver) {
+      throw new BadRequestException(
+        'No hay resolver configurado para ubicar CUSTOMER_SITE del suscriptor.',
+      );
+    }
+
+    return this.customerSiteLocationResolver.resolveOrCreateWithManager(
+      manager,
+      tenantId,
+      input.subscriberId.trim(),
+    );
+  }
+
+  private buildExecutionOrderMovementLines(
+    input: ExecutionOrderMovementInput,
+    quantity: number,
+    customerSiteLocationId: string | null,
+    mainWarehouseLocationId: string | null,
+  ): StockLedgerLineInput[] {
+    const lines: StockLedgerLineInput[] = [
+      {
+        itemId: input.itemId,
+        locationId: input.technicianCustodyId,
+        quantity: -quantity,
+        serializedAssetId: null,
+        serialNumber: input.serialNumber ?? null,
+      },
+    ];
+
+    if (
+      input.finalDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER &&
+      customerSiteLocationId
+    ) {
+      lines.push({
+        itemId: input.itemId,
+        locationId: customerSiteLocationId,
+        quantity,
+        serializedAssetId: null,
+        serialNumber: input.serialNumber ?? null,
+      });
+    }
+
+    if (input.finalDisposition === InventoryDisposition.RETURNED_TO_WAREHOUSE) {
+      if (!mainWarehouseLocationId) {
+        throw new BadRequestException(
+          'No fue posible resolver la bodega principal para registrar la devolución.',
+        );
+      }
+      lines.push({
+        itemId: input.itemId,
+        locationId: mainWarehouseLocationId,
+        quantity,
+        serializedAssetId: null,
+        serialNumber: input.serialNumber ?? null,
+      });
+    }
+
+    if (input.finalDisposition === InventoryDisposition.RETURNED_TO_TECHNICIAN_STOCK) {
+      lines.push({
+        itemId: input.itemId,
+        locationId: input.technicianCustodyId,
+        quantity,
+        serializedAssetId: null,
+        serialNumber: input.serialNumber ?? null,
+      });
+    }
+
+    return lines;
+  }
+
+  private async resolveMainWarehouseLocationId(
+    manager: EntityManager,
+    tenantId: string,
+  ): Promise<string> {
+    const location = await manager.findOne(StockLocation, {
+      where: {
+        tenantId,
+        type: StockLocationType.MAIN_WAREHOUSE,
+      },
+      order: { createdAt: 'ASC' },
+    });
+
+    if (!location) {
+      throw new BadRequestException('No hay una bodega principal configurada para este tenant.');
+    }
+
+    return location.id;
+  }
+
+  private mapExecutionOrderResponsibleRefId(
+    input: ExecutionOrderMovementInput,
+    customerSiteLocationId: string | null,
   ): string | null {
     switch (input.finalDisposition) {
+      case InventoryDisposition.INSTALLED_AT_CUSTOMER:
+        return input.subscriberId?.trim() ?? customerSiteLocationId;
       case InventoryDisposition.RETURNED_TO_TECHNICIAN_STOCK:
-        return input.technicianCustodyId;
-      case InventoryDisposition.RETURNED_TO_WAREHOUSE:
         return input.technicianCustodyId;
       default:
         return null;

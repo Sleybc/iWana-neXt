@@ -83,6 +83,7 @@ export class RegisterExecutionOrderItemUsageDto {
 export const CloseExecutionOrderSchema = z.object({
   result: z.nativeEnum(ExecutionOrderResult),
   closeNotes: z.string().trim().max(4000).optional().nullable(),
+  customerSignatureRef: z.string().trim().max(160).optional().nullable(),
 });
 
 export type CloseExecutionOrderInput = z.infer<typeof CloseExecutionOrderSchema>;
@@ -95,4 +96,8 @@ export class CloseExecutionOrderDto {
   @ApiPropertyOptional()
   @Allow()
   closeNotes?: string | null;
+
+  @ApiPropertyOptional()
+  @Allow()
+  customerSignatureRef?: string | null;
 }

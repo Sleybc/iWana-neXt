@@ -1,18 +1,28 @@
 'use client';
 
 import { Fragment, useMemo, useState } from 'react';
+import { ChevronDown, ChevronUp, Pencil, Warehouse } from 'lucide-react';
 import { StockLocationStatus, StockLocationType } from '@iwana/shared';
-import { Button } from '@iwana/ui';
+import { Badge, Button, Select, cn } from '@iwana/ui';
 import type {
   InventoryItemRecord,
   StockBalanceRecord,
   StockLocationRecord,
 } from '@/lib/api-client';
-import { PortalEmptyState } from '@/components/shared/portal-ui';
+import {
+  PortalActionToolbar,
+  PortalEmptyState,
+  PortalSearchField,
+  interactiveFocusClassName,
+  portalDataTableShellClassName,
+  portalTableRowHoverClassName,
+} from '@/components/shared/portal-ui';
 import {
   formatInventoryQuantity,
   getStockBalanceConditionLabel,
+  getStockLocationStatusBadgeVariant,
   getStockLocationStatusLabel,
+  getStockLocationTypeBadgeVariant,
   getStockLocationTypeLabel,
 } from './inventory-labels';
 
@@ -21,8 +31,9 @@ const MOBILE_LOCATION_TYPES = new Set<StockLocationType>([
   StockLocationType.MOBILE_CREW,
 ]);
 
-const fieldClassName =
-  'w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-white';
+const tableHeadClass =
+  'px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400';
+const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
 
 export type LocationMatrixCustodyFilter = 'all' | 'mobile';
 
@@ -30,29 +41,80 @@ interface StockLocationsMatrixProps {
   locations: StockLocationRecord[];
   balances: StockBalanceRecord[];
   items: InventoryItemRecord[];
+  userLabelById?: Map<string, string>;
   custodyFilter?: LocationMatrixCustodyFilter;
   onCustodyFilterChange?: (filter: LocationMatrixCustodyFilter) => void;
   onEditLocation?: (location: StockLocationRecord) => void;
 }
 
-function formatOccupation(totalOnHand: number, maxCapacity: string | null): string {
+interface OccupationMeta {
+  label: string;
+  percent: number | null;
+  tone: 'neutral' | 'warning' | 'error';
+}
+
+function formatResponsibleRef(
+  ref: string | null,
+  userLabelById?: Map<string, string>,
+): { label: string; title?: string } {
+  if (!ref) {
+    return { label: 'Sin asignar' };
+  }
+
+  const userLabel = userLabelById?.get(ref);
+  if (userLabel) {
+    return { label: userLabel, title: userLabel };
+  }
+
+  if (ref.length <= 16) {
+    return { label: ref, title: ref };
+  }
+
+  return {
+    label: `${ref.slice(0, 8)}…${ref.slice(-4)}`,
+    title: ref,
+  };
+}
+
+function resolveOccupation(totalOnHand: number, maxCapacity: string | null): OccupationMeta {
   if (!maxCapacity) {
-    return 'Sin tope';
+    return { label: 'Sin tope', percent: null, tone: 'neutral' };
   }
 
   const capacity = Number.parseFloat(maxCapacity);
   if (!Number.isFinite(capacity) || capacity <= 0) {
-    return 'Sin tope';
+    return { label: 'Sin tope', percent: null, tone: 'neutral' };
   }
 
   const percent = Math.min(100, Math.round((totalOnHand / capacity) * 100));
-  return `${percent} %`;
+  const tone = percent >= 90 ? 'error' : percent >= 70 ? 'warning' : 'neutral';
+
+  return {
+    label: `${percent} %`,
+    percent,
+    tone,
+  };
+}
+
+function hasActiveMatrixFilters(input: {
+  search: string;
+  typeFilter: 'all' | StockLocationType;
+  statusFilter: 'all' | StockLocationStatus;
+  custodyFilter: LocationMatrixCustodyFilter;
+}): boolean {
+  return (
+    input.search.trim().length > 0 ||
+    input.typeFilter !== 'all' ||
+    input.statusFilter !== 'all' ||
+    input.custodyFilter === 'mobile'
+  );
 }
 
 export function StockLocationsMatrix({
   locations,
   balances,
   items,
+  userLabelById,
   custodyFilter = 'all',
   onCustodyFilterChange,
   onEditLocation,
@@ -79,7 +141,7 @@ export function StockLocationsMatrix({
           balancesCount: locationBalances.length,
           uniqueItems: new Set(locationBalances.map((balance) => balance.itemId)).size,
           totalOnHand,
-          occupationLabel: formatOccupation(totalOnHand, location.maxCapacity),
+          occupation: resolveOccupation(totalOnHand, location.maxCapacity),
         };
       }),
     [balances, locations],
@@ -108,72 +170,165 @@ export function StockLocationsMatrix({
       return (
         location.name.toLowerCase().includes(normalizedSearch) ||
         location.code.toLowerCase().includes(normalizedSearch) ||
-        (location.responsibleRefId ?? '').toLowerCase().includes(normalizedSearch)
+        (location.responsibleRefId ?? '').toLowerCase().includes(normalizedSearch) ||
+        (userLabelById?.get(location.responsibleRefId ?? '') ?? '')
+          .toLowerCase()
+          .includes(normalizedSearch)
       );
     });
-  }, [custodyFilter, rows, search, statusFilter, typeFilter]);
+  }, [custodyFilter, rows, search, statusFilter, typeFilter, userLabelById]);
+
+  const mobileCount = useMemo(
+    () => rows.filter(({ location }) => MOBILE_LOCATION_TYPES.has(location.type)).length,
+    [rows],
+  );
+
+  const withStockCount = useMemo(
+    () => filteredRows.filter(({ totalOnHand }) => totalOnHand > 0).length,
+    [filteredRows],
+  );
+
+  const filterChips = useMemo(() => {
+    const chips: Array<{ key: string; label: string; onRemove: () => void }> = [];
+
+    if (custodyFilter === 'mobile' && onCustodyFilterChange) {
+      chips.push({
+        key: 'custody',
+        label: 'Custodias móviles',
+        onRemove: () => onCustodyFilterChange('all'),
+      });
+    }
+
+    if (typeFilter !== 'all') {
+      chips.push({
+        key: 'type',
+        label: getStockLocationTypeLabel(typeFilter),
+        onRemove: () => setTypeFilter('all'),
+      });
+    }
+
+    if (statusFilter !== 'all') {
+      chips.push({
+        key: 'status',
+        label: getStockLocationStatusLabel(statusFilter),
+        onRemove: () => setStatusFilter('all'),
+      });
+    }
+
+    if (search.trim()) {
+      chips.push({
+        key: 'search',
+        label: `Búsqueda: ${search.trim()}`,
+        onRemove: () => setSearch(''),
+      });
+    }
+
+    return chips;
+  }, [custodyFilter, onCustodyFilterChange, search, statusFilter, typeFilter]);
+
+  function clearFilters() {
+    setSearch('');
+    setTypeFilter('all');
+    setStatusFilter('all');
+    onCustodyFilterChange?.('all');
+  }
 
   if (rows.length === 0) {
     return (
       <PortalEmptyState
         title="Sin ubicaciones disponibles"
         description="Crea bodegas y custodias para empezar a recibir y mover inventario."
+        icon={Warehouse}
       />
     );
   }
 
+  const resultLabel =
+    filteredRows.length === rows.length
+      ? `${filteredRows.length} ubicaciones`
+      : `${filteredRows.length} de ${rows.length} ubicaciones`;
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="min-w-[12rem] flex-1 space-y-1 text-sm">
-          <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">Buscar</span>
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <article className="rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-iwana-secondary-700 dark:text-iwana-secondary">
+            Ubicaciones visibles
+          </p>
+          <p className="mt-2 text-2xl font-semibold text-iwana-primary dark:text-white">
+            {resultLabel}
+          </p>
+        </article>
+        <article className="rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-iwana-secondary-700 dark:text-iwana-secondary">
+            Custodias móviles
+          </p>
+          <p className="mt-2 text-2xl font-semibold text-iwana-primary dark:text-white">
+            {mobileCount}
+          </p>
+        </article>
+        <article className="rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-iwana-secondary-700 dark:text-iwana-secondary">
+            Con existencia en vista
+          </p>
+          <p className="mt-2 text-2xl font-semibold text-iwana-primary dark:text-white">
+            {withStockCount}
+          </p>
+        </article>
+      </div>
+
+      <div className="space-y-3 border-b border-gray-100 pb-4 dark:border-dark-border">
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1.5fr)_200px_200px_auto] xl:items-end">
+          <PortalSearchField
+            id="locations-matrix-search"
+            label="Buscar bodega"
             placeholder="Código, nombre o responsable"
-            className={fieldClassName}
+            value={search}
+            onChange={setSearch}
           />
-        </label>
-
-        <label className="min-w-[10rem] space-y-1 text-sm">
-          <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">Tipo</span>
-          <select
+          <Select
+            label="Tipo"
+            className="h-12"
             value={typeFilter}
+            options={[
+              { value: 'all', label: 'Todos los tipos' },
+              ...Object.values(StockLocationType).map((type) => ({
+                value: type,
+                label: getStockLocationTypeLabel(type),
+              })),
+            ]}
             onChange={(event) => setTypeFilter(event.target.value as 'all' | StockLocationType)}
-            className={fieldClassName}
-          >
-            <option value="all">Todos</option>
-            {Object.values(StockLocationType).map((type) => (
-              <option key={type} value={type}>
-                {getStockLocationTypeLabel(type)}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="min-w-[10rem] space-y-1 text-sm">
-          <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">Estado</span>
-          <select
+          />
+          <Select
+            label="Estado"
+            className="h-12"
             value={statusFilter}
+            options={[
+              { value: 'all', label: 'Todos los estados' },
+              ...Object.values(StockLocationStatus).map((status) => ({
+                value: status,
+                label: getStockLocationStatusLabel(status),
+              })),
+            ]}
             onChange={(event) => setStatusFilter(event.target.value as 'all' | StockLocationStatus)}
-            className={fieldClassName}
-          >
-            <option value="all">Todos</option>
-            {Object.values(StockLocationStatus).map((status) => (
-              <option key={status} value={status}>
-                {getStockLocationStatusLabel(status)}
-              </option>
-            ))}
-          </select>
-        </label>
+          />
+          {hasActiveMatrixFilters({ search, typeFilter, statusFilter, custodyFilter }) ? (
+            <Button type="button" variant="secondary" className="h-12 px-4" onClick={clearFilters}>
+              Limpiar filtros
+            </Button>
+          ) : null}
+        </div>
 
         {onCustodyFilterChange ? (
-          <div className="flex flex-wrap gap-2">
+          <PortalActionToolbar compact>
             <Button
               type="button"
               size="sm"
-              variant={custodyFilter === 'all' ? 'primary' : 'secondary'}
+              variant={custodyFilter === 'all' ? 'primary' : 'ghost'}
+              className={cn(
+                'rounded-xl',
+                custodyFilter !== 'all' && 'text-iwana-secondary-700 dark:text-gray-300',
+              )}
               onClick={() => onCustodyFilterChange('all')}
             >
               Todas las bodegas
@@ -181,11 +336,35 @@ export function StockLocationsMatrix({
             <Button
               type="button"
               size="sm"
-              variant={custodyFilter === 'mobile' ? 'primary' : 'secondary'}
+              variant={custodyFilter === 'mobile' ? 'primary' : 'ghost'}
+              className={cn(
+                'rounded-xl',
+                custodyFilter !== 'mobile' && 'text-iwana-secondary-700 dark:text-gray-300',
+              )}
               onClick={() => onCustodyFilterChange('mobile')}
             >
               Custodias móviles
             </Button>
+          </PortalActionToolbar>
+        ) : null}
+
+        {filterChips.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {filterChips.map((chip) => (
+              <button
+                key={chip.key}
+                type="button"
+                aria-label={`Quitar filtro ${chip.label}`}
+                className={cn(
+                  'inline-flex items-center gap-2 rounded-full border border-gray-200 bg-iwana-surface-soft px-3 py-1 text-xs font-medium text-iwana-secondary-700 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-200',
+                  interactiveFocusClassName,
+                )}
+                onClick={chip.onRemove}
+              >
+                {chip.label}
+                <span aria-hidden>×</span>
+              </button>
+            ))}
           </div>
         ) : null}
       </div>
@@ -193,177 +372,232 @@ export function StockLocationsMatrix({
       {filteredRows.length === 0 ? (
         <PortalEmptyState
           title="Sin resultados para los filtros aplicados"
-          description="Ajusta la búsqueda o cambia el alcance de custodias móviles."
+          description="Ajusta la búsqueda o limpia los filtros para ampliar el listado."
+          action={
+            <Button type="button" variant="secondary" onClick={clearFilters}>
+              Limpiar filtros
+            </Button>
+          }
         />
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-3">
-          <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-border">
-            <thead className="bg-gray-50 dark:bg-dark-surface-2">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Ubicación
-                </th>
-                <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Tipo
-                </th>
-                <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Estado
-                </th>
-                <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Responsable
-                </th>
-                <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Capacidad
-                </th>
-                <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Ocupación
-                </th>
-                <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Balances
-                </th>
-                <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Ítems distintos
-                </th>
-                <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Existencia
-                </th>
-                <th className="px-4 py-3 text-right font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Acciones
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
-              {filteredRows.map(
-                ({
-                  location,
-                  locationBalances,
-                  balancesCount,
-                  uniqueItems,
-                  totalOnHand,
-                  occupationLabel,
-                }) => {
-                  const isExpanded = expandedLocationId === location.id;
+        <div className={portalDataTableShellClassName}>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1080px] text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-3">
+                  <th className={tableHeadClass}>Ubicación</th>
+                  <th className={tableHeadClass}>Tipo</th>
+                  <th className={tableHeadClass}>Estado</th>
+                  <th className={`${tableHeadClass} hidden lg:table-cell`}>Responsable</th>
+                  <th className={`${tableHeadClass} hidden md:table-cell`}>Capacidad</th>
+                  <th className={tableHeadClass}>Ocupación</th>
+                  <th className={`${tableHeadClass} hidden xl:table-cell`}>Balances</th>
+                  <th className={`${tableHeadClass} hidden xl:table-cell`}>Ítems</th>
+                  <th className={tableHeadClass}>Existencia</th>
+                  <th className={`${tableHeadClass} text-right`}>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRows.map(
+                  ({
+                    location,
+                    locationBalances,
+                    balancesCount,
+                    uniqueItems,
+                    totalOnHand,
+                    occupation,
+                  }) => {
+                    const isExpanded = expandedLocationId === location.id;
+                    const responsible = formatResponsibleRef(
+                      location.responsibleRefId,
+                      userLabelById,
+                    );
 
-                  return (
-                    <Fragment key={location.id}>
-                      <tr>
-                        <td className="px-4 py-3">
-                          <p className="font-medium text-gray-900 dark:text-white">
-                            {location.name}
-                          </p>
-                          <p className="font-mono text-xs text-gray-500 dark:text-gray-400">
-                            {location.code}
-                          </p>
-                        </td>
-                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                          {getStockLocationTypeLabel(location.type)}
-                        </td>
-                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                          {getStockLocationStatusLabel(location.status)}
-                        </td>
-                        <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-300">
-                          {location.responsibleRefId ?? 'Sin responsable'}
-                        </td>
-                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                          {location.maxCapacity
-                            ? formatInventoryQuantity(location.maxCapacity)
-                            : 'Sin tope'}
-                        </td>
-                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                          {occupationLabel}
-                        </td>
-                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                          {balancesCount}
-                        </td>
-                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                          {uniqueItems}
-                        </td>
-                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                          {formatInventoryQuantity(totalOnHand)}
-                        </td>
-                        <td className="space-x-2 px-4 py-3 text-right">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            onClick={() =>
-                              setExpandedLocationId((current) =>
-                                current === location.id ? null : location.id,
-                              )
-                            }
-                            aria-expanded={isExpanded}
-                            aria-label={`${isExpanded ? 'Ocultar' : 'Ver'} balances de ${location.name}`}
+                    return (
+                      <Fragment key={location.id}>
+                        <tr className={portalTableRowHoverClassName}>
+                          <td className={cellClass}>
+                            <p className="font-medium text-gray-900 dark:text-white">
+                              {location.name}
+                            </p>
+                            <p className="mt-0.5 font-mono text-xs text-gray-500 dark:text-gray-400">
+                              {location.code}
+                            </p>
+                          </td>
+                          <td className={cellClass}>
+                            <Badge variant={getStockLocationTypeBadgeVariant(location.type)}>
+                              {getStockLocationTypeLabel(location.type)}
+                            </Badge>
+                          </td>
+                          <td className={cellClass}>
+                            <Badge variant={getStockLocationStatusBadgeVariant(location.status)}>
+                              {getStockLocationStatusLabel(location.status)}
+                            </Badge>
+                          </td>
+                          <td
+                            className={`${cellClass} hidden text-sm lg:table-cell`}
+                            title={responsible.title}
                           >
-                            {isExpanded ? 'Ocultar balances' : 'Ver balances'}
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => onEditLocation?.(location)}
-                            aria-label={`Editar ${location.name}`}
-                          >
-                            Editar
-                          </Button>
-                        </td>
-                      </tr>
-                      {isExpanded ? (
-                        <tr key={`${location.id}-balances`}>
-                          <td colSpan={10} className="bg-gray-50 px-4 py-3 dark:bg-dark-surface-2">
-                            {locationBalances.length === 0 ? (
-                              <p className="text-sm text-gray-600 dark:text-gray-300">
-                                Esta ubicación no tiene balances visibles.
-                              </p>
-                            ) : (
-                              <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-3">
-                                <table className="min-w-full text-sm">
-                                  <thead>
-                                    <tr className="border-b border-gray-100 dark:border-dark-border">
-                                      <th className="px-3 py-2 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                                        Ítem
-                                      </th>
-                                      <th className="px-3 py-2 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                                        Condición
-                                      </th>
-                                      <th className="px-3 py-2 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                                        Existencia
-                                      </th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {locationBalances.map((balance) => {
-                                      const item = itemMap.get(balance.itemId);
-
-                                      return (
-                                        <tr
-                                          key={balance.id}
-                                          className="border-b border-gray-50 last:border-b-0 dark:border-dark-border"
-                                        >
-                                          <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
-                                            {item ? `${item.sku} · ${item.name}` : balance.itemId}
-                                          </td>
-                                          <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
-                                            {getStockBalanceConditionLabel(balance.condition)}
-                                          </td>
-                                          <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
-                                            {formatInventoryQuantity(balance.quantityOnHand)}
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                              </div>
-                            )}
+                            <span
+                              className={cn(
+                                location.responsibleRefId
+                                  ? 'text-gray-700 dark:text-gray-300'
+                                  : 'text-gray-500 dark:text-gray-400',
+                              )}
+                            >
+                              {responsible.label}
+                            </span>
+                          </td>
+                          <td className={`${cellClass} hidden md:table-cell`}>
+                            {location.maxCapacity
+                              ? formatInventoryQuantity(location.maxCapacity)
+                              : 'Sin tope'}
+                          </td>
+                          <td className={cellClass}>
+                            <div className="space-y-1.5">
+                              <span
+                                className={cn(
+                                  'text-sm font-medium',
+                                  occupation.tone === 'error'
+                                    ? 'text-red-700 dark:text-red-300'
+                                    : occupation.tone === 'warning'
+                                      ? 'text-amber-700 dark:text-amber-300'
+                                      : 'text-gray-700 dark:text-gray-300',
+                                )}
+                              >
+                                {occupation.label}
+                              </span>
+                              {occupation.percent != null ? (
+                                <div
+                                  className="h-1.5 w-full max-w-[7rem] overflow-hidden rounded-full bg-gray-100 dark:bg-dark-surface-2"
+                                  role="presentation"
+                                >
+                                  <div
+                                    className={cn(
+                                      'h-full rounded-full transition-[width] duration-200',
+                                      occupation.tone === 'error'
+                                        ? 'bg-red-500'
+                                        : occupation.tone === 'warning'
+                                          ? 'bg-amber-500'
+                                          : 'bg-iwana-primary',
+                                    )}
+                                    style={{ width: `${occupation.percent}%` }}
+                                  />
+                                </div>
+                              ) : null}
+                            </div>
+                          </td>
+                          <td className={`${cellClass} hidden xl:table-cell`}>{balancesCount}</td>
+                          <td className={`${cellClass} hidden xl:table-cell`}>{uniqueItems}</td>
+                          <td className={cellClass}>
+                            <span className="font-semibold text-iwana-primary dark:text-white">
+                              {formatInventoryQuantity(totalOnHand)}
+                            </span>
+                          </td>
+                          <td className={`${cellClass} text-right`}>
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() =>
+                                  setExpandedLocationId((current) =>
+                                    current === location.id ? null : location.id,
+                                  )
+                                }
+                                aria-expanded={isExpanded}
+                                aria-label={`${isExpanded ? 'Ocultar' : 'Ver'} balances de ${location.name}`}
+                              >
+                                {isExpanded ? (
+                                  <ChevronUp className="h-4 w-4" aria-hidden="true" />
+                                ) : (
+                                  <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                                )}
+                                <span className="sr-only">
+                                  {isExpanded ? 'Ocultar balances' : 'Ver balances'}
+                                </span>
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => onEditLocation?.(location)}
+                                aria-label={`Editar ${location.name}`}
+                              >
+                                <Pencil className="h-4 w-4" aria-hidden="true" />
+                                <span className="sr-only">Editar</span>
+                              </Button>
+                            </div>
                           </td>
                         </tr>
-                      ) : null}
-                    </Fragment>
-                  );
-                },
-              )}
-            </tbody>
-          </table>
+                        {isExpanded ? (
+                          <tr key={`${location.id}-balances`}>
+                            <td
+                              colSpan={10}
+                              className="bg-iwana-surface-soft/70 px-4 py-4 dark:bg-dark-surface-2/70"
+                            >
+                              <div className="border-l-2 border-iwana-primary pl-4">
+                                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                                  Balances en {location.name}
+                                </p>
+                                {locationBalances.length === 0 ? (
+                                  <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                                    Esta ubicación no tiene balances visibles.
+                                  </p>
+                                ) : (
+                                  <div className="mt-3 overflow-x-auto">
+                                    <table className="w-full min-w-[640px] text-sm">
+                                      <thead>
+                                        <tr className="border-b border-gray-200 dark:border-dark-border">
+                                          <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
+                                            Ítem
+                                          </th>
+                                          <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
+                                            Condición
+                                          </th>
+                                          <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
+                                            Existencia
+                                          </th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {locationBalances.map((balance) => {
+                                          const item = itemMap.get(balance.itemId);
+
+                                          return (
+                                            <tr
+                                              key={balance.id}
+                                              className="border-b border-gray-100 last:border-b-0 dark:border-dark-border"
+                                            >
+                                              <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
+                                                {item
+                                                  ? `${item.sku} · ${item.name}`
+                                                  : balance.itemId}
+                                              </td>
+                                              <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
+                                                {getStockBalanceConditionLabel(balance.condition)}
+                                              </td>
+                                              <td className="px-3 py-2 font-medium text-iwana-primary dark:text-white">
+                                                {formatInventoryQuantity(balance.quantityOnHand)}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    );
+                  },
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

@@ -55,6 +55,7 @@ interface AssuranceTicketDrawerProps {
   isLinkingWorkOrder: boolean;
   canManage: boolean;
   canOperate: boolean;
+  onCreateLinkedTask?: () => void;
   onClose: () => void;
   onAddComment: (payload: AddAssuranceCommentDto) => Promise<void>;
   onTransitionStatus: (payload: TransitionAssuranceTicketDto) => Promise<void>;
@@ -88,6 +89,7 @@ export function AssuranceTicketDrawer({
   isLinkingWorkOrder,
   canManage,
   canOperate,
+  onCreateLinkedTask,
   onClose,
   onAddComment,
   onTransitionStatus,
@@ -438,6 +440,23 @@ export function AssuranceTicketDrawer({
                       title="Acciones restringidas"
                       description="Tu rol solo tiene acceso de lectura sobre este caso en el portal empresarial."
                     />
+                  ) : null}
+
+                  {canOperate && !terminal && onCreateLinkedTask ? (
+                    <section className="rounded-2xl border border-gray-200 bg-[#fbfcf8] p-4 dark:border-dark-border dark:bg-dark-surface-3">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                        Crear tarea vinculada
+                      </p>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        Registra una tarea operativa asociada a este ticket sin crear una visita de
+                        forma automática.
+                      </p>
+                      <div className="mt-4">
+                        <Button type="button" variant="secondary" onClick={onCreateLinkedTask}>
+                          Crear tarea vinculada
+                        </Button>
+                      </div>
+                    </section>
                   ) : null}
 
                   <div className="grid gap-5 xl:grid-cols-2">
