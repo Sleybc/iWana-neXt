@@ -6,8 +6,12 @@ import type { PurchaseRequestRecord } from '@/lib/api-client';
 import {
   PortalPanel,
   PortalSkeletonBlock,
+  type PortalMetricCardAccent,
   interactiveFocusClassName,
+  portalMetricCardAccentClassName,
+  portalMetricCardShellClassName,
 } from '@/components/shared/portal-ui';
+import { cn } from '@iwana/ui';
 import {
   type PurchaseKpiPreset,
   isPurchaseRequestOverdue,
@@ -27,7 +31,7 @@ interface MetricCardConfig {
   eyebrow: string;
   title: string;
   description: string;
-  accent: 'neutral' | 'primary' | 'warning' | 'danger';
+  accent: PortalMetricCardAccent;
 }
 
 const METRIC_CARDS: MetricCardConfig[] = [
@@ -48,8 +52,8 @@ const METRIC_CARDS: MetricCardConfig[] = [
   {
     preset: 'readyForPo',
     eyebrow: 'Orden de compra',
-    title: 'Listas para OC',
-    description: 'Solicitudes aprobadas pendientes de conversión.',
+    title: 'Listas para orden de compra',
+    description: 'Solicitudes aprobadas pendientes de emitir la orden.',
     accent: 'primary',
   },
   {
@@ -63,7 +67,7 @@ const METRIC_CARDS: MetricCardConfig[] = [
     preset: 'urgent',
     eyebrow: 'Prioridad',
     title: 'Urgentes',
-    description: 'Solicitudes marcadas como urgencia operativa.',
+    description: 'Solicitudes marcadas con prioridad urgente.',
     accent: 'danger',
   },
   {
@@ -94,19 +98,6 @@ function countMetric(requests: PurchaseRequestRecord[], preset: PurchaseKpiPrese
   }
 }
 
-function accentClassName(accent: MetricCardConfig['accent'], isActive: boolean): string {
-  const base =
-    accent === 'primary'
-      ? 'border-iwana-primary/20 bg-iwana-primary-50/70 dark:border-iwana-primary-400/30 dark:bg-iwana-primary-900/15'
-      : accent === 'warning'
-        ? 'border-amber-200 bg-amber-50/80 dark:border-amber-500/20 dark:bg-amber-950/20'
-        : accent === 'danger'
-          ? 'border-rose-200 bg-rose-50/80 dark:border-rose-500/20 dark:bg-rose-950/20'
-          : 'border-gray-200 bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-3';
-
-  return isActive ? `${base} ring-2 ring-iwana-primary/40` : base;
-}
-
 export function PurchaseWorkspaceSummary({
   requests,
   filters,
@@ -117,17 +108,17 @@ export function PurchaseWorkspaceSummary({
 
   return (
     <PortalPanel
-      eyebrow="Bandeja"
+      eyebrow="Listado"
       title="Resumen de compras"
-      description="Indicadores operativos para priorizar cotizaciones, aprobaciones y recepciones."
+      description="Indicadores para priorizar cotizaciones, aprobaciones y recepciones."
     >
       <section aria-label="Indicadores de compras" className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
-            Haz clic en un indicador para filtrar la bandeja
+            Haz clic en un indicador para filtrar el listado
           </p>
           <Badge variant="neutral" className="px-3 py-1 text-[11px] uppercase tracking-tight">
-            Lectura operativa
+            Resumen rápido
           </Badge>
         </div>
 
@@ -148,7 +139,12 @@ export function PurchaseWorkspaceSummary({
                 type="button"
                 aria-pressed={isActive}
                 onClick={() => onKpiFilterChange(metric.preset)}
-                className={`flex h-full min-h-[168px] w-full flex-col rounded-3xl border px-4 py-4 text-left shadow-sm transition ${accentClassName(metric.accent, isActive)} ${interactiveFocusClassName}`}
+                className={cn(
+                  portalMetricCardShellClassName,
+                  'min-h-[168px] w-full text-left transition',
+                  portalMetricCardAccentClassName(metric.accent, { isActive }),
+                  interactiveFocusClassName,
+                )}
               >
                 <p className="portal-eyebrow-muted">{metric.eyebrow}</p>
                 <p className="mt-2 text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">

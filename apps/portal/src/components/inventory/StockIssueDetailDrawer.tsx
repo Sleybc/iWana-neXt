@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Badge,
   Button,
@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
+  Select,
 } from '@iwana/ui';
 import { StockIssueStatus } from '@iwana/shared';
 import type {
@@ -19,15 +20,24 @@ import type {
   StockIssueDetailRecord,
   StockLocationRecord,
 } from '@/lib/api-client';
-import { PortalAlert, PortalSectionHeader } from '@/components/shared/portal-ui';
+import {
+  PortalAlert,
+  PortalEmptyState,
+  PortalSectionHeader,
+  portalDataTableCellClassName,
+  portalDataTableHeadClassName,
+  portalTableRowHoverClassName,
+} from '@/components/shared/portal-ui';
 import {
   formatInventoryDateTime,
   formatInventoryQuantity,
   getStockBalanceConditionLabel,
+  getStockIssueHandoffMethodLabel,
   getStockIssueStatusBadgeVariant,
   getStockIssueStatusLabel,
   getStockIssueTypeBadgeVariant,
   getStockIssueTypeLabel,
+  STOCK_ISSUE_HANDOFF_METHOD_OPTIONS,
 } from './inventory-labels';
 import { formatSerializedAssetLabel } from './stock-issue-line-utils';
 
@@ -38,11 +48,12 @@ const CANCELLABLE_STATUSES = new Set<StockIssueStatus>([
   StockIssueStatus.READY_TO_DISPATCH,
 ]);
 
-const tableHeadClass =
-  'px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400';
-const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
-
 const DISPATCHABLE_STATUSES = CANCELLABLE_STATUSES;
+
+const HANDOFF_METHOD_SELECT_OPTIONS = STOCK_ISSUE_HANDOFF_METHOD_OPTIONS.map((option) => ({
+  value: option.value,
+  label: option.label,
+}));
 
 export interface StockIssueDetailDrawerProps {
   open: boolean;
@@ -70,12 +81,23 @@ export function StockIssueDetailDrawer({
   const [handoffMethod, setHandoffMethod] = useState('ACTA');
   const [handoffNotes, setHandoffNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [dispatchSuccess, setDispatchSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
 
   const canDispatch = Boolean(issue && DISPATCHABLE_STATUSES.has(issue.status));
   const canEdit = Boolean(issue && issue.status === StockIssueStatus.REQUESTED && onEdit);
   const canCancel = Boolean(issue && CANCELLABLE_STATUSES.has(issue.status) && onCancel);
+  const isBusy = isSubmitting || isCancelling;
+
+  useEffect(() => {
+    setHandoffMethod('ACTA');
+    setHandoffNotes('');
+    setError(null);
+    setDispatchSuccess(false);
+    setIsSubmitting(false);
+    setIsCancelling(false);
+  }, [issue?.id]);
 
   const header = useMemo(() => {
     if (!issue) return null;
@@ -88,6 +110,10 @@ export function StockIssueDetailDrawer({
       destinationLabel: dest
         ? `${dest.code} · ${dest.name}`
         : (issue.destinationRefId ?? 'Sin destino'),
+      movementLabel: issue.stockMovementId ? 'Registrado' : 'Pendiente de despacho',
+      handoffLabel: issue.handoffMethod
+        ? getStockIssueHandoffMethodLabel(issue.handoffMethod)
+        : null,
     };
   }, [issue, locationsById]);
 
@@ -99,6 +125,7 @@ export function StockIssueDetailDrawer({
     }
 
     setError(null);
+    setDispatchSuccess(false);
     setIsCancelling(true);
     try {
       await onCancel(issue.id);
@@ -112,6 +139,7 @@ export function StockIssueDetailDrawer({
   async function dispatch() {
     if (!issue) return;
     setError(null);
+    setDispatchSuccess(false);
     setIsSubmitting(true);
     try {
       await onDispatch(issue.id, {
@@ -119,6 +147,7 @@ export function StockIssueDetailDrawer({
         handoffNotes: handoffNotes.trim() || null,
         handoffAttachments: [],
       });
+      setDispatchSuccess(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No fue posible despachar la salida.');
     } finally {
@@ -139,12 +168,54 @@ export function StockIssueDetailDrawer({
     return '—';
   }
 
+  function renderActions(showDispatchPrimary: boolean) {
+    return (
+      <div className="flex flex-wrap justify-end gap-2">
+        {canCancel ? (
+          <Button
+            type="button"
+            variant="ghost"
+            loading={isCancelling}
+            disabled={isBusy}
+            onClick={() => void cancelIssue()}
+          >
+            Cancelar salida
+          </Button>
+        ) : null}
+        {canEdit ? (
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={isBusy}
+            onClick={() => onEdit?.(issue!)}
+          >
+            Editar
+          </Button>
+        ) : null}
+        <Button type="button" variant="secondary" onClick={onClose} disabled={isBusy}>
+          Cerrar
+        </Button>
+        {showDispatchPrimary ? (
+          <Button
+            type="button"
+            loading={isSubmitting}
+            disabled={!handoffMethod.trim() || isBusy}
+            onClick={() => void dispatch()}
+          >
+            Confirmar despacho
+          </Button>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <Dialog
       open={open}
       onOpenChange={(nextOpen) => {
         if (!nextOpen) {
           setError(null);
+          setDispatchSuccess(false);
           onClose();
         }
       }}
@@ -168,6 +239,14 @@ export function StockIssueDetailDrawer({
           />
         ) : null}
 
+        {dispatchSuccess ? (
+          <PortalAlert
+            variant="success"
+            title="Despacho confirmado"
+            description="El movimiento quedó registrado. Puedes cerrar este panel o revisar el historial."
+          />
+        ) : null}
+
         {issue && header ? (
           <div className="space-y-5">
             <div className="flex flex-wrap items-center gap-2">
@@ -182,100 +261,123 @@ export function StockIssueDetailDrawer({
               </span>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <dl className="rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 text-sm dark:border-dark-border dark:bg-dark-surface-3">
-                <dt className="text-xs text-gray-500 dark:text-gray-400">Origen</dt>
+            <div className="grid gap-4 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3 sm:grid-cols-2">
+              <dl className="text-sm">
+                <dt className="portal-eyebrow-muted">Origen</dt>
                 <dd className="mt-1 font-medium text-gray-900 dark:text-white">
                   {header.sourceLabel}
                 </dd>
               </dl>
-              <dl className="rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 text-sm dark:border-dark-border dark:bg-dark-surface-3">
-                <dt className="text-xs text-gray-500 dark:text-gray-400">Destino</dt>
+              <dl className="text-sm">
+                <dt className="portal-eyebrow-muted">Destino</dt>
                 <dd className="mt-1 font-medium text-gray-900 dark:text-white">
                   {header.destinationLabel}
                 </dd>
               </dl>
-              <dl className="rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 text-sm dark:border-dark-border dark:bg-dark-surface-3">
-                <dt className="text-xs text-gray-500 dark:text-gray-400">Creada</dt>
+              <dl className="text-sm">
+                <dt className="portal-eyebrow-muted">Creada</dt>
                 <dd className="mt-1 font-medium text-gray-900 dark:text-white">
                   {formatInventoryDateTime(issue.createdAt)}
                 </dd>
               </dl>
-              <dl className="rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 text-sm dark:border-dark-border dark:bg-dark-surface-3">
-                <dt className="text-xs text-gray-500 dark:text-gray-400">Movimiento</dt>
+              <dl className="text-sm">
+                <dt className="portal-eyebrow-muted">Movimiento</dt>
                 <dd className="mt-1 font-medium text-gray-900 dark:text-white">
-                  {issue.stockMovementId ?? 'Pendiente de despacho'}
+                  {header.movementLabel}
                 </dd>
               </dl>
+              {header.handoffLabel ? (
+                <dl className="text-sm sm:col-span-2">
+                  <dt className="portal-eyebrow-muted">Método de entrega</dt>
+                  <dd className="mt-1 font-medium text-gray-900 dark:text-white">
+                    {header.handoffLabel}
+                  </dd>
+                </dl>
+              ) : null}
             </div>
 
             <div>
               <PortalSectionHeader
                 title="Líneas de salida"
-                description="Cantidades solicitadas y despachadas por ítem."
+                description="Cantidades solicitadas y despachadas por producto."
               />
-              <div className="mt-3 overflow-x-auto rounded-2xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-3">
-                <table className="w-full min-w-[480px] text-sm">
-                  <caption className="sr-only">Líneas de la salida</caption>
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-3">
-                      <th scope="col" className={tableHeadClass}>
-                        Ítem
-                      </th>
-                      <th scope="col" className={tableHeadClass}>
-                        Condición
-                      </th>
-                      <th scope="col" className={tableHeadClass}>
-                        Lote / serial
-                      </th>
-                      <th scope="col" className={tableHeadClass}>
-                        Solicitado
-                      </th>
-                      <th scope="col" className={tableHeadClass}>
-                        Despachado
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {issue.lines.map((line) => {
-                      const item = itemsById.get(line.itemId);
-                      return (
-                        <tr
-                          key={line.id}
-                          className="border-b border-gray-100 dark:border-dark-border"
-                        >
-                          <td className={cellClass}>
-                            {item ? `${item.sku} · ${item.name}` : line.itemId}
-                          </td>
-                          <td className={cellClass}>
-                            {getStockBalanceConditionLabel(line.condition)}
-                          </td>
-                          <td className={cellClass}>{formatLineTrackingLabel(line)}</td>
-                          <td className={cellClass}>
-                            {formatInventoryQuantity(line.requestedQty)}
-                          </td>
-                          <td className={cellClass}>
-                            {line.dispatchedQty ? formatInventoryQuantity(line.dispatchedQty) : '—'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              {issue.lines.length === 0 ? (
+                <div className="mt-3">
+                  <PortalEmptyState
+                    title="Sin líneas en esta salida"
+                    description="Edita la salida para agregar productos antes de despachar."
+                  />
+                </div>
+              ) : (
+                <div className="mt-3 overflow-x-auto rounded-2xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-2">
+                  <table className="w-full min-w-[480px] text-sm">
+                    <caption className="sr-only">Líneas de la salida</caption>
+                    <thead>
+                      <tr className="border-b border-gray-100 bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-3">
+                        <th scope="col" className={portalDataTableHeadClassName}>
+                          Producto
+                        </th>
+                        <th scope="col" className={portalDataTableHeadClassName}>
+                          Condición
+                        </th>
+                        <th scope="col" className={portalDataTableHeadClassName}>
+                          Lote / serial
+                        </th>
+                        <th scope="col" className={portalDataTableHeadClassName}>
+                          Solicitado
+                        </th>
+                        <th scope="col" className={portalDataTableHeadClassName}>
+                          Despachado
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {issue.lines.map((line) => {
+                        const item = itemsById.get(line.itemId);
+                        return (
+                          <tr
+                            key={line.id}
+                            className={`border-b border-gray-100 dark:border-dark-border ${portalTableRowHoverClassName}`}
+                          >
+                            <td className={portalDataTableCellClassName}>
+                              {item ? `${item.sku} · ${item.name}` : line.itemId}
+                            </td>
+                            <td className={portalDataTableCellClassName}>
+                              {getStockBalanceConditionLabel(line.condition)}
+                            </td>
+                            <td className={portalDataTableCellClassName}>
+                              {formatLineTrackingLabel(line)}
+                            </td>
+                            <td className={portalDataTableCellClassName}>
+                              {formatInventoryQuantity(line.requestedQty)}
+                            </td>
+                            <td className={portalDataTableCellClassName}>
+                              {line.dispatchedQty
+                                ? formatInventoryQuantity(line.dispatchedQty)
+                                : '—'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
-            {canDispatch ? (
-              <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-3">
+            {canDispatch && !dispatchSuccess ? (
+              <section className="space-y-4 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
                 <PortalSectionHeader
-                  title="Despachar"
-                  description="Confirma el método de entrega para generar el movimiento de stock."
+                  title="Confirmar despacho"
+                  description="Indica cómo se entregó el material y registra la salida."
                 />
-                <div className="mt-3 grid gap-4 md:grid-cols-2">
-                  <Input
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Select
+                    id="issue-handoff-method"
                     label="Método de entrega"
                     value={handoffMethod}
                     onChange={(event) => setHandoffMethod(event.target.value)}
+                    options={HANDOFF_METHOD_SELECT_OPTIONS}
                   />
                   <Input
                     label="Notas (opcional)"
@@ -283,73 +385,17 @@ export function StockIssueDetailDrawer({
                     onChange={(event) => setHandoffNotes(event.target.value)}
                   />
                 </div>
-                <div className="mt-4 flex flex-wrap justify-end gap-2">
-                  {canCancel ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      loading={isCancelling}
-                      disabled={isSubmitting || isCancelling}
-                      onClick={() => void cancelIssue()}
-                    >
-                      Cancelar salida
-                    </Button>
-                  ) : null}
-                  {canEdit ? (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      disabled={isSubmitting || isCancelling}
-                      onClick={() => onEdit?.(issue)}
-                    >
-                      Editar
-                    </Button>
-                  ) : null}
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={onClose}
-                    disabled={isSubmitting || isCancelling}
-                  >
-                    Cerrar
-                  </Button>
-                  <Button
-                    type="button"
-                    loading={isSubmitting}
-                    disabled={!handoffMethod.trim() || isCancelling}
-                    onClick={() => void dispatch()}
-                  >
-                    Confirmar despacho
-                  </Button>
-                </div>
-              </div>
+                {renderActions(true)}
+              </section>
             ) : (
-              <div className="flex flex-wrap justify-end gap-2">
-                {canCancel ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    loading={isCancelling}
-                    onClick={() => void cancelIssue()}
-                  >
-                    Cancelar salida
-                  </Button>
-                ) : null}
-                {canEdit ? (
-                  <Button type="button" variant="secondary" onClick={() => onEdit?.(issue)}>
-                    Editar
-                  </Button>
-                ) : null}
-                <Button type="button" variant="secondary" onClick={onClose}>
-                  Cerrar
-                </Button>
-              </div>
+              renderActions(false)
             )}
           </div>
         ) : (
-          <div className="rounded-2xl border border-gray-200 bg-iwana-surface-soft p-6 text-sm text-gray-500 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-400">
-            No hay salida seleccionada.
-          </div>
+          <PortalEmptyState
+            title="No hay salida seleccionada"
+            description="Abre una salida desde el listado para ver su detalle."
+          />
         )}
       </DialogContent>
     </Dialog>

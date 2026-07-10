@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { PartyStatus } from '@iwana/shared';
+import { cn } from '@iwana/ui';
 import { purchasingApi, type SupplierListItemRecord } from '@/lib/api-client';
 import { PortalAlert, interactiveFocusClassName } from '@/components/shared/portal-ui';
+import { getPartyStatusLabel } from './inventory-labels';
 
 interface SupplierPickerProps {
   id?: string;
@@ -16,14 +17,10 @@ interface SupplierPickerProps {
   onPreview?: (partyRefId: string) => void;
 }
 
-const fieldClassName =
-  'w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-white';
-
-function supplierStatusLabel(status: SupplierListItemRecord['status']): string {
-  if (status === PartyStatus.ACTIVE) return 'Activo';
-  if (status === PartyStatus.INACTIVE) return 'Inactivo';
-  return String(status);
-}
+const fieldClassName = cn(
+  'w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white',
+  interactiveFocusClassName,
+);
 
 export function SupplierPicker({
   id,
@@ -145,7 +142,7 @@ export function SupplierPicker({
         >
           <span className="font-medium text-gray-900 dark:text-white">{option.displayName}</span>
           <span className="text-xs text-iwana-secondary-700">
-            {supplierStatusLabel(option.status)}
+            {getPartyStatusLabel(option.status)}
           </span>
         </button>
       </li>

@@ -14,12 +14,9 @@ import type {
   StockLocationRecord,
   UpdateStockIssueDto,
 } from '@/lib/api-client';
-import {
-  PortalAlert,
-  PortalSectionHeader,
-  portalDataTableShellClassName,
-} from '@/components/shared/portal-ui';
+import { PortalAlert, PortalPanel } from '@/components/shared/portal-ui';
 import { filterStockIssues, hasActiveIssueFilters, type StockIssueFilters } from './issue-filters';
+import { getStockIssueStatusLabel } from './inventory-labels';
 import { PurchaseCreateModeShell } from './PurchaseCreateModeShell';
 import { StockIssueComposer } from './StockIssueComposer';
 import { StockIssueCreateModeHeader } from './StockIssueCreateModeHeader';
@@ -40,6 +37,7 @@ export interface StockIssuesWorkspaceProps {
   issues: StockIssueRecord[];
   issueItemFrequency?: Record<string, number>;
   isLoading: boolean;
+  isRefreshing?: boolean;
   isSubmitting?: boolean;
   error?: string | null;
   onCreate: (dto: CreateStockIssueDto) => Promise<void>;
@@ -58,6 +56,7 @@ export function StockIssuesWorkspace({
   issues,
   issueItemFrequency = {},
   isLoading,
+  isRefreshing = false,
   isSubmitting,
   error,
   onCreate,
@@ -122,8 +121,8 @@ export function StockIssuesWorkspace({
     if (!force && composerDirty) {
       const confirmed = window.confirm(
         workspaceMode === 'edit'
-          ? 'Hay cambios sin guardar en la edición. ¿Quieres volver a la bandeja y descartarlos?'
-          : 'Hay cambios sin guardar en la salida. ¿Quieres volver a la bandeja y descartar este borrador?',
+          ? 'Hay cambios sin guardar en la edición. ¿Quieres volver al listado y descartarlos?'
+          : 'Hay cambios sin guardar en la salida. ¿Quieres volver al listado y descartar este borrador?',
       );
       if (!confirmed) {
         return;
@@ -143,7 +142,14 @@ export function StockIssuesWorkspace({
   );
 
   function handleStatusKpiChange(status: StockIssueStatus) {
-    setFilters((current) => ({ ...current, status }));
+    setFilters((current) => {
+      if (current.status === status) {
+        const next = { ...current };
+        delete next.status;
+        return next;
+      }
+      return { ...current, status };
+    });
   }
 
   async function openDetail(issueId: string) {
@@ -202,7 +208,7 @@ export function StockIssuesWorkspace({
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {error ? (
         <PortalAlert variant="error" title="No fue posible cargar salidas" description={error} />
       ) : null}
@@ -222,60 +228,44 @@ export function StockIssuesWorkspace({
       ) : null}
 
       {workspaceMode === 'inbox' ? (
-        <div className={portalDataTableShellClassName}>
-          <div className="border-b border-gray-100/80 px-5 py-5 dark:border-dark-border">
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-              <PortalSectionHeader
-                className="w-full gap-3"
-                eyebrow="Despachos"
-                title="Salidas"
-                description="Registra salidas operativas desde bodega principal hacia custodias, oficinas, nodos, venta o consumo interno."
-                actions={<div className="flex flex-wrap items-center gap-2">{createAction}</div>}
-              />
-            </div>
-
-            <div className="mb-5">
-              <StockIssuesSummary
-                issues={issues}
-                activeStatus={filters.status}
-                isLoading={isLoading}
-                onStatusFilterChange={handleStatusKpiChange}
-              />
-            </div>
-
-            <StockIssuesToolbar
-              filters={filters}
-              resultCount={filteredIssues.length}
-              totalCount={issues.length}
-              isRefreshing={isLoading}
-              onFiltersChange={setFilters}
-              onRefresh={onRefresh}
-              onClearFilters={() => setFilters(EMPTY_FILTERS)}
-            />
-          </div>
-
-          <StockIssuesTable
-            issues={filteredIssues}
-            locationMap={locationMap}
+        <>
+          <StockIssuesSummary
+            issues={issues}
+            activeStatus={filters.status}
             isLoading={isLoading}
-            isRefreshing={isLoading}
-            hasActiveFilters={hasActiveIssueFilters(filters)}
-            issuesIsEmpty={issues.length === 0}
-            onOpenDetail={(issueId) => void openDetail(issueId)}
-            emptyAction={createAction}
-            onClearFilters={() => setFilters(EMPTY_FILTERS)}
+            onStatusFilterChange={handleStatusKpiChange}
           />
 
-          {filteredIssues.length > 0 || hasActiveIssueFilters(filters) ? (
-            <div className="flex items-center justify-between border-t border-gray-100 px-5 py-4 dark:border-dark-border">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                {filteredIssues.length === issues.length
-                  ? `${filteredIssues.length} salida${filteredIssues.length === 1 ? '' : 's'}`
-                  : `${filteredIssues.length} de ${issues.length} salidas`}
-              </p>
+          <PortalPanel
+            eyebrow="Despachos"
+            title="Salidas"
+            description="Registra salidas desde bodega principal hacia custodias, oficinas, nodos, venta o consumo interno."
+            actions={createAction}
+          >
+            <div className="space-y-4">
+              <StockIssuesToolbar
+                filters={filters}
+                resultCount={filteredIssues.length}
+                totalCount={issues.length}
+                isRefreshing={isRefreshing}
+                onFiltersChange={setFilters}
+                onRefresh={onRefresh}
+                onClearFilters={() => setFilters(EMPTY_FILTERS)}
+              />
+              <StockIssuesTable
+                issues={filteredIssues}
+                locationMap={locationMap}
+                isLoading={isLoading}
+                isRefreshing={isRefreshing}
+                hasActiveFilters={hasActiveIssueFilters(filters)}
+                issuesIsEmpty={issues.length === 0}
+                onOpenDetail={(issueId) => void openDetail(issueId)}
+                emptyAction={createAction}
+                onClearFilters={() => setFilters(EMPTY_FILTERS)}
+              />
             </div>
-          ) : null}
-        </div>
+          </PortalPanel>
+        </>
       ) : workspaceMode === 'create' ? (
         <PurchaseCreateModeShell
           header={
@@ -295,6 +285,12 @@ export function StockIssuesWorkspace({
               eyebrow="Edición"
               title="Editar salida"
               description="Ajusta líneas y contexto mientras la salida siga en estado solicitada."
+              {...(editingIssue
+                ? {
+                    referenceLabel: editingIssue.id.slice(0, 8).toUpperCase(),
+                    statusLabel: getStockIssueStatusLabel(editingIssue.status),
+                  }
+                : {})}
               onBack={() => closeComposerMode()}
             />
           }

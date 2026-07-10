@@ -82,22 +82,22 @@ export function buildCreatePurchaseRequestPayload(input: {
   const justification = input.justification.trim();
 
   if (!title) {
-    return { payload: null, error: 'Indica un titulo para la solicitud.' };
+    return { payload: null, error: 'Indica un título para la solicitud.' };
   }
 
   if (!requestingArea) {
-    return { payload: null, error: 'Indica el area solicitante.' };
+    return { payload: null, error: 'Indica el área solicitante.' };
   }
 
   if (justification.length < 10) {
     return {
       payload: null,
-      error: 'La justificacion debe tener al menos 10 caracteres.',
+      error: 'La justificación debe tener al menos 10 caracteres.',
     };
   }
 
   if (input.lines.length === 0) {
-    return { payload: null, error: 'Agrega al menos una linea a la solicitud.' };
+    return { payload: null, error: 'Agrega al menos una línea a la solicitud.' };
   }
 
   const mappedLines: CreatePurchaseRequestLineDto[] = [];
@@ -108,13 +108,13 @@ export function buildCreatePurchaseRequestPayload(input: {
       if (line.sourceKind === PurchaseRequestLineSourceKind.FREE_TEXT) {
         return {
           payload: null,
-          error: 'Completa la descripcion de las lineas manuales.',
+          error: 'Completa la descripción de las líneas manuales.',
         };
       }
 
       return {
         payload: null,
-        error: 'Cada linea debe tener un producto seleccionado y una cantidad mayor a cero.',
+        error: 'Cada línea debe tener un producto seleccionado y una cantidad mayor a cero.',
       };
     }
 

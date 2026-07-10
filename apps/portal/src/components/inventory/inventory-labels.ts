@@ -7,6 +7,7 @@ import {
   InventoryItemStatus,
   InventoryResponsibleType,
   InventoryTrackingMode,
+  PartyStatus,
   PurchaseOrderStatus,
   PurchaseRequestLineSourceKind,
   PurchaseRequestLineStatus,
@@ -29,14 +30,14 @@ function resolveLabel<T extends string>(value: T, labels: Record<T, string>): st
 }
 
 export const INVENTORY_ITEM_KIND_LABELS: Record<InventoryItemKind, string> = {
-  [InventoryItemKind.STOCK]: 'Stock',
+  [InventoryItemKind.STOCK]: 'Almacenable',
   [InventoryItemKind.CONSUMABLE]: 'Consumible',
-  [InventoryItemKind.SERIALIZED]: 'Serializado',
+  [InventoryItemKind.SERIALIZED]: 'Con serial',
   [InventoryItemKind.SERVICE]: 'Servicio',
 };
 
 export const INVENTORY_ITEM_CATEGORY_LABELS: Record<InventoryItemCategory, string> = {
-  [InventoryItemCategory.CPE]: 'CPE',
+  [InventoryItemCategory.CPE]: 'Equipos de cliente',
   [InventoryItemCategory.NETWORKING]: 'Networking',
   [InventoryItemCategory.MATERIALS]: 'Materiales',
   [InventoryItemCategory.TOOLS]: 'Herramientas',
@@ -52,7 +53,7 @@ export const INVENTORY_ITEM_STATUS_LABELS: Record<InventoryItemStatus, string> =
 
 export const INVENTORY_TRACKING_MODE_LABELS: Record<InventoryTrackingMode, string> = {
   [InventoryTrackingMode.CONSUMABLE]: 'Consumible',
-  [InventoryTrackingMode.SERIALIZED]: 'Serializado',
+  [InventoryTrackingMode.SERIALIZED]: 'Con serial',
   [InventoryTrackingMode.FIXED_ASSET]: 'Activo fijo',
 };
 
@@ -61,14 +62,14 @@ export const CUSTOMER_SITE_TRANSFER_BLOCKED_MESSAGE =
 
 export const STOCK_LOCATION_TYPE_LABELS: Record<StockLocationType, string> = {
   [StockLocationType.MAIN_WAREHOUSE]: 'Bodega principal',
-  [StockLocationType.MOBILE_TECHNICIAN]: 'Móvil técnico',
-  [StockLocationType.MOBILE_CREW]: 'Cuadrilla móvil',
+  [StockLocationType.MOBILE_TECHNICIAN]: 'Técnico en campo',
+  [StockLocationType.MOBILE_CREW]: 'Cuadrilla en campo',
   [StockLocationType.CUSTOMER_SITE]: 'Sitio del cliente',
   [StockLocationType.OFFICE_STOCK]: 'Bodega de oficina',
   [StockLocationType.NODE_STOCK]: 'Bodega de nodo',
-  [StockLocationType.QUARANTINE]: 'Cuarentena',
+  [StockLocationType.QUARANTINE]: 'En revisión',
   [StockLocationType.REPAIR]: 'Reparación',
-  [StockLocationType.SCRAP]: 'Chatarra',
+  [StockLocationType.SCRAP]: 'Para descarte',
   [StockLocationType.INTERNAL_CONSUMPTION]: 'Consumo interno',
 };
 
@@ -76,6 +77,12 @@ export const STOCK_LOCATION_STATUS_LABELS: Record<StockLocationStatus, string> =
   [StockLocationStatus.ACTIVE]: 'Activa',
   [StockLocationStatus.INACTIVE]: 'Inactiva',
   [StockLocationStatus.ARCHIVED]: 'Archivada',
+};
+
+export const PARTY_STATUS_LABELS: Record<PartyStatus, string> = {
+  [PartyStatus.ACTIVE]: 'Activo',
+  [PartyStatus.INACTIVE]: 'Inactivo',
+  [PartyStatus.MERGED]: 'Fusionado',
 };
 
 export const STOCK_BALANCE_CONDITION_LABELS: Record<StockBalanceCondition, string> = {
@@ -106,7 +113,7 @@ export const PURCHASE_REQUEST_STATUS_LABELS: Record<PurchaseRequestStatus, strin
   [PurchaseRequestStatus.PENDING_APPROVAL]: 'Pendiente de aprobación',
   [PurchaseRequestStatus.APPROVED]: 'Aprobada',
   [PurchaseRequestStatus.REJECTED]: 'Rechazada',
-  [PurchaseRequestStatus.CONVERTED_TO_PO]: 'Convertida en OC',
+  [PurchaseRequestStatus.CONVERTED_TO_PO]: 'Convertida en orden de compra',
   [PurchaseRequestStatus.CANCELLED]: 'Cancelada',
 };
 
@@ -140,7 +147,7 @@ export const PURCHASE_REQUEST_TYPE_LABELS: Record<PurchaseRequestType, string> =
 
 export const PURCHASE_REQUEST_TYPE_HELPER_LABELS: Record<PurchaseRequestType, string> = {
   [PurchaseRequestType.REPLENISHMENT]:
-    'Pedido habitual para reponer materiales y mantener el stock de bodega.',
+    'Pedido habitual para reponer materiales y mantener la bodega al día.',
   [PurchaseRequestType.URGENT_OPERATION]:
     'Necesidad inmediata por falla, rotura o consumo crítico en operación.',
   [PurchaseRequestType.PROJECT]: 'Materiales para un proyecto o ampliación planificada.',
@@ -177,7 +184,7 @@ export const PURCHASE_REQUEST_LINE_SOURCE_HELPER_LABELS: Record<
 > = {
   [PurchaseRequestLineSourceKind.INVENTORY_ITEM]: 'Elige un producto ya registrado en bodega.',
   [PurchaseRequestLineSourceKind.REPLENISHMENT_SUGGESTION]:
-    'Usa una recomendación del sistema según niveles de stock.',
+    'Usa una recomendación del sistema según el material disponible.',
   [PurchaseRequestLineSourceKind.FREE_TEXT]: 'Escribe qué necesitas sin buscar en catálogo.',
 };
 
@@ -219,8 +226,8 @@ export const WRITE_OFF_STATUS_LABELS: Record<WriteOffStatus, string> = {
 };
 
 export const STOCK_ISSUE_TYPE_LABELS: Record<StockIssueType, string> = {
-  [StockIssueType.TECHNICIAN_CUSTODY]: 'Custodia técnico',
-  [StockIssueType.CREW_CUSTODY]: 'Custodia cuadrilla',
+  [StockIssueType.TECHNICIAN_CUSTODY]: 'Entrega a técnico',
+  [StockIssueType.CREW_CUSTODY]: 'Entrega a cuadrilla',
   [StockIssueType.OFFICE_REPLENISHMENT]: 'Reposición oficina',
   [StockIssueType.NODE_REPLENISHMENT]: 'Reposición nodo',
   [StockIssueType.SALE_DISPATCH]: 'Salida por venta',
@@ -229,27 +236,38 @@ export const STOCK_ISSUE_TYPE_LABELS: Record<StockIssueType, string> = {
 };
 
 export const STOCK_ISSUE_TYPE_HELPER_LABELS: Record<StockIssueType, string> = {
-  [StockIssueType.TECHNICIAN_CUSTODY]:
-    'Entrega material a la custodia móvil de un técnico en campo.',
-  [StockIssueType.CREW_CUSTODY]: 'Asigna stock a la cuadrilla móvil responsable de la operación.',
+  [StockIssueType.TECHNICIAN_CUSTODY]: 'Entrega material a un técnico que trabajará en campo.',
+  [StockIssueType.CREW_CUSTODY]: 'Entrega material a una cuadrilla que trabajará en campo.',
   [StockIssueType.OFFICE_REPLENISHMENT]: 'Reposición de bodega de oficina desde bodega principal.',
   [StockIssueType.NODE_REPLENISHMENT]: 'Reposición de bodega de nodo desde bodega principal.',
   [StockIssueType.SALE_DISPATCH]: 'Salida vinculada a una venta o referencia comercial.',
   [StockIssueType.INTERNAL_CONSUMPTION]:
     'Consumo interno con centro de costo y motivo obligatorios.',
-  [StockIssueType.WAREHOUSE_TO_WAREHOUSE]: 'Traslado entre bodegas internas sin salida a custodia.',
+  [StockIssueType.WAREHOUSE_TO_WAREHOUSE]: 'Traslado entre bodegas internas.',
 };
 
 export const STOCK_ISSUE_STATUS_LABELS: Record<StockIssueStatus, string> = {
   [StockIssueStatus.DRAFT]: 'Borrador',
   [StockIssueStatus.REQUESTED]: 'Solicitada',
   [StockIssueStatus.APPROVED]: 'Aprobada',
-  [StockIssueStatus.PICKING]: 'En picking',
+  [StockIssueStatus.PICKING]: 'En preparación',
   [StockIssueStatus.READY_TO_DISPATCH]: 'Lista para despacho',
   [StockIssueStatus.DISPATCHED]: 'Despachada',
   [StockIssueStatus.RECEIVED]: 'Recibida',
   [StockIssueStatus.CANCELLED]: 'Cancelada',
 };
+
+export const STOCK_ISSUE_HANDOFF_METHOD_OPTIONS = [
+  { value: 'ACTA', label: 'Acta de entrega' },
+  { value: 'FIRMA', label: 'Entrega firmada' },
+  { value: 'GUIA', label: 'Guía de despacho' },
+  { value: 'CORREO', label: 'Constancia por correo' },
+] as const;
+
+export function getStockIssueHandoffMethodLabel(value: string): string {
+  const match = STOCK_ISSUE_HANDOFF_METHOD_OPTIONS.find((option) => option.value === value);
+  return match?.label ?? value;
+}
 
 export function getWriteOffStatusLabel(value: WriteOffStatus): string {
   return resolveLabel(value, WRITE_OFF_STATUS_LABELS);
@@ -495,4 +513,12 @@ export function getPurchaseRequestPriorityBadgeVariant(
   value: PurchaseRequestPriority,
 ): PurchaseBadgeVariant {
   return PURCHASE_REQUEST_PRIORITY_VARIANTS[value] ?? 'neutral';
+}
+
+export function getPartyStatusLabel(value: string): string {
+  if (value in PARTY_STATUS_LABELS) {
+    return PARTY_STATUS_LABELS[value as PartyStatus];
+  }
+
+  return 'Estado desconocido';
 }

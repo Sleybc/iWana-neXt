@@ -1,5 +1,7 @@
 'use client';
 
+import { PortalEmptyState, interactiveFocusClassName } from '@/components/shared/portal-ui';
+
 interface StockIssueCatalogSelectorProps {
   rows: Array<{
     id: string;
@@ -26,9 +28,11 @@ export function StockIssueCatalogSelector({
 
   if (rows.length === 0) {
     return (
-      <p className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-sm text-gray-500 dark:border-dark-border dark:text-gray-400">
-        No hay ítems que coincidan con la búsqueda.
-      </p>
+      <PortalEmptyState
+        className="w-full"
+        title="No hay ítems que coincidan"
+        description="Ajusta la búsqueda o cambia a la pestaña Con material."
+      />
     );
   }
 
@@ -38,7 +42,7 @@ export function StockIssueCatalogSelector({
         <thead className="bg-gray-50 dark:bg-dark-surface-3">
           <tr>
             <th className="px-4 py-3 text-left">Sel.</th>
-            <th className="px-4 py-3 text-left">Ítem</th>
+            <th className="px-4 py-3 text-left">Producto</th>
             <th className="px-4 py-3 text-left">Categoría</th>
             <th className="px-4 py-3 text-left">Unidad</th>
             {showAvailableColumn ? (
@@ -52,7 +56,7 @@ export function StockIssueCatalogSelector({
               <td className="px-4 py-3">
                 <input
                   type="checkbox"
-                  className="h-4 w-4 rounded border-gray-300 accent-iwana-primary"
+                  className={`h-4 w-4 rounded border-gray-300 accent-iwana-primary ${interactiveFocusClassName}`}
                   aria-label={`Seleccionar ${row.productLabel}`}
                   checked={row.selected}
                   onChange={() => onToggle(row.id)}

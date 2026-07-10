@@ -2,6 +2,7 @@ import { PurchaseRequestPriority, PurchaseRequestStatus, PurchaseRequestType } f
 import type { PurchaseRequestRecord } from '@/lib/api-client';
 import {
   filterPurchaseRequests,
+  findFirstRequestForKpiWorkbench,
   isPurchaseRequestOverdue,
   kpiPresetToFilters,
   resolveActiveKpiPreset,
@@ -64,5 +65,15 @@ describe('purchase-filters', () => {
       ),
     ).toBe(false);
     expect(isPurchaseRequestOverdue(buildRequest({ neededByDate: '2020-01-01' }))).toBe(true);
+  });
+
+  it('finds first converted request for pending receipt workbench deep-link', () => {
+    const requests = [
+      buildRequest({ id: 'quotes', status: PurchaseRequestStatus.PENDING_QUOTES }),
+      buildRequest({ id: 'receive-me', status: PurchaseRequestStatus.CONVERTED_TO_PO }),
+    ];
+
+    expect(findFirstRequestForKpiWorkbench('pendingReceipt', requests)?.id).toBe('receive-me');
+    expect(findFirstRequestForKpiWorkbench('pendingQuotes', requests)).toBeNull();
   });
 });

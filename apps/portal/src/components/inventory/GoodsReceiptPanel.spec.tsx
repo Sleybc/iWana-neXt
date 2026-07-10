@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { GoodsReceiptStatus, PurchaseOrderStatus } from '@iwana/shared';
 import { GoodsReceiptPanel } from './GoodsReceiptPanel';
 
@@ -85,6 +86,7 @@ describe('GoodsReceiptPanel', () => {
   });
 
   it('envía recepción con líneas precargadas', async () => {
+    const user = userEvent.setup();
     const onSubmit = jest.fn().mockResolvedValue(undefined);
 
     render(
@@ -100,10 +102,9 @@ describe('GoodsReceiptPanel', () => {
       />,
     );
 
-    fireEvent.change(screen.getByDisplayValue('Selecciona una ubicación'), {
-      target: { value: 'loc-1' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Registrar recepción' }));
+    await user.click(screen.getByRole('combobox', { name: 'Ubicación destino' }));
+    await user.click(screen.getByRole('option', { name: /BOD-01 · Bodega principal/i }));
+    await user.click(screen.getByRole('button', { name: 'Registrar recepción' }));
 
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({

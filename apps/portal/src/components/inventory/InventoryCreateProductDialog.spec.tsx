@@ -62,7 +62,7 @@ describe('InventoryCreateProductDialog', () => {
     expect(screen.getByRole('textbox', { name: /^Nombre/ })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: /^Categoría/ })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: /^Tipo de producto/ })).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: /^Trazabilidad/ })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /^Control de material/ })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: /^Unidad de medida/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Crear producto' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancelar' })).toBeInTheDocument();
@@ -73,7 +73,7 @@ describe('InventoryCreateProductDialog', () => {
 
     await screen.findByRole('dialog', { name: 'Nuevo producto' });
 
-    expect(screen.queryByLabelText('SKU')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Código')).not.toBeInTheDocument();
   });
 
   it('shows required validation feedback before submitting', async () => {
@@ -118,7 +118,7 @@ describe('InventoryCreateProductDialog', () => {
     expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('sku');
   });
 
-  it('shows the composed SKU preview while creating a product', async () => {
+  it('shows the composed code preview while creating a product', async () => {
     renderDialog({
       categories: [buildCategory({ codePrefix: 'CFO', name: 'Consumibles FO' })],
     });
@@ -129,10 +129,10 @@ describe('InventoryCreateProductDialog', () => {
       target: { value: 'ONT Huawei' },
     });
     fireEvent.click(screen.getByRole('combobox', { name: /^Tipo de producto/ }));
-    fireEvent.click(await screen.findByRole('option', { name: 'Serializado' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Con serial' }));
 
     await waitFor(() => {
-      expect(screen.getByText('SKU sugerido')).toBeInTheDocument();
+      expect(screen.getByText('Código sugerido')).toBeInTheDocument();
       expect(screen.getByText('CFO-SER-ONTHW')).toBeInTheDocument();
     });
   });

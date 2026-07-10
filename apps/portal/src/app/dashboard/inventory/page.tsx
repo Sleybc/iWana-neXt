@@ -1,4 +1,5 @@
 import { InventoryClient } from '@/components/inventory/InventoryClient';
+import { isInventoryTabParam } from '@/components/inventory/inventory-tab-params';
 
 export const metadata = {
   title: 'Inventario | Portal Empresarial',
@@ -7,22 +8,13 @@ export const metadata = {
 type InventoryPageProps = {
   searchParams?: Promise<{
     tab?: string | string[];
+    action?: string | string[];
   }>;
 };
 
-const INVENTORY_TABS = new Set([
-  'summary',
-  'catalog',
-  'purchasing',
-  'locations',
-  'assets',
-  'movements',
-  'writeoffs',
-]);
-
 function resolveInitialTab(rawTab?: string | string[]): string | undefined {
   const candidate = Array.isArray(rawTab) ? rawTab[0] : rawTab;
-  if (!candidate || !INVENTORY_TABS.has(candidate)) {
+  if (!candidate || !isInventoryTabParam(candidate)) {
     return undefined;
   }
 

@@ -25,12 +25,12 @@ export function PurchaseSelectionBar({
   onAdd,
 }: PurchaseSelectionBarProps) {
   return (
-    <PortalActionToolbar className="sticky bottom-0 z-10 mt-3">
+    <PortalActionToolbar className="mt-3">
       <span className="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200">
         {count} productos seleccionados
       </span>
       <Button type="button" variant="secondary" size="sm" onClick={onClear} disabled={count === 0}>
-        Limpiar seleccion
+        Limpiar selección
       </Button>
       <Button type="button" size="sm" onClick={onAdd} disabled={disabled || count === 0}>
         {resolveAddLabel(count)}

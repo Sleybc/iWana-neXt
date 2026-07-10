@@ -5,6 +5,7 @@ import { PurchaseRequestLineSourceKind } from '@iwana/shared';
 import type { PurchaseDraftLine } from './purchase-request-draft';
 import { getPurchaseRequestLineSourceLabel } from './inventory-labels';
 import { PurchaseBulkEditBar } from './PurchaseBulkEditBar';
+import { interactiveFocusClassName } from '@/components/shared/portal-ui';
 
 interface PurchaseDraftLinesTableProps {
   lines: PurchaseDraftLine[];
@@ -56,8 +57,8 @@ export function PurchaseDraftLinesTable({
               <th className="px-4 py-3 text-left">
                 <input
                   type="checkbox"
-                  className="h-4 w-4 rounded border-gray-300 accent-iwana-primary"
-                  aria-label="Seleccionar todas las lineas"
+                  className={`h-4 w-4 rounded border-gray-300 accent-iwana-primary ${interactiveFocusClassName}`}
+                  aria-label="Seleccionar todas las líneas"
                   checked={allSelected}
                   onChange={(event) => onToggleAll(event.target.checked)}
                 />
@@ -67,7 +68,7 @@ export function PurchaseDraftLinesTable({
               <th className="px-4 py-3 text-left">Cantidad</th>
               <th className="px-4 py-3 text-left">Unidad</th>
               <th className="px-4 py-3 text-left">Proveedor sugerido</th>
-              <th className="px-4 py-3 text-left">Accion</th>
+              <th className="px-4 py-3 text-left">Acción</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-dark-border">
@@ -76,8 +77,8 @@ export function PurchaseDraftLinesTable({
                 <td className="px-4 py-3">
                   <input
                     type="checkbox"
-                    className="h-4 w-4 rounded border-gray-300 accent-iwana-primary"
-                    aria-label={`Seleccionar linea ${line.productLabel}`}
+                    className={`h-4 w-4 rounded border-gray-300 accent-iwana-primary ${interactiveFocusClassName}`}
+                    aria-label={`Seleccionar línea ${line.productLabel}`}
                     checked={selectedLineIds.includes(line.id)}
                     onChange={() => onToggleLine(line.id)}
                   />
@@ -85,7 +86,7 @@ export function PurchaseDraftLinesTable({
                 <td className="px-4 py-3">
                   {line.sourceKind === PurchaseRequestLineSourceKind.FREE_TEXT ? (
                     <Input
-                      aria-label="Descripcion manual"
+                      aria-label="Descripción manual"
                       value={line.productLabel}
                       onChange={(event) => onLabelChange(line.id, event.target.value)}
                     />

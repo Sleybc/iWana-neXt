@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Select } from '@iwana/ui';
+import { Button, Select, cn } from '@iwana/ui';
 import { InventoryItemKind, InventoryItemStatus, InventoryTrackingMode } from '@iwana/shared';
 import { interactiveFocusClassName, PortalSearchField } from '@/components/shared/portal-ui';
 import {
@@ -20,11 +20,6 @@ interface InventoryCatalogFiltersProps {
   categoryOptions: CategoryOption[];
   onFiltersChange: (filters: CatalogFilters) => void;
   onClearFilters: () => void;
-  embedded?: boolean;
-  resultCount?: number;
-  totalCount?: number;
-  isRefreshing?: boolean;
-  onRefresh?: () => void;
 }
 
 const ITEM_KIND_OPTIONS = [
@@ -36,7 +31,7 @@ const ITEM_KIND_OPTIONS = [
 ];
 
 const TRACKING_OPTIONS = [
-  { value: '', label: 'Toda la trazabilidad' },
+  { value: '', label: 'Todo el control de material' },
   ...Object.values(InventoryTrackingMode).map((value) => ({
     value,
     label: getInventoryTrackingModeLabel(value),
@@ -52,8 +47,8 @@ const STATUS_OPTIONS = [
 ];
 
 const PURCHASABLE_OPTIONS = [
-  { value: '', label: 'Disponible para compras: todos' },
-  { value: 'true', label: 'Solo disponibles para compras' },
+  { value: '', label: 'Todos' },
+  { value: 'true', label: 'Disponibles para compras' },
   { value: 'false', label: 'No disponibles para compras' },
 ];
 
@@ -84,7 +79,7 @@ function buildFilterChips(
   if (filters.purchasable !== undefined) {
     chips.push({
       key: 'purchasable',
-      label: filters.purchasable ? 'Solo disponibles para compras' : 'No disponibles para compras',
+      label: filters.purchasable ? 'Disponibles para compras' : 'No disponibles para compras',
     });
   }
 
@@ -96,19 +91,8 @@ export function InventoryCatalogFilters({
   categoryOptions,
   onFiltersChange,
   onClearFilters,
-  embedded = false,
-  resultCount,
-  totalCount,
-  isRefreshing = false,
-  onRefresh,
 }: InventoryCatalogFiltersProps) {
   const chips = buildFilterChips(filters, categoryOptions);
-  const resultLabel =
-    resultCount !== undefined && totalCount !== undefined
-      ? resultCount === totalCount
-        ? `${resultCount} productos`
-        : `${resultCount} de ${totalCount} productos`
-      : null;
 
   function removeChip(key: keyof CatalogFilters) {
     const next = { ...filters };
@@ -116,24 +100,26 @@ export function InventoryCatalogFilters({
     onFiltersChange(next);
   }
 
-  const filterGrid = (
-    <>
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_220px_220px_220px_auto] lg:items-end">
-        <PortalSearchField
-          id="catalog-product-search"
-          label="Buscar producto"
-          placeholder="SKU, nombre, marca o modelo"
-          value={filters.search ?? ''}
-          onChange={(value) => {
-            const next = { ...filters };
-            if (value.trim()) {
-              next.search = value;
-            } else {
-              delete next.search;
-            }
-            onFiltersChange(next);
-          }}
-        />
+  return (
+    <div className="space-y-3 border-b border-gray-100 pb-4 dark:border-dark-border">
+      <PortalSearchField
+        id="catalog-product-search"
+        label="Buscar producto"
+        placeholder="Código, nombre, marca o modelo"
+        className="w-full"
+        value={filters.search ?? ''}
+        onChange={(value) => {
+          const next = { ...filters };
+          if (value.trim()) {
+            next.search = value;
+          } else {
+            delete next.search;
+          }
+          onFiltersChange(next);
+        }}
+      />
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <Select
           label="Categoría"
           className="h-12"
@@ -182,16 +168,8 @@ export function InventoryCatalogFilters({
             onFiltersChange(next);
           }}
         />
-        {hasActiveCatalogFilters(filters) ? (
-          <Button type="button" variant="secondary" className="h-12 px-4" onClick={onClearFilters}>
-            Limpiar filtros
-          </Button>
-        ) : null}
-      </div>
-
-      <div className="mt-3 grid gap-3 lg:grid-cols-[220px_220px] lg:items-end">
         <Select
-          label="Trazabilidad"
+          label="Control de material"
           className="h-12"
           value={filters.trackingMode ?? ''}
           options={TRACKING_OPTIONS}
@@ -222,81 +200,32 @@ export function InventoryCatalogFilters({
             onFiltersChange(next);
           }}
         />
-      </div>
-    </>
-  );
-
-  const chipsRow =
-    chips.length > 0 ? (
-      <div className="mt-3 flex flex-wrap gap-2">
-        {chips.map((chip) => (
-          <button
-            key={chip.key}
-            type="button"
-            aria-label={`Quitar filtro ${chip.label}`}
-            className={`inline-flex items-center gap-2 rounded-full border border-gray-200 bg-iwana-surface-soft px-3 py-1 text-xs font-medium text-iwana-secondary-700 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-200 ${interactiveFocusClassName}`}
-            onClick={() => removeChip(chip.key)}
-          >
-            {chip.label}
-            <span aria-hidden>×</span>
-          </button>
-        ))}
-      </div>
-    ) : null;
-
-  if (embedded) {
-    return (
-      <div className="space-y-0">
-        {onRefresh ? (
-          <div className="mb-3 flex justify-end">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              loading={isRefreshing}
-              className={interactiveFocusClassName}
-              onClick={onRefresh}
-            >
-              Actualizar
-            </Button>
-          </div>
+        {hasActiveCatalogFilters(filters) ? (
+          <Button type="button" variant="secondary" className="h-12 px-4" onClick={onClearFilters}>
+            Limpiar filtros
+          </Button>
         ) : null}
-        {filterGrid}
-        {chipsRow}
       </div>
-    );
-  }
 
-  return (
-    <div className="space-y-4 border-b border-gray-100 pb-4 dark:border-dark-border">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        {resultLabel ? (
-          <p className="text-sm text-gray-600 dark:text-gray-300">{resultLabel}</p>
-        ) : (
-          <span />
-        )}
+      {chips.length > 0 ? (
         <div className="flex flex-wrap gap-2">
-          {hasActiveCatalogFilters(filters) ? (
-            <Button type="button" variant="secondary" size="sm" onClick={onClearFilters}>
-              Limpiar filtros
-            </Button>
-          ) : null}
-          {onRefresh ? (
-            <Button
+          {chips.map((chip) => (
+            <button
+              key={chip.key}
               type="button"
-              variant="secondary"
-              size="sm"
-              loading={isRefreshing}
-              className={interactiveFocusClassName}
-              onClick={onRefresh}
+              aria-label={`Quitar filtro ${chip.label}`}
+              className={cn(
+                'inline-flex items-center gap-2 rounded-full border border-gray-200 bg-iwana-surface-soft px-3 py-1 text-xs font-medium text-iwana-secondary-700 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-200',
+                interactiveFocusClassName,
+              )}
+              onClick={() => removeChip(chip.key)}
             >
-              Actualizar
-            </Button>
-          ) : null}
+              {chip.label}
+              <span aria-hidden>×</span>
+            </button>
+          ))}
         </div>
-      </div>
-      {filterGrid}
-      {chipsRow}
+      ) : null}
     </div>
   );
 }

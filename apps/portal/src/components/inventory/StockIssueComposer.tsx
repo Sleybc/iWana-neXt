@@ -12,7 +12,14 @@ import type {
   StockLocationRecord,
   UpdateStockIssueDto,
 } from '@/lib/api-client';
-import { PortalAlert, PortalEmptyState, PortalSectionHeader } from '@/components/shared/portal-ui';
+import {
+  PortalAlert,
+  PortalEmptyState,
+  PortalSectionHeader,
+  CreateModeSummaryFooter,
+  CreateModeMobileCaptureFooter,
+  CreateModeMobileStepIndicator,
+} from '@/components/shared/portal-ui';
 import {
   formatInventoryQuantity,
   getStockIssueTypeHelperLabel,
@@ -387,6 +394,10 @@ export function StockIssueComposer({
     } else {
       setDuplicateNotice(null);
     }
+
+    if (!isDesktopLayout && result.draft.lines.length > 0) {
+      setMobileStep('review');
+    }
   }
 
   function handleAddManualLine() {
@@ -474,8 +485,12 @@ export function StockIssueComposer({
     <section className="space-y-3">
       <PortalSectionHeader
         eyebrow="Salida"
-        title="Datos de la salida"
-        description="Tipo, origen y destino. El movimiento contable se genera al despachar."
+        title={isEditMode ? 'Contexto de la salida' : 'Datos de la salida'}
+        description={
+          isEditMode
+            ? 'Puedes ajustar tipo, origen, destino y referencias mientras la salida esté solicitada.'
+            : 'Tipo, origen y destino. El movimiento contable se genera al despachar.'
+        }
       />
       <div className="grid gap-3 md:grid-cols-2">
         <Select
@@ -520,7 +535,7 @@ export function StockIssueComposer({
               onChange={(event) => setCommercialRefId(event.target.value)}
             />
             <Input
-              label="Origen / referencia operativa (opcional)"
+              label="Origen o referencia de venta (opcional)"
               value={originRefId}
               onChange={(event) => setOriginRefId(event.target.value)}
               helperText="Requerido si no se envía referencia comercial."
@@ -548,12 +563,14 @@ export function StockIssueComposer({
   const captureSection = (
     <section className="space-y-4">
       <PortalSectionHeader
-        eyebrow="Ítems"
-        title="Agregar ítems"
+        eyebrow="Productos"
+        title={isEditMode ? 'Modificar productos' : 'Agregar productos'}
         description={
           showStockContext
-            ? 'Selecciona ítems con stock en origen o busca en el catálogo completo.'
-            : 'Selecciona primero el origen para ver el stock disponible.'
+            ? isEditMode
+              ? 'Agrega o quita ítems disponibles en la bodega de origen.'
+              : 'Selecciona productos disponibles en la bodega de origen o busca en el catálogo completo.'
+            : 'Selecciona primero la bodega de origen para ver el material disponible.'
         }
         actions={
           <Button type="button" variant="secondary" size="sm" onClick={handleAddManualLine}>
@@ -570,7 +587,7 @@ export function StockIssueComposer({
       <Input
         id="issue-catalog-search"
         label="Buscar ítem"
-        placeholder="SKU o nombre"
+        placeholder="Código o nombre"
         value={catalogSearch}
         onChange={(event) => setCatalogSearch(event.target.value)}
       />
@@ -578,6 +595,8 @@ export function StockIssueComposer({
         showStockContext ? (
           <PurchaseSuggestionList
             suggestions={suggestionRows}
+            emptyTitle="No hay material disponible en origen"
+            emptyDescription="Cambia de bodega o usa Catálogo / línea manual para armar la salida."
             onToggle={(itemId) =>
               setSelectedSuggestionIds((current) =>
                 current.includes(itemId)
@@ -587,9 +606,11 @@ export function StockIssueComposer({
             }
           />
         ) : (
-          <p className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-sm text-gray-500 dark:border-dark-border dark:text-gray-400">
-            Selecciona la bodega de origen para listar ítems con stock disponible.
-          </p>
+          <PortalEmptyState
+            className="w-full"
+            title="Selecciona la bodega de origen"
+            description="Con el origen definido verás el material disponible para agregar a la salida."
+          />
         )
       ) : (
         <StockIssueCatalogSelector
@@ -621,10 +642,14 @@ export function StockIssueComposer({
       <PortalSectionHeader
         eyebrow="Borrador"
         title="Líneas seleccionadas"
-        description="Revisa cantidades antes de crear la salida."
+        description={
+          isEditMode
+            ? 'Revisa cantidades y condiciones antes de guardar los cambios.'
+            : 'Revisa cantidades antes de crear la salida.'
+        }
       />
       {duplicateNotice ? (
-        <PortalAlert variant="warning" title="Ítems omitidos" description={duplicateNotice} />
+        <PortalAlert variant="warning" title="Productos omitidos" description={duplicateNotice} />
       ) : null}
       {draft.lines.length === 0 ? (
         <PortalEmptyState
@@ -688,29 +713,34 @@ export function StockIssueComposer({
   );
 
   const summaryFooter = (
-    <div className="sticky bottom-0 z-20 rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-gray-600 dark:text-gray-300">{summaryLabel}</p>
-        <Button
-          type="button"
-          loading={isSubmitting}
-          disabled={isSubmitting || draft.lines.length === 0}
-          onClick={() => void handleSubmit()}
-        >
-          {isSubmitting
-            ? isEditMode
-              ? 'Guardando cambios...'
-              : 'Creando salida...'
-            : isEditMode
-              ? 'Guardar cambios'
-              : 'Crear salida'}
-        </Button>
-      </div>
-    </div>
+    <CreateModeSummaryFooter
+      title={isEditMode ? 'Resumen de cambios' : 'Resumen previo al envío'}
+      summary={summaryLabel}
+      secondaryAction={
+        !isDesktopLayout && mobileStep === 'review' ? (
+          <Button type="button" variant="secondary" onClick={() => setMobileStep('capture')}>
+            Volver a productos
+          </Button>
+        ) : undefined
+      }
+      primaryLabel={isEditMode ? 'Guardar cambios' : 'Crear salida'}
+      primaryLoadingLabel={isEditMode ? 'Guardando cambios...' : 'Creando salida...'}
+      loading={isSubmitting}
+      disabled={draft.lines.length === 0 || (isEditMode && !hasUnsavedChanges)}
+      onPrimaryClick={() => void handleSubmit()}
+    />
   );
 
   const content = (
     <div className="space-y-6">
+      {isEditMode ? (
+        <PortalAlert
+          variant="info"
+          title="Edición disponible en estado solicitada"
+          description="Cuando la salida avance a preparación o despacho, solo podrás consultarla o cancelarla desde el detalle."
+        />
+      ) : null}
+
       {error || validationError ? (
         <PortalAlert
           variant="error"
@@ -721,25 +751,16 @@ export function StockIssueComposer({
 
       {!isDesktopLayout ? (
         <div className="space-y-6">
-          <div className="rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 text-sm font-medium text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
-            {mobileStep === 'capture' ? 'Paso 1 de 2' : 'Paso 2 de 2'}
-          </div>
+          <CreateModeMobileStepIndicator currentStep={mobileStep === 'capture' ? 1 : 2} />
           {issueContextSection}
           {mobileStep === 'capture' ? (
             <>
               {captureSection}
-              <div className="sticky bottom-0 z-20 rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm text-gray-600 dark:text-gray-300">{summaryLabel}</p>
-                  <Button
-                    type="button"
-                    disabled={draft.lines.length === 0}
-                    onClick={() => setMobileStep('review')}
-                  >
-                    Revisar selección
-                  </Button>
-                </div>
-              </div>
+              <CreateModeMobileCaptureFooter
+                summary={summaryLabel}
+                disabled={draft.lines.length === 0}
+                onReview={() => setMobileStep('review')}
+              />
             </>
           ) : (
             <>

@@ -10,6 +10,7 @@ import {
   DialogTitle,
   Input,
   Select,
+  cn,
 } from '@iwana/ui';
 import { PurchaseOrderStatus } from '@iwana/shared';
 import type {
@@ -18,7 +19,7 @@ import type {
   PurchaseOrderRecord,
   PurchaseRequestRecord,
 } from '@/lib/api-client';
-import { PortalAlert } from '@/components/shared/portal-ui';
+import { PortalAlert, interactiveFocusClassName } from '@/components/shared/portal-ui';
 import { SupplierPicker } from './SupplierPicker';
 import { toDateFromLocalDateValue, toLocalDateValue } from './inventory-date';
 import { formatInventoryDate, getPurchaseRequestStatusLabel } from './inventory-labels';
@@ -50,7 +51,7 @@ function createOrderLine(): PurchaseOrderLineDraft {
 }
 
 const ITEM_OPTIONS = (items: InventoryItemRecord[]) => [
-  { value: '', label: 'Selecciona un ítem' },
+  { value: '', label: 'Selecciona un producto' },
   ...items.map((item) => ({
     value: item.id,
     label: `${item.sku} · ${item.name}`,
@@ -147,8 +148,8 @@ export function PurchaseOrderDrawer({
             {orderJustCreated && latestOrder ? (
               <PortalAlert
                 variant="success"
-                title={`OC ${latestOrder.orderNumber} generada`}
-                description="Cierra este panel y registra la recepción en la pestaña Recepciones del workbench."
+                title={`Orden de compra ${latestOrder.orderNumber} generada`}
+                description="Cierra este panel y registra la recepción en la pestaña Recepciones."
                 action={
                   <Button type="button" variant="secondary" size="sm" onClick={onClose}>
                     Cerrar
@@ -183,7 +184,10 @@ export function PurchaseOrderDrawer({
                   rows={3}
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
-                  className="w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-white"
+                  className={cn(
+                    'w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white',
+                    interactiveFocusClassName,
+                  )}
                 />
               </label>
             </div>
@@ -196,7 +200,7 @@ export function PurchaseOrderDrawer({
                 >
                   <Select
                     id={`purchase-order-item-${line.id}`}
-                    label="Ítem"
+                    label="Producto"
                     value={line.itemId}
                     onChange={(event) =>
                       setLines((current) =>
@@ -261,7 +265,7 @@ export function PurchaseOrderDrawer({
                 disabled={!partyRefId || lines.every((line) => !line.itemId)}
                 onClick={() => void handleCreateOrder()}
               >
-                Generar OC
+                Generar orden de compra
               </Button>
             </div>
           </div>

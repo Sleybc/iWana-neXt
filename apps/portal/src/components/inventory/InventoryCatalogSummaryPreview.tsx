@@ -2,7 +2,7 @@
 
 import { Button } from '@iwana/ui';
 import type { InventoryItemRecord } from '@/lib/api-client';
-import { PortalEmptyState, PortalPanel } from '@/components/shared/portal-ui';
+import { PortalEmptyState, PortalPanel, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 import { InventoryItemsTable } from './InventoryItemsTable';
 
 const PREVIEW_LIMIT = 6;
@@ -33,7 +33,7 @@ export function InventoryCatalogSummaryPreview({
       }
     >
       {isLoading ? (
-        <div className="h-48 animate-pulse rounded-2xl bg-iwana-surface-soft dark:bg-dark-surface-3" />
+        <PortalSkeletonBlock className="h-48 rounded-2xl" />
       ) : items.length === 0 ? (
         <PortalEmptyState
           title="Sin productos registrados"

@@ -20,7 +20,7 @@ export function StockIssueSourceTabs({
   return (
     <Tabs value={value} onValueChange={(next) => onValueChange(next as StockIssueSourceTab)}>
       <TabsList>
-        <TabsTrigger value="suggestions">Con stock ({suggestionCount})</TabsTrigger>
+        <TabsTrigger value="suggestions">Con material ({suggestionCount})</TabsTrigger>
         <TabsTrigger value="catalog">Catálogo ({catalogCount})</TabsTrigger>
       </TabsList>
     </Tabs>

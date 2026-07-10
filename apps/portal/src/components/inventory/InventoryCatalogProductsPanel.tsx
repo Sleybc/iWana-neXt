@@ -1,10 +1,12 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { Package } from 'lucide-react';
 import { Button } from '@iwana/ui';
 import type { InventoryItemRecord } from '@/lib/api-client';
-import { PortalSectionHeader, portalDataTableShellClassName } from '@/components/shared/portal-ui';
+import { PortalEmptyState, portalDataTableShellClassName } from '@/components/shared/portal-ui';
 import { InventoryCatalogFilters } from './InventoryCatalogFilters';
+import { InventoryCatalogProductsSkeleton } from './InventoryCatalogProductsSkeleton';
 import { InventoryItemsTable } from './InventoryItemsTable';
 import type { CatalogFilters } from './catalog-filters';
 import { hasActiveCatalogFilters } from './catalog-filters';
@@ -24,7 +26,6 @@ interface InventoryCatalogProductsPanelProps {
   isRefreshing?: boolean;
   onFiltersChange: (filters: CatalogFilters) => void;
   onClearFilters: () => void;
-  onRefresh?: () => void;
   onCreateProduct: () => void;
   onRowClick: (item: InventoryItemRecord) => void;
   onDelete: (item: InventoryItemRecord) => void;
@@ -42,7 +43,6 @@ export function InventoryCatalogProductsPanel({
   isRefreshing = false,
   onFiltersChange,
   onClearFilters,
-  onRefresh,
   onCreateProduct,
   onRowClick,
   onDelete,
@@ -50,7 +50,8 @@ export function InventoryCatalogProductsPanel({
   createAction,
 }: InventoryCatalogProductsPanelProps) {
   const resultCount = items.length;
-  const counterLabel =
+  const hasFilters = hasActiveCatalogFilters(filters);
+  const resultLabel =
     resultCount === totalCount
       ? `${resultCount} productos`
       : `${resultCount} de ${totalCount} productos`;
@@ -61,52 +62,61 @@ export function InventoryCatalogProductsPanel({
     </Button>
   );
 
-  return (
-    <div className={portalDataTableShellClassName}>
-      <div className="border-b border-gray-100/80 px-5 py-5 dark:border-dark-border">
-        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-          <PortalSectionHeader
-            className="w-full gap-3"
-            eyebrow="Maestro de productos"
-            title="Catálogo operativo"
-            description="Consulta, filtra y administra productos para compras, stock y ciclo de vida."
-            actions={<div className="flex flex-wrap items-center gap-2">{emptyAction}</div>}
-          />
-        </div>
+  if (isLoading && totalCount === 0) {
+    return <InventoryCatalogProductsSkeleton />;
+  }
 
-        <InventoryCatalogFilters
-          embedded
-          filters={filters}
-          resultCount={resultCount}
-          totalCount={totalCount}
-          categoryOptions={categoryOptions}
-          isRefreshing={isRefreshing}
-          onFiltersChange={onFiltersChange}
-          onClearFilters={onClearFilters}
-          {...(onRefresh ? { onRefresh } : {})}
-        />
+  if (totalCount === 0 && !hasFilters) {
+    return (
+      <PortalEmptyState
+        title="Sin productos registrados"
+        description="Crea productos para empezar a comprar, recibir y mover inventario."
+        icon={Package}
+        action={emptyAction}
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium text-gray-600 dark:text-gray-300">{resultLabel}</p>
       </div>
 
-      <InventoryItemsTable
-        items={items}
-        supplierLabels={supplierLabels}
-        showCatalogColumns
-        isLoading={isLoading}
-        isRefreshing={isRefreshing}
-        hasActiveFilters={hasActiveCatalogFilters(filters)}
-        catalogIsEmpty={totalCount === 0}
-        emptyAction={emptyAction}
+      <InventoryCatalogFilters
+        filters={filters}
+        categoryOptions={categoryOptions}
+        onFiltersChange={onFiltersChange}
         onClearFilters={onClearFilters}
-        onRowClick={onRowClick}
-        onDelete={onDelete}
-        deletingItemId={deletingItemId}
       />
 
-      {resultCount > 0 || hasActiveCatalogFilters(filters) ? (
-        <div className="flex items-center justify-between border-t border-gray-100 px-5 py-4 dark:border-dark-border">
-          <p className="text-sm text-gray-500 dark:text-gray-400">{counterLabel}</p>
+      {resultCount === 0 ? (
+        <PortalEmptyState
+          title="Sin resultados con esta búsqueda"
+          description="Cambia la búsqueda o limpia los filtros para ver más productos."
+          action={
+            <Button type="button" variant="secondary" onClick={onClearFilters}>
+              Limpiar filtros
+            </Button>
+          }
+        />
+      ) : (
+        <div className={portalDataTableShellClassName}>
+          <div className="overflow-x-auto">
+            <InventoryItemsTable
+              items={items}
+              supplierLabels={supplierLabels}
+              showCatalogColumns
+              isLoading={isLoading}
+              isRefreshing={isRefreshing}
+              suppressEmptyState
+              onRowClick={onRowClick}
+              onDelete={onDelete}
+              deletingItemId={deletingItemId}
+            />
+          </div>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

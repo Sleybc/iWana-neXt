@@ -319,7 +319,7 @@ export function InventoryCategoryDrawer({
               id="inventory-category-drawer-description"
               className="mt-2 text-sm text-gray-500 dark:text-gray-400"
             >
-              Define cómo se clasifican los productos y cómo se emite el prefijo de nuevos SKU.
+              Define cómo se clasifican los productos y cómo se emite el prefijo de nuevos códigos.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Badge
@@ -365,7 +365,7 @@ export function InventoryCategoryDrawer({
             {!isEditing ? (
               <div className="space-y-1">
                 <Input
-                  label="Prefijo de producto"
+                  label="Prefijo de código"
                   value={form.codePrefix}
                   onChange={(event) => updateCodePrefix(event.target.value)}
                 />
@@ -384,7 +384,7 @@ export function InventoryCategoryDrawer({
                   disabled={hasProducts}
                 />
                 <div className="space-y-1">
-                  <Input label="Prefijo de producto" value={form.codePrefix} disabled />
+                  <Input label="Prefijo de código" value={form.codePrefix} disabled />
                   <p className="text-xs text-iwana-secondary-700 dark:text-gray-400">
                     Prefijo usado en los códigos de producto de esta categoría. No se puede
                     modificar después de crear la categoría.

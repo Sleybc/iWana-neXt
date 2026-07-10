@@ -1,8 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { Badge } from '@iwana/ui';
+import { Badge, cn } from '@iwana/ui';
 import type { WfmDashboardSummary } from '@/lib/api-client';
+import {
+  type PortalMetricCardAccent,
+  portalMetricCardAccentClassName,
+  portalMetricCardShellClassName,
+} from '@/components/shared/portal-ui';
 
 interface SchedulingSummaryStripProps {
   summary: WfmDashboardSummary | null;
@@ -34,20 +39,15 @@ function SummaryCard({
   detail: string;
   actionHref?: string;
   actionLabel?: string;
-  accent?: 'neutral' | 'primary' | 'warning' | 'danger';
+  accent?: PortalMetricCardAccent;
 }) {
-  const accentClassName =
-    accent === 'primary'
-      ? 'border-iwana-primary/20 bg-iwana-primary-50/70 dark:border-iwana-primary-400/30 dark:bg-iwana-primary-900/15'
-      : accent === 'warning'
-        ? 'border-amber-200 bg-amber-50/80 dark:border-amber-500/20 dark:bg-amber-950/20'
-        : accent === 'danger'
-          ? 'border-rose-200 bg-rose-50/80 dark:border-rose-500/20 dark:bg-rose-950/20'
-          : 'border-gray-200 bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-3';
-
   return (
     <article
-      className={`flex h-full min-h-[168px] flex-col rounded-3xl border px-4 py-4 shadow-sm ${accentClassName}`}
+      className={cn(
+        portalMetricCardShellClassName,
+        'min-h-[168px]',
+        portalMetricCardAccentClassName(accent),
+      )}
     >
       <p className="portal-eyebrow-muted">{eyebrow}</p>
       <p className="mt-2 text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">

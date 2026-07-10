@@ -1,50 +1,33 @@
 'use client';
 
 import type { ReactNode } from 'react';
-
 import { useMemo, useState } from 'react';
-
+import { FolderTree } from 'lucide-react';
 import { Button } from '@iwana/ui';
-
 import type { InventoryCategoryRecord } from '@/lib/api-client';
-
 import {
+  PortalEmptyState,
   PortalSearchField,
-  PortalSectionHeader,
   portalDataTableShellClassName,
 } from '@/components/shared/portal-ui';
-
 import { InventoryCategoriesTable } from './InventoryCategoriesTable';
+import { InventoryCatalogProductsSkeleton } from './InventoryCatalogProductsSkeleton';
 
 interface InventoryCatalogCategoriesPanelProps {
   categories: InventoryCategoryRecord[];
-
   isLoading: boolean;
-
   isRefreshing?: boolean;
-
   onCreateCategory: () => void;
-
   onRowClick: (category: InventoryCategoryRecord) => void;
-
-  onRefresh?: () => void;
-
   createAction?: ReactNode;
 }
 
 export function InventoryCatalogCategoriesPanel({
   categories,
-
   isLoading,
-
   isRefreshing = false,
-
   onCreateCategory,
-
   onRowClick,
-
-  onRefresh,
-
   createAction,
 }: InventoryCatalogCategoriesPanelProps) {
   const [search, setSearch] = useState('');
@@ -59,16 +42,11 @@ export function InventoryCatalogCategoriesPanel({
     return categories.filter((category) => {
       const haystack = [
         category.name,
-
         category.code,
-
         category.codePrefix,
-
         category.description ?? '',
       ]
-
         .join(' ')
-
         .toLowerCase();
 
       return haystack.includes(query);
@@ -81,39 +59,34 @@ export function InventoryCatalogCategoriesPanel({
     </Button>
   );
 
-  const counterLabel = search.trim()
+  const hasSearch = Boolean(search.trim());
+  const counterLabel = hasSearch
     ? `${filteredCategories.length} de ${categories.length} categorías`
     : `${categories.length} categorías`;
 
+  if (isLoading && categories.length === 0) {
+    return <InventoryCatalogProductsSkeleton />;
+  }
+
+  if (categories.length === 0) {
+    return (
+      <PortalEmptyState
+        title="Sin categorías registradas"
+        description="Crea categorías para clasificar los productos del catálogo."
+        icon={FolderTree}
+        action={emptyAction}
+      />
+    );
+  }
+
   return (
-    <div className={portalDataTableShellClassName}>
-      <div className="border-b border-gray-100/80 px-5 py-5 dark:border-dark-border">
-        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-          <PortalSectionHeader
-            className="w-full gap-3"
-            eyebrow="Clasificación del catálogo"
-            title="Categorías"
-            description="Administra las categorías usadas por los productos operativos."
-            actions={
-              <div className="flex flex-wrap items-center gap-2">
-                {onRefresh ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    loading={isRefreshing}
-                    onClick={onRefresh}
-                  >
-                    Actualizar
-                  </Button>
-                ) : null}
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium text-gray-600 dark:text-gray-300">{counterLabel}</p>
+      </div>
 
-                {emptyAction}
-              </div>
-            }
-          />
-        </div>
-
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_auto] lg:items-end">
+      <div className="space-y-3 border-b border-gray-100 pb-4 dark:border-dark-border">
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1.5fr)_auto] xl:items-end">
           <PortalSearchField
             id="catalog-category-search"
             label="Buscar categoría"
@@ -121,8 +94,7 @@ export function InventoryCatalogCategoriesPanel({
             value={search}
             onChange={setSearch}
           />
-
-          {search.trim() ? (
+          {hasSearch ? (
             <Button
               type="button"
               variant="secondary"
@@ -135,26 +107,29 @@ export function InventoryCatalogCategoriesPanel({
         </div>
       </div>
 
-      <div aria-live="polite" className="sr-only">
-        {search.trim() ? counterLabel : null}
-      </div>
-
-      <InventoryCategoriesTable
-        categories={filteredCategories}
-        isLoading={isLoading}
-        isRefreshing={isRefreshing}
-        hasActiveFilters={Boolean(search.trim())}
-        catalogIsEmpty={categories.length === 0}
-        emptyAction={emptyAction}
-        onClearSearch={() => setSearch('')}
-        onRowClick={onRowClick}
-      />
-
-      {filteredCategories.length > 0 || search.trim() ? (
-        <div className="flex items-center justify-between border-t border-gray-100 px-5 py-4 dark:border-dark-border">
-          <p className="text-sm text-gray-500 dark:text-gray-400">{counterLabel}</p>
+      {filteredCategories.length === 0 ? (
+        <PortalEmptyState
+          title="Sin resultados con esta búsqueda"
+          description="Cambia la búsqueda para encontrar otra categoría."
+          action={
+            <Button type="button" variant="secondary" onClick={() => setSearch('')}>
+              Limpiar búsqueda
+            </Button>
+          }
+        />
+      ) : (
+        <div className={portalDataTableShellClassName}>
+          <div className="overflow-x-auto">
+            <InventoryCategoriesTable
+              categories={filteredCategories}
+              isLoading={isLoading}
+              isRefreshing={isRefreshing}
+              suppressEmptyState
+              onRowClick={onRowClick}
+            />
+          </div>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

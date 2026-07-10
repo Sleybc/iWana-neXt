@@ -27,7 +27,7 @@ export function PurchaseBulkEditBar({
   return (
     <PortalActionToolbar className="flex-wrap gap-2">
       <span className="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200">
-        {selectedCount} linea{selectedCount === 1 ? '' : 's'} seleccionada
+        {selectedCount} línea{selectedCount === 1 ? '' : 's'} seleccionada
         {selectedCount === 1 ? '' : 's'}
       </span>
       <div className="flex min-w-[180px] flex-1 items-end gap-2">

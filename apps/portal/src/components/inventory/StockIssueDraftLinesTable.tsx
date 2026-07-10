@@ -7,6 +7,7 @@ import type {
   SerializedAssetRecord,
   StockBalanceRecord,
 } from '@/lib/api-client';
+import { interactiveFocusClassName } from '@/components/shared/portal-ui';
 import type { StockIssueDraftLine } from './stock-issue-draft';
 import { formatInventoryQuantity, getStockBalanceConditionLabel } from './inventory-labels';
 import { isRequestedQtyExceedingAvailable } from './stock-issue-balance-utils';
@@ -73,7 +74,7 @@ export function StockIssueDraftLinesTable({
   const itemsById = new Map(items.map((item) => [item.id, item]));
 
   const itemOptions = [
-    { value: '', label: 'Selecciona un ítem' },
+    { value: '', label: 'Selecciona un producto' },
     ...items.map((item) => ({
       value: item.id,
       label: `${item.sku} · ${item.name}`,
@@ -102,13 +103,13 @@ export function StockIssueDraftLinesTable({
               <th className="px-4 py-3 text-left">
                 <input
                   type="checkbox"
-                  className="h-4 w-4 rounded border-gray-300 accent-iwana-primary"
+                  className={`h-4 w-4 rounded border-gray-300 accent-iwana-primary ${interactiveFocusClassName}`}
                   aria-label="Seleccionar todas las líneas"
                   checked={allSelected}
                   onChange={(event) => onToggleAll(event.target.checked)}
                 />
               </th>
-              <th className="px-4 py-3 text-left">Ítem</th>
+              <th className="px-4 py-3 text-left">Producto</th>
               <th className="px-4 py-3 text-left">Condición</th>
               <th className="px-4 py-3 text-left">Lote / serial</th>
               {showAvailableColumn ? (
@@ -169,7 +170,7 @@ export function StockIssueDraftLinesTable({
                   <td className="px-4 py-3">
                     <input
                       type="checkbox"
-                      className="h-4 w-4 rounded border-gray-300 accent-iwana-primary"
+                      className={`h-4 w-4 rounded border-gray-300 accent-iwana-primary ${interactiveFocusClassName}`}
                       aria-label={`Seleccionar línea ${line.productLabel || 'manual'}`}
                       checked={selectedLineIds.includes(line.id)}
                       onChange={() => onToggleLine(line.id)}
@@ -178,7 +179,7 @@ export function StockIssueDraftLinesTable({
                   <td className="px-4 py-3">
                     {line.isManual ? (
                       <Select
-                        aria-label={`Ítem línea ${line.id}`}
+                        aria-label={`Producto línea ${line.id}`}
                         value={line.itemId}
                         onChange={(event) => {
                           const itemId = event.target.value;
@@ -243,7 +244,7 @@ export function StockIssueDraftLinesTable({
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
                       {line.itemId
                         ? formatInventoryQuantity(availableQty ?? 0)
-                        : 'Selecciona un ítem'}
+                        : 'Selecciona un producto'}
                     </td>
                   ) : null}
                   <td className="px-4 py-3">
@@ -256,7 +257,7 @@ export function StockIssueDraftLinesTable({
                       />
                       {exceedsAvailable ? (
                         <p className="text-xs text-amber-700 dark:text-amber-300">
-                          Supera el saldo visible en origen. El despacho puede rechazarse.
+                          Supera el material disponible en origen. El despacho puede rechazarse.
                         </p>
                       ) : null}
                     </div>

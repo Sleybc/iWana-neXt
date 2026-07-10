@@ -61,7 +61,7 @@ function validateHeaderFields(input: {
     const commercialRefId = input.commercialRefId.trim();
     const originRefId = input.originRefId.trim();
     if (!commercialRefId && !originRefId) {
-      return 'Indica una referencia comercial u origen operativo para la venta.';
+      return 'Indica una referencia comercial o el origen de la venta.';
     }
   }
 
@@ -116,7 +116,7 @@ function mapValidatedLines(
     if (serialized && !serializedAssetId) {
       return {
         mappedLines: [],
-        error: `Selecciona el serial del activo para ${line.productLabel || 'la línea serializada'}.`,
+        error: `Selecciona el serial del activo para ${line.productLabel || 'esta línea'}.`,
       };
     }
 
@@ -131,7 +131,7 @@ function mapValidatedLines(
     if (serializedAssetId && requestedQty !== 1) {
       return {
         mappedLines: [],
-        error: 'Las líneas con activo serializado deben tener cantidad 1.',
+        error: 'Las líneas con equipo con serial deben tener cantidad 1.',
       };
     }
 

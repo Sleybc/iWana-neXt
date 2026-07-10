@@ -123,7 +123,7 @@ function buildValidationSummary(
   const missingFields = [
     errors.name ? 'el nombre' : null,
     errors.categoryId ? 'la categoría' : null,
-    errors.trackingMode ? 'la trazabilidad' : null,
+    errors.trackingMode ? 'el control de material' : null,
     errors.unitOfMeasure ? 'la unidad de medida' : null,
   ].filter((value): value is string => value !== null);
 
@@ -337,8 +337,8 @@ export function InventoryCreateProductDialog({
             render={({ field }) => (
               <Select
                 id="inventory-create-product-tracking"
-                label="Trazabilidad"
-                aria-label="Trazabilidad"
+                label="Control de material"
+                aria-label="Control de material"
                 options={TRACKING_OPTIONS}
                 value={field.value}
                 {...(errors.trackingMode?.message ? { error: errors.trackingMode.message } : {})}
@@ -358,7 +358,7 @@ export function InventoryCreateProductDialog({
           {skuPreview ? (
             <div className="rounded-2xl border border-iwana-primary-100 bg-iwana-primary-50 p-3 text-sm dark:border-iwana-primary-900/50 dark:bg-iwana-primary-950/20">
               <p className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                SKU sugerido
+                Código sugerido
               </p>
               <p className="mt-1 font-mono text-xs text-gray-900 dark:text-white">{skuPreview}</p>
               <p className="mt-1 text-xs text-iwana-secondary-700 dark:text-gray-400">

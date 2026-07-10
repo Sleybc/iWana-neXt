@@ -54,11 +54,7 @@ interface StockTransferDialogProps {
 }
 
 function SectionTitle({ children }: { children: string }) {
-  return (
-    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-iwana-secondary-700 dark:text-iwana-secondary">
-      {children}
-    </p>
-  );
+  return <p className="portal-eyebrow">{children}</p>;
 }
 
 function isTransferableBalance(balance: StockBalanceRecord): boolean {
@@ -285,9 +281,9 @@ export function StockTransferDialog({
           <p className="portal-eyebrow">Bodegas</p>
           <DialogTitle className="mt-1">Salida a técnico</DialogTitle>
           <DialogDescription>
-            Entrega equipos o insumos desde bodega central a la custodia móvil del técnico
-            responsable. Requiere acta de entrega. La instalación en cliente se registra al cerrar
-            la orden de trabajo con firma, no desde este formulario.
+            Entrega equipos o insumos desde bodega central a un técnico en campo. Requiere acta de
+            entrega. La instalación en cliente se registra al cerrar la orden de trabajo con firma,
+            no desde este formulario.
           </DialogDescription>
         </DialogHeader>
 
@@ -296,7 +292,7 @@ export function StockTransferDialog({
             <SectionTitle>Qué entregar</SectionTitle>
             <div className="grid gap-4 md:grid-cols-2">
               <Select
-                label="Ítem"
+                label="Producto"
                 className="md:col-span-2"
                 value={itemId}
                 options={[
@@ -304,8 +300,8 @@ export function StockTransferDialog({
                     value: '',
                     label:
                       transferableItems.length === 0
-                        ? 'Sin ítems con saldo transferible'
-                        : 'Selecciona un ítem',
+                        ? 'Sin productos disponibles para entregar'
+                        : 'Selecciona un producto',
                   },
                   ...transferableItems.map((item) => ({
                     value: item.id,
@@ -313,7 +309,7 @@ export function StockTransferDialog({
                   })),
                 ]}
                 onChange={(event) => setItemId(event.target.value)}
-                helperText="Solo se listan ítems con saldo nuevo sin lote en bodega."
+                helperText="Solo se muestran productos disponibles en bodega."
               />
 
               <Input
@@ -326,7 +322,7 @@ export function StockTransferDialog({
                 onChange={(event) => setQuantity(event.target.value)}
                 helperText={
                   requiresSerial || serialNumber.trim()
-                    ? 'Para equipos serializados la salida es de una unidad por serial.'
+                    ? 'Para equipos con serial la salida es de una unidad por número de serial.'
                     : 'Usa decimales solo si la unidad de medida lo permite.'
                 }
               />
@@ -339,7 +335,7 @@ export function StockTransferDialog({
                 onChange={(event) => setSerialNumber(event.target.value)}
                 helperText={
                   requiresSerial
-                    ? 'Obligatorio para equipos serializados.'
+                    ? 'Obligatorio para equipos con serial.'
                     : 'Opcional. Si lo informas, la salida operará por una unidad.'
                 }
                 className="md:col-span-2"
@@ -357,7 +353,9 @@ export function StockTransferDialog({
                 options={[
                   {
                     value: '',
-                    label: itemId ? 'Selecciona bodega origen' : 'Primero selecciona un ítem',
+                    label: itemId
+                      ? 'Selecciona la bodega de origen'
+                      : 'Primero selecciona un producto',
                   },
                   ...sourceLocationOptions.map((location) => ({
                     value: location.id,
@@ -365,7 +363,7 @@ export function StockTransferDialog({
                   })),
                 ]}
                 onChange={(event) => setSourceLocationId(event.target.value)}
-                helperText="Bodegas centrales o de preparación con saldo del ítem."
+                helperText="Bodegas centrales o de preparación con material disponible."
               />
 
               <div className="hidden justify-center pb-3 md:flex" aria-hidden="true">
@@ -373,15 +371,15 @@ export function StockTransferDialog({
               </div>
 
               <Select
-                label="Custodia del técnico"
+                label="Técnico o cuadrilla"
                 value={destinationLocationId}
                 disabled={!sourceLocationId}
                 options={[
                   {
                     value: '',
                     label: sourceLocationId
-                      ? 'Selecciona custodia móvil'
-                      : 'Primero selecciona bodega origen',
+                      ? 'Selecciona quién recibe'
+                      : 'Primero selecciona la bodega de origen',
                   },
                   ...destinationOptions.map((location) => ({
                     value: location.id,
@@ -389,7 +387,7 @@ export function StockTransferDialog({
                   })),
                 ]}
                 onChange={(event) => setDestinationLocationId(event.target.value)}
-                helperText="Solo bodegas móviles con responsable asignado."
+                helperText="Solo aparecen técnicos o cuadrillas con bodega asignada."
               />
             </div>
 
@@ -460,15 +458,15 @@ export function StockTransferDialog({
             <PortalAlert
               variant="warning"
               title="Sin material disponible para salida"
-              description="No hay ítems con saldo nuevo sin lote en bodega. Recibe mercancía o revisa los balances antes de entregar a un técnico."
+              description="No hay productos disponibles en bodega. Recibe mercancía o revisa el material antes de entregar a un técnico."
             />
           ) : null}
 
           {mobileDestinationsWithoutResponsible.length > 0 && destinationOptions.length === 0 ? (
             <PortalAlert
               variant="warning"
-              title="Sin custodias móviles habilitadas"
-              description="Hay bodegas móviles sin responsable asignado. Edita la bodega y asigna un técnico antes de registrar salidas."
+              title="Sin técnicos listos para recibir"
+              description="Hay bodegas de campo sin persona a cargo. Edita la bodega y asigna un técnico antes de registrar salidas."
             />
           ) : null}
 
@@ -488,7 +486,7 @@ export function StockTransferDialog({
                 </p>
               ) : null}
               <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">
-                Disponible en origen (saldo nuevo sin lote):{' '}
+                Disponible en la bodega de origen:{' '}
                 <span className="font-semibold text-iwana-primary dark:text-white">
                   {formatInventoryQuantity(availableQuantity)}
                 </span>
@@ -496,7 +494,7 @@ export function StockTransferDialog({
               </p>
               {destinationRemainingCapacity != null ? (
                 <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
-                  Cupo restante en custodia móvil:{' '}
+                  Espacio disponible para quien recibe:{' '}
                   <span className="font-semibold text-iwana-primary dark:text-white">
                     {formatInventoryQuantity(Math.max(destinationRemainingCapacity, 0))}
                   </span>
@@ -510,23 +508,23 @@ export function StockTransferDialog({
             <PortalAlert
               variant="warning"
               title="Falta el serial del equipo"
-              description="Informa el serial para registrar la salida del activo serializado."
+              description="Informa el serial para registrar la salida del equipo."
             />
           ) : null}
 
           {exceedsAvailable ? (
             <PortalAlert
               variant="warning"
-              title="La salida supera el saldo visible"
-              description="Ajusta la cantidad o selecciona otra bodega origen con saldo nuevo sin lote disponible."
+              title="La cantidad supera lo disponible"
+              description="Ajusta la cantidad o selecciona otra bodega de origen con material disponible."
             />
           ) : null}
 
           {exceedsDestinationCapacity ? (
             <PortalAlert
               variant="warning"
-              title="La custodia móvil no tiene cupo suficiente"
-              description="Reduce la cantidad o elige otra bodega móvil con capacidad restante."
+              title="No hay espacio suficiente para recibir"
+              description="Reduce la cantidad o elige otra persona con espacio disponible."
             />
           ) : null}
 

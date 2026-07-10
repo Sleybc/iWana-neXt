@@ -90,8 +90,8 @@ export function StockLocationFormDialog({
 
   const responsibleOptions = useMemo(() => {
     const emptyOption = requiresResponsible
-      ? { value: '', label: 'Selecciona responsable' }
-      : { value: '', label: 'Sin asignar' };
+      ? { value: '', label: 'Selecciona una persona' }
+      : { value: '', label: 'Sin persona a cargo' };
 
     return mapUsersToSelectOptions(operationalUsers, emptyOption);
   }, [operationalUsers, requiresResponsible]);
@@ -167,120 +167,140 @@ export function StockLocationFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent
+        aria-labelledby="stock-location-form-dialog-title"
+        className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"
+      >
         <DialogHeader>
           <p className="portal-eyebrow">Bodegas</p>
-          <DialogTitle className="mt-1">{isEditing ? 'Editar bodega' : 'Crear bodega'}</DialogTitle>
+          <DialogTitle id="stock-location-form-dialog-title" className="mt-1">
+            {isEditing ? 'Editar bodega' : 'Crear bodega'}
+          </DialogTitle>
           <DialogDescription>
             {isEditing
-              ? 'Actualiza nombre, estado, responsable y capacidad sin modificar el código ni el tipo.'
-              : 'Define la bodega operativa. El código se asignará automáticamente según el tipo seleccionado.'}
+              ? 'Cambia los datos de la bodega sin modificar su código ni su tipo.'
+              : 'Cuéntanos cómo se usará esta bodega. El código se creará al guardarla.'}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-5">
           {isEditing ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              <Input label="Código" value={location?.code ?? ''} readOnly />
-              <Input label="Tipo" value={getStockLocationTypeLabel(values.type)} readOnly />
-            </div>
+            <section aria-labelledby="stock-location-identification-heading" className="space-y-3">
+              <h3 id="stock-location-identification-heading" className="portal-eyebrow">
+                Datos básicos
+              </h3>
+              <div className="grid gap-4 md:grid-cols-2">
+                <Input label="Código de bodega" value={location?.code ?? ''} readOnly />
+                <Input label="Tipo" value={getStockLocationTypeLabel(values.type)} readOnly />
+              </div>
+            </section>
           ) : null}
 
-          <div className="grid gap-4 md:grid-cols-2">
-            {!isEditing ? (
+          <section aria-labelledby="stock-location-operation-heading" className="space-y-4">
+            <h3 id="stock-location-operation-heading" className="portal-eyebrow">
+              Uso de la bodega
+            </h3>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              {!isEditing ? (
+                <Select
+                  label="Tipo"
+                  className="md:col-span-2"
+                  value={values.type}
+                  options={Object.values(StockLocationType).map((type) => ({
+                    value: type,
+                    label: getStockLocationTypeLabel(type),
+                  }))}
+                  onChange={(event) =>
+                    setValues((current) => ({
+                      ...current,
+                      type: event.target.value as StockLocationType,
+                    }))
+                  }
+                />
+              ) : null}
+
+              <Input
+                label="Nombre de la bodega"
+                requiredIndicator
+                autoFocus={!isEditing}
+                value={values.name}
+                onChange={(event) =>
+                  setValues((current) => ({ ...current, name: event.target.value }))
+                }
+              />
+
               <Select
-                label="Tipo"
-                className="md:col-span-2"
-                value={values.type}
-                options={Object.values(StockLocationType).map((type) => ({
-                  value: type,
-                  label: getStockLocationTypeLabel(type),
+                label="Estado"
+                value={values.status}
+                options={Object.values(StockLocationStatus).map((status) => ({
+                  value: status,
+                  label: getStockLocationStatusLabel(status),
                 }))}
                 onChange={(event) =>
                   setValues((current) => ({
                     ...current,
-                    type: event.target.value as StockLocationType,
+                    status: event.target.value as StockLocationStatus,
                   }))
                 }
               />
-            ) : null}
 
-            <Input
-              label="Nombre de la bodega"
-              requiredIndicator
-              value={values.name}
-              onChange={(event) =>
-                setValues((current) => ({ ...current, name: event.target.value }))
-              }
-            />
+              <Select
+                label="Persona a cargo"
+                className="md:col-span-2"
+                value={values.responsibleRefId}
+                options={responsibleOptions}
+                disabled={isLoadingUsers}
+                onChange={(event) =>
+                  setValues((current) => ({
+                    ...current,
+                    responsibleRefId: event.target.value,
+                  }))
+                }
+                helperText={
+                  usersLoadError
+                    ? 'No fue posible cargar usuarios. Intenta cerrar y abrir el formulario.'
+                    : isLoadingUsers
+                      ? 'Cargando personas de la empresa…'
+                      : requiresResponsible
+                        ? 'Necesaria cuando el material queda en manos de un técnico o una cuadrilla.'
+                        : 'Puedes dejarlo vacío si nadie queda a cargo.'
+                }
+              />
 
-            <Select
-              label="Estado"
-              value={values.status}
-              options={Object.values(StockLocationStatus).map((status) => ({
-                value: status,
-                label: getStockLocationStatusLabel(status),
-              }))}
-              onChange={(event) =>
-                setValues((current) => ({
-                  ...current,
-                  status: event.target.value as StockLocationStatus,
-                }))
-              }
-            />
+              {selectedResponsibleLabel ? (
+                <p className="md:col-span-2 text-xs text-iwana-secondary-700 dark:text-gray-400">
+                  Persona a cargo: {selectedResponsibleLabel}
+                </p>
+              ) : null}
 
-            <Select
-              label="Responsable operativo"
-              className="md:col-span-2"
-              value={values.responsibleRefId}
-              options={responsibleOptions}
-              disabled={isLoadingUsers}
-              onChange={(event) =>
-                setValues((current) => ({
-                  ...current,
-                  responsibleRefId: event.target.value,
-                }))
-              }
-              helperText={
-                usersLoadError
-                  ? 'No fue posible cargar usuarios. Intenta cerrar y abrir el formulario.'
-                  : isLoadingUsers
-                    ? 'Cargando usuarios del tenant…'
-                    : requiresResponsible
-                      ? 'Obligatorio para custodias móviles activas.'
-                      : 'Opcional para bodegas fijas o archivadas.'
-              }
-            />
-
-            {selectedResponsibleLabel ? (
-              <p className="md:col-span-2 text-xs text-iwana-secondary-700 dark:text-gray-400">
-                Responsable seleccionado: {selectedResponsibleLabel}
-              </p>
-            ) : null}
-
-            <Input
-              label="Capacidad máxima"
-              type="number"
-              min="0"
-              step="0.01"
-              value={values.maxCapacity}
-              onChange={(event) =>
-                setValues((current) => ({ ...current, maxCapacity: event.target.value }))
-              }
-              helperText="Déjalo vacío si la bodega no opera con tope visible."
-            />
-          </div>
+              <Input
+                label="Límite de unidades"
+                type="number"
+                min="0"
+                step="0.01"
+                value={values.maxCapacity}
+                onChange={(event) =>
+                  setValues((current) => ({ ...current, maxCapacity: event.target.value }))
+                }
+                helperText="Déjalo vacío si no necesitas controlar un límite."
+              />
+            </div>
+          </section>
 
           {codePreview ? (
-            <div className="rounded-2xl border border-iwana-primary-100 bg-iwana-primary-50 p-3 text-sm dark:border-iwana-primary-900/50 dark:bg-iwana-primary-950/20">
-              <p className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                Código sugerido
-              </p>
-              <p className="mt-1 font-mono text-xs text-gray-900 dark:text-white">{codePreview}</p>
-              <p className="mt-1 text-xs text-iwana-secondary-700 dark:text-gray-400">
-                Se asignará automáticamente al crear la bodega.
-              </p>
-            </div>
+            <PortalAlert
+              variant="info"
+              title="Código que usaremos"
+              description={
+                <>
+                  <p className="font-mono text-sm text-gray-900 dark:text-white">{codePreview}</p>
+                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                    Lo asignaremos cuando guardes la bodega.
+                  </p>
+                </>
+              }
+            />
           ) : null}
 
           {usersLoadError ? (
@@ -301,8 +321,8 @@ export function StockLocationFormDialog({
             />
           ) : null}
 
-          <div className="flex justify-end gap-3 border-t border-gray-100 pt-4 dark:border-dark-border">
-            <Button type="button" variant="secondary" onClick={onClose}>
+          <div className="flex justify-end gap-2 border-t border-gray-100 pt-4 dark:border-dark-border">
+            <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
               Cancelar
             </Button>
             <Button

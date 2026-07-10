@@ -18,6 +18,10 @@ import {
   PortalEmptyState,
   PortalPanel,
   PortalSectionHeader,
+  CreateModeSummaryFooter,
+  CreateModeMobileCaptureFooter,
+  CreateModeMobileStepIndicator,
+  portalTextareaClassName,
 } from '@/components/shared/portal-ui';
 import {
   formatInventoryCurrency,
@@ -483,7 +487,7 @@ export function PurchaseRequestComposer({
           disabled={isSubmitting}
         />
       </div>
-      <div className="grid gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+      <div className="grid gap-3">
         <Input
           id="purchase-title"
           label="Título"
@@ -531,7 +535,7 @@ export function PurchaseRequestComposer({
           <Input
             id="purchase-catalog-search"
             label="Buscar producto"
-            placeholder="SKU o nombre"
+            placeholder="Código o nombre"
             value={catalogSearch}
             onChange={(event) => setCatalogSearch(event.target.value)}
           />
@@ -624,13 +628,12 @@ export function PurchaseRequestComposer({
       <PortalSectionHeader
         eyebrow="Control"
         title="Justificación"
-        description="Explica la necesidad operativa que respalda la solicitud."
+        description="Explica la necesidad que respalda la solicitud."
       />
       <label className="block space-y-1 text-sm">
         <span className="font-medium text-gray-900 dark:text-white">Justificación</span>
         <textarea
-          aria-label="Justificacion"
-          className="w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-white"
+          className={portalTextareaClassName}
           rows={3}
           value={justification}
           onChange={(event) => setJustification(event.target.value)}
@@ -640,24 +643,21 @@ export function PurchaseRequestComposer({
   );
 
   const summaryFooter = (
-    <div className="sticky bottom-0 z-20 rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 text-sm shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
-      <p className="font-medium text-gray-900 dark:text-white">Resumen previo al envío</p>
-      <p className="mt-1 text-gray-600 dark:text-gray-300">{summaryLabel}</p>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        {isMobileCreateFlow && mobileStep === 'review' ? (
+    <CreateModeSummaryFooter
+      summary={summaryLabel}
+      secondaryAction={
+        isMobileCreateFlow && mobileStep === 'review' ? (
           <Button type="button" variant="secondary" onClick={() => setMobileStep('capture')}>
             Volver a productos
           </Button>
-        ) : null}
-        <Button
-          type="button"
-          disabled={isSubmitting || draft.lines.length === 0}
-          onClick={() => void handleSubmit()}
-        >
-          {isSubmitting ? 'Creando solicitud...' : 'Crear solicitud'}
-        </Button>
-      </div>
-    </div>
+        ) : undefined
+      }
+      primaryLabel="Crear solicitud"
+      primaryLoadingLabel="Creando solicitud..."
+      loading={isSubmitting}
+      disabled={draft.lines.length === 0}
+      onPrimaryClick={() => void handleSubmit()}
+    />
   );
 
   const content = (
@@ -672,25 +672,16 @@ export function PurchaseRequestComposer({
 
       {isMobileCreateFlow ? (
         <div className="space-y-6">
-          <div className="rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 text-sm font-medium text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
-            {mobileStep === 'capture' ? 'Paso 1 de 2' : 'Paso 2 de 2'}
-          </div>
+          <CreateModeMobileStepIndicator currentStep={mobileStep === 'capture' ? 1 : 2} />
           {requestContextSection}
           {mobileStep === 'capture' ? (
             <>
               {captureSection}
-              <div className="sticky bottom-0 z-20 rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm text-gray-600 dark:text-gray-300">{summaryLabel}</p>
-                  <Button
-                    type="button"
-                    disabled={draft.lines.length === 0}
-                    onClick={() => setMobileStep('review')}
-                  >
-                    Revisar selección
-                  </Button>
-                </div>
-              </div>
+              <CreateModeMobileCaptureFooter
+                summary={summaryLabel}
+                disabled={draft.lines.length === 0}
+                onReview={() => setMobileStep('review')}
+              />
             </>
           ) : (
             <>

@@ -51,6 +51,20 @@ export function kpiPresetToFilters(preset: PurchaseKpiPreset): PurchaseRequestFi
   }
 }
 
+/** Primera solicitud candidata para abrir el workbench al activar un KPI operativo. */
+export function findFirstRequestForKpiWorkbench(
+  preset: PurchaseKpiPreset,
+  requests: PurchaseRequestRecord[],
+): PurchaseRequestRecord | null {
+  if (preset !== 'pendingReceipt') {
+    return null;
+  }
+
+  return (
+    requests.find((request) => request.status === PurchaseRequestStatus.CONVERTED_TO_PO) ?? null
+  );
+}
+
 export function resolveActiveKpiPreset(filters: PurchaseRequestFilters): PurchaseKpiPreset | null {
   if (filters.kpiPreset) {
     return filters.kpiPreset;
@@ -97,7 +111,7 @@ export function hasActivePurchaseFilters(filters: PurchaseRequestFilters): boole
 export const PURCHASE_KPI_LABELS: Record<PurchaseKpiPreset, string> = {
   pendingQuotes: 'Por cotizar',
   pendingApproval: 'Por aprobar',
-  readyForPo: 'Listas para OC',
+  readyForPo: 'Listas para orden de compra',
   pendingReceipt: 'Por recibir',
   urgent: 'Urgentes',
   overdue: 'Vencidas',

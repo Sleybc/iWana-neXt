@@ -40,19 +40,17 @@ export function SerializedAssetDetailDrawer({
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Activo serializado</DialogTitle>
+          <DialogTitle>Activo con serial</DialogTitle>
         </DialogHeader>
 
         <div className="grid gap-4 md:grid-cols-2">
           <article className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-iwana-secondary-700 dark:text-iwana-secondary">
-              Identificación
-            </p>
+            <p className="portal-eyebrow">Identificación</p>
             <dl className="mt-3 space-y-3 text-sm">
               <div>
-                <dt className="text-gray-500 dark:text-gray-400">Ítem</dt>
+                <dt className="text-gray-500 dark:text-gray-400">Producto</dt>
                 <dd className="font-medium text-gray-900 dark:text-white">
-                  {item?.name ?? asset.inventoryItemId}
+                  {item?.name ?? 'Producto no encontrado'}
                 </dd>
               </div>
               <div>
@@ -77,9 +75,7 @@ export function SerializedAssetDetailDrawer({
           </article>
 
           <article className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-iwana-secondary-700 dark:text-iwana-secondary">
-              Estado actual
-            </p>
+            <p className="portal-eyebrow">Estado actual</p>
             <dl className="mt-3 space-y-3 text-sm">
               <div>
                 <dt className="text-gray-500 dark:text-gray-400">Estado</dt>
@@ -100,7 +96,7 @@ export function SerializedAssetDetailDrawer({
                 </dd>
               </div>
               <div>
-                <dt className="text-gray-500 dark:text-gray-400">Referencia responsable</dt>
+                <dt className="text-gray-500 dark:text-gray-400">Responsable</dt>
                 <dd className="font-medium text-gray-900 dark:text-white">
                   {renderValue(asset.currentResponsibleRefId)}
                 </dd>
@@ -109,9 +105,7 @@ export function SerializedAssetDetailDrawer({
           </article>
 
           <article className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-iwana-secondary-700 dark:text-iwana-secondary">
-              Compra y garantía
-            </p>
+            <p className="portal-eyebrow">Compra y garantía</p>
             <dl className="mt-3 space-y-3 text-sm">
               <div>
                 <dt className="text-gray-500 dark:text-gray-400">Orden de compra</dt>
@@ -141,9 +135,7 @@ export function SerializedAssetDetailDrawer({
           </article>
 
           <article className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-iwana-secondary-700 dark:text-iwana-secondary">
-              Trazabilidad
-            </p>
+            <p className="portal-eyebrow">Seguimiento</p>
             <dl className="mt-3 space-y-3 text-sm">
               <div>
                 <dt className="text-gray-500 dark:text-gray-400">Suscriptor</dt>

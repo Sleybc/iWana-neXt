@@ -1,6 +1,6 @@
 import type { ComponentType, ReactNode } from 'react';
 import { AlertTriangle, CheckCircle2, CircleAlert, Info, Search } from 'lucide-react';
-import { Input, cn } from '@iwana/ui';
+import { Button, Input, cn } from '@iwana/ui';
 
 export const interactiveFocusClassName =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-dark-surface-2';
@@ -15,6 +15,16 @@ export const portalTableRowHoverClassName =
 
 export const portalDataTableShellClassName =
   'overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-dark-border dark:bg-dark-surface-2';
+
+/** Encabezado de columna para tablas operativas del portal — alineado a `.portal-eyebrow-muted`. */
+export const portalDataTableHeadClassName = 'px-4 py-3 text-left portal-eyebrow-muted';
+
+/** Encabezado compacto para tablas anidadas o secundarias. */
+export const portalDataTableNestedHeadClassName = 'px-3 py-2 text-left portal-eyebrow-muted';
+
+/** Celda estándar para tablas operativas del portal. */
+export const portalDataTableCellClassName =
+  'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
 
 interface PortalSearchFieldProps {
   id: string;
@@ -59,6 +69,50 @@ export const portalTabActiveClassName =
 
 export const portalTabInactiveClassName =
   'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200';
+
+/** Navegación modular agrupada — contenedor elevado con pista interna de alto contraste. */
+export const portalModuleTabsShellClassName =
+  'flex h-auto flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-2 md:flex-row md:items-stretch md:gap-6';
+
+export const portalModuleTabsGroupClassName = 'min-w-0 flex-1 space-y-2';
+
+export const portalModuleTabsDividerClassName =
+  'h-px w-full shrink-0 bg-gray-200 dark:bg-dark-border md:h-auto md:w-px md:self-stretch';
+
+export const portalModuleTabsTrackClassName =
+  'flex flex-wrap gap-1 rounded-xl bg-gray-100/90 p-1 dark:bg-dark-surface-3';
+
+export const portalModuleTabTriggerClassName = cn(
+  'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200',
+  'data-[state=active]:bg-iwana-primary data-[state=active]:text-white data-[state=active]:shadow-sm',
+  'dark:data-[state=active]:bg-iwana-primary dark:data-[state=active]:text-white',
+  interactiveFocusClassName,
+);
+
+export type PortalMetricCardAccent = 'neutral' | 'primary' | 'warning' | 'danger';
+
+export const portalMetricCardShellClassName =
+  'flex h-full flex-col rounded-3xl border px-4 py-4 shadow-sm';
+
+export function portalMetricCardAccentClassName(
+  accent: PortalMetricCardAccent,
+  options?: { isActive?: boolean; emphasized?: boolean },
+): string {
+  const base =
+    accent === 'primary'
+      ? 'border-iwana-primary/20 bg-iwana-primary-50/70 dark:border-iwana-primary-400/30 dark:bg-iwana-primary-900/15'
+      : accent === 'warning'
+        ? 'border-amber-200 bg-amber-50/80 dark:border-amber-500/20 dark:bg-amber-950/20'
+        : accent === 'danger'
+          ? 'border-rose-200 bg-rose-50/80 dark:border-rose-500/20 dark:bg-rose-950/20'
+          : 'border-gray-200 bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-3';
+
+  return cn(
+    base,
+    options?.isActive && 'ring-2 ring-iwana-primary/40',
+    options?.emphasized && !options?.isActive && 'ring-2 ring-iwana-primary/25',
+  );
+}
 
 const panelBaseClassName =
   'rounded-2xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-2';
@@ -338,5 +392,90 @@ export function PortalSkeletonBlock({ className }: PortalSkeletonBlockProps) {
       aria-hidden="true"
       className={cn('animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3', className)}
     />
+  );
+}
+
+/** Footer sticky compartido en flujos create-mode (compras, salidas, recepciones). */
+export const createModeStickyFooterClassName =
+  'sticky bottom-0 z-20 rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3';
+
+export interface CreateModeSummaryFooterProps {
+  title?: string;
+  summary: string;
+  secondaryAction?: ReactNode;
+  primaryLabel: string;
+  primaryLoadingLabel?: string;
+  loading?: boolean;
+  disabled?: boolean;
+  onPrimaryClick: () => void;
+}
+
+export function CreateModeSummaryFooter({
+  title = 'Resumen previo al envío',
+  summary,
+  secondaryAction,
+  primaryLabel,
+  primaryLoadingLabel,
+  loading = false,
+  disabled = false,
+  onPrimaryClick,
+}: CreateModeSummaryFooterProps) {
+  return (
+    <div className={cn(createModeStickyFooterClassName, 'text-sm')}>
+      <p className="font-medium text-gray-900 dark:text-white">{title}</p>
+      <p className="mt-1 text-gray-600 dark:text-gray-300">{summary}</p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {secondaryAction}
+        <Button
+          type="button"
+          loading={loading}
+          disabled={disabled || loading}
+          onClick={onPrimaryClick}
+        >
+          {loading && primaryLoadingLabel ? primaryLoadingLabel : primaryLabel}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export interface CreateModeMobileStepIndicatorProps {
+  currentStep: number;
+  totalSteps?: number;
+}
+
+export function CreateModeMobileStepIndicator({
+  currentStep,
+  totalSteps = 2,
+}: CreateModeMobileStepIndicatorProps) {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 text-sm font-medium text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
+      Paso {currentStep} de {totalSteps}
+    </div>
+  );
+}
+
+export interface CreateModeMobileCaptureFooterProps {
+  summary: string;
+  reviewLabel?: string;
+  disabled?: boolean;
+  onReview: () => void;
+}
+
+export function CreateModeMobileCaptureFooter({
+  summary,
+  reviewLabel = 'Revisar selección',
+  disabled = false,
+  onReview,
+}: CreateModeMobileCaptureFooterProps) {
+  return (
+    <div className={createModeStickyFooterClassName}>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-gray-600 dark:text-gray-300">{summary}</p>
+        <Button type="button" disabled={disabled} onClick={onReview}>
+          {reviewLabel}
+        </Button>
+      </div>
+    </div>
   );
 }

@@ -88,7 +88,7 @@ describe('InventoryCategoryDrawer', () => {
       target: { value: 'Consumibles FO' },
     });
 
-    expect(screen.getByLabelText('Prefijo de producto')).toHaveValue('CFO');
+    expect(screen.getByLabelText('Prefijo de código')).toHaveValue('CFO');
     expect(screen.queryByLabelText('Código')).not.toBeInTheDocument();
   });
 
@@ -117,7 +117,7 @@ describe('InventoryCategoryDrawer', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Prefijo de producto')).toHaveValue('CRD');
+      expect(screen.getByLabelText('Prefijo de código')).toHaveValue('CRD');
       expect(screen.getByLabelText('Orden')).toHaveValue(3);
     });
   });
@@ -130,14 +130,14 @@ describe('InventoryCategoryDrawer', () => {
     fireEvent.change(screen.getByLabelText('Nombre'), {
       target: { value: 'Consumibles FO' },
     });
-    fireEvent.change(screen.getByLabelText('Prefijo de producto'), {
+    fireEvent.change(screen.getByLabelText('Prefijo de código'), {
       target: { value: 'XYZ' },
     });
     fireEvent.change(screen.getByLabelText('Nombre'), {
       target: { value: 'Consumibles RD' },
     });
 
-    expect(screen.getByLabelText('Prefijo de producto')).toHaveValue('XYZ');
+    expect(screen.getByLabelText('Prefijo de código')).toHaveValue('XYZ');
   });
 
   it('creates category with legible derived prefix', async () => {
@@ -167,7 +167,7 @@ describe('InventoryCategoryDrawer', () => {
 
     await screen.findByRole('dialog', { name: 'Editar categoría' });
 
-    expect(screen.getByLabelText('Prefijo de producto')).toBeDisabled();
+    expect(screen.getByLabelText('Prefijo de código')).toBeDisabled();
     expect(screen.getByLabelText('Código')).toHaveValue('NETWORKING');
 
     fireEvent.change(screen.getByLabelText('Nombre'), {
@@ -195,7 +195,7 @@ describe('InventoryCategoryDrawer', () => {
     fireEvent.change(screen.getByLabelText('Nombre'), {
       target: { value: 'A' },
     });
-    fireEvent.change(screen.getByLabelText('Prefijo de producto'), {
+    fireEvent.change(screen.getByLabelText('Prefijo de código'), {
       target: { value: 'A' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Crear categoría' }));

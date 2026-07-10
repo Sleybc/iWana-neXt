@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Button,
+  cn,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -56,6 +57,13 @@ import {
   PortalEmptyState,
   PortalPanel,
   PortalSkeletonBlock,
+  interactiveFocusClassName,
+  portalDataTableShellClassName,
+  portalModuleTabTriggerClassName,
+  portalModuleTabsDividerClassName,
+  portalModuleTabsGroupClassName,
+  portalModuleTabsShellClassName,
+  portalModuleTabsTrackClassName,
   portalTextareaClassName,
 } from '@/components/shared/portal-ui';
 import { InventoryDashboard } from './InventoryDashboard';
@@ -64,7 +72,6 @@ import { InventoryCatalogDrawer } from './InventoryCatalogDrawer';
 import { InventoryCategoryDrawer } from './InventoryCategoryDrawer';
 import { InventoryCatalogCategoriesPanel } from './InventoryCatalogCategoriesPanel';
 import { InventoryCatalogProductsPanel } from './InventoryCatalogProductsPanel';
-import { InventoryCatalogSummary } from './InventoryCatalogSummary';
 import { InventoryCatalogSummaryPreview } from './InventoryCatalogSummaryPreview';
 import { PurchaseWorkspace } from './PurchaseWorkspace';
 import { buildPurchaseItemFrequency } from './purchase-composer-preferences';
@@ -89,6 +96,7 @@ import {
   WRITE_OFF_REASON_LABELS,
 } from './inventory-labels';
 import { type CatalogFilters, EMPTY_CATALOG_FILTERS } from './catalog-filters';
+import { resolveInventoryTab, shouldOpenLocationCreateFromUrl } from './inventory-tab-params';
 
 export type InventoryTab =
   | 'summary'
@@ -102,32 +110,15 @@ export type InventoryTab =
 
 type CatalogSubView = 'products' | 'categories';
 
-const fieldClassName =
-  'portal-input-surface w-full px-3 py-2 text-sm text-gray-900 dark:text-white';
-
-const INVENTORY_TABS: InventoryTab[] = [
-  'summary',
-  'catalog',
-  'purchasing',
-  'locations',
-  'issues',
-  'assets',
-  'movements',
-  'writeoffs',
-];
+const fieldClassName = cn(
+  'portal-input-surface w-full px-3 py-2 text-sm text-gray-900 dark:text-white',
+  interactiveFocusClassName,
+);
 
 const RETURN_TARGET_STATUSES = [
   SerializedAssetStatus.IN_TRANSIT,
   SerializedAssetStatus.IN_TESTING,
 ] as const;
-
-function resolveInventoryTab(value: string | null | undefined): InventoryTab {
-  if (value && INVENTORY_TABS.includes(value as InventoryTab)) {
-    return value as InventoryTab;
-  }
-
-  return 'summary';
-}
 
 function resolveLocationCustodyFilter(value: string | null): LocationMatrixCustodyFilter {
   return value === 'mobile' ? 'mobile' : 'all';
@@ -411,6 +402,49 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   useEffect(() => {
     const custodyFromUrl = resolveLocationCustodyFilter(searchParams.get('custody'));
     setLocationCustodyFilter((current) => (current === custodyFromUrl ? current : custodyFromUrl));
+  }, [searchParams]);
+
+  const openLocationCreateDialog = useCallback(() => {
+    setLocationEditItem(null);
+    setLocationSubmitError(null);
+    setLocationDialogOpen(true);
+
+    const nextSearchParams = new URLSearchParams(searchParams.toString());
+    nextSearchParams.set('tab', 'locations');
+    nextSearchParams.set('action', 'create');
+    const nextQuery = nextSearchParams.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  const closeLocationDialog = useCallback(() => {
+    setLocationDialogOpen(false);
+    setLocationEditItem(null);
+    setLocationSubmitError(null);
+
+    const nextSearchParams = new URLSearchParams(searchParams.toString());
+    nextSearchParams.delete('action');
+    const tabParam = nextSearchParams.get('tab');
+    if (tabParam?.includes('/')) {
+      nextSearchParams.set('tab', 'locations');
+    }
+    const nextQuery = nextSearchParams.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  useEffect(() => {
+    const tabFromUrl = searchParams.get('tab');
+    const actionFromUrl = searchParams.get('action');
+
+    if (shouldOpenLocationCreateFromUrl(tabFromUrl, actionFromUrl)) {
+      setLocationEditItem(null);
+      setLocationSubmitError(null);
+      setLocationDialogOpen(true);
+      return;
+    }
+
+    if (actionFromUrl === 'create' && resolveInventoryTab(tabFromUrl) !== 'locations') {
+      setLocationDialogOpen(false);
+    }
   }, [searchParams]);
 
   const handleLocationCustodyFilterChange = useCallback(
@@ -993,11 +1027,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     setError(null);
     try {
       const result = await inventoryApi.dispatchIssue(issueId, payload);
-      setMovementNotice(
-        result.stockMovementId
-          ? `Salida despachada. Movimiento ${result.stockMovementId}.`
-          : 'Salida despachada.',
-      );
+      setMovementNotice('Salida despachada y registrada en el historial.');
       await loadData(true);
     } catch (submitError) {
       setError(mapInventoryError(submitError));
@@ -1040,7 +1070,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     setLocationSubmitError(null);
     try {
       await inventoryApi.createLocation(payload);
-      setLocationDialogOpen(false);
+      closeLocationDialog();
       await loadData(true);
     } catch (submitError) {
       setLocationSubmitError(mapInventoryError(submitError));
@@ -1054,8 +1084,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     setLocationSubmitError(null);
     try {
       await inventoryApi.updateLocation(id, payload);
-      setLocationDialogOpen(false);
-      setLocationEditItem(null);
+      closeLocationDialog();
       await loadData(true);
     } catch (submitError) {
       setLocationSubmitError(mapInventoryError(submitError));
@@ -1076,7 +1105,9 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         serialNumber: saleForm.serialNumber.trim() || null,
         notes: saleForm.notes.trim() || null,
       });
-      setMovementNotice(`Salida por venta registrada en ${result.movement.movementNumber}.`);
+      setMovementNotice(
+        `Venta registrada. Número de movimiento: ${result.movement.movementNumber}.`,
+      );
       setSaleForm({
         itemId: '',
         locationId: '',
@@ -1106,7 +1137,9 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         targetStatus: returnForm.targetStatus,
         notes: returnForm.notes.trim() || null,
       });
-      setMovementNotice(`Retorno registrado en ${result.movement.movementNumber}.`);
+      setMovementNotice(
+        `Devolución registrada. Número de movimiento: ${result.movement.movementNumber}.`,
+      );
       setReturnForm({
         itemId: '',
         sourceLocationId: '',
@@ -1136,7 +1169,9 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         reason: writeOffForm.reason,
         notes: writeOffForm.notes.trim() || null,
       });
-      setMovementNotice(`Baja registrada en ${result.movement.movementNumber}.`);
+      setMovementNotice(
+        `Baja registrada. Número de movimiento: ${result.movement.movementNumber}.`,
+      );
       setWriteOffForm({
         itemId: '',
         serializedAssetId: '',
@@ -1157,7 +1192,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     <div className="space-y-6">
       <PageHeader
         title="Inventario"
-        subtitle="Compras, bodegas, activos y movimientos del ciclo operativo en una sola consola."
+        subtitle="Compras, bodegas, activos y movimientos en un solo lugar."
         actions={
           <Button
             type="button"
@@ -1186,18 +1221,54 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       {isLoadingAsset && <PortalSkeletonBlock className="h-24" />}
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
-        <TabsList
-          aria-label="Secciones de inventario"
-          className="flex flex-wrap rounded-2xl bg-iwana-surface-soft p-1 dark:bg-dark-surface-3"
-        >
-          <TabsTrigger value="summary">Resumen</TabsTrigger>
-          <TabsTrigger value="catalog">Catálogo</TabsTrigger>
-          <TabsTrigger value="purchasing">Compras</TabsTrigger>
-          <TabsTrigger value="locations">Bodegas</TabsTrigger>
-          <TabsTrigger value="issues">Salidas</TabsTrigger>
-          <TabsTrigger value="assets">Activos</TabsTrigger>
-          <TabsTrigger value="movements">Movimientos</TabsTrigger>
-          <TabsTrigger value="writeoffs">Bajas</TabsTrigger>
+        <TabsList aria-label="Secciones de inventario" className={portalModuleTabsShellClassName}>
+          <div className={portalModuleTabsGroupClassName}>
+            <p className="portal-eyebrow px-1" id="inventory-tabs-operation-label">
+              Operación
+            </p>
+            <div
+              role="group"
+              aria-labelledby="inventory-tabs-operation-label"
+              className={portalModuleTabsTrackClassName}
+            >
+              <TabsTrigger value="summary" className={portalModuleTabTriggerClassName}>
+                Resumen
+              </TabsTrigger>
+              <TabsTrigger value="catalog" className={portalModuleTabTriggerClassName}>
+                Catálogo
+              </TabsTrigger>
+              <TabsTrigger value="purchasing" className={portalModuleTabTriggerClassName}>
+                Compras
+              </TabsTrigger>
+              <TabsTrigger value="locations" className={portalModuleTabTriggerClassName}>
+                Bodegas
+              </TabsTrigger>
+              <TabsTrigger value="issues" className={portalModuleTabTriggerClassName}>
+                Salidas
+              </TabsTrigger>
+            </div>
+          </div>
+          <div role="separator" aria-hidden="true" className={portalModuleTabsDividerClassName} />
+          <div className={portalModuleTabsGroupClassName}>
+            <p className="portal-eyebrow-muted px-1" id="inventory-tabs-traceability-label">
+              Seguimiento
+            </p>
+            <div
+              role="group"
+              aria-labelledby="inventory-tabs-traceability-label"
+              className={portalModuleTabsTrackClassName}
+            >
+              <TabsTrigger value="assets" className={portalModuleTabTriggerClassName}>
+                Activos
+              </TabsTrigger>
+              <TabsTrigger value="movements" className={portalModuleTabTriggerClassName}>
+                Movimientos
+              </TabsTrigger>
+              <TabsTrigger value="writeoffs" className={portalModuleTabTriggerClassName}>
+                Bajas
+              </TabsTrigger>
+            </div>
+          </div>
         </TabsList>
 
         <TabsContent value="summary" className="space-y-6">
@@ -1206,22 +1277,22 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
           <div className="grid gap-6 xl:grid-cols-2">
             <PortalPanel
               eyebrow="Abastecimiento"
-              title="Referencias bajo mínimo"
-              description="Ítems cuya existencia agregada ya tocó o cayó por debajo del umbral operativo."
+              title="Productos bajo mínimo"
+              description="Productos que ya llegaron al mínimo definido para reponer."
             >
               {isLoading ? (
                 <PortalSkeletonBlock className="h-48" />
               ) : lowStockItems.length === 0 ? (
                 <PortalEmptyState
                   title="Sin alertas de reposición"
-                  description="Los balances visibles superan el stock mínimo configurado."
+                  description="El material disponible está por encima del mínimo definido."
                 />
               ) : (
                 <div className="space-y-3">
                   {lowStockItems.map(({ item, total }) => (
                     <div
                       key={item.id}
-                      className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-3"
+                      className="rounded-xl border border-gray-100 px-3 py-3 dark:border-dark-border"
                     >
                       <p className="font-medium text-gray-900 dark:text-white">{item.name}</p>
                       <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -1237,7 +1308,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             <PortalPanel
               eyebrow="Riesgos"
               title="Activos a vigilar"
-              description="Seriales en prueba, reparación o pérdida que requieren seguimiento del equipo operativo."
+              description="Seriales en prueba, reparación o pérdida que requieren seguimiento inmediato."
             >
               {isLoading ? (
                 <PortalSkeletonBlock className="h-48" />
@@ -1252,11 +1323,14 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                     <button
                       key={asset.id}
                       type="button"
-                      className="w-full rounded-2xl border border-gray-200 bg-white p-4 text-left transition hover:border-iwana-primary/40 dark:border-dark-border dark:bg-dark-surface-3"
+                      className={cn(
+                        'w-full rounded-xl border border-gray-100 px-3 py-3 text-left transition hover:border-iwana-primary/40 dark:border-dark-border',
+                        interactiveFocusClassName,
+                      )}
                       onClick={() => void openAssetDetail(asset.id)}
                     >
                       <p className="font-medium text-gray-900 dark:text-white">
-                        {asset.serialNumber ?? asset.assetTag ?? asset.id}
+                        {asset.serialNumber ?? asset.assetTag ?? 'Sin código'}
                       </p>
                       <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                         {getSerializedAssetStatusLabel(asset.currentStatus)}
@@ -1285,81 +1359,121 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
           ) : null}
 
           <PortalPanel
-            eyebrow="Resumen del catálogo"
-            title="Cobertura operativa"
-            description="Estado agregado de productos, abastecimiento y trazabilidad antes de aplicar filtros."
+            eyebrow="Catálogo"
+            title={
+              catalogSubView === 'products' ? 'Catálogo de productos' : 'Categorías del catálogo'
+            }
+            description={
+              catalogSubView === 'products'
+                ? 'Consulta, filtra y administra productos para compras e inventario.'
+                : 'Administra las categorías usadas por los productos del catálogo.'
+            }
+            actions={
+              catalogSubView === 'products' ? (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    loading={isRefreshingCatalog}
+                    onClick={() => void loadCatalogItems(catalogFilters, true)}
+                  >
+                    Actualizar
+                  </Button>
+                  <Button type="button" onClick={openCreateProductDialog}>
+                    Nuevo producto
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    loading={isRefreshingCategories}
+                    onClick={() => void loadCategories(true)}
+                  >
+                    Actualizar
+                  </Button>
+                  <Button type="button" onClick={() => openCategoryDrawer()}>
+                    Nueva categoría
+                  </Button>
+                </div>
+              )
+            }
+            contentClassName="space-y-4"
           >
-            <InventoryCatalogSummary items={items} balances={balances} isLoading={isLoading} />
-          </PortalPanel>
-
-          <Tabs
-            value={catalogSubView}
-            onValueChange={(value) => setCatalogSubView(value as CatalogSubView)}
-          >
-            <TabsList
-              aria-label="Vista del catálogo"
-              className="flex w-fit gap-1 border-b border-gray-200 bg-transparent p-0 dark:border-dark-border"
+            <Tabs
+              value={catalogSubView}
+              onValueChange={(value) => setCatalogSubView(value as CatalogSubView)}
             >
-              <TabsTrigger
-                value="products"
-                className="rounded-none border-b-2 border-transparent px-3 py-2 data-[state=active]:border-iwana-primary data-[state=active]:bg-transparent data-[state=active]:text-iwana-primary data-[state=active]:shadow-none"
+              <TabsList
+                aria-label="Vista del catálogo"
+                className="flex h-auto w-full max-w-md justify-start border-0 bg-transparent p-0 shadow-none"
               >
-                Productos
-              </TabsTrigger>
-              <TabsTrigger
-                value="categories"
-                className="rounded-none border-b-2 border-transparent px-3 py-2 data-[state=active]:border-iwana-primary data-[state=active]:bg-transparent data-[state=active]:text-iwana-primary data-[state=active]:shadow-none"
-              >
-                Categorías
-              </TabsTrigger>
-            </TabsList>
+                <div className={cn(portalModuleTabsTrackClassName, 'w-full')}>
+                  <TabsTrigger value="products" className={portalModuleTabTriggerClassName}>
+                    Productos
+                  </TabsTrigger>
+                  <TabsTrigger value="categories" className={portalModuleTabTriggerClassName}>
+                    Categorías
+                  </TabsTrigger>
+                </div>
+              </TabsList>
 
-            <TabsContent value="products" className="mt-4 space-y-4">
-              {catalogError ? (
-                <PortalAlert
-                  variant="error"
-                  title="No fue posible cargar el catálogo"
-                  description={catalogError}
+              <TabsContent value="products" className="mt-4">
+                {catalogError ? (
+                  <PortalAlert
+                    variant="error"
+                    title="No fue posible cargar el catálogo"
+                    description={catalogError}
+                  />
+                ) : null}
+
+                <InventoryCatalogProductsPanel
+                  filters={catalogFilters}
+                  items={catalogItems}
+                  totalCount={items.length}
+                  categoryOptions={activeCategoryOptions}
+                  supplierLabels={supplierLabels}
+                  isLoading={isLoadingCatalog}
+                  isRefreshing={isRefreshingCatalog}
+                  onFiltersChange={setCatalogFilters}
+                  onClearFilters={() => setCatalogFilters(EMPTY_CATALOG_FILTERS)}
+                  onCreateProduct={openCreateProductDialog}
+                  onRowClick={(item) => void openCatalogItemDetail(item)}
+                  onDelete={handleDeleteCatalogItem}
+                  deletingItemId={deletingCatalogItemId}
+                  createAction={
+                    <Button type="button" onClick={openCreateProductDialog}>
+                      Nuevo producto
+                    </Button>
+                  }
                 />
-              ) : null}
+              </TabsContent>
 
-              <InventoryCatalogProductsPanel
-                filters={catalogFilters}
-                items={catalogItems}
-                totalCount={items.length}
-                categoryOptions={activeCategoryOptions}
-                supplierLabels={supplierLabels}
-                isLoading={isLoadingCatalog}
-                isRefreshing={isRefreshingCatalog}
-                onFiltersChange={setCatalogFilters}
-                onClearFilters={() => setCatalogFilters(EMPTY_CATALOG_FILTERS)}
-                onRefresh={() => void loadCatalogItems(catalogFilters, true)}
-                onCreateProduct={openCreateProductDialog}
-                onRowClick={(item) => void openCatalogItemDetail(item)}
-                onDelete={handleDeleteCatalogItem}
-                deletingItemId={deletingCatalogItemId}
-              />
-            </TabsContent>
+              <TabsContent value="categories" className="mt-4">
+                {categoriesError ? (
+                  <PortalAlert
+                    variant="error"
+                    title="No fue posible cargar las categorías"
+                    description={categoriesError}
+                  />
+                ) : null}
 
-            <TabsContent value="categories" className="mt-4 space-y-4">
-              {categoriesError ? (
-                <PortalAlert
-                  variant="error"
-                  title="No fue posible cargar las categorías"
-                  description={categoriesError}
+                <InventoryCatalogCategoriesPanel
+                  categories={categories}
+                  isLoading={isLoadingCategories}
+                  isRefreshing={isRefreshingCategories}
+                  onCreateCategory={() => openCategoryDrawer()}
+                  onRowClick={(category) => void openCategoryDetail(category)}
+                  createAction={
+                    <Button type="button" onClick={() => openCategoryDrawer()}>
+                      Nueva categoría
+                    </Button>
+                  }
                 />
-              ) : null}
-
-              <InventoryCatalogCategoriesPanel
-                categories={categories}
-                isLoading={isLoadingCategories}
-                isRefreshing={isRefreshingCategories}
-                onCreateCategory={() => openCategoryDrawer()}
-                onRowClick={(category) => void openCategoryDetail(category)}
-                onRefresh={() => void loadCategories(true)}
-              />
-            </TabsContent>
-          </Tabs>
+              </TabsContent>
+            </Tabs>
+          </PortalPanel>
         </TabsContent>
 
         <TabsContent value="purchasing" className="space-y-6">
@@ -1408,22 +1522,15 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         <TabsContent value="locations" className="space-y-6">
           <PortalPanel
             eyebrow="Red logística"
-            title="Matriz de bodegas"
+            title="Bodegas y existencias"
             description={
               locationCustodyFilter === 'mobile'
-                ? 'Vista focalizada de custodias móviles para técnicos y cuadrillas. Consulta saldos, ocupación y responsable asignado.'
-                : 'Cruza ubicaciones activas con los balances visibles para detectar saturación y dispersión.'
+                ? 'Vista de material en manos de técnicos y cuadrillas. Revisa disponibilidad, uso y persona a cargo.'
+                : 'Compara bodegas activas con el material guardado para detectar exceso o dispersión.'
             }
             actions={
-              <div className="flex flex-wrap gap-3">
-                <Button
-                  type="button"
-                  onClick={() => {
-                    setLocationEditItem(null);
-                    setLocationSubmitError(null);
-                    setLocationDialogOpen(true);
-                  }}
-                >
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" onClick={openLocationCreateDialog}>
                   Crear bodega
                 </Button>
                 <Button type="button" variant="secondary" onClick={() => setActiveTab('issues')}>
@@ -1433,23 +1540,21 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             }
             contentClassName="space-y-4"
           >
-            {isLoading ? (
-              <PortalSkeletonBlock className="h-64" />
-            ) : (
-              <StockLocationsMatrix
-                locations={locations}
-                balances={balances}
-                items={items}
-                userLabelById={userLabelById}
-                custodyFilter={locationCustodyFilter}
-                onCustodyFilterChange={handleLocationCustodyFilterChange}
-                onEditLocation={(location) => {
-                  setLocationEditItem(location);
-                  setLocationSubmitError(null);
-                  setLocationDialogOpen(true);
-                }}
-              />
-            )}
+            <StockLocationsMatrix
+              locations={locations}
+              balances={balances}
+              items={items}
+              userLabelById={userLabelById}
+              custodyFilter={locationCustodyFilter}
+              isLoading={isLoading}
+              onCustodyFilterChange={handleLocationCustodyFilterChange}
+              onCreateLocation={openLocationCreateDialog}
+              onEditLocation={(location) => {
+                setLocationEditItem(location);
+                setLocationSubmitError(null);
+                setLocationDialogOpen(true);
+              }}
+            />
           </PortalPanel>
         </TabsContent>
 
@@ -1461,6 +1566,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             locations={locations}
             issues={issues}
             isLoading={isLoading}
+            isRefreshing={isRefreshing}
             error={error}
             onCreate={handleCreateIssue}
             onUpdate={handleUpdateIssue}
@@ -1474,73 +1580,76 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         <TabsContent value="assets" className="space-y-6">
           <PortalPanel
             eyebrow="Activos"
-            title="Serializados"
-            description="Activos con serial o MAC visibles para soporte, mantenimiento y comodato."
+            title="Activos con serial"
+            description="Equipos identificados por serial para soporte, mantenimiento y comodato."
           >
             {isLoading ? (
               <PortalSkeletonBlock className="h-72" />
             ) : assets.length === 0 ? (
               <PortalEmptyState
-                title="Sin activos serializados"
-                description="Recibe una orden de compra o registra inventario serializado para poblar esta vista."
+                title="Sin activos con serial"
+                description="Recibe una compra o registra equipos con serial para verlos aquí."
               />
             ) : (
-              <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-3">
-                <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-border">
-                  <thead className="bg-gray-50 dark:bg-dark-surface-2">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                        Serial
-                      </th>
-                      <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                        Ítem
-                      </th>
-                      <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                        Estado
-                      </th>
-                      <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                        Ubicación
-                      </th>
-                      <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                        Compra
-                      </th>
-                      <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                        Acción
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
-                    {assets.map((asset) => (
-                      <tr key={asset.id}>
-                        <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-300">
-                          {asset.serialNumber ?? asset.assetTag ?? 'Sin serial'}
-                        </td>
-                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                          {itemMap.get(asset.inventoryItemId)?.name ?? asset.inventoryItemId}
-                        </td>
-                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                          {getSerializedAssetStatusLabel(asset.currentStatus)}
-                        </td>
-                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                          {locationMap.get(asset.currentLocationId ?? '')?.name ?? 'Sin ubicación'}
-                        </td>
-                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                          {formatInventoryDate(asset.purchaseDate)}
-                        </td>
-                        <td className="px-4 py-3">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => void openAssetDetail(asset.id)}
-                          >
-                            Ver detalle
-                          </Button>
-                        </td>
+              <div className={portalDataTableShellClassName}>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-border">
+                    <thead className="bg-gray-50 dark:bg-dark-surface-2">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
+                          Serial
+                        </th>
+                        <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
+                          Producto
+                        </th>
+                        <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
+                          Estado
+                        </th>
+                        <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
+                          Ubicación
+                        </th>
+                        <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
+                          Compra
+                        </th>
+                        <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
+                          Acción
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
+                      {assets.map((asset) => (
+                        <tr key={asset.id}>
+                          <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-300">
+                            {asset.serialNumber ?? asset.assetTag ?? 'Sin serial'}
+                          </td>
+                          <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                            {itemMap.get(asset.inventoryItemId)?.name ?? 'Producto no encontrado'}
+                          </td>
+                          <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                            {getSerializedAssetStatusLabel(asset.currentStatus)}
+                          </td>
+                          <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                            {locationMap.get(asset.currentLocationId ?? '')?.name ??
+                              'Sin ubicación'}
+                          </td>
+                          <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                            {formatInventoryDate(asset.purchaseDate)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => void openAssetDetail(asset.id)}
+                            >
+                              Ver detalle
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </PortalPanel>
@@ -1549,14 +1658,14 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         <TabsContent value="movements" className="space-y-6">
           <div className="grid gap-6 xl:grid-cols-2">
             <PortalPanel
-              eyebrow="Salida"
+              eyebrow="Venta"
               title="Registrar venta"
-              description="Descuenta stock desde una ubicación logística y deja referencia comercial."
+              description="Descuenta unidades desde una bodega y asocia la salida a una referencia comercial."
             >
               <div className="grid gap-4">
                 <label className="space-y-1 text-sm">
                   <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                    Ítem
+                    Producto
                   </span>
                   <select
                     value={saleForm.itemId}
@@ -1565,7 +1674,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                     }
                     className={fieldClassName}
                   >
-                    <option value="">Selecciona un ítem</option>
+                    <option value="">Selecciona un producto</option>
                     {items.map((item) => (
                       <option key={item.id} value={item.id}>
                         {item.sku} · {item.name}
@@ -1584,7 +1693,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                     }
                     className={fieldClassName}
                   >
-                    <option value="">Selecciona una ubicación</option>
+                    <option value="">Selecciona una bodega</option>
                     {locations.map((location) => (
                       <option key={location.id} value={location.id}>
                         {location.code} · {location.name}
@@ -1641,14 +1750,14 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             </PortalPanel>
 
             <PortalPanel
-              eyebrow="Retorno"
+              eyebrow="Devolución"
               title="Recibir devolución"
-              description="Mueve material o activo desde origen operativo hacia una ubicación de destino."
+              description="Registra material o activo devuelto por un técnico o cliente y muévelo a la bodega que corresponda."
             >
               <div className="grid gap-4">
                 <label className="space-y-1 text-sm">
                   <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                    Ítem
+                    Producto
                   </span>
                   <select
                     value={returnForm.itemId}
@@ -1657,7 +1766,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                     }
                     className={fieldClassName}
                   >
-                    <option value="">Selecciona un ítem</option>
+                    <option value="">Selecciona un producto</option>
                     {items.map((item) => (
                       <option key={item.id} value={item.id}>
                         {item.sku} · {item.name}
@@ -1667,7 +1776,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                 </label>
                 <label className="space-y-1 text-sm">
                   <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                    Origen
+                    Bodega de origen
                   </span>
                   <select
                     value={returnForm.sourceLocationId}
@@ -1679,7 +1788,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                     }
                     className={fieldClassName}
                   >
-                    <option value="">Selecciona una ubicación</option>
+                    <option value="">Selecciona una bodega</option>
                     {locations.map((location) => (
                       <option key={location.id} value={location.id}>
                         {location.code} · {location.name}
@@ -1689,7 +1798,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                 </label>
                 <label className="space-y-1 text-sm">
                   <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                    Destino
+                    Bodega de destino
                   </span>
                   <select
                     value={returnForm.destinationLocationId}
@@ -1701,7 +1810,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                     }
                     className={fieldClassName}
                   >
-                    <option value="">Selecciona una ubicación</option>
+                    <option value="">Selecciona una bodega</option>
                     {locations.map((location) => (
                       <option key={location.id} value={location.id}>
                         {location.code} · {location.name}
@@ -1728,7 +1837,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                 />
                 <label className="space-y-1 text-sm">
                   <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                    Estado destino
+                    Estado del activo al llegar
                   </span>
                   <select
                     value={returnForm.targetStatus}
@@ -1788,13 +1897,13 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         <TabsContent value="writeoffs" className="space-y-6">
           <PortalPanel
             eyebrow="Bajas"
-            title="Registrar baja operativa"
-            description="Aplica salida definitiva por daño, pérdida u obsolescencia con trazabilidad de actor y ubicación."
+            title="Registrar baja definitiva"
+            description="Registra una salida definitiva por daño, pérdida u obsolescencia."
           >
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <label className="space-y-1 text-sm">
                 <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Ítem
+                  Producto
                 </span>
                 <select
                   value={writeOffForm.itemId}
@@ -1803,7 +1912,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                   }
                   className={fieldClassName}
                 >
-                  <option value="">Selecciona un ítem</option>
+                  <option value="">Selecciona un producto</option>
                   {items.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.sku} · {item.name}
@@ -1812,7 +1921,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                 </select>
               </label>
               <Input
-                label="Activo serializado (opcional)"
+                label="Equipo con serial (opcional)"
                 value={writeOffForm.serializedAssetId}
                 onChange={(event) =>
                   setWriteOffForm((current) => ({
@@ -1832,7 +1941,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                   }
                   className={fieldClassName}
                 >
-                  <option value="">Selecciona una ubicación</option>
+                  <option value="">Selecciona una bodega</option>
                   {locations.map((location) => (
                     <option key={location.id} value={location.id}>
                       {location.code} · {location.name}
@@ -1920,11 +2029,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         usersLoadError={usersLoadError}
         isSubmitting={isSubmittingLocation}
         error={locationSubmitError}
-        onClose={() => {
-          setLocationDialogOpen(false);
-          setLocationEditItem(null);
-          setLocationSubmitError(null);
-        }}
+        onClose={closeLocationDialog}
         onCreate={handleCreateLocation}
         onUpdate={handleUpdateLocation}
       />
@@ -1981,7 +2086,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                 }}
               />
               <Input
-                label="Prefijo de producto"
+                label="Prefijo de código"
                 value={createCategoryInlineCodePrefix}
                 onChange={(event) => {
                   setCreateCategoryInlinePrefixTouched(true);
@@ -1989,7 +2094,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                     sanitizeAlnumUpper(event.target.value).slice(0, 3),
                   );
                 }}
-                helperText="Se usa para autogenerar el SKU del producto."
+                helperText="Se usa para generar el código del producto automáticamente."
               />
               <label className="space-y-1 text-sm">
                 <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
@@ -2085,7 +2190,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             <PortalAlert
               variant="warning"
               title="Confirmación requerida"
-              description={`Se eliminará el producto ${deleteConfirmItem.sku} y dejará de estar disponible en compras, stock y activos.`}
+              description={`Se eliminará el producto ${deleteConfirmItem.sku} y dejará de estar disponible en compras, material y activos.`}
             />
           ) : null}
           {deleteConfirmError ? (

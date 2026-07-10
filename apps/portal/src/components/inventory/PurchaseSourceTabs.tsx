@@ -19,7 +19,7 @@ export function PurchaseSourceTabs({
     <Tabs value={value} onValueChange={(next) => onValueChange(next as 'suggestions' | 'catalog')}>
       <TabsList>
         <TabsTrigger value="suggestions">Sugeridos ({suggestionCount})</TabsTrigger>
-        <TabsTrigger value="catalog">Catalogo ({catalogCount})</TabsTrigger>
+        <TabsTrigger value="catalog">Catálogo ({catalogCount})</TabsTrigger>
       </TabsList>
     </Tabs>
   );

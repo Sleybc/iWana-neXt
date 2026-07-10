@@ -12,6 +12,8 @@ import {
   PortalActionToolbar,
   PortalEmptyState,
   interactiveFocusClassName,
+  portalDataTableCellClassName,
+  portalDataTableHeadClassName,
   portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 
@@ -36,12 +38,10 @@ interface InventoryCategoriesTableProps {
   emptyAction?: ReactNode;
 
   onClearSearch?: () => void;
+
+  /** Cuando el empty state lo renderiza el panel contenedor. */
+  suppressEmptyState?: boolean;
 }
-
-const tableHeadClass =
-  'px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400';
-
-const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
 
 const COL_SPAN_BASE = 5;
 
@@ -69,6 +69,8 @@ export function InventoryCategoriesTable({
   emptyAction,
 
   onClearSearch,
+
+  suppressEmptyState = false,
 }: InventoryCategoriesTableProps) {
   const showLoading = isLoading || isRefreshing;
   const colSpan = resolveColumnCount(Boolean(onRowClick));
@@ -83,10 +85,10 @@ export function InventoryCategoriesTable({
       : 'Sin categorías registradas';
 
   const emptyDescription = catalogIsEmpty
-    ? 'Crea categorías para clasificar los productos del catálogo operativo.'
+    ? 'Crea categorías para clasificar los productos del catálogo.'
     : hasActiveFilters
       ? 'Ajusta la búsqueda para encontrar otra categoría.'
-      : 'Crea categorías para clasificar los productos del catálogo operativo.';
+      : 'Crea categorías para clasificar los productos del catálogo.';
 
   const filteredEmptyAction =
     hasActiveFilters && onClearSearch ? (
@@ -104,28 +106,28 @@ export function InventoryCategoriesTable({
 
         <thead>
           <tr className="border-b border-gray-100 bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-3">
-            <th scope="col" className={tableHeadClass}>
+            <th scope="col" className={portalDataTableHeadClassName}>
               Nombre
             </th>
 
-            <th scope="col" className={tableHeadClass}>
-              Prefijo de producto
+            <th scope="col" className={portalDataTableHeadClassName}>
+              Prefijo de código
             </th>
 
-            <th scope="col" className={`${tableHeadClass} hidden md:table-cell`}>
+            <th scope="col" className={`${portalDataTableHeadClassName} hidden md:table-cell`}>
               Descripción
             </th>
 
-            <th scope="col" className={tableHeadClass}>
+            <th scope="col" className={portalDataTableHeadClassName}>
               Estado
             </th>
 
-            <th scope="col" className={tableHeadClass}>
+            <th scope="col" className={portalDataTableHeadClassName}>
               Productos asociados
             </th>
 
             {onRowClick ? (
-              <th scope="col" className={`${tableHeadClass} text-right`}>
+              <th scope="col" className={`${portalDataTableHeadClassName} text-right`}>
                 Acciones
               </th>
             ) : null}
@@ -169,14 +171,14 @@ export function InventoryCategoriesTable({
             </tr>
           ) : null}
 
-          {!showLoading && categories.length === 0 ? (
+          {!showLoading && categories.length === 0 && !suppressEmptyState ? (
             <tr>
-              <td colSpan={colSpan} className="px-4 py-12 text-center">
+              <td colSpan={colSpan} className="px-4 py-12">
                 <PortalEmptyState
                   title={emptyTitle}
                   description={emptyDescription}
                   action={catalogIsEmpty || !hasActiveFilters ? emptyAction : filteredEmptyAction}
-                  className="mx-auto max-w-xl text-left"
+                  className="w-full"
                 />
               </td>
             </tr>
@@ -201,26 +203,34 @@ export function InventoryCategoriesTable({
               tabIndex={onRowClick ? 0 : undefined}
               aria-label={onRowClick ? `Abrir categoría ${category.name}` : undefined}
             >
-              <td className={`${cellClass} font-medium text-gray-900 dark:text-white`}>
+              <td
+                className={`${portalDataTableCellClassName} font-medium text-gray-900 dark:text-white`}
+              >
                 {category.name}
               </td>
 
-              <td className={`${cellClass} font-mono text-xs`}>{category.codePrefix}</td>
+              <td className={`${portalDataTableCellClassName} font-mono text-xs`}>
+                {category.codePrefix}
+              </td>
 
-              <td className={`${cellClass} hidden md:table-cell`}>
+              <td className={`${portalDataTableCellClassName} hidden md:table-cell`}>
                 {category.description?.trim() || '—'}
               </td>
 
-              <td className={cellClass}>
+              <td className={portalDataTableCellClassName}>
                 <Badge variant={getInventoryCategoryStatusBadgeVariant(category.status)}>
                   {getInventoryCategoryStatusLabel(category.status)}
                 </Badge>
               </td>
 
-              <td className={cellClass}>{category.productCount}</td>
+              <td className={portalDataTableCellClassName}>{category.productCount}</td>
 
               {onRowClick ? (
-                <td className={cellClass} onClick={stopRowActivation} onKeyDown={stopRowActivation}>
+                <td
+                  className={portalDataTableCellClassName}
+                  onClick={stopRowActivation}
+                  onKeyDown={stopRowActivation}
+                >
                   <PortalActionToolbar compact align="end" className="ml-auto !inline-flex !w-fit">
                     <Button
                       type="button"

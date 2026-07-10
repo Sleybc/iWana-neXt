@@ -1,5 +1,7 @@
 'use client';
 
+import { PortalEmptyState, interactiveFocusClassName } from '@/components/shared/portal-ui';
+
 interface PurchaseSuggestionListProps {
   suggestions: Array<{
     itemId: string;
@@ -8,12 +10,16 @@ interface PurchaseSuggestionListProps {
     selected: boolean;
   }>;
   isLoading?: boolean;
+  emptyTitle?: string;
+  emptyDescription?: string;
   onToggle: (itemId: string) => void;
 }
 
 export function PurchaseSuggestionList({
   suggestions,
   isLoading = false,
+  emptyTitle = 'No hay sugerencias disponibles',
+  emptyDescription = 'No vemos productos que necesiten reposición con el material disponible actual.',
   onToggle,
 }: PurchaseSuggestionListProps) {
   if (isLoading) {
@@ -22,9 +28,7 @@ export function PurchaseSuggestionList({
 
   if (suggestions.length === 0) {
     return (
-      <p className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-sm text-gray-500 dark:border-dark-border dark:text-gray-400">
-        No hay sugerencias disponibles con las senales actuales de stock.
-      </p>
+      <PortalEmptyState className="w-full" title={emptyTitle} description={emptyDescription} />
     );
   }
 
@@ -37,7 +41,7 @@ export function PurchaseSuggestionList({
         >
           <input
             type="checkbox"
-            className="mt-1 h-4 w-4 rounded border-gray-300 accent-iwana-primary"
+            className={`mt-1 h-4 w-4 rounded border-gray-300 accent-iwana-primary ${interactiveFocusClassName}`}
             aria-label={`Seleccionar ${suggestion.productLabel}`}
             checked={suggestion.selected}
             onChange={() => onToggle(suggestion.itemId)}

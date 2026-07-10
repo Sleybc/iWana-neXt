@@ -154,7 +154,7 @@ export function StockIssueFormDrawer({
 
   const itemOptions = useMemo(
     () => [
-      { value: '', label: 'Selecciona un ítem' },
+      { value: '', label: 'Selecciona un producto' },
       ...items.map((item) => ({
         value: item.id,
         label: `${item.sku} · ${item.name}`,
@@ -287,7 +287,7 @@ export function StockIssueFormDrawer({
 
           <Select
             id="issue-form-item"
-            label="Ítem"
+            label="Producto"
             className="md:col-span-2"
             value={form.lineItemId}
             onChange={(event) =>
@@ -318,7 +318,7 @@ export function StockIssueFormDrawer({
                 }
               />
               <Input
-                label="Origen / referencia operativa (opcional)"
+                label="Origen o referencia de venta (opcional)"
                 value={form.originRefId}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, originRefId: event.target.value }))

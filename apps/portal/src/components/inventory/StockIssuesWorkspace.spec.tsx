@@ -71,7 +71,7 @@ describe('StockIssuesWorkspace', () => {
     await user.click(screen.getAllByRole('button', { name: 'Crear salida' })[0]!);
 
     expect(await screen.findByRole('heading', { name: 'Nueva salida' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Agregar ítems' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Agregar productos' })).toBeInTheDocument();
   });
 
   it('lists issue rows and opens detail drawer', async () => {
@@ -129,7 +129,7 @@ describe('StockIssuesWorkspace', () => {
             id: 'loc-2',
             tenantId: 'tenant-1',
             code: 'MOV-01',
-            name: 'Móvil técnico norte',
+            name: 'Técnico zona norte',
             type: StockLocationType.MOBILE_TECHNICIAN,
           } as any,
         ]}
@@ -170,9 +170,9 @@ describe('StockIssuesWorkspace', () => {
     );
 
     expect(screen.getByRole('table', { name: 'Salidas de bodega' })).toBeInTheDocument();
-    expect(screen.getAllByText('Custodia técnico').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Entrega a técnico').length).toBeGreaterThan(0);
 
-    await user.click(screen.getByRole('button', { name: 'Ver' }));
+    await user.click(screen.getByRole('button', { name: 'Despachar' }));
 
     await waitFor(() => {
       expect(onOpenDetail).toHaveBeenCalledWith('issue-1');
@@ -244,7 +244,7 @@ describe('StockIssuesWorkspace', () => {
             id: 'loc-2',
             tenantId: 'tenant-1',
             code: 'MOV-01',
-            name: 'Móvil técnico norte',
+            name: 'Técnico zona norte',
             type: StockLocationType.MOBILE_TECHNICIAN,
           } as any,
         ]}
@@ -284,7 +284,7 @@ describe('StockIssuesWorkspace', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Ver' }));
+    await user.click(screen.getByRole('button', { name: 'Despachar' }));
     await user.click(await screen.findByRole('button', { name: 'Editar' }));
 
     expect(await screen.findByRole('heading', { name: 'Editar salida' })).toBeInTheDocument();

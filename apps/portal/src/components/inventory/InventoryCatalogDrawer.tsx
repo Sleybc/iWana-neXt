@@ -248,7 +248,7 @@ export function InventoryCatalogDrawer({
             <CatalogMetaItem label="Tipo" value={getInventoryItemKindLabel(form.itemKind)} />
             <CatalogMetaItem label="Categoría" value={categoryLabel} />
             <CatalogMetaItem
-              label="Trazabilidad"
+              label="Control de material"
               value={getInventoryTrackingModeLabel(form.trackingMode)}
             />
             <CatalogMetaItem label="Estado" value={getInventoryItemStatusLabel(form.status)} />
@@ -261,7 +261,7 @@ export function InventoryCatalogDrawer({
             />
             <div className="grid gap-4 md:grid-cols-2">
               <Input
-                label="SKU"
+                label="Código"
                 value={form.sku}
                 disabled
                 helperText="El código no se puede modificar después de crear el producto."
@@ -314,7 +314,7 @@ export function InventoryCatalogDrawer({
                 onChange={(e) => updateForm('categoryId', e.target.value)}
               />
               <Select
-                label="Trazabilidad"
+                label="Control de material"
                 value={form.trackingMode}
                 options={Object.values(InventoryTrackingMode).map((value) => ({
                   value,
@@ -340,7 +340,7 @@ export function InventoryCatalogDrawer({
               />
             </div>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Compras, inventario y activos se administran desde sus vistas operativas.
+              Compras, inventario y activos se administran desde sus secciones correspondientes.
             </p>
           </div>
         </div>

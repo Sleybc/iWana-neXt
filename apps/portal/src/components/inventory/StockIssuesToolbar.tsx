@@ -1,8 +1,8 @@
 'use client';
 
-import { Button, Select } from '@iwana/ui';
+import { Button, Input, Select } from '@iwana/ui';
 import { StockIssueStatus, StockIssueType } from '@iwana/shared';
-import { interactiveFocusClassName, PortalSearchField } from '@/components/shared/portal-ui';
+import { interactiveFocusClassName } from '@/components/shared/portal-ui';
 import { getStockIssueStatusLabel, getStockIssueTypeLabel } from './inventory-labels';
 import { hasActiveIssueFilters, type StockIssueFilters } from './issue-filters';
 
@@ -63,10 +63,13 @@ export function StockIssuesToolbar({
   onClearFilters,
 }: StockIssuesToolbarProps) {
   const chips = buildFilterChips(filters);
+  const hasFilters = hasActiveIssueFilters(filters);
   const resultsLabel =
-    resultCount === 0
-      ? 'Sin resultados con estos filtros'
-      : `${resultCount} salida${resultCount === 1 ? '' : 's'}${resultCount !== totalCount ? ` de ${totalCount}` : ''}`;
+    totalCount === 0 && !hasFilters
+      ? '0 salidas'
+      : resultCount === 0
+        ? 'Sin resultados con estos filtros'
+        : `${resultCount} salida${resultCount === 1 ? '' : 's'}${resultCount !== totalCount ? ` de ${totalCount}` : ''}`;
 
   function removeChip(key: keyof StockIssueFilters) {
     const next = { ...filters };
@@ -114,12 +117,12 @@ export function StockIssuesToolbar({
           }}
           options={STATUS_OPTIONS}
         />
-        <PortalSearchField
+        <Input
           id="issue-filter-search"
-          label="Buscar salidas"
+          label="Buscar"
           placeholder="Ubicación o referencia…"
           value={filters.search ?? ''}
-          onChange={(value) => onFiltersChange({ ...filters, search: value })}
+          onChange={(event) => onFiltersChange({ ...filters, search: event.target.value })}
         />
       </div>
 
@@ -129,6 +132,7 @@ export function StockIssuesToolbar({
             <button
               key={chip.key}
               type="button"
+              aria-label={`Quitar filtro: ${chip.label}`}
               className={`inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 ${interactiveFocusClassName}`}
               onClick={() => removeChip(chip.key)}
             >

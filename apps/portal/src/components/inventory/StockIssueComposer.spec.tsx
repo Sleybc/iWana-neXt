@@ -1,6 +1,11 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { StockBalanceCondition, StockIssueType, StockLocationType } from '@iwana/shared';
+import {
+  StockBalanceCondition,
+  StockIssueStatus,
+  StockIssueType,
+  StockLocationType,
+} from '@iwana/shared';
 import { StockIssueComposer } from './StockIssueComposer';
 
 const baseItem = {
@@ -98,7 +103,7 @@ describe('StockIssueComposer', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Datos de la salida' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Con stock/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Con material/i })).toBeInTheDocument();
 
     await user.click(screen.getByRole('combobox', { name: 'Origen' }));
     await user.click(screen.getByRole('option', { name: /BOD-01 · Bodega principal/i }));
@@ -158,6 +163,67 @@ describe('StockIssueComposer', () => {
     await user.clear(quantityInput);
     await user.type(quantityInput, '9');
 
-    expect(screen.getByText(/Supera el saldo visible en origen/i)).toBeInTheDocument();
+    expect(screen.getByText(/Supera el material disponible en origen/i)).toBeInTheDocument();
+  });
+
+  it('loads edit mode with guardrail and disables save until there are changes', async () => {
+    const onUpdate = jest.fn().mockResolvedValue(undefined);
+
+    render(
+      <StockIssueComposer
+        mode="edit"
+        editIssue={
+          {
+            id: 'issue-1',
+            tenantId: 'tenant-1',
+            type: StockIssueType.TECHNICIAN_CUSTODY,
+            status: StockIssueStatus.REQUESTED,
+            sourceLocationId: 'loc-1',
+            destinationLocationId: 'loc-2',
+            destinationRefId: null,
+            originRefId: null,
+            commercialRefId: null,
+            reason: null,
+            costCenter: null,
+            handoffMethod: null,
+            handoffNotes: null,
+            handoffAttachments: null,
+            createdByUserId: null,
+            dispatchedByUserId: null,
+            closedAt: null,
+            stockMovementId: null,
+            createdAt: '2026-07-01T00:00:00.000Z',
+            updatedAt: '2026-07-01T00:00:00.000Z',
+            lines: [
+              {
+                id: 'line-1',
+                tenantId: 'tenant-1',
+                issueId: 'issue-1',
+                itemId: 'item-1',
+                requestedQty: '1.00',
+                dispatchedQty: null,
+                lotId: null,
+                serializedAssetId: null,
+                condition: StockBalanceCondition.NEW,
+                createdAt: '2026-07-01T00:00:00.000Z',
+                updatedAt: '2026-07-01T00:00:00.000Z',
+              },
+            ],
+          } as any
+        }
+        items={[baseItem as any]}
+        balances={[balances[0]!]}
+        locations={[baseLocation, mobileLocation] as any}
+        destinationOptions={
+          new Map([[StockLocationType.MOBILE_TECHNICIAN, [mobileLocation] as any]]) as any
+        }
+        onSubmit={jest.fn()}
+        onUpdate={onUpdate}
+      />,
+    );
+
+    expect(screen.getByText('Edición disponible en estado solicitada')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Contexto de la salida' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeDisabled();
   });
 });

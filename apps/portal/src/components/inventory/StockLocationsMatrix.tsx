@@ -10,13 +10,24 @@ import type {
   StockLocationRecord,
 } from '@/lib/api-client';
 import {
-  PortalActionToolbar,
   PortalEmptyState,
   PortalSearchField,
   interactiveFocusClassName,
+  portalDataTableCellClassName,
+  portalDataTableHeadClassName,
+  portalDataTableNestedHeadClassName,
   portalDataTableShellClassName,
   portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
+import {
+  EMPTY_LOCATION_MATRIX_FILTERS,
+  type LocationMatrixCustodyFilter,
+  type LocationMatrixFilters,
+  hasActiveLocationMatrixFilters,
+  matchesLocationMatrixFilters,
+  resolveLocationStatusSelectValue,
+} from './location-matrix-filters';
+import { StockLocationsMatrixSkeleton } from './StockLocationsMatrixSkeleton';
 import {
   formatInventoryQuantity,
   getStockBalanceConditionLabel,
@@ -26,16 +37,7 @@ import {
   getStockLocationTypeLabel,
 } from './inventory-labels';
 
-const MOBILE_LOCATION_TYPES = new Set<StockLocationType>([
-  StockLocationType.MOBILE_TECHNICIAN,
-  StockLocationType.MOBILE_CREW,
-]);
-
-const tableHeadClass =
-  'px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400';
-const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
-
-export type LocationMatrixCustodyFilter = 'all' | 'mobile';
+export type { LocationMatrixCustodyFilter } from './location-matrix-filters';
 
 interface StockLocationsMatrixProps {
   locations: StockLocationRecord[];
@@ -43,7 +45,9 @@ interface StockLocationsMatrixProps {
   items: InventoryItemRecord[];
   userLabelById?: Map<string, string>;
   custodyFilter?: LocationMatrixCustodyFilter;
+  isLoading?: boolean;
   onCustodyFilterChange?: (filter: LocationMatrixCustodyFilter) => void;
+  onCreateLocation?: () => void;
   onEditLocation?: (location: StockLocationRecord) => void;
 }
 
@@ -78,12 +82,12 @@ function formatResponsibleRef(
 
 function resolveOccupation(totalOnHand: number, maxCapacity: string | null): OccupationMeta {
   if (!maxCapacity) {
-    return { label: 'Sin tope', percent: null, tone: 'neutral' };
+    return { label: 'Sin límite', percent: null, tone: 'neutral' };
   }
 
   const capacity = Number.parseFloat(maxCapacity);
   if (!Number.isFinite(capacity) || capacity <= 0) {
-    return { label: 'Sin tope', percent: null, tone: 'neutral' };
+    return { label: 'Sin límite', percent: null, tone: 'neutral' };
   }
 
   const percent = Math.min(100, Math.round((totalOnHand / capacity) * 100));
@@ -96,33 +100,32 @@ function resolveOccupation(totalOnHand: number, maxCapacity: string | null): Occ
   };
 }
 
-function hasActiveMatrixFilters(input: {
-  search: string;
-  typeFilter: 'all' | StockLocationType;
-  statusFilter: 'all' | StockLocationStatus;
-  custodyFilter: LocationMatrixCustodyFilter;
-}): boolean {
-  return (
-    input.search.trim().length > 0 ||
-    input.typeFilter !== 'all' ||
-    input.statusFilter !== 'all' ||
-    input.custodyFilter === 'mobile'
-  );
-}
-
 export function StockLocationsMatrix({
   locations,
   balances,
   items,
   userLabelById,
   custodyFilter = 'all',
+  isLoading = false,
   onCustodyFilterChange,
+  onCreateLocation,
   onEditLocation,
 }: StockLocationsMatrixProps) {
-  const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'all' | StockLocationType>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | StockLocationStatus>('all');
+  const [localFilters, setLocalFilters] = useState<Omit<LocationMatrixFilters, 'custodyFilter'>>({
+    search: EMPTY_LOCATION_MATRIX_FILTERS.search,
+    typeFilter: EMPTY_LOCATION_MATRIX_FILTERS.typeFilter,
+    statusFilter: EMPTY_LOCATION_MATRIX_FILTERS.statusFilter,
+    stockFilter: EMPTY_LOCATION_MATRIX_FILTERS.stockFilter,
+  });
   const [expandedLocationId, setExpandedLocationId] = useState<string | null>(null);
+
+  const effectiveFilters = useMemo<LocationMatrixFilters>(
+    () => ({
+      ...localFilters,
+      custodyFilter,
+    }),
+    [custodyFilter, localFilters],
+  );
 
   const itemMap = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
 
@@ -148,18 +151,12 @@ export function StockLocationsMatrix({
   );
 
   const filteredRows = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
+    const normalizedSearch = effectiveFilters.search.trim().toLowerCase();
 
-    return rows.filter(({ location }) => {
-      if (custodyFilter === 'mobile' && !MOBILE_LOCATION_TYPES.has(location.type)) {
-        return false;
-      }
-
-      if (typeFilter !== 'all' && location.type !== typeFilter) {
-        return false;
-      }
-
-      if (statusFilter !== 'all' && location.status !== statusFilter) {
+    return rows.filter(({ location, totalOnHand }) => {
+      if (
+        !matchesLocationMatrixFilters(location, { ...effectiveFilters, search: '' }, totalOnHand)
+      ) {
         return false;
       }
 
@@ -176,69 +173,87 @@ export function StockLocationsMatrix({
           .includes(normalizedSearch)
       );
     });
-  }, [custodyFilter, rows, search, statusFilter, typeFilter, userLabelById]);
-
-  const mobileCount = useMemo(
-    () => rows.filter(({ location }) => MOBILE_LOCATION_TYPES.has(location.type)).length,
-    [rows],
-  );
-
-  const withStockCount = useMemo(
-    () => filteredRows.filter(({ totalOnHand }) => totalOnHand > 0).length,
-    [filteredRows],
-  );
+  }, [effectiveFilters, rows, userLabelById]);
 
   const filterChips = useMemo(() => {
     const chips: Array<{ key: string; label: string; onRemove: () => void }> = [];
 
-    if (custodyFilter === 'mobile' && onCustodyFilterChange) {
+    if (effectiveFilters.custodyFilter === 'mobile' && onCustodyFilterChange) {
       chips.push({
         key: 'custody',
-        label: 'Custodias móviles',
+        label: 'Con técnicos en campo',
         onRemove: () => onCustodyFilterChange('all'),
       });
     }
 
-    if (typeFilter !== 'all') {
+    if (effectiveFilters.typeFilter !== 'all') {
       chips.push({
         key: 'type',
-        label: getStockLocationTypeLabel(typeFilter),
-        onRemove: () => setTypeFilter('all'),
+        label: getStockLocationTypeLabel(effectiveFilters.typeFilter),
+        onRemove: () => setLocalFilters((current) => ({ ...current, typeFilter: 'all' })),
       });
     }
 
-    if (statusFilter !== 'all') {
+    if (effectiveFilters.statusFilter === 'inactive_group') {
       chips.push({
         key: 'status',
-        label: getStockLocationStatusLabel(statusFilter),
-        onRemove: () => setStatusFilter('all'),
+        label: 'Pausadas o guardadas',
+        onRemove: () => setLocalFilters((current) => ({ ...current, statusFilter: 'all' })),
+      });
+    } else if (effectiveFilters.statusFilter !== 'all') {
+      chips.push({
+        key: 'status',
+        label: getStockLocationStatusLabel(effectiveFilters.statusFilter),
+        onRemove: () => setLocalFilters((current) => ({ ...current, statusFilter: 'all' })),
       });
     }
 
-    if (search.trim()) {
+    if (effectiveFilters.stockFilter === 'withStock') {
+      chips.push({
+        key: 'stock',
+        label: 'Con material disponible',
+        onRemove: () => setLocalFilters((current) => ({ ...current, stockFilter: 'all' })),
+      });
+    }
+
+    if (effectiveFilters.search.trim()) {
       chips.push({
         key: 'search',
-        label: `Búsqueda: ${search.trim()}`,
-        onRemove: () => setSearch(''),
+        label: `Búsqueda: ${effectiveFilters.search.trim()}`,
+        onRemove: () => setLocalFilters((current) => ({ ...current, search: '' })),
       });
     }
 
     return chips;
-  }, [custodyFilter, onCustodyFilterChange, search, statusFilter, typeFilter]);
+  }, [effectiveFilters, onCustodyFilterChange]);
 
   function clearFilters() {
-    setSearch('');
-    setTypeFilter('all');
-    setStatusFilter('all');
+    setLocalFilters({
+      search: '',
+      typeFilter: 'all',
+      statusFilter: 'all',
+      stockFilter: 'all',
+    });
     onCustodyFilterChange?.('all');
+  }
+
+  if (isLoading) {
+    return <StockLocationsMatrixSkeleton />;
   }
 
   if (rows.length === 0) {
     return (
       <PortalEmptyState
-        title="Sin ubicaciones disponibles"
-        description="Crea bodegas y custodias para empezar a recibir y mover inventario."
+        title="Sin bodegas creadas"
+        description="Crea la primera bodega para empezar a recibir y mover material."
         icon={Warehouse}
+        action={
+          onCreateLocation ? (
+            <Button type="button" onClick={onCreateLocation}>
+              Crear bodega
+            </Button>
+          ) : undefined
+        }
       />
     );
   }
@@ -250,31 +265,8 @@ export function StockLocationsMatrix({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <article className="rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-iwana-secondary-700 dark:text-iwana-secondary">
-            Ubicaciones visibles
-          </p>
-          <p className="mt-2 text-2xl font-semibold text-iwana-primary dark:text-white">
-            {resultLabel}
-          </p>
-        </article>
-        <article className="rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-iwana-secondary-700 dark:text-iwana-secondary">
-            Custodias móviles
-          </p>
-          <p className="mt-2 text-2xl font-semibold text-iwana-primary dark:text-white">
-            {mobileCount}
-          </p>
-        </article>
-        <article className="rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-iwana-secondary-700 dark:text-iwana-secondary">
-            Con existencia en vista
-          </p>
-          <p className="mt-2 text-2xl font-semibold text-iwana-primary dark:text-white">
-            {withStockCount}
-          </p>
-        </article>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium text-gray-600 dark:text-gray-300">{resultLabel}</p>
       </div>
 
       <div className="space-y-3 border-b border-gray-100 pb-4 dark:border-dark-border">
@@ -283,13 +275,13 @@ export function StockLocationsMatrix({
             id="locations-matrix-search"
             label="Buscar bodega"
             placeholder="Código, nombre o responsable"
-            value={search}
-            onChange={setSearch}
+            value={localFilters.search}
+            onChange={(value) => setLocalFilters((current) => ({ ...current, search: value }))}
           />
           <Select
             label="Tipo"
             className="h-12"
-            value={typeFilter}
+            value={localFilters.typeFilter}
             options={[
               { value: 'all', label: 'Todos los tipos' },
               ...Object.values(StockLocationType).map((type) => ({
@@ -297,12 +289,17 @@ export function StockLocationsMatrix({
                 label: getStockLocationTypeLabel(type),
               })),
             ]}
-            onChange={(event) => setTypeFilter(event.target.value as 'all' | StockLocationType)}
+            onChange={(event) =>
+              setLocalFilters((current) => ({
+                ...current,
+                typeFilter: event.target.value as 'all' | StockLocationType,
+              }))
+            }
           />
           <Select
             label="Estado"
             className="h-12"
-            value={statusFilter}
+            value={resolveLocationStatusSelectValue(localFilters.statusFilter)}
             options={[
               { value: 'all', label: 'Todos los estados' },
               ...Object.values(StockLocationStatus).map((status) => ({
@@ -310,43 +307,19 @@ export function StockLocationsMatrix({
                 label: getStockLocationStatusLabel(status),
               })),
             ]}
-            onChange={(event) => setStatusFilter(event.target.value as 'all' | StockLocationStatus)}
+            onChange={(event) =>
+              setLocalFilters((current) => ({
+                ...current,
+                statusFilter: event.target.value as 'all' | StockLocationStatus,
+              }))
+            }
           />
-          {hasActiveMatrixFilters({ search, typeFilter, statusFilter, custodyFilter }) ? (
+          {hasActiveLocationMatrixFilters(effectiveFilters) ? (
             <Button type="button" variant="secondary" className="h-12 px-4" onClick={clearFilters}>
               Limpiar filtros
             </Button>
           ) : null}
         </div>
-
-        {onCustodyFilterChange ? (
-          <PortalActionToolbar compact>
-            <Button
-              type="button"
-              size="sm"
-              variant={custodyFilter === 'all' ? 'primary' : 'ghost'}
-              className={cn(
-                'rounded-xl',
-                custodyFilter !== 'all' && 'text-iwana-secondary-700 dark:text-gray-300',
-              )}
-              onClick={() => onCustodyFilterChange('all')}
-            >
-              Todas las bodegas
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={custodyFilter === 'mobile' ? 'primary' : 'ghost'}
-              className={cn(
-                'rounded-xl',
-                custodyFilter !== 'mobile' && 'text-iwana-secondary-700 dark:text-gray-300',
-              )}
-              onClick={() => onCustodyFilterChange('mobile')}
-            >
-              Custodias móviles
-            </Button>
-          </PortalActionToolbar>
-        ) : null}
 
         {filterChips.length > 0 ? (
           <div className="flex flex-wrap gap-2">
@@ -371,8 +344,8 @@ export function StockLocationsMatrix({
 
       {filteredRows.length === 0 ? (
         <PortalEmptyState
-          title="Sin resultados para los filtros aplicados"
-          description="Ajusta la búsqueda o limpia los filtros para ampliar el listado."
+          title="Sin resultados con esta búsqueda"
+          description="Cambia la búsqueda o limpia los filtros para ver más bodegas."
           action={
             <Button type="button" variant="secondary" onClick={clearFilters}>
               Limpiar filtros
@@ -385,16 +358,48 @@ export function StockLocationsMatrix({
             <table className="w-full min-w-[1080px] text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-3">
-                  <th className={tableHeadClass}>Ubicación</th>
-                  <th className={tableHeadClass}>Tipo</th>
-                  <th className={tableHeadClass}>Estado</th>
-                  <th className={`${tableHeadClass} hidden lg:table-cell`}>Responsable</th>
-                  <th className={`${tableHeadClass} hidden md:table-cell`}>Capacidad</th>
-                  <th className={tableHeadClass}>Ocupación</th>
-                  <th className={`${tableHeadClass} hidden xl:table-cell`}>Balances</th>
-                  <th className={`${tableHeadClass} hidden xl:table-cell`}>Ítems</th>
-                  <th className={tableHeadClass}>Existencia</th>
-                  <th className={`${tableHeadClass} text-right`}>Acciones</th>
+                  <th scope="col" className={portalDataTableHeadClassName}>
+                    Bodega
+                  </th>
+                  <th scope="col" className={portalDataTableHeadClassName}>
+                    Tipo
+                  </th>
+                  <th scope="col" className={portalDataTableHeadClassName}>
+                    Estado
+                  </th>
+                  <th
+                    scope="col"
+                    className={cn(portalDataTableHeadClassName, 'hidden lg:table-cell')}
+                  >
+                    Persona a cargo
+                  </th>
+                  <th
+                    scope="col"
+                    className={cn(portalDataTableHeadClassName, 'hidden md:table-cell')}
+                  >
+                    Capacidad
+                  </th>
+                  <th scope="col" className={portalDataTableHeadClassName}>
+                    Uso
+                  </th>
+                  <th
+                    scope="col"
+                    className={cn(portalDataTableHeadClassName, 'hidden xl:table-cell')}
+                  >
+                    Detalles
+                  </th>
+                  <th
+                    scope="col"
+                    className={cn(portalDataTableHeadClassName, 'hidden xl:table-cell')}
+                  >
+                    Productos
+                  </th>
+                  <th scope="col" className={portalDataTableHeadClassName}>
+                    Disponible
+                  </th>
+                  <th scope="col" className={cn(portalDataTableHeadClassName, 'text-right')}>
+                    Acciones
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -416,7 +421,7 @@ export function StockLocationsMatrix({
                     return (
                       <Fragment key={location.id}>
                         <tr className={portalTableRowHoverClassName}>
-                          <td className={cellClass}>
+                          <td className={portalDataTableCellClassName}>
                             <p className="font-medium text-gray-900 dark:text-white">
                               {location.name}
                             </p>
@@ -424,18 +429,21 @@ export function StockLocationsMatrix({
                               {location.code}
                             </p>
                           </td>
-                          <td className={cellClass}>
+                          <td className={portalDataTableCellClassName}>
                             <Badge variant={getStockLocationTypeBadgeVariant(location.type)}>
                               {getStockLocationTypeLabel(location.type)}
                             </Badge>
                           </td>
-                          <td className={cellClass}>
+                          <td className={portalDataTableCellClassName}>
                             <Badge variant={getStockLocationStatusBadgeVariant(location.status)}>
                               {getStockLocationStatusLabel(location.status)}
                             </Badge>
                           </td>
                           <td
-                            className={`${cellClass} hidden text-sm lg:table-cell`}
+                            className={cn(
+                              portalDataTableCellClassName,
+                              'hidden text-sm lg:table-cell',
+                            )}
                             title={responsible.title}
                           >
                             <span
@@ -448,12 +456,12 @@ export function StockLocationsMatrix({
                               {responsible.label}
                             </span>
                           </td>
-                          <td className={`${cellClass} hidden md:table-cell`}>
+                          <td className={cn(portalDataTableCellClassName, 'hidden md:table-cell')}>
                             {location.maxCapacity
                               ? formatInventoryQuantity(location.maxCapacity)
-                              : 'Sin tope'}
+                              : 'Sin límite'}
                           </td>
-                          <td className={cellClass}>
+                          <td className={portalDataTableCellClassName}>
                             <div className="space-y-1.5">
                               <span
                                 className={cn(
@@ -487,14 +495,18 @@ export function StockLocationsMatrix({
                               ) : null}
                             </div>
                           </td>
-                          <td className={`${cellClass} hidden xl:table-cell`}>{balancesCount}</td>
-                          <td className={`${cellClass} hidden xl:table-cell`}>{uniqueItems}</td>
-                          <td className={cellClass}>
+                          <td className={cn(portalDataTableCellClassName, 'hidden xl:table-cell')}>
+                            {balancesCount}
+                          </td>
+                          <td className={cn(portalDataTableCellClassName, 'hidden xl:table-cell')}>
+                            {uniqueItems}
+                          </td>
+                          <td className={portalDataTableCellClassName}>
                             <span className="font-semibold text-iwana-primary dark:text-white">
                               {formatInventoryQuantity(totalOnHand)}
                             </span>
                           </td>
-                          <td className={`${cellClass} text-right`}>
+                          <td className={cn(portalDataTableCellClassName, 'text-right')}>
                             <div className="flex justify-end gap-1">
                               <Button
                                 type="button"
@@ -506,7 +518,7 @@ export function StockLocationsMatrix({
                                   )
                                 }
                                 aria-expanded={isExpanded}
-                                aria-label={`${isExpanded ? 'Ocultar' : 'Ver'} balances de ${location.name}`}
+                                aria-label={`${isExpanded ? 'Ocultar' : 'Ver'} existencias de ${location.name}`}
                               >
                                 {isExpanded ? (
                                   <ChevronUp className="h-4 w-4" aria-hidden="true" />
@@ -514,7 +526,7 @@ export function StockLocationsMatrix({
                                   <ChevronDown className="h-4 w-4" aria-hidden="true" />
                                 )}
                                 <span className="sr-only">
-                                  {isExpanded ? 'Ocultar balances' : 'Ver balances'}
+                                  {isExpanded ? 'Ocultar existencias' : 'Ver existencias'}
                                 </span>
                               </Button>
                               <Button
@@ -538,25 +550,34 @@ export function StockLocationsMatrix({
                             >
                               <div className="border-l-2 border-iwana-primary pl-4">
                                 <p className="text-sm font-medium text-gray-900 dark:text-white">
-                                  Balances en {location.name}
+                                  Material en {location.name}
                                 </p>
                                 {locationBalances.length === 0 ? (
                                   <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-                                    Esta ubicación no tiene balances visibles.
+                                    Esta bodega todavía no tiene material registrado.
                                   </p>
                                 ) : (
                                   <div className="mt-3 overflow-x-auto">
                                     <table className="w-full min-w-[640px] text-sm">
                                       <thead>
                                         <tr className="border-b border-gray-200 dark:border-dark-border">
-                                          <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
-                                            Ítem
+                                          <th
+                                            scope="col"
+                                            className={portalDataTableNestedHeadClassName}
+                                          >
+                                            Producto
                                           </th>
-                                          <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
+                                          <th
+                                            scope="col"
+                                            className={portalDataTableNestedHeadClassName}
+                                          >
                                             Condición
                                           </th>
-                                          <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
-                                            Existencia
+                                          <th
+                                            scope="col"
+                                            className={portalDataTableNestedHeadClassName}
+                                          >
+                                            Disponible
                                           </th>
                                         </tr>
                                       </thead>

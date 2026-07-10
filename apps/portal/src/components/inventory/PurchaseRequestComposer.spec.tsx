@@ -104,7 +104,7 @@ describe('PurchaseRequestComposer', () => {
     );
 
     expect(screen.getByRole('tab', { name: /Sugeridos/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Catalogo/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Catálogo/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Agregar al borrador/i })).toBeDisabled();
   });
 
@@ -123,7 +123,7 @@ describe('PurchaseRequestComposer', () => {
       />,
     );
 
-    await user.click(screen.getByRole('tab', { name: /Catalogo/i }));
+    await user.click(screen.getByRole('tab', { name: /Catálogo/i }));
     await user.click(screen.getByRole('checkbox', { name: /Seleccionar ONT-001 - ONT WiFi 6/i }));
     await user.click(screen.getByRole('button', { name: /Agregar 1 producto/i }));
 
@@ -147,7 +147,7 @@ describe('PurchaseRequestComposer', () => {
 
     await user.click(screen.getByRole('button', { name: /Agregar l[ií]nea manual/i }));
 
-    expect(screen.getByLabelText(/Descripcion manual/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Descripción manual/i)).toBeInTheDocument();
   });
 
   it('shows the first step marker in mobile create mode', () => {

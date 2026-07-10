@@ -9,6 +9,8 @@ import {
   PortalEmptyState,
   PortalSkeletonBlock,
   interactiveFocusClassName,
+  portalDataTableCellClassName,
+  portalDataTableHeadClassName,
   portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 import {
@@ -26,10 +28,6 @@ const DISPATCHABLE_STATUSES = new Set<StockIssueStatus>([
   StockIssueStatus.PICKING,
   StockIssueStatus.READY_TO_DISPATCH,
 ]);
-
-const tableHeadClass =
-  'px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400';
-const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
 
 interface StockIssuesTableProps {
   issues: StockIssueRecord[];
@@ -56,7 +54,7 @@ export function StockIssuesTable({
 }: StockIssuesTableProps) {
   if (isLoading) {
     return (
-      <div className="space-y-2 p-5" aria-busy="true">
+      <div className="space-y-2" aria-busy="true">
         {Array.from({ length: 5 }).map((_, index) => (
           <PortalSkeletonBlock key={index} className="h-12 rounded-xl" />
         ))}
@@ -87,13 +85,12 @@ export function StockIssuesTable({
       );
 
     return (
-      <div className="p-5">
-        <PortalEmptyState
-          title={emptyTitle}
-          description={emptyDescription}
-          action={filteredEmptyAction}
-        />
-      </div>
+      <PortalEmptyState
+        className="w-full"
+        title={emptyTitle}
+        description={emptyDescription}
+        action={filteredEmptyAction}
+      />
     );
   }
 
@@ -103,31 +100,31 @@ export function StockIssuesTable({
         <caption className="sr-only">Salidas de bodega</caption>
         <thead>
           <tr className="border-b border-gray-100 bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-3">
-            <th scope="col" className={tableHeadClass}>
+            <th scope="col" className={portalDataTableHeadClassName}>
               Número
             </th>
-            <th scope="col" className={tableHeadClass}>
+            <th scope="col" className={portalDataTableHeadClassName}>
               Tipo
             </th>
-            <th scope="col" className={tableHeadClass}>
+            <th scope="col" className={portalDataTableHeadClassName}>
               Estado
             </th>
-            <th scope="col" className={`${tableHeadClass} hidden lg:table-cell`}>
+            <th scope="col" className={`${portalDataTableHeadClassName} hidden lg:table-cell`}>
               Origen
             </th>
-            <th scope="col" className={tableHeadClass}>
+            <th scope="col" className={portalDataTableHeadClassName}>
               Destino
             </th>
-            <th scope="col" className={`${tableHeadClass} hidden md:table-cell`}>
+            <th scope="col" className={`${portalDataTableHeadClassName} hidden md:table-cell`}>
               Líneas
             </th>
-            <th scope="col" className={`${tableHeadClass} hidden xl:table-cell`}>
+            <th scope="col" className={`${portalDataTableHeadClassName} hidden xl:table-cell`}>
               Referencia
             </th>
-            <th scope="col" className={`${tableHeadClass} hidden md:table-cell`}>
+            <th scope="col" className={`${portalDataTableHeadClassName} hidden md:table-cell`}>
               Fecha
             </th>
-            <th scope="col" className={tableHeadClass}>
+            <th scope="col" className={portalDataTableHeadClassName}>
               Acción
             </th>
           </tr>
@@ -150,7 +147,7 @@ export function StockIssuesTable({
                 key={issue.id}
                 className={`border-b border-gray-100 dark:border-dark-border ${portalTableRowHoverClassName}`}
               >
-                <td className={cellClass}>
+                <td className={portalDataTableCellClassName}>
                   <button
                     type="button"
                     className={`font-mono text-xs font-semibold text-gray-900 underline-offset-4 hover:underline dark:text-white ${interactiveFocusClassName}`}
@@ -159,20 +156,20 @@ export function StockIssuesTable({
                     {issue.id.slice(0, 8).toUpperCase()}
                   </button>
                 </td>
-                <td className={cellClass}>
+                <td className={portalDataTableCellClassName}>
                   <Badge variant={getStockIssueTypeBadgeVariant(issue.type)}>
                     {getStockIssueTypeLabel(issue.type)}
                   </Badge>
                 </td>
-                <td className={cellClass}>
+                <td className={portalDataTableCellClassName}>
                   <Badge variant={getStockIssueStatusBadgeVariant(issue.status)}>
                     {getStockIssueStatusLabel(issue.status)}
                   </Badge>
                 </td>
-                <td className={`${cellClass} hidden lg:table-cell`}>
+                <td className={`${portalDataTableCellClassName} hidden lg:table-cell`}>
                   {source ? `${source.code} · ${source.name}` : issue.sourceLocationId}
                 </td>
-                <td className={cellClass}>
+                <td className={portalDataTableCellClassName}>
                   <span className="block">{destinationLabel}</span>
                   {destination ? (
                     <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
@@ -180,28 +177,23 @@ export function StockIssuesTable({
                     </span>
                   ) : null}
                 </td>
-                <td className={`${cellClass} hidden md:table-cell`}>
+                <td className={`${portalDataTableCellClassName} hidden md:table-cell`}>
                   {typeof linesCount === 'number' ? linesCount : '—'}
                 </td>
-                <td className={`${cellClass} hidden xl:table-cell`}>{ref}</td>
-                <td className={`${cellClass} hidden md:table-cell`}>
+                <td className={`${portalDataTableCellClassName} hidden xl:table-cell`}>{ref}</td>
+                <td className={`${portalDataTableCellClassName} hidden md:table-cell`}>
                   {formatInventoryDateTime(issue.createdAt)}
                 </td>
-                <td className={cellClass}>
+                <td className={portalDataTableCellClassName}>
                   <PortalActionToolbar compact align="end" className="!inline-flex !w-fit">
                     <Button
                       type="button"
                       size="sm"
-                      variant="secondary"
+                      variant={canDispatch ? 'primary' : 'secondary'}
                       onClick={() => onOpenDetail(issue.id)}
                     >
-                      Ver
+                      {canDispatch ? 'Despachar' : 'Ver detalle'}
                     </Button>
-                    {canDispatch ? (
-                      <Button type="button" size="sm" onClick={() => onOpenDetail(issue.id)}>
-                        Despachar
-                      </Button>
-                    ) : null}
                   </PortalActionToolbar>
                 </td>
               </tr>

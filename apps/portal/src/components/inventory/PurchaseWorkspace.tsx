@@ -29,6 +29,7 @@ import { PurchaseRequestsToolbar } from './PurchaseRequestsToolbar';
 import { PurchaseWorkspaceSummary } from './PurchaseWorkspaceSummary';
 import {
   filterPurchaseRequests,
+  findFirstRequestForKpiWorkbench,
   kpiPresetToFilters,
   type PurchaseKpiPreset,
   type PurchaseRequestFilters,
@@ -142,9 +143,9 @@ export function PurchaseWorkspace({
     }
   }
 
-  async function openWorkbench(requestId: string) {
+  async function openWorkbench(requestId: string, initialTab: PurchaseWorkbenchTab = 'summary') {
     setSelectedRequestId(requestId);
-    setWorkbenchTab('summary');
+    setWorkbenchTab(initialTab);
     setSupplierSummary(null);
     setSupplierError(null);
     await loadDetail(requestId);
@@ -169,12 +170,21 @@ export function PurchaseWorkspace({
   }
 
   function handleKpiFilterChange(preset: PurchaseKpiPreset) {
+    const isToggleOff = filters.kpiPreset === preset;
+
     setFilters((current) => {
       if (current.kpiPreset === preset) {
         return {};
       }
       return kpiPresetToFilters(preset);
     });
+
+    if (!isToggleOff) {
+      const workbenchTarget = findFirstRequestForKpiWorkbench(preset, requests);
+      if (workbenchTarget) {
+        void openWorkbench(workbenchTarget.id, 'receipts');
+      }
+    }
   }
 
   function openCreateMode() {
@@ -189,7 +199,7 @@ export function PurchaseWorkspace({
   function closeCreateMode(force = false) {
     if (!force && composerDirty) {
       const confirmed = window.confirm(
-        'Hay cambios sin guardar en la solicitud. ¿Quieres volver a la bandeja y descartar este borrador?',
+        'Hay cambios sin guardar en la solicitud. ¿Quieres volver al listado y descartar este borrador?',
       );
       if (!confirmed) {
         return;
@@ -244,7 +254,7 @@ export function PurchaseWorkspace({
       {workspaceMode === 'inbox' ? (
         <PortalPanel
           eyebrow="Operación"
-          title="Bandeja de solicitudes"
+          title="Listado de solicitudes"
           description="Tabla densa con filtros rápidos y acceso al panel lateral de trabajo."
         >
           <div className="space-y-4">

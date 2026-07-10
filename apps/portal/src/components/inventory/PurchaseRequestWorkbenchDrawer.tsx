@@ -13,6 +13,7 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
+  cn,
 } from '@iwana/ui';
 import {
   PurchaseOrderStatus,
@@ -36,6 +37,7 @@ import {
   PortalEmptyState,
   PortalSectionHeader,
   PortalSkeletonBlock,
+  interactiveFocusClassName,
 } from '@/components/shared/portal-ui';
 import {
   formatInventoryCurrency,
@@ -173,6 +175,9 @@ export function PurchaseRequestWorkbenchDrawer({
     [PurchaseRequestStatus.PENDING_APPROVAL, PurchaseRequestStatus.PENDING_QUOTES].includes(
       request.status,
     );
+  const quoteAmountTouched = quoteAmount.trim().length > 0;
+  const parsedQuoteAmount = quoteAmountTouched ? Number(quoteAmount) : NaN;
+  const quoteAmountValid = Number.isFinite(parsedQuoteAmount) && parsedQuoteAmount > 0;
   const canCreateOrder = request?.status === PurchaseRequestStatus.APPROVED;
   const exceptionReady = exceptionReason.trim().length >= 20;
   const canSubmitApproval =
@@ -336,8 +341,17 @@ export function PurchaseRequestWorkbenchDrawer({
                         <Input
                           id="quote-amount"
                           label="Monto"
+                          type="number"
+                          inputMode="decimal"
+                          min="0.01"
+                          step="0.01"
                           value={quoteAmount}
                           onChange={(e) => setQuoteAmount(e.target.value)}
+                          error={
+                            quoteAmountTouched && !quoteAmountValid
+                              ? 'Ingresa un monto válido mayor a cero.'
+                              : undefined
+                          }
                         />
                       </div>
                     </section>
@@ -372,7 +386,10 @@ export function PurchaseRequestWorkbenchDrawer({
                           </span>
                           <textarea
                             aria-label="Motivo de excepción"
-                            className="w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-white"
+                            className={cn(
+                              'w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white',
+                              interactiveFocusClassName,
+                            )}
                             rows={3}
                             placeholder="Motivo de excepción auditada"
                             value={exceptionReason}
@@ -410,14 +427,19 @@ export function PurchaseRequestWorkbenchDrawer({
                   ) : (
                     <PortalEmptyState
                       title="Sin órdenes de compra"
-                      description="Genera una OC cuando la solicitud esté aprobada."
+                      description="Genera una orden de compra cuando la solicitud esté aprobada."
                     />
                   )}
                 </TabsContent>
 
-                <TabsContent value="receipts" className="mt-4 space-y-3">
-                  <PortalSectionHeader eyebrow="Recepciones" title="Mercancía recibida" />
+                <TabsContent value="receipts" className="mt-4 space-y-4">
+                  <PortalSectionHeader
+                    eyebrow="Recepciones"
+                    title="Mercancía recibida"
+                    description="Registra cantidades recibidas contra la orden de compra activa."
+                  />
                   <GoodsReceiptPanel
+                    variant="embedded"
                     order={orderForReceipt}
                     orderLines={latestOrderLines}
                     items={items}
@@ -442,12 +464,12 @@ export function PurchaseRequestWorkbenchDrawer({
             {activeTab === 'quotes' && canAddQuote ? (
               <Button
                 type="button"
-                disabled={isSubmittingQuote || !selectedSupplierId}
+                disabled={isSubmittingQuote || !selectedSupplierId || !quoteAmountValid}
                 onClick={() =>
                   void onAddQuote({
                     partyRefId: selectedSupplierId ?? '',
                     quoteNumber,
-                    amount: Number(quoteAmount || '0'),
+                    amount: parsedQuoteAmount,
                     currency: 'COP',
                   })
                 }

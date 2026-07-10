@@ -193,6 +193,7 @@ export function PurchaseRequestsToolbar({
             <button
               key={chip.key}
               type="button"
+              aria-label={`Quitar filtro: ${chip.label}`}
               className={`inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 ${interactiveFocusClassName}`}
               onClick={() => removeChip(chip.key)}
             >

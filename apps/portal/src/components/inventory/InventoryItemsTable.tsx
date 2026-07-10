@@ -8,6 +8,8 @@ import {
   PortalActionToolbar,
   PortalEmptyState,
   interactiveFocusClassName,
+  portalDataTableCellClassName,
+  portalDataTableHeadClassName,
   portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 import {
@@ -32,11 +34,12 @@ interface InventoryItemsTableProps {
   deletingItemId?: string | null;
   emptyAction?: ReactNode;
   onClearFilters?: () => void;
+  /** Cuando el empty state lo renderiza el panel contenedor (p. ej. catálogo al estilo bodegas). */
+  suppressEmptyState?: boolean;
 }
 
-const tableHeadClass =
-  'px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400';
-const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
+const tableHeadClass = portalDataTableHeadClassName;
+const cellClass = portalDataTableCellClassName;
 
 function resolveSupplierLabel(
   item: InventoryItemRecord,
@@ -83,6 +86,7 @@ export function InventoryItemsTable({
   deletingItemId = null,
   emptyAction,
   onClearFilters,
+  suppressEmptyState = false,
 }: InventoryItemsTableProps) {
   const showLoading = isLoading || isRefreshing;
   const rowInteractive = Boolean(onRowClick);
@@ -98,10 +102,10 @@ export function InventoryItemsTable({
       : 'Sin productos registrados';
 
   const emptyDescription = catalogIsEmpty
-    ? 'Crea referencias maestras para empezar a comprar, recibir y mover inventario.'
+    ? 'Crea productos para empezar a comprar, recibir y mover inventario.'
     : hasActiveFilters
       ? 'Ajusta los filtros o limpia la búsqueda para ampliar el listado.'
-      : 'Crea referencias maestras para empezar a comprar, recibir y mover inventario.';
+      : 'Crea productos para empezar a comprar, recibir y mover inventario.';
 
   const filteredEmptyAction =
     hasActiveFilters && onClearFilters ? (
@@ -115,30 +119,61 @@ export function InventoryItemsTable({
   return (
     <div className="relative overflow-x-auto" aria-busy={isRefreshing}>
       <table className="w-full min-w-[960px] text-sm">
+        <caption className="sr-only">Productos del catálogo</caption>
         <thead>
           <tr className="border-b border-gray-100 bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-3">
-            <th className={tableHeadClass}>SKU</th>
-            <th className={tableHeadClass}>Producto</th>
-            {showCatalogColumns ? <th className={tableHeadClass}>Tipo</th> : null}
-            <th className={tableHeadClass}>Categoría</th>
-            <th className={tableHeadClass}>Trazabilidad</th>
+            <th scope="col" className={tableHeadClass}>
+              Código
+            </th>
+            <th scope="col" className={tableHeadClass}>
+              Producto
+            </th>
             {showCatalogColumns ? (
-              <th className={`${tableHeadClass} hidden lg:table-cell`}>Para compras</th>
+              <th scope="col" className={tableHeadClass}>
+                Tipo
+              </th>
             ) : null}
-            <th className={tableHeadClass}>Estado</th>
+            <th scope="col" className={tableHeadClass}>
+              Categoría
+            </th>
+            <th scope="col" className={tableHeadClass}>
+              Control de material
+            </th>
+            {showCatalogColumns ? (
+              <th scope="col" className={`${tableHeadClass} hidden lg:table-cell`}>
+                Para compras
+              </th>
+            ) : null}
+            <th scope="col" className={tableHeadClass}>
+              Estado
+            </th>
             {showCatalogColumns ? (
               <>
-                <th className={`${tableHeadClass} hidden lg:table-cell`}>Proveedor preferido</th>
-                <th className={`${tableHeadClass} hidden md:table-cell`}>Costo referencia</th>
-                <th className={`${tableHeadClass} hidden md:table-cell`}>Punto de reorden</th>
+                <th scope="col" className={`${tableHeadClass} hidden lg:table-cell`}>
+                  Proveedor sugerido
+                </th>
+                <th scope="col" className={`${tableHeadClass} hidden md:table-cell`}>
+                  Costo estimado
+                </th>
+                <th scope="col" className={`${tableHeadClass} hidden md:table-cell`}>
+                  Nivel de reposición
+                </th>
               </>
             ) : (
               <>
-                <th className={tableHeadClass}>Costo base</th>
-                <th className={tableHeadClass}>Stock mínimo</th>
+                <th scope="col" className={tableHeadClass}>
+                  Costo base
+                </th>
+                <th scope="col" className={tableHeadClass}>
+                  Stock mínimo
+                </th>
               </>
             )}
-            {onDelete ? <th className={`${tableHeadClass} text-right`}>Acciones</th> : null}
+            {onDelete ? (
+              <th scope="col" className={`${tableHeadClass} text-right`}>
+                Acciones
+              </th>
+            ) : null}
           </tr>
         </thead>
         <tbody>
@@ -178,14 +213,14 @@ export function InventoryItemsTable({
             </tr>
           ) : null}
 
-          {!showLoading && items.length === 0 ? (
+          {!showLoading && items.length === 0 && !suppressEmptyState ? (
             <tr>
-              <td colSpan={colSpan} className="px-4 py-12 text-center">
+              <td colSpan={colSpan} className="px-4 py-12">
                 <PortalEmptyState
                   title={emptyTitle}
                   description={emptyDescription}
                   action={catalogIsEmpty || !hasActiveFilters ? emptyAction : filteredEmptyAction}
-                  className="mx-auto max-w-xl text-left"
+                  className="w-full"
                 />
               </td>
             </tr>
@@ -222,7 +257,7 @@ export function InventoryItemsTable({
               {showCatalogColumns ? (
                 <td className={`${cellClass} hidden lg:table-cell`}>
                   <Badge variant={item.purchasable ? 'primary' : 'neutral'}>
-                    {item.purchasable ? 'Habilitado' : 'No habilitado'}
+                    {item.purchasable ? 'Sí' : 'No'}
                   </Badge>
                 </td>
               ) : null}

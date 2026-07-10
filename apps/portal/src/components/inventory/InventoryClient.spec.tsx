@@ -376,7 +376,7 @@ describe('InventoryClient', () => {
         id: 'loc-2',
         tenantId: 'tenant-1',
         code: 'MOV-02',
-        name: 'Móvil técnico norte',
+        name: 'Técnico zona norte',
         type: StockLocationType.MOBILE_TECHNICIAN,
         status: StockLocationStatus.ACTIVE,
         responsibleRefId: MOBILE_RESPONSIBLE_ID,
@@ -707,7 +707,7 @@ describe('InventoryClient', () => {
       expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Referencias bajo mínimo')).toBeInTheDocument();
+    expect(screen.getByText('Productos bajo mínimo')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Compras' }));
 
@@ -735,7 +735,18 @@ describe('InventoryClient', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('tab', { name: 'Bodegas', selected: true })).toBeInTheDocument();
-      expect(screen.getByText('Matriz de bodegas')).toBeInTheDocument();
+      expect(screen.getByText('Bodegas y existencias')).toBeInTheDocument();
+    });
+  });
+
+  it('abre el diálogo de crear bodega cuando tab=locations/Crear bodega viene en la URL', async () => {
+    searchParamsMock = new URLSearchParams('tab=locations/Crear bodega');
+
+    render(<InventoryClient initialTab="locations/Crear bodega" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Crear bodega' })).toBeInTheDocument();
     });
   });
 
@@ -744,7 +755,7 @@ describe('InventoryClient', () => {
     render(<InventoryClient initialTab="locations" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Matriz de bodegas')).toBeInTheDocument();
+      expect(screen.getByText('Bodegas y existencias')).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole('button', { name: 'Crear bodega' }));
@@ -752,10 +763,10 @@ describe('InventoryClient', () => {
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText(/^Nombre de la bodega/), 'Móvil zona norte');
     await user.click(within(dialog).getByRole('combobox', { name: /^Tipo/ }));
-    await user.click(screen.getByRole('option', { name: 'Móvil técnico' }));
-    await user.click(within(dialog).getByRole('combobox', { name: 'Responsable operativo' }));
+    await user.click(screen.getByRole('option', { name: 'Técnico en campo' }));
+    await user.click(within(dialog).getByRole('combobox', { name: 'Persona a cargo' }));
     await user.click(screen.getByRole('option', { name: 'Técnico Norte' }));
-    await user.type(within(dialog).getByLabelText('Capacidad máxima'), '10');
+    await user.type(within(dialog).getByLabelText('Límite de unidades'), '10');
     await user.click(within(dialog).getByRole('button', { name: 'Crear bodega' }));
 
     await waitFor(() => {
@@ -774,7 +785,7 @@ describe('InventoryClient', () => {
     render(<InventoryClient initialTab="locations" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Matriz de bodegas')).toBeInTheDocument();
+      expect(screen.getByText('Bodegas y existencias')).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole('button', { name: 'Crear bodega' }));
@@ -782,7 +793,7 @@ describe('InventoryClient', () => {
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText(/^Nombre de la bodega/), 'Móvil zona norte');
     await user.click(within(dialog).getByRole('combobox', { name: /^Tipo/ }));
-    await user.click(screen.getByRole('option', { name: 'Móvil técnico' }));
+    await user.click(screen.getByRole('option', { name: 'Técnico en campo' }));
 
     expect(within(dialog).getByRole('button', { name: 'Crear bodega' })).toBeDisabled();
   });
@@ -792,18 +803,18 @@ describe('InventoryClient', () => {
     render(<InventoryClient initialTab="locations" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Matriz de bodegas')).toBeInTheDocument();
+      expect(screen.getByText('Bodegas y existencias')).toBeInTheDocument();
     });
 
     await user.click(await screen.findByRole('button', { name: 'Editar Bodega principal' }));
 
     const dialog = await screen.findByRole('dialog');
     const nameInput = within(dialog).getByLabelText(/^Nombre de la bodega/);
-    const capacityInput = within(dialog).getByLabelText('Capacidad máxima');
+    const capacityInput = within(dialog).getByLabelText('Límite de unidades');
 
     await user.clear(nameInput);
     await user.type(nameInput, 'Bodega principal actualizada');
-    await user.click(within(dialog).getByRole('combobox', { name: 'Responsable operativo' }));
+    await user.click(within(dialog).getByRole('combobox', { name: 'Persona a cargo' }));
     await user.click(screen.getByRole('option', { name: 'Ana Pérez' }));
     await user.clear(capacityInput);
     await user.type(capacityInput, '24');
@@ -819,34 +830,34 @@ describe('InventoryClient', () => {
     });
   });
 
-  it('filtra custodias móviles cuando custody=mobile viene en la URL', async () => {
+  it('filtra material en manos del equipo de campo cuando custody=mobile viene en la URL', async () => {
     searchParamsMock = new URLSearchParams('tab=locations&custody=mobile');
 
     render(<InventoryClient initialTab="locations" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Matriz de bodegas')).toBeInTheDocument();
-      expect(screen.getByText('Móvil técnico norte')).toBeInTheDocument();
+      expect(screen.getByText('Bodegas y existencias')).toBeInTheDocument();
+      expect(screen.getByText('Técnico zona norte')).toBeInTheDocument();
       expect(screen.getByText('MOV-02')).toBeInTheDocument();
       expect(screen.queryByText('BOD-01')).not.toBeInTheDocument();
     });
   });
 
-  it('permite ver balances por ubicación en la matriz de bodegas', async () => {
+  it('permite ver existencias por ubicación en bodegas y existencias', async () => {
     const user = userEvent.setup();
     render(<InventoryClient initialTab="locations" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Matriz de bodegas')).toBeInTheDocument();
+      expect(screen.getByText('Bodegas y existencias')).toBeInTheDocument();
     });
 
     await waitFor(() => {
       expect(
-        screen.getByRole('button', { name: 'Ver balances de Bodega principal' }),
+        screen.getByRole('button', { name: 'Ver existencias de Bodega principal' }),
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('button', { name: 'Ver balances de Bodega principal' }));
+    await user.click(screen.getByRole('button', { name: 'Ver existencias de Bodega principal' }));
 
     expect(await screen.findByText(/ONT-001 · ONT WiFi 6/i)).toBeInTheDocument();
   });
@@ -870,7 +881,7 @@ describe('InventoryClient', () => {
         id: 'loc-2',
         tenantId: 'tenant-1',
         code: 'MOV-02',
-        name: 'Móvil técnico norte',
+        name: 'Técnico zona norte',
         type: StockLocationType.MOBILE_TECHNICIAN,
         status: StockLocationStatus.ACTIVE,
         responsibleRefId: MOBILE_RESPONSIBLE_ID,
@@ -895,7 +906,7 @@ describe('InventoryClient', () => {
     render(<InventoryClient initialTab="locations" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Matriz de bodegas')).toBeInTheDocument();
+      expect(screen.getByText('Bodegas y existencias')).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole('tab', { name: 'Salidas' }));
@@ -907,7 +918,7 @@ describe('InventoryClient', () => {
     render(<InventoryClient initialTab="locations" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Matriz de bodegas')).toBeInTheDocument();
+      expect(screen.getByText('Bodegas y existencias')).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole('button', { name: 'Ir a salidas' }));
@@ -1013,13 +1024,13 @@ describe('InventoryClient', () => {
     await user.click(screen.getByRole('tab', { name: 'Compras' }));
 
     await waitFor(() => {
-      expect(screen.getByText('Bandeja de solicitudes')).toBeInTheDocument();
+      expect(screen.getByText('Listado de solicitudes')).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole('button', { name: 'Nueva solicitud' }));
 
     expect(screen.getByText('Nueva solicitud de compra')).toBeInTheDocument();
-    expect(screen.queryByText('Bandeja de solicitudes')).not.toBeInTheDocument();
+    expect(screen.queryByText('Listado de solicitudes')).not.toBeInTheDocument();
   });
 
   it('returns to tray mode without resetting active filters', async () => {
@@ -1038,9 +1049,9 @@ describe('InventoryClient', () => {
     expect(searchInput).toHaveValue('Reposición');
 
     await user.click(screen.getByRole('button', { name: 'Nueva solicitud' }));
-    await user.click(screen.getByRole('button', { name: 'Volver a la bandeja' }));
+    await user.click(screen.getByRole('button', { name: 'Volver al listado' }));
 
-    expect(await screen.findByText('Bandeja de solicitudes')).toBeInTheDocument();
+    expect(await screen.findByText('Listado de solicitudes')).toBeInTheDocument();
     expect(screen.getByLabelText('Buscar')).toHaveValue('Reposición');
   });
 
@@ -1082,7 +1093,7 @@ describe('InventoryClient', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Nueva solicitud de compra')).toBeInTheDocument();
-      expect(screen.queryByText('Bandeja de solicitudes')).not.toBeInTheDocument();
+      expect(screen.queryByText('Listado de solicitudes')).not.toBeInTheDocument();
       expect(screen.getByText('No se pudo crear la solicitud')).toBeInTheDocument();
     });
   }, 10000);
@@ -1100,7 +1111,7 @@ describe('InventoryClient', () => {
 
     expect(screen.getByText('Paso 1 de 2')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Sugeridos/i })).toBeInTheDocument();
-    expect(screen.queryByText('Bandeja de solicitudes')).not.toBeInTheDocument();
+    expect(screen.queryByText('Listado de solicitudes')).not.toBeInTheDocument();
   });
 
   it('abre el drawer de trabajo y muestra la ficha del proveedor', async () => {
@@ -1142,8 +1153,7 @@ describe('InventoryClient', () => {
       });
 
       await waitFor(() => {
-        expect(screen.getByText('Catálogo operativo')).toBeInTheDocument();
-        expect(screen.getAllByText('Para compras').length).toBeGreaterThan(0);
+        expect(screen.getByText('Catálogo de productos')).toBeInTheDocument();
         expect(screen.getByLabelText('Buscar producto')).toBeInTheDocument();
         expect(screen.getByText('ONT-001')).toBeInTheDocument();
         expect(screen.getByText('Proveedor Alfa')).toBeInTheDocument();
@@ -1188,7 +1198,7 @@ describe('InventoryClient', () => {
     });
 
     expect(screen.queryByRole('tab', { name: 'General' })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('SKU')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Código')).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Nombre'), {
       target: { value: 'Switch acceso capa 2' },
@@ -1271,7 +1281,7 @@ describe('InventoryClient', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Prefijo de producto')).toHaveValue('FIBFO');
+      expect(screen.getByLabelText('Prefijo de código')).toHaveValue('FIBFO');
     });
 
     fireEvent.change(screen.getByLabelText('Descripción corta'), {
@@ -1350,7 +1360,7 @@ describe('InventoryClient', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Prefijo de producto')).toHaveValue('FIBFO');
+      expect(screen.getByLabelText('Prefijo de código')).toHaveValue('FIBFO');
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Guardar categoría' }));
@@ -1389,11 +1399,11 @@ describe('InventoryClient', () => {
       within(dialog).queryByRole('tab', { name: 'Relación comercial' }),
     ).not.toBeInTheDocument();
     expect(within(dialog).getByLabelText('Categoría')).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('Trazabilidad')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Control de material')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('Estado')).toBeInTheDocument();
     expect(
       within(dialog).getByText(
-        'Compras, inventario y activos se administran desde sus vistas operativas.',
+        'Compras, inventario y activos se administran desde sus secciones correspondientes.',
       ),
     ).toBeInTheDocument();
 
