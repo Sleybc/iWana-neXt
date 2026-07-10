@@ -313,7 +313,7 @@ Este bloque debe leerse como contexto, no como formulario.
 3. `apps/portal/src/components/scheduling/ScheduleVisitRequestConfirmDialog.tsx`
 4. `apps/portal/src/components/scheduling/PendingVisitRequestInbox.tsx`
 5. `apps/portal/src/components/scheduling/WeeklyTechnicianMatrix.tsx`
-6. `docs/roles/Perfil_IA_Senior_UI_Systems_Designer_v1.md`
+6. `docs/roles/_historico/Perfil_IA_Senior_UI_Systems_Designer_v1.md`
 
 ## 19. Estado de diseño
 

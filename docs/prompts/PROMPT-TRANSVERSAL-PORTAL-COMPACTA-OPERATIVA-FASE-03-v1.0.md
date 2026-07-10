@@ -39,7 +39,7 @@
 - Spec visual: [SPEC-TRANSVERSAL-PORTAL-COMPACTA-OPERATIVA-FASE-03-v1.0.md](../specs/SPEC-TRANSVERSAL-PORTAL-COMPACTA-OPERATIVA-FASE-03-v1.0.md)
 - Plan de fase: [PLAN-TRANSVERSAL-PORTAL-COMPACTA-OPERATIVA-FASE-03-v1.0.md](../plans/PLAN-TRANSVERSAL-PORTAL-COMPACTA-OPERATIVA-FASE-03-v1.0.md)
 - Plantilla base: [TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md](TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md)
-- Perfil Senior UI: [Perfil_IA_Senior_UI_Systems_Designer_v1.md](../roles/Perfil_IA_Senior_UI_Systems_Designer_v1.md)
+- Perfil Senior UI: [Perfil_IA_Senior_UI_Systems_Designer_v1.md](../roles/_historico/Perfil_IA_Senior_UI_Systems_Designer_v1.md)
 - Stack: [Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
 - ADR UI: [ADR-023-Referencia-TailAdmin-Shell-Dashboard.md](../adrs/ADR-023-Referencia-TailAdmin-Shell-Dashboard.md)
 - Informe vivo: [INFORME-MOD02-DASHBOARD-EMPRESA-v1.0.md](../informes/INFORME-MOD02-DASHBOARD-EMPRESA-v1.0.md)

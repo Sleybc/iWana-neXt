@@ -27,7 +27,7 @@ Esto incrementa el riesgo de interpretaciones inconsistentes al redactar PRDs, e
 
 ## Decision
 
-Se propone adoptar [docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md](docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md) como **fuente primaria de gobernanza tecnico-operativa** para:
+Se propone adoptar [docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md](docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md) como **fuente primaria de gobernanza tecnico-operativa** para:
 
 - definicion de modulos,
 - diseno arquitectonico,
@@ -39,8 +39,8 @@ Se propone adoptar [docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md](docs/role
 
 Los documentos historicos se conservan, pero pasan a estado de **referencia historica**:
 
-- [docs/roles/Perfil_IA_Engineering_Manager_Senior_v1.md](docs/roles/Perfil_IA_Engineering_Manager_Senior_v1.md)
-- [docs/roles/Perfil_IA_Lead_Software_Architect_Senior_v1.md](docs/roles/Perfil_IA_Lead_Software_Architect_Senior_v1.md)
+- [docs/roles/_historico/Perfil_IA_Engineering_Manager_Senior_v1.md](docs/roles/_historico/Perfil_IA_Engineering_Manager_Senior_v1.md)
+- [docs/roles/_historico/Perfil_IA_Lead_Software_Architect_Senior_v1.md](docs/roles/_historico/Perfil_IA_Lead_Software_Architect_Senior_v1.md)
 
 Reglas de adopcion:
 
@@ -93,5 +93,5 @@ Mitigaciones:
 
 - [docs/prds/PRD_Sistema_ISP_Colombia_v2_2.md](docs/prds/PRD_Sistema_ISP_Colombia_v2_2.md)
 - [docs/prds/Stack_Tecnologico.md](docs/prds/Stack_Tecnologico.md)
-- [docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md](docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md)
+- [docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md](docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md)
 - ADR-002, ADR-013, ADR-016 y ADRs vigentes ya citados por el proyecto

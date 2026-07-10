@@ -8,7 +8,7 @@
 **Ruta:** /dashboard/scheduling/agenda  
 **Owner de ejecucion:** Sr. Dev Fullstack  
 **Reporta a:** EM + Architect Unificado  
-**Perfil rector:** docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md  
+**Perfil rector:** docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md  
 **Specs relacionadas:** SPEC-WFM-PENDING-VISITS-CALENDAR-FIRST-v1.0.md, SPEC-WFM-COMMAND-CENTER-REDISTRIBUCION-v1.0.md  
 **HLD rector:** docs/hlds/HLD-MOD09-PROGRAMACION-WFM-v1.0.md  
 **PRD rector:** docs/prds/PRD-MOD09-PROGRAMACION-WFM-v1.0.md
@@ -470,7 +470,7 @@ Solo si el flujo queda inestable o demasiado costoso con primitives nativas, se 
 4. `apps/portal/src/components/scheduling/schedule-event-time.ts`
 5. `apps/api/src/modules/wfm/services/operating-window-resolver.service.ts`
 6. `apps/api/src/modules/wfm/services/schedule-past-guard.ts`
-7. `docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md`
-8. `docs/roles/Perfil_IA_Senior_UI_Systems_Designer_v1.md`
+7. `docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md`
+8. `docs/roles/_historico/Perfil_IA_Senior_UI_Systems_Designer_v1.md`
 9. `docs/specs/SPEC-WFM-PENDING-VISITS-CALENDAR-FIRST-v1.0.md`
 10. `docs/specs/SPEC-WFM-COMMAND-CENTER-REDISTRIBUCION-v1.0.md`

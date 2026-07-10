@@ -12,7 +12,7 @@
 
 ## Source Artifacts
 
-- Perfil rector: `docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md`
+- Perfil rector: `docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md`
 - ADR rector: `docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md`
 - ADR relacionado: `docs/adrs/ADR-042-Calendario-Operativo-Jornadas.md`
 - PRD: `docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md`

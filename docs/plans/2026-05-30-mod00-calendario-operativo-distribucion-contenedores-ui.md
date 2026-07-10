@@ -12,7 +12,7 @@
 
 ## Source Artifacts
 
-- Perfil visual: `docs/roles/Perfil_IA_Senior_UI_Systems_Designer_v1.md`
+- Perfil visual: `docs/roles/_historico/Perfil_IA_Senior_UI_Systems_Designer_v1.md`
 - ADR rector: `docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md`
 - ADR relacionado: `docs/adrs/ADR-042-Calendario-Operativo-Jornadas.md`
 - Spec de rediseño vigente: `docs/specs/2026-05-29-mod00-calendario-operativo-jornadas-redesign-design.md`

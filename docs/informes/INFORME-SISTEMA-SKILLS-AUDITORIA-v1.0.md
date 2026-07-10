@@ -1,9 +1,9 @@
 # INFORME — Auditoria de Skills del Workspace
 
 **Modo activo:** Mixto
-**Version:** 1.1
+**Version:** 1.2
 **Estado:** Aprobado
-**Fecha:** 2026-05-19
+**Fecha:** 2026-07-09
 **Convencion documental:** {TIPO}-{MODULO}-{FASE}-v{VERSION}.md
 
 ## Vinculos de trazabilidad
@@ -26,7 +26,7 @@
 ## 1. Resumen ejecutivo
 
 - Objetivo de la fase: auditar la carpeta .agents/skills para detectar inconsistencias estructurales, duplicados, dependencias inciertas y skills fuera de scope para iWana neXt.
-- Resultado alcanzado: la auditoria original redujo el catalogo a un set core operativo y la actualizacion del 2026-05-19 dejo el estado vivo alineado al repo actual: 41 skills activas documentadas en `.agents/skills`, 10 workflow skills habilitadas por `skills-lock.json`, sin directorio local `.agents/skills-archive/` y con referencias legacy `docs/superpowers/*` migradas a `docs/specs/*` y `docs/plans/*`.
+- Resultado alcanzado: la auditoria original redujo el catalogo a un set core operativo y las actualizaciones posteriores dejaron el estado vivo alineado al repo actual: 47 skills activas documentadas en `.agents/skills` (ver reconciliacion del 2026-07-09), 12 entradas habilitadas por `skills-lock.json` (10 de workflow + `skill-creator` + `ui-ux-pro-max`), sin directorio local `.agents/skills-archive/` y con referencias legacy `docs/superpowers/*` migradas a `docs/specs/*` y `docs/plans/*`.
 - Estado: Completa
 
 ## 2. Metodologia aplicada
@@ -83,8 +83,8 @@
   - 1 duplicado funcional confirmado con diferencias nominales minimas.
   - 1 par adicional de solapamiento fuerte confirmado en error tracing.
   - 23 skills quedaron activas tras la auditoria original.
-  - El estado vivo al 2026-05-19 registra 41 skills documentadas en `.agents/skills`.
-  - `skills-lock.json` habilita 10 workflow skills para la sesion operativa actual.
+  - El estado vivo al 2026-05-19 registraba 41 skills documentadas en `.agents/skills`; tras la reconciliacion del 2026-07-09 el catalogo declara 47.
+  - `skills-lock.json` (raiz del repo) habilita 12 entradas para la sesion operativa actual: 10 workflow skills + `skill-creator` + `ui-ux-pro-max`.
   - El repo ya no mantiene un directorio local `.agents/skills-archive/`.
 
 ## 5. Matriz de clasificacion
@@ -458,7 +458,7 @@ Se revisaron las nueve skills activas que aun no habian pasado por una potencial
 
 - El catalogo activo mantiene 25 skills y las 25 ya quedaron potencializadas u homogeneizadas.
 - No quedan skills con decision vigente de restauracion inmediata en el archivo.
-- El archivo conserva 6 skills revisadas y mantener archivadas, 3 en hold, 4 archivos legacy y 670 directorios historicos en raiz.
+- El archivo conservaba en ese momento 6 skills revisadas y mantener archivadas, 3 en hold, 4 archivos legacy y 670 directorios historicos en raiz (estado historico previo al retiro del archivo local; ver §19.2 — hoy no existe archivo fisico y esas decisiones solo se conservan en este informe).
 
 ## Actualización 2026-03-14 — Integración de despacho de skills
 
@@ -484,8 +484,7 @@ Se revisaron las nueve skills activas que aun no habian pasado por una potencial
 
 ### Documento de diseño
 
-`docs/plans/2026-03-14-skills-dispatch-design.md`
-`docs/plans/2026-03-14-skills-dispatch-integration.md`
+`docs/plans/2026-03-14-skills-dispatch-design.md` y `docs/plans/2026-03-14-skills-dispatch-integration.md` (documentos de trabajo no conservados en el repo actual; la decision vigente quedo consolidada en este informe y en las tablas de dispatch de `AGENTS.md` y `CLAUDE.md`).
 
 ## Actualización 2026-05-04 — Activación de skill de dirección visual
 
@@ -525,4 +524,103 @@ Se revisaron las nueve skills activas que aun no habian pasado por una potencial
 
 - El catalogo activo pasa de 30 a 31 skills.
 - El set frontend gana una skill orientada a direccion visual y exploracion estetica, sin mezclar esa responsabilidad con implementacion o auditoria.
+
+## Actualización 2026-07-09 — Reactivación de Claude Code
+
+**Modo activo:** Mixto (EM + Architect)
+**Responsable principal:** Claude Code
+**Solicitado por:** usuario, en sesion directa de Claude Code
+
+### Decisión ejecutada
+
+- `AGENTS.md` marcaba a `CLAUDE.md` como superficie pasiva/deprecada ("hasta que Claude Code vuelva a ser herramienta activa") y listaba solo a Copilot, OpenCode y Codex como IAs activas del workspace.
+- El usuario solicitó explícitamente integrar el catálogo `.agents/skills/` al flujo de trabajo de Claude Code. Por la regla de precedencia del propio repo (no sintetizar sobre un conflicto documental, sino documentarlo y escalar), se confirmó con el usuario el alcance antes de tocar la gobernanza maestra.
+- Se ejecutó la opción de reactivación formal siguiendo el procedimiento ya definido en `AGENTS.md` § "Reactivacion o desactivacion de herramientas IA": comparar el bootstrap de la IA reactivada contra `AGENTS.md`, reemplazar reglas duplicadas por referencias, y actualizar precedencia, stack y boundaries si corresponde.
+
+### Hallazgo técnico relevante
+
+- Claude Code no tiene, en este entorno, un mecanismo nativo equivalente a `skills.paths` de OpenCode para cargar un directorio de skills de proyecto arbitrario. Su tool `Skill` solo invoca skills que el harness expone directamente (utilidades genéricas del cliente); ninguna de las 41 skills activas de `.agents/skills/` aparece ahí, y no existe `.claude/skills/` en el repo.
+- Se descartó crear `.claude/skills/` (por symlink o copia) para no infringir la regla de "no crear catálogos paralelos por cliente" y por fricción de symlinks en Windows sin privilegios elevados.
+- Se adoptó el mismo patrón que ya usa Codex: consumo del catálogo por lectura documental. `CLAUDE.md` ahora instruye a leer `.agents/skills/INDEX.md` y el `SKILL.md` de la skill que coincida con la tarea, vía la herramienta de lectura de archivos, aplicando sus reglas como si fueran parte del bootstrap — no invocación como tool nativa.
+
+### Archivos actualizados
+
+- `AGENTS.md` — Claude Code se suma a "Asistentes activos"; `CLAUDE.md` pasa de "Superficies pasivas" a "Superficies activas"; se aclara en la matriz operativa de Skills que Claude Code aplica el catálogo por lectura, no por `skills.paths`.
+- `.agents/skills/INDEX.md` — nota de precedencia actualizada: `CLAUDE.md` ya no aparece como pasivo.
+- `.agents/skills/README.md` — se agrega una nota sobre cómo Claude Code consume el catálogo (lectura documental, sin `skills.paths`).
+- `.github/copilot-instructions.md` — Claude Code se suma a la lista de IAs activas y a "Superficies activas"; se agrega una sección "### Claude Code" en "Notas por proveedor", paralela a las de Copilot/OpenCode/Codex.
+- `CLAUDE.md` — reescrito el bloque "Source of truth" para declarar a Claude Code como asistente activo y reactivado; se agrega una sección `## Skills` nueva con el procedimiento de consumo del catálogo y una tabla de dispatch por dominio (equivalente reducido de `AGENTS.md` § "Skills Dispatch").
+- Este informe — registro formal de la reactivación.
+
+### Guardrails mantenidos
+
+- `AGENTS.md` sigue siendo la fuente maestra; `CLAUDE.md` no duplica reglas ya definidas ahí (comandos, arquitectura, gotchas, convenciones) más allá de lo que ya tenía antes de esta actualización.
+- El catálogo de skills sigue teniendo una única fuente real: `.agents/skills/`. No se creó ningún catálogo paralelo para Claude Code.
+- No se modificó la prioridad de uso, el estado core/archived/hold de ninguna skill, ni el conteo total del catálogo (sigue en 41 skills activas).
+
+### Estado posterior
+
+- Asistentes activos del workspace: GitHub Copilot, OpenCode, Codex y Claude Code, los cuatro subordinados a `AGENTS.md` con el mismo orden de lectura y el mismo catálogo de skills.
+- No quedan superficies documentales marcadas como "pasivas" en `AGENTS.md` (excepto proveedores no adoptados, p. ej. `GEMINI.md`, que sigue fuera de este workspace).
 - No se reabrió el archivo historico ni se restauró una skill generica que aumentara ruido de activacion.
+
+## Actualización 2026-07-09 — Reconciliación del catálogo (auditoría de desviaciones)
+
+**Modo activo:** Mixto (Sr. Dev Fullstack en modo revisión)
+**Responsable principal:** Claude Code
+**Solicitado por:** usuario, auditoría de desviaciones documentación vs. repo
+
+### Hallazgo
+
+Una auditoría de gobernanza detectó que el filesystem contenía 47 directorios con `SKILL.md` mientras `INDEX.md` y `MANIFEST.json` solo declaraban 41. Las 6 skills sin catalogar eran: `brainstorming`, `iwana-identity-ui-review`, `skill-creator`, `system-vocabulary-review`, `ui-ux-pro-max`, `using-git-worktrees`. Tres de ellas (`iwana-identity-ui-review`, `ui-ux-pro-max`, `system-vocabulary-review`) ya se despachaban desde las tablas de `AGENTS.md` y `CLAUDE.md` sin respaldo del catálogo.
+
+### Trazabilidad reconstruida (salto 31 → 41)
+
+La cronología de este informe registraba 23 → 25 → 30 → 31 skills, pero el resumen afirmaba 41 sin entrada intermedia. La reconstrucción confirma que el salto corresponde al alta de las 10 workflow skills del 2026-05-19 (las mismas habilitadas por `skills-lock.json`): `dispatching-parallel-agents`, `executing-plans`, `finishing-a-development-branch`, `receiving-code-review`, `requesting-code-review`, `subagent-driven-development`, `systematic-debugging`, `verification-before-completion`, `writing-plans`, `writing-skills`. Esa alta actualizó MANIFEST/INDEX pero no dejó entrada en este informe; esta sección la registra retroactivamente. 31 + 10 = 41.
+
+### Decisión ejecutada (41 → 47)
+
+Las 6 skills huérfanas se catalogaron formalmente en vez de retirarse, porque las seis cumplen la política de admisión: caso de uso recurrente verificable (tres ya despachadas por la gobernanza maestra; tres de workflow ya en uso operativo), sin duplicar cobertura activa y sin dependencias no disponibles.
+
+- `iwana-identity-ui-review`, `system-vocabulary-review`, `ui-ux-pro-max` → área frontend y accesibilidad, prioridad especializada por necesidad. `ui-ux-pro-max` permanece subordinada a `iwana-identity-ui-review`, `core-components`, `tailwind-patterns` y tokens reales del repo, según `AGENTS.md`.
+- `brainstorming`, `skill-creator`, `using-git-worktrees` → área flujos de trabajo.
+
+### Aclaración sobre skills-lock.json
+
+`skills-lock.json` vive en la raíz del repo (no en `.agents/skills/`). Sus entradas `skill-creator` y `ui-ux-pro-max` son de procedencia GitHub (`sourceType: "github"`); el `skillPath` de esas entradas (p. ej. `.claude/skills/ui-ux-pro-max/SKILL.md`) es la ruta **dentro del repo upstream**, no un directorio local — no infringe la regla de no crear `.claude/skills/` en este workspace. La copia gobernada de ambas skills vive en `.agents/skills/`.
+
+### Archivos actualizados
+
+- `.agents/skills/INDEX.md` → v1.3: 6 skills catalogadas, nota sobre procedencia del lock.
+- `.agents/skills/MANIFEST.json` → v1.3, fecha 2026-07-09, `coreCount: 47`, áreas y prioridades sincronizadas (la cabecera estaba desfasada en v1.0/2026-05-19).
+- `.agents/skills/README.md` → v1.3.
+- Este informe: conteos del resumen ejecutivo y de la evidencia funcional corregidos (47 skills, 12 entradas de lock), contradicción histórica de §22.2 anotada como estado previo al retiro del archivo, y enlaces a los planes de dispatch del 2026-03-14 marcados como documentos no conservados.
+
+### Nota
+
+Los nombres de secciones citados en entradas históricas de este change-log (p. ej. "## Despacho de Skills") reflejan la redacción vigente en su momento; las superficies actuales usan "## Skills Dispatch" (`AGENTS.md`) y "## Skills" (`CLAUDE.md`).
+
+### Estado posterior
+
+- Catálogo activo: 47 skills, con filesystem, INDEX, MANIFEST y dispatch de gobernanza plenamente sincronizados.
+- `potentializedCoreSkills` del MANIFEST se mantiene en 41: las 6 skills recién catalogadas no han pasado por fase de potencialización y quedan como candidatas a esa revisión.
+
+## Actualización 2026-07-10 — Potencialización de iwana-identity-ui-review
+
+**Modo:** Mejora de skill existente (aplicando `skill-creator`)
+
+### Motivación
+
+La versión previa de `iwana-identity-ui-review` mezclaba guía de diseño y auditoría sin metodología ni formato de salida definidos, no exigía evidencia por hallazgo (riesgo de falsos positivos y de recomendar tokens inexistentes) y no delimitaba fronteras con `wcag-audit-patterns`, `senior-ui-systems-designer`, `system-vocabulary-review` ni `ui-ux-pro-max` (riesgo de hallazgos redundantes entre skills).
+
+### Cambios ejecutados
+
+- `SKILL.md` reescrito: dos modos de operación explícitos (diseño / review), metodología de review en 6 pasos, 7 dimensiones de evaluación, tabla de reglas duras mecánicamente verificables (grep-ables contra el código), sistema de severidad P0–P3 con impacto y esfuerzo S/M/L, puntaje 0–100 derivado por fórmula (no estimado), sección anti-falsos-positivos con evidencia obligatoria `archivo:línea` y deduplicación por causa raíz, y formato de informe estándar con ejemplo de hallazgo bien formado.
+- Se agregó `references/evaluation-criteria.md` con los criterios detallados por dimensión anclados a artefactos reales del repo (`globals.css`, `portal-ui.tsx`, ADR-026), siguiendo el patrón de progressive disclosure de `skill-creator`.
+- La descripción del frontmatter se reescribió para mejorar el triggering (incluye contextos de activación implícitos: "UI genérica, ruidosa o fuera de identidad").
+- Se preservaron sin cambios semánticos las reglas vigentes: `iwana-secondary-700` para texto sobre blanco, glassmorphism selectivo, `iwana-surface-soft` vs `iwana-secondary-50`, prioridad de accesibilidad sobre identidad y adopción por fases en legacy.
+
+### Estado posterior
+
+- La skill mantiene su nombre, categoría, prioridad (especializada por necesidad) y posición en INDEX/MANIFEST; no requiere cambios de catálogo.
+- Queda pendiente como evolución futura: corrida de evals comparativas (versión previa vs nueva) sobre 2–3 pantallas reales del portal según el flujo de `skill-creator`.

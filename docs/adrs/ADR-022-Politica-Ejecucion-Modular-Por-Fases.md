@@ -105,7 +105,7 @@ Mitigaciones:
 ## Dependencias
 
 - docs/prds/PRD_Sistema_ISP_Colombia_v2_2.md
-- docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md
+- docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md
 - docs/sprints/PLAN-SISTEMA-ARRANQUE-v1.0.md
 - ADR-016
 - ADR-021

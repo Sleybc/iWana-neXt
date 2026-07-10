@@ -5,7 +5,7 @@
 **Modo activo:** Mixto  
 **Responsable:** AI-EM-ARCH  
 **Modulo base:** MOD12 Inventario / SCM  
-**Perfil activo:** `docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md`  
+**Perfil activo:** `docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md`  
 **Referencias:** `docs/specs/2026-06-25-mod12-compras-workspace-hibrido-design.md`, `docs/specs/SPEC-MOD12-COMPRAS-UI-ALIGNMENT-v1.0.md`, `docs/prds/PRD-MOD12-INVENTARIO-SCM-v1.0.md`, `docs/hlds/HLD-MOD12-INVENTARIO-SCM-v1.0.md`, `docs/adrs/ADR-048-Bounded-Context-Inventario-SCM-Ciclo-Vida-Productos.md`
 
 ---

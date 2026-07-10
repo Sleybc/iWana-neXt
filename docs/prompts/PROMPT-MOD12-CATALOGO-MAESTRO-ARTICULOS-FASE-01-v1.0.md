@@ -52,7 +52,7 @@ Un usuario autorizado puede crear, consultar y actualizar articulos operativos e
 ## 2. Artefactos de entrada obligatorios
 
 - `AGENTS.md`
-- `docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md`
+- `docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md`
 - `docs/adrs/ADR-048-Bounded-Context-Inventario-SCM-Ciclo-Vida-Productos.md`
 - `docs/specs/2026-06-25-mod12-catalogo-maestro-articulos-design.md`
 - `docs/prds/PRD-MOD12-CATALOGO-MAESTRO-ARTICULOS-v1.0.md`

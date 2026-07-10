@@ -18,7 +18,7 @@ Evolucionar el submodulo de Compras de MOD12 hacia un workspace hibrido con soli
 ## 2. Artefactos de entrada obligatorios
 
 - `AGENTS.md`
-- `docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md`
+- `docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md`
 - `docs/adrs/ADR-048-Bounded-Context-Inventario-SCM-Ciclo-Vida-Productos.md`
 - `docs/specs/2026-06-25-mod12-compras-workspace-hibrido-design.md`
 - `docs/prds/PRD-MOD12-COMPRAS-WORKSPACE-HIBRIDO-v1.0.md`

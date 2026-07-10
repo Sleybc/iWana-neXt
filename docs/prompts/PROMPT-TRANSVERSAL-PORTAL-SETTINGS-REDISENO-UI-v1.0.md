@@ -42,7 +42,7 @@
 - Plantilla base: [TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md](TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md)
 - Spec de diseño: [2026-05-07-portal-settings-redesign-design.md](../specs/2026-05-07-portal-settings-redesign-design.md)
 - Plan de implementación: [PLAN-TRANSVERSAL-PORTAL-SETTINGS-REDISENO-UI-v1.0.md](../plans/PLAN-TRANSVERSAL-PORTAL-SETTINGS-REDISENO-UI-v1.0.md)
-- Perfil Senior UI: [Perfil_IA_Senior_UI_Systems_Designer_v1.md](../roles/Perfil_IA_Senior_UI_Systems_Designer_v1.md)
+- Perfil Senior UI: [Perfil_IA_Senior_UI_Systems_Designer_v1.md](../roles/_historico/Perfil_IA_Senior_UI_Systems_Designer_v1.md)
 - Stack base: [Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
 - Informe vivo actualizado: [INFORME-TRANSVERSAL-ENABLEMENT-OPERATIVO-v1.0.md](../informes/INFORME-TRANSVERSAL-ENABLEMENT-OPERATIVO-v1.0.md)
 - Referencias de implementación actuales:

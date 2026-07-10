@@ -51,8 +51,8 @@
 | HLD CRM                    | docs/hlds/HLD-MOD05-ARQUITECTURA-v2.0.md          | ✅ Aprobado     |
 | PRD maestro                | docs/prds/PRD_Sistema_ISP_Colombia_v2_2.md        | ✅ Aprobado     |
 | Stack tecnológico          | docs/prds/Stack_Tecnologico.md                    | ✅ Aprobado     |
-| Perfil EM-ARCH             | docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md | ✅ Aprobado     |
-| Perfil Sr. Dev             | docs/roles/Perfil_IA_Sr_Dev_Fullstack_v1.md       | ✅ Aprobado     |
+| Perfil EM-ARCH             | docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md | ✅ Aprobado     |
+| Perfil Sr. Dev             | docs/roles/_historico/Perfil_IA_Sr_Dev_Fullstack_v1.md       | ✅ Aprobado     |
 | ADR-002 (multi-tenant)     | docs/adrs/ADR-002\*                               | ✅ Aprobado     |
 | ADR-004 (soft delete)      | docs/adrs/ADR-004\*                               | ✅ Aprobado     |
 | ADR-007 (TypeORM)          | docs/adrs/ADR-007\*                               | ✅ Aprobado     |

@@ -20,7 +20,7 @@
 | PRD Branding v2 (consumidor v1) | [docs/prds/PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md](../prds/PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md) |
 | PRD MOD03 origen | [docs/prds/PRD-MOD03-CONFIGURACION-EMPRESA-v1.0.md](../prds/PRD-MOD03-CONFIGURACION-EMPRESA-v1.0.md) |
 | Stack Tecnologico | [docs/prds/Stack_Tecnologico.md](../prds/Stack_Tecnologico.md) |
-| Perfil unificado | [docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md](../roles/Perfil_IA_EM_Architect_Unificado_v1.md) |
+| Perfil unificado | [docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md](../roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md) |
 
 ---
 

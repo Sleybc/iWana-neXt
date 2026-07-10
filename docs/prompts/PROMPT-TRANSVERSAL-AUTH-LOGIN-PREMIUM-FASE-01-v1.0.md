@@ -42,7 +42,7 @@
 
 - Plan de fase: [PLAN-TRANSVERSAL-AUTH-LOGIN-PREMIUM-FASE-01-v1.0.md](../plans/PLAN-TRANSVERSAL-AUTH-LOGIN-PREMIUM-FASE-01-v1.0.md)
 - Plantilla base: [TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md](TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md)
-- Gobernanza: [Perfil_IA_EM_Architect_Unificado_v1.md](../roles/Perfil_IA_EM_Architect_Unificado_v1.md)
+- Gobernanza: [Perfil_IA_EM_Architect_Unificado_v1.md](../roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md)
 - Stack: [Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
 - ADR auth: [ADR-019-JWT-RS256-Refresh-Rotation.md](../adrs/ADR-019-JWT-RS256-Refresh-Rotation.md)
 - ADR UI: [ADR-023-Referencia-TailAdmin-Shell-Dashboard.md](../adrs/ADR-023-Referencia-TailAdmin-Shell-Dashboard.md)

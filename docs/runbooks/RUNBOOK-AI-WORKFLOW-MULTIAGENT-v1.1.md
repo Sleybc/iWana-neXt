@@ -1,17 +1,17 @@
 # RUNBOOK-AI-WORKFLOW-MULTIAGENT
 
-**Version:** 1.1  
+**Version:** 1.2  
 **Estado:** Aprobado  
-**Fecha:** 2026-06-09  
+**Fecha:** 2026-07-09  
 **Modo activo:** Mixto
 
 ## Proposito
 
-Definir la superficie activa de asistencia IA del repo para reducir drift entre Copilot, OpenCode y Codex, manteniendo una sola gobernanza documental.
+Definir la superficie activa de asistencia IA del repo para reducir drift entre Copilot, OpenCode, Codex y Claude Code, manteniendo una sola gobernanza documental.
 
 ## Flujo vigente
 
-GitHub Copilot, OpenCode y Codex son asistentes activos del workspace. `AGENTS.md` es la fuente maestra para gobernanza, stack, comandos, skills, gotchas, entregables y boundaries.
+GitHub Copilot, OpenCode, Codex y Claude Code son asistentes activos del workspace. `AGENTS.md` es la fuente maestra para gobernanza, stack, comandos, skills, gotchas, entregables y boundaries. Claude Code fue reactivado el 2026-07-09 (ver `docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md`); no tiene configuracion cliente versionada propia (a diferencia de `.opencode/opencode.json`) — su bootstrap es `CLAUDE.md`, leido automaticamente por esa CLI.
 
 ## Orden de precedencia
 
@@ -26,6 +26,7 @@ GitHub Copilot, OpenCode y Codex son asistentes activos del workspace. `AGENTS.m
 
 - `AGENTS.md`: gobernanza maestra del workspace.
 - `.github/copilot-instructions.md`: bootstrap agnostico de proveedor.
+- `CLAUDE.md`: bootstrap propio de Claude Code, leido automaticamente por esa CLI.
 - `.github/instructions/*.instructions.md`: reglas contextuales por path.
 - `.github/prompts/*.prompt.md`: prompts operativos reutilizables.
 - `.agents/skills/`: catalogo activo de skills del workspace.
@@ -35,7 +36,7 @@ GitHub Copilot, OpenCode y Codex son asistentes activos del workspace. `AGENTS.m
 
 | Capacidad | Fuente | Regla operativa |
 | --- | --- | --- |
-| Skills | `.agents/skills/INDEX.md` + `.agents/skills/MANIFEST.json` | Catalogo compartido del workspace; no duplicar criterios en agentes custom del cliente. |
+| Skills | `.agents/skills/INDEX.md` + `.agents/skills/MANIFEST.json` | Catalogo compartido del workspace; no duplicar criterios en agentes custom del cliente. Claude Code no tiene `skills.paths`: consume el catalogo por lectura documental desde `CLAUDE.md`. |
 | Prompts | `.github/prompts/` | Deben remitir a `AGENTS.md`, artefactos del modulo y restricciones reales. |
 | Reglas por path | `.github/instructions/*.instructions.md` | Complementan la capa global y no deben competir con `AGENTS.md`. |
 | MCP | `.opencode/opencode.json` para OpenCode | En Codex la disponibilidad depende de la sesion activa; no crear config ficticia del repo. |

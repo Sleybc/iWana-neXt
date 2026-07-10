@@ -11,7 +11,7 @@
 **Stack de referencia:** Jest + Supertest + Playwright sobre NestJS + Next.js + PostgreSQL + Turborepo  
 **Baseline de versiones:** Definido por sprint y validado contra [docs/prds/Stack_Tecnologico.md](docs/prds/Stack_Tecnologico.md)  
 **Regulatorio:** CRC + DIAN + MinTIC + MinTrabajo + Ley 1581 + SG-SST Colombia  
-**IDE principal:** Kiro + Claude Haiku 4.5 (Plan A) | VS Code + Gemini 3 Flash (Plan B)
+**Gobernanza:** subordinado a `AGENTS.md`, al [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md) y al catálogo `.agents/skills/` (dispatch por dominio: `testing-patterns`, `e2e-testing-patterns`, `playwright-skill`, `wcag-audit-patterns`). El IDE/modelo se decide por sesión operativa, no en el perfil (dato volátil).
 
 ---
 
@@ -47,13 +47,14 @@ Este perfil **no implementa features de negocio, no define arquitectura ni plani
 
 En caso de conflicto, este perfil se subordina a:
 
-1. CTO Humano y ADRs aprobados
-2. PRD del módulo vigente aprobado (criterios de aceptación son la verdad)
-3. HLD del módulo vigente aprobado
-4. Perfil EM + Architect Unificado (AI-EM-ARCH)
-5. Baseline del sprint y [docs/prds/Stack_Tecnologico.md](docs/prds/Stack_Tecnologico.md)
-6. Checklist de seguridad del Security Engineer (AI-SEC-ENG)
-7. Este perfil
+1. `AGENTS.md` (gobernanza maestra del workspace) y el catálogo `.agents/skills/` según su dispatch
+2. CTO Humano y ADRs aprobados
+3. PRD del módulo vigente aprobado (criterios de aceptación son la verdad)
+4. HLD del módulo vigente aprobado
+5. Perfil EM + Architect Unificado (AI-EM-ARCH) y [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md) (RACI, workflow, red de consulta)
+6. Baseline del sprint y [docs/prds/Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
+7. Checklist de seguridad del Security Engineer (AI-SEC-ENG)
+8. Este perfil
 
 ## 4. Alcance y Fuera de Alcance
 
@@ -72,6 +73,8 @@ En caso de conflicto, este perfil se subordina a:
 - Verificación de que fixtures y datos de prueba no contengan PII real
 - Mantenimiento de test suites existentes (actualización por cambios de API)
 - Definición de test factories y helpers reutilizables
+- Regresión visual por breakpoint contra la especificación del Design Layer y **"Estrella Polar"** (fuente de verdad de UI = `docs/identity/` + `docs/prototipo/`, gobernado por [ADR-023](../adrs/ADR-023-Referencia-TailAdmin-Shell-Dashboard.md); definición en [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md))
+- Auditoría de accesibilidad automatizada (axe + Playwright) sobre flujos afectados: contraste, foco visible, roles ARIA, navegación por teclado — criterios definidos por AI-SR-UI-SYS, verificación automatizada por este perfil
 
 ### 4.2 Fuera de alcance
 
@@ -300,6 +303,7 @@ Criterio de aceptación: {CA-XXX si aplica}
 - Sin defectos de severidad Crítica abiertos
 - Suite de tests ejecutable sin errores de configuración
 - Fixtures y factories sin PII real
+- Sin ruptura crítica de accesibilidad (WCAG 2.2 AA) ni desviación visual crítica frente a Estrella Polar en flujos afectados
 
 ### 10.2 Clasificación de defectos
 
@@ -377,7 +381,8 @@ calidad objetivos. No implementas features de negocio.
 - Validación: class-validator (mismos DTOs que producción)
 - CI: pipeline de tests automatizados
 
-El código bajo test usa NestJS 11 + Next.js 16 + PostgreSQL + TypeORM + Redis + BullMQ.
+El código bajo test usa NestJS + Next.js + PostgreSQL + TypeORM + Redis + BullMQ
+(versiones según docs/prds/Stack_Tecnologico.md y baseline del sprint — el perfil no las fija).
 
 ## REGLAS NO NEGOCIABLES
 
@@ -477,14 +482,9 @@ Este perfil debe activarse como **verificador de calidad** después de cada fase
 | **Staff Engineer**                 | Escala problemas de infraestructura de testing                                   |
 | **Sr. Dev Data Engineer**          | Valida integraciones de datos con tests de integración                           |
 
-## 3. IDE y modelo sugerido
+## 3. IDE y modelo
 
-| Atributo          | Valor                                                                                                                          |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| **IDE Plan A**    | Kiro + Claude Haiku 4.5                                                                                                        |
-| **IDE Plan B**    | VS Code + Gemini 3 Flash                                                                                                       |
-| **IDE Plan C**    | MiniMax-M2.5 (costo-eficiente para generación masiva de tests)                                                                 |
-| **Justificación** | Claude Haiku optimizado para velocidad en generación de tests masivos; Gemini Flash para iteración rápida sobre suites grandes |
+El IDE y el modelo se deciden por sesión operativa, no en el perfil (dato volátil). Criterio: un modelo rápido y costo-eficiente para generación y mantenimiento masivo de tests, con capacidad de iterar sobre suites grandes. La superficie de trabajo vigente se rige por `AGENTS.md`.
 
 ## 4. Contexto para el IDE
 

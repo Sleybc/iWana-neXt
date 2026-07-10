@@ -9,7 +9,7 @@
 **Regulatorio:** CRC · DIAN · MinTrabajo · MinTIC · Ley 1581 (Colombia)
 **Modelo Plan A:** Gemini 3.1 Pro | **Plan B:** Gemini 3 Pro | **Plan C:** MiniMax-Text-01 (4M tokens)
 
-> Documento maestro propuesto: [docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md](docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md)
+> Documento maestro propuesto: [docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md](docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md)
 > Trazabilidad de adopción: [docs/adrs/ADR-021-Perfil-Unificado-EM-Architect.md](docs/adrs/ADR-021-Perfil-Unificado-EM-Architect.md)
 
 ---

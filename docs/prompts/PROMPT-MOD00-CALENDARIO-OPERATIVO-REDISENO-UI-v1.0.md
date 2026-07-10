@@ -35,7 +35,7 @@ Refinar `/dashboard/settings/calendar` para que un administrador entienda con ra
 
 ## 2. Artefactos de entrada obligatorios
 
-- Perfil rector: `docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md`
+- Perfil rector: `docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md`
 - ADR MOD00: `docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md`
 - ADR Calendario: `docs/adrs/ADR-042-Calendario-Operativo-Jornadas.md`
 - PRD MOD00: `docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md`

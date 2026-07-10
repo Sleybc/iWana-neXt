@@ -11,7 +11,7 @@
 **Stack de Referencia:** NestJS 11 · Next.js 16 · PostgreSQL 18 · Turborepo Modulith
 **Regulatorio:** CRC · DIAN · MinTrabajo · Ley 1581 (Colombia)
 
-> Documento maestro propuesto: [docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md](docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md)
+> Documento maestro propuesto: [docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md](docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md)
 > Trazabilidad de adopción: [docs/adrs/ADR-021-Perfil-Unificado-EM-Architect.md](docs/adrs/ADR-021-Perfil-Unificado-EM-Architect.md)
 
 ---

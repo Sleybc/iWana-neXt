@@ -601,12 +601,12 @@ _Actualizado: 2026-03-08 — Corrección stack versions via Context7 MCP_
 | Artefacto | Cambios realizados |
 | --- | --- |
 | `docs/roles/Perfil IA Senior Data Engineer ISP.md` | Normalizados subtítulos en negrita usados como pseudoencabezados, secciones `SECCIÓN` degradadas a H2, fences marcados como `text` y tabla de KPIs recompuesta a 4 columnas válidas. |
-| `docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md` | Corregidos los tres H1 internos de partes para mantener un único título principal por documento. |
-| `docs/roles/Perfil_IA_Engineering_Manager_Senior_v1.md` | Compactados blockquotes iniciales, fences de ejemplos y prompts marcados con lenguaje, tablas de IVA y métricas normalizadas y fences anidados del prompt convertidos a tildes internas. |
-| `docs/roles/Perfil_IA_Lead_Software_Architect_Senior_v1.md` | Compactados blockquotes iniciales, secciones `PARTE` degradadas a H2 y fences internos del bloque de activación convertidos a formato válido sin romper el prompt externo. |
+| `docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md` | Corregidos los tres H1 internos de partes para mantener un único título principal por documento. |
+| `docs/roles/_historico/Perfil_IA_Engineering_Manager_Senior_v1.md` | Compactados blockquotes iniciales, fences de ejemplos y prompts marcados con lenguaje, tablas de IVA y métricas normalizadas y fences anidados del prompt convertidos a tildes internas. |
+| `docs/roles/_historico/Perfil_IA_Lead_Software_Architect_Senior_v1.md` | Compactados blockquotes iniciales, secciones `PARTE` degradadas a H2 y fences internos del bloque de activación convertidos a formato válido sin romper el prompt externo. |
 | `docs/roles/Perfil_IA_Security_Engineer_AppSec_v1.md` | Secciones `PARTE` normalizadas y fences de pipeline/review marcados como `text`. |
-| `docs/roles/Perfil_IA_Senior_UI_Systems_Designer_v1.md` | Corregido el H1 interno restante, alineada la tabla de escalación y normalizado el salto final con Prettier. |
-| `docs/roles/Perfil_IA_Sr_Dev_Fullstack_v1.md` | Secciones `PARTE` degradadas a H2 y fence anidado del prompt convertido a tildes internas para no romper el bloque markdown padre. |
+| `docs/roles/_historico/Perfil_IA_Senior_UI_Systems_Designer_v1.md` | Corregido el H1 interno restante, alineada la tabla de escalación y normalizado el salto final con Prettier. |
+| `docs/roles/_historico/Perfil_IA_Sr_Dev_Fullstack_v1.md` | Secciones `PARTE` degradadas a H2 y fence anidado del prompt convertido a tildes internas para no romper el bloque markdown padre. |
 | `docs/roles/Perfil_IA_Sr_Dev_QA_Testing_v1.md` | Secciones `PARTE` degradadas a H2 y fences de ejemplos marcados como `text`. |
 
 **Resultado observado:**

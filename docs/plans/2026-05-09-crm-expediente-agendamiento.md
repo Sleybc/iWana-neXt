@@ -16,7 +16,7 @@
 
 ## Source documents
 
-- Rol: `docs/roles/Perfil_IA_Sr_Dev_Fullstack_v1.md`
+- Rol: `docs/roles/_historico/Perfil_IA_Sr_Dev_Fullstack_v1.md`
 - PRD CRM: `docs/prds/PRD-MOD05-CRM-DEFINICION-v2.0.md`
 - PRD WFM: `docs/prds/PRD-MOD09-PROGRAMACION-WFM-v1.0.md`
 - HLD CRM: `docs/hlds/HLD-MOD05-ARQUITECTURA-v2.0.md`

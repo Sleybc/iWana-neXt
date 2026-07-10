@@ -15,7 +15,7 @@
 - **Modulo:** MOD12 Inventario / SCM
 - **Fase:** Definicion arquitectonica y funcional
 - **Origen:** docs/ideas/cadenadesuministros.md
-- **Perfil activo:** docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md
+- **Perfil activo:** docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md
 - **Artefactos generados:**
   - docs/adrs/ADR-048-Bounded-Context-Inventario-SCM-Ciclo-Vida-Productos.md
   - docs/prds/PRD-MOD12-INVENTARIO-SCM-v1.0.md

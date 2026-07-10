@@ -242,7 +242,7 @@ Agregar nodo `pendingInbox`:
 5. `apps/portal/src/components/scheduling/SchedulingOverview.tsx`
 6. `apps/portal/src/components/scheduling/SchedulingToolbar.tsx`
 7. `apps/portal/src/lib/api-client.ts`
-8. `docs/roles/Perfil_IA_Senior_UI_Systems_Designer_v1.md`
+8. `docs/roles/_historico/Perfil_IA_Senior_UI_Systems_Designer_v1.md`
 
 ## 14. Estado de ejecucion (2026-06-04)
 

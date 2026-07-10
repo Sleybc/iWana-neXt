@@ -9,19 +9,18 @@
 
 ## AI Workflow Activo
 
-**Asistentes activos:** GitHub Copilot (VS Code), OpenCode (CLI / TUI / web) y Codex. Los tres estan subordinados a `AGENTS.md`, no se prefiere uno sobre otro salvo que el usuario lo indique explicitamente para una tarea concreta.
+**Asistentes activos:** GitHub Copilot (VS Code), OpenCode (CLI / TUI / web), Codex y Claude Code (CLI / IDE extension). Los cuatro estan subordinados a `AGENTS.md`, no se prefiere uno sobre otro salvo que el usuario lo indique explicitamente para una tarea concreta.
 
 **Superficies activas:**
 
-- `.github/copilot-instructions.md` — bootstrap agnostico de IA, leido por Copilot automaticamente y referenciado por OpenCode desde `instructions`. Codex tambien debe consumirlo como capa de arranque despues de `AGENTS.md`. Cualquier IA que arranque en el workspace debe leerlo.
+- `.github/copilot-instructions.md` — bootstrap agnostico de IA, leido por Copilot automaticamente y referenciado por OpenCode desde `instructions`. Codex y Claude Code tambien deben consumirlo como capa de arranque despues de `AGENTS.md`. Cualquier IA que arranque en el workspace debe leerlo.
 - `.opencode/opencode.json` — declaracion explicita de OpenCode: `instructions`, `skills.paths` y `mcp` (chrome-devtools, context7, playwright). Es la superficie de paridad con Copilot.
-- `.github/instructions/*.instructions.md` — reglas contextuales por path; aplican en su `applyTo` para ambas IAs.
+- `CLAUDE.md` — bootstrap propio de Claude Code, leido automaticamente al arrancar en el workspace. Reactivado el 2026-07-09 (ver `docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md`); sigue subordinado a `AGENTS.md` y no debe duplicar reglas que ya viven aqui.
+- `.github/instructions/*.instructions.md` — reglas contextuales por path; aplican en su `applyTo` para todas las IAs.
 - `.github/prompts/*.prompt.md` — prompts operativos reutilizables; disponibles para cualquier asistente compatible con prompts markdown del workspace.
-- `.agents/skills/` — catalogo activo de skills. `INDEX.md` y `MANIFEST.json` son la fuente de verdad. OpenCode las descubre via `skills.paths`; Copilot y Codex las usan segun el mecanismo de skills disponible en su cliente o sesion.
+- `.agents/skills/` — catalogo activo de skills. `INDEX.md` y `MANIFEST.json` son la fuente de verdad. OpenCode las descubre via `skills.paths`; Copilot, Codex y Claude Code las usan como referencia documental: leen el `SKILL.md` relevante segun `INDEX.md` antes de actuar, ya que ninguno de los tres tiene en este repo un mecanismo nativo de carga automatica de skills de proyecto.
 
-**Superficies pasivas por ahora:**
-
-- `CLAUDE.md` — deprecado hasta que Claude Code vuelva a ser herramienta activa. No se usa como fuente de verdad aunque el archivo exista en el repo.
+**Superficies pasivas:** ninguna por ahora. Todas las IAs listadas arriba estan activas.
 
 ### Precedencia entre IAs y superficies
 
@@ -50,7 +49,7 @@ Si una IA nueva se suma al workflow o una existente se desactiva:
 
 | Capacidad | Fuente principal | Regla operativa |
 | --- | --- | --- |
-| Skills | `.agents/skills/INDEX.md` + `.agents/skills/MANIFEST.json` | Reutilizables por cualquier asistente que soporte skills del workspace; no crear catalogos paralelos por cliente. |
+| Skills | `.agents/skills/INDEX.md` + `.agents/skills/MANIFEST.json` | Reutilizables por cualquier asistente que soporte skills del workspace; no crear catalogos paralelos por cliente. Claude Code no tiene `skills.paths`: aplica el dispatch leyendo `SKILL.md` como documentacion, no invocandolo como tool nativa. |
 | Prompts | `.github/prompts/` | Prompts reutilizables y agnosticos de proveedor; deben remitir a `AGENTS.md`, artefactos del modulo y restricciones reales. |
 | Reglas por path | `.github/instructions/*.instructions.md` | Complementan a `AGENTS.md`; aplican por `applyTo`, no reemplazan la gobernanza global. |
 | MCP | `.opencode/opencode.json` para OpenCode | Los MCP son cliente-dependientes: OpenCode los declara en config versionada; en Codex dependen de la sesion activa y no de un archivo ficticio del repo. |
@@ -82,10 +81,14 @@ Si una IA nueva se suma al workflow o una existente se desactiva:
 | --- | --- |
 | API tests | `pnpm --filter @iwana/api test` |
 | Web tests | `pnpm --filter @iwana/web test` |
-| DB migrations | `pnpm --filter @iwana/db migration:run` |
-| Generar migracion | `pnpm --filter @iwana/db migration:generate -- src/migrations/CreateUsersTable` |
+| Migraciones public + tenant | `pnpm db:migrate:all` |
+| Migraciones schema public | `pnpm --filter @iwana/db migration:run` |
+| Migraciones schemas tenant | `pnpm --filter @iwana/db migration:tenant:run` |
+| Revertir ultima migracion public | `pnpm --filter @iwana/db migration:revert` |
 | Jest backend individual | `cd apps/api && npx jest src/modules/auth/auth.service.spec.ts` |
 | Playwright individual | `npx playwright test e2e/tests/web-auth-dashboard.spec.ts` |
+
+No existe script `migration:generate`: las migraciones se escriben a mano en `packages/database/src/migrations/` (public) y `packages/database/src/migrations/tenant/` (numeradas). El paquete `@iwana/db` debe compilarse antes de ejecutar migraciones (corren contra `dist/`).
 
 ---
 
@@ -173,6 +176,8 @@ describe('UserService', () => {
 
 ## Skills Dispatch
 
+Frontend y UX:
+
 - Frontend App Router y arquitectura de pantalla: `nextjs-app-router-patterns` + `frontend-dev-guidelines`
 - Componentes, design system y tokens: `core-components` + `tailwind-patterns`
 - Direccion visual SaaS, propuestas esteticas fuertes y review visual sistemico: `senior-ui-systems-designer`
@@ -181,6 +186,32 @@ describe('UserService', () => {
 - Accesibilidad visual y validacion WCAG: `wcag-audit-patterns`
 - Formularios, i18n y UX de detalle: complementar con `i18n-localization` y la skill del dominio afectado
 - Vocabulario visible, copy de producto, labels, seeds, auditorias, secciones o modulos nuevos: `system-vocabulary-review`
+
+Backend y datos:
+
+- Modulos NestJS, servicios, boundaries, TypeORM: `nestjs-expert`
+- Flujos de autenticacion: `auth-implementation-patterns`
+- Review de seguridad backend/frontend: `backend-security-coder` / `frontend-security-coder` + `security-auditor`
+- Cambios de schema y migraciones: `database-migration` + `postgresql`
+- Jobs y workers BullMQ: `bullmq-specialist`
+- Cambios de contrato OpenAPI: `openapi-spec-generation`
+
+Testing y calidad:
+
+- Tests unit/integration/E2E: `testing-patterns`, `test-driven-development`, `e2e-testing-patterns`, `playwright-skill`
+- Auditorias de dependencias y limpieza: `codebase-cleanup-deps-audit`
+
+Arquitectura, docs y flujo de trabajo:
+
+- Estructura monorepo/Turborepo: `monorepo-architect` + `turborepo-caching`
+- ADRs y review arquitectonico: `architecture-decision-records` + `architect-review`
+- Documentacion e informes vivos: `docs-architect`
+- Debugging de fallas dificiles: `systematic-debugging`
+- Planificacion multi-paso: `writing-plans` → `executing-plans`
+- Solicitar/recibir code review: `requesting-code-review` / `receiving-code-review`
+- Cierre de rama de desarrollo: `finishing-a-development-branch`
+
+Para dominios no listados, consultar `.agents/skills/INDEX.md` (lista autoritativa vigente).
 
 ---
 

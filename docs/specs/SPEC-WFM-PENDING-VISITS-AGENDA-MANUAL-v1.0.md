@@ -318,7 +318,7 @@ El detalle de tareas, archivos y criterios esta en
 ## 14. Referencias
 
 1. `AGENTS.md`
-2. `docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md`
+2. `docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md`
 3. `docs/prds/PRD-MOD09-PROGRAMACION-WFM-v1.0.md`
 4. `docs/hlds/HLD-MOD09-PROGRAMACION-WFM-v1.0.md`
 5. `docs/adrs/ADR-037-Bounded-Context-Programacion-WFM.md`

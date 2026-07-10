@@ -33,7 +33,7 @@ Refinar la experiencia de expediente CRM en `/dashboard/crm/expedientes/[id]` pa
 
 ## 2. Artefactos de entrada obligatorios
 
-- Perfil visual rector: `docs/roles/Perfil_IA_Senior_UI_Systems_Designer_v1.md`
+- Perfil visual rector: `docs/roles/_historico/Perfil_IA_Senior_UI_Systems_Designer_v1.md`
 - Plantilla de prompt: `docs/prompts/TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md`
 - Spec de rediseño: `docs/specs/2026-06-03-mod05-expediente-vista-gestion-seguimiento-redesign-design.md`
 - Plan técnico de implementación: `docs/plans/2026-06-03-mod05-expediente-vista-gestion-seguimiento-redesign.md`

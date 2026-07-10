@@ -1,7 +1,7 @@
 {
-  "version": "1.0",
+  "version": "1.3",
   "status": "approved",
-  "date": "2026-05-19",
+  "date": "2026-07-09",
   "governance": {
     "precedence": [
       "AGENTS.md",
@@ -13,7 +13,7 @@
     "archiveDirectory": null
   },
   "summary": {
-    "coreCount": 41,
+    "coreCount": 47,
     "archivedItemCount": 0,
     "archivedDirectoryCount": 0,
     "archivedLegacyFileCount": 0,
@@ -69,7 +69,13 @@
       "systematic-debugging",
       "verification-before-completion",
       "writing-plans",
-      "writing-skills"
+      "writing-skills",
+      "iwana-identity-ui-review",
+      "system-vocabulary-review",
+      "ui-ux-pro-max",
+      "brainstorming",
+      "skill-creator",
+      "using-git-worktrees"
     ]
   },
   "core": {
@@ -100,9 +106,12 @@
       "frontend-dev-guidelines",
       "frontend-security-coder",
       "i18n-localization",
+      "iwana-identity-ui-review",
       "nextjs-app-router-patterns",
       "senior-ui-systems-designer",
+      "system-vocabulary-review",
       "tailwind-patterns",
+      "ui-ux-pro-max",
       "wcag-audit-patterns"
     ],
     "testing": [
@@ -113,13 +122,16 @@
     ],
     "maintenance": ["codebase-cleanup-deps-audit"],
     "workflow": [
+      "brainstorming",
       "dispatching-parallel-agents",
       "executing-plans",
       "finishing-a-development-branch",
       "receiving-code-review",
       "requesting-code-review",
+      "skill-creator",
       "subagent-driven-development",
       "systematic-debugging",
+      "using-git-worktrees",
       "verification-before-completion",
       "writing-plans",
       "writing-skills"
@@ -172,7 +184,8 @@
     ".agents/skills/INDEX.md",
     "docs/quality/CHECKLIST-SISTEMA-SKILLS-GOBERNANZA-v1.0.md",
     "docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md",
-    "docs/roles/Perfil_IA_Senior_UI_Systems_Designer_v1.md"
+    "docs/roles/Perfil_IA_Product_Designer_UX_v1.md",
+    "docs/roles/Perfil_IA_Design_System_Owner_v1.md"
   ],
   "potentializedCoreSkills": [
     "frontend-dev-guidelines",

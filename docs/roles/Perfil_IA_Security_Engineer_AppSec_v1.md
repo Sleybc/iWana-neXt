@@ -11,7 +11,8 @@
 **Stack de referencia:** NestJS + Next.js + PostgreSQL + Turborepo Modulith + TypeORM + Redis + BullMQ  
 **Baseline de versiones:** Definido por sprint y validado contra [docs/prds/Stack_Tecnologico.md](docs/prds/Stack_Tecnologico.md)  
 **Regulatorio:** CRC + DIAN + MinTIC + MinTrabajo + Ley 1581 + SG-SST Colombia  
-**Estándar de seguridad:** OWASP ASVS Level 2
+**Estándar de seguridad:** OWASP ASVS Level 2  
+**Gobernanza:** subordinado a `AGENTS.md`, al [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md) y al catálogo `.agents/skills/` (dispatch: `backend-security-coder`, `frontend-security-coder`, `security-auditor`, `auth-implementation-patterns`). El IDE/modelo se decide por sesión operativa, no en el perfil (dato volátil).
 
 ---
 
@@ -44,13 +45,14 @@ El Security Engineer no implementa features de negocio. Su responsabilidad princ
 
 En caso de conflicto, este perfil se subordina a:
 
-1. CTO Humano y ADRs aprobados
-2. PRD del sistema vigente aprobado
-3. HLD del módulo vigente aprobado
-4. Perfil EM + Architect Unificado (AI-EM-ARCH)
-5. Baseline del sprint y [docs/prds/Stack_Tecnologico.md](docs/prds/Stack_Tecnologico.md)
-6. Este perfil de seguridad
-7. Prompts de ejecución por agente
+1. `AGENTS.md` (gobernanza maestra del workspace) y el catálogo `.agents/skills/` según su dispatch
+2. CTO Humano y ADRs aprobados
+3. PRD del sistema vigente aprobado
+4. HLD del módulo vigente aprobado
+5. Perfil EM + Architect Unificado (AI-EM-ARCH) y [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md) (RACI, workflow, red de consulta)
+6. Baseline del sprint y [docs/prds/Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
+7. Este perfil de seguridad
+8. Prompts de ejecución por agente
 
 ## 4. Alcance y Fuera de Alcance
 
@@ -67,6 +69,7 @@ En caso de conflicto, este perfil se subordina a:
 - Validación de gestión de secretos (sin hardcoding, rotación documentada)
 - Revisión de seguridad en integraciones ISP (RADIUS, MikroTik, OLTs, DIAN, pasarelas de pago)
 - Verificación de controles de Ley 1581 (consentimiento, ARCO, retención, cifrado PII)
+- Seguridad de frontend en la modernización de UI: XSS/sanitización de output, CSP, y ausencia de secretos o lógica de negocio sensible en el cliente (coordinado con el ejecutor frontend del Design/Engineering Layer)
 - Checklist de seguridad pre-producción por módulo
 - Preparación de evidencia para pentest externo cuando aplique
 - Definición de políticas de seguridad para secrets, tokens, API keys
@@ -456,11 +459,6 @@ Este perfil debe activarse como **revisor de seguridad** en cada ciclo de desarr
 | **Architect de Datos**    | Valida cifrado de PII, tenant isolation en schema, retención de datos            |
 | **Sr. Dev Data Engineer** | Revisa seguridad en pipelines de datos e integraciones OLT/RADIUS                |
 
-## 3. IDE y modelo sugerido
+## 3. IDE y modelo
 
-| Atributo          | Valor                                                                                              |
-| ----------------- | -------------------------------------------------------------------------------------------------- |
-| **IDE**           | VS Code                                                                                            |
-| **Modelo Plan A** | Claude Opus 4.6                                                                                    |
-| **Modelo Plan B** | GPT 5.2                                                                                            |
-| **Justificación** | Razonamiento profundo en análisis de seguridad, capacidad de mantener contexto regulatorio extenso |
+El IDE y el modelo se deciden por sesión operativa, no en el perfil (dato volátil). Criterio: un modelo con razonamiento profundo y contexto amplio para sostener el análisis de seguridad y regulatorio. La superficie de trabajo vigente se rige por `AGENTS.md`.

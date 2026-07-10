@@ -538,9 +538,9 @@ Este documento debe adoptarse como **perfil maestro activo** para sesiones de de
 
 ## 2. Estado recomendado de los perfiles previos
 
-- [docs/roles/Perfil_IA_Engineering_Manager_Senior_v1.md](docs/roles/Perfil_IA_Engineering_Manager_Senior_v1.md): mantener como referencia historica.
-- [docs/roles/Perfil_IA_Lead_Software_Architect_Senior_v1.md](docs/roles/Perfil_IA_Lead_Software_Architect_Senior_v1.md): mantener como referencia historica.
-- Nuevo documento maestro: [docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md](docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md).
+- [docs/roles/_historico/Perfil_IA_Engineering_Manager_Senior_v1.md](docs/roles/_historico/Perfil_IA_Engineering_Manager_Senior_v1.md): mantener como referencia historica.
+- [docs/roles/_historico/Perfil_IA_Lead_Software_Architect_Senior_v1.md](docs/roles/_historico/Perfil_IA_Lead_Software_Architect_Senior_v1.md): mantener como referencia historica.
+- Nuevo documento maestro: [docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md](docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md).
 
 ## 3. Proximo paso sugerido
 

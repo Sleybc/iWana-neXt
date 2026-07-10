@@ -16,7 +16,7 @@
 
 ## Source documents
 
-- Rol: `docs/roles/Perfil_IA_Sr_Dev_Fullstack_v1.md`
+- Rol: `docs/roles/_historico/Perfil_IA_Sr_Dev_Fullstack_v1.md`
 - Spec de ejecución: `docs/specs/SPEC-MOD05-CRM-POSTCONVERSION-FULLSTACK-v1.0.md`
 - Design aprobada: `docs/specs/2026-05-11-crm-postconversion-listing-design.md`
 - PRD rector: `docs/prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-03-v1.0.md`

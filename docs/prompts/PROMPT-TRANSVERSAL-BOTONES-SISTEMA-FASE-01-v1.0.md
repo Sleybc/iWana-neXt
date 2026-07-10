@@ -39,7 +39,7 @@
 - Spec visual: [SPEC-TRANSVERSAL-BOTONES-SISTEMA-FASE-01-v1.0.md](../specs/SPEC-TRANSVERSAL-BOTONES-SISTEMA-FASE-01-v1.0.md)
 - Plan de fase: [PLAN-TRANSVERSAL-BOTONES-SISTEMA-FASE-01-v1.0.md](../plans/PLAN-TRANSVERSAL-BOTONES-SISTEMA-FASE-01-v1.0.md)
 - Plantilla base: [TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md](TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md)
-- Perfil Senior UI: [Perfil_IA_Senior_UI_Systems_Designer_v1.md](../roles/Perfil_IA_Senior_UI_Systems_Designer_v1.md)
+- Perfil Senior UI: [Perfil_IA_Senior_UI_Systems_Designer_v1.md](../roles/_historico/Perfil_IA_Senior_UI_Systems_Designer_v1.md)
 - Stack: [Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
 - Primitive base: [Button.tsx](../../packages/ui/src/components/Button.tsx)
 - Informe de trazabilidad: [INFORME-TRANSVERSAL-BOTONES-SISTEMA-FASE-01-v1.0.md](../informes/INFORME-TRANSVERSAL-BOTONES-SISTEMA-FASE-01-v1.0.md)

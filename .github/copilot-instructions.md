@@ -1,6 +1,6 @@
 # iWana neXt — AI Bootstrap
 
-GitHub Copilot, OpenCode y Codex son las IAs activas del workspace. `AGENTS.md` es la fuente maestra de gobernanza, arquitectura, comandos, gotchas, skills y entregables.
+GitHub Copilot, OpenCode, Codex y Claude Code son las IAs activas del workspace. `AGENTS.md` es la fuente maestra de gobernanza, arquitectura, comandos, gotchas, skills y entregables.
 
 Esta es una superficie agnostica de proveedor: cualquier IA que arranque en el workspace debe leer `AGENTS.md` antes de actuar y debe aplicar el mismo flujo, los mismos recordsatorios criticos y la misma trazabilidad documental.
 
@@ -18,19 +18,18 @@ Si dos artefactos chocan en multi-tenancy, seguridad, boundaries o stack, no sin
 
 - `.github/copilot-instructions.md` — este archivo, leido por Copilot automaticamente.
 - `.opencode/opencode.json` — declaracion explicita de OpenCode: `instructions`, `skills.paths` y `mcp`.
+- `CLAUDE.md` — bootstrap propio de Claude Code, leido automaticamente por esa CLI; reactivado el 2026-07-09.
 - `.github/instructions/*.instructions.md` — reglas contextuales por path, complementan a `AGENTS.md` en su `applyTo`.
 - `.github/prompts/*.prompt.md` — prompts operativos reutilizables, disponibles para cualquier asistente compatible.
 - `.agents/skills/` — catalogo activo de skills; `INDEX.md` y `MANIFEST.json` son la fuente de verdad del catalogo.
-
-`CLAUDE.md` queda pasivo por ahora; no se usa como fuente de verdad aunque el archivo exista en el repo.
 
 ## Flujo activo
 
 - Usa siempre `pnpm`; no uses `npm` ni `yarn` para flujos del repo.
 - Las reglas por archivo viven en `.github/instructions/*.instructions.md` y son complementos, no fuentes maestras.
 - Los prompts operativos viven en `.github/prompts/`.
-- OpenCode y Codex quedan en paridad documental con Copilot; los tres leen `AGENTS.md` y este bootstrap.
-- Las skills del repo viven en `.agents/skills/` y deben reutilizarse desde cualquier cliente que soporte ese catalogo; no dupliques reglas en un sistema paralelo de agentes.
+- OpenCode, Codex y Claude Code quedan en paridad documental con Copilot; los cuatro leen `AGENTS.md` y este bootstrap.
+- Las skills del repo viven en `.agents/skills/` y deben reutilizarse desde cualquier cliente que soporte ese catalogo; no dupliques reglas en un sistema paralelo de agentes. Claude Code, al no tener `skills.paths`, las consume via `CLAUDE.md` leyendo el `SKILL.md` correspondiente por descripcion.
 
 ## Recordatorios de alto riesgo
 
@@ -58,7 +57,7 @@ La CLI/cliente de Copilot puede leer instrucciones desde varias ubicaciones. Ord
 - `$HOME/.copilot/copilot-instructions.md` (archivo por usuario)
 - rutas definidas por la variable `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`
 
-`CLAUDE.md` y `GEMINI.md` aparecen en el orden observado de la CLI, pero en este repo estan marcados como pasivos y **no** deben usarse como fuentes de verdad.
+`GEMINI.md` aparece en el orden observado de la CLI, pero en este repo esta marcado como pasivo y **no** debe usarse como fuente de verdad. `CLAUDE.md` esta activo (ver seccion Claude Code abajo) pero sigue subordinado a `AGENTS.md`.
 
 ### OpenCode
 
@@ -72,6 +71,18 @@ OpenCode carga su configuracion desde:
 ### Codex
 
 Codex debe consumir `AGENTS.md`, este bootstrap, las instrucciones por path y el catalogo de skills del workspace como gobernanza compartida. Si la sesion expone herramientas equivalentes a MCP, su disponibilidad depende del cliente activo y no de un archivo adicional versionado en este repo.
+
+### Claude Code
+
+Claude Code (CLI / extension IDE) lee `CLAUDE.md` automaticamente desde la raiz del proyecto al arrancar en el workspace. Orden de lectura declarado en `CLAUDE.md`:
+
+- `AGENTS.md` (fuente maestra)
+- `docs/prds/Stack_Tecnologico.md`
+- PRD/HLD/ADR vigente del modulo afectado
+- `.github/instructions/*.instructions.md` por `applyTo`
+- `.agents/skills/INDEX.md` y el `SKILL.md` de la skill activada por descripcion
+
+Claude Code no tiene un mecanismo nativo de `skills.paths` para directorios de skills de proyecto arbitrarios (no existe `.claude/skills/` en este repo y no se debe crear uno que duplique `.agents/skills/`). El catalogo se aplica por lectura documental: antes de una tarea de un dominio cubierto por una skill, Claude Code lee el `SKILL.md` correspondiente con su herramienta de lectura de archivos y aplica sus reglas como si fueran parte de este bootstrap. Las skills nativas que expone la tool `Skill` del harness (utilidades genericas del cliente, no del catalogo del repo) son un mecanismo aparte y no reemplazan este flujo.
 
 ## Regla de precedencia del repositorio
 

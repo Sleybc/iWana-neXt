@@ -145,7 +145,7 @@ La refactorizacion puramente visual del shell federado puede prepararse como pla
 ## Referencias
 
 - AGENTS.md
-- docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md
+- docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md
 - docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md
 - docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md
 - docs/adrs/ADR-040-Configuracion-Control-Plane-Organizacion-Acceso.md

@@ -1,8 +1,8 @@
 # Indice de Skills de iWana neXt
 
-**Version:** 1.1
+**Version:** 1.3
 **Estado:** Aprobado
-**Fecha:** 2026-05-19
+**Fecha:** 2026-07-09
 
 ## Proposito
 
@@ -22,7 +22,7 @@ Estados admitidos:
 3. Este indice
 4. La skill individual
 
-`CLAUDE.md` sigue pasivo. `.opencode/` participa como configuracion cliente activa de OpenCode, pero no sustituye la precedencia documental del repo. Codex comparte la misma gobernanza via `AGENTS.md` y `.github/copilot-instructions.md`.
+`CLAUDE.md` es superficie activa (reactivada 2026-07-09) y aplica el mismo catalogo por lectura documental, no via `skills.paths`. `.opencode/` participa como configuracion cliente activa de OpenCode, pero no sustituye la precedencia documental del repo. Codex y Claude Code comparten la misma gobernanza via `AGENTS.md` y `.github/copilot-instructions.md`.
 
 ## Skills core activas
 
@@ -67,6 +67,9 @@ Estados admitidos:
 - database-migration
 - e2e-testing-patterns
 - codebase-cleanup-deps-audit
+- iwana-identity-ui-review
+- system-vocabulary-review
+- ui-ux-pro-max
 
 ### Arquitectura y gobierno
 
@@ -98,9 +101,12 @@ Estados admitidos:
 - frontend-dev-guidelines
 - frontend-security-coder
 - i18n-localization
+- iwana-identity-ui-review
 - nextjs-app-router-patterns
 - senior-ui-systems-designer
+- system-vocabulary-review
 - tailwind-patterns
+- ui-ux-pro-max
 - wcag-audit-patterns
 
 ### Testing
@@ -112,13 +118,16 @@ Estados admitidos:
 
 ### Flujos de trabajo
 
+- brainstorming
 - dispatching-parallel-agents
 - executing-plans
 - finishing-a-development-branch
 - receiving-code-review
 - requesting-code-review
+- skill-creator
 - subagent-driven-development
 - systematic-debugging
+- using-git-worktrees
 - verification-before-completion
 - writing-plans
 - writing-skills
@@ -188,3 +197,4 @@ Sin entradas vigentes tras la restauracion ejecutada el 2026-03-12.
 - Toda modificacion sustancial del catalogo debe reflejarse en docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md.
 - Toda skill activa debe mantener frontmatter valido con `name` y `description` como minimo.
 - `skills-lock.json` puede limitar sets operativos en clientes que lo soporten, pero no reemplaza el catalogo fuente del workspace para OpenCode o Codex.
+- `skills-lock.json` vive en la raiz del repo y registra procedencia upstream (GitHub) para `skill-creator` y `ui-ux-pro-max`; el `skillPath` de esas entradas es la ruta dentro del repo upstream, no un directorio local. La copia gobernada de ambas vive en `.agents/skills/`.

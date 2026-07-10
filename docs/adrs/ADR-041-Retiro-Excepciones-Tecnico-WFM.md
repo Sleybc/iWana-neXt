@@ -129,7 +129,7 @@ Motivo: esta decision modifica el boundary funcional aprobado de WFM y redefine 
 ## Referencias
 
 - AGENTS.md
-- docs/roles/Perfil_IA_EM_Architect_Unificado_v1.md
+- docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md
 - docs/adrs/ADR-037-Bounded-Context-Programacion-WFM.md
 - docs/prds/PRD-MOD09-PROGRAMACION-WFM-v1.0.md
 - docs/hlds/HLD-MOD09-PROGRAMACION-WFM-v1.0.md

@@ -1,6 +1,6 @@
 # Stack Tecnológico — iWana neXt Platform
 
-**Última actualización:** 2026-04-01
+**Última actualización:** 2026-07-09 (anotaciones de adopción real: Pino y react-query no adoptados)
 **Fuente:** Documentación oficial de cada proyecto (verificado)
 
 > ⚠️ **IMPORTANTE — Dos capas de versiones:**
@@ -39,7 +39,7 @@
 | otplib                  | **13.3.0** ⚠️             | <https://github.com/yeojz/otplib>                |
 | pg (node-postgres)      | latest stable             | <https://github.com/brianc/node-postgres>        |
 | ioredis                 | **5.10.0**                | <https://github.com/redis/ioredis>               |
-| Pino                    | latest stable             | <https://github.com/pinojs/pino>                 |
+| Pino                    | latest stable ⚠️          | Objetivo de stack **no adoptado aun**: el repo usa el `Logger` nativo de NestJS; adoptar Pino requiere decision de EM-ARCH |
 | Helmet                  | latest stable             | <https://github.com/helmetjs/helmet>             |
 | uuid                    | latest stable             | <https://github.com/uuidjs/uuid>                 |
 | nodemailer              | latest stable             | <https://nodemailer.com/>                        |
@@ -54,7 +54,7 @@
 | React                   | **19.2**                  | <https://react.dev/versions>                  |
 | Tailwind CSS            | **4.x** ⚠️                | <https://tailwindcss.com/blog/tailwindcss-v4> |
 | shadcn/ui               | **2.5.0+**                | <https://ui.shadcn.com/docs/changelog>        |
-| `@tanstack/react-query` | latest stable             | <https://tanstack.com/query>                  |
+| `@tanstack/react-query` | latest stable ⚠️          | **No adoptado**: web y portal usan un `api-client` propio (`@/lib/api-client`) para data fetching |
 | react-hook-form         | latest stable             | <https://react-hook-form.com/>                |
 | Zod                     | **4.0.1** ⚠️              | (compartido con backend; en proyecto: 3.24.2) |
 

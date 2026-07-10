@@ -12,7 +12,7 @@
 
 ## Source documents
 
-- Role: `docs/roles/Perfil_IA_Sr_Dev_Fullstack_v1.md`
+- Role: `docs/roles/_historico/Perfil_IA_Sr_Dev_Fullstack_v1.md`
 - Prompt: `docs/prompts/PROMPT-MOD09-PROGRAMACION-WFM-FASE-02-v1.0.md`
 - PRD base: `docs/prds/PRD-MOD09-PROGRAMACION-WFM-v1.0.md`
 - PRD canonico consolidado: `docs/prds/PRD-MOD09-PROGRAMACION-WFM-v1.0.md`

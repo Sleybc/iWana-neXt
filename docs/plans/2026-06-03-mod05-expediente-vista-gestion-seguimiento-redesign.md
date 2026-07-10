@@ -13,7 +13,7 @@
 ## Source Artifacts
 
 - Spec principal: `docs/specs/2026-06-03-mod05-expediente-vista-gestion-seguimiento-redesign-design.md`
-- Perfil visual rector: `docs/roles/Perfil_IA_Senior_UI_Systems_Designer_v1.md`
+- Perfil visual rector: `docs/roles/_historico/Perfil_IA_Senior_UI_Systems_Designer_v1.md`
 - Guía identidad iWana: `docs/identity/Manual_Implementacion_Identidad_Iwana.md`
 - Checklist transversal UI: `docs/quality/CHECKLIST-TRANSVERSAL-PORTAL-UI-REVIEW-v1.0.md`
 - Informe vivo transversal: `docs/informes/INFORME-TRANSVERSAL-ENABLEMENT-OPERATIVO-v1.0.md`
