@@ -1,1 +1,0 @@
-{"version":3,"file":"000_initial_tenant_schema.d.ts","sourceRoot":"","sources":["000_initial_tenant_schema.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,kBAAkB,EAAE,WAAW,EAAE,MAAM,SAAS,CAAC;AAE1D,qBAAa,gCAAiC,YAAW,kBAAkB;IACzE,IAAI,SAAsC;IAEpC,EAAE,CAAC,WAAW,EAAE,WAAW,GAAG,OAAO,CAAC,IAAI,CAAC;IAuK3C,IAAI,CAAC,WAAW,EAAE,WAAW,GAAG,OAAO,CAAC,IAAI,CAAC;CAKpD"}

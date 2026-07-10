@@ -15,6 +15,7 @@ jest.mock('next/navigation', () => ({
     push: jest.fn(),
     replace: jest.fn(),
   }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 jest.mock('@/lib/api-client', () => ({

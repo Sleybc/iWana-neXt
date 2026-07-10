@@ -54,6 +54,17 @@ describe('StockIssueService', () => {
     const manager = {
       transaction: jest.fn().mockImplementation(async (work) => work(manager)),
       save,
+      findOne: jest.fn().mockImplementation(async (entity, options) => {
+        if (entity === StockLocation) {
+          const isDestination = options.where.id === '22222222-2222-4222-8222-222222222222';
+          return {
+            id: options.where.id,
+            tenantId: options.where.tenantId,
+            type: isDestination ? 'MOBILE_TECHNICIAN' : 'MAIN_WAREHOUSE',
+          };
+        }
+        return null;
+      }),
       create: jest.fn((_entity, payload) => payload),
     };
 
@@ -83,7 +94,7 @@ describe('StockIssueService', () => {
       StockIssue,
       expect.objectContaining({
         type: StockIssueType.TECHNICIAN_CUSTODY,
-        status: StockIssueStatus.DRAFT,
+        status: StockIssueStatus.REQUESTED,
       }),
     );
     expect(save).toHaveBeenCalledWith(
@@ -131,6 +142,292 @@ describe('StockIssueService', () => {
         actor,
       ),
     ).rejects.toThrow();
+  });
+
+  it('rejects OFFICE_REPLENISHMENT without destination', async () => {
+    const service = new StockIssueService({} as DataSource, {} as any);
+
+    await expect(
+      service.create(
+        {
+          type: StockIssueType.OFFICE_REPLENISHMENT,
+          sourceLocationId: '11111111-1111-4111-8111-111111111111',
+          lines: [
+            {
+              itemId: '33333333-3333-4333-8333-333333333333',
+              requestedQty: 1,
+              condition: StockBalanceCondition.NEW,
+            },
+          ],
+        },
+        actor,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('rejects SALE_DISPATCH with destinationLocationId', async () => {
+    const service = new StockIssueService({} as DataSource, {} as any);
+
+    await expect(
+      service.create(
+        {
+          type: StockIssueType.SALE_DISPATCH,
+          sourceLocationId: '11111111-1111-4111-8111-111111111111',
+          destinationLocationId: '22222222-2222-4222-8222-222222222222',
+          commercialRefId: 'COM-001',
+          lines: [
+            {
+              itemId: '33333333-3333-4333-8333-333333333333',
+              requestedQty: 1,
+              condition: StockBalanceCondition.NEW,
+            },
+          ],
+        },
+        actor,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('rejects WAREHOUSE_TO_WAREHOUSE when source and destination are the same location', async () => {
+    const service = new StockIssueService({} as DataSource, {} as any);
+
+    await expect(
+      service.create(
+        {
+          type: StockIssueType.WAREHOUSE_TO_WAREHOUSE,
+          sourceLocationId: '11111111-1111-4111-8111-111111111111',
+          destinationLocationId: '11111111-1111-4111-8111-111111111111',
+          lines: [
+            {
+              itemId: '33333333-3333-4333-8333-333333333333',
+              requestedQty: 1,
+              condition: StockBalanceCondition.NEW,
+            },
+          ],
+        },
+        actor,
+      ),
+    ).rejects.toThrow('La ubicación destino debe ser distinta del origen.');
+  });
+
+  it('rejects WAREHOUSE_TO_WAREHOUSE when destination is another MAIN_WAREHOUSE location', async () => {
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      save: jest.fn(),
+      create: jest.fn((_entity, payload) => payload),
+      findOne: jest.fn().mockImplementation(async (entity, options) => {
+        if (entity === StockLocation) {
+          const isDestination = options.where.id === '22222222-2222-4222-8222-222222222222';
+          return {
+            id: options.where.id,
+            tenantId: options.where.tenantId,
+            type: isDestination ? 'MAIN_WAREHOUSE' : 'MAIN_WAREHOUSE',
+          };
+        }
+        return null;
+      }),
+    };
+
+    (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+      work({ manager }),
+    );
+
+    const service = new StockIssueService({} as DataSource, {} as any);
+
+    await expect(
+      service.create(
+        {
+          type: StockIssueType.WAREHOUSE_TO_WAREHOUSE,
+          sourceLocationId: '11111111-1111-4111-8111-111111111111',
+          destinationLocationId: '22222222-2222-4222-8222-222222222222',
+          lines: [
+            {
+              itemId: '33333333-3333-4333-8333-333333333333',
+              requestedQty: 1,
+              condition: StockBalanceCondition.NEW,
+            },
+          ],
+        },
+        actor,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rejects create with wrong destination type for OFFICE_REPLENISHMENT', async () => {
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      save: jest.fn(),
+      create: jest.fn((_entity, payload) => payload),
+      findOne: jest.fn().mockImplementation(async (entity, options) => {
+        if (entity === StockLocation) {
+          const isDestination = options.where.id === '22222222-2222-4222-8222-222222222222';
+          return {
+            id: options.where.id,
+            tenantId: options.where.tenantId,
+            type: isDestination ? 'MOBILE_TECHNICIAN' : 'MAIN_WAREHOUSE',
+          };
+        }
+        return null;
+      }),
+    };
+
+    (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+      work({ manager }),
+    );
+
+    const service = new StockIssueService({} as DataSource, {} as any);
+    await expect(
+      service.create(
+        {
+          type: StockIssueType.OFFICE_REPLENISHMENT,
+          sourceLocationId: '11111111-1111-4111-8111-111111111111',
+          destinationLocationId: '22222222-2222-4222-8222-222222222222',
+          lines: [
+            {
+              itemId: '33333333-3333-4333-8333-333333333333',
+              requestedQty: 1,
+              condition: StockBalanceCondition.NEW,
+            },
+          ],
+        },
+        actor,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rejects create when destination is CUSTOMER_SITE', async () => {
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      save: jest.fn(),
+      create: jest.fn((_entity, payload) => payload),
+      findOne: jest.fn().mockImplementation(async (entity, options) => {
+        if (entity === StockLocation) {
+          const isDestination = options.where.id === '22222222-2222-4222-8222-222222222222';
+          return {
+            id: options.where.id,
+            tenantId: options.where.tenantId,
+            type: isDestination ? 'CUSTOMER_SITE' : 'MAIN_WAREHOUSE',
+          };
+        }
+        return null;
+      }),
+    };
+
+    (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+      work({ manager }),
+    );
+
+    const service = new StockIssueService({} as DataSource, {} as any);
+    await expect(
+      service.create(
+        {
+          type: StockIssueType.WAREHOUSE_TO_WAREHOUSE,
+          sourceLocationId: '11111111-1111-4111-8111-111111111111',
+          destinationLocationId: '22222222-2222-4222-8222-222222222222',
+          lines: [
+            {
+              itemId: '33333333-3333-4333-8333-333333333333',
+              requestedQty: 1,
+              condition: StockBalanceCondition.NEW,
+            },
+          ],
+        },
+        actor,
+      ),
+    ).rejects.toThrow('No se permiten salidas manuales hacia sitio de cliente.');
+  });
+
+  it('returns the existing movement without re-dispatching when the issue already has stockMovementId (idempotent)', async () => {
+    const existingIssue = {
+      id: 'issue-900',
+      tenantId: 'tenant-001',
+      type: StockIssueType.TECHNICIAN_CUSTODY,
+      status: StockIssueStatus.DISPATCHED,
+      sourceLocationId: '11111111-1111-4111-8111-111111111111',
+      destinationLocationId: '22222222-2222-4222-8222-222222222222',
+      stockMovementId: 'movement-001',
+    };
+    const existingLines = [
+      {
+        issueId: 'issue-900',
+        itemId: '33333333-3333-4333-8333-333333333333',
+        requestedQty: '2.00',
+      },
+    ];
+
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      save: jest.fn(),
+      create: jest.fn((_entity, payload) => payload),
+      findOne: jest.fn().mockImplementation(async (entity) => {
+        if (entity === StockIssue) {
+          return existingIssue;
+        }
+        return null;
+      }),
+      find: jest.fn().mockResolvedValue(existingLines),
+    };
+
+    (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+      work({ manager }),
+    );
+
+    const ledger = {
+      recordStockIssueSaleWithManager: jest.fn(),
+      recordStockIssueInternalConsumptionWithManager: jest.fn(),
+      recordStockIssueTransferWithManager: jest.fn(),
+    };
+
+    const service = new StockIssueService({} as DataSource, ledger as any);
+    const result = await service.dispatch(
+      'issue-900',
+      { handoffMethod: 'acta', handoffAttachments: [] },
+      actor,
+    );
+
+    expect(result.stockMovementId).toBe('movement-001');
+    expect(result.lines).toEqual(existingLines);
+    expect(manager.save).not.toHaveBeenCalled();
+    expect(ledger.recordStockIssueTransferWithManager).not.toHaveBeenCalled();
+    expect(ledger.recordStockIssueSaleWithManager).not.toHaveBeenCalled();
+    expect(ledger.recordStockIssueInternalConsumptionWithManager).not.toHaveBeenCalled();
+  });
+
+  it('rejects create when source is not MAIN_WAREHOUSE', async () => {
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      save: jest.fn(),
+      create: jest.fn((_entity, payload) => payload),
+      findOne: jest.fn().mockImplementation(async (entity, options) => {
+        if (entity === StockLocation) {
+          return { id: options.where.id, tenantId: options.where.tenantId, type: 'OFFICE_STOCK' };
+        }
+        return null;
+      }),
+    };
+
+    (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+      work({ manager }),
+    );
+
+    const service = new StockIssueService({} as DataSource, {} as any);
+    await expect(
+      service.create(
+        {
+          type: StockIssueType.TECHNICIAN_CUSTODY,
+          sourceLocationId: '11111111-1111-4111-8111-111111111111',
+          destinationLocationId: '22222222-2222-4222-8222-222222222222',
+          lines: [
+            {
+              itemId: '33333333-3333-4333-8333-333333333333',
+              requestedQty: 1,
+              condition: StockBalanceCondition.NEW,
+            },
+          ],
+        },
+        actor,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('lists issues filtered by status and type', async () => {
@@ -278,5 +575,231 @@ describe('StockIssueService', () => {
       StockIssue,
       expect.objectContaining({ status: StockIssueStatus.DISPATCHED, stockMovementId: 'mov-001' }),
     );
+  });
+
+  it('rejects dispatch when source and destination locations are the same', async () => {
+    const issue = {
+      id: 'issue-004',
+      tenantId: 'tenant-001',
+      type: StockIssueType.WAREHOUSE_TO_WAREHOUSE,
+      status: StockIssueStatus.APPROVED,
+      sourceLocationId: 'loc-main',
+      destinationLocationId: 'loc-main',
+      stockMovementId: null,
+    };
+    const mainLocation = { id: 'loc-main', tenantId: 'tenant-001', type: 'MAIN_WAREHOUSE' };
+    const issueLines = [
+      {
+        id: 'line-004',
+        tenantId: 'tenant-001',
+        issueId: 'issue-004',
+        itemId: 'item-001',
+        requestedQty: '1.00',
+        dispatchedQty: null,
+        lotId: null,
+        serializedAssetId: null,
+        condition: StockBalanceCondition.NEW,
+      },
+    ];
+
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockImplementation(async (entity, options) => {
+        if (entity === StockIssue) {
+          return options.where.id === 'issue-004' ? issue : null;
+        }
+        if (entity === StockLocation) {
+          return mainLocation;
+        }
+        return null;
+      }),
+      find: jest.fn().mockImplementation(async (entity) => {
+        if (entity === StockIssueLine) {
+          return issueLines;
+        }
+        return [];
+      }),
+      save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+    };
+
+    (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+      work({ manager }),
+    );
+
+    const service = new StockIssueService(
+      {} as DataSource,
+      {
+        recordStockIssueTransferWithManager: jest.fn(),
+        recordStockIssueSaleWithManager: jest.fn(),
+        recordStockIssueInternalConsumptionWithManager: jest.fn(),
+      } as any,
+    );
+
+    await expect(
+      service.dispatch(
+        'issue-004',
+        { handoffMethod: 'ACTA', handoffNotes: 'Sin traslado real', handoffAttachments: [] },
+        actor,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('dispatches SALE_DISPATCH using sale wrapper', async () => {
+    const issue = {
+      id: 'issue-002',
+      tenantId: 'tenant-001',
+      type: StockIssueType.SALE_DISPATCH,
+      status: StockIssueStatus.REQUESTED,
+      sourceLocationId: 'loc-source',
+      destinationLocationId: null,
+      stockMovementId: null,
+      commercialRefId: 'COM-001',
+      originRefId: null,
+      costCenter: null,
+      destinationRefId: null,
+    };
+    const sourceLocation = { id: 'loc-source', tenantId: 'tenant-001', type: 'MAIN_WAREHOUSE' };
+    const issueLines = [
+      {
+        id: 'line-002',
+        tenantId: 'tenant-001',
+        issueId: 'issue-002',
+        itemId: 'item-001',
+        requestedQty: '1.00',
+        dispatchedQty: null,
+        lotId: null,
+        serializedAssetId: null,
+        condition: StockBalanceCondition.NEW,
+      },
+    ];
+
+    const stockLedgerServiceMock = {
+      recordStockIssueTransferWithManager: jest.fn(),
+      recordStockIssueSaleWithManager: jest
+        .fn()
+        .mockResolvedValue({ movement: { id: 'mov-002' }, lines: [] }),
+      recordStockIssueInternalConsumptionWithManager: jest.fn(),
+    };
+
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockImplementation(async (entity, options) => {
+        if (entity === StockIssue) return options.where.id === 'issue-002' ? issue : null;
+        if (entity === StockLocation) return sourceLocation;
+        return null;
+      }),
+      find: jest.fn().mockImplementation(async (entity) => {
+        if (entity === StockIssueLine) return issueLines;
+        if (entity === StockBalance) {
+          return [
+            {
+              tenantId: 'tenant-001',
+              itemId: 'item-001',
+              locationId: 'loc-source',
+              lotId: null,
+              condition: StockBalanceCondition.NEW,
+              quantityOnHand: '10.00',
+            },
+          ];
+        }
+        return [];
+      }),
+      save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+    };
+
+    (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+      work({ manager }),
+    );
+
+    const service = new StockIssueService({} as DataSource, stockLedgerServiceMock as any);
+    const dispatched = await service.dispatch(
+      'issue-002',
+      { handoffMethod: 'ACTA', handoffNotes: null, handoffAttachments: [] },
+      actor,
+    );
+
+    expect(stockLedgerServiceMock.recordStockIssueSaleWithManager).toHaveBeenCalled();
+    expect(dispatched.stockMovementId).toBe('mov-002');
+  });
+
+  it('dispatches INTERNAL_CONSUMPTION using internal consumption wrapper', async () => {
+    const issue = {
+      id: 'issue-003',
+      tenantId: 'tenant-001',
+      type: StockIssueType.INTERNAL_CONSUMPTION,
+      status: StockIssueStatus.REQUESTED,
+      sourceLocationId: 'loc-source',
+      destinationLocationId: null,
+      stockMovementId: null,
+      commercialRefId: null,
+      originRefId: null,
+      costCenter: 'CC-01',
+      reason: 'Uso interno',
+      destinationRefId: null,
+    };
+    const sourceLocation = { id: 'loc-source', tenantId: 'tenant-001', type: 'MAIN_WAREHOUSE' };
+    const issueLines = [
+      {
+        id: 'line-003',
+        tenantId: 'tenant-001',
+        issueId: 'issue-003',
+        itemId: 'item-001',
+        requestedQty: '2.00',
+        dispatchedQty: null,
+        lotId: null,
+        serializedAssetId: null,
+        condition: StockBalanceCondition.NEW,
+      },
+    ];
+
+    const stockLedgerServiceMock = {
+      recordStockIssueTransferWithManager: jest.fn(),
+      recordStockIssueSaleWithManager: jest.fn(),
+      recordStockIssueInternalConsumptionWithManager: jest
+        .fn()
+        .mockResolvedValue({ movement: { id: 'mov-003' }, lines: [] }),
+    };
+
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockImplementation(async (entity, options) => {
+        if (entity === StockIssue) return options.where.id === 'issue-003' ? issue : null;
+        if (entity === StockLocation) return sourceLocation;
+        return null;
+      }),
+      find: jest.fn().mockImplementation(async (entity) => {
+        if (entity === StockIssueLine) return issueLines;
+        if (entity === StockBalance) {
+          return [
+            {
+              tenantId: 'tenant-001',
+              itemId: 'item-001',
+              locationId: 'loc-source',
+              lotId: null,
+              condition: StockBalanceCondition.NEW,
+              quantityOnHand: '10.00',
+            },
+          ];
+        }
+        return [];
+      }),
+      save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+    };
+
+    (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+      work({ manager }),
+    );
+
+    const service = new StockIssueService({} as DataSource, stockLedgerServiceMock as any);
+    const dispatched = await service.dispatch(
+      'issue-003',
+      { handoffMethod: 'ACTA', handoffNotes: null, handoffAttachments: [] },
+      actor,
+    );
+
+    expect(
+      stockLedgerServiceMock.recordStockIssueInternalConsumptionWithManager,
+    ).toHaveBeenCalled();
+    expect(dispatched.stockMovementId).toBe('mov-003');
   });
 });

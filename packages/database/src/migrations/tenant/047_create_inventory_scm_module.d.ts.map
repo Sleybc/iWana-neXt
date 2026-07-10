@@ -1,1 +1,0 @@
-{"version":3,"file":"047_create_inventory_scm_module.d.ts","sourceRoot":"","sources":["047_create_inventory_scm_module.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,kBAAkB,EAAE,WAAW,EAAE,MAAM,SAAS,CAAC;AAE1D;;;GAGG;AACH,qBAAa,qCAAsC,YAAW,kBAAkB;IAC9E,IAAI,SAA2C;IAElC,EAAE,CAAC,WAAW,EAAE,WAAW,GAAG,OAAO,CAAC,IAAI,CAAC;IAqrB3C,IAAI,CAAC,WAAW,EAAE,WAAW,GAAG,OAAO,CAAC,IAAI,CAAC;CAgC3D"}

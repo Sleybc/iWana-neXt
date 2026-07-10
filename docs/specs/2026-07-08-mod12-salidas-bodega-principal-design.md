@@ -86,8 +86,8 @@ Campos propuestos:
 | `issueNumber` | varchar(40) | consecutivo por tenant, ejemplo `SAL-20260708-001` |
 | `issueType` | enum | ver seccion 5 |
 | `status` | enum | ver seccion 6 |
-| `sourceLocationId` | uuid | normalmente `MAIN_WAREHOUSE`; puede ser otra bodega autorizada |
-| `destinationLocationId` | uuid nullable | requerido para reabastecimiento y custodia movil |
+| `sourceLocationId` | uuid | obligatorio; solo `MAIN_WAREHOUSE` (bodega principal del tenant) |
+| `destinationLocationId` | uuid nullable | obligatorio para custodia móvil, reabastecimiento y transferencia entre bodegas; prohibido en venta y consumo interno; no puede coincidir con `sourceLocationId` |
 | `destinationType` | enum/string | tecnico, cuadrilla, oficina, nodo, venta, consumo |
 | `destinationRefId` | varchar(160) nullable | referencia opaca al tecnico, oficina, nodo, orden comercial o centro de costo |
 | `originContext` | varchar(80) nullable | `inventory.manual`, `commercial.sale`, `wfm.dispatch`, `tasks.execution-order`, etc. |
@@ -133,7 +133,7 @@ Campos propuestos:
 | `NODE_REPLENISHMENT` | Reabastecer nodo con saldo propio | `TRANSFER` hacia `NODE_STOCK` | solo si el nodo tendra conteo y devoluciones |
 | `SALE_DISPATCH` | Despacho por venta | `SALE` | requiere referencia comercial |
 | `INTERNAL_CONSUMPTION` | Uso interno sin saldo destino | `INTERNAL_CONSUMPTION` | requiere centro de costo/motivo |
-| `WAREHOUSE_TO_WAREHOUSE` | Rebalanceo entre bodegas | `TRANSFER` | no cambia ownership funcional |
+| `WAREHOUSE_TO_WAREHOUSE` | Rebalanceo entre bodegas | `TRANSFER` | origen fijo `MAIN_WAREHOUSE`; destino permitido `OFFICE_STOCK`, `NODE_STOCK`, `QUARANTINE` o `REPAIR`; nunca la misma ubicación del origen |
 
 ### 5.1 Nuevos tipos de ubicacion recomendados
 
@@ -348,5 +348,4 @@ Regla de idempotencia:
 **Aprobar implementacion incremental.**
 
 Primero se debe crear el documento operativo (`StockIssue`) y la vista `Salidas` usando los servicios ledger existentes. Despues se puede evolucionar hacia aprobaciones, picking avanzado, reservas y recepcion confirmada.
-
 

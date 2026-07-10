@@ -75,11 +75,11 @@
 - Create `StockIssue` and `StockIssueLine` entities.
 - Create migration `057_create_stock_issues.ts`.
 
-- [ ] **Step 1: Write failing DB/entity tests or compile expectation**
+- [x] **Step 1: Write failing DB/entity tests or compile expectation**
 
 Add a focused test or type-level import coverage that expects exported enums and entities to exist.
 
-- [ ] **Step 2: Add shared enums**
+- [x] **Step 2: Add shared enums**
 
 ```ts
 export enum StockIssueType {
@@ -106,7 +106,7 @@ export enum StockIssueStatus {
 }
 ```
 
-- [ ] **Step 3: Extend `StockLocationType`**
+- [x] **Step 3: Extend `StockLocationType`**
 
 Add:
 
@@ -117,13 +117,13 @@ NODE_STOCK = 'NODE_STOCK',
 
 Update labels and location code prefixes.
 
-- [ ] **Step 4: Create entities**
+- [x] **Step 4: Create entities** *(desviación registrada: sin `issueNumber` ni campos de actores avanzados; ver informe vivo)*
 
 `stock_issues` must include issue metadata, source/destination refs, actor refs, handoff evidence and `stockMovementId`.
 
 `stock_issue_lines` must include item, requested quantity, dispatched quantity, lot/serial references and condition.
 
-- [ ] **Step 5: Create reversible migration**
+- [x] **Step 5: Create reversible migration**
 
 Migration must:
 
@@ -133,7 +133,7 @@ Migration must:
 - avoid FKs to other modules;
 - include FK only within MOD12 tables where appropriate.
 
-- [ ] **Step 6: Run DB/shared verification**
+- [x] **Step 6: Run DB/shared verification**
 
 Run:
 
@@ -155,7 +155,7 @@ corepack pnpm --filter @iwana/db build
 - Modify `inventory.controller.ts`.
 - Tests API.
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Cover:
 
@@ -167,7 +167,7 @@ list issues by status/type
 cancel non-dispatched issue
 ```
 
-- [ ] **Step 2: Add Zod schemas**
+- [x] **Step 2: Add Zod schemas**
 
 Create:
 
@@ -179,17 +179,18 @@ CancelStockIssueSchema
 ListStockIssuesQuerySchema
 ```
 
-- [ ] **Step 3: Implement create/list/get/cancel**
+- [x] **Step 3: Implement create/list/get/cancel**
 
 Rules:
 
-- `sourceLocationId` required.
+- `sourceLocationId` required and must resolve to `MAIN_WAREHOUSE`.
 - At least one line required.
 - `SALE_DISPATCH` requires `originRefId` or commercial reference.
 - `INTERNAL_CONSUMPTION` requires cost center / reason in destination or origin ref.
 - `TECHNICIAN_CUSTODY` and `CREW_CUSTODY` require destination location.
+- `destinationLocationId` must be different from `sourceLocationId`.
 
-- [ ] **Step 4: Add controller endpoints**
+- [x] **Step 4: Add controller endpoints**
 
 ```text
 GET    /inventory/issues
@@ -199,7 +200,7 @@ PATCH  /inventory/issues/:id
 POST   /inventory/issues/:id/cancel
 ```
 
-- [ ] **Step 5: Run API tests**
+- [x] **Step 5: Run API tests**
 
 Run:
 
@@ -218,7 +219,7 @@ corepack pnpm --filter @iwana/api test -- stock-issue.service.spec.ts inventory.
 - Possibly modify `stock-ledger.service.ts` for narrow helper support.
 - Tests service + ledger.
 
-- [ ] **Step 1: Write failing dispatch tests**
+- [x] **Step 1: Write failing dispatch tests** *(incluye rechazo `CUSTOMER_SITE` y segundo dispatch idempotente, agregados 2026-07-09)*
 
 Cover:
 
@@ -232,7 +233,7 @@ CUSTOMER_SITE destination is rejected
 second dispatch is idempotent / rejected clearly
 ```
 
-- [ ] **Step 2: Validate destinations by type**
+- [x] **Step 2: Validate destinations by type**
 
 Destination rules:
 
@@ -242,11 +243,11 @@ Destination rules:
 | `CREW_CUSTODY` | `MOBILE_CREW` |
 | `OFFICE_REPLENISHMENT` | `OFFICE_STOCK` |
 | `NODE_REPLENISHMENT` | `NODE_STOCK` |
-| `WAREHOUSE_TO_WAREHOUSE` | `MAIN_WAREHOUSE`, `OFFICE_STOCK`, `NODE_STOCK`, `QUARANTINE`, `REPAIR` |
+| `WAREHOUSE_TO_WAREHOUSE` | `OFFICE_STOCK`, `NODE_STOCK`, `QUARANTINE`, `REPAIR` |
 | `SALE_DISPATCH` | no inventory destination |
 | `INTERNAL_CONSUMPTION` | no inventory destination |
 
-- [ ] **Step 3: Implement `dispatch` transaction**
+- [x] **Step 3: Implement `dispatch` transaction**
 
 Inside one tenant-aware transaction:
 
@@ -256,11 +257,11 @@ Inside one tenant-aware transaction:
 4. call ledger with `idempotencyKey = stock-issue:${issue.id}` or per-line deterministic keys if current ledger requires one item per call;
 5. set `status = DISPATCHED`, `stockMovementId`, `dispatchedByUserId`, `closedAt`.
 
-- [ ] **Step 4: Preserve ledger boundaries**
+- [x] **Step 4: Preserve ledger boundaries**
 
 Do not move ledger ownership into `StockIssueService`. It should orchestrate existing MOD12 ledger methods.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run:
 
@@ -283,7 +284,7 @@ corepack pnpm --filter @iwana/api test -- stock-issue.service.spec.ts stock-ledg
 - Modify labels.
 - Tests portal.
 
-- [ ] **Step 1: Write failing portal tests**
+- [x] **Step 1: Write failing portal tests**
 
 Cover:
 
@@ -296,11 +297,11 @@ SALE_DISPATCH hides destination location and requires commercial reference
 CUSTOMER_SITE does not appear as destination
 ```
 
-- [ ] **Step 2: Add `Salidas` tab**
+- [x] **Step 2: Add `Salidas` tab**
 
 Add tab between `Bodegas` and `Activos`. Keep `Movimientos` as audit/history.
 
-- [ ] **Step 3: Implement workspace table**
+- [x] **Step 3: Implement workspace table** *(la columna "Número" muestra UUID truncado mientras no exista `issueNumber`; ver desviación en informe vivo)*
 
 Columns:
 
@@ -308,7 +309,7 @@ Columns:
 Numero, tipo, estado, origen, destino, lineas, referencia, fecha, accion
 ```
 
-- [ ] **Step 4: Implement create drawer**
+- [x] **Step 4: Implement create drawer** *(MVP con una sola línea por salida; multi-línea y serial/lote quedan diferidos, ver informe vivo)*
 
 MVP steps in one drawer:
 
@@ -318,11 +319,11 @@ MVP steps in one drawer:
 
 Use existing portal design language. Keep density operational.
 
-- [ ] **Step 5: Implement dispatch action**
+- [x] **Step 5: Implement dispatch action**
 
 For `REQUESTED` or `APPROVED`, allow `Despachar` with confirmation and handoff evidence.
 
-- [ ] **Step 6: Run portal tests**
+- [x] **Step 6: Run portal tests**
 
 Run:
 
@@ -340,7 +341,7 @@ corepack pnpm --filter @iwana/portal test -- InventoryClient StockIssuesWorkspac
 - Modify `e2e/tests/portal-inventory-scm.spec.ts`.
 - Update `docs/informes/INFORME-MOD12-INVENTARIO-SCM-FASE-01-v1.0.md`.
 
-- [ ] **Step 1: Add E2E scenarios**
+- [x] **Step 1: Add E2E scenarios** *(2026-07-10: agregados `crea salida por venta y despacha` y `no ofrece CUSTOMER_SITE como destino de salida manual`; los tres escenarios del plan están cubiertos)*
 
 Scenarios:
 
@@ -350,7 +351,7 @@ crear salida por venta -> despachar -> ver movimiento SALE
 bloquear CUSTOMER_SITE como destino manual
 ```
 
-- [ ] **Step 2: Run E2E**
+- [x] **Step 2: Run E2E** *(2026-07-10: 17/17 ✅ — `portal-inventory-scm.spec.ts` pasa completo contra instancia real)*
 
 Run:
 
@@ -358,7 +359,7 @@ Run:
 corepack pnpm test:e2e:portal -- portal-inventory-scm.spec.ts
 ```
 
-- [ ] **Step 3: Update live report**
+- [x] **Step 3: Update live report** *(actualizado 2026-07-09 con evidencia de gates y desviaciones)*
 
 Add section `Salidas de bodega principal` with:
 
@@ -367,7 +368,7 @@ Add section `Salidas de bodega principal` with:
 - test commands;
 - any deferred scope.
 
-- [ ] **Step 4: Run final gates**
+- [x] **Step 4: Run final gates** *(2026-07-10: lint ✅, typecheck ✅, API 1413/1413 ✅, portal 489/489 ✅, E2E 17/17 ✅)*
 
 Run:
 
@@ -383,15 +384,15 @@ corepack pnpm test:e2e:portal -- portal-inventory-scm.spec.ts
 
 ## Gates antes de merge
 
-- [ ] Sin FK cross-module nuevas.
-- [ ] `CUSTOMER_SITE` sigue bloqueado en salidas manuales.
-- [ ] `StockIssue.dispatch` es idempotente.
-- [ ] Ledger conserva movimientos inmutables.
-- [ ] OpenAPI actualizado para endpoints nuevos.
-- [ ] `OFFICE_STOCK` y `NODE_STOCK` documentados y etiquetados en portal.
-- [ ] Tests API y portal en verde.
-- [ ] E2E al menos con tecnico y venta en verde.
-- [ ] Informe MOD12 actualizado.
+- [x] Sin FK cross-module nuevas. *(migración 057 solo crea FKs internas MOD12)*
+- [x] `CUSTOMER_SITE` sigue bloqueado en salidas manuales. *(servicio + DTO + UI + test unitario dedicado)*
+- [x] `StockIssue.dispatch` es idempotente. *(short-circuit por `stockMovementId` + `idempotencyKey`; test unitario dedicado)*
+- [x] Ledger conserva movimientos inmutables.
+- [x] OpenAPI actualizado para endpoints nuevos. *(6 endpoints `issues` con `@ApiOperation` y `@Roles`)*
+- [x] `OFFICE_STOCK` y `NODE_STOCK` documentados y etiquetados en portal. *(`inventory-labels.ts`)*
+- [x] Tests API y portal en verde. *(2026-07-10: API 1413/1413; portal 489/489 ✅ — `SchedulingClient.spec.tsx` "mueve un evento a pendientes" corregido con `findByRole` asíncrono)*
+- [x] E2E al menos con tecnico y venta en verde. *(2026-07-10: 17/17 ✅ — técnico ✅, venta ✅, bloqueo CUSTOMER_SITE ✅, todos los escenarios pasan contra instancia real)*
+- [x] Informe MOD12 actualizado. *(2026-07-09)*
 
 ---
 

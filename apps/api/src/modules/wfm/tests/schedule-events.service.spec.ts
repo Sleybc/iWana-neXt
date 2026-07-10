@@ -22,6 +22,17 @@ jest.mock('@iwana/db', () => ({
   WorkOrder: class {},
   WorkOrderTask: class {},
   TechnicianAvailability: class {},
+  Tenant: class {},
+  User: class {},
+  MediaAsset: class {},
+  // media.service evalúa MediaUsage a nivel de módulo vía la cadena tasks → users → tenant → media.
+  MediaUsage: {
+    LOGO: 'logo',
+    SEAL: 'seal',
+    FAVICON: 'favicon',
+    LOGIN_BACKGROUND: 'login_background',
+    GENERAL: 'general',
+  },
 }));
 
 describe('ScheduleEventsService', () => {

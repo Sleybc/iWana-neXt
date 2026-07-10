@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
+  Select,
 } from '@iwana/ui';
 import { StockIssueType, StockLocationType } from '@iwana/shared';
 import type {
@@ -17,7 +18,12 @@ import type {
   StockLocationRecord,
 } from '@/lib/api-client';
 import { PortalAlert } from '@/components/shared/portal-ui';
-import { formatInventoryQuantity, getStockLocationTypeLabel } from './inventory-labels';
+import {
+  formatInventoryQuantity,
+  getStockIssueTypeHelperLabel,
+  getStockIssueTypeLabel,
+  getStockLocationTypeLabel,
+} from './inventory-labels';
 
 type DestinationOptionsByType = Map<StockLocationType, StockLocationRecord[]>;
 
@@ -29,27 +35,6 @@ export interface StockIssueFormDrawerProps {
   isSubmitting: boolean;
   onClose: () => void;
   onSubmit: (dto: CreateStockIssueDto) => Promise<void> | void;
-}
-
-function issueTypeLabel(type: StockIssueType): string {
-  switch (type) {
-    case StockIssueType.TECHNICIAN_CUSTODY:
-      return 'Custodia técnico';
-    case StockIssueType.CREW_CUSTODY:
-      return 'Custodia cuadrilla';
-    case StockIssueType.OFFICE_REPLENISHMENT:
-      return 'Reposición oficina';
-    case StockIssueType.NODE_REPLENISHMENT:
-      return 'Reposición nodo';
-    case StockIssueType.SALE_DISPATCH:
-      return 'Salida por venta';
-    case StockIssueType.INTERNAL_CONSUMPTION:
-      return 'Consumo interno';
-    case StockIssueType.WAREHOUSE_TO_WAREHOUSE:
-      return 'Entre bodegas';
-    default:
-      return type;
-  }
 }
 
 function destinationTypeForIssue(type: StockIssueType): StockLocationType | null {
@@ -72,9 +57,13 @@ function destinationTypeForIssue(type: StockIssueType): StockLocationType | null
 }
 
 function allowedSourceTypesForIssue(_type: StockIssueType): StockLocationType[] {
-  // Salidas de bodega principal: el origen válido del documento es la bodega principal.
   return [StockLocationType.MAIN_WAREHOUSE];
 }
+
+const TYPE_OPTIONS = Object.values(StockIssueType).map((type) => ({
+  value: type,
+  label: getStockIssueTypeLabel(type),
+}));
 
 export function StockIssueFormDrawer({
   open,
@@ -123,14 +112,14 @@ export function StockIssueFormDrawer({
     }
 
     if (form.type === StockIssueType.WAREHOUSE_TO_WAREHOUSE) {
-      return locations.filter((loc) =>
-        [
-          StockLocationType.MAIN_WAREHOUSE,
-          StockLocationType.OFFICE_STOCK,
-          StockLocationType.NODE_STOCK,
-          StockLocationType.QUARANTINE,
-          StockLocationType.REPAIR,
-        ].includes(loc.type),
+      return locations.filter(
+        (loc) =>
+          [
+            StockLocationType.OFFICE_STOCK,
+            StockLocationType.NODE_STOCK,
+            StockLocationType.QUARANTINE,
+            StockLocationType.REPAIR,
+          ].includes(loc.type) && loc.id !== form.sourceLocationId,
       );
     }
 
@@ -139,7 +128,40 @@ export function StockIssueFormDrawer({
     }
 
     return destinationOptions.get(destinationType) ?? [];
-  }, [destinationOptions, destinationType, form.type, locations]);
+  }, [destinationOptions, destinationType, form.type, locations, form.sourceLocationId]);
+
+  const sourceOptions = useMemo(
+    () => [
+      { value: '', label: 'Selecciona una bodega' },
+      ...sourceCandidates.map((location) => ({
+        value: location.id,
+        label: `${location.code} · ${location.name} (${getStockLocationTypeLabel(location.type)})`,
+      })),
+    ],
+    [sourceCandidates],
+  );
+
+  const destinationSelectOptions = useMemo(
+    () => [
+      { value: '', label: 'Selecciona el destino' },
+      ...destinationCandidates.map((location) => ({
+        value: location.id,
+        label: `${location.code} · ${location.name} (${getStockLocationTypeLabel(location.type)})`,
+      })),
+    ],
+    [destinationCandidates],
+  );
+
+  const itemOptions = useMemo(
+    () => [
+      { value: '', label: 'Selecciona un ítem' },
+      ...items.map((item) => ({
+        value: item.id,
+        label: `${item.sku} · ${item.name}`,
+      })),
+    ],
+    [items],
+  );
 
   const showDestination =
     form.type !== StockIssueType.SALE_DISPATCH && form.type !== StockIssueType.INTERNAL_CONSUMPTION;
@@ -150,6 +172,7 @@ export function StockIssueFormDrawer({
     if (!Number.isFinite(qty) || qty <= 0) return false;
 
     if (showDestination && !form.destinationLocationId) return false;
+    if (showDestination && form.destinationLocationId === form.sourceLocationId) return false;
 
     if (
       form.type === StockIssueType.SALE_DISPATCH &&
@@ -217,84 +240,61 @@ export function StockIssueFormDrawer({
         ) : null}
 
         <div className="grid gap-4 md:grid-cols-2">
-          <label className="space-y-1 text-sm">
-            <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">Tipo</span>
-            <select
-              value={form.type}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  type: event.target.value as StockIssueType,
-                  destinationLocationId: '',
-                }))
-              }
-              className="portal-input-surface w-full px-3 py-2 text-sm text-gray-900 dark:text-white"
-            >
-              {Object.values(StockIssueType).map((type) => (
-                <option key={type} value={type}>
-                  {issueTypeLabel(type)}
-                </option>
-              ))}
-            </select>
-          </label>
+          <Select
+            id="issue-form-type"
+            label="Tipo"
+            value={form.type}
+            helperText={getStockIssueTypeHelperLabel(form.type)}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                type: event.target.value as StockIssueType,
+                destinationLocationId: '',
+              }))
+            }
+            options={TYPE_OPTIONS}
+          />
 
-          <label className="space-y-1 text-sm">
-            <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">Origen</span>
-            <select
-              value={form.sourceLocationId}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, sourceLocationId: event.target.value }))
-              }
-              className="portal-input-surface w-full px-3 py-2 text-sm text-gray-900 dark:text-white"
-            >
-              <option value="">Selecciona una bodega</option>
-              {sourceCandidates.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {location.code} · {location.name} ({getStockLocationTypeLabel(location.type)})
-                </option>
-              ))}
-            </select>
-          </label>
+          <Select
+            id="issue-form-source"
+            label="Origen"
+            value={form.sourceLocationId}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                sourceLocationId: event.target.value,
+                destinationLocationId:
+                  current.destinationLocationId === event.target.value
+                    ? ''
+                    : current.destinationLocationId,
+              }))
+            }
+            options={sourceOptions}
+          />
 
           {showDestination ? (
-            <label className="space-y-1 text-sm md:col-span-2">
-              <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                Destino
-              </span>
-              <select
-                value={form.destinationLocationId}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, destinationLocationId: event.target.value }))
-                }
-                className="portal-input-surface w-full px-3 py-2 text-sm text-gray-900 dark:text-white"
-              >
-                <option value="">Selecciona el destino</option>
-                {destinationCandidates.map((location) => (
-                  <option key={location.id} value={location.id}>
-                    {location.code} · {location.name} ({getStockLocationTypeLabel(location.type)})
-                  </option>
-                ))}
-              </select>
-            </label>
+            <Select
+              id="issue-form-destination"
+              label="Destino"
+              className="md:col-span-2"
+              value={form.destinationLocationId}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, destinationLocationId: event.target.value }))
+              }
+              options={destinationSelectOptions}
+            />
           ) : null}
 
-          <label className="space-y-1 text-sm md:col-span-2">
-            <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">Ítem</span>
-            <select
-              value={form.lineItemId}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, lineItemId: event.target.value }))
-              }
-              className="portal-input-surface w-full px-3 py-2 text-sm text-gray-900 dark:text-white"
-            >
-              <option value="">Selecciona un ítem</option>
-              {items.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.sku} · {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <Select
+            id="issue-form-item"
+            label="Ítem"
+            className="md:col-span-2"
+            value={form.lineItemId}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, lineItemId: event.target.value }))
+            }
+            options={itemOptions}
+          />
 
           <Input
             label="Cantidad"

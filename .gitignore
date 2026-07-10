@@ -62,3 +62,17 @@ out/
 
 # Worktrees
 .worktrees/
+
+# Artefactos de compilacion que no deben contaminar src/ (el build va a dist/)
+packages/database/src/**/*.js
+packages/database/src/**/*.js.map
+packages/database/src/**/*.d.ts
+packages/database/src/**/*.d.ts.map
+packages/shared/src/**/*.js
+packages/shared/src/**/*.js.map
+packages/shared/src/**/*.d.ts
+packages/shared/src/**/*.d.ts.map
+packages/storage/src/**/*.js
+packages/storage/src/**/*.js.map
+packages/storage/src/**/*.d.ts
+packages/storage/src/**/*.d.ts.map

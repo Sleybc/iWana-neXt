@@ -20,6 +20,7 @@ import { PurchasingQueryService } from '../services/purchasing-query.service';
 import { PurchasingService } from '../services/purchasing.service';
 import { SerializedAssetService } from '../services/serialized-asset.service';
 import { StockBalanceService } from '../services/stock-balance.service';
+import { StockIssueService } from '../services/stock-issue.service';
 import { StockLedgerService } from '../services/stock-ledger.service';
 import { StockLocationService } from '../services/stock-location.service';
 
@@ -40,6 +41,7 @@ describe('InventoryModule', () => {
         InventoryCategoryService,
         StockLocationService,
         StockLedgerService,
+        StockIssueService,
         StockBalanceService,
         SerializedAssetService,
         PurchasingPolicyService,

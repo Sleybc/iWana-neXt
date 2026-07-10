@@ -1,84 +1,50 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Button, Input } from '@iwana/ui';
-import { StockIssueStatus, StockIssueType, StockLocationType } from '@iwana/shared';
+import { Button } from '@iwana/ui';
+import { StockIssueStatus, StockLocationType } from '@iwana/shared';
 import type {
   CreateStockIssueDto,
   DispatchStockIssueDto,
   InventoryItemRecord,
+  SerializedAssetRecord,
+  StockBalanceRecord,
   StockIssueDetailRecord,
   StockIssueRecord,
   StockLocationRecord,
+  UpdateStockIssueDto,
 } from '@/lib/api-client';
-import { PortalAlert, PortalEmptyState, PortalPanel } from '@/components/shared/portal-ui';
 import {
-  formatInventoryDateTime,
-  formatInventoryQuantity,
-  getStockLocationTypeLabel,
-} from './inventory-labels';
-import { StockIssueFormDrawer } from './StockIssueFormDrawer';
+  PortalAlert,
+  PortalSectionHeader,
+  portalDataTableShellClassName,
+} from '@/components/shared/portal-ui';
+import { filterStockIssues, hasActiveIssueFilters, type StockIssueFilters } from './issue-filters';
+import { PurchaseCreateModeShell } from './PurchaseCreateModeShell';
+import { StockIssueComposer } from './StockIssueComposer';
+import { StockIssueCreateModeHeader } from './StockIssueCreateModeHeader';
 import { StockIssueDetailDrawer } from './StockIssueDetailDrawer';
+import { StockIssuesSummary } from './StockIssuesSummary';
+import { StockIssuesTable } from './StockIssuesTable';
+import { StockIssuesToolbar } from './StockIssuesToolbar';
 
-const DISPATCHABLE_STATUSES = new Set<StockIssueStatus>([
-  StockIssueStatus.REQUESTED,
-  StockIssueStatus.APPROVED,
-  StockIssueStatus.PICKING,
-  StockIssueStatus.READY_TO_DISPATCH,
-]);
+const EMPTY_FILTERS: StockIssueFilters = {};
 
-function resolveIssueTypeLabel(type: StockIssueType): string {
-  switch (type) {
-    case StockIssueType.TECHNICIAN_CUSTODY:
-      return 'Custodia técnico';
-    case StockIssueType.CREW_CUSTODY:
-      return 'Custodia cuadrilla';
-    case StockIssueType.OFFICE_REPLENISHMENT:
-      return 'Reposición oficina';
-    case StockIssueType.NODE_REPLENISHMENT:
-      return 'Reposición nodo';
-    case StockIssueType.SALE_DISPATCH:
-      return 'Salida por venta';
-    case StockIssueType.INTERNAL_CONSUMPTION:
-      return 'Consumo interno';
-    case StockIssueType.WAREHOUSE_TO_WAREHOUSE:
-      return 'Entre bodegas';
-    default:
-      return type;
-  }
-}
-
-function resolveIssueStatusLabel(status: StockIssueStatus): string {
-  switch (status) {
-    case StockIssueStatus.DRAFT:
-      return 'Borrador';
-    case StockIssueStatus.REQUESTED:
-      return 'Solicitada';
-    case StockIssueStatus.APPROVED:
-      return 'Aprobada';
-    case StockIssueStatus.PICKING:
-      return 'En picking';
-    case StockIssueStatus.READY_TO_DISPATCH:
-      return 'Lista para despacho';
-    case StockIssueStatus.DISPATCHED:
-      return 'Despachada';
-    case StockIssueStatus.RECEIVED:
-      return 'Recibida';
-    case StockIssueStatus.CANCELLED:
-      return 'Cancelada';
-    default:
-      return status;
-  }
-}
+type StockIssuesWorkspaceMode = 'inbox' | 'create' | 'edit';
 
 export interface StockIssuesWorkspaceProps {
   items: InventoryItemRecord[];
+  balances: StockBalanceRecord[];
+  assets: SerializedAssetRecord[];
   locations: StockLocationRecord[];
   issues: StockIssueRecord[];
+  issueItemFrequency?: Record<string, number>;
   isLoading: boolean;
   isSubmitting?: boolean;
   error?: string | null;
   onCreate: (dto: CreateStockIssueDto) => Promise<void>;
+  onUpdate: (id: string, dto: UpdateStockIssueDto) => Promise<void>;
+  onCancel: (id: string) => Promise<void>;
   onDispatch: (id: string, dto: DispatchStockIssueDto) => Promise<void>;
   onOpenDetail: (id: string) => Promise<StockIssueDetailRecord>;
   onRefresh: () => void;
@@ -86,52 +52,99 @@ export interface StockIssuesWorkspaceProps {
 
 export function StockIssuesWorkspace({
   items,
+  balances,
+  assets,
   locations,
   issues,
+  issueItemFrequency = {},
   isLoading,
   isSubmitting,
   error,
   onCreate,
+  onUpdate,
+  onCancel,
   onDispatch,
   onOpenDetail,
   onRefresh,
 }: StockIssuesWorkspaceProps) {
-  const [createOpen, setCreateOpen] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState<StockIssuesWorkspaceMode>('inbox');
+  const [editingIssue, setEditingIssue] = useState<StockIssueDetailRecord | null>(null);
+  const [composerDirty, setComposerDirty] = useState(false);
+  const [draftLineCount, setDraftLineCount] = useState(0);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detail, setDetail] = useState<StockIssueDetailRecord | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
+  const [filters, setFilters] = useState<StockIssueFilters>(EMPTY_FILTERS);
+
+  const issueLocations = useMemo(
+    () => locations.filter((loc) => loc.type !== StockLocationType.CUSTOMER_SITE),
+    [locations],
+  );
 
   const itemMap = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
+  const assetsById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
   const locationMap = useMemo(
     () => new Map(locations.map((location) => [location.id, location])),
     [locations],
   );
 
-  const filteredIssues = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    if (!needle) {
-      return issues;
+  const filteredIssues = useMemo(
+    () => filterStockIssues(issues, filters, locationMap),
+    [issues, filters, locationMap],
+  );
+
+  const destinationOptions = useMemo(() => {
+    const byType = new Map<StockLocationType, StockLocationRecord[]>();
+    issueLocations.forEach((loc) => {
+      const next = byType.get(loc.type) ?? [];
+      next.push(loc);
+      byType.set(loc.type, next);
+    });
+    return byType;
+  }, [issueLocations]);
+
+  function openCreateMode() {
+    setDetailOpen(false);
+    setDetail(null);
+    setEditingIssue(null);
+    setWorkspaceMode('create');
+  }
+
+  function openEditMode(issue: StockIssueDetailRecord) {
+    setDetailOpen(false);
+    setDetail(null);
+    setEditingIssue(issue);
+    setWorkspaceMode('edit');
+  }
+
+  function closeComposerMode(force = false) {
+    if (!force && composerDirty) {
+      const confirmed = window.confirm(
+        workspaceMode === 'edit'
+          ? 'Hay cambios sin guardar en la edición. ¿Quieres volver a la bandeja y descartarlos?'
+          : 'Hay cambios sin guardar en la salida. ¿Quieres volver a la bandeja y descartar este borrador?',
+      );
+      if (!confirmed) {
+        return;
+      }
     }
 
-    return issues.filter((issue) => {
-      const source = issue.sourceLocationId
-        ? (locationMap.get(issue.sourceLocationId)?.name ?? issue.sourceLocationId)
-        : '';
-      const destination = issue.destinationLocationId
-        ? (locationMap.get(issue.destinationLocationId)?.name ?? issue.destinationLocationId)
-        : (issue.destinationRefId ?? '');
-      const ref = issue.commercialRefId ?? issue.originRefId ?? issue.costCenter ?? '';
+    setWorkspaceMode('inbox');
+    setEditingIssue(null);
+    setComposerDirty(false);
+    setDraftLineCount(0);
+  }
 
-      return (
-        issue.id.toLowerCase().includes(needle) ||
-        source.toLowerCase().includes(needle) ||
-        destination.toLowerCase().includes(needle) ||
-        ref.toLowerCase().includes(needle)
-      );
-    });
-  }, [issues, locationMap, search]);
+  const createAction = (
+    <Button type="button" onClick={openCreateMode} disabled={isLoading}>
+      Crear salida
+    </Button>
+  );
+
+  function handleStatusKpiChange(status: StockIssueStatus) {
+    setFilters((current) => ({ ...current, status }));
+  }
 
   async function openDetail(issueId: string) {
     setDetailError(null);
@@ -147,33 +160,49 @@ export function StockIssuesWorkspace({
     }
   }
 
-  const destinationOptions = useMemo(() => {
-    const byType = new Map<StockLocationType, StockLocationRecord[]>();
-    locations.forEach((loc) => {
-      const next = byType.get(loc.type) ?? [];
-      next.push(loc);
-      byType.set(loc.type, next);
-    });
-    return byType;
-  }, [locations]);
+  async function handleCreate(dto: CreateStockIssueDto) {
+    setActionError(null);
+    try {
+      await onCreate(dto);
+      closeComposerMode(true);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'No fue posible crear la salida.');
+      throw err instanceof Error ? err : new Error('No fue posible crear la salida.');
+    }
+  }
+
+  async function handleUpdate(issueId: string, dto: UpdateStockIssueDto) {
+    setActionError(null);
+    try {
+      await onUpdate(issueId, dto);
+      closeComposerMode(true);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'No fue posible guardar la salida.');
+      throw err instanceof Error ? err : new Error('No fue posible guardar la salida.');
+    }
+  }
+
+  const composer = (
+    <StockIssueComposer
+      mode={workspaceMode === 'edit' ? 'edit' : 'create'}
+      editIssue={workspaceMode === 'edit' ? editingIssue : null}
+      items={items}
+      balances={balances}
+      assets={assets}
+      locations={issueLocations}
+      destinationOptions={destinationOptions}
+      issueItemFrequency={issueItemFrequency}
+      isSubmitting={Boolean(isSubmitting)}
+      error={actionError}
+      onDirtyChange={setComposerDirty}
+      onDraftLineCountChange={setDraftLineCount}
+      onSubmit={handleCreate}
+      onUpdate={handleUpdate}
+    />
+  );
 
   return (
-    <PortalPanel
-      eyebrow="Despachos"
-      title="Salidas"
-      description="Registra salidas operativas desde bodega principal hacia custodias, oficinas, nodos, venta o consumo interno."
-      actions={
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="secondary" onClick={onRefresh} loading={isLoading}>
-            Actualizar
-          </Button>
-          <Button type="button" onClick={() => setCreateOpen(true)} disabled={isLoading}>
-            Crear salida
-          </Button>
-        </div>
-      }
-      contentClassName="space-y-4"
-    >
+    <div className="space-y-4">
       {error ? (
         <PortalAlert variant="error" title="No fue posible cargar salidas" description={error} />
       ) : null}
@@ -184,7 +213,7 @@ export function StockIssuesWorkspace({
           description={detailError}
         />
       ) : null}
-      {actionError ? (
+      {workspaceMode === 'inbox' && actionError ? (
         <PortalAlert
           variant="error"
           title="No fue posible completar la acción"
@@ -192,152 +221,111 @@ export function StockIssuesWorkspace({
         />
       ) : null}
 
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <Input
-          label="Buscar"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Busca por ubicación o referencia…"
-        />
-      </div>
+      {workspaceMode === 'inbox' ? (
+        <div className={portalDataTableShellClassName}>
+          <div className="border-b border-gray-100/80 px-5 py-5 dark:border-dark-border">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <PortalSectionHeader
+                className="w-full gap-3"
+                eyebrow="Despachos"
+                title="Salidas"
+                description="Registra salidas operativas desde bodega principal hacia custodias, oficinas, nodos, venta o consumo interno."
+                actions={<div className="flex flex-wrap items-center gap-2">{createAction}</div>}
+              />
+            </div>
 
-      {isLoading ? (
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-400">
-          Cargando salidas…
+            <div className="mb-5">
+              <StockIssuesSummary
+                issues={issues}
+                activeStatus={filters.status}
+                isLoading={isLoading}
+                onStatusFilterChange={handleStatusKpiChange}
+              />
+            </div>
+
+            <StockIssuesToolbar
+              filters={filters}
+              resultCount={filteredIssues.length}
+              totalCount={issues.length}
+              isRefreshing={isLoading}
+              onFiltersChange={setFilters}
+              onRefresh={onRefresh}
+              onClearFilters={() => setFilters(EMPTY_FILTERS)}
+            />
+          </div>
+
+          <StockIssuesTable
+            issues={filteredIssues}
+            locationMap={locationMap}
+            isLoading={isLoading}
+            isRefreshing={isLoading}
+            hasActiveFilters={hasActiveIssueFilters(filters)}
+            issuesIsEmpty={issues.length === 0}
+            onOpenDetail={(issueId) => void openDetail(issueId)}
+            emptyAction={createAction}
+            onClearFilters={() => setFilters(EMPTY_FILTERS)}
+          />
+
+          {filteredIssues.length > 0 || hasActiveIssueFilters(filters) ? (
+            <div className="flex items-center justify-between border-t border-gray-100 px-5 py-4 dark:border-dark-border">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {filteredIssues.length === issues.length
+                  ? `${filteredIssues.length} salida${filteredIssues.length === 1 ? '' : 's'}`
+                  : `${filteredIssues.length} de ${issues.length} salidas`}
+              </p>
+            </div>
+          ) : null}
         </div>
-      ) : filteredIssues.length === 0 ? (
-        <PortalEmptyState
-          title="Sin salidas registradas"
-          description="Crea una salida para empezar a despachar material desde bodega principal."
-        />
+      ) : workspaceMode === 'create' ? (
+        <PurchaseCreateModeShell
+          header={
+            <StockIssueCreateModeHeader
+              draftLineCount={draftLineCount}
+              onBack={() => closeComposerMode()}
+            />
+          }
+        >
+          {composer}
+        </PurchaseCreateModeShell>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-3">
-          <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-border">
-            <thead className="bg-gray-50 dark:bg-dark-surface-2">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Número
-                </th>
-                <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Tipo
-                </th>
-                <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Estado
-                </th>
-                <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Origen
-                </th>
-                <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Destino
-                </th>
-                <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Líneas
-                </th>
-                <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Referencia
-                </th>
-                <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Fecha
-                </th>
-                <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Acción
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
-              {filteredIssues.map((issue) => {
-                const source = locationMap.get(issue.sourceLocationId);
-                const destination = issue.destinationLocationId
-                  ? locationMap.get(issue.destinationLocationId)
-                  : null;
-                const destinationLabel = destination
-                  ? `${destination.code} · ${destination.name}`
-                  : (issue.destinationRefId ?? '—');
-                const ref = issue.commercialRefId ?? issue.originRefId ?? issue.costCenter ?? '—';
-
-                return (
-                  <tr key={issue.id}>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-300">
-                      {issue.id.slice(0, 8).toUpperCase()}
-                    </td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                      {resolveIssueTypeLabel(issue.type)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                      {resolveIssueStatusLabel(issue.status)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                      {source ? `${source.code} · ${source.name}` : issue.sourceLocationId}
-                    </td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                      {destinationLabel}
-                      {destination ? (
-                        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                          {getStockLocationTypeLabel(destination.type)}
-                        </div>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                      {typeof (issue as unknown as { linesCount?: number }).linesCount === 'number'
-                        ? (issue as unknown as { linesCount?: number }).linesCount
-                        : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{ref}</td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                      {formatInventoryDateTime(issue.createdAt)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => void openDetail(issue.id)}
-                        >
-                          Ver
-                        </Button>
-                        {DISPATCHABLE_STATUSES.has(issue.status) ? (
-                          <Button type="button" size="sm" onClick={() => void openDetail(issue.id)}>
-                            Despachar
-                          </Button>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <PurchaseCreateModeShell
+          header={
+            <StockIssueCreateModeHeader
+              draftLineCount={draftLineCount}
+              eyebrow="Edición"
+              title="Editar salida"
+              description="Ajusta líneas y contexto mientras la salida siga en estado solicitada."
+              onBack={() => closeComposerMode()}
+            />
+          }
+        >
+          {composer}
+        </PurchaseCreateModeShell>
       )}
 
-      <StockIssueFormDrawer
-        open={createOpen}
-        items={items}
-        locations={locations.filter((loc) => loc.type !== StockLocationType.CUSTOMER_SITE)}
-        destinationOptions={destinationOptions}
-        isSubmitting={Boolean(isSubmitting)}
-        onClose={() => setCreateOpen(false)}
-        onSubmit={async (dto) => {
-          setActionError(null);
-          try {
-            await onCreate(dto);
-            setCreateOpen(false);
-          } catch (err) {
-            setActionError(err instanceof Error ? err.message : 'No fue posible crear la salida.');
-            throw err instanceof Error ? err : new Error('No fue posible crear la salida.');
-          }
-        }}
-      />
-
       <StockIssueDetailDrawer
-        open={detailOpen}
+        open={workspaceMode === 'inbox' && detailOpen}
         issue={detail}
         itemsById={itemMap}
+        assetsById={assetsById}
         locationsById={locationMap}
         onClose={() => {
           setDetailOpen(false);
           setDetail(null);
+        }}
+        onEdit={(issue) => openEditMode(issue)}
+        onCancel={async (issueId) => {
+          setActionError(null);
+          try {
+            await onCancel(issueId);
+            setDetailOpen(false);
+            setDetail(null);
+          } catch (err) {
+            setActionError(
+              err instanceof Error ? err.message : 'No fue posible cancelar la salida.',
+            );
+            throw err instanceof Error ? err : new Error('No fue posible cancelar la salida.');
+          }
         }}
         onDispatch={async (issueId, dto) => {
           setActionError(null);
@@ -353,6 +341,6 @@ export function StockIssuesWorkspace({
           }
         }}
       />
-    </PortalPanel>
+    </div>
   );
 }

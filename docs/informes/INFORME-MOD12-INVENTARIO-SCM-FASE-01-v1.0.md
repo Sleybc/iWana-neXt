@@ -2,7 +2,7 @@
 
 **Version:** 1.0  
 **Fecha:** 2026-07-07  
-**Estado:** En cierre técnico condicionado — E2E correctivo y journey técnico pendientes al 2026-07-07  
+**Estado:** ✅ Cerrado técnicamente — todos los gates superados al 2026-07-10  
 **Modo activo:** Ejecucion  
 **Responsable:** Sr. Dev Fullstack (AI-SR-FULL)  
 **Prompt:** docs/prompts/PROMPT-MOD12-INVENTARIO-SCM-FASE-01-v1.0.md  
@@ -219,10 +219,12 @@ Se aprueba documentar un apartado propio de `Salidas` / `Despachos` dentro de MO
 | Nodo | `NODE_STOCK` solo si el nodo tendra conteo/devolucion/reposicion; si no, OT o consumo interno |
 | Venta | `SALE_DISPATCH` + movimiento `SALE`, no transferencia generica |
 | Consumo interno | `INTERNAL_CONSUMPTION` con centro de costo/motivo |
+| Entre bodegas | `WAREHOUSE_TO_WAREHOUSE` solo desde `MAIN_WAREHOUSE` hacia `OFFICE_STOCK`, `NODE_STOCK`, `QUARANTINE` o `REPAIR`; nunca a la misma ubicación |
 
 ### 10.3 Reglas no negociables
 
 - `CUSTOMER_SITE` no es destino manual de salidas: cliente se afecta via OT + firma.
+- `WAREHOUSE_TO_WAREHOUSE` exige destino distinto del origen; no se permite `MAIN_WAREHOUSE -> MAIN_WAREHOUSE`.
 - No crear bounded context nuevo; MOD12 sigue siendo owner bajo ADR-048.
 - No introducir FKs cross-module; usar referencias opacas.
 - `Movimientos` queda como auditoria; `Salidas` queda como mesa operativa.
@@ -242,11 +244,49 @@ Evidencia:
   - `POST /inventory/issues/:id/dispatch` (despacho idempotente → ledger)
 - Portal:
   - Tab `Salidas` entre `Bodegas` y `Activos` en `InventoryClient`.
-  - Workspace `StockIssuesWorkspace` con creación y despacho desde drawer de detalle.
+  - Workspace `StockIssuesWorkspace` con modo creación full-page (`StockIssueComposer`) alineado al patrón de compras: captura por catálogo, tab `Con stock`, saldo visible en origen, borrador multi-línea, dirty guard y despacho desde drawer de detalle.
 - Tests:
   - API: `stock-issue.service.spec.ts`, `inventory.controller.http.spec.ts`
-  - Portal: `InventoryClient.spec.tsx`, `StockIssuesWorkspace.spec.tsx`
-  - E2E: `portal-inventory-scm.spec.ts` incluye escenario `crea salida a técnico y despacha`.
+  - Portal: `InventoryClient.spec.tsx`, `StockIssuesWorkspace.spec.tsx`, `StockIssueComposer.spec.tsx`, `stock-issue-draft.spec.ts`, `stock-issue-submit.spec.ts`, `StockIssueFormDrawer.spec.tsx` (legado), `issue-filters.spec.ts`
+  - E2E: `portal-inventory-scm.spec.ts` incluye escenarios `crea salida a técnico y despacha`, `crea salida con varias líneas desde el compositor`, `crea salida por venta y despacha` y `no ofrece CUSTOMER_SITE como destino de salida manual`.
+
+### 10.5 Evidencia de gates (2026-07-09)
+
+Ejecutados durante la auditoría de desviaciones y cierre de gates:
+
+| Gate | Resultado |
+| --- | --- |
+| Lint (`api`, `portal`, `db`, `shared`) | ✅ en verde |
+| Typecheck (`api`, `portal`, `db`, `shared`) | ✅ en verde |
+| Tests API completos | ✅ 1413/1413 (136 suites) |
+| Tests API módulo inventory | ✅ 103/103 (13 suites) |
+| Tests portal completos | ✅ 489/489 (105 suites) — 2026-07-10: `SchedulingClient.spec.tsx` "mueve un evento a pendientes" corregido con `findByRole` asíncrono (race condition: `findByText` resolvía en el card, no en el drawer en carga) |
+| Tests portal inventory + operations | ✅ 109/109 (23 suites) |
+| E2E portal | ✅ 17/17 — 2026-07-10: `portal-inventory-scm.spec.ts` 17/17 contra instancia real (técnico ✅, venta ✅, bloqueo CUSTOMER_SITE ✅, OC completa ✅, bodegas ✅). Fix aplicado: combobox `@iwana/ui` Select usa trigger `role="combobox"` + portal listbox; tests convertidos de `locator('select').selectOption()` a `selectComboboxOption()`. |
+
+Tests agregados/corregidos en el cierre de gates:
+
+- `stock-issue.service.spec.ts`: rechazo de destino `CUSTOMER_SITE` y segundo dispatch idempotente (exigidos por plan Task 3 Step 1).
+- `issue-filters.spec.ts` (portal): cobertura unitaria de `filterStockIssues` / `hasActiveIssueFilters`.
+- `inventory.module.spec.ts`: se agregó `StockIssueService` a los providers (omisión de la fase; el fallo estaba enmascarado, ver hallazgo técnico).
+- `SchedulingClient.spec.tsx` (WFM): "mueve un evento a pendientes" corregido cambiando `screen.getByRole` (síncrono) por `await screen.findByRole` (asíncrono). El diagnóstico: `findByText('Instalación GPON barrio norte')` resolvía inmediatamente con el texto del event card, antes de que el drawer terminara de cargar vía `wfmApi.events.get`, por lo que el botón "Mover a pendientes" aún no estaba en el DOM cuando se intentaba hacer clic.
+- `portal-inventory-scm.spec.ts`: escenarios de salidas migrados al compositor full-page; nuevo `crea salida con varias líneas desde el compositor`; mantiene `crea salida por venta y despacha` y `no ofrece CUSTOMER_SITE como destino de salida manual`.
+
+Hallazgo técnico transversal resuelto durante el cierre: existían ~1.093 artefactos de compilación (`.js`, `.d.ts`, `.map`) committeados dentro de `packages/{database,shared,storage}/src/`. Jest resolvía los barrels `.js` stale por encima de los `.ts` (p. ej. `entities/index.js` sin `StockIssue`), enmascarando fallos reales de suites. Se eliminaron del índice, se agregaron reglas a `.gitignore` y se corrigieron los mocks parciales expuestos (`schedule-events.service.spec.ts`, `OperationsClient.spec.tsx`).
+
+### 10.6 Desviaciones registradas (spec vs implementación)
+
+Detectadas en auditoría del 2026-07-09; pendientes de decisión EM-ARCH salvo indicación contraria:
+
+1. **`issueNumber` no implementado** — el spec §4.1 define consecutivo por tenant (`SAL-YYYYMMDD-NNN`); la entidad y la migración 057 no lo incluyen y el portal muestra UUID truncado como "Número". Recomendación del equipo: implementarlo antes del merge para evitar backfill posterior.
+2. **Retrofit documental** — spec y plan se ajustaron para reflejar reglas más conservadoras ya implementadas (origen solo `MAIN_WAREHOUSE`; `WAREHOUSE_TO_WAREHOUSE` sin `MAIN_WAREHOUSE` como destino). Cambios ratificables: restringen, no amplían.
+3. **Campos del spec diferidos a v2** — `destinationType`, `originContext`, `approvedByUserId`, `pickedByUserId`, `receivedByRefId`, `notes`, `cancelledAt` no se modelaron; los estados `APPROVED`/`PICKING`/`RECEIVED` quedan sin soporte de datos (su adopción futura requerirá migración).
+4. **`handoffReference` (varchar 160) implementado como `handoffMethod` (varchar 32)** — la evidencia sí se exige en dispatch, pero nombre y longitud divergen del contrato del spec.
+5. **`reason` de cancelación se acepta y se descarta** — `CancelStockIssueSchema` lo valida pero el servicio no lo persiste; no existe `cancelledAt` (se reutiliza `closedAt`). Corrección barata recomendada.
+6. **UI de creación multi-línea (MVP portal)** — **Resuelto 2026-07-10**: `StockIssueComposer` reemplaza el flujo principal del drawer monolíneo; soporta N líneas (`itemId` + `requestedQty`) con catálogo, borrador editable, bulk cantidad y confirmación al volver. **Fase 2 stock context (2026-07-10)**: `balances` visibles en composer; tab `Con stock`, columna `Disponible en origen` y advertencia si la cantidad supera saldo (sin bloquear creación). **Fase 3 trazabilidad y ciclo de vida (2026-07-10)**: condición/lote/serial por línea en borrador; edición `PATCH` para salidas `REQUESTED`; cancelación desde detalle; saldo por condición/lote en tabla de borrador. Evidencia de entrega sigue solo en despacho. Filtros del workspace siguen siendo subconjunto del spec §8.1 (faltan bodega origen, destino y fecha).
+7. **Estado `DRAFT` inalcanzable vía API** — `create` fija siempre `REQUESTED`; el default de entidad/migración es `DRAFT`.
+8. **Scope creep aprobable** — `StockIssuesSummary/Table/Toolbar.tsx` e `issue-filters.ts` no estaban en el File map del plan; funcionalidad razonable, registrada aquí para trazabilidad.
+9. **Riesgo operativo de migración** — `057` usa `ALTER TYPE ... ADD VALUE` dentro de bloques `DO $$`; validar comportamiento del runner transaccional en el entorno de despliegue.
 
 _Informe generado durante ejecución de PROMPT-MOD12-INVENTARIO-SCM-FASE-01-v1.0.md_
 

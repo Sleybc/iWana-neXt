@@ -98,34 +98,22 @@ async function addCatalogProductToDraft(
   await main.getByRole('button', { name: /Agregar 1 producto/i }).click();
 }
 
-async function fillStockTransferDialog(
-  page: import('@playwright/test').Page,
-  dialog: import('@playwright/test').Locator,
-  options: {
-    itemLabel: string;
-    originLabel: string;
-    destinationLabel: string;
-    serialNumber?: string;
-  },
+async function openStockIssueComposer(main: import('@playwright/test').Locator) {
+  await main.getByRole('tab', { name: 'Salidas' }).click();
+  await expect(main.getByRole('heading', { name: 'Salidas' })).toBeVisible();
+  await main.getByRole('button', { name: 'Crear salida' }).first().click();
+  await expect(main.getByRole('heading', { name: 'Nueva salida' })).toBeVisible();
+}
+
+async function addIssueCatalogItemsToDraft(
+  main: import('@playwright/test').Locator,
+  productPatterns: RegExp[],
 ) {
-  await selectComboboxOption(
-    page,
-    dialog.getByRole('combobox', { name: 'Ítem' }),
-    options.itemLabel,
-  );
-  await selectComboboxOption(
-    page,
-    dialog.getByRole('combobox', { name: 'Bodega origen' }),
-    options.originLabel,
-  );
-  await selectComboboxOption(
-    page,
-    dialog.getByRole('combobox', { name: 'Custodia del técnico' }),
-    options.destinationLabel,
-  );
-  if (options.serialNumber) {
-    await dialog.getByLabel('Serial').fill(options.serialNumber);
+  for (const pattern of productPatterns) {
+    await main.getByRole('checkbox', { name: pattern }).check();
   }
+  const count = productPatterns.length;
+  await main.getByRole('button', { name: new RegExp(`Agregar ${count} producto`) }).click();
 }
 
 async function selectComboboxOption(
@@ -716,12 +704,27 @@ async function setupInventoryMocks(
 
     if (pathname.endsWith('/inventory/issues') && method === 'POST') {
       const body = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
+      if (
+        body.type === 'WAREHOUSE_TO_WAREHOUSE' &&
+        body.sourceLocationId &&
+        body.sourceLocationId === body.destinationLocationId
+      ) {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            message: 'La ubicación destino debe ser distinta del origen.',
+          }),
+        });
+        return;
+      }
+
       const id = `issue-${String(state.stockIssues.length + 1).padStart(3, '0')}`;
       const created = {
         id,
         tenantId: 'tenant-inventory-001',
         type: body.type ?? 'TECHNICIAN_CUSTODY',
-        status: 'APPROVED',
+        status: 'REQUESTED',
         sourceLocationId: body.sourceLocationId ?? LOC_MAIN,
         destinationLocationId: body.destinationLocationId ?? LOC_TECH,
         destinationRefId: body.destinationRefId ?? null,
@@ -778,6 +781,69 @@ async function setupInventoryMocks(
         status: issue ? 200 : 404,
         contentType: 'application/json',
         body: JSON.stringify(issue ? { ...issue, lines } : {}),
+      });
+      return;
+    }
+
+    if (issueDetailMatch && method === 'PATCH') {
+      const issueId = issueDetailMatch[1];
+      const issue = state.stockIssues.find((entry) => entry.id === issueId);
+      if (!issue) {
+        await route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+        return;
+      }
+
+      const body = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
+      if (body.sourceLocationId) issue.sourceLocationId = String(body.sourceLocationId);
+      if (body.destinationLocationId !== undefined) {
+        issue.destinationLocationId = (body.destinationLocationId as string | null) ?? null;
+      }
+      if (body.type) issue.type = body.type as typeof issue.type;
+      issue.updatedAt = nowIso();
+
+      if (Array.isArray(body.lines)) {
+        state.stockIssueLines = state.stockIssueLines.filter((line) => line.issueId !== issueId);
+        (body.lines as Array<Record<string, unknown>>).forEach((line, index) => {
+          state.stockIssueLines.push({
+            id: `${issueId}-line-${index + 1}`,
+            tenantId: 'tenant-inventory-001',
+            issueId,
+            itemId: line.itemId ?? ITEM_ID,
+            requestedQty: String(line.requestedQty ?? '1.00'),
+            dispatchedQty: null,
+            lotId: line.lotId ?? null,
+            serializedAssetId: line.serializedAssetId ?? null,
+            condition: line.condition ?? 'NEW',
+            createdAt: nowIso(),
+            updatedAt: nowIso(),
+          });
+        });
+      }
+
+      const lines = state.stockIssueLines.filter((line) => line.issueId === issueId);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...issue, lines }),
+      });
+      return;
+    }
+
+    const issueCancelMatch = pathname.match(/\/inventory\/issues\/([^/]+)\/cancel$/);
+    if (issueCancelMatch && method === 'POST') {
+      const issueId = issueCancelMatch[1];
+      const issue = state.stockIssues.find((entry) => entry.id === issueId);
+      if (!issue) {
+        await route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+        return;
+      }
+      issue.status = 'CANCELLED';
+      issue.updatedAt = nowIso();
+      const lines = state.stockIssueLines.filter((line) => line.issueId === issueId);
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...issue, lines }),
       });
       return;
     }
@@ -1282,25 +1348,30 @@ test.describe('Portal Inventario / SCM', () => {
     await page.goto('/dashboard/inventory');
     const main = page.locator('main');
 
-    await main.getByRole('tab', { name: 'Salidas' }).click();
-    await expect(main.getByRole('heading', { name: 'Salidas' })).toBeVisible();
-
+    await openStockIssueComposer(main);
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Tipo' }),
+      'Custodia técnico',
+    );
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Origen' }),
+      'BOD-01 · Bodega principal (Bodega principal)',
+    );
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Destino' }),
+      'TEC-01 · Custodia técnico (Móvil técnico)',
+    );
+    await addIssueCatalogItemsToDraft(main, [/Seleccionar ONT-HG8245 · ONT Huawei HG8245/i]);
     await main.getByRole('button', { name: 'Crear salida' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Crear salida' });
-    await expect(dialog).toBeVisible();
-
-    await dialog.locator('select').first().selectOption('TECHNICIAN_CUSTODY');
-    await dialog.locator('select').nth(1).selectOption(LOC_MAIN);
-    await dialog.locator('select').nth(2).selectOption(LOC_TECH);
-    await dialog.locator('select').nth(3).selectOption(ITEM_ID);
-    await dialog.getByLabel('Cantidad').fill('1');
-    await dialog.getByRole('button', { name: 'Crear salida' }).click();
 
     await expect(
       main.getByText('Salida creada. Puedes despacharla cuando esté lista.'),
     ).toBeVisible();
 
-    await main.getByRole('button', { name: 'Ver' }).first().click();
+    await main.getByRole('button', { name: 'Despachar' }).first().click();
     const detail = page.getByRole('dialog', { name: 'Detalle de salida' });
     await expect(detail).toBeVisible();
     await detail.getByLabel('Método de entrega').fill('ACTA');
@@ -1353,18 +1424,24 @@ test.describe('Portal Inventario / SCM', () => {
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog')).toHaveCount(0);
 
-    await main.getByRole('tab', { name: 'Salidas' }).click();
-    await expect(main.getByRole('heading', { name: 'Salidas' })).toBeVisible();
-
+    await openStockIssueComposer(main);
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Tipo' }),
+      'Custodia técnico',
+    );
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Origen' }),
+      'BOD-01 · Bodega principal (Bodega principal)',
+    );
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Destino' }),
+      'TEC-01 · Custodia técnico (Móvil técnico)',
+    );
+    await addIssueCatalogItemsToDraft(main, [/Seleccionar ONT-HG8245 · ONT Huawei HG8245/i]);
     await main.getByRole('button', { name: 'Crear salida' }).click();
-    const createDialog = page.getByRole('dialog', { name: 'Crear salida' });
-    await expect(createDialog).toBeVisible();
-    await createDialog.locator('select').first().selectOption('TECHNICIAN_CUSTODY');
-    await createDialog.locator('select').nth(1).selectOption(LOC_MAIN);
-    await createDialog.locator('select').nth(2).selectOption(LOC_TECH);
-    await createDialog.locator('select').nth(3).selectOption(ITEM_ID);
-    await createDialog.getByLabel('Cantidad').fill('1');
-    await createDialog.getByRole('button', { name: 'Crear salida' }).click();
 
     await expect(main.getByText(/Salida creada/i)).toBeVisible();
     await main.getByRole('button', { name: 'Despachar' }).first().click();
@@ -1409,6 +1486,115 @@ test.describe('Portal Inventario / SCM', () => {
     await main.getByRole('button', { name: 'Crear solicitud' }).click();
 
     await expect(main.getByText('PR-0002')).toBeVisible();
+  });
+
+  test('crea salida por venta y despacha', async ({ page }) => {
+    await page.goto('/dashboard/inventory');
+    const main = page.locator('main');
+
+    await openStockIssueComposer(main);
+
+    // SALE_DISPATCH — no hay selector de destino de inventario
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Tipo' }),
+      'Salida por venta',
+    );
+    // Esperar a que el campo de referencia comercial aparezca (confirma que el tipo cambió)
+    await expect(main.getByLabel(/Referencia comercial/i)).toBeVisible();
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Origen' }),
+      'BOD-01 · Bodega principal (Bodega principal)',
+    );
+    await addIssueCatalogItemsToDraft(main, [/Seleccionar ONT-HG8245 · ONT Huawei HG8245/i]);
+    await main.getByLabel('Referencia comercial (opcional)').fill('OC-VENTA-001');
+    await main.getByRole('button', { name: 'Crear salida' }).click();
+
+    await expect(
+      main.getByText('Salida creada. Puedes despacharla cuando esté lista.'),
+    ).toBeVisible();
+
+    await main.getByRole('button', { name: 'Despachar' }).first().click();
+    const detail = page.getByRole('dialog', { name: 'Detalle de salida' });
+    await expect(detail).toBeVisible();
+    await detail.getByLabel('Método de entrega').fill('ACTA');
+    await detail.getByRole('button', { name: 'Confirmar despacho' }).click();
+
+    await expect(main.getByText(/Salida despachada\./i)).toBeVisible();
+  });
+
+  test('crea salida con varias líneas desde el compositor', async ({ page }) => {
+    await page.goto('/dashboard/inventory');
+    const main = page.locator('main');
+
+    await openStockIssueComposer(main);
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Tipo' }),
+      'Custodia técnico',
+    );
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Origen' }),
+      'BOD-01 · Bodega principal (Bodega principal)',
+    );
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Destino' }),
+      'TEC-01 · Custodia técnico (Móvil técnico)',
+    );
+    await expect(main.getByRole('tab', { name: /Con stock/i })).toBeVisible();
+    await expect(main.getByText(/Disponible en origen/i).first()).toBeVisible();
+    await main.getByRole('tab', { name: /Catálogo/i }).click();
+    await addIssueCatalogItemsToDraft(main, [
+      /Seleccionar ONT-HG8245 · ONT Huawei HG8245/i,
+      /Seleccionar CAB-DROP · Cable drop/i,
+    ]);
+    await expect(main.getByText('ONT-HG8245 · ONT Huawei HG8245')).toBeVisible();
+    await expect(main.getByText('CAB-DROP · Cable drop')).toBeVisible();
+    await main.getByRole('button', { name: 'Crear salida' }).click();
+
+    await expect(
+      main.getByText('Salida creada. Puedes despacharla cuando esté lista.'),
+    ).toBeVisible();
+    await expect(main.getByRole('heading', { name: 'Salidas' })).toBeVisible();
+  });
+
+  test('no ofrece CUSTOMER_SITE como destino de salida manual', async ({ page }) => {
+    const state = (page as unknown as { inventoryMockState: InventoryMockState })
+      .inventoryMockState;
+
+    // Agregar una ubicación tipo CUSTOMER_SITE al pool de mocks
+    state.locations.push(
+      buildLocation({
+        id: 'loc-customer-01',
+        code: 'CLI-001',
+        name: 'Sitio cliente demo',
+        type: 'CUSTOMER_SITE',
+      }),
+    );
+
+    await page.goto('/dashboard/inventory');
+    const main = page.locator('main');
+
+    await openStockIssueComposer(main);
+
+    // TECHNICIAN_CUSTODY (por defecto) — verificar que Destino no ofrece CUSTOMER_SITE
+    await main.getByRole('combobox', { name: 'Destino' }).click();
+    await expect(page.getByRole('listbox')).toBeVisible();
+    const destOptionTexts = await page.getByRole('listbox').getByRole('option').allTextContents();
+    expect(destOptionTexts.every((opt) => !opt.includes('CLI-001'))).toBe(true);
+    expect(destOptionTexts.every((opt) => !opt.includes('Sitio cliente demo'))).toBe(true);
+
+    // WAREHOUSE_TO_WAREHOUSE también debe excluir CUSTOMER_SITE
+    // (el mousedown al clickear el trigger de Tipo cierra el listbox de Destino)
+    await selectComboboxOption(page, main.getByRole('combobox', { name: 'Tipo' }), 'Entre bodegas');
+    await main.getByRole('combobox', { name: 'Destino' }).click();
+    await expect(page.getByRole('listbox')).toBeVisible();
+    const wtwOptionTexts = await page.getByRole('listbox').getByRole('option').allTextContents();
+    expect(wtwOptionTexts.every((opt) => !opt.includes('CLI-001'))).toBe(true);
+    expect(wtwOptionTexts.every((opt) => !opt.includes('Sitio cliente demo'))).toBe(true);
   });
 
   test('aprueba urgencia operativa con excepción justificada', async ({ page }) => {
@@ -1517,17 +1703,25 @@ test.describe('Portal Inventario / Bodegas', () => {
     await page.goto('/dashboard/inventory?tab=locations');
     const main = page.locator('main');
 
-    await main.getByRole('tab', { name: 'Salidas' }).click();
-    await expect(main.getByRole('heading', { name: 'Salidas' })).toBeVisible();
-
+    await openStockIssueComposer(main);
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Tipo' }),
+      'Custodia técnico',
+    );
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Origen' }),
+      'BOD-01 · Bodega principal (Bodega principal)',
+    );
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Destino' }),
+      'TEC-01 · Custodia técnico (Móvil técnico)',
+    );
+    await addIssueCatalogItemsToDraft(main, [/Seleccionar CAB-DROP · Cable drop/i]);
+    await main.getByLabel('Cantidad CAB-DROP · Cable drop').fill('99');
     await main.getByRole('button', { name: 'Crear salida' }).click();
-    const createDialog = page.getByRole('dialog', { name: 'Crear salida' });
-    await createDialog.locator('select').first().selectOption('TECHNICIAN_CUSTODY');
-    await createDialog.locator('select').nth(1).selectOption(LOC_MAIN);
-    await createDialog.locator('select').nth(2).selectOption(LOC_TECH);
-    await createDialog.locator('select').nth(3).selectOption(ITEM_CONSUMABLE_ID);
-    await createDialog.getByLabel('Cantidad').fill('99');
-    await createDialog.getByRole('button', { name: 'Crear salida' }).click();
 
     await main.getByRole('button', { name: 'Despachar' }).first().click();
     const detail = page.getByRole('dialog', { name: 'Detalle de salida' });
@@ -1543,17 +1737,24 @@ test.describe('Portal Inventario / Bodegas', () => {
     await page.goto('/dashboard/inventory?tab=locations');
     const main = page.locator('main');
 
-    await main.getByRole('tab', { name: 'Salidas' }).click();
-    await expect(main.getByRole('heading', { name: 'Salidas' })).toBeVisible();
-
+    await openStockIssueComposer(main);
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Tipo' }),
+      'Custodia técnico',
+    );
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Origen' }),
+      'BOD-01 · Bodega principal (Bodega principal)',
+    );
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Destino' }),
+      'MOV-03 · Móvil con tope (Móvil técnico)',
+    );
+    await addIssueCatalogItemsToDraft(main, [/Seleccionar ONT-HG8245 · ONT Huawei HG8245/i]);
     await main.getByRole('button', { name: 'Crear salida' }).click();
-    const createDialog = page.getByRole('dialog', { name: 'Crear salida' });
-    await createDialog.locator('select').first().selectOption('TECHNICIAN_CUSTODY');
-    await createDialog.locator('select').nth(1).selectOption(LOC_MAIN);
-    await createDialog.locator('select').nth(2).selectOption(LOC_MOBILE_CAPPED);
-    await createDialog.locator('select').nth(3).selectOption(ITEM_ID);
-    await createDialog.getByLabel('Cantidad').fill('1');
-    await createDialog.getByRole('button', { name: 'Crear salida' }).click();
 
     await main.getByRole('button', { name: 'Despachar' }).first().click();
     const detail = page.getByRole('dialog', { name: 'Detalle de salida' });

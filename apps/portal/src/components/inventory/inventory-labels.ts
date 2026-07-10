@@ -15,6 +15,8 @@ import {
   PurchaseRequestType,
   SerializedAssetStatus,
   StockBalanceCondition,
+  StockIssueStatus,
+  StockIssueType,
   StockLocationStatus,
   StockLocationType,
   StockMovementOrigin,
@@ -216,6 +218,39 @@ export const WRITE_OFF_STATUS_LABELS: Record<WriteOffStatus, string> = {
   [WriteOffStatus.COMPLETED]: 'Completada',
 };
 
+export const STOCK_ISSUE_TYPE_LABELS: Record<StockIssueType, string> = {
+  [StockIssueType.TECHNICIAN_CUSTODY]: 'Custodia técnico',
+  [StockIssueType.CREW_CUSTODY]: 'Custodia cuadrilla',
+  [StockIssueType.OFFICE_REPLENISHMENT]: 'Reposición oficina',
+  [StockIssueType.NODE_REPLENISHMENT]: 'Reposición nodo',
+  [StockIssueType.SALE_DISPATCH]: 'Salida por venta',
+  [StockIssueType.INTERNAL_CONSUMPTION]: 'Consumo interno',
+  [StockIssueType.WAREHOUSE_TO_WAREHOUSE]: 'Entre bodegas',
+};
+
+export const STOCK_ISSUE_TYPE_HELPER_LABELS: Record<StockIssueType, string> = {
+  [StockIssueType.TECHNICIAN_CUSTODY]:
+    'Entrega material a la custodia móvil de un técnico en campo.',
+  [StockIssueType.CREW_CUSTODY]: 'Asigna stock a la cuadrilla móvil responsable de la operación.',
+  [StockIssueType.OFFICE_REPLENISHMENT]: 'Reposición de bodega de oficina desde bodega principal.',
+  [StockIssueType.NODE_REPLENISHMENT]: 'Reposición de bodega de nodo desde bodega principal.',
+  [StockIssueType.SALE_DISPATCH]: 'Salida vinculada a una venta o referencia comercial.',
+  [StockIssueType.INTERNAL_CONSUMPTION]:
+    'Consumo interno con centro de costo y motivo obligatorios.',
+  [StockIssueType.WAREHOUSE_TO_WAREHOUSE]: 'Traslado entre bodegas internas sin salida a custodia.',
+};
+
+export const STOCK_ISSUE_STATUS_LABELS: Record<StockIssueStatus, string> = {
+  [StockIssueStatus.DRAFT]: 'Borrador',
+  [StockIssueStatus.REQUESTED]: 'Solicitada',
+  [StockIssueStatus.APPROVED]: 'Aprobada',
+  [StockIssueStatus.PICKING]: 'En picking',
+  [StockIssueStatus.READY_TO_DISPATCH]: 'Lista para despacho',
+  [StockIssueStatus.DISPATCHED]: 'Despachada',
+  [StockIssueStatus.RECEIVED]: 'Recibida',
+  [StockIssueStatus.CANCELLED]: 'Cancelada',
+};
+
 export function getWriteOffStatusLabel(value: WriteOffStatus): string {
   return resolveLabel(value, WRITE_OFF_STATUS_LABELS);
 }
@@ -348,6 +383,26 @@ export function getWriteOffReasonLabel(value: WriteOffReason): string {
   return resolveLabel(value, WRITE_OFF_REASON_LABELS);
 }
 
+export function getStockIssueTypeLabel(value: StockIssueType): string {
+  return resolveLabel(value, STOCK_ISSUE_TYPE_LABELS);
+}
+
+export function getStockIssueTypeHelperLabel(value: StockIssueType): string {
+  return resolveLabel(value, STOCK_ISSUE_TYPE_HELPER_LABELS);
+}
+
+export function getStockIssueStatusLabel(value: StockIssueStatus): string {
+  return resolveLabel(value, STOCK_ISSUE_STATUS_LABELS);
+}
+
+export function getStockIssueStatusBadgeVariant(value: StockIssueStatus): PurchaseBadgeVariant {
+  return STOCK_ISSUE_STATUS_VARIANTS[value] ?? 'neutral';
+}
+
+export function getStockIssueTypeBadgeVariant(value: StockIssueType): PurchaseBadgeVariant {
+  return STOCK_ISSUE_TYPE_VARIANTS[value] ?? 'neutral';
+}
+
 export function formatInventoryDate(value: string | null | undefined): string {
   if (!value) {
     return 'Sin fecha';
@@ -407,6 +462,27 @@ export const PURCHASE_REQUEST_PRIORITY_VARIANTS: Record<
   [PurchaseRequestPriority.NORMAL]: 'neutral',
   [PurchaseRequestPriority.HIGH]: 'warning',
   [PurchaseRequestPriority.URGENT]: 'error',
+};
+
+export const STOCK_ISSUE_STATUS_VARIANTS: Record<StockIssueStatus, PurchaseBadgeVariant> = {
+  [StockIssueStatus.DRAFT]: 'neutral',
+  [StockIssueStatus.REQUESTED]: 'primary',
+  [StockIssueStatus.APPROVED]: 'info',
+  [StockIssueStatus.PICKING]: 'warning',
+  [StockIssueStatus.READY_TO_DISPATCH]: 'warning',
+  [StockIssueStatus.DISPATCHED]: 'success',
+  [StockIssueStatus.RECEIVED]: 'success',
+  [StockIssueStatus.CANCELLED]: 'error',
+};
+
+export const STOCK_ISSUE_TYPE_VARIANTS: Record<StockIssueType, PurchaseBadgeVariant> = {
+  [StockIssueType.TECHNICIAN_CUSTODY]: 'primary',
+  [StockIssueType.CREW_CUSTODY]: 'primary',
+  [StockIssueType.OFFICE_REPLENISHMENT]: 'neutral',
+  [StockIssueType.NODE_REPLENISHMENT]: 'neutral',
+  [StockIssueType.SALE_DISPATCH]: 'info',
+  [StockIssueType.INTERNAL_CONSUMPTION]: 'warning',
+  [StockIssueType.WAREHOUSE_TO_WAREHOUSE]: 'neutral',
 };
 
 export function getPurchaseRequestStatusBadgeVariant(

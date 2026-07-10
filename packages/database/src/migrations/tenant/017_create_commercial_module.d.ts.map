@@ -1,1 +1,0 @@
-{"version":3,"file":"017_create_commercial_module.d.ts","sourceRoot":"","sources":["017_create_commercial_module.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,kBAAkB,EAAE,WAAW,EAAE,MAAM,SAAS,CAAC;AAE1D;;;;;;;;;;;GAWG;AACH,qBAAa,mCAAoC,YAAW,kBAAkB;IAC5E,IAAI,SAAyC;IAEhC,EAAE,CAAC,WAAW,EAAE,WAAW,GAAG,OAAO,CAAC,IAAI,CAAC;IA6R3C,IAAI,CAAC,WAAW,EAAE,WAAW,GAAG,OAAO,CAAC,IAAI,CAAC;CAc3D"}

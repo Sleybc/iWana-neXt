@@ -650,6 +650,57 @@ const StockIssueLineSchema = z.object({
   condition: z.nativeEnum(StockBalanceCondition).optional().default(StockBalanceCondition.NEW),
 });
 
+const STOCK_ISSUE_TYPES_WITHOUT_DESTINATION = new Set<StockIssueType>([
+  StockIssueType.SALE_DISPATCH,
+  StockIssueType.INTERNAL_CONSUMPTION,
+]);
+
+const STOCK_ISSUE_TYPES_REQUIRING_DESTINATION = new Set<StockIssueType>([
+  StockIssueType.TECHNICIAN_CUSTODY,
+  StockIssueType.CREW_CUSTODY,
+  StockIssueType.OFFICE_REPLENISHMENT,
+  StockIssueType.NODE_REPLENISHMENT,
+  StockIssueType.WAREHOUSE_TO_WAREHOUSE,
+]);
+
+function refineStockIssueDestinationRules(
+  value: {
+    type: StockIssueType;
+    sourceLocationId?: string | undefined;
+    destinationLocationId?: string | null | undefined;
+  },
+  ctx: z.RefinementCtx,
+) {
+  const { type, sourceLocationId, destinationLocationId } = value;
+
+  if (STOCK_ISSUE_TYPES_WITHOUT_DESTINATION.has(type)) {
+    if (destinationLocationId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Este tipo de salida no permite destinationLocationId.',
+        path: ['destinationLocationId'],
+      });
+    }
+    return;
+  }
+
+  if (STOCK_ISSUE_TYPES_REQUIRING_DESTINATION.has(type) && !destinationLocationId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Este tipo de salida requiere destinationLocationId.',
+      path: ['destinationLocationId'],
+    });
+  }
+
+  if (sourceLocationId && destinationLocationId && sourceLocationId === destinationLocationId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'La ubicación destino debe ser distinta del origen.',
+      path: ['destinationLocationId'],
+    });
+  }
+}
+
 export const CreateStockIssueSchema = z
   .object({
     type: z.nativeEnum(StockIssueType),
@@ -691,18 +742,14 @@ export const CreateStockIssueSchema = z
       }
     }
 
-    if (
-      value.type === StockIssueType.TECHNICIAN_CUSTODY ||
-      value.type === StockIssueType.CREW_CUSTODY
-    ) {
-      if (!value.destinationLocationId) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'Este tipo de salida requiere destinationLocationId.',
-          path: ['destinationLocationId'],
-        });
-      }
-    }
+    refineStockIssueDestinationRules(
+      {
+        type: value.type,
+        sourceLocationId: value.sourceLocationId,
+        destinationLocationId: value.destinationLocationId,
+      },
+      ctx,
+    );
   });
 
 export type CreateStockIssueInput = z.infer<typeof CreateStockIssueSchema>;
@@ -797,7 +844,6 @@ export const UpdateStockIssueSchema = z
   })
   .superRefine((value, ctx) => {
     const type = value.type;
-    const destinationLocationId = value.destinationLocationId;
 
     if (type === StockIssueType.SALE_DISPATCH) {
       if (!value.originRefId?.trim() && !value.commercialRefId?.trim()) {
@@ -827,14 +873,15 @@ export const UpdateStockIssueSchema = z
       }
     }
 
-    if (type === StockIssueType.TECHNICIAN_CUSTODY || type === StockIssueType.CREW_CUSTODY) {
-      if (destinationLocationId === null || destinationLocationId === undefined) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'Este tipo de salida requiere destinationLocationId.',
-          path: ['destinationLocationId'],
-        });
-      }
+    if (type !== undefined) {
+      refineStockIssueDestinationRules(
+        {
+          type,
+          sourceLocationId: value.sourceLocationId,
+          destinationLocationId: value.destinationLocationId,
+        },
+        ctx,
+      );
     }
   });
 

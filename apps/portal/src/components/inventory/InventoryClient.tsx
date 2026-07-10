@@ -33,6 +33,7 @@ import {
   type StockIssueRecord,
   type StockIssueDetailRecord,
   type CreateStockIssueDto,
+  type UpdateStockIssueDto,
   type DispatchStockIssueDto,
   type CreateStockLocationDto,
   type ListInventoryItemsParams,
@@ -1008,6 +1009,32 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     return inventoryApi.getIssue(issueId);
   }
 
+  async function handleUpdateIssue(issueId: string, payload: UpdateStockIssueDto) {
+    setMovementNotice(null);
+    setError(null);
+    try {
+      await inventoryApi.updateIssue(issueId, payload);
+      setMovementNotice('Salida actualizada.');
+      await loadData(true);
+    } catch (submitError) {
+      setError(mapInventoryError(submitError));
+      throw submitError instanceof Error ? submitError : new Error(mapInventoryError(submitError));
+    }
+  }
+
+  async function handleCancelIssue(issueId: string) {
+    setMovementNotice(null);
+    setError(null);
+    try {
+      await inventoryApi.cancelIssue(issueId);
+      setMovementNotice('Salida cancelada.');
+      await loadData(true);
+    } catch (submitError) {
+      setError(mapInventoryError(submitError));
+      throw submitError instanceof Error ? submitError : new Error(mapInventoryError(submitError));
+    }
+  }
+
   async function handleCreateLocation(payload: CreateStockLocationDto) {
     setIsSubmittingLocation(true);
     setLocationSubmitError(null);
@@ -1429,11 +1456,15 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         <TabsContent value="issues" className="space-y-6">
           <StockIssuesWorkspace
             items={items}
+            balances={balances}
+            assets={assets}
             locations={locations}
             issues={issues}
             isLoading={isLoading}
             error={error}
             onCreate={handleCreateIssue}
+            onUpdate={handleUpdateIssue}
+            onCancel={handleCancelIssue}
             onDispatch={handleDispatchIssue}
             onOpenDetail={handleOpenIssueDetail}
             onRefresh={() => void loadData(true)}

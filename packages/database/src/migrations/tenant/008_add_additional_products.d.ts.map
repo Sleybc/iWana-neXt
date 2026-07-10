@@ -1,1 +1,0 @@
-{"version":3,"file":"008_add_additional_products.d.ts","sourceRoot":"","sources":["008_add_additional_products.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,kBAAkB,EAAE,WAAW,EAAE,MAAM,SAAS,CAAC;AAE1D,qBAAa,kCAAmC,YAAW,kBAAkB;IAC3E,IAAI,SAAwC;IAE/B,EAAE,CAAC,WAAW,EAAE,WAAW,GAAG,OAAO,CAAC,IAAI,CAAC;IA4C3C,IAAI,CAAC,WAAW,EAAE,WAAW,GAAG,OAAO,CAAC,IAAI,CAAC;CAsB3D"}

@@ -1,4 +1,9 @@
-import { ForbiddenException, INestApplication, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  INestApplication,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import {
@@ -535,6 +540,46 @@ describe('InventoryController HTTP', () => {
         type: 'TECHNICIAN_CUSTODY',
         sourceLocationId: '11111111-1111-4111-8111-111111111111',
         lines: [],
+      })
+      .expect(400);
+  });
+
+  it('returns 400 when stock issue uses the same source and destination', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/inventory/issues')
+      .set('Authorization', 'Bearer support-token')
+      .send({
+        type: 'WAREHOUSE_TO_WAREHOUSE',
+        sourceLocationId: '11111111-1111-4111-8111-111111111111',
+        destinationLocationId: '11111111-1111-4111-8111-111111111111',
+        lines: [
+          {
+            itemId: '33333333-3333-4333-8333-333333333333',
+            requestedQty: 1,
+          },
+        ],
+      })
+      .expect(400);
+  });
+
+  it('returns 400 when stock issue targets another MAIN_WAREHOUSE location', async () => {
+    stockIssueServiceMock.create.mockRejectedValueOnce(
+      new BadRequestException('La transferencia entre bodegas requiere un destino permitido.'),
+    );
+
+    await request(app.getHttpServer())
+      .post('/api/v1/inventory/issues')
+      .set('Authorization', 'Bearer support-token')
+      .send({
+        type: 'WAREHOUSE_TO_WAREHOUSE',
+        sourceLocationId: '11111111-1111-4111-8111-111111111111',
+        destinationLocationId: '22222222-2222-4222-8222-222222222222',
+        lines: [
+          {
+            itemId: '33333333-3333-4333-8333-333333333333',
+            requestedQty: 1,
+          },
+        ],
       })
       .expect(400);
   });

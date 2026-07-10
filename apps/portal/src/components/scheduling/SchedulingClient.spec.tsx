@@ -569,7 +569,7 @@ describe('SchedulingClient', () => {
 
     expect(await screen.findByText('Instalación GPON barrio norte')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Mover a pendientes' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Mover a pendientes' }));
 
     expect(await screen.findByText('Mover a pendientes')).toBeInTheDocument();
 

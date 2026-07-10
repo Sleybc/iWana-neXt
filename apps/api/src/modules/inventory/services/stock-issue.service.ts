@@ -53,12 +53,26 @@ export class StockIssueService {
     type: StockIssueType,
     destinationLocationId: string | null,
   ) {
-    if (type === StockIssueType.TECHNICIAN_CUSTODY && !destinationLocationId) {
-      throw new BadRequestException('La salida a custodia de técnico requiere destino.');
+    if (
+      (type === StockIssueType.SALE_DISPATCH || type === StockIssueType.INTERNAL_CONSUMPTION) &&
+      destinationLocationId
+    ) {
+      throw new BadRequestException('Este tipo de salida no permite ubicación destino.');
     }
 
-    if (type === StockIssueType.CREW_CUSTODY && !destinationLocationId) {
-      throw new BadRequestException('La salida a custodia de cuadrilla requiere destino.');
+    if (!destinationLocationId) {
+      switch (type) {
+        case StockIssueType.TECHNICIAN_CUSTODY:
+          throw new BadRequestException('La salida a custodia de técnico requiere destino.');
+        case StockIssueType.CREW_CUSTODY:
+          throw new BadRequestException('La salida a custodia de cuadrilla requiere destino.');
+        case StockIssueType.OFFICE_REPLENISHMENT:
+        case StockIssueType.NODE_REPLENISHMENT:
+        case StockIssueType.WAREHOUSE_TO_WAREHOUSE:
+          throw new BadRequestException('La salida requiere una ubicación destino.');
+        default:
+          return;
+      }
     }
   }
 
@@ -132,6 +146,20 @@ export class StockIssueService {
     return location;
   }
 
+  private assertSourceIsMainWarehouse(source: StockLocation) {
+    if (source.type !== StockLocationType.MAIN_WAREHOUSE) {
+      throw new BadRequestException(
+        'Las salidas solo pueden originarse desde la bodega principal.',
+      );
+    }
+  }
+
+  private assertDistinctLocations(source: StockLocation, destination: StockLocation | null) {
+    if (destination && source.id === destination.id) {
+      throw new BadRequestException('La ubicación destino debe ser distinta del origen.');
+    }
+  }
+
   private assertDestinationTypeForDispatch(
     issueType: StockIssueType,
     destination: StockLocation | null,
@@ -185,7 +213,6 @@ export class StockIssueService {
         return;
       case StockIssueType.WAREHOUSE_TO_WAREHOUSE: {
         const allowed = new Set<StockLocationType>([
-          StockLocationType.MAIN_WAREHOUSE,
           StockLocationType.OFFICE_STOCK,
           StockLocationType.NODE_STOCK,
           StockLocationType.QUARANTINE,
@@ -221,12 +248,25 @@ export class StockIssueService {
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
       qr.manager.transaction(async (manager) => {
+        const sourceLocation = await this.resolveLocation(
+          manager,
+          tenantId,
+          validated.sourceLocationId,
+        );
+        this.assertSourceIsMainWarehouse(sourceLocation);
+
+        const destinationLocation = validated.destinationLocationId
+          ? await this.resolveLocation(manager, tenantId, validated.destinationLocationId)
+          : null;
+        this.assertDistinctLocations(sourceLocation, destinationLocation);
+        this.assertDestinationTypeForDispatch(validated.type, destinationLocation);
+
         const issue = await manager.save(
           StockIssue,
           manager.create(StockIssue, {
             tenantId,
             type: validated.type,
-            status: StockIssueStatus.DRAFT,
+            status: StockIssueStatus.REQUESTED,
             sourceLocationId: validated.sourceLocationId,
             destinationLocationId: validated.destinationLocationId ?? null,
             destinationRefId: validated.destinationRefId ?? null,
@@ -372,10 +412,12 @@ export class StockIssueService {
           tenantId,
           issue.sourceLocationId,
         );
+        this.assertSourceIsMainWarehouse(sourceLocation);
         const destinationLocation = issue.destinationLocationId
           ? await this.resolveLocation(manager, tenantId, issue.destinationLocationId)
           : null;
 
+        this.assertDistinctLocations(sourceLocation, destinationLocation);
         this.assertDestinationTypeForDispatch(issue.type, destinationLocation);
 
         for (const line of issueLines) {
@@ -564,6 +606,19 @@ export class StockIssueService {
         issue.costCenter = nextCostCenter;
         issue.reason = nextReason;
         issue.status = validated.status ?? issue.status;
+
+        const nextSourceLocation = await this.resolveLocation(
+          manager,
+          tenantId,
+          issue.sourceLocationId,
+        );
+        this.assertSourceIsMainWarehouse(nextSourceLocation);
+
+        const destinationLocation = nextDestinationLocationId
+          ? await this.resolveLocation(manager, tenantId, nextDestinationLocationId)
+          : null;
+        this.assertDistinctLocations(nextSourceLocation, destinationLocation);
+        this.assertDestinationTypeForDispatch(nextType, destinationLocation);
 
         const saved = await manager.save(StockIssue, issue);
 
