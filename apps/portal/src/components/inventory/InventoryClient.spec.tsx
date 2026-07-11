@@ -503,6 +503,7 @@ describe('InventoryClient', () => {
         blockingReason: 'Falta cotización',
         approvalLevel: 'SUPERVISOR',
       },
+      rfq: null,
     });
     purchasingApiMock.getProviderSummary.mockResolvedValue({
       partyRefId: 'supplier-1',

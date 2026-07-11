@@ -1162,6 +1162,7 @@ export const AddSupplierQuoteSchema = z.object({
     .transform((value) => value.toUpperCase()),
   validUntil: z.string().date().optional().nullable(),
   notes: optionalTrimmedString(4000),
+  rfqInvitationId: z.string().uuid().optional().nullable(),
 });
 
 export type AddSupplierQuoteInput = z.infer<typeof AddSupplierQuoteSchema>;
@@ -1190,6 +1191,62 @@ export class AddSupplierQuoteDto {
   @ApiPropertyOptional()
   @Allow()
   notes?: string | null;
+
+  @ApiPropertyOptional({ description: 'Invitación RFQ a la que vincular la cotización' })
+  @Allow()
+  rfqInvitationId?: string | null;
+}
+
+export const CreateRfqSchema = z.object({
+  currency: z
+    .string()
+    .trim()
+    .length(3)
+    .transform((value) => value.toUpperCase())
+    .optional()
+    .default('COP'),
+  responseDeadline: z.string().date().optional().nullable(),
+  notes: optionalTrimmedString(4000),
+});
+
+export type CreateRfqInput = z.infer<typeof CreateRfqSchema>;
+
+export class CreateRfqDto {
+  @ApiPropertyOptional({ minLength: 3, maxLength: 3, default: 'COP' })
+  @Allow()
+  currency?: string;
+
+  @ApiPropertyOptional({ description: 'Fecha límite de respuesta (YYYY-MM-DD)' })
+  @Allow()
+  responseDeadline?: string | null;
+
+  @ApiPropertyOptional()
+  @Allow()
+  notes?: string | null;
+}
+
+export const InviteSuppliersSchema = z.object({
+  partyRefIds: z.array(z.string().uuid()).min(1),
+});
+
+export type InviteSuppliersInput = z.infer<typeof InviteSuppliersSchema>;
+
+export class InviteSuppliersDto {
+  @ApiProperty({ type: [String], description: 'Referencias de proveedores (MOD08 Parties)' })
+  @Allow()
+  partyRefIds!: string[];
+}
+
+export const DeclineInvitationSchema = z.object({
+  declineReason: optionalTrimmedString(4000),
+});
+
+export type DeclineInvitationInput = z.infer<typeof DeclineInvitationSchema>;
+
+export class DeclineInvitationDto {
+  @ApiPropertyOptional()
+  @Allow()
+  declineReason?: string | null;
 }
 
 export const ApprovePurchaseRequestSchema = z.object({
@@ -1745,6 +1802,85 @@ export class ReturnAssetDto {
   @ApiPropertyOptional()
   @Allow()
   idempotencyKey?: string | null;
+}
+
+export const CreateCounterPurchaseLineSchema = z.object({
+  itemId: z.string().uuid(),
+  quantityReceived: positiveNumber,
+  unitCost: nonNegativeNumber,
+  lotNumber: z.string().trim().min(1).max(80).optional().nullable(),
+  serialNumbers: z.array(z.string().trim().min(1).max(160)).optional().default([]),
+  condition: z.nativeEnum(StockBalanceCondition).optional().default(StockBalanceCondition.NEW),
+});
+
+export type CreateCounterPurchaseLineInput = z.infer<typeof CreateCounterPurchaseLineSchema>;
+
+export class CreateCounterPurchaseLineDto {
+  @ApiProperty()
+  @Allow()
+  itemId!: string;
+
+  @ApiProperty()
+  @Allow()
+  quantityReceived!: number;
+
+  @ApiProperty()
+  @Allow()
+  unitCost!: number;
+
+  @ApiPropertyOptional()
+  @Allow()
+  lotNumber?: string | null;
+
+  @ApiPropertyOptional({ type: [String], default: [] })
+  @Allow()
+  serialNumbers?: string[];
+
+  @ApiPropertyOptional({ enum: StockBalanceCondition, default: StockBalanceCondition.NEW })
+  @Allow()
+  condition?: StockBalanceCondition;
+}
+
+export const CreateCounterPurchaseSchema = z.object({
+  partyRefId: z.string().uuid(),
+  invoiceNumber: z.string().trim().min(1).max(120),
+  purchaseDate: z.string().date().optional().nullable(),
+  destinationLocationId: z.string().uuid(),
+  notes: optionalTrimmedString(4000),
+  idempotencyKey: optionalTrimmedString(160),
+  lines: z.array(CreateCounterPurchaseLineSchema).min(1),
+});
+
+export type CreateCounterPurchaseInput = z.infer<typeof CreateCounterPurchaseSchema>;
+
+export class CreateCounterPurchaseDto {
+  @ApiProperty({ description: 'Referencia al proveedor en MOD08 Parties' })
+  @Allow()
+  partyRefId!: string;
+
+  @ApiProperty({ description: 'Número de factura o soporte de compra' })
+  @Allow()
+  invoiceNumber!: string;
+
+  @ApiPropertyOptional({ description: 'Fecha de la compra (YYYY-MM-DD)' })
+  @Allow()
+  purchaseDate?: string | null;
+
+  @ApiProperty()
+  @Allow()
+  destinationLocationId!: string;
+
+  @ApiPropertyOptional()
+  @Allow()
+  notes?: string | null;
+
+  @ApiPropertyOptional()
+  @Allow()
+  idempotencyKey?: string | null;
+
+  @ApiProperty({ type: [CreateCounterPurchaseLineDto] })
+  @Allow()
+  lines!: CreateCounterPurchaseLineDto[];
 }
 
 export const WriteOffAssetSchema = z

@@ -24,6 +24,7 @@ interface PurchaseRequestsToolbarProps {
   onRefresh: () => void;
   onClearFilters: () => void;
   onOpenComposer?: () => void;
+  onOpenCounterPurchase?: () => void;
 }
 
 const TYPE_OPTIONS = [
@@ -84,6 +85,7 @@ export function PurchaseRequestsToolbar({
   onRefresh,
   onClearFilters,
   onOpenComposer,
+  onOpenCounterPurchase,
 }: PurchaseRequestsToolbarProps) {
   const chips = buildFilterChips(filters);
   const resultsLabel =
@@ -127,6 +129,11 @@ export function PurchaseRequestsToolbar({
           {onOpenComposer ? (
             <Button type="button" variant="secondary" onClick={onOpenComposer}>
               Nueva solicitud
+            </Button>
+          ) : null}
+          {onOpenCounterPurchase ? (
+            <Button type="button" variant="secondary" onClick={onOpenCounterPurchase}>
+              Ingreso directo
             </Button>
           ) : null}
           <Button

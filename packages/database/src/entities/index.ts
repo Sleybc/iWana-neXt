@@ -71,6 +71,8 @@ export { StockMovementLine } from './stock-movement-line.entity';
 export { PurchaseRequest } from './purchase-request.entity';
 export { PurchaseRequestLine } from './purchase-request-line.entity';
 export { PurchaseRequestLineAward } from './purchase-request-line-award.entity';
+export { PurchaseRfq } from './purchase-rfq.entity';
+export { PurchaseRfqInvitation } from './purchase-rfq-invitation.entity';
 export { SupplierQuote } from './supplier-quote.entity';
 export { PurchaseOrder } from './purchase-order.entity';
 export { PurchaseOrderLine } from './purchase-order-line.entity';

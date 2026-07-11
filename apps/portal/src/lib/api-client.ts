@@ -5932,6 +5932,42 @@ export interface PurchaseRequestDetailRecord {
   orders: PurchaseOrderRecord[];
   estimatedAmount: number;
   approvalPolicy: PurchaseApprovalPolicyRecord;
+  rfq: PurchaseRfqDetailRecord | null;
+}
+
+export interface PurchaseRfqRecord {
+  id: string;
+  tenantId: string;
+  purchaseRequestId: string;
+  rfqNumber: string;
+  status: string;
+  currency: string;
+  responseDeadline: string | null;
+  sentAt: string | null;
+  closedAt: string | null;
+  createdByUserId: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PurchaseRfqInvitationRecord {
+  id: string;
+  tenantId: string;
+  rfqId: string;
+  partyRefId: string;
+  status: string;
+  invitedAt: string | null;
+  respondedAt: string | null;
+  declinedAt: string | null;
+  declineReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PurchaseRfqDetailRecord {
+  rfq: PurchaseRfqRecord;
+  invitations: PurchaseRfqInvitationRecord[];
 }
 
 export interface SupplierSummaryRecord {
@@ -5972,6 +6008,8 @@ export interface SupplierQuoteRecord {
   currency: string;
   validUntil: string | null;
   notes: string | null;
+  rfqId?: string | null;
+  rfqInvitationId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -6195,6 +6233,25 @@ export interface ReturnAssetDto {
   idempotencyKey?: string | null;
 }
 
+export interface CreateCounterPurchaseLineDto {
+  itemId: string;
+  quantityReceived: number;
+  unitCost: number;
+  lotNumber?: string | null;
+  serialNumbers?: string[];
+  condition?: StockBalanceCondition;
+}
+
+export interface CreateCounterPurchaseDto {
+  partyRefId: string;
+  invoiceNumber: string;
+  purchaseDate?: string | null;
+  destinationLocationId: string;
+  notes?: string | null;
+  idempotencyKey?: string | null;
+  lines: CreateCounterPurchaseLineDto[];
+}
+
 export interface WriteOffAssetDto {
   serializedAssetId?: string | null;
   itemId?: string | null;
@@ -6324,6 +6381,21 @@ export interface AddSupplierQuoteDto {
   currency: string;
   validUntil?: string | null;
   notes?: string | null;
+  rfqInvitationId?: string | null;
+}
+
+export interface CreateRfqDto {
+  currency?: string;
+  responseDeadline?: string | null;
+  notes?: string | null;
+}
+
+export interface InviteSuppliersDto {
+  partyRefIds: string[];
+}
+
+export interface DeclineInvitationDto {
+  declineReason?: string | null;
 }
 
 export interface ApprovePurchaseRequestDto {
@@ -6581,6 +6653,13 @@ export const inventoryApi = {
       tenantSlug,
     ),
 
+  createCounterPurchase: (dto: CreateCounterPurchaseDto, tenantSlug?: string) =>
+    request<StockMovementResultRecord>(
+      '/inventory/counter-purchases',
+      { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
   listIssues: (params?: ListStockIssuesParams, tenantSlug?: string) =>
     request<StockIssueRecord[]>(
       `/inventory/issues${buildInventoryQuery({
@@ -6724,4 +6803,84 @@ export const purchasingApi = {
       { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
       tenantSlug,
     ),
+
+  createRfq: (purchaseRequestId: string, dto: CreateRfqDto, tenantSlug?: string) =>
+    request<PurchaseRfqRecord>(
+      `/purchasing/requests/${purchaseRequestId}/rfq`,
+      { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  inviteSuppliers: (rfqId: string, dto: InviteSuppliersDto, tenantSlug?: string) =>
+    request<PurchaseRfqInvitationRecord[]>(
+      `/purchasing/rfqs/${rfqId}/invitations`,
+      { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  sendRfq: (rfqId: string, tenantSlug?: string) =>
+    request<PurchaseRfqRecord>(
+      `/purchasing/rfqs/${rfqId}/send`,
+      { method: 'POST', returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  closeRfq: (rfqId: string, tenantSlug?: string) =>
+    request<PurchaseRfqRecord>(
+      `/purchasing/rfqs/${rfqId}/close`,
+      { method: 'POST', returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  declineInvitation: (
+    rfqId: string,
+    invitationId: string,
+    dto: DeclineInvitationDto,
+    tenantSlug?: string,
+  ) =>
+    request<PurchaseRfqInvitationRecord>(
+      `/purchasing/rfqs/${rfqId}/invitations/${invitationId}/decline`,
+      { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  getRfq: (rfqId: string, tenantSlug?: string) =>
+    request<PurchaseRfqDetailRecord>(
+      `/purchasing/rfqs/${rfqId}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  downloadRfqPdf: async (rfqId: string, tenantSlug?: string) => {
+    const resolvedTenantSlug = getTenantSlug(tenantSlug);
+    const token = readStoredAccessToken();
+    const headers = new Headers();
+    headers.set('X-Tenant-Slug', resolvedTenantSlug);
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+
+    const res = await fetch(`${resolveApiBase()}/purchasing/rfqs/${rfqId}/pdf`, {
+      headers,
+      credentials: 'include',
+    });
+
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      throw new ApiError(
+        res.status,
+        typeof body['code'] === 'string' ? body['code'] : 'UNKNOWN',
+        typeof body['message'] === 'string' ? body['message'] : 'Error del servidor',
+        body['details'],
+      );
+    }
+
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') ?? '';
+    const filenameMatch = disposition.match(/filename="([^"]+)"/);
+    return {
+      blob,
+      filename: filenameMatch?.[1] ?? `RFQ-${rfqId}.pdf`,
+    };
+  },
 };

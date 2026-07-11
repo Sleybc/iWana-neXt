@@ -19,6 +19,7 @@ import { GoodsReceiptService } from '../services/goods-receipt.service';
 import { PurchasingPolicyService } from '../services/purchasing-policy.service';
 import { PurchasingQueryService } from '../services/purchasing-query.service';
 import { PurchasingService } from '../services/purchasing.service';
+import { RfqService } from '../services/rfq.service';
 
 jest.mock('@iwana/db', () => ({
   TenantContext: {
@@ -145,7 +146,9 @@ describe('PurchasingService', () => {
     };
 
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
-    const service = new PurchasingService({} as DataSource, new PurchasingPolicyService());
+    const service = new PurchasingService({} as DataSource, new PurchasingPolicyService(), {
+      applyQuoteToInvitation: jest.fn(),
+    } as unknown as RfqService);
 
     const result = await service.createPurchaseRequest(
       {
@@ -216,7 +219,9 @@ describe('PurchasingService', () => {
     };
 
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
-    const service = new PurchasingService({} as DataSource, new PurchasingPolicyService());
+    const service = new PurchasingService({} as DataSource, new PurchasingPolicyService(), {
+      applyQuoteToInvitation: jest.fn(),
+    } as unknown as RfqService);
 
     await expect(service.approvePurchaseRequest('pr-001', {}, actor)).rejects.toThrow('cotización');
   });
@@ -241,7 +246,9 @@ describe('PurchasingService', () => {
     };
 
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
-    const service = new PurchasingService({} as DataSource, new PurchasingPolicyService());
+    const service = new PurchasingService({} as DataSource, new PurchasingPolicyService(), {
+      applyQuoteToInvitation: jest.fn(),
+    } as unknown as RfqService);
 
     const result = await service.approvePurchaseRequest(
       'pr-001',
@@ -337,7 +344,9 @@ describe('PurchasingService', () => {
     };
 
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
-    const service = new PurchasingService({} as DataSource, new PurchasingPolicyService());
+    const service = new PurchasingService({} as DataSource, new PurchasingPolicyService(), {
+      applyQuoteToInvitation: jest.fn(),
+    } as unknown as RfqService);
 
     const result = await service.createPurchaseOrderFromRequest(
       {
@@ -396,6 +405,12 @@ describe('PurchasingQueryService', () => {
         tenantId: 'tenant-001',
         requestNumber: 'PR-000010',
       }),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
+      }),
       find: jest
         .fn()
         .mockResolvedValueOnce([
@@ -421,7 +436,8 @@ describe('PurchasingQueryService', () => {
             purchaseRequestLineId: 'line-001',
             awardedPartyRefId: 'party-001',
           },
-        ]),
+        ])
+        .mockResolvedValueOnce([]),
     };
     const supplierPartyPort: jest.Mocked<SupplierPartyPort> = {
       getSupplierSummary: jest.fn(),
@@ -441,6 +457,7 @@ describe('PurchasingQueryService', () => {
     expect(result.lines).toHaveLength(1);
     expect(result.quotes).toHaveLength(1);
     expect(result.awards).toHaveLength(1);
+    expect(result.rfq).toBeNull();
   });
 
   it('returns provider summary through the supplier port', async () => {

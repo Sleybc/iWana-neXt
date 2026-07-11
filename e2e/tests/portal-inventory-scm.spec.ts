@@ -93,14 +93,27 @@ async function addCatalogProductToDraft(
   main: import('@playwright/test').Locator,
   productPattern: RegExp,
 ) {
-  await main.getByRole('tab', { name: /^Catalogo/i }).click();
+  await main.getByRole('tab', { name: /^Catálogo \(\d+\)/ }).click();
   await main.getByRole('checkbox', { name: productPattern }).check();
   await main.getByRole('button', { name: /Agregar 1 producto/i }).click();
 }
 
+async function assignIssueLineSerial(
+  page: import('@playwright/test').Page,
+  main: import('@playwright/test').Locator,
+  productSku: string,
+  serialLabel = 'SN-001',
+) {
+  await selectComboboxOption(
+    page,
+    main.getByRole('combobox', { name: new RegExp(`Serial .*${productSku}`, 'i') }),
+    serialLabel,
+  );
+}
+
 async function openStockIssueComposer(main: import('@playwright/test').Locator) {
   await main.getByRole('tab', { name: 'Salidas' }).click();
-  await expect(main.getByRole('heading', { name: 'Salidas' })).toBeVisible();
+  await expect(main.getByRole('heading', { name: 'Salidas', exact: true })).toBeVisible();
   await main.getByRole('button', { name: 'Crear salida' }).first().click();
   await expect(main.getByRole('heading', { name: 'Nueva salida' })).toBeVisible();
 }
@@ -125,10 +138,25 @@ async function selectComboboxOption(
   await page.getByRole('option', { name: optionLabel }).click();
 }
 
+async function confirmIssueDispatch(
+  page: import('@playwright/test').Page,
+  detail: import('@playwright/test').Locator,
+  handoffLabel = 'Acta de entrega',
+) {
+  await selectComboboxOption(
+    page,
+    detail.getByRole('combobox', { name: 'Método de entrega' }),
+    handoffLabel,
+  );
+  await detail.getByRole('button', { name: 'Confirmar despacho' }).click();
+}
+
 type InventoryMockState = {
   purchaseRequests: Array<Record<string, unknown>>;
   purchaseOrders: Array<Record<string, unknown>>;
   purchaseOrderLines: Array<Record<string, unknown>>;
+  purchaseRfqs: Array<Record<string, unknown>>;
+  purchaseRfqInvitations: Array<Record<string, unknown>>;
   catalogItems: Array<Record<string, unknown>>;
   categories: Array<Record<string, unknown>>;
   locations: Array<Record<string, unknown>>;
@@ -222,6 +250,26 @@ function buildPurchaseRequest(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function getActiveRfqForRequest(state: InventoryMockState, purchaseRequestId: string) {
+  return state.purchaseRfqs.find(
+    (rfq) =>
+      rfq.purchaseRequestId === purchaseRequestId &&
+      ['DRAFT', 'SENT', 'RECEIVING'].includes(String(rfq.status)),
+  );
+}
+
+function buildRfqDetail(state: InventoryMockState, purchaseRequestId: string) {
+  const rfq = getActiveRfqForRequest(state, purchaseRequestId);
+  if (!rfq) {
+    return null;
+  }
+
+  return {
+    rfq,
+    invitations: state.purchaseRfqInvitations.filter((invitation) => invitation.rfqId === rfq.id),
+  };
+}
+
 function buildLocation(overrides: Record<string, unknown> = {}) {
   return {
     id: LOC_MAIN,
@@ -298,6 +346,8 @@ function createInventoryMockState(): InventoryMockState {
     purchaseRequests: [buildPurchaseRequest()],
     purchaseOrders: [],
     purchaseOrderLines: [],
+    purchaseRfqs: [],
+    purchaseRfqInvitations: [],
     catalogItems: [
       buildCatalogItem(),
       buildCatalogItem({
@@ -997,7 +1047,147 @@ async function setupInventoryMocks(
                 : null,
             approvalLevel: 'SUPERVISOR',
           },
+          rfq: buildRfqDetail(state, requestId),
         }),
+      });
+      return;
+    }
+
+    const createRfqMatch = pathname.match(/\/purchasing\/requests\/([^/]+)\/rfq$/);
+    if (createRfqMatch && method === 'POST') {
+      const requestId = createRfqMatch[1];
+      const body = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
+      const rfq = {
+        id: `rfq-${state.purchaseRfqs.length + 1}`,
+        tenantId: 'tenant-inventory-001',
+        purchaseRequestId: requestId,
+        rfqNumber: `RFQ-${String(state.purchaseRfqs.length + 1).padStart(6, '0')}`,
+        status: 'DRAFT',
+        currency: body.currency ?? 'COP',
+        responseDeadline: body.responseDeadline ?? null,
+        sentAt: null,
+        closedAt: null,
+        createdByUserId: NOC_USER_ID,
+        notes: body.notes ?? null,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      };
+      state.purchaseRfqs.push(rfq);
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify(rfq),
+      });
+      return;
+    }
+
+    const inviteSuppliersMatch = pathname.match(/\/purchasing\/rfqs\/([^/]+)\/invitations$/);
+    if (inviteSuppliersMatch && method === 'POST') {
+      const rfqId = inviteSuppliersMatch[1];
+      const body = JSON.parse(request.postData() ?? '{}') as { partyRefIds?: string[] };
+      const created = (body.partyRefIds ?? []).map((partyRefId, index) => {
+        const existing = state.purchaseRfqInvitations.find(
+          (invitation) => invitation.rfqId === rfqId && invitation.partyRefId === partyRefId,
+        );
+        if (existing) {
+          return existing;
+        }
+
+        const invitation = {
+          id: `rfq-inv-${state.purchaseRfqInvitations.length + index + 1}`,
+          tenantId: 'tenant-inventory-001',
+          rfqId,
+          partyRefId,
+          status: 'INVITED',
+          invitedAt: null,
+          respondedAt: null,
+          declinedAt: null,
+          declineReason: null,
+          createdAt: nowIso(),
+          updatedAt: nowIso(),
+        };
+        state.purchaseRfqInvitations.push(invitation);
+        return invitation;
+      });
+
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify(created),
+      });
+      return;
+    }
+
+    const sendRfqMatch = pathname.match(/\/purchasing\/rfqs\/([^/]+)\/send$/);
+    if (sendRfqMatch && method === 'POST') {
+      const rfqId = sendRfqMatch[1];
+      const rfq = state.purchaseRfqs.find((entry) => entry.id === rfqId);
+      if (rfq) {
+        rfq.status = 'SENT';
+        rfq.sentAt = nowIso();
+        rfq.updatedAt = nowIso();
+        const requestEntry = state.purchaseRequests.find(
+          (entry) => entry.id === rfq.purchaseRequestId,
+        );
+        if (requestEntry) {
+          requestEntry.status = 'PENDING_QUOTES';
+          requestEntry.updatedAt = nowIso();
+        }
+        state.purchaseRfqInvitations
+          .filter((invitation) => invitation.rfqId === rfqId)
+          .forEach((invitation) => {
+            invitation.invitedAt = nowIso();
+            invitation.updatedAt = nowIso();
+          });
+      }
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify(rfq ?? {}),
+      });
+      return;
+    }
+
+    const closeRfqMatch = pathname.match(/\/purchasing\/rfqs\/([^/]+)\/close$/);
+    if (closeRfqMatch && method === 'POST') {
+      const rfqId = closeRfqMatch[1];
+      const rfq = state.purchaseRfqs.find((entry) => entry.id === rfqId);
+      if (rfq) {
+        rfq.status = 'CLOSED';
+        rfq.closedAt = nowIso();
+        rfq.updatedAt = nowIso();
+        const requestEntry = state.purchaseRequests.find(
+          (entry) => entry.id === rfq.purchaseRequestId,
+        );
+        if (requestEntry) {
+          requestEntry.status = 'PENDING_APPROVAL';
+          requestEntry.updatedAt = nowIso();
+        }
+        state.purchaseRfqInvitations
+          .filter((invitation) => invitation.rfqId === rfqId && invitation.status === 'INVITED')
+          .forEach((invitation) => {
+            invitation.status = 'EXPIRED';
+            invitation.updatedAt = nowIso();
+          });
+      }
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify(rfq ?? {}),
+      });
+      return;
+    }
+
+    const rfqPdfMatch = pathname.match(/\/purchasing\/rfqs\/([^/]+)\/pdf$/);
+    if (rfqPdfMatch && method === 'GET') {
+      const rfq = state.purchaseRfqs.find((entry) => entry.id === rfqPdfMatch[1]);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/pdf',
+        headers: {
+          'Content-Disposition': `attachment; filename="${String(rfq?.rfqNumber ?? 'RFQ-000001')}.pdf"`,
+        },
+        body: Buffer.from('%PDF-1.4\n% mock rfq pdf\n'),
       });
       return;
     }
@@ -1233,7 +1423,7 @@ test.describe('Portal Inventario / SCM', () => {
     const main = page.locator('main');
 
     await main.getByRole('tab', { name: 'Catálogo' }).click();
-    await expect(main.getByText('Catálogo operativo')).toBeVisible();
+    await expect(main.getByText('Catálogo de productos')).toBeVisible();
 
     await main.getByRole('button', { name: 'Nuevo producto' }).click();
     const drawer = page.getByRole('dialog');
@@ -1247,7 +1437,7 @@ test.describe('Portal Inventario / SCM', () => {
     await main.getByLabel('Título').fill('Compra patch cord');
     await main.getByLabel('Área solicitante').fill('Operaciones');
     await main
-      .getByLabel('Justificacion')
+      .getByLabel('Justificación')
       .fill('Reposición de patch cords para cuadrillas de campo');
     await main.getByRole('button', { name: 'Crear solicitud' }).click();
 
@@ -1268,7 +1458,7 @@ test.describe('Portal Inventario / SCM', () => {
 
     const categoryDrawer = page.getByRole('dialog');
     await categoryDrawer.getByLabel('Nombre').fill('Fibra óptica');
-    await categoryDrawer.getByLabel('Prefijo de producto').fill('FIB');
+    await categoryDrawer.getByLabel('Prefijo de código').fill('FIB');
     await categoryDrawer.getByRole('button', { name: 'Crear categoría' }).click();
 
     await expect(main.getByText('Fibra óptica')).toBeVisible();
@@ -1295,7 +1485,7 @@ test.describe('Portal Inventario / SCM', () => {
     await main.getByLabel('Título').fill('Compra fibra proyecto norte');
     await main.getByLabel('Área solicitante').fill('Ingeniería');
     await main
-      .getByLabel('Justificacion')
+      .getByLabel('Justificación')
       .fill('Material de fibra para ampliación de red troncal en zona norte');
     await main.getByRole('button', { name: 'Crear solicitud' }).click();
 
@@ -1322,7 +1512,7 @@ test.describe('Portal Inventario / SCM', () => {
     await main.getByLabel('Título').fill('Compra ONT marzo');
     await main.getByLabel('Área solicitante').fill('Operaciones');
     await main
-      .getByLabel('Justificacion')
+      .getByLabel('Justificación')
       .fill('Reposición programada por consumo de campo en zona norte');
     await main.getByRole('button', { name: 'Crear solicitud' }).click();
 
@@ -1337,7 +1527,7 @@ test.describe('Portal Inventario / SCM', () => {
     await expect(main.getByText('BOD-01')).toBeVisible();
 
     await main.getByRole('tab', { name: 'Salidas' }).click();
-    await expect(main.getByRole('heading', { name: 'Salidas' })).toBeVisible();
+    await expect(main.getByRole('heading', { name: 'Salidas', exact: true })).toBeVisible();
 
     await main.getByRole('tab', { name: 'Activos' }).click();
     await expect(main.getByText('SN-001')).toBeVisible();
@@ -1352,7 +1542,7 @@ test.describe('Portal Inventario / SCM', () => {
     await selectComboboxOption(
       page,
       main.getByRole('combobox', { name: 'Tipo' }),
-      'Custodia técnico',
+      'Entrega a técnico',
     );
     await selectComboboxOption(
       page,
@@ -1362,9 +1552,10 @@ test.describe('Portal Inventario / SCM', () => {
     await selectComboboxOption(
       page,
       main.getByRole('combobox', { name: 'Destino' }),
-      'TEC-01 · Custodia técnico (Móvil técnico)',
+      'TEC-01 · Custodia técnico (Técnico en campo)',
     );
     await addIssueCatalogItemsToDraft(main, [/Seleccionar ONT-HG8245 · ONT Huawei HG8245/i]);
+    await assignIssueLineSerial(page, main, 'ONT-HG8245');
     await main.getByRole('button', { name: 'Crear salida' }).click();
 
     await expect(
@@ -1374,10 +1565,9 @@ test.describe('Portal Inventario / SCM', () => {
     await main.getByRole('button', { name: 'Despachar' }).first().click();
     const detail = page.getByRole('dialog', { name: 'Detalle de salida' });
     await expect(detail).toBeVisible();
-    await detail.getByLabel('Método de entrega').fill('ACTA');
-    await detail.getByRole('button', { name: 'Confirmar despacho' }).click();
+    await confirmIssueDispatch(page, detail);
 
-    await expect(main.getByText(/Salida despachada\./i)).toBeVisible();
+    await expect(main.getByText(/Salida despachada/i)).toBeVisible();
   });
 
   test('completa OC, recepción precargada, transferencia y retorno', async ({ page }) => {
@@ -1395,29 +1585,29 @@ test.describe('Portal Inventario / SCM', () => {
     await workbench.getByRole('button', { name: 'Ir a órdenes' }).click();
     await workbench.getByRole('button', { name: 'Generar orden de compra' }).click();
 
-    const orderDrawer = page.getByRole('dialog').filter({ hasText: 'Orden de compra' });
+    const orderDrawer = page.getByRole('dialog', { name: 'Orden de compra' });
     await expect(orderDrawer.getByRole('heading', { name: 'Orden de compra' })).toBeVisible();
     await orderDrawer.getByLabel('Proveedor').fill('Demo');
     await orderDrawer.getByRole('option', { name: /Proveedor Demo/i }).click();
 
-    const itemSelect = orderDrawer.getByRole('combobox', { name: 'Ítem' });
+    const itemSelect = orderDrawer.getByRole('combobox', { name: 'Producto' });
     await itemSelect.click();
     await page.getByRole('option', { name: /ONT Huawei HG8245/i }).click();
 
-    await orderDrawer.getByRole('button', { name: 'Generar OC' }).click();
+    await orderDrawer.getByRole('button', { name: 'Generar orden de compra' }).click();
 
     await expect(workbench.getByRole('tab', { name: 'Recepciones' })).toBeVisible();
-    await expect(workbench.getByText('Línea de OC')).toBeVisible();
+    await expect(workbench.getByText('Línea de orden')).toBeVisible();
     await expect(
       workbench.getByRole('paragraph').filter({ hasText: 'ONT-HG8245 · ONT Huawei HG8245' }),
     ).toBeVisible();
     await expect(workbench.getByLabel('Id línea OC')).toHaveCount(0);
 
-    await workbench
-      .locator('label')
-      .filter({ hasText: 'Ubicación destino' })
-      .locator('select')
-      .selectOption(LOC_MAIN);
+    await selectComboboxOption(
+      page,
+      workbench.getByRole('combobox', { name: 'Ubicación destino' }),
+      'BOD-01 · Bodega principal',
+    );
     await workbench.getByRole('button', { name: 'Registrar recepción' }).click();
     await expect(workbench.getByText('Recepción GR-000001 registrada')).toBeVisible();
 
@@ -1428,7 +1618,7 @@ test.describe('Portal Inventario / SCM', () => {
     await selectComboboxOption(
       page,
       main.getByRole('combobox', { name: 'Tipo' }),
-      'Custodia técnico',
+      'Entrega a técnico',
     );
     await selectComboboxOption(
       page,
@@ -1438,27 +1628,27 @@ test.describe('Portal Inventario / SCM', () => {
     await selectComboboxOption(
       page,
       main.getByRole('combobox', { name: 'Destino' }),
-      'TEC-01 · Custodia técnico (Móvil técnico)',
+      'TEC-01 · Custodia técnico (Técnico en campo)',
     );
     await addIssueCatalogItemsToDraft(main, [/Seleccionar ONT-HG8245 · ONT Huawei HG8245/i]);
+    await assignIssueLineSerial(page, main, 'ONT-HG8245');
     await main.getByRole('button', { name: 'Crear salida' }).click();
 
     await expect(main.getByText(/Salida creada/i)).toBeVisible();
     await main.getByRole('button', { name: 'Despachar' }).first().click();
     const detail = page.getByRole('dialog', { name: 'Detalle de salida' });
     await expect(detail).toBeVisible();
-    await detail.getByLabel('Método de entrega').fill('ACTA');
-    await detail.getByRole('button', { name: 'Confirmar despacho' }).click();
+    await confirmIssueDispatch(page, detail);
     await expect(main.getByText(/Salida despachada/i)).toBeVisible();
     await detail.getByRole('button', { name: 'Cerrar' }).click();
 
     await main.getByRole('tab', { name: 'Movimientos' }).click();
-    await main.getByRole('combobox', { name: 'Ítem' }).nth(1).selectOption(ITEM_ID);
-    await main.getByRole('combobox', { name: 'Origen' }).selectOption(LOC_TECH);
-    await main.getByRole('combobox', { name: 'Destino', exact: true }).selectOption(LOC_MAIN);
+    await main.getByLabel('Producto').nth(1).selectOption(ITEM_ID);
+    await main.getByLabel('Bodega de origen').selectOption(LOC_TECH);
+    await main.getByLabel('Bodega de destino').selectOption(LOC_MAIN);
     await main.getByRole('button', { name: 'Registrar retorno' }).click();
 
-    await expect(main.getByText('Retorno registrado en MOV-000011.')).toBeVisible();
+    await expect(main.getByText(/Devolución registrada.*MOV-000011/i)).toBeVisible();
     expect(state.stockIssueDispatchCount).toBe(1);
     expect(state.returnCount).toBe(1);
   });
@@ -1476,12 +1666,12 @@ test.describe('Portal Inventario / SCM', () => {
     await addCatalogProductToDraft(main, /Seleccionar ONT-HG8245 - ONT Huawei HG8245/i);
     await main.getByRole('button', { name: 'Agregar línea manual' }).click();
     await main
-      .getByRole('textbox', { name: 'Descripcion manual' })
+      .getByRole('textbox', { name: 'Descripción manual' })
       .fill('Cableado auxiliar de ampliación');
     await main.getByLabel('Título').fill('Proyecto ampliación red');
     await main.getByLabel('Área solicitante').fill('Ingeniería');
     await main
-      .getByLabel('Justificacion')
+      .getByLabel('Justificación')
       .fill('Adquisición de materiales para ampliación de red en zona norte del municipio');
     await main.getByRole('button', { name: 'Crear solicitud' }).click();
 
@@ -1507,7 +1697,7 @@ test.describe('Portal Inventario / SCM', () => {
       main.getByRole('combobox', { name: 'Origen' }),
       'BOD-01 · Bodega principal (Bodega principal)',
     );
-    await addIssueCatalogItemsToDraft(main, [/Seleccionar ONT-HG8245 · ONT Huawei HG8245/i]);
+    await addIssueCatalogItemsToDraft(main, [/Seleccionar CAB-DROP · Cable drop/i]);
     await main.getByLabel('Referencia comercial (opcional)').fill('OC-VENTA-001');
     await main.getByRole('button', { name: 'Crear salida' }).click();
 
@@ -1518,10 +1708,9 @@ test.describe('Portal Inventario / SCM', () => {
     await main.getByRole('button', { name: 'Despachar' }).first().click();
     const detail = page.getByRole('dialog', { name: 'Detalle de salida' });
     await expect(detail).toBeVisible();
-    await detail.getByLabel('Método de entrega').fill('ACTA');
-    await detail.getByRole('button', { name: 'Confirmar despacho' }).click();
+    await confirmIssueDispatch(page, detail);
 
-    await expect(main.getByText(/Salida despachada\./i)).toBeVisible();
+    await expect(main.getByText(/Salida despachada/i)).toBeVisible();
   });
 
   test('crea salida con varias líneas desde el compositor', async ({ page }) => {
@@ -1532,7 +1721,7 @@ test.describe('Portal Inventario / SCM', () => {
     await selectComboboxOption(
       page,
       main.getByRole('combobox', { name: 'Tipo' }),
-      'Custodia técnico',
+      'Entrega a técnico',
     );
     await selectComboboxOption(
       page,
@@ -1542,23 +1731,22 @@ test.describe('Portal Inventario / SCM', () => {
     await selectComboboxOption(
       page,
       main.getByRole('combobox', { name: 'Destino' }),
-      'TEC-01 · Custodia técnico (Móvil técnico)',
+      'TEC-01 · Custodia técnico (Técnico en campo)',
     );
-    await expect(main.getByRole('tab', { name: /Con stock/i })).toBeVisible();
+    await expect(main.getByRole('tab', { name: /Con material/i })).toBeVisible();
     await expect(main.getByText(/Disponible en origen/i).first()).toBeVisible();
-    await main.getByRole('tab', { name: /Catálogo/i }).click();
+    await main.getByRole('tab', { name: /^Catálogo \(\d+\)/ }).click();
     await addIssueCatalogItemsToDraft(main, [
       /Seleccionar ONT-HG8245 · ONT Huawei HG8245/i,
       /Seleccionar CAB-DROP · Cable drop/i,
     ]);
-    await expect(main.getByText('ONT-HG8245 · ONT Huawei HG8245')).toBeVisible();
-    await expect(main.getByText('CAB-DROP · Cable drop')).toBeVisible();
+    await assignIssueLineSerial(page, main, 'ONT-HG8245');
     await main.getByRole('button', { name: 'Crear salida' }).click();
 
     await expect(
       main.getByText('Salida creada. Puedes despacharla cuando esté lista.'),
     ).toBeVisible();
-    await expect(main.getByRole('heading', { name: 'Salidas' })).toBeVisible();
+    await expect(main.getByRole('heading', { name: 'Salidas', exact: true })).toBeVisible();
   });
 
   test('no ofrece CUSTOMER_SITE como destino de salida manual', async ({ page }) => {
@@ -1628,6 +1816,48 @@ test.describe('Portal Inventario / SCM', () => {
 
     await expect(main.getByRole('cell', { name: 'Aprobada', exact: true })).toBeVisible();
   });
+
+  test('ejecuta flujo RFQ: crear, invitar, enviar y descargar PDF', async ({ page }) => {
+    const state = (page as unknown as { inventoryMockState: InventoryMockState })
+      .inventoryMockState;
+    state.purchaseRequests.unshift(
+      buildPurchaseRequest({
+        id: 'pr-rfq-1',
+        requestNumber: 'PR-000300',
+        title: 'Compra con cotización formal',
+        status: 'DRAFT',
+        approvedByUserId: null,
+      }),
+    );
+
+    await page.goto('/dashboard/inventory');
+    const main = page.locator('main');
+    await main.getByRole('tab', { name: 'Compras' }).click();
+    await main.getByRole('button', { name: 'Abrir' }).first().click();
+
+    const workbench = page.getByRole('dialog').filter({ hasText: 'Trabajar solicitud' });
+    await workbench.getByRole('tab', { name: 'Cotización' }).click();
+    await workbench.getByRole('button', { name: 'Crear solicitud de cotización' }).click();
+    await expect(workbench.getByText('RFQ-000001')).toBeVisible();
+    await expect(workbench.getByText('Borrador')).toBeVisible();
+
+    await workbench.getByRole('combobox', { name: 'Invitar proveedores' }).fill('Demo');
+    await page
+      .getByRole('listbox')
+      .getByRole('option', { name: /Proveedor Demo/i })
+      .click();
+    await workbench.getByRole('button', { name: 'Invitar seleccionados' }).click();
+    await expect(workbench.getByText('Proveedor invitado')).toBeVisible();
+    await expect(workbench.getByText('Invitado', { exact: true })).toBeVisible();
+
+    await workbench.getByRole('button', { name: 'Enviar solicitud' }).click();
+    await expect(workbench.getByText('Enviada', { exact: true })).toBeVisible();
+
+    const downloadPromise = page.waitForEvent('download');
+    await workbench.getByRole('button', { name: 'Descargar PDF' }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toMatch(/RFQ-.*\.pdf$/);
+  });
 });
 
 test.describe('Portal Inventario / Bodegas', () => {
@@ -1643,7 +1873,7 @@ test.describe('Portal Inventario / Bodegas', () => {
     const main = page.locator('main');
 
     await expect(main.getByRole('tab', { name: 'Bodegas', selected: true })).toBeVisible();
-    await expect(main.getByText('Matriz de bodegas')).toBeVisible();
+    await expect(main.getByText('Bodegas y existencias')).toBeVisible();
     await expect(main.getByText('BOD-01')).toBeVisible();
   });
 
@@ -1666,7 +1896,7 @@ test.describe('Portal Inventario / Bodegas', () => {
     await main.getByRole('button', { name: 'Crear bodega' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('Nombre de la bodega').fill('Cuarentena operativa');
-    await selectComboboxOption(page, dialog.getByRole('combobox', { name: 'Tipo' }), 'Cuarentena');
+    await selectComboboxOption(page, dialog.getByRole('combobox', { name: 'Tipo' }), 'En revisión');
     await dialog.getByRole('button', { name: 'Crear bodega' }).click();
 
     await expect(main.getByText('CUA-001')).toBeVisible();
@@ -1684,10 +1914,10 @@ test.describe('Portal Inventario / Bodegas', () => {
     const dialog = page.getByRole('dialog');
     await selectComboboxOption(
       page,
-      dialog.getByRole('combobox', { name: 'Responsable operativo' }),
+      dialog.getByRole('combobox', { name: 'Persona a cargo' }),
       MOBILE_RESPONSIBLE_NAME,
     );
-    await dialog.getByLabel('Capacidad máxima').fill('24');
+    await dialog.getByLabel('Límite de unidades').fill('24');
     await dialog.getByRole('button', { name: 'Guardar cambios' }).click();
 
     await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -1707,7 +1937,7 @@ test.describe('Portal Inventario / Bodegas', () => {
     await selectComboboxOption(
       page,
       main.getByRole('combobox', { name: 'Tipo' }),
-      'Custodia técnico',
+      'Entrega a técnico',
     );
     await selectComboboxOption(
       page,
@@ -1717,7 +1947,7 @@ test.describe('Portal Inventario / Bodegas', () => {
     await selectComboboxOption(
       page,
       main.getByRole('combobox', { name: 'Destino' }),
-      'TEC-01 · Custodia técnico (Móvil técnico)',
+      'TEC-01 · Custodia técnico (Técnico en campo)',
     );
     await addIssueCatalogItemsToDraft(main, [/Seleccionar CAB-DROP · Cable drop/i]);
     await main.getByLabel('Cantidad CAB-DROP · Cable drop').fill('99');
@@ -1725,8 +1955,7 @@ test.describe('Portal Inventario / Bodegas', () => {
 
     await main.getByRole('button', { name: 'Despachar' }).first().click();
     const detail = page.getByRole('dialog', { name: 'Detalle de salida' });
-    await detail.getByLabel('Método de entrega').fill('ACTA');
-    await detail.getByRole('button', { name: 'Confirmar despacho' }).click();
+    await confirmIssueDispatch(page, detail);
 
     await expect(
       detail.getByText('La cantidad solicitada excede el saldo disponible en la ubicación origen.'),
@@ -1741,7 +1970,7 @@ test.describe('Portal Inventario / Bodegas', () => {
     await selectComboboxOption(
       page,
       main.getByRole('combobox', { name: 'Tipo' }),
-      'Custodia técnico',
+      'Entrega a técnico',
     );
     await selectComboboxOption(
       page,
@@ -1751,15 +1980,15 @@ test.describe('Portal Inventario / Bodegas', () => {
     await selectComboboxOption(
       page,
       main.getByRole('combobox', { name: 'Destino' }),
-      'MOV-03 · Móvil con tope (Móvil técnico)',
+      'MOV-03 · Móvil con tope (Técnico en campo)',
     );
     await addIssueCatalogItemsToDraft(main, [/Seleccionar ONT-HG8245 · ONT Huawei HG8245/i]);
+    await assignIssueLineSerial(page, main, 'ONT-HG8245');
     await main.getByRole('button', { name: 'Crear salida' }).click();
 
     await main.getByRole('button', { name: 'Despachar' }).first().click();
     const detail = page.getByRole('dialog', { name: 'Detalle de salida' });
-    await detail.getByLabel('Método de entrega').fill('ACTA');
-    await detail.getByRole('button', { name: 'Confirmar despacho' }).click();
+    await confirmIssueDispatch(page, detail);
 
     await expect(
       detail.getByText('La bodega móvil destino supera su capacidad máxima.'),
@@ -1770,7 +1999,7 @@ test.describe('Portal Inventario / Bodegas', () => {
     await page.goto('/dashboard/inventory?tab=locations');
     const main = page.locator('main');
 
-    await main.getByRole('button', { name: 'Ver balances de Bodega principal' }).click();
+    await main.getByRole('button', { name: 'Ver existencias de Bodega principal' }).click();
     await expect(main.getByText(/ONT-HG8245 · ONT Huawei HG8245/i)).toBeVisible();
   });
 });

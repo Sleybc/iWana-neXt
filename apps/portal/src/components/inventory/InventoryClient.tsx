@@ -24,6 +24,7 @@ import {
   type CreateInventoryCategoryDto,
   type CreatePurchaseOrderDto,
   type CreatePurchaseRequestDto,
+  type CreateCounterPurchaseDto,
   type GoodsReceiptResultRecord,
   type InventoryDashboardSummary,
   type InventoryCatalogOptionRecord,
@@ -46,6 +47,7 @@ import {
   type SerializedAssetRecord,
   type StockBalanceRecord,
   type StockLocationRecord,
+  type StockMovementResultRecord,
   type UpdateStockLocationDto,
   type UpdateInventoryItemDto,
   type UpdateInventoryCategoryDto,
@@ -176,12 +178,16 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const [latestOrder, setLatestOrder] = useState<PurchaseOrderRecord | null>(null);
   const [latestOrderLines, setLatestOrderLines] = useState<PurchaseOrderLineRecord[]>([]);
   const [latestReceipt, setLatestReceipt] = useState<GoodsReceiptResultRecord | null>(null);
+  const [latestCounterPurchase, setLatestCounterPurchase] =
+    useState<StockMovementResultRecord | null>(null);
+  const [counterPurchaseError, setCounterPurchaseError] = useState<string | null>(null);
   const [movementNotice, setMovementNotice] = useState<string | null>(null);
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
   const [isSubmittingQuote, setIsSubmittingQuote] = useState(false);
   const [isSubmittingApprove, setIsSubmittingApprove] = useState(false);
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [isSubmittingReceipt, setIsSubmittingReceipt] = useState(false);
+  const [isSubmittingCounterPurchase, setIsSubmittingCounterPurchase] = useState(false);
   const [isSubmittingMovement, setIsSubmittingMovement] = useState(false);
   const [isSubmittingWriteOff, setIsSubmittingWriteOff] = useState(false);
   const [saleForm, setSaleForm] = useState({
@@ -1009,6 +1015,21 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     }
   }
 
+  async function handleCounterPurchase(payload: CreateCounterPurchaseDto) {
+    setIsSubmittingCounterPurchase(true);
+    setCounterPurchaseError(null);
+    try {
+      const result = await inventoryApi.createCounterPurchase(payload);
+      setLatestCounterPurchase(result);
+      await loadData(true);
+    } catch (submitError) {
+      setCounterPurchaseError(mapInventoryError(submitError));
+      throw submitError instanceof Error ? submitError : new Error(mapInventoryError(submitError));
+    } finally {
+      setIsSubmittingCounterPurchase(false);
+    }
+  }
+
   async function handleCreateIssue(payload: CreateStockIssueDto) {
     setMovementNotice(null);
     setError(null);
@@ -1508,11 +1529,15 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             approveError={approveError}
             orderError={orderError}
             receiptError={receiptError}
+            counterPurchaseError={counterPurchaseError}
+            latestCounterPurchase={latestCounterPurchase}
+            isSubmittingCounterPurchase={isSubmittingCounterPurchase}
             onCreateRequest={handleCreateRequest}
             onAddQuote={handleAddQuote}
             onApproveRequest={handleApproveRequest}
             onCreateOrder={handleCreateOrder}
             onReceiveOrder={handleReceiveOrder}
+            onCounterPurchase={handleCounterPurchase}
             onPrepareOrderDrawer={loadOrderDetailForRequest}
             onRefresh={() => loadData(true)}
             onCatalogSearch={(search) => void loadCatalogOptions(search)}

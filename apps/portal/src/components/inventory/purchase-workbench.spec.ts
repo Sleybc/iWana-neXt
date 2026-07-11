@@ -39,6 +39,7 @@ function buildDetail(
       blockingReason: null,
       approvalLevel: 'MANAGER',
     },
+    rfq: null,
   };
 }
 

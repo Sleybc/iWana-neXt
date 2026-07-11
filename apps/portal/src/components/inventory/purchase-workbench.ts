@@ -1,11 +1,12 @@
 'use client';
 
-import { PurchaseOrderStatus, PurchaseRequestStatus } from '@iwana/shared';
+import { PurchaseOrderStatus, PurchaseRequestStatus, PurchaseRfqStatus } from '@iwana/shared';
 import type { PurchaseRequestDetailRecord } from '@/lib/api-client';
 
 export type PurchaseWorkbenchTab =
   | 'summary'
   | 'lines'
+  | 'rfq'
   | 'quotes'
   | 'approval'
   | 'orders'
@@ -19,6 +20,7 @@ export interface PurchaseNextAction {
 export const PURCHASE_WORKBENCH_TAB_LABELS: Record<PurchaseWorkbenchTab, string> = {
   summary: 'Resumen',
   lines: 'Líneas',
+  rfq: 'Cotización',
   quotes: 'Cotizaciones',
   approval: 'Aprobación',
   orders: 'Órdenes',
@@ -32,7 +34,33 @@ export function getPurchaseNextAction(
     return null;
   }
 
-  const { request, approvalPolicy, orders } = detail;
+  const { request, approvalPolicy, orders, rfq } = detail;
+
+  if (rfq?.rfq) {
+    if (rfq.rfq.status === PurchaseRfqStatus.DRAFT) {
+      return {
+        message: 'Invita proveedores y envía la solicitud de cotización.',
+        suggestedTab: 'rfq',
+      };
+    }
+
+    if (
+      rfq.rfq.status === PurchaseRfqStatus.SENT ||
+      rfq.rfq.status === PurchaseRfqStatus.RECEIVING
+    ) {
+      return {
+        message: 'Haz seguimiento de invitaciones y respuestas de proveedores.',
+        suggestedTab: 'rfq',
+      };
+    }
+  }
+
+  if (request.status === PurchaseRequestStatus.DRAFT) {
+    return {
+      message: 'Puedes abrir una ronda de cotización o continuar con captura manual.',
+      suggestedTab: 'rfq',
+    };
+  }
 
   if (request.status === PurchaseRequestStatus.PENDING_QUOTES) {
     return {

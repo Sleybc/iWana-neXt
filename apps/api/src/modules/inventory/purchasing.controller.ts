@@ -6,8 +6,11 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  Res,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@iwana/shared';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -27,6 +30,12 @@ import {
   CreatePurchaseOrderSchema,
   CreatePurchaseRequestDto,
   CreatePurchaseRequestSchema,
+  CreateRfqDto,
+  CreateRfqSchema,
+  DeclineInvitationDto,
+  DeclineInvitationSchema,
+  InviteSuppliersDto,
+  InviteSuppliersSchema,
   ListPurchaseOrdersQueryDto,
   ListPurchaseOrdersQuerySchema,
   ListPurchaseRequestsQueryDto,
@@ -39,6 +48,8 @@ import {
 import { GoodsReceiptService } from './services/goods-receipt.service';
 import { PurchasingQueryService } from './services/purchasing-query.service';
 import { PurchasingService } from './services/purchasing.service';
+import { RfqPdfService } from './services/rfq-pdf.service';
+import { RfqService } from './services/rfq.service';
 
 @ApiTags('purchasing')
 @ApiBearerAuth('access-token')
@@ -49,6 +60,8 @@ export class PurchasingController {
     private readonly purchasingService: PurchasingService,
     private readonly purchasingQueryService: PurchasingQueryService,
     private readonly goodsReceiptService: GoodsReceiptService,
+    private readonly rfqService: RfqService,
+    private readonly rfqPdfService: RfqPdfService,
   ) {}
 
   @Get('requests')
@@ -79,6 +92,17 @@ export class PurchasingController {
       CreatePurchaseRequestSchema.parse(body),
       actor,
     );
+  }
+
+  @Post('requests/:id/rfq')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Crear solicitud de cotización (RFQ) desde una solicitud de compra' })
+  createRfq(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(CreateRfqSchema)) body: CreateRfqDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.rfqService.createFromRequest(id, CreateRfqSchema.parse(body), actor);
   }
 
   @Post('requests/:id/quotes')
@@ -181,5 +205,64 @@ export class PurchasingController {
       ReceivePurchaseOrderSchema.parse(body),
       actor,
     );
+  }
+
+  @Post('rfqs/:rfqId/invitations')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Invitar proveedores a una solicitud de cotización' })
+  inviteSuppliers(
+    @Param('rfqId', ParseUUIDPipe) rfqId: string,
+    @Body(new ZodValidationPipe(InviteSuppliersSchema)) body: InviteSuppliersDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.rfqService.invite(rfqId, InviteSuppliersSchema.parse(body), actor);
+  }
+
+  @Post('rfqs/:rfqId/send')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Enviar solicitud de cotización a proveedores invitados' })
+  sendRfq(@Param('rfqId', ParseUUIDPipe) rfqId: string, @CurrentUser() actor: JwtPayload) {
+    return this.rfqService.send(rfqId, actor);
+  }
+
+  @Post('rfqs/:rfqId/invitations/:invId/decline')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Registrar declinación de una invitación de cotización' })
+  declineInvitation(
+    @Param('rfqId', ParseUUIDPipe) rfqId: string,
+    @Param('invId', ParseUUIDPipe) invId: string,
+    @Body(new ZodValidationPipe(DeclineInvitationSchema)) body: DeclineInvitationDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.rfqService.decline(rfqId, invId, DeclineInvitationSchema.parse(body), actor);
+  }
+
+  @Post('rfqs/:rfqId/close')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Cerrar ronda de cotización' })
+  closeRfq(@Param('rfqId', ParseUUIDPipe) rfqId: string, @CurrentUser() actor: JwtPayload) {
+    return this.rfqService.close(rfqId, actor);
+  }
+
+  @Get('rfqs/:rfqId')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Obtener detalle de solicitud de cotización' })
+  getRfq(@Param('rfqId', ParseUUIDPipe) rfqId: string) {
+    return this.rfqService.getById(rfqId);
+  }
+
+  @Get('rfqs/:rfqId/pdf')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Descargar solicitud de cotización en PDF' })
+  async downloadRfqPdf(
+    @Param('rfqId', ParseUUIDPipe) rfqId: string,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    const { buffer, filename } = await this.rfqPdfService.renderOrThrow(rfqId);
+    response.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    return new StreamableFile(buffer);
   }
 }

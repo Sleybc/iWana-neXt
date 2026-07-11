@@ -6,10 +6,13 @@ import {
   PurchaseRequest,
   PurchaseRequestLine,
   PurchaseRequestLineAward,
+  PurchaseRfq,
+  PurchaseRfqInvitation,
   SupplierQuote,
   TenantContext,
   runInTenantSchema,
 } from '@iwana/db';
+import { PurchaseRfqStatus } from '@iwana/shared';
 import { ListPurchaseRequestsQueryInput, SearchSuppliersQueryInput } from '../dto';
 import { SupplierPartyPort } from '../ports/supplier-party.port';
 import { PurchasingPolicyService } from './purchasing-policy.service';
@@ -21,6 +24,12 @@ function toNumeric(value: string | number | null | undefined): number {
 
   return Number.parseFloat(value ?? '0');
 }
+
+const ACTIVE_RFQ_STATUSES = [
+  PurchaseRfqStatus.DRAFT,
+  PurchaseRfqStatus.SENT,
+  PurchaseRfqStatus.RECEIVING,
+];
 
 @Injectable()
 export class PurchasingQueryService {
@@ -73,7 +82,7 @@ export class PurchasingQueryService {
         throw new NotFoundException('Solicitud de compra no encontrada.');
       }
 
-      const [lines, quotes, awards, orders] = await Promise.all([
+      const [lines, quotes, awards, orders, activeRfq] = await Promise.all([
         qr.manager.find(PurchaseRequestLine, {
           where: { tenantId, purchaseRequestId },
           order: { createdAt: 'ASC' },
@@ -90,6 +99,13 @@ export class PurchasingQueryService {
           where: { tenantId, purchaseRequestId },
           order: { createdAt: 'ASC' },
         }),
+        qr.manager
+          .createQueryBuilder(PurchaseRfq, 'rfq')
+          .where('rfq.tenant_id = :tenantId', { tenantId })
+          .andWhere('rfq.purchase_request_id = :purchaseRequestId', { purchaseRequestId })
+          .andWhere('rfq.status IN (:...statuses)', { statuses: ACTIVE_RFQ_STATUSES })
+          .orderBy('rfq.created_at', 'DESC')
+          .getOne(),
       ]);
 
       const requestAwards = awards.filter((award) =>
@@ -105,6 +121,13 @@ export class PurchasingQueryService {
         justification: request.justification,
       });
 
+      const rfqInvitations = activeRfq
+        ? await qr.manager.find(PurchaseRfqInvitation, {
+            where: { tenantId, rfqId: activeRfq.id },
+            order: { createdAt: 'ASC' },
+          })
+        : [];
+
       return {
         request,
         lines,
@@ -113,6 +136,7 @@ export class PurchasingQueryService {
         orders,
         estimatedAmount,
         approvalPolicy,
+        rfq: activeRfq ? { rfq: activeRfq, invitations: rfqInvitations } : null,
       };
     });
   }

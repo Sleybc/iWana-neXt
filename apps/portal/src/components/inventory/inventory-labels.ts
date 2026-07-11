@@ -14,6 +14,8 @@ import {
   PurchaseRequestPriority,
   PurchaseRequestStatus,
   PurchaseRequestType,
+  PurchaseRfqInvitationStatus,
+  PurchaseRfqStatus,
   SerializedAssetStatus,
   StockBalanceCondition,
   StockIssueStatus,
@@ -127,6 +129,22 @@ export const PURCHASE_ORDER_STATUS_LABELS: Record<PurchaseOrderStatus, string> =
   [PurchaseOrderStatus.CLOSED]: 'Cerrada',
 };
 
+export const PURCHASE_RFQ_STATUS_LABELS: Record<PurchaseRfqStatus, string> = {
+  [PurchaseRfqStatus.DRAFT]: 'Borrador',
+  [PurchaseRfqStatus.SENT]: 'Enviada',
+  [PurchaseRfqStatus.RECEIVING]: 'Recibiendo respuestas',
+  [PurchaseRfqStatus.CLOSED]: 'Cerrada',
+  [PurchaseRfqStatus.CANCELLED]: 'Cancelada',
+};
+
+export const RFQ_INVITATION_STATUS_LABELS: Record<PurchaseRfqInvitationStatus, string> = {
+  [PurchaseRfqInvitationStatus.INVITED]: 'Invitado',
+  [PurchaseRfqInvitationStatus.RESPONDED]: 'Respondió',
+  [PurchaseRfqInvitationStatus.DECLINED]: 'Declinó',
+  [PurchaseRfqInvitationStatus.EXPIRED]: 'Vencido',
+  [PurchaseRfqInvitationStatus.CANCELLED]: 'Cancelado',
+};
+
 export const GOODS_RECEIPT_STATUS_LABELS: Record<GoodsReceiptStatus, string> = {
   [GoodsReceiptStatus.DRAFT]: 'Borrador',
   [GoodsReceiptStatus.IN_PROGRESS]: 'En proceso',
@@ -206,6 +224,7 @@ export const STOCK_MOVEMENT_ORIGIN_LABELS: Record<StockMovementOrigin, string> =
   [StockMovementOrigin.REFURBISH]: 'Reacondicionamiento',
   [StockMovementOrigin.ADJUSTMENT]: 'Ajuste',
   [StockMovementOrigin.WRITE_OFF]: 'Baja',
+  [StockMovementOrigin.COUNTER_PURCHASE]: 'Compra de mostrador',
 };
 
 export const WRITE_OFF_REASON_LABELS: Record<WriteOffReason, string> = {
@@ -383,6 +402,31 @@ export function getPurchaseRequestLineSourceHelperLabel(
 
 export function getPurchaseOrderStatusLabel(value: PurchaseOrderStatus): string {
   return resolveLabel(value, PURCHASE_ORDER_STATUS_LABELS);
+}
+
+export function getPurchaseRfqStatusLabel(value: PurchaseRfqStatus): string {
+  return resolveLabel(value, PURCHASE_RFQ_STATUS_LABELS);
+}
+
+export function getPurchaseRfqInvitationStatusLabel(value: PurchaseRfqInvitationStatus): string {
+  return resolveLabel(value, RFQ_INVITATION_STATUS_LABELS);
+}
+
+export function getPurchaseRfqInvitationStatusBadgeVariant(
+  value: PurchaseRfqInvitationStatus,
+): 'primary' | 'neutral' | 'success' | 'warning' | 'error' {
+  const variants: Record<
+    PurchaseRfqInvitationStatus,
+    'primary' | 'neutral' | 'success' | 'warning' | 'error'
+  > = {
+    [PurchaseRfqInvitationStatus.INVITED]: 'primary',
+    [PurchaseRfqInvitationStatus.RESPONDED]: 'success',
+    [PurchaseRfqInvitationStatus.DECLINED]: 'warning',
+    [PurchaseRfqInvitationStatus.EXPIRED]: 'neutral',
+    [PurchaseRfqInvitationStatus.CANCELLED]: 'error',
+  };
+
+  return variants[value] ?? 'neutral';
 }
 
 export function getGoodsReceiptStatusLabel(value: GoodsReceiptStatus): string {

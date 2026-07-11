@@ -30,6 +30,8 @@ import {
   DispatchStockIssueSchema,
   CancelStockIssueDto,
   CancelStockIssueSchema,
+  CreateCounterPurchaseDto,
+  CreateCounterPurchaseSchema,
   CreateStockLocationDto,
   CreateStockLocationSchema,
   ExecutionOrderMovementDto,
@@ -78,6 +80,7 @@ import { StockBalanceService } from './services/stock-balance.service';
 import { StockLedgerService } from './services/stock-ledger.service';
 import { StockLocationService } from './services/stock-location.service';
 import { StockIssueService } from './services/stock-issue.service';
+import { CounterPurchaseService } from './services/counter-purchase.service';
 
 @ApiTags('inventory')
 @ApiBearerAuth('access-token')
@@ -92,6 +95,7 @@ export class InventoryController {
     private readonly stockBalanceService: StockBalanceService,
     private readonly stockLedgerService: StockLedgerService,
     private readonly stockIssueService: StockIssueService,
+    private readonly counterPurchaseService: CounterPurchaseService,
     private readonly inventoryDashboardService: InventoryDashboardService,
   ) {}
 
@@ -385,6 +389,16 @@ export class InventoryController {
     @CurrentUser() actor: JwtPayload,
   ) {
     return this.stockLedgerService.recordWriteOff(WriteOffAssetSchema.parse(body), actor);
+  }
+
+  @Post('counter-purchases')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Registrar ingreso directo por compra de mostrador' })
+  createCounterPurchase(
+    @Body(new ZodValidationPipe(CreateCounterPurchaseSchema)) body: CreateCounterPurchaseDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.counterPurchaseService.record(CreateCounterPurchaseSchema.parse(body), actor);
   }
 
   @Get('dashboard')

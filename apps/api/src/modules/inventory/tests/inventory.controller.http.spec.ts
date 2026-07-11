@@ -33,6 +33,9 @@ import { StockBalanceService } from '../services/stock-balance.service';
 import { StockLedgerService } from '../services/stock-ledger.service';
 import { StockLocationService } from '../services/stock-location.service';
 import { StockIssueService } from '../services/stock-issue.service';
+import { CounterPurchaseService } from '../services/counter-purchase.service';
+import { RfqPdfService } from '../services/rfq-pdf.service';
+import { RfqService } from '../services/rfq.service';
 
 jest.mock('../../auth/guards/jwt-auth.guard', () => ({
   JwtAuthGuard: class JwtAuthGuard {
@@ -189,6 +192,28 @@ describe('InventoryController HTTP', () => {
   const goodsReceiptServiceMock = {
     receivePurchaseOrder: jest.fn().mockResolvedValue({ id: 'gr-001' }),
   };
+  const counterPurchaseServiceMock = {
+    record: jest.fn().mockResolvedValue({
+      movement: { id: 'mov-counter-001', movementNumber: 'MOV-000099' },
+      lines: [],
+    }),
+  };
+  const rfqServiceMock = {
+    createFromRequest: jest.fn().mockResolvedValue({ id: 'rfq-001', rfqNumber: 'RFQ-000001' }),
+    invite: jest.fn().mockResolvedValue([]),
+    send: jest.fn().mockResolvedValue({ id: 'rfq-001', status: 'SENT' }),
+    decline: jest.fn().mockResolvedValue({ id: 'inv-001', status: 'DECLINED' }),
+    close: jest.fn().mockResolvedValue({ id: 'rfq-001', status: 'CLOSED' }),
+    getById: jest
+      .fn()
+      .mockResolvedValue({ rfq: { id: 'rfq-001' }, invitations: [], request: {}, lines: [] }),
+  };
+  const rfqPdfServiceMock = {
+    renderOrThrow: jest.fn().mockResolvedValue({
+      buffer: Buffer.from('%PDF-1.4\n'),
+      filename: 'RFQ-000001.pdf',
+    }),
+  };
   const stockIssueServiceMock = {
     list: jest.fn().mockResolvedValue([]),
     create: jest.fn().mockResolvedValue({ id: 'issue-001' }),
@@ -213,6 +238,9 @@ describe('InventoryController HTTP', () => {
         { provide: PurchasingService, useValue: purchasingServiceMock },
         { provide: PurchasingQueryService, useValue: purchasingQueryServiceMock },
         { provide: GoodsReceiptService, useValue: goodsReceiptServiceMock },
+        { provide: CounterPurchaseService, useValue: counterPurchaseServiceMock },
+        { provide: RfqService, useValue: rfqServiceMock },
+        { provide: RfqPdfService, useValue: rfqPdfServiceMock },
         JwtAuthGuard,
         RolesGuard,
       ],

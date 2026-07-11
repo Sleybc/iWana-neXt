@@ -58,6 +58,7 @@ import {
   type PurchaseWorkbenchTab,
 } from './purchase-workbench';
 import { QuoteComparisonPanel } from './QuoteComparisonPanel';
+import { RfqInvitationsPanel } from './RfqInvitationsPanel';
 import { SupplierPicker } from './SupplierPicker';
 import { SupplierSummaryCard } from './SupplierSummaryCard';
 
@@ -88,6 +89,7 @@ interface PurchaseRequestWorkbenchDrawerProps {
   onLoadSupplier: (partyRefId: string) => void;
   onOpenOrderFlow: () => void;
   onReceiveOrder: (purchaseOrderId: string, payload: ReceivePurchaseOrderDto) => Promise<void>;
+  onRefreshDetail: () => Promise<void>;
 }
 
 function getLineDisplayLabel(
@@ -150,6 +152,7 @@ export function PurchaseRequestWorkbenchDrawer({
   onLoadSupplier,
   onOpenOrderFlow,
   onReceiveOrder,
+  onRefreshDetail,
 }: PurchaseRequestWorkbenchDrawerProps) {
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
   const [selectedSupplierName, setSelectedSupplierName] = useState<string | null>(null);
@@ -306,6 +309,17 @@ export function PurchaseRequestWorkbenchDrawer({
                       </div>
                     ))}
                   </div>
+                </TabsContent>
+
+                <TabsContent value="rfq" className="mt-4 space-y-4">
+                  {request ? (
+                    <RfqInvitationsPanel
+                      purchaseRequestId={request.id}
+                      requestStatus={request.status}
+                      rfqDetail={detail?.rfq ?? null}
+                      onRefresh={onRefreshDetail}
+                    />
+                  ) : null}
                 </TabsContent>
 
                 <TabsContent value="quotes" className="mt-4 space-y-4">

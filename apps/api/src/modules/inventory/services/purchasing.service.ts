@@ -32,6 +32,7 @@ import {
 } from '../dto';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { PurchasingPolicyService } from './purchasing-policy.service';
+import { RfqService } from './rfq.service';
 
 export interface PurchaseOrderDetail extends PurchaseOrder {
   lines: PurchaseOrderLine[];
@@ -69,6 +70,7 @@ export class PurchasingService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly purchasingPolicyService: PurchasingPolicyService,
+    private readonly rfqService: RfqService,
   ) {}
 
   async createPurchaseRequest(
@@ -195,7 +197,13 @@ export class PurchasingService {
           }),
         );
 
-        if (request.status === PurchaseRequestStatus.PENDING_QUOTES) {
+        if (validated.rfqInvitationId) {
+          await this.rfqService.applyQuoteToInvitation(manager, tenantId, {
+            rfqInvitationId: validated.rfqInvitationId,
+            partyRefId: validated.partyRefId,
+            quote,
+          });
+        } else if (request.status === PurchaseRequestStatus.PENDING_QUOTES) {
           request.status = PurchaseRequestStatus.PENDING_APPROVAL;
           request.notes = request.notes ?? validated.notes ?? null;
           await manager.save(PurchaseRequest, request);

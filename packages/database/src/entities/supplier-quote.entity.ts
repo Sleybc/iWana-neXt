@@ -24,6 +24,12 @@ export class SupplierQuote {
   @Column({ name: 'party_ref_id', type: 'uuid' })
   partyRefId: string;
 
+  @Column({ name: 'rfq_id', type: 'uuid', nullable: true })
+  rfqId: string | null;
+
+  @Column({ name: 'rfq_invitation_id', type: 'uuid', nullable: true })
+  rfqInvitationId: string | null;
+
   @Column({ name: 'quote_number', type: 'varchar', length: 60 })
   quoteNumber: string;
 

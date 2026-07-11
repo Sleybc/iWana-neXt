@@ -16,6 +16,8 @@ export * from './purchase-request-type.enum';
 export * from './purchase-request-priority.enum';
 export * from './purchase-request-line-status.enum';
 export * from './purchase-request-line-source-kind.enum';
+export * from './purchase-rfq-status.enum';
+export * from './purchase-rfq-invitation-status.enum';
 export * from './purchase-order-status.enum';
 export * from './goods-receipt-status.enum';
 export * from './write-off-reason.enum';

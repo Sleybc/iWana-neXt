@@ -11,6 +11,9 @@ import {
 } from '../ports/inventory-movement.port';
 import { AssetLifecycleService } from '../services/asset-lifecycle.service';
 import { GoodsReceiptService } from '../services/goods-receipt.service';
+import { CounterPurchaseService } from '../services/counter-purchase.service';
+import { RfqPdfService } from '../services/rfq-pdf.service';
+import { RfqService } from '../services/rfq.service';
 import { InventoryDashboardService } from '../services/inventory-dashboard.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InventoryCategoryService } from '../services/inventory-category.service';
@@ -48,6 +51,9 @@ describe('InventoryModule', () => {
         PurchasingQueryService,
         PurchasingService,
         GoodsReceiptService,
+        CounterPurchaseService,
+        RfqService,
+        RfqPdfService,
         AssetLifecycleService,
         InventoryDashboardService,
         InventoryMovementPortAdapter,

@@ -15,7 +15,9 @@ import type {
   PurchaseRequestRecord,
   ReceivePurchaseOrderDto,
   StockLocationRecord,
+  StockMovementResultRecord,
   SupplierSummaryRecord,
+  CreateCounterPurchaseDto,
 } from '@/lib/api-client';
 import { purchasingApi } from '@/lib/api-client';
 import { PortalPanel } from '@/components/shared/portal-ui';
@@ -27,6 +29,7 @@ import { PurchaseRequestWorkbenchDrawer } from './PurchaseRequestWorkbenchDrawer
 import { PurchaseRequestsTable } from './PurchaseRequestsTable';
 import { PurchaseRequestsToolbar } from './PurchaseRequestsToolbar';
 import { PurchaseWorkspaceSummary } from './PurchaseWorkspaceSummary';
+import { CounterPurchasePanel } from './CounterPurchasePanel';
 import {
   filterPurchaseRequests,
   findFirstRequestForKpiWorkbench,
@@ -36,7 +39,7 @@ import {
 } from './purchase-filters';
 import type { PurchaseWorkbenchTab } from './purchase-workbench';
 
-type PurchaseWorkspaceMode = 'inbox' | 'create';
+type PurchaseWorkspaceMode = 'inbox' | 'create' | 'counter-purchase';
 
 interface PurchaseCreateRequestResult {
   ok: boolean;
@@ -67,11 +70,15 @@ interface PurchaseWorkspaceProps {
   approveError: string | null;
   orderError: string | null;
   receiptError: string | null;
+  counterPurchaseError?: string | null;
+  latestCounterPurchase?: StockMovementResultRecord | null;
+  isSubmittingCounterPurchase?: boolean;
   onCreateRequest: (payload: CreatePurchaseRequestDto) => Promise<PurchaseCreateRequestResult>;
   onAddQuote: (requestId: string, payload: AddSupplierQuoteDto) => Promise<void>;
   onApproveRequest: (requestId: string, exceptionReason?: string) => Promise<void>;
   onCreateOrder: (payload: CreatePurchaseOrderDto) => Promise<void>;
   onReceiveOrder: (purchaseOrderId: string, payload: ReceivePurchaseOrderDto) => Promise<void>;
+  onCounterPurchase?: (payload: CreateCounterPurchaseDto) => Promise<void>;
   onPrepareOrderDrawer: (requestId: string) => Promise<void>;
   onRefresh: () => Promise<void>;
   onCatalogSearch?: (search: string) => void;
@@ -101,11 +108,15 @@ export function PurchaseWorkspace({
   approveError,
   orderError,
   receiptError,
+  counterPurchaseError = null,
+  latestCounterPurchase = null,
+  isSubmittingCounterPurchase = false,
   onCreateRequest,
   onAddQuote,
   onApproveRequest,
   onCreateOrder,
   onReceiveOrder,
+  onCounterPurchase,
   onPrepareOrderDrawer,
   onRefresh,
   onCatalogSearch,
@@ -211,6 +222,19 @@ export function PurchaseWorkspace({
     setDraftLineCount(0);
   }
 
+  function openCounterPurchaseMode() {
+    setSelectedRequestId(null);
+    setDetail(null);
+    setDetailError(null);
+    setSupplierSummary(null);
+    setSupplierError(null);
+    setWorkspaceMode('counter-purchase');
+  }
+
+  function closeCounterPurchaseMode() {
+    setWorkspaceMode('inbox');
+  }
+
   async function handleCreateRequest(
     payload: CreatePurchaseRequestDto,
   ): Promise<PurchaseCreateRequestResult> {
@@ -267,6 +291,7 @@ export function PurchaseWorkspace({
               onRefresh={() => void onRefresh()}
               onClearFilters={() => setFilters({})}
               onOpenComposer={openCreateMode}
+              {...(onCounterPurchase ? { onOpenCounterPurchase: openCounterPurchaseMode } : {})}
             />
             <PurchaseRequestsTable
               requests={requests}
@@ -278,7 +303,7 @@ export function PurchaseWorkspace({
             />
           </div>
         </PortalPanel>
-      ) : (
+      ) : workspaceMode === 'create' ? (
         <PurchaseCreateModeShell
           header={
             <PurchaseCreateModeHeader
@@ -289,7 +314,18 @@ export function PurchaseWorkspace({
         >
           {composer}
         </PurchaseCreateModeShell>
-      )}
+      ) : onCounterPurchase ? (
+        <CounterPurchasePanel
+          items={items}
+          catalogOptions={catalogOptions}
+          locations={locations}
+          isSubmitting={isSubmittingCounterPurchase}
+          error={counterPurchaseError}
+          lastResult={latestCounterPurchase}
+          onBack={closeCounterPurchaseMode}
+          onSubmit={onCounterPurchase}
+        />
+      ) : null}
 
       <PurchaseRequestWorkbenchDrawer
         open={workspaceMode === 'inbox' && Boolean(selectedRequestId)}
@@ -336,6 +372,13 @@ export function PurchaseWorkspace({
           if (selectedRequestId) {
             await loadDetail(selectedRequestId);
           }
+          await onRefresh();
+        }}
+        onRefreshDetail={async () => {
+          if (!selectedRequestId) {
+            return;
+          }
+          await loadDetail(selectedRequestId);
           await onRefresh();
         }}
       />

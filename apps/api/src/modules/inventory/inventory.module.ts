@@ -13,6 +13,8 @@ import {
   PurchaseRequest,
   PurchaseRequestLine,
   PurchaseRequestLineAward,
+  PurchaseRfq,
+  PurchaseRfqInvitation,
   SerializedAsset,
   StockBalance,
   StockLocation,
@@ -44,6 +46,9 @@ import { SerializedAssetService } from './services/serialized-asset.service';
 import { StockBalanceService } from './services/stock-balance.service';
 import { StockLedgerService } from './services/stock-ledger.service';
 import { StockIssueService } from './services/stock-issue.service';
+import { CounterPurchaseService } from './services/counter-purchase.service';
+import { RfqPdfService } from './services/rfq-pdf.service';
+import { RfqService } from './services/rfq.service';
 import { StockLocationService } from './services/stock-location.service';
 
 @Module({
@@ -64,6 +69,8 @@ import { StockLocationService } from './services/stock-location.service';
       PurchaseRequestLine,
       PurchaseRequestLineAward,
       SupplierQuote,
+      PurchaseRfq,
+      PurchaseRfqInvitation,
       PurchaseOrder,
       PurchaseOrderLine,
       GoodsReceipt,
@@ -87,6 +94,9 @@ import { StockLocationService } from './services/stock-location.service';
     PurchasingQueryService,
     PurchasingService,
     GoodsReceiptService,
+    CounterPurchaseService,
+    RfqService,
+    RfqPdfService,
     AssetLifecycleService,
     InventoryDashboardService,
     InventoryMovementPortAdapter,
@@ -113,6 +123,7 @@ import { StockLocationService } from './services/stock-location.service';
     PurchasingQueryService,
     PurchasingService,
     GoodsReceiptService,
+    CounterPurchaseService,
     AssetLifecycleService,
     InventoryDashboardService,
     InventoryMovementPortAdapter,

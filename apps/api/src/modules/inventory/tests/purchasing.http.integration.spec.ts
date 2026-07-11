@@ -22,6 +22,8 @@ import { GoodsReceiptService } from '../services/goods-receipt.service';
 import { PurchasingPolicyService } from '../services/purchasing-policy.service';
 import { PurchasingQueryService } from '../services/purchasing-query.service';
 import { PurchasingService } from '../services/purchasing.service';
+import { RfqPdfService } from '../services/rfq-pdf.service';
+import { RfqService } from '../services/rfq.service';
 
 jest.mock('@iwana/db', () => ({
   TenantContext: {
@@ -165,6 +167,7 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
         getRawOne: jest.fn().mockResolvedValue({ maxValue: null }),
         getMany: jest.fn().mockImplementation(async () => {
           if (alias === 'request') {
@@ -268,6 +271,8 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
         PurchasingService,
         PurchasingPolicyService,
         PurchasingQueryService,
+        { provide: RfqService, useValue: { applyQuoteToInvitation: jest.fn() } },
+        { provide: RfqPdfService, useValue: { renderOrThrow: jest.fn() } },
         { provide: SupplierPartyPort, useValue: supplierPartyPortMock },
         { provide: GoodsReceiptService, useValue: { receivePurchaseOrder: jest.fn() } },
         { provide: DataSource, useValue: {} },
