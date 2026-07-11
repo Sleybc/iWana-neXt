@@ -114,6 +114,11 @@ jest.mock('@/lib/api-client', () => ({
     createAwards: jest.fn(),
     getProviderSummary: jest.fn(),
     searchSuppliers: jest.fn(),
+    createSupplier: jest.fn(),
+    listSuppliers: jest.fn(),
+    getSupplier: jest.fn(),
+    updateSupplier: jest.fn(),
+    setSupplierStatus: jest.fn(),
     createOrder: jest.fn(),
     listOrders: jest.fn(),
     getOrder: jest.fn(),
@@ -203,7 +208,7 @@ function buildCatalogItem(overrides: Partial<InventoryItemRecord> = {}): Invento
     orderMultiple: '5',
     leadTimeDays: 7,
     usefulLifeMonths: 36,
-    commercialReferenceId: 'COM-ONT-6',
+    commercialReferenceId: '11111111-1111-4111-8111-111111111111',
     status: InventoryItemStatus.ACTIVE,
     createdAt: '2026-06-25T12:00:00.000Z',
     updatedAt: '2026-06-25T12:00:00.000Z',
@@ -526,6 +531,12 @@ describe('InventoryClient', () => {
       page: 1,
       limit: 20,
     });
+    purchasingApiMock.listSuppliers.mockResolvedValue({
+      data: [],
+      total: 0,
+      page: 1,
+      limit: 20,
+    });
     purchasingApiMock.addQuote.mockResolvedValue({
       id: 'quote-1',
       tenantId: 'tenant-1',
@@ -692,7 +703,7 @@ describe('InventoryClient', () => {
   });
 
   it('expone etiquetas amigables para enums del módulo', () => {
-    expect(getInventoryItemCategoryLabel(InventoryItemCategory.CPE)).toBe('CPE');
+    expect(getInventoryItemCategoryLabel(InventoryItemCategory.CPE)).toBe('Equipos de cliente');
     expect(getPurchaseRequestStatusLabel(PurchaseRequestStatus.PENDING_QUOTES)).toBe(
       'Pendiente de cotizaciones',
     );
@@ -936,7 +947,7 @@ describe('InventoryClient', () => {
 
     await user.click(screen.getByRole('tab', { name: 'Movimientos' }));
 
-    const statusSelect = await screen.findByLabelText('Estado destino');
+    const statusSelect = await screen.findByLabelText('Estado del activo al llegar');
     expect(statusSelect).toHaveValue(SerializedAssetStatus.IN_TRANSIT);
     expect(screen.getByRole('option', { name: 'En tránsito' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'En pruebas' })).toBeInTheDocument();
@@ -963,7 +974,7 @@ describe('InventoryClient', () => {
       expect(screen.getByLabelText(/T[ií]tulo/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('tab', { name: /Catalogo/i }));
+    await user.click(screen.getByRole('tab', { name: /^Catálogo \(\d+\)$/i }));
     await user.click(screen.getByRole('checkbox', { name: /Seleccionar ONT-001 - ONT WiFi 6/i }));
     await user.click(screen.getByRole('button', { name: /Agregar 1 producto/i }));
 
@@ -973,7 +984,7 @@ describe('InventoryClient', () => {
     fireEvent.change(screen.getByLabelText(/[ÁA]rea solicitante/i), {
       target: { value: 'Operaciones' },
     });
-    fireEvent.change(screen.getByLabelText('Justificacion'), {
+    fireEvent.change(screen.getByLabelText(/Justificaci[oó]n/i), {
       target: { value: 'Reposicion programada por consumo de campo en zona norte' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Crear solicitud' }));
@@ -1003,10 +1014,10 @@ describe('InventoryClient', () => {
 
     await user.click(screen.getByRole('tab', { name: 'Compras' }));
     await user.click(screen.getByRole('button', { name: 'Nueva solicitud' }));
-    await user.click(screen.getByRole('tab', { name: /Catalogo/i }));
+    await user.click(screen.getByRole('tab', { name: /^Catálogo \(\d+\)$/i }));
     await user.click(screen.getByRole('checkbox', { name: /Seleccionar ONT-001 - ONT WiFi 6/i }));
     await user.click(screen.getByRole('tab', { name: /Sugeridos/i }));
-    await user.click(screen.getByRole('tab', { name: /Catalogo/i }));
+    await user.click(screen.getByRole('tab', { name: /^Catálogo \(\d+\)$/i }));
 
     expect(
       screen.getByRole('checkbox', { name: /Seleccionar ONT-001 - ONT WiFi 6/i }),
@@ -1072,10 +1083,10 @@ describe('InventoryClient', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Nueva solicitud' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('tab', { name: /Catalogo \(1\)/i })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /^Catálogo \(\d+\)$/i })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('tab', { name: /Catalogo/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /^Catálogo \(\d+\)$/i }));
     fireEvent.click(
       await screen.findByRole('checkbox', { name: /Seleccionar ONT-001 - ONT WiFi 6/i }),
     );
@@ -1087,7 +1098,7 @@ describe('InventoryClient', () => {
     fireEvent.change(screen.getByLabelText(/[ÁA]rea solicitante/i), {
       target: { value: 'Operaciones' },
     });
-    fireEvent.change(screen.getByLabelText('Justificacion'), {
+    fireEvent.change(screen.getByLabelText(/Justificaci[oó]n/i), {
       target: { value: 'Reposicion programada' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Crear solicitud' }));
@@ -1424,6 +1435,7 @@ describe('InventoryClient', () => {
         trackingMode: InventoryTrackingMode.SERIALIZED,
         unitOfMeasure: 'unidad',
         status: InventoryItemStatus.ACTIVE,
+        commercialReferenceId: '11111111-1111-4111-8111-111111111111',
       });
     });
 
@@ -1432,6 +1444,5 @@ describe('InventoryClient', () => {
     expect(updatePayload).not.toHaveProperty('preferredSupplierRefId');
     expect(updatePayload).not.toHaveProperty('inventoryControlled');
     expect(updatePayload).not.toHaveProperty('assetControlled');
-    expect(updatePayload).not.toHaveProperty('commercialReferenceId');
   });
 });

@@ -28,6 +28,7 @@ import {
   UpdateInventoryItemInput,
   UpdateInventoryItemSchema,
 } from '../dto';
+import { CommercialProductReferencePort } from '../ports/commercial-product-reference.port';
 import {
   INVENTORY_EVENTS,
   type InventoryCatalogOptionRequestedEvent,
@@ -302,6 +303,7 @@ export class InventoryItemService {
     private readonly eventEmitter: EventEmitter2,
     private readonly supplierPartyPort: SupplierPartyPort,
     private readonly inventoryCategoryService: InventoryCategoryService,
+    private readonly commercialProductReferencePort: CommercialProductReferencePort,
   ) {}
 
   private async resolveCategoryForCreate(
@@ -530,6 +532,12 @@ export class InventoryItemService {
         });
       }
 
+      if (validated.commercialReferenceId) {
+        qb.andWhere('item.commercial_reference_id = :commercialReferenceId', {
+          commercialReferenceId: validated.commercialReferenceId,
+        });
+      }
+
       return qb.getMany();
     });
 
@@ -573,6 +581,7 @@ export class InventoryItemService {
   async create(input: CreateInventoryItemInput, actor: JwtPayload): Promise<InventoryItemResponse> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = CreateInventoryItemSchema.parse(input);
+    await this.assertCommercialReferenceValid(validated.commercialReferenceId);
     const category = await this.resolveCategoryForCreate(validated);
 
     const item = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
@@ -648,6 +657,7 @@ export class InventoryItemService {
   ): Promise<InventoryItemResponse> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = UpdateInventoryItemSchema.parse(input);
+    await this.assertCommercialReferenceValid(validated.commercialReferenceId);
 
     const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const existing = await qr.manager.findOne(InventoryItem, {
@@ -848,5 +858,22 @@ export class InventoryItemService {
       this.emitCatalogOptionsRequested(tenantId, actor, validated.search, options.length);
       return options;
     });
+  }
+
+  private async assertCommercialReferenceValid(
+    commercialReferenceId: string | null | undefined,
+  ): Promise<void> {
+    if (commercialReferenceId === undefined || commercialReferenceId === null) {
+      return;
+    }
+
+    const reference =
+      await this.commercialProductReferencePort.resolveProductReference(commercialReferenceId);
+
+    if (!reference) {
+      throw new BadRequestException(
+        'La referencia comercial no existe o no corresponde a un producto adicional activo.',
+      );
+    }
   }
 }

@@ -30,6 +30,15 @@ export interface CommercialCatalogItem {
   isActive: boolean;
 }
 
+/** Referencia de lectura de un producto adicional comercial (MOD06). */
+export interface CommercialProductReference {
+  id: string;
+  name: string;
+  isActive: boolean;
+  requiresInventory: boolean;
+  isLoan: boolean;
+}
+
 /**
  * Puerto de lectura del catálogo comercial.
  *
@@ -56,4 +65,17 @@ export abstract class CommercialCatalogReadPort {
     itemId: string,
     segment?: CustomerSegment,
   ): Promise<CommercialItemSnapshot>;
+
+  /** Productos adicionales activos del catálogo comercial. */
+  abstract getActiveProducts(
+    tenantId: string,
+    schemaName: string,
+  ): Promise<CommercialProductReference[]>;
+
+  /** Resuelve una referencia comercial por UUID sin acceso cross-module desde MOD12. */
+  abstract resolveProductReference(
+    tenantId: string,
+    schemaName: string,
+    productId: string,
+  ): Promise<CommercialProductReference | null>;
 }

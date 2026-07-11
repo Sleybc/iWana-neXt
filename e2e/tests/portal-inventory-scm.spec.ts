@@ -48,6 +48,8 @@ const LOC_MOBILE_CAPPED = 'loc-003';
 const MOBILE_RESPONSIBLE_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const MOBILE_RESPONSIBLE_NAME = 'Carlos Garzón';
 const PR_SEED_ID = 'pr-seed-001';
+const PARTY_REUSE_ID = 'party-reuse-001';
+const REUSE_DOCUMENT_NUMBER = '900123456';
 
 function buildToken(): string {
   return (
@@ -166,6 +168,8 @@ type InventoryMockState = {
   stockIssueDispatchCount: number;
   transferCount: number;
   returnCount: number;
+  supplierProfiles: Array<Record<string, unknown>>;
+  supplierCreateCount: number;
 };
 
 function buildCategory(overrides: Record<string, unknown> = {}) {
@@ -341,6 +345,38 @@ function buildTenantUsersList() {
   ];
 }
 
+function buildSupplierProfile(overrides: Record<string, unknown> = {}) {
+  const partyRefId = String(overrides.partyRefId ?? 'party-001');
+  const displayName = String(overrides.displayName ?? 'Proveedor Demo');
+
+  return {
+    id: 'sp-001',
+    supplierCode: 'PROV-001',
+    partyRefId,
+    status: 'ACTIVE',
+    paymentTermsDays: 30,
+    currency: 'COP',
+    incoterm: null,
+    defaultLeadTimeDays: 7,
+    purchasingContactName: 'Compras Demo',
+    purchasingContactEmail: 'compras@demo.test',
+    purchasingContactPhone: '3001112233',
+    notes: null,
+    createdAt: nowIso(-2000),
+    updatedAt: nowIso(-2000),
+    party: {
+      partyRefId,
+      displayName,
+      primaryContact: 'Contacto operativo',
+      phone: '3001234567',
+      email: 'proveedor@demo.test',
+      city: 'Bogotá',
+      status: 'ACTIVE',
+    },
+    ...overrides,
+  };
+}
+
 function createInventoryMockState(): InventoryMockState {
   return {
     purchaseRequests: [buildPurchaseRequest()],
@@ -400,6 +436,8 @@ function createInventoryMockState(): InventoryMockState {
     stockIssueDispatchCount: 0,
     transferCount: 0,
     returnCount: 0,
+    supplierProfiles: [buildSupplierProfile()],
+    supplierCreateCount: 0,
   };
 }
 
@@ -1195,23 +1233,139 @@ async function setupInventoryMocks(
     const providerListMatch = pathname.endsWith('/purchasing/providers') && method === 'GET';
     if (providerListMatch) {
       const search = url.searchParams.get('search') ?? '';
+      const catalog = [
+        {
+          partyRefId: 'party-001',
+          displayName: 'Proveedor Demo',
+          status: 'ACTIVE',
+        },
+        {
+          partyRefId: PARTY_REUSE_ID,
+          displayName: 'Distribuidora Andina SAS',
+          status: 'ACTIVE',
+        },
+      ];
+      const filtered =
+        search === REUSE_DOCUMENT_NUMBER
+          ? catalog.filter((item) => item.partyRefId === PARTY_REUSE_ID)
+          : catalog.filter((item) => {
+              if (!search) {
+                return true;
+              }
+
+              const normalizedSearch = search.toLowerCase();
+              return item.displayName.toLowerCase().includes(normalizedSearch);
+            });
+
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          data: [
-            {
-              partyRefId: 'party-001',
-              displayName: 'Proveedor Demo',
-              status: 'ACTIVE',
-            },
-          ].filter(
-            (item) => !search || item.displayName.toLowerCase().includes(search.toLowerCase()),
-          ),
-          total: 1,
+          data: filtered,
+          total: filtered.length,
           page: 1,
           limit: 20,
         }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/purchasing/suppliers') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: state.supplierProfiles,
+          total: state.supplierProfiles.length,
+          page: 1,
+          limit: 100,
+        }),
+      });
+      return;
+    }
+
+    const supplierDetailMatch = pathname.match(/\/purchasing\/suppliers\/([^/]+)$/);
+    if (supplierDetailMatch && method === 'GET') {
+      const partyRefId = supplierDetailMatch[1];
+      const profile = state.supplierProfiles.find((entry) => entry.partyRefId === partyRefId);
+      await route.fulfill({
+        status: profile ? 200 : 404,
+        contentType: 'application/json',
+        body: JSON.stringify(profile ?? { message: 'Perfil de proveedor no encontrado.' }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/purchasing/suppliers') && method === 'POST') {
+      const body = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
+      state.supplierCreateCount += 1;
+      const partyRefId =
+        body.documentNumber === REUSE_DOCUMENT_NUMBER
+          ? PARTY_REUSE_ID
+          : `party-new-${state.supplierCreateCount}`;
+      const profile = buildSupplierProfile({
+        id: `sp-${state.supplierProfiles.length + 1}`,
+        supplierCode: `PROV-${String(state.supplierProfiles.length + 1).padStart(3, '0')}`,
+        partyRefId,
+        displayName: body.displayName ?? 'Proveedor nuevo',
+        paymentTermsDays: body.paymentTermsDays ?? null,
+        currency: body.currency ?? 'COP',
+        incoterm: body.incoterm ?? null,
+        defaultLeadTimeDays: body.defaultLeadTimeDays ?? null,
+        purchasingContactName: body.purchasingContactName ?? null,
+        purchasingContactEmail: body.purchasingContactEmail ?? null,
+        purchasingContactPhone: body.purchasingContactPhone ?? null,
+        notes: body.notes ?? null,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        party: {
+          partyRefId,
+          displayName: body.displayName ?? 'Proveedor nuevo',
+          primaryContact: body.purchasingContactName ?? null,
+          phone: body.purchasingContactPhone ?? null,
+          email: body.purchasingContactEmail ?? null,
+          city: 'Bogotá',
+          status: 'ACTIVE',
+        },
+      });
+      state.supplierProfiles.unshift(profile);
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify(profile),
+      });
+      return;
+    }
+
+    const supplierUpdateMatch = pathname.match(/\/purchasing\/suppliers\/([^/]+)$/);
+    if (supplierUpdateMatch && method === 'PATCH') {
+      const partyRefId = supplierUpdateMatch[1];
+      const body = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
+      const profile = state.supplierProfiles.find((entry) => entry.partyRefId === partyRefId);
+      if (profile) {
+        Object.assign(profile, body, { updatedAt: nowIso() });
+      }
+      await route.fulfill({
+        status: profile ? 200 : 404,
+        contentType: 'application/json',
+        body: JSON.stringify(profile ?? { message: 'Perfil de proveedor no encontrado.' }),
+      });
+      return;
+    }
+
+    const supplierStatusMatch = pathname.match(/\/purchasing\/suppliers\/([^/]+)\/status$/);
+    if (supplierStatusMatch && method === 'POST') {
+      const partyRefId = supplierStatusMatch[1];
+      const body = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
+      const profile = state.supplierProfiles.find((entry) => entry.partyRefId === partyRefId);
+      if (profile) {
+        profile.status = body.status;
+        profile.updatedAt = nowIso();
+      }
+      await route.fulfill({
+        status: profile ? 200 : 404,
+        contentType: 'application/json',
+        body: JSON.stringify(profile ?? { message: 'Perfil de proveedor no encontrado.' }),
       });
       return;
     }
@@ -2001,5 +2155,73 @@ test.describe('Portal Inventario / Bodegas', () => {
 
     await main.getByRole('button', { name: 'Ver existencias de Bodega principal' }).click();
     await expect(main.getByText(/ONT-HG8245 · ONT Huawei HG8245/i)).toBeVisible();
+  });
+
+  test.describe('gestión de proveedores', () => {
+    test('registra, reutiliza, edita y bloquea proveedores', async ({ page }) => {
+      const state = (page as unknown as { inventoryMockState: InventoryMockState })
+        .inventoryMockState;
+
+      await page.goto('/dashboard/inventory?tab=suppliers');
+      const main = page.locator('main');
+
+      await expect(main.getByRole('heading', { name: 'Proveedores' })).toBeVisible();
+      await expect(main.getByText('Proveedor Demo')).toBeVisible();
+
+      await main.getByRole('button', { name: 'Nuevo proveedor' }).first().click();
+      let drawer = page.getByRole('dialog', { name: 'Nuevo proveedor' });
+      await drawer.getByLabel('Número de documento').fill('901777888');
+      await drawer.getByLabel('Nombre').fill('Redes del Caribe SAS');
+      await drawer.getByRole('button', { name: 'Continuar' }).click();
+      await drawer.getByLabel('Plazo de pago (días)').fill('45');
+      await drawer.getByLabel('Contacto de compras').fill('María Compras');
+      await drawer.getByRole('button', { name: 'Crear proveedor' }).click();
+
+      await expect(main.getByText('Redes del Caribe SAS')).toBeVisible();
+      expect(
+        state.supplierProfiles.some(
+          (entry) =>
+            (entry.party as { displayName?: string } | undefined)?.displayName ===
+            'Redes del Caribe SAS',
+        ),
+      ).toBe(true);
+
+      await main.getByRole('button', { name: 'Nuevo proveedor' }).first().click();
+      drawer = page.getByRole('dialog', { name: 'Nuevo proveedor' });
+      await drawer.getByLabel('Número de documento').fill(REUSE_DOCUMENT_NUMBER);
+      await drawer.getByRole('button', { name: 'Buscar documento' }).click();
+      await expect(drawer.getByLabel('Nombre')).toHaveValue('Distribuidora Andina SAS');
+      await expect(drawer.getByText('Encontramos un tercero existente')).toBeVisible();
+      await drawer.getByRole('button', { name: 'Continuar' }).click();
+      await drawer.getByLabel('Contacto de compras').fill('Equipo Andina');
+      await drawer.getByRole('button', { name: 'Crear proveedor' }).click();
+
+      expect(
+        state.supplierProfiles.filter((entry) => entry.partyRefId === PARTY_REUSE_ID).length,
+      ).toBeGreaterThan(0);
+
+      await main.getByRole('button', { name: 'Editar proveedor Proveedor Demo' }).click();
+      drawer = page.getByRole('dialog', { name: 'Editar proveedor' });
+      await drawer.getByLabel('Plazo de pago (días)').fill('60');
+      await drawer.getByLabel('Notas').fill('Condiciones comerciales actualizadas.');
+      await drawer.getByRole('button', { name: 'Guardar cambios' }).click();
+
+      const updatedProfile = state.supplierProfiles.find(
+        (entry) => entry.supplierCode === 'PROV-001',
+      );
+      expect(updatedProfile?.paymentTermsDays).toBe(60);
+      expect(updatedProfile?.notes).toBe('Condiciones comerciales actualizadas.');
+      await drawer.getByRole('button', { name: 'Cerrar' }).click();
+
+      await main.getByRole('button', { name: 'Editar proveedor Proveedor Demo' }).click();
+      drawer = page.getByRole('dialog', { name: 'Editar proveedor' });
+      await drawer.getByRole('button', { name: 'Bloquear' }).click();
+
+      const blockedProfile = state.supplierProfiles.find(
+        (entry) => entry.supplierCode === 'PROV-001',
+      );
+      expect(blockedProfile?.status).toBe('BLOCKED');
+      await expect(main.getByText('Bloqueado')).toBeVisible();
+    });
   });
 });

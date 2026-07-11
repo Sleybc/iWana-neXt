@@ -12,6 +12,7 @@ import { PurchasingQueryService } from '../services/purchasing-query.service';
 import { PurchasingService } from '../services/purchasing.service';
 import { RfqPdfService } from '../services/rfq-pdf.service';
 import { RfqService } from '../services/rfq.service';
+import { SupplierProfileService } from '../services/supplier-profile.service';
 
 jest.mock('../../auth/guards/jwt-auth.guard', () => ({
   JwtAuthGuard: class JwtAuthGuard {
@@ -92,6 +93,7 @@ describe('RFQ HTTP integration', () => {
         { provide: GoodsReceiptService, useValue: { receivePurchaseOrder: jest.fn() } },
         { provide: RfqService, useValue: rfqServiceMock },
         { provide: RfqPdfService, useValue: rfqPdfServiceMock },
+        { provide: SupplierProfileService, useValue: {} },
         JwtAuthGuard,
         RolesGuard,
       ],

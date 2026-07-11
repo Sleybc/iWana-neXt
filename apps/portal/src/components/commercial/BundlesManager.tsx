@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { CircleAlert, Plus, Trash2 } from 'lucide-react';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '@iwana/ui';
+import { Badge, Button } from '@iwana/ui';
 import { CatalogItemType, DiscountType } from '@iwana/shared';
 import {
   ApiError,
@@ -21,15 +21,18 @@ import {
   getPortalActiveBadgeVariant,
   portalActiveCountBadgeVariant,
 } from '@/lib/portal-status-badge-rules';
-import { PortalAlert, PortalEmptyState, PortalSkeletonBlock } from '@/components/shared/portal-ui';
+import {
+  PortalAlert,
+  PortalEmptyState,
+  PortalSkeletonBlock,
+  portalDataTableCellClassName,
+  portalDataTableHeadClassName,
+  portalDataTableShellClassName,
+} from '@/components/shared/portal-ui';
 
 interface BundlesManagerProps {
   canEdit: boolean;
 }
-
-const tableHeadClass =
-  'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500';
-const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
 
 function formatCurrency(value: string): string {
   return new Intl.NumberFormat('es-CO', {
@@ -188,68 +191,51 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
   };
 
   return (
-    <Card className="rounded-2xl border border-white/70 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-              Combos comerciales
-            </p>
-            <CardTitle className="mt-1 text-lg font-semibold">Portafolio de combos</CardTitle>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Crea ofertas compuestas con vigencia y descuento para acelerar la venta consultiva.
-            </p>
-          </div>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Badge variant={portalActiveCountBadgeVariant}>
+          {activeBundles.length} activo{activeBundles.length === 1 ? '' : 's'}
+        </Badge>
+        {canEdit && (
+          <Button size="sm" onClick={() => setIsModalOpen(true)}>
+            <Plus className="mr-1 h-4 w-4" aria-hidden="true" />
+            Crear combo
+          </Button>
+        )}
+      </div>
 
-          <div className="flex items-center gap-2">
-            <Badge
-              variant={portalActiveCountBadgeVariant}
-              className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]"
-            >
-              {activeBundles.length} activo{activeBundles.length === 1 ? '' : 's'}
-            </Badge>
-            {canEdit && (
-              <Button size="sm" onClick={() => setIsModalOpen(true)}>
-                <Plus className="mr-1 h-4 w-4" aria-hidden="true" />
-                Crear combo
-              </Button>
-            )}
-          </div>
-        </div>
-      </CardHeader>
-
-      <CardContent>
-        {isLoading ? (
-          <PortalSkeletonBlock className="h-28" />
-        ) : loadError ? (
-          <PortalAlert
-            variant="error"
-            title="No fue posible cargar combos"
-            description={loadError}
-            icon={CircleAlert}
-          />
-        ) : bundles.length === 0 ? (
-          <PortalEmptyState
-            title="Sin combos creados"
-            description='Usa "Crear combo" para iniciar tu oferta compuesta.'
-          />
-        ) : (
-          <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-dark-border">
+      {isLoading ? (
+        <PortalSkeletonBlock className="h-28" />
+      ) : loadError ? (
+        <PortalAlert
+          variant="error"
+          title="No fue posible cargar combos"
+          description={loadError}
+          icon={CircleAlert}
+        />
+      ) : bundles.length === 0 ? (
+        <PortalEmptyState
+          title="Sin combos creados"
+          description='Usa "Crear combo" para iniciar tu oferta compuesta.'
+        />
+      ) : (
+        <div className={portalDataTableShellClassName}>
+          <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-              <thead className="bg-[#f6f8f4] dark:bg-dark-surface-2">
+              <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
                 <tr>
-                  <th className={tableHeadClass}>Combo</th>
-                  <th className={tableHeadClass}>Items</th>
-                  <th className={tableHeadClass}>Descuento</th>
-                  <th className={tableHeadClass}>Vigencia</th>
-                  <th className={tableHeadClass}>Estado</th>
-                  {canEdit && <th className={tableHeadClass}>Acciones</th>}
+                  <th className={portalDataTableHeadClassName}>Combo</th>
+                  <th className={portalDataTableHeadClassName}>Items</th>
+                  <th className={portalDataTableHeadClassName}>Descuento</th>
+                  <th className={portalDataTableHeadClassName}>Vigencia</th>
+                  <th className={portalDataTableHeadClassName}>Estado</th>
+                  {canEdit && <th className={portalDataTableHeadClassName}>Acciones</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2/80">
                 {bundles.map((bundle) => (
                   <tr key={bundle.id}>
-                    <td className={cellClass}>
+                    <td className={portalDataTableCellClassName}>
                       <p className="font-medium text-gray-800 dark:text-gray-100">{bundle.name}</p>
                       {bundle.description && (
                         <p className="mt-1 max-w-md text-xs text-gray-500 dark:text-gray-400">
@@ -257,12 +243,14 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
                         </p>
                       )}
                     </td>
-                    <td className={cellClass}>{bundleItemCount[bundle.id] ?? 0}</td>
-                    <td className={cellClass}>{formatDiscount(bundle)}</td>
-                    <td className={cellClass}>
+                    <td className={portalDataTableCellClassName}>
+                      {bundleItemCount[bundle.id] ?? 0}
+                    </td>
+                    <td className={portalDataTableCellClassName}>{formatDiscount(bundle)}</td>
+                    <td className={portalDataTableCellClassName}>
                       {formatDateRange(bundle.validFrom, bundle.validTo)}
                     </td>
-                    <td className={cellClass}>
+                    <td className={portalDataTableCellClassName}>
                       <Badge
                         variant={getPortalActiveBadgeVariant(bundle.isActive)}
                         className="rounded-full px-2 py-0.5 text-[11px]"
@@ -271,7 +259,7 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
                       </Badge>
                     </td>
                     {canEdit && (
-                      <td className={cellClass}>
+                      <td className={portalDataTableCellClassName}>
                         <button
                           type="button"
                           disabled={deletingBundleId === bundle.id || !bundle.isActive}
@@ -288,8 +276,8 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
               </tbody>
             </table>
           </div>
-        )}
-      </CardContent>
+        </div>
+      )}
 
       <CreateBundleModal
         open={isModalOpen}
@@ -305,6 +293,6 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
         }}
         onSubmit={handleCreateBundle}
       />
-    </Card>
+    </div>
   );
 }

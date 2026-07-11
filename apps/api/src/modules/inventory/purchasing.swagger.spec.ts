@@ -6,6 +6,7 @@ import { PurchasingQueryService } from './services/purchasing-query.service';
 import { PurchasingService } from './services/purchasing.service';
 import { RfqPdfService } from './services/rfq-pdf.service';
 import { RfqService } from './services/rfq.service';
+import { SupplierProfileService } from './services/supplier-profile.service';
 import { PurchasingController } from './purchasing.controller';
 
 function getRequestSchema(
@@ -31,6 +32,7 @@ describe('PurchasingController Swagger', () => {
         { provide: GoodsReceiptService, useValue: {} },
         { provide: RfqService, useValue: {} },
         { provide: RfqPdfService, useValue: {} },
+        { provide: SupplierProfileService, useValue: {} },
       ],
     }).compile();
 
@@ -100,5 +102,29 @@ describe('PurchasingController Swagger', () => {
     for (const path of requiredPaths) {
       expect(document.paths[path]).toBeDefined();
     }
+  });
+
+  it('documenta endpoints de gestión de proveedores', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('Swagger Purchasing Test').setVersion('1.0').build(),
+    );
+
+    const supplierPaths = [
+      '/purchasing/suppliers',
+      '/purchasing/suppliers/{partyRefId}',
+      '/purchasing/suppliers/{partyRefId}/status',
+    ];
+
+    for (const path of supplierPaths) {
+      expect(document.paths[path]).toBeDefined();
+    }
+
+    expect(document.paths['/purchasing/suppliers']?.post?.summary).toBe(
+      'Dar de alta un proveedor con perfil comercial',
+    );
+    expect(document.paths['/purchasing/suppliers']?.get?.summary).toBe(
+      'Listar proveedores con perfil comercial',
+    );
   });
 });

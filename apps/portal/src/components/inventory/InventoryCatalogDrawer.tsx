@@ -39,6 +39,7 @@ interface CatalogFormState {
   trackingMode: InventoryTrackingMode;
   unitOfMeasure: string;
   status: InventoryItemStatus;
+  commercialReferenceId: string;
 }
 
 function defaultFormState(defaultCategoryId = ''): CatalogFormState {
@@ -53,6 +54,7 @@ function defaultFormState(defaultCategoryId = ''): CatalogFormState {
     trackingMode: InventoryTrackingMode.CONSUMABLE,
     unitOfMeasure: 'unidad',
     status: InventoryItemStatus.ACTIVE,
+    commercialReferenceId: '',
   };
 }
 
@@ -68,6 +70,7 @@ function formFromItem(item: InventoryItemRecord): CatalogFormState {
     trackingMode: item.trackingMode,
     unitOfMeasure: item.unitOfMeasure,
     status: item.status,
+    commercialReferenceId: item.commercialReferenceId ?? '',
   };
 }
 
@@ -82,6 +85,7 @@ function buildPayload(form: CatalogFormState): UpdateInventoryItemDto {
     trackingMode: form.trackingMode,
     unitOfMeasure: form.unitOfMeasure.trim(),
     status: form.status,
+    commercialReferenceId: form.commercialReferenceId.trim() || null,
   };
 }
 
@@ -102,6 +106,7 @@ interface InventoryCatalogDrawerProps {
   open: boolean;
   item: InventoryItemRecord;
   categories: InventoryCategoryRecord[];
+  commercialProductOptions: Array<{ id: string; name: string }>;
   isSubmitting: boolean;
   error: string | null;
   onClose: () => void;
@@ -112,6 +117,7 @@ export function InventoryCatalogDrawer({
   open,
   item,
   categories,
+  commercialProductOptions,
   isSubmitting,
   error,
   onClose,
@@ -342,6 +348,26 @@ export function InventoryCatalogDrawer({
             <p className="text-sm text-gray-500 dark:text-gray-400">
               Compras, inventario y activos se administran desde sus secciones correspondientes.
             </p>
+          </div>
+
+          <div className="space-y-4 border-t border-gray-100 pt-5 dark:border-dark-border">
+            <PortalSectionHeader
+              title="Relación comercial"
+              description="Vincula este producto operativo con un producto adicional de la oferta comercial."
+            />
+            <Select
+              label="Referencia comercial"
+              value={form.commercialReferenceId}
+              options={[
+                { value: '', label: 'Sin referencia comercial' },
+                ...commercialProductOptions.map((product) => ({
+                  value: product.id,
+                  label: product.name,
+                })),
+              ]}
+              onChange={(event) => updateForm('commercialReferenceId', event.target.value)}
+              helperText="Opcional. Usa el catálogo de Comercial > Productos adicionales."
+            />
           </div>
         </div>
 

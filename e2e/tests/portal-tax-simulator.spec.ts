@@ -267,7 +267,7 @@ async function setupTaxMocks(page: Page) {
 async function openTaxationSection(page: Page) {
   await page.goto('/dashboard/commercial');
   await page.waitForLoadState('networkidle');
-  await page.getByRole('tab', { name: 'Catálogo de impuestos', exact: true }).click();
+  await page.getByRole('tab', { name: 'Tributación', exact: true }).click();
 }
 
 test.describe('Portal tributario — simulador', () => {
@@ -280,18 +280,21 @@ test.describe('Portal tributario — simulador', () => {
     await openTaxationSection(page);
     await page.getByRole('tab', { name: 'Simulador tributario', exact: true }).click();
 
-    await expect(page.getByRole('heading', { name: 'Simulador tributario' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Parámetros de simulación' })).toBeVisible();
     await page.getByRole('button', { name: 'Simular' }).click();
 
-    await expect(page.getByText(/resultado de simulación/i)).toBeVisible();
+    await expect(page.getByText(/Resultado —/i)).toBeVisible();
     await expect(page.getByText('Regla ganadora', { exact: true })).toBeVisible();
-    await expect(page.getByText(/definición: tax-def-iva-19/i)).toBeVisible();
+    await expect(page.getByText(/tax-def-iva-19/i)).toBeVisible();
   });
 
   test('catálogo de impuestos muestra presets SYSTEM', async ({ page }) => {
     await openTaxationSection(page);
 
-    await expect(page.getByRole('heading', { name: 'Catálogo de impuestos' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Catálogo', exact: true })).toHaveAttribute(
+      'data-state',
+      'active',
+    );
     await expect(page.getByText('IVA general')).toBeVisible();
     await expect(page.getByText('IVA_19')).toBeVisible();
   });
@@ -301,8 +304,8 @@ test.describe('Portal tributario — simulador', () => {
     await page.getByRole('tab', { name: 'Reglas de aplicación', exact: true }).click();
 
     await expect(
-      page.getByRole('heading', { name: 'Reglas de aplicación tributaria' }),
-    ).toBeVisible();
+      page.getByRole('tab', { name: 'Reglas de aplicación', exact: true }),
+    ).toHaveAttribute('data-state', 'active');
     await expect(page.getByText(/iva · 19% · estratos 1–6 · residential/i)).toBeVisible();
     await expect(page.getByText('IVA general (IVA_19)')).toBeVisible();
   });

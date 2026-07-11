@@ -24,3 +24,4 @@ export * from './write-off-reason.enum';
 export * from './write-off-status.enum';
 export * from './stock-balance-condition.enum';
 export * from './responsible-type.enum';
+export * from './supplier-profile-status.enum';

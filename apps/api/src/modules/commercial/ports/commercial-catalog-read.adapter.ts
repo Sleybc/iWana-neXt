@@ -5,11 +5,13 @@ import { runInTenantSchema } from '@iwana/db';
 import { CatalogItemType, CustomerSegment } from '@iwana/shared';
 import { CatalogItem } from '../entities/catalog-item.entity';
 import { PlanDetail } from '../entities/plan-detail.entity';
+import { ProductDetail } from '../entities/product-detail.entity';
 import { CatalogPriceHistory } from '../entities/catalog-price-history.entity';
 import {
   CommercialCatalogItem,
   CommercialCatalogReadPort,
   CommercialItemSnapshot,
+  CommercialProductReference,
 } from './commercial-catalog-read.port';
 
 /**
@@ -106,6 +108,71 @@ export class CommercialCatalogReadAdapter extends CommercialCatalogReadPort {
         installationFee: parseFloat(price.installationFee),
         technology: detail?.technology ?? 'N/A',
         snapshotAt: new Date(),
+      };
+    });
+  }
+
+  async getActiveProducts(
+    tenantId: string,
+    schemaName: string,
+  ): Promise<CommercialProductReference[]> {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const items = await qr.manager.find(CatalogItem, {
+        where: { tenantId, type: CatalogItemType.PRODUCT, isActive: true, deletedAt: IsNull() },
+        order: { name: 'ASC' },
+      });
+
+      if (!items.length) {
+        return [];
+      }
+
+      const itemIds = items.map((item) => item.id);
+      const details = await qr.manager
+        .createQueryBuilder(ProductDetail, 'pd')
+        .where('pd.item_id = ANY(:ids)', { ids: itemIds })
+        .getMany();
+      const detailMap = new Map(details.map((detail) => [detail.itemId, detail]));
+
+      return items.map((item) => {
+        const detail = detailMap.get(item.id);
+        return {
+          id: item.id,
+          name: item.name,
+          isActive: item.isActive,
+          requiresInventory: detail?.requiresInventory ?? false,
+          isLoan: detail?.isLoan ?? false,
+        };
+      });
+    });
+  }
+
+  async resolveProductReference(
+    tenantId: string,
+    schemaName: string,
+    productId: string,
+  ): Promise<CommercialProductReference | null> {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const item = await qr.manager.findOne(CatalogItem, {
+        where: {
+          id: productId,
+          tenantId,
+          type: CatalogItemType.PRODUCT,
+          deletedAt: IsNull(),
+        },
+      });
+
+      if (!item) {
+        return null;
+      }
+
+      const detail = await qr.manager.findOne(ProductDetail, { where: { itemId: item.id } });
+
+      return {
+        id: item.id,
+        name: item.name,
+        isActive: item.isActive,
+        requiresInventory: detail?.requiresInventory ?? false,
+        isLoan: detail?.isLoan ?? false,
       };
     });
   }

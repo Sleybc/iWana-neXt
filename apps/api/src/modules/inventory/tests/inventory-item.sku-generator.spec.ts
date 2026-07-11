@@ -6,6 +6,7 @@ import { InventoryItem, runInTenantSchema, TenantContext } from '@iwana/db';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { INVENTORY_EVENTS } from '../events/inventory.events';
 import { SupplierPartyPort } from '../ports/supplier-party.port';
+import { CommercialProductReferencePort } from '../ports/commercial-product-reference.port';
 import { InventoryItemService } from '../services/inventory-item.service';
 import { InventoryCategoryService } from '../services/inventory-category.service';
 
@@ -78,6 +79,10 @@ describe('InventoryItemService — generacion automatica de SKU', () => {
       eventEmitter as unknown as EventEmitter2,
       supplierPartyPort as unknown as SupplierPartyPort,
       inventoryCategoryService as unknown as InventoryCategoryService,
+      {
+        resolveProductReference: jest.fn(),
+        getActiveProducts: jest.fn(),
+      } as unknown as CommercialProductReferencePort,
     );
 
     skuQueryBuilder = {

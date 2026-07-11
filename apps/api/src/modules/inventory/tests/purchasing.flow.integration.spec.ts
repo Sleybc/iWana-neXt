@@ -17,6 +17,7 @@ import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { GoodsReceiptService } from '../services/goods-receipt.service';
 import { PurchasingPolicyService } from '../services/purchasing-policy.service';
 import { PurchasingService } from '../services/purchasing.service';
+import { SupplierProfileService } from '../services/supplier-profile.service';
 import { RfqService } from '../services/rfq.service';
 
 jest.mock('@iwana/db', () => ({
@@ -260,9 +261,16 @@ describe('Purchasing flow integration (tenant-aware mock)', () => {
 
   it('supports awards, multiple purchase orders and partial receipts without overstating stock', async () => {
     const policyService = new PurchasingPolicyService();
-    const purchasingService = new PurchasingService({} as DataSource, policyService, {
-      applyQuoteToInvitation: jest.fn(),
-    } as unknown as RfqService);
+    const purchasingService = new PurchasingService(
+      {} as DataSource,
+      policyService,
+      {
+        applyQuoteToInvitation: jest.fn(),
+      } as unknown as RfqService,
+      {
+        assertEligibleForPurchasing: jest.fn().mockResolvedValue(undefined),
+      } as unknown as SupplierProfileService,
+    );
     const stockLedgerServiceMock = {
       recordMovementWithManager: jest.fn().mockResolvedValue({
         movement: { id: 'mov-001', origin: StockMovementOrigin.PURCHASE_RECEIPT },

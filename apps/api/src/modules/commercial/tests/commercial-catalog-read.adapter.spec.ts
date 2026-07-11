@@ -132,4 +132,46 @@ describe('CommercialCatalogReadAdapter', () => {
       }),
     );
   });
+
+  it('expone productos adicionales activos para referencias de inventario', async () => {
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          find: async () => [
+            {
+              id: 'prod-1',
+              tenantId: 'ten-1',
+              name: 'Router WiFi 6',
+              type: 'PRODUCT',
+              isActive: true,
+              deletedAt: null,
+            },
+          ],
+          createQueryBuilder: () => ({
+            where: jest.fn().mockReturnThis(),
+            getMany: jest.fn().mockResolvedValue([
+              {
+                itemId: 'prod-1',
+                isLoan: true,
+                requiresInventory: true,
+                category: 'CPE',
+              },
+            ]),
+          }),
+        },
+      }),
+    );
+
+    const result = await adapter.getActiveProducts('ten-1', 'tenant_test');
+
+    expect(result).toEqual([
+      {
+        id: 'prod-1',
+        name: 'Router WiFi 6',
+        isActive: true,
+        requiresInventory: true,
+        isLoan: true,
+      },
+    ]);
+  });
 });

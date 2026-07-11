@@ -601,7 +601,12 @@ export class TenantController {
   @Get('me/additional-products')
   @UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.ACCOUNTANT, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Listar productos adicionales del tenant autenticado' })
+  @ApiOperation({
+    summary: 'Listar productos adicionales del tenant autenticado (legacy)',
+    deprecated: true,
+    description:
+      'Usar GET /commercial/catalog?type=PRODUCT. Eliminación prevista tras sunset 2026-09-01.',
+  })
   async getAdditionalProducts(
     @CurrentUser() user: JwtPayload,
   ): Promise<{ data: AdditionalProductResponseDto[] }> {
@@ -612,8 +617,13 @@ export class TenantController {
   @Post('me/additional-products')
   @UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
   @Roles(UserRole.ADMIN)
-  @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Crear producto adicional para el tenant autenticado' })
+  @HttpCode(HttpStatus.GONE)
+  @ApiOperation({
+    summary: 'Crear producto adicional (legacy — deshabilitado)',
+    deprecated: true,
+    description:
+      'Usar POST /commercial/catalog/products. Eliminación prevista tras sunset 2026-09-01.',
+  })
   async createAdditionalProduct(
     @CurrentUser() user: JwtPayload,
     @Body() dto: CreateAdditionalProductDto,
@@ -630,7 +640,12 @@ export class TenantController {
   @Patch('me/additional-products/:productId')
   @UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Actualizar producto adicional del tenant autenticado' })
+  @HttpCode(HttpStatus.GONE)
+  @ApiOperation({
+    summary: 'Actualizar producto adicional (legacy — deshabilitado)',
+    deprecated: true,
+    description: 'Usar PATCH /commercial/catalog/:id. Eliminación prevista tras sunset 2026-09-01.',
+  })
   async updateAdditionalProduct(
     @CurrentUser() user: JwtPayload,
     @Param('productId', ParseUUIDPipe) productId: string,
@@ -649,8 +664,13 @@ export class TenantController {
   @Delete('me/additional-products/:productId')
   @UseGuards(JwtAuthGuard, RolesGuard, AbacGuard)
   @Roles(UserRole.ADMIN)
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Eliminar (soft-delete) producto adicional del tenant' })
+  @HttpCode(HttpStatus.GONE)
+  @ApiOperation({
+    summary: 'Eliminar producto adicional (legacy — deshabilitado)',
+    deprecated: true,
+    description:
+      'Usar DELETE /commercial/catalog/:id. Eliminación prevista tras sunset 2026-09-01.',
+  })
   async removeAdditionalProduct(
     @CurrentUser() user: JwtPayload,
     @Param('productId', ParseUUIDPipe) productId: string,

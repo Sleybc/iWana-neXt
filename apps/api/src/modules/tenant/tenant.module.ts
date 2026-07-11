@@ -12,7 +12,6 @@ import { TenantProvisioningService } from './tenant-provisioning.service';
 import { TenantMiddleware } from './tenant.middleware';
 import { TenantService } from './tenant.service';
 import { DashboardSummaryService } from './dashboard-summary.service';
-import { AdditionalProduct } from './entities/additional-product.entity';
 import { CommercialNode } from './entities/commercial-node.entity';
 import { CoverageZone } from './entities/coverage-zone.entity';
 import { PlanCatalogItem } from './entities/plan-catalog-item.entity';
@@ -46,13 +45,7 @@ import { PlanCatalogItem } from './entities/plan-catalog-item.entity';
     SearchQueueModule,
 
     // Registra entidades del módulo tenant en el DataSource (requerido para autoLoadEntities y qr.manager)
-    TypeOrmModule.forFeature([
-      Tenant,
-      CommercialNode,
-      CoverageZone,
-      PlanCatalogItem,
-      AdditionalProduct,
-    ]),
+    TypeOrmModule.forFeature([Tenant, CommercialNode, CoverageZone, PlanCatalogItem]),
 
     // Cola BullMQ de provisioning de schemas de tenant
     BullModule.registerQueue({

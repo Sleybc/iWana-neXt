@@ -34,7 +34,7 @@ El objetivo tecnico de Fase 01 es crear una fuente de verdad tenant-aware para:
 | `TasksModule` / MOD11 | Consumer / producer | Solicita movimientos desde OT y guarda `stockMovementId` |
 | `WfmModule` / MOD09 | Consumer | Consulta disponibilidad; no captura materiales |
 | `CommercialModule` / MOD06 | Upstream | Define producto comercial y `requiresInventory`; no mueve stock |
-| `PartiesModule` / MOD08 | Upstream | Maestro de proveedores y terceros |
+| `PartiesModule` / MOD08 | Upstream | Maestro de proveedores y terceros. Lectura via `IPartyReadPort`/`SupplierPartyPort`; **alta de proveedor** via puerto de comando `IPartyWritePort` (ver ADR-052) |
 | `CrmModule` / MOD05 | Consumer | Consulta activos del cliente por puerto |
 | Billing / ERP futuro | Consumer | Recibe eventos de venta, baja, costo o depreciacion futura |
 | `AuditModule` | Transversal | Auditoria de CUD, ajustes, bajas y aprobaciones |
@@ -45,6 +45,7 @@ El objetivo tecnico de Fase 01 es crear una fuente de verdad tenant-aware para:
 - MOD11 no escribe stock ni balance; solo invoca puerto de Inventario.
 - Las referencias externas son IDs logicos y contratos tipados.
 - Dentro de MOD12 si se permiten FKs entre entidades propias.
+- **Alta de proveedor (ADR-052):** el submodulo Compras crea/reutiliza la identidad del proveedor (`Party` + rol `SUPPLIER`) **solo** via el puerto de comando `IPartyWritePort` (propiedad de MOD08), nunca escribiendo tablas `party*`. El perfil comercial `SupplierProfile` es propiedad de MOD12 y referencia `party_ref_id`/`party_role_id` sin FK cross-module.
 
 ## 3. Componentes principales
 
@@ -76,6 +77,7 @@ apps/api/src/modules/inventory/
 │   ├── stock-balance.service.ts
 │   ├── serialized-asset.service.ts
 │   ├── purchasing.service.ts
+│   ├── supplier-profile.service.ts   # ADR-052: alta/gestion de proveedores
 │   ├── goods-receipt.service.ts
 │   ├── asset-lifecycle.service.ts
 │   └── inventory-dashboard.service.ts
@@ -207,6 +209,7 @@ graph TB
 - `stock_movements`: unique `(tenant_id, idempotency_key)`, index `(tenant_id, created_at)`, index `(tenant_id, origin_context, origin_ref_id)`.
 - `purchase_orders`: unique `(tenant_id, order_number)`, index por proveedor, estado y fecha esperada.
 - `goods_receipts`: index por OC y fecha.
+- `supplier_profiles` (ADR-052): unique `(tenant_id, party_ref_id)`, unique `(tenant_id, supplier_code)`, index `(tenant_id, status)`.
 
 ### Integridad
 

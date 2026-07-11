@@ -5,10 +5,6 @@ import { ArrowRight, CircleAlert, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
   Badge,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
   Dialog,
   DialogClose,
   DialogContent,
@@ -31,7 +27,14 @@ import {
   getPortalActiveBadgeVariant,
   portalActiveCountBadgeVariant,
 } from '@/lib/portal-status-badge-rules';
-import { PortalAlert, PortalEmptyState, PortalSkeletonBlock } from '@/components/shared/portal-ui';
+import {
+  PortalAlert,
+  PortalEmptyState,
+  PortalSkeletonBlock,
+  portalDataTableCellClassName,
+  portalDataTableHeadClassName,
+  portalDataTableShellClassName,
+} from '@/components/shared/portal-ui';
 
 interface CompatibilityRulesManagerProps {
   canEdit: boolean;
@@ -61,10 +64,6 @@ const EMPTY_CREATE_FORM: CreateFormState = {
   effectiveFrom: '',
   note: '',
 };
-
-const tableHeadClass =
-  'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500';
-const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
 
 const textareaBaseClass =
   'w-full rounded-2xl border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none transition-colors focus:border-iwana-secondary focus:ring-2 focus:ring-iwana-secondary/30 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100';
@@ -250,74 +249,57 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
   const itemOptions = catalogItems.map((item) => ({ value: item.id, label: item.name }));
 
   return (
-    <Card className="rounded-2xl border border-white/70 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-              Compatibilidad
-            </p>
-            <CardTitle className="mt-1 text-lg font-semibold">Reglas de reemplazo</CardTitle>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Guía a los agentes cuando sugieran ítems obsoletos indicando el sucesor vigente.
-            </p>
-          </div>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Badge variant={portalActiveCountBadgeVariant}>
+          {activeCount} activa{activeCount === 1 ? '' : 's'}
+        </Badge>
+        {canEdit && (
+          <Button
+            size="sm"
+            onClick={() => {
+              setIsCreateModalOpen(true);
+              setMutationError(null);
+            }}
+          >
+            <Plus className="mr-1 h-4 w-4" aria-hidden="true" />
+            Nueva regla de reemplazo
+          </Button>
+        )}
+      </div>
 
-          <div className="flex items-center gap-2">
-            <Badge
-              variant={portalActiveCountBadgeVariant}
-              className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]"
-            >
-              {activeCount} activa{activeCount === 1 ? '' : 's'}
-            </Badge>
-            {canEdit && (
-              <Button
-                size="sm"
-                onClick={() => {
-                  setIsCreateModalOpen(true);
-                  setMutationError(null);
-                }}
-              >
-                <Plus className="mr-1 h-4 w-4" aria-hidden="true" />
-                Nueva regla de reemplazo
-              </Button>
-            )}
-          </div>
-        </div>
-      </CardHeader>
-
-      <CardContent>
-        {isLoading ? (
-          <PortalSkeletonBlock className="h-28" />
-        ) : loadError ? (
-          <PortalAlert
-            variant="error"
-            title="No fue posible cargar reglas"
-            description={loadError}
-            icon={CircleAlert}
-          />
-        ) : replacesRules.length === 0 ? (
-          <PortalEmptyState
-            title="Sin reglas de reemplazo"
-            description="Crea la primera regla para guiar a los agentes cuando sugieran ítems obsoletos."
-            icon={ArrowRight}
-          />
-        ) : (
-          <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-dark-border">
+      {isLoading ? (
+        <PortalSkeletonBlock className="h-28" />
+      ) : loadError ? (
+        <PortalAlert
+          variant="error"
+          title="No fue posible cargar reglas"
+          description={loadError}
+          icon={CircleAlert}
+        />
+      ) : replacesRules.length === 0 ? (
+        <PortalEmptyState
+          title="Sin reglas de reemplazo"
+          description="Crea la primera regla para guiar a los agentes cuando sugieran ítems obsoletos."
+          icon={ArrowRight}
+        />
+      ) : (
+        <div className={portalDataTableShellClassName}>
+          <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-              <thead className="bg-[#f6f8f4] dark:bg-dark-surface-2">
+              <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
                 <tr>
-                  <th className={tableHeadClass}>Ítem obsoleto → Sucesor</th>
-                  <th className={tableHeadClass}>Desde</th>
-                  <th className={tableHeadClass}>Nota</th>
-                  <th className={tableHeadClass}>Estado</th>
-                  {canEdit && <th className={tableHeadClass}>Acciones</th>}
+                  <th className={portalDataTableHeadClassName}>Ítem obsoleto → Sucesor</th>
+                  <th className={portalDataTableHeadClassName}>Desde</th>
+                  <th className={portalDataTableHeadClassName}>Nota</th>
+                  <th className={portalDataTableHeadClassName}>Estado</th>
+                  {canEdit && <th className={portalDataTableHeadClassName}>Acciones</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2/80">
                 {replacesRules.map((rule) => (
                   <tr key={rule.id}>
-                    <td className={cellClass}>
+                    <td className={portalDataTableCellClassName}>
                       <span className="font-medium text-gray-800 dark:text-gray-100">
                         {rule.sourceItem?.name ?? rule.sourceItemId}
                       </span>
@@ -329,8 +311,10 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
                         {rule.targetItem?.name ?? rule.targetItemId}
                       </span>
                     </td>
-                    <td className={cellClass}>{formatDate(rule.effectiveFrom)}</td>
-                    <td className={`${cellClass} max-w-xs`}>
+                    <td className={portalDataTableCellClassName}>
+                      {formatDate(rule.effectiveFrom)}
+                    </td>
+                    <td className={`${portalDataTableCellClassName} max-w-xs`}>
                       {rule.note ? (
                         <span className="line-clamp-2 text-gray-600 dark:text-gray-300">
                           {rule.note}
@@ -339,7 +323,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
                         <span className="text-gray-400">—</span>
                       )}
                     </td>
-                    <td className={cellClass}>
+                    <td className={portalDataTableCellClassName}>
                       <Badge
                         variant={getPortalActiveBadgeVariant(rule.isActive)}
                         className="rounded-full px-2 py-0.5 text-[11px]"
@@ -348,7 +332,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
                       </Badge>
                     </td>
                     {canEdit && (
-                      <td className={cellClass}>
+                      <td className={portalDataTableCellClassName}>
                         <div className="flex items-center gap-3">
                           <button
                             type="button"
@@ -377,8 +361,8 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
               </tbody>
             </table>
           </div>
-        )}
-      </CardContent>
+        </div>
+      )}
 
       {/* ── Modal: crear regla de reemplazo ─────────────────────────────────── */}
       <Dialog
@@ -579,6 +563,6 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
           </div>
         </DialogContent>
       </Dialog>
-    </Card>
+    </div>
   );
 }

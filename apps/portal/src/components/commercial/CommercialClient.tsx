@@ -1,9 +1,19 @@
 'use client';
 
+import { useCallback, useEffect, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { CommercialTabLayout } from '@/components/commercial/CommercialTabLayout';
+import {
+  buildCommercialTabQuery,
+  resolveCommercialRoute,
+  type CommercialTab,
+  type OffersSubTab,
+  type ResolvedCommercialRoute,
+  type TaxationSubTab,
+} from '@/components/commercial/commercial-tab-params';
 import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 
 function CommercialSkeleton() {
@@ -15,10 +25,97 @@ function CommercialSkeleton() {
   );
 }
 
-export function CommercialClient() {
+interface CommercialClientProps {
+  initialTab?: string;
+}
+
+function syncRouteToUrl(
+  pathname: string,
+  router: ReturnType<typeof useRouter>,
+  searchParams: URLSearchParams,
+  route: ResolvedCommercialRoute,
+) {
+  const nextSearchParams = new URLSearchParams(searchParams.toString());
+  const nextTab = buildCommercialTabQuery(route);
+
+  if (nextTab) {
+    nextSearchParams.set('tab', nextTab);
+  } else {
+    nextSearchParams.delete('tab');
+  }
+
+  const nextQuery = nextSearchParams.toString();
+  router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+}
+
+export function CommercialClient({ initialTab }: CommercialClientProps) {
   const { user, isLoading: authLoading } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const [route, setRoute] = useState<ResolvedCommercialRoute>(() =>
+    resolveCommercialRoute(initialTab ?? searchParams.get('tab')),
+  );
 
   const canEdit = user?.role === 'ADMIN';
+
+  useEffect(() => {
+    const tabFromUrl = searchParams.get('tab') ?? initialTab;
+    setRoute((current) => {
+      const nextRoute = resolveCommercialRoute(tabFromUrl);
+      if (
+        current.tab === nextRoute.tab &&
+        current.taxationSubTab === nextRoute.taxationSubTab &&
+        current.offersSubTab === nextRoute.offersSubTab
+      ) {
+        return current;
+      }
+
+      return nextRoute;
+    });
+  }, [initialTab, searchParams]);
+
+  const updateRoute = useCallback(
+    (nextRoute: ResolvedCommercialRoute) => {
+      setRoute(nextRoute);
+      syncRouteToUrl(pathname, router, searchParams, nextRoute);
+    },
+    [pathname, router, searchParams],
+  );
+
+  const handleTabChange = useCallback(
+    (tab: CommercialTab) => {
+      updateRoute({
+        tab,
+        taxationSubTab: route.taxationSubTab,
+        offersSubTab: route.offersSubTab,
+      });
+    },
+    [route.offersSubTab, route.taxationSubTab, updateRoute],
+  );
+
+  const handleTaxationSubTabChange = useCallback(
+    (taxationSubTab: TaxationSubTab) => {
+      updateRoute({
+        tab: 'taxation',
+        taxationSubTab,
+        offersSubTab: route.offersSubTab,
+      });
+    },
+    [route.offersSubTab, updateRoute],
+  );
+
+  const handleOffersSubTabChange = useCallback(
+    (offersSubTab: OffersSubTab) => {
+      updateRoute({
+        tab: 'offers',
+        taxationSubTab: route.taxationSubTab,
+        offersSubTab,
+      });
+    },
+    [route.taxationSubTab, updateRoute],
+  );
 
   if (authLoading) {
     return (
@@ -52,7 +149,15 @@ export function CommercialClient() {
         title="Comercial"
         subtitle="Gestiona catálogo, precios vigentes y reglas operativas."
       />
-      <CommercialTabLayout canEdit={canEdit} />
+      <CommercialTabLayout
+        canEdit={canEdit}
+        activeTab={route.tab}
+        taxationSubTab={route.taxationSubTab}
+        offersSubTab={route.offersSubTab}
+        onTabChange={handleTabChange}
+        onTaxationSubTabChange={handleTaxationSubTabChange}
+        onOffersSubTabChange={handleOffersSubTabChange}
+      />
     </div>
   );
 }

@@ -33,6 +33,7 @@ import {
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { PurchasingPolicyService } from './purchasing-policy.service';
 import { RfqService } from './rfq.service';
+import { SupplierProfileService } from './supplier-profile.service';
 
 export interface PurchaseOrderDetail extends PurchaseOrder {
   lines: PurchaseOrderLine[];
@@ -71,6 +72,7 @@ export class PurchasingService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly purchasingPolicyService: PurchasingPolicyService,
     private readonly rfqService: RfqService,
+    private readonly supplierProfileService: SupplierProfileService,
   ) {}
 
   async createPurchaseRequest(
@@ -182,6 +184,12 @@ export class PurchasingService {
     return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
       withTransaction(qr.manager, async (manager) => {
         const request = await this.requirePurchaseRequest(manager, tenantId, purchaseRequestId);
+
+        await this.supplierProfileService.assertEligibleForPurchasing(
+          manager,
+          tenantId,
+          validated.partyRefId,
+        );
 
         const quote = await manager.save(
           SupplierQuote,
@@ -308,6 +316,12 @@ export class PurchasingService {
             throw new BadRequestException(blockingReason);
           }
 
+          await this.supplierProfileService.assertEligibleForPurchasing(
+            manager,
+            tenantId,
+            awardInput.awardedPartyRefId,
+          );
+
           const award = await manager.save(
             PurchaseRequestLineAward,
             manager.create(PurchaseRequestLineAward, {
@@ -432,6 +446,12 @@ export class PurchasingService {
     },
     actor: JwtPayload,
   ): Promise<PurchaseOrder> {
+    await this.supplierProfileService.assertEligibleForPurchasing(
+      manager,
+      tenantId,
+      input.partyRefId,
+    );
+
     const orderNumber = await this.generateSequentialNumber(
       manager,
       PurchaseOrder,

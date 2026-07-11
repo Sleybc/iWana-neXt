@@ -1069,3 +1069,49 @@ Cambios:
 Validación:
 
 - `pnpm --filter @iwana/portal typecheck` — verde.
+
+### 8.36 Desambiguación Comercial vs Inventario — productos adicionales (2026-07-11)
+
+Decisión arquitectónica (AI-EM-ARCH): **no retirar** la pestaña de productos del módulo Comercial. MOD06 conserva el catálogo de oferta (`catalog_items` tipo `PRODUCT`); MOD12 conserva el maestro operativo (`inventory_items`).
+
+Remediación aplicada:
+
+- Portal Comercial: pestaña renombrada a **Productos adicionales** con copy que distingue oferta comercial vs stock físico.
+- Portal Inventario: subtítulo del catálogo operativo y chip de filtro por referencia comercial.
+- Puente MOD06↔MOD12:
+  - `CommercialCatalogReadPort.getActiveProducts()` / `resolveProductReference()`.
+  - `CommercialProductReferencePort` en MOD12 con validación de `commercialReferenceId`.
+  - Selector **Referencia comercial** en drawer de producto de inventario.
+  - Enlace cruzado desde productos con `requiresInventory=true` hacia Inventario filtrado por `commercialRef`.
+- Legacy TenantModule:
+  - Endpoints `/tenants/me/additional-products` marcados `@ApiDeprecated` (sunset 2026-09-01).
+  - Escrituras retornan `410 Gone`; lectura delegada a `catalog_items`.
+  - Migración tenant `063_drop_legacy_additional_products`.
+  - Seed actualizado hacia catálogo comercial MOD06.
+
+Referencias: ADR-028, ADR-048, PRD-MOD06 v1.2, PRD-MOD12.
+
+### 8.37 Alineación UI portal Comercial — identidad iWana y patrón compacto (2026-07-11)
+
+Remediación posterior a auditoría UX (AI-PROD-UX) sobre `/dashboard/commercial`.
+
+**Alcance:**
+- Shell de tabs con `portalModuleTabs*` agrupando **Catálogo** y **Reglas**.
+- Compactación de managers (planes, productos adicionales, servicios, combos, promociones, compatibilidad, tributación).
+- Deep-link por query `tab` para subtabs de ofertas y tributación.
+- Eliminación de `CommercialPlaceholderPanel` (código huérfano).
+
+**Evidencia:**
+- Capturas desktop/mobile en `docs/informes/evidence/portal-commercial-ui-2026-07-11/`.
+- E2E focalizado: `portal-commercial-catalog-products-services.spec.ts`, `portal-tax-simulator.spec.ts`, `portal-commercial-ui-evidence.spec.ts` — **5/5 OK**.
+
+**Deuda residual aceptada:**
+- Ninguna en compactación tributaria; review G6 AI-PROD-UX pendiente solo para validación visual en dark mode sobre evidencia capturada.
+
+### 8.38 Compactación tributaria — cierre de deuda UI (2026-07-11)
+
+Se eliminaron los encabezados h3 redundantes en `TaxCatalogManager` y `TaxApplicationRulesManager`, alineándolos al patrón toolbar + `PortalAlert` / `PortalEmptyState` / `PortalSkeletonBlock` del resto del módulo Comercial.
+
+**Validación:**
+- `pnpm --filter @iwana/portal test -- src/components/commercial/TaxCatalogManager.spec.tsx` — OK
+- E2E `portal-tax-simulator.spec.ts` — selectores actualizados a tabs activos + contenido operativo

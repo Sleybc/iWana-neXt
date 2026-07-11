@@ -29,7 +29,16 @@ import {
   type TaxRuleApplication,
   type UpdateTaxRuleApplicationDto,
 } from '@/lib/api-client';
-import { getPortalActiveBadgeVariant } from '@/lib/portal-status-badge-rules';
+import {
+  getPortalActiveBadgeVariant,
+  portalActiveCountBadgeVariant,
+} from '@/lib/portal-status-badge-rules';
+import {
+  interactiveFocusClassName,
+  PortalAlert,
+  PortalEmptyState,
+  PortalSkeletonBlock,
+} from '@/components/shared/portal-ui';
 
 interface TaxApplicationRulesManagerProps {
   canEdit: boolean;
@@ -61,7 +70,7 @@ function HelpPopover({ children }: { children: React.ReactNode }) {
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="ml-1.5 inline-flex text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+          className={`ml-1.5 inline-flex text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 ${interactiveFocusClassName}`}
           aria-label="Más información"
         >
           <HelpCircle className="h-3.5 w-3.5" />
@@ -126,6 +135,8 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
     return d ? `${d.name} (${d.code})` : id;
   };
 
+  const activeApplicationsCount = applications.filter((app) => app.isActive).length;
+
   const handleCreate = async () => {
     if (!form.taxRuleId || !form.taxDefinitionId) return;
     setSubmitting(true);
@@ -188,44 +199,42 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-base font-semibold text-gray-900 dark:text-dark-text-primary">
-            Reglas de aplicación tributaria
-          </h3>
-          <p className="mt-0.5 text-sm text-gray-500 dark:text-dark-text-secondary">
-            Vincula reglas comerciales con definiciones del catálogo de impuestos.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => void load()}>
-            <RotateCcw className="h-4 w-4" />
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Badge variant={portalActiveCountBadgeVariant}>
+          {activeApplicationsCount} activa{activeApplicationsCount === 1 ? '' : 's'}
+        </Badge>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Actualizar reglas de aplicación"
+          title="Actualizar reglas de aplicación"
+          onClick={() => void load()}
+        >
+          <RotateCcw className="h-4 w-4" aria-hidden="true" />
+        </Button>
+        {canEdit && (
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />
+            Vincular regla
           </Button>
-          {canEdit && (
-            <Button size="sm" onClick={() => setCreateOpen(true)}>
-              <Plus className="mr-1.5 h-4 w-4" />
-              Vincular regla
-            </Button>
-          )}
-        </div>
+        )}
       </div>
 
       {error && (
-        <div
-          role="alert"
-          className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400"
-        >
-          {error}
-        </div>
+        <PortalAlert
+          variant="error"
+          title="No fue posible cargar reglas de aplicación"
+          description={error}
+        />
       )}
 
       {loading ? (
-        <div className="py-8 text-center text-sm text-gray-500">Cargando reglas&hellip;</div>
+        <PortalSkeletonBlock className="h-28" />
       ) : applications.length === 0 ? (
-        <div className="py-8 text-center text-sm text-gray-500">
-          No hay reglas de aplicación configuradas. Vincula una regla con una definición del
-          catálogo para activar el motor nuevo.
-        </div>
+        <PortalEmptyState
+          title="Sin reglas de aplicación"
+          description="Vincula una regla comercial con una definición del catálogo para activar el motor tributario."
+        />
       ) : (
         <div className="flex flex-col gap-2">
           {applications.map((app) => (

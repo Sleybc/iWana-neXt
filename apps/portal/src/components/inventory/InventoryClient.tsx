@@ -16,7 +16,12 @@ import {
   TabsList,
   TabsTrigger,
 } from '@iwana/ui';
-import { InventoryCategoryStatus, SerializedAssetStatus, WriteOffReason } from '@iwana/shared';
+import {
+  InventoryCategoryStatus,
+  SerializedAssetStatus,
+  SupplierProfileStatus,
+  WriteOffReason,
+} from '@iwana/shared';
 import {
   ApiError,
   type AddSupplierQuoteDto,
@@ -24,6 +29,7 @@ import {
   type CreateInventoryCategoryDto,
   type CreatePurchaseOrderDto,
   type CreatePurchaseRequestDto,
+  type CreateSupplierDto,
   type CreateCounterPurchaseDto,
   type GoodsReceiptResultRecord,
   type InventoryDashboardSummary,
@@ -32,6 +38,8 @@ import {
   type InventoryItemRecord,
   type InternalUser,
   inventoryApi,
+  commercialApi,
+  type AdditionalProduct,
   type StockIssueRecord,
   type StockIssueDetailRecord,
   type CreateStockIssueDto,
@@ -48,9 +56,11 @@ import {
   type StockBalanceRecord,
   type StockLocationRecord,
   type StockMovementResultRecord,
+  type SupplierProfileRecord,
   type UpdateStockLocationDto,
   type UpdateInventoryItemDto,
   type UpdateInventoryCategoryDto,
+  type UpdateSupplierDto,
 } from '@/lib/api-client';
 import { buildUserLabelMap, loadTenantUsers } from '@/lib/portal-user-options';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -76,6 +86,8 @@ import { InventoryCatalogCategoriesPanel } from './InventoryCatalogCategoriesPan
 import { InventoryCatalogProductsPanel } from './InventoryCatalogProductsPanel';
 import { InventoryCatalogSummaryPreview } from './InventoryCatalogSummaryPreview';
 import { PurchaseWorkspace } from './PurchaseWorkspace';
+import { SuppliersPanel } from './SuppliersPanel';
+import { SupplierFormDrawer } from './SupplierFormDrawer';
 import { buildPurchaseItemFrequency } from './purchase-composer-preferences';
 import { SerializedAssetDetailDrawer } from './SerializedAssetDetailDrawer';
 import { StockLocationFormDialog } from './StockLocationFormDialog';
@@ -104,6 +116,7 @@ export type InventoryTab =
   | 'summary'
   | 'catalog'
   | 'purchasing'
+  | 'suppliers'
   | 'locations'
   | 'issues'
   | 'assets'
@@ -258,9 +271,20 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const [categoryEditItem, setCategoryEditItem] = useState<InventoryCategoryRecord | null>(null);
   const [categorySubmitError, setCategorySubmitError] = useState<string | null>(null);
   const [isSubmittingCategory, setIsSubmittingCategory] = useState(false);
+  const [suppliers, setSuppliers] = useState<SupplierProfileRecord[]>([]);
+  const [isLoadingSuppliers, setIsLoadingSuppliers] = useState(false);
+  const [isRefreshingSuppliers, setIsRefreshingSuppliers] = useState(false);
+  const [suppliersError, setSuppliersError] = useState<string | null>(null);
+  const [supplierDrawerOpen, setSupplierDrawerOpen] = useState(false);
+  const [supplierEditItem, setSupplierEditItem] = useState<SupplierProfileRecord | null>(null);
+  const [supplierSubmitError, setSupplierSubmitError] = useState<string | null>(null);
+  const [isSubmittingSupplier, setIsSubmittingSupplier] = useState(false);
   const [supplierLabels, setSupplierLabels] = useState<Record<string, string>>({});
   const [purchaseItemFrequency, setPurchaseItemFrequency] = useState<Record<string, number>>({});
   const [isCatalogSearching, setIsCatalogSearching] = useState(false);
+  const [commercialProductOptions, setCommercialProductOptions] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
 
   const activeCategoryOptions = useMemo(
     () =>
@@ -409,6 +433,42 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     const custodyFromUrl = resolveLocationCustodyFilter(searchParams.get('custody'));
     setLocationCustodyFilter((current) => (current === custodyFromUrl ? current : custodyFromUrl));
   }, [searchParams]);
+
+  useEffect(() => {
+    const commercialRefFromUrl = searchParams.get('commercialRef')?.trim();
+    if (!commercialRefFromUrl) {
+      return;
+    }
+
+    setActiveTab('catalog');
+    setCatalogSubView('products');
+    setCatalogFilters((current) =>
+      current.commercialReferenceId === commercialRefFromUrl
+        ? current
+        : { ...current, commercialReferenceId: commercialRefFromUrl },
+    );
+  }, [searchParams]);
+
+  const loadCommercialProductOptions = useCallback(async () => {
+    try {
+      const products: AdditionalProduct[] = await commercialApi.getAdditionalProducts();
+      setCommercialProductOptions(
+        products
+          .filter((product) => product.isActive)
+          .map((product) => ({ id: product.id, name: product.name })),
+      );
+    } catch {
+      setCommercialProductOptions([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'catalog' && !catalogDrawerOpen) {
+      return;
+    }
+
+    void loadCommercialProductOptions();
+  }, [activeTab, catalogDrawerOpen, loadCommercialProductOptions]);
 
   const openLocationCreateDialog = useCallback(() => {
     setLocationEditItem(null);
@@ -561,6 +621,9 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         if (filters.purchasable !== undefined) {
           listParams.purchasable = filters.purchasable;
         }
+        if (filters.commercialReferenceId) {
+          listParams.commercialReferenceId = filters.commercialReferenceId;
+        }
 
         const response = await inventoryApi.listItems(listParams);
         setCatalogItems(response);
@@ -599,6 +662,26 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     }
   }, []);
 
+  const loadSuppliers = useCallback(async (silent = false) => {
+    if (silent) {
+      setIsRefreshingSuppliers(true);
+    } else {
+      setIsLoadingSuppliers(true);
+    }
+
+    setSuppliersError(null);
+
+    try {
+      const response = await purchasingApi.listSuppliers({ page: 1, limit: 100 });
+      setSuppliers(response.data);
+    } catch (loadError) {
+      setSuppliersError(mapInventoryError(loadError));
+    } finally {
+      setIsLoadingSuppliers(false);
+      setIsRefreshingSuppliers(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (activeTab !== 'catalog') {
       return;
@@ -621,6 +704,14 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
 
     void loadCategories();
   }, [activeTab, loadCategories]);
+
+  useEffect(() => {
+    if (activeTab !== 'suppliers') {
+      return;
+    }
+
+    void loadSuppliers();
+  }, [activeTab, loadSuppliers]);
 
   useEffect(() => {
     if (activeTab !== 'purchasing') {
@@ -788,6 +879,68 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     setCategorySubmitError(null);
     setCategoryEditItem(category ?? null);
     setCategoryDrawerOpen(true);
+  }
+
+  function openSupplierDrawer(supplier?: SupplierProfileRecord) {
+    setSupplierSubmitError(null);
+    setSupplierEditItem(supplier ?? null);
+    setSupplierDrawerOpen(true);
+  }
+
+  async function openSupplierDetail(supplier: SupplierProfileRecord) {
+    setSupplierSubmitError(null);
+    try {
+      const detail = await purchasingApi.getSupplier(supplier.partyRefId);
+      openSupplierDrawer(detail);
+    } catch (detailError) {
+      setSuppliersError(mapInventoryError(detailError));
+    }
+  }
+
+  async function handleCreateSupplier(payload: CreateSupplierDto) {
+    setIsSubmittingSupplier(true);
+    setSupplierSubmitError(null);
+    try {
+      await purchasingApi.createSupplier(payload);
+      setSupplierDrawerOpen(false);
+      setSupplierEditItem(null);
+      setMovementNotice('Proveedor registrado.');
+      await loadSuppliers(true);
+    } catch (submitError) {
+      setSupplierSubmitError(mapInventoryError(submitError));
+    } finally {
+      setIsSubmittingSupplier(false);
+    }
+  }
+
+  async function handleUpdateSupplier(partyRefId: string, payload: UpdateSupplierDto) {
+    setIsSubmittingSupplier(true);
+    setSupplierSubmitError(null);
+    try {
+      const updated = await purchasingApi.updateSupplier(partyRefId, payload);
+      setSupplierEditItem(updated);
+      setMovementNotice('Proveedor actualizado.');
+      await loadSuppliers(true);
+    } catch (submitError) {
+      setSupplierSubmitError(mapInventoryError(submitError));
+    } finally {
+      setIsSubmittingSupplier(false);
+    }
+  }
+
+  async function handleSetSupplierStatus(partyRefId: string, status: SupplierProfileStatus) {
+    setIsSubmittingSupplier(true);
+    setSupplierSubmitError(null);
+    try {
+      const updated = await purchasingApi.setSupplierStatus(partyRefId, { status });
+      setSupplierEditItem(updated);
+      setMovementNotice('Estado del proveedor actualizado.');
+      await loadSuppliers(true);
+    } catch (submitError) {
+      setSupplierSubmitError(mapInventoryError(submitError));
+    } finally {
+      setIsSubmittingSupplier(false);
+    }
   }
 
   async function handleCreateCategory(payload: CreateInventoryCategoryDto) {
@@ -1261,6 +1414,9 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
               <TabsTrigger value="purchasing" className={portalModuleTabTriggerClassName}>
                 Compras
               </TabsTrigger>
+              <TabsTrigger value="suppliers" className={portalModuleTabTriggerClassName}>
+                Proveedores
+              </TabsTrigger>
               <TabsTrigger value="locations" className={portalModuleTabTriggerClassName}>
                 Bodegas
               </TabsTrigger>
@@ -1386,7 +1542,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             }
             description={
               catalogSubView === 'products'
-                ? 'Consulta, filtra y administra productos para compras e inventario.'
+                ? 'Consulta, filtra y administra productos para compras e inventario. Maestro operativo: SKU, stock y trazabilidad.'
                 : 'Administra las categorías usadas por los productos del catálogo.'
             }
             actions={
@@ -1542,6 +1698,51 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             onRefresh={() => loadData(true)}
             onCatalogSearch={(search) => void loadCatalogOptions(search)}
           />
+        </TabsContent>
+
+        <TabsContent value="suppliers" className="space-y-6">
+          <PortalPanel
+            eyebrow="Abastecimiento"
+            title="Proveedores"
+            description="Administra la ficha comercial de los proveedores vinculados a compras."
+            actions={
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  loading={isRefreshingSuppliers}
+                  onClick={() => void loadSuppliers(true)}
+                >
+                  Actualizar
+                </Button>
+                <Button type="button" onClick={() => openSupplierDrawer()}>
+                  Nuevo proveedor
+                </Button>
+              </div>
+            }
+            contentClassName="space-y-4"
+          >
+            {suppliersError ? (
+              <PortalAlert
+                variant="error"
+                title="No fue posible cargar los proveedores"
+                description={suppliersError}
+              />
+            ) : null}
+
+            <SuppliersPanel
+              suppliers={suppliers}
+              isLoading={isLoadingSuppliers}
+              isRefreshing={isRefreshingSuppliers}
+              onCreate={() => openSupplierDrawer()}
+              onRowClick={(supplier) => void openSupplierDetail(supplier)}
+              createAction={
+                <Button type="button" onClick={() => openSupplierDrawer()}>
+                  Nuevo proveedor
+                </Button>
+              }
+            />
+          </PortalPanel>
         </TabsContent>
 
         <TabsContent value="locations" className="space-y-6">
@@ -2166,6 +2367,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
           open={catalogDrawerOpen}
           item={catalogEditItem}
           categories={categories}
+          commercialProductOptions={commercialProductOptions}
           isSubmitting={isSubmittingCatalogItem}
           error={catalogSubmitError}
           onClose={() => {
@@ -2190,6 +2392,21 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         }}
         onCreate={handleCreateCategory}
         onUpdate={handleUpdateCategory}
+      />
+
+      <SupplierFormDrawer
+        open={supplierDrawerOpen}
+        supplier={supplierEditItem}
+        isSubmitting={isSubmittingSupplier}
+        error={supplierSubmitError}
+        onClose={() => {
+          setSupplierDrawerOpen(false);
+          setSupplierEditItem(null);
+          setSupplierSubmitError(null);
+        }}
+        onCreate={handleCreateSupplier}
+        onUpdate={handleUpdateSupplier}
+        onSetStatus={handleSetSupplierStatus}
       />
 
       <Dialog

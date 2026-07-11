@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  GoneException,
   Injectable,
   Inject,
   Logger,
@@ -11,7 +12,7 @@ import Redis from 'ioredis';
 import { DataSource, Repository } from 'typeorm';
 import { MediaUsage, Tenant, runInTenantSchema } from '@iwana/db';
 import type { MediaThemeVariant } from '@iwana/db';
-import { AuditAction, TenantStatus } from '@iwana/shared';
+import { AuditAction, AdditionalProductCategory, TenantStatus } from '@iwana/shared';
 import { AuditService } from '../audit/audit.service';
 import { MediaService } from '../media/media.service';
 import { SearchQueueService } from '../search/search-queue.service';
@@ -48,7 +49,6 @@ import {
   UpdateAdditionalProductDto,
   AdditionalProductResponseDto,
 } from './dto/tenant-additional-products.dto';
-import { AdditionalProduct } from './entities/additional-product.entity';
 import { CommercialNode } from './entities/commercial-node.entity';
 import { CoverageZone } from './entities/coverage-zone.entity';
 import { PlanCatalogItem } from './entities/plan-catalog-item.entity';
@@ -1043,163 +1043,89 @@ export class TenantService {
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // ADDITIONAL PRODUCTS
+  // ADDITIONAL PRODUCTS (legacy — lectura desde MOD06; escritura deshabilitada)
   // ══════════════════════════════════════════════════════════════════════════════
+
+  private static readonly LEGACY_PRODUCTS_SUNSET_MESSAGE =
+    'Los endpoints /tenants/me/additional-products están deprecados. Usa /commercial/catalog/products.';
+
+  private mapCommercialCategoryToLegacy(category: string): AdditionalProductCategory {
+    if (Object.values(AdditionalProductCategory).includes(category as AdditionalProductCategory)) {
+      return category as AdditionalProductCategory;
+    }
+
+    return AdditionalProductCategory.CONNECTIVITY;
+  }
 
   async getAdditionalProducts(
     tenantId: string,
     schemaName: string,
   ): Promise<AdditionalProductResponseDto[]> {
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const items = await qr.manager.find(AdditionalProduct, {
-        where: { tenantId },
-        order: { category: 'ASC', sortOrder: 'ASC' },
-      });
-      return items.map((item) => ({
-        id: item.id,
-        name: item.name,
-        category: item.category,
-        sortOrder: item.sortOrder,
-        isActive: item.isActive,
-        createdAt: item.createdAt,
-        updatedAt: item.updatedAt,
+      const rows = (await qr.query(
+        `
+        SELECT
+          ci.id,
+          ci.name,
+          pd.category,
+          ci.is_active AS "isActive",
+          ci.created_at AS "createdAt",
+          ci.updated_at AS "updatedAt"
+        FROM catalog_items ci
+        INNER JOIN product_details pd ON pd.item_id = ci.id
+        WHERE ci.tenant_id = $1
+          AND ci.type = 'PRODUCT'
+          AND ci.deleted_at IS NULL
+        ORDER BY pd.category ASC, ci.name ASC
+        `,
+        [tenantId],
+      )) as Array<{
+        id: string;
+        name: string;
+        category: string;
+        isActive: boolean;
+        createdAt: Date;
+        updatedAt: Date;
+      }>;
+
+      return rows.map((row, index) => ({
+        id: row.id,
+        name: row.name,
+        category: this.mapCommercialCategoryToLegacy(row.category),
+        sortOrder: index,
+        isActive: row.isActive,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
       }));
     });
   }
 
   async createAdditionalProduct(
-    tenantId: string,
-    schemaName: string,
-    dto: CreateAdditionalProductDto,
-    actorUserId?: string,
+    _tenantId: string,
+    _schemaName: string,
+    _dto: CreateAdditionalProductDto,
+    _actorUserId?: string,
   ): Promise<AdditionalProductResponseDto[]> {
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const entity = qr.manager.create(AdditionalProduct, {
-        tenantId,
-        name: dto.name,
-        category: dto.category,
-        sortOrder: dto.sortOrder ?? 0,
-        isActive: dto.isActive ?? true,
-      });
-
-      const saved = await qr.manager.save(AdditionalProduct, entity);
-
-      await this.auditService.log({
-        tenantId,
-        schemaName,
-        userId: actorUserId ?? null,
-        action: AuditAction.CREATE,
-        entityType: 'AdditionalProduct',
-        entityId: saved.id,
-        newValue: {
-          id: saved.id,
-          name: saved.name,
-          category: saved.category,
-          sortOrder: saved.sortOrder,
-          isActive: saved.isActive,
-        },
-      });
-
-      return this.getAdditionalProducts(tenantId, schemaName);
-    });
+    throw new GoneException(TenantService.LEGACY_PRODUCTS_SUNSET_MESSAGE);
   }
 
   async updateAdditionalProduct(
-    tenantId: string,
-    schemaName: string,
-    productId: string,
-    dto: UpdateAdditionalProductDto,
-    actorUserId?: string,
+    _tenantId: string,
+    _schemaName: string,
+    _productId: string,
+    _dto: UpdateAdditionalProductDto,
+    _actorUserId?: string,
   ): Promise<AdditionalProductResponseDto[]> {
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const entity = await qr.manager.findOne(AdditionalProduct, {
-        where: { id: productId, tenantId },
-      });
-      if (!entity) {
-        throw new NotFoundException(`Producto adicional con id "${productId}" no encontrado.`);
-      }
-
-      const oldValue = {
-        id: entity.id,
-        name: entity.name,
-        category: entity.category,
-        sortOrder: entity.sortOrder,
-        isActive: entity.isActive,
-      };
-
-      if (dto.name !== undefined) entity.name = dto.name;
-      if (dto.category !== undefined) entity.category = dto.category;
-      if (dto.sortOrder !== undefined) entity.sortOrder = dto.sortOrder;
-      if (dto.isActive !== undefined) entity.isActive = dto.isActive;
-
-      const saved = await qr.manager.save(AdditionalProduct, entity);
-
-      await this.auditService.log({
-        tenantId,
-        schemaName,
-        userId: actorUserId ?? null,
-        action: AuditAction.UPDATE,
-        entityType: 'AdditionalProduct',
-        entityId: saved.id,
-        oldValue,
-        newValue: {
-          id: saved.id,
-          name: saved.name,
-          category: saved.category,
-          sortOrder: saved.sortOrder,
-          isActive: saved.isActive,
-        },
-      });
-
-      return this.getAdditionalProducts(tenantId, schemaName);
-    });
+    throw new GoneException(TenantService.LEGACY_PRODUCTS_SUNSET_MESSAGE);
   }
 
   async removeAdditionalProduct(
-    tenantId: string,
-    schemaName: string,
-    productId: string,
-    actorUserId?: string,
+    _tenantId: string,
+    _schemaName: string,
+    _productId: string,
+    _actorUserId?: string,
   ): Promise<AdditionalProductResponseDto[]> {
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const entity = await qr.manager.findOne(AdditionalProduct, {
-        where: { id: productId, tenantId },
-        withDeleted: true,
-      });
-      if (!entity) {
-        throw new NotFoundException(`Producto adicional con id "${productId}" no encontrado.`);
-      }
-
-      if (entity.deletedAt) {
-        return this.getAdditionalProducts(tenantId, schemaName);
-      }
-
-      const oldValue = {
-        id: entity.id,
-        name: entity.name,
-        category: entity.category,
-        sortOrder: entity.sortOrder,
-        isActive: entity.isActive,
-      };
-
-      entity.isActive = false;
-      entity.deletedAt = new Date();
-
-      await qr.manager.save(AdditionalProduct, entity);
-
-      await this.auditService.log({
-        tenantId,
-        schemaName,
-        userId: actorUserId ?? null,
-        action: AuditAction.DELETE,
-        entityType: 'AdditionalProduct',
-        entityId: entity.id,
-        oldValue,
-        newValue: { id: entity.id, name: entity.name, isActive: false },
-      });
-
-      return this.getAdditionalProducts(tenantId, schemaName);
-    });
+    throw new GoneException(TenantService.LEGACY_PRODUCTS_SUNSET_MESSAGE);
   }
 
   /** Mapea Tenant a TenantSelfResponseDto — solo campos del panel empresarial. */

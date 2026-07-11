@@ -1,14 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { FlaskConical } from 'lucide-react';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@iwana/ui';
+import { CircleAlert, FlaskConical } from 'lucide-react';
+import { Badge, Button, Input, Select } from '@iwana/ui';
 import {
   ApiError,
   commercialApi,
   type SimulateTaxDto,
   type TaxApplicationSnapshot,
 } from '@/lib/api-client';
+import { PortalAlert, PortalPanel } from '@/components/shared/portal-ui';
 
 const SEGMENT_LABELS: Record<string, string> = {
   RESIDENTIAL: 'Residencial',
@@ -52,134 +53,133 @@ export function TaxSimulatorPanel() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h3 className="text-base font-semibold text-gray-900 dark:text-dark-text-primary">
-          Simulador tributario
-        </h3>
-        <p className="mt-0.5 text-sm text-gray-500 dark:text-dark-text-secondary">
-          Calcula los impuestos aplicables dado un segmento de cliente y muestra la regla ganadora.
-        </p>
-      </div>
-
-      {/* Formulario de simulación */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-medium">Parámetros de simulación</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-700 dark:text-dark-text-secondary">
-                Segmento
-              </label>
-              <Select
-                value={segment}
-                onChange={(e) => setSegment(e.target.value as SimulateTaxDto['segment'])}
-              >
-                <option value="RESIDENTIAL">Residencial</option>
-                <option value="SOHO">SOHO</option>
-                <option value="PYME">PyME</option>
-                <option value="CORPORATE">Corporativo</option>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-700 dark:text-dark-text-secondary">
-                Estrato (opcional)
-              </label>
-              <Input
-                type="number"
-                min={1}
-                max={6}
-                placeholder="1 – 6"
-                value={stratum}
-                onChange={(e) => setStratum(e.target.value)}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-700 dark:text-dark-text-secondary">
-                Código municipio (opcional)
-              </label>
-              <Input
-                placeholder="ej: 11001"
-                value={municipalityCode}
-                onChange={(e) => setMunicipalityCode(e.target.value)}
-              />
-            </div>
+    <div className="flex flex-col gap-4">
+      <PortalPanel title="Parámetros de simulación">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="flex flex-col gap-1">
+            <label
+              htmlFor="tax-simulator-segment"
+              className="text-xs font-medium text-gray-700 dark:text-gray-300"
+            >
+              Segmento
+            </label>
+            <Select
+              id="tax-simulator-segment"
+              value={segment}
+              onChange={(e) => setSegment(e.target.value as SimulateTaxDto['segment'])}
+            >
+              <option value="RESIDENTIAL">Residencial</option>
+              <option value="SOHO">SOHO</option>
+              <option value="PYME">PyME</option>
+              <option value="CORPORATE">Corporativo</option>
+            </Select>
           </div>
-
-          <div className="flex justify-end">
-            <Button onClick={() => void handleSimulate()} disabled={loading} className="gap-2">
-              <FlaskConical className="h-4 w-4" />
-              {loading ? 'Simulando…' : 'Simular'}
-            </Button>
+          <div className="flex flex-col gap-1">
+            <label
+              htmlFor="tax-simulator-stratum"
+              className="text-xs font-medium text-gray-700 dark:text-gray-300"
+            >
+              Estrato (opcional)
+            </label>
+            <Input
+              id="tax-simulator-stratum"
+              type="number"
+              min={1}
+              max={6}
+              placeholder="1 – 6"
+              value={stratum}
+              onChange={(e) => setStratum(e.target.value)}
+            />
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Mensaje de error */}
-      {error && (
-        <div
-          role="alert"
-          className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400"
-        >
-          {error}
+          <div className="flex flex-col gap-1">
+            <label
+              htmlFor="tax-simulator-municipality"
+              className="text-xs font-medium text-gray-700 dark:text-gray-300"
+            >
+              Código municipio (opcional)
+            </label>
+            <Input
+              id="tax-simulator-municipality"
+              placeholder="ej: 11001"
+              value={municipalityCode}
+              onChange={(e) => setMunicipalityCode(e.target.value)}
+            />
+          </div>
         </div>
+
+        <div className="mt-4 flex justify-end">
+          <Button onClick={() => void handleSimulate()} disabled={loading} className="gap-2">
+            <FlaskConical className="h-4 w-4" aria-hidden="true" />
+            {loading ? 'Simulando…' : 'Simular'}
+          </Button>
+        </div>
+      </PortalPanel>
+
+      {error && (
+        <PortalAlert
+          variant="error"
+          title="No fue posible simular"
+          description={error}
+          icon={CircleAlert}
+        />
       )}
 
-      {/* Resultados */}
       {results !== null && (
         <div className="flex flex-col gap-3">
-          <h4 className="text-sm font-semibold text-gray-900 dark:text-dark-text-primary">
-            Resultado de simulación — segmento {SEGMENT_LABELS[segment] ?? segment}
+          <p className="text-sm font-semibold text-gray-900 dark:text-white">
+            Resultado — {SEGMENT_LABELS[segment] ?? segment}
             {stratum ? ` · estrato ${stratum}` : ''}
-          </h4>
+          </p>
 
           {results.length === 0 ? (
-            <div className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
-              No se encontraron aplicaciones tributarias para los parámetros dados. Verifica las
-              reglas de aplicación configuradas.
-            </div>
+            <PortalAlert
+              variant="warning"
+              title="Sin reglas aplicables"
+              description="No se encontraron aplicaciones tributarias para los parámetros dados. Verifica las reglas de aplicación configuradas."
+            />
           ) : (
             <div className="flex flex-col gap-2">
-              {results.map((snap, i) => (
-                <Card
+              {results.map((snap, index) => (
+                <PortalPanel
                   key={snap.taxDefinitionId}
-                  className={`border ${i === 0 ? 'border-iwana-secondary-700/30 bg-green-50/50 dark:bg-green-900/10' : 'border-gray-100 dark:border-dark-border'}`}
+                  className={
+                    index === 0
+                      ? 'border-iwana-secondary-700/30 bg-iwana-surface-soft dark:bg-dark-surface-3'
+                      : undefined
+                  }
+                  title={`Definición ${snap.taxDefinitionId}`}
+                  actions={
+                    index === 0 ? (
+                      <Badge className="bg-iwana-secondary-700 text-xs text-white">
+                        Regla ganadora
+                      </Badge>
+                    ) : undefined
+                  }
                 >
-                  <CardContent className="flex items-start justify-between gap-3 p-4">
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2">
-                        {i === 0 && (
-                          <Badge className="bg-iwana-secondary-700 text-white text-xs">
-                            Regla ganadora
-                          </Badge>
-                        )}
-                        <span className="text-sm font-medium text-gray-900 dark:text-dark-text-primary">
-                          Definición: {snap.taxDefinitionId}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                    <span>
+                      Tratamiento:{' '}
+                      <strong className="text-gray-700 dark:text-gray-200">
+                        {TREATMENT_LABELS[snap.treatment] ?? snap.treatment}
+                      </strong>
+                    </span>
+                    {snap.effectiveRate !== null && (
+                      <>
+                        <span aria-hidden="true">·</span>
                         <span>
-                          Tratamiento:{' '}
-                          <strong>{TREATMENT_LABELS[snap.treatment] ?? snap.treatment}</strong>
+                          Tasa efectiva:{' '}
+                          <strong className="text-gray-700 dark:text-gray-200">
+                            {snap.effectiveRate}%
+                          </strong>
                         </span>
-                        {snap.effectiveRate !== null && (
-                          <>
-                            <span>·</span>
-                            <span>
-                              Tasa efectiva: <strong>{snap.effectiveRate}%</strong>
-                            </span>
-                          </>
-                        )}
-                        <span>·</span>
-                        <span>Regla ID: {snap.ruleId}</span>
-                        <span>·</span>
-                        <span>Prioridad: {snap.priorityMatched}</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                      </>
+                    )}
+                    <span aria-hidden="true">·</span>
+                    <span>Regla ID: {snap.ruleId}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>Prioridad: {snap.priorityMatched}</span>
+                  </div>
+                </PortalPanel>
               ))}
             </div>
           )}

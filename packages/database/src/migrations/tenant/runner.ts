@@ -20,6 +20,8 @@ import { CreatePurchaseRfq0590000000000 } from './059_create_purchase_rfq';
 import { LinkSupplierQuotesToRfq0600000000000 } from './060_link_supplier_quotes_to_rfq';
 import { AddPurchaseRfqActorRefs0610000000000 } from './061_add_purchase_rfq_actor_refs';
 import { AddRfqInvitationInvitedBy0620000000000 } from './062_add_rfq_invitation_invited_by';
+import { DropLegacyAdditionalProducts0630000000000 } from './063_drop_legacy_additional_products';
+import { CreateSupplierProfiles0640000000000 } from './064_create_supplier_profiles';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
 import { CreateExpedienteRecords1700000000001 } from './001_create_expediente_records';
@@ -117,6 +119,8 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   LinkSupplierQuotesToRfq0600000000000,
   AddPurchaseRfqActorRefs0610000000000,
   AddRfqInvitationInvitedBy0620000000000,
+  DropLegacyAdditionalProducts0630000000000,
+  CreateSupplierProfiles0640000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

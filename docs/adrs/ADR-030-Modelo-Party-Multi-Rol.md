@@ -83,7 +83,7 @@ El actual `User` se renombra semánticamente a `UserAccount` y se le añade `par
 Cada módulo dueño de un rol extiende con su propio perfil:
 
 - `subscriber_profile` (ya existente como `Subscriber` en CRM)
-- `supplier_profile` (futuro, en Purchasing)
+- `supplier_profile` (realizado por [ADR-052](ADR-052-Alta-Proveedores-SupplierProfile-Puerto-Comando-Parties.md) en Compras/MOD12; la escritura de identidad se hace via el puerto de comando `IPartyWritePort`)
 - `employee_profile` (futuro, en RRHH)
 - `contractor_profile` (futuro)
 - `sales_agent_profile` (futuro)
@@ -94,7 +94,7 @@ Los perfiles referencian `partyId` + `partyRoleId`. `PartiesModule` no conoce re
 
 - `PartiesModule` no conoce ventas, compras, nómina ni comisiones.
 - Cada módulo dueño de un rol es responsable de su perfil extendido.
-- Los perfiles no acceden a tablas de otros módulos; consumen `Party` solo vía puerto `IPartyReadPort`.
+- Los perfiles no acceden a tablas de otros módulos; consumen `Party` en **lectura** vía `IPartyReadPort`. Para **asegurar identidad** (crear/reutilizar `Party` + asignar rol) al dar de alta un perfil, se usa el puerto de **comando** `IPartyWritePort`, propiedad de Parties, sin que el módulo consumidor acceda a las tablas `party*` (ver [ADR-052](ADR-052-Alta-Proveedores-SupplierProfile-Puerto-Comando-Parties.md)).
 
 ### D7. Migración aditiva multi-fase
 

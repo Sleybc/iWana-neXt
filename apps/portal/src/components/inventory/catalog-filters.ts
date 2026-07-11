@@ -1,8 +1,4 @@
-import {
-  InventoryItemKind,
-  InventoryItemStatus,
-  InventoryTrackingMode,
-} from '@iwana/shared';
+import { InventoryItemKind, InventoryItemStatus, InventoryTrackingMode } from '@iwana/shared';
 
 export interface CatalogFilters {
   search?: string;
@@ -11,6 +7,7 @@ export interface CatalogFilters {
   trackingMode?: InventoryTrackingMode;
   status?: InventoryItemStatus;
   purchasable?: boolean;
+  commercialReferenceId?: string;
 }
 
 export const EMPTY_CATALOG_FILTERS: CatalogFilters = {};
@@ -22,6 +19,7 @@ export function hasActiveCatalogFilters(filters: CatalogFilters): boolean {
     filters.itemKind ||
     filters.trackingMode ||
     filters.status ||
-    filters.purchasable !== undefined,
+    filters.purchasable !== undefined ||
+    filters.commercialReferenceId,
   );
 }

@@ -35,6 +35,7 @@ import { StockLocationService } from '../services/stock-location.service';
 import { StockIssueService } from '../services/stock-issue.service';
 import { CounterPurchaseService } from '../services/counter-purchase.service';
 import { RfqPdfService } from '../services/rfq-pdf.service';
+import { SupplierProfileService } from '../services/supplier-profile.service';
 import { RfqService } from '../services/rfq.service';
 
 jest.mock('../../auth/guards/jwt-auth.guard', () => ({
@@ -241,6 +242,7 @@ describe('InventoryController HTTP', () => {
         { provide: CounterPurchaseService, useValue: counterPurchaseServiceMock },
         { provide: RfqService, useValue: rfqServiceMock },
         { provide: RfqPdfService, useValue: rfqPdfServiceMock },
+        { provide: SupplierProfileService, useValue: {} },
         JwtAuthGuard,
         RolesGuard,
       ],

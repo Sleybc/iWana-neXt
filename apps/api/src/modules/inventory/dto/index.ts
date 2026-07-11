@@ -22,6 +22,10 @@ import {
   StockLocationStatus,
   StockLocationType,
   WriteOffReason,
+  PartyType,
+  DocumentTypeParty,
+  PartyContactType,
+  SupplierProfileStatus,
 } from '@iwana/shared';
 
 const optionalTrimmedString = (maxLength: number) =>
@@ -45,6 +49,7 @@ export const ListInventoryItemsQuerySchema = z.object({
   status: z.nativeEnum(InventoryItemStatus).optional(),
   purchasable: optionalQueryBoolean,
   preferredSupplierRefId: z.string().uuid().optional(),
+  commercialReferenceId: z.string().uuid().optional(),
 });
 
 export type ListInventoryItemsQueryInput = z.infer<typeof ListInventoryItemsQuerySchema>;
@@ -81,6 +86,10 @@ export class ListInventoryItemsQueryDto {
   @ApiPropertyOptional()
   @Allow()
   preferredSupplierRefId?: string;
+
+  @ApiPropertyOptional({ description: 'UUID de producto adicional comercial (MOD06)' })
+  @Allow()
+  commercialReferenceId?: string;
 }
 
 const inventoryItemMasterFields = {
@@ -1928,4 +1937,193 @@ export class WriteOffAssetDto {
   @ApiPropertyOptional()
   @Allow()
   idempotencyKey?: string | null;
+}
+
+const supplierContactSchema = z.object({
+  type: z.nativeEnum(PartyContactType),
+  value: z.string().trim().min(1).max(500),
+  isPrimary: z.boolean().optional(),
+  metadata: z.record(z.unknown()).optional().nullable(),
+});
+
+const supplierCommercialFields = {
+  paymentTermsDays: z.coerce.number().int().min(0).optional().nullable(),
+  currency: z
+    .string()
+    .trim()
+    .length(3)
+    .optional()
+    .nullable()
+    .transform((value) => (value ? value.toUpperCase() : value)),
+  incoterm: optionalTrimmedString(10),
+  defaultLeadTimeDays: z.coerce.number().int().min(0).optional().nullable(),
+  purchasingContactName: optionalTrimmedString(200),
+  purchasingContactEmail: optionalTrimmedString(255),
+  purchasingContactPhone: optionalTrimmedString(32),
+  notes: optionalTrimmedString(4000),
+};
+
+export const CreateSupplierSchema = z.object({
+  partyType: z.nativeEnum(PartyType),
+  documentType: z.nativeEnum(DocumentTypeParty),
+  documentNumber: z.string().trim().min(1).max(500),
+  displayName: z.string().trim().min(1).max(160),
+  legalName: optionalTrimmedString(200),
+  contacts: z.array(supplierContactSchema).optional(),
+  ...supplierCommercialFields,
+});
+
+export type CreateSupplierInput = z.infer<typeof CreateSupplierSchema>;
+
+export class CreateSupplierDto {
+  @ApiProperty({ enum: PartyType })
+  @Allow()
+  partyType!: PartyType;
+
+  @ApiProperty({ enum: DocumentTypeParty })
+  @Allow()
+  documentType!: DocumentTypeParty;
+
+  @ApiProperty({ maxLength: 500 })
+  @Allow()
+  documentNumber!: string;
+
+  @ApiProperty({ maxLength: 160 })
+  @Allow()
+  displayName!: string;
+
+  @ApiPropertyOptional({ maxLength: 200 })
+  @Allow()
+  legalName?: string | null;
+
+  @ApiPropertyOptional({ type: 'array', items: { type: 'object' } })
+  @Allow()
+  contacts?: Array<{
+    type: PartyContactType;
+    value: string;
+    isPrimary?: boolean;
+    metadata?: Record<string, unknown> | null;
+  }>;
+
+  @ApiPropertyOptional({ minimum: 0 })
+  @Allow()
+  paymentTermsDays?: number | null;
+
+  @ApiPropertyOptional({ minLength: 3, maxLength: 3 })
+  @Allow()
+  currency?: string | null;
+
+  @ApiPropertyOptional({ maxLength: 10 })
+  @Allow()
+  incoterm?: string | null;
+
+  @ApiPropertyOptional({ minimum: 0 })
+  @Allow()
+  defaultLeadTimeDays?: number | null;
+
+  @ApiPropertyOptional({ maxLength: 200 })
+  @Allow()
+  purchasingContactName?: string | null;
+
+  @ApiPropertyOptional({ maxLength: 255 })
+  @Allow()
+  purchasingContactEmail?: string | null;
+
+  @ApiPropertyOptional({ maxLength: 32 })
+  @Allow()
+  purchasingContactPhone?: string | null;
+
+  @ApiPropertyOptional({ maxLength: 4000 })
+  @Allow()
+  notes?: string | null;
+}
+
+export const UpdateSupplierSchema = z.object(supplierCommercialFields);
+
+export type UpdateSupplierInput = z.infer<typeof UpdateSupplierSchema>;
+
+export class UpdateSupplierDto {
+  @ApiPropertyOptional({ minimum: 0 })
+  @Allow()
+  paymentTermsDays?: number | null;
+
+  @ApiPropertyOptional({ minLength: 3, maxLength: 3 })
+  @Allow()
+  currency?: string | null;
+
+  @ApiPropertyOptional({ maxLength: 10 })
+  @Allow()
+  incoterm?: string | null;
+
+  @ApiPropertyOptional({ minimum: 0 })
+  @Allow()
+  defaultLeadTimeDays?: number | null;
+
+  @ApiPropertyOptional({ maxLength: 200 })
+  @Allow()
+  purchasingContactName?: string | null;
+
+  @ApiPropertyOptional({ maxLength: 255 })
+  @Allow()
+  purchasingContactEmail?: string | null;
+
+  @ApiPropertyOptional({ maxLength: 32 })
+  @Allow()
+  purchasingContactPhone?: string | null;
+
+  @ApiPropertyOptional({ maxLength: 4000 })
+  @Allow()
+  notes?: string | null;
+}
+
+export const SetSupplierStatusSchema = z.object({
+  status: z.nativeEnum(SupplierProfileStatus),
+});
+
+export type SetSupplierStatusInput = z.infer<typeof SetSupplierStatusSchema>;
+
+export class SetSupplierStatusDto {
+  @ApiProperty({ enum: SupplierProfileStatus })
+  @Allow()
+  status!: SupplierProfileStatus;
+}
+
+export const ListSuppliersQuerySchema = z.object({
+  status: z.nativeEnum(SupplierProfileStatus).optional(),
+  search: z.preprocess((value) => {
+    if (typeof value !== 'string') {
+      return value;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }, z.string().max(120).optional()),
+  page: z.preprocess(
+    (value) => (value === '' || value === null ? undefined : value),
+    z.coerce.number().int().min(1).optional().default(1),
+  ),
+  limit: z.preprocess(
+    (value) => (value === '' || value === null ? undefined : value),
+    z.coerce.number().int().min(1).max(100).optional().default(20),
+  ),
+});
+
+export type ListSuppliersQueryInput = z.infer<typeof ListSuppliersQuerySchema>;
+
+export class ListSuppliersQueryDto {
+  @ApiPropertyOptional({ enum: SupplierProfileStatus })
+  @Allow()
+  status?: SupplierProfileStatus;
+
+  @ApiPropertyOptional({ maxLength: 120 })
+  @Allow()
+  search?: string;
+
+  @ApiPropertyOptional({ default: 1, minimum: 1 })
+  @Allow()
+  page?: number;
+
+  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
+  @Allow()
+  limit?: number;
 }

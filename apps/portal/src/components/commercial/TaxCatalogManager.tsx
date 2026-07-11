@@ -27,6 +27,12 @@ import {
   type TaxDefinition,
   type UpdateTaxDefinitionDto,
 } from '@/lib/api-client';
+import {
+  interactiveFocusClassName,
+  PortalAlert,
+  PortalEmptyState,
+  PortalSkeletonBlock,
+} from '@/components/shared/portal-ui';
 
 // ── Tooltip de ayuda reutilizable ─────────────────────────────────────────────
 
@@ -37,7 +43,7 @@ function HelpPopover({ children }: { children: React.ReactNode }) {
         <button
           type="button"
           aria-label="Ayuda"
-          className="ml-1 inline-flex items-center text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+          className={`ml-1 inline-flex items-center text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 ${interactiveFocusClassName}`}
         >
           <HelpCircle className="h-3.5 w-3.5" />
         </button>
@@ -226,58 +232,51 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-base font-semibold text-gray-900 dark:text-dark-text-primary">
-            Catálogo de impuestos
-          </h3>
-          <p className="mt-0.5 text-sm text-gray-500 dark:text-dark-text-secondary">
-            Definiciones tributarias de la empresa. Los presets del sistema son inmutables.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Badge variant="neutral">
+          {definitions.length} definición{definitions.length === 1 ? '' : 'es'}
+        </Badge>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Actualizar catálogo de impuestos"
+          title="Actualizar catálogo de impuestos"
+          onClick={() => void loadDefinitions()}
+        >
+          <RotateCcw className="h-4 w-4" aria-hidden="true" />
+        </Button>
+        {canEdit && (
           <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Actualizar catálogo de impuestos"
-            title="Actualizar catálogo de impuestos"
-            onClick={() => void loadDefinitions()}
+            size="sm"
+            onClick={() => {
+              setCreateError(null);
+              setFormErrors({});
+              codeAutoRef.current = true;
+              setForm(INITIAL_FORM);
+              setCreateOpen(true);
+            }}
           >
-            <RotateCcw className="h-4 w-4" />
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Nueva definición
           </Button>
-          {canEdit && (
-            <Button
-              size="sm"
-              onClick={() => {
-                setCreateError(null);
-                setFormErrors({});
-                codeAutoRef.current = true;
-                setForm(INITIAL_FORM);
-                setCreateOpen(true);
-              }}
-            >
-              <Plus className="h-4 w-4" />
-              Nueva definición
-            </Button>
-          )}
-        </div>
+        )}
       </div>
 
       {error && (
-        <div
-          role="alert"
-          className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400"
-        >
-          {error}
-        </div>
+        <PortalAlert
+          variant="error"
+          title="No fue posible cargar el catálogo"
+          description={error}
+        />
       )}
 
       {loading ? (
-        <div className="py-8 text-center text-sm text-gray-500">Cargando catálogo&hellip;</div>
+        <PortalSkeletonBlock className="h-28" />
       ) : definitions.length === 0 ? (
-        <div className="py-8 text-center text-sm text-gray-500">
-          No hay definiciones tributarias
-        </div>
+        <PortalEmptyState
+          title="Sin definiciones tributarias"
+          description='Usa "Nueva definición" para registrar impuestos operativos del tenant.'
+        />
       ) : (
         <div className="flex flex-col gap-2">
           {definitions.map((def) => (

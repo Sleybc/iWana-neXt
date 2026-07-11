@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   Res,
@@ -32,6 +33,8 @@ import {
   CreatePurchaseRequestSchema,
   CreateRfqDto,
   CreateRfqSchema,
+  CreateSupplierDto,
+  CreateSupplierSchema,
   DeclineInvitationDto,
   DeclineInvitationSchema,
   InviteSuppliersDto,
@@ -40,16 +43,23 @@ import {
   ListPurchaseOrdersQuerySchema,
   ListPurchaseRequestsQueryDto,
   ListPurchaseRequestsQuerySchema,
+  ListSuppliersQueryDto,
+  ListSuppliersQuerySchema,
   ReceivePurchaseOrderDto,
   ReceivePurchaseOrderSchema,
   SearchSuppliersQueryDto,
   SearchSuppliersQuerySchema,
+  SetSupplierStatusDto,
+  SetSupplierStatusSchema,
+  UpdateSupplierDto,
+  UpdateSupplierSchema,
 } from './dto';
 import { GoodsReceiptService } from './services/goods-receipt.service';
 import { PurchasingQueryService } from './services/purchasing-query.service';
 import { PurchasingService } from './services/purchasing.service';
 import { RfqPdfService } from './services/rfq-pdf.service';
 import { RfqService } from './services/rfq.service';
+import { SupplierProfileService } from './services/supplier-profile.service';
 
 @ApiTags('purchasing')
 @ApiBearerAuth('access-token')
@@ -62,6 +72,7 @@ export class PurchasingController {
     private readonly goodsReceiptService: GoodsReceiptService,
     private readonly rfqService: RfqService,
     private readonly rfqPdfService: RfqPdfService,
+    private readonly supplierProfileService: SupplierProfileService,
   ) {}
 
   @Get('requests')
@@ -177,6 +188,58 @@ export class PurchasingController {
   @ApiOperation({ summary: 'Obtener ficha resumida de proveedor' })
   getProviderSummary(@Param('partyRefId', ParseUUIDPipe) partyRefId: string) {
     return this.purchasingQueryService.getProviderSummary(partyRefId);
+  }
+
+  @Post('suppliers')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Dar de alta un proveedor con perfil comercial' })
+  createSupplier(
+    @Body(new ZodValidationPipe(CreateSupplierSchema)) body: CreateSupplierDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.supplierProfileService.create(CreateSupplierSchema.parse(body), actor);
+  }
+
+  @Get('suppliers')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Listar proveedores con perfil comercial' })
+  listSuppliers(
+    @Query(new ZodValidationPipe(ListSuppliersQuerySchema)) query: ListSuppliersQueryDto,
+  ) {
+    return this.supplierProfileService.list(ListSuppliersQuerySchema.parse(query));
+  }
+
+  @Get('suppliers/:partyRefId')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Obtener detalle de proveedor con perfil comercial' })
+  getSupplier(@Param('partyRefId', ParseUUIDPipe) partyRefId: string) {
+    return this.supplierProfileService.get(partyRefId);
+  }
+
+  @Patch('suppliers/:partyRefId')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Actualizar datos comerciales del proveedor' })
+  updateSupplier(
+    @Param('partyRefId', ParseUUIDPipe) partyRefId: string,
+    @Body(new ZodValidationPipe(UpdateSupplierSchema)) body: UpdateSupplierDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.supplierProfileService.update(partyRefId, UpdateSupplierSchema.parse(body), actor);
+  }
+
+  @Post('suppliers/:partyRefId/status')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Cambiar estado del perfil comercial del proveedor' })
+  setSupplierStatus(
+    @Param('partyRefId', ParseUUIDPipe) partyRefId: string,
+    @Body(new ZodValidationPipe(SetSupplierStatusSchema)) body: SetSupplierStatusDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.supplierProfileService.setStatus(
+      partyRefId,
+      SetSupplierStatusSchema.parse(body),
+      actor,
+    );
   }
 
   @Post('orders')

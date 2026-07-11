@@ -4,14 +4,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { BriefcaseBusiness, CheckCircle2, CircleAlert, Pencil, Search, Trash2 } from 'lucide-react';
+import { CheckCircle2, CircleAlert, Pencil, Search, Trash2 } from 'lucide-react';
 import {
   Badge,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
   Dialog,
   DialogClose,
   DialogContent,
@@ -33,7 +29,14 @@ import {
   getPortalActiveBadgeVariant,
   portalActiveCountBadgeVariant,
 } from '@/lib/portal-status-badge-rules';
-import { PortalAlert, PortalEmptyState, PortalSkeletonBlock } from '@/components/shared/portal-ui';
+import {
+  PortalAlert,
+  PortalEmptyState,
+  PortalSkeletonBlock,
+  portalDataTableCellClassName,
+  portalDataTableHeadClassName,
+  portalDataTableShellClassName,
+} from '@/components/shared/portal-ui';
 
 const SERVICE_CHARGE_TYPES = [
   ChargeType.ONE_TIME,
@@ -53,9 +56,6 @@ const serviceFormSchema = z.object({
 type ServiceFormValues = z.infer<typeof serviceFormSchema>;
 type ServiceStatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE';
 
-const tableHeadClass =
-  'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500';
-const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
 const searchInputClass =
   'h-12 w-full rounded-2xl border border-gray-200 bg-gray-50/70 pl-11 pr-4 text-sm text-iwana-primary shadow-sm transition-all duration-200 placeholder:text-gray-400 focus:border-iwana-secondary focus:bg-white focus:outline-none focus:ring-2 focus:ring-iwana-secondary/35 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100 dark:placeholder-gray-500';
 
@@ -282,168 +282,139 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
       : `${filteredServices.length} de ${totalServices} registros`;
 
   return (
-    <Card className="rounded-2xl border border-white/70 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300">
-              <BriefcaseBusiness className="h-5 w-5" aria-hidden="true" />
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-                Venta consultiva
-              </p>
-              <CardTitle className="mt-1 text-lg font-semibold">Catalogo de servicios</CardTitle>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Configura servicios recurrentes y operativos con tipo de cobro y precio vigente para
-                cotizacion diaria.
-              </p>
-            </div>
-          </div>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Badge variant="neutral">{totalServices} total</Badge>
+        <Badge variant={portalActiveCountBadgeVariant}>
+          {activeServicesCount} activo{activeServicesCount === 1 ? '' : 's'}
+        </Badge>
+        <Badge variant="neutral">
+          {inactiveServicesCount} inactivo{inactiveServicesCount === 1 ? '' : 's'}
+        </Badge>
+        {canEdit && (
+          <Button onClick={openCreateDialog} size="sm">
+            Agregar servicio
+          </Button>
+        )}
+      </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge
-              variant="neutral"
-              className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]"
+      {loading ? (
+        <PortalSkeletonBlock className="h-28" />
+      ) : loadError ? (
+        <PortalAlert
+          variant="error"
+          title="No fue posible cargar servicios"
+          description={loadError}
+          icon={CircleAlert}
+        />
+      ) : services.length === 0 ? (
+        <PortalEmptyState
+          title="Catálogo listo para servicios"
+          description="No hay servicios adicionales. Crea uno para empezar."
+          icon={CheckCircle2}
+        />
+      ) : (
+        <div className="space-y-6">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.8fr)_220px_220px_auto] lg:items-end">
+            <div className="min-w-[200px]">
+              <label htmlFor="service-search" className="sr-only">
+                Buscar servicio
+              </label>
+              <div className="relative">
+                <Search
+                  className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+                  aria-hidden="true"
+                />
+                <input
+                  id="service-search"
+                  type="search"
+                  placeholder="Buscar por nombre, descripcion o tipo de cobro"
+                  value={searchValue}
+                  onChange={(event) => setSearchValue(event.target.value)}
+                  className={searchInputClass}
+                />
+              </div>
+            </div>
+
+            <Select
+              id="service-status-filter"
+              label="Estado"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as ServiceStatusFilter)}
+              className="h-12"
             >
-              {totalServices} total
-            </Badge>
-            <Badge
-              variant={portalActiveCountBadgeVariant}
-              className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]"
+              <option value="ALL">Todos</option>
+              <option value="ACTIVE">Activos</option>
+              <option value="INACTIVE">Inactivos</option>
+            </Select>
+
+            <Select
+              id="service-charge-filter"
+              label="Tipo de cobro"
+              value={chargeTypeFilter}
+              onChange={(event) => setChargeTypeFilter(event.target.value)}
+              className="h-12"
             >
-              {activeServicesCount} activo{activeServicesCount === 1 ? '' : 's'}
-            </Badge>
-            <Badge
-              variant="neutral"
-              className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]"
-            >
-              {inactiveServicesCount} inactivo{inactiveServicesCount === 1 ? '' : 's'}
-            </Badge>
-            {canEdit && (
-              <Button onClick={openCreateDialog} size="sm">
-                Agregar servicio
-              </Button>
+              <option value="ALL">Todos</option>
+              {SERVICE_CHARGE_TYPES.map((chargeType) => (
+                <option key={chargeType} value={chargeType}>
+                  {chargeTypeLabel(chargeType)}
+                </option>
+              ))}
+            </Select>
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchValue('');
+                  setStatusFilter('ALL');
+                  setChargeTypeFilter('ALL');
+                }}
+                className="inline-flex h-12 items-center justify-center rounded-2xl border border-gray-200 px-4 text-sm font-semibold text-iwana-primary transition-colors hover:border-iwana-secondary/40 hover:bg-iwana-secondary-50 dark:border-dark-border dark:text-gray-100 dark:hover:bg-dark-surface-3"
+              >
+                Limpiar filtros
+              </button>
             )}
           </div>
-        </div>
-      </CardHeader>
 
-      <CardContent>
-        {loading ? (
-          <PortalSkeletonBlock className="h-28" />
-        ) : loadError ? (
-          <PortalAlert
-            variant="error"
-            title="No fue posible cargar servicios"
-            description={loadError}
-            icon={CircleAlert}
-          />
-        ) : services.length === 0 ? (
-          <PortalEmptyState
-            title="Catálogo listo para servicios"
-            description="No hay servicios adicionales. Crea uno para empezar."
-            icon={CheckCircle2}
-          />
-        ) : (
-          <div className="space-y-6">
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,1.8fr)_220px_220px_auto] lg:items-end">
-              <div className="min-w-[200px]">
-                <label htmlFor="service-search" className="sr-only">
-                  Buscar servicio
-                </label>
-                <div className="relative">
-                  <Search
-                    className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
-                    aria-hidden="true"
-                  />
-                  <input
-                    id="service-search"
-                    type="search"
-                    placeholder="Buscar por nombre, descripcion o tipo de cobro"
-                    value={searchValue}
-                    onChange={(event) => setSearchValue(event.target.value)}
-                    className={searchInputClass}
-                  />
-                </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-iwana-surface-soft px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              Gestiona servicios del catalogo comercial con una vista operativa para ventas, soporte
+              y facturacion.
+            </p>
+            <Badge
+              variant="neutral"
+              className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]"
+            >
+              {resultsLabel}
+            </Badge>
+          </div>
+
+          {filteredServices.length === 0 ? (
+            <div className="flex items-start gap-3 rounded-2xl border border-amber-200/80 bg-amber-50/90 px-4 py-4 text-sm text-amber-800 shadow-sm dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+              <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+              <div>
+                <p className="font-medium">No hay servicios para los filtros seleccionados.</p>
+                <p className="mt-1">
+                  Ajusta la busqueda, estado o tipo de cobro para recuperar resultados.
+                </p>
               </div>
-
-              <Select
-                id="service-status-filter"
-                label="Estado"
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value as ServiceStatusFilter)}
-                className="h-12"
-              >
-                <option value="ALL">Todos</option>
-                <option value="ACTIVE">Activos</option>
-                <option value="INACTIVE">Inactivos</option>
-              </Select>
-
-              <Select
-                id="service-charge-filter"
-                label="Tipo de cobro"
-                value={chargeTypeFilter}
-                onChange={(event) => setChargeTypeFilter(event.target.value)}
-                className="h-12"
-              >
-                <option value="ALL">Todos</option>
-                {SERVICE_CHARGE_TYPES.map((chargeType) => (
-                  <option key={chargeType} value={chargeType}>
-                    {chargeTypeLabel(chargeType)}
-                  </option>
-                ))}
-              </Select>
-
-              {hasActiveFilters && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchValue('');
-                    setStatusFilter('ALL');
-                    setChargeTypeFilter('ALL');
-                  }}
-                  className="inline-flex h-12 items-center justify-center rounded-2xl border border-gray-200 px-4 text-sm font-semibold text-iwana-primary transition-colors hover:border-iwana-secondary/40 hover:bg-iwana-secondary-50 dark:border-dark-border dark:text-gray-100 dark:hover:bg-dark-surface-3"
-                >
-                  Limpiar filtros
-                </button>
-              )}
             </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-iwana-surface-soft px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
-              <p className="text-sm text-gray-600 dark:text-gray-300">
-                Gestiona servicios del catalogo comercial con una vista operativa para ventas,
-                soporte y facturacion.
-              </p>
-              <Badge
-                variant="neutral"
-                className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]"
-              >
-                {resultsLabel}
-              </Badge>
-            </div>
-
-            {filteredServices.length === 0 ? (
-              <div className="flex items-start gap-3 rounded-2xl border border-amber-200/80 bg-amber-50/90 px-4 py-4 text-sm text-amber-800 shadow-sm dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
-                <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-                <div>
-                  <p className="font-medium">No hay servicios para los filtros seleccionados.</p>
-                  <p className="mt-1">
-                    Ajusta la busqueda, estado o tipo de cobro para recuperar resultados.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-dark-border">
+          ) : (
+            <div className={portalDataTableShellClassName}>
+              <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
-                  <thead className="bg-[#f6f8f4] dark:bg-dark-surface-2">
+                  <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
                     <tr>
-                      <th className={tableHeadClass}>Servicio</th>
-                      <th className={tableHeadClass}>Tipo de cobro</th>
-                      <th className={tableHeadClass}>Precio vigente</th>
-                      <th className={tableHeadClass}>Estado</th>
-                      <th className={tableHeadClass}>Actualizacion</th>
-                      {canEdit && <th className={cn(tableHeadClass, 'w-40')}>Acciones</th>}
+                      <th className={portalDataTableHeadClassName}>Servicio</th>
+                      <th className={portalDataTableHeadClassName}>Tipo de cobro</th>
+                      <th className={portalDataTableHeadClassName}>Precio vigente</th>
+                      <th className={portalDataTableHeadClassName}>Estado</th>
+                      <th className={portalDataTableHeadClassName}>Actualización</th>
+                      {canEdit && (
+                        <th className={cn(portalDataTableHeadClassName, 'w-40')}>Acciones</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 bg-white dark:divide-dark-border dark:bg-dark-surface-1">
@@ -451,11 +422,11 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
                       <tr
                         key={service.id}
                         className={cn(
-                          'transition-colors hover:bg-[#fbfcf8] dark:hover:bg-dark-surface-3',
+                          'transition-colors hover:bg-iwana-surface-soft/80 dark:hover:bg-dark-surface-3',
                           !service.isActive && 'opacity-70',
                         )}
                       >
-                        <td className={cellClass}>
+                        <td className={portalDataTableCellClassName}>
                           <div className="space-y-1">
                             <p className="font-semibold text-gray-900 dark:text-white">
                               {service.name}
@@ -465,8 +436,10 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
                             </p>
                           </div>
                         </td>
-                        <td className={cellClass}>{chargeTypeLabel(service.chargeType)}</td>
-                        <td className={cellClass}>
+                        <td className={portalDataTableCellClassName}>
+                          {chargeTypeLabel(service.chargeType)}
+                        </td>
+                        <td className={portalDataTableCellClassName}>
                           <div className="space-y-1">
                             <p className="font-medium text-gray-900 dark:text-white">
                               {formatCurrency(service.basePrice)}
@@ -476,7 +449,7 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
                             </p>
                           </div>
                         </td>
-                        <td className={cellClass}>
+                        <td className={portalDataTableCellClassName}>
                           <Badge
                             variant={getPortalActiveBadgeVariant(service.isActive)}
                             className="text-xs"
@@ -484,7 +457,7 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
                             {service.isActive ? 'Activo' : 'Inactivo'}
                           </Badge>
                         </td>
-                        <td className={cellClass}>
+                        <td className={portalDataTableCellClassName}>
                           {new Date(service.updatedAt).toLocaleDateString('es-CO', {
                             year: 'numeric',
                             month: '2-digit',
@@ -492,7 +465,7 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
                           })}
                         </td>
                         {canEdit && (
-                          <td className={cellClass}>
+                          <td className={portalDataTableCellClassName}>
                             <div className="flex gap-2">
                               <Button
                                 variant="secondary"
@@ -524,10 +497,10 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
                   </tbody>
                 </table>
               </div>
-            )}
-          </div>
-        )}
-      </CardContent>
+            </div>
+          )}
+        </div>
+      )}
 
       <Dialog open={isDialogOpen} onOpenChange={handleDialogOpenChange}>
         <DialogContent>
@@ -684,6 +657,6 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
           </form>
         </DialogContent>
       </Dialog>
-    </Card>
+    </div>
   );
 }

@@ -702,6 +702,49 @@ Se ajustó nuevamente el catálogo de impuestos para que las acciones **Editar**
 
 ---
 
+## 8.16 Addendum Alineación UI Comercial — portal compacta operativa (2026-07-11)
+
+Se ejecutó la remediación UX/UI del módulo `/dashboard/commercial` según auditoría AI-PROD-UX (identidad iWana + patrón header único + workspace).
+
+**Corrección aplicada:**
+- `CommercialTabLayout` migrado a primitives `portalModuleTabs*` (paridad con Inventario).
+- Tab principal renombrado a **Tributación**; subtabs de ofertas y tributación alineadas al design system.
+- Eliminación de headers internos redundantes en managers comerciales; toolbar mínimo (badges + CTA).
+- Tablas estandarizadas con `portalDataTable*`; deep-link `?tab=` (`offers/promotions`, `taxation/tax-simulator`, etc.).
+- Quick wins: copy **Campañas**, foco en ayuda contextual, `PortalAlert` en simulador, metadata de página.
+
+**Archivos tocados (principal):**
+- `apps/portal/src/components/commercial/*`
+- `apps/portal/src/components/settings/PlanCatalogManager.tsx`
+- `apps/portal/src/components/settings/AdditionalProductsManager.tsx`
+- `apps/portal/src/components/settings/AdditionalServicesManager.tsx`
+- `apps/portal/src/app/dashboard/commercial/page.tsx`
+- `e2e/tests/portal-commercial-catalog-products-services.spec.ts`
+- `e2e/tests/portal-tax-simulator.spec.ts`
+- `e2e/tests/portal-commercial-ui-evidence.spec.ts` (nuevo)
+
+**Evidencia visual:**
+- `docs/informes/evidence/portal-commercial-ui-2026-07-11/commercial-plans-desktop.png`
+- `docs/informes/evidence/portal-commercial-ui-2026-07-11/commercial-products-desktop.png`
+- `docs/informes/evidence/portal-commercial-ui-2026-07-11/commercial-tax-simulator-desktop.png`
+- `docs/informes/evidence/portal-commercial-ui-2026-07-11/commercial-plans-mobile.png`
+- `docs/informes/evidence/portal-commercial-ui-2026-07-11/commercial-products-mobile.png`
+- `docs/informes/evidence/portal-commercial-ui-2026-07-11/commercial-tax-simulator-mobile.png`
+
+**Validación ejecutada:**
+
+| Comando | Resultado |
+|---|---|
+| `pnpm --filter @iwana/portal test -- src/components/commercial` | ✅ 16/16 |
+| `pnpm --filter @iwana/portal typecheck` | ✅ OK |
+| `pnpm exec playwright test --config e2e/playwright.portal.config.ts e2e/tests/portal-commercial-*.spec.ts e2e/tests/portal-tax-simulator.spec.ts` | ✅ 5/5 |
+
+**Conclusión operativa:**
+- Comercial queda alineado al patrón compacto operativo del portal; managers tributarios incluidos.
+- Review G6 AI-PROD-UX pendiente solo para validación visual en dark mode sobre evidencia capturada.
+
+---
+
 ## 9. Historial de Cambios
 
 | Versión | Fecha | Autor | Descripción |
@@ -722,3 +765,4 @@ Se ajustó nuevamente el catálogo de impuestos para que las acciones **Editar**
 | v1.13 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Limpieza del catálogo comercial: FTTH eliminada del alta nueva y de la persistencia local |
 | v1.14 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Catálogo de impuestos: botón explícito de edición para definiciones CUSTOM |
 | v1.15 | 2026-05-04 | GitHub Copilot (GPT-5.4-mini) | Catálogo de impuestos: edición y borrado visibles también para presets SYSTEM |
+| v1.16 | 2026-07-11 | Claude Code (AI-SR-FULL) | Addendum alineación UI Comercial: portalModuleTabs, compactación managers, deep-link, E2E y evidencia visual |

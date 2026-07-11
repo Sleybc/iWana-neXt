@@ -1,10 +1,16 @@
 import { Test } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { IPartyReadPort } from '../../parties/ports/party-read.port';
+import { IPartyWritePort } from '../../parties/ports/party-write.port';
+import { CommercialCatalogReadPort } from '../../commercial/ports/commercial-catalog-read.port';
 import { InventoryModule } from '../inventory.module';
 import { InventoryController } from '../inventory.controller';
 import { SupplierPartyPort, SupplierPartyPortAdapter } from '../ports/supplier-party.port';
 import { PurchasingController } from '../purchasing.controller';
+import {
+  CommercialProductReferencePort,
+  CommercialProductReferencePortAdapter,
+} from '../ports/commercial-product-reference.port';
 import {
   INVENTORY_MOVEMENT_PORT,
   InventoryMovementPortAdapter,
@@ -21,6 +27,7 @@ import { InventoryItemService } from '../services/inventory-item.service';
 import { PurchasingPolicyService } from '../services/purchasing-policy.service';
 import { PurchasingQueryService } from '../services/purchasing-query.service';
 import { PurchasingService } from '../services/purchasing.service';
+import { SupplierProfileService } from '../services/supplier-profile.service';
 import { SerializedAssetService } from '../services/serialized-asset.service';
 import { StockBalanceService } from '../services/stock-balance.service';
 import { StockIssueService } from '../services/stock-issue.service';
@@ -54,9 +61,11 @@ describe('InventoryModule', () => {
         CounterPurchaseService,
         RfqService,
         RfqPdfService,
+        SupplierProfileService,
         AssetLifecycleService,
         InventoryDashboardService,
         InventoryMovementPortAdapter,
+        CommercialProductReferencePortAdapter,
         SupplierPartyPortAdapter,
         {
           provide: IPartyReadPort,
@@ -66,6 +75,21 @@ describe('InventoryModule', () => {
             listRoles: jest.fn(),
             listContacts: jest.fn(),
           },
+        },
+        {
+          provide: IPartyWritePort,
+          useValue: { ensurePartyWithRole: jest.fn() },
+        },
+        {
+          provide: CommercialCatalogReadPort,
+          useValue: {
+            getActiveProducts: jest.fn().mockResolvedValue([]),
+            resolveProductReference: jest.fn().mockResolvedValue(null),
+          },
+        },
+        {
+          provide: CommercialProductReferencePort,
+          useExisting: CommercialProductReferencePortAdapter,
         },
         {
           provide: EventEmitter2,

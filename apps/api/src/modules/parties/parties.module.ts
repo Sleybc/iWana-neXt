@@ -4,13 +4,16 @@ import { PartyService } from './services/party.service';
 import { PartyRoleService } from './services/party-role.service';
 import { PartyContactService } from './services/party-contact.service';
 import { PartyReadAdapter } from './adapters/party-read.adapter';
+import { PartyWriteAdapter } from './adapters/party-write.adapter';
 import { IPartyReadPort } from './ports/party-read.port';
+import { IPartyWritePort } from './ports/party-write.port';
 
 /**
  * Módulo Parties (MOD08) — Gestión unificada de terceros por tenant.
  *
  * Exports:
- * - IPartyReadPort: para consumo externo vía puerto (CrmModule, futuros).
+ * - IPartyReadPort: para consumo externo vía puerto (CrmModule, Compras).
+ * - IPartyWritePort: puerto de comando para asegurar Party + rol (Compras — ADR-052).
  * - PartyService: para creación de parties desde módulos habilitados (CRM — ADR-030 F4/F5).
  * - PartyRoleService: para asignación de roles desde módulos habilitados (CRM — ADR-030 F4/F5).
  *
@@ -26,11 +29,16 @@ import { IPartyReadPort } from './ports/party-read.port';
     PartyRoleService,
     PartyContactService,
     PartyReadAdapter,
+    PartyWriteAdapter,
     {
       provide: IPartyReadPort,
       useExisting: PartyReadAdapter,
     },
+    {
+      provide: IPartyWritePort,
+      useExisting: PartyWriteAdapter,
+    },
   ],
-  exports: [IPartyReadPort, PartyService, PartyRoleService],
+  exports: [IPartyReadPort, IPartyWritePort, PartyService, PartyRoleService],
 })
 export class PartiesModule {}

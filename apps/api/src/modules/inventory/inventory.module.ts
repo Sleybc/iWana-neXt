@@ -23,13 +23,19 @@ import {
   StockIssueLine,
   StockMovement,
   StockMovementLine,
+  SupplierProfile,
   SupplierQuote,
 } from '@iwana/db';
 import { PartiesModule } from '../parties/parties.module';
+import { CommercialModule } from '../commercial/commercial.module';
 import {
   INVENTORY_MOVEMENT_PORT,
   InventoryMovementPortAdapter,
 } from './ports/inventory-movement.port';
+import {
+  CommercialProductReferencePort,
+  CommercialProductReferencePortAdapter,
+} from './ports/commercial-product-reference.port';
 import { SupplierPartyPort, SupplierPartyPortAdapter } from './ports/supplier-party.port';
 import { InventoryController } from './inventory.controller';
 import { PurchasingController } from './purchasing.controller';
@@ -50,10 +56,12 @@ import { CounterPurchaseService } from './services/counter-purchase.service';
 import { RfqPdfService } from './services/rfq-pdf.service';
 import { RfqService } from './services/rfq.service';
 import { StockLocationService } from './services/stock-location.service';
+import { SupplierProfileService } from './services/supplier-profile.service';
 
 @Module({
   imports: [
     PartiesModule,
+    CommercialModule,
     TypeOrmModule.forFeature([
       InventoryItem,
       InventoryCategory,
@@ -78,6 +86,7 @@ import { StockLocationService } from './services/stock-location.service';
       AssetLifecycleEvent,
       AssetLoanAssignment,
       InventoryWriteOff,
+      SupplierProfile,
     ]),
   ],
   controllers: [InventoryController, PurchasingController],
@@ -99,11 +108,17 @@ import { StockLocationService } from './services/stock-location.service';
     RfqPdfService,
     AssetLifecycleService,
     InventoryDashboardService,
+    SupplierProfileService,
     InventoryMovementPortAdapter,
+    CommercialProductReferencePortAdapter,
     SupplierPartyPortAdapter,
     {
       provide: INVENTORY_MOVEMENT_PORT,
       useExisting: InventoryMovementPortAdapter,
+    },
+    {
+      provide: CommercialProductReferencePort,
+      useExisting: CommercialProductReferencePortAdapter,
     },
     {
       provide: SupplierPartyPort,
@@ -126,9 +141,12 @@ import { StockLocationService } from './services/stock-location.service';
     CounterPurchaseService,
     AssetLifecycleService,
     InventoryDashboardService,
+    SupplierProfileService,
     InventoryMovementPortAdapter,
+    CommercialProductReferencePortAdapter,
     SupplierPartyPortAdapter,
     INVENTORY_MOVEMENT_PORT,
+    CommercialProductReferencePort,
     SupplierPartyPort,
   ],
 })

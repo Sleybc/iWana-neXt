@@ -4,14 +4,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { CheckCircle2, CircleAlert, Layers3, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { CheckCircle2, ChevronDown, CircleAlert, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
   Badge,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
   Dialog,
   DialogClose,
   DialogContent,
@@ -31,7 +27,14 @@ import {
   type UpdatePlanCatalogItemDto,
 } from '@/lib/api-client';
 import { InstallationRule } from '@iwana/shared';
-import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
+import {
+  PortalAlert,
+  PortalSkeletonBlock,
+  interactiveFocusClassName,
+  portalDataTableHeadClassName,
+  portalDataTableShellClassName,
+  portalModuleTabsTrackClassName,
+} from '@/components/shared/portal-ui';
 import {
   getPortalActiveBadgeVariant,
   portalActiveCountBadgeVariant,
@@ -123,8 +126,6 @@ function persistTechnologies(options: string[]): void {
   }
 }
 
-const tableHeadClass =
-  'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500';
 const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
 
 function formatMoney(value: number): string {
@@ -574,100 +575,63 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
   };
 
   return (
-    <Card className="rounded-2xl border border-white/70 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">
-      <CardHeader>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="space-y-1">
-            <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-iwana-primary/8 text-iwana-primary dark:bg-iwana-primary-400/20 dark:text-iwana-primary-300">
-                <Layers3 className="h-5 w-5" aria-hidden="true" />
-              </div>
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
-                  Oferta comercial
-                </p>
-                <CardTitle className="mt-1">Catálogo de planes</CardTitle>
-              </div>
-            </div>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Gestiona los planes comercializables de la empresa autenticada.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge variant={portalActiveCountBadgeVariant}>
-              {activePlansCount} activo{activePlansCount === 1 ? '' : 's'}
-            </Badge>
-            {canEdit && (
-              <Button onClick={handleOpenCreateDialog}>
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                Nuevo plan
-              </Button>
-            )}
-          </div>
-        </div>
-      </CardHeader>
-
-      <CardContent className="space-y-4">
-        <div className="rounded-2xl border border-gray-100 bg-iwana-surface-soft p-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-iwana-secondary-700 shadow-sm dark:bg-dark-surface-2 dark:text-iwana-secondary-400">
-              <Sparkles className="h-5 w-5" aria-hidden="true" />
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">
-                Reglas activas
-              </p>
-              <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                Mantén al menos un plan activo y define reglas comerciales de instalación como
-                siempre, bajo demanda o nunca.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {loadError && (
-          <PortalAlert
-            variant="error"
-            title="No fue posible cargar planes"
-            description={loadError}
-            icon={CircleAlert}
-          />
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Badge variant={portalActiveCountBadgeVariant}>
+          {activePlansCount} activo{activePlansCount === 1 ? '' : 's'}
+        </Badge>
+        {canEdit && (
+          <Button onClick={handleOpenCreateDialog}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Nuevo plan
+          </Button>
         )}
+      </div>
 
-        {serverMessage && !loadError && (
-          <PortalAlert
-            variant="warning"
-            title="Revisión requerida"
-            description={serverMessage}
-            icon={CircleAlert}
-          />
-        )}
+      {loadError && (
+        <PortalAlert
+          variant="error"
+          title="No fue posible cargar planes"
+          description={loadError}
+          icon={CircleAlert}
+        />
+      )}
 
-        {isLoading ? (
-          <PortalSkeletonBlock className="h-44" />
-        ) : (
-          <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-dark-border">
+      {serverMessage && !loadError && (
+        <PortalAlert
+          variant="warning"
+          title="Revisión requerida"
+          description={serverMessage}
+          icon={CircleAlert}
+        />
+      )}
+
+      {isLoading ? (
+        <PortalSkeletonBlock className="h-44" />
+      ) : (
+        <div className={portalDataTableShellClassName}>
+          <div className="overflow-x-auto">
             <table className="w-full min-w-[860px] border-collapse">
-              <thead className="bg-[#f6f8f4] dark:bg-dark-surface-3">
+              <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
                 <tr>
-                  <th scope="col" className={tableHeadClass}>
+                  <th scope="col" className={portalDataTableHeadClassName}>
                     Plan
                   </th>
-                  <th scope="col" className={tableHeadClass}>
+                  <th scope="col" className={portalDataTableHeadClassName}>
                     Velocidad
                   </th>
-                  <th scope="col" className={tableHeadClass}>
+                  <th scope="col" className={portalDataTableHeadClassName}>
                     Precio base
                   </th>
-                  <th scope="col" className={tableHeadClass}>
+                  <th scope="col" className={portalDataTableHeadClassName}>
                     Instalación
                   </th>
                   {canEdit && (
                     <>
-                      <th scope="col" className={tableHeadClass}>
+                      <th scope="col" className={portalDataTableHeadClassName}>
                         Estado
                       </th>
-                      <th scope="col" className={tableHeadClass}>
+                      <th scope="col" className={portalDataTableHeadClassName}>
                         Acciones
                       </th>
                     </>
@@ -734,34 +698,51 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
               </tbody>
             </table>
           </div>
-        )}
-      </CardContent>
+        </div>
+      )}
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent
           aria-labelledby="plan-dialog-title"
           aria-describedby="plan-dialog-description"
+          className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"
         >
           <DialogHeader>
-            <DialogTitle id="plan-dialog-title">
+            <p className="portal-eyebrow">Catálogo comercial</p>
+            <DialogTitle id="plan-dialog-title" className="mt-1">
               {editingPlan ? `Editar plan: ${editingPlan.name}` : 'Nuevo plan'}
             </DialogTitle>
             <DialogDescription id="plan-dialog-description">
-              Define tecnología, velocidad y reglas de instalación para el plan comercial.
+              {editingPlan
+                ? 'Actualiza velocidad, precio e instalación del plan.'
+                : 'Registra nombre, tecnología, velocidad y precio del plan.'}
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <Input
-                id="plan-name"
-                label="Nombre del plan"
-                disabled={!canEdit || isSubmitting}
-                error={errors.name?.message}
-                {...register('name')}
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6" noValidate>
+            {serverMessage ? (
+              <PortalAlert
+                variant="error"
+                title={
+                  editingPlan ? 'No fue posible guardar el plan' : 'No fue posible crear el plan'
+                }
+                description={serverMessage}
               />
+            ) : null}
 
-              <div className="space-y-1.5">
+            <section className="space-y-4" aria-labelledby="plan-section-identity">
+              <p id="plan-section-identity" className="portal-eyebrow-muted">
+                Identidad del plan
+              </p>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Input
+                  id="plan-name"
+                  label="Nombre del plan"
+                  disabled={!canEdit || isSubmitting}
+                  error={errors.name?.message}
+                  {...register('name')}
+                />
+
                 <Controller
                   name="technology"
                   control={control}
@@ -776,6 +757,7 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
                       onChange={(event) => field.onChange(event.target.value)}
                       onBlur={field.onBlur}
                       ref={field.ref}
+                      {...(errors.technology?.message ? { error: errors.technology.message } : {})}
                     >
                       {selectTechnologyOptions.map((item) => (
                         <option key={item} value={item}>
@@ -785,221 +767,267 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
                     </Select>
                   )}
                 />
-                {errors.technology?.message && (
-                  <p className="text-xs text-red-600 dark:text-red-400">
-                    {errors.technology.message}
-                  </p>
-                )}
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Selecciona una tecnología de la lista desplegable.
-                </p>
               </div>
-            </div>
 
-            <details className="group rounded-[20px] border border-gray-200 p-4 dark:border-dark-border">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Gestionar tecnologías disponibles
-                  </p>
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {effectiveTechnologyOptions.length} tecnología
-                    {effectiveTechnologyOptions.length === 1 ? '' : 's'} en la lista desplegable.
-                  </p>
-                </div>
-                <span className="text-xs font-medium text-iwana-primary transition group-open:rotate-180">
-                  ▼
-                </span>
-              </summary>
-
-              <div className="mt-3 space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  {effectiveTechnologyOptions.length === 0 && (
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
-                      No hay tecnologías registradas.
-                    </span>
+              <details className="group rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
+                <summary
+                  className={cn(
+                    'flex cursor-pointer list-none items-center justify-between gap-3',
+                    interactiveFocusClassName,
                   )}
+                >
+                  <div>
+                    <p className="portal-eyebrow-muted">Gestionar tecnologías</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {effectiveTechnologyOptions.length} en la lista · opcional
+                    </p>
+                  </div>
+                  <ChevronDown
+                    className="h-4 w-4 shrink-0 text-iwana-primary transition-transform group-open:rotate-180"
+                    aria-hidden="true"
+                  />
+                </summary>
 
-                  {effectiveTechnologyOptions.map((technology) => {
-                    const isEditing =
-                      editingTechnologyOriginal?.toLowerCase() === technology.toLowerCase();
-                    const isUsedByActivePlan = technologiesInActivePlans.has(
-                      technology.toLowerCase(),
-                    );
+                <div className="mt-3 space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {effectiveTechnologyOptions.length === 0 && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        No hay tecnologías registradas.
+                      </span>
+                    )}
 
-                    return (
-                      <div
-                        key={technology}
-                        className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-1 text-xs dark:border-dark-border dark:bg-dark-surface-3"
-                      >
-                        {isEditing ? (
-                          <>
-                            <input
-                              aria-label={`Editar tecnología ${technology}`}
-                              value={editingTechnologyDraft}
-                              onChange={(event) => setEditingTechnologyDraft(event.target.value)}
-                              disabled={!canEdit || isSubmitting}
-                              className="h-7 w-28 rounded-md border border-gray-300 px-2 text-xs text-gray-700 dark:border-gray-600 dark:bg-dark-surface-2 dark:text-gray-200"
-                            />
-                            <button
-                              type="button"
-                              aria-label={`Guardar tecnología ${technology}`}
-                              disabled={!canEdit || isSubmitting}
-                              onClick={handleSaveEditedTechnology}
-                              className="rounded-md p-1 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:text-emerald-300 dark:hover:bg-emerald-900/30"
-                            >
-                              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-                            </button>
-                            <button
-                              type="button"
-                              aria-label={`Cancelar edición de tecnología ${technology}`}
-                              disabled={!canEdit || isSubmitting}
-                              onClick={() => {
-                                setEditingTechnologyOriginal(null);
-                                setEditingTechnologyDraft('');
-                              }}
-                              className="rounded-md px-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-dark-surface-2"
-                            >
-                              Cancelar
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              disabled={!canEdit || isSubmitting}
-                              onClick={() =>
-                                setValue('technology', technology, { shouldValidate: true })
-                              }
-                              className="font-medium text-gray-700 hover:text-iwana-primary disabled:opacity-50 dark:text-gray-200"
-                              aria-label={`Usar tecnología ${technology}`}
-                            >
-                              {technology}
-                            </button>
-                            <button
-                              type="button"
-                              aria-label={`Editar tecnología ${technology}`}
-                              disabled={!canEdit || isSubmitting}
-                              onClick={() => handleStartEditTechnology(technology)}
-                              className="rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-iwana-primary disabled:opacity-50 dark:text-gray-300 dark:hover:bg-dark-surface-2"
-                            >
-                              <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-                            </button>
-                            <button
-                              type="button"
-                              aria-label={`Eliminar tecnología ${technology}`}
-                              title={
-                                isUsedByActivePlan
-                                  ? 'No se puede eliminar: hay planes activos usando esta tecnología.'
-                                  : 'Eliminar tecnología'
-                              }
-                              disabled={!canEdit || isSubmitting || isUsedByActivePlan}
-                              onClick={() => handleDeleteTechnology(technology)}
-                              className="rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-red-600 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-dark-surface-2"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                    {effectiveTechnologyOptions.map((technology) => {
+                      const isEditing =
+                        editingTechnologyOriginal?.toLowerCase() === technology.toLowerCase();
+                      const isUsedByActivePlan = technologiesInActivePlans.has(
+                        technology.toLowerCase(),
+                      );
 
-                <div className="flex flex-wrap items-end gap-2">
-                  <div className="min-w-[220px] flex-1 space-y-1">
-                    <label
-                      htmlFor="technology-new"
-                      className="text-xs font-medium text-gray-600 dark:text-gray-300"
-                    >
-                      Nueva tecnología
-                    </label>
-                    <input
+                      return (
+                        <div
+                          key={technology}
+                          className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-1 text-xs dark:border-dark-border dark:bg-dark-surface-3"
+                        >
+                          {isEditing ? (
+                            <>
+                              <input
+                                aria-label={`Editar tecnología ${technology}`}
+                                value={editingTechnologyDraft}
+                                onChange={(event) => setEditingTechnologyDraft(event.target.value)}
+                                disabled={!canEdit || isSubmitting}
+                                className={cn(
+                                  'portal-input-surface h-7 w-28 px-2 text-xs text-gray-700 dark:text-gray-200',
+                                  interactiveFocusClassName,
+                                )}
+                              />
+                              <button
+                                type="button"
+                                aria-label={`Guardar tecnología ${technology}`}
+                                disabled={!canEdit || isSubmitting}
+                                onClick={handleSaveEditedTechnology}
+                                className={cn(
+                                  'rounded-md p-1 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:text-emerald-300 dark:hover:bg-emerald-900/30',
+                                  interactiveFocusClassName,
+                                )}
+                              >
+                                <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                              </button>
+                              <button
+                                type="button"
+                                aria-label={`Cancelar edición de tecnología ${technology}`}
+                                disabled={!canEdit || isSubmitting}
+                                onClick={() => {
+                                  setEditingTechnologyOriginal(null);
+                                  setEditingTechnologyDraft('');
+                                }}
+                                className={cn(
+                                  'rounded-md px-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-dark-surface-2',
+                                  interactiveFocusClassName,
+                                )}
+                              >
+                                Cancelar
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                disabled={!canEdit || isSubmitting}
+                                onClick={() =>
+                                  setValue('technology', technology, { shouldValidate: true })
+                                }
+                                className={cn(
+                                  'font-medium text-gray-700 hover:text-iwana-primary disabled:opacity-50 dark:text-gray-200',
+                                  interactiveFocusClassName,
+                                )}
+                                aria-label={`Usar tecnología ${technology}`}
+                              >
+                                {technology}
+                              </button>
+                              <button
+                                type="button"
+                                aria-label={`Editar tecnología ${technology}`}
+                                disabled={!canEdit || isSubmitting}
+                                onClick={() => handleStartEditTechnology(technology)}
+                                className={cn(
+                                  'rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-iwana-primary disabled:opacity-50 dark:text-gray-300 dark:hover:bg-dark-surface-2',
+                                  interactiveFocusClassName,
+                                )}
+                              >
+                                <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                              </button>
+                              <button
+                                type="button"
+                                aria-label={`Eliminar tecnología ${technology}`}
+                                title={
+                                  isUsedByActivePlan
+                                    ? 'No se puede eliminar: hay planes activos usando esta tecnología.'
+                                    : 'Eliminar tecnología'
+                                }
+                                disabled={!canEdit || isSubmitting || isUsedByActivePlan}
+                                onClick={() => handleDeleteTechnology(technology)}
+                                className={cn(
+                                  'rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-red-600 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-dark-surface-2',
+                                  interactiveFocusClassName,
+                                )}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex flex-wrap items-end gap-2">
+                    <Input
                       id="technology-new"
+                      label="Nueva tecnología"
                       value={technologyDraft}
                       onChange={(event) => setTechnologyDraft(event.target.value)}
                       disabled={!canEdit || isSubmitting}
                       placeholder="Ej: EPON"
-                      className="h-10 w-full rounded-xl border border-gray-300 bg-white px-3 text-sm text-gray-700 placeholder:text-gray-400 dark:border-gray-600 dark:bg-dark-surface-2 dark:text-gray-200"
+                      className="min-w-[220px] flex-1"
                     />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={
+                        !canEdit || isSubmitting || !normalizeTechnologyName(technologyDraft)
+                      }
+                      onClick={handleAddTechnology}
+                    >
+                      <Plus className="h-4 w-4" aria-hidden="true" />
+                      Agregar
+                    </Button>
                   </div>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    disabled={!canEdit || isSubmitting || !normalizeTechnologyName(technologyDraft)}
-                    onClick={handleAddTechnology}
-                  >
-                    <Plus className="h-4 w-4" aria-hidden="true" />
-                    Agregar
-                  </Button>
                 </div>
-              </div>
-            </details>
+              </details>
+            </section>
 
-            <div className="space-y-1.5">
-              <p className="text-sm font-medium text-[#374151]">Modalidad de velocidad</p>
-              <div role="radiogroup" aria-label="Modalidad de velocidad" className="flex gap-2">
-                <label className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 px-3 py-2 text-sm">
-                  <input
-                    type="radio"
-                    value="SYMMETRIC"
-                    disabled={!canEdit || isSubmitting}
-                    {...register('speedMode')}
-                  />
-                  Simétrica
-                </label>
-                <label className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 px-3 py-2 text-sm">
-                  <input
-                    type="radio"
-                    value="ASYMMETRIC"
-                    disabled={!canEdit || isSubmitting}
-                    {...register('speedMode')}
-                  />
-                  Asimétrica
-                </label>
-              </div>
-            </div>
+            <section className="space-y-4" aria-labelledby="plan-section-speed">
+              <p id="plan-section-speed" className="portal-eyebrow-muted">
+                Velocidad
+              </p>
+              <Controller
+                name="speedMode"
+                control={control}
+                render={({ field }) => (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                      Modalidad de velocidad
+                    </p>
+                    <div
+                      role="radiogroup"
+                      aria-label="Modalidad de velocidad"
+                      className={cn(portalModuleTabsTrackClassName, 'inline-flex w-fit gap-1 p-1')}
+                    >
+                      {(
+                        [
+                          { value: 'SYMMETRIC' as const, label: 'Simétrica' },
+                          { value: 'ASYMMETRIC' as const, label: 'Asimétrica' },
+                        ] as const
+                      ).map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          role="radio"
+                          aria-checked={field.value === option.value}
+                          disabled={!canEdit || isSubmitting}
+                          onClick={() => field.onChange(option.value)}
+                          className={cn(
+                            'rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                            interactiveFocusClassName,
+                            field.value === option.value
+                              ? 'bg-iwana-primary text-white shadow-sm'
+                              : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200',
+                          )}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              />
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Input
+                  id="download-speed"
+                  type="number"
+                  label="Velocidad de bajada (Mbps)"
+                  min={1}
+                  max={100000}
+                  disabled={!canEdit || isSubmitting}
+                  error={errors.downloadSpeedMbps?.message}
+                  {...register('downloadSpeedMbps', { valueAsNumber: true })}
+                />
+                <Input
+                  id="upload-speed"
+                  type="number"
+                  label="Velocidad de subida (Mbps)"
+                  min={1}
+                  max={100000}
+                  disabled={!canEdit || isSubmitting || speedMode === 'SYMMETRIC'}
+                  error={errors.uploadSpeedMbps?.message}
+                  {...register('uploadSpeedMbps', { valueAsNumber: true })}
+                />
+              </div>
+            </section>
+
+            <section className="space-y-4" aria-labelledby="plan-section-price">
+              <p id="plan-section-price" className="portal-eyebrow-muted">
+                Precio comercial
+              </p>
               <Input
-                id="download-speed"
+                id="base-price"
                 type="number"
-                label="Velocidad de bajada (Mbps)"
-                min={1}
-                max={100000}
+                min={0}
+                step="1000"
+                label="Precio base (COP)"
                 disabled={!canEdit || isSubmitting}
-                error={errors.downloadSpeedMbps?.message}
-                {...register('downloadSpeedMbps', { valueAsNumber: true })}
+                error={errors.basePrice?.message}
+                {...register('basePrice', { valueAsNumber: true })}
               />
-              <Input
-                id="upload-speed"
-                type="number"
-                label="Velocidad de subida (Mbps)"
-                min={1}
-                max={100000}
-                disabled={!canEdit || isSubmitting || speedMode === 'SYMMETRIC'}
-                error={errors.uploadSpeedMbps?.message}
-                {...register('uploadSpeedMbps', { valueAsNumber: true })}
-              />
-            </div>
+            </section>
 
-            <Input
-              id="base-price"
-              type="number"
-              min={0}
-              step="1000"
-              label="Precio base (COP)"
-              disabled={!canEdit || isSubmitting}
-              error={errors.basePrice?.message}
-              {...register('basePrice', { valueAsNumber: true })}
-            />
-
-            <div className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
+            <section
+              className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border"
+              aria-labelledby="plan-section-installation"
+            >
+              <p id="plan-section-installation" className="portal-eyebrow-muted">
+                Instalación
+              </p>
               <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
                 <input
                   type="checkbox"
                   disabled={!canEdit || isSubmitting}
+                  className={cn(
+                    'h-4 w-4 rounded border-gray-300 accent-iwana-primary',
+                    interactiveFocusClassName,
+                  )}
                   {...register('installationEnabled')}
                 />
                 Cobrar instalación
@@ -1007,29 +1035,27 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
 
               {installationEnabled && (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Controller
-                      name="installationRule"
-                      control={control}
-                      render={({ field }) => (
-                        <Select
-                          id="installation-rule"
-                          label="Regla de instalación"
-                          className="h-11"
-                          disabled={!canEdit || isSubmitting}
-                          name={field.name}
-                          value={field.value}
-                          onChange={(event) => field.onChange(event.target.value)}
-                          onBlur={field.onBlur}
-                          ref={field.ref}
-                        >
-                          <option value="ALWAYS">Siempre cobrar instalación</option>
-                          <option value="ON_DEMAND">Cobrar instalación bajo demanda</option>
-                          <option value="NEVER">Nunca cobrar instalación</option>
-                        </Select>
-                      )}
-                    />
-                  </div>
+                  <Controller
+                    name="installationRule"
+                    control={control}
+                    render={({ field }) => (
+                      <Select
+                        id="installation-rule"
+                        label="Regla de instalación"
+                        className="h-11"
+                        disabled={!canEdit || isSubmitting}
+                        name={field.name}
+                        value={field.value}
+                        onChange={(event) => field.onChange(event.target.value)}
+                        onBlur={field.onBlur}
+                        ref={field.ref}
+                      >
+                        <option value="ALWAYS">Siempre cobrar instalación</option>
+                        <option value="ON_DEMAND">Cobrar instalación bajo demanda</option>
+                        <option value="NEVER">Nunca cobrar instalación</option>
+                      </Select>
+                    )}
+                  />
 
                   <Input
                     id="installation-fee"
@@ -1043,16 +1069,34 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
                   />
                 </div>
               )}
-            </div>
+            </section>
 
-            {serverMessage && (
-              <div className="flex items-start gap-3 rounded-2xl border border-red-200/80 bg-red-50/90 px-4 py-3 text-sm text-red-700 shadow-sm dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
-                <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-                <p>{serverMessage}</p>
-              </div>
-            )}
+            {editingPlan ? (
+              <section
+                className="space-y-3 border-t border-gray-200 pt-4 dark:border-dark-border"
+                aria-labelledby="plan-section-danger"
+              >
+                <p id="plan-section-danger" className="portal-eyebrow-muted">
+                  Acciones destructivas
+                </p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Eliminar el plan &quot;{editingPlan.name}&quot; es irreversible. Los clientes
+                  asociados no se eliminan pero perderán la referencia a este plan.
+                </p>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  loading={deletingPlanId === editingPlanId}
+                  disabled={deletingPlanId === editingPlanId || !canEdit}
+                  onClick={() => void handleDeletePlan(editingPlan)}
+                >
+                  Eliminar este plan
+                </Button>
+              </section>
+            ) : null}
 
-            <div className="flex flex-wrap justify-end gap-2">
+            <div className="flex flex-wrap justify-end gap-2 border-t border-gray-200 pt-4 dark:border-dark-border">
               <DialogClose asChild>
                 <Button
                   type="button"
@@ -1066,30 +1110,9 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
                 {editingPlan ? 'Guardar cambios' : 'Crear plan'}
               </Button>
             </div>
-
-            {editingPlan && (
-              <div className="rounded-2xl border border-amber-200/80 bg-amber-50/90 p-4 shadow-sm dark:border-amber-800 dark:bg-amber-900/20">
-                <p className="mb-2 text-sm font-medium text-amber-800 dark:text-amber-300">
-                  Zona de peligro
-                </p>
-                <p className="mb-3 text-xs text-amber-700 dark:text-amber-400">
-                  Eliminar el plan &quot;{editingPlan.name}&quot; es irreversible. Los clientes
-                  asociados no se eliminan pero perderán la referencia a este plan.
-                </p>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  loading={deletingPlanId === editingPlanId}
-                  disabled={deletingPlanId === editingPlanId || !canEdit}
-                  onClick={() => void handleDeletePlan(editingPlan)}
-                >
-                  Eliminar este plan
-                </Button>
-              </div>
-            )}
           </form>
         </DialogContent>
       </Dialog>
-    </Card>
+    </div>
   );
 }

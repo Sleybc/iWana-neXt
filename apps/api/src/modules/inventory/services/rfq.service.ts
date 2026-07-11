@@ -31,6 +31,7 @@ import {
 } from '../dto';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { isPostgresUniqueViolation } from './inventory-postgres.util';
+import { SupplierProfileService } from './supplier-profile.service';
 
 export interface PurchaseRfqDetail {
   rfq: PurchaseRfq;
@@ -58,7 +59,10 @@ async function withTransaction<T>(
 
 @Injectable()
 export class RfqService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly supplierProfileService: SupplierProfileService,
+  ) {}
 
   async createFromRequest(
     purchaseRequestId: string,
@@ -135,6 +139,12 @@ export class RfqService {
         const created: PurchaseRfqInvitation[] = [];
 
         for (const partyRefId of validated.partyRefIds) {
+          await this.supplierProfileService.assertEligibleForPurchasing(
+            manager,
+            tenantId,
+            partyRefId,
+          );
+
           const existing = await manager.findOne(PurchaseRfqInvitation, {
             where: { tenantId, rfqId, partyRefId },
           });

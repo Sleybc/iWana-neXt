@@ -23,6 +23,7 @@ import {
   StockLocationStatus,
   StockLocationType,
   StockMovementOrigin,
+  SupplierProfileStatus,
   WriteOffReason,
   WriteOffStatus,
 } from '@iwana/shared';
@@ -85,6 +86,12 @@ export const PARTY_STATUS_LABELS: Record<PartyStatus, string> = {
   [PartyStatus.ACTIVE]: 'Activo',
   [PartyStatus.INACTIVE]: 'Inactivo',
   [PartyStatus.MERGED]: 'Fusionado',
+};
+
+export const SUPPLIER_STATUS_LABELS: Record<SupplierProfileStatus, string> = {
+  [SupplierProfileStatus.ACTIVE]: 'Activo',
+  [SupplierProfileStatus.INACTIVE]: 'Inactivo',
+  [SupplierProfileStatus.BLOCKED]: 'Bloqueado',
 };
 
 export const STOCK_BALANCE_CONDITION_LABELS: Record<StockBalanceCondition, string> = {
@@ -565,4 +572,23 @@ export function getPartyStatusLabel(value: string): string {
   }
 
   return 'Estado desconocido';
+}
+
+export function getSupplierProfileStatusLabel(value: SupplierProfileStatus): string {
+  return resolveLabel(value, SUPPLIER_STATUS_LABELS);
+}
+
+export function getSupplierProfileStatusBadgeVariant(
+  value: SupplierProfileStatus,
+): InventoryBadgeVariant {
+  switch (value) {
+    case SupplierProfileStatus.ACTIVE:
+      return 'success';
+    case SupplierProfileStatus.INACTIVE:
+      return 'neutral';
+    case SupplierProfileStatus.BLOCKED:
+      return 'error';
+    default:
+      return 'neutral';
+  }
 }

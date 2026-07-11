@@ -82,6 +82,12 @@ function buildFilterChips(
       label: filters.purchasable ? 'Disponibles para compras' : 'No disponibles para compras',
     });
   }
+  if (filters.commercialReferenceId) {
+    chips.push({
+      key: 'commercialReferenceId',
+      label: 'Referencia comercial vinculada',
+    });
+  }
 
   return chips;
 }

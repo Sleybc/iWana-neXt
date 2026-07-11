@@ -18,6 +18,7 @@ import {
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { RfqService } from '../services/rfq.service';
+import { SupplierProfileService } from '../services/supplier-profile.service';
 
 jest.mock('@iwana/db', () => ({
   PurchaseRequest: class PurchaseRequest {},
@@ -48,6 +49,10 @@ const REQUEST_ID = '11111111-1111-4111-8111-111111111111';
 const RFQ_ID = '22222222-2222-4222-8222-222222222222';
 const INVITATION_ID = '33333333-3333-4333-8333-333333333333';
 const PARTY_REF_ID = '44444444-4444-4444-8444-444444444444';
+
+const supplierProfileServiceMock = {
+  assertEligibleForPurchasing: jest.fn().mockResolvedValue(undefined),
+} as unknown as SupplierProfileService;
 
 describe('RfqService', () => {
   beforeEach(() => {
@@ -180,7 +185,7 @@ describe('RfqService', () => {
       fn({ manager } as never),
     );
 
-    const service = new RfqService({} as DataSource);
+    const service = new RfqService({} as DataSource, supplierProfileServiceMock);
     const result = await service.createFromRequest(REQUEST_ID, { currency: 'COP' }, actor);
 
     expect(result.status).toBe(PurchaseRfqStatus.DRAFT);
@@ -195,7 +200,7 @@ describe('RfqService', () => {
       fn({ manager } as never),
     );
 
-    const service = new RfqService({} as DataSource);
+    const service = new RfqService({} as DataSource, supplierProfileServiceMock);
     await expect(
       service.createFromRequest(REQUEST_ID, { currency: 'COP' }, actor),
     ).rejects.toBeInstanceOf(ConflictException);
@@ -210,7 +215,7 @@ describe('RfqService', () => {
       fn({ manager } as never),
     );
 
-    const service = new RfqService({} as DataSource);
+    const service = new RfqService({} as DataSource, supplierProfileServiceMock);
     const result = await service.send(RFQ_ID, actor);
 
     expect(result.status).toBe(PurchaseRfqStatus.SENT);
@@ -225,7 +230,7 @@ describe('RfqService', () => {
       fn({ manager } as never),
     );
 
-    const service = new RfqService({} as DataSource);
+    const service = new RfqService({} as DataSource, supplierProfileServiceMock);
     const result = await service.send(RFQ_ID, actor);
 
     expect(result.status).toBe(PurchaseRfqStatus.SENT);
@@ -255,7 +260,7 @@ describe('RfqService', () => {
       fn({ manager } as never),
     );
 
-    const service = new RfqService({} as DataSource);
+    const service = new RfqService({} as DataSource, supplierProfileServiceMock);
     await expect(
       service.createFromRequest(REQUEST_ID, { currency: 'COP' }, actor),
     ).rejects.toBeInstanceOf(ConflictException);
@@ -267,7 +272,7 @@ describe('RfqService', () => {
       fn({ manager } as never),
     );
 
-    const service = new RfqService({} as DataSource);
+    const service = new RfqService({} as DataSource, supplierProfileServiceMock);
     await service.invite(RFQ_ID, { partyRefIds: [PARTY_REF_ID] }, actor);
 
     expect(save).toHaveBeenCalledWith(
@@ -308,7 +313,7 @@ describe('RfqService', () => {
       fn({ manager } as never),
     );
 
-    const service = new RfqService({} as DataSource);
+    const service = new RfqService({} as DataSource, supplierProfileServiceMock);
     const result = await service.invite(RFQ_ID, { partyRefIds: [PARTY_REF_ID] }, actor);
 
     expect(result).toEqual([racedInvitation]);
@@ -326,7 +331,7 @@ describe('RfqService', () => {
       fn({ manager } as never),
     );
 
-    const service = new RfqService({} as DataSource);
+    const service = new RfqService({} as DataSource, supplierProfileServiceMock);
     const result = await service.close(RFQ_ID, actor);
 
     expect(result.status).toBe(PurchaseRfqStatus.CLOSED);
@@ -350,7 +355,7 @@ describe('RfqService', () => {
       fn({ manager } as never),
     );
 
-    const service = new RfqService({} as DataSource);
+    const service = new RfqService({} as DataSource, supplierProfileServiceMock);
     await service.decline(RFQ_ID, INVITATION_ID, { declineReason: 'Sin stock' }, actor);
 
     expect(save).toHaveBeenCalledWith(
@@ -374,7 +379,7 @@ describe('RfqService', () => {
       fn({ manager } as never),
     );
 
-    const service = new RfqService({} as DataSource);
+    const service = new RfqService({} as DataSource, supplierProfileServiceMock);
     const result = await service.decline(RFQ_ID, INVITATION_ID, {}, actor);
 
     expect(result.status).toBe(PurchaseRfqInvitationStatus.DECLINED);
@@ -387,7 +392,7 @@ describe('RfqService', () => {
       invitation: { status: PurchaseRfqInvitationStatus.INVITED, partyRefId: PARTY_REF_ID },
     });
 
-    const service = new RfqService({} as DataSource);
+    const service = new RfqService({} as DataSource, supplierProfileServiceMock);
     const quote = {
       id: 'quote-001',
       tenantId: 'tenant-001',
@@ -422,7 +427,7 @@ describe('RfqService', () => {
       invitation: { partyRefId: PARTY_REF_ID },
     });
 
-    const service = new RfqService({} as DataSource);
+    const service = new RfqService({} as DataSource, supplierProfileServiceMock);
     await expect(
       service.applyQuoteToInvitation(manager as never, 'tenant-001', {
         rfqInvitationId: INVITATION_ID,
@@ -438,7 +443,7 @@ describe('RfqService', () => {
       fn({ manager } as never),
     );
 
-    const service = new RfqService({} as DataSource);
+    const service = new RfqService({} as DataSource, supplierProfileServiceMock);
     await expect(service.getById(RFQ_ID)).rejects.toBeInstanceOf(NotFoundException);
   });
 });

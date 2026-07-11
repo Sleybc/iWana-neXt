@@ -64,7 +64,11 @@ import {
   PurchaseRequestPriority,
   PurchaseRequestStatus,
   PurchaseRequestType,
+  DocumentTypeParty,
+  PartyContactType,
+  PartyType,
   SerializedAssetStatus,
+  SupplierProfileStatus,
   StockBalanceCondition,
   StockIssueStatus,
   StockIssueType,
@@ -5998,6 +6002,85 @@ export interface ListSuppliersParams {
   page?: number;
 }
 
+export interface SupplierProfilePartyRecord {
+  partyRefId: string;
+  displayName: string;
+  primaryContact: string | null;
+  phone: string | null;
+  email: string | null;
+  city: string | null;
+  status: PartyStatus;
+}
+
+export interface SupplierProfileRecord {
+  id: string;
+  supplierCode: string;
+  partyRefId: string;
+  status: SupplierProfileStatus;
+  paymentTermsDays: number | null;
+  currency: string | null;
+  incoterm: string | null;
+  defaultLeadTimeDays: number | null;
+  purchasingContactName: string | null;
+  purchasingContactEmail: string | null;
+  purchasingContactPhone: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  party: SupplierProfilePartyRecord | null;
+}
+
+export interface CreateSupplierDto {
+  partyType: PartyType;
+  documentType: DocumentTypeParty;
+  documentNumber: string;
+  displayName: string;
+  legalName?: string | null;
+  contacts?: Array<{
+    type: PartyContactType;
+    value: string;
+    isPrimary?: boolean;
+    metadata?: Record<string, unknown> | null;
+  }>;
+  paymentTermsDays?: number | null;
+  currency?: string | null;
+  incoterm?: string | null;
+  defaultLeadTimeDays?: number | null;
+  purchasingContactName?: string | null;
+  purchasingContactEmail?: string | null;
+  purchasingContactPhone?: string | null;
+  notes?: string | null;
+}
+
+export interface UpdateSupplierDto {
+  paymentTermsDays?: number | null;
+  currency?: string | null;
+  incoterm?: string | null;
+  defaultLeadTimeDays?: number | null;
+  purchasingContactName?: string | null;
+  purchasingContactEmail?: string | null;
+  purchasingContactPhone?: string | null;
+  notes?: string | null;
+}
+
+export interface SetSupplierStatusDto {
+  status: SupplierProfileStatus;
+}
+
+export interface ListSupplierProfilesParams {
+  status?: SupplierProfileStatus;
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface SupplierProfileListResult {
+  data: SupplierProfileRecord[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export interface SupplierQuoteRecord {
   id: string;
   tenantId: string;
@@ -6090,6 +6173,7 @@ export interface ListInventoryItemsParams {
   status?: InventoryItemStatus;
   purchasable?: boolean;
   preferredSupplierRefId?: string;
+  commercialReferenceId?: string;
 }
 
 export interface CreateInventoryItemDto {
@@ -6479,6 +6563,7 @@ export const inventoryApi = {
               ? 'false'
               : undefined,
         preferredSupplierRefId: params?.preferredSupplierRefId,
+        commercialReferenceId: params?.commercialReferenceId,
       })}`,
       { returnFullResponse: true },
       tenantSlug,
@@ -6770,6 +6855,46 @@ export const purchasingApi = {
         page: params?.page ? String(params.page) : undefined,
       })}`,
       { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  createSupplier: (dto: CreateSupplierDto, tenantSlug?: string) =>
+    request<SupplierProfileRecord>(
+      '/purchasing/suppliers',
+      { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  listSuppliers: (params?: ListSupplierProfilesParams, tenantSlug?: string) =>
+    request<SupplierProfileListResult>(
+      `/purchasing/suppliers${buildInventoryQuery({
+        status: params?.status,
+        search: params?.search,
+        page: params?.page ? String(params.page) : undefined,
+        limit: params?.limit ? String(params.limit) : undefined,
+      })}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  getSupplier: (partyRefId: string, tenantSlug?: string) =>
+    request<SupplierProfileRecord>(
+      `/purchasing/suppliers/${partyRefId}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  updateSupplier: (partyRefId: string, dto: UpdateSupplierDto, tenantSlug?: string) =>
+    request<SupplierProfileRecord>(
+      `/purchasing/suppliers/${partyRefId}`,
+      { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  setSupplierStatus: (partyRefId: string, dto: SetSupplierStatusDto, tenantSlug?: string) =>
+    request<SupplierProfileRecord>(
+      `/purchasing/suppliers/${partyRefId}/status`,
+      { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
       tenantSlug,
     ),
 

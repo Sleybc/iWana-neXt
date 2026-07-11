@@ -342,12 +342,18 @@ test.describe('Portal Comercial - Catalogo de productos y servicios', () => {
 
     await expect(page.getByRole('heading', { name: 'Comercial' })).toBeVisible();
 
-    await page.getByRole('tab', { name: 'Productos' }).click();
-    await expect(page.getByText('Catalogo de productos')).toBeVisible();
+    await page.getByRole('tab', { name: 'Productos adicionales' }).click();
+    await expect(page.getByRole('tab', { name: 'Productos adicionales' })).toHaveAttribute(
+      'data-state',
+      'active',
+    );
     await expect(page.getByText('Router WiFi 6')).toBeVisible();
 
     await page.getByRole('tab', { name: 'Servicios' }).click();
-    await expect(page.getByText('Catalogo de servicios')).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Servicios' })).toHaveAttribute(
+      'data-state',
+      'active',
+    );
     await expect(page.getByText('IP publica fija')).toBeVisible();
     await expect(page.getByText(/25\.000/)).toBeVisible();
 

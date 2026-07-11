@@ -1,25 +1,17 @@
 import { DataSource, QueryRunner } from 'typeorm';
-import { AdditionalProductCategory } from '@iwana/shared';
+import { ProductCategory } from '@iwana/shared';
 
-const DEFAULT_PRODUCTS = [
-  { name: 'TvBox', category: AdditionalProductCategory.ENTERTAINMENT, sortOrder: 1 },
-  {
-    name: 'Decodificador adicional',
-    category: AdditionalProductCategory.ENTERTAINMENT,
-    sortOrder: 2,
-  },
-  { name: 'Cámaras de seguridad', category: AdditionalProductCategory.SECURITY, sortOrder: 1 },
-  { name: 'DVR / NVR', category: AdditionalProductCategory.SECURITY, sortOrder: 2 },
-  { name: 'Alarma residencial', category: AdditionalProductCategory.SECURITY, sortOrder: 3 },
-  { name: 'Router WiFi mesh', category: AdditionalProductCategory.CONNECTIVITY, sortOrder: 1 },
-  { name: 'Extensor de cobertura', category: AdditionalProductCategory.CONNECTIVITY, sortOrder: 2 },
-  { name: 'IP estática', category: AdditionalProductCategory.CONNECTIVITY, sortOrder: 3 },
-  { name: 'Soporte prioritario', category: AdditionalProductCategory.BUSINESS, sortOrder: 1 },
-  {
-    name: 'Línea telefónica adicional',
-    category: AdditionalProductCategory.BUSINESS,
-    sortOrder: 2,
-  },
+const DEFAULT_PRODUCTS: Array<{ name: string; category: ProductCategory }> = [
+  { name: 'TvBox', category: ProductCategory.ENTERTAINMENT },
+  { name: 'Decodificador adicional', category: ProductCategory.ENTERTAINMENT },
+  { name: 'Cámaras de seguridad', category: ProductCategory.SECURITY },
+  { name: 'DVR / NVR', category: ProductCategory.SECURITY },
+  { name: 'Alarma residencial', category: ProductCategory.SECURITY },
+  { name: 'Router WiFi mesh', category: ProductCategory.CONNECTIVITY },
+  { name: 'Extensor de cobertura', category: ProductCategory.CONNECTIVITY },
+  { name: 'IP estática', category: ProductCategory.CONNECTIVITY },
+  { name: 'Soporte prioritario', category: ProductCategory.BUSINESS },
+  { name: 'Línea telefónica adicional', category: ProductCategory.BUSINESS },
 ];
 
 export async function seedAdditionalProducts(
@@ -30,14 +22,53 @@ export async function seedAdditionalProducts(
   await queryRunner.query(`SET LOCAL search_path TO "${schemaName}"`);
 
   for (const product of DEFAULT_PRODUCTS) {
+    const existing = (await queryRunner.query(
+      `
+      SELECT ci.id
+      FROM catalog_items ci
+      INNER JOIN product_details pd ON pd.item_id = ci.id
+      WHERE ci.tenant_id = $1
+        AND ci.type = 'PRODUCT'
+        AND ci.name = $2
+        AND ci.deleted_at IS NULL
+      LIMIT 1
+      `,
+      [tenantId, product.name],
+    )) as Array<{ id: string }>;
+
+    if (existing.length > 0) {
+      continue;
+    }
+
+    const inserted = (await queryRunner.query(
+      `
+      INSERT INTO catalog_items (
+        tenant_id, type, name, description, retention_applicable, is_active, created_at, updated_at
+      )
+      VALUES ($1, 'PRODUCT', $2, NULL, false, true, now(), now())
+      RETURNING id
+      `,
+      [tenantId, product.name],
+    )) as Array<{ id: string }>;
+
+    const itemId = inserted[0]?.id;
+    if (!itemId) {
+      continue;
+    }
+
     await queryRunner.query(
-      `INSERT INTO additional_products (tenant_id, name, category, sort_order, is_active, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, true, now(), now())
-       ON CONFLICT DO NOTHING`,
-      [tenantId, product.name, product.category, product.sortOrder],
+      `
+      INSERT INTO product_details (item_id, is_loan, requires_inventory, category)
+      VALUES ($1, false, false, $2)
+      ON CONFLICT (item_id) DO NOTHING
+      `,
+      [itemId, product.category],
     );
   }
-  console.log(`[SEED] Additional products seeded for tenant ${tenantId} (schema: ${schemaName})`);
+
+  console.log(
+    `[SEED] Productos adicionales comerciales sembrados para tenant ${tenantId} (schema: ${schemaName})`,
+  );
 }
 
 interface PostgresOptions {

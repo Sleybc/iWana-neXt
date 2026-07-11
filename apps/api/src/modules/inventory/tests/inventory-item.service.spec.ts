@@ -12,6 +12,7 @@ import { InventoryItem, runInTenantSchema, TenantContext } from '@iwana/db';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { INVENTORY_EVENTS } from '../events/inventory.events';
 import { SupplierPartyPort } from '../ports/supplier-party.port';
+import { CommercialProductReferencePort } from '../ports/commercial-product-reference.port';
 import { InventoryItemService } from '../services/inventory-item.service';
 import { InventoryCategoryService } from '../services/inventory-category.service';
 
@@ -46,6 +47,10 @@ describe('InventoryItemService', () => {
   let inventoryCategoryService: {
     resolveCategoryForItem: jest.Mock;
   };
+  let commercialProductReferencePort: {
+    resolveProductReference: jest.Mock;
+    getActiveProducts: jest.Mock;
+  };
   let queryBuilder: {
     where: jest.Mock;
     andWhere: jest.Mock;
@@ -69,11 +74,16 @@ describe('InventoryItemService', () => {
         status: 'ACTIVE',
       }),
     };
+    commercialProductReferencePort = {
+      resolveProductReference: jest.fn().mockResolvedValue(null),
+      getActiveProducts: jest.fn().mockResolvedValue([]),
+    };
     service = new InventoryItemService(
       {} as DataSource,
       eventEmitter as unknown as EventEmitter2,
       supplierPartyPort as unknown as SupplierPartyPort,
       inventoryCategoryService as unknown as InventoryCategoryService,
+      commercialProductReferencePort as unknown as CommercialProductReferencePort,
     );
 
     queryBuilder = {

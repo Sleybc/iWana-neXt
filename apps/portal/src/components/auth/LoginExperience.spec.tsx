@@ -142,12 +142,20 @@ describe('LoginExperience (portal)', () => {
 
     render(<LoginExperience />);
 
-    await waitFor(() => {
-      expect(authPremiumShellMock).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          backgroundUrl: 'https://cdn.demo.co/login-dark.png',
-        }),
-      );
-    });
+    await waitFor(
+      () => {
+        expect(getPublicBrandingMock).toHaveBeenCalledWith('isp-storage');
+      },
+      { timeout: 5000 },
+    );
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('auth-premium-shell-background')).toHaveTextContent(
+          'https://cdn.demo.co/login-dark.png',
+        );
+      },
+      { timeout: 5000 },
+    );
   });
 });

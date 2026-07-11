@@ -77,6 +77,10 @@ Cuando el termino tecnico sea necesario, traduce sin perder precision:
 | SUPPORT | Soporte inicial |
 | CONTRACTOR | Contratista |
 | AUDITOR | Auditor |
+| catalog_items type PRODUCT / AdditionalProduct | producto adicional (Comercial) |
+| inventory_items / InventoryItem | producto operativo (Inventario > Catálogo) |
+| requiresInventory | requiere control de inventario |
+| commercialReferenceId | referencia comercial |
 
 ## Checklist De Revision
 
