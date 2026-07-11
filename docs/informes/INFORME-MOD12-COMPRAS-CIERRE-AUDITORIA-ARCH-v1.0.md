@@ -2,7 +2,7 @@
 
 **Estado:** Cerrado con remedación menor  
 **Fecha:** 2026-07-11  
-**Commit base:** `8a4e89ae` (auditoría) → remedación posterior  
+**Commit base:** `789ac092` (remedación + deuda residual)  
 **Referencia:** ADR-050, ADR-051  
 
 ## Veredicto original
@@ -47,6 +47,19 @@ Conforme, apto para cierre con deuda menor declarada (AI-EM-ARCH, 2026-07-11).
 | Unit `RfqService.invite` actor | OK |
 | Suite inventario completa | 133/133 OK |
 
+## Pendiente (delegado a CI, no bloqueante)
+
+Estos gates no bloquean el cierre funcional del slice MOD12; quedan como evidencia formal en pipeline o entorno CI:
+
+| Ítem | Alcance CI | Evidencia local previa (2026-07-11) |
+| --- | --- | --- |
+| E2E Playwright con DB levantada | Workflow E2E portal/inventario en runner Ubuntu con stack completo | `pnpm test:e2e:portal -- e2e/tests/portal-inventory-scm.spec.ts` → **19/19 OK** (~33 s) con API + portal activos |
+| Cobertura exacta ≥80% módulos core | Job de coverage en CI (servicios remedidos MOD12) | Jest focalizado counter-purchase + RFQ + util → **87.5% stmts / 87.45% lines** |
+| `pnpm lint` completo | Step `pnpm lint` en `.github/workflows/ci.yml` | **8/8 packages OK** (turbo, sin errores) |
+| Publicación OpenAPI | Validar schema en `/api/v1/docs-json` post-build o artefacto exportado | Paths presentes: `/api/v1/inventory/counter-purchases`, `/api/v1/purchasing/rfqs/*`; specs `*.swagger.spec.ts` en verde |
+
+**Nota:** el workflow `ci.yml` actual ejecuta lint + typecheck + build + migraciones; no incluye aún tests unitarios, coverage ni E2E portal inventario. La delegación documenta la trazabilidad hasta que esos jobs existan o se ejecuten manualmente en CI.
+
 ## Deuda residual
 
-Ninguna declarada tras esta pasada.
+Ninguna en código. Validación formal pendiente solo en los gates CI listados arriba.
