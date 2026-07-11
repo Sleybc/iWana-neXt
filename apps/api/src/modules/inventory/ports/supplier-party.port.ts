@@ -1,6 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { PartyContactType, PartyRoleType, PartyStatus } from '@iwana/shared';
-import { IPartyReadPort, PartyContactSnapshot } from '../../parties/ports/party-read.port';
+import {
+  DocumentTypeParty,
+  PartyContactType,
+  PartyRoleType,
+  PartyStatus,
+  PartyType,
+} from '@iwana/shared';
+import { IPartyReadPort } from '../../parties/ports/party-read.port';
+import { PartyIdentitySnapshot } from '../../parties/ports/party-write.port';
 
 export interface SupplierPartySummary {
   partyRefId: string;
@@ -18,6 +25,24 @@ export interface SupplierPartyListItem {
   status: PartyStatus;
 }
 
+/** Coincidencia de identidad por documento — habilita la reutilizacion real en el alta (A2). */
+export interface SupplierIdentityMatch {
+  partyRefId: string;
+  partyType: PartyType;
+  documentType: DocumentTypeParty;
+  displayName: string;
+  legalName: string | null;
+  summary: SupplierPartySummary;
+}
+
+/** Contacto minimo para componer un resumen — comun a lectura por id y a la identidad transaccional. */
+interface SummaryContactInput {
+  type: PartyContactType;
+  value: string;
+  isPrimary: boolean;
+  metadata?: Record<string, unknown> | null;
+}
+
 @Injectable()
 export abstract class SupplierPartyPort {
   abstract getSupplierSummary(partyRefId: string): Promise<SupplierPartySummary | null>;
@@ -25,6 +50,16 @@ export abstract class SupplierPartyPort {
     query?: string,
     page?: number,
   ): Promise<{ data: SupplierPartyListItem[]; total: number; page: number; limit: number }>;
+  /**
+   * Compone el resumen a partir de la identidad leida dentro de la transaccion del alta,
+   * sin abrir una conexion nueva (evita el defecto A1: `party` null en el response de create).
+   */
+  abstract summaryFromIdentity(identity: PartyIdentitySnapshot): SupplierPartySummary;
+  /** Busca un tercero por (tipo, numero) de documento para reutilizar su identidad (A2). */
+  abstract findIdentityByDocument(
+    documentType: DocumentTypeParty,
+    documentNumber: string,
+  ): Promise<SupplierIdentityMatch | null>;
 }
 
 @Injectable()
@@ -42,6 +77,46 @@ export class SupplierPartyPortAdapter extends SupplierPartyPort {
     }
 
     const contacts = await this.partyReadPort.listContacts(partyRefId);
+    return this.composeSummary(party.id, party.displayName, party.status, contacts);
+  }
+
+  summaryFromIdentity(identity: PartyIdentitySnapshot): SupplierPartySummary {
+    return this.composeSummary(
+      identity.partyId,
+      identity.displayName,
+      identity.status,
+      identity.contacts,
+    );
+  }
+
+  async findIdentityByDocument(
+    documentType: DocumentTypeParty,
+    documentNumber: string,
+  ): Promise<SupplierIdentityMatch | null> {
+    const party = await this.partyReadPort.findByDocument(documentType, documentNumber);
+    if (!party) {
+      return null;
+    }
+
+    const contacts = await this.partyReadPort.listContacts(party.id);
+    const summary = this.composeSummary(party.id, party.displayName, party.status, contacts);
+
+    return {
+      partyRefId: party.id,
+      partyType: party.partyType,
+      documentType: party.documentType,
+      displayName: party.displayName,
+      legalName: party.legalName,
+      summary,
+    };
+  }
+
+  private composeSummary(
+    partyRefId: string,
+    displayName: string,
+    status: PartyStatus,
+    contacts: SummaryContactInput[],
+  ): SupplierPartySummary {
     const primaryEmail = this.pickContact(contacts, PartyContactType.EMAIL);
     const primaryPhone = this.pickContact(contacts, PartyContactType.PHONE);
     const primaryAddress = this.pickContact(contacts, PartyContactType.ADDRESS);
@@ -49,13 +124,13 @@ export class SupplierPartyPortAdapter extends SupplierPartyPort {
     const city = this.extractCity(primaryAddress);
 
     return {
-      partyRefId: party.id,
-      displayName: party.displayName,
+      partyRefId,
+      displayName,
       primaryContact,
       phone: primaryPhone?.value ?? null,
       email: primaryEmail?.value ?? null,
       city,
-      status: party.status,
+      status,
     };
   }
 
@@ -80,9 +155,9 @@ export class SupplierPartyPortAdapter extends SupplierPartyPort {
   }
 
   private pickContact(
-    contacts: PartyContactSnapshot[],
+    contacts: SummaryContactInput[],
     type: PartyContactType,
-  ): PartyContactSnapshot | null {
+  ): SummaryContactInput | null {
     return (
       contacts.find((contact) => contact.type === type && contact.isPrimary) ??
       contacts.find((contact) => contact.type === type) ??
@@ -90,17 +165,12 @@ export class SupplierPartyPortAdapter extends SupplierPartyPort {
     );
   }
 
-  private extractCity(addressContact: PartyContactSnapshot | null): string | null {
+  private extractCity(addressContact: SummaryContactInput | null): string | null {
     if (!addressContact) {
       return null;
     }
 
-    const metadata = (
-      addressContact as PartyContactSnapshot & {
-        metadata?: Record<string, unknown> | null;
-      }
-    ).metadata;
-
+    const metadata = addressContact.metadata;
     const metadataCity = metadata?.city;
     if (typeof metadataCity === 'string' && metadataCity.trim().length > 0) {
       return metadataCity.trim();

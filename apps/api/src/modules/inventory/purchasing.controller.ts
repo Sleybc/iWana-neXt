@@ -45,6 +45,8 @@ import {
   ListPurchaseRequestsQuerySchema,
   ListSuppliersQueryDto,
   ListSuppliersQuerySchema,
+  LookupSupplierDocumentQueryDto,
+  LookupSupplierDocumentSchema,
   ReceivePurchaseOrderDto,
   ReceivePurchaseOrderSchema,
   SearchSuppliersQueryDto,
@@ -207,6 +209,17 @@ export class PurchasingController {
     @Query(new ZodValidationPipe(ListSuppliersQuerySchema)) query: ListSuppliersQueryDto,
   ) {
     return this.supplierProfileService.list(ListSuppliersQuerySchema.parse(query));
+  }
+
+  @Get('suppliers/lookup')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Buscar tercero por documento para reutilizar su identidad en el alta' })
+  lookupSupplierByDocument(
+    @Query(new ZodValidationPipe(LookupSupplierDocumentSchema))
+    query: LookupSupplierDocumentQueryDto,
+  ) {
+    const parsed = LookupSupplierDocumentSchema.parse(query);
+    return this.supplierProfileService.lookupByDocument(parsed.documentType, parsed.documentNumber);
   }
 
   @Get('suppliers/:partyRefId')

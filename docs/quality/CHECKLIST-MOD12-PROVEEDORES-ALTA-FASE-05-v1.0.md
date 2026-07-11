@@ -37,18 +37,35 @@
 - [x] `SUPPLIER_STATUS_LABELS` (sin enums crudos)
 - [x] Sin `partyRefId` visible en UI
 
-## Calidad
+## Calidad (actualizado en Fase 05-B con evidencia real en `docs/quality/evidence-fase-05b/`)
 
-- [x] Unit tests adapter + service
-- [x] Integración HTTP suppliers
-- [x] E2E gestión proveedores
-- [x] Lint + typecheck portal
-- [x] Build API
-- [x] Revisión AI-SEC-ENG documentada
+- [x] Unit tests adapter + service — PASS (`api-test.txt`)
+- [x] Integración HTTP **real** (service+adapter+DB en memoria, sin mockear `SupplierProfileService`) — `supplier-profile.http.integration.spec.ts`
+- [x] **Aislamiento cross-tenant** — `supplier-profile.isolation.spec.ts` (era DoD ausente en 05; **añadido** en 05-B)
+- [x] **Test de arquitectura de boundary** (Compras no importa `party*`) — `inventory-parties-boundary.arch.spec.ts`
+- [x] Reintento de `supplier_code` (M2) con test de colisión
+- [x] `party` poblado en response de alta (A1) con test
+- [x] Reutilización de identidad real por documento (A2/B4) — lookup backend + `SupplierSummaryCard`
+- [x] Lint + typecheck API y portal — PASS (`lint.txt`, `typecheck.txt`)
+- [~] E2E extendido para proveedor BLOCKED en RFQ/OC — **código añadido; NO ejecutado en esta sesión** (sin navegador/dev-server); pendiente en CI
+- [x] Excepción M1 documentada en ADR-052 (revisión reforzada AI-SEC-ENG)
+
+## Cobertura (real, `api-coverage-core.txt`)
+
+- [x] `party-write.adapter.ts` 100%
+- [x] `supplier-profile.service.ts` 84.7% líneas
+- [x] Subconjunto de archivos core tocados: **81.85%** (≥80%)
 
 ## Gates pre-merge
 
-- [x] `pnpm lint` monorepo completo
-- [x] `pnpm test` monorepo completo
-- [x] Migración 064 aplicada en DB de desarrollo (`tenant_iwana`)
-- [x] Aprobación CTO / merge (2026-07-11)
+- [x] `pnpm --filter @iwana/api lint` PASS (evidencia)
+- [x] `pnpm --filter @iwana/api test` PASS — 149 suites / 1477 tests (evidencia)
+- [ ] `pnpm test` monorepo completo — **no re-ejecutado en esta sesión** (solo API afectado verificado); pendiente en CI
+- [ ] E2E Playwright ejecutado — **pendiente en CI**
+- [x] Migración `064` intacta y reversible (sin cambios en 05-B)
+
+## Desvíos reconocidos (Fase 05-B)
+
+- **C1:** commit `8ce3d26b` mezcló ≈40 archivos ajenos a la fase; no reversible sin reescribir historia (no se hace). La remediación 05-B va en un commit atómico de solo proveedores/MOD12 (+Parties M1).
+- Ítems previos marcados 100% sin evidencia se corrigen aquí con salidas reales.
+- **Deuda:** B1, B2, B3, B5, B6 (backlog, no en este commit).

@@ -1,0 +1,45 @@
+[32m[Nest] 9776  - [39m11/07/2026, 2:37:41 p. m. [32m    LOG[39m [38;5;3m[SubscriberActivationListener] [39m[32mSubscriber sub-1 activado automáticamente para expediente exp-1[39m
+[32m[Nest] 9776  - [39m11/07/2026, 2:37:41 p. m. [32m    LOG[39m [38;5;3m[SubscriberCancellationListener] [39m[32mSubscriber sub-2 cancelado automáticamente por descarte del expediente exp-2[39m
+PASS src/modules/crm/expedientes/tests/status-transition.service.spec.ts
+PASS src/modules/audit/audit-query.service.spec.ts
+PASS src/modules/crm/quotes/tests/quotes.service.spec.ts
+PASS src/modules/crm/reviews/tests/review-coordination.service.spec.ts
+PASS src/modules/access-control/services/effective-permissions.service.spec.ts
+PASS src/modules/wfm/tests/operating-window-resolver.service.spec.ts
+PASS src/modules/access-control/guards/permissions.guard.spec.ts
+PASS src/modules/crm/habeas-data/tests/habeas-data.service.spec.ts
+PASS src/modules/crm/reviews/tests/customer-overview.service.spec.ts
+PASS src/modules/parties/services/party-role.service.spec.ts
+PASS src/modules/crm/expedientes/tests/completeness-calculator.service.spec.ts
+PASS src/modules/parties/services/party-contact.service.spec.ts
+PASS src/modules/wfm/tests/schedule-conflict.service.spec.ts
+[32m[Nest] 22096  - [39m11/07/2026, 2:37:42 p. m. [32m    LOG[39m [38;5;3m[PartyRoleService] [39m[32m[PartyRoleService] Rol CUSTOMER asignado a party=party-uuid-001[39m
+[32m[Nest] 22096  - [39m11/07/2026, 2:37:42 p. m. [32m    LOG[39m [38;5;3m[PartyRoleService] [39m[32m[PartyRoleService] Rol CUSTOMER reactivado para party=party-uuid-001[39m
+[32m[Nest] 22096  - [39m11/07/2026, 2:37:42 p. m. [32m    LOG[39m [38;5;3m[PartyRoleService] [39m[32m[PartyRoleService] Rol SUPPLIER asignado a party=party-uuid-001[39m
+[32m[Nest] 22096  - [39m11/07/2026, 2:37:42 p. m. [32m    LOG[39m [38;5;3m[PartyRoleService] [39m[32m[PartyRoleService] Rol EMPLOYEE asignado a party=party-uuid-001[39m
+[32m[Nest] 22096  - [39m11/07/2026, 2:37:42 p. m. [32m    LOG[39m [38;5;3m[PartyRoleService] [39m[32m[PartyRoleService] Rol role-uuid-001 desactivado para party=party-uuid-001[39m
+[32m[Nest] 19336  - [39m11/07/2026, 2:37:42 p. m. [32m    LOG[39m [38;5;3m[PartyContactService] [39m[32m[PartyContactService] Contacto tipo=EMAIL creado para party=party-uuid-001[39m
+[32m[Nest] 19336  - [39m11/07/2026, 2:37:42 p. m. [32m    LOG[39m [38;5;3m[PartyContactService] [39m[32m[PartyContactService] Contacto tipo=EMAIL actualizado para party=party-uuid-001[39m
+[32m[Nest] 19336  - [39m11/07/2026, 2:37:42 p. m. [32m    LOG[39m [38;5;3m[PartyContactService] [39m[32m[PartyContactService] Contacto tipo=PHONE creado para party=party-uuid-001[39m
+[32m[Nest] 19336  - [39m11/07/2026, 2:37:42 p. m. [32m    LOG[39m [38;5;3m[PartyContactService] [39m[32m[PartyContactService] Contacto tipo=EMAIL creado para party=party-uuid-001[39m
+[32m[Nest] 19336  - [39m11/07/2026, 2:37:42 p. m. [32m    LOG[39m [38;5;3m[PartyContactService] [39m[32m[PartyContactService] Contacto tipo=EMAIL actualizado para party=party-uuid-001[39m
+[32m[Nest] 19336  - [39m11/07/2026, 2:37:42 p. m. [32m    LOG[39m [38;5;3m[PartyContactService] [39m[32m[PartyContactService] Contacto tipo=EMAIL eliminado de party=party-uuid-001[39m
+PASS src/modules/parties/adapters/party-read.adapter.spec.ts
+PASS src/modules/mailer/mailer.service.spec.ts
+PASS src/modules/commercial/tests/tax-boundary.spec.ts
+PASS src/modules/crm/subscribers/tests/migration-024-backfill.spec.ts
+PASS src/modules/crm/tests/provisioning-readiness.spec.ts
+PASS src/modules/tenant/tenant-schema-isolation.spec.ts
+PASS src/modules/commercial/catalog.persistence-tenant-isolation.spec.ts
+PASS src/modules/crm/subscribers/vat-treatment.service.spec.ts
+PASS src/modules/wfm/services/wfm-organization-sites.adapter.spec.ts
+PASS src/modules/wfm/tests/wfm-dashboard.service.spec.ts
+PASS src/modules/inventory/tests/inventory-postgres.util.spec.ts
+PASS src/modules/users/dto/users.dto.spec.ts
+PASS src/modules/crm/expedientes/tests/expediente-boundary-dto.spec.ts
+
+Test Suites: 149 passed, 149 total
+Tests:       1477 passed, 1477 total
+Snapshots:   0 total
+Time:        26.084 s, estimated 101 s
+Ran all test suites.

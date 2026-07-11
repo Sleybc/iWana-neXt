@@ -2076,6 +2076,23 @@ export class UpdateSupplierDto {
   notes?: string | null;
 }
 
+export const LookupSupplierDocumentSchema = z.object({
+  documentType: z.nativeEnum(DocumentTypeParty),
+  documentNumber: z.string().trim().min(1).max(500),
+});
+
+export type LookupSupplierDocumentInput = z.infer<typeof LookupSupplierDocumentSchema>;
+
+export class LookupSupplierDocumentQueryDto {
+  @ApiProperty({ enum: DocumentTypeParty })
+  @Allow()
+  documentType!: DocumentTypeParty;
+
+  @ApiProperty({ maxLength: 500 })
+  @Allow()
+  documentNumber!: string;
+}
+
 export const SetSupplierStatusSchema = z.object({
   status: z.nativeEnum(SupplierProfileStatus),
 });

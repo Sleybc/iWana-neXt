@@ -49,6 +49,16 @@ const partySummary = {
   status: PartyStatus.ACTIVE,
 };
 
+const partyIdentity = {
+  partyId: PARTY_REF_ID,
+  displayName: 'Proveedor ACME',
+  legalName: 'Proveedor ACME S.A.S.',
+  partyType: PartyType.ORGANIZATION,
+  documentType: DocumentTypeParty.NIT,
+  status: PartyStatus.ACTIVE,
+  contacts: [],
+};
+
 describe('SupplierProfileService', () => {
   let service: SupplierProfileService;
   let partyWritePort: jest.Mocked<IPartyWritePort>;
@@ -73,11 +83,15 @@ describe('SupplierProfileService', () => {
     supplierPartyPort = {
       getSupplierSummary: jest.fn(),
       searchSuppliers: jest.fn(),
+      summaryFromIdentity: jest.fn(),
+      findIdentityByDocument: jest.fn(),
     } as never;
 
     service = new SupplierProfileService({} as DataSource, partyWritePort, supplierPartyPort);
 
     supplierPartyPort.getSupplierSummary.mockResolvedValue(partySummary);
+    supplierPartyPort.summaryFromIdentity.mockReturnValue(partySummary);
+    supplierPartyPort.findIdentityByDocument.mockResolvedValue(null);
     supplierPartyPort.searchSuppliers.mockResolvedValue({
       data: [
         { partyRefId: PARTY_REF_ID, displayName: 'Proveedor ACME', status: PartyStatus.ACTIVE },
@@ -159,6 +173,7 @@ describe('SupplierProfileService', () => {
       partyRoleId: PARTY_ROLE_ID,
       partyCreated: true,
       roleAdded: true,
+      identity: partyIdentity,
     });
 
     const result = await service.create(createInput, actor);
@@ -186,11 +201,13 @@ describe('SupplierProfileService', () => {
       partyRoleId: PARTY_ROLE_ID,
       partyCreated: false,
       roleAdded: true,
+      identity: partyIdentity,
     });
 
     const result = await service.create(createInput, actor);
 
     expect(result.partyRefId).toBe(PARTY_REF_ID);
+    expect(result.party?.displayName).toBe('Proveedor ACME');
     expect(partyWritePort.ensurePartyWithRole).toHaveBeenCalledTimes(1);
   });
 
@@ -200,6 +217,7 @@ describe('SupplierProfileService', () => {
       partyRoleId: PARTY_ROLE_ID,
       partyCreated: false,
       roleAdded: false,
+      identity: partyIdentity,
     });
 
     const duplicateError = new QueryFailedError('INSERT', [], {

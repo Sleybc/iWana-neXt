@@ -196,6 +196,8 @@ export function SupplierFormDrawer({
   );
   const [identityLocked, setIdentityLocked] = useState(false);
   const [identityReuseNotice, setIdentityReuseNotice] = useState<string | null>(null);
+  const [reusedPartySummary, setReusedPartySummary] = useState<SupplierSummaryRecord | null>(null);
+  const [reusedHasProfile, setReusedHasProfile] = useState(false);
   const [isSearchingDocument, setIsSearchingDocument] = useState(false);
   const [documentSearchError, setDocumentSearchError] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -209,6 +211,8 @@ export function SupplierFormDrawer({
     setValidationError(null);
     setDocumentSearchError(null);
     setIdentityReuseNotice(null);
+    setReusedPartySummary(null);
+    setReusedHasProfile(false);
     setIdentityLocked(false);
     setCreateStep('identity');
 
@@ -266,23 +270,52 @@ export function SupplierFormDrawer({
     setIsSearchingDocument(true);
     setDocumentSearchError(null);
     setIdentityReuseNotice(null);
+    setReusedPartySummary(null);
+    setReusedHasProfile(false);
 
     try {
-      const response = await purchasingApi.searchSuppliers({ search: documentNumber, page: 1 });
-      const match = response.data[0];
+      // Busqueda EXACTA por (tipo, numero) de documento: el backend deduplica identidad
+      // por (documentType, documentNumber). Al hallar el tercero sincronizamos su identidad
+      // real (no se envia partyRefId; el enlace lo resuelve el backend por documento).
+      const result = await purchasingApi.lookupSupplierByDocument({
+        documentType: identityForm.documentType,
+        documentNumber,
+      });
 
-      if (match) {
+      if (result.match) {
+        const { match } = result;
         setIdentityForm((current) => ({
           ...current,
+          documentType: match.documentType,
+          partyType: match.partyType,
           displayName: match.displayName,
+          legalName: match.legalName ?? '',
         }));
+        setReusedPartySummary({
+          partyRefId: match.summary.partyRefId,
+          displayName: match.summary.displayName,
+          primaryContact: match.summary.primaryContact,
+          phone: match.summary.phone,
+          email: match.summary.email,
+          city: match.summary.city,
+          status: match.summary.status,
+        });
+        setReusedHasProfile(result.hasSupplierProfile);
         setIdentityLocked(true);
-        setIdentityReuseNotice(
-          'Encontramos un tercero existente con este documento. Reutilizaremos su identidad al registrar el perfil comercial.',
-        );
+
+        if (result.hasSupplierProfile) {
+          setIdentityReuseNotice(
+            'Este tercero ya tiene un perfil de proveedor. No es posible crear otro; edítalo desde el listado de proveedores.',
+          );
+        } else {
+          setIdentityReuseNotice(
+            'Se reutilizará la identidad de este tercero (verifica la ficha). Su documento y razón social no se modifican desde Compras; solo se agregará el rol de proveedor y el perfil comercial.',
+          );
+        }
       } else {
         setIdentityLocked(false);
         setIdentityReuseNotice(null);
+        setReusedPartySummary(null);
         setDocumentSearchError(
           'No encontramos un tercero con este documento. Completa la identidad para crear uno nuevo.',
         );
@@ -295,6 +328,13 @@ export function SupplierFormDrawer({
   }
 
   function validateIdentityStep(): boolean {
+    if (reusedHasProfile) {
+      setValidationError(
+        'Este tercero ya tiene un perfil de proveedor. Edítalo desde el listado en lugar de crear uno nuevo.',
+      );
+      return false;
+    }
+
     if (!identityForm.documentNumber.trim()) {
       setValidationError('Completa el número de documento.');
       return false;
@@ -428,6 +468,9 @@ export function SupplierFormDrawer({
                         description={identityReuseNotice}
                       />
                     ) : null}
+                    {reusedPartySummary ? (
+                      <SupplierSummaryCard summary={reusedPartySummary} />
+                    ) : null}
                     {renderCommercialFields()}
                   </>
                 ) : null}
@@ -488,8 +531,14 @@ export function SupplierFormDrawer({
         <p className="text-sm font-medium text-gray-900 dark:text-white">Paso 1 · Identidad</p>
 
         {identityReuseNotice ? (
-          <PortalAlert variant="info" title="Tercero existente" description={identityReuseNotice} />
+          <PortalAlert
+            variant={reusedHasProfile ? 'warning' : 'info'}
+            title="Tercero existente"
+            description={identityReuseNotice}
+          />
         ) : null}
+
+        {reusedPartySummary ? <SupplierSummaryCard summary={reusedPartySummary} /> : null}
 
         {documentSearchError ? (
           <PortalAlert variant="warning" title="Búsqueda" description={documentSearchError} />

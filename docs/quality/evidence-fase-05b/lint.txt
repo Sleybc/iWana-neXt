@@ -1,0 +1,10 @@
+=== API lint ===
+
+> @iwana/api@0.1.0 lint C:\appiw\apps\api
+> eslint src --ext .ts
+
+=== Portal lint ===
+
+> @iwana/portal@0.1.0 lint C:\appiw\apps\portal
+> eslint src --ext .ts,.tsx
+

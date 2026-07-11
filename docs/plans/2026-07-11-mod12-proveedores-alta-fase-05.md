@@ -16,6 +16,8 @@
 
 **Precondicion:** ADR-052 Aprobado por CTO (2026-07-11) — cumplida. Numeracion de migraciones tenant: el numero mas alto actual es `062`; esta fase toma `063`. Verificar el numero mas alto real antes de crear.
 
+> **Nota de ejecucion (2026-07-11):** el slot `063` fue ocupado por `063_drop_legacy_additional_products.ts` (trabajo comercial); la migracion de `supplier_profiles` quedo en **`064_create_supplier_profiles.ts`**, que es correcto. Toda referencia a `063` en este plan debe leerse como `064`. Ver `docs/informes/INFORME-MOD12-PROVEEDORES-ALTA-AUDITORIA-ARCH-v1.0.md` §4.
+
 ---
 
 ## File Map

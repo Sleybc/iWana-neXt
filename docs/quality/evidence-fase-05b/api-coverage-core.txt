@@ -1,0 +1,9 @@
+PASS src/modules/parties/adapters/party-write.adapter.spec.ts (8.125 s)
+PASS src/modules/inventory/tests/supplier-profile.service.spec.ts (8.707 s)
+All files                     |   81.85 |     69.6 |   81.03 |   82.08 |                                                                    
+  supplier-party.port.ts      |   76.19 |    56.52 |   81.81 |   74.35 | 76,98,141-149,173-179                                              
+  supplier-profile.service.ts |   84.45 |    72.54 |   92.85 |   84.72 | 56,147-151,169,173-182,230,260,309,313-314,352,372,378,381,384,387 
+  party-read.adapter.ts       |   59.09 |    22.22 |   53.33 |      60 | 50-89                                                              
+  party-write.adapter.ts      |     100 |      100 |     100 |     100 |                                                                    
+Test Suites: 5 passed, 5 total
+Tests:       32 passed, 32 total

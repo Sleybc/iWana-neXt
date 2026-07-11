@@ -1,0 +1,10 @@
+=== API typecheck ===
+
+> @iwana/api@0.1.0 typecheck C:\appiw\apps\api
+> tsc --noEmit -p tsconfig.typecheck.json
+
+=== Portal typecheck ===
+
+> @iwana/portal@0.1.0 typecheck C:\appiw\apps\portal
+> tsc --noEmit
+

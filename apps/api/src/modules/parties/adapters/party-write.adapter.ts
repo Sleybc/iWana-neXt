@@ -9,6 +9,7 @@ import {
   EnsurePartyInput,
   PartyWriteContext,
   EnsurePartyResult,
+  PartyIdentitySnapshot,
 } from '../ports/party-write.port';
 
 /**
@@ -96,11 +97,41 @@ export class PartyWriteAdapter extends IPartyWritePort {
       );
     }
 
+    const identity = await this.buildIdentitySnapshot(manager, party);
+
     return {
       partyId: party.id,
       partyRoleId: partyRole.id,
       partyCreated,
       roleAdded,
+      identity,
+    };
+  }
+
+  /**
+   * Lee la identidad (incluidos contactos) dentro del mismo EntityManager transaccional,
+   * de modo que el llamante vea los datos recien creados sin abrir otra conexion.
+   * Ref: ADR-052 §D3, remediacion A1.
+   */
+  private async buildIdentitySnapshot(
+    manager: PartyWriteContext['manager'],
+    party: Party,
+  ): Promise<PartyIdentitySnapshot> {
+    const contacts = await manager.find(PartyContact, { where: { partyId: party.id } });
+
+    return {
+      partyId: party.id,
+      displayName: party.displayName,
+      legalName: party.legalName ?? null,
+      partyType: party.partyType,
+      documentType: party.documentType,
+      status: party.status,
+      contacts: contacts.map((contact) => ({
+        type: contact.type,
+        value: contact.value,
+        isPrimary: contact.isPrimary,
+        metadata: contact.metadata ?? null,
+      })),
     };
   }
 

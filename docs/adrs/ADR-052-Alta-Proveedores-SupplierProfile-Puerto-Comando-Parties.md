@@ -200,6 +200,21 @@ Descartada. Mezcla datos comerciales de compra (propiedad de un contexto) en el 
 
 ---
 
+## Nota de implementacion (Fase 05-B) — Excepcion M1 a §D2
+
+**Contexto:** La auditoria de 2ª capa (INFORME-MOD12-PROVEEDORES-ALTA-AUDITORIA-ARCH-v1.0, hallazgo M1) observo que `PartyWriteAdapter` manipula las entidades `Party`/`PartyRole`/`PartyContact` directamente por `EntityManager` en lugar de delegar en `PartyService`/`PartyRoleService`/`PartyContactService`, como sugiere §D2 ("delega en los servicios de Parties").
+
+**Analisis:** Los tres servicios (`PartyService`, `PartyRoleService`, `PartyContactService`) abren su **propia** `runInTenantSchema` (conexion/transaccion nueva) y **no aceptan** un `EntityManager` del llamante. Delegar en ellos desde el adapter dentro de la transaccion del alta es inviable sin refactorizarlos para aceptar un `manager` opcional — un cambio mayor en la superficie de otro modulo (MOD08 Parties). Hacerlo sin ese refactor rompe la **atomicidad** exigida por §D3/regla de boundary #4 (Party+rol+perfil en una sola transaccion): las escrituras irian por conexiones distintas y una falla parcial dejaria residuo.
+
+**Decision (excepcion aprobada):** Se **mantiene** que `PartyWriteAdapter` opere sobre las entidades de Parties **exclusivamente a traves del `EntityManager` transaccional del llamante**, sin delegar en los servicios. La excepcion se limita a Compras↔Parties (alta atomica) y se justifica por:
+- **Atomicidad:** una sola transaccion tenant garantiza que no queden Party sin perfil ni rol sin identidad.
+- **Boundary intacto:** el adapter es **propiedad de Parties** (vive en `modules/parties/adapters`); Compras jamas toca tablas `party*` (garantizado por el test de arquitectura `inventory-parties-boundary.arch.spec.ts`).
+- **Reglas de negocio preservadas:** la **unicidad de documento** se garantiza en dos capas — (a) el adapter busca por `(documentType, documentNumber)` antes de crear y (b) el indice unico parcial `idx_party_document_active` en `party(document_type, document_number)` (migracion `022`). La **normalizacion** (trim) se aplica en el boundary Zod (`CreateSupplierSchema`). Parties **no** cifra hoy `document_number` ni emite eventos en la creacion base, por lo que no se omite logica de negocio critica.
+
+**Pruebas que respaldan la excepcion:** `party-write.adapter.spec.ts` → describe "unicidad y normalizacion de documento (M1)" (busca por documento exacto excluyendo soft-deleted, reutiliza sin duplicar); integracion HTTP real e isolation cross-tenant.
+
+**Deuda / evolucion:** si a futuro Parties centraliza cifrado de documento, validaciones adicionales o eventos de dominio en la creacion, se debera dotar a esos servicios de un metodo `ensure`/`findOrCreate(manager)` que participe de la transaccion del llamante y migrar el adapter a delegar. Registrado como deuda tecnica. **Visto bueno AI-SEC-ENG:** la desviacion no introduce fuga cross-module ni PII en logs (solo `party.id`).
+
 ## Estado de aprobacion
 
 **Aprobado por el CTO (2026-07-11).** Habilita la ejecucion de la Fase 05 conforme al plan y prompt asociados, incluyendo el cambio de schema (migracion `063`), el nuevo contrato de boundary `IPartyWritePort` y la entidad `SupplierProfile`. Escalaciones resueltas (datos bancarios fuera de v1; RBAC ADMIN/NOC/SUPPORT). **Revision reforzada AI-SEC-ENG** obligatoria antes del merge (cambio de schema + boundary de escritura cross-module).

@@ -1123,6 +1123,27 @@ async function setupInventoryMocks(
     if (inviteSuppliersMatch && method === 'POST') {
       const rfqId = inviteSuppliersMatch[1];
       const body = JSON.parse(request.postData() ?? '{}') as { partyRefIds?: string[] };
+
+      // Enforcement RF-PROV-08 (paridad con SupplierProfileService.assertEligibleForPurchasing):
+      // un proveedor BLOCKED/INACTIVE no puede invitarse a un RFQ.
+      const blockedInvite = (body.partyRefIds ?? []).find((partyRefId) => {
+        const profile = state.supplierProfiles.find((entry) => entry.partyRefId === partyRefId);
+        return profile?.status === 'BLOCKED' || profile?.status === 'INACTIVE';
+      });
+      if (blockedInvite) {
+        const profile = state.supplierProfiles.find((entry) => entry.partyRefId === blockedInvite);
+        const label = profile?.status === 'BLOCKED' ? 'bloqueado' : 'inactivo';
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            statusCode: 400,
+            message: `El proveedor está ${label} y no puede usarse en nuevas operaciones de compra.`,
+          }),
+        });
+        return;
+      }
+
       const created = (body.partyRefIds ?? []).map((partyRefId, index) => {
         const existing = state.purchaseRfqInvitations.find(
           (invitation) => invitation.rfqId === rfqId && invitation.partyRefId === partyRefId,
@@ -1270,6 +1291,46 @@ async function setupInventoryMocks(
       return;
     }
 
+    if (pathname.endsWith('/purchasing/suppliers/lookup') && method === 'GET') {
+      const documentNumber = url.searchParams.get('documentNumber') ?? '';
+      const documentType = url.searchParams.get('documentType') ?? 'NIT';
+      if (documentNumber === REUSE_DOCUMENT_NUMBER) {
+        const hasSupplierProfile = state.supplierProfiles.some(
+          (entry) => entry.partyRefId === PARTY_REUSE_ID,
+        );
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            match: {
+              partyRefId: PARTY_REUSE_ID,
+              partyType: 'ORGANIZATION',
+              documentType,
+              displayName: 'Distribuidora Andina SAS',
+              legalName: 'Distribuidora Andina S.A.S.',
+              summary: {
+                partyRefId: PARTY_REUSE_ID,
+                displayName: 'Distribuidora Andina SAS',
+                primaryContact: 'contacto@andina.test',
+                phone: '3009998877',
+                email: 'contacto@andina.test',
+                city: 'Barranquilla',
+                status: 'ACTIVE',
+              },
+            },
+            hasSupplierProfile,
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ match: null, hasSupplierProfile: false }),
+      });
+      return;
+    }
+
     if (pathname.endsWith('/purchasing/suppliers') && method === 'GET') {
       await route.fulfill({
         status: 200,
@@ -1410,6 +1471,34 @@ async function setupInventoryMocks(
 
     if (pathname.endsWith('/purchasing/orders') && method === 'POST') {
       const body = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
+
+      // Enforcement RF-PROV-08: una OC no puede emitirse a un proveedor BLOCKED/INACTIVE.
+      const orderPartyRefs = [
+        body.partyRefId,
+        ...(((body.orders as Array<Record<string, unknown>> | undefined) ?? []).map(
+          (entry) => entry.partyRefId,
+        ) ?? []),
+      ].filter((value): value is string => typeof value === 'string');
+      const blockedOrderParty = orderPartyRefs.find((partyRefId) => {
+        const profile = state.supplierProfiles.find((entry) => entry.partyRefId === partyRefId);
+        return profile?.status === 'BLOCKED' || profile?.status === 'INACTIVE';
+      });
+      if (blockedOrderParty) {
+        const profile = state.supplierProfiles.find(
+          (entry) => entry.partyRefId === blockedOrderParty,
+        );
+        const label = profile?.status === 'BLOCKED' ? 'bloqueado' : 'inactivo';
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            statusCode: 400,
+            message: `El proveedor está ${label} y no puede usarse en nuevas operaciones de compra.`,
+          }),
+        });
+        return;
+      }
+
       const order = {
         id: `po-${state.purchaseOrders.length + 1}`,
         tenantId: 'tenant-inventory-001',
@@ -2012,6 +2101,47 @@ test.describe('Portal Inventario / SCM', () => {
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(/RFQ-.*\.pdf$/);
   });
+
+  test('rechaza invitar a un proveedor BLOCKED en el RFQ (RF-PROV-08)', async ({ page }) => {
+    const state = (page as unknown as { inventoryMockState: InventoryMockState })
+      .inventoryMockState;
+    // Precondicion: el proveedor Demo (party-001) queda BLOCKED.
+    const demoProfile = state.supplierProfiles.find((entry) => entry.partyRefId === 'party-001');
+    if (demoProfile) {
+      demoProfile.status = 'BLOCKED';
+    }
+    state.purchaseRequests.unshift(
+      buildPurchaseRequest({
+        id: 'pr-rfq-blocked',
+        requestNumber: 'PR-000400',
+        title: 'Compra con proveedor bloqueado',
+        status: 'DRAFT',
+        approvedByUserId: null,
+      }),
+    );
+
+    await page.goto('/dashboard/inventory');
+    const main = page.locator('main');
+    await main.getByRole('tab', { name: 'Compras' }).click();
+    await main.getByRole('button', { name: 'Abrir' }).first().click();
+
+    const workbench = page.getByRole('dialog').filter({ hasText: 'Trabajar solicitud' });
+    await workbench.getByRole('tab', { name: 'Cotización' }).click();
+    await workbench.getByRole('button', { name: 'Crear solicitud de cotización' }).click();
+    await expect(workbench.getByText('RFQ-000001')).toBeVisible();
+
+    await workbench.getByRole('combobox', { name: 'Invitar proveedores' }).fill('Demo');
+    await page
+      .getByRole('listbox')
+      .getByRole('option', { name: /Proveedor Demo/i })
+      .click();
+    await workbench.getByRole('button', { name: 'Invitar seleccionados' }).click();
+
+    // El backend (mock, con paridad de enforcement) rechaza al proveedor bloqueado.
+    await expect(workbench.getByText(/está bloqueado y no puede usarse/i)).toBeVisible();
+    // No se registro la invitacion.
+    expect(state.purchaseRfqInvitations).toHaveLength(0);
+  });
 });
 
 test.describe('Portal Inventario / Bodegas', () => {
@@ -2191,7 +2321,9 @@ test.describe('Portal Inventario / Bodegas', () => {
       await drawer.getByLabel('Número de documento').fill(REUSE_DOCUMENT_NUMBER);
       await drawer.getByRole('button', { name: 'Buscar documento' }).click();
       await expect(drawer.getByLabel('Nombre')).toHaveValue('Distribuidora Andina SAS');
-      await expect(drawer.getByText('Encontramos un tercero existente')).toBeVisible();
+      await expect(drawer.getByText('Se reutilizará la identidad de este tercero')).toBeVisible();
+      // B4: la ficha del tercero hallado se muestra para confirmar la identidad reutilizada.
+      await expect(drawer.getByText('Barranquilla')).toBeVisible();
       await drawer.getByRole('button', { name: 'Continuar' }).click();
       await drawer.getByLabel('Contacto de compras').fill('Equipo Andina');
       await drawer.getByRole('button', { name: 'Crear proveedor' }).click();

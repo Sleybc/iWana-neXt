@@ -1,22 +1,14 @@
-import {
-  ConflictException,
-  ForbiddenException,
-  INestApplication,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { ForbiddenException, INestApplication, UnauthorizedException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { DataSource } from 'typeorm';
 import request from 'supertest';
-import {
-  DocumentTypeParty,
-  PartyStatus,
-  PartyType,
-  SupplierProfileStatus,
-  UserRole,
-} from '@iwana/shared';
+import { DocumentTypeParty, PartyType, SupplierProfileStatus, UserRole } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { PartyReadAdapter } from '../../parties/adapters/party-read.adapter';
+import { PartyWriteAdapter } from '../../parties/adapters/party-write.adapter';
 import { PurchasingController } from '../purchasing.controller';
 import { GoodsReceiptService } from '../services/goods-receipt.service';
 import { PurchasingQueryService } from '../services/purchasing-query.service';
@@ -24,6 +16,31 @@ import { PurchasingService } from '../services/purchasing.service';
 import { RfqPdfService } from '../services/rfq-pdf.service';
 import { RfqService } from '../services/rfq.service';
 import { SupplierProfileService } from '../services/supplier-profile.service';
+import { SupplierPartyPortAdapter } from '../ports/supplier-party.port';
+import { InMemoryTenantStore } from './support/in-memory-tenant-store';
+
+/**
+ * Integracion HTTP REAL (remediacion A3/C2): ejercita PurchasingController -> SupplierProfileService
+ * -> PartyWriteAdapter/PartyReadAdapter -> store en memoria que modela las restricciones de Postgres.
+ * NO se mockea SupplierProfileService. Cubre alta nueva (con `party` poblado), alta reutilizando
+ * documento existente y 409 por restriccion UNICA real.
+ */
+
+const CURRENT_TENANT = { tenantId: 'tenant-001', schemaName: 'tenant_001' };
+const store = new InMemoryTenantStore();
+
+jest.mock('@iwana/db', () => ({
+  SupplierProfile: class SupplierProfile {},
+  TenantContext: {
+    getOrThrow: jest.fn(() => CURRENT_TENANT),
+  },
+  runInTenantSchema: jest.fn(),
+}));
+
+const iwanaDb = require('@iwana/db') as {
+  runInTenantSchema: jest.Mock;
+  TenantContext: { getOrThrow: jest.Mock };
+};
 
 jest.mock('../../auth/guards/jwt-auth.guard', () => ({
   JwtAuthGuard: class JwtAuthGuard {
@@ -31,21 +48,16 @@ jest.mock('../../auth/guards/jwt-auth.guard', () => ({
       getHandler: () => unknown;
       getClass: () => unknown;
       switchToHttp: () => {
-        getRequest: () => {
-          headers: Record<string, string | undefined>;
-          user?: JwtPayload;
-        };
+        getRequest: () => { headers: Record<string, string | undefined>; user?: JwtPayload };
       };
     }): boolean {
       const handler = context.getHandler() as object;
       const classRef = context.getClass() as object;
       const isPublic =
         Reflect.getMetadata(IS_PUBLIC_KEY, handler) ?? Reflect.getMetadata(IS_PUBLIC_KEY, classRef);
-
       if (isPublic) {
         return true;
       }
-
       const req = context.switchToHttp().getRequest();
       if (req.headers.authorization === 'Bearer support-token') {
         req.user = {
@@ -59,7 +71,6 @@ jest.mock('../../auth/guards/jwt-auth.guard', () => ({
         } as JwtPayload;
         return true;
       }
-
       if (req.headers.authorization === 'Bearer viewer-token') {
         req.user = {
           sub: 'viewer-001',
@@ -72,7 +83,6 @@ jest.mock('../../auth/guards/jwt-auth.guard', () => ({
         } as JwtPayload;
         return true;
       }
-
       throw new UnauthorizedException('Token de acceso invalido o expirado.');
     }
   },
@@ -90,56 +100,32 @@ jest.mock('../../auth/guards/roles.guard', () => ({
         Reflect.getMetadata('roles', context.getHandler() as object) ??
         Reflect.getMetadata('roles', context.getClass() as object) ??
         [];
-
       if (requiredRoles.length === 0 || (user && requiredRoles.includes(user.role))) {
         return true;
       }
-
       throw new ForbiddenException('No tiene permisos para ejecutar esta accion.');
     }
   },
 }));
 
-describe('Supplier profile HTTP integration', () => {
+describe('Supplier profile HTTP integration (service + adapter + DB en memoria)', () => {
   let app: INestApplication;
 
-  const PARTY_REF_ID = '44444444-4444-4444-8444-444444444444';
-
-  const supplierRecord = {
-    id: '66666666-6666-4666-8666-666666666666',
-    supplierCode: 'PROV-000001',
-    partyRefId: PARTY_REF_ID,
-    status: SupplierProfileStatus.ACTIVE,
-    paymentTermsDays: 30,
-    currency: 'COP',
-    incoterm: null,
-    defaultLeadTimeDays: 7,
-    purchasingContactName: 'Mesa comercial',
-    purchasingContactEmail: 'compras@proveedor.test',
-    purchasingContactPhone: '3000000000',
-    notes: null,
-    createdAt: new Date('2026-07-11T12:00:00.000Z'),
-    updatedAt: new Date('2026-07-11T12:00:00.000Z'),
-    party: {
-      partyRefId: PARTY_REF_ID,
-      displayName: 'Proveedor demo',
-      primaryContact: 'compras@proveedor.test',
-      phone: '3000000000',
-      email: 'compras@proveedor.test',
-      city: 'Bogotá',
-      status: PartyStatus.ACTIVE,
-    },
-  };
-
-  const supplierProfileServiceMock = {
-    create: jest.fn(),
-    list: jest.fn(),
-    get: jest.fn(),
-    update: jest.fn(),
-    setStatus: jest.fn(),
-  };
-
   beforeAll(async () => {
+    iwanaDb.runInTenantSchema.mockImplementation(
+      async (_ds: unknown, schemaName: string, cb: (qr: { manager: unknown }) => unknown) =>
+        cb({ manager: store.managerFor(schemaName) }),
+    );
+
+    const partyReadAdapter = new PartyReadAdapter({} as DataSource);
+    const partyWriteAdapter = new PartyWriteAdapter();
+    const supplierPartyPort = new SupplierPartyPortAdapter(partyReadAdapter);
+    const supplierProfileService = new SupplierProfileService(
+      {} as DataSource,
+      partyWriteAdapter,
+      supplierPartyPort,
+    );
+
     const moduleRef: TestingModule = await Test.createTestingModule({
       controllers: [PurchasingController],
       providers: [
@@ -148,7 +134,7 @@ describe('Supplier profile HTTP integration', () => {
         { provide: GoodsReceiptService, useValue: {} },
         { provide: RfqService, useValue: {} },
         { provide: RfqPdfService, useValue: {} },
-        { provide: SupplierProfileService, useValue: supplierProfileServiceMock },
+        { provide: SupplierProfileService, useValue: supplierProfileService },
         JwtAuthGuard,
         RolesGuard,
       ],
@@ -165,28 +151,7 @@ describe('Supplier profile HTTP integration', () => {
     }
   });
 
-  beforeEach(() => {
-    jest.clearAllMocks();
-    supplierProfileServiceMock.create.mockResolvedValue(supplierRecord);
-    supplierProfileServiceMock.list.mockResolvedValue({
-      data: [supplierRecord],
-      total: 1,
-      page: 1,
-      limit: 20,
-    });
-    supplierProfileServiceMock.get.mockResolvedValue(supplierRecord);
-    supplierProfileServiceMock.update.mockResolvedValue({
-      ...supplierRecord,
-      paymentTermsDays: 45,
-      notes: 'Condiciones actualizadas',
-    });
-    supplierProfileServiceMock.setStatus.mockResolvedValue({
-      ...supplierRecord,
-      status: SupplierProfileStatus.BLOCKED,
-    });
-  });
-
-  it('POST /purchasing/suppliers crea proveedor con perfil', async () => {
+  it('POST /purchasing/suppliers crea proveedor nuevo con `party` poblado (A1)', async () => {
     const response = await request(app.getHttpServer())
       .post('/api/v1/purchasing/suppliers')
       .set('Authorization', 'Bearer support-token')
@@ -194,90 +159,118 @@ describe('Supplier profile HTTP integration', () => {
         partyType: PartyType.ORGANIZATION,
         documentType: DocumentTypeParty.NIT,
         documentNumber: '900123456',
-        displayName: 'Proveedor demo',
+        displayName: 'Proveedor Alfa',
+        legalName: 'Proveedor Alfa S.A.S.',
+        contacts: [
+          { type: 'EMAIL', value: 'compras@alfa.test', isPrimary: true },
+          { type: 'PHONE', value: '3001112233' },
+        ],
         paymentTermsDays: 30,
         currency: 'cop',
-        defaultLeadTimeDays: 7,
       })
       .expect(201);
 
-    expect(response.body.supplierCode).toBe('PROV-000001');
-    expect(response.body.party.displayName).toBe('Proveedor demo');
-    expect(supplierProfileServiceMock.create).toHaveBeenCalled();
+    expect(response.body.supplierCode).toMatch(/^PROV-\d{6}$/);
+    expect(response.body.currency).toBe('COP');
+    // A1: el resumen de identidad viaja en el response del alta (antes era siempre null).
+    expect(response.body.party).not.toBeNull();
+    expect(response.body.party.displayName).toBe('Proveedor Alfa');
+    expect(response.body.party.email).toBe('compras@alfa.test');
+    expect(response.body.party.phone).toBe('3001112233');
   });
 
-  it('POST /purchasing/suppliers responde 409 en duplicado', async () => {
-    supplierProfileServiceMock.create.mockRejectedValue(
-      new ConflictException('Ya existe un perfil de proveedor para este tercero.'),
-    );
+  it('POST /purchasing/suppliers reutiliza el tercero existente por documento', async () => {
+    // Un cliente ya existente en el maestro (mismo documento) que ahora sera tambien proveedor.
+    store.seedParty('tenant_001', {
+      id: 'party-existing-001',
+      partyType: PartyType.ORGANIZATION,
+      documentType: DocumentTypeParty.NIT,
+      documentNumber: '800200300',
+      displayName: 'Cliente que tambien vende',
+      legalName: 'CQTV S.A.S.',
+    });
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/purchasing/suppliers')
+      .set('Authorization', 'Bearer support-token')
+      .send({
+        partyType: PartyType.ORGANIZATION,
+        documentType: DocumentTypeParty.NIT,
+        documentNumber: '800200300',
+        displayName: 'Cliente que tambien vende',
+      })
+      .expect(201);
+
+    expect(response.body.partyRefId).toBe('party-existing-001');
+    expect(response.body.party.displayName).toBe('Cliente que tambien vende');
+    // No se creo un Party duplicado para el mismo documento.
+    const partiesWithDoc = store
+      .parties('tenant_001')
+      .filter((row) => row.documentNumber === '800200300');
+    expect(partiesWithDoc).toHaveLength(1);
+  });
+
+  it('POST /purchasing/suppliers responde 409 por unico real (perfil ya existe para el tercero)', async () => {
+    const payload = {
+      partyType: PartyType.ORGANIZATION,
+      documentType: DocumentTypeParty.NIT,
+      documentNumber: '901999888',
+      displayName: 'Proveedor Duplicado',
+    };
 
     await request(app.getHttpServer())
       .post('/api/v1/purchasing/suppliers')
       .set('Authorization', 'Bearer support-token')
-      .send({
-        partyType: PartyType.ORGANIZATION,
-        documentType: DocumentTypeParty.NIT,
-        documentNumber: '900123456',
-        displayName: 'Proveedor demo',
-      })
+      .send(payload)
+      .expect(201);
+
+    // Segundo alta con el MISMO documento -> mismo Party -> viola uq_supplier_profiles_tenant_party_ref.
+    await request(app.getHttpServer())
+      .post('/api/v1/purchasing/suppliers')
+      .set('Authorization', 'Bearer support-token')
+      .send(payload)
       .expect(409);
   });
 
-  it('GET /purchasing/suppliers lista perfiles paginados', async () => {
+  it('GET /purchasing/suppliers/lookup encuentra el tercero por documento (A2)', async () => {
+    store.seedParty('tenant_001', {
+      id: 'party-lookup-001',
+      partyType: PartyType.ORGANIZATION,
+      documentType: DocumentTypeParty.NIT,
+      documentNumber: '700100100',
+      displayName: 'Tercero Buscable',
+      legalName: 'Buscable Ltda',
+    });
+
     const response = await request(app.getHttpServer())
-      .get('/api/v1/purchasing/suppliers?search=demo&page=1&limit=20')
+      .get('/api/v1/purchasing/suppliers/lookup')
+      .query({ documentType: DocumentTypeParty.NIT, documentNumber: '700100100' })
       .set('Authorization', 'Bearer support-token')
       .expect(200);
 
-    expect(response.body.total).toBe(1);
-    expect(response.body.data[0].supplierCode).toBe('PROV-000001');
-    expect(supplierProfileServiceMock.list).toHaveBeenCalledWith(
-      expect.objectContaining({ search: 'demo', page: 1, limit: 20 }),
-    );
+    expect(response.body.match).not.toBeNull();
+    expect(response.body.match.partyRefId).toBe('party-lookup-001');
+    expect(response.body.match.legalName).toBe('Buscable Ltda');
+    expect(response.body.hasSupplierProfile).toBe(false);
   });
 
-  it('GET /purchasing/suppliers/:partyRefId devuelve detalle', async () => {
-    const response = await request(app.getHttpServer())
-      .get(`/api/v1/purchasing/suppliers/${PARTY_REF_ID}`)
-      .set('Authorization', 'Bearer support-token')
-      .expect(200);
+  it('POST /purchasing/suppliers reintenta el supplier_code ante colision concurrente (M2)', async () => {
+    store.injectConcurrentCodeCollisionOnce('tenant_001');
 
-    expect(response.body.partyRefId).toBe(PARTY_REF_ID);
-    expect(supplierProfileServiceMock.get).toHaveBeenCalledWith(PARTY_REF_ID);
-  });
-
-  it('PATCH /purchasing/suppliers/:partyRefId actualiza campos comerciales', async () => {
     const response = await request(app.getHttpServer())
-      .patch(`/api/v1/purchasing/suppliers/${PARTY_REF_ID}`)
+      .post('/api/v1/purchasing/suppliers')
       .set('Authorization', 'Bearer support-token')
       .send({
-        paymentTermsDays: 45,
-        notes: 'Condiciones actualizadas',
+        partyType: PartyType.ORGANIZATION,
+        documentType: DocumentTypeParty.NIT,
+        documentNumber: '600500400',
+        displayName: 'Proveedor Concurrente',
       })
-      .expect(200);
-
-    expect(response.body.paymentTermsDays).toBe(45);
-    expect(response.body.notes).toBe('Condiciones actualizadas');
-    expect(supplierProfileServiceMock.update).toHaveBeenCalledWith(
-      PARTY_REF_ID,
-      expect.objectContaining({ paymentTermsDays: 45, notes: 'Condiciones actualizadas' }),
-      expect.objectContaining({ sub: 'support-001' }),
-    );
-  });
-
-  it('POST /purchasing/suppliers/:partyRefId/status cambia estado', async () => {
-    const response = await request(app.getHttpServer())
-      .post(`/api/v1/purchasing/suppliers/${PARTY_REF_ID}/status`)
-      .set('Authorization', 'Bearer support-token')
-      .send({ status: SupplierProfileStatus.BLOCKED })
       .expect(201);
 
-    expect(response.body.status).toBe(SupplierProfileStatus.BLOCKED);
-    expect(supplierProfileServiceMock.setStatus).toHaveBeenCalledWith(
-      PARTY_REF_ID,
-      { status: SupplierProfileStatus.BLOCKED },
-      expect.objectContaining({ sub: 'support-001' }),
-    );
+    // El alta sobrevive a la colision de codigo (reintento con el siguiente numero libre).
+    expect(response.body.supplierCode).toMatch(/^PROV-\d{6}$/);
+    expect(response.body.partyRefId).toBeDefined();
   });
 
   it('rechaza acceso sin token con 401', async () => {

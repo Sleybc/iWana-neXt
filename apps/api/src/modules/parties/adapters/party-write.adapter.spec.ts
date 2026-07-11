@@ -17,6 +17,7 @@ describe('PartyWriteAdapter', () => {
   let adapter: PartyWriteAdapter;
   let mockManager: {
     findOne: jest.Mock;
+    find: jest.Mock;
     create: jest.Mock;
     save: jest.Mock;
   };
@@ -33,6 +34,7 @@ describe('PartyWriteAdapter', () => {
   beforeEach(() => {
     mockManager = {
       findOne: jest.fn(),
+      find: jest.fn(async () => []),
       create: jest.fn((_entity, data) => ({ id: `gen-${_entity.name}-${Date.now()}`, ...data })),
       save: jest.fn(async (_entity, data) => data),
     };
@@ -118,11 +120,18 @@ describe('PartyWriteAdapter', () => {
           createdBy: 'user-uuid-001',
         }),
       );
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         partyId: 'party-uuid-new',
         partyRoleId: 'role-uuid-new',
         partyCreated: true,
         roleAdded: true,
+      });
+      // A1: la identidad se compone dentro de la transaccion del alta.
+      expect(result.identity).toMatchObject({
+        partyId: 'party-uuid-new',
+        displayName: 'Empresa Ficticia SAS',
+        documentType: DocumentTypeParty.NIT,
+        partyType: PartyType.ORGANIZATION,
       });
     });
 
@@ -219,7 +228,7 @@ describe('PartyWriteAdapter', () => {
       const result = await adapter.ensurePartyWithRole(baseInput, PartyRoleType.SUPPLIER, ctx);
 
       expect(mockManager.save).not.toHaveBeenCalledWith(PartyRole, expect.anything());
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         partyId: 'party-uuid-existing',
         partyRoleId: 'role-uuid-existing',
         partyCreated: false,
@@ -289,6 +298,48 @@ describe('PartyWriteAdapter', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // M1 (ADR-052 nota de implementacion): el adapter NO delega en PartyService (que abre su
+  // propia transaccion/schema y romperia la atomicidad del alta). La unicidad de documento la
+  // garantizan (a) la busqueda por (documentType, documentNumber) previa a crear y (b) el indice
+  // unico parcial `idx_party_document_active` en `party(document_type, document_number)`.
+  describe('ensurePartyWithRole — unicidad y normalizacion de documento (M1)', () => {
+    it('busca por (documentType, documentNumber) exacto excluyendo soft-deleted antes de crear', async () => {
+      mockManager.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+      mockManager.create.mockImplementation((_entity, data) => {
+        if (_entity === Party) return { id: 'party-uuid-new', ...data };
+        if (_entity === PartyRole) return { id: 'role-uuid-new', ...data };
+        return data;
+      });
+
+      await adapter.ensurePartyWithRole(baseInput, PartyRoleType.SUPPLIER, ctx);
+
+      expect(mockManager.findOne).toHaveBeenNthCalledWith(1, Party, {
+        where: {
+          documentType: DocumentTypeParty.NIT,
+          documentNumber: '9000000001',
+          deletedAt: expect.anything(),
+        },
+      });
+    });
+
+    it('reutiliza el Party existente por documento y no crea un duplicado', async () => {
+      const existingParty = buildExistingParty();
+      mockManager.findOne.mockResolvedValueOnce(existingParty).mockResolvedValueOnce(null);
+      mockManager.create.mockImplementation((_entity, data) => {
+        if (_entity === PartyRole) return { id: 'role-uuid-new', ...data };
+        return data;
+      });
+
+      const result = await adapter.ensurePartyWithRole(baseInput, PartyRoleType.SUPPLIER, ctx);
+
+      expect(mockManager.create).not.toHaveBeenCalledWith(Party, expect.anything());
+      expect(mockManager.save).not.toHaveBeenCalledWith(Party, expect.anything());
+      expect(result.partyCreated).toBe(false);
+      expect(result.partyId).toBe('party-uuid-existing');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   describe('ensurePartyWithRole — multi-tenant via manager del llamante', () => {
     it('opera solo sobre ctx.manager sin invocar runInTenantSchema', async () => {
       jest.mock('@iwana/db', () => ({
@@ -298,6 +349,7 @@ describe('PartyWriteAdapter', () => {
 
       const tenantManager = {
         findOne: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(null),
+        find: jest.fn(async () => []),
         create: jest.fn((_entity, data) => {
           if (_entity === Party) return { id: 'party-tenant-a', ...data };
           if (_entity === PartyRole) return { id: 'role-tenant-a', ...data };

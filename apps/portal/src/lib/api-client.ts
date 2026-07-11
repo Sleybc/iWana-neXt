@@ -6074,6 +6074,25 @@ export interface ListSupplierProfilesParams {
   limit?: number;
 }
 
+export interface SupplierIdentityMatchRecord {
+  partyRefId: string;
+  partyType: PartyType;
+  documentType: DocumentTypeParty;
+  displayName: string;
+  legalName: string | null;
+  summary: SupplierProfilePartyRecord;
+}
+
+export interface LookupSupplierByDocumentResult {
+  match: SupplierIdentityMatchRecord | null;
+  hasSupplierProfile: boolean;
+}
+
+export interface LookupSupplierByDocumentParams {
+  documentType: DocumentTypeParty;
+  documentNumber: string;
+}
+
 export interface SupplierProfileListResult {
   data: SupplierProfileRecord[];
   total: number;
@@ -6872,6 +6891,16 @@ export const purchasingApi = {
         search: params?.search,
         page: params?.page ? String(params.page) : undefined,
         limit: params?.limit ? String(params.limit) : undefined,
+      })}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  lookupSupplierByDocument: (params: LookupSupplierByDocumentParams, tenantSlug?: string) =>
+    request<LookupSupplierByDocumentResult>(
+      `/purchasing/suppliers/lookup${buildInventoryQuery({
+        documentType: params.documentType,
+        documentNumber: params.documentNumber,
       })}`,
       { returnFullResponse: true },
       tenantSlug,

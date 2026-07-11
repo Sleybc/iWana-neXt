@@ -7,7 +7,7 @@ import {
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Brackets, DataSource, EntityManager } from 'typeorm';
 import { SupplierProfile, TenantContext, runInTenantSchema } from '@iwana/db';
-import { PartyRoleType, SupplierProfileStatus } from '@iwana/shared';
+import { DocumentTypeParty, PartyRoleType, SupplierProfileStatus } from '@iwana/shared';
 import { IPartyWritePort, EnsurePartyInput } from '../../parties/ports/party-write.port';
 import {
   CreateSupplierInput,
@@ -20,7 +20,11 @@ import {
   UpdateSupplierSchema,
 } from '../dto';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
-import { SupplierPartyPort, SupplierPartySummary } from '../ports/supplier-party.port';
+import {
+  SupplierIdentityMatch,
+  SupplierPartyPort,
+  SupplierPartySummary,
+} from '../ports/supplier-party.port';
 import { isPostgresUniqueViolation } from './inventory-postgres.util';
 
 export interface SupplierProfileRecord {
@@ -72,39 +76,80 @@ export class SupplierProfileService {
           { manager, actorUserId: actor.sub },
         );
 
-        const supplierCode = await this.generateSupplierCode(manager, tenantId);
+        const profile = await this.persistProfileWithUniqueCode(manager, tenantId, {
+          partyRefId: partyResult.partyId,
+          partyRoleId: partyResult.partyRoleId,
+          paymentTermsDays: validated.paymentTermsDays ?? null,
+          currency: validated.currency ?? null,
+          incoterm: validated.incoterm ?? null,
+          defaultLeadTimeDays: validated.defaultLeadTimeDays ?? null,
+          purchasingContactName: validated.purchasingContactName ?? null,
+          purchasingContactEmail: validated.purchasingContactEmail ?? null,
+          purchasingContactPhone: validated.purchasingContactPhone ?? null,
+          notes: validated.notes ?? null,
+          status: SupplierProfileStatus.ACTIVE,
+          createdByUserId: actor.sub,
+        });
 
-        try {
-          const profile = await manager.save(
-            SupplierProfile,
-            manager.create(SupplierProfile, {
-              tenantId,
-              partyRefId: partyResult.partyId,
-              partyRoleId: partyResult.partyRoleId,
-              supplierCode,
-              paymentTermsDays: validated.paymentTermsDays ?? null,
-              currency: validated.currency ?? null,
-              incoterm: validated.incoterm ?? null,
-              defaultLeadTimeDays: validated.defaultLeadTimeDays ?? null,
-              purchasingContactName: validated.purchasingContactName ?? null,
-              purchasingContactEmail: validated.purchasingContactEmail ?? null,
-              purchasingContactPhone: validated.purchasingContactPhone ?? null,
-              notes: validated.notes ?? null,
-              status: SupplierProfileStatus.ACTIVE,
-              createdByUserId: actor.sub,
-            }),
-          );
-
-          const party = await this.supplierPartyPort.getSupplierSummary(partyResult.partyId);
-          return this.toRecord(profile, party);
-        } catch (error) {
-          if (isPostgresUniqueViolation(error, 'uq_supplier_profiles_tenant_party_ref')) {
-            throw new ConflictException('Ya existe un perfil de proveedor para este tercero.');
-          }
-
-          throw error;
-        }
+        // A1: componer el resumen desde la identidad leida EN la transaccion del alta,
+        // no desde una conexion nueva que no veria el Party sin confirmar.
+        const party = this.supplierPartyPort.summaryFromIdentity(partyResult.identity);
+        return this.toRecord(profile, party);
       }),
+    );
+  }
+
+  /**
+   * Inserta el perfil generando `supplier_code` con reintento acotado ante colision del unico
+   * `uq_supplier_profiles_tenant_supplier_code` (RF-PROV-05/CA-04, remediacion M2). La colision del
+   * unico por tercero (`uq_supplier_profiles_tenant_party_ref`) se traduce a 409.
+   */
+  private async persistProfileWithUniqueCode(
+    manager: EntityManager,
+    tenantId: string,
+    payload: Omit<Partial<SupplierProfile>, 'supplierCode' | 'tenantId'>,
+  ): Promise<SupplierProfile> {
+    const MAX_ATTEMPTS = 6;
+    const canSavepoint = typeof manager.query === 'function';
+
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+      const supplierCode = await this.generateSupplierCode(manager, tenantId);
+
+      if (canSavepoint) {
+        await manager.query(`SAVEPOINT supplier_code_attempt`);
+      }
+
+      try {
+        const profile = await manager.save(
+          SupplierProfile,
+          manager.create(SupplierProfile, { tenantId, supplierCode, ...payload }),
+        );
+
+        if (canSavepoint) {
+          await manager.query(`RELEASE SAVEPOINT supplier_code_attempt`);
+        }
+
+        return profile;
+      } catch (error) {
+        if (isPostgresUniqueViolation(error, 'uq_supplier_profiles_tenant_party_ref')) {
+          throw new ConflictException('Ya existe un perfil de proveedor para este tercero.');
+        }
+
+        if (isPostgresUniqueViolation(error, 'uq_supplier_profiles_tenant_supplier_code')) {
+          // La transaccion queda abortada tras el 23505: hay que volver al savepoint
+          // antes de reintentar con el siguiente numero libre.
+          if (canSavepoint) {
+            await manager.query(`ROLLBACK TO SAVEPOINT supplier_code_attempt`);
+          }
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    throw new ConflictException(
+      'No fue posible generar un código de proveedor único, intente nuevamente.',
     );
   }
 
@@ -168,6 +213,33 @@ export class SupplierProfileService {
       const party = await this.supplierPartyPort.getSupplierSummary(partyRefId);
       return this.toRecord(profile, party);
     });
+  }
+
+  /**
+   * Reutilizacion de identidad (A2): busca un tercero por (tipo, numero) de documento para que la UI
+   * confirme la identidad antes de dar de alta. Informa si ese tercero ya tiene perfil de proveedor.
+   */
+  async lookupByDocument(
+    documentType: DocumentTypeParty,
+    documentNumber: string,
+  ): Promise<{ match: SupplierIdentityMatch | null; hasSupplierProfile: boolean }> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+
+    const match = await this.supplierPartyPort.findIdentityByDocument(documentType, documentNumber);
+    if (!match) {
+      return { match: null, hasSupplierProfile: false };
+    }
+
+    const hasSupplierProfile = await runInTenantSchema(
+      this.dataSource,
+      schemaName,
+      async (qr) =>
+        (await qr.manager.findOne(SupplierProfile, {
+          where: { tenantId, partyRefId: match.partyRefId },
+        })) !== null,
+    );
+
+    return { match, hasSupplierProfile };
   }
 
   async update(
