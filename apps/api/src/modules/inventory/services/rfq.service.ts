@@ -30,6 +30,7 @@ import {
   InviteSuppliersSchema,
 } from '../dto';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
+import { isPostgresUniqueViolation } from './inventory-postgres.util';
 
 export interface PurchaseRfqDetail {
   rfq: PurchaseRfq;
@@ -84,19 +85,27 @@ export class RfqService {
 
         const rfqNumber = await this.generateRfqNumber(manager, tenantId);
 
-        return manager.save(
-          PurchaseRfq,
-          manager.create(PurchaseRfq, {
-            tenantId,
-            purchaseRequestId,
-            rfqNumber,
-            status: PurchaseRfqStatus.DRAFT,
-            currency: validated.currency ?? 'COP',
-            responseDeadline: validated.responseDeadline ?? null,
-            createdByUserId: actor.sub,
-            notes: validated.notes ?? null,
-          }),
-        );
+        try {
+          return await manager.save(
+            PurchaseRfq,
+            manager.create(PurchaseRfq, {
+              tenantId,
+              purchaseRequestId,
+              rfqNumber,
+              status: PurchaseRfqStatus.DRAFT,
+              currency: validated.currency ?? 'COP',
+              responseDeadline: validated.responseDeadline ?? null,
+              createdByUserId: actor.sub,
+              notes: validated.notes ?? null,
+            }),
+          );
+        } catch (error) {
+          if (isPostgresUniqueViolation(error, 'uq_purchase_rfqs_active_request')) {
+            throw new ConflictException('La solicitud ya tiene una ronda de cotización activa.');
+          }
+
+          throw error;
+        }
       }),
     );
   }
@@ -135,20 +144,35 @@ export class RfqService {
             continue;
           }
 
-          const invitation = await manager.save(
-            PurchaseRfqInvitation,
-            manager.create(PurchaseRfqInvitation, {
-              tenantId,
-              rfqId,
-              partyRefId,
-              status: PurchaseRfqInvitationStatus.INVITED,
-              invitedAt: rfq.status === PurchaseRfqStatus.DRAFT ? null : new Date(),
-            }),
-          );
-          created.push(invitation);
+          try {
+            const invitation = await manager.save(
+              PurchaseRfqInvitation,
+              manager.create(PurchaseRfqInvitation, {
+                tenantId,
+                rfqId,
+                partyRefId,
+                status: PurchaseRfqInvitationStatus.INVITED,
+                invitedAt: rfq.status === PurchaseRfqStatus.DRAFT ? null : new Date(),
+                invitedByUserId: actor.sub,
+              }),
+            );
+            created.push(invitation);
+          } catch (error) {
+            if (isPostgresUniqueViolation(error, 'uq_purchase_rfq_invitations_rfq_party')) {
+              const raced = await manager.findOne(PurchaseRfqInvitation, {
+                where: { tenantId, rfqId, partyRefId },
+              });
+
+              if (raced) {
+                created.push(raced);
+                continue;
+              }
+            }
+
+            throw error;
+          }
         }
 
-        void actor;
         return created;
       }),
     );
@@ -187,6 +211,7 @@ export class RfqService {
         const now = new Date();
         rfq.status = PurchaseRfqStatus.SENT;
         rfq.sentAt = now;
+        rfq.sentByUserId = actor.sub;
         await manager.save(PurchaseRfq, rfq);
 
         request.status = PurchaseRequestStatus.PENDING_QUOTES;
@@ -206,7 +231,6 @@ export class RfqService {
           }
         }
 
-        void actor;
         return rfq;
       }),
     );
@@ -237,7 +261,7 @@ export class RfqService {
         invitation.status = PurchaseRfqInvitationStatus.DECLINED;
         invitation.declinedAt = new Date();
         invitation.declineReason = validated.declineReason?.trim() ?? null;
-        void actor;
+        invitation.declinedByUserId = actor.sub;
         return manager.save(PurchaseRfqInvitation, invitation);
       }),
     );
@@ -266,6 +290,7 @@ export class RfqService {
 
         rfq.status = PurchaseRfqStatus.CLOSED;
         rfq.closedAt = now;
+        rfq.closedByUserId = actor.sub;
         await manager.save(PurchaseRfq, rfq);
 
         for (const invitation of invitations) {
@@ -278,7 +303,6 @@ export class RfqService {
         request.status = PurchaseRequestStatus.PENDING_APPROVAL;
         await manager.save(PurchaseRequest, request);
 
-        void actor;
         return rfq;
       }),
     );

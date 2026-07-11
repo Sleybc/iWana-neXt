@@ -20,6 +20,7 @@ import {
 } from '@iwana/shared';
 import { CreateCounterPurchaseInput, CreateCounterPurchaseSchema } from '../dto';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
+import { acquireIdempotencyTransactionLock } from './inventory-postgres.util';
 import { SerializedAssetService } from './serialized-asset.service';
 import { StockLedgerService } from './stock-ledger.service';
 
@@ -90,6 +91,8 @@ export class CounterPurchaseService {
         const invoiceSegment = sanitizeInvoiceSegment(validated.invoiceNumber);
         const idempotencyKey =
           validated.idempotencyKey?.trim() ?? buildDerivedIdempotencyKey(validated, purchaseDate);
+
+        await acquireIdempotencyTransactionLock(manager, idempotencyKey);
 
         const existingMovement = await manager.findOne(StockMovement, {
           where: { tenantId, idempotencyKey },

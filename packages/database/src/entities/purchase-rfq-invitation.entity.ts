@@ -45,6 +45,12 @@ export class PurchaseRfqInvitation {
   @Column({ name: 'decline_reason', type: 'text', nullable: true })
   declineReason: string | null;
 
+  @Column({ name: 'declined_by_user_id', type: 'uuid', nullable: true })
+  declinedByUserId: string | null;
+
+  @Column({ name: 'invited_by_user_id', type: 'uuid', nullable: true })
+  invitedByUserId: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

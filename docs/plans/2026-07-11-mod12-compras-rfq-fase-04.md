@@ -114,11 +114,11 @@
 - Modify: `apps/portal/src/components/inventory/inventory-labels.ts`
 
 - [ ] **Step 1: Cliente API** para los endpoints RFQ + descarga de PDF.
-- [ ] **Step 2: `SupplierMultiPicker`** (variante multi de `SupplierPicker`) con checkbox y chips.
-- [ ] **Step 3: `RfqInvitationsPanel`** tablero de seguimiento con badges icono+texto (invitado/respondio/declino/vencido) y boton "Descargar PDF".
-- [ ] **Step 4: Pestana RFQ** en el workbench (`purchase-workbench.ts`: tab `rfq`, labels, extender `getPurchaseNextAction`).
-- [ ] **Step 5: Vocabulario** `RFQ_INVITATION_STATUS_LABELS` en espanol; no exponer enums crudos.
-- [ ] **Step 6: E2E** del flujo RFQ en `portal-inventory-scm.spec.ts`.
+- [x] **Step 2: `SupplierMultiPicker`** (variante multi de `SupplierPicker`) con checkbox y chips — implementado en `SupplierMultiPicker.tsx`, consumido por `RfqInvitationsPanel.tsx`.
+- [x] **Step 3: `RfqInvitationsPanel`** tablero de seguimiento con badges icono+texto (invitado/respondio/declino/vencido) y boton "Descargar PDF".
+- [x] **Step 4: Pestana RFQ** en el workbench (`purchase-workbench.ts`: tab `rfq`, labels, extender `getPurchaseNextAction`).
+- [x] **Step 5: Vocabulario** `RFQ_INVITATION_STATUS_LABELS` en espanol; no exponer enums crudos.
+- [x] **Step 6: E2E** del flujo RFQ en `portal-inventory-scm.spec.ts` (suite SCM 19/19).
 
 ## Task 6: Cierre
 

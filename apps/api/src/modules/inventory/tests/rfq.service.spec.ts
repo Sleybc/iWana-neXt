@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, QueryFailedError } from 'typeorm';
 import {
   PurchaseRequest,
   PurchaseRequestLine,
@@ -230,9 +230,88 @@ describe('RfqService', () => {
 
     expect(result.status).toBe(PurchaseRfqStatus.SENT);
     expect(save).toHaveBeenCalledWith(
+      PurchaseRfq,
+      expect.objectContaining({ status: PurchaseRfqStatus.SENT, sentByUserId: actor.sub }),
+    );
+    expect(save).toHaveBeenCalledWith(
       PurchaseRequest,
       expect.objectContaining({ status: PurchaseRequestStatus.PENDING_QUOTES }),
     );
+  });
+
+  it('createFromRequest traduce violacion unica concurrente a ConflictException', async () => {
+    const { manager, save } = buildManager();
+    save.mockRejectedValueOnce(
+      new QueryFailedError(
+        'INSERT INTO purchase_rfqs',
+        [],
+        Object.assign(new Error('duplicate key'), {
+          code: '23505',
+          constraint: 'uq_purchase_rfqs_active_request',
+        }),
+      ),
+    );
+    (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, fn) =>
+      fn({ manager } as never),
+    );
+
+    const service = new RfqService({} as DataSource);
+    await expect(
+      service.createFromRequest(REQUEST_ID, { currency: 'COP' }, actor),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('invite persiste actor invitador en invitaciones nuevas', async () => {
+    const { manager, save } = buildManager({ invitation: null });
+    (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, fn) =>
+      fn({ manager } as never),
+    );
+
+    const service = new RfqService({} as DataSource);
+    await service.invite(RFQ_ID, { partyRefIds: [PARTY_REF_ID] }, actor);
+
+    expect(save).toHaveBeenCalledWith(
+      PurchaseRfqInvitation,
+      expect.objectContaining({ invitedByUserId: actor.sub, partyRefId: PARTY_REF_ID }),
+    );
+  });
+
+  it('invite recupera invitacion existente ante carrera de insercion', async () => {
+    const racedInvitation = {
+      id: 'inv-raced',
+      tenantId: 'tenant-001',
+      rfqId: RFQ_ID,
+      partyRefId: PARTY_REF_ID,
+      status: PurchaseRfqInvitationStatus.INVITED,
+    };
+    const { manager, save } = buildManager({ invitation: null });
+    save.mockRejectedValueOnce(
+      new QueryFailedError(
+        'INSERT INTO purchase_rfq_invitations',
+        [],
+        Object.assign(new Error('duplicate key'), {
+          code: '23505',
+          constraint: 'uq_purchase_rfq_invitations_rfq_party',
+        }),
+      ),
+    );
+    manager.findOne = jest.fn().mockImplementation(async (entity, query) => {
+      if (entity === PurchaseRfq) {
+        return { id: RFQ_ID, tenantId: 'tenant-001', status: PurchaseRfqStatus.DRAFT };
+      }
+      if (entity === PurchaseRfqInvitation && query.where.partyRefId === PARTY_REF_ID) {
+        return racedInvitation;
+      }
+      return null;
+    });
+    (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, fn) =>
+      fn({ manager } as never),
+    );
+
+    const service = new RfqService({} as DataSource);
+    const result = await service.invite(RFQ_ID, { partyRefIds: [PARTY_REF_ID] }, actor);
+
+    expect(result).toEqual([racedInvitation]);
   });
 
   it('close expira invitaciones pendientes y mueve solicitud a aprobación', async () => {
@@ -252,12 +331,35 @@ describe('RfqService', () => {
 
     expect(result.status).toBe(PurchaseRfqStatus.CLOSED);
     expect(save).toHaveBeenCalledWith(
+      PurchaseRfq,
+      expect.objectContaining({ status: PurchaseRfqStatus.CLOSED, closedByUserId: actor.sub }),
+    );
+    expect(save).toHaveBeenCalledWith(
       PurchaseRfqInvitation,
       expect.objectContaining({ status: PurchaseRfqInvitationStatus.EXPIRED }),
     );
     expect(save).toHaveBeenCalledWith(
       PurchaseRequest,
       expect.objectContaining({ status: PurchaseRequestStatus.PENDING_APPROVAL }),
+    );
+  });
+
+  it('decline registra actor y motivo', async () => {
+    const { manager, save } = buildManager();
+    (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, fn) =>
+      fn({ manager } as never),
+    );
+
+    const service = new RfqService({} as DataSource);
+    await service.decline(RFQ_ID, INVITATION_ID, { declineReason: 'Sin stock' }, actor);
+
+    expect(save).toHaveBeenCalledWith(
+      PurchaseRfqInvitation,
+      expect.objectContaining({
+        status: PurchaseRfqInvitationStatus.DECLINED,
+        declineReason: 'Sin stock',
+        declinedByUserId: actor.sub,
+      }),
     );
   });
 

@@ -74,7 +74,7 @@ El proveedor **no se vuelve a seleccionar en ninguna etapa posterior**: queda fi
 ### Costos y tradeoffs
 
 - Requiere migracion de schema tenant para agregar el valor `COUNTER_PURCHASE` al enum `stock_movement_origin`.
-- `ALTER TYPE ... ADD VALUE` en PostgreSQL no es reversible de forma directa: el `down()` de la migracion no puede remover el valor sin recrear el tipo y reasignar la columna. Se documenta la estrategia de reversa (recreacion del tipo excluyendo el valor solo si no hay filas que lo usen; en caso contrario, `down()` no-op documentado).
+- `ALTER TYPE ... ADD VALUE` en PostgreSQL no es reversible de forma directa: el `down()` de la migracion no puede remover el valor sin recrear el tipo y reasignar la columna. Se documenta la estrategia de reversa (recreacion del tipo excluyendo el valor solo si no hay filas que lo usen; en caso contrario, `down()` no-op documentado). **Nota de mantenimiento:** si en el futuro otra tabla, vista o columna adopta el tipo `stock_movement_origin`, el `down()` de la migracion `058` debe revisarse antes de ejecutarse (hoy solo `stock_movements.origin` lo referencia).
 - Introduce una segunda via de ingreso de inventario; la documentacion y la UI deben dejar claro cuando usar compra de mostrador vs. recepcion contra OC para evitar que sustituya al flujo formal en compras que si ameritan cotizacion.
 
 ### Riesgos aceptados

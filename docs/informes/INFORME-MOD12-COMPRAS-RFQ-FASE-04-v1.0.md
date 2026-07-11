@@ -66,3 +66,7 @@ Tras la Fase 04 se re-ejecutó `e2e/tests/portal-inventory-scm.spec.ts`. Los fal
 - Incluye en la misma rama Fase 03 (compra mostrador, ADR-050).
 - No se añadieron estados nuevos a `PurchaseRequestStatus`.
 - UX menor: toasts RFQ pueden perderse al recargar detalle del workbench; el E2E valida estado persistente, no toast.
+
+## Remedación auditoría arquitectónica (2026-07-11)
+
+Ver `docs/informes/INFORME-MOD12-COMPRAS-CIERRE-AUDITORIA-ARCH-v1.0.md`. Cambios: lock idempotente mostrador, 409 en carrera RFQ, migración `061` trazabilidad actores, nota ADR-050 enum `down()`.

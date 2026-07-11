@@ -47,6 +47,12 @@ export class PurchaseRfq {
   @Column({ name: 'created_by_user_id', type: 'uuid', nullable: true })
   createdByUserId: string | null;
 
+  @Column({ name: 'sent_by_user_id', type: 'uuid', nullable: true })
+  sentByUserId: string | null;
+
+  @Column({ name: 'closed_by_user_id', type: 'uuid', nullable: true })
+  closedByUserId: string | null;
+
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 

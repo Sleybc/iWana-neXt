@@ -93,6 +93,7 @@ describe('CounterPurchaseService', () => {
 
     const manager = {
       transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      query: jest.fn().mockResolvedValue([]),
       findOne: jest.fn().mockImplementation(async (entity, query) => {
         if (entity === StockMovement) {
           return query.where.idempotencyKey === existingMovement?.idempotencyKey
@@ -372,6 +373,49 @@ describe('CounterPurchaseService', () => {
       expect.objectContaining({ idempotencyKey: 'counter-purchase:manual-key' }),
       actor,
     );
+  });
+
+  it('adquiere lock transaccional por idempotencyKey antes de crear lotes', async () => {
+    const { manager } = buildManager();
+    const stockLedgerServiceMock = {
+      recordMovementWithManager: jest.fn().mockResolvedValue({
+        movement: { id: 'mov-001', movementNumber: 'MOV-000010' },
+        lines: [],
+      }),
+    };
+
+    (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+      work({ manager }),
+    );
+
+    const service = new CounterPurchaseService(
+      {} as DataSource,
+      stockLedgerServiceMock as never,
+      { normalizeSerial: jest.fn(), createReceivedAssetWithManager: jest.fn() } as never,
+    );
+
+    await service.record(
+      {
+        partyRefId: PARTY_REF_ID,
+        invoiceNumber: 'FAC-LOCK',
+        destinationLocationId: LOCATION_ID,
+        idempotencyKey: 'counter-purchase:lock-key',
+        lines: [
+          {
+            itemId: ITEM_CONSUMABLE_ID,
+            quantityReceived: 1,
+            unitCost: 10,
+            serialNumbers: [],
+            condition: StockBalanceCondition.NEW,
+          },
+        ],
+      },
+      actor,
+    );
+
+    expect(manager.query).toHaveBeenCalledWith(expect.stringContaining('pg_advisory_xact_lock'), [
+      'counter-purchase:lock-key',
+    ]);
   });
 
   it('rejects counter purchase without destination location', async () => {

@@ -18,6 +18,8 @@ import { CreateStockIssues0570000000000 } from './057_create_stock_issues';
 import { AddCounterPurchaseOrigin0580000000000 } from './058_add_counter_purchase_origin';
 import { CreatePurchaseRfq0590000000000 } from './059_create_purchase_rfq';
 import { LinkSupplierQuotesToRfq0600000000000 } from './060_link_supplier_quotes_to_rfq';
+import { AddPurchaseRfqActorRefs0610000000000 } from './061_add_purchase_rfq_actor_refs';
+import { AddRfqInvitationInvitedBy0620000000000 } from './062_add_rfq_invitation_invited_by';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
 import { CreateExpedienteRecords1700000000001 } from './001_create_expediente_records';
@@ -113,6 +115,8 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   AddCounterPurchaseOrigin0580000000000,
   CreatePurchaseRfq0590000000000,
   LinkSupplierQuotesToRfq0600000000000,
+  AddPurchaseRfqActorRefs0610000000000,
+  AddRfqInvitationInvitedBy0620000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;
