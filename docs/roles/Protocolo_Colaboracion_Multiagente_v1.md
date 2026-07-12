@@ -1,9 +1,10 @@
 # Protocolo de Colaboración Multiagente — iWana neXt Platform
 
-**Versión:** 1.1
-**Estado:** Vigente (aprobado por ADR-049, 2026-07-10)
-**Fecha:** 2026-07-10
+**Versión:** 1.2
+**Estado:** Vigente (aprobado por ADR-049, 2026-07-10; actualización v1.2 aprobada por CTO, 2026-07-12)
+**Fecha:** 2026-07-12
 **Cambio v1.0 → v1.1:** integra el split del Design Layer aprobado — `AI-SR-UI-SYS` se divide en `AI-PROD-UX` (experiencia) + `AI-DS-OWNER` (contrato del design system), y el frontend de `AI-SR-FULL` se extrae a `AI-FE-PLATFORM`. Añade el **modelo de ejecución paralela** (§3bis) y el **carril rápido de UI**. Optimizado para: reducir solapamiento, aumentar autonomía por rol y maximizar ejecución en paralelo.
+**Cambio v1.1 → v1.2:** elimina las referencias residuales a `UI-SYS` (workflow §3, conflictos §5, matriz de consulta §6.1 — reescrita con los roles vigentes, cadencia §8) e incorpora la **dirección visual "Firma iWana"** ([spec 2026-07-12](../specs/2026-07-12-firma-iwana-diseno-visual-design.md)) como entrada obligatoria de la cadena de UI.
 **Clasificación:** Estratégico — Confidencial
 **Alcance:** Define la matriz RACI, el workflow de colaboración, los artefactos de handoff y los gates de aprobación entre los agentes IA del proyecto. Es la **fuente única** de estas definiciones: los perfiles individuales la referencian y no la duplican.
 
@@ -70,7 +71,7 @@ R = Responsible (ejecuta) · A = Accountable (responde por el resultado, máximo
 | Testing (E2E, regresión visual y a11y) | I | A | C | C | C | C | R | I | I |
 | Performance (backend y frontend) | I | A | R | R | C | C | C | I | C |
 | Accesibilidad WCAG 2.2 AA | I | A | I | R** | R** | R** | C | I | I |
-| Fidelidad al prototipo validado (Estrella Polar / ADR-023) | I | A | I | C | C | C | R | I | I |
+| Fidelidad a la Estrella Polar (prototipo ADR-023 + [spec Firma iWana](../specs/2026-07-12-firma-iwana-diseno-visual-design.md)) | I | A | I | C | C | C | R | I | I |
 | Releases a producción | A | R | C | C | I | I | C | C | I |
 
 \* El CTO es Accountable solo en el nivel de excepción o cambio estratégico (aprobar ADR, excepción de seguridad, cambio de tokens de marca); la operación diaria del área es Accountable de EM-ARCH.
@@ -85,11 +86,11 @@ Siete etapas con gates. Ningún gate se auto-aprueba: el aprobador es siempre di
 | # | Etapa | Ejecuta | Entradas | Salidas (artefacto + formato) | Gate de salida (aprueba) |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Definición de objetivo | EM-ARCH | Lineamiento CTO, PRD sistema, ADRs, contexto regulatorio | PRD de módulo (10 secciones), HLD, ADRs requeridos, plan de fases | **G1:** CTO (si hay ADR o impacto estratégico) o EM-ARCH |
-| 2 | Solución UX/UI | UI-SYS | PRD, HLD, patrones existentes en `apps/*` y `packages/ui`, manual de identidad | Especificación visual: wireframes, user flows, mapa de componentes, estados, responsive, criterios de accesibilidad | **G2:** EM-ARCH (alcance) — pasa a etapa 3 sin implementar |
+| 2 | Solución UX/UI | PROD-UX (flujo) + DS-OWNER (contrato) | PRD, HLD, patrones existentes en `apps/*` y `packages/ui`, manual de identidad, [spec Firma iWana](../specs/2026-07-12-firma-iwana-diseno-visual-design.md) | UX spec (PROD-UX: wireframes, user flows, estados, responsive, criterios de accesibilidad) + contrato de componente (DS-OWNER: tokens, API, estados requeridos) | **G2:** EM-ARCH (alcance) — pasa a etapa 3 sin implementar |
 | 3 | Validación de factibilidad | SR-FULL (+ DATA-ENG/SEC-ENG si aplica) | Especificación visual, contratos API borrador | Dictamen de factibilidad: viable / viable con ajustes / inviable, con costo estimado y riesgos técnicos | **G3:** EM-ARCH resuelve ajustes; disputa → regla de desempate |
 | 4 | Aprobación de diseño | EM-ARCH | Especificación ajustada + dictamen | Prompt de ejecución por fase (alcance exacto, restricciones, stop/go) | **G4:** EM-ARCH emite; sin prompt de ejecución no hay implementación |
-| 5 | Implementación | SR-FULL | Prompt de ejecución, PRD, HLD, ADRs, especificación visual | Código + tests (≥80% core) + migraciones reversibles + OpenAPI + reporte de fase | **G5:** gates técnicos (sección 4) + review de segunda capa por EM-ARCH |
-| 6 | Review de experiencia y calidad | UI-SYS + SR-QA + SEC-ENG (si aplica) | Entrega implementada, especificación visual, criterios de aceptación | Informe de hallazgos (bloqueante / importante / deuda aceptada), evidencia E2E, evidencia a11y | **G6:** UI-SYS puede bloquear por ruptura crítica visual/a11y; QA por criterios de aceptación |
+| 5 | Implementación | SR-FULL (backend) + FE-PLATFORM (frontend) | Prompt de ejecución, PRD, HLD, ADRs, UX spec + contrato de componente | Código + tests (≥80% core) + migraciones reversibles + OpenAPI + reporte de fase | **G5:** gates técnicos (sección 4) + review de segunda capa por EM-ARCH |
+| 6 | Review de experiencia y calidad | PROD-UX + DS-OWNER + SR-QA + SEC-ENG (si aplica) | Entrega implementada, UX spec, contrato de componente, criterios de aceptación, skill `iwana-identity-ui-review` | Informe de hallazgos (bloqueante / importante / deuda aceptada), evidencia E2E, evidencia a11y | **G6:** PROD-UX puede bloquear por ruptura crítica de flujo/a11y; DS-OWNER por violación de contrato o identidad (Firma iWana); QA por criterios de aceptación |
 | 7 | Validación final y cierre | EM-ARCH | Evidencias de G5/G6, informe de fase | Informe de cierre de módulo, decisión go/no-go, deuda registrada | **G7:** EM-ARCH recomienda; CTO aprueba producción |
 
 Reglas del workflow:
@@ -147,7 +148,7 @@ Verificables por cualquier agente; su cumplimiento es condición de G5–G7:
 ## 5. Resolución de conflictos entre agentes
 
 1. **Desacuerdo técnico dentro del stack aprobado** (patrón, estructura, naming): decide el Responsible del área RACI; el otro agente registra la objeción en el artefacto si persiste.
-2. **Especificación UX vs costo técnico:** SR-FULL presenta alternativas con costos; UI-SYS defiende el mínimo de experiencia no negociable (accesibilidad, acciones frecuentes visibles); EM-ARCH decide y documenta.
+2. **Especificación UX vs costo técnico:** SR-FULL o FE-PLATFORM presentan alternativas con costos; PROD-UX defiende el mínimo de experiencia no negociable (accesibilidad, acciones frecuentes visibles) y DS-OWNER el contrato del design system; EM-ARCH decide y documenta.
 3. **Conflicto con ADR, PRD o boundary:** se detiene la ejecución y se escala a EM-ARCH de inmediato; nadie implementa "mientras tanto".
 4. **Conflicto entre perfiles o con este protocolo:** manda la precedencia documental (`AGENTS.md` → CTO/ADRs → PRD → HLD → este protocolo → perfil individual → prompt de ejecución).
 5. **Dos fuentes contradictorias sobre regulación o stack:** no se sintetiza una respuesta conveniente; se marca "requiere verificación con fuente oficial" y se escala.
@@ -160,18 +161,18 @@ El workflow de 7 etapas cubre el flujo *planificado*. Esta red cubre lo *no plan
 
 ### 6.1 Matriz de consulta
 
-> **Mapeo tras el split (v1.1):** en la matriz de abajo, las filas/columnas de `UI-SYS` se reparten entre **`PROD-UX`** (disparadores de flujo/experiencia/UX) y **`DS-OWNER`** (disparadores de token/componente/patrón visual); las de `SR-FULL` relativas a **frontend** corresponden a **`FE-PLATFORM`**, y las de backend/datos/contrato de API permanecen en `SR-FULL`. Pendiente reescribir la tabla en la próxima revisión; el mapeo aplica desde ya.
-
 Lee la fila del agente que trabaja; la columna dice a quién consultar según el disparador.
 
-| Consulta ▼ / hacia ► | EM-ARCH | SR-FULL | UI-SYS | SR-QA | SEC-ENG | DATA-ENG |
-| --- | --- | --- | --- | --- | --- | --- |
-| **EM-ARCH** | — | Factibilidad/costo técnico de una opción de diseño | Viabilidad UX de un flujo propuesto | Testabilidad de un criterio de aceptación | Riesgo de seguridad de una decisión arquitectónica | Impacto de datos/integración ISP |
-| **SR-FULL** | Ambigüedad de alcance, contrato o boundary **(B)** | — | Estado/patrón visual no definido en la especificación | Cómo hacer testable un módulo | Manejo de secreto, PII o control de seguridad **(B)** | Contrato de integración de datos (RADIUS/OLT/CDR/ETL) |
-| **UI-SYS** | Cambio que altera alcance funcional | Factibilidad técnica de un patrón antes de especificarlo | — | Criterios de prueba visual/a11y automatizable | Si un diseño puede exponer PII en pantalla | Semántica de datos a visualizar (dashboards, métricas) |
-| **SR-QA** | Criterio de aceptación faltante o ambiguo | Entender el código bajo prueba | Comportamiento visual esperado de un flujo | — | Escenarios de abuso a cubrir **(B en flujos sensibles)** | Datos de prueba de integraciones de datos |
-| **SEC-ENG** | Excepción o impacto arquitectónico de un control | Guía de corrección de un hallazgo | Riesgo de UX que induzca error del usuario | Cobertura de tests de escenarios de abuso | — | Seguridad de pipelines de datos e integraciones OLT/RADIUS |
-| **DATA-ENG** | Alcance/boundary de una integración de datos | Implementación de la integración en el Modulith | Representación de métricas/datos en UI | Validación de calidad de datos con tests | Cifrado y controles en flujos de datos | — |
+| Consulta ▼ / hacia ► | EM-ARCH | SR-FULL | FE-PLAT | PROD-UX | DS-OWNER | SR-QA | SEC-ENG | DATA-ENG |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **EM-ARCH** | — | Factibilidad/costo técnico backend de una opción de diseño | Factibilidad/costo de implementación frontend | Viabilidad UX de un flujo propuesto | Impacto de un cambio en el contrato del DS | Testabilidad de un criterio de aceptación | Riesgo de seguridad de una decisión arquitectónica | Impacto de datos/integración ISP |
+| **SR-FULL** | Ambigüedad de alcance, contrato o boundary **(B)** | — | Necesidades del frontend sobre el contrato de API (shape, paginación, errores) | Impacto de una restricción técnica en el flujo | Impacto de una restricción técnica en el contrato de componente | Cómo hacer testable un módulo | Manejo de secreto, PII o control de seguridad **(B)** | Contrato de integración de datos (RADIUS/OLT/CDR/ETL) |
+| **FE-PLAT** | Cambio que altera alcance o boundary **(B)** | Contrato de API, mocks tipados, semántica de errores | — | Comportamiento de flujo no definido en la UX spec | Patrón, token o estado no definido en el contrato **(B si bloquea la pantalla)** | Criterios de prueba visual/a11y automatizable | Riesgo de exposición de datos en el cliente | Semántica de métricas a renderizar |
+| **PROD-UX** | Cambio que altera alcance funcional | Factibilidad de datos de un flujo antes de especificarlo | Costo de implementación de un patrón de interacción | — | Patrón/componente/token nuevo que el prototipo o la spec Firma iWana no cubren | Criterios de prueba de experiencia | Si un diseño puede exponer PII en pantalla | Semántica de datos a visualizar (dashboards, métricas) |
+| **DS-OWNER** | Cambio de contrato que arrastra alcance | Impacto backend de un contrato (p. ej. paginación/orden para `DataTable`) | Fricción de implementación de un contrato | Necesidad de experiencia detrás de un patrón solicitado | — | Qué estados y variantes son auditables (regresión visual, a11y) | Implicaciones de seguridad de un patrón (enmascarado, estados readonly) | Semántica de métricas para tokens de gráficas (`--chart-*`) |
+| **SR-QA** | Criterio de aceptación faltante o ambiguo | Entender el código backend bajo prueba | Entender la implementación frontend bajo prueba | Comportamiento de flujo esperado | Estados y variantes esperados de un componente | — | Escenarios de abuso a cubrir **(B en flujos sensibles)** | Datos de prueba de integraciones de datos |
+| **SEC-ENG** | Excepción o impacto arquitectónico de un control | Guía de corrección de un hallazgo backend | Guía de corrección de un hallazgo frontend | Riesgo de UX que induzca error del usuario | Controles visuales del contrato (enmascarado de datos sensibles) | Cobertura de tests de escenarios de abuso | — | Seguridad de pipelines de datos e integraciones OLT/RADIUS |
+| **DATA-ENG** | Alcance/boundary de una integración de datos | Implementación de la integración en el Modulith | Representación de métricas en el cliente | Representación de métricas/datos en UI | Tokens y patrones de visualización de datos | Validación de calidad de datos con tests | Cifrado y controles en flujos de datos | — |
 
 **(B) = consulta bloqueante:** el agente no continúa por esa vía hasta recibir respuesta, porque avanzar con un supuesto sobre alcance, boundary, PII o seguridad puede corromper el entregable. Las demás consultas son asíncronas: el agente registra el supuesto, sigue con lo que no depende de la respuesta y ajusta al recibirla.
 
@@ -206,10 +207,10 @@ Aplican a todos los agentes, en todo artefacto:
 
 ## 8. Cadencia de sincronización
 
-- **Por fase:** reporte de fase de SR-FULL → EM-ARCH (formato del perfil).
+- **Por fase:** reporte de fase de SR-FULL y FE-PLATFORM → EM-ARCH (formato del perfil).
 - **Por sprint:** informe de sprint de EM-ARCH → CTO (entregables, cobertura, deuda, DORA, blockers, decisiones que requieren CTO).
 - **Por módulo:** informe de cierre con evidencia funcional, de calidad y de despliegue.
-- **Continuo:** hallazgos bloqueantes de UI-SYS, SR-QA o SEC-ENG se comunican al detectarse, no al final de la etapa.
+- **Continuo:** hallazgos bloqueantes de PROD-UX, DS-OWNER, SR-QA o SEC-ENG se comunican al detectarse, no al final de la etapa.
 
 ## 9. Mantenimiento de este protocolo
 

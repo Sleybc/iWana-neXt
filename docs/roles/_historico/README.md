@@ -1,6 +1,6 @@
 # Perfiles IA — Archivo histórico
 
-Estos perfiles fueron **superados** y se conservan solo como referencia histórica (git preserva su evolución). No deben activarse para trabajo nuevo. Para el ecosistema vigente ver [docs/roles/](../) y el [Protocolo v1.1](../Protocolo_Colaboracion_Multiagente_v1.md).
+Estos perfiles fueron **superados** y se conservan solo como referencia histórica (git preserva su evolución). No deben activarse para trabajo nuevo. Para el ecosistema vigente ver [docs/roles/](../) y el [Protocolo v1.2](../Protocolo_Colaboracion_Multiagente_v1.md); la dirección visual vigente es "Firma iWana" ([spec 2026-07-12](../../specs/2026-07-12-firma-iwana-diseno-visual-design.md)).
 
 | Archivo archivado | Superado por | Autoridad |
 | --- | --- | --- |

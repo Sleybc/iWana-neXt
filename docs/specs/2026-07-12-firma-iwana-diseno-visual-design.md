@@ -127,4 +127,5 @@ Estos rasgos, combinados, hacen una pantalla reconocible como iWana sin logo:
 - Esta spec es la **dirección visual aprobada** que complementa (no reemplaza) al manual de identidad; en caso de conflicto con tokens reales de `globals.css`, mandan los tokens y se documenta la divergencia.
 - Roles alineados: `docs/roles/Perfil_IA_Design_System_Owner_v1.md` (dueño del contrato de los nuevos tokens/componentes firma) y `docs/roles/Perfil_IA_Product_Designer_UX_v1.md` (patrones de interacción aprobados: side peek, command palette, filtros en URL, optimistic UI).
 - Skill alineada: `.agents/skills/iwana-identity-ui-review` incorpora esta spec como fuente de verdad y sus reglas semánticas del lima como criterios de review.
+- Protocolo alineado: `docs/roles/Protocolo_Colaboracion_Multiagente_v1.md` v1.2 — esta spec es entrada obligatoria de la etapa 2 (solución UX/UI) y criterio de bloqueo de DS-OWNER en el gate G6.
 - Los ítems que introducen dependencias nuevas (TanStack Table, Recharts, cmdk) requieren su ADR según gobernanza del repo antes de implementarse.
