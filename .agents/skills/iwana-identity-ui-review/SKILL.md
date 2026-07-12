@@ -42,8 +42,9 @@ Si el problema es solo backend, contratos API o arquitectura tecnica sin superfi
 
 1. `packages/ui/src/styles/globals.css` — tokens reales Tailwind v4 CSS-first. **Es la fuente primaria para afirmar que un token, utility o sombra existe o no existe.**
 2. `apps/portal/src/components/shared/portal-ui.tsx` — primitives del portal (PortalPanel, PortalAlert, PortalEmptyState, PortalSkeletonBlock, `interactiveFocusClassName`, etc.).
-3. `docs/identity/Manual_Implementacion_Identidad_Iwana.md` — personalidad, principios y decisiones de uso de color.
-4. `.github/instructions/system-vocabulary.instructions.md` — tono y copy.
+3. `docs/specs/2026-07-12-firma-iwana-diseno-visual-design.md` — **direccion visual vigente "Firma iWana"**: elementos de firma (barra lima de navegacion, sombra dual soft/active, degradado azul→lima solo para progreso, par tonal lima, mono tecnico, escala tipografica dual, gramatica de 3 estados), reglas semanticas del lima y plan por fases. Los componentes/tokens de fases aun no ejecutadas se citan como direccion aprobada, no como existentes.
+4. `docs/identity/Manual_Implementacion_Identidad_Iwana.md` — personalidad, principios y decisiones de uso de color.
+5. `.github/instructions/system-vocabulary.instructions.md` — tono y copy.
 
 Si este documento y los tokens reales divergen, mandan los tokens reales; documenta la divergencia en lugar de inventar un valor intermedio. Nunca recomiendes crear `tailwind.config.js` (el sistema es CSS-first por ADR) ni tokens que no existan en `globals.css` sin marcarlos explicitamente como propuesta de token nuevo.
 
@@ -94,6 +95,11 @@ Estas reglas son mecanicamente comprobables en el codigo. Un hallazgo basado en 
 | Valores arbitrarios repetidos (`tracking-[...]`, hex, sombras locales) sin promocion a utility o primitive | grep de valores arbitrarios duplicados | P2 |
 | Cards dentro de cards sin funcion (superficies anidadas) | `rounded-2xl` + borde/sombra anidados | P2 |
 | Glass, gradiente o blur masivo en tablas o formularios — glassmorphism es selectivo (overlays, drawers, controles flotantes) | `.iwana-glass` / `backdrop-blur` fuera de overlays | P2 |
+| Lima usado como señal de urgencia, prioridad alta o alerta — el lima significa avance/exito/accion (spec Firma iWana §3); urgencia usa escalas `warning`/`error` | tinte `iwana-secondary*` en badges/textos de prioridad alta, alertas o riesgos | P1 |
+| Degradado azul→lima fuera de indicadores de progreso — es firma de avance, no decoracion | `from-iwana-primary to-iwana-secondary` (o `.iwana-gradient`) en fondos, headers o cards sin semantica de progreso | P2 |
+| Variante local nueva de un patron firma ya unificado (KPI card, tabla, page header, sidebar) en vez del primitive/contrato vigente | componente ad hoc que duplica un patron cubierto por `portal-ui.tsx` / `@iwana/ui` | P2 |
+| Spinner bloqueante en vista principal en vez de skeleton con forma de contenido | spinner/`Loader` como estado de carga primario de una pagina o tabla | P3 |
+| Cifras en columnas de datos sin figuras tabulares o mono — provocan saltos de layout | columnas numericas de tabla sin `font-mono` / `tabular-nums` | P3 |
 | Eyebrow manual en vez de `.portal-eyebrow` / `.portal-eyebrow-muted`, o letter-spacing exagerado | estilos de eyebrow ad hoc | P3 |
 
 ## Sistema de severidad
@@ -179,7 +185,8 @@ Ejemplo de hallazgo bien formado:
 ## Validacion antes de cerrar (ambos modos)
 
 - La primera vista muestra que se puede hacer y donde actuar.
-- La pantalla se reconoce como iWana sin depender del logo.
+- La pantalla se reconoce como iWana sin depender del logo (≥2 elementos de firma de la spec Firma iWana presentes **con funcion**: barra lima activa, sombra dual, badge tonal de completitud, degradado de progreso, mono tecnico, gramatica de estados).
+- El lima solo comunica avance, exito o accion principal; nunca urgencia ni fondo base.
 - Mobile y desktop mantienen jerarquia y acciones operables.
 - Contraste y foco pasan revision basica WCAG AA.
 - El patron reusable quedo en primitive, utility o instruccion si puede repetirse.
