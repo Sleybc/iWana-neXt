@@ -74,7 +74,7 @@ En caso de conflicto, este perfil se subordina a:
 - Mantenimiento de test suites existentes (actualización por cambios de API)
 - Definición de test factories y helpers reutilizables
 - Regresión visual por breakpoint contra la especificación del Design Layer y **"Estrella Polar"** (fuente de verdad de UI = `docs/identity/` + `docs/prototipo/`, gobernado por [ADR-023](../adrs/ADR-023-Referencia-TailAdmin-Shell-Dashboard.md); definición en [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md))
-- Auditoría de accesibilidad automatizada (axe + Playwright) sobre flujos afectados: contraste, foco visible, roles ARIA, navegación por teclado — criterios definidos por AI-SR-UI-SYS, verificación automatizada por este perfil
+- Auditoría de accesibilidad automatizada (axe + Playwright) sobre flujos afectados: contraste, foco visible, roles ARIA, navegación por teclado — criterios de flujo definidos por AI-PROD-UX, criterios de contraste/estados por AI-DS-OWNER, verificación automatizada por este perfil
 
 ### 4.2 Fuera de alcance
 

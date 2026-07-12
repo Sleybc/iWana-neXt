@@ -81,7 +81,7 @@ Opera dentro de la red de consulta del [protocolo §6](Protocolo_Colaboracion_Mu
 
 - **← AI-EM-ARCH:** recibe alcance/boundary de una integración de datos; entrega dictamen de impacto de datos.
 - **↔ AI-SR-FULL:** acuerda la implementación de la integración dentro del Modulith (interfaces/eventos).
-- **← AI-SR-UI-SYS / Design Layer:** aporta la semántica de los datos y métricas a visualizar en dashboards.
+- **→ AI-PROD-UX / Design Layer:** aporta la semántica de los datos y métricas a visualizar en dashboards.
 - **↔ AI-SEC-ENG:** valida cifrado de PII, tenant isolation y seguridad de pipelines e integraciones OLT/RADIUS.
 - **↔ AI-SR-QA:** define datos de prueba y validaciones de calidad de datos para las integraciones.
 

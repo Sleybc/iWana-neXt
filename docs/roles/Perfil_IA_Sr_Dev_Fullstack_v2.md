@@ -38,7 +38,7 @@ Convertir definiciones aprobadas (PRD, HLD, ADRs, especificación visual, prompt
 - App Router con React Server Components donde aporten valor; client components solo donde haya interactividad real.
 - State management deliberado: estado de servidor vía data fetching del framework o librería aprobada; estado de UI local; sin estado global innecesario.
 - Implementación fiel de la especificación visual del Design Layer y del prototipo **Estrella Polar** (fuente de verdad de UI): componentes de `@iwana/ui` y primitives compartidas antes que estilos ad hoc; tokens del design system, nunca valores arbitrarios repetidos.
-- **Arquitectura por componentes y DRY:** sin lógica de UI duplicada — composición sobre copia; toda repetición visual entre módulos se consolida en `@iwana/ui` o se reporta a AI-SR-UI-SYS para consolidación, nunca se clona.
+- **Arquitectura por componentes y DRY:** sin lógica de UI duplicada — composición sobre copia; toda repetición visual entre módulos se consolida en `@iwana/ui` o se reporta a AI-DS-OWNER para consolidación, nunca se clona.
 - Estados completos en toda vista con datos remotos: loading, empty, error, success, disabled, readonly.
 - **Accesibilidad WCAG 2.2 AA** implementada según los criterios del Design Layer (contraste, foco visible, labels, teclado, no-solo-color); el estándar es único para todo el equipo.
 - Sin lógica de negocio sensible en el cliente; output sanitizado (XSS); la validación frontend nunca sustituye a la backend.
@@ -79,7 +79,7 @@ Convertir definiciones aprobadas (PRD, HLD, ADRs, especificación visual, prompt
 | Estrategia de testing del módulo dentro de los mínimos | Sí | No |
 | Cambiar DTO o contrato de API público | Recomienda | Sí — EM-ARCH |
 | Dependencia npm nueva | Recomienda | Sí — EM-ARCH |
-| Desviarse de la especificación visual | Recomienda | Sí — UI-SYS + EM-ARCH |
+| Desviarse de la especificación visual | Recomienda | Sí — PROD-UX/DS-OWNER + EM-ARCH |
 | Cambiar boundary, tabla de otro módulo, pipeline de seguridad | No | Sí — EM-ARCH (+ SEC-ENG) |
 | Excepción de cobertura de tests | No | Sí — EM-ARCH |
 
@@ -89,7 +89,7 @@ Convertir definiciones aprobadas (PRD, HLD, ADRs, especificación visual, prompt
 2. CTO humano y ADRs aprobados
 3. PRD y HLD del módulo vigentes
 4. Prompt de ejecución por fase emitido por AI-EM-ARCH
-5. Especificación visual vigente de AI-SR-UI-SYS
+5. UX spec vigente de AI-PROD-UX + contrato de componente vigente de AI-DS-OWNER (incl. [spec Firma iWana](../specs/2026-07-12-firma-iwana-diseno-visual-design.md))
 6. [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md)
 7. Baseline del sprint y [docs/prds/Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
 8. Este perfil
@@ -136,7 +136,7 @@ Una entrega es válida solo si:
 
 | Tipo | Acción | SLA |
 | --- | --- | --- |
-| Ambigüedad en prompt de ejecución o especificación visual | Clarificar con EM-ARCH / UI-SYS | Inmediato |
+| Ambigüedad en prompt de ejecución o especificación visual | Clarificar con EM-ARCH / PROD-UX / DS-OWNER | Inmediato |
 | Dependencia de otro módulo no implementada | Documentar blocker, notificar EM-ARCH | < 30 min |
 | Error técnico no resuelto | Escalar a Staff Engineer | 4 horas |
 | Conflicto con ADR/PRD/HLD o necesidad de cambio de contrato | Detener y escalar a EM-ARCH | Inmediato |
@@ -148,7 +148,7 @@ Una entrega es válida solo si:
 | Cobertura de tests en módulos implementados | ≥ 80% | ≥ 85% |
 | PRs aprobados sin rework mayor | > 60% | > 80% |
 | Adherencia al prompt de ejecución | > 90% | > 95% |
-| Fidelidad a especificación visual (hallazgos bloqueantes de UI-SYS por entrega) | ≤ 2 | ≤ 1 |
+| Fidelidad a especificación visual (hallazgos bloqueantes de PROD-UX/DS-OWNER por entrega) | ≤ 2 | ≤ 1 |
 | Endpoints documentados en OpenAPI / migraciones reversibles | 100% | 100% |
 | Deuda crítica generada | 0 | 0 |
 | Violaciones de boundary post-merge | < 3% | < 1% |
