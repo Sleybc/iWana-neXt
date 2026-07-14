@@ -1,8 +1,8 @@
 # INFORME - Auditoria arquitectonica de ejecucion: MOD12 Compras Cierre del flujo (Fase 06)
 
-**Version:** 1.1
-**Estado:** Vigente — **G6 APROBADO** (re-auditoria 2026-07-14); pendiente G7 (CTO) con 2 condiciones de merge
-**Fecha:** 2026-07-14 (v1.0 auditoria inicial; v1.1 re-auditoria de cierre)
+**Version:** 1.2
+**Estado:** **CERRADO — Fase 06 aprobada por CTO (G7, 2026-07-14).** G6 aprobado; SEC-ENG formalizada; I-2 registrada como desviacion historica (commit publicado, sin reescritura).
+**Fecha:** 2026-07-14 (v1.0 auditoria inicial; v1.1 re-auditoria; v1.2 cierre)
 **Modo activo:** Architect + EM (auditoria de segunda capa)
 **Auditor:** AI-EM-ARCH
 **Gate:** G6 (review de experiencia y calidad) del Protocolo Multiagente
@@ -110,6 +110,38 @@ Tras la correccion de hallazgos por AI-SR-FULL/AI-FE-PLATFORM, se re-verifico:
    - Frontend: `AwardLinesPanel.tsx(+spec)`, `PurchaseRequestWorkbenchDrawer.tsx`, `InventoryClient.tsx(+spec)`, `purchase-workbench.ts(+spec)`, `RfqInvitationsPanel.tsx`, `inventory-labels.ts`, `lib/api-client.ts`, `e2e/tests/portal-inventory-scm.spec.ts`.
    - **Excluir** del PR de Fase 06: todo `apps/*/…/commercial/*`, borrados de specs de `settings`, `incoterm-code.enum.ts` y `SupplierFormDrawer.tsx` (pertenecen a Fase 05/otra linea).
 3. Confirmar en CI el **% de cobertura ≥80%** (los tests pasan; el numero exacto es una metrica de CI).
+
+## 6ter. Verificacion post-commit y analisis de cierre (2026-07-14)
+
+Tras la ultima ronda del ejecutor, el trabajo fue **commiteado a `main`** (`6770730c`). Verificacion sobre el estado commiteado:
+
+| Item | Resultado |
+| --- | --- |
+| Tests backend (purchasing/rfq) | ✅ 40/40 PASS sobre estado commiteado |
+| Tests portal (AwardLines/workbench/InventoryClient) | ✅ 40/40 PASS |
+| Lint scoped Fase 06 | ✅ exit 0 |
+| Typecheck | ✅ limpio |
+| Seguridad reject/cancel (revision EM-ARCH) | ✅ Sin hallazgos: aislamiento tenant, tx atomica, guarda de estado, actor+motivo persistidos, sin SQL crudo, `@Roles` |
+| Migracion `067` | ✅ Aditiva, nullable, `down()` reversible |
+| Cobertura core reject/cancel | Tests exhaustivos por inspeccion (ramas permitido/denegado/cascada); **% exacto pendiente de comando estandar en CI** (glob de esta corrida no instrumento) |
+
+### Desviaciones que persisten (no cerrables por EM-ARCH)
+
+- **SEC-ENG formal — NO ejecutada.** El checklist declara "interim SR-FULL; subagente no disponible en sesion" (`CHECKLIST-...-FASE-06 §Remediacion G6`). Governance §3.3 exige revision reforzada AI-SEC-ENG ante cambio de schema. Mi revision de seguridad a nivel EM-ARCH **no encontro hallazgos** y el riesgo es **bajo** (2 columnas nullable, sin PII, sin superficie de auth), pero **no sustituye** el gate SEC-ENG. **Decision del CTO en G7:** aceptar el self-review interino + esta evaluacion, o exigir SEC-ENG formal.
+- **I-2 higiene de commit — DESVIACION.** Pese a documentarse el allowlist, el commit `6770730c` **combino** Fase 06 con dashboard comercial, supplier profile, parties e identity docs ("feat(mod12): cierre compras Fase 06, supplier profile, commercial dashboard e identity docs"). Ya esta en `main`; separar exigiria reescribir historia (no recomendado). Se registra como **desviacion historica aceptada**: no afecta la correctitud del codigo de Fase 06, pero **degrada la trazabilidad del PR** y **amplia el alcance real de la revision de schema** (el commit incluye tambien cambios de `party.entity.ts`). Recomendacion para futuras fases: **un PR por fase**.
+
+### Dictamen de cierre (EM-ARCH)
+
+La Fase 06 esta **funcional y cualitativamente COMPLETA y VERIFICADA** (G6 confirmado, sin bloqueantes ni importantes de codigo abiertos).
+
+### Resolucion final (G7 — CTO, 2026-07-14)
+
+Por direccion del CTO, AI-SR-FULL cerro las dos desviaciones:
+
+1. **SEC-ENG:** formalizada como revision de seguridad documentada — `docs/security/SECURITY-REVIEW-MOD12-COMPRAS-CIERRE-FASE-06-v1.0.md`. **Sin hallazgos criticos/altos/medios; dictamen APROBADO (riesgo bajo).** Se recomienda pasada AI-SEC-ENG plena a futuro como confirmacion, sin retener el cierre.
+2. **I-2:** el commit `6770730c` **ya estaba publicado en `origin/main`**; separarlo exigiria `git push --force` sobre historia publica de `main` — **no se ejecuto** por ser destructivo. Correccion **forward-only**: se adopta la regla de **un PR por fase**. La desviacion es de trazabilidad, no de correctitud; el codigo de Fase 06 esta verificado.
+
+**Veredicto: Fase 06 CERRADA (G7 aprobado).** Habilitado, por ADR-016, emitir el prompt de ejecucion de la **Fase 07** cuando se decida continuar.
 
 ## 7. Reconocimiento
 
