@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
+  Select,
   Tabs,
   TabsContent,
   TabsList,
@@ -22,13 +23,17 @@ import {
 } from '@iwana/shared';
 import type {
   AddSupplierQuoteDto,
+  CancelPurchaseRequestDto,
+  CreatePurchaseRequestAwardsDto,
   GoodsReceiptResultRecord,
   InventoryItemRecord,
   PurchaseOrderLineRecord,
   PurchaseOrderRecord,
   PurchaseRequestDetailRecord,
+  PurchaseRequestLineAwardInput,
   PurchaseRequestLineRecord,
   ReceivePurchaseOrderDto,
+  RejectPurchaseRequestDto,
   StockLocationRecord,
   SupplierSummaryRecord,
 } from '@/lib/api-client';
@@ -50,7 +55,10 @@ import {
   getPurchaseRequestStatusBadgeVariant,
   getPurchaseRequestStatusLabel,
   getPurchaseRequestTypeLabel,
+  PURCHASE_CURRENCY_OPTIONS,
+  type PurchaseCurrencyOption,
 } from './inventory-labels';
+import { AwardLinesPanel } from './AwardLinesPanel';
 import { GoodsReceiptPanel } from './GoodsReceiptPanel';
 import {
   getPurchaseNextAction,
@@ -77,15 +85,25 @@ interface PurchaseRequestWorkbenchDrawerProps {
   supplierSummary: SupplierSummaryRecord | null;
   supplierLoading: boolean;
   supplierError: string | null;
+  supplierLabels?: Record<string, string>;
   isSubmittingQuote: boolean;
   isSubmittingApprove: boolean;
+  isSubmittingAwards: boolean;
+  isSubmittingReject: boolean;
+  isSubmittingCancel: boolean;
   isSubmittingReceipt: boolean;
   quoteError: string | null;
   approveError: string | null;
+  awardsError: string | null;
+  rejectError: string | null;
+  cancelError: string | null;
   receiptError: string | null;
   onClose: () => void;
   onAddQuote: (payload: AddSupplierQuoteDto) => Promise<void>;
   onApprove: (exceptionReason?: string) => Promise<void>;
+  onCreateAwards: (payload: CreatePurchaseRequestAwardsDto) => Promise<void>;
+  onReject: (payload: RejectPurchaseRequestDto) => Promise<void>;
+  onCancel: (payload: CancelPurchaseRequestDto) => Promise<void>;
   onLoadSupplier: (partyRefId: string) => void;
   onOpenOrderFlow: () => void;
   onReceiveOrder: (purchaseOrderId: string, payload: ReceivePurchaseOrderDto) => Promise<void>;
@@ -140,15 +158,25 @@ export function PurchaseRequestWorkbenchDrawer({
   supplierSummary,
   supplierLoading,
   supplierError,
+  supplierLabels = {},
   isSubmittingQuote,
   isSubmittingApprove,
+  isSubmittingAwards,
+  isSubmittingReject,
+  isSubmittingCancel,
   isSubmittingReceipt,
   quoteError,
   approveError,
+  awardsError,
+  rejectError,
+  cancelError,
   receiptError,
   onClose,
   onAddQuote,
   onApprove,
+  onCreateAwards,
+  onReject,
+  onCancel,
   onLoadSupplier,
   onOpenOrderFlow,
   onReceiveOrder,
@@ -158,7 +186,11 @@ export function PurchaseRequestWorkbenchDrawer({
   const [selectedSupplierName, setSelectedSupplierName] = useState<string | null>(null);
   const [quoteNumber, setQuoteNumber] = useState('');
   const [quoteAmount, setQuoteAmount] = useState('');
+  const [quoteCurrency, setQuoteCurrency] = useState<PurchaseCurrencyOption>('COP');
   const [exceptionReason, setExceptionReason] = useState('');
+  const [awardDrafts, setAwardDrafts] = useState<PurchaseRequestLineAwardInput[]>([]);
+  const [resolutionMode, setResolutionMode] = useState<'reject' | 'cancel' | null>(null);
+  const [resolutionReason, setResolutionReason] = useState('');
 
   useEffect(() => {
     if (!open) {
@@ -166,7 +198,11 @@ export function PurchaseRequestWorkbenchDrawer({
       setSelectedSupplierName(null);
       setQuoteNumber('');
       setQuoteAmount('');
+      setQuoteCurrency('COP');
       setExceptionReason('');
+      setAwardDrafts([]);
+      setResolutionMode(null);
+      setResolutionReason('');
     }
   }, [open]);
 
@@ -178,6 +214,18 @@ export function PurchaseRequestWorkbenchDrawer({
     [PurchaseRequestStatus.PENDING_APPROVAL, PurchaseRequestStatus.PENDING_QUOTES].includes(
       request.status,
     );
+  const canReject =
+    request &&
+    [PurchaseRequestStatus.PENDING_QUOTES, PurchaseRequestStatus.PENDING_APPROVAL].includes(
+      request.status,
+    );
+  const canCancel =
+    request &&
+    ![
+      PurchaseRequestStatus.REJECTED,
+      PurchaseRequestStatus.CANCELLED,
+      PurchaseRequestStatus.CONVERTED_TO_PO,
+    ].includes(request.status);
   const quoteAmountTouched = quoteAmount.trim().length > 0;
   const parsedQuoteAmount = quoteAmountTouched ? Number(quoteAmount) : NaN;
   const quoteAmountValid = Number.isFinite(parsedQuoteAmount) && parsedQuoteAmount > 0;
@@ -187,6 +235,9 @@ export function PurchaseRequestWorkbenchDrawer({
     detail?.approvalPolicy.canApprove === true ||
     (detail?.approvalPolicy.requiresException === true && exceptionReady);
   const orderForReceipt = resolveOrderForReceipt(detail, latestOrder);
+  const resolutionMinLength = resolutionMode === 'reject' ? 10 : 5;
+  const resolutionReady = resolutionReason.trim().length >= resolutionMinLength;
+  const isResolving = isSubmittingReject || isSubmittingCancel;
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -211,18 +262,22 @@ export function PurchaseRequestWorkbenchDrawer({
             <div className="space-y-4">
               {nextAction ? (
                 <PortalAlert
-                  variant="info"
-                  title="Siguiente acción recomendada"
+                  variant={nextAction.terminal ? 'success' : 'info'}
+                  title={
+                    nextAction.terminal ? 'Estado de la solicitud' : 'Siguiente acción recomendada'
+                  }
                   description={nextAction.message}
                   action={
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => onActiveTabChange(nextAction.suggestedTab)}
-                    >
-                      Ir a {PURCHASE_WORKBENCH_TAB_LABELS[nextAction.suggestedTab].toLowerCase()}
-                    </Button>
+                    nextAction.terminal ? undefined : (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => onActiveTabChange(nextAction.suggestedTab)}
+                      >
+                        Ir a {PURCHASE_WORKBENCH_TAB_LABELS[nextAction.suggestedTab].toLowerCase()}
+                      </Button>
+                    )
                   }
                 />
               ) : null}
@@ -367,6 +422,19 @@ export function PurchaseRequestWorkbenchDrawer({
                               : undefined
                           }
                         />
+                        <Select
+                          label="Moneda"
+                          value={quoteCurrency}
+                          onChange={(event) =>
+                            setQuoteCurrency(event.target.value as PurchaseCurrencyOption)
+                          }
+                        >
+                          {PURCHASE_CURRENCY_OPTIONS.map((currency) => (
+                            <option key={currency} value={currency}>
+                              {currency}
+                            </option>
+                          ))}
+                        </Select>
                       </div>
                     </section>
                   ) : null}
@@ -418,6 +486,19 @@ export function PurchaseRequestWorkbenchDrawer({
                       </p>
                     </>
                   )}
+                </TabsContent>
+
+                <TabsContent value="awards" className="mt-4 space-y-3">
+                  {detail ? (
+                    <AwardLinesPanel
+                      detail={detail}
+                      items={items}
+                      supplierLabels={supplierLabels}
+                      disabled={isSubmittingAwards}
+                      error={awardsError}
+                      onDraftsChange={setAwardDrafts}
+                    />
+                  ) : null}
                 </TabsContent>
 
                 <TabsContent value="orders" className="mt-4 space-y-3">
@@ -474,45 +555,141 @@ export function PurchaseRequestWorkbenchDrawer({
         </div>
 
         {request && !isLoading ? (
-          <div className="border-t border-gray-200 bg-iwana-surface-soft px-6 py-4 dark:border-dark-border dark:bg-dark-surface-3">
-            {activeTab === 'quotes' && canAddQuote ? (
-              <Button
-                type="button"
-                disabled={isSubmittingQuote || !selectedSupplierId || !quoteAmountValid}
-                onClick={() =>
-                  void onAddQuote({
-                    partyRefId: selectedSupplierId ?? '',
-                    quoteNumber,
-                    amount: parsedQuoteAmount,
-                    currency: 'COP',
-                  })
-                }
-              >
-                Registrar cotización
-              </Button>
-            ) : null}
-            {activeTab === 'approval' && canApprove ? (
-              <Button
-                type="button"
-                disabled={isSubmittingApprove || !canSubmitApproval}
-                onClick={() => void onApprove(exceptionReason || undefined)}
-              >
-                Aprobar solicitud
-              </Button>
-            ) : null}
-            {activeTab === 'orders' && canCreateOrder ? (
-              <Button type="button" onClick={onOpenOrderFlow}>
-                Generar orden de compra
-              </Button>
-            ) : null}
-            {activeTab === 'receipts' &&
-            orderForReceipt &&
-            (orderForReceipt.status === PurchaseOrderStatus.APPROVED ||
-              orderForReceipt.status === PurchaseOrderStatus.PARTIALLY_RECEIVED) ? (
-              <p className="text-sm text-gray-600 dark:text-gray-300">
-                Usa el formulario de recepción para registrar cantidades recibidas.
-              </p>
-            ) : null}
+          <div className="space-y-3 border-t border-gray-200 bg-iwana-surface-soft px-6 py-4 dark:border-dark-border dark:bg-dark-surface-3">
+            {resolutionMode ? (
+              <div className="space-y-3">
+                {(resolutionMode === 'reject' ? rejectError : cancelError) ? (
+                  <PortalAlert
+                    variant="error"
+                    title={
+                      resolutionMode === 'reject' ? 'No se pudo rechazar' : 'No se pudo cancelar'
+                    }
+                    description={resolutionMode === 'reject' ? rejectError : cancelError}
+                  />
+                ) : null}
+                <label className="block space-y-1 text-sm">
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    {resolutionMode === 'reject' ? 'Motivo del rechazo' : 'Motivo de cancelación'}
+                  </span>
+                  <textarea
+                    aria-label={
+                      resolutionMode === 'reject' ? 'Motivo del rechazo' : 'Motivo de cancelación'
+                    }
+                    className={cn(
+                      'w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white',
+                      interactiveFocusClassName,
+                    )}
+                    rows={3}
+                    placeholder={
+                      resolutionMode === 'reject'
+                        ? 'Describe el motivo (mínimo 10 caracteres)'
+                        : 'Describe el motivo (mínimo 5 caracteres)'
+                    }
+                    value={resolutionReason}
+                    onChange={(event) => setResolutionReason(event.target.value)}
+                  />
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={isResolving}
+                    onClick={() => {
+                      setResolutionMode(null);
+                      setResolutionReason('');
+                    }}
+                  >
+                    Volver
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled={isResolving || !resolutionReady}
+                    onClick={() => {
+                      const payload = { reason: resolutionReason.trim() };
+                      if (resolutionMode === 'reject') {
+                        void onReject(payload);
+                      } else {
+                        void onCancel(payload);
+                      }
+                    }}
+                  >
+                    {resolutionMode === 'reject' ? 'Confirmar rechazo' : 'Confirmar cancelación'}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  {activeTab === 'quotes' && canAddQuote ? (
+                    <Button
+                      type="button"
+                      disabled={isSubmittingQuote || !selectedSupplierId || !quoteAmountValid}
+                      onClick={() =>
+                        void onAddQuote({
+                          partyRefId: selectedSupplierId ?? '',
+                          quoteNumber,
+                          amount: parsedQuoteAmount,
+                          currency: quoteCurrency,
+                        })
+                      }
+                    >
+                      Registrar cotización
+                    </Button>
+                  ) : null}
+                  {activeTab === 'approval' && canApprove ? (
+                    <Button
+                      type="button"
+                      disabled={isSubmittingApprove || !canSubmitApproval}
+                      onClick={() => void onApprove(exceptionReason || undefined)}
+                    >
+                      Aprobar solicitud
+                    </Button>
+                  ) : null}
+                  {activeTab === 'awards' && awardDrafts.length > 0 ? (
+                    <Button
+                      type="button"
+                      disabled={isSubmittingAwards}
+                      onClick={() => void onCreateAwards({ awards: awardDrafts })}
+                    >
+                      Adjudicar líneas
+                    </Button>
+                  ) : null}
+                  {activeTab === 'orders' && canCreateOrder ? (
+                    <Button type="button" onClick={onOpenOrderFlow}>
+                      Generar orden de compra
+                    </Button>
+                  ) : null}
+                  {canReject ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={isResolving}
+                      onClick={() => setResolutionMode('reject')}
+                    >
+                      Rechazar
+                    </Button>
+                  ) : null}
+                  {canCancel ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      disabled={isResolving}
+                      onClick={() => setResolutionMode('cancel')}
+                    >
+                      Cancelar solicitud
+                    </Button>
+                  ) : null}
+                </div>
+                {activeTab === 'receipts' &&
+                orderForReceipt &&
+                (orderForReceipt.status === PurchaseOrderStatus.APPROVED ||
+                  orderForReceipt.status === PurchaseOrderStatus.PARTIALLY_RECEIVED) ? (
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                    Usa el formulario de recepción para registrar cantidades recibidas.
+                  </p>
+                ) : null}
+              </>
+            )}
           </div>
         ) : null}
       </DialogContent>

@@ -25,6 +25,8 @@ import {
   AddSupplierQuoteSchema,
   ApprovePurchaseRequestDto,
   ApprovePurchaseRequestSchema,
+  CancelPurchaseRequestDto,
+  CancelPurchaseRequestSchema,
   CreatePurchaseRequestAwardsDto,
   CreatePurchaseRequestAwardsSchema,
   CreatePurchaseOrderDto,
@@ -45,8 +47,12 @@ import {
   ListPurchaseRequestsQuerySchema,
   ListSuppliersQueryDto,
   ListSuppliersQuerySchema,
+  LookupSupplierDocumentQueryDto,
+  LookupSupplierDocumentSchema,
   ReceivePurchaseOrderDto,
   ReceivePurchaseOrderSchema,
+  RejectPurchaseRequestDto,
+  RejectPurchaseRequestSchema,
   SearchSuppliersQueryDto,
   SearchSuppliersQuerySchema,
   SetSupplierStatusDto,
@@ -142,6 +148,36 @@ export class PurchasingController {
     );
   }
 
+  @Post('requests/:id/reject')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Rechazar solicitud de compra' })
+  rejectRequest(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(RejectPurchaseRequestSchema)) body: RejectPurchaseRequestDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.purchasingService.rejectPurchaseRequest(
+      id,
+      RejectPurchaseRequestSchema.parse(body),
+      actor,
+    );
+  }
+
+  @Post('requests/:id/cancel')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Cancelar solicitud de compra' })
+  cancelRequest(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(CancelPurchaseRequestSchema)) body: CancelPurchaseRequestDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.purchasingService.cancelPurchaseRequest(
+      id,
+      CancelPurchaseRequestSchema.parse(body),
+      actor,
+    );
+  }
+
   @Post('requests/:id/awards')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
   @ApiOperation({ summary: 'Registrar adjudicaciones por línea' })
@@ -207,6 +243,17 @@ export class PurchasingController {
     @Query(new ZodValidationPipe(ListSuppliersQuerySchema)) query: ListSuppliersQueryDto,
   ) {
     return this.supplierProfileService.list(ListSuppliersQuerySchema.parse(query));
+  }
+
+  @Get('suppliers/lookup')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Buscar tercero por documento para reutilizar su identidad en el alta' })
+  lookupSupplierByDocument(
+    @Query(new ZodValidationPipe(LookupSupplierDocumentSchema))
+    query: LookupSupplierDocumentQueryDto,
+  ) {
+    const parsed = LookupSupplierDocumentSchema.parse(query);
+    return this.supplierProfileService.lookupByDocument(parsed.documentType, parsed.documentNumber);
   }
 
   @Get('suppliers/:partyRefId')

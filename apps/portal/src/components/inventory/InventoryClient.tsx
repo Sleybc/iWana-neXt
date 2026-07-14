@@ -25,9 +25,11 @@ import {
 import {
   ApiError,
   type AddSupplierQuoteDto,
+  type CancelPurchaseRequestDto,
   type CreateInventoryItemDto,
   type CreateInventoryCategoryDto,
   type CreatePurchaseOrderDto,
+  type CreatePurchaseRequestAwardsDto,
   type CreatePurchaseRequestDto,
   type CreateSupplierDto,
   type CreateCounterPurchaseDto,
@@ -52,6 +54,7 @@ import {
   type PurchaseOrderRecord,
   type PurchaseRequestRecord,
   type ReceivePurchaseOrderDto,
+  type RejectPurchaseRequestDto,
   type SerializedAssetRecord,
   type StockBalanceRecord,
   type StockLocationRecord,
@@ -139,11 +142,40 @@ function resolveLocationCustodyFilter(value: string | null): LocationMatrixCusto
   return value === 'mobile' ? 'mobile' : 'all';
 }
 
+function mapValidationDetails(details: unknown): string | null {
+  if (!details || typeof details !== 'object') {
+    return null;
+  }
+
+  const fieldErrors = (details as { fieldErrors?: Record<string, string[] | undefined> })
+    .fieldErrors;
+  if (!fieldErrors || typeof fieldErrors !== 'object') {
+    return null;
+  }
+
+  const messages = Object.values(fieldErrors)
+    .flatMap((entries) => entries ?? [])
+    .map((message) => message.trim())
+    .filter((message) => message.length > 0);
+
+  if (messages.length === 0) {
+    return null;
+  }
+
+  return messages.slice(0, 3).join(' ');
+}
+
 function mapInventoryError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 401) return 'Tu sesión expiró. Inicia sesión de nuevo para continuar.';
     if (error.status === 403) return 'No tienes permisos para operar Inventario.';
     if (error.status === 404) return 'El recurso solicitado ya no está disponible.';
+    if (error.code === 'VALIDATION_ERROR') {
+      const detailMessage = mapValidationDetails(error.details);
+      if (detailMessage) {
+        return detailMessage;
+      }
+    }
     return error.message;
   }
 
@@ -185,6 +217,9 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const [createRequestError, setCreateRequestError] = useState<string | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [approveError, setApproveError] = useState<string | null>(null);
+  const [awardsError, setAwardsError] = useState<string | null>(null);
+  const [rejectError, setRejectError] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [receiptError, setReceiptError] = useState<string | null>(null);
   const [latestQuoteAmount, setLatestQuoteAmount] = useState<string | null>(null);
@@ -198,6 +233,9 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
   const [isSubmittingQuote, setIsSubmittingQuote] = useState(false);
   const [isSubmittingApprove, setIsSubmittingApprove] = useState(false);
+  const [isSubmittingAwards, setIsSubmittingAwards] = useState(false);
+  const [isSubmittingReject, setIsSubmittingReject] = useState(false);
+  const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [isSubmittingReceipt, setIsSubmittingReceipt] = useState(false);
   const [isSubmittingCounterPurchase, setIsSubmittingCounterPurchase] = useState(false);
@@ -1115,6 +1153,45 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     }
   }
 
+  async function handleCreateAwards(requestId: string, payload: CreatePurchaseRequestAwardsDto) {
+    setIsSubmittingAwards(true);
+    setAwardsError(null);
+    try {
+      await purchasingApi.createAwards(requestId, payload);
+      await loadData(true);
+    } catch (submitError) {
+      setAwardsError(mapInventoryError(submitError));
+    } finally {
+      setIsSubmittingAwards(false);
+    }
+  }
+
+  async function handleRejectRequest(requestId: string, payload: RejectPurchaseRequestDto) {
+    setIsSubmittingReject(true);
+    setRejectError(null);
+    try {
+      await purchasingApi.rejectRequest(requestId, payload);
+      await loadData(true);
+    } catch (submitError) {
+      setRejectError(mapInventoryError(submitError));
+    } finally {
+      setIsSubmittingReject(false);
+    }
+  }
+
+  async function handleCancelRequest(requestId: string, payload: CancelPurchaseRequestDto) {
+    setIsSubmittingCancel(true);
+    setCancelError(null);
+    try {
+      await purchasingApi.cancelRequest(requestId, payload);
+      await loadData(true);
+    } catch (submitError) {
+      setCancelError(mapInventoryError(submitError));
+    } finally {
+      setIsSubmittingCancel(false);
+    }
+  }
+
   const loadOrderDetailForRequest = useCallback(async (requestId: string) => {
     try {
       const orders = await purchasingApi.listOrders({ purchaseRequestId: requestId });
@@ -1678,11 +1755,17 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             isSubmittingRequest={isSubmittingRequest}
             isSubmittingQuote={isSubmittingQuote}
             isSubmittingApprove={isSubmittingApprove}
+            isSubmittingAwards={isSubmittingAwards}
+            isSubmittingReject={isSubmittingReject}
+            isSubmittingCancel={isSubmittingCancel}
             isSubmittingOrder={isSubmittingOrder}
             isSubmittingReceipt={isSubmittingReceipt}
             createError={createRequestError}
             quoteError={quoteError}
             approveError={approveError}
+            awardsError={awardsError}
+            rejectError={rejectError}
+            cancelError={cancelError}
             orderError={orderError}
             receiptError={receiptError}
             counterPurchaseError={counterPurchaseError}
@@ -1691,6 +1774,9 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             onCreateRequest={handleCreateRequest}
             onAddQuote={handleAddQuote}
             onApproveRequest={handleApproveRequest}
+            onCreateAwards={handleCreateAwards}
+            onRejectRequest={handleRejectRequest}
+            onCancelRequest={handleCancelRequest}
             onCreateOrder={handleCreateOrder}
             onReceiveOrder={handleReceiveOrder}
             onCounterPurchase={handleCounterPurchase}

@@ -10,6 +10,8 @@ import {
   PurchaseRequestPriority,
   PurchaseRequestStatus,
   PurchaseRequestType,
+  PurchaseRfqInvitationStatus,
+  PurchaseRfqStatus,
   UserRole,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
@@ -42,6 +44,9 @@ jest.mock('@iwana/db', () => ({
   GoodsReceiptLine: class GoodsReceiptLine {},
   InventoryItem: class InventoryItem {},
   StockLot: class StockLot {},
+  PurchaseRequestLine: class PurchaseRequestLine {},
+  PurchaseRfq: class PurchaseRfq {},
+  PurchaseRfqInvitation: class PurchaseRfqInvitation {},
 }));
 
 jest.mock('../../auth/guards/jwt-auth.guard', () => ({
@@ -115,6 +120,7 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
   const mockRunInTenantSchema = runInTenantSchema as jest.MockedFunction<typeof runInTenantSchema>;
   const supplierPartyPortMock: jest.Mocked<SupplierPartyPort> = {
     getSupplierSummary: jest.fn(),
+    getSupplierSummariesBatch: jest.fn(),
     searchSuppliers: jest.fn(),
   } as never;
 
@@ -124,12 +130,49 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
     quotes: [] as Array<Record<string, unknown>>,
     orders: [] as Array<Record<string, unknown>>,
     orderLines: [] as Array<Record<string, unknown>>,
+    rfqs: [] as Array<Record<string, unknown>>,
+    rfqInvitations: [] as Array<Record<string, unknown>>,
     nextRequest: 1,
     nextRequestLine: 1,
     nextQuote: 1,
     nextOrder: 1,
     nextLine: 1,
   };
+
+  const cancelActiveForRequest = jest
+    .fn()
+    .mockImplementation(
+      async (
+        _manager: unknown,
+        _tenantId: string,
+        purchaseRequestId: string,
+        actor: JwtPayload,
+      ) => {
+        const activeRfq = state.rfqs.find(
+          (rfq) =>
+            rfq.purchaseRequestId === purchaseRequestId &&
+            [PurchaseRfqStatus.DRAFT, PurchaseRfqStatus.SENT, PurchaseRfqStatus.RECEIVING].includes(
+              rfq.status as PurchaseRfqStatus,
+            ),
+        );
+        if (!activeRfq) {
+          return;
+        }
+
+        activeRfq.status = PurchaseRfqStatus.CANCELLED;
+        activeRfq.closedAt = new Date();
+        activeRfq.closedByUserId = actor.sub;
+
+        for (const invitation of state.rfqInvitations) {
+          if (
+            invitation.rfqId === activeRfq.id &&
+            invitation.status === PurchaseRfqInvitationStatus.INVITED
+          ) {
+            invitation.status = PurchaseRfqInvitationStatus.CANCELLED;
+          }
+        }
+      },
+    );
 
   function nextRequestId(): string {
     const suffix = String(state.nextRequest++).padStart(12, '0');
@@ -189,11 +232,19 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
         }
 
         if (payload.id && payload.status && !payload.orderNumber && !payload.purchaseOrderId) {
-          const index = state.requests.findIndex((entry) => entry.id === payload.id);
-          if (index >= 0) {
-            state.requests[index] = { ...state.requests[index], ...payload };
+          const requestIndex = state.requests.findIndex((entry) => entry.id === payload.id);
+          if (requestIndex >= 0) {
+            state.requests[requestIndex] = { ...state.requests[requestIndex], ...payload };
+            return state.requests[requestIndex];
           }
-          return payload;
+        }
+
+        if (payload.id) {
+          const lineIndex = state.requestLines.findIndex((entry) => entry.id === payload.id);
+          if (lineIndex >= 0) {
+            state.requestLines[lineIndex] = { ...state.requestLines[lineIndex], ...payload };
+            return state.requestLines[lineIndex];
+          }
         }
 
         if (payload.orderNumber) {
@@ -272,7 +323,10 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
         PurchasingService,
         PurchasingPolicyService,
         PurchasingQueryService,
-        { provide: RfqService, useValue: { applyQuoteToInvitation: jest.fn() } },
+        {
+          provide: RfqService,
+          useValue: { applyQuoteToInvitation: jest.fn(), cancelActiveForRequest },
+        },
         { provide: RfqPdfService, useValue: { renderOrThrow: jest.fn() } },
         {
           provide: SupplierProfileService,
@@ -303,12 +357,46 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
     state.quotes = [];
     state.orders = [];
     state.orderLines = [];
+    state.rfqs = [];
+    state.rfqInvitations = [];
     state.nextRequest = 1;
     state.nextRequestLine = 1;
     state.nextQuote = 1;
     state.nextOrder = 1;
     state.nextLine = 1;
     jest.clearAllMocks();
+    cancelActiveForRequest.mockImplementation(
+      async (
+        _manager: unknown,
+        _tenantId: string,
+        purchaseRequestId: string,
+        actor: JwtPayload,
+      ) => {
+        const activeRfq = state.rfqs.find(
+          (rfq) =>
+            rfq.purchaseRequestId === purchaseRequestId &&
+            [PurchaseRfqStatus.DRAFT, PurchaseRfqStatus.SENT, PurchaseRfqStatus.RECEIVING].includes(
+              rfq.status as PurchaseRfqStatus,
+            ),
+        );
+        if (!activeRfq) {
+          return;
+        }
+
+        activeRfq.status = PurchaseRfqStatus.CANCELLED;
+        activeRfq.closedAt = new Date();
+        activeRfq.closedByUserId = actor.sub;
+
+        for (const invitation of state.rfqInvitations) {
+          if (
+            invitation.rfqId === activeRfq.id &&
+            invitation.status === PurchaseRfqInvitationStatus.INVITED
+          ) {
+            invitation.status = PurchaseRfqInvitationStatus.CANCELLED;
+          }
+        }
+      },
+    );
     supplierPartyPortMock.getSupplierSummary.mockResolvedValue({
       partyRefId: '55555555-5555-4555-8555-555555555555',
       displayName: 'Proveedor demo',
@@ -318,6 +406,22 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
       city: 'Bogotá',
       status: PartyStatus.ACTIVE,
     });
+    supplierPartyPortMock.getSupplierSummariesBatch.mockResolvedValue(
+      new Map([
+        [
+          '55555555-5555-4555-8555-555555555555',
+          {
+            partyRefId: '55555555-5555-4555-8555-555555555555',
+            displayName: 'Proveedor demo',
+            primaryContact: 'Mesa comercial',
+            phone: '3000000000',
+            email: 'compras@proveedor.test',
+            city: 'Bogotá',
+            status: PartyStatus.ACTIVE,
+          },
+        ],
+      ]),
+    );
     supplierPartyPortMock.searchSuppliers.mockResolvedValue({
       data: [
         {
@@ -456,5 +560,98 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
       }),
     ]);
     expect(supplierPartyPortMock.searchSuppliers).toHaveBeenCalledWith('demo', 2);
+  });
+
+  it('rechaza solicitud PENDING_QUOTES y cancela la RFQ activa con invitaciones INVITED', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/purchasing/requests')
+      .set('Authorization', 'Bearer support-token')
+      .send({
+        title: 'Reposición con RFQ a rechazar',
+        requestType: PurchaseRequestType.REPLENISHMENT,
+        priority: PurchaseRequestPriority.HIGH,
+        requestingArea: 'Operaciones',
+        justification: 'Solicitud de prueba para rechazo con cascada de cotización.',
+        neededByDate: '2026-08-01',
+        lines: [
+          {
+            sourceKind: PurchaseRequestLineSourceKind.INVENTORY_ITEM,
+            inventoryItemId: '44444444-4444-4444-8444-444444444444',
+            quantityRequested: 2,
+            unitOfMeasure: 'unidad',
+          },
+        ],
+      })
+      .expect(201);
+
+    const requestId = created.body.id as string;
+    state.rfqs.push({
+      id: '99999999-9999-4999-8999-999999999991',
+      tenantId: 'tenant-001',
+      purchaseRequestId: requestId,
+      status: PurchaseRfqStatus.SENT,
+    });
+    state.rfqInvitations.push({
+      id: '99999999-9999-4999-8999-999999999992',
+      tenantId: 'tenant-001',
+      rfqId: '99999999-9999-4999-8999-999999999991',
+      partyRefId: '55555555-5555-4555-8555-555555555555',
+      status: PurchaseRfqInvitationStatus.INVITED,
+    });
+
+    const rejected = await request(app.getHttpServer())
+      .post(`/api/v1/purchasing/requests/${requestId}/reject`)
+      .set('Authorization', 'Bearer support-token')
+      .send({ reason: 'Cotizaciones fuera de presupuesto' })
+      .expect(201);
+
+    expect(rejected.body.status).toBe(PurchaseRequestStatus.REJECTED);
+    expect(rejected.body.resolutionReason).toBe('Cotizaciones fuera de presupuesto');
+    expect(rejected.body.resolvedByUserId).toBe('support-001');
+    expect(cancelActiveForRequest).toHaveBeenCalled();
+    expect(state.rfqs).toHaveLength(1);
+    expect(state.rfqInvitations).toHaveLength(1);
+    expect(state.rfqs[0]?.status).toBe(PurchaseRfqStatus.CANCELLED);
+    expect(state.rfqInvitations[0]?.status).toBe(PurchaseRfqInvitationStatus.CANCELLED);
+  });
+
+  it('bloquea cancelación cuando la solicitud ya está convertida a OC', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/purchasing/requests')
+      .set('Authorization', 'Bearer support-token')
+      .send({
+        title: 'Solicitud ya convertida a OC',
+        requestType: PurchaseRequestType.REPLENISHMENT,
+        priority: PurchaseRequestPriority.LOW,
+        requestingArea: 'Operaciones',
+        justification: 'Solicitud de prueba para denegar cancelación tras conversión a OC.',
+        neededByDate: '2026-08-15',
+        lines: [
+          {
+            sourceKind: PurchaseRequestLineSourceKind.INVENTORY_ITEM,
+            inventoryItemId: '44444444-4444-4444-8444-444444444444',
+            quantityRequested: 1,
+            unitOfMeasure: 'unidad',
+          },
+        ],
+      })
+      .expect(201);
+
+    const requestId = created.body.id as string;
+    const requestIndex = state.requests.findIndex((entry) => entry.id === requestId);
+    state.requests[requestIndex] = {
+      ...state.requests[requestIndex],
+      status: PurchaseRequestStatus.CONVERTED_TO_PO,
+    };
+
+    const response = await request(app.getHttpServer())
+      .post(`/api/v1/purchasing/requests/${requestId}/cancel`)
+      .set('Authorization', 'Bearer support-token')
+      .send({ reason: 'Ya no aplica' })
+      .expect(400);
+
+    expect(response.body.message).toEqual(
+      expect.stringContaining('no está en un estado que permita cancelarla'),
+    );
   });
 });

@@ -1275,6 +1275,30 @@ export class ApprovePurchaseRequestDto {
   exceptionReason?: string | null;
 }
 
+export const RejectPurchaseRequestSchema = z.object({
+  reason: z.string().trim().min(10).max(4000),
+});
+
+export type RejectPurchaseRequestInput = z.infer<typeof RejectPurchaseRequestSchema>;
+
+export class RejectPurchaseRequestDto {
+  @ApiProperty()
+  @Allow()
+  reason!: string;
+}
+
+export const CancelPurchaseRequestSchema = z.object({
+  reason: z.string().trim().min(5).max(4000),
+});
+
+export type CancelPurchaseRequestInput = z.infer<typeof CancelPurchaseRequestSchema>;
+
+export class CancelPurchaseRequestDto {
+  @ApiProperty()
+  @Allow()
+  reason!: string;
+}
+
 export const PurchaseOrderLineSchema = z.object({
   purchaseRequestLineId: optionalUuidLike(),
   itemId: z.string().trim().min(1).max(160),

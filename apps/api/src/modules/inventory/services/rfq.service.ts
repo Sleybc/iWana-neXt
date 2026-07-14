@@ -390,6 +390,46 @@ export class RfqService {
     }
   }
 
+  /**
+   * Cancela la ronda de cotización activa de una solicitud (si existe) y marca sus
+   * invitaciones pendientes como canceladas. Reutilizable desde el rechazo/cancelación
+   * de la solicitud de compra; opera dentro de la transacción del llamador.
+   */
+  async cancelActiveForRequest(
+    manager: EntityManager,
+    tenantId: string,
+    purchaseRequestId: string,
+    actor: JwtPayload,
+  ): Promise<void> {
+    const activeRfq = await manager
+      .createQueryBuilder(PurchaseRfq, 'rfq')
+      .where('rfq.tenant_id = :tenantId', { tenantId })
+      .andWhere('rfq.purchase_request_id = :purchaseRequestId', { purchaseRequestId })
+      .andWhere('rfq.status IN (:...statuses)', { statuses: ACTIVE_RFQ_STATUSES })
+      .getOne();
+
+    if (!activeRfq) {
+      return;
+    }
+
+    const now = new Date();
+    activeRfq.status = PurchaseRfqStatus.CANCELLED;
+    activeRfq.closedAt = now;
+    activeRfq.closedByUserId = actor.sub;
+    await manager.save(PurchaseRfq, activeRfq);
+
+    const invitations = await manager.find(PurchaseRfqInvitation, {
+      where: { tenantId, rfqId: activeRfq.id },
+    });
+
+    for (const invitation of invitations) {
+      if (invitation.status === PurchaseRfqInvitationStatus.INVITED) {
+        invitation.status = PurchaseRfqInvitationStatus.CANCELLED;
+        await manager.save(PurchaseRfqInvitation, invitation);
+      }
+    }
+  }
+
   private async requireRfq(
     manager: EntityManager,
     tenantId: string,

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Badge, Button, Input } from '@iwana/ui';
+import { Badge, Button, Input, Select } from '@iwana/ui';
 import {
   PurchaseRfqInvitationStatus,
   PurchaseRfqStatus,
@@ -24,6 +24,8 @@ import {
   getPurchaseRfqInvitationStatusBadgeVariant,
   getPurchaseRfqInvitationStatusLabel,
   getPurchaseRfqStatusLabel,
+  PURCHASE_CURRENCY_OPTIONS,
+  type PurchaseCurrencyOption,
 } from './inventory-labels';
 import { SupplierMultiPicker, type SupplierMultiSelection } from './SupplierMultiPicker';
 
@@ -59,6 +61,8 @@ export function RfqInvitationsPanel({
   const [selectedSuppliers, setSelectedSuppliers] = useState<SupplierMultiSelection[]>([]);
   const [responseDeadline, setResponseDeadline] = useState('');
   const [notes, setNotes] = useState('');
+  const [rfqCurrency, setRfqCurrency] = useState<PurchaseCurrencyOption>('COP');
+  const [declineReason, setDeclineReason] = useState('');
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -98,7 +102,7 @@ export function RfqInvitationsPanel({
 
   async function handleCreateRfq() {
     const payload: CreateRfqDto = {
-      currency: 'COP',
+      currency: rfqCurrency,
       ...(responseDeadline.trim() ? { responseDeadline: responseDeadline.trim() } : {}),
       ...(notes.trim() ? { notes: notes.trim() } : {}),
     };
@@ -147,10 +151,17 @@ export function RfqInvitationsPanel({
       return;
     }
 
+    const trimmedReason = declineReason.trim();
+    if (trimmedReason.length < 5) {
+      setError('Indica un motivo de declinación de al menos 5 caracteres.');
+      return;
+    }
+
     await runAction(async () => {
       await purchasingApi.declineInvitation(rfq.id, invitation.id, {
-        declineReason: 'Proveedor no disponible para esta ronda.',
+        declineReason: trimmedReason,
       });
+      setDeclineReason('');
     }, 'Declinación registrada.');
   }
 
@@ -192,6 +203,18 @@ export function RfqInvitationsPanel({
           <p className="text-sm text-gray-600 dark:text-gray-300">
             Crea una ronda formal de cotización antes de registrar respuestas de proveedores.
           </p>
+          <Select
+            label="Moneda"
+            value={rfqCurrency}
+            disabled={panelDisabled}
+            onChange={(event) => setRfqCurrency(event.target.value as PurchaseCurrencyOption)}
+          >
+            {PURCHASE_CURRENCY_OPTIONS.map((currency) => (
+              <option key={currency} value={currency}>
+                {currency}
+              </option>
+            ))}
+          </Select>
           <label className="block space-y-1 text-sm">
             <span className="font-medium text-gray-900 dark:text-white">Fecha límite</span>
             <Input
@@ -293,41 +316,65 @@ export function RfqInvitationsPanel({
               description="Invita al menos un proveedor antes de enviar la solicitud."
             />
           ) : (
-            <div className="space-y-2">
-              {invitations.map((invitation) => {
-                const invitationStatus = invitation.status as PurchaseRfqInvitationStatus;
-                return (
-                  <div
-                    key={invitation.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-gray-200 px-3 py-2 text-sm dark:border-dark-border"
-                  >
-                    <div>
-                      <p className="font-medium text-gray-900 dark:text-white">
-                        Proveedor invitado
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        Invitado: {formatInventoryDate(invitation.invitedAt?.slice(0, 10) ?? null)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={getPurchaseRfqInvitationStatusBadgeVariant(invitationStatus)}>
-                        {getPurchaseRfqInvitationStatusLabel(invitationStatus)}
-                      </Badge>
-                      {invitationStatus === PurchaseRfqInvitationStatus.INVITED ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          disabled={panelDisabled}
-                          onClick={() => void handleDecline(invitation)}
+            <div className="space-y-3">
+              {invitations.some(
+                (invitation) =>
+                  (invitation.status as PurchaseRfqInvitationStatus) ===
+                  PurchaseRfqInvitationStatus.INVITED,
+              ) ? (
+                <label className="block space-y-1 text-sm">
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    Motivo de declinación
+                  </span>
+                  <textarea
+                    aria-label="Motivo de declinación"
+                    className={`w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white ${interactiveFocusClassName}`}
+                    rows={2}
+                    placeholder="Describe por qué se declina al proveedor"
+                    value={declineReason}
+                    disabled={panelDisabled}
+                    onChange={(event) => setDeclineReason(event.target.value)}
+                  />
+                </label>
+              ) : null}
+              <div className="space-y-2">
+                {invitations.map((invitation) => {
+                  const invitationStatus = invitation.status as PurchaseRfqInvitationStatus;
+                  const supplierName = invitation.displayName?.trim() || 'Proveedor invitado';
+                  return (
+                    <div
+                      key={invitation.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-gray-200 px-3 py-2 text-sm dark:border-dark-border"
+                    >
+                      <div>
+                        <p className="font-medium text-gray-900 dark:text-white">{supplierName}</p>
+                        <p className="text-xs text-gray-500">
+                          Invitado:{' '}
+                          {formatInventoryDate(invitation.invitedAt?.slice(0, 10) ?? null)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant={getPurchaseRfqInvitationStatusBadgeVariant(invitationStatus)}
                         >
-                          Declinar
-                        </Button>
-                      ) : null}
+                          {getPurchaseRfqInvitationStatusLabel(invitationStatus)}
+                        </Badge>
+                        {invitationStatus === PurchaseRfqInvitationStatus.INVITED ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            disabled={panelDisabled || declineReason.trim().length < 5}
+                            onClick={() => void handleDecline(invitation)}
+                          >
+                            Declinar
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>

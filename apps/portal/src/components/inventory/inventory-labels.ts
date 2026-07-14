@@ -116,6 +116,10 @@ export const SERIALIZED_ASSET_STATUS_LABELS: Record<SerializedAssetStatus, strin
   [SerializedAssetStatus.LOST]: 'Perdido',
 };
 
+export const PURCHASE_CURRENCY_OPTIONS = ['COP', 'USD', 'EUR'] as const;
+
+export type PurchaseCurrencyOption = (typeof PURCHASE_CURRENCY_OPTIONS)[number];
+
 export const PURCHASE_REQUEST_STATUS_LABELS: Record<PurchaseRequestStatus, string> = {
   [PurchaseRequestStatus.DRAFT]: 'Borrador',
   [PurchaseRequestStatus.PENDING_QUOTES]: 'Pendiente de cotizaciones',

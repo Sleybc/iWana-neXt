@@ -9,12 +9,15 @@ export type PurchaseWorkbenchTab =
   | 'rfq'
   | 'quotes'
   | 'approval'
+  | 'awards'
   | 'orders'
   | 'receipts';
 
 export interface PurchaseNextAction {
   message: string;
   suggestedTab: PurchaseWorkbenchTab;
+  /** Banner informativo de cierre; sin CTA de navegación. */
+  terminal?: boolean;
 }
 
 export const PURCHASE_WORKBENCH_TAB_LABELS: Record<PurchaseWorkbenchTab, string> = {
@@ -23,9 +26,15 @@ export const PURCHASE_WORKBENCH_TAB_LABELS: Record<PurchaseWorkbenchTab, string>
   rfq: 'Cotización',
   quotes: 'Cotizaciones',
   approval: 'Aprobación',
+  awards: 'Adjudicación',
   orders: 'Órdenes',
   receipts: 'Recepciones',
 };
+
+function hasPendingAwardableLines(detail: PurchaseRequestDetailRecord): boolean {
+  const awardedLineIds = new Set(detail.awards.map((award) => award.purchaseRequestLineId));
+  return detail.lines.some((line) => Boolean(line.inventoryItemId) && !awardedLineIds.has(line.id));
+}
 
 export function getPurchaseNextAction(
   detail: PurchaseRequestDetailRecord | null,
@@ -35,6 +44,22 @@ export function getPurchaseNextAction(
   }
 
   const { request, approvalPolicy, orders, rfq } = detail;
+
+  if (request.status === PurchaseRequestStatus.REJECTED) {
+    return {
+      message: 'Esta solicitud fue rechazada. No hay más pasos en el flujo.',
+      suggestedTab: 'summary',
+      terminal: true,
+    };
+  }
+
+  if (request.status === PurchaseRequestStatus.CANCELLED) {
+    return {
+      message: 'Esta solicitud fue cancelada. No hay más pasos en el flujo.',
+      suggestedTab: 'summary',
+      terminal: true,
+    };
+  }
 
   if (rfq?.rfq) {
     if (rfq.rfq.status === PurchaseRfqStatus.DRAFT) {
@@ -92,6 +117,13 @@ export function getPurchaseNextAction(
   }
 
   if (request.status === PurchaseRequestStatus.APPROVED) {
+    if (hasPendingAwardableLines(detail)) {
+      return {
+        message: 'Adjudica las líneas aprobadas antes de generar la orden.',
+        suggestedTab: 'awards',
+      };
+    }
+
     return {
       message: 'Genera la orden de compra para iniciar el abastecimiento.',
       suggestedTab: 'orders',
@@ -111,6 +143,12 @@ export function getPurchaseNextAction(
         suggestedTab: 'receipts',
       };
     }
+
+    return {
+      message: 'La mercancía ya fue recibida. El flujo de esta solicitud está cerrado.',
+      suggestedTab: 'receipts',
+      terminal: true,
+    };
   }
 
   return null;

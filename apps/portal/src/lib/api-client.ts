@@ -5965,6 +5965,7 @@ export interface PurchaseRfqInvitationRecord {
   respondedAt: string | null;
   declinedAt: string | null;
   declineReason: string | null;
+  displayName?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -6487,6 +6488,14 @@ export interface ApprovePurchaseRequestDto {
   exceptionReason?: string | null;
 }
 
+export interface RejectPurchaseRequestDto {
+  reason: string;
+}
+
+export interface CancelPurchaseRequestDto {
+  reason: string;
+}
+
 export interface PurchaseRequestLineAwardInput {
   purchaseRequestLineId: string;
   awardedPartyRefId: string;
@@ -6830,6 +6839,20 @@ export const purchasingApi = {
   approveRequest: (id: string, dto: ApprovePurchaseRequestDto, tenantSlug?: string) =>
     request<PurchaseRequestRecord>(
       `/purchasing/requests/${id}/approve`,
+      { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  rejectRequest: (id: string, dto: RejectPurchaseRequestDto, tenantSlug?: string) =>
+    request<PurchaseRequestRecord>(
+      `/purchasing/requests/${id}/reject`,
+      { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  cancelRequest: (id: string, dto: CancelPurchaseRequestDto, tenantSlug?: string) =>
+    request<PurchaseRequestRecord>(
+      `/purchasing/requests/${id}/cancel`,
       { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
       tenantSlug,
     ),
