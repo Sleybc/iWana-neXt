@@ -63,6 +63,11 @@ describe('PartyReadAdapter', () => {
         birthDate: null,
         incorporationDate: null,
         notes: null,
+        address: null,
+        latitude: null,
+        longitude: null,
+        city: null,
+        department: null,
         mergedIntoPartyId: null,
         createdAt: new Date('2025-01-01'),
         updatedAt: new Date('2025-01-01'),
@@ -115,6 +120,11 @@ describe('PartyReadAdapter', () => {
           'documentNumber',
           'displayName',
           'status',
+          'address',
+          'latitude',
+          'longitude',
+          'city',
+          'department',
         ]),
       );
     });
@@ -204,6 +214,110 @@ describe('PartyReadAdapter', () => {
       const result = await adapter.listRoles('party-uuid-001');
 
       expect(result).toEqual([]);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  describe('getByIds', () => {
+    it('retorna lista de snapshots para los ids dados', async () => {
+      const parties = [
+        Object.assign(new Party(), {
+          id: 'party-uuid-001',
+          partyType: 'NATURAL',
+          documentType: DocumentTypeParty.CC,
+          documentNumber: 'DOC-FICT-001',
+          displayName: 'Nombre Ficticio',
+          legalName: null,
+          status: 'ACTIVE',
+          contacts: [],
+          roles: [],
+        }),
+        Object.assign(new Party(), {
+          id: 'party-uuid-002',
+          partyType: 'JURIDICAL',
+          documentType: DocumentTypeParty.NIT,
+          documentNumber: 'NIT-FICT-001',
+          displayName: 'Empresa Ficticia',
+          legalName: 'Empresa Ficticia SAS',
+          status: 'ACTIVE',
+          contacts: [],
+          roles: [],
+        }),
+      ];
+      mockQr.manager.find.mockResolvedValue(parties);
+
+      const result = await adapter.getByIds(['party-uuid-001', 'party-uuid-002']);
+
+      expect(mockQr.manager.find).toHaveBeenCalledWith(
+        Party,
+        expect.objectContaining({ where: expect.anything() }),
+      );
+      expect(result).toHaveLength(2);
+      expect(result[0]!.id).toBe('party-uuid-001');
+      expect(result[1]!.id).toBe('party-uuid-002');
+    });
+
+    it('retorna lista vacía sin llamar a la BD cuando ids esta vacio', async () => {
+      const result = await adapter.getByIds([]);
+
+      expect(mockQr.manager.find).not.toHaveBeenCalled();
+      expect(result).toEqual([]);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  describe('listContactsForIds', () => {
+    it('agrupa contactos por partyId en un Map', async () => {
+      const contacts = [
+        Object.assign(new PartyContact(), {
+          id: 'contact-uuid-001',
+          partyId: 'party-uuid-001',
+          type: 'EMAIL',
+          value: 'noreply@example.invalid',
+          isPrimary: true,
+          metadata: null,
+        }),
+        Object.assign(new PartyContact(), {
+          id: 'contact-uuid-002',
+          partyId: 'party-uuid-002',
+          type: 'PHONE',
+          value: '3000000000',
+          isPrimary: true,
+          metadata: null,
+        }),
+        Object.assign(new PartyContact(), {
+          id: 'contact-uuid-003',
+          partyId: 'party-uuid-001',
+          type: 'PHONE',
+          value: '3100000000',
+          isPrimary: false,
+          metadata: null,
+        }),
+      ];
+      mockQr.manager.find.mockResolvedValue(contacts);
+
+      const result = await adapter.listContactsForIds(['party-uuid-001', 'party-uuid-002']);
+
+      expect(result).toBeInstanceOf(Map);
+      expect(result.get('party-uuid-001')).toHaveLength(2);
+      expect(result.get('party-uuid-002')).toHaveLength(1);
+      expect(result.get('party-uuid-002')![0]!.type).toBe('PHONE');
+    });
+
+    it('retorna Map vacio sin llamar a la BD cuando partyIds esta vacio', async () => {
+      const result = await adapter.listContactsForIds([]);
+
+      expect(mockQr.manager.find).not.toHaveBeenCalled();
+      expect(result.size).toBe(0);
+    });
+
+    it('no inserta clave en el Map cuando el party no tiene contactos', async () => {
+      mockQr.manager.find.mockResolvedValue([]);
+
+      const result = await adapter.listContactsForIds(['party-uuid-001']);
+
+      expect(result.has('party-uuid-001')).toBe(false);
+      expect(result.size).toBe(0);
     });
   });
 

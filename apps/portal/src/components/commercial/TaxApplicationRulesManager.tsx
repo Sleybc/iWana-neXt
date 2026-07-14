@@ -37,6 +37,7 @@ import {
   interactiveFocusClassName,
   PortalAlert,
   PortalEmptyState,
+  PortalPanel,
   PortalSkeletonBlock,
 } from '@/components/shared/portal-ui';
 
@@ -198,28 +199,34 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Badge variant={portalActiveCountBadgeVariant}>
-          {activeApplicationsCount} activa{activeApplicationsCount === 1 ? '' : 's'}
-        </Badge>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Actualizar reglas de aplicación"
-          title="Actualizar reglas de aplicación"
-          onClick={() => void load()}
-        >
-          <RotateCcw className="h-4 w-4" aria-hidden="true" />
-        </Button>
-        {canEdit && (
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />
-            Vincular regla
+    <PortalPanel
+      eyebrow="Tributación"
+      title="Reglas de aplicación"
+      description="Vincula reglas tributarias con definiciones del catálogo y prioridades de evaluación."
+      actions={
+        <>
+          <Badge variant={portalActiveCountBadgeVariant}>
+            {activeApplicationsCount} activa{activeApplicationsCount === 1 ? '' : 's'}
+          </Badge>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Actualizar reglas de aplicación"
+            title="Actualizar reglas de aplicación"
+            onClick={() => void load()}
+          >
+            <RotateCcw className="h-4 w-4" aria-hidden="true" />
           </Button>
-        )}
-      </div>
-
+          {canEdit && (
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              Vincular regla
+            </Button>
+          )}
+        </>
+      }
+      contentClassName="flex flex-col gap-4"
+    >
       {error && (
         <PortalAlert
           variant="error"
@@ -618,6 +625,6 @@ export function TaxApplicationRulesManager({ canEdit }: TaxApplicationRulesManag
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </PortalPanel>
   );
 }

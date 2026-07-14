@@ -82,6 +82,12 @@ export class PurchaseRequest {
   @Column({ name: 'approved_by_user_id', type: 'uuid', nullable: true })
   approvedByUserId: string | null;
 
+  @Column({ name: 'resolution_reason', type: 'text', nullable: true })
+  resolutionReason: string | null;
+
+  @Column({ name: 'resolved_by_user_id', type: 'uuid', nullable: true })
+  resolvedByUserId: string | null;
+
   @Column({ name: 'needed_by_date', type: 'date', nullable: true })
   neededByDate: string | null;
 

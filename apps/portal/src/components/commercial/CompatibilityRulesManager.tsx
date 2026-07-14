@@ -30,11 +30,13 @@ import {
 import {
   PortalAlert,
   PortalEmptyState,
+  PortalPanel,
   PortalSkeletonBlock,
   portalDataTableCellClassName,
   portalDataTableHeadClassName,
   portalDataTableShellClassName,
 } from '@/components/shared/portal-ui';
+import { commercialTextareaClassName } from '@/components/commercial/commercial-field-styles';
 
 interface CompatibilityRulesManagerProps {
   canEdit: boolean;
@@ -64,9 +66,6 @@ const EMPTY_CREATE_FORM: CreateFormState = {
   effectiveFrom: '',
   note: '',
 };
-
-const textareaBaseClass =
-  'w-full rounded-2xl border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none transition-colors focus:border-iwana-secondary focus:ring-2 focus:ring-iwana-secondary/30 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100';
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '—';
@@ -249,25 +248,31 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
   const itemOptions = catalogItems.map((item) => ({ value: item.id, label: item.name }));
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Badge variant={portalActiveCountBadgeVariant}>
-          {activeCount} activa{activeCount === 1 ? '' : 's'}
-        </Badge>
-        {canEdit && (
-          <Button
-            size="sm"
-            onClick={() => {
-              setIsCreateModalOpen(true);
-              setMutationError(null);
-            }}
-          >
-            <Plus className="mr-1 h-4 w-4" aria-hidden="true" />
-            Nueva regla de reemplazo
-          </Button>
-        )}
-      </div>
-
+    <PortalPanel
+      eyebrow="Reglas"
+      title="Compatibilidad"
+      description="Define reglas de reemplazo entre ítems del catálogo para guiar ventas."
+      actions={
+        <>
+          <Badge variant={portalActiveCountBadgeVariant}>
+            {activeCount} activa{activeCount === 1 ? '' : 's'}
+          </Badge>
+          {canEdit && (
+            <Button
+              size="sm"
+              onClick={() => {
+                setIsCreateModalOpen(true);
+                setMutationError(null);
+              }}
+            >
+              <Plus className="mr-1 h-4 w-4" aria-hidden="true" />
+              Nueva regla de reemplazo
+            </Button>
+          )}
+        </>
+      }
+      contentClassName="space-y-4"
+    >
       {isLoading ? (
         <PortalSkeletonBlock className="h-28" />
       ) : loadError ? (
@@ -333,26 +338,28 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
                     </td>
                     {canEdit && (
                       <td className={portalDataTableCellClassName}>
-                        <div className="flex items-center gap-3">
-                          <button
+                        <div className="flex items-center gap-2">
+                          <Button
                             type="button"
+                            variant="secondary"
+                            size="sm"
                             onClick={() => handleOpenEdit(rule)}
-                            className="inline-flex items-center gap-1 text-sm font-medium text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-300 dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-1"
                             aria-label={`Editar regla: ${rule.sourceItem?.name ?? rule.sourceItemId}`}
                           >
                             <Pencil className="h-4 w-4" aria-hidden="true" />
                             Editar
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             type="button"
+                            variant="softDestructive"
+                            size="sm"
                             disabled={deletingId === rule.id || !rule.isActive}
                             onClick={() => handleDeactivate(rule)}
-                            className="inline-flex items-center gap-1 text-sm font-medium text-red-700 transition-colors hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-1"
                             aria-label={`Desactivar regla: ${rule.sourceItem?.name ?? rule.sourceItemId}`}
                           >
                             <Trash2 className="h-4 w-4" aria-hidden="true" />
                             Desactivar
-                          </button>
+                          </Button>
                         </div>
                       </td>
                     )}
@@ -441,7 +448,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
                 onChange={(e) => setCreateForm((prev) => ({ ...prev, note: e.target.value }))}
                 disabled={isSubmitting}
                 placeholder="Ej: Este plan fue migrado a la oferta Hogar 200 desde mayo 2025..."
-                className={textareaBaseClass}
+                className={commercialTextareaClassName}
               />
               {createFormErrors.note && (
                 <p className="mt-1 text-xs text-red-600">{createFormErrors.note}</p>
@@ -530,7 +537,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
                 value={editForm.note}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, note: e.target.value }))}
                 disabled={isSubmitting}
-                className={textareaBaseClass}
+                className={commercialTextareaClassName}
               />
               <p className="mt-1 text-right text-xs text-gray-400">{editForm.note.length}/2000</p>
             </div>
@@ -563,6 +570,6 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </PortalPanel>
   );
 }

@@ -190,6 +190,31 @@ async function setupCommercialEvidenceMocks(page: Page) {
       return;
     }
 
+    if (pathname.endsWith('/commercial/dashboard/summary') && method === 'GET') {
+      await json({
+        plansCount: 2,
+        activePlansCount: 2,
+        productsCount: 3,
+        activeProductsCount: 2,
+        servicesCount: 1,
+        activeServicesCount: 1,
+        bundlesCount: 1,
+        activeBundlesCount: 1,
+        promotionsCount: 2,
+        activePromotionsCount: 1,
+        compatibilityRulesCount: 4,
+        activeCompatibilityRulesCount: 3,
+        taxRulesCount: 5,
+        activeTaxRulesCount: 4,
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/commercial/compatibility-rules') && method === 'GET') {
+      await json({ data: [] });
+      return;
+    }
+
     if (pathname.endsWith('/commercial/compatibility/rules') && method === 'GET') {
       await json({ data: [] });
       return;
@@ -207,7 +232,8 @@ async function captureCommercialEvidence(page: Page, viewport: 'desktop' | 'mobi
   }
 
   const shots: Array<{ route: string; filename: string }> = [
-    { route: '/dashboard/commercial', filename: `commercial-plans-${viewport}.png` },
+    { route: '/dashboard/commercial', filename: `commercial-summary-${viewport}.png` },
+    { route: '/dashboard/commercial?tab=plans', filename: `commercial-plans-${viewport}.png` },
     {
       route: '/dashboard/commercial?tab=products',
       filename: `commercial-products-${viewport}.png`,

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, In } from 'typeorm';
 import {
   PurchaseOrder,
   PurchaseRequest,
@@ -82,17 +82,13 @@ export class PurchasingQueryService {
         throw new NotFoundException('Solicitud de compra no encontrada.');
       }
 
-      const [lines, quotes, awards, orders, activeRfq] = await Promise.all([
+      const [lines, quotes, orders, activeRfq] = await Promise.all([
         qr.manager.find(PurchaseRequestLine, {
           where: { tenantId, purchaseRequestId },
           order: { createdAt: 'ASC' },
         }),
         qr.manager.find(SupplierQuote, {
           where: { tenantId, purchaseRequestId },
-          order: { createdAt: 'ASC' },
-        }),
-        qr.manager.find(PurchaseRequestLineAward, {
-          where: { tenantId },
           order: { createdAt: 'ASC' },
         }),
         qr.manager.find(PurchaseOrder, {
@@ -108,9 +104,14 @@ export class PurchasingQueryService {
           .getOne(),
       ]);
 
-      const requestAwards = awards.filter((award) =>
-        lines.some((line) => line.id === award.purchaseRequestLineId),
-      );
+      const lineIds = lines.map((line) => line.id);
+      const awards = lineIds.length
+        ? await qr.manager.find(PurchaseRequestLineAward, {
+            where: { tenantId, purchaseRequestLineId: In(lineIds) },
+            order: { createdAt: 'ASC' },
+          })
+        : [];
+
       const estimatedAmount = quotes.reduce((total, quote) => total + toNumeric(quote.amount), 0);
       const approvalPolicy = this.purchasingPolicyService.evaluateApproval({
         requestType: request.requestType,
@@ -128,15 +129,29 @@ export class PurchasingQueryService {
           })
         : [];
 
+      const partyRefIds = [...new Set(rfqInvitations.map((invitation) => invitation.partyRefId))];
+      const supplierSummaries =
+        partyRefIds.length > 0
+          ? await this.supplierPartyPort.getSupplierSummariesBatch(partyRefIds)
+          : new Map();
+
       return {
         request,
         lines,
         quotes,
-        awards: requestAwards,
+        awards,
         orders,
         estimatedAmount,
         approvalPolicy,
-        rfq: activeRfq ? { rfq: activeRfq, invitations: rfqInvitations } : null,
+        rfq: activeRfq
+          ? {
+              rfq: activeRfq,
+              invitations: rfqInvitations.map((invitation) => ({
+                ...invitation,
+                displayName: supplierSummaries.get(invitation.partyRefId)?.displayName ?? null,
+              })),
+            }
+          : null,
       };
     });
   }

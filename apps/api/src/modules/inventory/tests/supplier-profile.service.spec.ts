@@ -3,6 +3,7 @@ import { DataSource, EntityManager, QueryFailedError } from 'typeorm';
 import { SupplierProfile, TenantContext, runInTenantSchema } from '@iwana/db';
 import {
   DocumentTypeParty,
+  IncotermCode,
   PartyRoleType,
   PartyStatus,
   PartyType,
@@ -82,6 +83,7 @@ describe('SupplierProfileService', () => {
 
     supplierPartyPort = {
       getSupplierSummary: jest.fn(),
+      getSupplierSummariesBatch: jest.fn(),
       searchSuppliers: jest.fn(),
       summaryFromIdentity: jest.fn(),
       findIdentityByDocument: jest.fn(),
@@ -90,6 +92,9 @@ describe('SupplierProfileService', () => {
     service = new SupplierProfileService({} as DataSource, partyWritePort, supplierPartyPort);
 
     supplierPartyPort.getSupplierSummary.mockResolvedValue(partySummary);
+    supplierPartyPort.getSupplierSummariesBatch.mockResolvedValue(
+      new Map([[PARTY_REF_ID, partySummary]]),
+    );
     supplierPartyPort.summaryFromIdentity.mockReturnValue(partySummary);
     supplierPartyPort.findIdentityByDocument.mockResolvedValue(null);
     supplierPartyPort.searchSuppliers.mockResolvedValue({
@@ -241,7 +246,7 @@ describe('SupplierProfileService', () => {
     );
   });
 
-  it('list devuelve perfiles paginados enriquecidos con party', async () => {
+  it('list devuelve perfiles paginados enriquecidos con party (batch, sin N+1)', async () => {
     profiles.push({
       id: PROFILE_ID,
       tenantId: 'tenant-001',
@@ -267,6 +272,8 @@ describe('SupplierProfileService', () => {
     expect(result.data).toHaveLength(1);
     expect(result.data[0]?.supplierCode).toBe('PROV-000001');
     expect(result.data[0]?.party?.displayName).toBe('Proveedor ACME');
+    expect(supplierPartyPort.getSupplierSummariesBatch).toHaveBeenCalledWith([PARTY_REF_ID]);
+    expect(supplierPartyPort.getSupplierSummary).not.toHaveBeenCalled();
   });
 
   it('get devuelve perfil con party summary', async () => {
@@ -323,14 +330,14 @@ describe('SupplierProfileService', () => {
       PARTY_REF_ID,
       {
         paymentTermsDays: 45,
-        incoterm: 'FOB',
+        incoterm: IncotermCode.FOB,
         notes: 'Condiciones actualizadas',
       },
       actor,
     );
 
     expect(result.paymentTermsDays).toBe(45);
-    expect(result.incoterm).toBe('FOB');
+    expect(result.incoterm).toBe(IncotermCode.FOB);
     expect(result.notes).toBe('Condiciones actualizadas');
     expect(partyWritePort.ensurePartyWithRole).not.toHaveBeenCalled();
   });
@@ -402,5 +409,80 @@ describe('SupplierProfileService', () => {
     await expect(
       service.assertEligibleForPurchasing(manager, 'tenant-001', PARTY_REF_ID),
     ).rejects.toThrow('inactivo');
+  });
+
+  it('update lanza error de validacion si el body esta vacio (B2)', async () => {
+    profiles.push({
+      id: PROFILE_ID,
+      tenantId: 'tenant-001',
+      partyRefId: PARTY_REF_ID,
+      partyRoleId: PARTY_ROLE_ID,
+      supplierCode: 'PROV-000001',
+      status: SupplierProfileStatus.ACTIVE,
+      paymentTermsDays: null,
+      currency: null,
+      incoterm: null,
+      defaultLeadTimeDays: null,
+      purchasingContactName: null,
+      purchasingContactEmail: null,
+      purchasingContactPhone: null,
+      notes: null,
+      createdAt: new Date('2026-07-11T12:00:00.000Z'),
+      updatedAt: new Date('2026-07-11T12:00:00.000Z'),
+    });
+
+    await expect(service.update(PARTY_REF_ID, {}, actor)).rejects.toThrow(
+      'Debe enviar al menos un campo',
+    );
+  });
+
+  it('update acepta incoterm valido del enum (B5)', async () => {
+    profiles.push({
+      id: PROFILE_ID,
+      tenantId: 'tenant-001',
+      partyRefId: PARTY_REF_ID,
+      partyRoleId: PARTY_ROLE_ID,
+      supplierCode: 'PROV-000001',
+      status: SupplierProfileStatus.ACTIVE,
+      paymentTermsDays: null,
+      currency: null,
+      incoterm: null,
+      defaultLeadTimeDays: null,
+      purchasingContactName: null,
+      purchasingContactEmail: null,
+      purchasingContactPhone: null,
+      notes: null,
+      createdAt: new Date('2026-07-11T12:00:00.000Z'),
+      updatedAt: new Date('2026-07-11T12:00:00.000Z'),
+    });
+
+    const result = await service.update(PARTY_REF_ID, { incoterm: IncotermCode.FOB }, actor);
+
+    expect(result.incoterm).toBe(IncotermCode.FOB);
+  });
+
+  it('update rechaza incoterm invalido fuera del enum (B5)', async () => {
+    profiles.push({
+      id: PROFILE_ID,
+      tenantId: 'tenant-001',
+      partyRefId: PARTY_REF_ID,
+      partyRoleId: PARTY_ROLE_ID,
+      supplierCode: 'PROV-000001',
+      status: SupplierProfileStatus.ACTIVE,
+      paymentTermsDays: null,
+      currency: null,
+      incoterm: null,
+      defaultLeadTimeDays: null,
+      purchasingContactName: null,
+      purchasingContactEmail: null,
+      purchasingContactPhone: null,
+      notes: null,
+      createdAt: new Date('2026-07-11T12:00:00.000Z'),
+      updatedAt: new Date('2026-07-11T12:00:00.000Z'),
+    });
+
+    await expect(
+      service.update(PARTY_REF_ID, { incoterm: 'INVALIDO' as never }, actor),
+    ).rejects.toThrow();
   });
 });

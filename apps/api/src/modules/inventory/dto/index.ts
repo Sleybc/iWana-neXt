@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Allow } from 'class-validator';
+import { Type } from 'class-transformer';
+import { Allow, ValidateNested } from 'class-validator';
 import { z } from 'zod';
 import {
   ExecutionOrderItemAction,
@@ -26,12 +27,16 @@ import {
   DocumentTypeParty,
   PartyContactType,
   SupplierProfileStatus,
+  IncotermCode,
 } from '@iwana/shared';
 
+const emptyStringToNull = (value: unknown) => (value === '' ? null : value);
+
 const optionalTrimmedString = (maxLength: number) =>
-  z.string().trim().max(maxLength).optional().nullable();
+  z.preprocess(emptyStringToNull, z.string().trim().max(maxLength).optional().nullable());
 const optionalUuidLike = (maxLength = 160) =>
-  z.string().trim().min(1).max(maxLength).optional().nullable();
+  z.preprocess(emptyStringToNull, z.string().trim().min(1).max(maxLength).optional().nullable());
+const optionalDateString = z.preprocess(emptyStringToNull, z.string().date().optional().nullable());
 const positiveNumber = z.coerce.number().positive();
 const nonNegativeNumber = z.coerce.number().min(0);
 
@@ -820,6 +825,8 @@ export class CreateStockIssueDto {
 
   @ApiProperty({ type: [StockIssueLineDto] })
   @Allow()
+  @ValidateNested({ each: true })
+  @Type(() => StockIssueLineDto)
   lines!: StockIssueLineDto[];
 }
 
@@ -1111,7 +1118,7 @@ export const CreatePurchaseRequestSchema = z.object({
   justification: z.string().trim().min(10).max(4000),
   operationalRefType: z.string().trim().min(1).max(60).optional().nullable(),
   operationalRefId: z.string().trim().min(1).max(160).optional().nullable(),
-  neededByDate: z.string().date().optional().nullable(),
+  neededByDate: optionalDateString,
   notes: optionalTrimmedString(4000),
   lines: z.array(PurchaseRequestLineSchema).min(1),
 });
@@ -1157,6 +1164,8 @@ export class CreatePurchaseRequestDto {
 
   @ApiProperty({ type: [PurchaseRequestLineDto] })
   @Allow()
+  @ValidateNested({ each: true })
+  @Type(() => PurchaseRequestLineDto)
   lines!: PurchaseRequestLineDto[];
 }
 
@@ -1169,7 +1178,7 @@ export const AddSupplierQuoteSchema = z.object({
     .trim()
     .length(3)
     .transform((value) => value.toUpperCase()),
-  validUntil: z.string().date().optional().nullable(),
+  validUntil: optionalDateString,
   notes: optionalTrimmedString(4000),
   rfqInvitationId: z.string().uuid().optional().nullable(),
 });
@@ -1214,7 +1223,7 @@ export const CreateRfqSchema = z.object({
     .transform((value) => value.toUpperCase())
     .optional()
     .default('COP'),
-  responseDeadline: z.string().date().optional().nullable(),
+  responseDeadline: optionalDateString,
   notes: optionalTrimmedString(4000),
 });
 
@@ -1275,6 +1284,30 @@ export class ApprovePurchaseRequestDto {
   exceptionReason?: string | null;
 }
 
+export const RejectPurchaseRequestSchema = z.object({
+  reason: z.string().trim().min(10).max(4000),
+});
+
+export type RejectPurchaseRequestInput = z.infer<typeof RejectPurchaseRequestSchema>;
+
+export class RejectPurchaseRequestDto {
+  @ApiProperty()
+  @Allow()
+  reason!: string;
+}
+
+export const CancelPurchaseRequestSchema = z.object({
+  reason: z.string().trim().min(5).max(4000),
+});
+
+export type CancelPurchaseRequestInput = z.infer<typeof CancelPurchaseRequestSchema>;
+
+export class CancelPurchaseRequestDto {
+  @ApiProperty()
+  @Allow()
+  reason!: string;
+}
+
 export const PurchaseOrderLineSchema = z.object({
   purchaseRequestLineId: optionalUuidLike(),
   itemId: z.string().trim().min(1).max(160),
@@ -1304,7 +1337,7 @@ export class PurchaseOrderLineDto {
 
 export const PurchaseOrderBatchSchema = z.object({
   partyRefId: z.string().trim().min(1).max(160),
-  expectedDeliveryDate: z.string().date().optional().nullable(),
+  expectedDeliveryDate: optionalDateString,
   notes: optionalTrimmedString(4000),
   lines: z.array(PurchaseOrderLineSchema).min(1),
 });
@@ -1326,6 +1359,8 @@ export class PurchaseOrderBatchDto {
 
   @ApiProperty({ type: [PurchaseOrderLineDto] })
   @Allow()
+  @ValidateNested({ each: true })
+  @Type(() => PurchaseOrderLineDto)
   lines!: PurchaseOrderLineDto[];
 }
 
@@ -1333,7 +1368,7 @@ export const CreatePurchaseOrderSchema = z
   .object({
     purchaseRequestId: z.string().trim().min(1).max(160),
     partyRefId: z.string().trim().min(1).max(160).optional(),
-    expectedDeliveryDate: z.string().date().optional().nullable(),
+    expectedDeliveryDate: optionalDateString,
     notes: optionalTrimmedString(4000),
     lines: z.array(PurchaseOrderLineSchema).min(1).optional(),
     orders: z.array(PurchaseOrderBatchSchema).min(1).optional(),
@@ -1374,10 +1409,14 @@ export class CreatePurchaseOrderDto {
 
   @ApiPropertyOptional({ type: [PurchaseOrderLineDto] })
   @Allow()
+  @ValidateNested({ each: true })
+  @Type(() => PurchaseOrderLineDto)
   lines?: PurchaseOrderLineDto[];
 
   @ApiPropertyOptional({ type: [PurchaseOrderBatchDto] })
   @Allow()
+  @ValidateNested({ each: true })
+  @Type(() => PurchaseOrderBatchDto)
   orders?: PurchaseOrderBatchDto[];
 
   @ApiPropertyOptional({ enum: PurchaseOrderStatus, default: PurchaseOrderStatus.APPROVED })
@@ -1426,6 +1465,8 @@ export type CreatePurchaseRequestAwardsInput = z.infer<typeof CreatePurchaseRequ
 export class CreatePurchaseRequestAwardsDto {
   @ApiProperty({ type: [PurchaseRequestLineAwardDto] })
   @Allow()
+  @ValidateNested({ each: true })
+  @Type(() => PurchaseRequestLineAwardDto)
   awards!: PurchaseRequestLineAwardDto[];
 }
 
@@ -1436,7 +1477,7 @@ export const ReceivePurchaseOrderLineSchema = z.object({
   quantityShortage: nonNegativeNumber.optional().default(0),
   quantityDamaged: nonNegativeNumber.optional().default(0),
   lotNumber: z.string().trim().min(1).max(80).optional().nullable(),
-  expiryDate: z.string().date().optional().nullable(),
+  expiryDate: optionalDateString,
   serialNumbers: z.array(z.string().trim().min(1).max(160)).optional().default([]),
   unitCost: nonNegativeNumber.optional().nullable(),
   condition: z.nativeEnum(StockBalanceCondition).optional().default(StockBalanceCondition.NEW),
@@ -1511,6 +1552,8 @@ export class ReceivePurchaseOrderDto {
 
   @ApiProperty({ type: [ReceivePurchaseOrderLineDto] })
   @Allow()
+  @ValidateNested({ each: true })
+  @Type(() => ReceivePurchaseOrderLineDto)
   lines!: ReceivePurchaseOrderLineDto[];
 
   @ApiPropertyOptional({ enum: GoodsReceiptStatus, default: GoodsReceiptStatus.COMPLETED })
@@ -1853,7 +1896,7 @@ export class CreateCounterPurchaseLineDto {
 export const CreateCounterPurchaseSchema = z.object({
   partyRefId: z.string().uuid(),
   invoiceNumber: z.string().trim().min(1).max(120),
-  purchaseDate: z.string().date().optional().nullable(),
+  purchaseDate: optionalDateString,
   destinationLocationId: z.string().uuid(),
   notes: optionalTrimmedString(4000),
   idempotencyKey: optionalTrimmedString(160),
@@ -1889,6 +1932,8 @@ export class CreateCounterPurchaseDto {
 
   @ApiProperty({ type: [CreateCounterPurchaseLineDto] })
   @Allow()
+  @ValidateNested({ each: true })
+  @Type(() => CreateCounterPurchaseLineDto)
   lines!: CreateCounterPurchaseLineDto[];
 }
 
@@ -1955,7 +2000,7 @@ const supplierCommercialFields = {
     .optional()
     .nullable()
     .transform((value) => (value ? value.toUpperCase() : value)),
-  incoterm: optionalTrimmedString(10),
+  incoterm: z.nativeEnum(IncotermCode).optional().nullable(),
   defaultLeadTimeDays: z.coerce.number().int().min(0).optional().nullable(),
   purchasingContactName: optionalTrimmedString(200),
   purchasingContactEmail: optionalTrimmedString(255),
@@ -1970,6 +2015,11 @@ export const CreateSupplierSchema = z.object({
   displayName: z.string().trim().min(1).max(160),
   legalName: optionalTrimmedString(200),
   contacts: z.array(supplierContactSchema).optional(),
+  address: optionalTrimmedString(255),
+  latitude: z.number().min(-90).max(90).optional().nullable(),
+  longitude: z.number().min(-180).max(180).optional().nullable(),
+  city: optionalTrimmedString(120),
+  department: optionalTrimmedString(120),
   ...supplierCommercialFields,
 });
 
@@ -2005,6 +2055,26 @@ export class CreateSupplierDto {
     metadata?: Record<string, unknown> | null;
   }>;
 
+  @ApiPropertyOptional({ maxLength: 255 })
+  @Allow()
+  address?: string | null;
+
+  @ApiPropertyOptional({ minimum: -90, maximum: 90 })
+  @Allow()
+  latitude?: number | null;
+
+  @ApiPropertyOptional({ minimum: -180, maximum: 180 })
+  @Allow()
+  longitude?: number | null;
+
+  @ApiPropertyOptional({ maxLength: 120 })
+  @Allow()
+  city?: string | null;
+
+  @ApiPropertyOptional({ maxLength: 120 })
+  @Allow()
+  department?: string | null;
+
   @ApiPropertyOptional({ minimum: 0 })
   @Allow()
   paymentTermsDays?: number | null;
@@ -2013,9 +2083,9 @@ export class CreateSupplierDto {
   @Allow()
   currency?: string | null;
 
-  @ApiPropertyOptional({ maxLength: 10 })
+  @ApiPropertyOptional({ enum: IncotermCode })
   @Allow()
-  incoterm?: string | null;
+  incoterm?: IncotermCode | null;
 
   @ApiPropertyOptional({ minimum: 0 })
   @Allow()
@@ -2038,7 +2108,11 @@ export class CreateSupplierDto {
   notes?: string | null;
 }
 
-export const UpdateSupplierSchema = z.object(supplierCommercialFields);
+export const UpdateSupplierSchema = z
+  .object(supplierCommercialFields)
+  .refine((value) => Object.values(value).some((v) => v !== undefined), {
+    message: 'Debe enviar al menos un campo para actualizar el proveedor.',
+  });
 
 export type UpdateSupplierInput = z.infer<typeof UpdateSupplierSchema>;
 
@@ -2051,9 +2125,9 @@ export class UpdateSupplierDto {
   @Allow()
   currency?: string | null;
 
-  @ApiPropertyOptional({ maxLength: 10 })
+  @ApiPropertyOptional({ enum: IncotermCode })
   @Allow()
-  incoterm?: string | null;
+  incoterm?: IncotermCode | null;
 
   @ApiPropertyOptional({ minimum: 0 })
   @Allow()

@@ -25,9 +25,11 @@ import { BundleService } from './services/bundle.service';
 import { PromotionService } from './services/promotion.service';
 import { CompatibilityService } from './services/compatibility.service';
 import { TaxApplicationService } from './services/tax-application.service';
+import { CommercialDashboardService } from './services/commercial-dashboard.service';
 
 // ─── Controllers ──────────────────────────────────────────────────────────────
 import { CatalogController } from './controllers/catalog.controller';
+import { CommercialDashboardController } from './controllers/commercial-dashboard.controller';
 import { BundleController } from './controllers/bundle.controller';
 import { PromotionController } from './controllers/promotion.controller';
 import { CompatibilityController } from './controllers/compatibility.controller';
@@ -60,6 +62,7 @@ import { TaxationModule } from '../taxation/taxation.module';
   ],
   controllers: [
     CatalogController,
+    CommercialDashboardController,
     BundleController,
     PromotionController,
     CompatibilityController,
@@ -72,6 +75,7 @@ import { TaxationModule } from '../taxation/taxation.module';
     PromotionService,
     CompatibilityService,
     TaxApplicationService,
+    CommercialDashboardService,
     {
       provide: ITaxApplicationReadPort,
       useExisting: TaxApplicationService,

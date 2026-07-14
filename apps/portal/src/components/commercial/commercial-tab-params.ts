@@ -1,4 +1,5 @@
 export type CommercialTab =
+  | 'summary'
   | 'plans'
   | 'products'
   | 'services'
@@ -11,6 +12,7 @@ export type TaxationSubTab = 'tax-catalog' | 'tax-rules-app' | 'tax-simulator';
 export type OffersSubTab = 'bundles' | 'promotions';
 
 const COMMERCIAL_TABS: CommercialTab[] = [
+  'summary',
   'plans',
   'products',
   'services',
@@ -30,7 +32,7 @@ export interface ResolvedCommercialRoute {
 }
 
 const DEFAULT_ROUTE: ResolvedCommercialRoute = {
-  tab: 'plans',
+  tab: 'summary',
   taxationSubTab: 'tax-catalog',
   offersSubTab: 'bundles',
 };
@@ -104,7 +106,7 @@ export function isCommercialTabParam(value: string | null | undefined): boolean 
 }
 
 export function buildCommercialTabQuery(route: ResolvedCommercialRoute): string | undefined {
-  if (route.tab === 'plans') {
+  if (route.tab === 'summary') {
     return undefined;
   }
 

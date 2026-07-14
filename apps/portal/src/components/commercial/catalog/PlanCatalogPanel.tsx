@@ -29,18 +29,26 @@ import {
 import { InstallationRule } from '@iwana/shared';
 import {
   PortalAlert,
+  PortalEmptyState,
+  PortalPanel,
+  PortalSearchField,
   PortalSkeletonBlock,
   interactiveFocusClassName,
+  portalDataTableCellClassName,
   portalDataTableHeadClassName,
   portalDataTableShellClassName,
   portalModuleTabsTrackClassName,
 } from '@/components/shared/portal-ui';
 import {
+  commercialFieldClassName,
+  commercialTableRowHoverClassName,
+} from '@/components/commercial/commercial-field-styles';
+import {
   getPortalActiveBadgeVariant,
   portalActiveCountBadgeVariant,
 } from '@/lib/portal-status-badge-rules';
 
-interface PlanCatalogManagerProps {
+interface PlanCatalogPanelProps {
   canEdit: boolean;
 }
 
@@ -126,7 +134,7 @@ function persistTechnologies(options: string[]): void {
   }
 }
 
-const cellClass = 'px-4 py-3 align-middle text-sm text-gray-700 dark:text-gray-200';
+const cellClass = portalDataTableCellClassName;
 
 function formatMoney(value: number): string {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(value);
@@ -220,7 +228,7 @@ function toFormValues(plan: PlanCatalogItem): PlanFormValues {
   };
 }
 
-export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
+export function PlanCatalogPanel({ canEdit }: PlanCatalogPanelProps) {
   const [plans, setPlans] = useState<PlanCatalogItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -575,19 +583,25 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Badge variant={portalActiveCountBadgeVariant}>
-          {activePlansCount} activo{activePlansCount === 1 ? '' : 's'}
-        </Badge>
-        {canEdit && (
-          <Button onClick={handleOpenCreateDialog}>
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            Nuevo plan
-          </Button>
-        )}
-      </div>
-
+    <PortalPanel
+      eyebrow="Catálogo"
+      title="Planes comerciales"
+      description="Administra planes de conectividad, velocidades y precios vigentes para venta."
+      actions={
+        <>
+          <Badge variant={portalActiveCountBadgeVariant}>
+            {activePlansCount} activo{activePlansCount === 1 ? '' : 's'}
+          </Badge>
+          {canEdit && (
+            <Button onClick={handleOpenCreateDialog}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Nuevo plan
+            </Button>
+          )}
+        </>
+      }
+      contentClassName="space-y-4"
+    >
       {loadError && (
         <PortalAlert
           variant="error"
@@ -655,7 +669,8 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
                     <tr
                       key={plan.id}
                       className={cn(
-                        'border-t border-gray-100 transition-colors hover:bg-[#fbfcf8] dark:border-dark-border dark:hover:bg-dark-surface-3',
+                        'border-t border-gray-100 dark:border-dark-border',
+                        commercialTableRowHoverClassName,
                         !plan.isActive && 'opacity-55',
                       )}
                     >
@@ -1113,6 +1128,6 @@ export function PlanCatalogManager({ canEdit }: PlanCatalogManagerProps) {
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+    </PortalPanel>
   );
 }

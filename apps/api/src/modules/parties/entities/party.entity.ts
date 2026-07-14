@@ -65,6 +65,21 @@ export class Party {
   @Column({ name: 'notes', type: 'text', nullable: true })
   notes: string | null;
 
+  @Column({ name: 'address', type: 'varchar', length: 255, nullable: true })
+  address: string | null;
+
+  @Column({ name: 'latitude', type: 'numeric', precision: 10, scale: 7, nullable: true })
+  latitude: number | null;
+
+  @Column({ name: 'longitude', type: 'numeric', precision: 10, scale: 7, nullable: true })
+  longitude: number | null;
+
+  @Column({ name: 'city', type: 'varchar', length: 120, nullable: true })
+  city: string | null;
+
+  @Column({ name: 'department', type: 'varchar', length: 120, nullable: true })
+  department: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

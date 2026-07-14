@@ -219,6 +219,30 @@ async function setupCommercialMocks(page: import('@playwright/test').Page) {
       return;
     }
 
+    if (pathname.endsWith('/commercial/dashboard/summary') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          plansCount: 1,
+          activePlansCount: 1,
+          productsCount: 1,
+          activeProductsCount: 1,
+          servicesCount: 1,
+          activeServicesCount: 1,
+          bundlesCount: 0,
+          activeBundlesCount: 0,
+          promotionsCount: 0,
+          activePromotionsCount: 0,
+          compatibilityRulesCount: 0,
+          activeCompatibilityRulesCount: 0,
+          taxRulesCount: 0,
+          activeTaxRulesCount: 0,
+        }),
+      });
+      return;
+    }
+
     if (pathname.endsWith('/commercial/catalog') && method === 'GET') {
       const type = url.searchParams.get('type');
 

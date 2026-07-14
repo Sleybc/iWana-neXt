@@ -1,0 +1,424 @@
+
+> iwana-next@0.1.0 test:e2e:portal C:\appiw
+> playwright test --config e2e/playwright.portal.config.ts "portal-inventory-scm.spec.ts"
+
+
+Running 22 tests using 1 worker
+
+(node:18644) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:18644) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] Route /auth/login is rendering with server caches disabled. For this navigation, Component Metadata in React DevTools will not accurately reflect what is statically prerenderable and runtime prefetchable. See more info here: https://nextjs.org/docs/messages/cache-bypass-in-dev
+[WebServer] Route /dashboard/inventory is rendering with server caches disabled. For this navigation, Component Metadata in React DevTools will not accurately reflect what is statically prerenderable and runtime prefetchable. See more info here: https://nextjs.org/docs/messages/cache-bypass-in-dev
+[WebServer] ÔÜá Fast Refresh had to perform a full reload. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+[WebServer] (node:12296) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
+[WebServer] (Use `node --trace-deprecation ...` to show where the warning was created)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/commercial/catalog?type=PRODUCT Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok  1 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:1661:3 ÔÇ║ Portal Inventario / SCM ÔÇ║ crea producto comprable en catalogo y lo usa en solicitud de compra (4.9s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/commercial/catalog?type=PRODUCT Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok  2 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:1691:3 ÔÇ║ Portal Inventario / SCM ÔÇ║ crea categoria, producto y lo usa en solicitud de compra (4.0s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok  3 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:1742:3 ÔÇ║ Portal Inventario / SCM ÔÇ║ muestra workspace de compras y permite crear solicitud con l├¡neas (2.1s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok  4 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:1765:3 ÔÇ║ Portal Inventario / SCM ÔÇ║ navega entre pesta├▒as de bodegas y activos (1.5s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok  5 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:1780:3 ÔÇ║ Portal Inventario / SCM ÔÇ║ crea salida a t├®cnico y despacha generando movimiento (2.4s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok  6 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:1816:3 ÔÇ║ Portal Inventario / SCM ÔÇ║ completa OC, recepci├│n precargada, transferencia y retorno (4.8s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok  7 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:1899:3 ÔÇ║ Portal Inventario / SCM ÔÇ║ crea solicitud de proyecto con varias l├¡neas (2.2s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok  8 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:1924:3 ÔÇ║ Portal Inventario / SCM ÔÇ║ crea salida por venta y despacha (2.2s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok  9 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:1959:3 ÔÇ║ Portal Inventario / SCM ÔÇ║ crea salida con varias l├¡neas desde el compositor (2.1s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok 10 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:1995:3 ÔÇ║ Portal Inventario / SCM ÔÇ║ no ofrece CUSTOMER_SITE como destino de salida manual (1.6s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok 11 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:2031:3 ÔÇ║ Portal Inventario / SCM ÔÇ║ aprueba urgencia operativa con excepci├│n justificada (1.6s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok 12 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:2063:3 ÔÇ║ Portal Inventario / SCM ÔÇ║ ejecuta flujo RFQ: crear, invitar, enviar y descargar PDF (2.9s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok 13 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:2105:3 ÔÇ║ Portal Inventario / SCM ÔÇ║ rechaza invitar a un proveedor BLOCKED en el RFQ (RF-PROV-08) (2.6s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok 14 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:2146:3 ÔÇ║ Portal Inventario / SCM ÔÇ║ rechaza emitir OC a un proveedor BLOCKED (RF-PROV-08) (2.4s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok 15 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:2192:3 ÔÇ║ Portal Inventario / Bodegas ÔÇ║ abre slice de bodegas con deep-link tab=locations (1.2s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok 16 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:2201:3 ÔÇ║ Portal Inventario / Bodegas ÔÇ║ filtra custodias m├│viles con custody=mobile (1.2s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok 17 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:2210:3 ÔÇ║ Portal Inventario / Bodegas ÔÇ║ crea bodega desde UI (1.6s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok 18 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:2227:3 ÔÇ║ Portal Inventario / Bodegas ÔÇ║ edita capacidad y responsable de bodega existente (1.7s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok 19 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:2253:3 ÔÇ║ Portal Inventario / Bodegas ÔÇ║ bloquea salida que excede saldo visible (2.2s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok 20 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:2286:3 ÔÇ║ Portal Inventario / Bodegas ÔÇ║ bloquea salida sin cupo en bodega m├│vil (2.3s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok 21 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:2319:3 ÔÇ║ Portal Inventario / Bodegas ÔÇ║ permite drill-down de balances por ubicaci├│n (1.3s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok 22 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:2328:5 ÔÇ║ Portal Inventario / Bodegas ÔÇ║ gesti├│n de proveedores ÔÇ║ registra, reutiliza, edita y bloquea proveedores (2.4s)
+
+  22 passed (56.7s)

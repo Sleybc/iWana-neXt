@@ -446,4 +446,67 @@ describe('RfqService', () => {
     const service = new RfqService({} as DataSource, supplierProfileServiceMock);
     await expect(service.getById(RFQ_ID)).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('cancelActiveForRequest cancela RFQ activa e invitaciones INVITED', async () => {
+    const invited = {
+      id: INVITATION_ID,
+      tenantId: 'tenant-001',
+      rfqId: RFQ_ID,
+      partyRefId: PARTY_REF_ID,
+      status: PurchaseRfqInvitationStatus.INVITED,
+    };
+    const responded = {
+      id: 'inv-responded',
+      tenantId: 'tenant-001',
+      rfqId: RFQ_ID,
+      partyRefId: '55555555-5555-4555-8555-555555555555',
+      status: PurchaseRfqInvitationStatus.RESPONDED,
+    };
+    const activeRfq = {
+      id: RFQ_ID,
+      tenantId: 'tenant-001',
+      purchaseRequestId: REQUEST_ID,
+      status: PurchaseRfqStatus.SENT,
+      closedAt: null,
+      closedByUserId: null,
+    };
+    const { manager, save } = buildManager({
+      activeRfq,
+      invitations: [invited, responded],
+    });
+
+    const service = new RfqService({} as DataSource, supplierProfileServiceMock);
+    await service.cancelActiveForRequest(manager as never, 'tenant-001', REQUEST_ID, actor);
+
+    expect(save).toHaveBeenCalledWith(
+      PurchaseRfq,
+      expect.objectContaining({
+        status: PurchaseRfqStatus.CANCELLED,
+        closedByUserId: actor.sub,
+      }),
+    );
+    expect(save).toHaveBeenCalledWith(
+      PurchaseRfqInvitation,
+      expect.objectContaining({
+        id: INVITATION_ID,
+        status: PurchaseRfqInvitationStatus.CANCELLED,
+      }),
+    );
+    expect(save).not.toHaveBeenCalledWith(
+      PurchaseRfqInvitation,
+      expect.objectContaining({
+        id: 'inv-responded',
+        status: PurchaseRfqInvitationStatus.CANCELLED,
+      }),
+    );
+  });
+
+  it('cancelActiveForRequest no-op si no hay RFQ activa', async () => {
+    const { manager, save } = buildManager({ activeRfq: null });
+    const service = new RfqService({} as DataSource, supplierProfileServiceMock);
+
+    await service.cancelActiveForRequest(manager as never, 'tenant-001', REQUEST_ID, actor);
+
+    expect(save).not.toHaveBeenCalled();
+  });
 });

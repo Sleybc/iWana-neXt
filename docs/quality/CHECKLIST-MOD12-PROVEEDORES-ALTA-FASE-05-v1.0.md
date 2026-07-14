@@ -47,7 +47,7 @@
 - [x] `party` poblado en response de alta (A1) con test
 - [x] Reutilización de identidad real por documento (A2/B4) — lookup backend + `SupplierSummaryCard`
 - [x] Lint + typecheck API y portal — PASS (`lint.txt`, `typecheck.txt`)
-- [~] E2E extendido para proveedor BLOCKED en RFQ/OC — **código añadido; NO ejecutado en esta sesión** (sin navegador/dev-server); pendiente en CI
+- [x] E2E extendido y **ejecutado** para proveedor BLOCKED en RFQ/OC — `pnpm test:e2e:portal -- portal-inventory-scm.spec.ts` → **22/22 PASS** (`evidence-fase-05b/e2e-portal-inventory-scm-summary.txt`); AI-SR-QA 2026-07-11
 - [x] Excepción M1 documentada en ADR-052 (revisión reforzada AI-SEC-ENG)
 
 ## Cobertura (real, `api-coverage-core.txt`)
@@ -61,7 +61,7 @@
 - [x] `pnpm --filter @iwana/api lint` PASS (evidencia)
 - [x] `pnpm --filter @iwana/api test` PASS — 149 suites / 1477 tests (evidencia)
 - [ ] `pnpm test` monorepo completo — **no re-ejecutado en esta sesión** (solo API afectado verificado); pendiente en CI
-- [ ] E2E Playwright ejecutado — **pendiente en CI**
+- [x] E2E Playwright ejecutado — **22/22 PASS** (evidencia `e2e-portal-inventory-scm*.txt`)
 - [x] Migración `064` intacta y reversible (sin cambios en 05-B)
 
 ## Desvíos reconocidos (Fase 05-B)

@@ -22,6 +22,7 @@ import { portalActiveCountBadgeVariant } from '@/lib/portal-status-badge-rules';
 import {
   PortalAlert,
   PortalEmptyState,
+  PortalPanel,
   PortalSkeletonBlock,
   portalDataTableCellClassName,
   portalDataTableHeadClassName,
@@ -177,19 +178,25 @@ export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Badge variant={portalActiveCountBadgeVariant}>
-          {activePromotions.length} activa{activePromotions.length === 1 ? '' : 's'}
-        </Badge>
-        {canEdit && (
-          <Button size="sm" onClick={() => setIsModalOpen(true)}>
-            <Plus className="mr-1 h-4 w-4" aria-hidden="true" />
-            Crear promoción
-          </Button>
-        )}
-      </div>
-
+    <PortalPanel
+      eyebrow="Ofertas"
+      title="Promociones"
+      description="Administra promociones temporales con códigos y límites de uso."
+      actions={
+        <>
+          <Badge variant={portalActiveCountBadgeVariant}>
+            {activePromotions.length} activa{activePromotions.length === 1 ? '' : 's'}
+          </Badge>
+          {canEdit && (
+            <Button size="sm" onClick={() => setIsModalOpen(true)}>
+              <Plus className="mr-1 h-4 w-4" aria-hidden="true" />
+              Crear promoción
+            </Button>
+          )}
+        </>
+      }
+      contentClassName="space-y-4"
+    >
       {isLoading ? (
         <PortalSkeletonBlock className="h-28" />
       ) : loadError ? (
@@ -251,15 +258,16 @@ export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
                     </td>
                     {canEdit && (
                       <td className={portalDataTableCellClassName}>
-                        <button
+                        <Button
                           type="button"
+                          variant="softDestructive"
+                          size="sm"
                           disabled={deletingPromotionId === promotion.id || !promotion.isActive}
                           onClick={() => handleDeactivatePromotion(promotion.id)}
-                          className="inline-flex items-center gap-1 text-sm font-medium text-red-700 transition-colors hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <Trash2 className="h-4 w-4" aria-hidden="true" />
                           Desactivar
-                        </button>
+                        </Button>
                       </td>
                     )}
                   </tr>
@@ -285,6 +293,6 @@ export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
         }}
         onSubmit={handleCreatePromotion}
       />
-    </div>
+    </PortalPanel>
   );
 }

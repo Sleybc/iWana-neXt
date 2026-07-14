@@ -155,6 +155,9 @@ async function confirmIssueDispatch(
 
 type InventoryMockState = {
   purchaseRequests: Array<Record<string, unknown>>;
+  purchaseRequestLines: Array<Record<string, unknown>>;
+  supplierQuotes: Array<Record<string, unknown>>;
+  purchaseAwards: Array<Record<string, unknown>>;
   purchaseOrders: Array<Record<string, unknown>>;
   purchaseOrderLines: Array<Record<string, unknown>>;
   purchaseRfqs: Array<Record<string, unknown>>;
@@ -262,6 +265,12 @@ function getActiveRfqForRequest(state: InventoryMockState, purchaseRequestId: st
   );
 }
 
+function resolveSupplierDisplayName(state: InventoryMockState, partyRefId: string): string {
+  const profile = state.supplierProfiles.find((entry) => entry.partyRefId === partyRefId);
+  const party = profile?.party as { displayName?: string } | undefined;
+  return party?.displayName ?? 'Proveedor invitado';
+}
+
 function buildRfqDetail(state: InventoryMockState, purchaseRequestId: string) {
   const rfq = getActiveRfqForRequest(state, purchaseRequestId);
   if (!rfq) {
@@ -270,7 +279,12 @@ function buildRfqDetail(state: InventoryMockState, purchaseRequestId: string) {
 
   return {
     rfq,
-    invitations: state.purchaseRfqInvitations.filter((invitation) => invitation.rfqId === rfq.id),
+    invitations: state.purchaseRfqInvitations
+      .filter((invitation) => invitation.rfqId === rfq.id)
+      .map((invitation) => ({
+        ...invitation,
+        displayName: resolveSupplierDisplayName(state, String(invitation.partyRefId)),
+      })),
   };
 }
 
@@ -380,6 +394,9 @@ function buildSupplierProfile(overrides: Record<string, unknown> = {}) {
 function createInventoryMockState(): InventoryMockState {
   return {
     purchaseRequests: [buildPurchaseRequest()],
+    purchaseRequestLines: [],
+    supplierQuotes: [],
+    purchaseAwards: [],
     purchaseOrders: [],
     purchaseOrderLines: [],
     purchaseRfqs: [],
@@ -1064,16 +1081,25 @@ async function setupInventoryMocks(
     if (requestDetailMatch && method === 'GET') {
       const requestId = requestDetailMatch[1];
       const request = state.purchaseRequests.find((item) => item.id === requestId);
+      const lines = state.purchaseRequestLines.filter(
+        (line) => line.purchaseRequestId === requestId,
+      );
+      const quotes = state.supplierQuotes.filter((quote) => quote.purchaseRequestId === requestId);
+      const lineIds = new Set(lines.map((line) => line.id));
+      const awards = state.purchaseAwards.filter((award) =>
+        lineIds.has(award.purchaseRequestLineId),
+      );
+      const estimatedAmount = quotes.reduce((total, quote) => total + Number(quote.amount ?? 0), 0);
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           request,
-          lines: [],
-          quotes: [],
-          awards: [],
+          lines,
+          quotes,
+          awards,
           orders: state.purchaseOrders.filter((order) => order.purchaseRequestId === requestId),
-          estimatedAmount: 0,
+          estimatedAmount,
           approvalPolicy: {
             canApprove:
               request?.status === 'PENDING_APPROVAL' ||
@@ -1465,6 +1491,124 @@ async function setupInventoryMocks(
         status: 201,
         contentType: 'application/json',
         body: JSON.stringify(entry ?? {}),
+      });
+      return;
+    }
+
+    const awardsMatch = pathname.match(/\/purchasing\/requests\/([^/]+)\/awards$/);
+    if (awardsMatch && method === 'POST') {
+      const requestId = awardsMatch[1];
+      const body = JSON.parse(request.postData() ?? '{}') as {
+        awards?: Array<Record<string, unknown>>;
+      };
+      const created = (body.awards ?? []).map((awardInput, index) => {
+        const award = {
+          id: `award-${state.purchaseAwards.length + index + 1}`,
+          tenantId: 'tenant-inventory-001',
+          purchaseRequestLineId: awardInput.purchaseRequestLineId,
+          supplierQuoteId: awardInput.supplierQuoteId ?? null,
+          awardedPartyRefId: awardInput.awardedPartyRefId,
+          awardedQuantity: String(awardInput.awardedQuantity ?? '0'),
+          awardNotes: awardInput.awardNotes ?? null,
+          createdAt: nowIso(),
+          updatedAt: nowIso(),
+        };
+        state.purchaseAwards.push(award);
+        const line = state.purchaseRequestLines.find(
+          (entry) => entry.id === awardInput.purchaseRequestLineId,
+        );
+        if (line) {
+          line.lineStatus = 'AWARDED';
+          line.updatedAt = nowIso();
+        }
+        return award;
+      });
+      const requestEntry = state.purchaseRequests.find((item) => item.id === requestId);
+      if (requestEntry) {
+        requestEntry.updatedAt = nowIso();
+      }
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify(created),
+      });
+      return;
+    }
+
+    const rejectMatch = pathname.match(/\/purchasing\/requests\/([^/]+)\/reject$/);
+    if (rejectMatch && method === 'POST') {
+      const requestId = rejectMatch[1];
+      const body = JSON.parse(request.postData() ?? '{}') as { reason?: string };
+      const entry = state.purchaseRequests.find((item) => item.id === requestId);
+      if (!entry || !['PENDING_QUOTES', 'PENDING_APPROVAL'].includes(String(entry.status))) {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            statusCode: 400,
+            message: 'La solicitud no está en un estado que permita rechazarla.',
+          }),
+        });
+        return;
+      }
+      entry.status = 'REJECTED';
+      entry.resolutionReason = body.reason ?? null;
+      entry.resolvedByUserId = NOC_USER_ID;
+      entry.updatedAt = nowIso();
+      const activeRfq = getActiveRfqForRequest(state, requestId);
+      if (activeRfq) {
+        activeRfq.status = 'CANCELLED';
+        activeRfq.closedAt = nowIso();
+        activeRfq.closedByUserId = NOC_USER_ID;
+        state.purchaseRfqInvitations.forEach((invitation) => {
+          if (invitation.rfqId === activeRfq.id && invitation.status === 'INVITED') {
+            invitation.status = 'CANCELLED';
+          }
+        });
+      }
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify(entry),
+      });
+      return;
+    }
+
+    const cancelMatch = pathname.match(/\/purchasing\/requests\/([^/]+)\/cancel$/);
+    if (cancelMatch && method === 'POST') {
+      const requestId = cancelMatch[1];
+      const body = JSON.parse(request.postData() ?? '{}') as { reason?: string };
+      const entry = state.purchaseRequests.find((item) => item.id === requestId);
+      if (!entry || ['REJECTED', 'CANCELLED', 'CONVERTED_TO_PO'].includes(String(entry.status))) {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            statusCode: 400,
+            message: 'La solicitud no está en un estado que permita cancelarla.',
+          }),
+        });
+        return;
+      }
+      entry.status = 'CANCELLED';
+      entry.resolutionReason = body.reason ?? null;
+      entry.resolvedByUserId = NOC_USER_ID;
+      entry.updatedAt = nowIso();
+      const activeRfq = getActiveRfqForRequest(state, requestId);
+      if (activeRfq) {
+        activeRfq.status = 'CANCELLED';
+        activeRfq.closedAt = nowIso();
+        activeRfq.closedByUserId = NOC_USER_ID;
+        state.purchaseRfqInvitations.forEach((invitation) => {
+          if (invitation.rfqId === activeRfq.id && invitation.status === 'INVITED') {
+            invitation.status = 'CANCELLED';
+          }
+        });
+      }
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify(entry),
       });
       return;
     }
@@ -2090,7 +2234,7 @@ test.describe('Portal Inventario / SCM', () => {
       .getByRole('option', { name: /Proveedor Demo/i })
       .click();
     await workbench.getByRole('button', { name: 'Invitar seleccionados' }).click();
-    await expect(workbench.getByText('Proveedor invitado')).toBeVisible();
+    await expect(workbench.getByText('Proveedor Demo')).toBeVisible();
     await expect(workbench.getByText('Invitado', { exact: true })).toBeVisible();
 
     await workbench.getByRole('button', { name: 'Enviar solicitud' }).click();
@@ -2141,6 +2285,178 @@ test.describe('Portal Inventario / SCM', () => {
     await expect(workbench.getByText(/está bloqueado y no puede usarse/i)).toBeVisible();
     // No se registro la invitacion.
     expect(state.purchaseRfqInvitations).toHaveLength(0);
+  });
+
+  test('rechaza emitir OC a un proveedor BLOCKED (RF-PROV-08)', async ({ page }) => {
+    const state = (page as unknown as { inventoryMockState: InventoryMockState })
+      .inventoryMockState;
+    const ordersBefore = state.purchaseOrders.length;
+    // Precondicion: el proveedor Demo (party-001) queda BLOCKED.
+    const demoProfile = state.supplierProfiles.find((entry) => entry.partyRefId === 'party-001');
+    if (demoProfile) {
+      demoProfile.status = 'BLOCKED';
+    }
+
+    await page.goto('/dashboard/inventory');
+    const main = page.locator('main');
+
+    await main.getByRole('tab', { name: 'Compras' }).click();
+    await main.getByRole('button', { name: 'Abrir' }).first().click();
+
+    const workbench = page.getByRole('dialog').filter({ hasText: 'Trabajar solicitud' });
+    await expect(workbench.getByRole('heading', { name: 'Trabajar solicitud' })).toBeVisible();
+    await workbench.getByRole('button', { name: 'Ir a órdenes' }).click();
+    await workbench.getByRole('button', { name: 'Generar orden de compra' }).click();
+
+    const orderDrawer = page.getByRole('dialog', { name: 'Orden de compra' });
+    await expect(orderDrawer.getByRole('heading', { name: 'Orden de compra' })).toBeVisible();
+    await orderDrawer.getByLabel('Proveedor').fill('Demo');
+    await orderDrawer.getByRole('option', { name: /Proveedor Demo/i }).click();
+
+    const itemSelect = orderDrawer.getByRole('combobox', { name: 'Producto' });
+    await itemSelect.click();
+    await page.getByRole('option', { name: /ONT Huawei HG8245/i }).click();
+
+    await orderDrawer.getByRole('button', { name: 'Generar orden de compra' }).click();
+
+    // El backend (mock, con paridad de enforcement) rechaza la OC al proveedor bloqueado.
+    await expect(page.getByText(/está bloqueado y no puede usarse/i)).toBeVisible();
+    expect(state.purchaseOrders).toHaveLength(ordersBefore);
+  });
+
+  test('adjudica líneas aprobadas y genera OC', async ({ page }) => {
+    const state = (page as unknown as { inventoryMockState: InventoryMockState })
+      .inventoryMockState;
+    state.purchaseRequestLines.push({
+      id: 'prl-award-1',
+      tenantId: 'tenant-inventory-001',
+      purchaseRequestId: PR_SEED_ID,
+      inventoryItemId: ITEM_ID,
+      freeTextDescription: null,
+      quantityRequested: '2',
+      unitOfMeasure: 'UND',
+      lineStatus: 'OPEN',
+      sourceKind: 'INVENTORY_ITEM',
+      suggestedPartyRefId: null,
+      createdAt: nowIso(-1000),
+      updatedAt: nowIso(-1000),
+    });
+    state.supplierQuotes.push({
+      id: 'sq-award-1',
+      tenantId: 'tenant-inventory-001',
+      purchaseRequestId: PR_SEED_ID,
+      partyRefId: 'party-001',
+      quoteNumber: 'COT-AWARD-01',
+      amount: '370000',
+      currency: 'COP',
+      validUntil: '2026-08-01',
+      createdAt: nowIso(-500),
+      updatedAt: nowIso(-500),
+    });
+
+    await page.goto('/dashboard/inventory');
+    const main = page.locator('main');
+    await main.getByRole('tab', { name: 'Compras' }).click();
+    await main.getByRole('button', { name: 'Abrir' }).first().click();
+
+    const workbench = page.getByRole('dialog').filter({ hasText: 'Trabajar solicitud' });
+    await expect(workbench.getByText(/Adjudica las líneas/i)).toBeVisible();
+    await workbench.getByRole('tab', { name: 'Adjudicación' }).click();
+    await workbench.getByRole('button', { name: /Usar COT-AWARD-01/i }).click();
+    await workbench.getByRole('button', { name: 'Adjudicar líneas' }).click();
+    await expect(workbench.getByText('Adjudicaciones registradas')).toBeVisible();
+
+    await workbench.getByRole('tab', { name: 'Órdenes' }).click();
+    await workbench.getByRole('button', { name: 'Generar orden de compra' }).click();
+
+    const orderDrawer = page.getByRole('dialog', { name: 'Orden de compra' });
+    await orderDrawer.getByLabel('Proveedor').fill('Demo');
+    await orderDrawer.getByRole('option', { name: /Proveedor Demo/i }).click();
+    const itemSelect = orderDrawer.getByRole('combobox', { name: 'Producto' });
+    await itemSelect.click();
+    await page.getByRole('option', { name: /ONT Huawei HG8245/i }).click();
+    await orderDrawer.getByRole('button', { name: 'Generar orden de compra' }).click();
+
+    await expect(workbench.getByRole('tab', { name: 'Recepciones' })).toBeVisible();
+    expect(state.purchaseAwards).toHaveLength(1);
+    expect(state.purchaseOrders.length).toBeGreaterThan(0);
+  });
+
+  test('rechaza solicitud PENDING_QUOTES y cierra RFQ activa', async ({ page }) => {
+    const state = (page as unknown as { inventoryMockState: InventoryMockState })
+      .inventoryMockState;
+    state.purchaseRequests.unshift(
+      buildPurchaseRequest({
+        id: 'pr-reject-1',
+        requestNumber: 'PR-000501',
+        title: 'Solicitud a rechazar',
+        status: 'PENDING_QUOTES',
+        approvedByUserId: null,
+      }),
+    );
+    state.purchaseRfqs.push({
+      id: 'rfq-reject-1',
+      tenantId: 'tenant-inventory-001',
+      purchaseRequestId: 'pr-reject-1',
+      rfqNumber: 'RFQ-000501',
+      status: 'SENT',
+      currency: 'COP',
+      responseDeadline: null,
+      sentAt: nowIso(-10),
+      closedAt: null,
+      createdByUserId: NOC_USER_ID,
+      notes: null,
+      createdAt: nowIso(-20),
+      updatedAt: nowIso(-10),
+    });
+    state.purchaseRfqInvitations.push({
+      id: 'rfq-inv-reject-1',
+      tenantId: 'tenant-inventory-001',
+      rfqId: 'rfq-reject-1',
+      partyRefId: 'party-001',
+      status: 'INVITED',
+      invitedAt: nowIso(-10),
+      respondedAt: null,
+      declinedAt: null,
+      declineReason: null,
+      createdAt: nowIso(-10),
+      updatedAt: nowIso(-10),
+    });
+
+    await page.goto('/dashboard/inventory');
+    const main = page.locator('main');
+    await main.getByRole('tab', { name: 'Compras' }).click();
+    await main.getByRole('button', { name: 'Abrir' }).first().click();
+
+    const workbench = page.getByRole('dialog').filter({ hasText: 'Trabajar solicitud' });
+    await workbench.getByRole('button', { name: 'Rechazar' }).click();
+    await workbench
+      .getByLabel('Motivo del rechazo')
+      .fill('Cotización fuera de presupuesto operativo');
+    await workbench.getByRole('button', { name: 'Confirmar rechazo' }).click();
+
+    await expect(main.getByRole('cell', { name: 'Rechazada', exact: true })).toBeVisible();
+    expect(state.purchaseRequests[0]?.status).toBe('REJECTED');
+    expect(state.purchaseRfqs[0]?.status).toBe('CANCELLED');
+    expect(state.purchaseRfqInvitations[0]?.status).toBe('CANCELLED');
+  });
+
+  test('cancela solicitud APPROVED con motivo', async ({ page }) => {
+    const state = (page as unknown as { inventoryMockState: InventoryMockState })
+      .inventoryMockState;
+
+    await page.goto('/dashboard/inventory');
+    const main = page.locator('main');
+    await main.getByRole('tab', { name: 'Compras' }).click();
+    await main.getByRole('button', { name: 'Abrir' }).first().click();
+
+    const workbench = page.getByRole('dialog').filter({ hasText: 'Trabajar solicitud' });
+    await workbench.getByRole('button', { name: 'Cancelar solicitud' }).click();
+    await workbench.getByLabel('Motivo de cancelación').fill('Ya no se requiere el material');
+    await workbench.getByRole('button', { name: 'Confirmar cancelación' }).click();
+
+    await expect(main.getByRole('cell', { name: 'Cancelada', exact: true })).toBeVisible();
+    expect(state.purchaseRequests[0]?.status).toBe('CANCELLED');
   });
 });
 
@@ -2353,7 +2669,12 @@ test.describe('Portal Inventario / Bodegas', () => {
         (entry) => entry.supplierCode === 'PROV-001',
       );
       expect(blockedProfile?.status).toBe('BLOCKED');
-      await expect(main.getByText('Bloqueado')).toBeVisible();
+      // El drawer puede seguir abierto con su propio badge; cerrar y asertar en la lista.
+      await drawer.getByRole('button', { name: 'Cerrar' }).click();
+      await expect(page.getByRole('dialog', { name: 'Editar proveedor' })).toHaveCount(0);
+      await expect(
+        main.locator('tr').filter({ hasText: 'PROV-001' }).getByText('Bloqueado'),
+      ).toBeVisible();
     });
   });
 });

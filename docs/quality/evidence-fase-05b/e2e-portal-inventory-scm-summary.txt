@@ -1,0 +1,18 @@
+# E2E Playwright — portal-inventory-scm.spec.ts
+# Fecha: 2026-07-11
+# Rol: AI-SR-QA
+# Comando: pnpm test:e2e:portal -- portal-inventory-scm.spec.ts
+# Entorno: Windows + Chromium Playwright 1.58.2 (webServer portal :3002)
+
+Running 22 tests using 1 worker
+
+RESULTADO: 22 passed (56.7s)
+
+Casos RF-PROV-08 (proveedor BLOCKED):
+  ok 13 › rechaza invitar a un proveedor BLOCKED en el RFQ (RF-PROV-08)
+  ok 14 › rechaza emitir OC a un proveedor BLOCKED (RF-PROV-08)
+  ok 22 › registra, reutiliza, edita y bloquea proveedores
+
+Nota: los mensajes ECONNREFUSED :3000 en el log completo son ruido esperado
+(page.route mockea la API; el portal intenta proxyar rutas no interceptadas).
+Log completo: e2e-portal-inventory-scm.txt

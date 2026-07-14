@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { CheckCircle2, CircleAlert, Pencil, Search, Trash2 } from 'lucide-react';
+import { CheckCircle2, CircleAlert, Pencil, Trash2 } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -32,6 +32,8 @@ import {
 import {
   PortalAlert,
   PortalEmptyState,
+  PortalPanel,
+  PortalSearchField,
   PortalSkeletonBlock,
   portalDataTableCellClassName,
   portalDataTableHeadClassName,
@@ -45,8 +47,8 @@ const SERVICE_CHARGE_TYPES = [
 ] as const;
 
 const serviceFormSchema = z.object({
-  name: z.string().trim().min(2, 'Minimo 2 caracteres.').max(100, 'Maximo 100 caracteres.'),
-  description: z.string().trim().max(240, 'Maximo 240 caracteres.').optional(),
+  name: z.string().trim().min(2, 'Mínimo 2 caracteres.').max(100, 'Máximo 100 caracteres.'),
+  description: z.string().trim().max(240, 'Máximo 240 caracteres.').optional(),
   chargeType: z.enum(SERVICE_CHARGE_TYPES),
   basePrice: z.coerce.number().min(0, 'No puede ser negativo.'),
   installationFee: z.coerce.number().min(0, 'No puede ser negativo.'),
@@ -56,10 +58,7 @@ const serviceFormSchema = z.object({
 type ServiceFormValues = z.infer<typeof serviceFormSchema>;
 type ServiceStatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE';
 
-const searchInputClass =
-  'h-12 w-full rounded-2xl border border-gray-200 bg-gray-50/70 pl-11 pr-4 text-sm text-iwana-primary shadow-sm transition-all duration-200 placeholder:text-gray-400 focus:border-iwana-secondary focus:bg-white focus:outline-none focus:ring-2 focus:ring-iwana-secondary/35 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100 dark:placeholder-gray-500';
-
-interface AdditionalServicesManagerProps {
+interface AdditionalServicesPanelProps {
   canEdit: boolean;
 }
 
@@ -109,7 +108,7 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
-export function AdditionalServicesManager({ canEdit }: AdditionalServicesManagerProps) {
+export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProps) {
   const [services, setServices] = useState<AdditionalService[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -282,22 +281,28 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
       : `${filteredServices.length} de ${totalServices} registros`;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Badge variant="neutral">{totalServices} total</Badge>
-        <Badge variant={portalActiveCountBadgeVariant}>
-          {activeServicesCount} activo{activeServicesCount === 1 ? '' : 's'}
-        </Badge>
-        <Badge variant="neutral">
-          {inactiveServicesCount} inactivo{inactiveServicesCount === 1 ? '' : 's'}
-        </Badge>
-        {canEdit && (
-          <Button onClick={openCreateDialog} size="sm">
-            Agregar servicio
-          </Button>
-        )}
-      </div>
-
+    <PortalPanel
+      eyebrow="Catálogo"
+      title="Servicios adicionales"
+      description="Administra servicios complementarios, tipos de cobro y tarifas."
+      actions={
+        <>
+          <Badge variant="neutral">{totalServices} total</Badge>
+          <Badge variant={portalActiveCountBadgeVariant}>
+            {activeServicesCount} activo{activeServicesCount === 1 ? '' : 's'}
+          </Badge>
+          <Badge variant="neutral">
+            {inactiveServicesCount} inactivo{inactiveServicesCount === 1 ? '' : 's'}
+          </Badge>
+          {canEdit && (
+            <Button onClick={openCreateDialog} size="sm">
+              Agregar servicio
+            </Button>
+          )}
+        </>
+      }
+      contentClassName="space-y-4"
+    >
       {loading ? (
         <PortalSkeletonBlock className="h-28" />
       ) : loadError ? (
@@ -316,25 +321,13 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
       ) : (
         <div className="space-y-6">
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1.8fr)_220px_220px_auto] lg:items-end">
-            <div className="min-w-[200px]">
-              <label htmlFor="service-search" className="sr-only">
-                Buscar servicio
-              </label>
-              <div className="relative">
-                <Search
-                  className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
-                  aria-hidden="true"
-                />
-                <input
-                  id="service-search"
-                  type="search"
-                  placeholder="Buscar por nombre, descripcion o tipo de cobro"
-                  value={searchValue}
-                  onChange={(event) => setSearchValue(event.target.value)}
-                  className={searchInputClass}
-                />
-              </div>
-            </div>
+            <PortalSearchField
+              id="service-search"
+              label="Buscar servicio"
+              placeholder="Buscar por nombre, descripción o tipo de cobro"
+              value={searchValue}
+              onChange={(value) => setSearchValue(value)}
+            />
 
             <Select
               id="service-status-filter"
@@ -657,6 +650,6 @@ export function AdditionalServicesManager({ canEdit }: AdditionalServicesManager
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+    </PortalPanel>
   );
 }

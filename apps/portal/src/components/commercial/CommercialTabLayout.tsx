@@ -1,14 +1,15 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger, cn } from '@iwana/ui';
 import { CompatibilityRulesManager } from '@/components/commercial/CompatibilityRulesManager';
 import { TaxCatalogManager } from '@/components/commercial/TaxCatalogManager';
 import { TaxApplicationRulesManager } from '@/components/commercial/TaxApplicationRulesManager';
 import { TaxSimulatorPanel } from '@/components/commercial/TaxSimulatorPanel';
 import { OffersManager } from '@/components/commercial/OffersManager';
-import { AdditionalProductsManager } from '@/components/settings/AdditionalProductsManager';
-import { AdditionalServicesManager } from '@/components/settings/AdditionalServicesManager';
-import { PlanCatalogManager } from '@/components/settings/PlanCatalogManager';
+import { PlanCatalogPanel } from '@/components/commercial/catalog/PlanCatalogPanel';
+import { AdditionalProductsPanel } from '@/components/commercial/catalog/AdditionalProductsPanel';
+import { AdditionalServicesPanel } from '@/components/commercial/catalog/AdditionalServicesPanel';
 import {
   portalModuleTabTriggerClassName,
   portalModuleTabsDividerClassName,
@@ -29,6 +30,7 @@ interface CommercialTabLayoutProps {
   activeTab: CommercialTab;
   taxationSubTab: TaxationSubTab;
   offersSubTab: OffersSubTab;
+  summary: ReactNode;
   onTabChange: (tab: CommercialTab) => void;
   onTaxationSubTabChange: (subTab: TaxationSubTab) => void;
   onOffersSubTabChange: (subTab: OffersSubTab) => void;
@@ -39,6 +41,7 @@ export function CommercialTabLayout({
   activeTab,
   taxationSubTab,
   offersSubTab,
+  summary,
   onTabChange,
   onTaxationSubTabChange,
   onOffersSubTabChange,
@@ -51,6 +54,23 @@ export function CommercialTabLayout({
       }}
     >
       <TabsList aria-label="Secciones comerciales" className={portalModuleTabsShellClassName}>
+        <div className={portalModuleTabsGroupClassName}>
+          <p className="portal-eyebrow px-1" id="commercial-tabs-operation-label">
+            Operación
+          </p>
+          <div
+            role="group"
+            aria-labelledby="commercial-tabs-operation-label"
+            className={portalModuleTabsTrackClassName}
+          >
+            <TabsTrigger value="summary" className={portalModuleTabTriggerClassName}>
+              Resumen
+            </TabsTrigger>
+          </div>
+        </div>
+
+        <div role="separator" aria-hidden="true" className={portalModuleTabsDividerClassName} />
+
         <div className={portalModuleTabsGroupClassName}>
           <p className="portal-eyebrow px-1" id="commercial-tabs-catalog-label">
             Catálogo
@@ -96,19 +116,23 @@ export function CommercialTabLayout({
         </div>
       </TabsList>
 
-      <TabsContent value="plans" className="mt-4 space-y-4">
-        <PlanCatalogManager canEdit={canEdit} />
+      <TabsContent value="summary" className="space-y-6">
+        {summary}
       </TabsContent>
 
-      <TabsContent value="products" className="mt-4 space-y-4">
-        <AdditionalProductsManager canEdit={canEdit} />
+      <TabsContent value="plans" className="space-y-6">
+        <PlanCatalogPanel canEdit={canEdit} />
       </TabsContent>
 
-      <TabsContent value="services" className="mt-4 space-y-4">
-        <AdditionalServicesManager canEdit={canEdit} />
+      <TabsContent value="products" className="space-y-6">
+        <AdditionalProductsPanel canEdit={canEdit} />
       </TabsContent>
 
-      <TabsContent value="offers" className="mt-4 space-y-4">
+      <TabsContent value="services" className="space-y-6">
+        <AdditionalServicesPanel canEdit={canEdit} />
+      </TabsContent>
+
+      <TabsContent value="offers" className="space-y-6">
         <OffersManager
           canEdit={canEdit}
           activeSubTab={offersSubTab}
@@ -116,11 +140,11 @@ export function CommercialTabLayout({
         />
       </TabsContent>
 
-      <TabsContent value="compatibility" className="mt-4 space-y-4">
+      <TabsContent value="compatibility" className="space-y-6">
         <CompatibilityRulesManager canEdit={canEdit} />
       </TabsContent>
 
-      <TabsContent value="taxation" className="mt-4 space-y-4">
+      <TabsContent value="taxation" className="space-y-6">
         <Tabs
           value={taxationSubTab}
           onValueChange={(value) => {
@@ -142,13 +166,13 @@ export function CommercialTabLayout({
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="tax-catalog" className="mt-4">
+          <TabsContent value="tax-catalog" className="mt-4 space-y-6">
             <TaxCatalogManager canEdit={canEdit} />
           </TabsContent>
-          <TabsContent value="tax-rules-app" className="mt-4">
+          <TabsContent value="tax-rules-app" className="mt-4 space-y-6">
             <TaxApplicationRulesManager canEdit={canEdit} />
           </TabsContent>
-          <TabsContent value="tax-simulator" className="mt-4">
+          <TabsContent value="tax-simulator" className="mt-4 space-y-6">
             <TaxSimulatorPanel />
           </TabsContent>
         </Tabs>

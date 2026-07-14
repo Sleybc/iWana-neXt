@@ -14,6 +14,11 @@ export const CreatePartySchema = z.object({
   birthDate: z.string().datetime({ offset: true }).nullable().optional(),
   incorporationDate: z.string().datetime({ offset: true }).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
+  address: z.string().trim().max(255).nullable().optional(),
+  latitude: z.number().min(-90).max(90).nullable().optional(),
+  longitude: z.number().min(-180).max(180).nullable().optional(),
+  city: z.string().trim().max(120).nullable().optional(),
+  department: z.string().trim().max(120).nullable().optional(),
 });
 
 export type CreatePartyInput = z.infer<typeof CreatePartySchema>;
@@ -66,4 +71,30 @@ export class CreatePartyDto {
   @IsString()
   @MaxLength(2000)
   notes?: string;
+
+  @ApiPropertyOptional({ maxLength: 255 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  address?: string | null;
+
+  @ApiPropertyOptional({ minimum: -90, maximum: 90 })
+  @IsOptional()
+  latitude?: number | null;
+
+  @ApiPropertyOptional({ minimum: -180, maximum: 180 })
+  @IsOptional()
+  longitude?: number | null;
+
+  @ApiPropertyOptional({ maxLength: 120 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  city?: string | null;
+
+  @ApiPropertyOptional({ maxLength: 120 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  department?: string | null;
 }

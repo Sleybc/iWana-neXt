@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { PlanCatalogManager } from './PlanCatalogManager';
+import { PlanCatalogPanel } from './PlanCatalogPanel';
 
 const mockGetPlans = jest.fn();
 const mockCreatePlan = jest.fn();
@@ -18,7 +18,7 @@ jest.mock('@/lib/api-client', () => ({
   },
 }));
 
-describe('PlanCatalogManager', () => {
+describe('PlanCatalogPanel', () => {
   beforeEach(() => {
     mockGetPlans.mockResolvedValue([]);
     mockCreatePlan.mockResolvedValue(undefined);
@@ -34,7 +34,7 @@ describe('PlanCatalogManager', () => {
       JSON.stringify(['Fibra Optica', 'Radio Enlace', 'XGS-PON']),
     );
 
-    render(<PlanCatalogManager canEdit />);
+    render(<PlanCatalogPanel canEdit />);
 
     await waitFor(() => {
       expect(mockGetPlans).toHaveBeenCalled();

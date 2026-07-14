@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Input, Select } from '@iwana/ui';
 import {
   DocumentTypeParty,
+  IncotermCode,
   PartyContactType,
   PartyType,
   SupplierProfileStatus,
@@ -15,7 +16,11 @@ import type {
   UpdateSupplierDto,
 } from '@/lib/api-client';
 import { purchasingApi } from '@/lib/api-client';
-import { PortalAlert, portalTextareaClassName } from '@/components/shared/portal-ui';
+import {
+  CreateModeMobileStepIndicator,
+  PortalAlert,
+  portalTextareaClassName,
+} from '@/components/shared/portal-ui';
 import { PortalDiscardChangesDialog } from '@/components/shared/PortalDiscardChangesDialog';
 import { useDiscardChangesGuard } from '@/components/shared/use-discard-changes-guard';
 import { usePortalSideDrawerA11y } from '@/components/shared/use-portal-side-drawer-a11y';
@@ -32,12 +37,16 @@ interface IdentityFormState {
   legalName: string;
   contactEmail: string;
   contactPhone: string;
+  address: string;
+  coordinates: string;
+  city: string;
+  department: string;
 }
 
 interface CommercialFormState {
   paymentTermsDays: string;
   currency: string;
-  incoterm: string;
+  incoterm: IncotermCode | '';
   defaultLeadTimeDays: string;
   purchasingContactName: string;
   purchasingContactEmail: string;
@@ -60,6 +69,44 @@ const PARTY_TYPE_OPTIONS = [
   { value: PartyType.NATURAL, label: 'Persona natural' },
 ] as const;
 
+const INCOTERM_OPTIONS: { value: IncotermCode; label: string }[] = [
+  { value: IncotermCode.EXW, label: 'EXW — En fábrica' },
+  { value: IncotermCode.FCA, label: 'FCA — Franco transportista' },
+  { value: IncotermCode.CPT, label: 'CPT — Transporte pagado hasta' },
+  { value: IncotermCode.CIP, label: 'CIP — Transporte y seguro pagados hasta' },
+  { value: IncotermCode.DAP, label: 'DAP — Entregado en lugar de destino' },
+  { value: IncotermCode.DPU, label: 'DPU — Entregado y descargado en lugar' },
+  { value: IncotermCode.DDP, label: 'DDP — Entregado con derechos pagados' },
+  { value: IncotermCode.FAS, label: 'FAS — Franco al costado del buque' },
+  { value: IncotermCode.FOB, label: 'FOB — Franco a bordo' },
+  { value: IncotermCode.CFR, label: 'CFR — Costo y flete' },
+  { value: IncotermCode.CIF, label: 'CIF — Costo, seguro y flete' },
+];
+
+// Algoritmo DIAN para el dígito de verificación del NIT (Resolución 000139/2012)
+const NIT_WEIGHTS = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47] as const;
+
+function calculateNitVerificationDigit(nit: string): string | null {
+  const digits = nit.replace(/\D/g, '');
+  if (digits.length === 0) return null;
+  const sum = [...digits]
+    .reverse()
+    .reduce((acc, digit, index) => acc + Number(digit) * (NIT_WEIGHTS[index] ?? 0), 0);
+  const remainder = sum % 11;
+  return String(remainder === 0 || remainder === 1 ? remainder : 11 - remainder);
+}
+
+function parseCoordinates(raw: string): { latitude: number | null; longitude: number | null } {
+  const parts = raw.trim().split(',');
+  const [rawLat, rawLng] = parts;
+  if (parts.length !== 2 || !rawLat || !rawLng) return { latitude: null, longitude: null };
+  const lat = parseFloat(rawLat.trim());
+  const lng = parseFloat(rawLng.trim());
+  if (Number.isNaN(lat) || Number.isNaN(lng)) return { latitude: null, longitude: null };
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return { latitude: null, longitude: null };
+  return { latitude: lat, longitude: lng };
+}
+
 function defaultIdentityForm(): IdentityFormState {
   return {
     partyType: PartyType.ORGANIZATION,
@@ -69,6 +116,10 @@ function defaultIdentityForm(): IdentityFormState {
     legalName: '',
     contactEmail: '',
     contactPhone: '',
+    address: '',
+    coordinates: '',
+    city: '',
+    department: '',
   };
 }
 
@@ -82,14 +133,20 @@ function defaultCommercialForm(): CommercialFormState {
     purchasingContactEmail: '',
     purchasingContactPhone: '',
     notes: '',
-  };
+  } satisfies CommercialFormState;
 }
 
 function commercialFormFromSupplier(supplier: SupplierProfileRecord): CommercialFormState {
+  const rawIncoterm = supplier.incoterm;
+  const incoterm =
+    rawIncoterm && (Object.values(IncotermCode) as string[]).includes(rawIncoterm)
+      ? (rawIncoterm as IncotermCode)
+      : '';
+
   return {
     paymentTermsDays: supplier.paymentTermsDays !== null ? String(supplier.paymentTermsDays) : '',
     currency: supplier.currency ?? 'COP',
-    incoterm: supplier.incoterm ?? '',
+    incoterm,
     defaultLeadTimeDays:
       supplier.defaultLeadTimeDays !== null ? String(supplier.defaultLeadTimeDays) : '',
     purchasingContactName: supplier.purchasingContactName ?? '',
@@ -102,11 +159,12 @@ function commercialFormFromSupplier(supplier: SupplierProfileRecord): Commercial
 function buildCommercialPayload(form: CommercialFormState): UpdateSupplierDto {
   const paymentTermsDays = form.paymentTermsDays.trim();
   const defaultLeadTimeDays = form.defaultLeadTimeDays.trim();
+  const currency = form.currency.trim().toUpperCase();
 
   return {
     paymentTermsDays: paymentTermsDays ? Number.parseInt(paymentTermsDays, 10) : null,
-    currency: form.currency.trim().toUpperCase() || null,
-    incoterm: form.incoterm.trim() || null,
+    currency: currency.length === 3 ? currency : null,
+    incoterm: form.incoterm || null,
     defaultLeadTimeDays: defaultLeadTimeDays ? Number.parseInt(defaultLeadTimeDays, 10) : null,
     purchasingContactName: form.purchasingContactName.trim() || null,
     purchasingContactEmail: form.purchasingContactEmail.trim() || null,
@@ -136,12 +194,19 @@ function buildCreatePayload(
       : null,
   ].filter((entry): entry is NonNullable<typeof entry> => entry !== null);
 
+  const { latitude, longitude } = parseCoordinates(identity.coordinates);
+
   return {
     partyType: identity.partyType,
     documentType: identity.documentType,
     documentNumber: identity.documentNumber.trim(),
     displayName: identity.displayName.trim(),
     legalName: identity.legalName.trim() || null,
+    address: identity.address.trim() || null,
+    latitude,
+    longitude,
+    city: identity.city.trim() || null,
+    department: identity.department.trim() || null,
     ...(contacts.length > 0 ? { contacts } : {}),
     ...buildCommercialPayload(commercial),
   };
@@ -234,9 +299,8 @@ export function SupplierFormDrawer({
   const isDirty = isEditing
     ? baselineCommercialForm !== null &&
       JSON.stringify(commercialForm) !== JSON.stringify(baselineCommercialForm)
-    : identityForm.documentNumber.trim().length > 0 ||
-      identityForm.displayName.trim().length > 0 ||
-      commercialForm.notes.trim().length > 0;
+    : JSON.stringify(identityForm) !== JSON.stringify(defaultIdentityForm()) ||
+      JSON.stringify(commercialForm) !== JSON.stringify(defaultCommercialForm());
 
   const { discardOpen, requestClose, confirmDiscard, cancelDiscard } = useDiscardChangesGuard({
     open,
@@ -528,7 +592,7 @@ export function SupplierFormDrawer({
 
     return (
       <div className="space-y-4">
-        <p className="text-sm font-medium text-gray-900 dark:text-white">Paso 1 · Identidad</p>
+        <CreateModeMobileStepIndicator currentStep={1} />
 
         {identityReuseNotice ? (
           <PortalAlert
@@ -560,12 +624,30 @@ export function SupplierFormDrawer({
             ))}
           </Select>
 
-          <Input
-            label="Número de documento"
-            value={identityForm.documentNumber}
-            disabled={identityDisabled}
-            onChange={(event) => updateIdentity('documentNumber', event.target.value)}
-          />
+          {identityForm.documentType === DocumentTypeParty.NIT ? (
+            <div className="flex items-end gap-2">
+              <Input
+                label="Número de NIT"
+                containerClassName="flex-1"
+                value={identityForm.documentNumber}
+                disabled={identityDisabled}
+                onChange={(event) => updateIdentity('documentNumber', event.target.value)}
+              />
+              <div className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">DV</span>
+                <div className="flex h-10 w-12 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
+                  {calculateNitVerificationDigit(identityForm.documentNumber) ?? '—'}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <Input
+              label="Número de documento"
+              value={identityForm.documentNumber}
+              disabled={identityDisabled}
+              onChange={(event) => updateIdentity('documentNumber', event.target.value)}
+            />
+          )}
         </div>
 
         <Button
@@ -620,6 +702,40 @@ export function SupplierFormDrawer({
             onChange={(event) => updateIdentity('contactPhone', event.target.value)}
           />
         </div>
+
+        <Input
+          label="Dirección"
+          value={identityForm.address}
+          placeholder="Ej. Cra 15 #93-47, Bogotá"
+          disabled={identityDisabled}
+          onChange={(event) => updateIdentity('address', event.target.value)}
+        />
+
+        <Input
+          label="Coordenadas"
+          value={identityForm.coordinates}
+          placeholder="Ej. 4.7110, -74.0721"
+          helperText="Latitud y longitud separadas por coma"
+          disabled={identityDisabled}
+          onChange={(event) => updateIdentity('coordinates', event.target.value)}
+        />
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Input
+            label="Ciudad"
+            value={identityForm.city}
+            placeholder="Ej. Bogotá"
+            disabled={identityDisabled}
+            onChange={(event) => updateIdentity('city', event.target.value)}
+          />
+          <Input
+            label="Departamento"
+            value={identityForm.department}
+            placeholder="Ej. Cundinamarca"
+            disabled={identityDisabled}
+            onChange={(event) => updateIdentity('department', event.target.value)}
+          />
+        </div>
       </div>
     );
   }
@@ -627,11 +743,7 @@ export function SupplierFormDrawer({
   function renderCommercialFields() {
     return (
       <div className="space-y-4">
-        {!isEditing ? (
-          <p className="text-sm font-medium text-gray-900 dark:text-white">
-            Paso 2 · Perfil comercial
-          </p>
-        ) : null}
+        {!isEditing ? <CreateModeMobileStepIndicator currentStep={2} /> : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Input
@@ -651,12 +763,23 @@ export function SupplierFormDrawer({
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Input
-            label="Incoterm"
+          <Select
+            label="Condición de entrega"
+            helperText="Términos de entrega internacional (Incoterms 2020)"
+            selectedHoverHint="whenTruncated"
             value={commercialForm.incoterm}
             disabled={isSubmitting}
-            onChange={(event) => updateCommercial('incoterm', event.target.value)}
-          />
+            onChange={(event) =>
+              updateCommercial('incoterm', (event.target.value as IncotermCode) || '')
+            }
+          >
+            <option value="">— Sin definir —</option>
+            {INCOTERM_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
           <Input
             label="Tiempo de entrega (días)"
             inputMode="numeric"

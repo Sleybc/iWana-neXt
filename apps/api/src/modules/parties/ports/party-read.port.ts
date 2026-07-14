@@ -17,6 +17,11 @@ export interface PartySnapshot {
   displayName: string;
   legalName: string | null;
   status: PartyStatus;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  city: string | null;
+  department: string | null;
 }
 
 export interface PartyRoleSnapshot {
@@ -44,6 +49,7 @@ export interface PartySearchResult {
 @Injectable()
 export abstract class IPartyReadPort {
   abstract getById(id: string): Promise<PartySnapshot | null>;
+  abstract getByIds(ids: string[]): Promise<PartySnapshot[]>;
   abstract findByDocument(
     documentType: DocumentTypeParty,
     documentNumber: string,
@@ -58,4 +64,5 @@ export abstract class IPartyReadPort {
   ): Promise<PartySearchResult>;
   abstract listRoles(partyId: string): Promise<PartyRoleSnapshot[]>;
   abstract listContacts(partyId: string): Promise<PartyContactSnapshot[]>;
+  abstract listContactsForIds(partyIds: string[]): Promise<Map<string, PartyContactSnapshot[]>>;
 }

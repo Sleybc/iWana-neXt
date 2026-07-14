@@ -20,6 +20,11 @@ export interface EnsurePartyInput {
     isPrimary?: boolean;
     metadata?: Record<string, unknown> | null;
   }>;
+  address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  city?: string | null;
+  department?: string | null;
 }
 
 export interface PartyWriteContext {

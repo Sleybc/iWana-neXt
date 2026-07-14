@@ -111,6 +111,8 @@ jest.mock('@/lib/api-client', () => ({
     createRequest: jest.fn(),
     addQuote: jest.fn(),
     approveRequest: jest.fn(),
+    rejectRequest: jest.fn(),
+    cancelRequest: jest.fn(),
     createAwards: jest.fn(),
     getProviderSummary: jest.fn(),
     searchSuppliers: jest.fn(),
@@ -1144,6 +1146,166 @@ describe('InventoryClient', () => {
     await waitFor(() => {
       expect(purchasingApiMock.getRequestDetail).toHaveBeenCalledWith('pr-1');
       expect(screen.getByText('Trabajar solicitud')).toBeInTheDocument();
+    });
+  });
+
+  it('permite rechazar una solicitud pendiente desde el workbench', async () => {
+    purchasingApiMock.rejectRequest.mockResolvedValue({
+      id: 'pr-1',
+      tenantId: 'tenant-1',
+      requestNumber: 'PR-000001',
+      title: 'Reposición de ONT',
+      status: PurchaseRequestStatus.REJECTED,
+      requestType: PurchaseRequestType.REPLENISHMENT,
+      priority: PurchaseRequestPriority.NORMAL,
+      requestedByUserId: 'user-1',
+      requestingArea: 'Operaciones',
+      justification: 'Reposición por consumo de campo',
+      operationalRefType: null,
+      operationalRefId: null,
+      exceptionReason: null,
+      approvedByUserId: null,
+      neededByDate: '2026-06-30',
+      notes: null,
+      createdAt: '2026-06-25T12:00:00.000Z',
+      updatedAt: '2026-06-25T12:00:00.000Z',
+    });
+
+    render(<InventoryClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('tab', { name: 'Compras' }));
+    });
+
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Abrir' }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Trabajar solicitud')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Rechazar' }));
+    });
+
+    const reasonField = await screen.findByLabelText('Motivo del rechazo');
+    await act(async () => {
+      fireEvent.change(reasonField, {
+        target: { value: 'Cotización fuera de presupuesto' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Confirmar rechazo' }));
+    });
+
+    await waitFor(() => {
+      expect(purchasingApiMock.rejectRequest).toHaveBeenCalledWith('pr-1', {
+        reason: 'Cotización fuera de presupuesto',
+      });
+    });
+  });
+
+  it('adjudica líneas desde el workbench cuando la solicitud está aprobada', async () => {
+    purchasingApiMock.getRequestDetail.mockResolvedValue({
+      request: {
+        id: 'pr-1',
+        tenantId: 'tenant-1',
+        requestNumber: 'PR-000001',
+        title: 'Reposición de ONT',
+        status: PurchaseRequestStatus.APPROVED,
+        requestType: PurchaseRequestType.REPLENISHMENT,
+        priority: PurchaseRequestPriority.NORMAL,
+        requestedByUserId: 'user-1',
+        requestingArea: 'Operaciones',
+        justification: 'Reposición por consumo de campo',
+        operationalRefType: null,
+        operationalRefId: null,
+        exceptionReason: null,
+        approvedByUserId: 'user-1',
+        neededByDate: '2026-06-30',
+        notes: null,
+        createdAt: '2026-06-25T12:00:00.000Z',
+        updatedAt: '2026-06-25T12:00:00.000Z',
+      },
+      lines: [
+        {
+          id: 'line-1',
+          tenantId: 'tenant-1',
+          purchaseRequestId: 'pr-1',
+          sourceKind: 'INVENTORY_ITEM' as never,
+          inventoryItemId: 'item-1',
+          freeTextDescription: null,
+          quantityRequested: '5',
+          unitOfMeasure: 'unidad',
+          suggestedPartyRefId: null,
+          lineStatus: 'OPEN' as never,
+          notes: null,
+          createdAt: '2026-06-25T12:00:00.000Z',
+          updatedAt: '2026-06-25T12:00:00.000Z',
+        },
+      ],
+      quotes: [
+        {
+          id: 'quote-1',
+          tenantId: 'tenant-1',
+          purchaseRequestId: 'pr-1',
+          partyRefId: 'supplier-1',
+          quoteNumber: 'COT-100',
+          amount: '900000',
+          currency: 'COP',
+          validUntil: null,
+          notes: null,
+          createdAt: '2026-06-25T12:00:00.000Z',
+          updatedAt: '2026-06-25T12:00:00.000Z',
+        },
+      ],
+      awards: [],
+      orders: [],
+      estimatedAmount: 900000,
+      approvalPolicy: {
+        canApprove: false,
+        requiresException: false,
+        blockingReason: null,
+        approvalLevel: 'MANAGER',
+      },
+      rfq: null,
+    });
+    purchasingApiMock.createAwards.mockResolvedValue([]);
+
+    render(<InventoryClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Compras' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Abrir' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Trabajar solicitud')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Adjudicación' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Usar COT-100/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Adjudicar líneas' }));
+
+    await waitFor(() => {
+      expect(purchasingApiMock.createAwards).toHaveBeenCalledWith(
+        'pr-1',
+        expect.objectContaining({
+          awards: [
+            expect.objectContaining({
+              purchaseRequestLineId: 'line-1',
+              awardedPartyRefId: 'supplier-1',
+              awardedQuantity: 5,
+              supplierQuoteId: 'quote-1',
+            }),
+          ],
+        }),
+      );
     });
   });
 

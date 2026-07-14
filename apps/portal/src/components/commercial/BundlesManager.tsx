@@ -24,6 +24,7 @@ import {
 import {
   PortalAlert,
   PortalEmptyState,
+  PortalPanel,
   PortalSkeletonBlock,
   portalDataTableCellClassName,
   portalDataTableHeadClassName,
@@ -191,19 +192,25 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Badge variant={portalActiveCountBadgeVariant}>
-          {activeBundles.length} activo{activeBundles.length === 1 ? '' : 's'}
-        </Badge>
-        {canEdit && (
-          <Button size="sm" onClick={() => setIsModalOpen(true)}>
-            <Plus className="mr-1 h-4 w-4" aria-hidden="true" />
-            Crear combo
-          </Button>
-        )}
-      </div>
-
+    <PortalPanel
+      eyebrow="Ofertas"
+      title="Combos"
+      description="Administra combos compuestos con descuentos y vigencia."
+      actions={
+        <>
+          <Badge variant={portalActiveCountBadgeVariant}>
+            {activeBundles.length} activo{activeBundles.length === 1 ? '' : 's'}
+          </Badge>
+          {canEdit && (
+            <Button size="sm" onClick={() => setIsModalOpen(true)}>
+              <Plus className="mr-1 h-4 w-4" aria-hidden="true" />
+              Crear combo
+            </Button>
+          )}
+        </>
+      }
+      contentClassName="space-y-4"
+    >
       {isLoading ? (
         <PortalSkeletonBlock className="h-28" />
       ) : loadError ? (
@@ -260,15 +267,16 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
                     </td>
                     {canEdit && (
                       <td className={portalDataTableCellClassName}>
-                        <button
+                        <Button
                           type="button"
+                          variant="softDestructive"
+                          size="sm"
                           disabled={deletingBundleId === bundle.id || !bundle.isActive}
                           onClick={() => handleDeactivateBundle(bundle.id)}
-                          className="inline-flex items-center gap-1 text-sm font-medium text-red-700 transition-colors hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <Trash2 className="h-4 w-4" aria-hidden="true" />
                           Desactivar
-                        </button>
+                        </Button>
                       </td>
                     )}
                   </tr>
@@ -293,6 +301,6 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
         }}
         onSubmit={handleCreateBundle}
       />
-    </div>
+    </PortalPanel>
   );
 }

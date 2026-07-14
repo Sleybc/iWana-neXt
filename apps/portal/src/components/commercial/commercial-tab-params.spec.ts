@@ -5,9 +5,9 @@ import {
 } from './commercial-tab-params';
 
 describe('commercial-tab-params', () => {
-  it('resuelve la ruta por defecto', () => {
+  it('resuelve la ruta por defecto en tab Resumen', () => {
     expect(resolveCommercialRoute(undefined)).toEqual({
-      tab: 'plans',
+      tab: 'summary',
       taxationSubTab: 'tax-catalog',
       offersSubTab: 'bundles',
     });
@@ -30,18 +30,28 @@ describe('commercial-tab-params', () => {
   });
 
   it('valida tabs comerciales soportados', () => {
+    expect(isCommercialTabParam('summary')).toBe(true);
     expect(isCommercialTabParam('products')).toBe(true);
     expect(isCommercialTabParam('unknown')).toBe(false);
   });
 
-  it('construye query omitiendo el tab por defecto', () => {
+  it('construye query omitiendo el tab Resumen por defecto', () => {
+    expect(
+      buildCommercialTabQuery({
+        tab: 'summary',
+        taxationSubTab: 'tax-catalog',
+        offersSubTab: 'bundles',
+      }),
+    ).toBeUndefined();
+
     expect(
       buildCommercialTabQuery({
         tab: 'plans',
         taxationSubTab: 'tax-catalog',
         offersSubTab: 'bundles',
       }),
-    ).toBeUndefined();
+    ).toBe('plans');
+
     expect(
       buildCommercialTabQuery({
         tab: 'taxation',

@@ -5,15 +5,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import Link from 'next/link';
-import {
-  CheckCircle2,
-  CircleAlert,
-  ExternalLink,
-  Pencil,
-  Plus,
-  Search,
-  Trash2,
-} from 'lucide-react';
+import { CheckCircle2, CircleAlert, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -41,11 +33,14 @@ import {
 import {
   PortalAlert,
   PortalEmptyState,
+  PortalPanel,
+  PortalSearchField,
   PortalSkeletonBlock,
   portalDataTableCellClassName,
   portalDataTableHeadClassName,
   portalDataTableShellClassName,
 } from '@/components/shared/portal-ui';
+import { commercialTableRowHoverClassName } from '@/components/commercial/commercial-field-styles';
 
 const PRODUCT_CATEGORY_VALUES = [
   ProductCategory.ENTERTAINMENT,
@@ -57,8 +52,8 @@ const PRODUCT_CATEGORY_VALUES = [
 ] as const;
 
 const productFormSchema = z.object({
-  name: z.string().trim().min(2, 'Minimo 2 caracteres.').max(100, 'Maximo 100 caracteres.'),
-  description: z.string().trim().max(240, 'Maximo 240 caracteres.').optional(),
+  name: z.string().trim().min(2, 'Mínimo 2 caracteres.').max(100, 'Máximo 100 caracteres.'),
+  description: z.string().trim().max(240, 'Máximo 240 caracteres.').optional(),
   category: z.enum(PRODUCT_CATEGORY_VALUES),
   isLoan: z.boolean(),
   requiresInventory: z.boolean(),
@@ -79,10 +74,7 @@ const CATEGORY_ORDER = [
   ProductCategory.CPE,
 ];
 
-const searchInputClass =
-  'h-12 w-full rounded-2xl border border-gray-200 bg-gray-50/70 pl-11 pr-4 text-sm text-iwana-primary shadow-sm transition-all duration-200 placeholder:text-gray-400 focus:border-iwana-secondary focus:bg-white focus:outline-none focus:ring-2 focus:ring-iwana-secondary/35 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100 dark:placeholder-gray-500';
-
-interface AdditionalProductsManagerProps {
+interface AdditionalProductsPanelProps {
   canEdit: boolean;
 }
 
@@ -112,7 +104,7 @@ function normalizeSearchValue(value: string): string {
   return value.trim().toLowerCase();
 }
 
-export function AdditionalProductsManager({ canEdit }: AdditionalProductsManagerProps) {
+export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProps) {
   const [products, setProducts] = useState<AdditionalProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -320,23 +312,29 @@ export function AdditionalProductsManager({ canEdit }: AdditionalProductsManager
       : `${filteredProducts.length} de ${totalProducts} registros`;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Badge variant="neutral">{totalProducts} total</Badge>
-        <Badge variant={portalActiveCountBadgeVariant}>
-          {activeProductsCount} activo{activeProductsCount === 1 ? '' : 's'}
-        </Badge>
-        <Badge variant="neutral">
-          {inactiveProductsCount} inactivo{inactiveProductsCount === 1 ? '' : 's'}
-        </Badge>
-        {canEdit && (
-          <Button onClick={openCreateDialog} size="sm">
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            Agregar producto
-          </Button>
-        )}
-      </div>
-
+    <PortalPanel
+      eyebrow="Catálogo"
+      title="Productos adicionales"
+      description="Consulta, filtra y administra productos complementarios al plan principal."
+      actions={
+        <>
+          <Badge variant="neutral">{totalProducts} total</Badge>
+          <Badge variant={portalActiveCountBadgeVariant}>
+            {activeProductsCount} activo{activeProductsCount === 1 ? '' : 's'}
+          </Badge>
+          <Badge variant="neutral">
+            {inactiveProductsCount} inactivo{inactiveProductsCount === 1 ? '' : 's'}
+          </Badge>
+          {canEdit && (
+            <Button onClick={openCreateDialog} size="sm">
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Agregar producto
+            </Button>
+          )}
+        </>
+      }
+      contentClassName="space-y-4"
+    >
       {loading ? (
         <PortalSkeletonBlock className="h-28" />
       ) : loadError ? (
@@ -355,25 +353,13 @@ export function AdditionalProductsManager({ canEdit }: AdditionalProductsManager
       ) : (
         <div className="space-y-6">
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_220px_220px_220px_220px_auto] lg:items-end">
-            <div className="min-w-[200px]">
-              <label htmlFor="product-search" className="sr-only">
-                Buscar producto
-              </label>
-              <div className="relative">
-                <Search
-                  className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
-                  aria-hidden="true"
-                />
-                <input
-                  id="product-search"
-                  type="search"
-                  placeholder="Buscar por nombre, descripcion o categoria"
-                  value={searchValue}
-                  onChange={(event) => setSearchValue(event.target.value)}
-                  className={searchInputClass}
-                />
-              </div>
-            </div>
+            <PortalSearchField
+              id="product-search"
+              label="Buscar producto"
+              placeholder="Buscar por nombre, descripción o categoría"
+              value={searchValue}
+              onChange={(value) => setSearchValue(value)}
+            />
 
             <Select
               id="product-category-filter"
@@ -765,6 +751,6 @@ export function AdditionalProductsManager({ canEdit }: AdditionalProductsManager
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+    </PortalPanel>
   );
 }

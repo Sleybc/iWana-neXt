@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import { AdditionalServicesManager } from './AdditionalServicesManager';
+import { AdditionalServicesPanel } from './AdditionalServicesPanel';
 
 const mockGetAdditionalServices = jest.fn();
 const mockCreateAdditionalService = jest.fn();
@@ -15,7 +15,7 @@ jest.mock('@/lib/api-client', () => ({
   },
 }));
 
-describe('AdditionalServicesManager', () => {
+describe('AdditionalServicesPanel', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetAdditionalServices.mockResolvedValue([
@@ -37,7 +37,7 @@ describe('AdditionalServicesManager', () => {
   });
 
   it('muestra acciones compactas accesibles para editar y eliminar servicios', async () => {
-    render(<AdditionalServicesManager canEdit />);
+    render(<AdditionalServicesPanel canEdit />);
 
     await waitFor(() => {
       expect(mockGetAdditionalServices).toHaveBeenCalled();

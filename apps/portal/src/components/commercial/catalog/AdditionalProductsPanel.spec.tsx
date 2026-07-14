@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import { AdditionalProductsManager } from './AdditionalProductsManager';
+import { AdditionalProductsPanel } from './AdditionalProductsPanel';
 
 const mockGetAdditionalProducts = jest.fn();
 const mockCreateAdditionalProduct = jest.fn();
@@ -15,7 +15,7 @@ jest.mock('@/lib/api-client', () => ({
   },
 }));
 
-describe('AdditionalProductsManager', () => {
+describe('AdditionalProductsPanel', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetAdditionalProducts.mockResolvedValue([
@@ -37,7 +37,7 @@ describe('AdditionalProductsManager', () => {
   });
 
   it('muestra acciones accesibles para editar y eliminar productos', async () => {
-    render(<AdditionalProductsManager canEdit />);
+    render(<AdditionalProductsPanel canEdit />);
 
     await waitFor(() => {
       expect(mockGetAdditionalProducts).toHaveBeenCalled();

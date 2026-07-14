@@ -217,7 +217,7 @@ Descartada. Mezcla datos comerciales de compra (propiedad de un contexto) en el 
 
 ## Estado de aprobacion
 
-**Aprobado por el CTO (2026-07-11).** Habilita la ejecucion de la Fase 05 conforme al plan y prompt asociados, incluyendo el cambio de schema (migracion `063`), el nuevo contrato de boundary `IPartyWritePort` y la entidad `SupplierProfile`. Escalaciones resueltas (datos bancarios fuera de v1; RBAC ADMIN/NOC/SUPPORT). **Revision reforzada AI-SEC-ENG** obligatoria antes del merge (cambio de schema + boundary de escritura cross-module).
+**Aprobado por el CTO (2026-07-11).** Habilita la ejecucion de la Fase 05 conforme al plan y prompt asociados, incluyendo el cambio de schema (migracion `064` — el slot `063` quedo ocupado por otro trabajo), el nuevo contrato de boundary `IPartyWritePort` y la entidad `SupplierProfile`. Escalaciones resueltas (datos bancarios fuera de v1; RBAC ADMIN/NOC/SUPPORT). **Revision reforzada AI-SEC-ENG** obligatoria antes del merge (cambio de schema + boundary de escritura cross-module).
 
 ---
 

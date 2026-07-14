@@ -1,0 +1,69 @@
+
+> iwana-next@0.1.0 test:e2e:portal C:\appiw
+> playwright test --config e2e/playwright.portal.config.ts "portal-inventory-scm.spec.ts" "-g" "registra, reutiliza|rechaza invitar|rechaza emitir"
+
+
+Running 3 tests using 1 worker
+
+(node:12352) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:12352) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] Route /auth/login is rendering with server caches disabled. For this navigation, Component Metadata in React DevTools will not accurately reflect what is statically prerenderable and runtime prefetchable. See more info here: https://nextjs.org/docs/messages/cache-bypass-in-dev
+[WebServer] Route /dashboard/inventory is rendering with server caches disabled. For this navigation, Component Metadata in React DevTools will not accurately reflect what is statically prerenderable and runtime prefetchable. See more info here: https://nextjs.org/docs/messages/cache-bypass-in-dev
+[WebServer] ÔÜá Fast Refresh had to perform a full reload. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+[WebServer] (node:28428) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
+[WebServer] (Use `node --trace-deprecation ...` to show where the warning was created)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok 1 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:2105:3 ÔÇ║ Portal Inventario / SCM ÔÇ║ rechaza invitar a un proveedor BLOCKED en el RFQ (RF-PROV-08) (8.5s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok 2 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:2146:3 ÔÇ║ Portal Inventario / SCM ÔÇ║ rechaza emitir OC a un proveedor BLOCKED (RF-PROV-08) (4.8s)
+[WebServer] Failed to proxy http://127.0.0.1:3000/api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+[WebServer] Error: connect ECONNREFUSED 127.0.0.1:3000
+[WebServer]     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:3000) {
+[WebServer]   errno: -4078,
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   syscall: 'connect',
+[WebServer]   address: '127.0.0.1',
+[WebServer]   port: 3000
+[WebServer] }
+  ok 3 [chromium] ÔÇ║ e2e\tests\portal-inventory-scm.spec.ts:2328:5 ÔÇ║ Portal Inventario / Bodegas ÔÇ║ gesti├│n de proveedores ÔÇ║ registra, reutiliza, edita y bloquea proveedores (2.8s)
+
+  3 passed (22.3s)

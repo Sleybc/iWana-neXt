@@ -21,6 +21,8 @@ import {
   AddSupplierQuoteSchema,
   ApprovePurchaseRequestInput,
   ApprovePurchaseRequestSchema,
+  CancelPurchaseRequestInput,
+  CancelPurchaseRequestSchema,
   CreatePurchaseRequestAwardsInput,
   CreatePurchaseRequestAwardsSchema,
   CreatePurchaseOrderInput,
@@ -29,6 +31,8 @@ import {
   CreatePurchaseRequestSchema,
   ListPurchaseOrdersQueryInput,
   ListPurchaseOrdersQuerySchema,
+  RejectPurchaseRequestInput,
+  RejectPurchaseRequestSchema,
 } from '../dto';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { PurchasingPolicyService } from './purchasing-policy.service';
@@ -269,6 +273,90 @@ export class PurchasingService {
         request.approvedByUserId = actor.sub;
         request.updatedAt = new Date();
         request.requestedByUserId = request.requestedByUserId ?? actor.sub;
+        return manager.save(PurchaseRequest, request);
+      }),
+    );
+  }
+
+  async rejectPurchaseRequest(
+    purchaseRequestId: string,
+    input: RejectPurchaseRequestInput,
+    actor: JwtPayload,
+  ): Promise<PurchaseRequest> {
+    const validated = RejectPurchaseRequestSchema.parse(input);
+
+    return this.resolvePurchaseRequest(purchaseRequestId, actor, {
+      reason: validated.reason,
+      targetStatus: PurchaseRequestStatus.REJECTED,
+      lineStatus: PurchaseRequestLineStatus.REJECTED,
+      allowedFrom: [PurchaseRequestStatus.PENDING_QUOTES, PurchaseRequestStatus.PENDING_APPROVAL],
+      notAllowedMessage: 'La solicitud no está en un estado que permita rechazarla.',
+    });
+  }
+
+  async cancelPurchaseRequest(
+    purchaseRequestId: string,
+    input: CancelPurchaseRequestInput,
+    actor: JwtPayload,
+  ): Promise<PurchaseRequest> {
+    const validated = CancelPurchaseRequestSchema.parse(input);
+
+    return this.resolvePurchaseRequest(purchaseRequestId, actor, {
+      reason: validated.reason,
+      targetStatus: PurchaseRequestStatus.CANCELLED,
+      lineStatus: PurchaseRequestLineStatus.CANCELLED,
+      allowedFrom: [
+        PurchaseRequestStatus.DRAFT,
+        PurchaseRequestStatus.PENDING_QUOTES,
+        PurchaseRequestStatus.PENDING_APPROVAL,
+        PurchaseRequestStatus.APPROVED,
+      ],
+      notAllowedMessage: 'La solicitud no está en un estado que permita cancelarla.',
+    });
+  }
+
+  private async resolvePurchaseRequest(
+    purchaseRequestId: string,
+    actor: JwtPayload,
+    options: {
+      reason: string;
+      targetStatus: PurchaseRequestStatus;
+      lineStatus: PurchaseRequestLineStatus;
+      allowedFrom: PurchaseRequestStatus[];
+      notAllowedMessage: string;
+    },
+  ): Promise<PurchaseRequest> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      withTransaction(qr.manager, async (manager) => {
+        const request = await this.requirePurchaseRequest(manager, tenantId, purchaseRequestId);
+
+        if (!options.allowedFrom.includes(request.status)) {
+          throw new BadRequestException(options.notAllowedMessage);
+        }
+
+        await this.rfqService.cancelActiveForRequest(manager, tenantId, purchaseRequestId, actor);
+
+        const lines = await manager.find(PurchaseRequestLine, {
+          where: { tenantId, purchaseRequestId },
+        });
+
+        for (const line of lines) {
+          if (
+            line.lineStatus !== PurchaseRequestLineStatus.ORDERED &&
+            line.lineStatus !== PurchaseRequestLineStatus.RECEIVED &&
+            line.lineStatus !== PurchaseRequestLineStatus.PARTIALLY_RECEIVED
+          ) {
+            line.lineStatus = options.lineStatus;
+            await manager.save(PurchaseRequestLine, line);
+          }
+        }
+
+        request.status = options.targetStatus;
+        request.resolutionReason = options.reason;
+        request.resolvedByUserId = actor.sub;
+        request.updatedAt = new Date();
         return manager.save(PurchaseRequest, request);
       }),
     );

@@ -3,7 +3,9 @@
 import { useMemo, useState } from 'react';
 import type {
   AddSupplierQuoteDto,
+  CancelPurchaseRequestDto,
   CreatePurchaseOrderDto,
+  CreatePurchaseRequestAwardsDto,
   CreatePurchaseRequestDto,
   GoodsReceiptResultRecord,
   InventoryCatalogOptionRecord,
@@ -14,6 +16,7 @@ import type {
   PurchaseRequestDetailRecord,
   PurchaseRequestRecord,
   ReceivePurchaseOrderDto,
+  RejectPurchaseRequestDto,
   StockLocationRecord,
   StockMovementResultRecord,
   SupplierSummaryRecord,
@@ -63,11 +66,17 @@ interface PurchaseWorkspaceProps {
   isSubmittingRequest: boolean;
   isSubmittingQuote: boolean;
   isSubmittingApprove: boolean;
+  isSubmittingAwards: boolean;
+  isSubmittingReject: boolean;
+  isSubmittingCancel: boolean;
   isSubmittingOrder: boolean;
   isSubmittingReceipt: boolean;
   createError: string | null;
   quoteError: string | null;
   approveError: string | null;
+  awardsError: string | null;
+  rejectError: string | null;
+  cancelError: string | null;
   orderError: string | null;
   receiptError: string | null;
   counterPurchaseError?: string | null;
@@ -76,6 +85,9 @@ interface PurchaseWorkspaceProps {
   onCreateRequest: (payload: CreatePurchaseRequestDto) => Promise<PurchaseCreateRequestResult>;
   onAddQuote: (requestId: string, payload: AddSupplierQuoteDto) => Promise<void>;
   onApproveRequest: (requestId: string, exceptionReason?: string) => Promise<void>;
+  onCreateAwards: (requestId: string, payload: CreatePurchaseRequestAwardsDto) => Promise<void>;
+  onRejectRequest: (requestId: string, payload: RejectPurchaseRequestDto) => Promise<void>;
+  onCancelRequest: (requestId: string, payload: CancelPurchaseRequestDto) => Promise<void>;
   onCreateOrder: (payload: CreatePurchaseOrderDto) => Promise<void>;
   onReceiveOrder: (purchaseOrderId: string, payload: ReceivePurchaseOrderDto) => Promise<void>;
   onCounterPurchase?: (payload: CreateCounterPurchaseDto) => Promise<void>;
@@ -101,11 +113,17 @@ export function PurchaseWorkspace({
   isSubmittingRequest,
   isSubmittingQuote,
   isSubmittingApprove,
+  isSubmittingAwards,
+  isSubmittingReject,
+  isSubmittingCancel,
   isSubmittingOrder,
   isSubmittingReceipt,
   createError,
   quoteError,
   approveError,
+  awardsError,
+  rejectError,
+  cancelError,
   orderError,
   receiptError,
   counterPurchaseError = null,
@@ -114,6 +132,9 @@ export function PurchaseWorkspace({
   onCreateRequest,
   onAddQuote,
   onApproveRequest,
+  onCreateAwards,
+  onRejectRequest,
+  onCancelRequest,
   onCreateOrder,
   onReceiveOrder,
   onCounterPurchase,
@@ -342,11 +363,18 @@ export function PurchaseWorkspace({
         supplierSummary={supplierSummary}
         supplierLoading={supplierLoading}
         supplierError={supplierError}
+        supplierLabels={supplierLabels}
         isSubmittingQuote={isSubmittingQuote}
         isSubmittingApprove={isSubmittingApprove}
+        isSubmittingAwards={isSubmittingAwards}
+        isSubmittingReject={isSubmittingReject}
+        isSubmittingCancel={isSubmittingCancel}
         isSubmittingReceipt={isSubmittingReceipt}
         quoteError={quoteError}
         approveError={approveError}
+        awardsError={awardsError}
+        rejectError={rejectError}
+        cancelError={cancelError}
         receiptError={receiptError}
         onClose={() => setSelectedRequestId(null)}
         onAddQuote={async (payload) => {
@@ -358,6 +386,24 @@ export function PurchaseWorkspace({
         onApprove={async (exceptionReason) => {
           if (!selectedRequestId) return;
           await onApproveRequest(selectedRequestId, exceptionReason);
+          await loadDetail(selectedRequestId);
+          await onRefresh();
+        }}
+        onCreateAwards={async (payload) => {
+          if (!selectedRequestId) return;
+          await onCreateAwards(selectedRequestId, payload);
+          await loadDetail(selectedRequestId);
+          await onRefresh();
+        }}
+        onReject={async (payload) => {
+          if (!selectedRequestId) return;
+          await onRejectRequest(selectedRequestId, payload);
+          await loadDetail(selectedRequestId);
+          await onRefresh();
+        }}
+        onCancel={async (payload) => {
+          if (!selectedRequestId) return;
+          await onCancelRequest(selectedRequestId, payload);
           await loadDetail(selectedRequestId);
           await onRefresh();
         }}

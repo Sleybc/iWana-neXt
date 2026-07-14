@@ -356,6 +356,12 @@ export class SupplierProfileService {
       });
     }
 
+    if (validated.address !== undefined) input.address = validated.address;
+    if (validated.latitude !== undefined) input.latitude = validated.latitude;
+    if (validated.longitude !== undefined) input.longitude = validated.longitude;
+    if (validated.city !== undefined) input.city = validated.city;
+    if (validated.department !== undefined) input.department = validated.department;
+
     return input;
   }
 
@@ -394,11 +400,12 @@ export class SupplierProfileService {
   }
 
   private async enrichProfiles(profiles: SupplierProfile[]): Promise<SupplierProfileRecord[]> {
-    return Promise.all(
-      profiles.map(async (profile) => {
-        const party = await this.supplierPartyPort.getSupplierSummary(profile.partyRefId);
-        return this.toRecord(profile, party);
-      }),
+    if (profiles.length === 0) return [];
+    const summaryMap = await this.supplierPartyPort.getSupplierSummariesBatch(
+      profiles.map((p) => p.partyRefId),
+    );
+    return profiles.map((profile) =>
+      this.toRecord(profile, summaryMap.get(profile.partyRefId) ?? null),
     );
   }
 

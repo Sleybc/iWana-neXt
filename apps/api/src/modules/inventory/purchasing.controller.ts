@@ -25,6 +25,8 @@ import {
   AddSupplierQuoteSchema,
   ApprovePurchaseRequestDto,
   ApprovePurchaseRequestSchema,
+  CancelPurchaseRequestDto,
+  CancelPurchaseRequestSchema,
   CreatePurchaseRequestAwardsDto,
   CreatePurchaseRequestAwardsSchema,
   CreatePurchaseOrderDto,
@@ -49,6 +51,8 @@ import {
   LookupSupplierDocumentSchema,
   ReceivePurchaseOrderDto,
   ReceivePurchaseOrderSchema,
+  RejectPurchaseRequestDto,
+  RejectPurchaseRequestSchema,
   SearchSuppliersQueryDto,
   SearchSuppliersQuerySchema,
   SetSupplierStatusDto,
@@ -140,6 +144,36 @@ export class PurchasingController {
     return this.purchasingService.approvePurchaseRequest(
       id,
       ApprovePurchaseRequestSchema.parse(body),
+      actor,
+    );
+  }
+
+  @Post('requests/:id/reject')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Rechazar solicitud de compra' })
+  rejectRequest(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(RejectPurchaseRequestSchema)) body: RejectPurchaseRequestDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.purchasingService.rejectPurchaseRequest(
+      id,
+      RejectPurchaseRequestSchema.parse(body),
+      actor,
+    );
+  }
+
+  @Post('requests/:id/cancel')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Cancelar solicitud de compra' })
+  cancelRequest(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(CancelPurchaseRequestSchema)) body: CancelPurchaseRequestDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.purchasingService.cancelPurchaseRequest(
+      id,
+      CancelPurchaseRequestSchema.parse(body),
       actor,
     );
   }

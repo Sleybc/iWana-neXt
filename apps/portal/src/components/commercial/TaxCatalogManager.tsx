@@ -31,6 +31,7 @@ import {
   interactiveFocusClassName,
   PortalAlert,
   PortalEmptyState,
+  PortalPanel,
   PortalSkeletonBlock,
 } from '@/components/shared/portal-ui';
 
@@ -231,37 +232,43 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Badge variant="neutral">
-          {definitions.length} definición{definitions.length === 1 ? '' : 'es'}
-        </Badge>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Actualizar catálogo de impuestos"
-          title="Actualizar catálogo de impuestos"
-          onClick={() => void loadDefinitions()}
-        >
-          <RotateCcw className="h-4 w-4" aria-hidden="true" />
-        </Button>
-        {canEdit && (
+    <PortalPanel
+      eyebrow="Tributación"
+      title="Catálogo de impuestos"
+      description="Consulta y administra definiciones tributarias del tenant (lectura y edición según origen)."
+      actions={
+        <>
+          <Badge variant="neutral">
+            {definitions.length} definición{definitions.length === 1 ? '' : 'es'}
+          </Badge>
           <Button
-            size="sm"
-            onClick={() => {
-              setCreateError(null);
-              setFormErrors({});
-              codeAutoRef.current = true;
-              setForm(INITIAL_FORM);
-              setCreateOpen(true);
-            }}
+            variant="ghost"
+            size="icon"
+            aria-label="Actualizar catálogo de impuestos"
+            title="Actualizar catálogo de impuestos"
+            onClick={() => void loadDefinitions()}
           >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            Nueva definición
+            <RotateCcw className="h-4 w-4" aria-hidden="true" />
           </Button>
-        )}
-      </div>
-
+          {canEdit && (
+            <Button
+              size="sm"
+              onClick={() => {
+                setCreateError(null);
+                setFormErrors({});
+                codeAutoRef.current = true;
+                setForm(INITIAL_FORM);
+                setCreateOpen(true);
+              }}
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Nueva definición
+            </Button>
+          )}
+        </>
+      }
+      contentClassName="flex flex-col gap-4"
+    >
       {error && (
         <PortalAlert
           variant="error"
@@ -818,6 +825,6 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </PortalPanel>
   );
 }

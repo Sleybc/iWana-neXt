@@ -45,6 +45,11 @@ export class PartyWriteAdapter extends IPartyWritePort {
         displayName: input.displayName,
         legalName: input.legalName ?? null,
         status: PartyStatus.ACTIVE,
+        address: input.address ?? null,
+        latitude: input.latitude ?? null,
+        longitude: input.longitude ?? null,
+        city: input.city ?? null,
+        department: input.department ?? null,
       });
       await manager.save(Party, party);
       partyCreated = true;

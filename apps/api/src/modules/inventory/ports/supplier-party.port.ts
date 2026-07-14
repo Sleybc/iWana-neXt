@@ -46,6 +46,10 @@ interface SummaryContactInput {
 @Injectable()
 export abstract class SupplierPartyPort {
   abstract getSupplierSummary(partyRefId: string): Promise<SupplierPartySummary | null>;
+  /** Carga resúmenes de múltiples proveedores en dos queries (batch), eliminando el N+1 del listado. */
+  abstract getSupplierSummariesBatch(
+    partyRefIds: string[],
+  ): Promise<Map<string, SupplierPartySummary>>;
   abstract searchSuppliers(
     query?: string,
     page?: number,
@@ -78,6 +82,25 @@ export class SupplierPartyPortAdapter extends SupplierPartyPort {
 
     const contacts = await this.partyReadPort.listContacts(partyRefId);
     return this.composeSummary(party.id, party.displayName, party.status, contacts);
+  }
+
+  async getSupplierSummariesBatch(
+    partyRefIds: string[],
+  ): Promise<Map<string, SupplierPartySummary>> {
+    if (partyRefIds.length === 0) return new Map();
+    const [parties, contactsMap] = await Promise.all([
+      this.partyReadPort.getByIds(partyRefIds),
+      this.partyReadPort.listContactsForIds(partyRefIds),
+    ]);
+    const result = new Map<string, SupplierPartySummary>();
+    for (const party of parties) {
+      const contacts = contactsMap.get(party.id) ?? [];
+      result.set(
+        party.id,
+        this.composeSummary(party.id, party.displayName, party.status, contacts),
+      );
+    }
+    return result;
   }
 
   summaryFromIdentity(identity: PartyIdentitySnapshot): SupplierPartySummary {

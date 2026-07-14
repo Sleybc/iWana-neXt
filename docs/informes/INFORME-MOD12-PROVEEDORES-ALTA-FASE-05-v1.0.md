@@ -1,6 +1,6 @@
 # INFORME — MOD12 Proveedores (Alta y gestión) Fase 05 v1.0
 
-**Estado:** Fase 05 **NO cerrada** en la auditoría de 2ª capa (NO-GO); **remediada en Fase 05-B** (2026-07-11). Cierre sujeto a GO de AI-EM-ARCH tras verificar la evidencia adjunta.
+**Estado:** Fase 05 remediada en Fase 05-B (2026-07-11). **E2E Playwright ejecutado y verde (22/22)** por AI-SR-QA el 2026-07-11 — condición de salida del GO condicionado de AI-EM-ARCH **cumplida**. Cierre listo para push/deploy del commit de remediación.
 **Fecha:** 2026-07-11  
 
 > **Corrección de veracidad (Fase 05-B).** La versión previa de este informe declaró "merge aprobado", "gates verdes" y "cobertura ≥80%" **sin evidencia adjunta**, y omitió desvíos reales. Esta versión los declara. Ver §"Auditoría 2ª capa y remediación Fase 05-B".
@@ -16,7 +16,7 @@ La auditoría `INFORME-MOD12-PROVEEDORES-ALTA-AUDITORIA-ARCH-v1.0` dictó **NO-G
 | **C3** Evidencia de gates/cobertura ausente | **Resuelto** — salidas reales adjuntas. | `docs/quality/evidence-fase-05b/` |
 | **A1** `party` null en response de create | **Resuelto** — identidad compuesta dentro de la transacción del alta (`EnsurePartyResult.identity`). | `supplier-profile.service.ts:69-101`; `party-write.adapter.ts:107-140` |
 | **A2 + B4** Reutilización de identidad falsa en UI | **Resuelto** — lookup backend por `(documentType, documentNumber)` + UI sincroniza identidad y muestra `SupplierSummaryCard`; aviso veraz. | `purchasing.controller.ts` (`GET suppliers/lookup`); `SupplierFormDrawer.tsx:258-320` |
-| **A3** Pruebas "integración/E2E" mockeadas | **Parcial/Resuelto** — integración HTTP **real** (service+adapter+DB en memoria que modela constraints PG), sin mockear `SupplierProfileService`; E2E extendido para proveedor BLOCKED en RFQ/OC. **E2E NO ejecutado en esta sesión** (falta navegador/dev-server) — a correr en CI. | `supplier-profile.http.integration.spec.ts`; `e2e/tests/portal-inventory-scm.spec.ts` |
+| **A3** Pruebas "integración/E2E" mockeadas | **Resuelto** — integración HTTP **real** (service+adapter+DB en memoria que modela constraints PG), sin mockear `SupplierProfileService`; E2E extendido (RFQ + OC BLOCKED) y **ejecutado 22/22 PASS** (AI-SR-QA 2026-07-11). | `supplier-profile.http.integration.spec.ts`; `e2e/tests/portal-inventory-scm.spec.ts`; `docs/quality/evidence-fase-05b/e2e-portal-inventory-scm-summary.txt` |
 | **M1** Adapter no delega en servicios de Parties | **Excepción documentada** — inviable sin refactor mayor de MOD08; se conserva por atomicidad. | ADR-052 §"Nota de implementación (Fase 05-B)"; `party-write.adapter.spec.ts` (M1) |
 | **M2** `supplier_code` sin reintento | **Resuelto** — reintento acotado con savepoint ante 23505 del único de código. | `supplier-profile.service.ts:110-160` |
 | **M3** Boundary sin test de arquitectura | **Resuelto** — guard automático. | `inventory-parties-boundary.arch.spec.ts` |
@@ -72,7 +72,7 @@ Se implementó el **Alta y gestión de proveedores** en MOD12 Compras: entidad `
 | `pnpm --filter @iwana/portal lint` | PASS | `lint.txt` |
 | `pnpm --filter @iwana/api test` (suite completa) | PASS — **149 suites, 1477 tests** | `api-test.txt` |
 | Cobertura archivos core tocados | `party-write.adapter` 100%; `supplier-profile.service` 84.7% líneas; subconjunto **81.85%** (≥80%) | `api-coverage-core.txt` |
-| E2E `portal-inventory-scm.spec.ts` | **NO ejecutado en esta sesión** (sin navegador/dev-server); pendiente en CI | — |
+| E2E `portal-inventory-scm.spec.ts` | **PASS — 22/22** (~57 s); RF-PROV-08 BLOCKED en RFQ y OC | `e2e-portal-inventory-scm-summary.txt` |
 
 **Nota:** `pnpm db:migrate:all` y builds no se re-ejecutaron en esta sesión de remediación (sin cambios de migración; `064` intacta). No se declara resultado no verificado.
 

@@ -875,6 +875,23 @@ export interface PlanCatalogItem {
   updatedAt: string;
 }
 
+export interface CommercialDashboardSummary {
+  plansCount: number;
+  activePlansCount: number;
+  productsCount: number;
+  activeProductsCount: number;
+  servicesCount: number;
+  activeServicesCount: number;
+  bundlesCount: number;
+  activeBundlesCount: number;
+  promotionsCount: number;
+  activePromotionsCount: number;
+  compatibilityRulesCount: number;
+  activeCompatibilityRulesCount: number;
+  taxRulesCount: number;
+  activeTaxRulesCount: number;
+}
+
 export interface CreatePlanCatalogItemDto {
   name: string;
   technology: string;
@@ -1566,6 +1583,10 @@ export const tenantSelfApi = {
  * Expone exclusivamente cat?logo comercial; no mezclar con self-service del tenant.
  */
 export const commercialApi = {
+  /** Retorna KPIs agregados del módulo comercial. */
+  getDashboardSummary: (tenantSlug?: string) =>
+    request<CommercialDashboardSummary>('/commercial/dashboard/summary', undefined, tenantSlug),
+
   /** Lista el cat?logo de planes del tenant autenticado. */
   getPlans: async (tenantSlug?: string) => {
     const response = await request<CommercialCatalogListResponse<CommercialCatalogItemPayload>>(
@@ -5965,6 +5986,7 @@ export interface PurchaseRfqInvitationRecord {
   respondedAt: string | null;
   declinedAt: string | null;
   declineReason: string | null;
+  displayName?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -6042,6 +6064,11 @@ export interface CreateSupplierDto {
     isPrimary?: boolean;
     metadata?: Record<string, unknown> | null;
   }>;
+  address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  city?: string | null;
+  department?: string | null;
   paymentTermsDays?: number | null;
   currency?: string | null;
   incoterm?: string | null;
@@ -6506,6 +6533,14 @@ export interface ApprovePurchaseRequestDto {
   exceptionReason?: string | null;
 }
 
+export interface RejectPurchaseRequestDto {
+  reason: string;
+}
+
+export interface CancelPurchaseRequestDto {
+  reason: string;
+}
+
 export interface PurchaseRequestLineAwardInput {
   purchaseRequestLineId: string;
   awardedPartyRefId: string;
@@ -6849,6 +6884,20 @@ export const purchasingApi = {
   approveRequest: (id: string, dto: ApprovePurchaseRequestDto, tenantSlug?: string) =>
     request<PurchaseRequestRecord>(
       `/purchasing/requests/${id}/approve`,
+      { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  rejectRequest: (id: string, dto: RejectPurchaseRequestDto, tenantSlug?: string) =>
+    request<PurchaseRequestRecord>(
+      `/purchasing/requests/${id}/reject`,
+      { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  cancelRequest: (id: string, dto: CancelPurchaseRequestDto, tenantSlug?: string) =>
+    request<PurchaseRequestRecord>(
+      `/purchasing/requests/${id}/cancel`,
       { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
       tenantSlug,
     ),

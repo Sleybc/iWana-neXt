@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { Button } from '@iwana/ui';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { CommercialTabLayout } from '@/components/commercial/CommercialTabLayout';
+import { CommercialDashboard } from '@/components/commercial/CommercialDashboard';
 import {
   buildCommercialTabQuery,
   resolveCommercialRoute,
@@ -15,6 +17,7 @@ import {
   type TaxationSubTab,
 } from '@/components/commercial/commercial-tab-params';
 import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
+import { ApiError, commercialApi, type CommercialDashboardSummary } from '@/lib/api-client';
 
 function CommercialSkeleton() {
   return (
@@ -48,6 +51,14 @@ function syncRouteToUrl(
   router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
 }
 
+function mapSummaryError(error: unknown): string {
+  if (error instanceof ApiError) {
+    return error.message;
+  }
+
+  return 'No fue posible cargar el resumen comercial. Intenta de nuevo.';
+}
+
 export function CommercialClient({ initialTab }: CommercialClientProps) {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
@@ -57,8 +68,27 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
   const [route, setRoute] = useState<ResolvedCommercialRoute>(() =>
     resolveCommercialRoute(initialTab ?? searchParams.get('tab')),
   );
+  const [summary, setSummary] = useState<CommercialDashboardSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [refreshToken, setRefreshToken] = useState(0);
 
   const canEdit = user?.role === 'ADMIN';
+
+  const loadSummary = useCallback(async () => {
+    setSummaryLoading(true);
+    setSummaryError(null);
+
+    try {
+      const data = await commercialApi.getDashboardSummary();
+      setSummary(data);
+    } catch (error) {
+      setSummary(null);
+      setSummaryError(mapSummaryError(error));
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const tabFromUrl = searchParams.get('tab') ?? initialTab;
@@ -75,6 +105,14 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
       return nextRoute;
     });
   }, [initialTab, searchParams]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    void loadSummary();
+  }, [loadSummary, refreshToken, user]);
 
   const updateRoute = useCallback(
     (nextRoute: ResolvedCommercialRoute) => {
@@ -117,6 +155,10 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
     [route.taxationSubTab, updateRoute],
   );
 
+  const handleRefresh = useCallback(() => {
+    setRefreshToken((current) => current + 1);
+  }, []);
+
   if (authLoading) {
     return (
       <div className="space-y-6">
@@ -148,12 +190,29 @@ export function CommercialClient({ initialTab }: CommercialClientProps) {
       <PageHeader
         title="Comercial"
         subtitle="Gestiona catálogo, precios vigentes y reglas operativas."
+        actions={
+          <Button variant="secondary" size="sm" onClick={handleRefresh}>
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            Actualizar
+          </Button>
+        }
       />
+
+      {summaryError && route.tab === 'summary' && (
+        <PortalAlert
+          variant="error"
+          title="Resumen no disponible"
+          description={summaryError}
+          icon={AlertTriangle}
+        />
+      )}
+
       <CommercialTabLayout
         canEdit={canEdit}
         activeTab={route.tab}
         taxationSubTab={route.taxationSubTab}
         offersSubTab={route.offersSubTab}
+        summary={<CommercialDashboard summary={summary} isLoading={summaryLoading} />}
         onTabChange={handleTabChange}
         onTaxationSubTabChange={handleTaxationSubTabChange}
         onOffersSubTabChange={handleOffersSubTabChange}

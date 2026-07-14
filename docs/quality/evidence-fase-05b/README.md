@@ -1,6 +1,6 @@
 # Evidencia — Remediación MOD12 Proveedores Fase 05-B
 
-Salidas **reales** capturadas el 2026-07-11 durante la remediación (AI-SR-FULL). No son afirmaciones: son la salida de los comandos.
+Salidas **reales** capturadas el 2026-07-11. No son afirmaciones: son la salida de los comandos.
 
 | Archivo | Comando | Resultado |
 | --- | --- | --- |
@@ -8,11 +8,16 @@ Salidas **reales** capturadas el 2026-07-11 durante la remediación (AI-SR-FULL)
 | `lint.txt` | `pnpm --filter @iwana/api lint` + `@iwana/portal lint` | PASS (0 errores, 0 warnings) |
 | `api-test.txt` | `pnpm --filter @iwana/api test` (Jest, suite completa) | 149 suites / 1477 tests PASS |
 | `api-coverage-core.txt` | `jest --coverage` sobre archivos core tocados | subconjunto 81.85% (≥80%); `party-write.adapter` 100%; `supplier-profile.service` 84.7% líneas |
+| `e2e-portal-inventory-scm-summary.txt` | `pnpm test:e2e:portal -- portal-inventory-scm.spec.ts` | **22/22 PASS** (~57 s); incluye RF-PROV-08 BLOCKED en RFQ y OC |
+| `e2e-portal-inventory-scm.txt` | mismo comando (log completo) | PASS; ruido ECONNREFUSED :3000 esperado (mocks `page.route`) |
+| `e2e-portal-inventory-scm-rf-prov-08.txt` | grep focalizado RF-PROV-08 + alta/bloqueo | **3/3 PASS** |
 
-## No verificado en esta sesión (declarado, no afirmado verde)
+## Verificado en sesión QA (AI-SR-QA, 2026-07-11)
 
-- **E2E Playwright** (`e2e/tests/portal-inventory-scm.spec.ts`): el código de las pruebas fue añadido/extendido (incluye proveedor BLOCKED rechazado en RFQ/OC), pero **no se ejecutó** por falta de navegador/dev-server en el entorno. Debe correrse en CI (`pnpm test:e2e:portal`).
-- **`pnpm test` monorepo completo** y builds/migraciones: solo se verificó el paquete `@iwana/api` (el afectado en backend) + typecheck/lint de portal. El resto queda para CI.
+- **E2E Playwright** (`e2e/tests/portal-inventory-scm.spec.ts`): **ejecutado y verde**.
+  - Añadido caso UI `rechaza emitir OC a un proveedor BLOCKED (RF-PROV-08)` (el mock ya existía; faltaba el test de punta a punta).
+  - Corregida aserción ambigua de badge `Bloqueado` (strict mode: drawer + lista).
+- **`pnpm test` monorepo completo** y builds/migraciones: solo se verificó el paquete `@iwana/api` (el afectado en backend) + typecheck/lint de portal + E2E SCM. El resto queda para CI de monorepo.
 
 ## Alcance de la cobertura
 

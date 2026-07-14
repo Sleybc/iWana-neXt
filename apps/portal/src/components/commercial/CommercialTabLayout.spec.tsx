@@ -2,16 +2,16 @@ import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { CommercialTabLayout } from './CommercialTabLayout';
 
-jest.mock('@/components/settings/PlanCatalogManager', () => ({
-  PlanCatalogManager: () => <div data-testid="plans-panel">Planes panel</div>,
+jest.mock('@/components/commercial/catalog/PlanCatalogPanel', () => ({
+  PlanCatalogPanel: () => <div data-testid="plans-panel">Planes panel</div>,
 }));
 
-jest.mock('@/components/settings/AdditionalProductsManager', () => ({
-  AdditionalProductsManager: () => <div data-testid="products-panel">Productos panel</div>,
+jest.mock('@/components/commercial/catalog/AdditionalProductsPanel', () => ({
+  AdditionalProductsPanel: () => <div data-testid="products-panel">Productos panel</div>,
 }));
 
-jest.mock('@/components/settings/AdditionalServicesManager', () => ({
-  AdditionalServicesManager: () => <div data-testid="services-panel">Servicios panel</div>,
+jest.mock('@/components/commercial/catalog/AdditionalServicesPanel', () => ({
+  AdditionalServicesPanel: () => <div data-testid="services-panel">Servicios panel</div>,
 }));
 
 jest.mock('@/components/commercial/OffersManager', () => ({
@@ -40,17 +40,25 @@ jest.mock('@/components/commercial/TaxSimulatorPanel', () => ({
 
 const defaultProps = {
   canEdit: true,
-  activeTab: 'plans' as const,
+  activeTab: 'summary' as const,
   taxationSubTab: 'tax-catalog' as const,
   offersSubTab: 'bundles' as const,
+  summary: <div data-testid="summary-panel">Resumen panel</div>,
   onTabChange: jest.fn(),
   onTaxationSubTabChange: jest.fn(),
   onOffersSubTabChange: jest.fn(),
 };
 
 describe('CommercialTabLayout', () => {
-  it('renderiza Planes por defecto', () => {
+  it('renderiza Resumen por defecto', () => {
     render(<CommercialTabLayout {...defaultProps} />);
+
+    expect(screen.getByRole('tab', { name: 'Resumen' })).toHaveAttribute('data-state', 'active');
+    expect(screen.getByTestId('summary-panel')).toBeInTheDocument();
+  });
+
+  it('renderiza Planes al seleccionar el tab de catálogo', () => {
+    render(<CommercialTabLayout {...defaultProps} activeTab="plans" />);
 
     expect(screen.getByRole('tab', { name: 'Planes' })).toHaveAttribute('data-state', 'active');
     expect(screen.getByTestId('plans-panel')).toBeInTheDocument();
@@ -86,18 +94,6 @@ describe('CommercialTabLayout', () => {
       'active',
     );
     expect(screen.getByTestId('tax-simulator-panel')).toBeInTheDocument();
-  });
-
-  it('renderiza Reglas de aplicación al seleccionar el subtab tributario', () => {
-    render(
-      <CommercialTabLayout {...defaultProps} activeTab="taxation" taxationSubTab="tax-rules-app" />,
-    );
-
-    expect(screen.getByRole('tab', { name: 'Reglas de aplicación' })).toHaveAttribute(
-      'data-state',
-      'active',
-    );
-    expect(screen.getByTestId('tax-rules-app-panel')).toBeInTheDocument();
   });
 
   it('notifica cambio de tab principal', () => {

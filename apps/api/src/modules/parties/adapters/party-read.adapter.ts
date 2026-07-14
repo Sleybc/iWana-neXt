@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, In } from 'typeorm';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { DocumentTypeParty, PartyRoleType } from '@iwana/shared';
 import { Party } from '../entities/party.entity';
@@ -25,6 +25,15 @@ export class PartyReadAdapter extends IPartyReadPort {
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const party = await qr.manager.findOne(Party, { where: { id } });
       return party ? this.toSnapshot(party) : null;
+    });
+  }
+
+  async getByIds(ids: string[]): Promise<PartySnapshot[]> {
+    if (ids.length === 0) return [];
+    const { schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const parties = await qr.manager.find(Party, { where: { id: In(ids) } });
+      return parties.map((p) => this.toSnapshot(p));
     });
   }
 
@@ -109,6 +118,30 @@ export class PartyReadAdapter extends IPartyReadPort {
     });
   }
 
+  async listContactsForIds(partyIds: string[]): Promise<Map<string, PartyContactSnapshot[]>> {
+    if (partyIds.length === 0) return new Map();
+    const { schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const contacts = await qr.manager.find(PartyContact, { where: { partyId: In(partyIds) } });
+      const grouped = new Map<string, PartyContactSnapshot[]>();
+      for (const c of contacts) {
+        const existing = grouped.get(c.partyId);
+        const snapshot: PartyContactSnapshot = {
+          id: c.id,
+          type: c.type,
+          value: c.value,
+          isPrimary: c.isPrimary,
+        };
+        if (existing) {
+          existing.push(snapshot);
+        } else {
+          grouped.set(c.partyId, [snapshot]);
+        }
+      }
+      return grouped;
+    });
+  }
+
   private toSnapshot(party: Party): PartySnapshot {
     return {
       id: party.id,
@@ -118,6 +151,11 @@ export class PartyReadAdapter extends IPartyReadPort {
       displayName: party.displayName,
       legalName: party.legalName,
       status: party.status,
+      address: party.address,
+      latitude: party.latitude !== null ? Number(party.latitude) : null,
+      longitude: party.longitude !== null ? Number(party.longitude) : null,
+      city: party.city,
+      department: party.department,
     };
   }
 }
