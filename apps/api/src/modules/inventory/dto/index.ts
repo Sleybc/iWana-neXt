@@ -1284,6 +1284,50 @@ export class ApprovePurchaseRequestDto {
   exceptionReason?: string | null;
 }
 
+export const UpdatePurchaseRequestSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  priority: z.nativeEnum(PurchaseRequestPriority).optional(),
+  requestingArea: z.string().trim().min(1).max(120).optional(),
+  justification: z.string().trim().min(10).max(4000).optional(),
+  neededByDate: optionalDateString,
+  notes: optionalTrimmedString(4000),
+  lines: z.array(PurchaseRequestLineSchema).min(1).optional(),
+});
+
+export type UpdatePurchaseRequestInput = z.infer<typeof UpdatePurchaseRequestSchema>;
+
+export class UpdatePurchaseRequestDto {
+  @ApiPropertyOptional()
+  @Allow()
+  title?: string;
+
+  @ApiPropertyOptional({ enum: PurchaseRequestPriority })
+  @Allow()
+  priority?: PurchaseRequestPriority;
+
+  @ApiPropertyOptional()
+  @Allow()
+  requestingArea?: string;
+
+  @ApiPropertyOptional()
+  @Allow()
+  justification?: string;
+
+  @ApiPropertyOptional()
+  @Allow()
+  neededByDate?: string | null;
+
+  @ApiPropertyOptional()
+  @Allow()
+  notes?: string | null;
+
+  @ApiPropertyOptional({ type: [PurchaseRequestLineDto] })
+  @Allow()
+  @ValidateNested({ each: true })
+  @Type(() => PurchaseRequestLineDto)
+  lines?: PurchaseRequestLineDto[];
+}
+
 export const RejectPurchaseRequestSchema = z.object({
   reason: z.string().trim().min(10).max(4000),
 });
@@ -1299,6 +1343,18 @@ export class RejectPurchaseRequestDto {
 export const CancelPurchaseRequestSchema = z.object({
   reason: z.string().trim().min(5).max(4000),
 });
+
+export const CancelPurchaseOrderSchema = z.object({
+  reason: z.string().trim().min(5).max(4000),
+});
+
+export type CancelPurchaseOrderInput = z.infer<typeof CancelPurchaseOrderSchema>;
+
+export class CancelPurchaseOrderDto {
+  @ApiProperty()
+  @Allow()
+  reason!: string;
+}
 
 export type CancelPurchaseRequestInput = z.infer<typeof CancelPurchaseRequestSchema>;
 
@@ -1372,7 +1428,13 @@ export const CreatePurchaseOrderSchema = z
     notes: optionalTrimmedString(4000),
     lines: z.array(PurchaseOrderLineSchema).min(1).optional(),
     orders: z.array(PurchaseOrderBatchSchema).min(1).optional(),
-    status: z.nativeEnum(PurchaseOrderStatus).optional().default(PurchaseOrderStatus.APPROVED),
+    status: z
+      .enum([PurchaseOrderStatus.APPROVED, PurchaseOrderStatus.PENDING_APPROVAL] as [
+        PurchaseOrderStatus,
+        PurchaseOrderStatus,
+      ])
+      .optional()
+      .default(PurchaseOrderStatus.APPROVED),
   })
   .superRefine((value, context) => {
     const isLegacyMode = Boolean(value.partyRefId && value.lines?.length);

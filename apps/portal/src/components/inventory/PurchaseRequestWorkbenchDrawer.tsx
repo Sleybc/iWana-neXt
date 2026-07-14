@@ -23,9 +23,12 @@ import {
 } from '@iwana/shared';
 import type {
   AddSupplierQuoteDto,
+  CancelPurchaseOrderDto,
   CancelPurchaseRequestDto,
   CreatePurchaseRequestAwardsDto,
+  CreatePurchaseRequestLineDto,
   GoodsReceiptResultRecord,
+  InventoryCatalogOptionRecord,
   InventoryItemRecord,
   PurchaseOrderLineRecord,
   PurchaseOrderRecord,
@@ -60,6 +63,9 @@ import {
 } from './inventory-labels';
 import { AwardLinesPanel } from './AwardLinesPanel';
 import { GoodsReceiptPanel } from './GoodsReceiptPanel';
+import { PurchaseLinesEditor } from './PurchaseLinesEditor';
+import { purchaseRequestLinesToDraft, type PurchaseDraftState } from './purchase-request-draft';
+import { mapDraftLinesToUpdatePayload } from './purchase-request-submit';
 import {
   getPurchaseNextAction,
   PURCHASE_WORKBENCH_TAB_LABELS,
@@ -74,6 +80,12 @@ interface PurchaseRequestWorkbenchDrawerProps {
   open: boolean;
   detail: PurchaseRequestDetailRecord | null;
   items: InventoryItemRecord[];
+  catalogOptions: InventoryCatalogOptionRecord[];
+  isCatalogSearching?: boolean;
+  onCatalogSearch?: (search: string) => void;
+  isSubmittingUpdateLines: boolean;
+  updateLinesError: string | null;
+  onUpdateLines: (payload: { lines: CreatePurchaseRequestLineDto[] }) => Promise<{ ok: boolean }>;
   locations: StockLocationRecord[];
   latestOrder: PurchaseOrderRecord | null;
   latestOrderLines: PurchaseOrderLineRecord[];
@@ -92,12 +104,18 @@ interface PurchaseRequestWorkbenchDrawerProps {
   isSubmittingReject: boolean;
   isSubmittingCancel: boolean;
   isSubmittingReceipt: boolean;
+  isSubmittingApproveOrder: boolean;
+  isSubmittingCancelOrder: boolean;
+  isSubmittingCloseOrder: boolean;
   quoteError: string | null;
   approveError: string | null;
   awardsError: string | null;
   rejectError: string | null;
   cancelError: string | null;
   receiptError: string | null;
+  approveOrderError: string | null;
+  cancelOrderError: string | null;
+  closeOrderError: string | null;
   onClose: () => void;
   onAddQuote: (payload: AddSupplierQuoteDto) => Promise<void>;
   onApprove: (exceptionReason?: string) => Promise<void>;
@@ -108,6 +126,10 @@ interface PurchaseRequestWorkbenchDrawerProps {
   onOpenOrderFlow: () => void;
   onReceiveOrder: (purchaseOrderId: string, payload: ReceivePurchaseOrderDto) => Promise<void>;
   onRefreshDetail: () => Promise<void>;
+  onEditRequest: () => void;
+  onApproveOrder: (orderId: string) => Promise<void>;
+  onCancelOrder: (orderId: string, payload: CancelPurchaseOrderDto) => Promise<void>;
+  onCloseOrder: (orderId: string) => Promise<void>;
 }
 
 function getLineDisplayLabel(
@@ -147,6 +169,12 @@ export function PurchaseRequestWorkbenchDrawer({
   open,
   detail,
   items,
+  catalogOptions,
+  isCatalogSearching = false,
+  onCatalogSearch,
+  isSubmittingUpdateLines,
+  updateLinesError,
+  onUpdateLines,
   locations,
   latestOrder,
   latestOrderLines,
@@ -165,12 +193,18 @@ export function PurchaseRequestWorkbenchDrawer({
   isSubmittingReject,
   isSubmittingCancel,
   isSubmittingReceipt,
+  isSubmittingApproveOrder,
+  isSubmittingCancelOrder,
+  isSubmittingCloseOrder,
   quoteError,
   approveError,
   awardsError,
   rejectError,
   cancelError,
   receiptError,
+  approveOrderError,
+  cancelOrderError,
+  closeOrderError,
   onClose,
   onAddQuote,
   onApprove,
@@ -181,6 +215,10 @@ export function PurchaseRequestWorkbenchDrawer({
   onOpenOrderFlow,
   onReceiveOrder,
   onRefreshDetail,
+  onEditRequest,
+  onApproveOrder,
+  onCancelOrder,
+  onCloseOrder,
 }: PurchaseRequestWorkbenchDrawerProps) {
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
   const [selectedSupplierName, setSelectedSupplierName] = useState<string | null>(null);
@@ -191,6 +229,11 @@ export function PurchaseRequestWorkbenchDrawer({
   const [awardDrafts, setAwardDrafts] = useState<PurchaseRequestLineAwardInput[]>([]);
   const [resolutionMode, setResolutionMode] = useState<'reject' | 'cancel' | null>(null);
   const [resolutionReason, setResolutionReason] = useState('');
+  const [cancelOrderMode, setCancelOrderMode] = useState<string | null>(null);
+  const [cancelOrderReason, setCancelOrderReason] = useState('');
+  const [isEditingLines, setIsEditingLines] = useState(false);
+  const [linesDraft, setLinesDraft] = useState<PurchaseDraftState | null>(null);
+  const [linesValidationError, setLinesValidationError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -203,8 +246,19 @@ export function PurchaseRequestWorkbenchDrawer({
       setAwardDrafts([]);
       setResolutionMode(null);
       setResolutionReason('');
+      setCancelOrderMode(null);
+      setCancelOrderReason('');
+      setIsEditingLines(false);
+      setLinesDraft(null);
+      setLinesValidationError(null);
     }
   }, [open]);
+
+  useEffect(() => {
+    setIsEditingLines(false);
+    setLinesDraft(null);
+    setLinesValidationError(null);
+  }, [detail?.request.id]);
 
   const request = detail?.request;
   const nextAction = getPurchaseNextAction(detail);
@@ -230,6 +284,11 @@ export function PurchaseRequestWorkbenchDrawer({
   const parsedQuoteAmount = quoteAmountTouched ? Number(quoteAmount) : NaN;
   const quoteAmountValid = Number.isFinite(parsedQuoteAmount) && parsedQuoteAmount > 0;
   const canCreateOrder = request?.status === PurchaseRequestStatus.APPROVED;
+  const canEditRequest =
+    request &&
+    [PurchaseRequestStatus.DRAFT, PurchaseRequestStatus.PENDING_QUOTES].includes(request.status) &&
+    (detail?.quotes.length ?? 0) === 0 &&
+    (detail?.awards.length ?? 0) === 0;
   const exceptionReady = exceptionReason.trim().length >= 20;
   const canSubmitApproval =
     detail?.approvalPolicy.canApprove === true ||
@@ -238,6 +297,42 @@ export function PurchaseRequestWorkbenchDrawer({
   const resolutionMinLength = resolutionMode === 'reject' ? 10 : 5;
   const resolutionReady = resolutionReason.trim().length >= resolutionMinLength;
   const isResolving = isSubmittingReject || isSubmittingCancel;
+
+  function handleStartEditingLines() {
+    if (!detail) return;
+    setLinesDraft(purchaseRequestLinesToDraft(detail.lines, supplierLabels, catalogOptions));
+    setLinesValidationError(null);
+    setIsEditingLines(true);
+  }
+
+  function handleCancelEditingLines() {
+    if (linesDraft && linesDraft.lines.length > 0) {
+      const confirmed = window.confirm(
+        'Hay cambios sin guardar en las líneas. ¿Quieres descartarlos?',
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setIsEditingLines(false);
+    setLinesDraft(null);
+    setLinesValidationError(null);
+  }
+
+  async function handleSaveLines() {
+    if (!linesDraft || linesDraft.lines.length === 0) {
+      setLinesValidationError('La solicitud debe tener al menos una línea.');
+      return;
+    }
+
+    setLinesValidationError(null);
+    const result = await onUpdateLines({ lines: mapDraftLinesToUpdatePayload(linesDraft.lines) });
+    if (result.ok) {
+      setIsEditingLines(false);
+      setLinesDraft(null);
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -347,23 +442,85 @@ export function PurchaseRequestWorkbenchDrawer({
                 </TabsContent>
 
                 <TabsContent value="lines" className="mt-4 space-y-3">
-                  <PortalSectionHeader eyebrow="Líneas" title="Necesidades abastecibles" />
-                  <div className="space-y-2">
-                    {detail?.lines.map((line) => (
-                      <div
-                        key={line.id}
-                        className="rounded-2xl border border-gray-200 p-3 text-sm dark:border-dark-border"
-                      >
-                        <p className="font-medium text-gray-900 dark:text-white">
-                          {getLineDisplayLabel(line, items)}
-                        </p>
-                        <p className="mt-1 text-gray-600 dark:text-gray-300">
-                          {line.quantityRequested} {line.unitOfMeasure} ·{' '}
-                          {getPurchaseRequestLineStatusLabel(line.lineStatus)}
-                        </p>
+                  {isEditingLines && linesDraft ? (
+                    <div className="space-y-4">
+                      <PortalSectionHeader
+                        eyebrow="Líneas"
+                        title="Editar líneas"
+                        description="Agrega, ajusta o quita productos sin salir de esta solicitud."
+                      />
+                      {linesValidationError || updateLinesError ? (
+                        <PortalAlert
+                          variant="error"
+                          title="No se pudieron guardar las líneas"
+                          description={linesValidationError ?? updateLinesError ?? ''}
+                        />
+                      ) : null}
+                      <PurchaseLinesEditor
+                        draft={linesDraft}
+                        onDraftChange={(updater) =>
+                          setLinesDraft((current) => (current ? updater(current) : current))
+                        }
+                        catalogOptions={catalogOptions}
+                        supplierLabels={supplierLabels}
+                        isCatalogSearching={isCatalogSearching}
+                        isSubmitting={isSubmittingUpdateLines}
+                        {...(onCatalogSearch ? { onCatalogSearch } : {})}
+                      />
+                      <div className="flex flex-wrap justify-end gap-2 border-t border-gray-200 pt-4 dark:border-dark-border">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={handleCancelEditingLines}
+                          disabled={isSubmittingUpdateLines}
+                        >
+                          Cancelar
+                        </Button>
+                        <Button
+                          type="button"
+                          onClick={() => void handleSaveLines()}
+                          loading={isSubmittingUpdateLines}
+                        >
+                          Guardar cambios
+                        </Button>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ) : (
+                    <>
+                      <PortalSectionHeader
+                        eyebrow="Líneas"
+                        title="Necesidades abastecibles"
+                        actions={
+                          canEditRequest ? (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={handleStartEditingLines}
+                            >
+                              Editar líneas
+                            </Button>
+                          ) : undefined
+                        }
+                      />
+                      <div className="space-y-2">
+                        {detail?.lines.map((line) => (
+                          <div
+                            key={line.id}
+                            className="rounded-2xl border border-gray-200 p-3 text-sm dark:border-dark-border"
+                          >
+                            <p className="font-medium text-gray-900 dark:text-white">
+                              {getLineDisplayLabel(line, items)}
+                            </p>
+                            <p className="mt-1 text-gray-600 dark:text-gray-300">
+                              {line.quantityRequested} {line.unitOfMeasure} ·{' '}
+                              {getPurchaseRequestLineStatusLabel(line.lineStatus)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </TabsContent>
 
                 <TabsContent value="rfq" className="mt-4 space-y-4">
@@ -503,6 +660,60 @@ export function PurchaseRequestWorkbenchDrawer({
 
                 <TabsContent value="orders" className="mt-4 space-y-3">
                   <PortalSectionHeader eyebrow="Órdenes" title="Órdenes de compra derivadas" />
+                  {cancelOrderMode ? (
+                    <div className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
+                      {cancelOrderError ? (
+                        <PortalAlert
+                          variant="error"
+                          title="No se pudo cancelar"
+                          description={cancelOrderError}
+                        />
+                      ) : null}
+                      <label className="block space-y-1 text-sm">
+                        <span className="font-medium text-gray-900 dark:text-white">
+                          Motivo de cancelación de OC
+                        </span>
+                        <textarea
+                          aria-label="Motivo de cancelación de OC"
+                          className={cn(
+                            'w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white',
+                            interactiveFocusClassName,
+                          )}
+                          rows={3}
+                          placeholder="Describe el motivo (mínimo 5 caracteres)"
+                          value={cancelOrderReason}
+                          onChange={(e) => setCancelOrderReason(e.target.value)}
+                        />
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          disabled={isSubmittingCancelOrder}
+                          onClick={() => {
+                            setCancelOrderMode(null);
+                            setCancelOrderReason('');
+                          }}
+                        >
+                          Volver
+                        </Button>
+                        <Button
+                          type="button"
+                          disabled={isSubmittingCancelOrder || cancelOrderReason.trim().length < 5}
+                          onClick={() =>
+                            void onCancelOrder(cancelOrderMode, {
+                              reason: cancelOrderReason.trim(),
+                            }).then(() => {
+                              setCancelOrderMode(null);
+                              setCancelOrderReason('');
+                            })
+                          }
+                        >
+                          Confirmar cancelación de OC
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                   {detail?.orders.length ? (
                     <div className="space-y-2">
                       {detail.orders.map((order) => (
@@ -516,6 +727,49 @@ export function PurchaseRequestWorkbenchDrawer({
                           <p className="mt-1 text-gray-600 dark:text-gray-300">
                             {getPurchaseOrderStatusLabel(order.status)}
                           </p>
+                          {approveOrderError && !cancelOrderMode && !isSubmittingApproveOrder
+                            ? null
+                            : null}
+                          {closeOrderError && !cancelOrderMode && !isSubmittingCloseOrder
+                            ? null
+                            : null}
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {order.status === PurchaseOrderStatus.PENDING_APPROVAL ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={isSubmittingApproveOrder}
+                                onClick={() => void onApproveOrder(order.id)}
+                              >
+                                Aprobar OC
+                              </Button>
+                            ) : null}
+                            {[
+                              PurchaseOrderStatus.DRAFT,
+                              PurchaseOrderStatus.PENDING_APPROVAL,
+                              PurchaseOrderStatus.APPROVED,
+                            ].includes(order.status) ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                disabled={isSubmittingCancelOrder}
+                                onClick={() => setCancelOrderMode(order.id)}
+                              >
+                                Cancelar OC
+                              </Button>
+                            ) : null}
+                            {order.status === PurchaseOrderStatus.FULLY_RECEIVED ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={isSubmittingCloseOrder}
+                                onClick={() => void onCloseOrder(order.id)}
+                              >
+                                Cerrar OC
+                              </Button>
+                            ) : null}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -657,6 +911,11 @@ export function PurchaseRequestWorkbenchDrawer({
                   {activeTab === 'orders' && canCreateOrder ? (
                     <Button type="button" onClick={onOpenOrderFlow}>
                       Generar orden de compra
+                    </Button>
+                  ) : null}
+                  {canEditRequest ? (
+                    <Button type="button" variant="secondary" onClick={onEditRequest}>
+                      Editar solicitud
                     </Button>
                   ) : null}
                   {canReject ? (

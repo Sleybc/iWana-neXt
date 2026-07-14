@@ -99,7 +99,7 @@ Se estructura en **cuatro fases** con dependencia descendente estricta (06 → 0
 
 - **Cambio de schema (Fase 06):** `purchase_requests` agrega `resolution_reason TEXT NULL` y `resolved_by_user_id UUID NULL` (migracion tenant `067`, aditiva y reversible). Numeracion `067` verificada como libre (ultima aplicada: `066`).
 - **Sin cambios de schema** en Fases 06 (fuera de lo anterior), 08 y 09: reutilizan entidades existentes (`PurchaseRequestLineAward`, `PurchaseOrder`, `GoodsReceipt`, `InventoryItem` con sus campos de reabastecimiento).
-- **Fase 07:** evaluar si la edicion de lineas requiere columna de auditoria adicional; en principio reutiliza columnas existentes. Cualquier cambio se declara en el prompt de Fase 07.
+- **Fase 07 (decidido):** `purchase_orders` agrega `cancellation_reason TEXT NULL`, `cancelled_by_user_id UUID NULL`, `closed_by_user_id UUID NULL` (migracion tenant `068`, aditiva y reversible; `approved_by_user_id` ya existe y se reutiliza para el paso `approve`). La edicion de solicitud (RF-07-01) **no** requiere columnas nuevas: reutiliza `purchase_requests`/`purchase_request_lines` existentes.
 - Estados reutilizados hoy inertes: `PurchaseRfqStatus.CANCELLED`, `PurchaseRfqInvitationStatus.CANCELLED`, `PurchaseOrderStatus.{DRAFT,PENDING_APPROVAL,CANCELLED,CLOSED}`, `PurchaseRequestLineStatus.{CANCELLED,REJECTED}`.
 
 ## 7. Contratos API (borrador)
@@ -151,10 +151,10 @@ Prefijo `/api/v1/purchasing`. Guard `JwtAuthGuard + RolesGuard`, `@Roles(ADMIN, 
 
 | Fase | Prompt de ejecucion | Estado gate |
 | --- | --- | --- |
-| 06 — Cierre del flujo nucleo | `docs/prompts/PROMPT-MOD12-COMPRAS-CIERRE-FASE-06-v1.0.md` | Pendiente GO CTO |
-| 07 — Edicion + ciclo de vida OC | (se emite al cerrar 06) | Bloqueada por 06 |
+| 06 — Cierre del flujo nucleo | `docs/prompts/PROMPT-MOD12-COMPRAS-CIERRE-FASE-06-v1.0.md` | **CERRADA (G7 aprobado CTO, 2026-07-14)** — ver `docs/informes/INFORME-MOD12-COMPRAS-CIERRE-FASE-06-AUDITORIA-ARCH-v1.0.md` |
+| 07 — Edicion + ciclo de vida OC | `docs/prompts/PROMPT-MOD12-COMPRAS-CIERRE-FASE-07-v1.0.md` | **Emitido — pendiente GO CTO** (habilitado por cierre de 06, ADR-016) |
 | 08 — Reabastecimiento bajo demanda | (se emite al cerrar 07) | Bloqueada por 07 |
 | 09 — Metricas de proveedor | (se emite al cerrar 08) | Bloqueada por 08 |
 
 **Requiere ADR:** No (cambios aditivos dentro del boundary MOD12 y del stack aprobado; sin nuevo bounded context ni patron avanzado).
-**Requiere CTO:** Si — GO de Fase 06 y de cada fase subsecuente (releases/impacto de schema).
+**Requiere CTO:** Si — GO de Fase 07 y de cada fase subsecuente (releases/impacto de schema).

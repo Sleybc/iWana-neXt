@@ -3,14 +3,15 @@
 import { useMemo, useState } from 'react';
 import type {
   AddSupplierQuoteDto,
+  CancelPurchaseOrderDto,
   CancelPurchaseRequestDto,
   CreatePurchaseOrderDto,
   CreatePurchaseRequestAwardsDto,
   CreatePurchaseRequestDto,
+  CreatePurchaseRequestLineDto,
   GoodsReceiptResultRecord,
   InventoryCatalogOptionRecord,
   InventoryItemRecord,
-  StockBalanceRecord,
   PurchaseOrderLineRecord,
   PurchaseOrderRecord,
   PurchaseRequestDetailRecord,
@@ -20,8 +21,10 @@ import type {
   StockLocationRecord,
   StockMovementResultRecord,
   SupplierSummaryRecord,
+  UpdatePurchaseRequestDto,
   CreateCounterPurchaseDto,
 } from '@/lib/api-client';
+import type { PurchaseComposerInitialValues } from './PurchaseRequestComposer';
 import { purchasingApi } from '@/lib/api-client';
 import { PortalPanel } from '@/components/shared/portal-ui';
 import { PurchaseCreateModeHeader } from './PurchaseCreateModeHeader';
@@ -52,9 +55,7 @@ interface PurchaseCreateRequestResult {
 interface PurchaseWorkspaceProps {
   requests: PurchaseRequestRecord[];
   items: InventoryItemRecord[];
-  balances: StockBalanceRecord[];
   catalogOptions: InventoryCatalogOptionRecord[];
-  purchaseItemFrequency?: Record<string, number>;
   supplierLabels?: Record<string, string>;
   isCatalogSearching?: boolean;
   locations: StockLocationRecord[];
@@ -71,6 +72,10 @@ interface PurchaseWorkspaceProps {
   isSubmittingCancel: boolean;
   isSubmittingOrder: boolean;
   isSubmittingReceipt: boolean;
+  isSubmittingUpdateRequest: boolean;
+  isSubmittingApproveOrder: boolean;
+  isSubmittingCancelOrder: boolean;
+  isSubmittingCloseOrder: boolean;
   createError: string | null;
   quoteError: string | null;
   approveError: string | null;
@@ -79,6 +84,10 @@ interface PurchaseWorkspaceProps {
   cancelError: string | null;
   orderError: string | null;
   receiptError: string | null;
+  updateRequestError: string | null;
+  approveOrderError: string | null;
+  cancelOrderError: string | null;
+  closeOrderError: string | null;
   counterPurchaseError?: string | null;
   latestCounterPurchase?: StockMovementResultRecord | null;
   isSubmittingCounterPurchase?: boolean;
@@ -88,8 +97,12 @@ interface PurchaseWorkspaceProps {
   onCreateAwards: (requestId: string, payload: CreatePurchaseRequestAwardsDto) => Promise<void>;
   onRejectRequest: (requestId: string, payload: RejectPurchaseRequestDto) => Promise<void>;
   onCancelRequest: (requestId: string, payload: CancelPurchaseRequestDto) => Promise<void>;
+  onUpdateRequest: (requestId: string, payload: UpdatePurchaseRequestDto) => Promise<void>;
   onCreateOrder: (payload: CreatePurchaseOrderDto) => Promise<void>;
   onReceiveOrder: (purchaseOrderId: string, payload: ReceivePurchaseOrderDto) => Promise<void>;
+  onApproveOrder: (orderId: string) => Promise<void>;
+  onCancelOrder: (orderId: string, payload: CancelPurchaseOrderDto) => Promise<void>;
+  onCloseOrder: (orderId: string) => Promise<void>;
   onCounterPurchase?: (payload: CreateCounterPurchaseDto) => Promise<void>;
   onPrepareOrderDrawer: (requestId: string) => Promise<void>;
   onRefresh: () => Promise<void>;
@@ -99,9 +112,7 @@ interface PurchaseWorkspaceProps {
 export function PurchaseWorkspace({
   requests,
   items,
-  balances,
   catalogOptions,
-  purchaseItemFrequency = {},
   supplierLabels = {},
   isCatalogSearching = false,
   locations,
@@ -118,6 +129,10 @@ export function PurchaseWorkspace({
   isSubmittingCancel,
   isSubmittingOrder,
   isSubmittingReceipt,
+  isSubmittingUpdateRequest,
+  isSubmittingApproveOrder,
+  isSubmittingCancelOrder,
+  isSubmittingCloseOrder,
   createError,
   quoteError,
   approveError,
@@ -126,6 +141,10 @@ export function PurchaseWorkspace({
   cancelError,
   orderError,
   receiptError,
+  updateRequestError,
+  approveOrderError,
+  cancelOrderError,
+  closeOrderError,
   counterPurchaseError = null,
   latestCounterPurchase = null,
   isSubmittingCounterPurchase = false,
@@ -135,8 +154,12 @@ export function PurchaseWorkspace({
   onCreateAwards,
   onRejectRequest,
   onCancelRequest,
+  onUpdateRequest,
   onCreateOrder,
   onReceiveOrder,
+  onApproveOrder,
+  onCancelOrder,
+  onCloseOrder,
   onCounterPurchase,
   onPrepareOrderDrawer,
   onRefresh,
@@ -155,6 +178,7 @@ export function PurchaseWorkspace({
   const [composerDirty, setComposerDirty] = useState(false);
   const [draftLineCount, setDraftLineCount] = useState(0);
   const [workbenchTab, setWorkbenchTab] = useState<PurchaseWorkbenchTab>('summary');
+  const [editingDetail, setEditingDetail] = useState<PurchaseRequestDetailRecord | null>(null);
 
   const filteredCount = useMemo(
     () => filterPurchaseRequests(requests, filters).length,
@@ -225,6 +249,14 @@ export function PurchaseWorkspace({
     setDetailError(null);
     setSupplierSummary(null);
     setSupplierError(null);
+    setEditingDetail(null);
+    setWorkspaceMode('create');
+  }
+
+  function openEditMode(requestDetail: PurchaseRequestDetailRecord) {
+    setEditingDetail(requestDetail);
+    setComposerDirty(false);
+    setDraftLineCount(requestDetail.lines.length);
     setWorkspaceMode('create');
   }
 
@@ -241,6 +273,7 @@ export function PurchaseWorkspace({
     setWorkspaceMode('inbox');
     setComposerDirty(false);
     setDraftLineCount(0);
+    setEditingDetail(null);
   }
 
   function openCounterPurchaseMode() {
@@ -266,24 +299,46 @@ export function PurchaseWorkspace({
     return result;
   }
 
-  const composer = (
-    <PurchaseRequestComposer
-      catalogOptions={catalogOptions}
-      items={items}
-      balances={balances}
-      purchaseItemFrequency={purchaseItemFrequency}
-      supplierLabels={supplierLabels}
-      isCatalogSearching={isCatalogSearching}
-      isSubmitting={isSubmittingRequest}
-      error={createError}
-      layout="embedded"
-      presentation="create-mode"
-      onDirtyChange={setComposerDirty}
-      onDraftLineCountChange={setDraftLineCount}
-      {...(onCatalogSearch ? { onCatalogSearch } : {})}
-      onSubmit={handleCreateRequest}
-    />
-  );
+  async function handleUpdateRequest(payload: UpdatePurchaseRequestDto): Promise<{ ok: boolean }> {
+    if (!editingDetail) return { ok: false };
+    const requestId = editingDetail.request.id;
+    try {
+      await onUpdateRequest(requestId, payload);
+      closeCreateMode(true);
+      setSelectedRequestId(requestId);
+      await loadDetail(requestId);
+      await onRefresh();
+      return { ok: true };
+    } catch {
+      return { ok: false };
+    }
+  }
+
+  async function handleUpdateLines(payload: {
+    lines: CreatePurchaseRequestLineDto[];
+  }): Promise<{ ok: boolean }> {
+    if (!selectedRequestId) return { ok: false };
+    try {
+      await onUpdateRequest(selectedRequestId, payload);
+      await loadDetail(selectedRequestId);
+      await onRefresh();
+      return { ok: true };
+    } catch {
+      return { ok: false };
+    }
+  }
+
+  const composerInitialValues: PurchaseComposerInitialValues | undefined = editingDetail
+    ? {
+        title: editingDetail.request.title,
+        requestType: editingDetail.request.requestType,
+        priority: editingDetail.request.priority,
+        requestingArea: editingDetail.request.requestingArea,
+        justification: editingDetail.request.justification,
+        neededByDate: editingDetail.request.neededByDate,
+        lines: editingDetail.lines,
+      }
+    : undefined;
 
   return (
     <div className="space-y-6">
@@ -333,7 +388,22 @@ export function PurchaseWorkspace({
             />
           }
         >
-          {composer}
+          <PurchaseRequestComposer
+            key={editingDetail?.request.id ?? 'create'}
+            catalogOptions={catalogOptions}
+            supplierLabels={supplierLabels}
+            isCatalogSearching={isCatalogSearching}
+            isSubmitting={editingDetail ? isSubmittingUpdateRequest : isSubmittingRequest}
+            error={editingDetail ? updateRequestError : createError}
+            layout="embedded"
+            presentation="create-mode"
+            {...(composerInitialValues ? { initialValues: composerInitialValues } : {})}
+            onDirtyChange={setComposerDirty}
+            onDraftLineCountChange={setDraftLineCount}
+            {...(onCatalogSearch ? { onCatalogSearch } : {})}
+            {...(editingDetail ? { onUpdate: handleUpdateRequest } : {})}
+            onSubmit={handleCreateRequest}
+          />
         </PurchaseCreateModeShell>
       ) : onCounterPurchase ? (
         <CounterPurchasePanel
@@ -352,6 +422,12 @@ export function PurchaseWorkspace({
         open={workspaceMode === 'inbox' && Boolean(selectedRequestId)}
         detail={detail}
         items={items}
+        catalogOptions={catalogOptions}
+        isCatalogSearching={isCatalogSearching}
+        {...(onCatalogSearch ? { onCatalogSearch } : {})}
+        isSubmittingUpdateLines={isSubmittingUpdateRequest}
+        updateLinesError={updateRequestError}
+        onUpdateLines={handleUpdateLines}
         locations={locations}
         latestOrder={latestOrder}
         latestOrderLines={latestOrderLines}
@@ -370,12 +446,18 @@ export function PurchaseWorkspace({
         isSubmittingReject={isSubmittingReject}
         isSubmittingCancel={isSubmittingCancel}
         isSubmittingReceipt={isSubmittingReceipt}
+        isSubmittingApproveOrder={isSubmittingApproveOrder}
+        isSubmittingCancelOrder={isSubmittingCancelOrder}
+        isSubmittingCloseOrder={isSubmittingCloseOrder}
         quoteError={quoteError}
         approveError={approveError}
         awardsError={awardsError}
         rejectError={rejectError}
         cancelError={cancelError}
         receiptError={receiptError}
+        approveOrderError={approveOrderError}
+        cancelOrderError={cancelOrderError}
+        closeOrderError={closeOrderError}
         onClose={() => setSelectedRequestId(null)}
         onAddQuote={async (payload) => {
           if (!selectedRequestId) return;
@@ -405,6 +487,25 @@ export function PurchaseWorkspace({
           if (!selectedRequestId) return;
           await onCancelRequest(selectedRequestId, payload);
           await loadDetail(selectedRequestId);
+          await onRefresh();
+        }}
+        onEditRequest={() => {
+          if (!detail) return;
+          openEditMode(detail);
+        }}
+        onApproveOrder={async (orderId) => {
+          await onApproveOrder(orderId);
+          if (selectedRequestId) await loadDetail(selectedRequestId);
+          await onRefresh();
+        }}
+        onCancelOrder={async (orderId, payload) => {
+          await onCancelOrder(orderId, payload);
+          if (selectedRequestId) await loadDetail(selectedRequestId);
+          await onRefresh();
+        }}
+        onCloseOrder={async (orderId) => {
+          await onCloseOrder(orderId);
+          if (selectedRequestId) await loadDetail(selectedRequestId);
           await onRefresh();
         }}
         onLoadSupplier={(partyRefId) => void handleLoadSupplier(partyRefId)}

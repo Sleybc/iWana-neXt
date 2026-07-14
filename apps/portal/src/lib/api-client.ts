@@ -6152,6 +6152,9 @@ export interface PurchaseOrderRecord {
   status: PurchaseOrderStatus;
   expectedDeliveryDate: string | null;
   approvedByUserId: string | null;
+  cancellationReason: string | null;
+  cancelledByUserId: string | null;
+  closedByUserId: string | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -6541,6 +6544,20 @@ export interface CancelPurchaseRequestDto {
   reason: string;
 }
 
+export interface UpdatePurchaseRequestDto {
+  title?: string;
+  priority?: PurchaseRequestPriority;
+  requestingArea?: string;
+  justification?: string;
+  neededByDate?: string | null;
+  notes?: string | null;
+  lines?: CreatePurchaseRequestLineDto[];
+}
+
+export interface CancelPurchaseOrderDto {
+  reason: string;
+}
+
 export interface PurchaseRequestLineAwardInput {
   purchaseRequestLineId: string;
   awardedPartyRefId: string;
@@ -6874,6 +6891,13 @@ export const purchasingApi = {
       tenantSlug,
     ),
 
+  updateRequest: (id: string, dto: UpdatePurchaseRequestDto, tenantSlug?: string) =>
+    request<PurchaseRequestRecord>(
+      `/purchasing/requests/${id}`,
+      { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
   addQuote: (id: string, dto: AddSupplierQuoteDto, tenantSlug?: string) =>
     request<SupplierQuoteRecord>(
       `/purchasing/requests/${id}/quotes`,
@@ -7004,6 +7028,27 @@ export const purchasingApi = {
     request<GoodsReceiptResultRecord>(
       `/purchasing/orders/${id}/receipts`,
       { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  approveOrder: (id: string, tenantSlug?: string) =>
+    request<PurchaseOrderRecord>(
+      `/purchasing/orders/${id}/approve`,
+      { method: 'POST', returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  cancelOrder: (id: string, dto: CancelPurchaseOrderDto, tenantSlug?: string) =>
+    request<PurchaseOrderRecord>(
+      `/purchasing/orders/${id}/cancel`,
+      { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  closeOrder: (id: string, tenantSlug?: string) =>
+    request<PurchaseOrderRecord>(
+      `/purchasing/orders/${id}/close`,
+      { method: 'POST', returnFullResponse: true },
       tenantSlug,
     ),
 

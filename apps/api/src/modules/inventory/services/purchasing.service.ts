@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, In } from 'typeorm';
 import {
   PurchaseOrder,
   PurchaseOrderLine,
@@ -21,6 +21,8 @@ import {
   AddSupplierQuoteSchema,
   ApprovePurchaseRequestInput,
   ApprovePurchaseRequestSchema,
+  CancelPurchaseOrderInput,
+  CancelPurchaseOrderSchema,
   CancelPurchaseRequestInput,
   CancelPurchaseRequestSchema,
   CreatePurchaseRequestAwardsInput,
@@ -33,6 +35,8 @@ import {
   ListPurchaseOrdersQuerySchema,
   RejectPurchaseRequestInput,
   RejectPurchaseRequestSchema,
+  UpdatePurchaseRequestInput,
+  UpdatePurchaseRequestSchema,
 } from '../dto';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { PurchasingPolicyService } from './purchasing-policy.service';
@@ -429,6 +433,175 @@ export class PurchasingService {
 
         void actor;
         return createdAwards;
+      }),
+    );
+  }
+
+  async updatePurchaseRequest(
+    purchaseRequestId: string,
+    input: UpdatePurchaseRequestInput,
+    actor: JwtPayload,
+  ): Promise<PurchaseRequest> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const validated = UpdatePurchaseRequestSchema.parse(input);
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      withTransaction(qr.manager, async (manager) => {
+        const request = await this.requirePurchaseRequest(manager, tenantId, purchaseRequestId);
+
+        const editableStatuses: PurchaseRequestStatus[] = [
+          PurchaseRequestStatus.DRAFT,
+          PurchaseRequestStatus.PENDING_QUOTES,
+        ];
+        if (!editableStatuses.includes(request.status)) {
+          throw new BadRequestException('La solicitud no admite edición en su estado actual.');
+        }
+
+        const quoteCount = await manager.count(SupplierQuote, {
+          where: { tenantId, purchaseRequestId },
+        });
+        if (quoteCount > 0) {
+          throw new BadRequestException(
+            'La solicitud ya tiene cotizaciones o adjudicaciones registradas.',
+          );
+        }
+
+        const existingLines = await manager.find(PurchaseRequestLine, {
+          where: { tenantId, purchaseRequestId },
+        });
+        if (existingLines.length > 0) {
+          const awardCount = await manager.count(PurchaseRequestLineAward, {
+            where: { tenantId, purchaseRequestLineId: In(existingLines.map((l) => l.id)) },
+          });
+          if (awardCount > 0) {
+            throw new BadRequestException(
+              'La solicitud ya tiene cotizaciones o adjudicaciones registradas.',
+            );
+          }
+        }
+
+        if (validated.title !== undefined) request.title = validated.title;
+        if (validated.priority !== undefined) request.priority = validated.priority;
+        if (validated.requestingArea !== undefined)
+          request.requestingArea = validated.requestingArea;
+        if (validated.justification !== undefined) request.justification = validated.justification;
+        if ('neededByDate' in validated) request.neededByDate = validated.neededByDate ?? null;
+        if ('notes' in validated) request.notes = validated.notes ?? null;
+        request.updatedAt = new Date();
+        await manager.save(PurchaseRequest, request);
+
+        if (validated.lines) {
+          if (existingLines.length > 0) {
+            await manager.remove(PurchaseRequestLine, existingLines);
+          }
+          for (const line of validated.lines) {
+            await manager.save(
+              PurchaseRequestLine,
+              manager.create(PurchaseRequestLine, {
+                tenantId,
+                purchaseRequestId: request.id,
+                sourceKind: line.sourceKind,
+                inventoryItemId: line.inventoryItemId ?? null,
+                freeTextDescription: line.freeTextDescription ?? null,
+                quantityRequested: toQuantity(line.quantityRequested),
+                unitOfMeasure: line.unitOfMeasure,
+                suggestedPartyRefId: line.suggestedPartyRefId ?? null,
+                lineStatus: PurchaseRequestLineStatus.OPEN,
+                notes: line.notes ?? null,
+              }),
+            );
+          }
+        }
+
+        void actor;
+        return request;
+      }),
+    );
+  }
+
+  async approvePurchaseOrder(purchaseOrderId: string, actor: JwtPayload): Promise<PurchaseOrder> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      withTransaction(qr.manager, async (manager) => {
+        const order = await this.requirePurchaseOrder(manager, tenantId, purchaseOrderId);
+
+        if (order.status !== PurchaseOrderStatus.PENDING_APPROVAL) {
+          throw new BadRequestException(
+            'La orden de compra debe estar en estado "Pendiente de aprobación" para ser aprobada.',
+          );
+        }
+
+        order.status = PurchaseOrderStatus.APPROVED;
+        order.approvedByUserId = actor.sub;
+        order.updatedAt = new Date();
+        return manager.save(PurchaseOrder, order);
+      }),
+    );
+  }
+
+  async cancelPurchaseOrder(
+    purchaseOrderId: string,
+    input: CancelPurchaseOrderInput,
+    actor: JwtPayload,
+  ): Promise<PurchaseOrder> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const validated = CancelPurchaseOrderSchema.parse(input);
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      withTransaction(qr.manager, async (manager) => {
+        const order = await this.requirePurchaseOrder(manager, tenantId, purchaseOrderId);
+
+        const cancellableStatuses: PurchaseOrderStatus[] = [
+          PurchaseOrderStatus.DRAFT,
+          PurchaseOrderStatus.PENDING_APPROVAL,
+          PurchaseOrderStatus.APPROVED,
+        ];
+        if (!cancellableStatuses.includes(order.status)) {
+          throw new BadRequestException(
+            'La orden de compra no está en un estado que permita cancelarla.',
+          );
+        }
+
+        const hasReceived = await manager
+          .createQueryBuilder(PurchaseOrderLine, 'line')
+          .where('line.purchaseOrderId = :purchaseOrderId', { purchaseOrderId })
+          .andWhere('line.tenantId = :tenantId', { tenantId })
+          .andWhere('CAST(line.receivedQuantity AS numeric) > 0')
+          .getCount();
+
+        if (hasReceived > 0) {
+          throw new BadRequestException(
+            'No se puede cancelar la orden porque ya tiene mercancía recibida parcialmente.',
+          );
+        }
+
+        order.status = PurchaseOrderStatus.CANCELLED;
+        order.cancellationReason = validated.reason;
+        order.cancelledByUserId = actor.sub;
+        order.updatedAt = new Date();
+        return manager.save(PurchaseOrder, order);
+      }),
+    );
+  }
+
+  async closePurchaseOrder(purchaseOrderId: string, actor: JwtPayload): Promise<PurchaseOrder> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      withTransaction(qr.manager, async (manager) => {
+        const order = await this.requirePurchaseOrder(manager, tenantId, purchaseOrderId);
+
+        if (order.status !== PurchaseOrderStatus.FULLY_RECEIVED) {
+          throw new BadRequestException(
+            'Solo se puede cerrar una orden de compra completamente recibida.',
+          );
+        }
+
+        order.status = PurchaseOrderStatus.CLOSED;
+        order.closedByUserId = actor.sub;
+        order.updatedAt = new Date();
+        return manager.save(PurchaseOrder, order);
       }),
     );
   }

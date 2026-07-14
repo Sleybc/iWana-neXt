@@ -546,6 +546,337 @@ describe('PurchasingService', () => {
     expect(cancelActiveForRequest).not.toHaveBeenCalled();
   });
 
+  it('updates request header and replaces lines when in DRAFT with no quotes', async () => {
+    const requestRecord = {
+      id: 'pr-edit-001',
+      tenantId: 'tenant-001',
+      title: 'Título original',
+      status: PurchaseRequestStatus.DRAFT,
+      priority: PurchaseRequestPriority.NORMAL,
+      requestingArea: 'Logística',
+      justification: null,
+      neededByDate: null,
+      notes: null,
+      updatedAt: new Date(),
+    };
+    const savedLines: Array<Record<string, unknown>> = [];
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockResolvedValue(requestRecord),
+      count: jest.fn().mockResolvedValue(0),
+      find: jest.fn().mockResolvedValue([]),
+      remove: jest.fn().mockResolvedValue(undefined),
+      create: jest.fn((_entity, payload) => payload),
+      save: jest.fn().mockImplementation(async (_entity, payload) => {
+        if ('purchaseRequestId' in payload && 'quantityRequested' in payload) {
+          const saved = { id: `line-${savedLines.length + 1}`, ...payload };
+          savedLines.push(saved);
+          return saved;
+        }
+        return { ...payload };
+      }),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+    );
+
+    const result = await service.updatePurchaseRequest(
+      'pr-edit-001',
+      {
+        title: 'Título actualizado',
+        priority: PurchaseRequestPriority.HIGH,
+        lines: [
+          {
+            sourceKind: PurchaseRequestLineSourceKind.INVENTORY_ITEM,
+            inventoryItemId: 'item-001',
+            freeTextDescription: 'Cable de fibra',
+            quantityRequested: 5,
+            unitOfMeasure: 'metro',
+          },
+        ],
+      },
+      actor,
+    );
+
+    expect(result.title).toBe('Título actualizado');
+    expect(result.priority).toBe(PurchaseRequestPriority.HIGH);
+    expect(savedLines).toHaveLength(1);
+    expect(savedLines[0]).toEqual(
+      expect.objectContaining({ inventoryItemId: 'item-001', unitOfMeasure: 'metro' }),
+    );
+  });
+
+  it('blocks updatePurchaseRequest when status is APPROVED', async () => {
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockResolvedValue({
+        id: 'pr-bad-001',
+        tenantId: 'tenant-001',
+        status: PurchaseRequestStatus.APPROVED,
+      }),
+      count: jest.fn(),
+      find: jest.fn(),
+      save: jest.fn(),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+    );
+
+    await expect(
+      service.updatePurchaseRequest('pr-bad-001', { title: 'No debe pasar' }, actor),
+    ).rejects.toThrow('La solicitud no admite edición en su estado actual.');
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it('blocks updatePurchaseRequest when request already has quotes', async () => {
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockResolvedValue({
+        id: 'pr-quoted-001',
+        tenantId: 'tenant-001',
+        status: PurchaseRequestStatus.PENDING_QUOTES,
+      }),
+      count: jest.fn().mockResolvedValue(2),
+      find: jest.fn(),
+      save: jest.fn(),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+    );
+
+    await expect(
+      service.updatePurchaseRequest('pr-quoted-001', { title: 'No debe pasar' }, actor),
+    ).rejects.toThrow('cotizaciones');
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it('approves purchase order from PENDING_APPROVAL', async () => {
+    const orderRecord = {
+      id: 'po-pend-001',
+      tenantId: 'tenant-001',
+      orderNumber: 'PO-000050',
+      status: PurchaseOrderStatus.PENDING_APPROVAL,
+      approvedByUserId: null as string | null,
+      updatedAt: new Date(),
+    };
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockResolvedValue(orderRecord),
+      save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+    );
+
+    const result = await service.approvePurchaseOrder('po-pend-001', actor);
+
+    expect(result.status).toBe(PurchaseOrderStatus.APPROVED);
+    expect(result.approvedByUserId).toBe(actor.sub);
+  });
+
+  it('blocks approvePurchaseOrder when order is already APPROVED', async () => {
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockResolvedValue({
+        id: 'po-already-001',
+        tenantId: 'tenant-001',
+        orderNumber: 'PO-000051',
+        status: PurchaseOrderStatus.APPROVED,
+      }),
+      save: jest.fn(),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+    );
+
+    await expect(service.approvePurchaseOrder('po-already-001', actor)).rejects.toThrow(
+      'Pendiente de aprobación',
+    );
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it('cancels purchase order from APPROVED with reason and actor', async () => {
+    const orderRecord = {
+      id: 'po-cancel-001',
+      tenantId: 'tenant-001',
+      orderNumber: 'PO-000060',
+      status: PurchaseOrderStatus.APPROVED,
+      cancellationReason: null as string | null,
+      cancelledByUserId: null as string | null,
+      updatedAt: new Date(),
+    };
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockResolvedValue(orderRecord),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(0),
+      }),
+      save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+    );
+
+    const result = await service.cancelPurchaseOrder(
+      'po-cancel-001',
+      { reason: 'Proveedor no disponible' },
+      actor,
+    );
+
+    expect(result.status).toBe(PurchaseOrderStatus.CANCELLED);
+    expect(result.cancellationReason).toBe('Proveedor no disponible');
+    expect(result.cancelledByUserId).toBe(actor.sub);
+  });
+
+  it('blocks cancelPurchaseOrder when order has received items', async () => {
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockResolvedValue({
+        id: 'po-recv-001',
+        tenantId: 'tenant-001',
+        orderNumber: 'PO-000061',
+        status: PurchaseOrderStatus.APPROVED,
+      }),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(1),
+      }),
+      save: jest.fn(),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+    );
+
+    await expect(
+      service.cancelPurchaseOrder('po-recv-001', { reason: 'Sin efecto' }, actor),
+    ).rejects.toThrow('mercancía recibida');
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it('blocks cancelPurchaseOrder when order is CLOSED', async () => {
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockResolvedValue({
+        id: 'po-closed-001',
+        tenantId: 'tenant-001',
+        orderNumber: 'PO-000062',
+        status: PurchaseOrderStatus.CLOSED,
+      }),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(0),
+      }),
+      save: jest.fn(),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+    );
+
+    await expect(
+      service.cancelPurchaseOrder('po-closed-001', { reason: 'No aplica' }, actor),
+    ).rejects.toThrow('no está en un estado que permita cancelarla');
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it('closes purchase order from FULLY_RECEIVED status', async () => {
+    const orderRecord = {
+      id: 'po-fully-001',
+      tenantId: 'tenant-001',
+      orderNumber: 'PO-000070',
+      status: PurchaseOrderStatus.FULLY_RECEIVED,
+      closedByUserId: null as string | null,
+      updatedAt: new Date(),
+    };
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockResolvedValue(orderRecord),
+      save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+    );
+
+    const result = await service.closePurchaseOrder('po-fully-001', actor);
+
+    expect(result.status).toBe(PurchaseOrderStatus.CLOSED);
+    expect(result.closedByUserId).toBe(actor.sub);
+  });
+
+  it('blocks closePurchaseOrder when order is not FULLY_RECEIVED', async () => {
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockResolvedValue({
+        id: 'po-partial-001',
+        tenantId: 'tenant-001',
+        orderNumber: 'PO-000071',
+        status: PurchaseOrderStatus.PARTIALLY_RECEIVED,
+      }),
+      save: jest.fn(),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+    );
+
+    await expect(service.closePurchaseOrder('po-partial-001', actor)).rejects.toThrow(
+      'completamente recibida',
+    );
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
   it('rejects reject from DRAFT with Spanish BadRequest', async () => {
     const manager = {
       transaction: jest.fn().mockImplementation(async (work) => work(manager)),

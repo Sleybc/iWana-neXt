@@ -25,6 +25,7 @@ import { CreateSupplierProfiles0640000000000 } from './064_create_supplier_profi
 import { AddPartyAddressFields0650000000000 } from './065_add_party_address_fields';
 import { AddPartyCityDepartment0660000000000 } from './066_add_party_city_department';
 import { AddPurchaseRequestResolution0670000000000 } from './067_add_purchase_request_resolution';
+import { AddPurchaseOrderResolution0680000000000 } from './068_add_purchase_order_resolution';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
 import { CreateExpedienteRecords1700000000001 } from './001_create_expediente_records';
@@ -127,6 +128,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   AddPartyAddressFields0650000000000,
   AddPartyCityDepartment0660000000000,
   AddPurchaseRequestResolution0670000000000,
+  AddPurchaseOrderResolution0680000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

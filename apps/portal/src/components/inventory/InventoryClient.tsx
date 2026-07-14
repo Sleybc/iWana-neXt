@@ -25,7 +25,9 @@ import {
 import {
   ApiError,
   type AddSupplierQuoteDto,
+  type CancelPurchaseOrderDto,
   type CancelPurchaseRequestDto,
+  type UpdatePurchaseRequestDto,
   type CreateInventoryItemDto,
   type CreateInventoryCategoryDto,
   type CreatePurchaseOrderDto,
@@ -91,7 +93,6 @@ import { InventoryCatalogSummaryPreview } from './InventoryCatalogSummaryPreview
 import { PurchaseWorkspace } from './PurchaseWorkspace';
 import { SuppliersPanel } from './SuppliersPanel';
 import { SupplierFormDrawer } from './SupplierFormDrawer';
-import { buildPurchaseItemFrequency } from './purchase-composer-preferences';
 import { SerializedAssetDetailDrawer } from './SerializedAssetDetailDrawer';
 import { StockLocationFormDialog } from './StockLocationFormDialog';
 import { StockLocationsMatrix, type LocationMatrixCustodyFilter } from './StockLocationsMatrix';
@@ -220,6 +221,10 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const [awardsError, setAwardsError] = useState<string | null>(null);
   const [rejectError, setRejectError] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [updateRequestError, setUpdateRequestError] = useState<string | null>(null);
+  const [approveOrderError, setApproveOrderError] = useState<string | null>(null);
+  const [cancelOrderError, setCancelOrderError] = useState<string | null>(null);
+  const [closeOrderError, setCloseOrderError] = useState<string | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [receiptError, setReceiptError] = useState<string | null>(null);
   const [latestQuoteAmount, setLatestQuoteAmount] = useState<string | null>(null);
@@ -236,6 +241,10 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const [isSubmittingAwards, setIsSubmittingAwards] = useState(false);
   const [isSubmittingReject, setIsSubmittingReject] = useState(false);
   const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
+  const [isSubmittingUpdateRequest, setIsSubmittingUpdateRequest] = useState(false);
+  const [isSubmittingApproveOrder, setIsSubmittingApproveOrder] = useState(false);
+  const [isSubmittingCancelOrder, setIsSubmittingCancelOrder] = useState(false);
+  const [isSubmittingCloseOrder, setIsSubmittingCloseOrder] = useState(false);
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [isSubmittingReceipt, setIsSubmittingReceipt] = useState(false);
   const [isSubmittingCounterPurchase, setIsSubmittingCounterPurchase] = useState(false);
@@ -318,7 +327,6 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const [supplierSubmitError, setSupplierSubmitError] = useState<string | null>(null);
   const [isSubmittingSupplier, setIsSubmittingSupplier] = useState(false);
   const [supplierLabels, setSupplierLabels] = useState<Record<string, string>>({});
-  const [purchaseItemFrequency, setPurchaseItemFrequency] = useState<Record<string, number>>({});
   const [isCatalogSearching, setIsCatalogSearching] = useState(false);
   const [commercialProductOptions, setCommercialProductOptions] = useState<
     Array<{ id: string; name: string }>
@@ -375,79 +383,57 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     [assets],
   );
 
-  const loadPurchaseItemFrequency = useCallback(async (requestRecords: PurchaseRequestRecord[]) => {
-    const recentRequests = requestRecords.slice(0, 15);
-
-    if (recentRequests.length === 0) {
-      setPurchaseItemFrequency({});
-      return;
+  const loadData = useCallback(async (silent = false) => {
+    if (silent) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
     }
+
+    setError(null);
 
     try {
-      const details = await Promise.all(
-        recentRequests.map((request) => purchasingApi.getRequestDetail(request.id)),
-      );
-      setPurchaseItemFrequency(buildPurchaseItemFrequency(details));
-    } catch {
-      setPurchaseItemFrequency({});
+      const [
+        dashboardResponse,
+        itemsResponse,
+        locationsResponse,
+        issuesResponse,
+        assetsResponse,
+        balancesResponse,
+        requestsResponse,
+        usersResult,
+      ] = await Promise.all([
+        inventoryApi.dashboard(),
+        inventoryApi.listItems(),
+        inventoryApi.listLocations(),
+        inventoryApi.listIssues(),
+        inventoryApi.listAssets(),
+        inventoryApi.listBalances(),
+        purchasingApi.listRequests(),
+        loadTenantUsers()
+          .then((users) => ({ users, error: null as string | null }))
+          .catch(() => ({
+            users: [] as InternalUser[],
+            error: 'No fue posible cargar la lista de usuarios.',
+          })),
+      ]);
+
+      setSummary(dashboardResponse);
+      setItems(itemsResponse);
+      setLocations(locationsResponse);
+      setIssues(issuesResponse);
+      setAssets(assetsResponse);
+      setBalances(balancesResponse);
+      setRequests(requestsResponse);
+      setTenantUsers(usersResult.users);
+      setUsersLoadError(usersResult.error);
+    } catch (loadError) {
+      setError(mapInventoryError(loadError));
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
     }
   }, []);
-
-  const loadData = useCallback(
-    async (silent = false) => {
-      if (silent) {
-        setIsRefreshing(true);
-      } else {
-        setIsLoading(true);
-      }
-
-      setError(null);
-
-      try {
-        const [
-          dashboardResponse,
-          itemsResponse,
-          locationsResponse,
-          issuesResponse,
-          assetsResponse,
-          balancesResponse,
-          requestsResponse,
-          usersResult,
-        ] = await Promise.all([
-          inventoryApi.dashboard(),
-          inventoryApi.listItems(),
-          inventoryApi.listLocations(),
-          inventoryApi.listIssues(),
-          inventoryApi.listAssets(),
-          inventoryApi.listBalances(),
-          purchasingApi.listRequests(),
-          loadTenantUsers()
-            .then((users) => ({ users, error: null as string | null }))
-            .catch(() => ({
-              users: [] as InternalUser[],
-              error: 'No fue posible cargar la lista de usuarios.',
-            })),
-        ]);
-
-        setSummary(dashboardResponse);
-        setItems(itemsResponse);
-        setLocations(locationsResponse);
-        setIssues(issuesResponse);
-        setAssets(assetsResponse);
-        setBalances(balancesResponse);
-        setRequests(requestsResponse);
-        setTenantUsers(usersResult.users);
-        setUsersLoadError(usersResult.error);
-        void loadPurchaseItemFrequency(requestsResponse);
-      } catch (loadError) {
-        setError(mapInventoryError(loadError));
-      } finally {
-        setIsLoading(false);
-        setIsRefreshing(false);
-      }
-    },
-    [loadPurchaseItemFrequency],
-  );
 
   useEffect(() => {
     void loadData();
@@ -627,6 +613,13 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       setIsCatalogSearching(false);
     }
   }, []);
+
+  const handleCatalogSearch = useCallback(
+    (search: string) => {
+      void loadCatalogOptions(search);
+    },
+    [loadCatalogOptions],
+  );
 
   const loadCatalogItems = useCallback(
     async (filters: CatalogFilters, silent = false) => {
@@ -1192,6 +1185,59 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     }
   }
 
+  async function handleUpdateRequest(requestId: string, payload: UpdatePurchaseRequestDto) {
+    setIsSubmittingUpdateRequest(true);
+    setUpdateRequestError(null);
+    try {
+      await purchasingApi.updateRequest(requestId, payload);
+      await loadData(true);
+    } catch (submitError) {
+      setUpdateRequestError(mapInventoryError(submitError));
+      throw submitError;
+    } finally {
+      setIsSubmittingUpdateRequest(false);
+    }
+  }
+
+  async function handleApproveOrder(orderId: string) {
+    setIsSubmittingApproveOrder(true);
+    setApproveOrderError(null);
+    try {
+      await purchasingApi.approveOrder(orderId);
+      await loadData(true);
+    } catch (submitError) {
+      setApproveOrderError(mapInventoryError(submitError));
+    } finally {
+      setIsSubmittingApproveOrder(false);
+    }
+  }
+
+  async function handleCancelOrder(orderId: string, payload: CancelPurchaseOrderDto) {
+    setIsSubmittingCancelOrder(true);
+    setCancelOrderError(null);
+    try {
+      await purchasingApi.cancelOrder(orderId, payload);
+      await loadData(true);
+    } catch (submitError) {
+      setCancelOrderError(mapInventoryError(submitError));
+    } finally {
+      setIsSubmittingCancelOrder(false);
+    }
+  }
+
+  async function handleCloseOrder(orderId: string) {
+    setIsSubmittingCloseOrder(true);
+    setCloseOrderError(null);
+    try {
+      await purchasingApi.closeOrder(orderId);
+      await loadData(true);
+    } catch (submitError) {
+      setCloseOrderError(mapInventoryError(submitError));
+    } finally {
+      setIsSubmittingCloseOrder(false);
+    }
+  }
+
   const loadOrderDetailForRequest = useCallback(async (requestId: string) => {
     try {
       const orders = await purchasingApi.listOrders({ purchaseRequestId: requestId });
@@ -1741,9 +1787,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
           <PurchaseWorkspace
             requests={requests}
             items={items}
-            balances={balances}
             catalogOptions={catalogOptions}
-            purchaseItemFrequency={purchaseItemFrequency}
             supplierLabels={supplierLabels}
             isCatalogSearching={isCatalogSearching}
             locations={locations}
@@ -1760,6 +1804,10 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             isSubmittingCancel={isSubmittingCancel}
             isSubmittingOrder={isSubmittingOrder}
             isSubmittingReceipt={isSubmittingReceipt}
+            isSubmittingUpdateRequest={isSubmittingUpdateRequest}
+            isSubmittingApproveOrder={isSubmittingApproveOrder}
+            isSubmittingCancelOrder={isSubmittingCancelOrder}
+            isSubmittingCloseOrder={isSubmittingCloseOrder}
             createError={createRequestError}
             quoteError={quoteError}
             approveError={approveError}
@@ -1768,6 +1816,10 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             cancelError={cancelError}
             orderError={orderError}
             receiptError={receiptError}
+            updateRequestError={updateRequestError}
+            approveOrderError={approveOrderError}
+            cancelOrderError={cancelOrderError}
+            closeOrderError={closeOrderError}
             counterPurchaseError={counterPurchaseError}
             latestCounterPurchase={latestCounterPurchase}
             isSubmittingCounterPurchase={isSubmittingCounterPurchase}
@@ -1777,12 +1829,16 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             onCreateAwards={handleCreateAwards}
             onRejectRequest={handleRejectRequest}
             onCancelRequest={handleCancelRequest}
+            onUpdateRequest={handleUpdateRequest}
             onCreateOrder={handleCreateOrder}
             onReceiveOrder={handleReceiveOrder}
+            onApproveOrder={handleApproveOrder}
+            onCancelOrder={handleCancelOrder}
+            onCloseOrder={handleCloseOrder}
             onCounterPurchase={handleCounterPurchase}
             onPrepareOrderDrawer={loadOrderDetailForRequest}
             onRefresh={() => loadData(true)}
-            onCatalogSearch={(search) => void loadCatalogOptions(search)}
+            onCatalogSearch={handleCatalogSearch}
           />
         </TabsContent>
 

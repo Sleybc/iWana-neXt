@@ -10,6 +10,8 @@ import {
   Res,
   StreamableFile,
   UseGuards,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -25,6 +27,8 @@ import {
   AddSupplierQuoteSchema,
   ApprovePurchaseRequestDto,
   ApprovePurchaseRequestSchema,
+  CancelPurchaseOrderDto,
+  CancelPurchaseOrderSchema,
   CancelPurchaseRequestDto,
   CancelPurchaseRequestSchema,
   CreatePurchaseRequestAwardsDto,
@@ -57,6 +61,8 @@ import {
   SearchSuppliersQuerySchema,
   SetSupplierStatusDto,
   SetSupplierStatusSchema,
+  UpdatePurchaseRequestDto,
+  UpdatePurchaseRequestSchema,
   UpdateSupplierDto,
   UpdateSupplierSchema,
 } from './dto';
@@ -176,6 +182,60 @@ export class PurchasingController {
       CancelPurchaseRequestSchema.parse(body),
       actor,
     );
+  }
+
+  @Patch('requests/:id')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({
+    summary:
+      'Editar cabecera y líneas de una solicitud de compra (solo en borrador/sin cotizaciones)',
+  })
+  updateRequest(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(UpdatePurchaseRequestSchema)) body: UpdatePurchaseRequestDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.purchasingService.updatePurchaseRequest(
+      id,
+      UpdatePurchaseRequestSchema.parse(body),
+      actor,
+    );
+  }
+
+  @Post('orders/:id/approve')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Aprobar orden de compra (PENDING_APPROVAL → APPROVED)' })
+  approveOrder(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: JwtPayload) {
+    return this.purchasingService.approvePurchaseOrder(id, actor);
+  }
+
+  @Post('orders/:id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({
+    summary: 'Cancelar orden de compra con motivo (no permitido si hay recepción parcial)',
+  })
+  cancelOrder(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(CancelPurchaseOrderSchema)) body: CancelPurchaseOrderDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.purchasingService.cancelPurchaseOrder(
+      id,
+      CancelPurchaseOrderSchema.parse(body),
+      actor,
+    );
+  }
+
+  @Post('orders/:id/close')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({
+    summary: 'Cerrar orden de compra completamente recibida (FULLY_RECEIVED → CLOSED)',
+  })
+  closeOrder(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: JwtPayload) {
+    return this.purchasingService.closePurchaseOrder(id, actor);
   }
 
   @Post('requests/:id/awards')

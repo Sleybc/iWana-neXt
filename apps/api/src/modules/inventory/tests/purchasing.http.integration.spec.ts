@@ -213,6 +213,7 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
         orderBy: jest.fn().mockReturnThis(),
         getOne: jest.fn().mockResolvedValue(null),
         getRawOne: jest.fn().mockResolvedValue({ maxValue: null }),
+        getCount: jest.fn().mockResolvedValue(0),
         getMany: jest.fn().mockImplementation(async () => {
           if (alias === 'request') {
             return [...state.requests];
@@ -223,6 +224,15 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
           return [];
         }),
       })),
+      count: jest.fn().mockResolvedValue(0),
+      remove: jest.fn().mockImplementation(async (_entity, records: Array<{ id: string }>) => {
+        for (const record of records) {
+          const lineIndex = state.requestLines.findIndex((entry) => entry.id === record.id);
+          if (lineIndex >= 0) {
+            state.requestLines.splice(lineIndex, 1);
+          }
+        }
+      }),
       create: jest.fn((_entity, payload) => payload),
       save: jest.fn().mockImplementation(async (_entity, payload) => {
         if (payload.requestNumber) {
@@ -248,6 +258,13 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
         }
 
         if (payload.orderNumber) {
+          if (payload.id) {
+            const orderIndex = state.orders.findIndex((entry) => entry.id === payload.id);
+            if (orderIndex >= 0) {
+              state.orders[orderIndex] = { ...state.orders[orderIndex], ...payload };
+              return state.orders[orderIndex];
+            }
+          }
           const saved = { id: nextOrderId(), ...payload };
           state.orders.push(saved);
           return saved;
@@ -613,6 +630,187 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
     expect(state.rfqInvitations).toHaveLength(1);
     expect(state.rfqs[0]?.status).toBe(PurchaseRfqStatus.CANCELLED);
     expect(state.rfqInvitations[0]?.status).toBe(PurchaseRfqInvitationStatus.CANCELLED);
+  });
+
+  it('edita cabecera y reemplaza líneas de una solicitud en DRAFT', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/purchasing/requests')
+      .set('Authorization', 'Bearer support-token')
+      .send({
+        title: 'Solicitud a editar',
+        requestType: PurchaseRequestType.REPLENISHMENT,
+        priority: PurchaseRequestPriority.NORMAL,
+        requestingArea: 'Operaciones',
+        justification: 'Edición de prueba para Fase 07.',
+        neededByDate: '2026-09-01',
+        lines: [
+          {
+            sourceKind: PurchaseRequestLineSourceKind.INVENTORY_ITEM,
+            inventoryItemId: '44444444-4444-4444-8444-444444444444',
+            quantityRequested: 3,
+            unitOfMeasure: 'unidad',
+          },
+        ],
+      })
+      .expect(201);
+
+    const requestId = created.body.id as string;
+
+    const updated = await request(app.getHttpServer())
+      .patch(`/api/v1/purchasing/requests/${requestId}`)
+      .set('Authorization', 'Bearer support-token')
+      .send({
+        title: 'Solicitud editada',
+        priority: PurchaseRequestPriority.HIGH,
+        lines: [
+          {
+            sourceKind: PurchaseRequestLineSourceKind.FREE_TEXT,
+            freeTextDescription: 'Cable de fibra óptica',
+            quantityRequested: 100,
+            unitOfMeasure: 'metro',
+          },
+        ],
+      })
+      .expect(200);
+
+    expect(updated.body.title).toBe('Solicitud editada');
+    expect(updated.body.priority).toBe(PurchaseRequestPriority.HIGH);
+    const updatedLines = state.requestLines.filter((line) => line.purchaseRequestId === requestId);
+    expect(updatedLines).toHaveLength(1);
+    expect(updatedLines[0]?.unitOfMeasure).toBe('metro');
+  });
+
+  it('bloquea edición cuando la solicitud está en APPROVED', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/purchasing/requests')
+      .set('Authorization', 'Bearer support-token')
+      .send({
+        title: 'Solicitud no editable',
+        requestType: PurchaseRequestType.REPLENISHMENT,
+        priority: PurchaseRequestPriority.NORMAL,
+        requestingArea: 'Operaciones',
+        justification: 'Prueba de bloqueo de edición en APPROVED.',
+        lines: [
+          {
+            sourceKind: PurchaseRequestLineSourceKind.INVENTORY_ITEM,
+            inventoryItemId: '44444444-4444-4444-8444-444444444444',
+            quantityRequested: 1,
+            unitOfMeasure: 'unidad',
+          },
+        ],
+      })
+      .expect(201);
+
+    const requestId = created.body.id as string;
+    const requestIndex = state.requests.findIndex((entry) => entry.id === requestId);
+    state.requests[requestIndex] = {
+      ...state.requests[requestIndex],
+      status: PurchaseRequestStatus.APPROVED,
+    };
+
+    const response = await request(app.getHttpServer())
+      .patch(`/api/v1/purchasing/requests/${requestId}`)
+      .set('Authorization', 'Bearer support-token')
+      .send({ title: 'No debe actualizar' })
+      .expect(400);
+
+    expect(response.body.message).toEqual(
+      expect.stringContaining('La solicitud no admite edición en su estado actual.'),
+    );
+  });
+
+  it('aprueba una orden desde PENDING_APPROVAL', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/purchasing/requests')
+      .set('Authorization', 'Bearer support-token')
+      .send({
+        title: 'Solicitud para OC en aprobación',
+        requestType: PurchaseRequestType.REPLENISHMENT,
+        priority: PurchaseRequestPriority.NORMAL,
+        requestingArea: 'Operaciones',
+        justification: 'Prueba de ciclo de vida de OC Fase 07.',
+        lines: [
+          {
+            sourceKind: PurchaseRequestLineSourceKind.INVENTORY_ITEM,
+            inventoryItemId: '44444444-4444-4444-8444-444444444444',
+            quantityRequested: 2,
+            unitOfMeasure: 'unidad',
+          },
+        ],
+      })
+      .expect(201);
+
+    const approveOrderId = '22222222-2222-4222-8222-000000000080';
+    state.orders.push({
+      id: approveOrderId,
+      tenantId: 'tenant-001',
+      orderNumber: 'PO-000080',
+      purchaseRequestId: created.body.id as string,
+      partyRefId: '55555555-5555-4555-8555-555555555555',
+      status: PurchaseOrderStatus.PENDING_APPROVAL,
+      approvedByUserId: null,
+      cancellationReason: null,
+      cancelledByUserId: null,
+      closedByUserId: null,
+    });
+
+    const approved = await request(app.getHttpServer())
+      .post(`/api/v1/purchasing/orders/${approveOrderId}/approve`)
+      .set('Authorization', 'Bearer support-token')
+      .expect(200);
+
+    expect(approved.body.status).toBe(PurchaseOrderStatus.APPROVED);
+    expect(approved.body.approvedByUserId).toBe('support-001');
+  });
+
+  it('cancela una orden en APPROVED con motivo', async () => {
+    const cancelOrderId = '22222222-2222-4222-8222-000000000081';
+    state.orders.push({
+      id: cancelOrderId,
+      tenantId: 'tenant-001',
+      orderNumber: 'PO-000081',
+      purchaseRequestId: '11111111-1111-4111-8111-000000000001',
+      partyRefId: '55555555-5555-4555-8555-555555555555',
+      status: PurchaseOrderStatus.APPROVED,
+      cancellationReason: null,
+      cancelledByUserId: null,
+      closedByUserId: null,
+      approvedByUserId: 'support-001',
+    });
+
+    const cancelled = await request(app.getHttpServer())
+      .post(`/api/v1/purchasing/orders/${cancelOrderId}/cancel`)
+      .set('Authorization', 'Bearer support-token')
+      .send({ reason: 'Proveedor canceló contrato' })
+      .expect(200);
+
+    expect(cancelled.body.status).toBe(PurchaseOrderStatus.CANCELLED);
+    expect(cancelled.body.cancellationReason).toBe('Proveedor canceló contrato');
+    expect(cancelled.body.cancelledByUserId).toBe('support-001');
+  });
+
+  it('cierra una orden en FULLY_RECEIVED', async () => {
+    const closeOrderId = '22222222-2222-4222-8222-000000000082';
+    state.orders.push({
+      id: closeOrderId,
+      tenantId: 'tenant-001',
+      orderNumber: 'PO-000082',
+      purchaseRequestId: '11111111-1111-4111-8111-000000000002',
+      partyRefId: '55555555-5555-4555-8555-555555555555',
+      status: PurchaseOrderStatus.FULLY_RECEIVED,
+      cancellationReason: null,
+      cancelledByUserId: null,
+      closedByUserId: null,
+      approvedByUserId: 'support-001',
+    });
+
+    const closed = await request(app.getHttpServer())
+      .post(`/api/v1/purchasing/orders/${closeOrderId}/close`)
+      .set('Authorization', 'Bearer support-token')
+      .expect(200);
+
+    expect(closed.body.status).toBe(PurchaseOrderStatus.CLOSED);
+    expect(closed.body.closedByUserId).toBe('support-001');
   });
 
   it('bloquea cancelación cuando la solicitud ya está convertida a OC', async () => {

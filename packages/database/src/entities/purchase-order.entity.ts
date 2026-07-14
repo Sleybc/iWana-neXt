@@ -45,6 +45,15 @@ export class PurchaseOrder {
   @Column({ name: 'approved_by_user_id', type: 'uuid', nullable: true })
   approvedByUserId: string | null;
 
+  @Column({ name: 'cancellation_reason', type: 'text', nullable: true })
+  cancellationReason: string | null;
+
+  @Column({ name: 'cancelled_by_user_id', type: 'uuid', nullable: true })
+  cancelledByUserId: string | null;
+
+  @Column({ name: 'closed_by_user_id', type: 'uuid', nullable: true })
+  closedByUserId: string | null;
+
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 

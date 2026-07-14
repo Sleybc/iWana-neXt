@@ -4,6 +4,7 @@ import {
   PurchaseRequestType,
 } from '@iwana/shared';
 import type { CreatePurchaseRequestDto, CreatePurchaseRequestLineDto } from '@/lib/api-client';
+import type { PurchaseDraftLine } from './purchase-request-draft';
 
 export interface PurchaseSubmitLineInput {
   sourceKind: PurchaseRequestLineSourceKind;
@@ -133,4 +134,18 @@ export function buildCreatePurchaseRequestPayload(input: {
     },
     error: null,
   };
+}
+
+export function mapDraftLinesToUpdatePayload(
+  lines: PurchaseDraftLine[],
+): CreatePurchaseRequestLineDto[] {
+  return lines.map((line) => ({
+    sourceKind: line.sourceKind,
+    inventoryItemId: line.inventoryItemId || null,
+    freeTextDescription: line.productLabel,
+    quantityRequested: Number.parseFloat(line.quantityRequested) || 1,
+    unitOfMeasure: line.unitOfMeasure,
+    suggestedPartyRefId: line.suggestedPartyRefId || null,
+    notes: line.notes || null,
+  }));
 }

@@ -1,4 +1,5 @@
 import { PurchaseRequestLineSourceKind } from '@iwana/shared';
+import type { InventoryCatalogOptionRecord, PurchaseRequestLineRecord } from '@/lib/api-client';
 
 export interface PurchaseDraftCatalogSelection {
   id: string;
@@ -39,6 +40,39 @@ function createDraftLineId(): string {
 
 export function createEmptyPurchaseDraft(): PurchaseDraftState {
   return { lines: [] };
+}
+
+export function purchaseRequestLinesToDraft(
+  lines: PurchaseRequestLineRecord[],
+  supplierLabels: Record<string, string>,
+  catalogOptions?: InventoryCatalogOptionRecord[],
+): PurchaseDraftState {
+  return {
+    lines: lines.map((line) => {
+      let productLabel = line.freeTextDescription ?? '';
+
+      if (!productLabel && line.inventoryItemId && catalogOptions) {
+        const option = catalogOptions.find((opt) => opt.id === line.inventoryItemId);
+        if (option) {
+          productLabel = `${option.sku} - ${option.name}`;
+        }
+      }
+
+      return {
+        id: `edit-${line.id}`,
+        sourceKind: line.sourceKind,
+        inventoryItemId: line.inventoryItemId ?? '',
+        productLabel,
+        quantityRequested: line.quantityRequested,
+        unitOfMeasure: line.unitOfMeasure,
+        suggestedPartyRefId: line.suggestedPartyRefId ?? '',
+        suggestedPartyName: line.suggestedPartyRefId
+          ? (supplierLabels[line.suggestedPartyRefId] ?? '')
+          : '',
+        notes: line.notes ?? '',
+      };
+    }),
+  };
 }
 
 export function addCatalogSelectionToDraft(

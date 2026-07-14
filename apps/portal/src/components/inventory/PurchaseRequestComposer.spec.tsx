@@ -1,11 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { InventoryItemCategory, InventoryItemKind, StockBalanceCondition } from '@iwana/shared';
-import type {
-  InventoryCatalogOptionRecord,
-  InventoryItemRecord,
-  StockBalanceRecord,
-} from '@/lib/api-client';
+import { InventoryItemCategory, InventoryItemKind } from '@iwana/shared';
+import type { InventoryCatalogOptionRecord } from '@/lib/api-client';
 import { PurchaseRequestComposer } from './PurchaseRequestComposer';
 
 const catalogOptions: InventoryCatalogOptionRecord[] = [
@@ -27,61 +23,6 @@ const catalogOptions: InventoryCatalogOptionRecord[] = [
   },
 ];
 
-const balances: StockBalanceRecord[] = [
-  {
-    id: 'bal-1',
-    tenantId: 'tenant-1',
-    itemId: 'item-active',
-    locationId: 'loc-1',
-    lotId: null,
-    condition: StockBalanceCondition.NEW,
-    quantityOnHand: '1',
-    quantityReserved: '0',
-    createdAt: '2026-06-25T12:00:00.000Z',
-    updatedAt: '2026-06-25T12:00:00.000Z',
-  },
-];
-
-const items: InventoryItemRecord[] = [
-  {
-    id: 'item-active',
-    tenantId: 'tenant-1',
-    sku: 'ONT-001',
-    name: 'ONT WiFi 6',
-    description: null,
-    brand: null,
-    model: null,
-    itemKind: InventoryItemKind.SERIALIZED,
-    category: InventoryItemCategory.CPE,
-    categoryId: 'cat-cpe',
-    categoryName: 'CPE',
-    categoryCode: 'CPE',
-    trackingMode: 'SERIALIZED' as InventoryItemRecord['trackingMode'],
-    unitOfMeasure: 'unidad',
-    baseCost: '120000',
-    minimumStock: '2',
-    purchasable: true,
-    inventoryControlled: true,
-    assetControlled: true,
-    preferredSupplierRefId: 'supplier-1',
-    supplierSku: null,
-    purchaseUnitOfMeasure: 'caja',
-    purchaseToBaseUomFactor: null,
-    standardCost: '120000',
-    lastPurchaseCost: null,
-    reorderPoint: '5',
-    targetStock: '20',
-    minimumOrderQty: null,
-    orderMultiple: null,
-    leadTimeDays: null,
-    usefulLifeMonths: null,
-    commercialReferenceId: null,
-    status: 'ACTIVE' as InventoryItemRecord['status'],
-    createdAt: '2026-06-25T12:00:00.000Z',
-    updatedAt: '2026-06-25T12:00:00.000Z',
-  },
-];
-
 const submitResult = jest.fn().mockResolvedValue({ ok: true });
 
 describe('PurchaseRequestComposer', () => {
@@ -90,12 +31,10 @@ describe('PurchaseRequestComposer', () => {
     submitResult.mockResolvedValue({ ok: true });
   });
 
-  it('renders purchase source tabs and a shared add-to-draft action', () => {
+  it('renders the product search input and the manual line action', () => {
     render(
       <PurchaseRequestComposer
         catalogOptions={catalogOptions}
-        items={items}
-        balances={balances}
         supplierLabels={{ 'supplier-1': 'Proveedor Alfa' }}
         isSubmitting={false}
         error={null}
@@ -103,19 +42,16 @@ describe('PurchaseRequestComposer', () => {
       />,
     );
 
-    expect(screen.getByRole('tab', { name: /Sugeridos/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Catálogo/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Agregar al borrador/i })).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: /Buscar producto/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Agregar l[ií]nea manual/i })).toBeInTheDocument();
   });
 
-  it('moves selected catalog products into the draft lines table', async () => {
+  it('adds a searched catalog product straight into the draft lines table', async () => {
     const user = userEvent.setup();
 
     render(
       <PurchaseRequestComposer
         catalogOptions={catalogOptions}
-        items={items}
-        balances={balances}
         supplierLabels={{ 'supplier-1': 'Proveedor Alfa' }}
         isSubmitting={false}
         error={null}
@@ -123,12 +59,13 @@ describe('PurchaseRequestComposer', () => {
       />,
     );
 
-    await user.click(screen.getByRole('tab', { name: /Catálogo/i }));
-    await user.click(screen.getByRole('checkbox', { name: /Seleccionar ONT-001 - ONT WiFi 6/i }));
-    await user.click(screen.getByRole('button', { name: /Agregar 1 producto/i }));
+    const searchInput = screen.getByRole('combobox', { name: /Buscar producto/i });
+    await user.type(searchInput, 'ONT');
+    await user.click(await screen.findByRole('option', { name: /ONT-001 - ONT WiFi 6/i }));
 
     expect(screen.getByText(/L[ií]neas seleccionadas/i)).toBeInTheDocument();
     expect(screen.getAllByDisplayValue('1').length).toBeGreaterThan(0);
+    expect(searchInput).toHaveValue('');
   });
 
   it('keeps a manual line path available inside the new draft flow', async () => {
@@ -137,7 +74,6 @@ describe('PurchaseRequestComposer', () => {
     render(
       <PurchaseRequestComposer
         catalogOptions={catalogOptions}
-        items={items}
         supplierLabels={{ 'supplier-1': 'Proveedor Alfa' }}
         isSubmitting={false}
         error={null}
@@ -166,8 +102,6 @@ describe('PurchaseRequestComposer', () => {
     render(
       <PurchaseRequestComposer
         catalogOptions={catalogOptions}
-        items={items}
-        balances={balances}
         supplierLabels={{ 'supplier-1': 'Proveedor Alfa' }}
         isSubmitting={false}
         error={null}

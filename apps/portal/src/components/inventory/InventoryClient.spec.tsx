@@ -581,6 +581,9 @@ describe('InventoryClient', () => {
       status: PurchaseOrderStatus.APPROVED,
       expectedDeliveryDate: null,
       approvedByUserId: 'user-1',
+      cancellationReason: null,
+      cancelledByUserId: null,
+      closedByUserId: null,
       notes: null,
       createdAt: '2026-06-25T12:00:00.000Z',
       updatedAt: '2026-06-25T12:00:00.000Z',
@@ -595,6 +598,9 @@ describe('InventoryClient', () => {
       status: PurchaseOrderStatus.APPROVED,
       expectedDeliveryDate: null,
       approvedByUserId: 'user-1',
+      cancellationReason: null,
+      cancelledByUserId: null,
+      closedByUserId: null,
       notes: null,
       createdAt: '2026-06-25T12:00:00.000Z',
       updatedAt: '2026-06-25T12:00:00.000Z',
@@ -976,9 +982,9 @@ describe('InventoryClient', () => {
       expect(screen.getByLabelText(/T[ií]tulo/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('tab', { name: /^Catálogo \(\d+\)$/i }));
-    await user.click(screen.getByRole('checkbox', { name: /Seleccionar ONT-001 - ONT WiFi 6/i }));
-    await user.click(screen.getByRole('button', { name: /Agregar 1 producto/i }));
+    const searchInput = screen.getByRole('combobox', { name: /Buscar producto/i });
+    await user.type(searchInput, 'ONT');
+    await user.click(await screen.findByRole('option', { name: /ONT-001 - ONT WiFi 6/i }));
 
     fireEvent.change(screen.getByLabelText(/T[ií]tulo/i), {
       target: { value: 'Nueva solicitud de abastecimiento' },
@@ -1005,26 +1011,6 @@ describe('InventoryClient', () => {
       );
     });
   }, 15000);
-
-  it('preserves selected products while moving between sugeridos and catalogo', async () => {
-    const user = userEvent.setup();
-    render(<InventoryClient />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole('tab', { name: 'Compras' }));
-    await user.click(screen.getByRole('button', { name: 'Nueva solicitud' }));
-    await user.click(screen.getByRole('tab', { name: /^Catálogo \(\d+\)$/i }));
-    await user.click(screen.getByRole('checkbox', { name: /Seleccionar ONT-001 - ONT WiFi 6/i }));
-    await user.click(screen.getByRole('tab', { name: /Sugeridos/i }));
-    await user.click(screen.getByRole('tab', { name: /^Catálogo \(\d+\)$/i }));
-
-    expect(
-      screen.getByRole('checkbox', { name: /Seleccionar ONT-001 - ONT WiFi 6/i }),
-    ).toBeChecked();
-  });
 
   it('switches from tray mode to create mode without keeping the tray visible', async () => {
     const user = userEvent.setup();
@@ -1085,14 +1071,13 @@ describe('InventoryClient', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Nueva solicitud' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('tab', { name: /^Catálogo \(\d+\)$/i })).toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: /Buscar producto/i })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('tab', { name: /^Catálogo \(\d+\)$/i }));
-    fireEvent.click(
-      await screen.findByRole('checkbox', { name: /Seleccionar ONT-001 - ONT WiFi 6/i }),
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Agregar 1 producto/i }));
+    const user = userEvent.setup();
+    const searchInput = screen.getByRole('combobox', { name: /Buscar producto/i });
+    await user.type(searchInput, 'ONT');
+    await user.click(await screen.findByRole('option', { name: /ONT-001 - ONT WiFi 6/i }));
 
     fireEvent.change(screen.getByLabelText(/T[ií]tulo/i), {
       target: { value: 'Nueva solicitud fallida' },
@@ -1124,7 +1109,7 @@ describe('InventoryClient', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Nueva solicitud' }));
 
     expect(screen.getByText('Paso 1 de 2')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Sugeridos/i })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /Buscar producto/i })).toBeInTheDocument();
     expect(screen.queryByText('Listado de solicitudes')).not.toBeInTheDocument();
   });
 
