@@ -66,8 +66,19 @@ export class TenantMiddleware implements NestMiddleware {
         );
       }
 
-      // Si no hay JWT de tenant ni header, no se establece contexto.
-      // Las rutas protegidas fallaran en JwtAuthGuard y las de plataforma no lo requieren.
+      // Si hay JWT valido (type='platform' o type='tenant' sin claims de schema),
+      // permitir paso sin contexto: JwtAuthGuard ya valido el token o rutas de
+      // plataforma no requieren tenant.
+      if (jwtPayload) {
+        return next();
+      }
+
+      // Sin JWT ni X-Tenant-Slug en ruta protegida -> rechazar antes de que
+      // TenantContext.getOrThrow() genere un 500 generico en la capa de negocio.
+      if (!this.isPublicRoute(req)) {
+        throw new UnauthorizedException('Token de acceso invalido o expirado.');
+      }
+
       return next();
     }
 
@@ -103,16 +114,22 @@ export class TenantMiddleware implements NestMiddleware {
     return rawSlug?.trim().toLowerCase() ?? '';
   }
 
-  private requiresTenantHeader(req: Request): boolean {
-    const requestPath = (req.originalUrl || req.url || '').split('?')[0] ?? '';
-    const normalizedPath = requestPath.replace(/^\/api\/v1/, '');
+  private isPublicRoute(req: Request): boolean {
+    const normalizedPath = this.getNormalizedPath(req);
+    return [
+      '/auth/login',
+      '/auth/refresh',
+      '/auth/forgot-password',
+      '/auth/reset-password',
+    ].includes(normalizedPath);
+  }
 
-    return (
-      req.method === 'POST' &&
-      ['/auth/login', '/auth/refresh', '/auth/forgot-password', '/auth/reset-password'].includes(
-        normalizedPath,
-      )
-    );
+  private requiresTenantHeader(req: Request): boolean {
+    return req.method === 'POST' && this.isPublicRoute(req);
+  }
+
+  private getNormalizedPath(req: Request): string {
+    return (req.originalUrl || req.url || '').split('?')[0]?.replace(/^\/api\/v1/, '') ?? '';
   }
 
   private runWithTenantContext(

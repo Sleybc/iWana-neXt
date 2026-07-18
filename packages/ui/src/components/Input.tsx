@@ -16,6 +16,8 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
   containerClassName?: string;
   startIcon?: React.ReactNode;
   startIconClassName?: string;
+  /** Contenido absoluto a la derecha del control (p. ej. limpiar, acción secundaria). */
+  endAdornment?: React.ReactNode;
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
@@ -31,6 +33,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       requiredIndicator = false,
       startIcon,
       startIconClassName,
+      endAdornment,
       ...props
     },
     ref,
@@ -77,15 +80,21 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
                 ? 'border-red-500 dark:border-red-500 focus-visible:ring-red-500'
                 : 'border-gray-300 dark:border-dark-border-2 hover:border-gray-400 dark:hover:border-gray-500',
               startIcon && 'pl-9',
-              isPassword && 'pr-10',
+              endAdornment ? 'pr-16' : isPassword ? 'pr-10' : undefined,
               className,
             )}
+            aria-invalid={error ? true : undefined}
             aria-describedby={
               error ? `${inputId}-error` : helperText ? `${inputId}-helper` : undefined
             }
             {...props}
           />
-          {isPassword && (
+          {endAdornment ? (
+            <div className="absolute right-3 top-1/2 z-10 flex -translate-y-1/2 items-center gap-1">
+              {endAdornment}
+            </div>
+          ) : null}
+          {isPassword && !endAdornment && (
             <button
               type="button"
               onClick={() => setShowPassword((v) => !v)}

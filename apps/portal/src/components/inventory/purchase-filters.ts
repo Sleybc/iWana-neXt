@@ -32,10 +32,20 @@ export function isPurchaseRequestOverdue(request: PurchaseRequestRecord): boolea
   );
 }
 
+const PENDING_QUOTE_STATUSES: PurchaseRequestStatus[] = [
+  PurchaseRequestStatus.DRAFT,
+  PurchaseRequestStatus.PENDING_QUOTES,
+];
+
+export function isPendingQuoteStatus(status: PurchaseRequestStatus): boolean {
+  return PENDING_QUOTE_STATUSES.includes(status);
+}
+
 export function kpiPresetToFilters(preset: PurchaseKpiPreset): PurchaseRequestFilters {
   switch (preset) {
     case 'pendingQuotes':
-      return { kpiPreset: preset, status: PurchaseRequestStatus.PENDING_QUOTES };
+      // Fase 10: DRAFT + PENDING_QUOTES (KPI «Por cotizar»).
+      return { kpiPreset: preset };
     case 'pendingApproval':
       return { kpiPreset: preset, status: PurchaseRequestStatus.PENDING_APPROVAL };
     case 'readyForPo':
@@ -70,7 +80,7 @@ export function resolveActiveKpiPreset(filters: PurchaseRequestFilters): Purchas
     return filters.kpiPreset;
   }
 
-  if (filters.status === PurchaseRequestStatus.PENDING_QUOTES) return 'pendingQuotes';
+  if (filters.status && isPendingQuoteStatus(filters.status)) return 'pendingQuotes';
   if (filters.status === PurchaseRequestStatus.PENDING_APPROVAL) return 'pendingApproval';
   if (filters.status === PurchaseRequestStatus.APPROVED) return 'readyForPo';
   if (filters.status === PurchaseRequestStatus.CONVERTED_TO_PO) return 'pendingReceipt';
@@ -85,7 +95,16 @@ export function filterPurchaseRequests(
 ): PurchaseRequestRecord[] {
   return requests.filter((request) => {
     if (filters.requestType && request.requestType !== filters.requestType) return false;
-    if (filters.status && request.status !== filters.status) return false;
+    if (filters.kpiPreset === 'pendingQuotes' && !isPendingQuoteStatus(request.status)) {
+      return false;
+    }
+    if (
+      filters.status &&
+      filters.kpiPreset !== 'pendingQuotes' &&
+      request.status !== filters.status
+    ) {
+      return false;
+    }
     if (filters.priority && request.priority !== filters.priority) return false;
     if (filters.kpiPreset === 'overdue' && !isPurchaseRequestOverdue(request)) return false;
     if (filters.search) {

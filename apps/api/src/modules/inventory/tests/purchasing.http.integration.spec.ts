@@ -344,7 +344,7 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
           provide: RfqService,
           useValue: { applyQuoteToInvitation: jest.fn(), cancelActiveForRequest },
         },
-        { provide: RfqPdfService, useValue: { renderOrThrow: jest.fn() } },
+        { provide: RfqPdfService, useValue: { renderAllInvitationsZip: jest.fn() } },
         {
           provide: SupplierProfileService,
           useValue: { assertEligibleForPurchasing: jest.fn().mockResolvedValue(undefined) },
@@ -479,7 +479,7 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
       .expect(201);
 
     const requestId = created.body.id as string;
-    expect(created.body.status).toBe(PurchaseRequestStatus.PENDING_QUOTES);
+    expect(created.body.status).toBe(PurchaseRequestStatus.DRAFT);
 
     const detail = await request(app.getHttpServer())
       .get(`/api/v1/purchasing/requests/${requestId}`)
@@ -602,6 +602,10 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
       .expect(201);
 
     const requestId = created.body.id as string;
+    const createdRequest = state.requests.find((entry) => entry.id === requestId);
+    if (createdRequest) {
+      createdRequest.status = PurchaseRequestStatus.PENDING_QUOTES;
+    }
     state.rfqs.push({
       id: '99999999-9999-4999-8999-999999999991',
       tenantId: 'tenant-001',

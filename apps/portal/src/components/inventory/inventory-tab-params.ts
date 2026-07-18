@@ -1,6 +1,7 @@
 export type InventoryTab =
   | 'summary'
   | 'catalog'
+  | 'stock'
   | 'purchasing'
   | 'suppliers'
   | 'locations'
@@ -12,6 +13,7 @@ export type InventoryTab =
 const INVENTORY_TABS: InventoryTab[] = [
   'summary',
   'catalog',
+  'stock',
   'purchasing',
   'suppliers',
   'locations',

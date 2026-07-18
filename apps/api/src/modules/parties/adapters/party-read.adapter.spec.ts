@@ -1,5 +1,5 @@
 import { DataSource } from 'typeorm';
-import { DocumentTypeParty } from '@iwana/shared';
+import { DocumentTypeParty, PartyRoleStatus, PartyRoleType } from '@iwana/shared';
 import { Party } from '../entities/party.entity';
 import { PartyContact } from '../entities/party-contact.entity';
 import { PartyRole } from '../entities/party-role.entity';
@@ -22,6 +22,7 @@ describe('PartyReadAdapter', () => {
     manager: {
       findOne: jest.Mock;
       find: jest.Mock;
+      createQueryBuilder: jest.Mock;
     };
   };
 
@@ -30,6 +31,7 @@ describe('PartyReadAdapter', () => {
       manager: {
         findOne: jest.fn(),
         find: jest.fn(),
+        createQueryBuilder: jest.fn(),
       },
     };
 
@@ -167,6 +169,99 @@ describe('PartyReadAdapter', () => {
       const result = await adapter.findByDocument(DocumentTypeParty.CC, 'INEXISTENTE');
 
       expect(result).toBeNull();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  describe('searchByRole', () => {
+    function buildParty(overrides: Partial<Party> = {}): Party {
+      return Object.assign(new Party(), {
+        id: 'party-uuid-search-001',
+        partyType: 'JURIDICAL',
+        documentType: DocumentTypeParty.NIT,
+        documentNumber: 'NIT-FICT-900',
+        displayName: 'Macrotics SAS',
+        legalName: 'Macrotics S.A.S.',
+        status: 'ACTIVE',
+        verificationDigit: null,
+        birthDate: null,
+        incorporationDate: null,
+        notes: null,
+        address: null,
+        latitude: null,
+        longitude: null,
+        city: null,
+        department: null,
+        mergedIntoPartyId: null,
+        createdAt: new Date('2025-01-01'),
+        updatedAt: new Date('2025-01-01'),
+        deletedAt: null,
+        contacts: [],
+        roles: [],
+        ...overrides,
+      });
+    }
+
+    it('ordena por displayName (propiedad TypeORM) y no por display_name SQL', async () => {
+      const orderBy = jest.fn().mockReturnThis();
+      const skip = jest.fn().mockReturnThis();
+      const take = jest.fn().mockReturnThis();
+      const getManyAndCount = jest.fn().mockResolvedValue([[buildParty()], 1]);
+      const andWhere = jest.fn().mockReturnThis();
+      const qb = {
+        where: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        andWhere,
+        orderBy,
+        skip,
+        take,
+        getManyAndCount,
+      };
+
+      mockQr.manager.createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+      const result = await adapter.searchByRole(PartyRoleType.SUPPLIER, {
+        search: 'macro',
+        page: 1,
+        limit: 20,
+      });
+
+      expect(mockQr.manager.createQueryBuilder).toHaveBeenCalledWith(Party, 'p');
+      expect(qb.innerJoin).toHaveBeenCalledWith(
+        PartyRole,
+        'pr',
+        'pr.party_id = p.id AND pr.role = :role AND pr.status = :status',
+        { role: PartyRoleType.SUPPLIER, status: PartyRoleStatus.ACTIVE },
+      );
+      expect(andWhere).toHaveBeenCalledWith('p.display_name ILIKE :search', {
+        search: '%macro%',
+      });
+      // Regresión: orderBy con snake_case dispara TypeError databaseName en TypeORM 0.3
+      expect(orderBy).toHaveBeenCalledWith('p.displayName', 'ASC');
+      expect(orderBy).not.toHaveBeenCalledWith('p.display_name', 'ASC');
+      expect(result.total).toBe(1);
+      expect(result.data[0]!.displayName).toBe('Macrotics SAS');
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(20);
+    });
+
+    it('omite filtro ILIKE cuando search esta vacio tras trim', async () => {
+      const orderBy = jest.fn().mockReturnThis();
+      const qb = {
+        where: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy,
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      };
+      mockQr.manager.createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+      await adapter.searchByRole(PartyRoleType.SUPPLIER, { search: '   ', page: 1 });
+
+      expect(qb.andWhere).not.toHaveBeenCalled();
+      expect(orderBy).toHaveBeenCalledWith('p.displayName', 'ASC');
     });
   });
 

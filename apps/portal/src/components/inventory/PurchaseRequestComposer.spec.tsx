@@ -68,6 +68,26 @@ describe('PurchaseRequestComposer', () => {
     expect(searchInput).toHaveValue('');
   });
 
+  it('muestra el origen como badge y el conteo de líneas en el borrador', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <PurchaseRequestComposer
+        catalogOptions={catalogOptions}
+        supplierLabels={{ 'supplier-1': 'Proveedor Alfa' }}
+        isSubmitting={false}
+        error={null}
+        onSubmit={submitResult}
+      />,
+    );
+
+    await user.type(screen.getByRole('combobox', { name: /Buscar producto/i }), 'ONT');
+    await user.click(await screen.findByRole('option', { name: /ONT-001 - ONT WiFi 6/i }));
+
+    expect(screen.getByText('Del catálogo')).toBeInTheDocument();
+    expect(screen.getByText(/^1 línea/)).toBeInTheDocument();
+  });
+
   it('keeps a manual line path available inside the new draft flow', async () => {
     const user = userEvent.setup();
 

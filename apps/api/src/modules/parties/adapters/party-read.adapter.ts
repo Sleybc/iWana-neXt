@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, In } from 'typeorm';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
-import { DocumentTypeParty, PartyRoleType } from '@iwana/shared';
+import { DocumentTypeParty, PartyRoleStatus, PartyRoleType } from '@iwana/shared';
 import { Party } from '../entities/party.entity';
 import { PartyContact } from '../entities/party-contact.entity';
 import { PartyRole } from '../entities/party-role.entity';
@@ -67,18 +67,19 @@ export class PartyReadAdapter extends IPartyReadPort {
         .createQueryBuilder(Party, 'p')
         .where('p.deleted_at IS NULL')
         .innerJoin(
-          'party_role',
+          PartyRole,
           'pr',
-          "pr.party_id = p.id AND pr.role = :role AND pr.status = 'ACTIVE'",
-          { role },
+          'pr.party_id = p.id AND pr.role = :role AND pr.status = :status',
+          { role, status: PartyRoleStatus.ACTIVE },
         );
 
       if (search) {
         qb.andWhere('p.display_name ILIKE :search', { search: `%${search}%` });
       }
 
+      // TypeORM 0.3: orderBy exige propiedad de entidad (displayName), no columna SQL.
       const [data, total] = await qb
-        .orderBy('p.display_name', 'ASC')
+        .orderBy('p.displayName', 'ASC')
         .skip(skip)
         .take(limit)
         .getManyAndCount();

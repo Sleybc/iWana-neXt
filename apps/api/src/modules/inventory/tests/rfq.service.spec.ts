@@ -244,6 +244,21 @@ describe('RfqService', () => {
     );
   });
 
+  it('send rechaza cuando la solicitud ya no está en borrador', async () => {
+    const { manager } = buildManager({
+      request: { status: PurchaseRequestStatus.PENDING_APPROVAL },
+      invitations: [{ id: INVITATION_ID, status: PurchaseRfqInvitationStatus.INVITED }],
+    });
+    (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, fn) =>
+      fn({ manager } as never),
+    );
+
+    const service = new RfqService({} as DataSource, supplierProfileServiceMock);
+    await expect(service.send(RFQ_ID, actor)).rejects.toThrow(
+      'no admite el envío de la ronda de cotización',
+    );
+  });
+
   it('createFromRequest traduce violacion unica concurrente a ConflictException', async () => {
     const { manager, save } = buildManager();
     save.mockRejectedValueOnce(

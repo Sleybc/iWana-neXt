@@ -1,10 +1,27 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import PDFDocument from 'pdfkit';
+import JSZip from 'jszip';
 import { DataSource } from 'typeorm';
 import { InventoryItem, TenantContext, runInTenantSchema } from '@iwana/db';
 import { RfqService } from './rfq.service';
+import { buildRfqPdfDocument } from './rfq-pdf.layout';
 import { SupplierPartyPort } from '../ports/supplier-party.port';
+import { TenantContactPort } from '../ports/tenant-contact.port';
+
+type RfqDetail = Awaited<ReturnType<RfqService['getById']>>;
+type RfqInvitation = RfqDetail['invitations'][number];
+type TenantContactInfo = Awaited<ReturnType<TenantContactPort['getContactInfo']>>;
+
+function slugifySupplierName(name: string): string {
+  const slug = name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return slug || 'proveedor';
+}
 
 @Injectable()
 export class RfqPdfService {
@@ -12,14 +29,115 @@ export class RfqPdfService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly rfqService: RfqService,
     private readonly supplierPartyPort: SupplierPartyPort,
+    private readonly tenantContactPort: TenantContactPort,
   ) {}
 
-  async render(rfqId: string): Promise<Buffer> {
+  async renderForInvitation(
+    rfqId: string,
+    invitationId: string,
+  ): Promise<{ buffer: Buffer; filename: string }> {
     const detail = await this.rfqService.getById(rfqId);
+    const invitation = detail.invitations.find((entry) => entry.id === invitationId);
+
+    if (!invitation) {
+      throw new NotFoundException('Invitación de cotización no encontrada.');
+    }
+
+    const { tenantId } = TenantContext.getOrThrow();
+    const [itemLabels, contact] = await Promise.all([
+      this.loadItemLabels(detail.lines),
+      this.tenantContactPort.getContactInfo(tenantId),
+    ]);
+
+    const { buffer, filename } = await this.buildInvitationPdf(
+      detail,
+      invitation,
+      itemLabels,
+      contact,
+    );
+
+    return { buffer, filename };
+  }
+
+  async renderAllInvitationsZip(rfqId: string): Promise<{ buffer: Buffer; filename: string }> {
+    const detail = await this.rfqService.getById(rfqId);
+
+    if (detail.invitations.length === 0) {
+      throw new NotFoundException('No hay proveedores invitados para generar PDFs.');
+    }
+
+    const { tenantId } = TenantContext.getOrThrow();
+    const [itemLabels, contact] = await Promise.all([
+      this.loadItemLabels(detail.lines),
+      this.tenantContactPort.getContactInfo(tenantId),
+    ]);
+
+    const documents = await Promise.all(
+      detail.invitations.map((invitation) =>
+        this.buildInvitationPdf(detail, invitation, itemLabels, contact),
+      ),
+    );
+
+    const zip = new JSZip();
+    const usedNames = new Set<string>();
+    for (const document of documents) {
+      let entryName = document.filename;
+      let attempt = 2;
+      while (usedNames.has(entryName)) {
+        entryName = document.filename.replace(/\.pdf$/i, `-${attempt}.pdf`);
+        attempt += 1;
+      }
+      usedNames.add(entryName);
+      zip.file(entryName, document.buffer);
+    }
+
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+    return {
+      buffer,
+      filename: `${detail.rfq.rfqNumber}-cotizaciones.zip`,
+    };
+  }
+
+  /** Genera el PDF personalizado (dirigido a un proveedor) de una invitación de RFQ. */
+  private async buildInvitationPdf(
+    detail: RfqDetail,
+    invitation: RfqInvitation,
+    itemLabels: Map<string, string>,
+    contact: TenantContactInfo,
+  ): Promise<{ buffer: Buffer; filename: string; supplierName: string }> {
+    const supplierSummary = await this.supplierPartyPort.getSupplierSummary(invitation.partyRefId);
+    const supplierName = supplierSummary?.displayName?.trim() || 'Proveedor invitado';
+
+    const buffer = await buildRfqPdfDocument({
+      rfqNumber: detail.rfq.rfqNumber,
+      requestNumber: detail.request.requestNumber,
+      requestTitle: detail.request.title,
+      currency: detail.rfq.currency,
+      responseDeadline: detail.rfq.responseDeadline,
+      status: detail.rfq.status,
+      notes: detail.rfq.notes,
+      supplierNames: [supplierName],
+      directedToName: supplierName,
+      contact,
+      lines: detail.lines,
+      itemLabels,
+    });
+
+    return {
+      buffer,
+      filename: `${detail.rfq.rfqNumber}-${slugifySupplierName(supplierName)}.pdf`,
+      supplierName,
+    };
+  }
+
+  private async loadItemLabels(
+    lines: Array<{ inventoryItemId: string | null }>,
+  ): Promise<Map<string, string>> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
-    const itemLabels = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const itemIds = detail.lines
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const itemIds = lines
         .map((line) => line.inventoryItemId)
         .filter((value): value is string => Boolean(value));
 
@@ -33,85 +151,5 @@ export class RfqPdfService {
 
       return new Map(items.map((item) => [item.id, `${item.sku} · ${item.name}`]));
     });
-
-    const supplierNames = await Promise.all(
-      detail.invitations.map(async (invitation) => {
-        const summary = await this.supplierPartyPort.getSupplierSummary(invitation.partyRefId);
-        return summary?.displayName ?? 'Proveedor invitado';
-      }),
-    );
-
-    return new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ margin: 48, size: 'A4' });
-      const chunks: Buffer[] = [];
-
-      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-      doc.on('end', () => resolve(Buffer.concat(chunks)));
-      doc.on('error', reject);
-
-      doc.fontSize(18).text('Solicitud de cotización', { align: 'left' });
-      doc.moveDown(0.5);
-      doc.fontSize(11).fillColor('#333333');
-      doc.text(`Número: ${detail.rfq.rfqNumber}`);
-      doc.text(`Solicitud: ${detail.request.requestNumber} — ${detail.request.title}`);
-      doc.text(`Moneda: ${detail.rfq.currency}`);
-      doc.text(
-        `Fecha límite: ${
-          detail.rfq.responseDeadline
-            ? new Date(`${detail.rfq.responseDeadline}T00:00:00`).toLocaleDateString('es-CO')
-            : 'Sin fecha límite'
-        }`,
-      );
-      doc.text(`Estado: ${detail.rfq.status}`);
-
-      if (detail.rfq.notes?.trim()) {
-        doc.moveDown(0.5);
-        doc.text(`Notas: ${detail.rfq.notes.trim()}`);
-      }
-
-      doc.moveDown();
-      doc.fontSize(13).fillColor('#111111').text('Proveedores invitados');
-      doc.moveDown(0.3);
-      doc.fontSize(10).fillColor('#333333');
-      if (supplierNames.length === 0) {
-        doc.text('Sin proveedores invitados.');
-      } else {
-        supplierNames.forEach((name, index) => {
-          doc.text(`${index + 1}. ${name}`);
-        });
-      }
-
-      doc.moveDown();
-      doc.fontSize(13).fillColor('#111111').text('Líneas solicitadas');
-      doc.moveDown(0.3);
-      doc.fontSize(10).fillColor('#333333');
-
-      for (const line of detail.lines) {
-        const label =
-          line.freeTextDescription?.trim() ??
-          (line.inventoryItemId ? itemLabels.get(line.inventoryItemId) : null) ??
-          'Línea de solicitud';
-        doc.text(`• ${label} — ${line.quantityRequested} ${line.unitOfMeasure}`);
-      }
-
-      doc.end();
-    });
-  }
-
-  async renderOrThrow(rfqId: string): Promise<{ buffer: Buffer; filename: string }> {
-    try {
-      const detail = await this.rfqService.getById(rfqId);
-      const buffer = await this.render(rfqId);
-      return {
-        buffer,
-        filename: `${detail.rfq.rfqNumber}.pdf`,
-      };
-    } catch (error) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-
-      throw error;
-    }
   }
 }

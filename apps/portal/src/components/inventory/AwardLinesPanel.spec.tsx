@@ -87,6 +87,7 @@ function buildDetail(
         partyRefId: 'supplier-1',
         quoteNumber: 'COT-001',
         amount: '1500000',
+        shippingCost: '0',
         currency: 'COP',
         validUntil: null,
         notes: null,

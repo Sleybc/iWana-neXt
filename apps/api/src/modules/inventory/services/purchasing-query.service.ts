@@ -9,6 +9,7 @@ import {
   PurchaseRfq,
   PurchaseRfqInvitation,
   SupplierQuote,
+  SupplierQuoteLine,
   TenantContext,
   runInTenantSchema,
 } from '@iwana/db';
@@ -23,6 +24,21 @@ function toNumeric(value: string | number | null | undefined): number {
   }
 
   return Number.parseFloat(value ?? '0');
+}
+
+/** Normaliza columnas `date` de TypeORM/pg a YYYY-MM-DD. */
+function toDateOnlyString(value: string | Date | null | undefined): string | null {
+  if (value == null || value === '') {
+    return null;
+  }
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      return null;
+    }
+    return value.toISOString().slice(0, 10);
+  }
+  const trimmed = String(value).trim();
+  return trimmed.length >= 10 ? trimmed.slice(0, 10) : null;
 }
 
 const ACTIVE_RFQ_STATUSES = [
@@ -105,18 +121,42 @@ export class PurchasingQueryService {
       ]);
 
       const lineIds = lines.map((line) => line.id);
-      const awards = lineIds.length
-        ? await qr.manager.find(PurchaseRequestLineAward, {
-            where: { tenantId, purchaseRequestLineId: In(lineIds) },
-            order: { createdAt: 'ASC' },
-          })
-        : [];
+      const quoteIds = quotes.map((quote) => quote.id);
+      const [awards, quoteLines] = await Promise.all([
+        lineIds.length
+          ? qr.manager.find(PurchaseRequestLineAward, {
+              where: { tenantId, purchaseRequestLineId: In(lineIds) },
+              order: { createdAt: 'ASC' },
+            })
+          : Promise.resolve([] as PurchaseRequestLineAward[]),
+        quoteIds.length
+          ? qr.manager.find(SupplierQuoteLine, {
+              where: { tenantId, supplierQuoteId: In(quoteIds) },
+              order: { createdAt: 'ASC' },
+            })
+          : Promise.resolve([] as SupplierQuoteLine[]),
+      ]);
 
-      const estimatedAmount = quotes.reduce((total, quote) => total + toNumeric(quote.amount), 0);
+      const quoteLinesByQuoteId = new Map<string, SupplierQuoteLine[]>();
+      for (const quoteLine of quoteLines) {
+        const bucket = quoteLinesByQuoteId.get(quoteLine.supplierQuoteId) ?? [];
+        bucket.push(quoteLine);
+        quoteLinesByQuoteId.set(quoteLine.supplierQuoteId, bucket);
+      }
+
+      const quotesWithLines = quotes.map((quote) => ({
+        ...quote,
+        lines: quoteLinesByQuoteId.get(quote.id) ?? [],
+      }));
+
+      const estimatedAmount = quotesWithLines.reduce(
+        (total, quote) => total + toNumeric(quote.amount) + toNumeric(quote.shippingCost),
+        0,
+      );
       const approvalPolicy = this.purchasingPolicyService.evaluateApproval({
         requestType: request.requestType,
         estimatedAmount,
-        hasQuote: quotes.length > 0,
+        hasQuote: quotesWithLines.length > 0,
         hasException: Boolean(request.exceptionReason),
         exceptionReason: request.exceptionReason,
         justification: request.justification,
@@ -135,12 +175,17 @@ export class PurchasingQueryService {
           ? await this.supplierPartyPort.getSupplierSummariesBatch(partyRefIds)
           : new Map();
 
+      const requestNeededBy = toDateOnlyString(request.neededByDate);
+
       return {
         request,
         lines,
-        quotes,
+        quotes: quotesWithLines,
         awards,
-        orders,
+        orders: orders.map((order) => ({
+          ...order,
+          expectedDeliveryDate: toDateOnlyString(order.expectedDeliveryDate) ?? requestNeededBy,
+        })),
         estimatedAmount,
         approvalPolicy,
         rfq: activeRfq

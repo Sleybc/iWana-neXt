@@ -74,6 +74,7 @@ export { PurchaseRequestLineAward } from './purchase-request-line-award.entity';
 export { PurchaseRfq } from './purchase-rfq.entity';
 export { PurchaseRfqInvitation } from './purchase-rfq-invitation.entity';
 export { SupplierQuote } from './supplier-quote.entity';
+export { SupplierQuoteLine } from './supplier-quote-line.entity';
 export { PurchaseOrder } from './purchase-order.entity';
 export { PurchaseOrderLine } from './purchase-order-line.entity';
 export { GoodsReceipt } from './goods-receipt.entity';

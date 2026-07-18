@@ -78,9 +78,13 @@ describe('RFQ HTTP integration', () => {
   };
 
   const rfqPdfServiceMock = {
-    renderOrThrow: jest.fn().mockResolvedValue({
+    renderForInvitation: jest.fn().mockResolvedValue({
       buffer: Buffer.from('%PDF-1.4\n'),
-      filename: 'RFQ-000001.pdf',
+      filename: 'RFQ-000001-proveedor.pdf',
+    }),
+    renderAllInvitationsZip: jest.fn().mockResolvedValue({
+      buffer: Buffer.from('PK'),
+      filename: 'RFQ-000001-cotizaciones.zip',
     }),
   };
 
@@ -134,13 +138,29 @@ describe('RFQ HTTP integration', () => {
       .set('Authorization', 'Bearer support-token')
       .expect(200);
 
-    const pdfResponse = await request(app.getHttpServer())
-      .get(`/api/v1/purchasing/rfqs/${rfqId}/pdf`)
+    const invitationId = '33333333-3333-4333-8333-333333333333';
+    const invitationPdfResponse = await request(app.getHttpServer())
+      .get(`/api/v1/purchasing/rfqs/${rfqId}/invitations/${invitationId}/pdf`)
       .set('Authorization', 'Bearer support-token')
       .expect(200);
 
-    expect(pdfResponse.headers['content-type']).toContain('application/pdf');
-    expect(pdfResponse.body.length).toBeGreaterThan(0);
+    expect(invitationPdfResponse.headers['content-type']).toContain('application/pdf');
+    expect(invitationPdfResponse.body.length).toBeGreaterThan(0);
+    expect(rfqPdfServiceMock.renderForInvitation).toHaveBeenCalledWith(rfqId, invitationId);
+
+    const zipResponse = await request(app.getHttpServer())
+      .get(`/api/v1/purchasing/rfqs/${rfqId}/invitations/pdf.zip`)
+      .set('Authorization', 'Bearer support-token')
+      .expect(200);
+
+    expect(zipResponse.headers['content-type']).toContain('application/zip');
+    expect(zipResponse.headers['content-disposition']).toContain('RFQ-000001-cotizaciones.zip');
+    expect(rfqPdfServiceMock.renderAllInvitationsZip).toHaveBeenCalledWith(rfqId);
+
+    await request(app.getHttpServer())
+      .get(`/api/v1/purchasing/rfqs/${rfqId}/pdf`)
+      .set('Authorization', 'Bearer support-token')
+      .expect(404);
 
     await request(app.getHttpServer())
       .post(`/api/v1/purchasing/rfqs/${rfqId}/close`)

@@ -7,11 +7,13 @@ import {
   PurchaseRequestLineStatus,
   PurchaseRequestStatus,
   PurchaseRequestType,
+  PurchaseRfqStatus,
 } from '@iwana/shared';
 import type {
   InventoryCatalogOptionRecord,
   InventoryItemRecord,
   PurchaseRequestDetailRecord,
+  PurchaseRfqDetailRecord,
   SupplierQuoteRecord,
 } from '@/lib/api-client';
 import { PurchaseRequestWorkbenchDrawer } from './PurchaseRequestWorkbenchDrawer';
@@ -37,9 +39,34 @@ const catalogOptions: InventoryCatalogOptionRecord[] = [
 
 const items: InventoryItemRecord[] = [];
 
+function buildActiveRfqDetail(
+  status: PurchaseRfqStatus = PurchaseRfqStatus.DRAFT,
+): PurchaseRfqDetailRecord {
+  return {
+    rfq: {
+      id: 'rfq-1',
+      tenantId: 'tenant-1',
+      purchaseRequestId: 'req-1',
+      rfqNumber: 'RFQ-000001',
+      status,
+      currency: 'COP',
+      responseDeadline: null,
+      sentAt: null,
+      closedAt: null,
+      createdByUserId: 'user-1',
+      notes: null,
+      createdAt: '2026-06-01T00:00:00.000Z',
+      updatedAt: '2026-06-01T00:00:00.000Z',
+    },
+    invitations: [],
+  };
+}
+
 function buildDetail(
   overrides: Partial<PurchaseRequestDetailRecord['request']> = {},
-  extras: Partial<Pick<PurchaseRequestDetailRecord, 'lines' | 'awards' | 'orders' | 'quotes'>> = {},
+  extras: Partial<
+    Pick<PurchaseRequestDetailRecord, 'lines' | 'awards' | 'orders' | 'quotes' | 'rfq'>
+  > = {},
 ): PurchaseRequestDetailRecord {
   return {
     request: {
@@ -90,7 +117,7 @@ function buildDetail(
       blockingReason: null,
       approvalLevel: 'MANAGER',
     },
-    rfq: null,
+    rfq: extras.rfq ?? null,
   };
 }
 
@@ -141,6 +168,7 @@ function buildProps(detail: PurchaseRequestDetailRecord) {
     onLoadSupplier: jest.fn(),
     onOpenOrderFlow: jest.fn(),
     onReceiveOrder: jest.fn(),
+    onSelectOrder: jest.fn().mockResolvedValue(undefined),
     onRefreshDetail: jest.fn().mockResolvedValue(undefined),
     onEditRequest: jest.fn(),
     onApproveOrder: jest.fn(),
@@ -168,6 +196,7 @@ describe('PurchaseRequestWorkbenchDrawer — edición inline de líneas', () => 
             partyRefId: 'supplier-1',
             quoteNumber: 'Q-1',
             amount: '1000',
+            shippingCost: '0',
             currency: 'COP',
             validUntil: null,
             notes: null,
@@ -208,15 +237,115 @@ describe('PurchaseRequestWorkbenchDrawer — edición inline de líneas', () => 
 
   it('pide confirmación al cancelar si hay cambios sin guardar', async () => {
     const user = userEvent.setup();
-    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false);
     render(<PurchaseRequestWorkbenchDrawer {...buildProps(buildDetail())} />);
 
     await user.click(screen.getByRole('button', { name: /Editar líneas/i }));
     await user.click(screen.getByRole('button', { name: 'Cancelar' }));
 
-    expect(confirmSpy).toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'Descartar cambios' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Seguir editando' }));
     expect(screen.getByRole('button', { name: /Guardar cambios/i })).toBeInTheDocument();
+  });
+});
 
-    confirmSpy.mockRestore();
+describe('PurchaseRequestWorkbenchDrawer — pestaña Cotizar', () => {
+  it('CA-24-01: navegación primaria muestra 3 fases, no 7 tabs de primer nivel', () => {
+    render(
+      <PurchaseRequestWorkbenchDrawer
+        {...buildProps(buildDetail({ status: PurchaseRequestStatus.DRAFT }))}
+        activeTab="cotizar"
+      />,
+    );
+
+    const phaseNav = screen.getByRole('navigation', { name: 'Fase del flujo' });
+    expect(phaseNav).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Preparar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Decidir' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abastecer' })).toBeDisabled();
+    expect(screen.queryByRole('tab', { name: 'Recepciones' })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Cotizar' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Aprobación' })).toBeInTheDocument();
+  });
+
+  it('muestra progressive disclosure y permite nueva cotización en DRAFT', () => {
+    const props = {
+      ...buildProps(buildDetail({ status: PurchaseRequestStatus.DRAFT })),
+      activeTab: 'cotizar' as const,
+    };
+
+    render(<PurchaseRequestWorkbenchDrawer {...props} />);
+
+    expect(screen.getByRole('tab', { name: 'Cotizar' })).toBeInTheDocument();
+    // Primario = manual: ronda colapsada, nueva cotización expandida
+    expect(screen.getByText('Ronda de cotización')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Nueva cotización' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Registrar cotización' })).toBeInTheDocument();
+  });
+
+  it('oculta el bloque Ronda cuando no hay ronda ni se puede crear (PENDING_QUOTES)', () => {
+    const props = {
+      ...buildProps(buildDetail({ status: PurchaseRequestStatus.PENDING_QUOTES })),
+      activeTab: 'cotizar' as const,
+    };
+
+    render(<PurchaseRequestWorkbenchDrawer {...props} />);
+
+    expect(screen.queryByText('Ronda de cotización')).not.toBeInTheDocument();
+    expect(screen.queryByText('Cotización sin ronda formal')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Crear solicitud de cotización' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('CA-24-05: con ronda activa expande invitaciones y bloquea manual (C1)', () => {
+    const props = {
+      ...buildProps(
+        buildDetail({ status: PurchaseRequestStatus.DRAFT }, { rfq: buildActiveRfqDetail() }),
+      ),
+      activeTab: 'cotizar' as const,
+    };
+
+    render(<PurchaseRequestWorkbenchDrawer {...props} />);
+
+    expect(screen.getByRole('region', { name: 'Invitar proveedores' })).toBeInTheDocument();
+    expect(screen.getByText('Cotización manual no disponible')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Monto')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Registrar cotización' })).not.toBeInTheDocument();
+  });
+
+  it('mantiene el formulario de nueva cotización cuando la ronda está cerrada', () => {
+    const props = {
+      ...buildProps(
+        buildDetail(
+          { status: PurchaseRequestStatus.DRAFT },
+          { rfq: buildActiveRfqDetail(PurchaseRfqStatus.CLOSED) },
+        ),
+      ),
+      activeTab: 'cotizar' as const,
+    };
+
+    render(<PurchaseRequestWorkbenchDrawer {...props} />);
+
+    expect(screen.queryByText('Cotización manual no disponible')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Nueva cotización' })).toBeInTheDocument();
+    expect(screen.getByText(/Total de la cotización:/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Registrar cotización' })).toBeInTheDocument();
+  });
+
+  it('CA-23-04: muestra CTA de siguiente acción fuera de su pestaña', async () => {
+    const user = userEvent.setup();
+    const onActiveTabChange = jest.fn();
+    const props = {
+      ...buildProps(buildDetail({ status: PurchaseRequestStatus.DRAFT })),
+      activeTab: 'summary' as const,
+      onActiveTabChange,
+    };
+
+    render(<PurchaseRequestWorkbenchDrawer {...props} />);
+
+    const nextActionButtons = screen.getAllByRole('button', { name: /Ir a cotizar/i });
+    expect(nextActionButtons.length).toBeGreaterThanOrEqual(1);
+    await user.click(nextActionButtons[nextActionButtons.length - 1]!);
+    expect(onActiveTabChange).toHaveBeenCalledWith('cotizar');
   });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Button } from '@iwana/ui';
 import { PurchaseRequestLineSourceKind } from '@iwana/shared';
 import type { InventoryCatalogOptionRecord } from '@/lib/api-client';
@@ -14,6 +14,8 @@ import {
   type PurchaseDraftState,
 } from './purchase-request-draft';
 import { resolveCatalogSupplierLabel } from './purchase-catalog-selector';
+import { buildCatalogUnitCostMap, estimatePurchaseDraftTotal } from './purchase-draft-estimate';
+import { formatInventoryCurrency } from './inventory-labels';
 import { PurchaseDraftLinesTable } from './PurchaseDraftLinesTable';
 import { PurchaseProductSearch } from './PurchaseProductSearch';
 
@@ -143,17 +145,27 @@ export function usePurchaseLinesEditorSections({
     onCatalogSearch?.(search);
   }
 
+  const unitCostByItemId = useMemo(() => buildCatalogUnitCostMap(catalogOptions), [catalogOptions]);
+  const draftEstimate = useMemo(
+    () => estimatePurchaseDraftTotal(draft.lines, unitCostByItemId),
+    [draft.lines, unitCostByItemId],
+  );
+  const draftLineCount = draft.lines.length;
+  const draftSummary =
+    draftLineCount === 0
+      ? 'Aquí ajustas cantidades y revisas el cierre de la solicitud.'
+      : `${draftLineCount} línea${draftLineCount === 1 ? '' : 's'}${
+          draftEstimate.coveredLines > 0
+            ? ` · Total estimado: ${formatInventoryCurrency(draftEstimate.total)}`
+            : ''
+        }`;
+
   const captureSection = (
-    <section className="space-y-4">
+    <section className="space-y-3">
       <PortalSectionHeader
         eyebrow="Productos"
         title="Agregar productos"
         description="Busca por nombre o código y selecciona para agregarlo al borrador."
-        actions={
-          <Button type="button" variant="secondary" size="sm" onClick={handleAddManualLine}>
-            Agregar línea manual
-          </Button>
-        }
       />
 
       {duplicateAlert ? (
@@ -164,14 +176,26 @@ export function usePurchaseLinesEditorSections({
         />
       ) : null}
 
-      <PurchaseProductSearch
-        catalogOptions={catalogOptions}
-        supplierLabels={supplierLabels}
-        isSearching={isCatalogSearching}
-        disabled={isSubmitting}
-        {...(onCatalogSearch ? { onSearchChange: handleSearchChange } : {})}
-        onSelect={handleSelectProduct}
-      />
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+        <div className="min-w-0 flex-1">
+          <PurchaseProductSearch
+            catalogOptions={catalogOptions}
+            supplierLabels={supplierLabels}
+            isSearching={isCatalogSearching}
+            disabled={isSubmitting}
+            {...(onCatalogSearch ? { onSearchChange: handleSearchChange } : {})}
+            onSelect={handleSelectProduct}
+          />
+        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={isSubmitting}
+          onClick={handleAddManualLine}
+        >
+          Agregar línea manual
+        </Button>
+      </div>
     </section>
   );
 
@@ -180,7 +204,7 @@ export function usePurchaseLinesEditorSections({
       <PortalSectionHeader
         eyebrow="Borrador"
         title="Líneas seleccionadas"
-        description="Aquí ajustas cantidades y revisas el cierre de la solicitud."
+        description={draftSummary}
       />
 
       {draft.lines.length === 0 ? (

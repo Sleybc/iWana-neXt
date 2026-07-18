@@ -1,12 +1,7 @@
 'use client';
 
 import type { SupplierSummaryRecord } from '@/lib/api-client';
-import {
-  PortalAlert,
-  PortalEmptyState,
-  PortalPanel,
-  PortalSkeletonBlock,
-} from '@/components/shared/portal-ui';
+import { PortalAlert, PortalPanel, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 import { getPartyStatusLabel } from './inventory-labels';
 
 interface SupplierSummaryCardProps {
@@ -26,13 +21,9 @@ export function SupplierSummaryCard({ summary, isLoading, error }: SupplierSumma
     );
   }
 
+  // Sin ficha: no mostrar empty ruidoso; el preview solo aparece tras seleccionar proveedor.
   if (!summary) {
-    return (
-      <PortalEmptyState
-        title="Sin proveedor seleccionado"
-        description="Selecciona un proveedor para ver su ficha resumida."
-      />
-    );
+    return null;
   }
 
   return (

@@ -17,7 +17,7 @@ export function PurchaseCreateModeShell({
   return (
     <section
       className={cn(
-        'rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-dark-border dark:bg-dark-surface-2',
+        'rounded-2xl border border-gray-200 bg-white p-5 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2 dark:shadow-none',
         className,
       )}
     >

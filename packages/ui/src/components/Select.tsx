@@ -413,7 +413,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           <label
             id={labelId}
             htmlFor={selectId}
-            className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500"
+            className="text-sm font-medium text-gray-700 dark:text-gray-300"
           >
             {label}
           </label>
@@ -669,7 +669,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           </p>
         ) : null}
         {!error && helperText ? (
-          <p id={`${selectId}-helper`} className="text-xs text-gray-400">
+          <p id={`${selectId}-helper`} className="text-xs text-gray-500 dark:text-gray-400">
             {helperText}
           </p>
         ) : null}

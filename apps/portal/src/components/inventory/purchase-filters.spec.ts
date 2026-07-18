@@ -53,6 +53,17 @@ describe('purchase-filters', () => {
     expect(filtered.map((request) => request.id)).toEqual(['urgent']);
   });
 
+  it('filters pendingQuotes KPI for DRAFT and PENDING_QUOTES', () => {
+    const requests = [
+      buildRequest({ id: 'draft', status: PurchaseRequestStatus.DRAFT }),
+      buildRequest({ id: 'quotes', status: PurchaseRequestStatus.PENDING_QUOTES }),
+      buildRequest({ id: 'approval', status: PurchaseRequestStatus.PENDING_APPROVAL }),
+    ];
+
+    const filtered = filterPurchaseRequests(requests, kpiPresetToFilters('pendingQuotes'));
+    expect(filtered.map((request) => request.id)).toEqual(['draft', 'quotes']);
+  });
+
   it('resolves active KPI preset from filters', () => {
     expect(resolveActiveKpiPreset(kpiPresetToFilters('pendingQuotes'))).toBe('pendingQuotes');
     expect(resolveActiveKpiPreset({ status: PurchaseRequestStatus.APPROVED })).toBe('readyForPo');

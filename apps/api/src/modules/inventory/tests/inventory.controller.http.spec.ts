@@ -13,7 +13,9 @@ import {
   PurchaseRequestLineSourceKind,
   PurchaseRequestType,
   SerializedAssetStatus,
+  StockAdjustmentReason,
   StockLocationType,
+  StockMovementOrigin,
   UserRole,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
@@ -31,6 +33,7 @@ import { PurchasingQueryService } from '../services/purchasing-query.service';
 import { SerializedAssetService } from '../services/serialized-asset.service';
 import { StockBalanceService } from '../services/stock-balance.service';
 import { StockLedgerService } from '../services/stock-ledger.service';
+import { StockMovementQueryService } from '../services/stock-movement-query.service';
 import { StockLocationService } from '../services/stock-location.service';
 import { StockIssueService } from '../services/stock-issue.service';
 import { CounterPurchaseService } from '../services/counter-purchase.service';
@@ -83,6 +86,32 @@ jest.mock('../../auth/guards/jwt-auth.guard', () => ({
           tenantId: 'tenant-001',
           schemaName: 'tenant_001',
           jti: 'jti-tech',
+          type: 'tenant',
+        } as JwtPayload;
+        return true;
+      }
+
+      if (authHeader === 'Bearer admin-token') {
+        req.user = {
+          sub: 'admin-001',
+          email: 'admin@example.test',
+          role: UserRole.ADMIN,
+          tenantId: 'tenant-001',
+          schemaName: 'tenant_001',
+          jti: 'jti-admin',
+          type: 'tenant',
+        } as JwtPayload;
+        return true;
+      }
+
+      if (authHeader === 'Bearer noc-token') {
+        req.user = {
+          sub: 'noc-001',
+          email: 'noc@example.test',
+          role: UserRole.NOC,
+          tenantId: 'tenant-001',
+          schemaName: 'tenant_001',
+          jti: 'jti-noc',
           type: 'tenant',
         } as JwtPayload;
         return true;
@@ -161,6 +190,18 @@ describe('InventoryController HTTP', () => {
     recordInternalConsumption: jest.fn().mockResolvedValue({ movement: { id: 'mov-004' } }),
     recordReturn: jest.fn().mockResolvedValue({ movement: { id: 'mov-005' } }),
     recordWriteOff: jest.fn().mockResolvedValue({ movement: { id: 'mov-006' } }),
+    recordAdjustment: jest.fn().mockResolvedValue({
+      movement: { id: 'mov-adj', movementNumber: 'MOV-000200' },
+      lines: [],
+    }),
+  };
+  const stockMovementQueryServiceMock = {
+    list: jest.fn().mockResolvedValue({ data: [], total: 0, page: 1, limit: 20 }),
+    getById: jest.fn().mockResolvedValue({
+      id: '11111111-1111-4111-8111-111111111111',
+      movementNumber: 'MOV-000001',
+      lines: [],
+    }),
   };
   const inventoryDashboardServiceMock = {
     getSummary: jest.fn().mockResolvedValue({
@@ -210,9 +251,13 @@ describe('InventoryController HTTP', () => {
       .mockResolvedValue({ rfq: { id: 'rfq-001' }, invitations: [], request: {}, lines: [] }),
   };
   const rfqPdfServiceMock = {
-    renderOrThrow: jest.fn().mockResolvedValue({
+    renderForInvitation: jest.fn().mockResolvedValue({
       buffer: Buffer.from('%PDF-1.4\n'),
-      filename: 'RFQ-000001.pdf',
+      filename: 'RFQ-000001-proveedor.pdf',
+    }),
+    renderAllInvitationsZip: jest.fn().mockResolvedValue({
+      buffer: Buffer.from('PK'),
+      filename: 'RFQ-000001-cotizaciones.zip',
     }),
   };
   const stockIssueServiceMock = {
@@ -234,6 +279,7 @@ describe('InventoryController HTTP', () => {
         { provide: SerializedAssetService, useValue: serializedAssetServiceMock },
         { provide: StockBalanceService, useValue: stockBalanceServiceMock },
         { provide: StockLedgerService, useValue: stockLedgerServiceMock },
+        { provide: StockMovementQueryService, useValue: stockMovementQueryServiceMock },
         { provide: StockIssueService, useValue: stockIssueServiceMock },
         { provide: InventoryDashboardService, useValue: inventoryDashboardServiceMock },
         { provide: PurchasingService, useValue: purchasingServiceMock },
@@ -663,5 +709,108 @@ describe('InventoryController HTTP', () => {
       expect.objectContaining({ handoffMethod: 'ACTA' }),
       expect.objectContaining({ sub: 'support-001' }),
     );
+  });
+
+  describe('kardex and adjustments', () => {
+    it('lists stock movements with parsed query for support', async () => {
+      await request(app.getHttpServer())
+        .get(
+          '/api/v1/inventory/movements?origin=ADJUSTMENT&search=MOV&page=2&limit=10&itemId=11111111-1111-4111-8111-111111111111',
+        )
+        .set('Authorization', 'Bearer support-token')
+        .expect(200);
+
+      expect(stockMovementQueryServiceMock.list).toHaveBeenCalledWith(
+        expect.objectContaining({
+          origin: StockMovementOrigin.ADJUSTMENT,
+          search: 'MOV',
+          page: 2,
+          limit: 10,
+          itemId: '11111111-1111-4111-8111-111111111111',
+        }),
+      );
+    });
+
+    it('rejects invalid movement id', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/inventory/movements/not-a-uuid')
+        .set('Authorization', 'Bearer support-token')
+        .expect(400);
+    });
+
+    it('gets movement detail for support', async () => {
+      const movementId = '11111111-1111-4111-8111-111111111111';
+      await request(app.getHttpServer())
+        .get(`/api/v1/inventory/movements/${movementId}`)
+        .set('Authorization', 'Bearer support-token')
+        .expect(200);
+
+      expect(stockMovementQueryServiceMock.getById).toHaveBeenCalledWith(movementId);
+    });
+
+    it('allows admin to create adjustment', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/inventory/adjustments')
+        .set('Authorization', 'Bearer admin-token')
+        .send({
+          itemId: '11111111-1111-4111-8111-111111111111',
+          locationId: '22222222-2222-4222-8222-222222222222',
+          quantityDelta: -1,
+          reason: StockAdjustmentReason.DAMAGE,
+          idempotencyKey: 'idempotency-key-01',
+        })
+        .expect(201);
+
+      expect(stockLedgerServiceMock.recordAdjustment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          quantityDelta: -1,
+          reason: StockAdjustmentReason.DAMAGE,
+          idempotencyKey: 'idempotency-key-01',
+        }),
+        expect.objectContaining({ sub: 'admin-001' }),
+      );
+    });
+
+    it('forbids support from creating adjustments', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/inventory/adjustments')
+        .set('Authorization', 'Bearer support-token')
+        .send({
+          itemId: '11111111-1111-4111-8111-111111111111',
+          locationId: '22222222-2222-4222-8222-222222222222',
+          quantityDelta: 1,
+          reason: StockAdjustmentReason.FOUND,
+          idempotencyKey: 'idempotency-key-02',
+        })
+        .expect(403);
+    });
+
+    it('forbids noc from creating adjustments', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/inventory/adjustments')
+        .set('Authorization', 'Bearer noc-token')
+        .send({
+          itemId: '11111111-1111-4111-8111-111111111111',
+          locationId: '22222222-2222-4222-8222-222222222222',
+          quantityDelta: 1,
+          reason: StockAdjustmentReason.FOUND,
+          idempotencyKey: 'idempotency-key-03',
+        })
+        .expect(403);
+    });
+
+    it('rejects invalid adjustment body', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/inventory/adjustments')
+        .set('Authorization', 'Bearer admin-token')
+        .send({
+          itemId: '11111111-1111-4111-8111-111111111111',
+          locationId: '22222222-2222-4222-8222-222222222222',
+          quantityDelta: 0,
+          reason: StockAdjustmentReason.OTHER,
+          idempotencyKey: 'short',
+        })
+        .expect(400);
+    });
   });
 });

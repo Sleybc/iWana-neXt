@@ -10,6 +10,7 @@ describe('inventory-tab-params', () => {
     it('resuelve la pestaña base cuando el parámetro incluye subruta', () => {
       expect(resolveInventoryTab('locations/Crear bodega')).toBe('locations');
       expect(resolveInventoryTab('issues')).toBe('issues');
+      expect(resolveInventoryTab('stock')).toBe('stock');
       expect(resolveInventoryTab(null)).toBe('summary');
     });
   });

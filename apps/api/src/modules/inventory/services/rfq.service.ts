@@ -224,8 +224,15 @@ export class RfqService {
         rfq.sentByUserId = actor.sub;
         await manager.save(PurchaseRfq, rfq);
 
-        request.status = PurchaseRequestStatus.PENDING_QUOTES;
-        await manager.save(PurchaseRequest, request);
+        // Defensa Fase 10: no retroceder una solicitud ya avanzada (p. ej. PENDING_APPROVAL).
+        if (request.status === PurchaseRequestStatus.DRAFT) {
+          request.status = PurchaseRequestStatus.PENDING_QUOTES;
+          await manager.save(PurchaseRequest, request);
+        } else if (request.status !== PurchaseRequestStatus.PENDING_QUOTES) {
+          throw new BadRequestException(
+            'La solicitud no admite el envío de la ronda de cotización en su estado actual.',
+          );
+        }
 
         for (const line of lines) {
           if (line.lineStatus === PurchaseRequestLineStatus.OPEN) {

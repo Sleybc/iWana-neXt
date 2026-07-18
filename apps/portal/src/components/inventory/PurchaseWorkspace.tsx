@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { PurchaseOrderStatus } from '@iwana/shared';
 import type {
   AddSupplierQuoteDto,
   CancelPurchaseOrderDto,
@@ -43,7 +44,16 @@ import {
   type PurchaseKpiPreset,
   type PurchaseRequestFilters,
 } from './purchase-filters';
-import type { PurchaseWorkbenchTab } from './purchase-workbench';
+import {
+  collectPurchaseDetailSupplierIds,
+  resolveMissingSupplierLabels,
+  seedSupplierLabelsFromDetail,
+} from './purchase-supplier-labels';
+import {
+  getPurchaseNextAction,
+  normalizePurchaseWorkbenchTab,
+  type PurchaseWorkbenchTab,
+} from './purchase-workbench';
 
 type PurchaseWorkspaceMode = 'inbox' | 'create' | 'counter-purchase';
 
@@ -93,7 +103,10 @@ interface PurchaseWorkspaceProps {
   isSubmittingCounterPurchase?: boolean;
   onCreateRequest: (payload: CreatePurchaseRequestDto) => Promise<PurchaseCreateRequestResult>;
   onAddQuote: (requestId: string, payload: AddSupplierQuoteDto) => Promise<void>;
-  onApproveRequest: (requestId: string, exceptionReason?: string) => Promise<void>;
+  onApproveRequest: (
+    requestId: string,
+    payload?: { exceptionReason?: string; notes?: string },
+  ) => Promise<void>;
   onCreateAwards: (requestId: string, payload: CreatePurchaseRequestAwardsDto) => Promise<void>;
   onRejectRequest: (requestId: string, payload: RejectPurchaseRequestDto) => Promise<void>;
   onCancelRequest: (requestId: string, payload: CancelPurchaseRequestDto) => Promise<void>;
@@ -104,7 +117,9 @@ interface PurchaseWorkspaceProps {
   onCancelOrder: (orderId: string, payload: CancelPurchaseOrderDto) => Promise<void>;
   onCloseOrder: (orderId: string) => Promise<void>;
   onCounterPurchase?: (payload: CreateCounterPurchaseDto) => Promise<void>;
+  onDismissCounterPurchaseSuccess?: () => void;
   onPrepareOrderDrawer: (requestId: string) => Promise<void>;
+  onSelectOrder: (orderId: string) => Promise<void>;
   onRefresh: () => Promise<void>;
   onCatalogSearch?: (search: string) => void;
 }
@@ -161,7 +176,9 @@ export function PurchaseWorkspace({
   onCancelOrder,
   onCloseOrder,
   onCounterPurchase,
+  onDismissCounterPurchaseSuccess,
   onPrepareOrderDrawer,
+  onSelectOrder,
   onRefresh,
   onCatalogSearch,
 }: PurchaseWorkspaceProps) {
@@ -173,6 +190,7 @@ export function PurchaseWorkspace({
   const [supplierSummary, setSupplierSummary] = useState<SupplierSummaryRecord | null>(null);
   const [supplierLoading, setSupplierLoading] = useState(false);
   const [supplierError, setSupplierError] = useState<string | null>(null);
+  const [detailSupplierLabels, setDetailSupplierLabels] = useState<Record<string, string>>({});
   const [orderDrawerOpen, setOrderDrawerOpen] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<PurchaseWorkspaceMode>('inbox');
   const [composerDirty, setComposerDirty] = useState(false);
@@ -185,26 +203,71 @@ export function PurchaseWorkspace({
     [requests, filters],
   );
 
-  async function loadDetail(requestId: string) {
+  const resolvedSupplierLabels = useMemo(
+    () => ({ ...supplierLabels, ...detailSupplierLabels }),
+    [supplierLabels, detailSupplierLabels],
+  );
+
+  async function enrichSupplierLabels(detailRecord: PurchaseRequestDetailRecord) {
+    const seeded = seedSupplierLabelsFromDetail(detailRecord);
+    if (Object.keys(seeded).length > 0) {
+      setDetailSupplierLabels((previous) => ({ ...previous, ...seeded }));
+    }
+
+    const resolved = await resolveMissingSupplierLabels(
+      collectPurchaseDetailSupplierIds(detailRecord),
+      { ...supplierLabels, ...seeded },
+    );
+    if (Object.keys(resolved).length > 0) {
+      setDetailSupplierLabels((previous) => ({ ...previous, ...resolved }));
+    }
+  }
+
+  useEffect(() => {
+    if (!detail?.orders.length) {
+      return;
+    }
+    const selectedBelongs =
+      latestOrder && detail.orders.some((order) => order.id === latestOrder.id);
+    if (selectedBelongs) {
+      return;
+    }
+    const receivable =
+      detail.orders.find((order) =>
+        [PurchaseOrderStatus.APPROVED, PurchaseOrderStatus.PARTIALLY_RECEIVED].includes(
+          order.status,
+        ),
+      ) ?? detail.orders[0];
+    if (receivable) {
+      void onSelectOrder(receivable.id);
+    }
+  }, [detail?.orders, latestOrder, onSelectOrder]);
+
+  async function loadDetail(requestId: string): Promise<PurchaseRequestDetailRecord | null> {
     setDetailLoading(true);
     setDetailError(null);
     try {
       const response = await purchasingApi.getRequestDetail(requestId);
       setDetail(response);
+      void enrichSupplierLabels(response);
+      return response;
     } catch {
       setDetailError('No fue posible cargar el detalle de la solicitud.');
       setDetail(null);
+      return null;
     } finally {
       setDetailLoading(false);
     }
   }
 
-  async function openWorkbench(requestId: string, initialTab: PurchaseWorkbenchTab = 'summary') {
+  async function openWorkbench(requestId: string, initialTab?: PurchaseWorkbenchTab) {
     setSelectedRequestId(requestId);
-    setWorkbenchTab(initialTab);
     setSupplierSummary(null);
     setSupplierError(null);
-    await loadDetail(requestId);
+    setDetailSupplierLabels({});
+    const response = await loadDetail(requestId);
+    const resolvedTab = initialTab ?? getPurchaseNextAction(response)?.suggestedTab ?? 'summary';
+    setWorkbenchTab(normalizePurchaseWorkbenchTab(resolvedTab));
   }
 
   async function handleLoadSupplier(partyRefId: string) {
@@ -217,6 +280,10 @@ export function PurchaseWorkspace({
     try {
       const summary = await purchasingApi.getProviderSummary(partyRefId.trim());
       setSupplierSummary(summary);
+      setDetailSupplierLabels((previous) => ({
+        ...previous,
+        [partyRefId.trim()]: summary.displayName,
+      }));
     } catch {
       setSupplierError('No fue posible cargar la ficha del proveedor.');
       setSupplierSummary(null);
@@ -391,7 +458,7 @@ export function PurchaseWorkspace({
           <PurchaseRequestComposer
             key={editingDetail?.request.id ?? 'create'}
             catalogOptions={catalogOptions}
-            supplierLabels={supplierLabels}
+            supplierLabels={resolvedSupplierLabels}
             isCatalogSearching={isCatalogSearching}
             isSubmitting={editingDetail ? isSubmittingUpdateRequest : isSubmittingRequest}
             error={editingDetail ? updateRequestError : createError}
@@ -413,13 +480,19 @@ export function PurchaseWorkspace({
           isSubmitting={isSubmittingCounterPurchase}
           error={counterPurchaseError}
           lastResult={latestCounterPurchase}
+          isCatalogSearching={isCatalogSearching}
+          supplierLabels={resolvedSupplierLabels}
           onBack={closeCounterPurchaseMode}
           onSubmit={onCounterPurchase}
+          {...(onCatalogSearch ? { onCatalogSearch } : {})}
+          {...(onDismissCounterPurchaseSuccess
+            ? { onDismissSuccess: onDismissCounterPurchaseSuccess }
+            : {})}
         />
       ) : null}
 
       <PurchaseRequestWorkbenchDrawer
-        open={workspaceMode === 'inbox' && Boolean(selectedRequestId)}
+        open={workspaceMode === 'inbox' && Boolean(selectedRequestId) && !orderDrawerOpen}
         detail={detail}
         items={items}
         catalogOptions={catalogOptions}
@@ -433,13 +506,13 @@ export function PurchaseWorkspace({
         latestOrderLines={latestOrderLines}
         latestReceipt={latestReceipt}
         activeTab={workbenchTab}
-        onActiveTabChange={setWorkbenchTab}
+        onActiveTabChange={(tab) => setWorkbenchTab(normalizePurchaseWorkbenchTab(tab))}
         isLoading={detailLoading}
         error={detailError}
         supplierSummary={supplierSummary}
         supplierLoading={supplierLoading}
         supplierError={supplierError}
-        supplierLabels={supplierLabels}
+        supplierLabels={resolvedSupplierLabels}
         isSubmittingQuote={isSubmittingQuote}
         isSubmittingApprove={isSubmittingApprove}
         isSubmittingAwards={isSubmittingAwards}
@@ -465,9 +538,9 @@ export function PurchaseWorkspace({
           await loadDetail(selectedRequestId);
           await onRefresh();
         }}
-        onApprove={async (exceptionReason) => {
+        onApprove={async (payload) => {
           if (!selectedRequestId) return;
-          await onApproveRequest(selectedRequestId, exceptionReason);
+          await onApproveRequest(selectedRequestId, payload);
           await loadDetail(selectedRequestId);
           await onRefresh();
         }}
@@ -516,10 +589,14 @@ export function PurchaseWorkspace({
         }}
         onReceiveOrder={async (purchaseOrderId, payload) => {
           await onReceiveOrder(purchaseOrderId, payload);
+          await onSelectOrder(purchaseOrderId);
           if (selectedRequestId) {
             await loadDetail(selectedRequestId);
           }
           await onRefresh();
+        }}
+        onSelectOrder={async (orderId) => {
+          await onSelectOrder(orderId);
         }}
         onRefreshDetail={async () => {
           if (!selectedRequestId) {
@@ -533,11 +610,16 @@ export function PurchaseWorkspace({
       <PurchaseOrderDrawer
         open={orderDrawerOpen}
         request={detail?.request ?? null}
+        detail={detail}
         items={items}
+        supplierLabels={resolvedSupplierLabels}
         latestOrder={latestOrder}
         createError={orderError}
         isSubmittingOrder={isSubmittingOrder}
-        onClose={() => setOrderDrawerOpen(false)}
+        onClose={() => {
+          setOrderDrawerOpen(false);
+          setWorkbenchTab('orders');
+        }}
         onCreateOrder={async (payload) => {
           await onCreateOrder(payload);
           if (selectedRequestId) {

@@ -7,7 +7,9 @@ import {
   PurchaseRequest,
   PurchaseRequestLine,
   PurchaseRequestLineAward,
+  PurchaseRfq,
   SupplierQuote,
+  SupplierQuoteLine,
   TenantContext,
   runInTenantSchema,
 } from '@iwana/db';
@@ -15,6 +17,7 @@ import {
   PurchaseOrderStatus,
   PurchaseRequestLineStatus,
   PurchaseRequestStatus,
+  PurchaseRfqStatus,
 } from '@iwana/shared';
 import {
   AddSupplierQuoteInput,
@@ -113,7 +116,7 @@ export class PurchasingService {
             justification: validated.justification,
             operationalRefType: validated.operationalRefType ?? null,
             operationalRefId: validated.operationalRefId ?? null,
-            status: PurchaseRequestStatus.PENDING_QUOTES,
+            status: PurchaseRequestStatus.DRAFT,
             requestedByUserId: actor.sub,
             neededByDate: validated.neededByDate ?? null,
             notes: validated.notes ?? null,
@@ -177,7 +180,19 @@ export class PurchasingService {
         order: { createdAt: 'ASC' },
       });
 
-      return { ...order, lines };
+      let expectedDeliveryDate: string | null = order.expectedDeliveryDate ?? null;
+      if (!expectedDeliveryDate && order.purchaseRequestId) {
+        const request = await qr.manager.findOne(PurchaseRequest, {
+          where: { id: order.purchaseRequestId, tenantId },
+        });
+        expectedDeliveryDate = request?.neededByDate ?? null;
+      }
+
+      if (typeof expectedDeliveryDate === 'string' && expectedDeliveryDate.length >= 10) {
+        expectedDeliveryDate = expectedDeliveryDate.slice(0, 10);
+      }
+
+      return { ...order, expectedDeliveryDate, lines };
     });
   }
 
@@ -185,7 +200,7 @@ export class PurchasingService {
     purchaseRequestId: string,
     input: AddSupplierQuoteInput,
     actor: JwtPayload,
-  ): Promise<SupplierQuote> {
+  ): Promise<SupplierQuote & { lines: SupplierQuoteLine[] }> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = AddSupplierQuoteSchema.parse(input);
 
@@ -199,6 +214,62 @@ export class PurchasingService {
           validated.partyRefId,
         );
 
+        const requestLines = await manager.find(PurchaseRequestLine, {
+          where: { tenantId, purchaseRequestId },
+        });
+        const requestLineById = new Map(requestLines.map((line) => [line.id, line]));
+
+        let quoteAmount = validated.amount;
+        let quoteLinesToPersist: Array<{
+          purchaseRequestLineId: string;
+          quantity: string;
+          unitCost: string;
+          lineAmount: string;
+        }> = [];
+
+        if (requestLines.length > 0) {
+          if (!validated.lines?.length) {
+            throw new BadRequestException(
+              'La solicitud tiene líneas: registra al menos un precio unitario por producto.',
+            );
+          }
+
+          const seenLineIds = new Set<string>();
+          let amountTotal = 0;
+
+          for (const lineInput of validated.lines) {
+            if (seenLineIds.has(lineInput.purchaseRequestLineId)) {
+              throw new BadRequestException('Hay líneas de cotización duplicadas.');
+            }
+            seenLineIds.add(lineInput.purchaseRequestLineId);
+
+            const requestLine = requestLineById.get(lineInput.purchaseRequestLineId);
+            if (!requestLine) {
+              throw new BadRequestException(
+                'Una o más líneas de cotización no pertenecen a esta solicitud.',
+              );
+            }
+
+            const quantity = toNumeric(requestLine.quantityRequested);
+            if (!(quantity > 0)) {
+              throw new BadRequestException('La cantidad de una línea de solicitud no es válida.');
+            }
+
+            const lineAmount = quantity * lineInput.unitCost;
+            amountTotal += lineAmount;
+            quoteLinesToPersist.push({
+              purchaseRequestLineId: lineInput.purchaseRequestLineId,
+              quantity: toQuantity(quantity),
+              unitCost: lineInput.unitCost.toFixed(2),
+              lineAmount: lineAmount.toFixed(2),
+            });
+          }
+
+          quoteAmount = amountTotal;
+        } else if (quoteAmount === undefined) {
+          throw new BadRequestException('Indica el monto total de la cotización.');
+        }
+
         const quote = await manager.save(
           SupplierQuote,
           manager.create(SupplierQuote, {
@@ -206,12 +277,30 @@ export class PurchasingService {
             purchaseRequestId,
             partyRefId: validated.partyRefId,
             quoteNumber: validated.quoteNumber,
-            amount: validated.amount.toFixed(2),
+            amount: quoteAmount.toFixed(2),
+            shippingCost: validated.shippingCost.toFixed(2),
             currency: validated.currency,
             validUntil: validated.validUntil ?? null,
             notes: validated.notes ?? null,
           }),
         );
+
+        const lines =
+          quoteLinesToPersist.length > 0
+            ? await manager.save(
+                SupplierQuoteLine,
+                quoteLinesToPersist.map((line) =>
+                  manager.create(SupplierQuoteLine, {
+                    tenantId,
+                    supplierQuoteId: quote.id,
+                    purchaseRequestLineId: line.purchaseRequestLineId,
+                    quantity: line.quantity,
+                    unitCost: line.unitCost,
+                    lineAmount: line.lineAmount,
+                  }),
+                ),
+              )
+            : [];
 
         if (validated.rfqInvitationId) {
           await this.rfqService.applyQuoteToInvitation(manager, tenantId, {
@@ -219,14 +308,42 @@ export class PurchasingService {
             partyRefId: validated.partyRefId,
             quote,
           });
-        } else if (request.status === PurchaseRequestStatus.PENDING_QUOTES) {
-          request.status = PurchaseRequestStatus.PENDING_APPROVAL;
-          request.notes = request.notes ?? validated.notes ?? null;
-          await manager.save(PurchaseRequest, request);
+        } else {
+          // C1 (Fase 10): oferta manual solo si no hay RFQ activa.
+          const activeRfq = await manager
+            .createQueryBuilder(PurchaseRfq, 'rfq')
+            .where('rfq.tenant_id = :tenantId', { tenantId })
+            .andWhere('rfq.purchase_request_id = :purchaseRequestId', {
+              purchaseRequestId,
+            })
+            .andWhere('rfq.status IN (:...statuses)', {
+              statuses: [
+                PurchaseRfqStatus.DRAFT,
+                PurchaseRfqStatus.SENT,
+                PurchaseRfqStatus.RECEIVING,
+              ],
+            })
+            .getOne();
+
+          if (activeRfq) {
+            throw new BadRequestException(
+              'Hay una ronda de cotización activa. Registra la oferta desde una invitación o cierra la ronda primero.',
+            );
+          }
+
+          if (
+            [PurchaseRequestStatus.PENDING_QUOTES, PurchaseRequestStatus.DRAFT].includes(
+              request.status,
+            )
+          ) {
+            request.status = PurchaseRequestStatus.PENDING_APPROVAL;
+            request.notes = request.notes ?? validated.notes ?? null;
+            await manager.save(PurchaseRequest, request);
+          }
         }
 
         void actor;
-        return quote;
+        return { ...quote, lines };
       }),
     );
   }
@@ -245,7 +362,10 @@ export class PurchasingService {
         const quotes = await manager.find(SupplierQuote, {
           where: { tenantId, purchaseRequestId },
         });
-        const estimatedAmount = quotes.reduce((total, quote) => total + toNumeric(quote.amount), 0);
+        const estimatedAmount = quotes.reduce(
+          (total, quote) => total + toNumeric(quote.amount) + toNumeric(quote.shippingCost),
+          0,
+        );
         const policyDecision = this.purchasingPolicyService.evaluateApproval({
           requestType: request.requestType,
           estimatedAmount,
@@ -377,6 +497,13 @@ export class PurchasingService {
     return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
       withTransaction(qr.manager, async (manager) => {
         const request = await this.requirePurchaseRequest(manager, tenantId, purchaseRequestId);
+
+        if (request.status !== PurchaseRequestStatus.APPROVED) {
+          throw new BadRequestException(
+            'La solicitud debe estar aprobada para registrar adjudicaciones.',
+          );
+        }
+
         const createdAwards: PurchaseRequestLineAward[] = [];
 
         for (const awardInput of validated.awards) {
@@ -637,7 +764,8 @@ export class PurchasingService {
               request,
               {
                 partyRefId: orderInput.partyRefId,
-                expectedDeliveryDate: orderInput.expectedDeliveryDate ?? null,
+                expectedDeliveryDate:
+                  orderInput.expectedDeliveryDate ?? request.neededByDate ?? null,
                 notes: orderInput.notes ?? null,
                 lines: orderInput.lines,
                 status: validated.status,
@@ -658,7 +786,7 @@ export class PurchasingService {
           request,
           {
             partyRefId: validated.partyRefId!,
-            expectedDeliveryDate: validated.expectedDeliveryDate ?? null,
+            expectedDeliveryDate: validated.expectedDeliveryDate ?? request.neededByDate ?? null,
             notes: validated.notes ?? null,
             lines: validated.lines ?? [],
             status: validated.status,

@@ -1,0 +1,9 @@
+export enum StockAdjustmentReason {
+  CYCLE_COUNT = 'CYCLE_COUNT',
+  DAMAGE = 'DAMAGE',
+  INITIAL_LOAD = 'INITIAL_LOAD',
+  CORRECTION = 'CORRECTION',
+  LOSS = 'LOSS',
+  FOUND = 'FOUND',
+  OTHER = 'OTHER',
+}

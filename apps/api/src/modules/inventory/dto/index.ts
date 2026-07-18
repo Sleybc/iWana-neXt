@@ -17,11 +17,13 @@ import {
   PurchaseRequestPriority,
   PurchaseRequestType,
   SerializedAssetStatus,
+  StockAdjustmentReason,
   StockBalanceCondition,
   StockIssueStatus,
   StockIssueType,
   StockLocationStatus,
   StockLocationType,
+  StockMovementOrigin,
   WriteOffReason,
   PartyType,
   DocumentTypeParty,
@@ -1169,21 +1171,49 @@ export class CreatePurchaseRequestDto {
   lines!: PurchaseRequestLineDto[];
 }
 
-export const AddSupplierQuoteSchema = z.object({
-  partyRefId: z.string().trim().min(1).max(160),
-  quoteNumber: z.string().trim().min(1).max(60),
-  amount: positiveNumber,
-  currency: z
-    .string()
-    .trim()
-    .length(3)
-    .transform((value) => value.toUpperCase()),
-  validUntil: optionalDateString,
-  notes: optionalTrimmedString(4000),
-  rfqInvitationId: z.string().uuid().optional().nullable(),
+export const AddSupplierQuoteLineSchema = z.object({
+  purchaseRequestLineId: z.string().uuid(),
+  unitCost: positiveNumber,
 });
 
-export type AddSupplierQuoteInput = z.infer<typeof AddSupplierQuoteSchema>;
+export const AddSupplierQuoteSchema = z
+  .object({
+    partyRefId: z.string().trim().min(1).max(160),
+    quoteNumber: z.string().trim().min(1).max(60),
+    amount: positiveNumber.optional(),
+    shippingCost: nonNegativeNumber.default(0),
+    currency: z
+      .string()
+      .trim()
+      .length(3)
+      .transform((value) => value.toUpperCase()),
+    validUntil: optionalDateString,
+    notes: optionalTrimmedString(4000),
+    rfqInvitationId: z.string().uuid().optional().nullable(),
+    lines: z.array(AddSupplierQuoteLineSchema).min(1).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if ((!value.lines || value.lines.length === 0) && value.amount === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Indica el monto total o al menos una línea de cotización.',
+        path: ['amount'],
+      });
+    }
+  });
+
+export type AddSupplierQuoteInput = z.input<typeof AddSupplierQuoteSchema>;
+export type AddSupplierQuoteLineInput = z.infer<typeof AddSupplierQuoteLineSchema>;
+
+export class AddSupplierQuoteLineDto {
+  @ApiProperty()
+  @Allow()
+  purchaseRequestLineId!: string;
+
+  @ApiProperty()
+  @Allow()
+  unitCost!: number;
+}
 
 export class AddSupplierQuoteDto {
   @ApiProperty()
@@ -1194,9 +1224,18 @@ export class AddSupplierQuoteDto {
   @Allow()
   quoteNumber!: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional({
+    description: 'Monto total (legacy si la solicitud no tiene líneas; derivado si hay lines)',
+  })
   @Allow()
-  amount!: number;
+  amount?: number;
+
+  @ApiPropertyOptional({
+    description: 'Gastos de envío (0 = gratis). No forma parte del amount de productos.',
+    default: 0,
+  })
+  @Allow()
+  shippingCost?: number;
 
   @ApiProperty({ minLength: 3, maxLength: 3 })
   @Allow()
@@ -1213,6 +1252,12 @@ export class AddSupplierQuoteDto {
   @ApiPropertyOptional({ description: 'Invitación RFQ a la que vincular la cotización' })
   @Allow()
   rfqInvitationId?: string | null;
+
+  @ApiPropertyOptional({ type: [AddSupplierQuoteLineDto] })
+  @Allow()
+  @ValidateNested({ each: true })
+  @Type(() => AddSupplierQuoteLineDto)
+  lines?: AddSupplierQuoteLineDto[];
 }
 
 export const CreateRfqSchema = z.object({
@@ -2087,6 +2132,25 @@ export const CreateSupplierSchema = z.object({
 
 export type CreateSupplierInput = z.infer<typeof CreateSupplierSchema>;
 
+/** DTO anidado: evita que enableImplicitConversion vacíe `contacts` a `[]`. */
+export class SupplierContactDto {
+  @ApiProperty({ enum: PartyContactType })
+  @Allow()
+  type!: PartyContactType;
+
+  @ApiProperty({ maxLength: 500 })
+  @Allow()
+  value!: string;
+
+  @ApiPropertyOptional()
+  @Allow()
+  isPrimary?: boolean;
+
+  @ApiPropertyOptional({ type: 'object', additionalProperties: true, nullable: true })
+  @Allow()
+  metadata?: Record<string, unknown> | null;
+}
+
 export class CreateSupplierDto {
   @ApiProperty({ enum: PartyType })
   @Allow()
@@ -2108,14 +2172,11 @@ export class CreateSupplierDto {
   @Allow()
   legalName?: string | null;
 
-  @ApiPropertyOptional({ type: 'array', items: { type: 'object' } })
+  @ApiPropertyOptional({ type: [SupplierContactDto] })
   @Allow()
-  contacts?: Array<{
-    type: PartyContactType;
-    value: string;
-    isPrimary?: boolean;
-    metadata?: Record<string, unknown> | null;
-  }>;
+  @ValidateNested({ each: true })
+  @Type(() => SupplierContactDto)
+  contacts?: SupplierContactDto[];
 
   @ApiPropertyOptional({ maxLength: 255 })
   @Allow()
@@ -2279,4 +2340,113 @@ export class ListSuppliersQueryDto {
   @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
   @Allow()
   limit?: number;
+}
+
+export const ListStockMovementsQuerySchema = z.object({
+  itemId: z.string().uuid().optional(),
+  locationId: z.string().uuid().optional(),
+  origin: z.nativeEnum(StockMovementOrigin).optional(),
+  dateFrom: z.coerce.date().optional(),
+  dateTo: z.coerce.date().optional(),
+  search: z.preprocess((value) => {
+    if (typeof value !== 'string') {
+      return value;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }, z.string().max(40).optional()),
+  page: z.preprocess(
+    (value) => (value === '' || value === null ? undefined : value),
+    z.coerce.number().int().min(1).optional().default(1),
+  ),
+  limit: z.preprocess(
+    (value) => (value === '' || value === null ? undefined : value),
+    z.coerce.number().int().min(1).max(100).optional().default(20),
+  ),
+});
+
+export type ListStockMovementsQueryInput = z.infer<typeof ListStockMovementsQuerySchema>;
+
+export class ListStockMovementsQueryDto {
+  @ApiPropertyOptional({ format: 'uuid' })
+  @Allow()
+  itemId?: string;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @Allow()
+  locationId?: string;
+
+  @ApiPropertyOptional({ enum: StockMovementOrigin })
+  @Allow()
+  origin?: StockMovementOrigin;
+
+  @ApiPropertyOptional({ type: String, format: 'date-time' })
+  @Allow()
+  dateFrom?: Date;
+
+  @ApiPropertyOptional({ type: String, format: 'date-time' })
+  @Allow()
+  dateTo?: Date;
+
+  @ApiPropertyOptional({ maxLength: 40, description: 'Busca por número de movimiento' })
+  @Allow()
+  search?: string;
+
+  @ApiPropertyOptional({ default: 1, minimum: 1 })
+  @Allow()
+  page?: number;
+
+  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
+  @Allow()
+  limit?: number;
+}
+
+export const CreateStockAdjustmentSchema = z.object({
+  itemId: z.string().uuid(),
+  locationId: z.string().uuid(),
+  lotId: optionalUuidLike(),
+  condition: z.nativeEnum(StockBalanceCondition).optional(),
+  quantityDelta: z.coerce
+    .number()
+    .refine((value) => value !== 0, { message: 'La cantidad del ajuste no puede ser cero.' }),
+  reason: z.nativeEnum(StockAdjustmentReason),
+  notes: optionalTrimmedString(4000),
+  idempotencyKey: z.string().trim().min(8).max(160),
+});
+
+export type CreateStockAdjustmentInput = z.infer<typeof CreateStockAdjustmentSchema>;
+
+export class CreateStockAdjustmentDto {
+  @ApiProperty({ format: 'uuid' })
+  @Allow()
+  itemId!: string;
+
+  @ApiProperty({ format: 'uuid' })
+  @Allow()
+  locationId!: string;
+
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @Allow()
+  lotId?: string | null;
+
+  @ApiPropertyOptional({ enum: StockBalanceCondition })
+  @Allow()
+  condition?: StockBalanceCondition;
+
+  @ApiProperty({ description: 'Delta con signo; no puede ser cero' })
+  @Allow()
+  quantityDelta!: number;
+
+  @ApiProperty({ enum: StockAdjustmentReason })
+  @Allow()
+  reason!: StockAdjustmentReason;
+
+  @ApiPropertyOptional({ maxLength: 4000, nullable: true })
+  @Allow()
+  notes?: string | null;
+
+  @ApiProperty({ minLength: 8, maxLength: 160 })
+  @Allow()
+  idempotencyKey!: string;
 }

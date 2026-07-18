@@ -171,6 +171,8 @@ type InventoryMockState = {
   stockIssueDispatchCount: number;
   transferCount: number;
   returnCount: number;
+  adjustmentCount: number;
+  movements: Array<Record<string, unknown>>;
   supplierProfiles: Array<Record<string, unknown>>;
   supplierCreateCount: number;
 };
@@ -453,6 +455,36 @@ function createInventoryMockState(): InventoryMockState {
     stockIssueDispatchCount: 0,
     transferCount: 0,
     returnCount: 0,
+    adjustmentCount: 0,
+    movements: [
+      {
+        id: 'mov-seed-001',
+        movementNumber: 'MOV-000100',
+        origin: 'PURCHASE_RECEIPT',
+        originContext: 'inventory.goods-receipt',
+        originRefId: 'gr-seed-001',
+        adjustmentReason: null,
+        notes: 'Recepción de OC seed',
+        actorUserId: NOC_USER_ID,
+        isReversal: false,
+        createdAt: nowIso(-120),
+        lines: [
+          {
+            id: 'mov-seed-001-line-1',
+            itemId: ITEM_CONSUMABLE_ID,
+            itemName: 'Cable drop',
+            itemSku: 'CAB-DROP',
+            locationId: LOC_MAIN,
+            locationName: 'Bodega principal',
+            lotId: null,
+            lotNumber: null,
+            serializedAssetId: null,
+            quantity: '8.00',
+            unitCost: '1200.00',
+          },
+        ],
+      },
+    ],
     supplierProfiles: [buildSupplierProfile()],
     supplierCreateCount: 0,
   };
@@ -798,6 +830,172 @@ async function setupInventoryMocks(
       return;
     }
 
+    if (pathname.endsWith('/inventory/movements') && method === 'GET') {
+      const itemId = url.searchParams.get('itemId');
+      const locationId = url.searchParams.get('locationId');
+      const origin = url.searchParams.get('origin');
+      const search = url.searchParams.get('search');
+      const pageParam = Number.parseInt(url.searchParams.get('page') ?? '1', 10);
+      const limitParam = Number.parseInt(url.searchParams.get('limit') ?? '20', 10);
+
+      let filtered = [...state.movements];
+      if (itemId) {
+        filtered = filtered.filter((movement) =>
+          (movement.lines as Array<Record<string, unknown>>).some((line) => line.itemId === itemId),
+        );
+      }
+      if (locationId) {
+        filtered = filtered.filter((movement) =>
+          (movement.lines as Array<Record<string, unknown>>).some(
+            (line) => line.locationId === locationId,
+          ),
+        );
+      }
+      if (origin) {
+        filtered = filtered.filter((movement) => movement.origin === origin);
+      }
+      if (search) {
+        filtered = filtered.filter((movement) =>
+          String(movement.movementNumber ?? '')
+            .toUpperCase()
+            .startsWith(search.toUpperCase()),
+        );
+      }
+
+      const start = (pageParam - 1) * limitParam;
+      const data = filtered.slice(start, start + limitParam);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data,
+          total: filtered.length,
+          page: pageParam,
+          limit: limitParam,
+        }),
+      });
+      return;
+    }
+
+    const movementDetailMatch = pathname.match(/\/inventory\/movements\/([^/]+)$/);
+    if (movementDetailMatch && method === 'GET') {
+      const movement = state.movements.find((entry) => entry.id === movementDetailMatch[1]);
+      await route.fulfill({
+        status: movement ? 200 : 404,
+        contentType: 'application/json',
+        body: JSON.stringify(movement ?? { message: 'Movimiento de stock no encontrado.' }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/inventory/adjustments') && method === 'POST') {
+      const body = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
+      const quantityDelta = Number(body.quantityDelta);
+      const itemId = String(body.itemId ?? '');
+      const locationId = String(body.locationId ?? '');
+      const condition = String(body.condition ?? 'NEW');
+
+      const balance = state.balances.find(
+        (entry) =>
+          entry.itemId === itemId &&
+          entry.locationId === locationId &&
+          (entry.condition ?? 'NEW') === condition &&
+          (entry.lotId ?? null) === (body.lotId ?? null),
+      );
+      const currentOnHand = Number.parseFloat(String(balance?.quantityOnHand ?? '0'));
+      if (currentOnHand + quantityDelta < 0) {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'El movimiento dejaría saldo negativo.' }),
+        });
+        return;
+      }
+
+      const catalogItem = state.catalogItems.find((entry) => entry.id === itemId);
+      if (catalogItem?.trackingMode === 'SERIALIZED') {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            message:
+              'Los ítems serializados no admiten ajuste manual. Use retorno o baja según el caso.',
+          }),
+        });
+        return;
+      }
+
+      if (balance) {
+        balance.quantityOnHand = (currentOnHand + quantityDelta).toFixed(2);
+      } else if (quantityDelta > 0) {
+        state.balances.push(
+          buildBalance({
+            id: `bal-adj-${state.adjustmentCount + 1}`,
+            itemId,
+            locationId,
+            quantityOnHand: quantityDelta.toFixed(2),
+            condition,
+          }),
+        );
+      }
+
+      state.adjustmentCount += 1;
+      const movementNumber = `MOV-${String(100 + state.adjustmentCount).padStart(6, '0')}`;
+      const location = state.locations.find((entry) => entry.id === locationId);
+      const movement = {
+        id: `mov-adj-${state.adjustmentCount}`,
+        movementNumber,
+        origin: 'ADJUSTMENT',
+        originContext: 'inventory.adjustment',
+        originRefId: body.reason ?? 'OTHER',
+        adjustmentReason: body.reason ?? 'OTHER',
+        notes: body.notes ?? null,
+        actorUserId: NOC_USER_ID,
+        isReversal: false,
+        createdAt: nowIso(),
+        lines: [
+          {
+            id: `mov-adj-${state.adjustmentCount}-line-1`,
+            itemId,
+            itemName: catalogItem?.name ?? null,
+            itemSku: catalogItem?.sku ?? null,
+            locationId,
+            locationName: location?.name ?? null,
+            lotId: body.lotId ?? null,
+            lotNumber: null,
+            serializedAssetId: null,
+            quantity: quantityDelta.toFixed(2),
+            unitCost: null,
+          },
+        ],
+      };
+      state.movements.unshift(movement);
+
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          movement: {
+            id: movement.id,
+            movementNumber,
+            origin: 'ADJUSTMENT',
+            originContext: 'inventory.adjustment',
+            originRefId: body.reason ?? 'OTHER',
+            notes: body.notes ?? null,
+            actorUserId: NOC_USER_ID,
+            isReversal: false,
+            createdAt: movement.createdAt,
+            updatedAt: movement.createdAt,
+            tenantId: 'tenant-inventory-001',
+            idempotencyKey: body.idempotencyKey,
+            reversedByMovementId: null,
+          },
+          lines: movement.lines,
+        }),
+      });
+      return;
+    }
+
     if (pathname.endsWith('/inventory/issues') && method === 'GET') {
       await route.fulfill({
         status: 200,
@@ -1057,7 +1255,7 @@ async function setupInventoryMocks(
         id: `pr-${state.purchaseRequests.length + 1}`,
         requestNumber: `PR-${String(state.purchaseRequests.length + 1).padStart(4, '0')}`,
         title: body.title ?? 'Solicitud sin título',
-        status: 'PENDING_QUOTES',
+        status: 'DRAFT',
         requestType: body.requestType ?? 'REPLENISHMENT',
         priority: body.priority ?? 'NORMAL',
         requestingArea: body.requestingArea ?? 'Operaciones',
@@ -1643,6 +1841,58 @@ async function setupInventoryMocks(
         return;
       }
 
+      const batchOrders = (body.orders as Array<Record<string, unknown>> | undefined) ?? [];
+      if (batchOrders.length > 0) {
+        const created = batchOrders.map((orderInput, orderIndex) => {
+          const order = {
+            id: `po-${state.purchaseOrders.length + orderIndex + 1}`,
+            tenantId: 'tenant-inventory-001',
+            orderNumber: `PO-${String(state.purchaseOrders.length + orderIndex + 1).padStart(4, '0')}`,
+            purchaseRequestId: body.purchaseRequestId,
+            partyRefId: orderInput.partyRefId,
+            status: 'APPROVED',
+            expectedDeliveryDate:
+              orderInput.expectedDeliveryDate ?? body.expectedDeliveryDate ?? null,
+            approvedByUserId: NOC_USER_ID,
+            notes: orderInput.notes ?? body.notes ?? null,
+            createdAt: nowIso(),
+            updatedAt: nowIso(),
+          };
+          state.purchaseOrders.push(order);
+
+          const lines = (orderInput.lines as Array<Record<string, unknown>> | undefined) ?? [];
+          lines.forEach((line, lineIndex) => {
+            state.purchaseOrderLines.push({
+              id: `pol-${order.id}-${lineIndex + 1}`,
+              tenantId: 'tenant-inventory-001',
+              purchaseOrderId: order.id,
+              itemId: line.itemId,
+              purchaseRequestLineId: line.purchaseRequestLineId ?? null,
+              quantity: String(line.quantity ?? '0'),
+              unitCost: String(line.unitCost ?? '0'),
+              receivedQuantity: '0',
+              createdAt: nowIso(),
+              updatedAt: nowIso(),
+            });
+          });
+
+          return order;
+        });
+
+        const request = state.purchaseRequests.find((entry) => entry.id === body.purchaseRequestId);
+        if (request) {
+          request.status = 'CONVERTED_TO_PO';
+          request.updatedAt = nowIso();
+        }
+
+        await route.fulfill({
+          status: 201,
+          contentType: 'application/json',
+          body: JSON.stringify({ orders: created }),
+        });
+        return;
+      }
+
       const order = {
         id: `po-${state.purchaseOrders.length + 1}`,
         tenantId: 'tenant-inventory-001',
@@ -1673,6 +1923,12 @@ async function setupInventoryMocks(
           updatedAt: nowIso(),
         });
       });
+
+      const request = state.purchaseRequests.find((entry) => entry.id === body.purchaseRequestId);
+      if (request) {
+        request.status = 'CONVERTED_TO_PO';
+        request.updatedAt = nowIso();
+      }
 
       await route.fulfill({
         status: 201,
@@ -2223,7 +2479,7 @@ test.describe('Portal Inventario / SCM', () => {
     await main.getByRole('button', { name: 'Abrir' }).first().click();
 
     const workbench = page.getByRole('dialog').filter({ hasText: 'Trabajar solicitud' });
-    await workbench.getByRole('tab', { name: 'Cotización' }).click();
+    await workbench.getByRole('tab', { name: 'Cotizar' }).click();
     await workbench.getByRole('button', { name: 'Crear solicitud de cotización' }).click();
     await expect(workbench.getByText('RFQ-000001')).toBeVisible();
     await expect(workbench.getByText('Borrador')).toBeVisible();
@@ -2270,7 +2526,7 @@ test.describe('Portal Inventario / SCM', () => {
     await main.getByRole('button', { name: 'Abrir' }).first().click();
 
     const workbench = page.getByRole('dialog').filter({ hasText: 'Trabajar solicitud' });
-    await workbench.getByRole('tab', { name: 'Cotización' }).click();
+    await workbench.getByRole('tab', { name: 'Cotizar' }).click();
     await workbench.getByRole('button', { name: 'Crear solicitud de cotización' }).click();
     await expect(workbench.getByText('RFQ-000001')).toBeVisible();
 
@@ -2348,8 +2604,22 @@ test.describe('Portal Inventario / SCM', () => {
       partyRefId: 'party-001',
       quoteNumber: 'COT-AWARD-01',
       amount: '370000',
+      shippingCost: '0',
       currency: 'COP',
       validUntil: '2026-08-01',
+      lines: [
+        {
+          id: 'sql-award-1',
+          tenantId: 'tenant-inventory-001',
+          supplierQuoteId: 'sq-award-1',
+          purchaseRequestLineId: 'prl-award-1',
+          quantity: '2',
+          unitCost: '185000',
+          lineAmount: '370000',
+          createdAt: nowIso(-500),
+          updatedAt: nowIso(-500),
+        },
+      ],
       createdAt: nowIso(-500),
       updatedAt: nowIso(-500),
     });
@@ -2367,15 +2637,16 @@ test.describe('Portal Inventario / SCM', () => {
     await expect(workbench.getByText('Adjudicaciones registradas')).toBeVisible();
 
     await workbench.getByRole('tab', { name: 'Órdenes' }).click();
-    await workbench.getByRole('button', { name: 'Generar orden de compra' }).click();
+    await workbench.getByRole('button', { name: 'Generar órdenes desde adjudicación' }).click();
 
-    const orderDrawer = page.getByRole('dialog', { name: 'Orden de compra' });
-    await orderDrawer.getByLabel('Proveedor').fill('Demo');
-    await orderDrawer.getByRole('option', { name: /Proveedor Demo/i }).click();
-    const itemSelect = orderDrawer.getByRole('combobox', { name: 'Producto' });
-    await itemSelect.click();
-    await page.getByRole('option', { name: /ONT Huawei HG8245/i }).click();
-    await orderDrawer.getByRole('button', { name: 'Generar orden de compra' }).click();
+    const orderDrawer = page.getByRole('dialog', {
+      name: 'Órdenes de compra desde adjudicación',
+    });
+    await orderDrawer.getByRole('button', { name: /Generar 1 orden/i }).click();
+    await expect(
+      orderDrawer.getByText(/ordenes de compra generadas|orden de compra.*generada/i),
+    ).toBeVisible();
+    await orderDrawer.getByRole('button', { name: 'Ir a recepciones' }).click();
 
     await expect(workbench.getByRole('tab', { name: 'Recepciones' })).toBeVisible();
     expect(state.purchaseAwards).toHaveLength(1);
@@ -2460,6 +2731,127 @@ test.describe('Portal Inventario / SCM', () => {
   });
 });
 
+test.describe('Portal Inventario / Existencias', () => {
+  test.beforeEach(async ({ page }) => {
+    const state = createInventoryMockState();
+    await setupInventoryMocks(page, state);
+    await seedPortalSession(page);
+    (page as unknown as { inventoryMockState: InventoryMockState }).inventoryMockState = state;
+  });
+
+  test('abre pestaña Existencias con deep-link tab=stock', async ({ page }) => {
+    await page.goto('/dashboard/inventory?tab=stock');
+    const main = page.locator('main');
+
+    await expect(main.getByRole('tab', { name: 'Existencias', selected: true })).toBeVisible();
+    await expect(main.getByRole('heading', { name: 'Existencias' })).toBeVisible();
+    await expect(main.getByRole('tab', { name: 'Por producto', selected: true })).toBeVisible();
+    await expect(main.getByText('CAB-DROP')).toBeVisible();
+    await expect(main.getByText('ONT-HG8245')).toBeVisible();
+  });
+
+  test('redirige custody=mobile de Bodegas a Existencias y filtra matriz', async ({ page }) => {
+    await page.goto('/dashboard/inventory?tab=locations&custody=mobile');
+    const main = page.locator('main');
+
+    await expect(main.getByRole('tab', { name: 'Existencias', selected: true })).toBeVisible();
+    await expect(page).toHaveURL(/tab=stock/);
+    await expect(page).toHaveURL(/custody=mobile/);
+
+    await main.getByRole('tab', { name: 'Por bodega' }).click();
+    await expect(main.getByText('Custodia técnico')).toBeVisible();
+    await expect(main.getByText('Móvil con tope')).toBeVisible();
+    await expect(main.getByText('BOD-01')).toHaveCount(0);
+  });
+
+  test('muestra kardex con movimiento seed y permite expandir líneas', async ({ page }) => {
+    await page.goto('/dashboard/inventory?tab=stock');
+    const main = page.locator('main');
+
+    await main.getByRole('tab', { name: 'Kardex' }).click();
+    await expect(main.getByText('MOV-000100')).toBeVisible();
+    await expect(main.getByRole('cell', { name: 'Recepción de compra' })).toBeVisible();
+
+    await main.getByRole('button', { name: 'Expandir líneas' }).click();
+    await expect(main.getByText(/CAB-DROP · Bodega principal/)).toBeVisible();
+  });
+
+  test('registra ajuste desde Por producto y lo refleja en kardex', async ({ page }) => {
+    const state = (page as unknown as { inventoryMockState: InventoryMockState })
+      .inventoryMockState;
+
+    await page.goto('/dashboard/inventory?tab=stock');
+    const main = page.locator('main');
+
+    await main
+      .locator('tr')
+      .filter({ hasText: 'CAB-DROP' })
+      .getByRole('button', { name: 'Ajustar' })
+      .click();
+
+    const dialog = page.getByRole('dialog', { name: 'Ajuste de inventario' });
+    await expect(dialog).toBeVisible();
+    await selectComboboxOption(
+      page,
+      dialog.getByRole('combobox', { name: 'Bodega' }),
+      'BOD-01 · Bodega principal',
+    );
+    await selectComboboxOption(
+      page,
+      dialog.getByRole('combobox', { name: 'Dirección' }),
+      'Entrada',
+    );
+    await dialog.getByLabel('Cantidad').fill('2');
+    await selectComboboxOption(
+      page,
+      dialog.getByRole('combobox', { name: 'Razón' }),
+      'Conteo físico',
+    );
+    await dialog.getByRole('button', { name: 'Registrar ajuste' }).click();
+
+    await expect(page.getByRole('dialog', { name: 'Ajuste de inventario' })).toHaveCount(0);
+    await expect(main.getByText(/Ajuste registrado: MOV-/)).toBeVisible();
+    expect(state.adjustmentCount).toBe(1);
+    expect(state.movements[0]?.origin).toBe('ADJUSTMENT');
+
+    await main.getByRole('tab', { name: 'Kardex' }).click();
+    await expect(main.getByRole('cell', { name: 'Ajuste' }).first()).toBeVisible();
+    await expect(main.getByRole('cell', { name: 'Conteo físico' })).toBeVisible();
+  });
+
+  test('bloquea ajuste que dejaría saldo negativo', async ({ page }) => {
+    await page.goto('/dashboard/inventory?tab=stock');
+    const main = page.locator('main');
+
+    await main
+      .locator('tr')
+      .filter({ hasText: 'CAB-DROP' })
+      .getByRole('button', { name: 'Ajustar' })
+      .click();
+
+    const dialog = page.getByRole('dialog', { name: 'Ajuste de inventario' });
+    await selectComboboxOption(
+      page,
+      dialog.getByRole('combobox', { name: 'Bodega' }),
+      'BOD-01 · Bodega principal',
+    );
+    await selectComboboxOption(page, dialog.getByRole('combobox', { name: 'Dirección' }), 'Salida');
+    await dialog.getByLabel('Cantidad').fill('99');
+    await dialog.getByRole('button', { name: 'Registrar ajuste' }).click();
+
+    await expect(dialog.getByText('El movimiento dejaría saldo negativo.')).toBeVisible();
+  });
+
+  test('permite drill-down de balances por ubicación en Por bodega', async ({ page }) => {
+    await page.goto('/dashboard/inventory?tab=stock');
+    const main = page.locator('main');
+
+    await main.getByRole('tab', { name: 'Por bodega' }).click();
+    await main.getByRole('button', { name: 'Ver existencias de Bodega principal' }).click();
+    await expect(main.getByText(/ONT-HG8245 · ONT Huawei HG8245/i)).toBeVisible();
+  });
+});
+
 test.describe('Portal Inventario / Bodegas', () => {
   test.beforeEach(async ({ page }) => {
     const state = createInventoryMockState();
@@ -2473,17 +2865,8 @@ test.describe('Portal Inventario / Bodegas', () => {
     const main = page.locator('main');
 
     await expect(main.getByRole('tab', { name: 'Bodegas', selected: true })).toBeVisible();
-    await expect(main.getByText('Bodegas y existencias')).toBeVisible();
+    await expect(main.getByRole('heading', { name: 'Bodegas' })).toBeVisible();
     await expect(main.getByText('BOD-01')).toBeVisible();
-  });
-
-  test('filtra custodias móviles con custody=mobile', async ({ page }) => {
-    await page.goto('/dashboard/inventory?tab=locations&custody=mobile');
-    const main = page.locator('main');
-
-    await expect(main.getByText('Custodia técnico')).toBeVisible();
-    await expect(main.getByText('Móvil con tope')).toBeVisible();
-    await expect(main.getByText('BOD-01')).toHaveCount(0);
   });
 
   test('crea bodega desde UI', async ({ page }) => {
@@ -2593,14 +2976,6 @@ test.describe('Portal Inventario / Bodegas', () => {
     await expect(
       detail.getByText('La bodega móvil destino supera su capacidad máxima.'),
     ).toBeVisible();
-  });
-
-  test('permite drill-down de balances por ubicación', async ({ page }) => {
-    await page.goto('/dashboard/inventory?tab=locations');
-    const main = page.locator('main');
-
-    await main.getByRole('button', { name: 'Ver existencias de Bodega principal' }).click();
-    await expect(main.getByText(/ONT-HG8245 · ONT Huawei HG8245/i)).toBeVisible();
   });
 
   test.describe('gestión de proveedores', () => {

@@ -3,10 +3,18 @@ import { getDataSourceToken } from '@nestjs/typeorm';
 import { IPartyReadPort } from '../../parties/ports/party-read.port';
 import { IPartyWritePort } from '../../parties/ports/party-write.port';
 import { CommercialCatalogReadPort } from '../../commercial/ports/commercial-catalog-read.port';
+
+jest.mock('../../tenant/tenant.module', () => ({
+  TenantModule: class TenantModule {},
+}));
+
 import { InventoryModule } from '../inventory.module';
 import { InventoryController } from '../inventory.controller';
 import { SupplierPartyPort, SupplierPartyPortAdapter } from '../ports/supplier-party.port';
+import { TenantContactPort } from '../ports/tenant-contact.port';
+import { TenantContactPortAdapter } from '../ports/tenant-contact.adapter';
 import { PurchasingController } from '../purchasing.controller';
+import { TenantService } from '../../tenant/tenant.service';
 import {
   CommercialProductReferencePort,
   CommercialProductReferencePortAdapter,
@@ -32,6 +40,7 @@ import { SerializedAssetService } from '../services/serialized-asset.service';
 import { StockBalanceService } from '../services/stock-balance.service';
 import { StockIssueService } from '../services/stock-issue.service';
 import { StockLedgerService } from '../services/stock-ledger.service';
+import { StockMovementQueryService } from '../services/stock-movement-query.service';
 import { StockLocationService } from '../services/stock-location.service';
 
 describe('InventoryModule', () => {
@@ -51,6 +60,7 @@ describe('InventoryModule', () => {
         InventoryCategoryService,
         StockLocationService,
         StockLedgerService,
+        StockMovementQueryService,
         StockIssueService,
         StockBalanceService,
         SerializedAssetService,
@@ -67,6 +77,7 @@ describe('InventoryModule', () => {
         InventoryMovementPortAdapter,
         CommercialProductReferencePortAdapter,
         SupplierPartyPortAdapter,
+        TenantContactPortAdapter,
         {
           provide: IPartyReadPort,
           useValue: {
@@ -102,6 +113,14 @@ describe('InventoryModule', () => {
         {
           provide: SupplierPartyPort,
           useExisting: SupplierPartyPortAdapter,
+        },
+        {
+          provide: TenantService,
+          useValue: { findOne: jest.fn() },
+        },
+        {
+          provide: TenantContactPort,
+          useExisting: TenantContactPortAdapter,
         },
       ],
     }).compile();

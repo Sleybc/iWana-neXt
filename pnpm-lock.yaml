@@ -131,6 +131,9 @@ importers:
       joi:
         specifier: ^18.0.2
         version: 18.0.2
+      jszip:
+        specifier: ^3.10.1
+        version: 3.10.1
       multer:
         specifier: 2.1.1
         version: 2.1.1
@@ -6183,6 +6186,12 @@ packages:
     engines: { node: '>=16.x' }
     hasBin: true
 
+  immediate@3.0.6:
+    resolution:
+      {
+        integrity: sha512-XXOFtyqDjNDAQxVfYxuF7g9Il/IbWmmlQg2MYKOH8ExIT1qg6xc4zyS3HaEEATgs1btfzxq15ciUiY7gjSXRGQ==,
+      }
+
   import-fresh@3.3.1:
     resolution:
       {
@@ -6381,6 +6390,12 @@ packages:
         integrity: sha512-knxG2q4UC3u8stRGyAVJCOdxFmv5DZiRcdlIaAQXAbSfJya+OhopNotLQrstBhququ4ZpuKbDc/8S6mgXgPFPw==,
       }
     engines: { node: '>=10' }
+
+  isarray@1.0.0:
+    resolution:
+      {
+        integrity: sha512-VLghIWNM6ELQzo7zwmcg0NmTVyWKYjvIeM83yjp0wRDTmUnrM678fQbcKBo6n2CJEF0szoG//ytg+TKla89ALQ==,
+      }
 
   isarray@2.0.5:
     resolution:
@@ -6800,6 +6815,12 @@ packages:
       }
     engines: { node: '>=12', npm: '>=6' }
 
+  jszip@3.10.1:
+    resolution:
+      {
+        integrity: sha512-xXDvecyTpGLrqFrvkrUSoxxfJI5AH7U8zxxtVclpsUtMCq4JQ290LY8AW5c7Ggnr/Y/oK+bQMbqK2qmtk3pN4g==,
+      }
+
   jwa@2.0.1:
     resolution:
       {
@@ -6849,6 +6870,12 @@ packages:
     resolution:
       {
         integrity: sha512-MW79m7HuOqBk8mwytiXYTMELJiBbV3Zl9Y39dCCn1yC8K+WGNSq1QGvzywbylp5vGShEztMScCWHX/XFOS0rXg==,
+      }
+
+  lie@3.3.0:
+    resolution:
+      {
+        integrity: sha512-UaiMJzeWRlEujzAuw5LokY1L5ecNQYZKfmyZ9L7wDHb/p5etKaxXhohBcrw0EYby+G/NA52vRSN4N39dxHAIwQ==,
       }
 
   lightningcss-android-arm64@1.31.1:
@@ -8040,6 +8067,12 @@ packages:
       }
     engines: { node: ^14.15.0 || ^16.10.0 || >=18.0.0 }
 
+  process-nextick-args@2.0.1:
+    resolution:
+      {
+        integrity: sha512-3ouUOpQhtgrbOa17J7+uxOTpITYWaGP7/AhoR3+A+/1e9skrzelGi/dXzEYyvbxubEF6Wn2ypscTKiKJFFn1ag==,
+      }
+
   prompts@2.4.2:
     resolution:
       {
@@ -8202,6 +8235,12 @@ packages:
       }
     engines: { node: '>=0.10.0' }
 
+  readable-stream@2.3.8:
+    resolution:
+      {
+        integrity: sha512-8p0AUk4XODgIewSi0l8Epjs+EVnWiK7NoDIEGU0HhE7+ZyY8D1IMY7odu5lRrFXGg71L15KG8QrPmum45RTtdA==,
+      }
+
   readable-stream@3.6.2:
     resolution:
       {
@@ -8350,6 +8389,12 @@ packages:
         integrity: sha512-dhKf903U/PQZY6boNNtAGdWbG85WAbjT/1xYoZIC7FAY0yWapOBQVsVrDl58W86//e1VpMNBtRV4MaXfdMySFA==,
       }
 
+  safe-buffer@5.1.2:
+    resolution:
+      {
+        integrity: sha512-Gd2UZBJDkXlY7GbJxfsE8/nvKkUEU1G38c1siN6QP6a9PT9MmHB8GnpscSmMJSoF8LOIrt8ud/wPtojys4G6+g==,
+      }
+
   safe-buffer@5.2.1:
     resolution:
       {
@@ -8430,6 +8475,12 @@ packages:
         integrity: sha512-pgRc4hJ4/sNjWCSS9AmnS40x3bNMDTknHgL5UaMBTMyJnU90EgWh1Rz+MC9eFu4BuN/UwZjKQuY/1v3rM7HMfg==,
       }
     engines: { node: '>= 0.4' }
+
+  setimmediate@1.0.5:
+    resolution:
+      {
+        integrity: sha512-MATJdZp8sLqDl/68LfQmbP8zKPLQNV6BIZoIgrscFDQ+RsvK/BxeDQOgyxKKoh0y/8h3BqVFnCqQ/gd+reiIXA==,
+      }
 
   setprototypeof@1.2.0:
     resolution:
@@ -8648,6 +8699,12 @@ packages:
         integrity: sha512-tsaTIkKW9b4N+AEj+SVA+WhJzV7/zMhcSu78mLKWSk7cXMOSHsBKFWUs0fWwq8QyK3MgJBQRX6Gbi4kYbdvGkQ==,
       }
     engines: { node: '>=18' }
+
+  string_decoder@1.1.1:
+    resolution:
+      {
+        integrity: sha512-n/ShnvDi6FHbbVfviro+WojiFzv+s8MPMHBczVePfUpDJLwoLT0ht1l4YwBCbi8pJAveEEdnkHyPyTP/mzRfwg==,
+      }
 
   string_decoder@1.3.0:
     resolution:
@@ -13552,6 +13609,8 @@ snapshots:
 
   image-size@2.0.2: {}
 
+  immediate@3.0.6: {}
+
   import-fresh@3.3.1:
     dependencies:
       parent-module: 1.0.1
@@ -13640,6 +13699,8 @@ snapshots:
       which-typed-array: 1.1.20
 
   is-unicode-supported@0.1.0: {}
+
+  isarray@1.0.0: {}
 
   isarray@2.0.5: {}
 
@@ -14179,6 +14240,13 @@ snapshots:
       ms: 2.1.3
       semver: 7.7.4
 
+  jszip@3.10.1:
+    dependencies:
+      lie: 3.3.0
+      pako: 1.0.11
+      readable-stream: 2.3.8
+      setimmediate: 1.0.5
+
   jwa@2.0.1:
     dependencies:
       buffer-equal-constant-time: 1.0.1
@@ -14206,6 +14274,10 @@ snapshots:
       type-check: 0.4.0
 
   libphonenumber-js@1.12.39: {}
+
+  lie@3.3.0:
+    dependencies:
+      immediate: 3.0.6
 
   lightningcss-android-arm64@1.31.1:
     optional: true
@@ -14807,6 +14879,8 @@ snapshots:
       ansi-styles: 5.2.0
       react-is: 18.3.1
 
+  process-nextick-args@2.0.1: {}
+
   prompts@2.4.2:
     dependencies:
       kleur: 3.0.3
@@ -14903,6 +14977,16 @@ snapshots:
 
   react@19.2.4: {}
 
+  readable-stream@2.3.8:
+    dependencies:
+      core-util-is: 1.0.3
+      inherits: 2.0.4
+      isarray: 1.0.0
+      process-nextick-args: 2.0.1
+      safe-buffer: 5.1.2
+      string_decoder: 1.1.1
+      util-deprecate: 1.0.2
+
   readable-stream@3.6.2:
     dependencies:
       inherits: 2.0.4
@@ -14980,6 +15064,8 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
+  safe-buffer@5.1.2: {}
+
   safe-buffer@5.2.1: {}
 
   safer-buffer@2.1.2: {}
@@ -15042,6 +15128,8 @@ snapshots:
       get-intrinsic: 1.3.0
       gopd: 1.2.0
       has-property-descriptors: 1.0.2
+
+  setimmediate@1.0.5: {}
 
   setprototypeof@1.2.0: {}
 
@@ -15191,6 +15279,10 @@ snapshots:
       emoji-regex: 10.6.0
       get-east-asian-width: 1.5.0
       strip-ansi: 7.2.0
+
+  string_decoder@1.1.1:
+    dependencies:
+      safe-buffer: 5.1.2
 
   string_decoder@1.3.0:
     dependencies:

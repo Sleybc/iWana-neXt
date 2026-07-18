@@ -5,22 +5,24 @@ import { Badge, Button } from '@iwana/ui';
 interface PurchaseCreateModeHeaderProps {
   draftLineCount: number;
   onBack: () => void;
+  eyebrow?: string;
+  title?: string;
+  description?: string;
 }
 
 export function PurchaseCreateModeHeader({
   draftLineCount,
   onBack,
+  eyebrow = 'Creación',
+  title = 'Nueva solicitud de compra',
+  description = 'Arma la solicitud sin salir del flujo de creación.',
 }: PurchaseCreateModeHeaderProps) {
   return (
     <div className="flex flex-col gap-3 border-b border-gray-200 pb-4 dark:border-dark-border md:flex-row md:items-start md:justify-between">
       <div className="min-w-0">
-        <p className="portal-eyebrow">Creación</p>
-        <h1 className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-          Nueva solicitud de compra
-        </h1>
-        <p className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">
-          Arma la solicitud sin salir del flujo de creación.
-        </p>
+        <p className="portal-eyebrow">{eyebrow}</p>
+        <h1 className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{title}</h1>
+        <p className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">{description}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="info">

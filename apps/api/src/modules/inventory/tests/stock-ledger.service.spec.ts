@@ -4,7 +4,9 @@ import {
   ExecutionOrderItemAction,
   InventoryDisposition,
   InventoryResponsibleType,
+  InventoryTrackingMode,
   SerializedAssetStatus,
+  StockAdjustmentReason,
   StockBalanceCondition,
   StockLocationType,
   StockMovementOrigin,
@@ -14,6 +16,7 @@ import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { StockLedgerService } from '../services/stock-ledger.service';
 
 jest.mock('@iwana/db', () => ({
+  InventoryItem: class InventoryItem {},
   StockBalance: class StockBalance {},
   StockLocation: class StockLocation {},
   StockMovement: class StockMovement {},
@@ -824,5 +827,221 @@ describe('StockLedgerService', () => {
         delta: 1,
       }),
     );
+  });
+
+  describe('recordAdjustment', () => {
+    const runInTenantSchemaMock = runInTenantSchema as jest.MockedFunction<
+      typeof runInTenantSchema
+    >;
+
+    it('records a positive adjustment with reason in originRefId', async () => {
+      const manager = {
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce({
+            id: 'item-001',
+            trackingMode: InventoryTrackingMode.CONSUMABLE,
+          })
+          .mockResolvedValueOnce({ id: 'loc-001' })
+          .mockResolvedValueOnce(null),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue({ movementNumber: 'MOV-000099' }),
+        }),
+        create: jest.fn((_entity, payload) => payload),
+        save: jest
+          .fn()
+          .mockImplementationOnce(async (_entity, payload) => ({ id: 'mov-adj', ...payload }))
+          .mockImplementationOnce(async (_entity, payload) => ({ id: 'line-adj', ...payload })),
+        find: jest.fn().mockResolvedValue([]),
+        transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      };
+
+      runInTenantSchemaMock.mockImplementation(async (_ds, _schema, work) =>
+        work({ manager } as never),
+      );
+
+      const stockBalanceService = {
+        applyDeltaWithManager: jest.fn().mockResolvedValue({}),
+      };
+
+      const service = new StockLedgerService(
+        {} as DataSource,
+        stockBalanceService as never,
+        {
+          resolveForMovementWithManager: jest.fn(),
+          transitionAssetWithManager: jest.fn(),
+        } as never,
+        { recordWithManager: jest.fn() } as never,
+      );
+
+      const result = await service.recordAdjustment(
+        {
+          itemId: 'item-001',
+          locationId: 'loc-001',
+          quantityDelta: 3,
+          reason: StockAdjustmentReason.FOUND,
+          idempotencyKey: 'adj-key-001234',
+        },
+        actor,
+      );
+
+      expect(result.movement.origin).toBe(StockMovementOrigin.ADJUSTMENT);
+      expect(result.movement.originContext).toBe('inventory.adjustment');
+      expect(result.movement.originRefId).toBe(StockAdjustmentReason.FOUND);
+      expect(stockBalanceService.applyDeltaWithManager).toHaveBeenCalledWith(
+        manager,
+        expect.objectContaining({ delta: 3 }),
+      );
+    });
+
+    it('records a negative adjustment delta', async () => {
+      const manager = {
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce({
+            id: 'item-001',
+            trackingMode: InventoryTrackingMode.CONSUMABLE,
+          })
+          .mockResolvedValueOnce({ id: 'loc-001' })
+          .mockResolvedValueOnce(null),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue({ movementNumber: 'MOV-000100' }),
+        }),
+        create: jest.fn((_entity, payload) => payload),
+        save: jest
+          .fn()
+          .mockImplementationOnce(async (_entity, payload) => ({ id: 'mov-adj-2', ...payload }))
+          .mockImplementationOnce(async (_entity, payload) => ({ id: 'line-adj-2', ...payload })),
+        find: jest.fn().mockResolvedValue([]),
+        transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      };
+
+      runInTenantSchemaMock.mockImplementation(async (_ds, _schema, work) =>
+        work({ manager } as never),
+      );
+
+      const stockBalanceService = {
+        applyDeltaWithManager: jest.fn().mockResolvedValue({}),
+      };
+
+      const service = new StockLedgerService(
+        {} as DataSource,
+        stockBalanceService as never,
+        {
+          resolveForMovementWithManager: jest.fn(),
+          transitionAssetWithManager: jest.fn(),
+        } as never,
+        { recordWithManager: jest.fn() } as never,
+      );
+
+      await service.recordAdjustment(
+        {
+          itemId: 'item-001',
+          locationId: 'loc-001',
+          quantityDelta: -2,
+          reason: StockAdjustmentReason.LOSS,
+          idempotencyKey: 'adj-key-001235',
+        },
+        actor,
+      );
+
+      expect(stockBalanceService.applyDeltaWithManager).toHaveBeenCalledWith(
+        manager,
+        expect.objectContaining({ delta: -2 }),
+      );
+    });
+
+    it('rejects adjustments on serialized items', async () => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'item-ser',
+          trackingMode: InventoryTrackingMode.SERIALIZED,
+        }),
+        transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      };
+
+      runInTenantSchemaMock.mockImplementation(async (_ds, _schema, work) =>
+        work({ manager } as never),
+      );
+
+      const service = new StockLedgerService(
+        {} as DataSource,
+        { applyDeltaWithManager: jest.fn() } as never,
+        {
+          resolveForMovementWithManager: jest.fn(),
+          transitionAssetWithManager: jest.fn(),
+        } as never,
+        { recordWithManager: jest.fn() } as never,
+      );
+
+      await expect(
+        service.recordAdjustment(
+          {
+            itemId: 'item-ser',
+            locationId: 'loc-001',
+            quantityDelta: 1,
+            reason: StockAdjustmentReason.CORRECTION,
+            idempotencyKey: 'adj-key-001236',
+          },
+          actor,
+        ),
+      ).rejects.toThrow('serializados');
+    });
+
+    it('replays the same adjustment when idempotency key matches', async () => {
+      const existingMovement = {
+        id: 'mov-existing',
+        tenantId: 'tenant-001',
+        idempotencyKey: 'adj-key-replay',
+        origin: StockMovementOrigin.ADJUSTMENT,
+      };
+      const manager = {
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce({
+            id: 'item-001',
+            trackingMode: InventoryTrackingMode.CONSUMABLE,
+          })
+          .mockResolvedValueOnce({ id: 'loc-001' })
+          .mockResolvedValueOnce(existingMovement),
+        find: jest.fn().mockResolvedValue([{ id: 'line-existing', movementId: 'mov-existing' }]),
+        save: jest.fn(),
+        transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      };
+
+      runInTenantSchemaMock.mockImplementation(async (_ds, _schema, work) =>
+        work({ manager } as never),
+      );
+
+      const service = new StockLedgerService(
+        {} as DataSource,
+        { applyDeltaWithManager: jest.fn() } as never,
+        {
+          resolveForMovementWithManager: jest.fn(),
+          transitionAssetWithManager: jest.fn(),
+        } as never,
+        { recordWithManager: jest.fn() } as never,
+      );
+
+      const result = await service.recordAdjustment(
+        {
+          itemId: 'item-001',
+          locationId: 'loc-001',
+          quantityDelta: 1,
+          reason: StockAdjustmentReason.CYCLE_COUNT,
+          idempotencyKey: 'adj-key-replay',
+        },
+        actor,
+      );
+
+      expect(result.movement).toBe(existingMovement);
+      expect(manager.save).not.toHaveBeenCalled();
+    });
   });
 });

@@ -9,6 +9,7 @@ import { SerializedAssetService } from './services/serialized-asset.service';
 import { StockBalanceService } from './services/stock-balance.service';
 import { StockIssueService } from './services/stock-issue.service';
 import { StockLedgerService } from './services/stock-ledger.service';
+import { StockMovementQueryService } from './services/stock-movement-query.service';
 import { StockLocationService } from './services/stock-location.service';
 import { InventoryController } from './inventory.controller';
 
@@ -36,6 +37,7 @@ describe('InventoryController Swagger', () => {
         { provide: SerializedAssetService, useValue: {} },
         { provide: StockBalanceService, useValue: {} },
         { provide: StockLedgerService, useValue: {} },
+        { provide: StockMovementQueryService, useValue: {} },
         { provide: StockIssueService, useValue: {} },
         { provide: CounterPurchaseService, useValue: {} },
         { provide: InventoryDashboardService, useValue: {} },
@@ -62,6 +64,24 @@ describe('InventoryController Swagger', () => {
     expect(counterPurchase?.summary).toBe('Registrar ingreso directo por compra de mostrador');
     expect(
       getRequestSchema(counterPurchase as unknown as Record<string, unknown>, 'application/json'),
+    ).toBeDefined();
+  });
+
+  it('documenta kardex y ajustes de inventario', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('Swagger Inventory Test').setVersion('1.0').build(),
+    );
+
+    const listMovements = document.paths['/inventory/movements']?.get;
+    const getMovement = document.paths['/inventory/movements/{id}']?.get;
+    const createAdjustment = document.paths['/inventory/adjustments']?.post;
+
+    expect(listMovements?.summary).toBe('Consultar kardex de movimientos de stock');
+    expect(getMovement?.summary).toBe('Obtener detalle de movimiento de stock');
+    expect(createAdjustment?.summary).toBe('Registrar ajuste manual de inventario');
+    expect(
+      getRequestSchema(createAdjustment as unknown as Record<string, unknown>, 'application/json'),
     ).toBeDefined();
   });
 });

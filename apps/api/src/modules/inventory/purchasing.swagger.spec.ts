@@ -57,7 +57,8 @@ describe('PurchasingController Swagger', () => {
       document.paths['/purchasing/rfqs/{rfqId}/invitations/{invId}/decline']?.post;
     const closeRfq = document.paths['/purchasing/rfqs/{rfqId}/close']?.post;
     const getRfq = document.paths['/purchasing/rfqs/{rfqId}']?.get;
-    const getRfqPdf = document.paths['/purchasing/rfqs/{rfqId}/pdf']?.get;
+    const getRfqInvitationsZip =
+      document.paths['/purchasing/rfqs/{rfqId}/invitations/pdf.zip']?.get;
 
     expect(createRfq?.summary).toBe(
       'Crear solicitud de cotización (RFQ) desde una solicitud de compra',
@@ -80,7 +81,9 @@ describe('PurchasingController Swagger', () => {
     ).toBeDefined();
     expect(closeRfq?.summary).toBe('Cerrar ronda de cotización');
     expect(getRfq?.summary).toBe('Obtener detalle de solicitud de cotización');
-    expect(getRfqPdf?.summary).toBe('Descargar solicitud de cotización en PDF');
+    expect(getRfqInvitationsZip?.summary).toBe(
+      'Descargar un ZIP con un PDF personalizado por proveedor invitado',
+    );
   });
 
   it('verifica que los paths RFQ estan documentados', () => {
@@ -96,7 +99,7 @@ describe('PurchasingController Swagger', () => {
       '/purchasing/rfqs/{rfqId}/invitations/{invId}/decline',
       '/purchasing/rfqs/{rfqId}/close',
       '/purchasing/rfqs/{rfqId}',
-      '/purchasing/rfqs/{rfqId}/pdf',
+      '/purchasing/rfqs/{rfqId}/invitations/pdf.zip',
     ];
 
     for (const path of requiredPaths) {

@@ -100,6 +100,10 @@ jest.mock('@/lib/api-client', () => ({
     sale: jest.fn(),
     registerReturn: jest.fn(),
     writeOff: jest.fn(),
+    listMovements: jest.fn(),
+    getMovement: jest.fn(),
+    createAdjustment: jest.fn(),
+    createCounterPurchase: jest.fn(),
     listIssues: jest.fn(),
     createIssue: jest.fn(),
     getIssue: jest.fn(),
@@ -280,6 +284,12 @@ describe('InventoryClient', () => {
       ],
     });
     inventoryApiMock.listItems.mockResolvedValue([buildCatalogItem()]);
+    inventoryApiMock.listMovements.mockResolvedValue({
+      data: [],
+      total: 0,
+      page: 1,
+      limit: 20,
+    });
     inventoryApiMock.getItem.mockImplementation(async (id) =>
       buildCatalogItem({ id, name: 'ONT WiFi 6 detalle' }),
     );
@@ -546,6 +556,7 @@ describe('InventoryClient', () => {
       partyRefId: 'supplier-1',
       quoteNumber: 'COT-001',
       amount: '350000',
+      shippingCost: '0',
       currency: 'COP',
       validUntil: null,
       notes: null,
@@ -755,7 +766,7 @@ describe('InventoryClient', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('tab', { name: 'Bodegas', selected: true })).toBeInTheDocument();
-      expect(screen.getByText('Bodegas y existencias')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Bodegas' })).toBeInTheDocument();
     });
   });
 
@@ -775,7 +786,7 @@ describe('InventoryClient', () => {
     render(<InventoryClient initialTab="locations" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Bodegas y existencias')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Bodegas' })).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole('button', { name: 'Crear bodega' }));
@@ -805,7 +816,7 @@ describe('InventoryClient', () => {
     render(<InventoryClient initialTab="locations" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Bodegas y existencias')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Bodegas' })).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole('button', { name: 'Crear bodega' }));
@@ -823,7 +834,7 @@ describe('InventoryClient', () => {
     render(<InventoryClient initialTab="locations" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Bodegas y existencias')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Bodegas' })).toBeInTheDocument();
     });
 
     await user.click(await screen.findByRole('button', { name: 'Editar Bodega principal' }));
@@ -850,26 +861,38 @@ describe('InventoryClient', () => {
     });
   });
 
-  it('filtra material en manos del equipo de campo cuando custody=mobile viene en la URL', async () => {
+  it('redirige custody=mobile de Bodegas a Existencias y conserva el filtro', async () => {
+    const user = userEvent.setup();
     searchParamsMock = new URLSearchParams('tab=locations&custody=mobile');
 
     render(<InventoryClient initialTab="locations" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Bodegas y existencias')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Existencias', selected: true })).toBeInTheDocument();
+      expect(replaceMock).toHaveBeenCalledWith(
+        expect.stringContaining('tab=stock'),
+        expect.objectContaining({ scroll: false }),
+      );
+    });
+
+    await user.click(screen.getByRole('tab', { name: 'Por bodega' }));
+
+    await waitFor(() => {
       expect(screen.getByText('Técnico zona norte')).toBeInTheDocument();
       expect(screen.getByText('MOV-02')).toBeInTheDocument();
       expect(screen.queryByText('BOD-01')).not.toBeInTheDocument();
     });
   });
 
-  it('permite ver existencias por ubicación en bodegas y existencias', async () => {
+  it('permite ver existencias por ubicación en la subvista Por bodega', async () => {
     const user = userEvent.setup();
-    render(<InventoryClient initialTab="locations" />);
+    render(<InventoryClient initialTab="stock" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Bodegas y existencias')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Existencias', selected: true })).toBeInTheDocument();
     });
+
+    await user.click(screen.getByRole('tab', { name: 'Por bodega' }));
 
     await waitFor(() => {
       expect(
@@ -926,7 +949,7 @@ describe('InventoryClient', () => {
     render(<InventoryClient initialTab="locations" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Bodegas y existencias')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Bodegas' })).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole('tab', { name: 'Salidas' }));
@@ -938,10 +961,10 @@ describe('InventoryClient', () => {
     render(<InventoryClient initialTab="locations" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Bodegas y existencias')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Bodegas' })).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('button', { name: 'Ir a salidas' }));
+    await user.click(screen.getByRole('tab', { name: 'Salidas' }));
     expect(await screen.findByRole('tab', { name: 'Salidas', selected: true })).toBeInTheDocument();
   });
 
@@ -1240,6 +1263,7 @@ describe('InventoryClient', () => {
           partyRefId: 'supplier-1',
           quoteNumber: 'COT-100',
           amount: '900000',
+          shippingCost: '0',
           currency: 'COP',
           validUntil: null,
           notes: null,

@@ -34,6 +34,7 @@ jest.mock('@iwana/db', () => ({
   SupplierQuote: class SupplierQuote {},
   PurchaseOrder: class PurchaseOrder {},
   PurchaseOrderLine: class PurchaseOrderLine {},
+  PurchaseRfq: class PurchaseRfq {},
   GoodsReceipt: class GoodsReceipt {},
   GoodsReceiptLine: class GoodsReceiptLine {},
   InventoryItem: class InventoryItem {},
@@ -91,6 +92,7 @@ describe('Purchasing flow integration (tenant-aware mock)', () => {
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
         getRawOne: jest.fn().mockResolvedValue({
           maxValue:
             alias === 'request'
@@ -314,7 +316,7 @@ describe('Purchasing flow integration (tenant-aware mock)', () => {
       actor,
     );
 
-    expect(createdRequest.status).toBe(PurchaseRequestStatus.PENDING_QUOTES);
+    expect(createdRequest.status).toBe(PurchaseRequestStatus.DRAFT);
     expect(state.requestLines).toHaveLength(2);
 
     await purchasingService.addSupplierQuote(

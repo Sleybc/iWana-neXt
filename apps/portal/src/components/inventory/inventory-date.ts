@@ -11,6 +11,15 @@ export function toLocalDateValue(date: Date | undefined): string {
   return `${year}-${month}-${day}`;
 }
 
+/** Normaliza ISO o `YYYY-MM-DD` a valor local de DatePicker. */
+export function toLocalDateValueFromApi(value?: string | null): string {
+  if (!value) {
+    return '';
+  }
+  const day = value.slice(0, 10);
+  return LOCAL_DATE_PATTERN.test(day) ? day : '';
+}
+
 export function toDateFromLocalDateValue(value?: string): Date | undefined {
   if (!value || !LOCAL_DATE_PATTERN.test(value)) {
     return undefined;

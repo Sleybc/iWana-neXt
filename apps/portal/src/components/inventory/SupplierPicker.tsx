@@ -1,9 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { cn } from '@iwana/ui';
+import { Input, cn } from '@iwana/ui';
 import { purchasingApi, type SupplierListItemRecord } from '@/lib/api-client';
-import { PortalAlert, interactiveFocusClassName } from '@/components/shared/portal-ui';
+import { PortalSkeletonBlock, interactiveFocusClassName } from '@/components/shared/portal-ui';
 import { getPartyStatusLabel } from './inventory-labels';
 
 interface SupplierPickerProps {
@@ -16,11 +16,6 @@ interface SupplierPickerProps {
   onChange: (partyRefId: string | null, displayName: string | null) => void;
   onPreview?: (partyRefId: string) => void;
 }
-
-const fieldClassName = cn(
-  'w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white',
-  interactiveFocusClassName,
-);
 
 export function SupplierPicker({
   id,
@@ -50,12 +45,14 @@ export function SupplierPicker({
   }, [selectedLabel, value]);
 
   const trimmedSearch = search.trim();
-  const showList = isOpen && trimmedSearch.length > 0 && !disabled;
+  // Con error de carga no mostrar listbox (evita "sin resultados" contradictorio).
+  const showList = isOpen && trimmedSearch.length > 0 && !disabled && !error;
 
   useEffect(() => {
     if (disabled || trimmedSearch.length === 0) {
       setOptions([]);
       setIsLoading(false);
+      setError(null);
       return;
     }
 
@@ -70,6 +67,7 @@ export function SupplierPicker({
         } catch {
           setError('No fue posible cargar proveedores.');
           setOptions([]);
+          setIsOpen(false);
         } finally {
           setIsLoading(false);
         }
@@ -84,6 +82,7 @@ export function SupplierPicker({
       onChange(option.partyRefId, option.displayName);
       setSearch(option.displayName);
       setIsOpen(false);
+      setError(null);
       onPreview?.(option.partyRefId);
     },
     [onChange, onPreview],
@@ -94,6 +93,7 @@ export function SupplierPicker({
     setSearch('');
     setIsOpen(false);
     setOptions([]);
+    setError(null);
   }
 
   function moveHighlight(delta: number) {
@@ -119,11 +119,21 @@ export function SupplierPicker({
     }
 
     if (isLoading) {
-      return <p className="px-3 py-2 text-xs text-gray-500">Buscando proveedores…</p>;
+      return (
+        <li role="presentation" className="space-y-2 px-3 py-3" aria-hidden="true">
+          <PortalSkeletonBlock className="h-4 w-3/4" />
+          <PortalSkeletonBlock className="h-4 w-1/2" />
+          <PortalSkeletonBlock className="h-4 w-2/3" />
+        </li>
+      );
     }
 
     if (options.length === 0) {
-      return <p className="px-3 py-2 text-xs text-gray-500">Sin resultados para esta búsqueda.</p>;
+      return (
+        <li role="presentation" className="px-3 py-2 text-xs text-gray-500">
+          Sin resultados para esta búsqueda.
+        </li>
+      );
     }
 
     return options.map((option, index) => (
@@ -136,7 +146,11 @@ export function SupplierPicker({
           type="button"
           role="option"
           aria-selected={highlightedIndex === index}
-          className={`flex w-full items-center justify-between px-3 py-2 text-left hover:bg-gray-50 focus-visible:bg-gray-50 dark:hover:bg-dark-surface-2 dark:focus-visible:bg-dark-surface-2 ${highlightedIndex === index ? 'bg-iwana-primary-50/70 dark:bg-iwana-primary-950/30' : ''} ${interactiveFocusClassName}`}
+          className={cn(
+            'flex w-full items-center justify-between px-3 py-2 text-left hover:bg-gray-50 focus-visible:bg-gray-50 dark:hover:bg-dark-surface-2 dark:focus-visible:bg-dark-surface-2',
+            highlightedIndex === index && 'bg-iwana-primary-50/70 dark:bg-iwana-primary-950/30',
+            interactiveFocusClassName,
+          )}
           onMouseEnter={() => setHighlightedIndex(index)}
           onClick={() => selectOption(option)}
         >
@@ -150,89 +164,87 @@ export function SupplierPicker({
   }, [highlightedIndex, isLoading, listboxId, options, selectOption, showList]);
 
   return (
-    <div className="space-y-1 text-sm">
-      <label
-        htmlFor={inputId}
-        id={`${inputId}-label`}
-        className="font-medium text-gray-900 dark:text-white"
-      >
-        {label}
-      </label>
-      <div className="relative">
-        <input
-          id={inputId}
-          role="combobox"
-          aria-labelledby={`${inputId}-label`}
-          aria-expanded={showList}
-          aria-controls={listboxId}
-          aria-activedescendant={activeDescendant}
-          aria-autocomplete="list"
-          autoComplete="off"
-          className={fieldClassName}
-          placeholder={placeholder}
-          value={search}
-          disabled={disabled}
-          onFocus={() => {
-            if (trimmedSearch.length > 0) {
-              setIsOpen(true);
-            }
-          }}
-          onChange={(event) => {
-            const nextValue = event.target.value;
-            setSearch(nextValue);
-            setIsOpen(nextValue.trim().length > 0);
-            if (value) {
-              onChange(null, null);
-            }
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'ArrowDown') {
-              event.preventDefault();
+    <div className="w-full space-y-1">
+      <Input
+        id={inputId}
+        label={label}
+        role="combobox"
+        aria-expanded={showList}
+        aria-controls={listboxId}
+        aria-activedescendant={activeDescendant}
+        aria-autocomplete="list"
+        autoComplete="off"
+        placeholder={placeholder}
+        value={search}
+        disabled={disabled}
+        error={error ?? undefined}
+        endAdornment={
+          value ? (
+            <button
+              type="button"
+              className={cn(
+                'text-xs font-medium text-iwana-primary hover:underline',
+                interactiveFocusClassName,
+              )}
+              onClick={handleClear}
+            >
+              Limpiar
+            </button>
+          ) : null
+        }
+        onFocus={() => {
+          if (trimmedSearch.length > 0 && !error) {
+            setIsOpen(true);
+          }
+        }}
+        onChange={(event) => {
+          const nextValue = event.target.value;
+          setSearch(nextValue);
+          setError(null);
+          setIsOpen(nextValue.trim().length > 0);
+          if (value) {
+            onChange(null, null);
+          }
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            if (!error) {
               setIsOpen(true);
               moveHighlight(1);
-              return;
             }
+            return;
+          }
 
-            if (event.key === 'ArrowUp') {
-              event.preventDefault();
+          if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            if (!error) {
               setIsOpen(true);
               moveHighlight(-1);
-              return;
             }
+            return;
+          }
 
-            if (event.key === 'Enter' && showList && options[highlightedIndex]) {
-              event.preventDefault();
-              selectOption(options[highlightedIndex]);
-              return;
-            }
+          if (event.key === 'Enter' && showList && options[highlightedIndex]) {
+            event.preventDefault();
+            selectOption(options[highlightedIndex]);
+            return;
+          }
 
-            if (event.key === 'Escape') {
-              event.preventDefault();
-              setIsOpen(false);
-            }
-          }}
-        />
-        {value ? (
-          <button
-            type="button"
-            className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-iwana-primary hover:underline ${interactiveFocusClassName}`}
-            onClick={handleClear}
-          >
-            Limpiar
-          </button>
-        ) : null}
-      </div>
-
-      {error ? (
-        <PortalAlert variant="error" title="Búsqueda de proveedor" description={error} />
-      ) : null}
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            setIsOpen(false);
+          }
+        }}
+      />
 
       {showList ? (
         <ul
           id={listboxId}
           role="listbox"
           aria-label={`Resultados de ${label}`}
-          className="max-h-44 overflow-y-auto rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-dark-border dark:bg-dark-surface-3"
+          aria-busy={isLoading || undefined}
+          className="max-h-44 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-3 dark:shadow-none"
         >
           {listContent}
         </ul>

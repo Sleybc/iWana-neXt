@@ -1,0 +1,6 @@
+Fonts bundled for RFQ PDF generation (iWana neXt / @iwana/api).
+
+- Exo 2 (Copyright The Exo 2 Project Authors) — SIL Open Font License 1.1 — see OFL-Exo2.txt
+- JetBrains Mono (Copyright 2020 The JetBrains Mono Project Authors) — SIL Open Font License 1.1 — see OFL-JetBrainsMono.txt
+
+Source snapshots downloaded 2026-07-17 for embedding in PDFKit documents.

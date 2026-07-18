@@ -1,11 +1,17 @@
 'use client';
 
-import { Button, Input } from '@iwana/ui';
+import { Badge, Button, Input } from '@iwana/ui';
 import { PurchaseRequestLineSourceKind } from '@iwana/shared';
 import type { PurchaseDraftLine } from './purchase-request-draft';
 import { getPurchaseRequestLineSourceLabel } from './inventory-labels';
 import { PurchaseBulkEditBar } from './PurchaseBulkEditBar';
-import { interactiveFocusClassName } from '@/components/shared/portal-ui';
+import {
+  interactiveFocusClassName,
+  portalDataTableCellClassName,
+  portalDataTableHeadClassName,
+  portalDataTableShellClassName,
+  portalTableRowHoverClassName,
+} from '@/components/shared/portal-ui';
 
 interface PurchaseDraftLinesTableProps {
   lines: PurchaseDraftLine[];
@@ -50,75 +56,97 @@ export function PurchaseDraftLinesTable({
         </div>
       ) : null}
 
-      <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface-2">
-        <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-border">
-          <thead className="bg-gray-50 dark:bg-dark-surface-3">
-            <tr>
-              <th className="px-4 py-3 text-left">
-                <input
-                  type="checkbox"
-                  className={`h-4 w-4 rounded border-gray-300 accent-iwana-primary ${interactiveFocusClassName}`}
-                  aria-label="Seleccionar todas las líneas"
-                  checked={allSelected}
-                  onChange={(event) => onToggleAll(event.target.checked)}
-                />
-              </th>
-              <th className="px-4 py-3 text-left">Producto</th>
-              <th className="px-4 py-3 text-left">Origen</th>
-              <th className="px-4 py-3 text-left">Cantidad</th>
-              <th className="px-4 py-3 text-left">Unidad</th>
-              <th className="px-4 py-3 text-left">Proveedor sugerido</th>
-              <th className="px-4 py-3 text-left">Acción</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 dark:divide-dark-border">
-            {lines.map((line) => (
-              <tr key={line.id}>
-                <td className="px-4 py-3">
+      <div className={portalDataTableShellClassName}>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-border">
+            <thead className="bg-gray-50 dark:bg-dark-surface-3">
+              <tr>
+                <th className={`${portalDataTableHeadClassName} w-10`}>
                   <input
                     type="checkbox"
                     className={`h-4 w-4 rounded border-gray-300 accent-iwana-primary ${interactiveFocusClassName}`}
-                    aria-label={`Seleccionar línea ${line.productLabel}`}
-                    checked={selectedLineIds.includes(line.id)}
-                    onChange={() => onToggleLine(line.id)}
+                    aria-label="Seleccionar todas las líneas"
+                    checked={allSelected}
+                    onChange={(event) => onToggleAll(event.target.checked)}
                   />
-                </td>
-                <td className="px-4 py-3">
-                  {line.sourceKind === PurchaseRequestLineSourceKind.FREE_TEXT ? (
-                    <Input
-                      aria-label="Descripción manual"
-                      value={line.productLabel}
-                      onChange={(event) => onLabelChange(line.id, event.target.value)}
-                    />
-                  ) : (
-                    <span className="font-medium text-gray-900 dark:text-white">
-                      {line.productLabel}
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                  {getPurchaseRequestLineSourceLabel(line.sourceKind)}
-                </td>
-                <td className="px-4 py-3">
-                  <Input
-                    aria-label={`Cantidad ${line.productLabel}`}
-                    value={line.quantityRequested}
-                    onChange={(event) => onQuantityChange(line.id, event.target.value)}
-                  />
-                </td>
-                <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{line.unitOfMeasure}</td>
-                <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                  {line.suggestedPartyName || 'Sin proveedor sugerido'}
-                </td>
-                <td className="px-4 py-3">
-                  <Button type="button" variant="ghost" size="sm" onClick={() => onRemove(line.id)}>
-                    Quitar
-                  </Button>
-                </td>
+                </th>
+                <th className={portalDataTableHeadClassName}>Producto</th>
+                <th className={portalDataTableHeadClassName}>Cantidad</th>
+                <th className={portalDataTableHeadClassName}>Proveedor sugerido</th>
+                <th className={`${portalDataTableHeadClassName} w-24`}>
+                  <span className="sr-only">Acción</span>
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-dark-border">
+              {lines.map((line) => (
+                <tr key={line.id} className={portalTableRowHoverClassName}>
+                  <td className={portalDataTableCellClassName}>
+                    <input
+                      type="checkbox"
+                      className={`h-4 w-4 rounded border-gray-300 accent-iwana-primary ${interactiveFocusClassName}`}
+                      aria-label={`Seleccionar línea ${line.productLabel}`}
+                      checked={selectedLineIds.includes(line.id)}
+                      onChange={() => onToggleLine(line.id)}
+                    />
+                  </td>
+                  <td className={portalDataTableCellClassName}>
+                    <div className="flex flex-col gap-1.5">
+                      {line.sourceKind === PurchaseRequestLineSourceKind.FREE_TEXT ? (
+                        <Input
+                          aria-label="Descripción manual"
+                          value={line.productLabel}
+                          onChange={(event) => onLabelChange(line.id, event.target.value)}
+                        />
+                      ) : (
+                        <span className="font-medium text-gray-900 dark:text-white">
+                          {line.productLabel}
+                        </span>
+                      )}
+                      <span>
+                        <Badge variant="neutral">
+                          {getPurchaseRequestLineSourceLabel(line.sourceKind)}
+                        </Badge>
+                      </span>
+                    </div>
+                  </td>
+                  <td className={portalDataTableCellClassName}>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        aria-label={`Cantidad ${line.productLabel}`}
+                        className="w-20 tabular-nums"
+                        value={line.quantityRequested}
+                        onChange={(event) => onQuantityChange(line.id, event.target.value)}
+                      />
+                      <span className="text-gray-500 dark:text-gray-400">{line.unitOfMeasure}</span>
+                    </div>
+                  </td>
+                  <td className={portalDataTableCellClassName}>
+                    {line.suggestedPartyName ? (
+                      <span className="text-gray-700 dark:text-gray-200">
+                        {line.suggestedPartyName}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400 dark:text-gray-500">
+                        Sin proveedor sugerido
+                      </span>
+                    )}
+                  </td>
+                  <td className={`${portalDataTableCellClassName} text-right`}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onRemove(line.id)}
+                    >
+                      Quitar
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

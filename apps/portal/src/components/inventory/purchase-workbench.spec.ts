@@ -6,7 +6,17 @@ import {
   PurchaseRequestType,
 } from '@iwana/shared';
 import type { PurchaseRequestDetailRecord } from '@/lib/api-client';
-import { getPurchaseNextAction, PURCHASE_WORKBENCH_TAB_LABELS } from './purchase-workbench';
+import {
+  canVisitPurchaseWorkbenchPhase,
+  getCotizarPrimarySection,
+  getPurchaseNextAction,
+  getPurchaseWorkbenchPhase,
+  getSuggestedPurchaseWorkbenchPhase,
+  PURCHASE_WORKBENCH_PHASE_LABELS,
+  PURCHASE_WORKBENCH_PHASE_TABS,
+  PURCHASE_WORKBENCH_TAB_LABELS,
+  resolveTabForPurchaseWorkbenchPhase,
+} from './purchase-workbench';
 
 function buildDetail(
   overrides: Partial<PurchaseRequestDetailRecord['request']> = {},
@@ -59,12 +69,29 @@ describe('purchase-workbench', () => {
     expect(tabs.indexOf('orders')).toBe(tabs.indexOf('awards') + 1);
   });
 
-  it('sugiere cotización cuando la solicitud está pendiente de cotizaciones', () => {
+  it('sugiere cotizar cuando la solicitud está pendiente de cotizaciones', () => {
     const action = getPurchaseNextAction(buildDetail());
     expect(action).toEqual({
-      message: 'Registrar al menos una cotización para continuar el flujo.',
-      suggestedTab: 'quotes',
+      message: 'Registra al menos una cotización para poder seguir.',
+      suggestedTab: 'cotizar',
     });
+  });
+
+  it('sugiere cotizar cuando la solicitud está en borrador', () => {
+    const action = getPurchaseNextAction(buildDetail({ status: PurchaseRequestStatus.DRAFT }));
+    expect(action).toEqual({
+      message: 'Puedes abrir una ronda de cotización o registrar una cotización sin ronda formal.',
+      suggestedTab: 'cotizar',
+    });
+  });
+
+  it('expone la pestaña Cotizar entre líneas y aprobación', () => {
+    expect(PURCHASE_WORKBENCH_TAB_LABELS.cotizar).toBe('Cotizar');
+    const tabs = Object.keys(PURCHASE_WORKBENCH_TAB_LABELS);
+    expect(tabs.indexOf('cotizar')).toBe(tabs.indexOf('lines') + 1);
+    expect(tabs.indexOf('approval')).toBe(tabs.indexOf('cotizar') + 1);
+    expect(tabs).not.toContain('rfq');
+    expect(tabs).not.toContain('quotes');
   });
 
   it('sugiere recepción cuando hay OC pendiente', () => {
@@ -101,13 +128,13 @@ describe('purchase-workbench', () => {
 
   it('afirma estados terminales sin sugerir el siguiente paso', () => {
     expect(getPurchaseNextAction(buildDetail({ status: PurchaseRequestStatus.REJECTED }))).toEqual({
-      message: 'Esta solicitud fue rechazada. No hay más pasos en el flujo.',
+      message: 'Esta solicitud fue rechazada. No hay más pasos en esta solicitud.',
       suggestedTab: 'summary',
       terminal: true,
     });
     expect(getPurchaseNextAction(buildDetail({ status: PurchaseRequestStatus.CANCELLED }))).toEqual(
       {
-        message: 'Esta solicitud fue cancelada. No hay más pasos en el flujo.',
+        message: 'Esta solicitud fue cancelada. No hay más pasos en esta solicitud.',
         suggestedTab: 'summary',
         terminal: true,
       },
@@ -236,5 +263,84 @@ describe('purchase-workbench', () => {
     );
 
     expect(action?.suggestedTab).toBe('orders');
+  });
+
+  it('CA-24: mapea tabs a fases Preparar / Decidir / Abastecer', () => {
+    expect(PURCHASE_WORKBENCH_PHASE_LABELS).toEqual({
+      prepare: 'Preparar',
+      decide: 'Decidir',
+      fulfill: 'Abastecer',
+    });
+    expect(PURCHASE_WORKBENCH_PHASE_TABS.prepare).toEqual(['summary', 'lines']);
+    expect(PURCHASE_WORKBENCH_PHASE_TABS.decide).toEqual(['cotizar', 'approval', 'awards']);
+    expect(PURCHASE_WORKBENCH_PHASE_TABS.fulfill).toEqual(['orders', 'receipts']);
+    expect(getPurchaseWorkbenchPhase('summary')).toBe('prepare');
+    expect(getPurchaseWorkbenchPhase('cotizar')).toBe('decide');
+    expect(getPurchaseWorkbenchPhase('receipts')).toBe('fulfill');
+  });
+
+  it('CA-24: sugiere fase según next-action', () => {
+    expect(
+      getSuggestedPurchaseWorkbenchPhase(buildDetail({ status: PurchaseRequestStatus.DRAFT })),
+    ).toBe('decide');
+    expect(
+      getSuggestedPurchaseWorkbenchPhase(
+        buildDetail({ status: PurchaseRequestStatus.PENDING_APPROVAL }),
+      ),
+    ).toBe('decide');
+    expect(
+      getSuggestedPurchaseWorkbenchPhase(buildDetail({ status: PurchaseRequestStatus.APPROVED })),
+    ).toBe('fulfill');
+    expect(
+      getSuggestedPurchaseWorkbenchPhase(
+        buildDetail(
+          { status: PurchaseRequestStatus.CONVERTED_TO_PO },
+          {
+            orders: [
+              {
+                id: 'po-1',
+                tenantId: 'tenant-1',
+                orderNumber: 'PO-0001',
+                purchaseRequestId: 'req-1',
+                partyRefId: 'supplier-1',
+                status: PurchaseOrderStatus.APPROVED,
+                expectedDeliveryDate: null,
+                approvedByUserId: null,
+                cancellationReason: null,
+                cancelledByUserId: null,
+                closedByUserId: null,
+                notes: null,
+                createdAt: '2026-06-01T00:00:00.000Z',
+                updatedAt: '2026-06-01T00:00:00.000Z',
+              },
+            ],
+          },
+        ),
+      ),
+    ).toBe('fulfill');
+  });
+
+  it('CA-24: deshabilita Abastecer en borrador y resuelve tab al cambiar de fase', () => {
+    const draft = buildDetail({ status: PurchaseRequestStatus.DRAFT });
+    expect(canVisitPurchaseWorkbenchPhase('prepare', draft)).toBe(true);
+    expect(canVisitPurchaseWorkbenchPhase('decide', draft)).toBe(true);
+    expect(canVisitPurchaseWorkbenchPhase('fulfill', draft)).toBe(false);
+    expect(resolveTabForPurchaseWorkbenchPhase('decide', draft)).toBe('cotizar');
+    expect(resolveTabForPurchaseWorkbenchPhase('prepare', draft, 'lines')).toBe('lines');
+  });
+
+  it('CA-24: matriz Cotizar progressive disclosure', () => {
+    expect(
+      getCotizarPrimarySection({ hasActiveRfq: true, quotesCount: 2, canAddQuote: false }),
+    ).toBe('invitations');
+    expect(
+      getCotizarPrimarySection({ hasActiveRfq: false, quotesCount: 2, canAddQuote: true }),
+    ).toBe('comparison');
+    expect(
+      getCotizarPrimarySection({ hasActiveRfq: false, quotesCount: 0, canAddQuote: true }),
+    ).toBe('manual');
+    expect(
+      getCotizarPrimarySection({ hasActiveRfq: false, quotesCount: 0, canAddQuote: false }),
+    ).toBe('invitations');
   });
 });

@@ -36,6 +36,9 @@ export class SupplierQuote {
   @Column({ type: 'numeric', precision: 14, scale: 2 })
   amount: string;
 
+  @Column({ name: 'shipping_cost', type: 'numeric', precision: 14, scale: 2, default: 0 })
+  shippingCost: string;
+
   @Column({ type: 'varchar', length: 3 })
   currency: string;
 

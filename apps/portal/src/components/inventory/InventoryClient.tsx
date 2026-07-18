@@ -18,6 +18,7 @@ import {
 } from '@iwana/ui';
 import {
   InventoryCategoryStatus,
+  PurchaseOrderStatus,
   SerializedAssetStatus,
   SupplierProfileStatus,
   WriteOffReason,
@@ -95,7 +96,9 @@ import { SuppliersPanel } from './SuppliersPanel';
 import { SupplierFormDrawer } from './SupplierFormDrawer';
 import { SerializedAssetDetailDrawer } from './SerializedAssetDetailDrawer';
 import { StockLocationFormDialog } from './StockLocationFormDialog';
-import { StockLocationsMatrix, type LocationMatrixCustodyFilter } from './StockLocationsMatrix';
+import { type LocationMatrixCustodyFilter } from './StockLocationsMatrix';
+import { StockLocationsPanel } from './StockLocationsPanel';
+import { StockWorkspace } from './StockWorkspace';
 
 import { StockIssuesWorkspace } from './StockIssuesWorkspace';
 import {
@@ -119,6 +122,7 @@ import { resolveInventoryTab, shouldOpenLocationCreateFromUrl } from './inventor
 export type InventoryTab =
   | 'summary'
   | 'catalog'
+  | 'stock'
   | 'purchasing'
   | 'suppliers'
   | 'locations'
@@ -473,6 +477,21 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     );
   }, [searchParams]);
 
+  useEffect(() => {
+    const tabFromUrl = searchParams.get('tab');
+    const custodyFromUrl = searchParams.get('custody');
+    if (tabFromUrl !== 'locations' || custodyFromUrl !== 'mobile') {
+      return;
+    }
+
+    setActiveTab('stock');
+    const nextSearchParams = new URLSearchParams(searchParams.toString());
+    nextSearchParams.set('tab', 'stock');
+    nextSearchParams.set('custody', 'mobile');
+    const nextQuery = nextSearchParams.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+
   const loadCommercialProductOptions = useCallback(async () => {
     try {
       const products: AdditionalProduct[] = await commercialApi.getAdditionalProducts();
@@ -543,12 +562,12 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
 
       const nextSearchParams = new URLSearchParams(searchParams.toString());
       if (nextFilter === 'mobile') {
-        nextSearchParams.set('tab', 'locations');
+        nextSearchParams.set('tab', 'stock');
         nextSearchParams.set('custody', 'mobile');
       } else {
         nextSearchParams.delete('custody');
-        if (nextSearchParams.get('tab') === 'locations') {
-          nextSearchParams.set('tab', 'locations');
+        if (nextSearchParams.get('tab') === 'stock') {
+          nextSearchParams.set('tab', 'stock');
         }
       }
 
@@ -580,7 +599,6 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     const uniqueIds = [...new Set(supplierIds.filter(Boolean))];
 
     if (uniqueIds.length === 0) {
-      setSupplierLabels({});
       return;
     }
 
@@ -595,7 +613,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       }),
     );
 
-    setSupplierLabels(Object.fromEntries(entries));
+    setSupplierLabels((previous) => ({ ...previous, ...Object.fromEntries(entries) }));
   }, []);
 
   const loadCatalogOptions = useCallback(async (search?: string) => {
@@ -1130,13 +1148,16 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     }
   }
 
-  async function handleApproveRequest(requestId: string, exceptionReason?: string) {
+  async function handleApproveRequest(
+    requestId: string,
+    payload?: { exceptionReason?: string; notes?: string },
+  ) {
     setIsSubmittingApprove(true);
     setApproveError(null);
     try {
       await purchasingApi.approveRequest(requestId, {
-        notes: 'Aprobada desde el workspace de compras del portal.',
-        exceptionReason: exceptionReason ?? null,
+        notes: payload?.notes?.trim() || 'Aprobada desde el workspace de compras del portal.',
+        exceptionReason: payload?.exceptionReason ?? null,
       });
       await loadData(true);
     } catch (submitError) {
@@ -1238,18 +1259,9 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     }
   }
 
-  const loadOrderDetailForRequest = useCallback(async (requestId: string) => {
+  const loadOrderDetail = useCallback(async (orderId: string) => {
     try {
-      const orders = await purchasingApi.listOrders({ purchaseRequestId: requestId });
-      const order = orders[0];
-
-      if (!order) {
-        setLatestOrder(null);
-        setLatestOrderLines([]);
-        return;
-      }
-
-      const detail = await purchasingApi.getOrder(order.id);
+      const detail = await purchasingApi.getOrder(orderId);
       setLatestOrder(detail);
       setLatestOrderLines(detail.lines);
     } catch {
@@ -1258,17 +1270,63 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     }
   }, []);
 
+  const loadOrderDetailForRequest = useCallback(
+    async (requestId: string) => {
+      try {
+        const orders = await purchasingApi.listOrders({ purchaseRequestId: requestId });
+        const receivable =
+          orders.find((order) =>
+            [PurchaseOrderStatus.APPROVED, PurchaseOrderStatus.PARTIALLY_RECEIVED].includes(
+              order.status,
+            ),
+          ) ?? orders[0];
+
+        if (!receivable) {
+          setLatestOrder(null);
+          setLatestOrderLines([]);
+          return;
+        }
+
+        await loadOrderDetail(receivable.id);
+      } catch {
+        setLatestOrder(null);
+        setLatestOrderLines([]);
+      }
+    },
+    [loadOrderDetail],
+  );
+
   async function handleCreateOrder(payload: CreatePurchaseOrderDto) {
     setIsSubmittingOrder(true);
     setOrderError(null);
     try {
-      const order = await purchasingApi.createOrder(payload);
-      const detail = await purchasingApi.getOrder(order.id);
-      setLatestOrder(detail);
-      setLatestOrderLines(detail.lines);
+      const result = await purchasingApi.createOrder(payload);
+      const createdOrders =
+        'orders' in result && Array.isArray(result.orders)
+          ? result.orders
+          : 'id' in result
+            ? [result]
+            : [];
+
+      const primaryOrder =
+        createdOrders.find((order) =>
+          [PurchaseOrderStatus.APPROVED, PurchaseOrderStatus.PARTIALLY_RECEIVED].includes(
+            order.status,
+          ),
+        ) ??
+        createdOrders[0] ??
+        null;
+
+      if (primaryOrder) {
+        await loadOrderDetail(primaryOrder.id);
+      } else {
+        setLatestOrder(null);
+        setLatestOrderLines([]);
+      }
       await loadData(true);
     } catch (submitError) {
       setOrderError(mapInventoryError(submitError));
+      throw submitError;
     } finally {
       setIsSubmittingOrder(false);
     }
@@ -1533,6 +1591,9 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
               </TabsTrigger>
               <TabsTrigger value="catalog" className={portalModuleTabTriggerClassName}>
                 Catálogo
+              </TabsTrigger>
+              <TabsTrigger value="stock" className={portalModuleTabTriggerClassName}>
+                Existencias
               </TabsTrigger>
               <TabsTrigger value="purchasing" className={portalModuleTabTriggerClassName}>
                 Compras
@@ -1836,7 +1897,12 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             onCancelOrder={handleCancelOrder}
             onCloseOrder={handleCloseOrder}
             onCounterPurchase={handleCounterPurchase}
+            onDismissCounterPurchaseSuccess={() => {
+              setLatestCounterPurchase(null);
+              setCounterPurchaseError(null);
+            }}
             onPrepareOrderDrawer={loadOrderDetailForRequest}
+            onSelectOrder={loadOrderDetail}
             onRefresh={() => loadData(true)}
             onCatalogSearch={handleCatalogSearch}
           />
@@ -1887,35 +1953,45 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
           </PortalPanel>
         </TabsContent>
 
+        <TabsContent value="stock" className="space-y-6">
+          <PortalPanel
+            eyebrow="Operación"
+            title="Existencias"
+            description="Consulta saldos por producto o bodega y audita el kardex de movimientos."
+            contentClassName="space-y-4"
+          >
+            <StockWorkspace
+              items={items}
+              balances={balances}
+              locations={locations}
+              userLabelById={userLabelById}
+              custodyFilter={locationCustodyFilter}
+              canAdjust
+              onCustodyFilterChange={handleLocationCustodyFilterChange}
+              onAdjustmentRegistered={(movementNumber) => {
+                setMovementNotice(`Ajuste registrado: ${movementNumber}`);
+                void loadData(true);
+              }}
+            />
+          </PortalPanel>
+        </TabsContent>
+
         <TabsContent value="locations" className="space-y-6">
           <PortalPanel
             eyebrow="Red logística"
-            title="Bodegas y existencias"
-            description={
-              locationCustodyFilter === 'mobile'
-                ? 'Vista de material en manos de técnicos y cuadrillas. Revisa disponibilidad, uso y persona a cargo.'
-                : 'Compara bodegas activas con el material guardado para detectar exceso o dispersión.'
-            }
+            title="Bodegas"
+            description="Administra bodegas, capacidad y responsables. Las existencias viven en la pestaña Existencias."
             actions={
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" onClick={openLocationCreateDialog}>
-                  Crear bodega
-                </Button>
-                <Button type="button" variant="secondary" onClick={() => setActiveTab('issues')}>
-                  Ir a salidas
-                </Button>
-              </div>
+              <Button type="button" variant="secondary" onClick={() => setActiveTab('stock')}>
+                Ir a existencias
+              </Button>
             }
             contentClassName="space-y-4"
           >
-            <StockLocationsMatrix
+            <StockLocationsPanel
               locations={locations}
               balances={balances}
-              items={items}
               userLabelById={userLabelById}
-              custodyFilter={locationCustodyFilter}
-              isLoading={isLoading}
-              onCustodyFilterChange={handleLocationCustodyFilterChange}
               onCreateLocation={openLocationCreateDialog}
               onEditLocation={(location) => {
                 setLocationEditItem(location);

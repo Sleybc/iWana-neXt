@@ -1,8 +1,18 @@
-import { toDateFromLocalDateValue, toLocalDateValue } from './inventory-date';
+import {
+  toDateFromLocalDateValue,
+  toLocalDateValue,
+  toLocalDateValueFromApi,
+} from './inventory-date';
 
 describe('inventory-date', () => {
   it('convierte fecha local a ISO yyyy-MM-dd', () => {
     expect(toLocalDateValue(new Date(2026, 5, 25))).toBe('2026-06-25');
+  });
+
+  it('normaliza ISO de API a yyyy-MM-dd local', () => {
+    expect(toLocalDateValueFromApi('2026-08-15T00:00:00.000Z')).toBe('2026-08-15');
+    expect(toLocalDateValueFromApi('2026-08-15')).toBe('2026-08-15');
+    expect(toLocalDateValueFromApi(null)).toBe('');
   });
 
   it('parsea yyyy-MM-dd sin desfase de zona horaria', () => {

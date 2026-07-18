@@ -14,6 +14,7 @@ import {
 import { cn } from '@iwana/ui';
 import {
   type PurchaseKpiPreset,
+  isPendingQuoteStatus,
   isPurchaseRequestOverdue,
   resolveActiveKpiPreset,
   type PurchaseRequestFilters,
@@ -39,14 +40,14 @@ const METRIC_CARDS: MetricCardConfig[] = [
     preset: 'pendingQuotes',
     eyebrow: 'Cotización',
     title: 'Por cotizar',
-    description: 'Solicitudes esperando ofertas de proveedor.',
+    description: 'Solicitudes esperando cotización del proveedor.',
     accent: 'primary',
   },
   {
     preset: 'pendingApproval',
     eyebrow: 'Aprobación',
     title: 'Por aprobar',
-    description: 'Casos listos o bloqueados para decisión.',
+    description: 'Solicitudes listas o con requisitos pendientes.',
     accent: 'warning',
   },
   {
@@ -82,7 +83,7 @@ const METRIC_CARDS: MetricCardConfig[] = [
 function countMetric(requests: PurchaseRequestRecord[], preset: PurchaseKpiPreset): number {
   switch (preset) {
     case 'pendingQuotes':
-      return requests.filter((r) => r.status === PurchaseRequestStatus.PENDING_QUOTES).length;
+      return requests.filter((r) => isPendingQuoteStatus(r.status)).length;
     case 'pendingApproval':
       return requests.filter((r) => r.status === PurchaseRequestStatus.PENDING_APPROVAL).length;
     case 'readyForPo':
@@ -147,7 +148,7 @@ export function PurchaseWorkspaceSummary({
                 )}
               >
                 <p className="portal-eyebrow-muted">{metric.eyebrow}</p>
-                <p className="mt-2 text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">
+                <p className="mt-2 text-2xl font-semibold tabular-nums tracking-tight text-gray-900 dark:text-white">
                   {value}
                 </p>
                 <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">

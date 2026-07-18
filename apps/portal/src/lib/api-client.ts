@@ -69,6 +69,7 @@ import {
   PartyType,
   SerializedAssetStatus,
   SupplierProfileStatus,
+  StockAdjustmentReason,
   StockBalanceCondition,
   StockIssueStatus,
   StockIssueType,
@@ -5893,6 +5894,63 @@ export interface StockMovementResultRecord {
   lines: StockMovementLineRecord[];
 }
 
+export interface StockMovementKardexLineRecord {
+  id: string;
+  itemId: string;
+  itemName: string | null;
+  itemSku: string | null;
+  locationId: string;
+  locationName: string | null;
+  lotId: string | null;
+  lotNumber: string | null;
+  serializedAssetId: string | null;
+  quantity: string;
+  unitCost: string | null;
+}
+
+export interface StockMovementKardexRecord {
+  id: string;
+  movementNumber: string;
+  origin: StockMovementOrigin;
+  originContext: string;
+  originRefId: string | null;
+  adjustmentReason: StockAdjustmentReason | null;
+  notes: string | null;
+  actorUserId: string | null;
+  isReversal: boolean;
+  createdAt: string;
+  lines: StockMovementKardexLineRecord[];
+}
+
+export interface PaginatedStockMovements {
+  data: StockMovementKardexRecord[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface ListStockMovementsParams {
+  itemId?: string;
+  locationId?: string;
+  origin?: StockMovementOrigin;
+  dateFrom?: string;
+  dateTo?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface CreateStockAdjustmentDto {
+  itemId: string;
+  locationId: string;
+  lotId?: string | null;
+  condition?: StockBalanceCondition;
+  quantityDelta: number;
+  reason: StockAdjustmentReason;
+  notes?: string | null;
+  idempotencyKey: string;
+}
+
 export interface PurchaseRequestRecord {
   id: string;
   tenantId: string;
@@ -5908,6 +5966,8 @@ export interface PurchaseRequestRecord {
   operationalRefId: string | null;
   exceptionReason: string | null;
   approvedByUserId: string | null;
+  resolutionReason?: string | null;
+  resolvedByUserId?: string | null;
   neededByDate: string | null;
   notes: string | null;
   createdAt: string;
@@ -6127,6 +6187,18 @@ export interface SupplierProfileListResult {
   limit: number;
 }
 
+export interface SupplierQuoteLineRecord {
+  id: string;
+  tenantId: string;
+  supplierQuoteId: string;
+  purchaseRequestLineId: string;
+  quantity: string;
+  unitCost: string;
+  lineAmount: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SupplierQuoteRecord {
   id: string;
   tenantId: string;
@@ -6134,11 +6206,13 @@ export interface SupplierQuoteRecord {
   partyRefId: string;
   quoteNumber: string;
   amount: string;
+  shippingCost: string;
   currency: string;
   validUntil: string | null;
   notes: string | null;
   rfqId?: string | null;
   rfqInvitationId?: string | null;
+  lines?: SupplierQuoteLineRecord[];
   createdAt: string;
   updatedAt: string;
 }
@@ -6507,14 +6581,21 @@ export interface CreatePurchaseRequestDto {
   lines: CreatePurchaseRequestLineDto[];
 }
 
+export interface AddSupplierQuoteLineDto {
+  purchaseRequestLineId: string;
+  unitCost: number;
+}
+
 export interface AddSupplierQuoteDto {
   partyRefId: string;
   quoteNumber: string;
-  amount: number;
+  amount?: number;
+  shippingCost?: number;
   currency: string;
   validUntil?: string | null;
   notes?: string | null;
   rfqInvitationId?: string | null;
+  lines?: AddSupplierQuoteLineDto[];
 }
 
 export interface CreateRfqDto {
@@ -6577,14 +6658,30 @@ export interface PurchaseOrderLineInput {
   purchaseRequestLineId?: string | null;
 }
 
-export interface CreatePurchaseOrderDto {
-  purchaseRequestId: string;
+export interface PurchaseOrderBatchOrderInput {
   partyRefId: string;
   expectedDeliveryDate?: string | null;
   notes?: string | null;
   lines: PurchaseOrderLineInput[];
+}
+
+export interface CreatePurchaseOrderDto {
+  purchaseRequestId: string;
+  /** Modo legado: un proveedor + lines. Omitir si se usa `orders`. */
+  partyRefId?: string;
+  expectedDeliveryDate?: string | null;
+  notes?: string | null;
+  lines?: PurchaseOrderLineInput[];
+  /** Modo batch: una OC por entrada (típicamente un proveedor). */
+  orders?: PurchaseOrderBatchOrderInput[];
   status?: PurchaseOrderStatus;
 }
+
+export interface CreatePurchaseOrderBatchResult {
+  orders: PurchaseOrderRecord[];
+}
+
+export type CreatePurchaseOrderResult = PurchaseOrderRecord | CreatePurchaseOrderBatchResult;
 
 export interface ReceivePurchaseOrderLineDto {
   purchaseOrderLineId: string;
@@ -6771,6 +6868,36 @@ export const inventoryApi = {
         condition: params?.condition,
       })}`,
       { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  listMovements: (params?: ListStockMovementsParams, tenantSlug?: string) =>
+    request<PaginatedStockMovements>(
+      `/inventory/movements${buildInventoryQuery({
+        itemId: params?.itemId,
+        locationId: params?.locationId,
+        origin: params?.origin,
+        dateFrom: params?.dateFrom,
+        dateTo: params?.dateTo,
+        search: params?.search,
+        page: params?.page != null ? String(params.page) : undefined,
+        limit: params?.limit != null ? String(params.limit) : undefined,
+      })}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  getMovement: (id: string, tenantSlug?: string) =>
+    request<StockMovementKardexRecord>(
+      `/inventory/movements/${id}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  createAdjustment: (dto: CreateStockAdjustmentDto, tenantSlug?: string) =>
+    request<StockMovementResultRecord>(
+      '/inventory/adjustments',
+      { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
       tenantSlug,
     ),
 
@@ -7001,7 +7128,7 @@ export const purchasingApi = {
     ),
 
   createOrder: (dto: CreatePurchaseOrderDto, tenantSlug?: string) =>
-    request<PurchaseOrderRecord>(
+    request<CreatePurchaseOrderResult>(
       '/purchasing/orders',
       { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
       tenantSlug,
@@ -7099,7 +7226,7 @@ export const purchasingApi = {
       tenantSlug,
     ),
 
-  downloadRfqPdf: async (rfqId: string, tenantSlug?: string) => {
+  downloadRfqInvitationsZip: async (rfqId: string, tenantSlug?: string) => {
     const resolvedTenantSlug = getTenantSlug(tenantSlug);
     const token = readStoredAccessToken();
     const headers = new Headers();
@@ -7108,7 +7235,7 @@ export const purchasingApi = {
       headers.set('Authorization', `Bearer ${token}`);
     }
 
-    const res = await fetch(`${resolveApiBase()}/purchasing/rfqs/${rfqId}/pdf`, {
+    const res = await fetch(`${resolveApiBase()}/purchasing/rfqs/${rfqId}/invitations/pdf.zip`, {
       headers,
       credentials: 'include',
     });
@@ -7128,7 +7255,43 @@ export const purchasingApi = {
     const filenameMatch = disposition.match(/filename="([^"]+)"/);
     return {
       blob,
-      filename: filenameMatch?.[1] ?? `RFQ-${rfqId}.pdf`,
+      filename: filenameMatch?.[1] ?? `RFQ-${rfqId}-cotizaciones.zip`,
+    };
+  },
+
+  downloadRfqInvitationPdf: async (rfqId: string, invitationId: string, tenantSlug?: string) => {
+    const resolvedTenantSlug = getTenantSlug(tenantSlug);
+    const token = readStoredAccessToken();
+    const headers = new Headers();
+    headers.set('X-Tenant-Slug', resolvedTenantSlug);
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+
+    const res = await fetch(
+      `${resolveApiBase()}/purchasing/rfqs/${rfqId}/invitations/${invitationId}/pdf`,
+      {
+        headers,
+        credentials: 'include',
+      },
+    );
+
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      throw new ApiError(
+        res.status,
+        typeof body['code'] === 'string' ? body['code'] : 'UNKNOWN',
+        typeof body['message'] === 'string' ? body['message'] : 'Error del servidor',
+        body['details'],
+      );
+    }
+
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') ?? '';
+    const filenameMatch = disposition.match(/filename="([^"]+)"/);
+    return {
+      blob,
+      filename: filenameMatch?.[1] ?? `RFQ-${rfqId}-${invitationId}.pdf`,
     };
   },
 };

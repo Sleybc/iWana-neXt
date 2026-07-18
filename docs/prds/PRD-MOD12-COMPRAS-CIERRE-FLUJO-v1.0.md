@@ -1,7 +1,7 @@
 # PRD - MOD12 Compras: Cierre y completitud del flujo "Trabajar solicitud"
 
 **Version:** 1.0
-**Estado:** Aprobado por CTO (GO Fase 06 confirmado 2026-07-14)
+**Estado:** Aprobado por CTO (GO Fase 06 confirmado 2026-07-14; GO Fase 07 confirmado 2026-07-17)
 **Fecha:** 2026-07-14
 **Modo activo:** Product Architect + Architect (combinado)
 **Generado por:** AI-EM-ARCH
@@ -152,9 +152,9 @@ Prefijo `/api/v1/purchasing`. Guard `JwtAuthGuard + RolesGuard`, `@Roles(ADMIN, 
 | Fase | Prompt de ejecucion | Estado gate |
 | --- | --- | --- |
 | 06 — Cierre del flujo nucleo | `docs/prompts/PROMPT-MOD12-COMPRAS-CIERRE-FASE-06-v1.0.md` | **CERRADA (G7 aprobado CTO, 2026-07-14)** — ver `docs/informes/INFORME-MOD12-COMPRAS-CIERRE-FASE-06-AUDITORIA-ARCH-v1.0.md` |
-| 07 — Edicion + ciclo de vida OC | `docs/prompts/PROMPT-MOD12-COMPRAS-CIERRE-FASE-07-v1.0.md` | **Emitido — pendiente GO CTO** (habilitado por cierre de 06, ADR-016) |
-| 08 — Reabastecimiento bajo demanda | (se emite al cerrar 07) | Bloqueada por 07 |
+| 07 — Edicion + ciclo de vida OC | `docs/prompts/PROMPT-MOD12-COMPRAS-CIERRE-FASE-07-v1.0.md` | **CERRADA (G7 aprobado CTO, 2026-07-17)** — ver `docs/informes/INFORME-MOD12-COMPRAS-CIERRE-FLUJO-FASE-07-v1.0.md` (cierre funcional, 185/185 tests, commit `97e1883f`); GO confirmado directamente por el CTO en sesion con AI-EM-ARCH — sin informe de auditoria G7 independiente (a diferencia de Fase 06) |
+| 08 — Reabastecimiento bajo demanda | (no emitido) | Desbloqueada por cierre de 07 — prompt pendiente de emision |
 | 09 — Metricas de proveedor | (se emite al cerrar 08) | Bloqueada por 08 |
 
 **Requiere ADR:** No (cambios aditivos dentro del boundary MOD12 y del stack aprobado; sin nuevo bounded context ni patron avanzado).
-**Requiere CTO:** Si — GO de Fase 07 y de cada fase subsecuente (releases/impacto de schema).
+**Requiere CTO:** Si — GO de cada fase subsecuente (releases/impacto de schema). Fases 06 y 07 ya cuentan con GO.

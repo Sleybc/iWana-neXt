@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException, Optional } from '@n
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import {
+  InventoryItem,
   StockBalance,
   StockLocation,
   StockMovement,
@@ -14,12 +15,14 @@ import {
   ExecutionOrderItemAction,
   InventoryDisposition,
   InventoryResponsibleType,
+  InventoryTrackingMode,
   SerializedAssetStatus,
   StockBalanceCondition,
   StockLocationType,
   StockMovementOrigin,
 } from '@iwana/shared';
 import {
+  CreateStockAdjustmentInput,
   ExecutionOrderMovementInput,
   InternalConsumptionInput,
   ReturnAssetInput,
@@ -839,6 +842,58 @@ export class StockLedgerService {
             : [],
       },
       actor,
+    );
+  }
+
+  async recordAdjustment(
+    input: CreateStockAdjustmentInput,
+    actor: JwtPayload,
+  ): Promise<StockMovementResult> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      withTransaction(qr.manager, async (manager) => {
+        const item = await manager.findOne(InventoryItem, {
+          where: { id: input.itemId, tenantId },
+        });
+
+        if (!item) {
+          throw new NotFoundException('El ítem de inventario no existe.');
+        }
+
+        if (item.trackingMode === InventoryTrackingMode.SERIALIZED) {
+          throw new BadRequestException(
+            'Los ítems serializados no admiten ajuste manual. Use retorno o baja según el caso.',
+          );
+        }
+
+        const location = await this.findLocation(manager, tenantId, input.locationId);
+        if (!location) {
+          throw new NotFoundException('La bodega indicada no existe.');
+        }
+
+        return this.recordMovementWithManager(
+          manager,
+          tenantId,
+          {
+            origin: StockMovementOrigin.ADJUSTMENT,
+            originContext: 'inventory.adjustment',
+            originRefId: input.reason,
+            idempotencyKey: input.idempotencyKey.trim(),
+            notes: input.notes ?? null,
+            lines: [
+              {
+                itemId: input.itemId,
+                locationId: input.locationId,
+                lotId: input.lotId ?? null,
+                ...(input.condition ? { condition: input.condition } : {}),
+                quantity: input.quantityDelta,
+              },
+            ],
+          },
+          actor,
+        );
+      }),
     );
   }
 

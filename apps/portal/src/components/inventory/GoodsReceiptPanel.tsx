@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Input, Select } from '@iwana/ui';
+import { Button, DatePicker, Input, Select } from '@iwana/ui';
 import { GoodsReceiptStatus } from '@iwana/shared';
 import type {
   GoodsReceiptResultRecord,
@@ -18,22 +18,32 @@ import {
   CreateModeSummaryFooter,
   portalTextareaClassName,
 } from '@/components/shared/portal-ui';
+import { toDateFromLocalDateValue, toLocalDateValue } from './inventory-date';
 import {
+  coalesceInventoryDate,
   formatInventoryDate,
+  formatInventoryDateTime,
   formatInventoryQuantity,
   getGoodsReceiptStatusLabel,
   getPurchaseOrderStatusLabel,
+  getSupplierDisplayLabel,
 } from './inventory-labels';
 
 interface GoodsReceiptPanelProps {
   order: PurchaseOrderRecord | null;
+  /** Todas las órdenes de compra de la solicitud (selector multiorden). */
+  orders?: PurchaseOrderRecord[];
   orderLines: PurchaseOrderLineRecord[];
   items: InventoryItemRecord[];
   locations: StockLocationRecord[];
+  supplierLabels?: Record<string, string>;
+  /** Fallback de fecha si la OC se creó sin expectedDeliveryDate (p. ej. fecha requerida de la SC). */
+  fallbackExpectedDeliveryDate?: string | null;
   isSubmitting: boolean;
   error: string | null;
   lastReceipt: GoodsReceiptResultRecord | null;
   variant?: 'panel' | 'embedded';
+  onSelectOrder?: (orderId: string) => void;
   onSubmit: (payload: ReceivePurchaseOrderDto) => Promise<void>;
 }
 
@@ -77,17 +87,21 @@ const RECEIPT_STATUS_OPTIONS = Object.values(GoodsReceiptStatus).map((value) => 
 
 export function GoodsReceiptPanel({
   order,
+  orders = [],
   orderLines,
   items,
   locations,
+  supplierLabels = {},
+  fallbackExpectedDeliveryDate = null,
   isSubmitting,
   error,
   lastReceipt,
   variant = 'panel',
+  onSelectOrder,
   onSubmit,
 }: GoodsReceiptPanelProps) {
   const [destinationLocationId, setDestinationLocationId] = useState('');
-  const [receivedAt, setReceivedAt] = useState('');
+  const [receivedAt, setReceivedAt] = useState(() => toLocalDateValue(new Date()));
   const [notes, setNotes] = useState('');
   const [status, setStatus] = useState<GoodsReceiptStatus>(GoodsReceiptStatus.COMPLETED);
   const [lines, setLines] = useState<ReceiptLineDraft[]>([]);
@@ -96,6 +110,9 @@ export function GoodsReceiptPanel({
     () => orderLines.some((line) => pendingQuantity(line) > 0),
     [orderLines],
   );
+
+  const receiptForOrder =
+    lastReceipt && order && lastReceipt.receipt.purchaseOrderId === order.id ? lastReceipt : null;
 
   const locationOptions = useMemo(
     () => [
@@ -117,6 +134,15 @@ export function GoodsReceiptPanel({
     return `${order?.orderNumber ?? 'Orden'} · ${destinationLabel} · ${activeLines} línea${activeLines === 1 ? '' : 's'}`;
   }, [lines, destinationLocationId, locations, order?.orderNumber]);
 
+  const orderOptions = useMemo(
+    () =>
+      orders.map((entry) => ({
+        value: entry.id,
+        label: `${entry.orderNumber} · ${getSupplierDisplayLabel(entry.partyRefId, supplierLabels)}`,
+      })),
+    [orders, supplierLabels],
+  );
+
   useEffect(() => {
     if (!order) {
       setDestinationLocationId('');
@@ -130,10 +156,22 @@ export function GoodsReceiptPanel({
     setLines(buildLinesFromOrder(orderLines));
   }, [order, orderLines]);
 
+  useEffect(() => {
+    if (!order) {
+      return;
+    }
+    setReceivedAt(toLocalDateValue(new Date()));
+  }, [order?.id]);
+
   async function handleSubmit() {
+    const receivedAtDate = toDateFromLocalDateValue(receivedAt);
+    if (!receivedAtDate) {
+      return;
+    }
+
     await onSubmit({
       destinationLocationId,
-      receivedAt: receivedAt ? new Date(receivedAt).toISOString() : null,
+      receivedAt: receivedAtDate.toISOString(),
       notes: notes.trim() || null,
       status,
       lines: lines
@@ -151,7 +189,7 @@ export function GoodsReceiptPanel({
     });
   }
 
-  if (!order) {
+  if (!order && orders.length === 0) {
     return (
       <PortalEmptyState
         title="Sin orden para recibir"
@@ -160,9 +198,46 @@ export function GoodsReceiptPanel({
     );
   }
 
+  if (!order && orders.length > 0) {
+    return (
+      <div className="space-y-3">
+        <Select
+          id="goods-receipt-order-picker-empty"
+          label="Orden de compra"
+          value=""
+          onChange={(event) => onSelectOrder?.(event.target.value)}
+          options={[{ value: '', label: 'Selecciona una orden' }, ...orderOptions]}
+        />
+        <PortalEmptyState
+          title="Selecciona una orden"
+          description="Elige la orden de compra que vas a recibir."
+        />
+      </div>
+    );
+  }
+
+  if (!order) {
+    return null;
+  }
+
   const body = (
     <div className="space-y-4">
-      <div className="grid gap-4 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3 sm:grid-cols-3">
+      {orders.length > 1 ? (
+        <Select
+          id="goods-receipt-order-picker"
+          label="Orden de compra"
+          value={order.id}
+          onChange={(event) => onSelectOrder?.(event.target.value)}
+          options={orderOptions}
+        />
+      ) : null}
+      <div
+        className={
+          receiptForOrder
+            ? 'grid gap-4 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3 sm:grid-cols-2 lg:grid-cols-4'
+            : 'grid gap-4 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3 sm:grid-cols-3'
+        }
+      >
         <dl className="text-sm">
           <dt className="portal-eyebrow-muted">Orden</dt>
           <dd className="mt-1 font-medium text-gray-900 dark:text-white">{order.orderNumber}</dd>
@@ -176,16 +251,30 @@ export function GoodsReceiptPanel({
         <dl className="text-sm">
           <dt className="portal-eyebrow-muted">Entrega esperada</dt>
           <dd className="mt-1 font-medium text-gray-900 dark:text-white">
-            {formatInventoryDate(order.expectedDeliveryDate)}
+            {formatInventoryDate(
+              coalesceInventoryDate(
+                order.expectedDeliveryDate,
+                orders.find((entry) => entry.id === order.id)?.expectedDeliveryDate,
+                fallbackExpectedDeliveryDate,
+              ),
+            )}
           </dd>
         </dl>
+        {receiptForOrder ? (
+          <dl className="text-sm">
+            <dt className="portal-eyebrow-muted">Fecha de recepción</dt>
+            <dd className="mt-1 font-medium text-gray-900 dark:text-white">
+              {formatInventoryDate(receiptForOrder.receipt.receivedAt)}
+            </dd>
+          </dl>
+        ) : null}
       </div>
 
-      {lastReceipt && lastReceipt.receipt.purchaseOrderId === order.id ? (
+      {receiptForOrder ? (
         <PortalAlert
           variant="success"
-          title={`Recepción ${lastReceipt.receipt.receiptNumber} registrada`}
-          description={`Se creó el movimiento ${lastReceipt.movement.movementNumber} con ${lastReceipt.lines.length} líneas.`}
+          title={`Recepción ${receiptForOrder.receipt.receiptNumber} registrada`}
+          description={`Se creó el movimiento ${receiptForOrder.movement.movementNumber} con ${receiptForOrder.lines.length} líneas. Fecha de recepción: ${formatInventoryDateTime(receiptForOrder.receipt.receivedAt)}.`}
         />
       ) : null}
 
@@ -204,12 +293,15 @@ export function GoodsReceiptPanel({
               onChange={(event) => setDestinationLocationId(event.target.value)}
               options={locationOptions}
             />
-            <Input
+            <DatePicker
               id="goods-receipt-received-at"
               label="Fecha de recepción"
-              type="datetime-local"
-              value={receivedAt}
-              onChange={(event) => setReceivedAt(event.target.value)}
+              placeholder="Seleccionar fecha"
+              requiredIndicator
+              helperText="Fecha en que llegó la mercancía. No modifica la entrega esperada de la orden."
+              value={toDateFromLocalDateValue(receivedAt)}
+              onChange={(date) => setReceivedAt(toLocalDateValue(date))}
+              disabled={isSubmitting}
             />
             <Select
               id="goods-receipt-status"
@@ -305,7 +397,11 @@ export function GoodsReceiptPanel({
             primaryLabel="Registrar recepción"
             primaryLoadingLabel="Registrando recepción..."
             loading={isSubmitting}
-            disabled={!destinationLocationId || lines.every((line) => !line.purchaseOrderLineId)}
+            disabled={
+              !destinationLocationId ||
+              !toDateFromLocalDateValue(receivedAt) ||
+              lines.every((line) => !line.purchaseOrderLineId)
+            }
             onPrimaryClick={() => void handleSubmit()}
           />
         </>

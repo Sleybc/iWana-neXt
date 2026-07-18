@@ -17,6 +17,7 @@ import {
   PurchaseRfqInvitationStatus,
   PurchaseRfqStatus,
   SerializedAssetStatus,
+  StockAdjustmentReason,
   StockBalanceCondition,
   StockIssueStatus,
   StockIssueType,
@@ -238,6 +239,16 @@ export const STOCK_MOVEMENT_ORIGIN_LABELS: Record<StockMovementOrigin, string> =
   [StockMovementOrigin.COUNTER_PURCHASE]: 'Compra de mostrador',
 };
 
+export const STOCK_ADJUSTMENT_REASON_LABELS: Record<StockAdjustmentReason, string> = {
+  [StockAdjustmentReason.CYCLE_COUNT]: 'Conteo físico',
+  [StockAdjustmentReason.DAMAGE]: 'Daño o deterioro',
+  [StockAdjustmentReason.INITIAL_LOAD]: 'Carga inicial',
+  [StockAdjustmentReason.CORRECTION]: 'Corrección de registro',
+  [StockAdjustmentReason.LOSS]: 'Pérdida o faltante',
+  [StockAdjustmentReason.FOUND]: 'Sobrante encontrado',
+  [StockAdjustmentReason.OTHER]: 'Otro',
+};
+
 export const WRITE_OFF_REASON_LABELS: Record<WriteOffReason, string> = {
   [WriteOffReason.DAMAGED]: 'Daño',
   [WriteOffReason.OBSOLETE]: 'Obsolescencia',
@@ -452,6 +463,10 @@ export function getStockMovementOriginLabel(value: StockMovementOrigin): string 
   return resolveLabel(value, STOCK_MOVEMENT_ORIGIN_LABELS);
 }
 
+export function getStockAdjustmentReasonLabel(value: StockAdjustmentReason): string {
+  return resolveLabel(value, STOCK_ADJUSTMENT_REASON_LABELS);
+}
+
 export function getWriteOffReasonLabel(value: WriteOffReason): string {
   return resolveLabel(value, WRITE_OFF_REASON_LABELS);
 }
@@ -486,6 +501,16 @@ export function formatInventoryDate(value: string | null | undefined): string {
   }).format(new Date(value));
 }
 
+/** Primera fecha usable (ignora `null`, `undefined` y string vacío). */
+export function coalesceInventoryDate(...values: Array<string | null | undefined>): string | null {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
 export function formatInventoryDateTime(value: string | null | undefined): string {
   if (!value) {
     return 'Sin fecha';
@@ -504,6 +529,32 @@ export function formatInventoryCurrency(value: string | number | null | undefine
     currency: 'COP',
     maximumFractionDigits: 0,
   }).format(Number.isFinite(numeric) ? numeric : 0);
+}
+
+const APPROVAL_LEVEL_LABELS: Record<string, string> = {
+  BUYER: 'Comprador',
+  BUYER_MANAGER: 'Jefe de compras',
+  DIRECTOR: 'Dirección',
+  MANAGER: 'Gerencia',
+  SUPERVISOR: 'Supervisión',
+};
+
+export function getApprovalLevelLabel(level: string | null | undefined): string {
+  if (!level) {
+    return 'Nivel no definido';
+  }
+  return APPROVAL_LEVEL_LABELS[level] ?? 'Nivel no definido';
+}
+
+export function getSupplierDisplayLabel(
+  partyRefId: string | null | undefined,
+  supplierLabels?: Record<string, string>,
+): string {
+  if (!partyRefId) {
+    return 'Proveedor no identificado';
+  }
+  const label = supplierLabels?.[partyRefId]?.trim();
+  return label || 'Proveedor no identificado';
 }
 
 export function formatInventoryQuantity(value: string | number | null | undefined): string {

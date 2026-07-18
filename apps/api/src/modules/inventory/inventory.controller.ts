@@ -32,6 +32,8 @@ import {
   CancelStockIssueSchema,
   CreateCounterPurchaseDto,
   CreateCounterPurchaseSchema,
+  CreateStockAdjustmentDto,
+  CreateStockAdjustmentSchema,
   CreateStockLocationDto,
   CreateStockLocationSchema,
   ExecutionOrderMovementDto,
@@ -55,6 +57,8 @@ import {
   ListStockIssuesQuerySchema,
   ListStockLocationsQueryDto,
   ListStockLocationsQuerySchema,
+  ListStockMovementsQueryDto,
+  ListStockMovementsQuerySchema,
   ReturnAssetDto,
   ReturnAssetSchema,
   SaleMovementDto,
@@ -78,6 +82,7 @@ import { InventoryItemService } from './services/inventory-item.service';
 import { SerializedAssetService } from './services/serialized-asset.service';
 import { StockBalanceService } from './services/stock-balance.service';
 import { StockLedgerService } from './services/stock-ledger.service';
+import { StockMovementQueryService } from './services/stock-movement-query.service';
 import { StockLocationService } from './services/stock-location.service';
 import { StockIssueService } from './services/stock-issue.service';
 import { CounterPurchaseService } from './services/counter-purchase.service';
@@ -94,6 +99,7 @@ export class InventoryController {
     private readonly serializedAssetService: SerializedAssetService,
     private readonly stockBalanceService: StockBalanceService,
     private readonly stockLedgerService: StockLedgerService,
+    private readonly stockMovementQueryService: StockMovementQueryService,
     private readonly stockIssueService: StockIssueService,
     private readonly counterPurchaseService: CounterPurchaseService,
     private readonly inventoryDashboardService: InventoryDashboardService,
@@ -263,6 +269,33 @@ export class InventoryController {
     @Query(new ZodValidationPipe(ListStockBalancesQuerySchema)) query: ListStockBalancesQueryDto,
   ) {
     return this.stockBalanceService.list(ListStockBalancesQuerySchema.parse(query));
+  }
+
+  @Get('movements')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Consultar kardex de movimientos de stock' })
+  listMovements(
+    @Query(new ZodValidationPipe(ListStockMovementsQuerySchema))
+    query: ListStockMovementsQueryDto,
+  ) {
+    return this.stockMovementQueryService.list(ListStockMovementsQuerySchema.parse(query));
+  }
+
+  @Get('movements/:id')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Obtener detalle de movimiento de stock' })
+  getMovement(@Param('id', ParseUUIDPipe) id: string) {
+    return this.stockMovementQueryService.getById(id);
+  }
+
+  @Post('adjustments')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Registrar ajuste manual de inventario' })
+  createAdjustment(
+    @Body(new ZodValidationPipe(CreateStockAdjustmentSchema)) body: CreateStockAdjustmentDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.stockLedgerService.recordAdjustment(CreateStockAdjustmentSchema.parse(body), actor);
   }
 
   @Get('issues')

@@ -57,7 +57,7 @@ import {
   ReceivePurchaseOrderSchema,
   RejectPurchaseRequestDto,
   RejectPurchaseRequestSchema,
-  SearchSuppliersQueryDto,
+  SearchSuppliersQueryInput,
   SearchSuppliersQuerySchema,
   SetSupplierStatusDto,
   SetSupplierStatusSchema,
@@ -274,9 +274,9 @@ export class PurchasingController {
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
   @ApiOperation({ summary: 'Buscar proveedores disponibles para compras' })
   searchProviders(
-    @Query(new ZodValidationPipe(SearchSuppliersQuerySchema)) query: SearchSuppliersQueryDto,
+    @Query(new ZodValidationPipe(SearchSuppliersQuerySchema)) query: SearchSuppliersQueryInput,
   ) {
-    return this.purchasingQueryService.searchSuppliers(SearchSuppliersQuerySchema.parse(query));
+    return this.purchasingQueryService.searchSuppliers(query);
   }
 
   @Get('providers/:partyRefId/summary')
@@ -421,14 +421,30 @@ export class PurchasingController {
     return this.rfqService.getById(rfqId);
   }
 
-  @Get('rfqs/:rfqId/pdf')
+  @Get('rfqs/:rfqId/invitations/pdf.zip')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Descargar solicitud de cotización en PDF' })
-  async downloadRfqPdf(
+  @ApiOperation({ summary: 'Descargar un ZIP con un PDF personalizado por proveedor invitado' })
+  async downloadRfqInvitationsZip(
     @Param('rfqId', ParseUUIDPipe) rfqId: string,
     @Res({ passthrough: true }) response: Response,
   ): Promise<StreamableFile> {
-    const { buffer, filename } = await this.rfqPdfService.renderOrThrow(rfqId);
+    const { buffer, filename } = await this.rfqPdfService.renderAllInvitationsZip(rfqId);
+    response.set({
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    return new StreamableFile(buffer);
+  }
+
+  @Get('rfqs/:rfqId/invitations/:invitationId/pdf')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Descargar PDF de RFQ personalizado para un proveedor' })
+  async downloadRfqInvitationPdf(
+    @Param('rfqId', ParseUUIDPipe) rfqId: string,
+    @Param('invitationId', ParseUUIDPipe) invitationId: string,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    const { buffer, filename } = await this.rfqPdfService.renderForInvitation(rfqId, invitationId);
     response.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="${filename}"`,

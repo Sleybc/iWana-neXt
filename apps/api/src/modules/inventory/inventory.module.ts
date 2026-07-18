@@ -25,9 +25,11 @@ import {
   StockMovementLine,
   SupplierProfile,
   SupplierQuote,
+  SupplierQuoteLine,
 } from '@iwana/db';
 import { PartiesModule } from '../parties/parties.module';
 import { CommercialModule } from '../commercial/commercial.module';
+import { TenantModule } from '../tenant/tenant.module';
 import {
   INVENTORY_MOVEMENT_PORT,
   InventoryMovementPortAdapter,
@@ -37,6 +39,8 @@ import {
   CommercialProductReferencePortAdapter,
 } from './ports/commercial-product-reference.port';
 import { SupplierPartyPort, SupplierPartyPortAdapter } from './ports/supplier-party.port';
+import { TenantContactPort } from './ports/tenant-contact.port';
+import { TenantContactPortAdapter } from './ports/tenant-contact.adapter';
 import { InventoryController } from './inventory.controller';
 import { PurchasingController } from './purchasing.controller';
 import { AssetLifecycleService } from './services/asset-lifecycle.service';
@@ -51,6 +55,7 @@ import { PurchasingService } from './services/purchasing.service';
 import { SerializedAssetService } from './services/serialized-asset.service';
 import { StockBalanceService } from './services/stock-balance.service';
 import { StockLedgerService } from './services/stock-ledger.service';
+import { StockMovementQueryService } from './services/stock-movement-query.service';
 import { StockIssueService } from './services/stock-issue.service';
 import { CounterPurchaseService } from './services/counter-purchase.service';
 import { RfqPdfService } from './services/rfq-pdf.service';
@@ -62,6 +67,7 @@ import { SupplierProfileService } from './services/supplier-profile.service';
   imports: [
     PartiesModule,
     CommercialModule,
+    TenantModule,
     TypeOrmModule.forFeature([
       InventoryItem,
       InventoryCategory,
@@ -77,6 +83,7 @@ import { SupplierProfileService } from './services/supplier-profile.service';
       PurchaseRequestLine,
       PurchaseRequestLineAward,
       SupplierQuote,
+      SupplierQuoteLine,
       PurchaseRfq,
       PurchaseRfqInvitation,
       PurchaseOrder,
@@ -96,6 +103,7 @@ import { SupplierProfileService } from './services/supplier-profile.service';
     StockLocationService,
     CustomerSiteLocationResolver,
     StockLedgerService,
+    StockMovementQueryService,
     StockIssueService,
     StockBalanceService,
     SerializedAssetService,
@@ -112,6 +120,7 @@ import { SupplierProfileService } from './services/supplier-profile.service';
     InventoryMovementPortAdapter,
     CommercialProductReferencePortAdapter,
     SupplierPartyPortAdapter,
+    TenantContactPortAdapter,
     {
       provide: INVENTORY_MOVEMENT_PORT,
       useExisting: InventoryMovementPortAdapter,
@@ -123,6 +132,10 @@ import { SupplierProfileService } from './services/supplier-profile.service';
     {
       provide: SupplierPartyPort,
       useExisting: SupplierPartyPortAdapter,
+    },
+    {
+      provide: TenantContactPort,
+      useExisting: TenantContactPortAdapter,
     },
   ],
   exports: [
@@ -145,9 +158,11 @@ import { SupplierProfileService } from './services/supplier-profile.service';
     InventoryMovementPortAdapter,
     CommercialProductReferencePortAdapter,
     SupplierPartyPortAdapter,
+    TenantContactPortAdapter,
     INVENTORY_MOVEMENT_PORT,
     CommercialProductReferencePort,
     SupplierPartyPort,
+    TenantContactPort,
   ],
 })
 export class InventoryModule {}

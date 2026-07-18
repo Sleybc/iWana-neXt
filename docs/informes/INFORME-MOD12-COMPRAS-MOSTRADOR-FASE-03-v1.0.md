@@ -72,3 +72,14 @@ Se incorporo el ingreso directo de inventario por compra de mostrador dentro de 
 ## 5. Bloqueantes
 
 Ninguno.
+
+---
+
+## 6. Apéndice UI — Firma iWana / create-mode (2026-07-16)
+
+Alineación visual del panel de ingreso directo al contrato create-mode (carril rápido DS-OWNER):
+
+- Contrato: [`docs/specs/2026-07-16-mod12-ingreso-directo-ui-contract.md`](../specs/2026-07-16-mod12-ingreso-directo-ui-contract.md)
+- Shell `PurchaseCreateModeShell` + header configurable, secciones, `DatePicker`, `PurchaseProductSearch`, tabla `CounterPurchaseLinesTable` (`portalDataTable*`)
+- Validación visible, CTA «Registrar otro ingreso», confirmación al volver con cambios
+- Tests: `CounterPurchasePanel.spec.tsx` (4 casos)

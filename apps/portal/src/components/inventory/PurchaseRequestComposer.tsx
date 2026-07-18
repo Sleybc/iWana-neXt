@@ -253,7 +253,15 @@ export function PurchaseRequestComposer({
         title="Datos de la solicitud"
         description="Contexto minimo para capturar la compra sin convertir esta vista en un formulario largo."
       />
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[2fr_1fr_0.5fr_1fr_1fr]">
+        <Input
+          id="purchase-title"
+          label="Título"
+          placeholder="Ej. Reposición de routers — Bodega Norte"
+          helperText="Nombre corto para identificar la solicitud."
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+        />
         <Select
           id="purchase-type"
           label="Tipo de compra"
@@ -263,18 +271,18 @@ export function PurchaseRequestComposer({
           options={TYPE_OPTIONS}
           disabled={isEditMode}
         />
-        <Input
-          id="purchase-area"
-          label="Área solicitante"
-          value={requestingArea}
-          onChange={(event) => setRequestingArea(event.target.value)}
-        />
         <Select
           id="purchase-priority"
           label="Prioridad"
           value={priority}
           onChange={(event) => setPriority(event.target.value as PurchaseRequestPriority)}
           options={PRIORITY_OPTIONS}
+        />
+        <Input
+          id="purchase-area"
+          label="Área solicitante"
+          value={requestingArea}
+          onChange={(event) => setRequestingArea(event.target.value)}
         />
         <DatePicker
           id="purchase-needed-by"
@@ -283,14 +291,6 @@ export function PurchaseRequestComposer({
           value={toDateFromLocalDateValue(neededByDate)}
           onChange={(date) => setNeededByDate(toLocalDateValue(date))}
           disabled={isSubmitting}
-        />
-      </div>
-      <div className="grid gap-3">
-        <Input
-          id="purchase-title"
-          label="Título"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
         />
       </div>
     </section>
@@ -369,14 +369,12 @@ export function PurchaseRequestComposer({
       ) : isCreateMode ? (
         <>
           {requestContextSection}
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
-            <div className="space-y-6">{captureSection}</div>
-            <div className="space-y-6">
-              {draftSection}
-              {justificationSection}
-              {summaryFooter}
-            </div>
+          <div className="sticky top-4 z-10 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
+            {captureSection}
           </div>
+          {draftSection}
+          {justificationSection}
+          {summaryFooter}
         </>
       ) : (
         <>

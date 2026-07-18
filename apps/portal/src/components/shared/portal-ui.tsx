@@ -423,7 +423,7 @@ export function CreateModeSummaryFooter({
   return (
     <div className={cn(createModeStickyFooterClassName, 'text-sm')}>
       <p className="font-medium text-gray-900 dark:text-white">{title}</p>
-      <p className="mt-1 text-gray-600 dark:text-gray-300">{summary}</p>
+      <p className="mt-1 text-gray-600 tabular-nums dark:text-gray-300">{summary}</p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {secondaryAction}
         <Button

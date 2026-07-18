@@ -21,7 +21,11 @@ import {
   PortalSectionHeader,
   interactiveFocusClassName,
 } from '@/components/shared/portal-ui';
-import { formatInventoryCurrency, getPurchaseRequestLineStatusLabel } from './inventory-labels';
+import {
+  formatInventoryCurrency,
+  getPurchaseRequestLineStatusLabel,
+  getSupplierDisplayLabel,
+} from './inventory-labels';
 import { SupplierPicker } from './SupplierPicker';
 
 interface AwardLineDraft {
@@ -187,7 +191,7 @@ export function AwardLinesPanel({
   function applyQuote(lineId: string, quote: SupplierQuoteRecord) {
     updateDraft(lineId, {
       awardedPartyRefId: quote.partyRefId,
-      awardedPartyLabel: supplierLabels[quote.partyRefId] ?? `Proveedor de ${quote.quoteNumber}`,
+      awardedPartyLabel: getSupplierDisplayLabel(quote.partyRefId, supplierLabels),
       supplierQuoteId: quote.id,
     });
   }
@@ -278,16 +282,28 @@ export function AwardLinesPanel({
                 <div className="space-y-3">
                   {detail.quotes.length > 0 ? (
                     <div className="flex flex-wrap gap-2">
-                      {detail.quotes.map((quote) => (
-                        <button
-                          key={quote.id}
-                          type="button"
-                          className="rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-iwana-primary hover:bg-iwana-primary/5 dark:border-dark-border"
-                          onClick={() => applyQuote(line.id, quote)}
-                        >
-                          Usar {quote.quoteNumber} ({formatInventoryCurrency(quote.amount)})
-                        </button>
-                      ))}
+                      {detail.quotes.map((quote) => {
+                        const quoteLine = quote.lines?.find(
+                          (entry) => entry.purchaseRequestLineId === line.id,
+                        );
+                        return (
+                          <button
+                            key={quote.id}
+                            type="button"
+                            className={cn(
+                              'min-h-11 rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-iwana-primary hover:bg-iwana-primary/5 dark:border-dark-border',
+                              interactiveFocusClassName,
+                            )}
+                            onClick={() => applyQuote(line.id, quote)}
+                          >
+                            Usar {quote.quoteNumber} (
+                            {quoteLine
+                              ? `${formatInventoryCurrency(quoteLine.unitCost)} / u.`
+                              : formatInventoryCurrency(quote.amount)}
+                            )
+                          </button>
+                        );
+                      })}
                     </div>
                   ) : null}
 
@@ -340,11 +356,19 @@ export function AwardLinesPanel({
                       }
                     >
                       <option value="">Sin cotización vinculada</option>
-                      {partyQuotes.map((quote) => (
-                        <option key={quote.id} value={quote.id}>
-                          {quote.quoteNumber} · {formatInventoryCurrency(quote.amount)}
-                        </option>
-                      ))}
+                      {partyQuotes.map((quote) => {
+                        const quoteLine = quote.lines?.find(
+                          (entry) => entry.purchaseRequestLineId === line.id,
+                        );
+                        return (
+                          <option key={quote.id} value={quote.id}>
+                            {quote.quoteNumber} ·{' '}
+                            {quoteLine
+                              ? `${formatInventoryCurrency(quoteLine.unitCost)} / u.`
+                              : formatInventoryCurrency(quote.amount)}
+                          </option>
+                        );
+                      })}
                     </Select>
                   </div>
 

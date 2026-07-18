@@ -150,7 +150,7 @@ flowchart TB
 
 | KPI | Acento | Filtro al hacer clic |
 | --- | --- | --- |
-| Por cotizar | `primary` | `status=PENDING_QUOTES` |
+| Por cotizar | `primary` | `status ∈ {DRAFT, PENDING_QUOTES}` (Fase 10) |
 | Por aprobar | `warning` | `status=PENDING_APPROVAL` |
 | Listas para OC | `primary` | `status=APPROVED` |
 | Por recibir | `neutral` | preset `pendingReceipt` → `status=CONVERTED_TO_PO` |
@@ -233,6 +233,8 @@ EM-ARCH autoriza mostrar estas columnas solo cuando exista contrato de listado e
 **Prohibido en UI final:** mostrar `inventoryItemId`, `partyRefId` u otros identificadores técnicos como texto principal.
 
 ### 6.4 `PurchaseRequestComposer`
+
+> **Addendum 2026-07-14 (AI-EM-ARCH):** el layout create-mode de este componente **evoluciona a "lienzo apilado"** — se elimina el split `xl:grid-cols-[7fr_5fr]` descrito abajo y se reemplaza por cuatro zonas apiladas a todo el ancho (Datos → Captura sticky → Borrador full-width → Justificación + footer). El campo "Título" deja de ser full-bleed y la tabla del borrador pasa a ancho completo para eliminar el scroll horizontal al crecer. Esta sub-sección queda **superseded** por [`docs/specs/2026-07-14-mod12-compras-composer-lienzo-apilado-design.md`](2026-07-14-mod12-compras-composer-lienzo-apilado-design.md), que es la fuente vigente para el compositor.
 
 | Bloque | Encabezado |
 | --- | --- |
@@ -526,3 +528,28 @@ Spec coherente con PRD/HLD Fase 02 y ADR-048. Se corrigen inconsistencias de dom
 ## 16. Resumen ejecutivo
 
 La Fase 02 de Compras es **funcionalmente correcta** y respeta ADR-048. La deuda pendiente es **exclusivamente de experiencia visual y consistencia iWana**. Este spec — **aprobado por EM-ARCH** — autoriza ejecución incremental: Fase A (obligatoria) y Fase B (siguiente sprint), sin cambios backend en v1.0, reutilizando patrones de Programación y Operaciones.
+
+---
+
+## 17. Extensión — Ingreso directo / Compra de mostrador (2026-07-16)
+
+El modo `counter-purchase` quedó fuera de las fases A/B originales. El contrato de pantalla create-mode alineado a Firma iWana vive en:
+
+- [`docs/specs/2026-07-16-mod12-ingreso-directo-ui-contract.md`](./2026-07-16-mod12-ingreso-directo-ui-contract.md)
+
+**Carril rápido DS-OWNER:** paridad estructural con create-mode (shell, secciones, `DatePicker`, tabla `portalDataTable*`, `PurchaseProductSearch`); sin cambio de API ni tokens de marca.
+
+## 18. Extensión — Fusión "Cotización" + "Cotizaciones" → "Cotizar" (2026-07-17, Fase 10)
+
+La pestaña `rfq` ("Cotización") y la pestaña `quotes` ("Cotizaciones") de `PurchaseRequestWorkbenchDrawer` se fusionan en una sola pestaña **"Cotizar"** (`PurchaseWorkbenchTab` baja de 8 a 7 valores), con dos zonas internas: "Invitar proveedores" (contenido actual de `RfqInvitationsPanel`) y "Ofertas registradas" (contenido actual de `QuoteComparisonPanel`). Motivo: ambas pestañas eran fácilmente confundibles por nombre y forman parte del mismo paso conceptual del flujo.
+
+**Enmienda de alcance (GO CTO 2026-07-17):**
+- KPI/filtro «Por cotizar» incluye `DRAFT | PENDING_QUOTES`.
+- Invariante C1: oferta manual sin invitación se bloquea si existe RFQ activa; `RfqService.send` no retrocede una solicitud ya avanzada.
+
+**Contrato UI (carril rápido DS-OWNER):** un `TabsContent value="cotizar"` con `space-y-6`, zona superior "Invitar proveedores" y zona inferior "Ofertas registradas"; empty state histórico: «Cotización sin ronda formal».
+
+Diseño funcional completo en:
+
+- [`docs/specs/2026-07-17-mod12-compras-cotizar-fase10-design.md`](./2026-07-17-mod12-compras-cotizar-fase10-design.md)
+- [`docs/prompts/PROMPT-MOD12-COMPRAS-COTIZAR-FASE-10-v1.0.md`](../prompts/PROMPT-MOD12-COMPRAS-COTIZAR-FASE-10-v1.0.md)
