@@ -19,6 +19,7 @@ import { formatInventoryQuantity } from './inventory-labels';
 import {
   buildStockOverviewRows,
   filterStockOverviewRows,
+  isStockAdjustableItem,
   type StockOverviewStatus,
 } from './stock-overview';
 
@@ -151,7 +152,7 @@ export function StockByProductTable({
                       >
                         Ver detalle
                       </Button>
-                      {canAdjust && onAdjust ? (
+                      {canAdjust && onAdjust && isStockAdjustableItem(row.item) ? (
                         <Button
                           type="button"
                           size="sm"

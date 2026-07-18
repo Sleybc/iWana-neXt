@@ -2,12 +2,15 @@
 
 **Version:** 1.0
 **Fecha:** 2026-07-18
-**Estado:** 🟡 Fase 1 implementada — pendiente G6/G7
+**Estado:** 🟢 Fase 1 — G6 GO; pendiente G7 (EM-ARCH + CTO)
+**Auditoría G5:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-AUDITORIA-ARCH-v1.0.md
+**Review G6:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-G6-REVIEW-v1.0.md
 **Modo activo:** Product Architect + Orchestrator
 **Responsable:** AI-EM-ARCH
 **PRD:** docs/prds/PRD-MOD12-INVENTARIO-EXISTENCIAS-v1.0.md
 **Prompt Fase 1:** docs/prompts/PROMPT-MOD12-EXISTENCIAS-KARDEX-AJUSTES-FASE-01-v1.0.md
-**Prompt Fase 2 (borrador, no ejecutable):** docs/prompts/PROMPT-MOD12-EXISTENCIAS-REORDEN-FASE-02-v1.0.md
+**Prompt Fase 2 (emitido, ejecutable al cierre G7 de Fase 1):** docs/prompts/PROMPT-MOD12-EXISTENCIAS-REORDEN-FASE-02-v1.0.md
+**Spec Fase 2:** docs/specs/2026-07-18-mod12-existencias-reorden-fase02-design.md
 
 ---
 
@@ -30,7 +33,8 @@ El CTO solicitó determinar si MOD12 ya cuenta con el submódulo de inventario p
 | --- | --- | --- |
 | PRD del submódulo (10 secciones, roadmap Fases 1-4, benchmark, decisiones D1-D6) | docs/prds/PRD-MOD12-INVENTARIO-EXISTENCIAS-v1.0.md | Aprobado por CTO |
 | Prompt de ejecución Fase 1 (kardex + ajustes + pestaña Existencias) | docs/prompts/PROMPT-MOD12-EXISTENCIAS-KARDEX-AJUSTES-FASE-01-v1.0.md | Emitido (G4) |
-| Prompt Fase 2 (reorden y valor básico) | docs/prompts/PROMPT-MOD12-EXISTENCIAS-REORDEN-FASE-02-v1.0.md | Borrador — no ejecutable hasta cierre de Fase 1 (ADR-016) |
+| Prompt Fase 2 (reposición sugerida + valor) | docs/prompts/PROMPT-MOD12-EXISTENCIAS-REORDEN-FASE-02-v1.0.md | **Emitido (G4)** — ejecutable al cierre G7 de Fase 1 (ADR-016) |
+| Spec de diseño Fase 2 (decisiones D-F2-1…D-F2-5, flujo UX, CA) | docs/specs/2026-07-18-mod12-existencias-reorden-fase02-design.md | Aprobado — habilita G4 |
 | Este informe vivo | docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-DEFINICION-v1.0.md | Vigente |
 
 No se emitió HLD ni ADR nuevo: la Fase 1 no crea boundary, entidad, migración ni patrón (justificación en PRD §9); reutiliza el ledger aprobado por ADR-048.
@@ -40,20 +44,22 @@ No se emitió HLD ni ADR nuevo: la Fase 1 no crea boundary, entidad, migración 
 | Fase | Alcance | Estado |
 | --- | --- | --- |
 | 1 | Kardex consultable, ajustes con razón tipificada, pestaña Existencias (Por producto / Por bodega / Kardex), Bodegas reducida | **Implementada** — informe `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-v1.0.md` |
-| 2 | Reorden → solicitud de compra prellenada; indicadores básicos de valor | Preparada (contrato borrador en PRD §7) |
+| 2 | Reposición sugerida (anti doble pedido) → composer de compras prellenado; valor estimado en Resumen | **Definida** — contrato congelado, spec + prompt emitidos; ejecutable al cierre G7 de Fase 1 |
 | 3 | Conteos físicos / inventario cíclico; reservas efectivas | Planificada |
 | 4 | Costeo promedio móvil, valoración y reportes | Planificada |
 
 ## 5. Riesgos vigentes
 
-- Trabajo de Compras Fase 07 **sin commitear** comparte archivos con la Fase 1 (dto/index.ts, inventory.module.ts, InventoryClient.tsx, specs): el prompt impone solo-appends y la integración de `InventoryClient` al final.
 - Volumen del kardex en tenants grandes: mitigado con paginación de servidor e índices existentes.
-- El contrato de Fase 2 depende del flujo de `PurchaseRequest`, que evoluciona en paralelo: se verificará contra el código al emitir su prompt.
+- Fase 2 reutiliza `PurchaseRequestComposer` / `POST /purchasing/requests`: validar anti doble pedido al ejecutar el prompt F2.
+- Deuda UX post-G6 (skeleton, drawer a11y, `canAdjust` por rol) no bloquea cierre pero degrada pulido operativo.
 
 ## 6. Próximos pasos
 
-1. Review G6 (PROD-UX, DS-OWNER, SR-QA) sobre la entrega de Fase 1; G7 con recomendación de AI-EM-ARCH y aprobación del CTO.
-2. Al cierre G7 de Fase 1: congelar contrato de Fase 2 y emitir su prompt ejecutable.
+1. G7: AI-EM-ARCH recomienda cierre; CTO aprueba producción / merge definitivo de la fase.
+2. Track Compras F07: vigilar flakiness de `rfq-pdf.service.spec.ts` (O1).
+3. Deuda UX/DS post-G6: skeleton en listados Existencias, foco en controles custom, drawer a11y, label de lote, cablear rol→`canAdjust`.
+4. Al cierre G7 de Fase 1: ejecutar prompt Fase 2 ya emitido (ADR-016).
 
 ## 7. Historial
 
@@ -62,3 +68,7 @@ No se emitió HLD ni ADR nuevo: la Fase 1 no crea boundary, entidad, migración 
 | 2026-07-18 | v1.0 — auditoría de estado, benchmark, decisiones del CTO, emisión de PRD + prompt Fase 1 + borrador Fase 2 |
 | 2026-07-18 | Fase 1 implementada por AI-SR-FULL; informe de fase emitido; estado → pendiente G6/G7 |
 | 2026-07-18 | Smoke E2E Playwright Existencias (6) + Bodegas regresión (5) en verde; mocks movements/adjustments |
+| 2026-07-18 | Auditoría G5 (AI-EM-ARCH): go condicionado — B1 bloqueante; H2/O1 transferidos a Compras F07 |
+| 2026-07-18 | Remediación B1 + H2; estado → lista para G6 |
+| 2026-07-18 | G6 paralelo PROD-UX/DS-OWNER/SR-QA; remediación UX serializados + custody Por bodega; **G6 GO** → pendiente G7 |
+| 2026-07-18 | Fase 2 definida (AI-EM-ARCH, protocolo multiagente): factibilidad verificada contra código (backend compras/dashboard + patrones portal); contrato congelado en PRD §7 con decisión D-F2-1 (se elimina el POST de creación — composer prellenado + `POST /purchasing/requests` vigente); spec de diseño y prompt de ejecución emitidos (G4), ejecutables al cierre G7 de Fase 1 |

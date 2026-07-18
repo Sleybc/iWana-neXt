@@ -1,12 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import {
-  InventoryItemKind,
-  InventoryTrackingMode,
-  StockAdjustmentReason,
-  StockBalanceCondition,
-} from '@iwana/shared';
+import { StockAdjustmentReason, StockBalanceCondition } from '@iwana/shared';
 import {
   Button,
   Dialog,
@@ -25,6 +20,7 @@ import {
 } from '@/lib/api-client';
 import { PortalAlert, portalTextareaClassName } from '@/components/shared/portal-ui';
 import { STOCK_ADJUSTMENT_REASON_LABELS, getStockBalanceConditionLabel } from './inventory-labels';
+import { isStockAdjustableItem } from './stock-overview';
 
 type AdjustmentDirection = 'in' | 'out';
 
@@ -48,13 +44,6 @@ function mapInventoryError(error: unknown): string {
   return 'No fue posible completar la operación. Intenta nuevamente.';
 }
 
-function isAdjustableItem(item: InventoryItemRecord): boolean {
-  return (
-    item.trackingMode !== InventoryTrackingMode.SERIALIZED &&
-    item.itemKind !== InventoryItemKind.SERIALIZED
-  );
-}
-
 export function StockAdjustmentDialog({
   open,
   items,
@@ -63,7 +52,7 @@ export function StockAdjustmentDialog({
   onClose,
   onAdjustmentRegistered,
 }: StockAdjustmentDialogProps) {
-  const adjustableItems = useMemo(() => items.filter(isAdjustableItem), [items]);
+  const adjustableItems = useMemo(() => items.filter(isStockAdjustableItem), [items]);
   const [itemId, setItemId] = useState('');
   const [locationId, setLocationId] = useState('');
   const [condition, setCondition] = useState<StockBalanceCondition>(StockBalanceCondition.NEW);

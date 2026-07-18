@@ -2,11 +2,13 @@
 
 **Version:** 1.0  
 **Fecha:** 2026-07-18  
-**Estado:** Implementación lista para G6 (gates técnicos + smoke E2E Playwright en verde)  
+**Estado:** G6 GO — pendiente G7 (recomendación EM-ARCH + aprobación CTO)  
 **Rol ejecutor:** AI-SR-FULL (+ track FE-PLATFORM en la misma sesión)  
 **Prompt:** `docs/prompts/PROMPT-MOD12-EXISTENCIAS-KARDEX-AJUSTES-FASE-01-v1.0.md`  
 **Plan:** `docs/plans/2026-07-18-mod12-existencias-fase-01.md`  
 **PRD:** `docs/prds/PRD-MOD12-INVENTARIO-EXISTENCIAS-v1.0.md`
+**Auditoría G5:** `docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-AUDITORIA-ARCH-v1.0.md`
+**Review G6:** `docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-G6-REVIEW-v1.0.md`
 
 ---
 
@@ -66,6 +68,7 @@ No aplica (decisión D1 confirmada).
 | Lint monorepo completo | No corrido en esta sesión (typecheck de paquetes afectados en verde) |
 | E2E Playwright `portal-inventory-scm` — Existencias | PASS (6/6): tab=stock, redirect custody, kardex seed, ajuste OK, ajuste negativo 400, drill-down Por bodega |
 | E2E Playwright `portal-inventory-scm` — Bodegas (regresión) | PASS (5/5): título Bodegas, crear/editar, bloqueos de salida |
+| Remediación B1 — `counter-purchase.http.integration.spec.ts` | PASS (2/2): mock `StockMovementQueryService` añadido |
 | `/api/v1/docs` visual | Cubierto por swagger spec de los 3 endpoints |
 
 ## 5. Deuda / bloqueos
@@ -74,7 +77,10 @@ No aplica (decisión D1 confirmada).
 | --- | --- |
 | Resuelto | Test de adjudicación en `InventoryClient`: `openWorkbench` ahora abre en la pestaña sugerida por `getPurchaseNextAction` |
 | Resuelto | Smoke E2E Playwright Existencias (+ mocks movements/adjustments) en `e2e/tests/portal-inventory-scm.spec.ts` |
-| Pendiente G6 | Review PROD-UX / DS-OWNER / SR-QA |
+| Resuelto | B1 auditoría G5: mock `StockMovementQueryService` en `counter-purchase.http.integration.spec.ts` |
+| Resuelto | G6 UX: sin Ajustar en serializados; custody→Por bodega; Editar solo con handler |
+| Pendiente G7 | Recomendación EM-ARCH + aprobación CTO |
+| Deuda | Skeleton Existencias, foco custom, drawer a11y, lot label, rol→canAdjust |
 
 Sin stop/go técnico: no se requirió DDL ni cambio de contrato.
 
@@ -84,6 +90,6 @@ Ninguno material sobre el contrato §7 ni D1–D6. `canAdjust` queda habilitado 
 
 Fix colateral F07 (necesario para suite portal en verde): al abrir el workbench de compras sin `initialTab` explícito, se navega a la pestaña sugerida por el next-action (p. ej. Adjudicación si la solicitud está aprobada con líneas awardables).
 
-## 7. Recomendación G5 → G6
+## 7. Recomendación G5 → G6 → G7
 
-**Go técnico:** entrega Existencias + suites inventario portal/API en verde, typecheck de paquetes afectados OK y smoke E2E Playwright Existencias/Bodegas en verde. Lista para review G6.
+**G5 cumplido** (B1 remedado). **G6 GO** (informe `…-G6-REVIEW-v1.0.md`). Siguiente: **G7** con deuda residual no bloqueante registrada.

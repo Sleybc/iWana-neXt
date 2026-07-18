@@ -2758,7 +2758,7 @@ test.describe('Portal Inventario / Existencias', () => {
     await expect(page).toHaveURL(/tab=stock/);
     await expect(page).toHaveURL(/custody=mobile/);
 
-    await main.getByRole('tab', { name: 'Por bodega' }).click();
+    await expect(main.getByRole('tab', { name: 'Por bodega', selected: true })).toBeVisible();
     await expect(main.getByText('Custodia técnico')).toBeVisible();
     await expect(main.getByText('Móvil con tope')).toBeVisible();
     await expect(main.getByText('BOD-01')).toHaveCount(0);

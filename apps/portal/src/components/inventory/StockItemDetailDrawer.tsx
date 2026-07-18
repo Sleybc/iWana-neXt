@@ -22,6 +22,7 @@ import {
   getStockBalanceConditionLabel,
   getStockMovementOriginLabel,
 } from './inventory-labels';
+import { isStockAdjustableItem } from './stock-overview';
 
 interface StockItemDetailDrawerProps {
   open: boolean;
@@ -47,6 +48,8 @@ export function StockItemDetailDrawer({
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const itemIsAdjustable = item ? isStockAdjustableItem(item) : false;
 
   const locationById = useMemo(
     () => new Map(locations.map((location) => [location.id, location])),
@@ -111,10 +114,17 @@ export function StockItemDetailDrawer({
           </Button>
         </div>
 
-        {canAdjust && onAdjust ? (
+        {canAdjust && onAdjust && itemIsAdjustable ? (
           <Button type="button" onClick={() => onAdjust(item.id)}>
             Ajustar
           </Button>
+        ) : null}
+        {canAdjust && item && !itemIsAdjustable ? (
+          <PortalAlert
+            variant="info"
+            title="Ajuste no disponible"
+            description="Los equipos con serial no admiten ajuste manual. Usa retorno o baja según el caso."
+          />
         ) : null}
 
         <section className="space-y-2">

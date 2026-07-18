@@ -1,3 +1,4 @@
+import { InventoryItemKind, InventoryTrackingMode } from '@iwana/shared';
 import type { InventoryItemRecord, StockBalanceRecord } from '@/lib/api-client';
 
 export type StockOverviewStatus = 'out' | 'below-minimum' | 'below-reorder' | 'ok';
@@ -19,6 +20,16 @@ export interface StockOverviewRow {
   targetStock: number;
   status: StockOverviewStatus;
   statusLabel: string;
+}
+
+/** Los serializados no admiten ajuste manual; el operador debe usar retorno o baja. */
+export function isStockAdjustableItem(
+  item: Pick<InventoryItemRecord, 'trackingMode' | 'itemKind'>,
+): boolean {
+  return (
+    item.trackingMode !== InventoryTrackingMode.SERIALIZED &&
+    item.itemKind !== InventoryItemKind.SERIALIZED
+  );
 }
 
 function toNumber(value: string | number | null | undefined): number {

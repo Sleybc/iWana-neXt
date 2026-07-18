@@ -10,6 +10,7 @@ import {
   buildStockOverviewRows,
   deriveStockOverviewStatus,
   filterStockOverviewRows,
+  isStockAdjustableItem,
 } from './stock-overview';
 
 function makeItem(overrides: Partial<InventoryItemRecord> = {}): InventoryItemRecord {
@@ -121,5 +122,17 @@ describe('stock-overview', () => {
 
     expect(filterStockOverviewRows(rows, { search: 'onu' })).toHaveLength(1);
     expect(filterStockOverviewRows(rows, { onlyBelowMinimum: true })).toHaveLength(1);
+  });
+
+  it('marca serializados como no ajustables', () => {
+    expect(isStockAdjustableItem(makeItem())).toBe(true);
+    expect(
+      isStockAdjustableItem(
+        makeItem({
+          itemKind: InventoryItemKind.SERIALIZED,
+          trackingMode: InventoryTrackingMode.SERIALIZED,
+        }),
+      ),
+    ).toBe(false);
   });
 });

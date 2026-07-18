@@ -98,3 +98,13 @@ Ver `docs/security/SECURITY-REVIEW-MOD12-COMPRAS-CIERRE-FASE-07-v1.0.md`.
 ## Fuera de alcance
 
 Fase 08 (reorden bajo demanda), Fase 09 (métricas de proveedor), evaluación de proveedores (RF-INV-24).
+
+## Addendum post-auditoría Existencias G5 (2026-07-18)
+
+Transferencias desde la auditoría de Existencias Fase 01 que tocan superficie F07 / continuidad compras:
+
+| Ítem | Acción | Estado |
+| --- | --- | --- |
+| H2 — `purchasing.http.integration.spec.ts` 400 vs 201 | Payload de cotización actualizado a `lines[{ purchaseRequestLineId, unitCost }]` (contrato post–cotización por línea) | ✅ Remediado; suite PASS |
+| Fix colateral Existencias — `purchase-workbench.ts` / `PurchaseWorkspace` | Al abrir workbench sin `initialTab`, se usa la pestaña sugerida por `getPurchaseNextAction` (p. ej. Adjudicación) | ✅ Registrado (origen: suite portal Existencias / adjudicación) |
+| O1 — `rfq-pdf.service.spec.ts` flaky bajo carga paralela | Pasa aislada; contención probable en generación PDF | Abierto — vigilar en CI |

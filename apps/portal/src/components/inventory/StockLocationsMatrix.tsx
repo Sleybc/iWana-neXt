@@ -529,16 +529,18 @@ export function StockLocationsMatrix({
                                   {isExpanded ? 'Ocultar existencias' : 'Ver existencias'}
                                 </span>
                               </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => onEditLocation?.(location)}
-                                aria-label={`Editar ${location.name}`}
-                              >
-                                <Pencil className="h-4 w-4" aria-hidden="true" />
-                                <span className="sr-only">Editar</span>
-                              </Button>
+                              {onEditLocation ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => onEditLocation(location)}
+                                  aria-label={`Editar ${location.name}`}
+                                >
+                                  <Pencil className="h-4 w-4" aria-hidden="true" />
+                                  <span className="sr-only">Editar</span>
+                                </Button>
+                              ) : null}
                             </div>
                           </td>
                         </tr>

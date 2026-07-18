@@ -862,20 +862,18 @@ describe('InventoryClient', () => {
   });
 
   it('redirige custody=mobile de Bodegas a Existencias y conserva el filtro', async () => {
-    const user = userEvent.setup();
     searchParamsMock = new URLSearchParams('tab=locations&custody=mobile');
 
     render(<InventoryClient initialTab="locations" />);
 
     await waitFor(() => {
       expect(screen.getByRole('tab', { name: 'Existencias', selected: true })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Por bodega', selected: true })).toBeInTheDocument();
       expect(replaceMock).toHaveBeenCalledWith(
         expect.stringContaining('tab=stock'),
         expect.objectContaining({ scroll: false }),
       );
     });
-
-    await user.click(screen.getByRole('tab', { name: 'Por bodega' }));
 
     await waitFor(() => {
       expect(screen.getByText('Técnico zona norte')).toBeInTheDocument();

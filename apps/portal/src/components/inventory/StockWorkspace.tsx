@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@iwana/ui';
 import type {
   InventoryItemRecord,
@@ -37,9 +37,17 @@ export function StockWorkspace({
   onCustodyFilterChange,
   onAdjustmentRegistered,
 }: StockWorkspaceProps) {
-  const [subview, setSubview] = useState<StockSubview>('by-product');
+  const [subview, setSubview] = useState<StockSubview>(() =>
+    custodyFilter === 'mobile' ? 'by-location' : 'by-product',
+  );
   const [detailItemId, setDetailItemId] = useState<string | null>(null);
   const [adjustItemId, setAdjustItemId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (custodyFilter === 'mobile') {
+      setSubview('by-location');
+    }
+  }, [custodyFilter]);
 
   const detailItem = useMemo(
     () => items.find((item) => item.id === detailItemId) ?? null,

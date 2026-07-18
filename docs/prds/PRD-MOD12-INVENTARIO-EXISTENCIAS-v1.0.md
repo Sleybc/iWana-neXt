@@ -129,13 +129,29 @@ interface StockMovementKardexRecord {
 }
 ```
 
-### Fase 2 (borrador de contrato — se congela al emitir su prompt)
+### Fase 2 (contrato congelado 2026-07-18 al emitir su prompt; detalle en el [spec de diseño](../specs/2026-07-18-mod12-existencias-reorden-fase02-design.md))
 
-| Endpoint | Propósito |
-| --- | --- |
-| `GET /api/v1/inventory/replenishment/suggestions` | Ítems con disponible bajo `reorderPoint`: cantidad sugerida (`targetStock − disponible`, mínimo `minimumOrderQty`), proveedor preferido, lead time |
-| `POST /api/v1/inventory/replenishment/purchase-requests` | Crear solicitud de compra prellenada en purchasing a partir de sugerencias seleccionadas (reutiliza el flujo de `PurchaseRequest` existente; sin acceso directo a tablas de compras desde existencias: vía servicio del propio módulo) |
-| Extensión de `GET /inventory/dashboard` | Indicadores básicos de valor (existencia × último costo conocido) |
+| Endpoint | Roles | Propósito |
+| --- | --- | --- |
+| `GET /api/v1/inventory/replenishment/suggestions` | ADMIN, NOC, SUPPORT | Ítems `purchasable` con `disponible + pendiente < reorderPoint`; `pendiente` descuenta OC abiertas (`quantity − receivedQuantity`, APPROVED/PARTIALLY_RECEIVED) y líneas de solicitud OPEN/PENDING_QUOTE/AWARDED; sugerido = `max(targetStock − (disponible + pendiente), minimumOrderQty ?? 0)` redondeado a `orderMultiple`; proveedor preferido resuelto en lote, costo estimado con fallback D-F2-4 |
+| Extensión de `GET /inventory/dashboard` | (vigentes) | `estimatedTotalValue` + `estimatedValue` por categoría (`quantityOnHand × (lastPurchaseCost ?? standardCost ?? baseCost)`) |
+
+**Cambio frente al borrador (decisión D-F2-1):** se elimina `POST /inventory/replenishment/purchase-requests`. La creación de la solicitud usa el `POST /purchasing/requests` existente a través del composer de compras **prellenado** (`requestType = REPLENISHMENT`, líneas `sourceKind = REPLENISHMENT_SUGGESTION`, `suggestedPartyRefId` del ítem) — el usuario siempre revisa antes de crear y se reutilizan las validaciones vigentes. Sin migraciones.
+
+Shape de `ReplenishmentSuggestionRecord` (cantidades `numeric` como string, patrón vigente):
+
+```ts
+interface ReplenishmentSuggestionRecord {
+  itemId: string; itemSku: string; itemName: string; unitOfMeasure: string;
+  available: string; pendingPurchase: string;
+  minimumStock: string; reorderPoint: string; targetStock: string;
+  suggestedQty: string; orderMultiple: string | null; minimumOrderQty: string | null;
+  leadTimeDays: number | null;
+  preferredSupplier: { partyRefId: string; displayName: string | null } | null;
+  estimatedUnitCost: string | null; estimatedLineValue: string | null;
+  criticality: 'out' | 'below-minimum' | 'below-reorder';
+}
+```
 
 ## 8. Criterios de aceptacion
 
@@ -152,7 +168,7 @@ interface StockMovementKardexRecord {
 ### Criterios de entrada de Fase 2 (regla de completitud ADR-016)
 
 - Informe de cierre de Fase 1 emitido en `docs/informes/` con evidencia de CA-01…CA-07 y gates G5/G6 superados.
-- Contrato de Fase 2 (sección 7) revisado y congelado por AI-EM-ARCH; prompt de ejecución de Fase 2 emitido (existe borrador: docs/prompts/PROMPT-MOD12-EXISTENCIAS-REORDEN-FASE-02-v1.0.md, marcado como borrador no ejecutable).
+- Contrato de Fase 2 (sección 7) congelado por AI-EM-ARCH (2026-07-18) y prompt de ejecución emitido: docs/prompts/PROMPT-MOD12-EXISTENCIAS-REORDEN-FASE-02-v1.0.md (ejecutable solo al cierre G7 de Fase 1), con spec de diseño docs/specs/2026-07-18-mod12-existencias-reorden-fase02-design.md.
 - Sin deuda crítica abierta de Fase 1.
 
 ## 9. Dependencias y riesgos

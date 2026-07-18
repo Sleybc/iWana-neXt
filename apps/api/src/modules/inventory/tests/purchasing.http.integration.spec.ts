@@ -501,8 +501,13 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
       .send({
         partyRefId: '55555555-5555-4555-8555-555555555555',
         quoteNumber: 'Q-HTTP-001',
-        amount: 480000,
         currency: 'cop',
+        lines: [
+          {
+            purchaseRequestLineId: detail.body.lines[0].id,
+            unitCost: 120000,
+          },
+        ],
       })
       .expect(201);
 

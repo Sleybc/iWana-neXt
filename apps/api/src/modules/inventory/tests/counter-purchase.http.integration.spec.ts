@@ -16,6 +16,7 @@ import { StockBalanceService } from '../services/stock-balance.service';
 import { StockIssueService } from '../services/stock-issue.service';
 import { StockLedgerService } from '../services/stock-ledger.service';
 import { StockLocationService } from '../services/stock-location.service';
+import { StockMovementQueryService } from '../services/stock-movement-query.service';
 
 jest.mock('../../auth/guards/jwt-auth.guard', () => ({
   JwtAuthGuard: class JwtAuthGuard {
@@ -83,6 +84,7 @@ describe('Counter purchase HTTP integration', () => {
         { provide: SerializedAssetService, useValue: {} },
         { provide: StockBalanceService, useValue: {} },
         { provide: StockLedgerService, useValue: {} },
+        { provide: StockMovementQueryService, useValue: {} },
         { provide: StockIssueService, useValue: {} },
         { provide: InventoryDashboardService, useValue: {} },
         { provide: CounterPurchaseService, useValue: counterPurchaseServiceMock },

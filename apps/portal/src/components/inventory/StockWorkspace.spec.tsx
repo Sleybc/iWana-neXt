@@ -32,4 +32,19 @@ describe('StockWorkspace', () => {
     expect(screen.getByText('Kardex')).toBeInTheDocument();
     expect(screen.getByText('Tabla por producto')).toBeInTheDocument();
   });
+
+  it('abre Por bodega cuando el filtro de custodia es móvil', () => {
+    render(
+      <StockWorkspace
+        items={[]}
+        balances={[]}
+        locations={[]}
+        custodyFilter="mobile"
+        onAdjustmentRegistered={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('tab', { name: 'Por bodega', selected: true })).toBeInTheDocument();
+    expect(screen.getByText('Matriz por bodega')).toBeInTheDocument();
+  });
 });
