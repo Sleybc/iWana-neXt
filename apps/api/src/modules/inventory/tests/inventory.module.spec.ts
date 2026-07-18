@@ -30,6 +30,7 @@ import { RfqPdfService } from '../services/rfq-pdf.service';
 import { RfqService } from '../services/rfq.service';
 import { InventoryDashboardService } from '../services/inventory-dashboard.service';
 import { ReplenishmentService } from '../services/replenishment.service';
+import { CycleCountService } from '../services/cycle-count.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InventoryCategoryService } from '../services/inventory-category.service';
 import { InventoryItemService } from '../services/inventory-item.service';
@@ -76,6 +77,7 @@ describe('InventoryModule', () => {
         AssetLifecycleService,
         InventoryDashboardService,
         ReplenishmentService,
+        CycleCountService,
         InventoryMovementPortAdapter,
         CommercialProductReferencePortAdapter,
         SupplierPartyPortAdapter,

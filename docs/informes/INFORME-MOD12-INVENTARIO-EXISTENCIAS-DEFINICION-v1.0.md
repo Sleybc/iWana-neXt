@@ -2,13 +2,19 @@
 
 **Version:** 1.0
 **Fecha:** 2026-07-18
-**Estado:** ✅ Fase 1 — G7 GO (pendiente CTO); ✅ Fase 2 — G7 GO (pendiente CTO + commit)
+**Estado:** ✅ Fase 1 — G7 GO (pendiente CTO F1); ✅ Fase 2 — **G7 GO confirmado por CTO** (`33cd6ecd`); ✅ Fase 3A — **G7 GO** — ver `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-03A-CIERRE-G7-v1.0.md`
 **Auditoría G5 F1:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-AUDITORIA-ARCH-v1.0.md
 **Review G6 F1:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-G6-REVIEW-v1.0.md
 **Cierre G7 F1:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-CIERRE-G7-v1.0.md
 **Informe Fase 2:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-02-v1.0.md
 **Review G6 F2:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-02-G6-REVIEW-v1.0.md
 **Cierre G7 F2:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-02-CIERRE-G7-v1.0.md
+**Informe Fase 3A:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-03A-v1.0.md
+**Review G6 F3A:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-03A-G6-REVIEW-v1.0.md
+**Cierre G7 F3A:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-03A-CIERRE-G7-v1.0.md
+**ADR Fase 3A:** docs/adrs/ADR-054-Conteo-Fisico-Inventario-Ciclico.md (**Aprobado CTO 2026-07-18**)
+**Spec Fase 3A:** docs/specs/2026-07-18-mod12-existencias-conteo-fisico-fase03A-design.md
+**Prompt Fase 3A:** docs/prompts/PROMPT-MOD12-EXISTENCIAS-CONTEO-FISICO-FASE-03A-v1.0.md (**cerrado — G7 GO**)
 **Modo activo:** Product Architect + Orchestrator
 **Responsable:** AI-EM-ARCH
 **PRD:** docs/prds/PRD-MOD12-INVENTARIO-EXISTENCIAS-v1.0.md
@@ -42,28 +48,35 @@ El CTO solicitó determinar si MOD12 ya cuenta con el submódulo de inventario p
 | Spec de diseño Fase 2 (decisiones D-F2-1…D-F2-5, flujo UX, CA) | docs/specs/2026-07-18-mod12-existencias-reorden-fase02-design.md | Aprobado — habilita G4 |
 | Este informe vivo | docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-DEFINICION-v1.0.md | Vigente |
 
-No se emitió HLD ni ADR nuevo: la Fase 1 no crea boundary, entidad, migración ni patrón (justificación en PRD §9); reutiliza el ledger aprobado por ADR-048.
+Fases 1-2 no requirieron HLD ni ADR (no crean boundary, entidad, migración ni patrón; reutilizan el ledger de ADR-048). **Fase 3A sí introduce entidades y migración**, por lo que emite **ADR-054** (modelo de conteo físico) + spec + prompt:
+
+| Artefacto Fase 3A | Ruta | Estado |
+| --- | --- | --- |
+| ADR-054 conteo físico | docs/adrs/ADR-054-Conteo-Fisico-Inventario-Ciclico.md | ✅ **Aprobado CTO 2026-07-18** |
+| Spec de diseño 3A (D-F3A-1…10, ciclo de vida, CA) | docs/specs/2026-07-18-mod12-existencias-conteo-fisico-fase03A-design.md | Aprobado — habilita G4 |
+| Prompt de ejecución 3A | docs/prompts/PROMPT-MOD12-EXISTENCIAS-CONTEO-FISICO-FASE-03A-v1.0.md | **Ejecutable** — G7 F2 cerrado + ADR-054 aprobado |
 
 ## 4. Roadmap del submódulo
 
 | Fase | Alcance | Estado |
 | --- | --- | --- |
-| 1 | Kardex consultable, ajustes con razón tipificada, pestaña Existencias (Por producto / Por bodega / Kardex), Bodegas reducida | **Cerrada (G7 GO)** — pendiente confirmación CTO; ver `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-CIERRE-G7-v1.0.md` |
-| 2 | Reposición sugerida (anti doble pedido) → composer de compras prellenado; valor estimado en Resumen | **Cerrada (G7 GO)** — pendiente confirmación CTO + commit; ver `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-02-CIERRE-G7-v1.0.md` |
-| 3 | Conteos físicos / inventario cíclico; reservas efectivas | Planificada |
+| 1 | Kardex consultable, ajustes con razón tipificada, pestaña Existencias (Por producto / Por bodega / Kardex), Bodegas reducida | **Cerrada (G7 GO)** — pendiente confirmación CTO F1; ver `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-CIERRE-G7-v1.0.md` |
+| 2 | Reposición sugerida (anti doble pedido) → composer de compras prellenado; valor estimado en Resumen | **Cerrada — G7 GO confirmado CTO 2026-07-18** (`33cd6ecd`); ver `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-02-CIERRE-G7-v1.0.md` |
+| 3A | Conteo físico / inventario cíclico (documento → congelar → contar → cierre reconcilia saldo vía ledger) | **Cerrada — G7 GO** (2026-07-18); ver cierre G7 F3A |
+| 3B | Reservas efectivas (`quantityReserved` en ciclo de salidas; validaciones de disponible) | Planificada — se define al cierre de 3A (ADR propio) |
 | 4 | Costeo promedio móvil, valoración y reportes | Planificada |
 
 ## 5. Riesgos vigentes
 
 - Volumen del kardex en tenants grandes: mitigado con paginación de servidor e índices existentes.
 - Fase 2 reutiliza `PurchaseRequestComposer` / `POST /purchasing/requests`: validar anti doble pedido al ejecutar el prompt F2.
-- Deuda UX post-G6 (skeleton, drawer a11y, `canAdjust` por rol) no bloquea cierre pero degrada pulido operativo.
+- Deuda F3A aceptada en G6: `window.confirm` en cierre/cancelación; foco inicial al crear conteo.
 
 ## 6. Próximos pasos
 
-1. **CTO:** confirmar aprobación de producción de Fase 1 y Fase 2 (recomendaciones G7 emitidas) y autorizar el **commit de la Fase 2** (implementada sobre working tree, aún sin commitear).
-2. **Fase 3** (conteos físicos / reservas efectivas): con G7 F2 GO, su criterio de entrada (ADR-016) queda satisfecho. A diferencia de F1/F2, la Fase 3 introduce entidades y migraciones → requiere nueva sesión de arquitectura con HLD/ADR.
-3. Deuda no bloqueante (backlog): «Sin stock» vs «Agotado», flakiness `ECONNRESET`/`SupplierPicker` bajo carga, skeleton Existencias/Bodegas, drawer a11y, rol→`canAdjust`, `tabular-nums` en columnas de Reposición.
+1. **Fase 3B** (reservas efectivas): definir ADR + spec + prompt; toca oversell / `quantityReserved`.
+2. **CTO (opcional pendiente):** confirmar explícitamente G7 de Fase 1 si aún no quedó registrado aparte.
+3. Deuda F3A aceptada: `window.confirm` y foco al crear conteo (pulido).
 
 ## 7. Historial
 
@@ -81,3 +94,8 @@ No se emitió HLD ni ADR nuevo: la Fase 1 no crea boundary, entidad, migración 
 | 2026-07-18 | **Fase 2 implementada (AI-SR-FULL + FE-PLATFORM, multiagente §3bis):** ReplenishmentService + GET suggestions + valor dashboard; subvista Reposición → composer prellenado; gates API 235 + portal 37 + lint/typecheck PASS → G5 listo para G6 |
 | 2026-07-18 | **G6 Fase 2** (PROD-UX/DS-OWNER/SR-QA): GO condicionado; remediación DS-H1/H2 + UX-H1/H2/H3; Playwright Existencias 8/8; **G6 GO** → pendiente G7 |
 | 2026-07-18 | **Cierre G7 Fase 2 (AI-EM-ARCH):** re-verificación independiente en código de D-F2-1…5 y de las 5 remediaciones G6; gates re-ejecutados (lint/typecheck limpios, suites F2 en verde; 2 fallos flaky de infra `ECONNRESET`/`SupplierPicker` no-regresivos, pasan aislados). **Recomendación: GO a producción**, pendiente CTO + commit de la fase. Habilita entrada de Fase 3 (requiere HLD/ADR por entidades/migraciones nuevas) |
+| 2026-07-18 | **Fase 3 definida y dividida (AI-EM-ARCH, protocolo multiagente):** factibilidad verificada contra código (reservas/ledger/StockIssue lifecycle/migraciones + patrones de entidad y UI). Decisión CTO: **split 3A (conteos, aditivo) / 3B (reservas, toca oversell)** y **reutilizar ADJUSTMENT** para el ajuste de conteo. Emitidos ADR-054 + spec 3A + prompt 3A; PRD roadmap y §7 actualizados. 3A ejecutable al cierre G7 F2 + aprobación ADR-054 |
+| 2026-07-18 | **CTO confirma G7 Fase 2 (GO producción)** + commit `33cd6ecd` en `main`. **CTO aprueba ADR-054.** Fase 3A queda **ejecutable** (ADR-016). |
+| 2026-07-18 | **Fase 3A implementada (AI-SR-FULL):** migración 071 + CycleCountService + tab Conteos; deuda F2 residual cerrada; gates API 245 + portal F3A en verde → G5 listo para G6. Subagentes §3bis abortaron por límite API; ejecución consolidada en sesión. |
+| 2026-07-18 | **Cierre operativo G6 Fase 3A:** migración 071 verificada en DB; Playwright Conteos 2/2 + Existencias 8/8; remediación carga de categorías en tab Conteos; informe G6 **GO** → pendiente G7. |
+| 2026-07-18 | **Cierre G7 Fase 3A (AI-EM-ARCH):** re-verificación D-F3A-1…10; API inventory 245/245; E2E Conteos/Existencias en verde; **GO a producción** + commit de la fase. Habilita definición de Fase 3B. |

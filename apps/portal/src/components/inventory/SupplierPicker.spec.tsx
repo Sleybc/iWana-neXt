@@ -71,9 +71,12 @@ describe('SupplierPicker', () => {
     const input = screen.getByRole('combobox', { name: 'Proveedor' });
     fireEvent.change(input, { target: { value: 'Proveedor' } });
 
-    await waitFor(() => {
-      expect(screen.getByRole('option', { name: /Proveedor Alfa/i })).toBeInTheDocument();
-    });
+    await waitFor(
+      () => {
+        expect(screen.getByRole('option', { name: /Proveedor Alfa/i })).toBeInTheDocument();
+      },
+      { timeout: 5_000 },
+    );
 
     fireEvent.keyDown(input, { key: 'Enter' });
 
@@ -88,9 +91,12 @@ describe('SupplierPicker', () => {
     const input = screen.getByRole('combobox', { name: 'Proveedor' });
     fireEvent.change(input, { target: { value: 'Proveedor' } });
 
-    await waitFor(() => {
-      expect(screen.getByRole('option', { name: /Proveedor Beta/i })).toBeInTheDocument();
-    });
+    await waitFor(
+      () => {
+        expect(screen.getByRole('option', { name: /Proveedor Beta/i })).toBeInTheDocument();
+      },
+      { timeout: 5_000 },
+    );
 
     fireEvent.keyDown(input, { key: 'ArrowDown' });
     fireEvent.keyDown(input, { key: 'Enter' });

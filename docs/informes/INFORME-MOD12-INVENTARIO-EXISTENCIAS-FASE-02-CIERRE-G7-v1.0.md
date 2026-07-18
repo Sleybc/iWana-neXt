@@ -1,13 +1,14 @@
 # Informe - MOD12 Existencias Fase 02 — Cierre G7 (validación final)
 
-**Version:** 1.0
+**Version:** 1.1
 **Fecha:** 2026-07-18
-**Estado:** ✅ **G7 — Recomendación: GO a producción**
+**Estado:** ✅ **G7 — GO a producción (confirmado por CTO)**
 **Modo activo:** EM (validación final) + Orchestrator (consolidación)
 **Responsable:** AI-EM-ARCH
-**Aprobador final:** CTO
+**Aprobador final:** CTO Humano (confirmación explícita 2026-07-18)
 **Cadena de evidencia:** G5 → INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-02-v1.0.md · G6 → INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-02-G6-REVIEW-v1.0.md
 **PRD:** docs/prds/PRD-MOD12-INVENTARIO-EXISTENCIAS-v1.0.md §7 (Fase 2 congelada) · **Spec:** docs/specs/2026-07-18-mod12-existencias-reorden-fase02-design.md
+**Commit producción:** `33cd6ecd` (`feat(mod12): existencias Fase 02 — reposición sugerida y valor`) en `main`
 
 ---
 
@@ -63,7 +64,7 @@ Cierre G7 de la Fase 2 (reposición sugerida → composer de compras prellenado 
 | G5 (review técnico segunda capa) | AI-EM-ARCH | Cumplido |
 | G6 (experiencia, DS, QA) | PROD-UX / DS-OWNER / SR-QA | GO condicionado → 5 condiciones (DS-H1/H2, UX-H1/H2/H3) remediadas y verificadas |
 | G7 (validación final) | AI-EM-ARCH recomienda | **GO** |
-| Aprobación producción | **CTO** | Pendiente de confirmación explícita |
+| Aprobación producción | **CTO** | ✅ **Confirmada 2026-07-18** |
 
 Regla aprobador ≠ productor respetada (G5/G6/G7 por roles distintos del ejecutor AI-SR-FULL/FE-PLATFORM).
 
@@ -80,11 +81,11 @@ Ninguno es criterio de bloqueo de producción (`AGENTS.md` §4). Se recomienda i
 
 ## 8. Decisión
 
-**[G7] AI-EM-ARCH recomienda GO a producción / merge de la Fase 2 de Existencias.** Contrato del PRD §7 cumplido, decisiones D-F2-1…5 conformes, las cinco remediaciones de G6 verificadas directamente en código, lint y typecheck limpios y suites de inventario en verde (descontados dos fallos flaky de infraestructura no regresivos). Queda pendiente la confirmación explícita del CTO.
+**[G7] AI-EM-ARCH recomienda GO a producción / merge de la Fase 2 de Existencias.** Contrato del PRD §7 cumplido, decisiones D-F2-1…5 conformes, las cinco remediaciones de G6 verificadas directamente en código, lint y typecheck limpios y suites de inventario en verde (descontados dos fallos flaky de infraestructura no regresivos).
 
-**Nota de gobernanza:** la Fase 2 quedó implementada sobre el working tree y aún **sin commitear** al momento de esta auditoría (la Fase 1 y O1 sí están comiteadas). Se recomienda al CTO autorizar el commit de la Fase 2 como parte de la aprobación de cierre.
+**Confirmación CTO (2026-07-18):** el CTO aprueba la recomendación G7 — **GO a producción**. El commit de la fase quedó en `main` como `33cd6ecd`.
 
-**Habilitación consecuente:** con G7 GO, el criterio de entrada de la Fase 3 (conteos físicos / reservas efectivas) queda satisfecho (ADR-016). Su definición requiere una nueva sesión de arquitectura (a diferencia de F1/F2, la Fase 3 sí introduce entidades y migraciones — HLD/ADR probablemente necesarios).
+**Habilitación consecuente:** con G7 F2 cerrado y [ADR-054](../adrs/ADR-054-Conteo-Fisico-Inventario-Ciclico.md) aprobado el mismo día, la Fase 3A (conteo físico) queda **ejecutable** (`PROMPT-MOD12-EXISTENCIAS-CONTEO-FISICO-FASE-03A-v1.0.md`, ADR-016).
 
 ## 9. RACI de este gate
 
@@ -92,4 +93,4 @@ Ninguno es criterio de bloqueo de producción (`AGENTS.md` §4). Se recomienda i
 | --- | --- |
 | AI-EM-ARCH | Re-verifica evidencia de forma independiente, re-ejecuta gates, consolida y recomienda |
 | AI-SR-FULL / AI-FE-PLATFORM | Ejecutaron la fase y las remediaciones (no aprueban su propio gate) |
-| CTO | Aprobación final de producción + autorización de commit (pendiente) |
+| CTO | ✅ Aprobación final de producción (confirmada 2026-07-18) |

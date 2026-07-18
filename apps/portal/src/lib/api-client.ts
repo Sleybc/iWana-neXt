@@ -71,6 +71,7 @@ import {
   SupplierProfileStatus,
   StockAdjustmentReason,
   StockBalanceCondition,
+  StockCountStatus,
   StockIssueStatus,
   StockIssueType,
   StockLocationStatus,
@@ -6577,6 +6578,65 @@ export interface StockIssueDetailRecord extends StockIssueRecord {
   lines: StockIssueLineRecord[];
 }
 
+export interface ListStockCountsParams {
+  status?: StockCountStatus;
+  locationId?: string;
+}
+
+export interface CreateStockCountDto {
+  locationId: string;
+  categoryId?: string | null;
+  notes?: string | null;
+}
+
+export interface UpdateStockCountLineDto {
+  id?: string;
+  itemId?: string;
+  lotId?: string | null;
+  condition?: StockBalanceCondition;
+  expectedQty?: number;
+  countedQty: number;
+}
+
+export interface UpdateStockCountDto {
+  lines: UpdateStockCountLineDto[];
+}
+
+export interface StockCountLineRecord {
+  id: string;
+  tenantId: string;
+  countId: string;
+  itemId: string;
+  lotId: string | null;
+  condition: StockBalanceCondition;
+  expectedQty: string;
+  countedQty: string | null;
+  variance: string | null;
+  itemSku?: string | null;
+  itemName?: string | null;
+  createdAt: string;
+}
+
+export interface StockCountRecord {
+  id: string;
+  tenantId: string;
+  countNumber: string;
+  status: StockCountStatus;
+  locationId: string;
+  categoryId: string | null;
+  notes: string | null;
+  createdByUserId: string;
+  closedByUserId: string | null;
+  closedAt: string | null;
+  stockMovementId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StockCountDetailRecord extends StockCountRecord {
+  lines: StockCountLineRecord[];
+}
+
 export interface ListPurchaseRequestsParams {
   status?: PurchaseRequestStatus;
   requestType?: PurchaseRequestType;
@@ -7020,6 +7080,51 @@ export const inventoryApi = {
     request<StockIssueDetailRecord>(
       `/inventory/issues/${id}/dispatch`,
       { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  listCounts: (params?: ListStockCountsParams, tenantSlug?: string) =>
+    request<StockCountRecord[]>(
+      `/inventory/counts${buildInventoryQuery({
+        status: params?.status,
+        locationId: params?.locationId,
+      })}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  createCount: (dto: CreateStockCountDto, tenantSlug?: string) =>
+    request<StockCountDetailRecord>(
+      '/inventory/counts',
+      { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  getCount: (id: string, tenantSlug?: string) =>
+    request<StockCountDetailRecord>(
+      `/inventory/counts/${id}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  updateCount: (id: string, dto: UpdateStockCountDto, tenantSlug?: string) =>
+    request<StockCountDetailRecord>(
+      `/inventory/counts/${id}`,
+      { method: 'PATCH', body: JSON.stringify(dto), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  closeCount: (id: string, tenantSlug?: string) =>
+    request<StockCountDetailRecord>(
+      `/inventory/counts/${id}/close`,
+      { method: 'POST', body: JSON.stringify({}), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  cancelCount: (id: string, tenantSlug?: string) =>
+    request<StockCountRecord>(
+      `/inventory/counts/${id}/cancel`,
+      { method: 'POST', body: JSON.stringify({}), returnFullResponse: true },
       tenantSlug,
     ),
 };

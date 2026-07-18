@@ -21,8 +21,10 @@ import {
   PurchaseOrderStatus,
   SerializedAssetStatus,
   SupplierProfileStatus,
+  UserRole,
   WriteOffReason,
 } from '@iwana/shared';
+import { useAuth } from '@/components/auth/AuthProvider';
 import {
   ApiError,
   type AddSupplierQuoteDto,
@@ -50,6 +52,10 @@ import {
   type CreateStockIssueDto,
   type UpdateStockIssueDto,
   type DispatchStockIssueDto,
+  type StockCountRecord,
+  type StockCountDetailRecord,
+  type CreateStockCountDto,
+  type UpdateStockCountDto,
   type CreateStockLocationDto,
   type ListInventoryItemsParams,
   purchasingApi,
@@ -102,6 +108,7 @@ import { StockLocationsPanel } from './StockLocationsPanel';
 import { StockWorkspace } from './StockWorkspace';
 
 import { StockIssuesWorkspace } from './StockIssuesWorkspace';
+import { StockCountsWorkspace } from './StockCountsWorkspace';
 import {
   buildTakenCodePrefixSet,
   isValidCategoryCodePrefix,
@@ -128,6 +135,7 @@ export type InventoryTab =
   | 'suppliers'
   | 'locations'
   | 'issues'
+  | 'counts'
   | 'assets'
   | 'movements'
   | 'writeoffs';
@@ -196,6 +204,8 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { user } = useAuth();
+  const canAdjustStock = user?.role === UserRole.ADMIN;
   const [activeTab, setActiveTab] = useState<InventoryTab>(resolveInventoryTab(initialTab));
   const [locationCustodyFilter, setLocationCustodyFilter] = useState<LocationMatrixCustodyFilter>(
     () => resolveLocationCustodyFilter(searchParams.get('custody')),
@@ -204,6 +214,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const [items, setItems] = useState<InventoryItemRecord[]>([]);
   const [locations, setLocations] = useState<StockLocationRecord[]>([]);
   const [issues, setIssues] = useState<StockIssueRecord[]>([]);
+  const [counts, setCounts] = useState<StockCountRecord[]>([]);
   const [tenantUsers, setTenantUsers] = useState<InternalUser[]>([]);
   const [usersLoadError, setUsersLoadError] = useState<string | null>(null);
   const [assets, setAssets] = useState<SerializedAssetRecord[]>([]);
@@ -405,6 +416,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         itemsResponse,
         locationsResponse,
         issuesResponse,
+        countsResponse,
         assetsResponse,
         balancesResponse,
         requestsResponse,
@@ -414,6 +426,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         inventoryApi.listItems(),
         inventoryApi.listLocations(),
         inventoryApi.listIssues(),
+        inventoryApi.listCounts(),
         inventoryApi.listAssets(),
         inventoryApi.listBalances(),
         purchasingApi.listRequests(),
@@ -429,6 +442,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       setItems(itemsResponse);
       setLocations(locationsResponse);
       setIssues(issuesResponse);
+      setCounts(countsResponse);
       setAssets(assetsResponse);
       setBalances(balancesResponse);
       setRequests(requestsResponse);
@@ -750,7 +764,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   }, [activeTab, catalogFilters, loadCatalogItems]);
 
   useEffect(() => {
-    if (activeTab !== 'catalog') {
+    if (activeTab !== 'catalog' && activeTab !== 'counts') {
       return;
     }
 
@@ -1423,6 +1437,63 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     }
   }
 
+  async function handleCreateCount(payload: CreateStockCountDto): Promise<StockCountDetailRecord> {
+    setMovementNotice(null);
+    setError(null);
+    try {
+      const created = await inventoryApi.createCount(payload);
+      setMovementNotice(`Conteo ${created.countNumber} creado.`);
+      await loadData(true);
+      return created;
+    } catch (submitError) {
+      setError(mapInventoryError(submitError));
+      throw submitError instanceof Error ? submitError : new Error(mapInventoryError(submitError));
+    }
+  }
+
+  async function handleUpdateCount(
+    countId: string,
+    payload: UpdateStockCountDto,
+  ): Promise<StockCountDetailRecord> {
+    setError(null);
+    try {
+      return await inventoryApi.updateCount(countId, payload);
+    } catch (submitError) {
+      setError(mapInventoryError(submitError));
+      throw submitError instanceof Error ? submitError : new Error(mapInventoryError(submitError));
+    }
+  }
+
+  async function handleCloseCount(countId: string) {
+    setMovementNotice(null);
+    setError(null);
+    try {
+      await inventoryApi.closeCount(countId);
+      setMovementNotice('Conteo cerrado y ajuste aplicado al inventario.');
+      await loadData(true);
+    } catch (submitError) {
+      setError(mapInventoryError(submitError));
+      throw submitError instanceof Error ? submitError : new Error(mapInventoryError(submitError));
+    }
+  }
+
+  async function handleCancelCount(countId: string) {
+    setMovementNotice(null);
+    setError(null);
+    try {
+      await inventoryApi.cancelCount(countId);
+      setMovementNotice('Conteo cancelado.');
+      await loadData(true);
+    } catch (submitError) {
+      setError(mapInventoryError(submitError));
+      throw submitError instanceof Error ? submitError : new Error(mapInventoryError(submitError));
+    }
+  }
+
+  async function handleOpenCountDetail(countId: string): Promise<StockCountDetailRecord> {
+    return inventoryApi.getCount(countId);
+  }
+
   async function handleCreateLocation(payload: CreateStockLocationDto) {
     setIsSubmittingLocation(true);
     setLocationSubmitError(null);
@@ -1609,6 +1680,9 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
               </TabsTrigger>
               <TabsTrigger value="issues" className={portalModuleTabTriggerClassName}>
                 Salidas
+              </TabsTrigger>
+              <TabsTrigger value="counts" className={portalModuleTabTriggerClassName}>
+                Conteos
               </TabsTrigger>
             </div>
           </div>
@@ -1971,7 +2045,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
               locations={locations}
               userLabelById={userLabelById}
               custodyFilter={locationCustodyFilter}
-              canAdjust
+              canAdjust={canAdjustStock}
               onCustodyFilterChange={handleLocationCustodyFilterChange}
               onAdjustmentRegistered={(movementNumber) => {
                 setMovementNotice(`Ajuste registrado: ${movementNumber}`);
@@ -2026,6 +2100,24 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             onCancel={handleCancelIssue}
             onDispatch={handleDispatchIssue}
             onOpenDetail={handleOpenIssueDetail}
+            onRefresh={() => void loadData(true)}
+          />
+        </TabsContent>
+
+        <TabsContent value="counts" className="space-y-6">
+          <StockCountsWorkspace
+            locations={locations}
+            categories={categories}
+            counts={counts}
+            isLoading={isLoading}
+            isRefreshing={isRefreshing}
+            error={error}
+            canClose={canAdjustStock}
+            onCreate={handleCreateCount}
+            onUpdate={handleUpdateCount}
+            onClose={handleCloseCount}
+            onCancel={handleCancelCount}
+            onOpenDetail={handleOpenCountDetail}
             onRefresh={() => void loadData(true)}
           />
         </TabsContent>

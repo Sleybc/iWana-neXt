@@ -18,6 +18,7 @@ import {
   StockLocationStatus,
   StockLocationType,
   StockMovementOrigin,
+  UserRole,
 } from '@iwana/shared';
 import {
   ApiError,
@@ -47,6 +48,28 @@ jest.mock('next/navigation', () => ({
   usePathname: () => pathnameMock,
   useRouter: () => ({ replace: replaceMock }),
   useSearchParams: () => searchParamsMock,
+}));
+
+jest.mock('@/components/auth/AuthProvider', () => ({
+  useAuth: () => ({
+    user: {
+      id: 'user-admin',
+      emailHash: 'hash',
+      role: UserRole.ADMIN,
+      type: 'tenant' as const,
+      tenantId: 'tenant-1',
+      displayName: 'Admin',
+      subtitle: 'Administrador',
+      firstName: 'Admin',
+      lastName: 'Test',
+    },
+    isAuthenticated: true,
+    isLoading: false,
+    login: jest.fn(),
+    completeMfaLogin: jest.fn(),
+    logout: jest.fn(),
+    refreshProfile: jest.fn(),
+  }),
 }));
 
 jest.mock('@/lib/api-client', () => ({
@@ -109,6 +132,12 @@ jest.mock('@/lib/api-client', () => ({
     createIssue: jest.fn(),
     getIssue: jest.fn(),
     dispatchIssue: jest.fn(),
+    listCounts: jest.fn(),
+    createCount: jest.fn(),
+    getCount: jest.fn(),
+    updateCount: jest.fn(),
+    closeCount: jest.fn(),
+    cancelCount: jest.fn(),
   },
   purchasingApi: {
     listRequests: jest.fn(),
@@ -436,6 +465,7 @@ describe('InventoryClient', () => {
     });
     inventoryApiMock.listAssets.mockResolvedValue([]);
     inventoryApiMock.listIssues.mockResolvedValue([]);
+    inventoryApiMock.listCounts.mockResolvedValue([]);
     inventoryApiMock.listBalances.mockResolvedValue([
       {
         id: 'bal-1',

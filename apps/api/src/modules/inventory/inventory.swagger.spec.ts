@@ -13,6 +13,7 @@ import { StockMovementQueryService } from './services/stock-movement-query.servi
 import { StockLocationService } from './services/stock-location.service';
 import { InventoryController } from './inventory.controller';
 import { ReplenishmentService } from './services/replenishment.service';
+import { CycleCountService } from './services/cycle-count.service';
 
 function getRequestSchema(
   operation: Record<string, unknown> | undefined,
@@ -43,6 +44,7 @@ describe('InventoryController Swagger', () => {
         { provide: CounterPurchaseService, useValue: {} },
         { provide: InventoryDashboardService, useValue: {} },
         { provide: ReplenishmentService, useValue: {} },
+        { provide: CycleCountService, useValue: {} },
       ],
     }).compile();
 
@@ -97,5 +99,31 @@ describe('InventoryController Swagger', () => {
 
     expect(suggestions).toBeDefined();
     expect(suggestions?.summary).toBe('Consultar sugerencias de reposición de inventario');
+  });
+
+  it('documenta conteos físicos de inventario', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('Swagger Inventory Test').setVersion('1.0').build(),
+    );
+
+    expect(document.paths['/inventory/counts']?.get?.summary).toBe(
+      'Listar conteos físicos de inventario',
+    );
+    expect(document.paths['/inventory/counts']?.post?.summary).toBe(
+      'Crear conteo físico de inventario',
+    );
+    expect(document.paths['/inventory/counts/{id}']?.get?.summary).toBe(
+      'Obtener detalle de conteo físico',
+    );
+    expect(document.paths['/inventory/counts/{id}']?.patch?.summary).toBe(
+      'Capturar cantidades de un conteo físico',
+    );
+    expect(document.paths['/inventory/counts/{id}/close']?.post?.summary).toBe(
+      'Cerrar conteo físico y aplicar ajuste de inventario',
+    );
+    expect(document.paths['/inventory/counts/{id}/cancel']?.post?.summary).toBe(
+      'Cancelar conteo físico sin efecto en stock',
+    );
   });
 });

@@ -43,9 +43,12 @@ La brecha no es de modelo sino de **consulta y operación**: el tenant no tiene 
 | Fase | Alcance | Estado |
 | --- | --- | --- |
 | **Fase 1 — Kardex, ajustes y vista Existencias** | `GET /inventory/movements` (+ detalle), `POST /inventory/adjustments`, pestaña Existencias con subvistas Por producto / Por bodega / Kardex, drawer de detalle por ítem, diálogo de ajuste; pestaña Bodegas reducida a gestión de bodegas | Aprobada para ejecución |
-| **Fase 2 — Reorden y valor básico** | Ítems bajo `reorderPoint` → generación de solicitud de compra prellenada (conexión con purchasing existente); indicadores básicos de valor de inventario | Preparada (criterios de entrada en sección 8) |
-| **Fase 3 — Conteos físicos y reservas** | Documento de conteo físico / inventario cíclico (congelar, contar, diferencias → ajuste automático); reservas efectivas (`quantityReserved`) ligadas a salidas y órdenes | Planificada |
+| **Fase 2 — Reorden y valor básico** | Ítems bajo `reorderPoint` → generación de solicitud de compra prellenada (conexión con purchasing existente); indicadores básicos de valor de inventario | **Cerrada** — G7 GO confirmado CTO 2026-07-18 (`33cd6ecd`) |
+| **Fase 3A — Conteo físico / inventario cíclico** | Documento de conteo (congelar esperado, contar, ver diferencias → cierre que reconcilia el saldo contra lo contado vía ledger). Aditivo, no toca rutas existentes. Ver [ADR-054](../adrs/ADR-054-Conteo-Fisico-Inventario-Ciclico.md) y [spec 3A](../specs/2026-07-18-mod12-existencias-conteo-fisico-fase03A-design.md) | **Ejecutable** — ADR-054 aprobado CTO 2026-07-18 + G7 F2 cerrado |
+| **Fase 3B — Reservas efectivas** | Activar `quantityReserved` en el ciclo de salidas; migrar validaciones de disponible (`onHand → onHand − reserved`) en despacho/transferencia y el guardado anti-negativo. Toca rutas críticas → requiere su propio ADR | Planificada — se define al cierre de 3A (ADR-016) |
 | **Fase 4 — Costeo y valoración** | Costo promedio móvil (actualizar `lastPurchaseCost` y costo promedio en recepción, costear salidas), valoración de inventario y reportes | Planificada |
+
+**Split de Fase 3 (decisión CTO 2026-07-18):** la verificación de factibilidad mostró asimetría de riesgo — conteos aditivo/limpio vs. reservas que modifican el guardado anti-negativo del despacho (riesgo de sobre-venta). Se dividió en 3A (conteos, esta definición) y 3B (reservas, gate propio con ADR propio).
 
 ### En scope Fase 1
 
@@ -152,6 +155,21 @@ interface ReplenishmentSuggestionRecord {
   criticality: 'out' | 'below-minimum' | 'below-reorder';
 }
 ```
+
+### Fase 3A (contrato congelado 2026-07-18; detalle en [ADR-054](adrs/ADR-054-Conteo-Fisico-Inventario-Ciclico.md) y [spec 3A](../specs/2026-07-18-mod12-existencias-conteo-fisico-fase03A-design.md))
+
+Documento de conteo (`stock_counts` + `stock_count_lines`, migración tenant 071). El cierre reconcilia el saldo contra lo contado (`delta = countedQty − onHand vivo`) emitiendo un `StockMovement` `origin=ADJUSTMENT` / `originContext='inventory.cycle-count'` / `reason=CYCLE_COUNT`.
+
+| Endpoint | Roles | Propósito |
+| --- | --- | --- |
+| `GET /inventory/counts` | ADMIN, NOC, SUPPORT | Listar conteos (filtros status, locationId) |
+| `GET /inventory/counts/:id` | ADMIN, NOC, SUPPORT | Detalle con líneas (expected/counted/variance) |
+| `POST /inventory/counts` | ADMIN, NOC, SUPPORT | Crear (congela esperado por bodega/categoría, solo consumibles) |
+| `PATCH /inventory/counts/:id` | ADMIN, NOC, SUPPORT | Capturar/editar cantidades contadas |
+| `POST /inventory/counts/:id/close` | **ADMIN** | Cerrar y aplicar ajuste (idempotente) |
+| `POST /inventory/counts/:id/cancel` | ADMIN, NOC, SUPPORT | Cancelar sin efecto |
+
+Fase 3B (reservas) y Fase 4 (costeo): contrato se congela en su propia definición.
 
 ## 8. Criterios de aceptacion
 

@@ -19,6 +19,7 @@ import {
   SerializedAssetStatus,
   StockAdjustmentReason,
   StockBalanceCondition,
+  StockCountStatus,
   StockIssueStatus,
   StockIssueType,
   StockLocationStatus,
@@ -2449,4 +2450,104 @@ export class CreateStockAdjustmentDto {
   @ApiProperty({ minLength: 8, maxLength: 160 })
   @Allow()
   idempotencyKey!: string;
+}
+
+export const CreateStockCountSchema = z.object({
+  locationId: z.string().uuid(),
+  categoryId: z.string().uuid().optional().nullable(),
+  notes: optionalTrimmedString(4000),
+});
+
+export type CreateStockCountInput = z.infer<typeof CreateStockCountSchema>;
+
+export class CreateStockCountDto {
+  @ApiProperty({ format: 'uuid' })
+  @Allow()
+  locationId!: string;
+
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @Allow()
+  categoryId?: string | null;
+
+  @ApiPropertyOptional({ maxLength: 4000, nullable: true })
+  @Allow()
+  notes?: string | null;
+}
+
+export const UpdateStockCountLineSchema = z.object({
+  id: z.string().uuid().optional(),
+  itemId: z.string().uuid().optional(),
+  lotId: optionalUuidLike(),
+  condition: z.nativeEnum(StockBalanceCondition).optional(),
+  expectedQty: nonNegativeNumber.optional(),
+  countedQty: nonNegativeNumber,
+});
+
+export const UpdateStockCountSchema = z.object({
+  lines: z.array(UpdateStockCountLineSchema).min(1, 'Debe enviar al menos una línea.'),
+});
+
+export type UpdateStockCountInput = z.infer<typeof UpdateStockCountSchema>;
+
+export class UpdateStockCountLineDto {
+  @ApiPropertyOptional({ format: 'uuid' })
+  @Allow()
+  id?: string;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @Allow()
+  itemId?: string;
+
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @Allow()
+  lotId?: string | null;
+
+  @ApiPropertyOptional({ enum: StockBalanceCondition })
+  @Allow()
+  condition?: StockBalanceCondition;
+
+  @ApiPropertyOptional()
+  @Allow()
+  expectedQty?: number;
+
+  @ApiProperty({ description: 'Cantidad contada (no negativa).' })
+  @Allow()
+  countedQty!: number;
+}
+
+export class UpdateStockCountDto {
+  @ApiProperty({ type: [UpdateStockCountLineDto] })
+  @Allow()
+  @ValidateNested({ each: true })
+  @Type(() => UpdateStockCountLineDto)
+  lines!: UpdateStockCountLineDto[];
+}
+
+export const CloseStockCountSchema = z.object({
+  idempotencyKey: z.string().trim().min(8).max(160).optional(),
+});
+
+export type CloseStockCountInput = z.infer<typeof CloseStockCountSchema>;
+
+export class CloseStockCountDto {
+  @ApiPropertyOptional({ minLength: 8, maxLength: 160 })
+  @Allow()
+  idempotencyKey?: string;
+}
+
+export const ListStockCountsQuerySchema = z.object({
+  status: z.nativeEnum(StockCountStatus).optional(),
+  locationId: z.string().uuid().optional(),
+});
+
+export type ListStockCountsQueryInput = z.infer<typeof ListStockCountsQuerySchema>;
+
+export class ListStockCountsQueryDto {
+  @ApiPropertyOptional({ enum: StockCountStatus })
+  @Allow()
+  status?: StockCountStatus;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @Allow()
+  locationId?: string;
 }

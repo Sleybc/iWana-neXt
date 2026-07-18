@@ -73,7 +73,7 @@ describe('StockReplenishmentPanel', () => {
     expect(listReplenishmentSuggestionsMock).toHaveBeenCalled();
     expect(screen.getByLabelText(/Seleccionar OUT-01/i)).toBeChecked();
     expect(screen.getByLabelText(/Seleccionar MIN-01/i)).not.toBeChecked();
-    expect(screen.getByText('Sin stock')).toBeInTheDocument();
+    expect(screen.getByText('Agotado')).toBeInTheDocument();
     expect(screen.getByText('Bajo mínimo')).toBeInTheDocument();
   });
 

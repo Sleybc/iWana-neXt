@@ -21,6 +21,8 @@ import {
   StockLot,
   StockIssue,
   StockIssueLine,
+  StockCount,
+  StockCountLine,
   StockMovement,
   StockMovementLine,
   SupplierProfile,
@@ -58,6 +60,7 @@ import { StockBalanceService } from './services/stock-balance.service';
 import { StockLedgerService } from './services/stock-ledger.service';
 import { StockMovementQueryService } from './services/stock-movement-query.service';
 import { StockIssueService } from './services/stock-issue.service';
+import { CycleCountService } from './services/cycle-count.service';
 import { CounterPurchaseService } from './services/counter-purchase.service';
 import { RfqPdfService } from './services/rfq-pdf.service';
 import { RfqService } from './services/rfq.service';
@@ -78,6 +81,8 @@ import { SupplierProfileService } from './services/supplier-profile.service';
       SerializedAsset,
       StockIssue,
       StockIssueLine,
+      StockCount,
+      StockCountLine,
       StockMovement,
       StockMovementLine,
       PurchaseRequest,
@@ -106,6 +111,7 @@ import { SupplierProfileService } from './services/supplier-profile.service';
     StockLedgerService,
     StockMovementQueryService,
     StockIssueService,
+    CycleCountService,
     StockBalanceService,
     SerializedAssetService,
     PurchasingPolicyService,
@@ -147,6 +153,7 @@ import { SupplierProfileService } from './services/supplier-profile.service';
     CustomerSiteLocationResolver,
     StockLedgerService,
     StockIssueService,
+    CycleCountService,
     StockBalanceService,
     SerializedAssetService,
     PurchasingPolicyService,

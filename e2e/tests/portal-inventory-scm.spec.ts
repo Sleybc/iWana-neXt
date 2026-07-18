@@ -51,17 +51,17 @@ const PR_SEED_ID = 'pr-seed-001';
 const PARTY_REUSE_ID = 'party-reuse-001';
 const REUSE_DOCUMENT_NUMBER = '900123456';
 
-function buildToken(): string {
+function buildToken(role: 'NOC' | 'ADMIN' = 'NOC'): string {
   return (
     'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.' +
     btoa(
       JSON.stringify({
         sub: NOC_USER_ID,
-        email: 'hash-noc',
-        role: 'NOC',
+        email: role === 'ADMIN' ? 'hash-admin' : 'hash-noc',
+        role,
         tenantId: 'tenant-inventory-001',
         schemaName: 'tenant_inventory_001',
-        jti: 'jti-noc-inventory',
+        jti: role === 'ADMIN' ? 'jti-admin-inventory' : 'jti-noc-inventory',
         type: 'tenant',
         exp: Math.floor(Date.now() / 1000) + 900,
       }),
@@ -74,14 +74,18 @@ function nowIso(offsetMinutes = 0): string {
   return new Date(Date.now() + offsetMinutes * 60_000).toISOString();
 }
 
-async function seedPortalSession(page: import('@playwright/test').Page) {
+async function seedPortalSession(
+  page: import('@playwright/test').Page,
+  options: { role?: 'NOC' | 'ADMIN' } = {},
+) {
+  const role = options.role ?? 'NOC';
   await page.goto('/auth/login');
   await page.evaluate(
     ({ token, slug }: { token: string; slug: string }) => {
       window.localStorage.setItem('iwana.portal.access-token', token);
       window.localStorage.setItem('iwana.portal.tenant-slug', slug);
     },
-    { token: buildToken(), slug: MOCK_TENANT_SLUG },
+    { token: buildToken(role), slug: MOCK_TENANT_SLUG },
   );
 }
 
@@ -168,6 +172,8 @@ type InventoryMockState = {
   balances: Array<Record<string, unknown>>;
   stockIssues: Array<Record<string, unknown>>;
   stockIssueLines: Array<Record<string, unknown>>;
+  stockCounts: Array<Record<string, unknown>>;
+  stockCountLines: Array<Record<string, unknown>>;
   stockIssueDispatchCount: number;
   transferCount: number;
   returnCount: number;
@@ -452,6 +458,8 @@ function createInventoryMockState(): InventoryMockState {
     ],
     stockIssues: [],
     stockIssueLines: [],
+    stockCounts: [],
+    stockCountLines: [],
     stockIssueDispatchCount: 0,
     transferCount: 0,
     returnCount: 0,
@@ -490,10 +498,44 @@ function createInventoryMockState(): InventoryMockState {
   };
 }
 
+function mapStockCountDetail(state: InventoryMockState, countId: string) {
+  const count = state.stockCounts.find((entry) => entry.id === countId);
+  if (!count) {
+    return null;
+  }
+
+  const catalogById = new Map(state.catalogItems.map((item) => [String(item.id), item]));
+  const lines = state.stockCountLines
+    .filter((line) => line.countId === countId)
+    .map((line) => {
+      const item = catalogById.get(String(line.itemId));
+      const countedQty = line.countedQty == null ? null : String(line.countedQty);
+      const expectedQty = String(line.expectedQty ?? '0');
+      const variance =
+        countedQty == null
+          ? null
+          : (Number.parseFloat(countedQty) - Number.parseFloat(expectedQty)).toFixed(2);
+
+      return {
+        ...line,
+        expectedQty,
+        countedQty,
+        variance,
+        itemSku: item?.sku ?? null,
+        itemName: item?.name ?? null,
+      };
+    });
+
+  return { ...count, lines };
+}
+
 async function setupInventoryMocks(
   page: import('@playwright/test').Page,
   state: InventoryMockState,
+  options: { role?: 'NOC' | 'ADMIN' } = {},
 ) {
+  const sessionRole = options.role ?? 'NOC';
+
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -529,11 +571,11 @@ async function setupInventoryMocks(
         body: JSON.stringify({
           data: {
             sub: NOC_USER_ID,
-            email: 'hash-noc',
-            role: 'NOC',
+            email: sessionRole === 'ADMIN' ? 'hash-admin' : 'hash-noc',
+            role: sessionRole,
             tenantId: 'tenant-inventory-001',
             schemaName: 'tenant_inventory_001',
-            jti: 'jti-noc-inventory',
+            jti: sessionRole === 'ADMIN' ? 'jti-admin-inventory' : 'jti-noc-inventory',
             type: 'tenant',
           },
         }),
@@ -2124,6 +2166,205 @@ async function setupInventoryMocks(
       return;
     }
 
+    if (pathname.endsWith('/inventory/counts') && method === 'GET') {
+      const status = url.searchParams.get('status');
+      const locationId = url.searchParams.get('locationId');
+      const rows = state.stockCounts.filter((entry) => {
+        if (status && entry.status !== status) {
+          return false;
+        }
+        if (locationId && entry.locationId !== locationId) {
+          return false;
+        }
+        return true;
+      });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(rows),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/inventory/counts') && method === 'POST') {
+      const body = request.postDataJSON() as {
+        locationId: string;
+        categoryId?: string | null;
+        notes?: string | null;
+      };
+      const countId = `cnt-${String(state.stockCounts.length + 1).padStart(3, '0')}`;
+      const countNumber = `CNT-${String(state.stockCounts.length + 1).padStart(6, '0')}`;
+      const consumableIds = new Set(
+        state.catalogItems
+          .filter((item) => {
+            if (item.trackingMode !== 'CONSUMABLE') {
+              return false;
+            }
+            if (body.categoryId && item.categoryId !== body.categoryId) {
+              return false;
+            }
+            return true;
+          })
+          .map((item) => String(item.id)),
+      );
+
+      const lines: Array<Record<string, unknown>> = [];
+      for (const balance of state.balances) {
+        if (balance.locationId !== body.locationId) {
+          continue;
+        }
+        if (!consumableIds.has(String(balance.itemId))) {
+          continue;
+        }
+        const onHand = Number.parseFloat(String(balance.quantityOnHand ?? '0'));
+        if (onHand === 0) {
+          continue;
+        }
+        lines.push({
+          id: `${countId}-line-${lines.length + 1}`,
+          tenantId: 'tenant-inventory-001',
+          countId,
+          itemId: balance.itemId,
+          lotId: balance.lotId ?? null,
+          condition: balance.condition ?? 'NEW',
+          expectedQty: onHand.toFixed(2),
+          countedQty: null,
+          createdAt: nowIso(),
+        });
+      }
+
+      const count = {
+        id: countId,
+        tenantId: 'tenant-inventory-001',
+        countNumber,
+        status: 'COUNTING',
+        locationId: body.locationId,
+        categoryId: body.categoryId ?? null,
+        notes: body.notes ?? null,
+        createdByUserId: NOC_USER_ID,
+        closedByUserId: null,
+        closedAt: null,
+        stockMovementId: null,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      };
+      state.stockCounts.unshift(count);
+      state.stockCountLines.push(...lines);
+
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify(mapStockCountDetail(state, countId)),
+      });
+      return;
+    }
+
+    const countActionMatch = pathname.match(/\/inventory\/counts\/([^/]+)\/(close|cancel)$/);
+    if (countActionMatch && method === 'POST') {
+      const countId = countActionMatch[1]!;
+      const action = countActionMatch[2]!;
+      const count = state.stockCounts.find((entry) => entry.id === countId);
+      if (!count) {
+        await route.fulfill({ status: 404, body: JSON.stringify({ message: 'Not found' }) });
+        return;
+      }
+
+      if (action === 'close') {
+        if (sessionRole !== 'ADMIN') {
+          await route.fulfill({
+            status: 403,
+            contentType: 'application/json',
+            body: JSON.stringify({ message: 'Forbidden' }),
+          });
+          return;
+        }
+
+        count.status = 'CLOSED';
+        count.closedByUserId = NOC_USER_ID;
+        count.closedAt = nowIso();
+        count.updatedAt = nowIso();
+        count.stockMovementId = `mov-count-${countId}`;
+        state.adjustmentCount += 1;
+        state.movements.unshift({
+          id: String(count.stockMovementId),
+          movementNumber: `MOV-${String(100 + state.adjustmentCount).padStart(6, '0')}`,
+          origin: 'ADJUSTMENT',
+          originContext: 'inventory.cycle-count',
+          originRefId: countId,
+          adjustmentReason: 'CYCLE_COUNT',
+          notes: `Cierre conteo ${String(count.countNumber)}`,
+          actorUserId: NOC_USER_ID,
+          isReversal: false,
+          createdAt: nowIso(),
+          lines: [],
+        });
+
+        await route.fulfill({
+          status: 201,
+          contentType: 'application/json',
+          body: JSON.stringify(mapStockCountDetail(state, countId)),
+        });
+        return;
+      }
+
+      count.status = 'CANCELLED';
+      count.updatedAt = nowIso();
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify(count),
+      });
+      return;
+    }
+
+    const countIdMatch = pathname.match(/\/inventory\/counts\/([^/]+)$/);
+    if (countIdMatch && method === 'GET') {
+      const detail = mapStockCountDetail(state, countIdMatch[1]!);
+      if (!detail) {
+        await route.fulfill({ status: 404, body: JSON.stringify({ message: 'Not found' }) });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(detail),
+      });
+      return;
+    }
+
+    if (countIdMatch && method === 'PATCH') {
+      const countId = countIdMatch[1]!;
+      const count = state.stockCounts.find((entry) => entry.id === countId);
+      if (!count || count.status === 'CLOSED' || count.status === 'CANCELLED') {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'El conteo no admite cambios.' }),
+        });
+        return;
+      }
+
+      const body = request.postDataJSON() as {
+        lines: Array<{ id?: string; countedQty: number }>;
+      };
+      for (const lineInput of body.lines ?? []) {
+        const line = state.stockCountLines.find(
+          (entry) => entry.id === lineInput.id && entry.countId === countId,
+        );
+        if (line) {
+          line.countedQty = Number(lineInput.countedQty).toFixed(2);
+        }
+      }
+      count.updatedAt = nowIso();
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(mapStockCountDetail(state, countId)),
+      });
+      return;
+    }
+
     await route.continue();
   });
 }
@@ -2812,8 +3053,8 @@ test.describe('Portal Inventario / SCM', () => {
 test.describe('Portal Inventario / Existencias', () => {
   test.beforeEach(async ({ page }) => {
     const state = createInventoryMockState();
-    await setupInventoryMocks(page, state);
-    await seedPortalSession(page);
+    await setupInventoryMocks(page, state, { role: 'ADMIN' });
+    await seedPortalSession(page, { role: 'ADMIN' });
     (page as unknown as { inventoryMockState: InventoryMockState }).inventoryMockState = state;
   });
 
@@ -2948,7 +3189,7 @@ test.describe('Portal Inventario / Existencias', () => {
 
     await main.getByRole('tab', { name: 'Reposición' }).click();
     await expect(main.getByText('CAB-DROP')).toBeVisible();
-    await expect(main.getByText('Sin stock')).toBeVisible();
+    await expect(main.getByText('Agotado')).toBeVisible();
 
     // Solo el crítico (out) viene preseleccionado; el ONT below-minimum no.
     await expect(main.getByRole('checkbox', { name: /Seleccionar CAB-DROP/i })).toBeChecked();
@@ -3190,5 +3431,87 @@ test.describe('Portal Inventario / Bodegas', () => {
         main.locator('tr').filter({ hasText: 'PROV-001' }).getByText('Bloqueado'),
       ).toBeVisible();
     });
+  });
+});
+
+test.describe('Portal Inventario / Conteos', () => {
+  test('crea conteo, captura cantidades y cierra como ADMIN', async ({ page }) => {
+    const state = createInventoryMockState();
+    await setupInventoryMocks(page, state, { role: 'ADMIN' });
+    await seedPortalSession(page, { role: 'ADMIN' });
+
+    page.on('dialog', (dialog) => {
+      void dialog.accept();
+    });
+
+    await page.goto('/dashboard/inventory?tab=counts');
+    const main = page.locator('main');
+
+    await expect(main.getByRole('tab', { name: 'Conteos', selected: true })).toBeVisible();
+    await expect(main.getByRole('heading', { name: 'Conteos físicos' })).toBeVisible();
+
+    await main.getByRole('button', { name: 'Nuevo conteo' }).click();
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Bodega', exact: true }),
+      'Bodega principal',
+    );
+    await main.getByRole('button', { name: 'Iniciar conteo' }).click();
+
+    await expect(main.getByRole('heading', { name: 'CNT-000001' })).toBeVisible();
+    await expect(main.getByText('CAB-DROP')).toBeVisible();
+
+    await main.getByLabel('Cantidad contada CAB-DROP').fill('7');
+    await main.getByRole('button', { name: 'Guardar cantidades' }).click();
+    await expect(
+      main.locator('tr').filter({ hasText: 'CAB-DROP' }).getByText('-1', { exact: true }),
+    ).toBeVisible();
+
+    await main.getByRole('button', { name: 'Cerrar conteo' }).click();
+    await expect(main.getByRole('heading', { name: 'Conteos físicos' })).toBeVisible();
+    await expect(main.getByText('CNT-000001')).toBeVisible();
+    await expect(
+      main.locator('tr').filter({ hasText: 'CNT-000001' }).getByText('Cerrado', { exact: true }),
+    ).toBeVisible();
+
+    expect(state.stockCounts[0]?.status).toBe('CLOSED');
+    expect(state.adjustmentCount).toBe(1);
+    expect(state.movements[0]?.originContext).toBe('inventory.cycle-count');
+    expect(state.movements[0]?.adjustmentReason).toBe('CYCLE_COUNT');
+  });
+
+  test('NOC captura y cancela, pero no ve Cerrar conteo', async ({ page }) => {
+    const state = createInventoryMockState();
+    await setupInventoryMocks(page, state, { role: 'NOC' });
+    await seedPortalSession(page, { role: 'NOC' });
+
+    page.on('dialog', (dialog) => {
+      void dialog.accept();
+    });
+
+    await page.goto('/dashboard/inventory?tab=counts');
+    const main = page.locator('main');
+
+    await main.getByRole('button', { name: 'Nuevo conteo' }).click();
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Bodega', exact: true }),
+      'Bodega principal',
+    );
+    await main.getByRole('button', { name: 'Iniciar conteo' }).click();
+
+    await expect(main.getByRole('heading', { name: 'CNT-000001' })).toBeVisible();
+    await main.getByLabel('Cantidad contada CAB-DROP').fill('8');
+    await main.getByRole('button', { name: 'Guardar cantidades' }).click();
+
+    await expect(main.getByRole('button', { name: 'Cerrar conteo' })).toHaveCount(0);
+    await main.getByRole('button', { name: 'Cancelar conteo' }).click();
+
+    await expect(main.getByRole('heading', { name: 'Conteos físicos' })).toBeVisible();
+    await expect(
+      main.locator('tr').filter({ hasText: 'CNT-000001' }).getByText('Cancelado', { exact: true }),
+    ).toBeVisible();
+    expect(state.stockCounts[0]?.status).toBe('CANCELLED');
+    expect(state.adjustmentCount).toBe(0);
   });
 });

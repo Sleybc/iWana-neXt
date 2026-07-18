@@ -260,13 +260,13 @@ export function StockReplenishmentPanel({
                   </td>
                   <td className={portalDataTableCellClassName}>{row.itemSku}</td>
                   <td className={portalDataTableCellClassName}>{row.itemName}</td>
-                  <td className={portalDataTableCellClassName}>
+                  <td className={`${portalDataTableCellClassName} tabular-nums`}>
                     {formatInventoryQuantity(row.available)}
                   </td>
-                  <td className={portalDataTableCellClassName}>
+                  <td className={`${portalDataTableCellClassName} tabular-nums`}>
                     {formatInventoryQuantity(row.pendingPurchase)}
                   </td>
-                  <td className={portalDataTableCellClassName}>
+                  <td className={`${portalDataTableCellClassName} tabular-nums`}>
                     {formatInventoryQuantity(row.reorderPoint)}
                   </td>
                   <td className={portalDataTableCellClassName}>
@@ -283,11 +283,11 @@ export function StockReplenishmentPanel({
                           [row.itemId]: nextValue,
                         }));
                       }}
-                      className="w-24"
+                      className="w-24 tabular-nums"
                     />
                   </td>
                   <td className={portalDataTableCellClassName}>{supplierLabel}</td>
-                  <td className={portalDataTableCellClassName}>
+                  <td className={`${portalDataTableCellClassName} tabular-nums`}>
                     {row.estimatedUnitCost == null
                       ? 'Sin costo'
                       : formatInventoryCurrency(row.estimatedLineValue)}

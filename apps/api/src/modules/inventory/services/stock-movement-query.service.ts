@@ -175,8 +175,12 @@ export class StockMovementQueryService {
     return movements.map((movement) => {
       const movementLines = linesByMovementId.get(movement.id) ?? [];
       const adjustmentReason =
-        movement.origin === StockMovementOrigin.ADJUSTMENT && movement.originRefId
-          ? (movement.originRefId as StockAdjustmentReason)
+        movement.origin === StockMovementOrigin.ADJUSTMENT
+          ? movement.originContext === 'inventory.cycle-count'
+            ? StockAdjustmentReason.CYCLE_COUNT
+            : movement.originRefId
+              ? (movement.originRefId as StockAdjustmentReason)
+              : null
           : null;
 
       return {

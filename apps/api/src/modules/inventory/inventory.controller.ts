@@ -34,8 +34,16 @@ import {
   CreateCounterPurchaseSchema,
   CreateStockAdjustmentDto,
   CreateStockAdjustmentSchema,
+  CreateStockCountDto,
+  CreateStockCountSchema,
+  CloseStockCountDto,
+  CloseStockCountSchema,
   CreateStockLocationDto,
   CreateStockLocationSchema,
+  ListStockCountsQueryDto,
+  ListStockCountsQuerySchema,
+  UpdateStockCountDto,
+  UpdateStockCountSchema,
   ExecutionOrderMovementDto,
   ExecutionOrderMovementSchema,
   InternalConsumptionDto,
@@ -87,6 +95,7 @@ import { StockMovementQueryService } from './services/stock-movement-query.servi
 import { StockLocationService } from './services/stock-location.service';
 import { StockIssueService } from './services/stock-issue.service';
 import { CounterPurchaseService } from './services/counter-purchase.service';
+import { CycleCountService } from './services/cycle-count.service';
 
 @ApiTags('inventory')
 @ApiBearerAuth('access-token')
@@ -105,6 +114,7 @@ export class InventoryController {
     private readonly counterPurchaseService: CounterPurchaseService,
     private readonly inventoryDashboardService: InventoryDashboardService,
     private readonly replenishmentService: ReplenishmentService,
+    private readonly cycleCountService: CycleCountService,
   ) {}
 
   @Get('items')
@@ -448,5 +458,61 @@ export class InventoryController {
   @ApiOperation({ summary: 'Consultar sugerencias de reposición de inventario' })
   listReplenishmentSuggestions() {
     return this.replenishmentService.listSuggestions();
+  }
+
+  @Get('counts')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Listar conteos físicos de inventario' })
+  listCounts(
+    @Query(new ZodValidationPipe(ListStockCountsQuerySchema)) query: ListStockCountsQueryDto,
+  ) {
+    return this.cycleCountService.list(ListStockCountsQuerySchema.parse(query));
+  }
+
+  @Post('counts')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Crear conteo físico de inventario' })
+  createCount(
+    @Body(new ZodValidationPipe(CreateStockCountSchema)) body: CreateStockCountDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.cycleCountService.create(CreateStockCountSchema.parse(body), actor);
+  }
+
+  @Get('counts/:id')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Obtener detalle de conteo físico' })
+  getCount(@Param('id', ParseUUIDPipe) id: string) {
+    return this.cycleCountService.getById(id);
+  }
+
+  @Patch('counts/:id')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Capturar cantidades de un conteo físico' })
+  updateCount(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(UpdateStockCountSchema)) body: UpdateStockCountDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.cycleCountService.update(id, UpdateStockCountSchema.parse(body), actor);
+  }
+
+  @Post('counts/:id/close')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Cerrar conteo físico y aplicar ajuste de inventario' })
+  closeCount(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(CloseStockCountSchema)) body: CloseStockCountDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    CloseStockCountSchema.parse(body);
+    return this.cycleCountService.close(id, actor);
+  }
+
+  @Post('counts/:id/cancel')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Cancelar conteo físico sin efecto en stock' })
+  cancelCount(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: JwtPayload) {
+    return this.cycleCountService.cancel(id, actor);
   }
 }

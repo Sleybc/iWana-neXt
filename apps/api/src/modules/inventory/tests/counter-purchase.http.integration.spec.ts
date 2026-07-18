@@ -12,6 +12,7 @@ import { InventoryCategoryService } from '../services/inventory-category.service
 import { InventoryDashboardService } from '../services/inventory-dashboard.service';
 import { InventoryItemService } from '../services/inventory-item.service';
 import { ReplenishmentService } from '../services/replenishment.service';
+import { CycleCountService } from '../services/cycle-count.service';
 import { SerializedAssetService } from '../services/serialized-asset.service';
 import { StockBalanceService } from '../services/stock-balance.service';
 import { StockIssueService } from '../services/stock-issue.service';
@@ -89,6 +90,7 @@ describe('Counter purchase HTTP integration', () => {
         { provide: StockIssueService, useValue: {} },
         { provide: InventoryDashboardService, useValue: {} },
         { provide: ReplenishmentService, useValue: {} },
+        { provide: CycleCountService, useValue: {} },
         { provide: CounterPurchaseService, useValue: counterPurchaseServiceMock },
         JwtAuthGuard,
         RolesGuard,

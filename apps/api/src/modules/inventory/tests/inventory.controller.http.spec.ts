@@ -39,6 +39,7 @@ import { StockIssueService } from '../services/stock-issue.service';
 import { CounterPurchaseService } from '../services/counter-purchase.service';
 import { RfqPdfService } from '../services/rfq-pdf.service';
 import { ReplenishmentService } from '../services/replenishment.service';
+import { CycleCountService } from '../services/cycle-count.service';
 import { SupplierProfileService } from '../services/supplier-profile.service';
 import { RfqService } from '../services/rfq.service';
 
@@ -221,6 +222,14 @@ describe('InventoryController HTTP', () => {
   const replenishmentServiceMock = {
     listSuggestions: jest.fn().mockResolvedValue([]),
   };
+  const cycleCountServiceMock = {
+    list: jest.fn().mockResolvedValue([]),
+    create: jest.fn().mockResolvedValue({ id: 'count-001', lines: [] }),
+    getById: jest.fn().mockResolvedValue({ id: 'count-001', lines: [] }),
+    update: jest.fn().mockResolvedValue({ id: 'count-001', lines: [] }),
+    close: jest.fn().mockResolvedValue({ id: 'count-001', status: 'CLOSED', lines: [] }),
+    cancel: jest.fn().mockResolvedValue({ id: 'count-001', status: 'CANCELLED', lines: [] }),
+  };
   const purchasingServiceMock = {
     listRequests: jest.fn().mockResolvedValue([]),
     listOrders: jest.fn().mockResolvedValue([]),
@@ -288,6 +297,7 @@ describe('InventoryController HTTP', () => {
         { provide: StockIssueService, useValue: stockIssueServiceMock },
         { provide: InventoryDashboardService, useValue: inventoryDashboardServiceMock },
         { provide: ReplenishmentService, useValue: replenishmentServiceMock },
+        { provide: CycleCountService, useValue: cycleCountServiceMock },
         { provide: PurchasingService, useValue: purchasingServiceMock },
         { provide: PurchasingQueryService, useValue: purchasingQueryServiceMock },
         { provide: GoodsReceiptService, useValue: goodsReceiptServiceMock },
@@ -855,6 +865,49 @@ describe('InventoryController HTTP', () => {
         .get('/api/v1/inventory/replenishment/suggestions')
         .set('Authorization', 'Bearer tech-token')
         .expect(403);
+    });
+  });
+
+  describe('cycle counts', () => {
+    const countId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+    it('allows support to create and list counts', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/inventory/counts')
+        .set('Authorization', 'Bearer support-token')
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post('/api/v1/inventory/counts')
+        .set('Authorization', 'Bearer support-token')
+        .send({ locationId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' })
+        .expect(201);
+
+      expect(cycleCountServiceMock.create).toHaveBeenCalled();
+    });
+
+    it('forbids noc and support from closing counts', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/inventory/counts/${countId}/close`)
+        .set('Authorization', 'Bearer noc-token')
+        .send({})
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/inventory/counts/${countId}/close`)
+        .set('Authorization', 'Bearer support-token')
+        .send({})
+        .expect(403);
+    });
+
+    it('allows admin to close counts', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/inventory/counts/${countId}/close`)
+        .set('Authorization', 'Bearer admin-token')
+        .send({})
+        .expect(201);
+
+      expect(cycleCountServiceMock.close).toHaveBeenCalledWith(countId, expect.any(Object));
     });
   });
 });

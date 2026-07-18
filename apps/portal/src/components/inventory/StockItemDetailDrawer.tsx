@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button } from '@iwana/ui';
 import {
   inventoryApi,
@@ -43,6 +43,7 @@ export function StockItemDetailDrawer({
   onClose,
   onAdjust,
 }: StockItemDetailDrawerProps) {
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [movements, setMovements] = useState<StockMovementKardexRecord[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -90,26 +91,52 @@ export function StockItemDetailDrawer({
     };
   }, [item, open, page]);
 
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    closeButtonRef.current?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open, onClose]);
+
   if (!open || !item) {
     return null;
   }
 
   const totalPages = Math.max(1, Math.ceil(total / 10));
+  const titleId = `stock-item-detail-title-${item.id}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/30" role="presentation">
+    <div
+      className="fixed inset-0 z-50 flex justify-end bg-black/30"
+      role="presentation"
+      onClick={onClose}
+    >
       <aside
         className="flex h-full w-full max-w-xl flex-col gap-4 overflow-y-auto bg-white p-6 shadow-xl"
         role="dialog"
-        aria-label={`Detalle de existencias de ${item.name}`}
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="portal-eyebrow">Existencias</p>
-            <h2 className="text-xl font-semibold text-iwana-secondary-900">{item.name}</h2>
+            <h2 id={titleId} className="text-xl font-semibold text-iwana-secondary-900">
+              {item.name}
+            </h2>
             <p className="text-sm text-iwana-secondary-700">{item.sku}</p>
           </div>
-          <Button type="button" variant="secondary" onClick={onClose}>
+          <Button ref={closeButtonRef} type="button" variant="secondary" onClick={onClose}>
             Cerrar
           </Button>
         </div>
@@ -151,7 +178,9 @@ export function StockItemDetailDrawer({
                     <td className={portalDataTableCellClassName}>
                       {locationById.get(balance.locationId)?.name ?? balance.locationId}
                     </td>
-                    <td className={portalDataTableCellClassName}>{balance.lotId ?? '—'}</td>
+                    <td className={portalDataTableCellClassName}>
+                      {balance.lotId ? `Lote ${balance.lotId.slice(0, 8)}` : 'Sin lote'}
+                    </td>
                     <td className={portalDataTableCellClassName}>
                       <Badge variant="neutral">
                         {getStockBalanceConditionLabel(balance.condition)}

@@ -19,6 +19,7 @@ import {
   SerializedAssetStatus,
   StockAdjustmentReason,
   StockBalanceCondition,
+  StockCountStatus,
   StockIssueStatus,
   StockIssueType,
   StockLocationStatus,
@@ -178,7 +179,7 @@ export const PURCHASE_REQUEST_TYPE_LABELS: Record<PurchaseRequestType, string> =
 export type ReplenishmentCriticalityLabel = 'out' | 'below-minimum' | 'below-reorder';
 
 export const REPLENISHMENT_CRITICALITY_LABELS: Record<ReplenishmentCriticalityLabel, string> = {
-  out: 'Sin stock',
+  out: 'Agotado',
   'below-minimum': 'Bajo mínimo',
   'below-reorder': 'Bajo reorden',
 };
@@ -304,6 +305,13 @@ export const STOCK_ISSUE_STATUS_LABELS: Record<StockIssueStatus, string> = {
   [StockIssueStatus.DISPATCHED]: 'Despachada',
   [StockIssueStatus.RECEIVED]: 'Recibida',
   [StockIssueStatus.CANCELLED]: 'Cancelada',
+};
+
+export const STOCK_COUNT_STATUS_LABELS: Record<StockCountStatus, string> = {
+  [StockCountStatus.OPEN]: 'Abierto',
+  [StockCountStatus.COUNTING]: 'En conteo',
+  [StockCountStatus.CLOSED]: 'Cerrado',
+  [StockCountStatus.CANCELLED]: 'Cancelado',
 };
 
 export const STOCK_ISSUE_HANDOFF_METHOD_OPTIONS = [
@@ -495,8 +503,16 @@ export function getStockIssueStatusLabel(value: StockIssueStatus): string {
   return resolveLabel(value, STOCK_ISSUE_STATUS_LABELS);
 }
 
+export function getStockCountStatusLabel(value: StockCountStatus): string {
+  return resolveLabel(value, STOCK_COUNT_STATUS_LABELS);
+}
+
 export function getStockIssueStatusBadgeVariant(value: StockIssueStatus): PurchaseBadgeVariant {
   return STOCK_ISSUE_STATUS_VARIANTS[value] ?? 'neutral';
+}
+
+export function getStockCountStatusBadgeVariant(value: StockCountStatus): PurchaseBadgeVariant {
+  return STOCK_COUNT_STATUS_VARIANTS[value] ?? 'neutral';
 }
 
 export function getStockIssueTypeBadgeVariant(value: StockIssueType): PurchaseBadgeVariant {
@@ -609,6 +625,13 @@ export const STOCK_ISSUE_STATUS_VARIANTS: Record<StockIssueStatus, PurchaseBadge
   [StockIssueStatus.DISPATCHED]: 'success',
   [StockIssueStatus.RECEIVED]: 'success',
   [StockIssueStatus.CANCELLED]: 'error',
+};
+
+export const STOCK_COUNT_STATUS_VARIANTS: Record<StockCountStatus, PurchaseBadgeVariant> = {
+  [StockCountStatus.OPEN]: 'neutral',
+  [StockCountStatus.COUNTING]: 'primary',
+  [StockCountStatus.CLOSED]: 'success',
+  [StockCountStatus.CANCELLED]: 'error',
 };
 
 export const STOCK_ISSUE_TYPE_VARIANTS: Record<StockIssueType, PurchaseBadgeVariant> = {
