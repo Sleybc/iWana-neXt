@@ -2,9 +2,10 @@
 
 **Version:** 1.0
 **Fecha:** 2026-07-18
-**Estado:** 🟢 Fase 1 — G6 GO; pendiente G7 (EM-ARCH + CTO)
+**Estado:** ✅ Fase 1 — G7 GO (recomendación AI-EM-ARCH); pendiente confirmación explícita del CTO para producción
 **Auditoría G5:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-AUDITORIA-ARCH-v1.0.md
 **Review G6:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-G6-REVIEW-v1.0.md
+**Cierre G7:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-CIERRE-G7-v1.0.md
 **Modo activo:** Product Architect + Orchestrator
 **Responsable:** AI-EM-ARCH
 **PRD:** docs/prds/PRD-MOD12-INVENTARIO-EXISTENCIAS-v1.0.md
@@ -43,7 +44,7 @@ No se emitió HLD ni ADR nuevo: la Fase 1 no crea boundary, entidad, migración 
 
 | Fase | Alcance | Estado |
 | --- | --- | --- |
-| 1 | Kardex consultable, ajustes con razón tipificada, pestaña Existencias (Por producto / Por bodega / Kardex), Bodegas reducida | **Implementada** — informe `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-v1.0.md` |
+| 1 | Kardex consultable, ajustes con razón tipificada, pestaña Existencias (Por producto / Por bodega / Kardex), Bodegas reducida | **Cerrada (G7 GO)** — pendiente confirmación CTO; ver `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-CIERRE-G7-v1.0.md` |
 | 2 | Reposición sugerida (anti doble pedido) → composer de compras prellenado; valor estimado en Resumen | **Definida** — contrato congelado, spec + prompt emitidos; ejecutable al cierre G7 de Fase 1 |
 | 3 | Conteos físicos / inventario cíclico; reservas efectivas | Planificada |
 | 4 | Costeo promedio móvil, valoración y reportes | Planificada |
@@ -56,10 +57,9 @@ No se emitió HLD ni ADR nuevo: la Fase 1 no crea boundary, entidad, migración 
 
 ## 6. Próximos pasos
 
-1. G7: AI-EM-ARCH recomienda cierre; CTO aprueba producción / merge definitivo de la fase.
-2. Track Compras F07: vigilar flakiness de `rfq-pdf.service.spec.ts` (O1).
-3. Deuda UX/DS post-G6: skeleton en listados Existencias, foco en controles custom, drawer a11y, label de lote, cablear rol→`canAdjust`.
-4. Al cierre G7 de Fase 1: ejecutar prompt Fase 2 ya emitido (ADR-016).
+1. **CTO:** confirmar explícitamente la aprobación de producción de la Fase 1 (recomendación AI-EM-ARCH ya emitida en G7).
+2. Con G7 GO, el criterio de entrada de Fase 2 (PRD §8) queda satisfecho: ejecutar `docs/prompts/PROMPT-MOD12-EXISTENCIAS-REORDEN-FASE-02-v1.0.md`.
+3. Deuda registrada al cierre (no bloqueante, backlog): skeleton en listados Existencias/Bodegas, foco en controles custom, drawer a11y, label de lote, cablear rol→`canAdjust`, ampliar `stock-movement-query.service.spec.ts`.
 
 ## 7. Historial
 
@@ -72,3 +72,5 @@ No se emitió HLD ni ADR nuevo: la Fase 1 no crea boundary, entidad, migración 
 | 2026-07-18 | Remediación B1 + H2; estado → lista para G6 |
 | 2026-07-18 | G6 paralelo PROD-UX/DS-OWNER/SR-QA; remediación UX serializados + custody Por bodega; **G6 GO** → pendiente G7 |
 | 2026-07-18 | Fase 2 definida (AI-EM-ARCH, protocolo multiagente): factibilidad verificada contra código (backend compras/dashboard + patrones portal); contrato congelado en PRD §7 con decisión D-F2-1 (se elimina el POST de creación — composer prellenado + `POST /purchasing/requests` vigente); spec de diseño y prompt de ejecución emitidos (G4), ejecutables al cierre G7 de Fase 1 |
+| 2026-07-18 | **Cierre G7 (AI-EM-ARCH):** re-verificación independiente; gates en verde; O1 aún flaky no-regresivo. **Recomendación: GO a producción**, pendiente CTO |
+| 2026-07-18 | **O1 cerrado (AI-SR-FULL, track F07):** root cause timeout Jest 5s vs PDFKit; `jest.setTimeout(20_000)` + caché buffers assets; inventory 217/217 ×2 |

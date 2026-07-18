@@ -1,4 +1,4 @@
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import PDFDocument from 'pdfkit';
 import { PurchaseRfqStatus } from '@iwana/shared';
@@ -65,6 +65,19 @@ function requireAsset(relativePath: string): string {
   return absolute;
 }
 
+/** Caché de buffers: evita re-leer TTF/PNG en cada PDF bajo carga concurrente (tests CI / ZIP multi-proveedor). */
+const assetBufferCache = new Map<string, Buffer>();
+
+function requireAssetBuffer(relativePath: string): Buffer {
+  const cached = assetBufferCache.get(relativePath);
+  if (cached) {
+    return cached;
+  }
+  const buffer = readFileSync(requireAsset(relativePath));
+  assetBufferCache.set(relativePath, buffer);
+  return buffer;
+}
+
 export function getRfqStatusLabel(status: string): string {
   if (Object.values(PurchaseRfqStatus).includes(status as PurchaseRfqStatus)) {
     return PURCHASE_RFQ_STATUS_LABELS[status as PurchaseRfqStatus];
@@ -88,10 +101,10 @@ function lineLabel(line: RfqPdfLineInput, itemLabels: Map<string, string>): stri
 }
 
 function registerFonts(doc: PDFKit.PDFDocument): void {
-  doc.registerFont(FONT_REGULAR, requireAsset('fonts/Exo2-Regular.ttf'));
-  doc.registerFont(FONT_SEMIBOLD, requireAsset('fonts/Exo2-SemiBold.ttf'));
-  doc.registerFont(FONT_BOLD, requireAsset('fonts/Exo2-Bold.ttf'));
-  doc.registerFont(FONT_MONO, requireAsset('fonts/JetBrainsMono-Regular.ttf'));
+  doc.registerFont(FONT_REGULAR, requireAssetBuffer('fonts/Exo2-Regular.ttf'));
+  doc.registerFont(FONT_SEMIBOLD, requireAssetBuffer('fonts/Exo2-SemiBold.ttf'));
+  doc.registerFont(FONT_BOLD, requireAssetBuffer('fonts/Exo2-Bold.ttf'));
+  doc.registerFont(FONT_MONO, requireAssetBuffer('fonts/JetBrainsMono-Regular.ttf'));
 }
 
 function applySearchableMetadata(doc: PDFKit.PDFDocument, input: RfqPdfDocumentInput): void {
@@ -155,9 +168,9 @@ function drawHeader(doc: PDFKit.PDFDocument, pageWidth: number, margin: number):
     doc.rect(margin, headerTop, contentWidth, headerHeight).fill(RFQ_PDF_TOKENS.surfaceSoft);
     doc.restore();
 
-    const logoPath = requireAsset('brand/iwiso6.png');
+    const logoBuffer = requireAssetBuffer('brand/iwiso6.png');
     const logoHeight = 28;
-    doc.image(logoPath, margin + 8, headerTop + 12, { height: logoHeight });
+    doc.image(logoBuffer, margin + 8, headerTop + 12, { height: logoHeight });
 
     doc
       .fillColor(RFQ_PDF_TOKENS.primary)

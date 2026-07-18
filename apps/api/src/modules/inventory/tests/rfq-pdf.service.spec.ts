@@ -41,6 +41,11 @@ function hexToPdfRgbSnippet(hex: string): string {
 }
 
 describe('RfqPdfService', () => {
+  // PDFKit embebe TTF/PNG reales (JetBrainsMono ~274KB + logo ~200KB + Exo2).
+  // Bajo maxWorkers el wall-clock supera el default 5000ms de Jest
+  // (ZIP ~1.8s aislado; flaky O1 en suite inventory concurrente).
+  jest.setTimeout(20_000);
+
   const rfqServiceMock = {
     getById: jest.fn(),
   } as unknown as RfqService;

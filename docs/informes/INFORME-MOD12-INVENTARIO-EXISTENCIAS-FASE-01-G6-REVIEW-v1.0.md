@@ -39,7 +39,7 @@ Verificación: Jest portal `stock-overview` / `StockWorkspace` / `StockAdjustmen
 | H | PROD-UX | `lotId` crudo en drawer — mejorar label de lote en fase siguiente |
 | P1 | DS-OWNER | Skeleton ausente en listados Existencias/Bodegas mientras `isLoading` |
 | P1 | DS-OWNER | Foco visible en checkbox / expand kardex; drawer detalle sin shell a11y de peers |
-| O | QA | Query service spec delgado; O1 rfq-pdf flaky (track F07) |
+| O | QA | Query service spec delgado (O1 rfq-pdf remediado en track F07) |
 
 ## 5. Evidencia CA (SR-QA)
 

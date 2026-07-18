@@ -107,4 +107,4 @@ Transferencias desde la auditoría de Existencias Fase 01 que tocan superficie F
 | --- | --- | --- |
 | H2 — `purchasing.http.integration.spec.ts` 400 vs 201 | Payload de cotización actualizado a `lines[{ purchaseRequestLineId, unitCost }]` (contrato post–cotización por línea) | ✅ Remediado; suite PASS |
 | Fix colateral Existencias — `purchase-workbench.ts` / `PurchaseWorkspace` | Al abrir workbench sin `initialTab`, se usa la pestaña sugerida por `getPurchaseNextAction` (p. ej. Adjudicación) | ✅ Registrado (origen: suite portal Existencias / adjudicación) |
-| O1 — `rfq-pdf.service.spec.ts` flaky bajo carga paralela | Pasa aislada; contención probable en generación PDF | Abierto — vigilar en CI |
+| O1 — `rfq-pdf.service.spec.ts` flaky bajo carga paralela | Causa: timeout Jest 5s vs PDFKit (~1.8s ZIP aislado) bajo maxWorkers. Fix: `jest.setTimeout(20_000)` + caché de buffers TTF/PNG en layout | ✅ Remediado — aislado 6/6 + inventory completo 217/217 ×2 |

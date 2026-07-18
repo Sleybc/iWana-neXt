@@ -76,7 +76,7 @@ Falla en la corrida completa concurrente (`renderAllInvitationsZip`) y pasa en c
 | --- | --- | --- |
 | B1 | ✅ Remediado por AI-SR-FULL | `counter-purchase.http.integration.spec.ts` + mock `StockMovementQueryService`; suite **2/2 PASS** |
 | H2 | ✅ Remediado en track F07 | `purchasing.http.integration.spec.ts` usa `lines[]` con `purchaseRequestLineId`/`unitCost`; suite **PASS** |
-| O1 | Abierto (vigilar) | `rfq-pdf.service.spec.ts` flaky bajo carga paralela |
+| O1 | ✅ Remediado (track F07) | Timeout 20s en spec + caché buffers assets en `rfq-pdf.layout.ts`; inventory 217/217 ×2 |
 
 **Condición G5 cumplida → fase lista para G6.**
 
@@ -84,4 +84,4 @@ Falla en la corrida completa concurrente (`renderAllInvitationsZip`) y pasa en c
 
 - Auditor (A/R de este informe): AI-EM-ARCH — no productor de la entrega auditada (cumple la regla "el aprobador de un gate nunca es el productor").
 - Remediación B1: AI-SR-FULL (aplicada).
-- Hallazgos H2/O1: transferidos al track Compras F07 (H2 aplicado; O1 pendiente vigilancia).
+- Hallazgos H2/O1: transferidos al track Compras F07 (H2 y O1 aplicados).
