@@ -2,12 +2,13 @@
 
 **Version:** 1.0  
 **Fecha:** 2026-07-18  
-**Estado:** ✅ **G7 — GO a producción (recomendado; commit en esta sesión)**  
+**Estado:** ✅ **G7 — GO a producción**  
 **Modo activo:** EM (validación final) + Orchestrator (consolidación)  
 **Responsable:** AI-EM-ARCH  
 **Aprobador final:** CTO Humano  
 **Cadena de evidencia:** G5 → INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-03A-v1.0.md · G6 → INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-03A-G6-REVIEW-v1.0.md  
-**PRD:** docs/prds/PRD-MOD12-INVENTARIO-EXISTENCIAS-v1.0.md §7 · **ADR:** ADR-054 · **Spec:** docs/specs/2026-07-18-mod12-existencias-conteo-fisico-fase03A-design.md
+**PRD:** docs/prds/PRD-MOD12-INVENTARIO-EXISTENCIAS-v1.0.md §7 · **ADR:** ADR-054 · **Spec:** docs/specs/2026-07-18-mod12-existencias-conteo-fisico-fase03A-design.md  
+**Commit producción:** `1de09b62` (`feat(mod12): existencias Fase 03A — conteo físico`) en `main`
 
 ---
 
