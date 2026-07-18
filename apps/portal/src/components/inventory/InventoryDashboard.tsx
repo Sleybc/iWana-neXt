@@ -12,6 +12,7 @@ import {
 } from '@/components/shared/portal-ui';
 import { cn } from '@iwana/ui';
 import {
+  formatInventoryCurrency,
   formatInventoryQuantity,
   getInventoryResponsibleTypeLabel,
   getSerializedAssetStatusLabel,
@@ -25,13 +26,19 @@ interface InventoryDashboardProps {
 const KPI_ITEMS: ReadonlyArray<{
   key: keyof Pick<
     InventoryDashboardSummary,
-    'itemsCount' | 'locationsCount' | 'serializedAssetsCount' | 'balancesCount' | 'totalOnHand'
+    | 'itemsCount'
+    | 'locationsCount'
+    | 'serializedAssetsCount'
+    | 'balancesCount'
+    | 'totalOnHand'
+    | 'estimatedTotalValue'
   >;
   eyebrow: string;
   title: string;
   description: string;
   accent: PortalMetricCardAccent;
   emphasized?: boolean;
+  format: 'number' | 'quantity' | 'currency';
 }> = [
   {
     key: 'itemsCount',
@@ -39,6 +46,7 @@ const KPI_ITEMS: ReadonlyArray<{
     title: 'Productos catalogados',
     description: 'Productos activos disponibles para compras y operación.',
     accent: 'primary',
+    format: 'number',
   },
   {
     key: 'locationsCount',
@@ -46,6 +54,7 @@ const KPI_ITEMS: ReadonlyArray<{
     title: 'Bodegas y campo',
     description: 'Bodegas activas para guardar y mover material.',
     accent: 'neutral',
+    format: 'number',
   },
   {
     key: 'serializedAssetsCount',
@@ -53,6 +62,7 @@ const KPI_ITEMS: ReadonlyArray<{
     title: 'Activos con serial',
     description: 'Equipos identificados por número de serial.',
     accent: 'primary',
+    format: 'number',
   },
   {
     key: 'balancesCount',
@@ -60,6 +70,7 @@ const KPI_ITEMS: ReadonlyArray<{
     title: 'Material registrado',
     description: 'Productos con material disponible por bodega.',
     accent: 'neutral',
+    format: 'number',
   },
   {
     key: 'totalOnHand',
@@ -67,12 +78,31 @@ const KPI_ITEMS: ReadonlyArray<{
     title: 'Material disponible',
     description: 'Total de unidades disponibles.',
     accent: 'primary',
+    format: 'quantity',
+  },
+  {
+    key: 'estimatedTotalValue',
+    eyebrow: 'Valor',
+    title: 'Valor estimado de inventario',
+    description: 'Estimación a costo unitario de referencia.',
+    accent: 'primary',
     emphasized: true,
+    format: 'currency',
   },
 ];
 
 function formatCompactNumber(value: number): string {
   return new Intl.NumberFormat('es-CO').format(value);
+}
+
+function formatKpiValue(value: number, format: 'number' | 'quantity' | 'currency'): string {
+  if (format === 'currency') {
+    return formatInventoryCurrency(value);
+  }
+  if (format === 'quantity') {
+    return formatInventoryQuantity(value);
+  }
+  return formatCompactNumber(value);
 }
 
 function SummaryMetricCard({
@@ -146,7 +176,7 @@ export function InventoryDashboard({ summary, isLoading = false }: InventoryDash
       contentClassName="space-y-6"
     >
       {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
           {KPI_ITEMS.map((item) => (
             <PortalSkeletonBlock key={item.key} className="min-h-[148px] rounded-3xl" />
           ))}
@@ -158,26 +188,18 @@ export function InventoryDashboard({ summary, isLoading = false }: InventoryDash
         />
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-            {KPI_ITEMS.map((item) => {
-              const rawValue = summary[item.key];
-              const value =
-                item.key === 'totalOnHand'
-                  ? formatInventoryQuantity(rawValue)
-                  : formatCompactNumber(rawValue);
-
-              return (
-                <SummaryMetricCard
-                  key={item.key}
-                  eyebrow={item.eyebrow}
-                  value={value}
-                  title={item.title}
-                  description={item.description}
-                  accent={item.accent}
-                  emphasized={item.emphasized === true}
-                />
-              );
-            })}
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+            {KPI_ITEMS.map((item) => (
+              <SummaryMetricCard
+                key={item.key}
+                eyebrow={item.eyebrow}
+                value={formatKpiValue(summary[item.key], item.format)}
+                title={item.title}
+                description={item.description}
+                accent={item.accent}
+                emphasized={item.emphasized === true}
+              />
+            ))}
           </div>
 
           <div className="grid gap-6 xl:grid-cols-2">
@@ -197,7 +219,7 @@ export function InventoryDashboard({ summary, isLoading = false }: InventoryDash
                 <BreakdownRow
                   key={entry.categoryId}
                   primary={entry.categoryName}
-                  secondary={`${entry.categoryCodePrefix} · ${formatCompactNumber(entry.uniqueItems)} productos`}
+                  secondary={`${entry.categoryCodePrefix} · ${formatCompactNumber(entry.uniqueItems)} productos · ${formatInventoryCurrency(entry.estimatedValue)}`}
                   value={formatInventoryQuantity(entry.totalOnHand)}
                 />
               ))}

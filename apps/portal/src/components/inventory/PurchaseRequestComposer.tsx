@@ -46,6 +46,8 @@ export interface PurchaseComposerInitialValues {
   justification: string | null;
   neededByDate: string | null;
   lines: PurchaseRequestLineRecord[];
+  /** Labels de proveedor para el draft (p. ej. preferidos desde Reposición). */
+  supplierLabels?: Record<string, string>;
 }
 
 interface PurchaseRequestComposerProps {

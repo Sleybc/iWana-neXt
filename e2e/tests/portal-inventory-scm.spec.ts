@@ -584,6 +584,7 @@ async function setupInventoryMocks(
           serializedAssetsCount: 28,
           balancesCount: 16,
           totalOnHand: 142,
+          estimatedTotalValue: 2_500_000,
           balancesByLocation: [
             {
               locationId: LOC_MAIN,
@@ -600,6 +601,7 @@ async function setupInventoryMocks(
               categoryName: 'CPE',
               totalOnHand: 8,
               uniqueItems: 1,
+              estimatedValue: 1_480_000,
             },
           ],
           serializedAssetsByStatus: [
@@ -615,6 +617,60 @@ async function setupInventoryMocks(
             },
           ],
         }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/inventory/replenishment/suggestions') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            itemId: ITEM_CONSUMABLE_ID,
+            itemSku: 'CAB-DROP',
+            itemName: 'Cable drop',
+            unitOfMeasure: 'metro',
+            available: '0.00',
+            pendingPurchase: '0.00',
+            minimumStock: '10.00',
+            reorderPoint: '20.00',
+            targetStock: '40.00',
+            suggestedQty: '40.00',
+            orderMultiple: null,
+            minimumOrderQty: null,
+            leadTimeDays: 5,
+            preferredSupplier: {
+              partyRefId: 'party-001',
+              displayName: 'Proveedor Demo',
+            },
+            estimatedUnitCost: '1200.00',
+            estimatedLineValue: '48000.00',
+            criticality: 'out',
+          },
+          {
+            itemId: ITEM_ID,
+            itemSku: 'ONT-HG8245',
+            itemName: 'ONT Huawei HG8245',
+            unitOfMeasure: 'UND',
+            available: '3.00',
+            pendingPurchase: '0.00',
+            minimumStock: '5.00',
+            reorderPoint: '5.00',
+            targetStock: '12.00',
+            suggestedQty: '9.00',
+            orderMultiple: null,
+            minimumOrderQty: null,
+            leadTimeDays: 7,
+            preferredSupplier: {
+              partyRefId: 'party-001',
+              displayName: 'Proveedor Demo',
+            },
+            estimatedUnitCost: '185000.00',
+            estimatedLineValue: '1665000.00',
+            criticality: 'below-minimum',
+          },
+        ]),
       });
       return;
     }
@@ -1251,8 +1307,9 @@ async function setupInventoryMocks(
 
     if (pathname.endsWith('/purchasing/requests') && method === 'POST') {
       const body = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
+      const createdId = `pr-${state.purchaseRequests.length + 1}`;
       const created = buildPurchaseRequest({
-        id: `pr-${state.purchaseRequests.length + 1}`,
+        id: createdId,
         requestNumber: `PR-${String(state.purchaseRequests.length + 1).padStart(4, '0')}`,
         title: body.title ?? 'Solicitud sin título',
         status: 'DRAFT',
@@ -1267,6 +1324,27 @@ async function setupInventoryMocks(
         updatedAt: nowIso(),
       });
       state.purchaseRequests.unshift(created);
+
+      const bodyLines = Array.isArray(body.lines) ? body.lines : [];
+      for (const [index, rawLine] of bodyLines.entries()) {
+        const line = rawLine as Record<string, unknown>;
+        state.purchaseRequestLines.push({
+          id: `prl-${createdId}-${index + 1}`,
+          tenantId: 'tenant-inventory-001',
+          purchaseRequestId: createdId,
+          inventoryItemId: line.inventoryItemId ?? null,
+          freeTextDescription: line.freeTextDescription ?? null,
+          quantityRequested: String(line.quantityRequested ?? '1'),
+          unitOfMeasure: String(line.unitOfMeasure ?? 'UND'),
+          lineStatus: 'OPEN',
+          sourceKind: line.sourceKind ?? 'INVENTORY_ITEM',
+          suggestedPartyRefId: line.suggestedPartyRefId ?? null,
+          notes: line.notes ?? null,
+          createdAt: nowIso(),
+          updatedAt: nowIso(),
+        });
+      }
+
       await route.fulfill({
         status: 201,
         contentType: 'application/json',
@@ -2849,6 +2927,67 @@ test.describe('Portal Inventario / Existencias', () => {
     await main.getByRole('tab', { name: 'Por bodega' }).click();
     await main.getByRole('button', { name: 'Ver existencias de Bodega principal' }).click();
     await expect(main.getByText(/ONT-HG8245 · ONT Huawei HG8245/i)).toBeVisible();
+  });
+
+  test('muestra valor estimado de inventario en Resumen', async ({ page }) => {
+    await page.goto('/dashboard/inventory?tab=summary');
+    const main = page.locator('main');
+
+    await expect(main.getByText('Valor estimado de inventario')).toBeVisible();
+    await expect(main.getByText(/\$\s*2[.\s]?500[.\s]?000/)).toBeVisible();
+  });
+
+  test('genera solicitud desde Reposición con composer prellenado y abre workbench', async ({
+    page,
+  }) => {
+    const state = (page as unknown as { inventoryMockState: InventoryMockState })
+      .inventoryMockState;
+
+    await page.goto('/dashboard/inventory?tab=stock');
+    const main = page.locator('main');
+
+    await main.getByRole('tab', { name: 'Reposición' }).click();
+    await expect(main.getByText('CAB-DROP')).toBeVisible();
+    await expect(main.getByText('Sin stock')).toBeVisible();
+
+    // Solo el crítico (out) viene preseleccionado; el ONT below-minimum no.
+    await expect(main.getByRole('checkbox', { name: /Seleccionar CAB-DROP/i })).toBeChecked();
+    await expect(main.getByRole('checkbox', { name: /Seleccionar ONT-HG8245/i })).not.toBeChecked();
+
+    await main.getByRole('button', { name: /Generar solicitud de compra \(1\)/i }).click();
+
+    await expect(main.getByRole('tab', { name: 'Compras', selected: true })).toBeVisible();
+    await expect(main.getByLabel('Título')).toHaveValue(
+      /Reposición sugerida .+ — 1 ítem bajo punto de reorden/,
+    );
+    await expect(main.getByLabel('Área solicitante')).toHaveValue('Existencias');
+    await expect(main.getByText(/CAB-DROP - Cable drop/i)).toBeVisible();
+
+    await main.getByRole('button', { name: 'Crear solicitud' }).click();
+
+    const workbench = page.getByRole('dialog', { name: 'Trabajar solicitud' });
+    await expect(workbench).toBeVisible();
+    // DRAFT abre en Cotizar (next-action); las líneas de reposición alimentan el borrador de cotización.
+    await expect(workbench.getByText('Cable drop')).toBeVisible();
+    await expect(workbench.getByRole('cell', { name: '40' })).toBeVisible();
+    await expect(
+      main.getByRole('button', { name: /PR-\d+ Reposición sugerida .+ — 1 ítem/ }),
+    ).toBeVisible();
+
+    const created = state.purchaseRequests.find((entry) =>
+      String(entry.title ?? '').startsWith('Reposición sugerida'),
+    );
+    expect(created).toBeTruthy();
+    expect(created?.requestType).toBe('REPLENISHMENT');
+    expect(created?.requestingArea).toBe('Existencias');
+    expect(
+      state.purchaseRequestLines.some(
+        (line) =>
+          line.purchaseRequestId === created?.id &&
+          line.sourceKind === 'REPLENISHMENT_SUGGESTION' &&
+          line.inventoryItemId === ITEM_CONSUMABLE_ID,
+      ),
+    ).toBe(true);
   });
 });
 

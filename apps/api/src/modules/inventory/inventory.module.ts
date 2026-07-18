@@ -49,6 +49,7 @@ import { GoodsReceiptService } from './services/goods-receipt.service';
 import { InventoryCategoryService } from './services/inventory-category.service';
 import { InventoryDashboardService } from './services/inventory-dashboard.service';
 import { InventoryItemService } from './services/inventory-item.service';
+import { ReplenishmentService } from './services/replenishment.service';
 import { PurchasingPolicyService } from './services/purchasing-policy.service';
 import { PurchasingQueryService } from './services/purchasing-query.service';
 import { PurchasingService } from './services/purchasing.service';
@@ -116,6 +117,7 @@ import { SupplierProfileService } from './services/supplier-profile.service';
     RfqPdfService,
     AssetLifecycleService,
     InventoryDashboardService,
+    ReplenishmentService,
     SupplierProfileService,
     InventoryMovementPortAdapter,
     CommercialProductReferencePortAdapter,
@@ -154,6 +156,7 @@ import { SupplierProfileService } from './services/supplier-profile.service';
     CounterPurchaseService,
     AssetLifecycleService,
     InventoryDashboardService,
+    ReplenishmentService,
     SupplierProfileService,
     InventoryMovementPortAdapter,
     CommercialProductReferencePortAdapter,

@@ -122,6 +122,9 @@ interface PurchaseWorkspaceProps {
   onSelectOrder: (orderId: string) => Promise<void>;
   onRefresh: () => Promise<void>;
   onCatalogSearch?: (search: string) => void;
+  /** Prefill de creación (p. ej. desde Reposición). Se consume al abrir el composer. */
+  createInitialValues?: PurchaseComposerInitialValues | null;
+  onCreateInitialValuesConsumed?: () => void;
 }
 
 export function PurchaseWorkspace({
@@ -181,6 +184,8 @@ export function PurchaseWorkspace({
   onSelectOrder,
   onRefresh,
   onCatalogSearch,
+  createInitialValues = null,
+  onCreateInitialValuesConsumed,
 }: PurchaseWorkspaceProps) {
   const [filters, setFilters] = useState<PurchaseRequestFilters>({});
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
@@ -197,6 +202,8 @@ export function PurchaseWorkspace({
   const [draftLineCount, setDraftLineCount] = useState(0);
   const [workbenchTab, setWorkbenchTab] = useState<PurchaseWorkbenchTab>('summary');
   const [editingDetail, setEditingDetail] = useState<PurchaseRequestDetailRecord | null>(null);
+  const [prefillValues, setPrefillValues] = useState<PurchaseComposerInitialValues | null>(null);
+  const [prefillKey, setPrefillKey] = useState<string | null>(null);
 
   const filteredCount = useMemo(
     () => filterPurchaseRequests(requests, filters).length,
@@ -320,10 +327,36 @@ export function PurchaseWorkspace({
     setWorkspaceMode('create');
   }
 
+  useEffect(() => {
+    if (!createInitialValues) {
+      return;
+    }
+
+    setPrefillValues(createInitialValues);
+    if (createInitialValues.supplierLabels) {
+      setDetailSupplierLabels((previous) => ({
+        ...previous,
+        ...createInitialValues.supplierLabels,
+      }));
+    }
+    setPrefillKey(`prefill-${Date.now()}`);
+    openCreateMode();
+    onCreateInitialValuesConsumed?.();
+
+    // Spec §4: foco al abrir el composer tras generar desde Reposición
+    const focusTimer = window.setTimeout(() => {
+      document.getElementById('purchase-title')?.focus();
+    }, 0);
+
+    return () => window.clearTimeout(focusTimer);
+  }, [createInitialValues, onCreateInitialValuesConsumed]);
+
   function openEditMode(requestDetail: PurchaseRequestDetailRecord) {
     setEditingDetail(requestDetail);
     setComposerDirty(false);
     setDraftLineCount(requestDetail.lines.length);
+    setPrefillValues(null);
+    setPrefillKey(null);
     setWorkspaceMode('create');
   }
 
@@ -341,6 +374,8 @@ export function PurchaseWorkspace({
     setComposerDirty(false);
     setDraftLineCount(0);
     setEditingDetail(null);
+    setPrefillValues(null);
+    setPrefillKey(null);
   }
 
   function openCounterPurchaseMode() {
@@ -362,6 +397,10 @@ export function PurchaseWorkspace({
     const result = await onCreateRequest(payload);
     if (result.ok) {
       closeCreateMode(true);
+      // InventoryClient.onCreateRequest ya retorna { ok, requestId }; abrimos el workbench aquí.
+      if (result.requestId) {
+        await openWorkbench(result.requestId);
+      }
     }
     return result;
   }
@@ -405,7 +444,7 @@ export function PurchaseWorkspace({
         neededByDate: editingDetail.request.neededByDate,
         lines: editingDetail.lines,
       }
-    : undefined;
+    : (prefillValues ?? undefined);
 
   return (
     <div className="space-y-6">
@@ -456,7 +495,7 @@ export function PurchaseWorkspace({
           }
         >
           <PurchaseRequestComposer
-            key={editingDetail?.request.id ?? 'create'}
+            key={editingDetail?.request.id ?? prefillKey ?? 'create'}
             catalogOptions={catalogOptions}
             supplierLabels={resolvedSupplierLabels}
             isCatalogSearching={isCatalogSearching}

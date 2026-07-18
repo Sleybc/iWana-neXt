@@ -5709,6 +5709,8 @@ export interface InventoryDashboardSummary {
   serializedAssetsCount: number;
   balancesCount: number;
   totalOnHand: number;
+  /** Valor estimado del inventario (Σ onHand × costo unitario D-F2-4). */
+  estimatedTotalValue: number;
   balancesByLocation: InventoryBalanceByLocationSummary[];
   balancesByCategory: InventoryBalanceByCategorySummary[];
   serializedAssetsByStatus: InventoryAssetsByStatusSummary[];
@@ -5729,6 +5731,30 @@ export interface InventoryBalanceByCategorySummary {
   categoryName: string;
   totalOnHand: number;
   uniqueItems: number;
+  /** Valor estimado de la categoría (Σ onHand × costo unitario D-F2-4). */
+  estimatedValue: number;
+}
+
+export type ReplenishmentCriticality = 'out' | 'below-minimum' | 'below-reorder';
+
+export interface ReplenishmentSuggestionRecord {
+  itemId: string;
+  itemSku: string;
+  itemName: string;
+  unitOfMeasure: string;
+  available: string;
+  pendingPurchase: string;
+  minimumStock: string;
+  reorderPoint: string;
+  targetStock: string;
+  suggestedQty: string;
+  orderMultiple: string | null;
+  minimumOrderQty: string | null;
+  leadTimeDays: number | null;
+  preferredSupplier: { partyRefId: string; displayName: string | null } | null;
+  estimatedUnitCost: string | null;
+  estimatedLineValue: string | null;
+  criticality: ReplenishmentCriticality;
 }
 
 export interface InventoryAssetsByStatusSummary {
@@ -6883,6 +6909,13 @@ export const inventoryApi = {
         page: params?.page != null ? String(params.page) : undefined,
         limit: params?.limit != null ? String(params.limit) : undefined,
       })}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  listReplenishmentSuggestions: (tenantSlug?: string) =>
+    request<ReplenishmentSuggestionRecord[]>(
+      '/inventory/replenishment/suggestions',
       { returnFullResponse: true },
       tenantSlug,
     ),

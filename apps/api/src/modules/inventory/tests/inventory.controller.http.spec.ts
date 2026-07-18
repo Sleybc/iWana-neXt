@@ -38,6 +38,7 @@ import { StockLocationService } from '../services/stock-location.service';
 import { StockIssueService } from '../services/stock-issue.service';
 import { CounterPurchaseService } from '../services/counter-purchase.service';
 import { RfqPdfService } from '../services/rfq-pdf.service';
+import { ReplenishmentService } from '../services/replenishment.service';
 import { SupplierProfileService } from '../services/supplier-profile.service';
 import { RfqService } from '../services/rfq.service';
 
@@ -210,11 +211,15 @@ describe('InventoryController HTTP', () => {
       serializedAssetsCount: 0,
       balancesCount: 0,
       totalOnHand: 0,
+      estimatedTotalValue: 0,
       balancesByLocation: [],
       balancesByCategory: [],
       serializedAssetsByStatus: [],
       serializedAssetsByResponsibleType: [],
     }),
+  };
+  const replenishmentServiceMock = {
+    listSuggestions: jest.fn().mockResolvedValue([]),
   };
   const purchasingServiceMock = {
     listRequests: jest.fn().mockResolvedValue([]),
@@ -282,6 +287,7 @@ describe('InventoryController HTTP', () => {
         { provide: StockMovementQueryService, useValue: stockMovementQueryServiceMock },
         { provide: StockIssueService, useValue: stockIssueServiceMock },
         { provide: InventoryDashboardService, useValue: inventoryDashboardServiceMock },
+        { provide: ReplenishmentService, useValue: replenishmentServiceMock },
         { provide: PurchasingService, useValue: purchasingServiceMock },
         { provide: PurchasingQueryService, useValue: purchasingQueryServiceMock },
         { provide: GoodsReceiptService, useValue: goodsReceiptServiceMock },
@@ -811,6 +817,44 @@ describe('InventoryController HTTP', () => {
           idempotencyKey: 'short',
         })
         .expect(400);
+    });
+  });
+
+  describe('replenishment suggestions', () => {
+    it('returns 401 without token', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/inventory/replenishment/suggestions')
+        .expect(401);
+    });
+
+    it('allows admin to list suggestions', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/inventory/replenishment/suggestions')
+        .set('Authorization', 'Bearer admin-token')
+        .expect(200);
+
+      expect(replenishmentServiceMock.listSuggestions).toHaveBeenCalled();
+    });
+
+    it('allows noc to list suggestions', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/inventory/replenishment/suggestions')
+        .set('Authorization', 'Bearer noc-token')
+        .expect(200);
+    });
+
+    it('allows support to list suggestions', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/inventory/replenishment/suggestions')
+        .set('Authorization', 'Bearer support-token')
+        .expect(200);
+    });
+
+    it('forbids technician from listing suggestions', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/inventory/replenishment/suggestions')
+        .set('Authorization', 'Bearer tech-token')
+        .expect(403);
     });
   });
 });

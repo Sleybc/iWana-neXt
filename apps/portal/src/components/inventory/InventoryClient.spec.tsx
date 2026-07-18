@@ -101,6 +101,7 @@ jest.mock('@/lib/api-client', () => ({
     registerReturn: jest.fn(),
     writeOff: jest.fn(),
     listMovements: jest.fn(),
+    listReplenishmentSuggestions: jest.fn(),
     getMovement: jest.fn(),
     createAdjustment: jest.fn(),
     createCounterPurchase: jest.fn(),
@@ -252,6 +253,7 @@ describe('InventoryClient', () => {
       serializedAssetsCount: 4,
       balancesCount: 5,
       totalOnHand: 17,
+      estimatedTotalValue: 2500000,
       balancesByLocation: [
         {
           locationId: 'loc-1',
@@ -268,6 +270,7 @@ describe('InventoryClient', () => {
           categoryName: 'CPE',
           totalOnHand: 1,
           uniqueItems: 1,
+          estimatedValue: 120000,
         },
       ],
       serializedAssetsByStatus: [
@@ -290,6 +293,7 @@ describe('InventoryClient', () => {
       page: 1,
       limit: 20,
     });
+    inventoryApiMock.listReplenishmentSuggestions.mockResolvedValue([]);
     inventoryApiMock.getItem.mockImplementation(async (id) =>
       buildCatalogItem({ id, name: 'ONT WiFi 6 detalle' }),
     );

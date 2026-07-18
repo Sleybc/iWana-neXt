@@ -11,6 +11,19 @@ import {
   runInTenantSchema,
 } from '@iwana/db';
 
+function resolveUnitCost(item: InventoryItem): number {
+  const raw = item.lastPurchaseCost ?? item.standardCost ?? item.baseCost;
+  if (typeof raw === 'number') {
+    return raw;
+  }
+
+  if (raw === null || raw === undefined || raw === '') {
+    return 0;
+  }
+
+  return Number.parseFloat(raw);
+}
+
 @Injectable()
 export class InventoryDashboardService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
@@ -39,6 +52,16 @@ export class InventoryDashboardService {
       const locationMap = new Map(locations.map((location) => [location.id, location]));
       const categoryMap = new Map(categories.map((category) => [category.id, category]));
       const itemMap = new Map(items.map((item) => [item.id, item]));
+
+      let estimatedTotalValue = 0;
+      for (const balance of balances) {
+        const item = itemMap.get(balance.itemId);
+        if (!item) {
+          continue;
+        }
+
+        estimatedTotalValue += Number.parseFloat(balance.quantityOnHand) * resolveUnitCost(item);
+      }
 
       const balancesByLocation = Array.from(
         balances
@@ -98,15 +121,18 @@ export class InventoryDashboardService {
                 return groups;
               }
 
+              const onHand = Number.parseFloat(balance.quantityOnHand);
               const current = groups.get(category.id) ?? {
                 categoryId: category.id,
                 categoryCodePrefix: category.codePrefix,
                 categoryName: category.name,
                 totalOnHand: 0,
+                estimatedValue: 0,
                 itemIds: new Set<string>(),
               };
 
-              current.totalOnHand += Number.parseFloat(balance.quantityOnHand);
+              current.totalOnHand += onHand;
+              current.estimatedValue += onHand * resolveUnitCost(item);
               current.itemIds.add(balance.itemId);
               groups.set(category.id, current);
               return groups;
@@ -118,6 +144,7 @@ export class InventoryDashboardService {
                 categoryCodePrefix: string;
                 categoryName: string;
                 totalOnHand: number;
+                estimatedValue: number;
                 itemIds: Set<string>;
               }
             >(),
@@ -129,6 +156,7 @@ export class InventoryDashboardService {
           categoryCodePrefix: entry.categoryCodePrefix,
           categoryName: entry.categoryName,
           totalOnHand: entry.totalOnHand,
+          estimatedValue: entry.estimatedValue,
           uniqueItems: entry.itemIds.size,
         }))
         .sort((left, right) => right.totalOnHand - left.totalOnHand);
@@ -160,6 +188,7 @@ export class InventoryDashboardService {
         serializedAssetsCount,
         balancesCount: balances.length,
         totalOnHand,
+        estimatedTotalValue,
         balancesByLocation,
         balancesByCategory,
         serializedAssetsByStatus,

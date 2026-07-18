@@ -2,16 +2,20 @@
 
 **Version:** 1.0
 **Fecha:** 2026-07-18
-**Estado:** ✅ Fase 1 — G7 GO (recomendación AI-EM-ARCH); pendiente confirmación explícita del CTO para producción
-**Auditoría G5:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-AUDITORIA-ARCH-v1.0.md
-**Review G6:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-G6-REVIEW-v1.0.md
-**Cierre G7:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-CIERRE-G7-v1.0.md
+**Estado:** ✅ Fase 1 — G7 GO (pendiente CTO); ✅ Fase 2 — G7 GO (pendiente CTO + commit)
+**Auditoría G5 F1:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-AUDITORIA-ARCH-v1.0.md
+**Review G6 F1:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-G6-REVIEW-v1.0.md
+**Cierre G7 F1:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-CIERRE-G7-v1.0.md
+**Informe Fase 2:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-02-v1.0.md
+**Review G6 F2:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-02-G6-REVIEW-v1.0.md
+**Cierre G7 F2:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-02-CIERRE-G7-v1.0.md
 **Modo activo:** Product Architect + Orchestrator
 **Responsable:** AI-EM-ARCH
 **PRD:** docs/prds/PRD-MOD12-INVENTARIO-EXISTENCIAS-v1.0.md
 **Prompt Fase 1:** docs/prompts/PROMPT-MOD12-EXISTENCIAS-KARDEX-AJUSTES-FASE-01-v1.0.md
-**Prompt Fase 2 (emitido, ejecutable al cierre G7 de Fase 1):** docs/prompts/PROMPT-MOD12-EXISTENCIAS-REORDEN-FASE-02-v1.0.md
+**Prompt Fase 2:** docs/prompts/PROMPT-MOD12-EXISTENCIAS-REORDEN-FASE-02-v1.0.md
 **Spec Fase 2:** docs/specs/2026-07-18-mod12-existencias-reorden-fase02-design.md
+**Plan Fase 2:** docs/plans/2026-07-18-mod12-existencias-fase-02.md
 
 ---
 
@@ -45,7 +49,7 @@ No se emitió HLD ni ADR nuevo: la Fase 1 no crea boundary, entidad, migración 
 | Fase | Alcance | Estado |
 | --- | --- | --- |
 | 1 | Kardex consultable, ajustes con razón tipificada, pestaña Existencias (Por producto / Por bodega / Kardex), Bodegas reducida | **Cerrada (G7 GO)** — pendiente confirmación CTO; ver `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-CIERRE-G7-v1.0.md` |
-| 2 | Reposición sugerida (anti doble pedido) → composer de compras prellenado; valor estimado en Resumen | **Definida** — contrato congelado, spec + prompt emitidos; ejecutable al cierre G7 de Fase 1 |
+| 2 | Reposición sugerida (anti doble pedido) → composer de compras prellenado; valor estimado en Resumen | **Cerrada (G7 GO)** — pendiente confirmación CTO + commit; ver `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-02-CIERRE-G7-v1.0.md` |
 | 3 | Conteos físicos / inventario cíclico; reservas efectivas | Planificada |
 | 4 | Costeo promedio móvil, valoración y reportes | Planificada |
 
@@ -57,9 +61,9 @@ No se emitió HLD ni ADR nuevo: la Fase 1 no crea boundary, entidad, migración 
 
 ## 6. Próximos pasos
 
-1. **CTO:** confirmar explícitamente la aprobación de producción de la Fase 1 (recomendación AI-EM-ARCH ya emitida en G7).
-2. Con G7 GO, el criterio de entrada de Fase 2 (PRD §8) queda satisfecho: ejecutar `docs/prompts/PROMPT-MOD12-EXISTENCIAS-REORDEN-FASE-02-v1.0.md`.
-3. Deuda registrada al cierre (no bloqueante, backlog): skeleton en listados Existencias/Bodegas, foco en controles custom, drawer a11y, label de lote, cablear rol→`canAdjust`, ampliar `stock-movement-query.service.spec.ts`.
+1. **CTO:** confirmar aprobación de producción de Fase 1 y Fase 2 (recomendaciones G7 emitidas) y autorizar el **commit de la Fase 2** (implementada sobre working tree, aún sin commitear).
+2. **Fase 3** (conteos físicos / reservas efectivas): con G7 F2 GO, su criterio de entrada (ADR-016) queda satisfecho. A diferencia de F1/F2, la Fase 3 introduce entidades y migraciones → requiere nueva sesión de arquitectura con HLD/ADR.
+3. Deuda no bloqueante (backlog): «Sin stock» vs «Agotado», flakiness `ECONNRESET`/`SupplierPicker` bajo carga, skeleton Existencias/Bodegas, drawer a11y, rol→`canAdjust`, `tabular-nums` en columnas de Reposición.
 
 ## 7. Historial
 
@@ -74,3 +78,6 @@ No se emitió HLD ni ADR nuevo: la Fase 1 no crea boundary, entidad, migración 
 | 2026-07-18 | Fase 2 definida (AI-EM-ARCH, protocolo multiagente): factibilidad verificada contra código (backend compras/dashboard + patrones portal); contrato congelado en PRD §7 con decisión D-F2-1 (se elimina el POST de creación — composer prellenado + `POST /purchasing/requests` vigente); spec de diseño y prompt de ejecución emitidos (G4), ejecutables al cierre G7 de Fase 1 |
 | 2026-07-18 | **Cierre G7 (AI-EM-ARCH):** re-verificación independiente; gates en verde; O1 aún flaky no-regresivo. **Recomendación: GO a producción**, pendiente CTO |
 | 2026-07-18 | **O1 cerrado (AI-SR-FULL, track F07):** root cause timeout Jest 5s vs PDFKit; `jest.setTimeout(20_000)` + caché buffers assets; inventory 217/217 ×2 |
+| 2026-07-18 | **Fase 2 implementada (AI-SR-FULL + FE-PLATFORM, multiagente §3bis):** ReplenishmentService + GET suggestions + valor dashboard; subvista Reposición → composer prellenado; gates API 235 + portal 37 + lint/typecheck PASS → G5 listo para G6 |
+| 2026-07-18 | **G6 Fase 2** (PROD-UX/DS-OWNER/SR-QA): GO condicionado; remediación DS-H1/H2 + UX-H1/H2/H3; Playwright Existencias 8/8; **G6 GO** → pendiente G7 |
+| 2026-07-18 | **Cierre G7 Fase 2 (AI-EM-ARCH):** re-verificación independiente en código de D-F2-1…5 y de las 5 remediaciones G6; gates re-ejecutados (lint/typecheck limpios, suites F2 en verde; 2 fallos flaky de infra `ECONNRESET`/`SupplierPicker` no-regresivos, pasan aislados). **Recomendación: GO a producción**, pendiente CTO + commit de la fase. Habilita entrada de Fase 3 (requiere HLD/ADR por entidades/migraciones nuevas) |

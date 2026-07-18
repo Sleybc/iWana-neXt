@@ -92,6 +92,7 @@ import { InventoryCatalogCategoriesPanel } from './InventoryCatalogCategoriesPan
 import { InventoryCatalogProductsPanel } from './InventoryCatalogProductsPanel';
 import { InventoryCatalogSummaryPreview } from './InventoryCatalogSummaryPreview';
 import { PurchaseWorkspace } from './PurchaseWorkspace';
+import type { PurchaseComposerInitialValues } from './PurchaseRequestComposer';
 import { SuppliersPanel } from './SuppliersPanel';
 import { SupplierFormDrawer } from './SupplierFormDrawer';
 import { SerializedAssetDetailDrawer } from './SerializedAssetDetailDrawer';
@@ -220,6 +221,8 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const [assetDetailError, setAssetDetailError] = useState<string | null>(null);
   const [isLoadingAsset, setIsLoadingAsset] = useState(false);
   const [createRequestError, setCreateRequestError] = useState<string | null>(null);
+  const [pendingComposerPrefill, setPendingComposerPrefill] =
+    useState<PurchaseComposerInitialValues | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [approveError, setApproveError] = useState<string | null>(null);
   const [awardsError, setAwardsError] = useState<string | null>(null);
@@ -1905,6 +1908,8 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             onSelectOrder={loadOrderDetail}
             onRefresh={() => loadData(true)}
             onCatalogSearch={handleCatalogSearch}
+            createInitialValues={pendingComposerPrefill}
+            onCreateInitialValuesConsumed={() => setPendingComposerPrefill(null)}
           />
         </TabsContent>
 
@@ -1971,6 +1976,10 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
               onAdjustmentRegistered={(movementNumber) => {
                 setMovementNotice(`Ajuste registrado: ${movementNumber}`);
                 void loadData(true);
+              }}
+              onGeneratePurchaseRequest={(values) => {
+                setPendingComposerPrefill(values);
+                handleTabChange('purchasing');
               }}
             />
           </PortalPanel>

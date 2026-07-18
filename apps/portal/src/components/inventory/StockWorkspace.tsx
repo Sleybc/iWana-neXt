@@ -8,13 +8,15 @@ import type {
   StockLocationRecord,
 } from '@/lib/api-client';
 import { portalModuleTabTriggerClassName } from '@/components/shared/portal-ui';
+import type { PurchaseComposerInitialValues } from './PurchaseRequestComposer';
 import { StockAdjustmentDialog } from './StockAdjustmentDialog';
 import { StockByProductTable } from './StockByProductTable';
 import { StockItemDetailDrawer } from './StockItemDetailDrawer';
 import { StockKardexPanel } from './StockKardexPanel';
 import { StockLocationsMatrix, type LocationMatrixCustodyFilter } from './StockLocationsMatrix';
+import { StockReplenishmentPanel } from './StockReplenishmentPanel';
 
-export type StockSubview = 'by-product' | 'by-location' | 'kardex';
+export type StockSubview = 'by-product' | 'by-location' | 'kardex' | 'replenishment';
 
 interface StockWorkspaceProps {
   items: InventoryItemRecord[];
@@ -25,6 +27,7 @@ interface StockWorkspaceProps {
   canAdjust?: boolean;
   onCustodyFilterChange?: (filter: LocationMatrixCustodyFilter) => void;
   onAdjustmentRegistered: (movementNumber: string) => void;
+  onGeneratePurchaseRequest?: (values: PurchaseComposerInitialValues) => void;
 }
 
 export function StockWorkspace({
@@ -36,6 +39,7 @@ export function StockWorkspace({
   canAdjust = false,
   onCustodyFilterChange,
   onAdjustmentRegistered,
+  onGeneratePurchaseRequest,
 }: StockWorkspaceProps) {
   const [subview, setSubview] = useState<StockSubview>(() =>
     custodyFilter === 'mobile' ? 'by-location' : 'by-product',
@@ -67,6 +71,9 @@ export function StockWorkspace({
           <TabsTrigger value="kardex" className={portalModuleTabTriggerClassName}>
             Kardex
           </TabsTrigger>
+          <TabsTrigger value="replenishment" className={portalModuleTabTriggerClassName}>
+            Reposición
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="by-product" className="space-y-4">
@@ -93,6 +100,12 @@ export function StockWorkspace({
 
         <TabsContent value="kardex" className="space-y-4">
           <StockKardexPanel items={items} locations={locations} />
+        </TabsContent>
+
+        <TabsContent value="replenishment" className="space-y-4">
+          <StockReplenishmentPanel
+            onGeneratePurchaseRequest={onGeneratePurchaseRequest ?? (() => undefined)}
+          />
         </TabsContent>
       </Tabs>
 

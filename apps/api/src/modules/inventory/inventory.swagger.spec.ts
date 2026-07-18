@@ -12,6 +12,7 @@ import { StockLedgerService } from './services/stock-ledger.service';
 import { StockMovementQueryService } from './services/stock-movement-query.service';
 import { StockLocationService } from './services/stock-location.service';
 import { InventoryController } from './inventory.controller';
+import { ReplenishmentService } from './services/replenishment.service';
 
 function getRequestSchema(
   operation: Record<string, unknown> | undefined,
@@ -41,6 +42,7 @@ describe('InventoryController Swagger', () => {
         { provide: StockIssueService, useValue: {} },
         { provide: CounterPurchaseService, useValue: {} },
         { provide: InventoryDashboardService, useValue: {} },
+        { provide: ReplenishmentService, useValue: {} },
       ],
     }).compile();
 
@@ -83,5 +85,17 @@ describe('InventoryController Swagger', () => {
     expect(
       getRequestSchema(createAdjustment as unknown as Record<string, unknown>, 'application/json'),
     ).toBeDefined();
+  });
+
+  it('documenta sugerencias de reposición', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('Swagger Inventory Test').setVersion('1.0').build(),
+    );
+
+    const suggestions = document.paths['/inventory/replenishment/suggestions']?.get;
+
+    expect(suggestions).toBeDefined();
+    expect(suggestions?.summary).toBe('Consultar sugerencias de reposición de inventario');
   });
 });

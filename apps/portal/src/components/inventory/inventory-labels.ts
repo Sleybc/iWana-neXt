@@ -175,6 +175,14 @@ export const PURCHASE_REQUEST_TYPE_LABELS: Record<PurchaseRequestType, string> =
   [PurchaseRequestType.FREE_PURCHASE]: 'Compra abierta',
 };
 
+export type ReplenishmentCriticalityLabel = 'out' | 'below-minimum' | 'below-reorder';
+
+export const REPLENISHMENT_CRITICALITY_LABELS: Record<ReplenishmentCriticalityLabel, string> = {
+  out: 'Sin stock',
+  'below-minimum': 'Bajo mínimo',
+  'below-reorder': 'Bajo reorden',
+};
+
 export const PURCHASE_REQUEST_TYPE_HELPER_LABELS: Record<PurchaseRequestType, string> = {
   [PurchaseRequestType.REPLENISHMENT]:
     'Pedido habitual para reponer materiales y mantener la bodega al día.',
@@ -398,6 +406,10 @@ export function getPurchaseRequestStatusLabel(value: PurchaseRequestStatus): str
 
 export function getPurchaseRequestTypeLabel(value: PurchaseRequestType): string {
   return resolveLabel(value, PURCHASE_REQUEST_TYPE_LABELS);
+}
+
+export function getReplenishmentCriticalityLabel(value: ReplenishmentCriticalityLabel): string {
+  return resolveLabel(value, REPLENISHMENT_CRITICALITY_LABELS);
 }
 
 export function getPurchaseRequestTypeHelperLabel(value: PurchaseRequestType): string {

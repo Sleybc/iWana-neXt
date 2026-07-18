@@ -79,6 +79,7 @@ import {
 import { InventoryDashboardService } from './services/inventory-dashboard.service';
 import { InventoryCategoryService } from './services/inventory-category.service';
 import { InventoryItemService } from './services/inventory-item.service';
+import { ReplenishmentService } from './services/replenishment.service';
 import { SerializedAssetService } from './services/serialized-asset.service';
 import { StockBalanceService } from './services/stock-balance.service';
 import { StockLedgerService } from './services/stock-ledger.service';
@@ -103,6 +104,7 @@ export class InventoryController {
     private readonly stockIssueService: StockIssueService,
     private readonly counterPurchaseService: CounterPurchaseService,
     private readonly inventoryDashboardService: InventoryDashboardService,
+    private readonly replenishmentService: ReplenishmentService,
   ) {}
 
   @Get('items')
@@ -439,5 +441,12 @@ export class InventoryController {
   @ApiOperation({ summary: 'Obtener KPIs del dashboard de inventario' })
   getDashboard() {
     return this.inventoryDashboardService.getSummary();
+  }
+
+  @Get('replenishment/suggestions')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Consultar sugerencias de reposición de inventario' })
+  listReplenishmentSuggestions() {
+    return this.replenishmentService.listSuggestions();
   }
 }

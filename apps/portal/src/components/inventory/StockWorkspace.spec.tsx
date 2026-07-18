@@ -13,6 +13,10 @@ jest.mock('./StockKardexPanel', () => ({
   StockKardexPanel: () => <div>Panel kardex</div>,
 }));
 
+jest.mock('./StockReplenishmentPanel', () => ({
+  StockReplenishmentPanel: () => <div>Panel reposición</div>,
+}));
+
 jest.mock('./StockItemDetailDrawer', () => ({
   StockItemDetailDrawer: () => null,
 }));
@@ -22,7 +26,7 @@ jest.mock('./StockAdjustmentDialog', () => ({
 }));
 
 describe('StockWorkspace', () => {
-  it('renders the three stock subviews', () => {
+  it('renders the stock subviews including replenishment', () => {
     render(
       <StockWorkspace items={[]} balances={[]} locations={[]} onAdjustmentRegistered={jest.fn()} />,
     );
@@ -30,6 +34,7 @@ describe('StockWorkspace', () => {
     expect(screen.getByText('Por producto')).toBeInTheDocument();
     expect(screen.getByText('Por bodega')).toBeInTheDocument();
     expect(screen.getByText('Kardex')).toBeInTheDocument();
+    expect(screen.getByText('Reposición')).toBeInTheDocument();
     expect(screen.getByText('Tabla por producto')).toBeInTheDocument();
   });
 
