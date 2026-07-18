@@ -41,6 +41,24 @@ describe('StockLedgerService', () => {
     type: 'tenant',
   };
 
+  function withAvailability<T extends Record<string, unknown>>(
+    stockBalanceService: T,
+    availability: { onHand: number; reserved: number; available: number } = {
+      onHand: 100,
+      reserved: 0,
+      available: 100,
+    },
+  ): T & {
+    getAvailabilityWithManager: jest.Mock;
+    getAvailableQuantityWithManager: jest.Mock;
+  } {
+    return {
+      getAvailabilityWithManager: jest.fn().mockResolvedValue(availability),
+      getAvailableQuantityWithManager: jest.fn().mockResolvedValue(availability.available),
+      ...stockBalanceService,
+    };
+  }
+
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -62,11 +80,11 @@ describe('StockLedgerService', () => {
       transaction: jest.fn().mockImplementation(async (work) => work(manager)),
       find: jest.fn().mockResolvedValue([]),
     };
-    const stockBalanceService = {
+    const stockBalanceService = withAvailability({
       applyDeltaWithManager: jest
         .fn()
         .mockRejectedValue(new Error('El movimiento dejaría saldo negativo.')),
-    };
+    });
     const serializedAssetService = {
       resolveForMovementWithManager: jest.fn(),
       transitionAssetWithManager: jest.fn(),
@@ -113,7 +131,7 @@ describe('StockLedgerService', () => {
     };
     const service = new StockLedgerService(
       {} as DataSource,
-      { applyDeltaWithManager: jest.fn() } as never,
+      withAvailability({ applyDeltaWithManager: jest.fn() }) as unknown as never,
       {
         resolveForMovementWithManager: jest.fn(),
         transitionAssetWithManager: jest.fn(),
@@ -155,9 +173,9 @@ describe('StockLedgerService', () => {
       transaction: jest.fn().mockImplementation(async (work) => work(manager)),
       find: jest.fn().mockResolvedValue([]),
     };
-    const stockBalanceService = {
+    const stockBalanceService = withAvailability({
       applyDeltaWithManager: jest.fn().mockResolvedValue(undefined),
-    };
+    });
     const service = new StockLedgerService(
       {} as DataSource,
       stockBalanceService as never,
@@ -222,9 +240,9 @@ describe('StockLedgerService', () => {
         .mockImplementation(async (_entity, payload) => ({ id: 'line-010', ...payload })),
       transaction: jest.fn().mockImplementation(async (work) => work(manager)),
     };
-    const stockBalanceService = {
+    const stockBalanceService = withAvailability({
       applyDeltaWithManager: jest.fn().mockResolvedValue(undefined),
-    };
+    });
     const serializedAssetService = {
       resolveForMovementWithManager: jest.fn().mockResolvedValue({
         id: 'asset-001',
@@ -298,9 +316,12 @@ describe('StockLedgerService', () => {
         .mockResolvedValueOnce([{ quantityOnHand: '1.00' }]),
       transaction: jest.fn().mockImplementation(async (work) => work(manager)),
     };
-    const stockBalanceService = {
-      applyDeltaWithManager: jest.fn(),
-    };
+    const stockBalanceService = withAvailability(
+      {
+        applyDeltaWithManager: jest.fn(),
+      },
+      { onHand: 2, reserved: 0, available: 2 },
+    );
     (runInTenantSchema as jest.Mock).mockImplementation(async (_dataSource, _schemaName, work) =>
       work({ manager }),
     );
@@ -357,9 +378,16 @@ describe('StockLedgerService', () => {
       work({ manager }),
     );
 
+    const stockBalanceService = withAvailability(
+      {
+        applyDeltaWithManager: jest.fn(),
+      },
+      { onHand: 1, reserved: 0, available: 1 },
+    );
+
     const service = new StockLedgerService(
       {} as DataSource,
-      { applyDeltaWithManager: jest.fn() } as never,
+      stockBalanceService as never,
       {
         resolveForMovementWithManager: jest.fn(),
         transitionAssetWithManager: jest.fn(),
@@ -393,7 +421,62 @@ describe('StockLedgerService', () => {
         },
         actor,
       ),
-    ).rejects.toThrow('saldo disponible en origen');
+    ).rejects.toThrow(/disponible suficiente/);
+  });
+
+  it('rejects transfer that would consume stock reserved by another issue', async () => {
+    const manager = {
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce({
+          id: 'loc-source',
+          tenantId: 'tenant-001',
+          type: StockLocationType.MAIN_WAREHOUSE,
+          responsibleRefId: null,
+          maxCapacity: null,
+        })
+        .mockResolvedValueOnce({
+          id: 'loc-destination',
+          tenantId: 'tenant-001',
+          type: StockLocationType.MAIN_WAREHOUSE,
+          responsibleRefId: null,
+          maxCapacity: null,
+        }),
+      find: jest.fn().mockResolvedValue([]),
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+    };
+    (runInTenantSchema as jest.Mock).mockImplementation(async (_dataSource, _schemaName, work) =>
+      work({ manager }),
+    );
+
+    const stockBalanceService = withAvailability(
+      { applyDeltaWithManager: jest.fn() },
+      { onHand: 10, reserved: 8, available: 2 },
+    );
+
+    const service = new StockLedgerService(
+      {} as DataSource,
+      stockBalanceService as never,
+      {
+        resolveForMovementWithManager: jest.fn(),
+        transitionAssetWithManager: jest.fn(),
+      } as never,
+      { recordWithManager: jest.fn() } as never,
+    );
+
+    await expect(
+      service.transfer(
+        {
+          itemId: 'item-001',
+          sourceLocationId: 'loc-source',
+          destinationLocationId: 'loc-destination',
+          quantity: 5,
+          condition: StockBalanceCondition.NEW,
+          handoffReference: 'ACT-RESERVED',
+        },
+        actor,
+      ),
+    ).rejects.toThrow(/comprometidos/);
   });
 
   it('rejects serialized transfers when the asset does not belong to the item or source location', async () => {
@@ -453,7 +536,7 @@ describe('StockLedgerService', () => {
 
     const service = new StockLedgerService(
       {} as DataSource,
-      { applyDeltaWithManager: jest.fn() } as never,
+      withAvailability({ applyDeltaWithManager: jest.fn() }) as unknown as never,
       serializedAssetService as never,
       { recordWithManager: jest.fn() } as never,
     );
@@ -506,9 +589,9 @@ describe('StockLedgerService', () => {
         .mockImplementationOnce(async (_entity, payload) => ({ id: 'line-099', ...payload })),
       transaction: jest.fn().mockImplementation(async (work) => work(manager)),
     };
-    const stockBalanceService = {
+    const stockBalanceService = withAvailability({
       applyDeltaWithManager: jest.fn().mockResolvedValue(undefined),
-    };
+    });
     const serializedAssetService = {
       resolveForMovementWithManager: jest.fn().mockResolvedValue({
         id: 'asset-099',
@@ -592,9 +675,9 @@ describe('StockLedgerService', () => {
       }),
       transaction: jest.fn().mockImplementation(async (work) => work(manager)),
     };
-    const stockBalanceService = {
+    const stockBalanceService = withAvailability({
       applyDeltaWithManager: jest.fn().mockResolvedValue(undefined),
-    };
+    });
     const customerSiteLocationResolver = {
       resolveOrCreateWithManager: jest.fn().mockResolvedValue('loc-customer-site'),
     };
@@ -694,9 +777,9 @@ describe('StockLedgerService', () => {
       }),
       transaction: jest.fn().mockImplementation(async (work) => work(manager)),
     };
-    const stockBalanceService = {
+    const stockBalanceService = withAvailability({
       applyDeltaWithManager: jest.fn().mockResolvedValue(undefined),
-    };
+    });
     (runInTenantSchema as jest.Mock).mockImplementation(async (_dataSource, _schemaName, work) =>
       work({ manager }),
     );
@@ -773,9 +856,9 @@ describe('StockLedgerService', () => {
       }),
       transaction: jest.fn().mockImplementation(async (work) => work(manager)),
     };
-    const stockBalanceService = {
+    const stockBalanceService = withAvailability({
       applyDeltaWithManager: jest.fn().mockResolvedValue(undefined),
-    };
+    });
     (runInTenantSchema as jest.Mock).mockImplementation(async (_dataSource, _schemaName, work) =>
       work({ manager }),
     );
@@ -863,9 +946,9 @@ describe('StockLedgerService', () => {
         work({ manager } as never),
       );
 
-      const stockBalanceService = {
+      const stockBalanceService = withAvailability({
         applyDeltaWithManager: jest.fn().mockResolvedValue({}),
-      };
+      });
 
       const service = new StockLedgerService(
         {} as DataSource,
@@ -926,9 +1009,9 @@ describe('StockLedgerService', () => {
         work({ manager } as never),
       );
 
-      const stockBalanceService = {
+      const stockBalanceService = withAvailability({
         applyDeltaWithManager: jest.fn().mockResolvedValue({}),
-      };
+      });
 
       const service = new StockLedgerService(
         {} as DataSource,
@@ -972,7 +1055,7 @@ describe('StockLedgerService', () => {
 
       const service = new StockLedgerService(
         {} as DataSource,
-        { applyDeltaWithManager: jest.fn() } as never,
+        withAvailability({ applyDeltaWithManager: jest.fn() }) as unknown as never,
         {
           resolveForMovementWithManager: jest.fn(),
           transitionAssetWithManager: jest.fn(),
@@ -1021,7 +1104,7 @@ describe('StockLedgerService', () => {
 
       const service = new StockLedgerService(
         {} as DataSource,
-        { applyDeltaWithManager: jest.fn() } as never,
+        withAvailability({ applyDeltaWithManager: jest.fn() }) as unknown as never,
         {
           resolveForMovementWithManager: jest.fn(),
           transitionAssetWithManager: jest.fn(),

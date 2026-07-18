@@ -5,13 +5,29 @@ import { StockBalance, TenantContext, runInTenantSchema } from '@iwana/db';
 import { StockBalanceCondition } from '@iwana/shared';
 import { ListStockBalancesQueryInput, ListStockBalancesQuerySchema } from '../dto';
 
-interface ApplyStockDeltaInput {
+export interface ApplyStockDeltaInput {
   tenantId: string;
   itemId: string;
   locationId: string;
   lotId?: string | null;
   condition?: StockBalanceCondition;
+  /** Delta de existencia física (puede ser 0 si solo se ajusta reserva). */
   delta: number;
+  /** Delta de reserva comprometida (puede ser 0 si solo se ajusta existencia). */
+  reservedDelta?: number;
+}
+
+export interface StockAvailability {
+  onHand: number;
+  reserved: number;
+  available: number;
+}
+
+export interface StockAvailabilityQuery {
+  itemId: string;
+  locationId: string;
+  lotId?: string | null;
+  condition?: StockBalanceCondition;
 }
 
 function toNumeric(value: string | number | null | undefined): number {
@@ -28,6 +44,22 @@ function toNumeric(value: string | number | null | undefined): number {
 
 function toQuantity(value: number): string {
   return value.toFixed(2);
+}
+
+function roundQty(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+export function computeAvailable(onHand: number, reserved: number): number {
+  return roundQty(onHand - reserved);
+}
+
+export function formatInsufficientAvailableMessage(onHand: number, reserved: number): string {
+  return `No hay disponible suficiente: ${toQuantity(onHand)} en existencia, ${toQuantity(reserved)} comprometidos.`;
+}
+
+export function formatInvariantViolationMessage(onHand: number, reserved: number): string {
+  return `El movimiento dejaría la existencia (${toQuantity(onHand)}) por debajo de lo comprometido (${toQuantity(reserved)}).`;
 }
 
 @Injectable()
@@ -60,11 +92,57 @@ export class StockBalanceService {
     });
   }
 
+  /**
+   * Disponible por tupla (ítem × bodega × lote × condición).
+   * Único cálculo canónico: available = onHand − reserved.
+   */
+  async getAvailabilityWithManager(
+    manager: EntityManager,
+    tenantId: string,
+    input: StockAvailabilityQuery,
+  ): Promise<StockAvailability> {
+    const condition = input.condition ?? StockBalanceCondition.NEW;
+    const balances = await manager.find(StockBalance, {
+      where: {
+        tenantId,
+        itemId: input.itemId,
+        locationId: input.locationId,
+        condition,
+      },
+    });
+
+    const matching = balances.filter(
+      (balance) => (balance.lotId ?? null) === (input.lotId ?? null),
+    );
+    const onHand = roundQty(
+      matching.reduce((total, balance) => total + toNumeric(balance.quantityOnHand), 0),
+    );
+    const reserved = roundQty(
+      matching.reduce((total, balance) => total + toNumeric(balance.quantityReserved), 0),
+    );
+
+    return {
+      onHand,
+      reserved,
+      available: computeAvailable(onHand, reserved),
+    };
+  }
+
+  async getAvailableQuantityWithManager(
+    manager: EntityManager,
+    tenantId: string,
+    input: StockAvailabilityQuery,
+  ): Promise<number> {
+    const availability = await this.getAvailabilityWithManager(manager, tenantId, input);
+    return availability.available;
+  }
+
   async applyDeltaWithManager(
     manager: EntityManager,
     input: ApplyStockDeltaInput,
   ): Promise<StockBalance> {
     const condition = input.condition ?? StockBalanceCondition.NEW;
+    const reservedDelta = input.reservedDelta ?? 0;
     const existingQuery = manager
       .createQueryBuilder(StockBalance, 'balance')
       .where('balance.tenant_id = :tenantId', { tenantId: input.tenantId })
@@ -81,8 +159,19 @@ export class StockBalanceService {
     const existing = await existingQuery.getOne();
 
     if (!existing) {
-      if (input.delta < 0) {
+      const nextOnHand = roundQty(input.delta);
+      const nextReserved = roundQty(reservedDelta);
+
+      if (nextOnHand < 0) {
         throw new BadRequestException('El movimiento dejaría saldo negativo.');
+      }
+
+      if (nextReserved < 0 || nextReserved > nextOnHand) {
+        throw new BadRequestException(
+          nextReserved > nextOnHand
+            ? formatInvariantViolationMessage(nextOnHand, nextReserved)
+            : formatInsufficientAvailableMessage(nextOnHand, 0),
+        );
       }
 
       return manager.save(
@@ -93,20 +182,33 @@ export class StockBalanceService {
           locationId: input.locationId,
           lotId: input.lotId ?? null,
           condition,
-          quantityOnHand: toQuantity(input.delta),
-          quantityReserved: toQuantity(0),
+          quantityOnHand: toQuantity(nextOnHand),
+          quantityReserved: toQuantity(nextReserved),
         }),
       );
     }
 
-    const current = toNumeric(existing.quantityOnHand);
-    const next = current + input.delta;
+    const currentOnHand = toNumeric(existing.quantityOnHand);
+    const currentReserved = toNumeric(existing.quantityReserved);
+    const nextOnHand = roundQty(currentOnHand + input.delta);
+    const nextReserved = roundQty(currentReserved + reservedDelta);
 
-    if (next < 0) {
+    if (nextOnHand < 0) {
       throw new BadRequestException('El movimiento dejaría saldo negativo.');
     }
 
-    existing.quantityOnHand = toQuantity(next);
+    if (nextReserved < 0) {
+      throw new BadRequestException(
+        `No se puede liberar más reserva de la comprometida (${toQuantity(currentReserved)}).`,
+      );
+    }
+
+    if (nextReserved > nextOnHand) {
+      throw new BadRequestException(formatInvariantViolationMessage(nextOnHand, nextReserved));
+    }
+
+    existing.quantityOnHand = toQuantity(nextOnHand);
+    existing.quantityReserved = toQuantity(nextReserved);
     return manager.save(StockBalance, existing);
   }
 }

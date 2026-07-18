@@ -137,6 +137,11 @@ export function StockLocationsMatrix({
           (sum, balance) => sum + Number.parseFloat(balance.quantityOnHand),
           0,
         );
+        const totalReserved = locationBalances.reduce(
+          (sum, balance) => sum + Number.parseFloat(balance.quantityReserved),
+          0,
+        );
+        const totalAvailable = totalOnHand - totalReserved;
 
         return {
           location,
@@ -144,6 +149,8 @@ export function StockLocationsMatrix({
           balancesCount: locationBalances.length,
           uniqueItems: new Set(locationBalances.map((balance) => balance.itemId)).size,
           totalOnHand,
+          totalReserved,
+          totalAvailable,
           occupation: resolveOccupation(totalOnHand, location.maxCapacity),
         };
       }),
@@ -394,6 +401,18 @@ export function StockLocationsMatrix({
                   >
                     Productos
                   </th>
+                  <th
+                    scope="col"
+                    className={cn(portalDataTableHeadClassName, 'hidden lg:table-cell')}
+                  >
+                    Existencia
+                  </th>
+                  <th
+                    scope="col"
+                    className={cn(portalDataTableHeadClassName, 'hidden lg:table-cell')}
+                  >
+                    Reservado
+                  </th>
                   <th scope="col" className={portalDataTableHeadClassName}>
                     Disponible
                   </th>
@@ -410,6 +429,8 @@ export function StockLocationsMatrix({
                     balancesCount,
                     uniqueItems,
                     totalOnHand,
+                    totalReserved,
+                    totalAvailable,
                     occupation,
                   }) => {
                     const isExpanded = expandedLocationId === location.id;
@@ -501,9 +522,19 @@ export function StockLocationsMatrix({
                           <td className={cn(portalDataTableCellClassName, 'hidden xl:table-cell')}>
                             {uniqueItems}
                           </td>
+                          <td className={cn(portalDataTableCellClassName, 'hidden lg:table-cell')}>
+                            <span className="text-gray-700 dark:text-gray-300">
+                              {formatInventoryQuantity(totalOnHand)}
+                            </span>
+                          </td>
+                          <td className={cn(portalDataTableCellClassName, 'hidden lg:table-cell')}>
+                            <span className="text-gray-700 dark:text-gray-300">
+                              {formatInventoryQuantity(totalReserved)}
+                            </span>
+                          </td>
                           <td className={portalDataTableCellClassName}>
                             <span className="font-semibold text-iwana-primary dark:text-white">
-                              {formatInventoryQuantity(totalOnHand)}
+                              {formatInventoryQuantity(totalAvailable)}
                             </span>
                           </td>
                           <td className={cn(portalDataTableCellClassName, 'text-right')}>
@@ -547,7 +578,7 @@ export function StockLocationsMatrix({
                         {isExpanded ? (
                           <tr key={`${location.id}-balances`}>
                             <td
-                              colSpan={10}
+                              colSpan={12}
                               className="bg-iwana-surface-soft/70 px-4 py-4 dark:bg-dark-surface-2/70"
                             >
                               <div className="border-l-2 border-iwana-primary pl-4">
@@ -579,6 +610,18 @@ export function StockLocationsMatrix({
                                             scope="col"
                                             className={portalDataTableNestedHeadClassName}
                                           >
+                                            Existencia
+                                          </th>
+                                          <th
+                                            scope="col"
+                                            className={portalDataTableNestedHeadClassName}
+                                          >
+                                            Reservado
+                                          </th>
+                                          <th
+                                            scope="col"
+                                            className={portalDataTableNestedHeadClassName}
+                                          >
                                             Disponible
                                           </th>
                                         </tr>
@@ -586,6 +629,11 @@ export function StockLocationsMatrix({
                                       <tbody>
                                         {locationBalances.map((balance) => {
                                           const item = itemMap.get(balance.itemId);
+                                          const onHand = Number.parseFloat(balance.quantityOnHand);
+                                          const reserved = Number.parseFloat(
+                                            balance.quantityReserved,
+                                          );
+                                          const available = onHand - reserved;
 
                                           return (
                                             <tr
@@ -600,8 +648,14 @@ export function StockLocationsMatrix({
                                               <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
                                                 {getStockBalanceConditionLabel(balance.condition)}
                                               </td>
-                                              <td className="px-3 py-2 font-medium text-iwana-primary dark:text-white">
+                                              <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
                                                 {formatInventoryQuantity(balance.quantityOnHand)}
+                                              </td>
+                                              <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
+                                                {formatInventoryQuantity(balance.quantityReserved)}
+                                              </td>
+                                              <td className="px-3 py-2 font-medium text-iwana-primary dark:text-white">
+                                                {formatInventoryQuantity(available)}
                                               </td>
                                             </tr>
                                           );

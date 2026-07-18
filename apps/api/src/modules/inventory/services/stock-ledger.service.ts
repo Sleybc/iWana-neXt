@@ -34,7 +34,7 @@ import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { AssetLifecycleService } from './asset-lifecycle.service';
 import { CustomerSiteLocationResolver } from './customer-site-location.resolver';
 import { SerializedAssetService } from './serialized-asset.service';
-import { StockBalanceService } from './stock-balance.service';
+import { StockBalanceService, formatInsufficientAvailableMessage } from './stock-balance.service';
 
 const MOBILE_TRANSFER_LOCATION_TYPES = new Set<StockLocationType>([
   StockLocationType.MOBILE_TECHNICIAN,
@@ -304,10 +304,10 @@ export class StockLedgerService {
           throw new BadRequestException('La transferencia requiere acta o evidencia de entrega.');
         }
 
-        const [sourceLocation, destinationLocation, sourceAvailable] = await Promise.all([
+        const [sourceLocation, destinationLocation, sourceAvailability] = await Promise.all([
           this.findLocation(manager, tenantId, input.sourceLocationId),
           this.findLocation(manager, tenantId, input.destinationLocationId),
-          this.getAvailableQuantity(manager, tenantId, {
+          this.stockBalanceService.getAvailabilityWithManager(manager, tenantId, {
             itemId: input.itemId,
             locationId: input.sourceLocationId,
             lotId: input.lotId ?? null,
@@ -323,9 +323,12 @@ export class StockLedgerService {
           throw new NotFoundException('La ubicación destino no existe.');
         }
 
-        if (sourceAvailable < quantity) {
+        if (sourceAvailability.available < quantity) {
           throw new BadRequestException(
-            'La cantidad solicitada excede el saldo disponible en origen.',
+            formatInsufficientAvailableMessage(
+              sourceAvailability.onHand,
+              sourceAvailability.reserved,
+            ),
           );
         }
 
@@ -905,30 +908,6 @@ export class StockLedgerService {
     return manager.findOne(StockLocation, {
       where: { id: locationId, tenantId },
     });
-  }
-
-  private async getAvailableQuantity(
-    manager: EntityManager,
-    tenantId: string,
-    input: {
-      itemId: string;
-      locationId: string;
-      lotId?: string | null;
-      condition?: StockBalanceCondition;
-    },
-  ): Promise<number> {
-    const balances = await manager.find(StockBalance, {
-      where: {
-        tenantId,
-        itemId: input.itemId,
-        locationId: input.locationId,
-        condition: input.condition ?? StockBalanceCondition.NEW,
-      },
-    });
-
-    return balances
-      .filter((balance) => (balance.lotId ?? null) === (input.lotId ?? null))
-      .reduce((total, balance) => total + toNumeric(balance.quantityOnHand), 0);
   }
 
   private async getLocationOnHand(

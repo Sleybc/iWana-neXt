@@ -2,7 +2,7 @@
 
 **Version:** 1.0
 **Fecha:** 2026-07-18
-**Estado:** ✅ Fase 1 — G7 GO (pendiente CTO F1); ✅ Fase 2 — **G7 GO confirmado por CTO** (`33cd6ecd`); ✅ Fase 3A — **G7 GO** (`1de09b62`) — ver `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-03A-CIERRE-G7-v1.0.md`
+**Estado:** ✅ Fase 1 — G7 GO (pendiente CTO F1); ✅ Fase 2 — **G7 GO confirmado por CTO** (`33cd6ecd`); ✅ Fase 3A — **G7 GO** (`1de09b62`); 🟡 Fase 3B — **implementada, pendiente G6/G7** — ver `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-03B-v1.0.md`
 **Auditoría G5 F1:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-AUDITORIA-ARCH-v1.0.md
 **Review G6 F1:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-G6-REVIEW-v1.0.md
 **Cierre G7 F1:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-CIERRE-G7-v1.0.md
@@ -16,6 +16,7 @@
 **ADR Fase 3B:** docs/adrs/ADR-055-Reservas-Efectivas-Disponible-Comprometido.md (**Aprobado CTO 2026-07-18**)
 **Spec Fase 3B:** docs/specs/2026-07-18-mod12-existencias-reservas-fase03B-design.md
 **Prompt Fase 3B:** docs/prompts/PROMPT-MOD12-EXISTENCIAS-RESERVAS-FASE-03B-v1.0.md (**ejecutable**)
+**Auditoría G5 F3B:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-03B-AUDITORIA-ARCH-v1.0.md (**G5 GO** — condición EV-1 para G7)
 **Spec Fase 3A:** docs/specs/2026-07-18-mod12-existencias-conteo-fisico-fase03A-design.md
 **Prompt Fase 3A:** docs/prompts/PROMPT-MOD12-EXISTENCIAS-CONTEO-FISICO-FASE-03A-v1.0.md (**cerrado — G7 GO**)
 **Modo activo:** Product Architect + Orchestrator
@@ -74,7 +75,7 @@ Fases 1-2 no requirieron HLD ni ADR (no crean boundary, entidad, migración ni p
 | 1 | Kardex consultable, ajustes con razón tipificada, pestaña Existencias (Por producto / Por bodega / Kardex), Bodegas reducida | **Cerrada (G7 GO)** — pendiente confirmación CTO F1; ver `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-CIERRE-G7-v1.0.md` |
 | 2 | Reposición sugerida (anti doble pedido) → composer de compras prellenado; valor estimado en Resumen | **Cerrada — G7 GO confirmado CTO 2026-07-18** (`33cd6ecd`); ver `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-02-CIERRE-G7-v1.0.md` |
 | 3A | Conteo físico / inventario cíclico (documento → congelar → contar → cierre reconcilia saldo vía ledger) | **Cerrada — G7 GO + verificación independiente AI-EM-ARCH** (2026-07-18); ver addendum en cierre G7 F3A |
-| 3B | Reservas efectivas (`quantityReserved` en ciclo de salidas; validaciones de disponible; cierra la sobre-venta) | **Ejecutable** — ADR-055 aprobado CTO 2026-07-18; spec + prompt emitidos; pendiente implementación |
+| 3B | Reservas efectivas (`quantityReserved` en ciclo de salidas; validaciones de disponible; cierra la sobre-venta) | **G5 GO (auditoría ARCH)** — pendiente G6 con condición **EV-1** (evidencia de integración real) y luego G7; ver `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-03B-AUDITORIA-ARCH-v1.0.md` |
 | 4 | Costeo promedio móvil, valoración y reportes | Planificada |
 
 ## 5. Riesgos vigentes
@@ -86,10 +87,10 @@ Fases 1-2 no requirieron HLD ni ADR (no crean boundary, entidad, migración ni p
 
 ## 6. Próximos pasos
 
-1. **Fase 3B — ejecución** (AI-SR-FULL + AI-FE-PLATFORM): ADR-055 aprobado y prompt ejecutable; **no quedan puertas de gobierno pendientes**. Riesgo alto declarado: toca el guardado anti-sobre-venta; entregar la fase a medias (reservas sin migrar las 3 validaciones) está explícitamente prohibido y es criterio de stop.
-2. Al cierre G7 de 3B: definir **Fase 4** (costeo promedio móvil y valoración), que probablemente requiera ADR propio por capas de costo.
-2. **CTO (opcional pendiente):** confirmar explícitamente G7 de Fase 1 si aún no quedó registrado aparte.
-3. Deuda F3A aceptada: `window.confirm` y foco al crear conteo (pulido).
+1. **G6 Fase 3B** (PROD-UX / DS-OWNER / SR-QA) con **EV-1 obligatoria**: E2E manual §7.5 (reserva → transferencia bloqueada → despacho/cancelación → conteo vs reservado) + verificación de la migración 072 contra base real (aplicar, re-ejecutar directamente, revertir). Preferible dejar smoke Playwright de reservas (paridad con F1/F2/F3A).
+2. **G7 Fase 3B** (AI-EM-ARCH): no procede hasta cerrar G6 + EV-1 — el invariante es de runtime y los tests unitarios usan `EntityManager` mockeado. Al cerrarse habilita definición de **Fase 4** (costeo).
+3. **CTO (opcional pendiente):** confirmar explícitamente G7 de Fase 1 si aún no quedó registrado aparte.
+4. Deuda F3A aceptada: `window.confirm` y foco al crear conteo (pulido).
 
 ## 7. Historial
 
@@ -113,5 +114,7 @@ Fases 1-2 no requirieron HLD ni ADR (no crean boundary, entidad, migración ni p
 | 2026-07-18 | **Cierre operativo G6 Fase 3A:** migración 071 verificada en DB; Playwright Conteos 2/2 + Existencias 8/8; remediación carga de categorías en tab Conteos; informe G6 **GO** → pendiente G7. |
 | 2026-07-18 | **Cierre G7 Fase 3A (AI-EM-ARCH):** re-verificación D-F3A-1…10; API inventory 245/245; E2E Conteos/Existencias en verde; **GO a producción** + commit de la fase. Habilita definición de Fase 3B. |
 | 2026-07-18 | **Fase 3B definida (AI-EM-ARCH):** emitidos **ADR-055** (reservas efectivas: invariante `0 ≤ reserved ≤ onHand`, reserva atada al ciclo de `StockIssue`, migración de las 3 validaciones a disponible, migración 072 de reconciliación sin columnas nuevas), spec 3B y prompt de ejecución; PRD §7 y roadmap actualizados. Ejecutable con ADR-055 aprobado |
+| 2026-07-18 | **Auditoría G5 Fase 3B (AI-EM-ARCH):** verificado en código el cumplimiento de ADR-055 y D-F3B-1…11, incluido el criterio de stop (las tres validaciones migradas) y el borde crítico D-F3B-6 (el despacho libera su propia reserva antes de validar). Gates re-ejecutados: API 256/256, portal 234/234, lint y typecheck limpios. Corrección a favor del ejecutor: la migración 072 es idempotente **a nivel SQL** (asigna con `LEAST`), más fuerte que lo declarado. **G5 GO**; G7 condicionado a **EV-1** (falta toda evidencia de integración real: sin E2E manual ni Playwright de reservas) |
 | 2026-07-18 | **CTO revisa y aprueba ADR-055 + documentos de Fase 3B.** Estados actualizados: ADR Aprobado, spec G4 ejecutable, prompt EJECUTABLE, PRD roadmap. Fase 3B queda **habilitada para implementación** sin puertas de gobierno pendientes |
 | 2026-07-18 | **Auditoría G7 independiente (AI-EM-ARCH):** el cierre previo se produjo en sesión del ejecutor (subagentes abortados); AI-EM-ARCH ejecuta la verificación independiente (aprobador ≠ productor). Releídos servicio/controller/migración/entidades; **verificado el registro de `StockCount`/`StockCountLine` en runtime** (autoLoadEntities + forFeature, no en data-source explícito); gates re-ejecutados por el auditor: **API 245/245, portal 232/232, lint y typecheck limpios**. Deuda F1/F2 `canAdjust` resuelta. **GO confirmado** (addendum en cierre G7 F3A). |
+| 2026-07-18 | **Fase 3B implementada (AI-SR-FULL + FE-PLATFORM):** motor `reservedDelta` + invariante; ciclo reserva en `StockIssue`; validaciones a disponible; migración 072; matriz Por bodega corregida. Gates: API inventory **256/256**, portal inventory **234/234**, lint/typecheck PASS. Subagente FE abortó por límite API (consolidado en sesión). Informe `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-03B-v1.0.md` → pendiente G6/G7. |

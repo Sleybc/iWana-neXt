@@ -106,6 +106,17 @@ describe('stock-overview', () => {
     expect(rows[0]?.status).toBe('below-reorder');
   });
 
+  it('con reservas reales el disponible baja sin alterar la existencia', () => {
+    const rows = buildStockOverviewRows(
+      [makeItem({ reorderPoint: '0', minimumStock: '0' })],
+      [makeBalance({ quantityOnHand: '12', quantityReserved: '8' })],
+    );
+
+    expect(rows[0]?.onHand).toBe(12);
+    expect(rows[0]?.reserved).toBe(8);
+    expect(rows[0]?.available).toBe(4);
+  });
+
   it('filters by search and below-minimum', () => {
     const rows = buildStockOverviewRows(
       [makeItem(), makeItem({ id: 'item-002', sku: 'ONU-01', name: 'ONU', minimumStock: '1' })],

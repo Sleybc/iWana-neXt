@@ -425,4 +425,70 @@ describe('CycleCountService', () => {
     await service.close('count-001', actor);
     expect(stockLedgerService.recordMovementWithManager).not.toHaveBeenCalled();
   });
+
+  it('rechaza cierre que dejaría existencia por debajo de lo reservado (CA-F3B-08)', async () => {
+    const { BadRequestException } = await import('@nestjs/common');
+    const { manager } = buildCreateManager();
+    const count = {
+      id: 'count-001',
+      tenantId: 'tenant-001',
+      countNumber: 'CNT-000001',
+      status: StockCountStatus.COUNTING,
+      locationId: 'loc-1',
+      categoryId: 'cat-a',
+      notes: null,
+      createdByUserId: actor.sub,
+      closedByUserId: null,
+      closedAt: null,
+      stockMovementId: null,
+    };
+    const line = {
+      id: 'line-1',
+      tenantId: 'tenant-001',
+      countId: 'count-001',
+      itemId: 'item-consumable',
+      lotId: null,
+      condition: StockBalanceCondition.NEW,
+      expectedQty: '10.00',
+      countedQty: '2.00',
+    };
+
+    manager.findOne.mockImplementation(async (entity: unknown) => {
+      if (entity === StockCount) {
+        return { ...count };
+      }
+      return null;
+    });
+    manager.find.mockImplementation(async (entity: unknown) => {
+      if (entity === StockCountLine) {
+        return [line];
+      }
+      if (entity === StockBalance) {
+        return [
+          {
+            itemId: 'item-consumable',
+            locationId: 'loc-1',
+            lotId: null,
+            condition: StockBalanceCondition.NEW,
+            quantityOnHand: '10.00',
+            quantityReserved: '6.00',
+          },
+        ];
+      }
+      return [];
+    });
+    manager.save.mockImplementation(async (_entity: unknown, payload: unknown) => payload);
+
+    stockLedgerService.recordMovementWithManager.mockRejectedValue(
+      new BadRequestException(
+        'El movimiento dejaría la existencia (2.00) por debajo de lo comprometido (6.00).',
+      ),
+    );
+
+    await expect(service.close('count-001', actor)).rejects.toThrow(/comprometido/);
+    expect(manager.save).not.toHaveBeenCalledWith(
+      StockCount,
+      expect.objectContaining({ status: StockCountStatus.CLOSED }),
+    );
+  });
 });

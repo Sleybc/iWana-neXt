@@ -29,6 +29,7 @@ import { AddPurchaseOrderResolution0680000000000 } from './068_add_purchase_orde
 import { CreateSupplierQuoteLines0690000000000 } from './069_create_supplier_quote_lines';
 import { AddSupplierQuoteShippingCost0700000000000 } from './070_add_supplier_quote_shipping_cost';
 import { CreateStockCounts0710000000000 } from './071_create_stock_counts';
+import { ReconcileStockReservations0720000000000 } from './072_reconcile_stock_reservations';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
 import { CreateExpedienteRecords1700000000001 } from './001_create_expediente_records';
@@ -135,6 +136,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   CreateSupplierQuoteLines0690000000000,
   AddSupplierQuoteShippingCost0700000000000,
   CreateStockCounts0710000000000,
+  ReconcileStockReservations0720000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

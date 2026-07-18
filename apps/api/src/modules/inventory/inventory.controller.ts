@@ -321,7 +321,11 @@ export class InventoryController {
 
   @Post('issues')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Crear salida (StockIssue)' })
+  @ApiOperation({
+    summary: 'Crear salida (StockIssue)',
+    description:
+      'Reserva la cantidad solicitada por línea. Responde 400 si no hay disponible suficiente (existencia − comprometido).',
+  })
   createIssue(
     @Body(new ZodValidationPipe(CreateStockIssueSchema)) body: CreateStockIssueDto,
     @CurrentUser() actor: JwtPayload,
@@ -338,7 +342,11 @@ export class InventoryController {
 
   @Patch('issues/:id')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Actualizar salida (StockIssue)' })
+  @ApiOperation({
+    summary: 'Actualizar salida (StockIssue)',
+    description:
+      'Si cambian líneas, ajusta reservas. Responde 400 al aumentar por encima del disponible.',
+  })
   updateIssue(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(UpdateStockIssueSchema)) body: UpdateStockIssueDto,
@@ -361,7 +369,11 @@ export class InventoryController {
 
   @Post('issues/:id/dispatch')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Despachar salida (StockIssue)' })
+  @ApiOperation({
+    summary: 'Despachar salida (StockIssue)',
+    description:
+      'Libera la reserva propia y descuenta existencia en la misma transacción. Idempotente por stockMovementId.',
+  })
   dispatchIssue(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(DispatchStockIssueSchema)) body: DispatchStockIssueDto,
@@ -372,7 +384,11 @@ export class InventoryController {
 
   @Post('transfers')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Transferir stock entre ubicaciones' })
+  @ApiOperation({
+    summary: 'Transferir stock entre ubicaciones',
+    description:
+      'Valida contra disponible (existencia − comprometido). No puede consumir stock reservado por otra salida.',
+  })
   transfer(
     @Body(new ZodValidationPipe(TransferStockSchema)) body: TransferStockDto,
     @CurrentUser() actor: JwtPayload,

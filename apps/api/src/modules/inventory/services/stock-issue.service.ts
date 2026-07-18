@@ -8,7 +8,6 @@ import {
 } from '@iwana/shared';
 import { DataSource, EntityManager } from 'typeorm';
 import {
-  StockBalance,
   StockIssue,
   StockIssueLine,
   StockLocation,
@@ -26,6 +25,7 @@ import {
   UpdateStockIssueSchema,
 } from '../dto';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
+import { StockBalanceService, formatInsufficientAvailableMessage } from './stock-balance.service';
 import { StockLedgerService } from './stock-ledger.service';
 
 export type StockIssueDetail = StockIssue & { lines: StockIssueLine[] };
@@ -35,6 +35,7 @@ export class StockIssueService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly stockLedgerService: StockLedgerService,
+    private readonly stockBalanceService: StockBalanceService,
   ) {}
 
   private toNumeric(value: string | number | null | undefined): number {
@@ -108,7 +109,7 @@ export class StockIssueService {
     }
   }
 
-  private async getAvailableQuantity(
+  private async getAvailability(
     manager: EntityManager,
     tenantId: string,
     input: {
@@ -117,19 +118,73 @@ export class StockIssueService {
       lotId?: string | null;
       condition?: StockBalanceCondition;
     },
-  ): Promise<number> {
-    const balances = await manager.find(StockBalance, {
-      where: {
-        tenantId,
-        itemId: input.itemId,
-        locationId: input.locationId,
-        condition: input.condition ?? StockBalanceCondition.NEW,
-      },
+  ) {
+    return this.stockBalanceService.getAvailabilityWithManager(manager, tenantId, input);
+  }
+
+  private async reserveLineQuantity(
+    manager: EntityManager,
+    tenantId: string,
+    sourceLocationId: string,
+    line: {
+      itemId: string;
+      requestedQty: string | number;
+      lotId?: string | null;
+      condition?: StockBalanceCondition | null;
+      serializedAssetId?: string | null;
+    },
+  ): Promise<void> {
+    const requestedQty = this.toNumeric(line.requestedQty);
+    const quantity = line.serializedAssetId ? 1 : requestedQty;
+    const condition = line.condition ?? StockBalanceCondition.NEW;
+    const availability = await this.getAvailability(manager, tenantId, {
+      itemId: line.itemId,
+      locationId: sourceLocationId,
+      lotId: line.lotId ?? null,
+      condition,
     });
 
-    return balances
-      .filter((balance) => (balance.lotId ?? null) === (input.lotId ?? null))
-      .reduce((total, balance) => total + this.toNumeric(balance.quantityOnHand), 0);
+    if (availability.available < quantity) {
+      throw new BadRequestException(
+        formatInsufficientAvailableMessage(availability.onHand, availability.reserved),
+      );
+    }
+
+    await this.stockBalanceService.applyDeltaWithManager(manager, {
+      tenantId,
+      itemId: line.itemId,
+      locationId: sourceLocationId,
+      lotId: line.lotId ?? null,
+      condition,
+      delta: 0,
+      reservedDelta: quantity,
+    });
+  }
+
+  private async releaseLineQuantity(
+    manager: EntityManager,
+    tenantId: string,
+    sourceLocationId: string,
+    line: {
+      itemId: string;
+      requestedQty: string | number;
+      lotId?: string | null;
+      condition?: StockBalanceCondition | null;
+      serializedAssetId?: string | null;
+    },
+  ): Promise<void> {
+    const requestedQty = this.toNumeric(line.requestedQty);
+    const quantity = line.serializedAssetId ? 1 : requestedQty;
+
+    await this.stockBalanceService.applyDeltaWithManager(manager, {
+      tenantId,
+      itemId: line.itemId,
+      locationId: sourceLocationId,
+      lotId: line.lotId ?? null,
+      condition: line.condition ?? StockBalanceCondition.NEW,
+      delta: 0,
+      reservedDelta: -quantity,
+    });
   }
 
   private async resolveLocation(
@@ -294,6 +349,10 @@ export class StockIssueService {
           ),
         );
 
+        for (const line of lines) {
+          await this.reserveLineQuantity(manager, tenantId, validated.sourceLocationId, line);
+        }
+
         return { ...issue, lines };
       }),
     );
@@ -422,7 +481,6 @@ export class StockIssueService {
 
         for (const line of issueLines) {
           const requestedQty = this.toNumeric(line.requestedQty);
-          const quantity = line.serializedAssetId ? 1 : requestedQty;
 
           if (line.serializedAssetId && requestedQty !== 1) {
             throw new BadRequestException(
@@ -430,16 +488,22 @@ export class StockIssueService {
             );
           }
 
-          const available = await this.getAvailableQuantity(manager, tenantId, {
+          // Libera la reserva propia antes del ledger para que no bloquee su despacho (D-F3B-5/6).
+          await this.releaseLineQuantity(manager, tenantId, sourceLocation.id, line);
+        }
+
+        for (const line of issueLines) {
+          const quantity = line.serializedAssetId ? 1 : this.toNumeric(line.requestedQty);
+          const availability = await this.getAvailability(manager, tenantId, {
             itemId: line.itemId,
             locationId: sourceLocation.id,
             lotId: line.lotId ?? null,
             condition: line.condition ?? StockBalanceCondition.NEW,
           });
 
-          if (available < quantity) {
+          if (availability.available < quantity) {
             throw new BadRequestException(
-              'La cantidad solicitada excede el saldo disponible en la ubicación origen.',
+              formatInsufficientAvailableMessage(availability.onHand, availability.reserved),
             );
           }
         }
@@ -594,6 +658,12 @@ export class StockIssueService {
         this.assertInternalConsumption(nextType, nextCostCenter, nextReason);
         this.assertDestinationCompatibility(nextType, nextDestinationLocationId);
 
+        const previousSourceLocationId = issue.sourceLocationId;
+        const previousLines = await manager.find(StockIssueLine, {
+          where: { tenantId, issueId: id },
+          order: { createdAt: 'ASC' },
+        });
+
         issue.type = nextType;
         issue.sourceLocationId = validated.sourceLocationId ?? issue.sourceLocationId;
         issue.destinationLocationId = nextDestinationLocationId;
@@ -623,8 +693,12 @@ export class StockIssueService {
         const saved = await manager.save(StockIssue, issue);
 
         if (validated.lines) {
+          for (const line of previousLines) {
+            await this.releaseLineQuantity(manager, tenantId, previousSourceLocationId, line);
+          }
+
           await manager.delete(StockIssueLine, { tenantId, issueId: id });
-          await manager.save(
+          const nextLines = await manager.save(
             StockIssueLine,
             validated.lines.map((line) =>
               manager.create(StockIssueLine, {
@@ -639,6 +713,18 @@ export class StockIssueService {
               }),
             ),
           );
+
+          for (const line of nextLines) {
+            await this.reserveLineQuantity(manager, tenantId, saved.sourceLocationId, line);
+          }
+        } else if (
+          validated.sourceLocationId &&
+          validated.sourceLocationId !== previousSourceLocationId
+        ) {
+          for (const line of previousLines) {
+            await this.releaseLineQuantity(manager, tenantId, previousSourceLocationId, line);
+            await this.reserveLineQuantity(manager, tenantId, saved.sourceLocationId, line);
+          }
         }
 
         const lines = await manager.find(StockIssueLine, {
@@ -654,25 +740,36 @@ export class StockIssueService {
   async cancel(id: string, _actor: JwtPayload): Promise<StockIssue> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const issue = await qr.manager.findOne(StockIssue, { where: { id, tenantId } });
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      qr.manager.transaction(async (manager) => {
+        const issue = await manager.findOne(StockIssue, { where: { id, tenantId } });
 
-      if (!issue) {
-        throw new NotFoundException('La salida solicitada no existe.');
-      }
+        if (!issue) {
+          throw new NotFoundException('La salida solicitada no existe.');
+        }
 
-      if (
-        issue.status === StockIssueStatus.DISPATCHED ||
-        issue.status === StockIssueStatus.RECEIVED ||
-        issue.status === StockIssueStatus.CANCELLED
-      ) {
-        throw new BadRequestException('No se puede cancelar una salida en estado terminal.');
-      }
+        if (
+          issue.status === StockIssueStatus.DISPATCHED ||
+          issue.status === StockIssueStatus.RECEIVED ||
+          issue.status === StockIssueStatus.CANCELLED
+        ) {
+          throw new BadRequestException('No se puede cancelar una salida en estado terminal.');
+        }
 
-      issue.status = StockIssueStatus.CANCELLED;
-      issue.closedAt = new Date();
+        const lines = await manager.find(StockIssueLine, {
+          where: { tenantId, issueId: id },
+          order: { createdAt: 'ASC' },
+        });
 
-      return qr.manager.save(StockIssue, issue);
-    });
+        for (const line of lines) {
+          await this.releaseLineQuantity(manager, tenantId, issue.sourceLocationId, line);
+        }
+
+        issue.status = StockIssueStatus.CANCELLED;
+        issue.closedAt = new Date();
+
+        return manager.save(StockIssue, issue);
+      }),
+    );
   }
 }
