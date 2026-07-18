@@ -1,6 +1,6 @@
 # PROMPT - MOD12 Existencias — Reservas efectivas — Fase 03B
 
-> **Estado: Emitido (G4) — ejecutable con ADR-055 aprobado por el CTO.** El criterio de entrada por completitud (ADR-016) ya está satisfecho: Fase 3A cerrada con G7 GO y verificación independiente. **Sin ADR-055 aprobado no hay implementación**: esta fase cambia el guardado que impide la sobre-venta.
+> **Estado: Emitido (G4) — EJECUTABLE** (criterios de entrada satisfechos 2026-07-18: **ADR-055 aprobado por el CTO** + Fase 3A cerrada con G7 GO y verificación independiente; ADR-016). Recordatorio de riesgo: esta fase cambia el guardado que impide la sobre-venta — ver el criterio de stop de §8.
 
 ## Vinculos de trazabilidad
 

@@ -1,9 +1,10 @@
 # ADR-055: Reservas efectivas de stock — el disponible descuenta lo comprometido
 
 **Version:** 1.0
-**Estado:** Propuesto (pendiente aprobación CTO)
-**Aprobado por:** —
+**Estado:** ✅ Aprobado
+**Aprobado por:** CTO Humano (2026-07-18)
 **Fecha:** 2026-07-18
+**Fecha de aprobación CTO:** 2026-07-18
 **Modo activo:** Architect
 **Autor:** AI-EM-ARCH
 **Modulo:** MOD12 Inventario / SCM (submodulo Existencias)
@@ -11,7 +12,7 @@
 **HLD relacionado:** docs/hlds/HLD-MOD12-INVENTARIO-SCM-v1.0.md
 **ADR antecedente:** docs/adrs/ADR-048-Bounded-Context-Inventario-SCM-Ciclo-Vida-Productos.md · docs/adrs/ADR-054-Conteo-Fisico-Inventario-Ciclico.md
 **Spec de diseño:** docs/specs/2026-07-18-mod12-existencias-reservas-fase03B-design.md
-**Prompt de ejecucion:** docs/prompts/PROMPT-MOD12-EXISTENCIAS-RESERVAS-FASE-03B-v1.0.md
+**Prompt de ejecucion:** docs/prompts/PROMPT-MOD12-EXISTENCIAS-RESERVAS-FASE-03B-v1.0.md (**ejecutable** tras esta aprobación)
 
 ---
 

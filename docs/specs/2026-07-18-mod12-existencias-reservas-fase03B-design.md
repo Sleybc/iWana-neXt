@@ -1,7 +1,7 @@
 # SPEC — MOD12 Existencias · Reservas efectivas — Fase 03B
 
 **Versión:** 1.0
-**Estado:** Diseño aprobado — habilita G4 (ejecutable con ADR-055 aprobado; G7 de Fase 3A ya cerrado)
+**Estado:** Diseño aprobado — **G4 ejecutable** (ADR-055 aprobado por CTO 2026-07-18; G7 de Fase 3A cerrado)
 **Fecha:** 2026-07-18
 **Módulo:** MOD12 Inventario / SCM — Existencias
 **Autor:** AI-EM-ARCH (consolida dictamen de factibilidad SR-FULL + patrones FE-PLATFORM)
