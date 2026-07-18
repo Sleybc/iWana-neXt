@@ -45,7 +45,7 @@ La brecha no es de modelo sino de **consulta y operación**: el tenant no tiene 
 | **Fase 1 — Kardex, ajustes y vista Existencias** | `GET /inventory/movements` (+ detalle), `POST /inventory/adjustments`, pestaña Existencias con subvistas Por producto / Por bodega / Kardex, drawer de detalle por ítem, diálogo de ajuste; pestaña Bodegas reducida a gestión de bodegas | Aprobada para ejecución |
 | **Fase 2 — Reorden y valor básico** | Ítems bajo `reorderPoint` → generación de solicitud de compra prellenada (conexión con purchasing existente); indicadores básicos de valor de inventario | **Cerrada** — G7 GO confirmado CTO 2026-07-18 (`33cd6ecd`) |
 | **Fase 3A — Conteo físico / inventario cíclico** | Documento de conteo (congelar esperado, contar, ver diferencias → cierre que reconcilia el saldo contra lo contado vía ledger). Aditivo, no toca rutas existentes. Ver [ADR-054](../adrs/ADR-054-Conteo-Fisico-Inventario-Ciclico.md) y [spec 3A](../specs/2026-07-18-mod12-existencias-conteo-fisico-fase03A-design.md) | **Ejecutable** — ADR-054 aprobado CTO 2026-07-18 + G7 F2 cerrado |
-| **Fase 3B — Reservas efectivas** | Activar `quantityReserved` en el ciclo de salidas; migrar validaciones de disponible (`onHand → onHand − reserved`) en despacho/transferencia y el guardado anti-negativo. Toca rutas críticas → requiere su propio ADR | Planificada — se define al cierre de 3A (ADR-016) |
+| **Fase 3B — Reservas efectivas** | Activar `quantityReserved` en el ciclo de salidas; migrar validaciones de disponible (`onHand → onHand − reserved`) en despacho/transferencia y el guardado anti-negativo. Ver [ADR-055](adrs/ADR-055-Reservas-Efectivas-Disponible-Comprometido.md) y [spec 3B](../specs/2026-07-18-mod12-existencias-reservas-fase03B-design.md) | **Definida** — contrato §7 congelado; ejecutable con ADR-055 aprobado (3A ya cerrada con G7 GO) |
 | **Fase 4 — Costeo y valoración** | Costo promedio móvil (actualizar `lastPurchaseCost` y costo promedio en recepción, costear salidas), valoración de inventario y reportes | Planificada |
 
 **Split de Fase 3 (decisión CTO 2026-07-18):** la verificación de factibilidad mostró asimetría de riesgo — conteos aditivo/limpio vs. reservas que modifican el guardado anti-negativo del despacho (riesgo de sobre-venta). Se dividió en 3A (conteos, esta definición) y 3B (reservas, gate propio con ADR propio).
@@ -169,7 +169,23 @@ Documento de conteo (`stock_counts` + `stock_count_lines`, migración tenant 071
 | `POST /inventory/counts/:id/close` | **ADMIN** | Cerrar y aplicar ajuste (idempotente) |
 | `POST /inventory/counts/:id/cancel` | ADMIN, NOC, SUPPORT | Cancelar sin efecto |
 
-Fase 3B (reservas) y Fase 4 (costeo): contrato se congela en su propia definición.
+### Fase 3B (contrato congelado 2026-07-18; detalle en [ADR-055](adrs/ADR-055-Reservas-Efectivas-Disponible-Comprometido.md) y [spec 3B](../specs/2026-07-18-mod12-existencias-reservas-fase03B-design.md))
+
+**Sin endpoints nuevos.** La fase cambia el *comportamiento* de rutas existentes al activar `quantity_reserved`. Invariante central: `0 ≤ reserved ≤ onHand`, con `disponible = onHand − reserved`, verificado en el único punto de mutación de saldos (`StockBalanceService.applyDeltaWithManager`, extendido con `reservedDelta`).
+
+| Ruta | Cambio observable |
+| --- | --- |
+| `POST /inventory/issues` · `PATCH /inventory/issues/:id` | Reservan `requestedQty`; 400 en español si el disponible no alcanza |
+| `POST /inventory/issues/:id/cancel` | Libera la reserva |
+| `POST /inventory/issues/:id/dispatch` | Libera `requestedQty` y descuenta `dispatchedQty` en la misma transacción; no consume stock reservado por otro documento |
+| `POST /inventory/transfers` · `/movements/sale` · `/movements/internal-consumption` · `/movements/execution-order` · `/write-offs` | No reservan, pero validan contra disponible: 400 si el stock está comprometido |
+| `GET /inventory/balances` | `quantityReserved` deja de ser siempre `0` (shape sin cambios) |
+| `GET /inventory/replenishment/suggestions` | Sin cambios de código (ya resta reservas desde Fase 2) |
+| Cierre de conteo (`POST /inventory/counts/:id/close`, Fase 3A) | Rechazado si dejaría existencia por debajo de lo reservado |
+
+Migración tenant **072** de reconciliación (recalcula `quantity_reserved` desde salidas abiertas; idempotente; `down()` → `reserved = 0`). Sin columnas nuevas.
+
+Fase 4 (costeo): contrato se congela en su propia definición.
 
 ## 8. Criterios de aceptacion
 
