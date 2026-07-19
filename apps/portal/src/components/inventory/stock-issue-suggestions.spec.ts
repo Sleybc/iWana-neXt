@@ -64,6 +64,22 @@ describe('stock-issue-suggestions', () => {
     expect(suggestions[0]?.helperLabel).toMatch(/Disponible en origen: 3/);
   });
 
+  it('excluye ítems totalmente reservados y sugiere el disponible real', () => {
+    const suggestions = buildStockIssueSuggestions({
+      items,
+      balances: [
+        { ...balances[0]!, quantityOnHand: '10', quantityReserved: '4' },
+        { ...balances[1]!, quantityOnHand: '12', quantityReserved: '12' },
+      ],
+      sourceLocationId: 'loc-1',
+    });
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0]?.itemId).toBe('item-1');
+    expect(suggestions[0]?.availableQty).toBe(6);
+    expect(suggestions[0]?.helperLabel).toMatch(/Disponible en origen: 6/);
+  });
+
   it('builds frequency map from issue line history', () => {
     const frequency = buildIssueItemFrequencyFromIssueLines([
       { lines: [{ itemId: 'item-1' }, { itemId: 'item-2' }] },

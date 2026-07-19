@@ -118,12 +118,16 @@ import {
   suggestNextCategorySortOrder,
 } from './inventory-category-code';
 import {
+  STOCK_AVAILABLE_LABEL,
+  STOCK_RESERVED_HELP_TEXT,
+  STOCK_RESERVED_LABEL,
   formatInventoryDate,
   formatInventoryQuantity,
   getSerializedAssetStatusLabel,
   getWriteOffReasonLabel,
   WRITE_OFF_REASON_LABELS,
 } from './inventory-labels';
+import { buildStockOverviewRows } from './stock-overview';
 import { type CatalogFilters, EMPTY_CATALOG_FILTERS } from './catalog-filters';
 import { resolveInventoryTab, shouldOpenLocationCreateFromUrl } from './inventory-tab-params';
 
@@ -371,23 +375,15 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   );
   const userLabelById = useMemo(() => buildUserLabelMap(tenantUsers), [tenantUsers]);
 
-  const lowStockItems = useMemo(() => {
-    const quantityByItem = new Map<string, number>();
-    balances.forEach((balance) => {
-      quantityByItem.set(
-        balance.itemId,
-        (quantityByItem.get(balance.itemId) ?? 0) + Number.parseFloat(balance.quantityOnHand),
-      );
-    });
-
-    return items
-      .map((item) => ({
-        item,
-        total: quantityByItem.get(item.id) ?? 0,
-      }))
-      .filter(({ item, total }) => total <= Number.parseFloat(item.minimumStock))
-      .slice(0, 6);
-  }, [balances, items]);
+  // Resumen y «Por producto» deben coincidir: ambos usan el disponible canónico
+  // (existencia − reservado) que calcula buildStockOverviewRows.
+  const lowStockItems = useMemo(
+    () =>
+      buildStockOverviewRows(items, balances)
+        .filter((row) => row.status === 'out' || row.status === 'below-minimum')
+        .slice(0, 6),
+    [balances, items],
+  );
 
   const monitoredAssets = useMemo(
     () =>
@@ -1716,7 +1712,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             <PortalPanel
               eyebrow="Abastecimiento"
               title="Productos bajo mínimo"
-              description="Productos que ya llegaron al mínimo definido para reponer."
+              description={`Productos cuyo disponible ya llegó al mínimo definido para reponer. ${STOCK_RESERVED_HELP_TEXT}`}
             >
               {isLoading ? (
                 <PortalSkeletonBlock className="h-48" />
@@ -1727,15 +1723,17 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                 />
               ) : (
                 <div className="space-y-3">
-                  {lowStockItems.map(({ item, total }) => (
+                  {lowStockItems.map((row) => (
                     <div
-                      key={item.id}
+                      key={row.item.id}
                       className="rounded-xl border border-gray-100 px-3 py-3 dark:border-dark-border"
                     >
-                      <p className="font-medium text-gray-900 dark:text-white">{item.name}</p>
-                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        {item.sku} · disponible {formatInventoryQuantity(total)} / mínimo{' '}
-                        {formatInventoryQuantity(item.minimumStock)}
+                      <p className="font-medium text-gray-900 dark:text-white">{row.item.name}</p>
+                      <p className="mt-1 text-sm tabular-nums text-gray-500 dark:text-gray-400">
+                        {row.item.sku} · {STOCK_AVAILABLE_LABEL.toLowerCase()}{' '}
+                        {formatInventoryQuantity(row.available)} ·{' '}
+                        {STOCK_RESERVED_LABEL.toLowerCase()} {formatInventoryQuantity(row.reserved)}{' '}
+                        · mínimo {formatInventoryQuantity(row.minimumStock)}
                       </p>
                     </div>
                   ))}

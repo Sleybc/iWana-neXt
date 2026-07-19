@@ -4,6 +4,7 @@ import { DataSource, EntityManager } from 'typeorm';
 import { StockBalance, TenantContext, runInTenantSchema } from '@iwana/db';
 import { StockBalanceCondition } from '@iwana/shared';
 import { ListStockBalancesQueryInput, ListStockBalancesQuerySchema } from '../dto';
+import { acquireTransactionAdvisoryLock } from './inventory-postgres.util';
 
 export interface ApplyStockDeltaInput {
   tenantId: string;
@@ -56,6 +57,23 @@ export function computeAvailable(onHand: number, reserved: number): number {
 
 export function formatInsufficientAvailableMessage(onHand: number, reserved: number): string {
   return `No hay disponible suficiente: ${toQuantity(onHand)} en existencia, ${toQuantity(reserved)} comprometidos.`;
+}
+
+/**
+ * Clave determinística de serialización por tupla de balance
+ * (tenant × ítem × bodega × lote × condición). El lote ausente se normaliza a `null`
+ * para que dos llamadas equivalentes produzcan siempre la misma clave.
+ */
+export function buildStockBalanceLockKey(input: {
+  tenantId: string;
+  itemId: string;
+  locationId: string;
+  lotId?: string | null;
+  condition?: StockBalanceCondition;
+}): string {
+  const condition = input.condition ?? StockBalanceCondition.NEW;
+  const lotId = input.lotId ?? 'null';
+  return `stock-balance:${input.tenantId}:${input.itemId}:${input.locationId}:${lotId}:${condition}`;
 }
 
 export function formatInvariantViolationMessage(onHand: number, reserved: number): string {
@@ -143,6 +161,24 @@ export class StockBalanceService {
   ): Promise<StockBalance> {
     const condition = input.condition ?? StockBalanceCondition.NEW;
     const reservedDelta = input.reservedDelta ?? 0;
+
+    // Serializa el read-modify-write por tupla de balance ANTES de leer.
+    // Sin esto, dos transacciones concurrentes en READ COMMITTED leen el mismo
+    // quantity_reserved y la segunda pisa a la primera (lost update → sobre-reserva).
+    // Se usa advisory lock en lugar de SELECT ... FOR UPDATE porque también cubre
+    // el caso "la fila aún no existe" (dos inserciones concurrentes de la misma tupla);
+    // el índice UNIQUE queda como segunda red.
+    await acquireTransactionAdvisoryLock(
+      manager,
+      buildStockBalanceLockKey({
+        tenantId: input.tenantId,
+        itemId: input.itemId,
+        locationId: input.locationId,
+        lotId: input.lotId ?? null,
+        condition,
+      }),
+    );
+
     const existingQuery = manager
       .createQueryBuilder(StockBalance, 'balance')
       .where('balance.tenant_id = :tenantId', { tenantId: input.tenantId })

@@ -29,6 +29,10 @@ import {
 } from './location-matrix-filters';
 import { StockLocationsMatrixSkeleton } from './StockLocationsMatrixSkeleton';
 import {
+  STOCK_AVAILABLE_LABEL,
+  STOCK_ON_HAND_LABEL,
+  STOCK_RESERVED_HELP_TEXT,
+  STOCK_RESERVED_LABEL,
   formatInventoryQuantity,
   getStockBalanceConditionLabel,
   getStockLocationStatusBadgeVariant,
@@ -405,16 +409,16 @@ export function StockLocationsMatrix({
                     scope="col"
                     className={cn(portalDataTableHeadClassName, 'hidden lg:table-cell')}
                   >
-                    Existencia
+                    {STOCK_ON_HAND_LABEL}
                   </th>
                   <th
                     scope="col"
                     className={cn(portalDataTableHeadClassName, 'hidden lg:table-cell')}
                   >
-                    Reservado
+                    {STOCK_RESERVED_LABEL}
                   </th>
                   <th scope="col" className={portalDataTableHeadClassName}>
-                    Disponible
+                    {STOCK_AVAILABLE_LABEL}
                   </th>
                   <th scope="col" className={cn(portalDataTableHeadClassName, 'text-right')}>
                     Acciones
@@ -523,17 +527,17 @@ export function StockLocationsMatrix({
                             {uniqueItems}
                           </td>
                           <td className={cn(portalDataTableCellClassName, 'hidden lg:table-cell')}>
-                            <span className="text-gray-700 dark:text-gray-300">
+                            <span className="tabular-nums text-gray-700 dark:text-gray-300">
                               {formatInventoryQuantity(totalOnHand)}
                             </span>
                           </td>
                           <td className={cn(portalDataTableCellClassName, 'hidden lg:table-cell')}>
-                            <span className="text-gray-700 dark:text-gray-300">
+                            <span className="tabular-nums text-gray-700 dark:text-gray-300">
                               {formatInventoryQuantity(totalReserved)}
                             </span>
                           </td>
                           <td className={portalDataTableCellClassName}>
-                            <span className="font-semibold text-iwana-primary dark:text-white">
+                            <span className="font-semibold tabular-nums text-iwana-primary dark:text-white">
                               {formatInventoryQuantity(totalAvailable)}
                             </span>
                           </td>
@@ -610,19 +614,19 @@ export function StockLocationsMatrix({
                                             scope="col"
                                             className={portalDataTableNestedHeadClassName}
                                           >
-                                            Existencia
+                                            {STOCK_ON_HAND_LABEL}
                                           </th>
                                           <th
                                             scope="col"
                                             className={portalDataTableNestedHeadClassName}
                                           >
-                                            Reservado
+                                            {STOCK_RESERVED_LABEL}
                                           </th>
                                           <th
                                             scope="col"
                                             className={portalDataTableNestedHeadClassName}
                                           >
-                                            Disponible
+                                            {STOCK_AVAILABLE_LABEL}
                                           </th>
                                         </tr>
                                       </thead>
@@ -648,13 +652,13 @@ export function StockLocationsMatrix({
                                               <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
                                                 {getStockBalanceConditionLabel(balance.condition)}
                                               </td>
-                                              <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
+                                              <td className="px-3 py-2 tabular-nums text-gray-700 dark:text-gray-300">
                                                 {formatInventoryQuantity(balance.quantityOnHand)}
                                               </td>
-                                              <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
+                                              <td className="px-3 py-2 tabular-nums text-gray-700 dark:text-gray-300">
                                                 {formatInventoryQuantity(balance.quantityReserved)}
                                               </td>
-                                              <td className="px-3 py-2 font-medium text-iwana-primary dark:text-white">
+                                              <td className="px-3 py-2 font-medium tabular-nums text-iwana-primary dark:text-white">
                                                 {formatInventoryQuantity(available)}
                                               </td>
                                             </tr>
@@ -675,6 +679,9 @@ export function StockLocationsMatrix({
               </tbody>
             </table>
           </div>
+          <p className="mt-3 text-xs text-iwana-secondary-700 dark:text-gray-400">
+            {STOCK_RESERVED_HELP_TEXT}
+          </p>
         </div>
       )}
     </div>

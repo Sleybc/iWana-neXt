@@ -4,7 +4,10 @@ import type {
   SerializedAssetRecord,
   StockBalanceRecord,
 } from '@/lib/api-client';
-import { getBalanceForItemAtLocation } from './stock-issue-balance-utils';
+import {
+  getAvailableQtyFromBalance,
+  getBalanceForItemAtLocation,
+} from './stock-issue-balance-utils';
 
 export function isSerializedInventoryItem(
   item: Pick<InventoryItemRecord, 'trackingMode' | 'itemKind'>,
@@ -43,7 +46,7 @@ export function listLotOptionsForItemAtLocation(
     }
 
     const current = byLot.get(balance.lotId) ?? 0;
-    byLot.set(balance.lotId, current + Number.parseFloat(balance.quantityOnHand));
+    byLot.set(balance.lotId, current + getAvailableQtyFromBalance(balance));
   }
 
   return [...byLot.entries()]

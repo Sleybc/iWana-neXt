@@ -1,6 +1,7 @@
 'use client';
 
 import { PortalEmptyState, interactiveFocusClassName } from '@/components/shared/portal-ui';
+import { STOCK_AVAILABLE_AT_SOURCE_LABEL, STOCK_RESERVED_HELP_TEXT } from './inventory-labels';
 
 interface StockIssueCatalogSelectorProps {
   rows: Array<{
@@ -41,12 +42,22 @@ export function StockIssueCatalogSelector({
       <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-border">
         <thead className="bg-gray-50 dark:bg-dark-surface-3">
           <tr>
-            <th className="px-4 py-3 text-left">Sel.</th>
-            <th className="px-4 py-3 text-left">Producto</th>
-            <th className="px-4 py-3 text-left">Categoría</th>
-            <th className="px-4 py-3 text-left">Unidad</th>
+            <th scope="col" className="px-4 py-3 text-left">
+              Sel.
+            </th>
+            <th scope="col" className="px-4 py-3 text-left">
+              Producto
+            </th>
+            <th scope="col" className="px-4 py-3 text-left">
+              Categoría
+            </th>
+            <th scope="col" className="px-4 py-3 text-left">
+              Unidad
+            </th>
             {showAvailableColumn ? (
-              <th className="px-4 py-3 text-left">Disponible en origen</th>
+              <th scope="col" className="px-4 py-3 text-left">
+                {STOCK_AVAILABLE_AT_SOURCE_LABEL}
+              </th>
             ) : null}
           </tr>
         </thead>
@@ -68,7 +79,7 @@ export function StockIssueCatalogSelector({
               <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{row.categoryName}</td>
               <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{row.unitLabel}</td>
               {showAvailableColumn ? (
-                <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                <td className="px-4 py-3 tabular-nums text-gray-600 dark:text-gray-300">
                   {row.availableLabel ?? '—'}
                 </td>
               ) : null}
@@ -76,6 +87,12 @@ export function StockIssueCatalogSelector({
           ))}
         </tbody>
       </table>
+
+      {showAvailableColumn ? (
+        <p className="px-4 py-3 text-xs text-iwana-secondary-700 dark:text-gray-400">
+          {STOCK_RESERVED_HELP_TEXT}
+        </p>
+      ) : null}
     </div>
   );
 }

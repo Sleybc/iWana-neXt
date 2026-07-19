@@ -15,7 +15,13 @@ import {
   portalDataTableShellClassName,
   portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
-import { formatInventoryQuantity } from './inventory-labels';
+import {
+  STOCK_AVAILABLE_LABEL,
+  STOCK_ON_HAND_LABEL,
+  STOCK_RESERVED_HELP_TEXT,
+  STOCK_RESERVED_LABEL,
+  formatInventoryQuantity,
+} from './inventory-labels';
 import {
   buildStockOverviewRows,
   filterStockOverviewRows,
@@ -108,15 +114,33 @@ export function StockByProductTable({
           <table className="min-w-full">
             <thead>
               <tr>
-                <th className={portalDataTableHeadClassName}>SKU</th>
-                <th className={portalDataTableHeadClassName}>Producto</th>
-                <th className={portalDataTableHeadClassName}>Existencia</th>
-                <th className={portalDataTableHeadClassName}>Reservado</th>
-                <th className={portalDataTableHeadClassName}>Disponible</th>
-                <th className={portalDataTableHeadClassName}>Mínimo</th>
-                <th className={portalDataTableHeadClassName}>Reorden</th>
-                <th className={portalDataTableHeadClassName}>Estado</th>
-                <th className={portalDataTableHeadClassName}>Acciones</th>
+                <th scope="col" className={portalDataTableHeadClassName}>
+                  SKU
+                </th>
+                <th scope="col" className={portalDataTableHeadClassName}>
+                  Producto
+                </th>
+                <th scope="col" className={portalDataTableHeadClassName}>
+                  {STOCK_ON_HAND_LABEL}
+                </th>
+                <th scope="col" className={portalDataTableHeadClassName}>
+                  {STOCK_RESERVED_LABEL}
+                </th>
+                <th scope="col" className={portalDataTableHeadClassName}>
+                  {STOCK_AVAILABLE_LABEL}
+                </th>
+                <th scope="col" className={portalDataTableHeadClassName}>
+                  Mínimo
+                </th>
+                <th scope="col" className={portalDataTableHeadClassName}>
+                  Reorden
+                </th>
+                <th scope="col" className={portalDataTableHeadClassName}>
+                  Estado
+                </th>
+                <th scope="col" className={portalDataTableHeadClassName}>
+                  Acciones
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -124,19 +148,19 @@ export function StockByProductTable({
                 <tr key={row.item.id} className={portalTableRowHoverClassName}>
                   <td className={portalDataTableCellClassName}>{row.item.sku}</td>
                   <td className={portalDataTableCellClassName}>{row.item.name}</td>
-                  <td className={portalDataTableCellClassName}>
+                  <td className={`${portalDataTableCellClassName} tabular-nums`}>
                     {formatInventoryQuantity(row.onHand)}
                   </td>
-                  <td className={portalDataTableCellClassName}>
+                  <td className={`${portalDataTableCellClassName} tabular-nums`}>
                     {formatInventoryQuantity(row.reserved)}
                   </td>
-                  <td className={portalDataTableCellClassName}>
+                  <td className={`${portalDataTableCellClassName} tabular-nums`}>
                     {formatInventoryQuantity(row.available)}
                   </td>
-                  <td className={portalDataTableCellClassName}>
+                  <td className={`${portalDataTableCellClassName} tabular-nums`}>
                     {formatInventoryQuantity(row.minimumStock)}
                   </td>
-                  <td className={portalDataTableCellClassName}>
+                  <td className={`${portalDataTableCellClassName} tabular-nums`}>
                     {formatInventoryQuantity(row.reorderPoint)}
                   </td>
                   <td className={portalDataTableCellClassName}>
@@ -170,6 +194,10 @@ export function StockByProductTable({
           </table>
         </div>
       )}
+
+      <p className="text-xs text-iwana-secondary-700 dark:text-gray-400">
+        {STOCK_RESERVED_HELP_TEXT}
+      </p>
     </div>
   );
 }

@@ -27,8 +27,11 @@ import type {
 import { PortalAlert, portalTextareaClassName } from '@/components/shared/portal-ui';
 import {
   CUSTOMER_SITE_TRANSFER_BLOCKED_MESSAGE,
+  STOCK_COMMITTED_NEXT_STEP_TEXT,
+  STOCK_RESERVED_HELP_TEXT,
   formatInventoryQuantity,
 } from './inventory-labels';
+import { getAvailableQtyFromBalance } from './stock-issue-balance-utils';
 
 const MOBILE_CUSTODY_TYPES = new Set<StockLocationType>([
   StockLocationType.MOBILE_TECHNICIAN,
@@ -57,11 +60,12 @@ function SectionTitle({ children }: { children: string }) {
   return <p className="portal-eyebrow">{children}</p>;
 }
 
+/** Solo es trasladable el material realmente disponible: existencia menos lo reservado. */
 function isTransferableBalance(balance: StockBalanceRecord): boolean {
   return (
     balance.condition === StockBalanceCondition.NEW &&
     !balance.lotId &&
-    Number.parseFloat(balance.quantityOnHand) > 0
+    getAvailableQtyFromBalance(balance) > 0
   );
 }
 
@@ -176,11 +180,7 @@ export function StockTransferDialog({
   );
 
   const availableQuantity = useMemo(
-    () =>
-      sourceBalances.reduce(
-        (total, balance) => total + Number.parseFloat(balance.quantityOnHand),
-        0,
-      ),
+    () => sourceBalances.reduce((total, balance) => total + getAvailableQtyFromBalance(balance), 0),
     [sourceBalances],
   );
 
@@ -194,6 +194,8 @@ export function StockTransferDialog({
     [destinationLocationId, locations],
   );
 
+  // La capacidad del destino se mide contra la existencia física: el material reservado
+  // sigue ocupando espacio, así que aquí no se descuenta lo reservado.
   const destinationCurrentOnHand = useMemo(
     () =>
       balances
@@ -487,10 +489,13 @@ export function StockTransferDialog({
               ) : null}
               <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">
                 Disponible en la bodega de origen:{' '}
-                <span className="font-semibold text-iwana-primary dark:text-white">
+                <span className="font-semibold tabular-nums text-iwana-primary dark:text-white">
                   {formatInventoryQuantity(availableQuantity)}
                 </span>
                 .
+              </p>
+              <p className="mt-1 text-xs text-iwana-secondary-700 dark:text-gray-400">
+                {STOCK_RESERVED_HELP_TEXT}
               </p>
               {destinationRemainingCapacity != null ? (
                 <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
@@ -516,7 +521,7 @@ export function StockTransferDialog({
             <PortalAlert
               variant="warning"
               title="La cantidad supera lo disponible"
-              description="Ajusta la cantidad o selecciona otra bodega de origen con material disponible."
+              description={`Ajusta la cantidad o selecciona otra bodega de origen con material disponible. ${STOCK_COMMITTED_NEXT_STEP_TEXT}`}
             />
           ) : null}
 
@@ -532,7 +537,12 @@ export function StockTransferDialog({
             <PortalAlert
               variant="error"
               title="No fue posible registrar la salida"
-              description={error}
+              description={
+                <>
+                  <p>{error}</p>
+                  <p className="mt-1">{STOCK_COMMITTED_NEXT_STEP_TEXT}</p>
+                </>
+              }
             />
           ) : null}
 

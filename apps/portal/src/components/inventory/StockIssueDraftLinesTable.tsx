@@ -9,7 +9,12 @@ import type {
 } from '@/lib/api-client';
 import { interactiveFocusClassName } from '@/components/shared/portal-ui';
 import type { StockIssueDraftLine } from './stock-issue-draft';
-import { formatInventoryQuantity, getStockBalanceConditionLabel } from './inventory-labels';
+import {
+  STOCK_AVAILABLE_AT_SOURCE_LABEL,
+  STOCK_RESERVED_HELP_TEXT,
+  formatInventoryQuantity,
+  getStockBalanceConditionLabel,
+} from './inventory-labels';
 import { isRequestedQtyExceedingAvailable } from './stock-issue-balance-utils';
 import { StockIssueBulkEditBar } from './StockIssueBulkEditBar';
 import {
@@ -100,7 +105,7 @@ export function StockIssueDraftLinesTable({
         <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-border">
           <thead className="bg-gray-50 dark:bg-dark-surface-3">
             <tr>
-              <th className="px-4 py-3 text-left">
+              <th scope="col" className="px-4 py-3 text-left">
                 <input
                   type="checkbox"
                   className={`h-4 w-4 rounded border-gray-300 accent-iwana-primary ${interactiveFocusClassName}`}
@@ -109,15 +114,29 @@ export function StockIssueDraftLinesTable({
                   onChange={(event) => onToggleAll(event.target.checked)}
                 />
               </th>
-              <th className="px-4 py-3 text-left">Producto</th>
-              <th className="px-4 py-3 text-left">Condición</th>
-              <th className="px-4 py-3 text-left">Lote / serial</th>
+              <th scope="col" className="px-4 py-3 text-left">
+                Producto
+              </th>
+              <th scope="col" className="px-4 py-3 text-left">
+                Condición
+              </th>
+              <th scope="col" className="px-4 py-3 text-left">
+                Lote / serial
+              </th>
               {showAvailableColumn ? (
-                <th className="px-4 py-3 text-left">Disponible en origen</th>
+                <th scope="col" className="px-4 py-3 text-left">
+                  {STOCK_AVAILABLE_AT_SOURCE_LABEL}
+                </th>
               ) : null}
-              <th className="px-4 py-3 text-left">Cantidad</th>
-              <th className="px-4 py-3 text-left">Unidad</th>
-              <th className="px-4 py-3 text-left">Acción</th>
+              <th scope="col" className="px-4 py-3 text-left">
+                Cantidad
+              </th>
+              <th scope="col" className="px-4 py-3 text-left">
+                Unidad
+              </th>
+              <th scope="col" className="px-4 py-3 text-left">
+                Acción
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-dark-border">
@@ -241,7 +260,7 @@ export function StockIssueDraftLinesTable({
                     )}
                   </td>
                   {showAvailableColumn ? (
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                    <td className="px-4 py-3 tabular-nums text-gray-600 dark:text-gray-300">
                       {line.itemId
                         ? formatInventoryQuantity(availableQty ?? 0)
                         : 'Selecciona un producto'}
@@ -257,7 +276,8 @@ export function StockIssueDraftLinesTable({
                       />
                       {exceedsAvailable ? (
                         <p className="text-xs text-amber-700 dark:text-amber-300">
-                          Supera el material disponible en origen. El despacho puede rechazarse.
+                          Supera el material disponible en origen. No podrás crear la salida hasta
+                          ajustar la cantidad.
                         </p>
                       ) : null}
                     </div>
@@ -281,6 +301,12 @@ export function StockIssueDraftLinesTable({
           </tbody>
         </table>
       </div>
+
+      {showAvailableColumn ? (
+        <p className="text-xs text-iwana-secondary-700 dark:text-gray-400">
+          {STOCK_RESERVED_HELP_TEXT}
+        </p>
+      ) : null}
     </div>
   );
 }

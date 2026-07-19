@@ -328,6 +328,133 @@ function buildBalance(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function parseInventoryQty(value: unknown): number {
+  return Number.parseFloat(String(value ?? '0'));
+}
+
+function formatInventoryQty(value: number): string {
+  return value.toFixed(2);
+}
+
+function formatInsufficientAvailableMessage(onHand: number, reserved: number): string {
+  return `No hay disponible suficiente: ${formatInventoryQty(onHand)} en existencia, ${formatInventoryQty(reserved)} comprometidos.`;
+}
+
+function findMatchingBalances(
+  state: InventoryMockState,
+  itemId: string,
+  locationId: string,
+  lotId: unknown,
+  condition = 'NEW',
+) {
+  return state.balances.filter(
+    (balance) =>
+      balance.itemId === itemId &&
+      balance.locationId === locationId &&
+      (balance.lotId ?? null) === (lotId ?? null) &&
+      String(balance.condition ?? 'NEW') === condition,
+  );
+}
+
+function getAggregateBalanceTotals(
+  state: InventoryMockState,
+  itemId: string,
+  locationId: string,
+  lotId: unknown,
+  condition = 'NEW',
+) {
+  const matches = findMatchingBalances(state, itemId, locationId, lotId, condition);
+  const onHand = matches.reduce(
+    (total, balance) => total + parseInventoryQty(balance.quantityOnHand),
+    0,
+  );
+  const reserved = matches.reduce(
+    (total, balance) => total + parseInventoryQty(balance.quantityReserved),
+    0,
+  );
+
+  return { onHand, reserved, available: onHand - reserved, matches };
+}
+
+function findPrimaryBalance(
+  state: InventoryMockState,
+  itemId: string,
+  locationId: string,
+  lotId: unknown,
+  condition = 'NEW',
+) {
+  return findMatchingBalances(state, itemId, locationId, lotId, condition)[0];
+}
+
+function applyReservedDelta(
+  state: InventoryMockState,
+  itemId: string,
+  locationId: string,
+  lotId: unknown,
+  condition: string,
+  delta: number,
+) {
+  const balance = findPrimaryBalance(state, itemId, locationId, lotId, condition);
+  if (!balance) {
+    return false;
+  }
+
+  const nextReserved = parseInventoryQty(balance.quantityReserved) + delta;
+  balance.quantityReserved = formatInventoryQty(nextReserved);
+  balance.updatedAt = nowIso();
+  return true;
+}
+
+function applyOnHandDelta(
+  state: InventoryMockState,
+  itemId: string,
+  locationId: string,
+  lotId: unknown,
+  condition: string,
+  delta: number,
+) {
+  const balance = findPrimaryBalance(state, itemId, locationId, lotId, condition);
+  if (!balance) {
+    return false;
+  }
+
+  const nextOnHand = parseInventoryQty(balance.quantityOnHand) + delta;
+  balance.quantityOnHand = formatInventoryQty(nextOnHand);
+  balance.updatedAt = nowIso();
+  return true;
+}
+
+function seedReservationsMockState(state: InventoryMockState) {
+  const cabBalance = state.balances.find((balance) => balance.id === 'bal-003');
+  if (cabBalance) {
+    cabBalance.quantityOnHand = '20.00';
+    cabBalance.quantityReserved = '2.00';
+  }
+}
+
+async function createConsumableSaleIssue(
+  page: import('@playwright/test').Page,
+  main: import('@playwright/test').Locator,
+  quantity: string,
+) {
+  await openStockIssueComposer(main);
+  await selectComboboxOption(
+    page,
+    main.getByRole('combobox', { name: 'Tipo' }),
+    'Salida por venta',
+  );
+  await expect(main.getByLabel(/Referencia comercial/i)).toBeVisible();
+  await selectComboboxOption(
+    page,
+    main.getByRole('combobox', { name: 'Origen' }),
+    'BOD-01 · Bodega principal (Bodega principal)',
+  );
+  await addIssueCatalogItemsToDraft(main, [/Seleccionar CAB-DROP · Cable drop/i]);
+  await main.getByLabel('Cantidad CAB-DROP · Cable drop').fill(quantity);
+  await main.getByLabel('Referencia comercial (opcional)').fill('REF-RESERVA-E2E');
+  await main.getByRole('button', { name: 'Crear salida' }).click();
+}
+
 function buildTenantUser(overrides: Record<string, unknown> = {}) {
   return {
     id: MOBILE_RESPONSIBLE_ID,
@@ -1120,13 +1247,40 @@ async function setupInventoryMocks(
         return;
       }
 
+      const lines = (body.lines as Array<Record<string, unknown>> | undefined) ?? [];
+      const sourceLocationId = String(body.sourceLocationId ?? LOC_MAIN);
+
+      for (const line of lines) {
+        const requestedQty = parseInventoryQty(line.requestedQty ?? '1');
+        const itemId = String(line.itemId ?? ITEM_ID);
+        const condition = String(line.condition ?? 'NEW');
+        const { onHand, reserved, available } = getAggregateBalanceTotals(
+          state,
+          itemId,
+          sourceLocationId,
+          line.lotId ?? null,
+          condition,
+        );
+
+        if (requestedQty > available) {
+          await route.fulfill({
+            status: 400,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              message: formatInsufficientAvailableMessage(onHand, reserved),
+            }),
+          });
+          return;
+        }
+      }
+
       const id = `issue-${String(state.stockIssues.length + 1).padStart(3, '0')}`;
       const created = {
         id,
         tenantId: 'tenant-inventory-001',
         type: body.type ?? 'TECHNICIAN_CUSTODY',
         status: 'REQUESTED',
-        sourceLocationId: body.sourceLocationId ?? LOC_MAIN,
+        sourceLocationId,
         destinationLocationId: body.destinationLocationId ?? LOC_TECH,
         destinationRefId: body.destinationRefId ?? null,
         originRefId: body.originRefId ?? null,
@@ -1145,18 +1299,30 @@ async function setupInventoryMocks(
       };
       state.stockIssues.unshift(created);
 
-      const lines = (body.lines as Array<Record<string, unknown>> | undefined) ?? [];
       lines.forEach((line, index) => {
+        const requestedQty = parseInventoryQty(line.requestedQty ?? '1');
+        const itemId = String(line.itemId ?? ITEM_ID);
+        const condition = String(line.condition ?? 'NEW');
+
+        applyReservedDelta(
+          state,
+          itemId,
+          sourceLocationId,
+          line.lotId ?? null,
+          condition,
+          requestedQty,
+        );
+
         state.stockIssueLines.push({
           id: `${id}-line-${index + 1}`,
           tenantId: 'tenant-inventory-001',
           issueId: id,
-          itemId: line.itemId ?? ITEM_ID,
-          requestedQty: String(line.requestedQty ?? '1.00'),
+          itemId,
+          requestedQty: formatInventoryQty(requestedQty),
           dispatchedQty: null,
           lotId: line.lotId ?? null,
           serializedAssetId: line.serializedAssetId ?? null,
-          condition: line.condition ?? 'NEW',
+          condition,
           createdAt: nowIso(),
           updatedAt: nowIso(),
         });
@@ -1238,9 +1404,22 @@ async function setupInventoryMocks(
         await route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
         return;
       }
+      const lines = state.stockIssueLines.filter((line) => line.issueId === issueId);
+
+      for (const line of lines) {
+        const requestedQty = parseInventoryQty(line.requestedQty ?? '0');
+        applyReservedDelta(
+          state,
+          String(line.itemId),
+          String(issue.sourceLocationId),
+          line.lotId ?? null,
+          String(line.condition ?? 'NEW'),
+          -requestedQty,
+        );
+      }
+
       issue.status = 'CANCELLED';
       issue.updatedAt = nowIso();
-      const lines = state.stockIssueLines.filter((line) => line.issueId === issueId);
       await route.fulfill({
         status: 201,
         contentType: 'application/json',
@@ -1263,19 +1442,17 @@ async function setupInventoryMocks(
       );
       const lines = state.stockIssueLines.filter((line) => line.issueId === issueId);
 
-      // Validación mock: saldo disponible en origen por item.
       for (const line of lines) {
-        const requested = Number.parseFloat(String(line.requestedQty ?? '0'));
-        const available = state.balances
-          .filter(
-            (bal) =>
-              bal.locationId === issue.sourceLocationId &&
-              bal.itemId === line.itemId &&
-              (bal.lotId ?? null) === (line.lotId ?? null),
-          )
-          .reduce((total, bal) => total + Number.parseFloat(String(bal.quantityOnHand ?? '0')), 0);
+        const dispatchedQty = parseInventoryQty(line.requestedQty ?? '0');
+        const { onHand } = getAggregateBalanceTotals(
+          state,
+          String(line.itemId),
+          String(issue.sourceLocationId),
+          line.lotId ?? null,
+          String(line.condition ?? 'NEW'),
+        );
 
-        if (available < requested) {
+        if (onHand < dispatchedQty) {
           await route.fulfill({
             status: 400,
             contentType: 'application/json',
@@ -1325,7 +1502,24 @@ async function setupInventoryMocks(
 
       state.stockIssueLines.forEach((line) => {
         if (line.issueId === issueId) {
-          line.dispatchedQty = line.requestedQty;
+          const dispatchedQty = parseInventoryQty(line.requestedQty ?? '0');
+          line.dispatchedQty = formatInventoryQty(dispatchedQty);
+          applyReservedDelta(
+            state,
+            String(line.itemId),
+            String(issue.sourceLocationId),
+            line.lotId ?? null,
+            String(line.condition ?? 'NEW'),
+            -dispatchedQty,
+          );
+          applyOnHandDelta(
+            state,
+            String(line.itemId),
+            String(issue.sourceLocationId),
+            line.lotId ?? null,
+            String(line.condition ?? 'NEW'),
+            -dispatchedQty,
+          );
         }
       });
       state.stockIssueDispatchCount += 1;
@@ -2133,7 +2327,46 @@ async function setupInventoryMocks(
     }
 
     if (pathname.endsWith('/inventory/transfers') && method === 'POST') {
+      const body = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
+      const itemId = String(body.itemId ?? '');
+      const sourceLocationId = String(body.sourceLocationId ?? '');
+      const destinationLocationId = String(body.destinationLocationId ?? '');
+      const quantity = parseInventoryQty(body.quantity ?? '0');
+      const condition = String(body.condition ?? 'NEW');
+      const lotId = body.lotId ?? null;
+
+      if (!itemId || !sourceLocationId || !destinationLocationId || quantity <= 0) {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'Datos de transferencia incompletos.' }),
+        });
+        return;
+      }
+
+      const { onHand, reserved, available } = getAggregateBalanceTotals(
+        state,
+        itemId,
+        sourceLocationId,
+        lotId,
+        condition,
+      );
+
+      if (quantity > available) {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            message: formatInsufficientAvailableMessage(onHand, reserved),
+          }),
+        });
+        return;
+      }
+
+      applyOnHandDelta(state, itemId, sourceLocationId, lotId, condition, -quantity);
+      applyOnHandDelta(state, itemId, destinationLocationId, lotId, condition, quantity);
       state.transferCount += 1;
+
       await route.fulfill({
         status: 201,
         contentType: 'application/json',
@@ -3316,13 +3549,13 @@ test.describe('Portal Inventario / Bodegas', () => {
     await main.getByLabel('Cantidad CAB-DROP · Cable drop').fill('99');
     await main.getByRole('button', { name: 'Crear salida' }).click();
 
-    await main.getByRole('button', { name: 'Despachar' }).first().click();
-    const detail = page.getByRole('dialog', { name: 'Detalle de salida' });
-    await confirmIssueDispatch(page, detail);
-
     await expect(
-      detail.getByText('La cantidad solicitada excede el saldo disponible en la ubicación origen.'),
+      main
+        .getByRole('alert')
+        .filter({ hasText: /No hay disponible suficiente/i })
+        .first(),
     ).toBeVisible();
+    await expect(main.getByText(/comprometidos/i).first()).toBeVisible();
   });
 
   test('bloquea salida sin cupo en bodega móvil', async ({ page }) => {
@@ -3513,5 +3746,166 @@ test.describe('Portal Inventario / Conteos', () => {
     ).toBeVisible();
     expect(state.stockCounts[0]?.status).toBe('CANCELLED');
     expect(state.adjustmentCount).toBe(0);
+  });
+});
+
+test.describe('Portal Inventario / Reservas (Fase 03B)', () => {
+  test.beforeEach(async ({ page }) => {
+    const state = createInventoryMockState();
+    seedReservationsMockState(state);
+    await setupInventoryMocks(page, state, { role: 'ADMIN' });
+    await seedPortalSession(page, { role: 'ADMIN' });
+    (page as unknown as { inventoryMockState: InventoryMockState }).inventoryMockState = state;
+  });
+
+  test('muestra disponible restando reservado y compromete al crear salida', async ({ page }) => {
+    const state = (page as unknown as { inventoryMockState: InventoryMockState })
+      .inventoryMockState;
+
+    await page.goto('/dashboard/inventory?tab=stock');
+    const main = page.locator('main');
+
+    const cabRow = main.locator('tr').filter({ hasText: 'CAB-DROP' });
+    await expect(cabRow.getByRole('cell', { name: '20', exact: true })).toBeVisible();
+    await expect(cabRow.getByRole('cell', { name: '2', exact: true })).toBeVisible();
+    await expect(cabRow.getByRole('cell', { name: '18', exact: true })).toBeVisible();
+
+    await createConsumableSaleIssue(page, main, '5');
+    await expect(
+      main.getByText('Salida creada. Puedes despacharla cuando esté lista.'),
+    ).toBeVisible();
+
+    const cabBalance = state.balances.find((balance) => balance.id === 'bal-003');
+    expect(parseInventoryQty(cabBalance?.quantityOnHand)).toBe(20);
+    expect(parseInventoryQty(cabBalance?.quantityReserved)).toBe(7);
+
+    await main.getByRole('tab', { name: 'Existencias' }).click();
+    await expect(main.getByRole('tab', { name: 'Por producto', selected: true })).toBeVisible();
+    const refreshedRow = main.locator('tr').filter({ hasText: 'CAB-DROP' });
+    await expect(refreshedRow.getByRole('cell', { name: '20', exact: true })).toBeVisible();
+    await expect(refreshedRow.getByRole('cell', { name: '7', exact: true })).toBeVisible();
+    await expect(refreshedRow.getByRole('cell', { name: '13', exact: true })).toBeVisible();
+
+    await main.getByRole('tab', { name: 'Por bodega' }).click();
+    await main.getByRole('button', { name: 'Ver existencias de Bodega principal' }).click();
+    await expect(main.getByText(/CAB-DROP · Cable drop/i)).toBeVisible();
+    await expect(main.getByText('13', { exact: true })).toBeVisible();
+  });
+
+  test('rechaza transferencia sobre stock comprometido', async ({ page }) => {
+    const state = (page as unknown as { inventoryMockState: InventoryMockState })
+      .inventoryMockState;
+
+    await page.goto('/dashboard/inventory?tab=stock');
+    const main = page.locator('main');
+
+    await createConsumableSaleIssue(page, main, '18');
+    await expect(
+      main.getByText('Salida creada. Puedes despacharla cuando esté lista.'),
+    ).toBeVisible();
+
+    const cabBalance = state.balances.find((balance) => balance.id === 'bal-003');
+    expect(parseInventoryQty(cabBalance?.quantityReserved)).toBe(20);
+    expect(getAggregateBalanceTotals(state, ITEM_CONSUMABLE_ID, LOC_MAIN, null).available).toBe(0);
+
+    const transferResult = await page.evaluate(
+      async ({ itemId, sourceLocationId, destinationLocationId }) => {
+        const token = window.localStorage.getItem('iwana.portal.access-token');
+        const tenantSlug = window.localStorage.getItem('iwana.portal.tenant-slug');
+        const response = await fetch('/api/v1/inventory/transfers', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token ?? ''}`,
+            'X-Tenant-Slug': tenantSlug ?? '',
+          },
+          body: JSON.stringify({
+            itemId,
+            sourceLocationId,
+            destinationLocationId,
+            quantity: 1,
+            handoffReference: 'E2E-RESERVA-TRANSFER',
+          }),
+        });
+        const payload = (await response.json()) as { message?: string };
+        return { status: response.status, message: payload.message ?? '' };
+      },
+      {
+        itemId: ITEM_CONSUMABLE_ID,
+        sourceLocationId: LOC_MAIN,
+        destinationLocationId: LOC_TECH,
+      },
+    );
+
+    expect(transferResult.status).toBe(400);
+    expect(transferResult.message).toMatch(/disponible|comprometid/i);
+    expect(state.transferCount).toBe(0);
+  });
+
+  test('libera reserva al cancelar salida abierta', async ({ page }) => {
+    const state = (page as unknown as { inventoryMockState: InventoryMockState })
+      .inventoryMockState;
+
+    page.on('dialog', (dialog) => {
+      void dialog.accept();
+    });
+
+    await page.goto('/dashboard/inventory?tab=issues');
+    const main = page.locator('main');
+
+    await createConsumableSaleIssue(page, main, '6');
+    await expect(
+      main.getByText('Salida creada. Puedes despacharla cuando esté lista.'),
+    ).toBeVisible();
+
+    const cabBalance = state.balances.find((balance) => balance.id === 'bal-003');
+    expect(parseInventoryQty(cabBalance?.quantityReserved)).toBe(8);
+
+    await main.getByRole('button', { name: 'Despachar' }).first().click();
+    const detail = page.getByRole('dialog', { name: 'Detalle de salida' });
+    await detail.getByRole('button', { name: 'Cancelar salida' }).click();
+
+    await expect(main.getByText(/Salida cancelada/i)).toBeVisible();
+    expect(parseInventoryQty(cabBalance?.quantityOnHand)).toBe(20);
+    expect(parseInventoryQty(cabBalance?.quantityReserved)).toBe(2);
+
+    await main.getByRole('tab', { name: 'Existencias' }).click();
+    const cabRow = main.locator('tr').filter({ hasText: 'CAB-DROP' });
+    await expect(cabRow.getByRole('cell', { name: '2', exact: true })).toBeVisible();
+    await expect(cabRow.getByRole('cell', { name: '18', exact: true })).toBeVisible();
+  });
+
+  test('libera reserva y descuenta existencia al despachar', async ({ page }) => {
+    const state = (page as unknown as { inventoryMockState: InventoryMockState })
+      .inventoryMockState;
+
+    await page.goto('/dashboard/inventory?tab=issues');
+    const main = page.locator('main');
+
+    await createConsumableSaleIssue(page, main, '4');
+    await expect(
+      main.getByText('Salida creada. Puedes despacharla cuando esté lista.'),
+    ).toBeVisible();
+
+    const cabBalance = state.balances.find((balance) => balance.id === 'bal-003');
+    expect(parseInventoryQty(cabBalance?.quantityReserved)).toBe(6);
+
+    await main.getByRole('button', { name: 'Despachar' }).first().click();
+    const detail = page.getByRole('dialog', { name: 'Detalle de salida' });
+    await confirmIssueDispatch(page, detail);
+
+    await expect(main.getByText(/Salida despachada/i)).toBeVisible();
+    expect(parseInventoryQty(cabBalance?.quantityOnHand)).toBe(16);
+    expect(parseInventoryQty(cabBalance?.quantityReserved)).toBe(2);
+    expect(state.stockIssueDispatchCount).toBe(1);
+
+    await detail.getByRole('button', { name: 'Cerrar' }).click();
+    await expect(page.getByRole('dialog', { name: 'Detalle de salida' })).toHaveCount(0);
+
+    await main.getByRole('tab', { name: 'Existencias' }).click();
+    const cabRow = main.locator('tr').filter({ hasText: 'CAB-DROP' });
+    await expect(cabRow.getByRole('cell', { name: '16', exact: true })).toBeVisible();
+    await expect(cabRow.getByRole('cell', { name: '2', exact: true })).toBeVisible();
+    await expect(cabRow.getByRole('cell', { name: '14', exact: true })).toBeVisible();
   });
 });

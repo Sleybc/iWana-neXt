@@ -27,6 +27,8 @@ import {
 import type { PurchaseComposerInitialValues } from './PurchaseRequestComposer';
 import { PurchaseSelectionBar } from './PurchaseSelectionBar';
 import {
+  STOCK_AVAILABLE_LABEL,
+  STOCK_RESERVED_HELP_TEXT,
   formatInventoryCurrency,
   formatInventoryQuantity,
   getReplenishmentCriticalityLabel,
@@ -219,7 +221,7 @@ export function StockReplenishmentPanel({
         <table className="min-w-full text-left text-sm">
           <thead>
             <tr>
-              <th className={portalDataTableHeadClassName}>
+              <th scope="col" className={portalDataTableHeadClassName}>
                 <input
                   type="checkbox"
                   className={`h-4 w-4 rounded border-gray-300 accent-iwana-primary ${interactiveFocusClassName}`}
@@ -228,15 +230,33 @@ export function StockReplenishmentPanel({
                   onChange={toggleAll}
                 />
               </th>
-              <th className={portalDataTableHeadClassName}>SKU</th>
-              <th className={portalDataTableHeadClassName}>Producto</th>
-              <th className={portalDataTableHeadClassName}>Disponible</th>
-              <th className={portalDataTableHeadClassName}>Pendiente</th>
-              <th className={portalDataTableHeadClassName}>Punto reorden</th>
-              <th className={portalDataTableHeadClassName}>Sugerido</th>
-              <th className={portalDataTableHeadClassName}>Proveedor</th>
-              <th className={portalDataTableHeadClassName}>Costo estimado</th>
-              <th className={portalDataTableHeadClassName}>Estado</th>
+              <th scope="col" className={portalDataTableHeadClassName}>
+                SKU
+              </th>
+              <th scope="col" className={portalDataTableHeadClassName}>
+                Producto
+              </th>
+              <th scope="col" className={portalDataTableHeadClassName}>
+                {STOCK_AVAILABLE_LABEL}
+              </th>
+              <th scope="col" className={portalDataTableHeadClassName}>
+                Pendiente
+              </th>
+              <th scope="col" className={portalDataTableHeadClassName}>
+                Punto reorden
+              </th>
+              <th scope="col" className={portalDataTableHeadClassName}>
+                Sugerido
+              </th>
+              <th scope="col" className={portalDataTableHeadClassName}>
+                Proveedor
+              </th>
+              <th scope="col" className={portalDataTableHeadClassName}>
+                Costo estimado
+              </th>
+              <th scope="col" className={portalDataTableHeadClassName}>
+                Estado
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -303,6 +323,10 @@ export function StockReplenishmentPanel({
           </tbody>
         </table>
       </div>
+
+      <p className="text-xs text-iwana-secondary-700 dark:text-gray-400">
+        {STOCK_RESERVED_HELP_TEXT}
+      </p>
 
       <PurchaseSelectionBar
         count={selectedCount}

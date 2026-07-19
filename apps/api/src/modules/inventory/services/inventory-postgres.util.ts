@@ -22,9 +22,24 @@ export function isPostgresUniqueViolation(error: unknown, constraint?: string): 
   return true;
 }
 
+export interface QueryableManager {
+  query: (sql: string, params?: unknown[]) => Promise<unknown>;
+}
+
+/**
+ * Serializa una sección crítica por clave lógica dentro de la transacción actual.
+ * El lock es `xact`: PostgreSQL lo libera al hacer COMMIT o ROLLBACK.
+ */
+export async function acquireTransactionAdvisoryLock(
+  manager: QueryableManager,
+  lockKey: string,
+): Promise<void> {
+  await manager.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [lockKey]);
+}
+
 export async function acquireIdempotencyTransactionLock(
-  manager: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+  manager: QueryableManager,
   idempotencyKey: string,
 ): Promise<void> {
-  await manager.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [idempotencyKey]);
+  await acquireTransactionAdvisoryLock(manager, idempotencyKey);
 }

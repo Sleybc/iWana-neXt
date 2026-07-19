@@ -6,6 +6,30 @@ export interface StockIssueBalanceLookupOptions {
   lotId?: string | null;
 }
 
+function toNumber(value: string | number | null | undefined): number {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  if (!value) {
+    return 0;
+  }
+
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Disponible canónico de un saldo: existencia menos lo reservado (misma fórmula que
+ * `buildStockOverviewRows`). El backend rechaza salidas y traslados por encima del
+ * disponible, así que la UI nunca debe ofrecer material ya comprometido.
+ */
+export function getAvailableQtyFromBalance(
+  balance: Pick<StockBalanceRecord, 'quantityOnHand' | 'quantityReserved'>,
+): number {
+  return toNumber(balance.quantityOnHand) - toNumber(balance.quantityReserved);
+}
+
 export function getBalanceForItemAtLocation(
   balances: StockBalanceRecord[],
   itemId: string,
@@ -27,7 +51,7 @@ export function getBalanceForItemAtLocation(
         balance.condition === condition &&
         (balance.lotId ?? null) === lotId,
     )
-    .reduce((total, balance) => total + Number.parseFloat(balance.quantityOnHand), 0);
+    .reduce((total, balance) => total + getAvailableQtyFromBalance(balance), 0);
 }
 
 export function buildAvailableQuantityByItemAtLocation(
@@ -53,7 +77,7 @@ export function buildAvailableQuantityByItemAtLocation(
     }
 
     const current = quantities.get(balance.itemId) ?? 0;
-    quantities.set(balance.itemId, current + Number.parseFloat(balance.quantityOnHand));
+    quantities.set(balance.itemId, current + getAvailableQtyFromBalance(balance));
   }
 
   return quantities;

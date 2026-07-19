@@ -22,10 +22,38 @@ import {
   portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 import {
+  STOCK_COMMITTED_NEXT_STEP_TEXT,
   formatInventoryQuantity,
   getStockCountStatusBadgeVariant,
   getStockCountStatusLabel,
 } from './inventory-labels';
+
+/**
+ * El backend explica por qué se bloqueó el movimiento pero no el próximo paso.
+ * Cuando el rechazo viene del material comprometido, completamos el mensaje sin reescribirlo.
+ */
+function isCommittedStockError(message: string): boolean {
+  return /comprometid/i.test(message);
+}
+
+function StockCountErrorAlert({ message }: { message: string }) {
+  return (
+    <PortalAlert
+      variant="error"
+      title="Error"
+      description={
+        isCommittedStockError(message) ? (
+          <>
+            <p>{message}</p>
+            <p className="mt-1">{STOCK_COMMITTED_NEXT_STEP_TEXT}</p>
+          </>
+        ) : (
+          message
+        )
+      }
+    />
+  );
+}
 
 export interface StockCountsWorkspaceProps {
   locations: StockLocationRecord[];
@@ -242,9 +270,7 @@ export function StockCountsWorkspace({
         }
       >
         <div className="space-y-4">
-          {actionError ? (
-            <PortalAlert variant="error" title="Error" description={actionError} />
-          ) : null}
+          {actionError ? <StockCountErrorAlert message={actionError} /> : null}
           <Select
             label="Bodega"
             aria-label="Bodega del conteo"
@@ -294,9 +320,7 @@ export function StockCountsWorkspace({
         }
       >
         <div className="space-y-4">
-          {actionError ? (
-            <PortalAlert variant="error" title="Error" description={actionError} />
-          ) : null}
+          {actionError ? <StockCountErrorAlert message={actionError} /> : null}
           <div className={portalDataTableShellClassName}>
             <table className="min-w-full">
               <thead>
@@ -390,10 +414,8 @@ export function StockCountsWorkspace({
       }
     >
       <div className="space-y-4">
-        {error ? <PortalAlert variant="error" title="Error" description={error} /> : null}
-        {actionError ? (
-          <PortalAlert variant="error" title="Error" description={actionError} />
-        ) : null}
+        {error ? <StockCountErrorAlert message={error} /> : null}
+        {actionError ? <StockCountErrorAlert message={actionError} /> : null}
 
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-2xl border border-gray-200 p-4">

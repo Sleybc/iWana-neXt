@@ -17,11 +17,16 @@ import {
   portalDataTableHeadClassName,
 } from '@/components/shared/portal-ui';
 import {
+  STOCK_AVAILABLE_LABEL,
+  STOCK_ON_HAND_LABEL,
+  STOCK_RESERVED_HELP_TEXT,
+  STOCK_RESERVED_LABEL,
   formatInventoryDate,
   formatInventoryQuantity,
   getStockBalanceConditionLabel,
   getStockMovementOriginLabel,
 } from './inventory-labels';
+import { getAvailableQtyFromBalance } from './stock-issue-balance-utils';
 import { isStockAdjustableItem } from './stock-overview';
 
 interface StockItemDetailDrawerProps {
@@ -165,11 +170,24 @@ export function StockItemDetailDrawer({
             <table className="min-w-full">
               <thead>
                 <tr>
-                  <th className={portalDataTableHeadClassName}>Bodega</th>
-                  <th className={portalDataTableHeadClassName}>Lote</th>
-                  <th className={portalDataTableHeadClassName}>Condición</th>
-                  <th className={portalDataTableHeadClassName}>Existencia</th>
-                  <th className={portalDataTableHeadClassName}>Reservado</th>
+                  <th scope="col" className={portalDataTableHeadClassName}>
+                    Bodega
+                  </th>
+                  <th scope="col" className={portalDataTableHeadClassName}>
+                    Lote
+                  </th>
+                  <th scope="col" className={portalDataTableHeadClassName}>
+                    Condición
+                  </th>
+                  <th scope="col" className={portalDataTableHeadClassName}>
+                    {STOCK_ON_HAND_LABEL}
+                  </th>
+                  <th scope="col" className={portalDataTableHeadClassName}>
+                    {STOCK_RESERVED_LABEL}
+                  </th>
+                  <th scope="col" className={portalDataTableHeadClassName}>
+                    {STOCK_AVAILABLE_LABEL}
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -186,17 +204,23 @@ export function StockItemDetailDrawer({
                         {getStockBalanceConditionLabel(balance.condition)}
                       </Badge>
                     </td>
-                    <td className={portalDataTableCellClassName}>
+                    <td className={`${portalDataTableCellClassName} tabular-nums`}>
                       {formatInventoryQuantity(balance.quantityOnHand)}
                     </td>
-                    <td className={portalDataTableCellClassName}>
+                    <td className={`${portalDataTableCellClassName} tabular-nums`}>
                       {formatInventoryQuantity(balance.quantityReserved)}
+                    </td>
+                    <td
+                      className={`${portalDataTableCellClassName} font-medium tabular-nums text-iwana-primary dark:text-white`}
+                    >
+                      {formatInventoryQuantity(getAvailableQtyFromBalance(balance))}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
+          <p className="text-xs text-iwana-secondary-700">{STOCK_RESERVED_HELP_TEXT}</p>
         </section>
 
         <section className="space-y-2">

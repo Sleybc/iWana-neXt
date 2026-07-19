@@ -54,6 +54,43 @@ describe('stock-issue-line-utils', () => {
     expect(formatLotOptionLabel(options[0]!.lotId, options[0]!.availableQty)).toMatch(/Lote/);
   });
 
+  it('descuenta lo reservado del disponible por lote y descarta lotes sin disponible', () => {
+    const options = listLotOptionsForItemAtLocation(
+      [
+        {
+          id: 'bal-1',
+          tenantId: 'tenant-1',
+          itemId: 'item-1',
+          locationId: 'loc-1',
+          lotId: 'lot-a',
+          condition: StockBalanceCondition.NEW,
+          quantityOnHand: '10',
+          quantityReserved: '4',
+          createdAt: '',
+          updatedAt: '',
+        },
+        {
+          id: 'bal-2',
+          tenantId: 'tenant-1',
+          itemId: 'item-1',
+          locationId: 'loc-1',
+          lotId: 'lot-b',
+          condition: StockBalanceCondition.NEW,
+          quantityOnHand: '3',
+          quantityReserved: '3',
+          createdAt: '',
+          updatedAt: '',
+        },
+      ],
+      'item-1',
+      'loc-1',
+      StockBalanceCondition.NEW,
+    );
+
+    expect(options).toHaveLength(1);
+    expect(options[0]).toEqual({ lotId: 'lot-a', availableQty: 6 });
+  });
+
   it('filters serialized assets by item and location', () => {
     const assets = listSerializedAssetsForItemAtLocation(
       [

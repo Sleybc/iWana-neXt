@@ -682,3 +682,21 @@ export function getSupplierProfileStatusBadgeVariant(
       return 'neutral';
   }
 }
+
+/**
+ * Trío canónico de existencias (Fase 03B). «Disponible» siempre es existencia − reservado:
+ * el backend rechaza salidas y traslados que superen el disponible, así que la UI debe
+ * ofrecer exactamente la misma cifra para no prometer material ya comprometido.
+ */
+export const STOCK_ON_HAND_LABEL = 'Existencia';
+export const STOCK_RESERVED_LABEL = 'Reservado';
+export const STOCK_AVAILABLE_LABEL = 'Disponible';
+export const STOCK_AVAILABLE_AT_SOURCE_LABEL = 'Disponible en origen';
+
+/** Ayuda breve para explicar de dónde sale la columna «Reservado». */
+export const STOCK_RESERVED_HELP_TEXT =
+  'Reservado: material apartado por salidas pendientes de despacho. El disponible es la existencia menos lo reservado.';
+
+/** Próximo paso accionable cuando el material comprometido bloquea una operación. */
+export const STOCK_COMMITTED_NEXT_STEP_TEXT =
+  'Para liberar material, despacha o cancela las salidas abiertas que lo tienen reservado.';
