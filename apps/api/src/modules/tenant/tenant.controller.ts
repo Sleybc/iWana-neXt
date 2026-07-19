@@ -33,6 +33,7 @@ import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { AbacGuard } from '../auth/guards/abac.guard';
+import { SkipAudit } from '../audit/decorators/skip-audit.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -972,6 +973,10 @@ export class TenantController {
    */
   @Post(':id/bootstrap-admin-credentials')
   @Roles(PlatformRole.SYSTEM_ADMIN)
+  // La respuesta lleva la contraseña temporal en claro. El saneado del
+  // interceptor ya la elimina, pero un endpoint que devuelve un secreto no
+  // debe depender de una sola capa: su valor de auditoría no compensa el riesgo.
+  @SkipAudit()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Consultar acceso inicial fijo del ADMIN bootstrap del tenant' })
   @ApiResponse({ status: 200, description: 'Acceso inicial vigente.' })
@@ -1002,6 +1007,9 @@ export class TenantController {
    */
   @Post(':id/regenerate-admin-credentials')
   @Roles(PlatformRole.SYSTEM_ADMIN)
+  // Igual que el endpoint de bootstrap: devuelve la contraseña en claro y no
+  // debe apoyarse solo en el saneado del interceptor.
+  @SkipAudit()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Regenerar credenciales temporales del ADMIN inicial del tenant' })
   @ApiHeader({

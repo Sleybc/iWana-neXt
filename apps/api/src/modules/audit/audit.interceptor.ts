@@ -43,6 +43,22 @@ import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 export class AuditInterceptor implements NestInterceptor {
   private readonly logger = new Logger(AuditInterceptor.name);
 
+  /**
+   * Claves cuyo valor string se considera secreto. Es el matcher primario: la
+   * lista literal de abajo solo cubre lo que el patrón no puede deducir.
+   */
+  static readonly SECRET_KEY_PATTERN =
+    /password|secret|token|credential|apikey|api_?key|private_?key|authorization/i;
+
+  /**
+   * Claves siempre omitidas aunque el patrón no las reconozca.
+   * `email` va cifrado con AES y no debe reproducirse en el registro.
+   */
+  static readonly ALWAYS_OMITTED_KEYS = new Set(['email']);
+
+  /** Tope de recursión: las respuestas auditadas no anidan más que esto. */
+  static readonly MAX_SANITIZE_DEPTH = 5;
+
   constructor(
     private readonly auditService: AuditService,
     private readonly platformAuditService: PlatformAuditService,
@@ -166,24 +182,74 @@ export class AuditInterceptor implements NestInterceptor {
 
   /**
    * Sanitiza el objeto de respuesta antes de guardarlo en el audit log.
-   * Elimina campos sensibles: passwordHash, mfaSecret, email (cifrado), tokens.
-   * Retorna null si el valor no es un objeto plano.
+   *
+   * La versión anterior era una denylist de claves literales aplicada **solo al
+   * primer nivel**. Dos consecuencias, ambas confirmadas contra la base real:
+   * `temporaryPassword` no estaba en la lista, y las respuestas de los endpoints
+   * de credenciales devuelven la contraseña dentro de un envoltorio `{data:{…}}`
+   * — de modo que el secreto quedó en claro en `platform_audit_logs` y en
+   * `<schema>.audit_logs`.
+   *
+   * Ahora el matcher primario es un patrón sobre el nombre de la clave, y el
+   * recorrido es recursivo. La garantía no la da esta lista sino
+   * `audit.interceptor.sanitize.spec.ts`, que afirma que ninguna clave que
+   * empareje el patrón sobrevive al saneado a ninguna profundidad.
+   *
+   * **El predicado solo se aplica a valores de tipo string.** Un secreto siempre
+   * es una cadena; `passwordResetRequired` es un booleano y es dato de auditoría
+   * legítimo. Sin esa condición se perdería fidelidad sin ganar seguridad.
    */
   private sanitizeResponseData(data: unknown): Record<string, unknown> | null {
+    // Un array en el nivel superior sigue sin auditarse, como hasta ahora: las
+    // respuestas de listado no aportan trazabilidad de cambio y el volumen es
+    // alto. Cambiarlo sería una decisión aparte.
     if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
 
-    const SENSITIVE_KEYS = new Set([
-      'passwordHash',
-      'passwordResetToken',
-      'mfaSecret',
-      'email', // cifrado AES — no exponer en audit
-      'accessToken',
-      'refreshToken',
-      'tokenHash',
-    ]);
+    return this.sanitizeValue(data, 0) as Record<string, unknown>;
+  }
 
-    return Object.fromEntries(
-      Object.entries(data as Record<string, unknown>).filter(([key]) => !SENSITIVE_KEYS.has(key)),
-    );
+  private sanitizeValue(value: unknown, depth: number): unknown {
+    if (depth > AuditInterceptor.MAX_SANITIZE_DEPTH) {
+      return '[PROFUNDIDAD_EXCEDIDA]';
+    }
+
+    if (value === null || typeof value !== 'object') {
+      return value;
+    }
+
+    // Las fechas deben pasar intactas: `Object.entries(new Date())` es `[]`, así
+    // que un recorrido ingenuo convertiría cada createdAt/updatedAt en `{}`.
+    if (value instanceof Date) {
+      return value;
+    }
+
+    if (Buffer.isBuffer(value)) {
+      return '[BINARIO]';
+    }
+
+    if (Array.isArray(value)) {
+      return value.map((item) => this.sanitizeValue(item, depth + 1));
+    }
+
+    const result: Record<string, unknown> = {};
+
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      if (AuditInterceptor.isSecretEntry(key, item)) {
+        continue;
+      }
+
+      result[key] = this.sanitizeValue(item, depth + 1);
+    }
+
+    return result;
+  }
+
+  /** ¿Esta pareja clave/valor transporta un secreto? */
+  private static isSecretEntry(key: string, value: unknown): boolean {
+    if (AuditInterceptor.ALWAYS_OMITTED_KEYS.has(key)) {
+      return true;
+    }
+
+    return typeof value === 'string' && AuditInterceptor.SECRET_KEY_PATTERN.test(key);
   }
 }

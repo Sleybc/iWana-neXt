@@ -1,0 +1,178 @@
+import { AuditInterceptor } from '../audit.interceptor';
+
+/**
+ * Garantía mecánica del saneado de auditoría.
+ *
+ * El defecto que motiva estos tests fue real y verificado contra la base: la
+ * denylist literal del interceptor no incluía `temporaryPassword`, y solo
+ * recorría el primer nivel. Como los endpoints de credenciales devuelven la
+ * contraseña dentro de `{data:{…}}`, el secreto acabó en claro en
+ * `platform_audit_logs` y en `<schema>.audit_logs`.
+ *
+ * Por eso la garantía no es la lista sino este barrido: ninguna clave que
+ * empareje el patrón puede sobrevivir, a ninguna profundidad. Añadir un campo
+ * secreto nuevo a cualquier respuesta no requiere acordarse de nada.
+ */
+
+type Sanitizer = (data: unknown) => Record<string, unknown> | null;
+
+/** Acceso al método privado: es la unidad que se quiere probar. */
+function makeSanitizer(): Sanitizer {
+  const interceptor = Object.create(AuditInterceptor.prototype) as AuditInterceptor;
+
+  return (data: unknown) =>
+    (interceptor as unknown as { sanitizeResponseData: Sanitizer }).sanitizeResponseData(data);
+}
+
+/** Recorre el resultado y devuelve toda clave cuyo valor string sea sospechoso. */
+function findSurvivingSecrets(value: unknown, path = '$'): string[] {
+  if (value === null || typeof value !== 'object' || value instanceof Date) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => findSurvivingSecrets(item, `${path}[${index}]`));
+  }
+
+  const found: string[] = [];
+
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof item === 'string' && AuditInterceptor.SECRET_KEY_PATTERN.test(key)) {
+      found.push(`${path}.${key}`);
+    }
+
+    if (AuditInterceptor.ALWAYS_OMITTED_KEYS.has(key)) {
+      found.push(`${path}.${key}`);
+    }
+
+    found.push(...findSurvivingSecrets(item, `${path}.${key}`));
+  }
+
+  return found;
+}
+
+describe('AuditInterceptor — saneado de la respuesta', () => {
+  const sanitize = makeSanitizer();
+
+  describe('ningún secreto sobrevive', () => {
+    it('elimina temporaryPassword anidado bajo data — el caso que se filtró de verdad', () => {
+      const result = sanitize({
+        data: {
+          message: 'Acceso inicial vigente',
+          adminEmail: 'admin@ejemplo.co',
+          temporaryPassword: 'IwN!a9-deadbeefdeadbeef',
+          expiresAt: '2026-07-20T00:00:00.000Z',
+        },
+      });
+
+      expect(findSurvivingSecrets(result)).toEqual([]);
+      expect(JSON.stringify(result)).not.toContain('IwN!a9-deadbeefdeadbeef');
+    });
+
+    it('elimina secretos dentro de arrays de objetos', () => {
+      const result = sanitize({
+        data: {
+          items: [
+            { id: '1', accessToken: 'tok-1' },
+            { id: '2', nested: { refreshToken: 'tok-2' } },
+          ],
+        },
+      });
+
+      expect(findSurvivingSecrets(result)).toEqual([]);
+      expect(JSON.stringify(result)).not.toContain('tok-1');
+      expect(JSON.stringify(result)).not.toContain('tok-2');
+    });
+
+    it('elimina las variantes de nombre que cubre el patrón', () => {
+      const result = sanitize({
+        data: {
+          passwordHash: 'x',
+          mfaSecret: 'x',
+          apiKey: 'x',
+          api_key: 'x',
+          privateKey: 'x',
+          private_key: 'x',
+          authorization: 'x',
+          userCredential: 'x',
+          passwordResetToken: 'x',
+        },
+      });
+
+      expect(findSurvivingSecrets(result)).toEqual([]);
+      expect(Object.keys((result as { data: object }).data)).toEqual([]);
+    });
+
+    it('omite email aunque no empareje el patrón (va cifrado con AES)', () => {
+      const result = sanitize({ data: { id: '1', email: 'cifrado==' } });
+
+      expect(findSurvivingSecrets(result)).toEqual([]);
+    });
+  });
+
+  describe('fidelidad del registro', () => {
+    it('conserva passwordResetRequired: es booleano, no un secreto', () => {
+      const result = sanitize({
+        data: { passwordResetRequired: true, passwordResetExpiresAt: new Date(0) },
+      });
+
+      const data = (result as { data: Record<string, unknown> }).data;
+      expect(data['passwordResetRequired']).toBe(true);
+      expect(data['passwordResetExpiresAt']).toBeInstanceOf(Date);
+    });
+
+    it('conserva las fechas como Date y no las vacía a {}', () => {
+      const createdAt = new Date('2026-07-19T12:00:00.000Z');
+      const result = sanitize({ data: { id: '1', createdAt } });
+
+      expect((result as { data: Record<string, unknown> }).data['createdAt']).toEqual(createdAt);
+    });
+
+    it('conserva la forma de arrays anidados', () => {
+      const result = sanitize({ data: { items: [{ id: '1' }, { id: '2' }] } });
+
+      expect((result as { data: { items: unknown[] } }).data.items).toEqual([
+        { id: '1' },
+        { id: '2' },
+      ]);
+    });
+
+    it('no altera los valores no sensibles', () => {
+      const result = sanitize({ data: { id: 'abc', total: 42, activo: false, nulo: null } });
+
+      expect((result as { data: unknown }).data).toEqual({
+        id: 'abc',
+        total: 42,
+        activo: false,
+        nulo: null,
+      });
+    });
+  });
+
+  describe('robustez', () => {
+    it('corta la recursión en estructuras muy profundas sin desbordar', () => {
+      let deep: Record<string, unknown> = { secretToken: 'fondo' };
+      for (let i = 0; i < 40; i += 1) {
+        deep = { nivel: deep };
+      }
+
+      const result = sanitize({ data: deep });
+
+      expect(JSON.stringify(result)).not.toContain('fondo');
+      expect(JSON.stringify(result)).toContain('PROFUNDIDAD_EXCEDIDA');
+    });
+
+    it('tolera referencias circulares', () => {
+      const circular: Record<string, unknown> = { id: '1' };
+      circular['self'] = circular;
+
+      expect(() => sanitize({ data: circular })).not.toThrow();
+    });
+
+    it('mantiene el comportamiento previo: null si no es objeto plano', () => {
+      expect(sanitize(null)).toBeNull();
+      expect(sanitize('texto')).toBeNull();
+      expect(sanitize([{ id: '1' }])).toBeNull();
+    });
+  });
+});
