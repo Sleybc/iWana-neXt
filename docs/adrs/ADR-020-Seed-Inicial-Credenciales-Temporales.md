@@ -8,8 +8,14 @@
 > muestra una sola vez. El resto del ADR —bcrypt 12 rondas, `passwordResetRequired`, ventana de
 > 24 h y la regla del punto 7— sigue vigente.
 
-> **Estado:** Superado parcialmente
-> **Estado original:** Aprobado
+> **Estado:** Aprobado
+>
+> El estado sigue siendo `Aprobado` —y no un "superado parcialmente"— porque la
+> mayor parte de este ADR rige: bcrypt con 12 rondas, `passwordResetRequired`,
+> la ventana de 24 h y la regla del punto 7. Solo dos puntos concretos dejaron
+> de aplicar, y quedan señalados arriba. Un estado intermedio haría indecidible
+> si una cita a este ADR confiere autoridad, que es justo lo que el vocabulario
+> canónico del protocolo §7.4 existe para evitar.
 > **Fecha:** 2026-03-07
 > **Tipo:** Backend / Operacional / Seguridad
 > **Autores:** AI-ARCH (Architect Software), AI-EM (Engineering Manager)
