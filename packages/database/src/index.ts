@@ -13,10 +13,29 @@
 export * from './entities';
 
 // DataSource y utilidades de schema routing
-export { AppDataSource, dataSourceOptions, isValidSchemaName, runInTenantSchema } from './data-source';
-export { applyTenantMigrationsInOrder, runTenantMigrations, TENANT_MIGRATIONS } from './migrations/tenant/runner';
+export {
+  AppDataSource,
+  dataSourceOptions,
+  isValidSchemaName,
+  runInTenantSchema,
+} from './data-source';
+export {
+  applyTenantMigrationsInOrder,
+  runTenantMigrations,
+  TENANT_MIGRATIONS,
+} from './migrations/tenant/runner';
+export {
+  DESTRUCTIVE_DOWN_ENV_VAR,
+  MIGRATIONS_REQUIRING_DESTRUCTIVE_FLAG,
+  planTenantRevert,
+  revertTenantMigrations,
+} from './migrations/tenant/revert';
+export type {
+  TenantRevertOptions,
+  TenantRevertPlan,
+  TenantRevertStep,
+} from './migrations/tenant/revert';
 
 // Contexto de tenant por request (AsyncLocalStorage)
 export { TenantContext } from './tenant-context';
 export type { TenantContextPayload } from './tenant-context';
-

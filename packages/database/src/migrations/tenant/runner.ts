@@ -162,7 +162,7 @@ function extractMigrationTimestamp(name: string): number {
   return Number(match[1]);
 }
 
-async function ensureTenantMigrationsTable(queryRunner: QueryRunner): Promise<void> {
+export async function ensureTenantMigrationsTable(queryRunner: QueryRunner): Promise<void> {
   await queryRunner.query(`
     CREATE TABLE IF NOT EXISTS "typeorm_migrations" (
       "id" SERIAL NOT NULL,
@@ -241,7 +241,13 @@ export async function runTenantMigrations(dataSource: DataSource): Promise<void>
   }
 }
 
-async function acquireGlobalLock(dataSource: DataSource): Promise<void> {
+/**
+ * Lock global de migración. Exportado para que la ruta de revert
+ * (`./revert`) tome exactamente el mismo lock que la ruta de up: un proceso
+ * migrando y otro revirtiendo al mismo tiempo es el escenario que queremos
+ * imposibilitar.
+ */
+export async function acquireGlobalLock(dataSource: DataSource): Promise<void> {
   await dataSource.query(`SELECT pg_advisory_lock($1, $2)`, [
     MIGRATION_LOCK_NAMESPACE,
     MIGRATION_LOCK_RESOURCE,
@@ -249,7 +255,7 @@ async function acquireGlobalLock(dataSource: DataSource): Promise<void> {
   console.log('[MIGRATOR] Global lock acquired');
 }
 
-async function releaseGlobalLock(dataSource: DataSource): Promise<void> {
+export async function releaseGlobalLock(dataSource: DataSource): Promise<void> {
   await dataSource.query(`SELECT pg_advisory_unlock($1, $2)`, [
     MIGRATION_LOCK_NAMESPACE,
     MIGRATION_LOCK_RESOURCE,
@@ -261,30 +267,50 @@ async function getActiveTenants(dataSource: DataSource): Promise<Array<{ schema_
   return dataSource.query(`SELECT schema_name FROM public.tenants WHERE status = 'ACTIVE'`);
 }
 
+/**
+ * Construye el DataSource apuntado al schema de un tenant.
+ *
+ * Extraído de `runMigrationsForTenant` sin cambiar ninguna opción para que la
+ * ruta de revert (`./revert`) abra la conexión exactamente igual que la de up
+ * — en particular el `search_path` por conexión, del que dependen todas las
+ * migraciones tenant al no calificar schema en sus sentencias.
+ *
+ * `connectionName` se parametriza solo para evitar colisión de nombres cuando
+ * up y revert coexisten en el mismo proceso (tests).
+ */
+export function createTenantDataSource(
+  baseDataSource: DataSource,
+  schemaName: string,
+  connectionName = `tenant-${schemaName}`,
+): DataSource {
+  const baseOpts = baseDataSource.options as PostgresOptions;
+
+  return new DataSource({
+    type: 'postgres',
+    host: baseOpts.host,
+    port: baseOpts.port,
+    username: baseOpts.username,
+    password: baseOpts.password,
+    database: baseOpts.database,
+    schema: schemaName,
+    name: connectionName,
+    migrationsTableName: 'typeorm_migrations',
+    migrations: TENANT_MIGRATIONS,
+    synchronize: false,
+    logging: ['error'],
+    // Fuerza search_path para que las migraciones usen el schema correcto
+    // sin necesidad de calificar cada tabla con schema explícito
+    extra: { options: `-c search_path="${schemaName}"` },
+  });
+}
+
 async function runMigrationsForTenant(
   baseDataSource: DataSource,
   schemaName: string,
 ): Promise<void> {
   let tenantDs: DataSource | null = null;
-  const baseOpts = baseDataSource.options as PostgresOptions;
   try {
-    tenantDs = new DataSource({
-      type: 'postgres',
-      host: baseOpts.host,
-      port: baseOpts.port,
-      username: baseOpts.username,
-      password: baseOpts.password,
-      database: baseOpts.database,
-      schema: schemaName,
-      name: `tenant-${schemaName}`,
-      migrationsTableName: 'typeorm_migrations',
-      migrations: TENANT_MIGRATIONS,
-      synchronize: false,
-      logging: ['error'],
-      // Fuerza search_path para que las migraciones usen el schema correcto
-      // sin necesidad de calificar cada tabla con schema explícito
-      extra: { options: `-c search_path="${schemaName}"` },
-    });
+    tenantDs = createTenantDataSource(baseDataSource, schemaName);
     await tenantDs.initialize();
     await applyTenantMigrationsInOrder(tenantDs);
   } finally {
