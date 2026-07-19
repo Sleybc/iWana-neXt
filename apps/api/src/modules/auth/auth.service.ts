@@ -1053,9 +1053,21 @@ export class AuthService {
     return new Date(Date.now() + TEMPORARY_PASSWORD_TTL_SECONDS * 1000);
   }
 
-  /** Genera una contrasena temporal fuerte y corta para onboarding operativo. */
+  /**
+   * Genera una contrasena temporal fuerte y corta para onboarding operativo.
+   *
+   * 16 bytes, alineado con `TEMP_PASSWORD_BYTES` de `users.service.ts`. Antes
+   * eran 8: el ADMIN inicial del tenant —la cuenta de mayor privilegio de la
+   * empresa— recibia la mitad de entropia que cualquier usuario normal, sin
+   * razon que lo justificara.
+   *
+   * El prefijo literal se conserva a proposito: no reduce el espacio de
+   * busqueda, y hace la credencial localizable en un barrido defensivo — que es
+   * como se encontro la fuga del audit. Corta en ambos sentidos y la decision
+   * queda declarada, no heredada.
+   */
   private generateTemporaryPassword(): string {
-    return `IwN!a9-${crypto.randomBytes(8).toString('hex')}`;
+    return `IwN!a9-${crypto.randomBytes(16).toString('hex')}`;
   }
 
   private decodeStoredValue(value: string): string {

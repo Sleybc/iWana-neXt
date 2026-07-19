@@ -103,6 +103,32 @@ describe('AuditInterceptor — saneado de la respuesta', () => {
       expect(Object.keys((result as { data: object }).data)).toEqual([]);
     });
 
+    it('elimina la semilla TOTP de POST /auth/mfa/setup', () => {
+      // Contraejemplo real hallado en revisión de seguridad: `otpauthUri`
+      // contiene la semilla completa (`otpauth://totp/…?secret=BASE32`) y no
+      // emparejaba el patrón original, que tenía `authorization` pero no `otp`.
+      // Un ADMIN de tenant habría podido leer el segundo factor de sus usuarios
+      // en el audit log y generar sus códigos.
+      const result = sanitize({
+        data: {
+          otpauthUri: 'otpauth://totp/user@ejemplo.co?secret=JBSWY3DPEHPK3PXP&issuer=iWana',
+          qrCodeBase64: 'data:image/png;base64,iVBORw0KGgo=',
+        },
+      });
+
+      expect(findSurvivingSecrets(result)).toEqual([]);
+      expect(JSON.stringify(result)).not.toContain('JBSWY3DPEHPK3PXP');
+      expect(JSON.stringify(result)).not.toContain('iVBORw0KGgo');
+    });
+
+    it('cubre las variantes de secreto de segundo factor y recuperación', () => {
+      const result = sanitize({
+        data: { totpSeed: 'x', recoveryCodes: 'x', backupCode: 'x', qrCode: 'x' },
+      });
+
+      expect(Object.keys((result as { data: object }).data)).toEqual([]);
+    });
+
     it('omite email aunque no empareje el patrón (va cifrado con AES)', () => {
       const result = sanitize({ data: { id: '1', email: 'cifrado==' } });
 

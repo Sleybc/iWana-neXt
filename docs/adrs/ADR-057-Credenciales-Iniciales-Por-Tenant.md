@@ -57,7 +57,9 @@ Emitir la credencial después **elimina el transporte** en vez de endurecerlo, y
 - Desaparece el secreto compartido: comprometer un despliegue deja de comprometer todas sus empresas futuras.
 - Cada empresa estrena administrador con identidad propia y trazable.
 - La emisión de una credencial es un acto explícito y atribuible de un `SYSTEM_ADMIN`, no un valor que existe en silencio durante 24 h.
-- La promesa de ADR-020 §7 pasa a ser cierta: la contraseña no se persiste ni se registra en ningún punto.
+- La promesa de ADR-020 §7 pasa a ser cierta **para `temporaryPassword`**: verificado que no queda en respuesta auditada, Redis, payload de la cola, logs de aplicación, access logs de nginx ni correo.
+
+> **Acotación deliberada.** Una versión previa de esta línea afirmaba que "la contraseña no se persiste ni se registra en ningún punto", como propiedad del sistema. La revisión de `sec-eng` mostró que era falso: la misma clase de fuga seguía viva para la semilla TOTP de `POST /auth/mfa/setup` (`otpauthUri`), cuyo nombre el patrón de saneado no reconocía. Corregido, pero la lección es la afirmación: **la cobertura del saneado es por nombre de clave, no por naturaleza del dato**. Generalizar de un secreto a todos es exactamente el error que ADR-020 §7 cometió y que este ADR corrige — cometerlo aquí habría sido repetirlo.
 
 **Negativas / costo**
 - Un paso operativo más en el alta: crear la empresa y después emitir la credencial. El formulario lo mitiga ofreciendo el botón en cuanto el tenant queda `ACTIVE`.

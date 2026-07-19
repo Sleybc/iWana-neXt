@@ -46,9 +46,16 @@ export class AuditInterceptor implements NestInterceptor {
   /**
    * Claves cuyo valor string se considera secreto. Es el matcher primario: la
    * lista literal de abajo solo cubre lo que el patrón no puede deducir.
+   *
+   * **La cobertura es por nombre de clave, no por naturaleza del dato.** Un
+   * secreto cuyo nombre el patrón no reconozca pasa igual: `otpauthUri` —que
+   * contiene la semilla TOTP completa— sobrevivía hasta que se añadieron `otp`
+   * y `qr`. Al añadir un endpoint que devuelva un secreto, comprobar que su
+   * clave empareja aquí **o** ponerle `@SkipAudit()`; no basta con confiar en
+   * que el patrón lo adivine.
    */
   static readonly SECRET_KEY_PATTERN =
-    /password|secret|token|credential|apikey|api_?key|private_?key|authorization/i;
+    /password|secret|token|credential|apikey|api_?key|private_?key|authorization|otp|qr|seed|recovery|backup/i;
 
   /**
    * Claves siempre omitidas aunque el patrón no las reconozca.

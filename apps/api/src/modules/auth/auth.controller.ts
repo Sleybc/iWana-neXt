@@ -14,6 +14,7 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 import { Request as ExpressRequest, Response as ExpressResponse } from 'express';
 import { TenantContext } from '@iwana/db';
 import { AuthService } from './auth.service';
+import { SkipAudit } from '../audit/decorators/skip-audit.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
 import {
@@ -215,6 +216,13 @@ export class AuthController {
    * RF-AUTH-03
    */
   @Post('mfa/setup')
+  // La respuesta lleva la semilla TOTP: `otpauthUri` es
+  // `otpauth://totp/<email>?secret=<BASE32>` y `qrCodeBase64` es esa misma
+  // semilla en imagen. Auditarla permitiría a un ADMIN de tenant leer el
+  // segundo factor de sus usuarios en `<schema>.audit_logs` y generar sus
+  // códigos. El saneado ya cubre ambas claves, pero un endpoint que devuelve un
+  // secreto no debe depender de una sola capa.
+  @SkipAudit()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Genera secret TOTP y QR code para configurar MFA' })
   @ApiResponse({ status: 200, description: 'QR code y URI de autenticacion.' })
