@@ -42,6 +42,21 @@ export class CreateTenantDto {
   @MaxLength(255)
   contactEmail: string;
 
+  /**
+   * Email del administrador inicial de la empresa.
+   *
+   * Distinto de `contactEmail`: aquel es el contacto comercial de la empresa,
+   * este es la identidad con la que su ADMIN inicia sesión.
+   *
+   * Antes el seed usaba la constante `admin@iwana.co` para **todos** los
+   * tenants, de modo que todos los primeros administradores compartían
+   * identidad — sin trazabilidad de quién administra cada empresa y con un
+   * cambio manual obligado tras cada alta.
+   */
+  @IsEmail()
+  @MaxLength(255)
+  adminEmail: string;
+
   @IsInt()
   @Min(0)
   @IsOptional()
@@ -249,6 +264,8 @@ export class TenantResponseDto {
   schemaName: string;
   status: TenantStatus;
   contactEmail: string;
+  /** Email del ADMIN inicial. NULL en tenants anteriores al campo. */
+  adminEmail: string | null;
   maxSubscribers: number | null;
   settings: Record<string, unknown>;
   // Datos legales

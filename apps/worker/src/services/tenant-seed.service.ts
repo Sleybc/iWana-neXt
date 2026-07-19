@@ -7,13 +7,19 @@ import { User, runInTenantSchema } from '@iwana/db';
 import { TAX_COLOMBIA_PRESETS, UserRole, UserStatus } from '@iwana/shared';
 
 const TEMPORARY_PASSWORD_TTL_MS = 24 * 60 * 60 * 1000;
-export const INITIAL_TENANT_ADMIN_EMAIL = 'admin@iwana.co';
-const TENANT_INITIAL_ADMIN_PASSWORD_CONFIG_KEY = 'TENANT_INITIAL_ADMIN_PASSWORD';
 
 export interface TenantSeedInput {
   tenantId: string;
   tenantSlug: string;
   schemaName: string;
+  /**
+   * Email del ADMIN inicial, indicado al crear la empresa.
+   *
+   * Sustituye a la constante `admin@iwana.co` que se usaba para todos los
+   * tenants: sin ella no había forma de saber quién administra cada empresa y
+   * el email había que cambiarlo a mano tras cada alta.
+   */
+  adminEmail: string;
 }
 
 /**
@@ -34,7 +40,6 @@ export interface TenantSeedInput {
 export class TenantSeedService {
   private readonly logger = new Logger(TenantSeedService.name);
   private readonly encryptionKey: Buffer;
-  private readonly initialAdminPassword: string;
 
   constructor(
     private readonly dataSource: DataSource,
@@ -42,14 +47,12 @@ export class TenantSeedService {
   ) {
     const keyHex = this.configService.getOrThrow<string>('MFA_ENCRYPTION_KEY');
     this.encryptionKey = Buffer.from(keyHex, 'hex');
-    this.initialAdminPassword = this.validateBootstrapPassword(
-      this.configService.getOrThrow<string>(TENANT_INITIAL_ADMIN_PASSWORD_CONFIG_KEY),
-    );
   }
 
   async seedInitialAdmin(input: TenantSeedInput): Promise<{ created: boolean }> {
     return runInTenantSchema(this.dataSource, input.schemaName, async (qr) => {
-      const emailHash = this.hashEmail(INITIAL_TENANT_ADMIN_EMAIL);
+      const adminEmail = input.adminEmail.toLowerCase().trim();
+      const emailHash = this.hashEmail(adminEmail);
 
       const existingAdmin = await qr.manager.findOne(User, {
         where: { emailHash },
@@ -63,10 +66,18 @@ export class TenantSeedService {
         return { created: false };
       }
 
-      const passwordHash = await bcrypt.hash(this.initialAdminPassword, 12);
+      // El ADMIN nace con una contraseña aleatoria que **nadie conoce**: no se
+      // devuelve, no se registra y no viaja por la cola. La credencial real se
+      // emite después con `POST /tenants/:id/regenerate-admin-credentials`, que
+      // la genera contra la base y la muestra una sola vez.
+      //
+      // Antes se sembraba con `TENANT_INITIAL_ADMIN_PASSWORD`, la misma para
+      // todas las empresas del despliegue: quien conociera esa variable entraba
+      // a cualquier empresa recién creada durante su ventana de 24h.
+      const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12);
 
       const adminUser = qr.manager.create(User, {
-        email: this.encryptValue(INITIAL_TENANT_ADMIN_EMAIL),
+        email: this.encryptValue(adminEmail),
         emailHash,
         passwordHash,
         role: UserRole.ADMIN,
@@ -150,28 +161,8 @@ export class TenantSeedService {
     return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
   }
 
-  /**
-   * Valida la contraseña fija del ADMIN inicial leída desde variables de entorno.
-   * No se hardcodea en código para evitar versionar secretos, pero sí se exige
-   * una política mínima compatible con el flujo de primer ingreso.
-   */
-  private validateBootstrapPassword(password: string): string {
-    const normalizedPassword = password.trim();
-
-    const meetsPolicy =
-      normalizedPassword.length >= 10 &&
-      /[A-Z]/.test(normalizedPassword) &&
-      /[a-z]/.test(normalizedPassword) &&
-      /\d/.test(normalizedPassword) &&
-      /[^A-Za-z0-9]/.test(normalizedPassword);
-
-    if (!meetsPolicy) {
-      throw new Error(
-        TENANT_INITIAL_ADMIN_PASSWORD_CONFIG_KEY +
-          ' no cumple la política mínima: 10+ caracteres, mayúscula, minúscula, número y especial.',
-      );
-    }
-
-    return normalizedPassword;
-  }
+  // `validateBootstrapPassword` se retiró junto con la contraseña compartida:
+  // ya no hay ninguna credencial de entorno que validar. La contraseña real la
+  // genera `AuthService.generateTemporaryPassword()` al emitirla, y es
+  // aleatoria por construcción.
 }

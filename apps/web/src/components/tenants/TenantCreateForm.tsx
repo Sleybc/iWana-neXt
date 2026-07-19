@@ -54,6 +54,7 @@ export const tenantCreateSchema = z.object({
     .max(55)
     .regex(/^[a-z][a-z0-9-]{0,54}$/, 'Solo letras minúsculas, números y guiones'),
   contactEmail: z.string().email('Email inválido').max(255),
+  adminEmail: z.string().email('Email inválido').max(255),
   maxSubscribers: optionalMaxSubscribersSchema,
   // Datos legales — opcionales
   legalName: z.string().max(300).optional().or(z.literal('')),
@@ -128,6 +129,7 @@ export function TenantCreateForm() {
       'name',
       'slug',
       'contactEmail',
+      'adminEmail',
       'maxSubscribers',
       'mfaRequiredAll',
       'timezone',
@@ -197,7 +199,7 @@ export function TenantCreateForm() {
       if (typeof val === 'string') return val.trim().length > 0;
       return val != null && val !== false;
     };
-    const esencialRequired = ['name', 'slug', 'contactEmail'] as const;
+    const esencialRequired = ['name', 'slug', 'contactEmail', 'adminEmail'] as const;
     const empresaTracked = [
       'legalName',
       'nit',
@@ -253,6 +255,7 @@ export function TenantCreateForm() {
         name: values.name,
         slug: values.slug,
         contactEmail: values.contactEmail,
+        adminEmail: values.adminEmail,
         maxSubscribers: values.maxSubscribers ?? null,
         ...(values.legalName ? { legalName: values.legalName } : {}),
         ...(values.nit ? { nit: values.nit } : {}),
@@ -334,22 +337,6 @@ export function TenantCreateForm() {
       setCredentials(creds);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No fue posible regenerar credenciales.');
-    }
-  };
-
-  const getBootstrapCredentials = async () => {
-    if (!createdTenant) return;
-
-    try {
-      const creds = await tenantApi.getBootstrapCredentials(createdTenant.id);
-      setCredentials(creds);
-      setError(null);
-    } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? err.message
-          : 'No fue posible consultar el acceso inicial fijo de la empresa.',
-      );
     }
   };
 
@@ -454,6 +441,17 @@ export function TenantCreateForm() {
                       helperText="Contacto empresarial principal."
                       {...register('contactEmail')}
                       {...fieldError(errors.contactEmail?.message)}
+                    />
+
+                    <Input
+                      id="tenant-admin-email"
+                      type="email"
+                      label="Email del administrador"
+                      requiredIndicator
+                      placeholder="nombre@empresa.co"
+                      helperText="Con este correo iniciará sesión el administrador de la empresa. Puede ser distinto del contacto comercial."
+                      {...register('adminEmail')}
+                      {...fieldError(errors.adminEmail?.message)}
                     />
 
                     <Input
@@ -730,11 +728,11 @@ export function TenantCreateForm() {
 
             {createdTenant.status === 'ACTIVE' && (
               <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="secondary" onClick={getBootstrapCredentials}>
-                  Ver acceso inicial
-                </Button>
+                {/* "Ver acceso inicial" desapareció con su endpoint: consultaba
+                    una contraseña fija compartida por todas las empresas. Emitir
+                    la credencial es ahora el único camino, y la muestra una vez. */}
                 <Button type="button" variant="secondary" onClick={getCredentials}>
-                  Regenerar credenciales
+                  Emitir credenciales de acceso
                 </Button>
                 <Button
                   type="button"

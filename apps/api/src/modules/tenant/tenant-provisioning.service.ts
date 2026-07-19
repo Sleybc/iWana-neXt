@@ -2,19 +2,13 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { TenantStatus, TENANT_PROVISIONING_QUEUE } from '@iwana/shared';
+import type { ProvisioningJobPayload } from '@iwana/shared';
 import { TenantResponseDto } from './dto/tenant.dto';
 import { TenantService } from './tenant.service';
 
-/**
- * Payload del job de provisioning de tenant.
- * Incluye todo lo necesario para que el worker opere sin acceder a contexto
- * de request (risk R3: AsyncLocalStorage NO propaga a workers BullMQ).
- */
-export interface ProvisioningJobPayload {
-  tenantId: string;
-  schemaName: string;
-  tenantSlug: string;
-}
+// `ProvisioningJobPayload` vive en @iwana/shared: estaba declarado por
+// duplicado aquí y en el worker, sin vínculo de compilación entre ambos.
+export type { ProvisioningJobPayload };
 
 /**
  * Servicio de provisioning de schemas de tenant.
@@ -57,19 +51,15 @@ export class TenantProvisioningService {
    */
   async enqueue(payload: ProvisioningJobPayload): Promise<void> {
     try {
-      await this.provisioningQueue.add(
-        'provision-schema',
-        payload,
-        {
-          // 3 reintentos con backoff exponencial
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 5000 },
-          // El job expira si no se procesa en 30 minutos
-          removeOnComplete: { age: 24 * 3600 }, // conservar por 24h para auditoría
-          removeOnFail: false, // conservar jobs fallidos para diagnostico
-          jobId: `provision-${payload.tenantId}`, // idempotencia: no duplicar jobs
-        },
-      );
+      await this.provisioningQueue.add('provision-schema', payload, {
+        // 3 reintentos con backoff exponencial
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+        // El job expira si no se procesa en 30 minutos
+        removeOnComplete: { age: 24 * 3600 }, // conservar por 24h para auditoría
+        removeOnFail: false, // conservar jobs fallidos para diagnostico
+        jobId: `provision-${payload.tenantId}`, // idempotencia: no duplicar jobs
+      });
 
       this.logger.log(
         `Job de provisioning encolado para tenant ${payload.tenantSlug} (${payload.tenantId})`,
@@ -97,6 +87,7 @@ export class TenantProvisioningService {
     tenantId: string,
     schemaName: string,
     tenantSlug: string,
+    adminEmail: string,
   ): Promise<TenantResponseDto> {
     // Limpiar el job fallido previo si existe (evitar duplicados)
     await this.provisioningQueue.remove(`provision-${tenantId}`);
@@ -107,7 +98,7 @@ export class TenantProvisioningService {
       TenantStatus.PROVISIONING,
     );
 
-    await this.enqueue({ tenantId, schemaName, tenantSlug });
+    await this.enqueue({ tenantId, schemaName, tenantSlug, adminEmail });
     return tenant;
   }
 }

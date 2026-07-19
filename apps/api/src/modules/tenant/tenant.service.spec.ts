@@ -28,6 +28,7 @@ function buildTenant(overrides: Partial<Tenant> = {}): Tenant {
     status: TenantStatus.PROVISIONING,
     settings: { timezone: 'America/Bogota', currency: 'COP' },
     contactEmail: 'admin@isptest.co',
+    adminEmail: null,
     maxSubscribers: 100,
     // Campos de datos de empresa (nullable)
     legalName: null,
@@ -230,6 +231,7 @@ describe('TenantService', () => {
       name: 'ISP Test Colombia',
       slug: 'isp-test',
       contactEmail: 'admin@isptest.co',
+      adminEmail: 'admin@isptest.co',
       maxSubscribers: 100,
     };
 
@@ -265,6 +267,7 @@ describe('TenantService', () => {
         name: 'ISP Test Colombia',
         slug: 'isp-test',
         contactEmail: 'admin@isptest.co',
+        adminEmail: 'admin@isptest.co',
       };
       await service.create(dtoSinSettings);
 

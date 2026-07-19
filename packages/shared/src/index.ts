@@ -43,6 +43,9 @@ export * from './dto/pagination.dto';
 export * from './constants/queue-names';
 export * from './constants/search-job-names';
 
+// Contratos de payload entre procesos (API productor / Worker consumidor)
+export * from './contracts/queue-payloads';
+
 // Operations
 export * from './operations/task-type-to-wfm-work-type';
 

@@ -11,16 +11,15 @@ import {
   isValidSchemaName,
 } from '@iwana/db';
 import { TENANT_PROVISIONING_QUEUE } from '@iwana/shared';
+import type { ProvisioningJobPayload } from '@iwana/shared';
 import { TenantSeedService } from '../services/tenant-seed.service';
 
 /**
  * Payload del job de provisioning (debe coincidir con la definicion en api).
  */
-interface ProvisioningJobPayload {
-  tenantId: string;
-  schemaName: string;
-  tenantSlug: string;
-}
+// Importado de @iwana/shared: la declaración local duplicaba la del API sin
+// vínculo de compilación, de modo que un campo añadido en un lado y olvidado
+// en el otro llegaba como `undefined` en ejecución.
 
 /**
  * Processor BullMQ para el provisioning de schemas de tenant.
@@ -80,7 +79,7 @@ export class TenantProvisioningProcessor extends WorkerHost {
    * Procesa un job de provisioning de schema de tenant.
    */
   async process(job: Job<ProvisioningJobPayload>): Promise<void> {
-    const { tenantId, schemaName, tenantSlug } = job.data;
+    const { tenantId, schemaName, tenantSlug, adminEmail } = job.data;
 
     this.logger.log(
       `[provisioning] Iniciando provisioning de schema "${schemaName}" para tenant ${tenantSlug} (${tenantId})`,
@@ -171,6 +170,7 @@ export class TenantProvisioningProcessor extends WorkerHost {
         tenantId,
         tenantSlug,
         schemaName,
+        adminEmail,
       });
 
       this.logger.log(`[provisioning] Seed inicial del ADMIN completado para tenant ${tenantSlug}`);

@@ -135,6 +135,14 @@ const MEDIA_ASSET_RESPONSE_EXAMPLE = {
  * HLD-MOD01-ARQUITECTURA-v1.0 Seccion 2, Seccion 4
  * HLD-MOD02-DASHBOARD-EMPRESA-v1.0 §3.2 (contratos self-service)
  */
+/**
+ * Email con el que se sembraba el ADMIN de **todas** las empresas antes de que
+ * `adminEmail` fuese un campo del alta. Solo se usa como respaldo al reintentar
+ * el provisioning de un tenant anterior al campo, para que conserve su email
+ * original en vez de estrenar uno distinto.
+ */
+const LEGACY_SEED_ADMIN_EMAIL = 'admin@iwana.co';
+
 @Controller('tenants')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiTags('tenants')
@@ -704,11 +712,15 @@ export class TenantController {
   async create(@Body() dto: CreateTenantDto): Promise<{ data: TenantResponseDto }> {
     const tenant = await this.tenantService.create(dto);
 
-    // Encolar provisioning del schema PostgreSQL (BullMQ worker)
+    // Encolar provisioning del schema PostgreSQL (BullMQ worker).
+    // `adminEmail` viaja en el payload; la credencial NO — el seed crea el
+    // ADMIN bloqueado y la contraseña se emite después con
+    // regenerate-admin-credentials, que la muestra una sola vez.
     await this.provisioningService.enqueue({
       tenantId: tenant.id,
       schemaName: tenant.schemaName,
       tenantSlug: tenant.slug,
+      adminEmail: dto.adminEmail,
     });
 
     return { data: tenant };
@@ -963,40 +975,21 @@ export class TenantController {
       tenant.id,
       tenant.schemaName,
       tenant.slug,
+      // Los tenants anteriores al campo `adminEmail` no lo tienen: se sembraron
+      // con la constante, así que reintentar conserva su email original.
+      tenant.adminEmail ?? LEGACY_SEED_ADMIN_EMAIL,
     );
     return { data: updatedTenant };
   }
 
-  /**
-   * POST /api/v1/tenants/:id/bootstrap-admin-credentials
-   * Expone el acceso bootstrap fijo del ADMIN inicial solo mientras siga vigente.
-   */
-  @Post(':id/bootstrap-admin-credentials')
-  @Roles(PlatformRole.SYSTEM_ADMIN)
-  // La respuesta lleva la contraseña temporal en claro. El saneado del
-  // interceptor ya la elimina, pero un endpoint que devuelve un secreto no
-  // debe depender de una sola capa: su valor de auditoría no compensa el riesgo.
-  @SkipAudit()
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Consultar acceso inicial fijo del ADMIN bootstrap del tenant' })
-  @ApiResponse({ status: 200, description: 'Acceso inicial vigente.' })
-  @ApiResponse({ status: 409, description: 'El acceso inicial ya no está disponible.' })
-  async getBootstrapAdminCredentials(@Param('id', ParseUUIDPipe) id: string): Promise<{
-    data: {
-      message: string;
-      adminEmail: string;
-      temporaryPassword: string;
-      expiresAt: string;
-    };
-  }> {
-    const tenant = await this.tenantService.findOne(id);
-    const credentials = await this.authService.getBootstrapTenantAdminCredentials({
-      tenantId: tenant.id,
-      schemaName: tenant.schemaName,
-    });
-
-    return { data: credentials };
-  }
+  // `POST /tenants/:id/bootstrap-admin-credentials` se eliminó.
+  //
+  // Consultaba una contraseña fija compartida por todas las empresas del
+  // despliegue, re-derivada de `TENANT_INITIAL_ADMIN_PASSWORD`. Con el ADMIN
+  // sembrado con un secreto aleatorio que nadie conoce, no queda nada que
+  // consultar: la credencial se **emite** con
+  // `POST /tenants/:id/regenerate-admin-credentials`, que la genera contra la
+  // base y la muestra una sola vez.
 
   /**
    * POST /api/v1/tenants/:id/regenerate-admin-credentials

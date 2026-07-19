@@ -228,6 +228,7 @@ export class TenantService {
       slug: dto.slug,
       schemaName,
       contactEmail: dto.contactEmail,
+      adminEmail: dto.adminEmail,
       maxSubscribers: dto.maxSubscribers ?? null,
       settings: validatedSettings,
       status: TenantStatus.PROVISIONING, // El worker lo activa a ACTIVE post-provisioning
@@ -1500,6 +1501,7 @@ export class TenantService {
     dto.schemaName = tenant.schemaName;
     dto.status = tenant.status;
     dto.contactEmail = tenant.contactEmail;
+    dto.adminEmail = tenant.adminEmail ?? null;
     dto.maxSubscribers = tenant.maxSubscribers;
     dto.settings = tenant.settings;
     // Datos legales

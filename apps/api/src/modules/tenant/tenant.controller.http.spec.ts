@@ -463,6 +463,8 @@ describe('TenantController HTTP', () => {
       '44444444-4444-4444-8444-444444444444',
       'tenant_isp_test',
       'isp-test',
+      // Tenant anterior al campo `adminEmail`: conserva el email del seed.
+      'admin@iwana.co',
     );
     expect(response.body.data.status).toBe('PROVISIONING');
   });

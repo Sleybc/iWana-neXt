@@ -205,7 +205,6 @@ describe('AuthService', () => {
             get: jest.fn().mockImplementation((key: string, def?: unknown) => {
               const map: Record<string, unknown> = {
                 APP_NAME: 'iWana Test',
-                TENANT_INITIAL_ADMIN_PASSWORD: 'InitAdmin!2026',
               };
               return map[key] ?? def;
             }),
@@ -696,55 +695,6 @@ describe('AuthService', () => {
         adminEmail: expect.any(String),
         expiresAt: expect.any(String),
       });
-    });
-  });
-
-  describe('getBootstrapTenantAdminCredentials()', () => {
-    it('retorna el acceso fijo inicial mientras el admin siga en primer ingreso', async () => {
-      const adminUser = buildUser({
-        role: UserRole.ADMIN,
-        emailHash: 'admin-hash-1',
-        email: 'admin@iwana.co',
-        passwordResetRequired: true,
-        passwordResetExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
-      });
-
-      setupRunInTenantSchema({
-        findOne: jest.fn().mockResolvedValue(adminUser),
-      });
-
-      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
-
-      const result = await service.getBootstrapTenantAdminCredentials({
-        tenantId: 'tenant-uuid-1',
-        schemaName: 'tenant_test',
-      });
-
-      expect(result.adminEmail).toBe('admin@iwana.co');
-      expect(result.temporaryPassword).toBe('InitAdmin!2026');
-    });
-
-    it('rechaza consultar el acceso fijo si el admin ya rotó o regeneró la contraseña', async () => {
-      const adminUser = buildUser({
-        role: UserRole.ADMIN,
-        emailHash: 'admin-hash-1',
-        email: 'admin@iwana.co',
-        passwordResetRequired: true,
-        passwordResetExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
-      });
-
-      setupRunInTenantSchema({
-        findOne: jest.fn().mockResolvedValue(adminUser),
-      });
-
-      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
-
-      await expect(
-        service.getBootstrapTenantAdminCredentials({
-          tenantId: 'tenant-uuid-1',
-          schemaName: 'tenant_test',
-        }),
-      ).rejects.toThrow(ConflictException);
     });
   });
 

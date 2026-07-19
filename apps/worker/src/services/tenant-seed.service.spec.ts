@@ -3,7 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { User, runInTenantSchema } from '@iwana/db';
 import { UserRole, UserStatus } from '@iwana/shared';
-import { INITIAL_TENANT_ADMIN_EMAIL, TenantSeedService } from './tenant-seed.service';
+import { TenantSeedService } from './tenant-seed.service';
+
+/** Email del ADMIN indicado al crear la empresa: ya no es una constante del seed. */
+const SEED_ADMIN_EMAIL = 'admin@isptest.co';
 
 jest.mock('bcryptjs', () => ({
   hash: jest.fn(),
@@ -25,10 +28,6 @@ describe('TenantSeedService', () => {
     getOrThrow: jest.fn((key: string) => {
       if (key === 'MFA_ENCRYPTION_KEY') {
         return '0'.repeat(64);
-      }
-
-      if (key === 'TENANT_INITIAL_ADMIN_PASSWORD') {
-        return 'InicioAdmin!2026';
       }
 
       throw new Error(`Unexpected config key: ${key}`);
@@ -63,6 +62,7 @@ describe('TenantSeedService', () => {
       tenantId: 'tenant-uuid-1',
       tenantSlug: 'isp-test',
       schemaName: 'tenant_isp_test',
+      adminEmail: SEED_ADMIN_EMAIL,
     });
 
     expect(result).toEqual({ created: true });
@@ -75,7 +75,23 @@ describe('TenantSeedService', () => {
       where: { emailHash: expect.any(String) },
       withDeleted: true,
     });
-    expect(bcrypt.hash).toHaveBeenCalledWith('InicioAdmin!2026', 12);
+    // El ADMIN nace bloqueado: la contraseña que se hashea es aleatoria y nadie
+    // la conoce. Antes era la misma para todas las empresas del despliegue.
+    const [hashedSecret, rounds] = (bcrypt.hash as jest.Mock).mock.calls[0] as [string, number];
+    expect(rounds).toBe(12);
+    expect(hashedSecret).toMatch(/^[0-9a-f]{64}$/);
+    expect(hashedSecret).not.toBe('InicioAdmin!2026');
+
+    // Y es distinta en cada invocación: no se deriva de nada compartido.
+    (bcrypt.hash as jest.Mock).mockClear();
+    await service.seedInitialAdmin({
+      tenantId: 'tenant-uuid-2',
+      tenantSlug: 'otro-isp',
+      schemaName: 'tenant_otro_isp',
+      adminEmail: 'admin@otroisp.co',
+    });
+    const [segundoSecreto] = (bcrypt.hash as jest.Mock).mock.calls[0] as [string];
+    expect(segundoSecreto).not.toBe(hashedSecret);
     expect(manager.create).toHaveBeenCalledWith(
       User,
       expect.objectContaining({
@@ -92,7 +108,7 @@ describe('TenantSeedService', () => {
 
     const [, createdUser] = manager.create.mock.calls[0] as [unknown, { emailHash: string }];
     expect(createdUser.emailHash).toBe(
-      require('crypto').createHash('sha256').update(INITIAL_TENANT_ADMIN_EMAIL).digest('hex'),
+      require('crypto').createHash('sha256').update(SEED_ADMIN_EMAIL).digest('hex'),
     );
   });
 
@@ -115,32 +131,13 @@ describe('TenantSeedService', () => {
       tenantId: 'tenant-uuid-1',
       tenantSlug: 'isp-test',
       schemaName: 'tenant_isp_test',
+      adminEmail: SEED_ADMIN_EMAIL,
     });
 
     expect(result).toEqual({ created: false });
     expect(bcrypt.hash).not.toHaveBeenCalled();
     expect(manager.create).not.toHaveBeenCalled();
     expect(manager.save).not.toHaveBeenCalled();
-  });
-
-  it('falla temprano si la contraseña fija inicial no cumple la política mínima', () => {
-    const invalidConfigService = {
-      getOrThrow: jest.fn((key: string) => {
-        if (key === 'MFA_ENCRYPTION_KEY') {
-          return '0'.repeat(64);
-        }
-
-        if (key === 'TENANT_INITIAL_ADMIN_PASSWORD') {
-          return 'debilenv';
-        }
-
-        throw new Error(`Unexpected config key: ${key}`);
-      }),
-    } as unknown as ConfigService;
-
-    expect(() => new TenantSeedService({} as DataSource, invalidConfigService)).toThrow(
-      'TENANT_INITIAL_ADMIN_PASSWORD no cumple la política mínima',
-    );
   });
 
   describe('seedTaxPresets', () => {

@@ -60,6 +60,22 @@ export class Tenant {
   @Column({ name: 'contact_email', length: 255 })
   contactEmail: string;
 
+  /**
+   * Email del administrador inicial, indicado al crear la empresa.
+   *
+   * Se persiste —en vez de quedarse en el DTO— porque el reintento de
+   * provisioning debe poder reconstruir el payload del job sin volver a
+   * pedírselo al operador, y porque saber quién administra cada empresa es
+   * metadato legítimo del tenant.
+   *
+   * Nullable por compatibilidad con los tenants anteriores a este campo, que
+   * se sembraron con la constante `admin@iwana.co`.
+   */
+  // `type` explícito como el resto de columnas nullable: la reflexión de
+  // TypeORM ve `Object` para `string | null` y no puede inferirlo.
+  @Column({ name: 'admin_email', length: 255, nullable: true, type: 'varchar' })
+  adminEmail: string | null;
+
   /** Limite de suscriptores contratado. null = sin limite; 0 = bloqueado */
   @Column({ name: 'max_subscribers', nullable: true, type: 'integer' })
   maxSubscribers: number | null;

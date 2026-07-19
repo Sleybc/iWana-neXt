@@ -133,30 +133,41 @@ describe('TenantController', () => {
       'tenant-uuid-1',
       'tenant_isp_test',
       'isp-test',
+      // Este tenant es anterior al campo `adminEmail`: al reintentar conserva
+      // el email con el que se sembró en su día, no estrena uno distinto.
+      'admin@iwana.co',
     );
     expect(result.data.status).toBe('PROVISIONING');
   });
 
-  it('consulta el acceso bootstrap fijo del admin inicial', async () => {
+  it('reintenta con el adminEmail del tenant cuando lo tiene', async () => {
     tenantService.findOne.mockResolvedValue({
-      id: 'tenant-uuid-1',
-      schemaName: 'tenant_isp_test',
+      id: 'tenant-uuid-2',
+      slug: 'nuevo-isp',
+      schemaName: 'tenant_nuevo_isp',
+      status: 'PROVISIONING_FAILED',
+      adminEmail: 'admin@nuevoisp.co',
     });
-    authService.getBootstrapTenantAdminCredentials.mockResolvedValue({
-      message: 'Acceso inicial fijo vigente para el ADMIN bootstrap del tenant.',
-      adminEmail: 'admin@iwana.co',
-      temporaryPassword: 'InitAdmin!2026',
-      expiresAt: '2026-03-20T00:00:00.000Z',
-    });
+    provisioningService.retryProvisioning.mockResolvedValue({ status: 'PROVISIONING' });
 
-    const result = await controller.getBootstrapAdminCredentials('tenant-uuid-1');
+    await controller.retryProvisioning('tenant-uuid-2');
 
-    expect(tenantService.findOne).toHaveBeenCalledWith('tenant-uuid-1');
-    expect(authService.getBootstrapTenantAdminCredentials).toHaveBeenCalledWith({
-      tenantId: 'tenant-uuid-1',
-      schemaName: 'tenant_isp_test',
-    });
-    expect(result.data.adminEmail).toBe('admin@iwana.co');
+    expect(provisioningService.retryProvisioning).toHaveBeenCalledWith(
+      'tenant-uuid-2',
+      'tenant_nuevo_isp',
+      'nuevo-isp',
+      'admin@nuevoisp.co',
+    );
+  });
+
+  // El test del endpoint `bootstrap-admin-credentials` se retiró con el propio
+  // endpoint: consultaba una contraseña fija compartida por todas las empresas.
+  // La emisión de credenciales la cubre el test de regeneración de abajo, que
+  // ahora es el único camino.
+  it('no expone ya el endpoint de acceso bootstrap fijo', () => {
+    expect(
+      (controller as unknown as Record<string, unknown>)['getBootstrapAdminCredentials'],
+    ).toBeUndefined();
   });
 
   it('usa el tenant y delega la regeneracion segura en AuthService', async () => {

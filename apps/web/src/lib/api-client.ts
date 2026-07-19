@@ -558,6 +558,8 @@ export interface TenantListItem {
     | 'INACTIVE'
     | 'MARKED_FOR_DELETION';
   contactEmail: string;
+  /** NULL en tenants anteriores al campo, sembrados con la constante. */
+  adminEmail?: string | null;
   maxSubscribers: number | null;
   settings: Record<string, unknown>;
   // Datos legales
@@ -675,10 +677,10 @@ export const tenantApi = {
       body: JSON.stringify(data),
     }),
 
-  getBootstrapCredentials: (id: string) =>
-    request<AdminCredentials>(`/tenants/${encodeURIComponent(id)}/bootstrap-admin-credentials`, {
-      method: 'POST',
-    }),
+  // `getBootstrapCredentials` se eliminó junto con su endpoint: consultaba una
+  // contraseña fija compartida por todas las empresas del despliegue. La
+  // credencial se emite ahora con `regenerateCredentials`, que la genera contra
+  // la base y la muestra una sola vez.
 
   getSettings: (id: string) =>
     request<TenantSettings>(`/tenants/${encodeURIComponent(id)}/settings`),
@@ -767,6 +769,8 @@ export interface CreateTenantPayload {
   name: string;
   slug: string;
   contactEmail: string;
+  /** Email con el que iniciará sesión el ADMIN de la empresa. */
+  adminEmail: string;
   maxSubscribers?: number | null;
   settings?: {
     timezone?: string;
@@ -1035,12 +1039,7 @@ export interface PlatformAuditLogEntry {
 }
 
 export const platformAuditApi = {
-  list: (params?: {
-    cursor?: string;
-    limit?: number;
-    action?: string;
-    entityType?: string;
-  }) => {
+  list: (params?: { cursor?: string; limit?: number; action?: string; entityType?: string }) => {
     const searchParams = new URLSearchParams();
     if (params?.limit !== undefined) searchParams.set('limit', String(params.limit));
     if (params?.cursor) searchParams.set('cursor', params.cursor);
