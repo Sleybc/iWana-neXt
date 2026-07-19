@@ -1,6 +1,8 @@
 /** @type {import('jest').Config} */
 module.exports = {
-  moduleFileExtensions: ['js', 'json', 'ts'],
+  // 'ts' primero: un .js compilado que quede en src/ NO debe eclipsar al fuente
+  // (ver nota en apps/api/jest.config.js).
+  moduleFileExtensions: ['ts', 'js', 'json'],
   rootDir: 'src',
   testRegex: '.*\.spec\.ts$',
   transform: {

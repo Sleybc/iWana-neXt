@@ -1,6 +1,10 @@
 /** @type {import('jest').Config} */
 module.exports = {
-  moduleFileExtensions: ['js', 'json', 'ts'],
+  // 'ts' primero: un .js compilado que quede en src/ NO debe eclipsar al fuente.
+  // Con 'js' antes, un artefacto stale se resolvía en lugar del .ts y los tests
+  // validaban código viejo en silencio (los artefactos están en .gitignore, así
+  // que ni siquiera aparecían en git status).
+  moduleFileExtensions: ['ts', 'js', 'json'],
   rootDir: 'src',
   testRegex: '.*\\.spec\\.ts$',
   transform: {

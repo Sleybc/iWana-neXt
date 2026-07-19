@@ -1,5 +1,57 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
+/**
+ * Migración 000: schema inicial del tenant.
+ *
+ * `up()` crea estructura, no transforma datos: seis tablas con sus índices,
+ * PK/UNIQUE inline, y sobre `audit_logs` además RLS + política `audit_logs_no_mutate`
+ * + REVOKE de DELETE/UPDATE a PUBLIC. No crea tipos ENUM, ni funciones, ni triggers,
+ * ni el propio schema (eso lo hace el provisioning antes de invocar las migraciones).
+ *
+ * Reversibilidad: al no haber transformación de datos no hay nada que respaldar —
+ * revertir es soltar la estructura. `down()` elimina exactamente esas seis tablas en
+ * orden inverso de creación. Índices, constraints, la política RLS y los privilegios
+ * revocados son dependientes de sus tablas y desaparecen con el DROP TABLE: no
+ * requieren sentencias propias.
+ *
+ * Ninguna migración posterior declara una FK contra estas seis tablas (verificado
+ * sobre las 74 migraciones tenant), así que el orden inverso basta y no hace falta
+ * CASCADE. No se usa CASCADE deliberadamente: si en el futuro apareciera una
+ * dependencia, queremos que el DROP falle de forma ruidosa en vez de arrastrar en
+ * silencio objetos de otra migración.
+ *
+ * Ámbito: todas las sentencias van sin calificar; el schema del tenant lo fija el
+ * runner vía `search_path` por conexión. Nunca toca `public` ni otro schema.
+ *
+ * Guarda de seguridad de `down()`: ver el bloque de documentación sobre
+ * `DESTRUCTIVE_DOWN_ENV_VAR`, más abajo.
+ */
+
+/** Tablas creadas por `up()`, en orden inverso de creación (orden de DROP). */
+const CREATED_TABLES = [
+  'plan_catalog_items',
+  'coverage_zones',
+  'commercial_nodes',
+  'audit_logs',
+  'refresh_tokens',
+  'users',
+] as const;
+
+/**
+ * Interruptor explícito para permitir que `down()` elimine tablas que contienen
+ * filas de negocio.
+ *
+ * Motivo: `up()` crea tablas *vacías*. Revertir `up()` es, con exactitud, volver a
+ * un schema sin esas tablas vacías. Si a estas alturas contienen filas, esas filas
+ * no las creó `up()`: las creó la operación del tenant. Borrarlas no es revertir
+ * esta migración, es destruir el tenant — y para eso el repo ya tiene un camino
+ * gobernado (ADR-033: `MARKED_FOR_DELETION` + retención + `TenantSchemaPurgeProcessor`,
+ * y `TenantProvisioningProcessor.rollbackProvisioning()` para un alta fallida).
+ * La guarda no obstaculiza la reversibilidad: la delimita, y deja la puerta abierta
+ * con una declaración de intención imposible de teclear por accidente.
+ */
+const DESTRUCTIVE_DOWN_ENV_VAR = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';
+
 export class InitialTenantSchema1700000000000 implements MigrationInterface {
   name = 'InitialTenantSchema1700000000000';
 
@@ -171,8 +223,66 @@ export class InitialTenantSchema1700000000000 implements MigrationInterface {
   }
 
   async down(queryRunner: QueryRunner): Promise<void> {
-    throw new Error(
-      'down() not supported for initial schema migration. Use provisioning rollback.',
-    );
+    if (!this.destructiveDownEnabled()) {
+      const populated = await this.countRowsPerExistingTable(queryRunner);
+
+      if (populated.length > 0) {
+        const detail = populated.map((t) => `${t.table}=${t.rows}`).join(', ');
+
+        throw new Error(
+          `Rollback de InitialTenantSchema bloqueado: el schema contiene datos de negocio (${detail}). ` +
+            `up() creó estas tablas vacías, de modo que eliminarlas ahora no revierte la migración: ` +
+            `destruye información del tenant que up() nunca creó. ` +
+            `Para dar de baja un tenant use el ciclo de vida gobernado (ADR-033): marcarlo como ` +
+            `MARKED_FOR_DELETION y dejar que TenantSchemaPurgeProcessor purgue el schema vencida la retención; ` +
+            `para un alta fallida, el rollback de provisioning ya elimina el schema completo. ` +
+            `Si aun así necesita revertir esta migración sobre este schema (típicamente tras haber revertido ` +
+            `antes las migraciones posteriores), exporte ${DESTRUCTIVE_DOWN_ENV_VAR}=true de forma explícita. ` +
+            `Es un procedimiento operativo: coordinar con PLAT-OPS antes de continuar.`,
+        );
+      }
+    }
+
+    // Orden inverso de creación. Sin CASCADE: si apareciera una dependencia futura
+    // preferimos un fallo ruidoso a un arrastre silencioso.
+    // IF EXISTS permite completar un down() aplicado a medias.
+    for (const table of CREATED_TABLES) {
+      await queryRunner.query(`DROP TABLE IF EXISTS ${table}`);
+    }
+  }
+
+  private destructiveDownEnabled(): boolean {
+    return process.env[DESTRUCTIVE_DOWN_ENV_VAR] === 'true';
+  }
+
+  /**
+   * Cuenta filas por tabla, saltando las que ya no existen para que un `down()`
+   * parcialmente aplicado se pueda completar en lugar de romper con "undefined table".
+   */
+  private async countRowsPerExistingTable(
+    queryRunner: QueryRunner,
+  ): Promise<Array<{ table: string; rows: number }>> {
+    const populated: Array<{ table: string; rows: number }> = [];
+
+    for (const table of CREATED_TABLES) {
+      const exists = (await queryRunner.query(`SELECT to_regclass($1) IS NOT NULL AS present`, [
+        table,
+      ])) as Array<{ present: boolean }>;
+
+      if (exists[0]?.present !== true) {
+        continue;
+      }
+
+      const counted = (await queryRunner.query(
+        `SELECT COUNT(*)::int AS total FROM ${table}`,
+      )) as Array<{ total: number }>;
+      const rows = counted[0]?.total ?? 0;
+
+      if (rows > 0) {
+        populated.push({ table, rows });
+      }
+    }
+
+    return populated;
   }
 }
