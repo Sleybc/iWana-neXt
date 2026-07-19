@@ -11,5 +11,11 @@
     }
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  // Los specs se excluyen del build: nunca deben emitirse a dist/, y varios
+  // importan migraciones de packages/database por ruta relativa, fuera de
+  // rootDir. Incluirlos rompía `nest start --watch` con TS6059 mientras
+  // `pnpm typecheck` pasaba en verde (usa tsconfig.typecheck.json, que
+  // ensancha rootDir) — CI verde con el dev local roto.
+  // El typecheck de los specs sigue cubierto por tsconfig.typecheck.json.
+  "exclude": ["node_modules", "dist", "**/*.spec.ts"]
 }

@@ -254,7 +254,11 @@ describe('CLI de revert — la ayuda expone el requisito del flag (encargo de AD
 const TENANT_MIGRATION_FILES: Array<{ file: string; source: string }> = (() => {
   const { readdirSync } = require('node:fs') as typeof import('node:fs');
 
+  // Excluye .d.ts: un build que emita en src/ deja declaraciones junto al
+  // fuente, y `.d.ts` también termina en `.ts`. Como ordenan antes
+  // alfabéticamente, el .find() de abajo elegiría la declaración —que no lleva
+  // el cuerpo del método— y el inventario saldría vacío en silencio.
   return readdirSync(MIGRATIONS_DIR)
-    .filter((f) => /^\d{3}_.*\.ts$/.test(f))
+    .filter((f) => /^\d{3}_.*\.ts$/.test(f) && !f.endsWith('.d.ts'))
     .map((file) => ({ file, source: readFileSync(resolve(MIGRATIONS_DIR, file), 'utf8') }));
 })();

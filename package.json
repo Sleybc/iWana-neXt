@@ -26,7 +26,8 @@
     "test:e2e:all": "pnpm test:e2e && pnpm test:e2e:portal",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean && node scripts/clean-paths.mjs node_modules .turbo test-results apps/portal/test-results apps/api/coverage",
-    "prepare": "husky"
+    "prepare": "husky",
+    "clean:src-artifacts": "node scripts/clean-src-artifacts.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.1",

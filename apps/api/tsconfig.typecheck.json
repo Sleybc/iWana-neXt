@@ -11,6 +11,8 @@
       "@iwana/config": ["../../packages/config/index.ts"]
     }
   },
+  // Reafirma el exclude sin `**/*.spec.ts`: el build lo excluye, el typecheck no.
+  "exclude": ["node_modules", "dist"],
   "include": [
     "src/**/*",
     "../../packages/database/src/**/*",
