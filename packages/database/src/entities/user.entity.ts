@@ -96,13 +96,23 @@ export class User {
   @Column({ name: 'password_reset_required', default: false })
   passwordResetRequired: boolean;
 
-  /** Token de reset cifrado. Null cuando no hay reset pendiente */
+  /** Token de reset (forgot-password). Null cuando no hay reset pendiente */
   @Column({ name: 'password_reset_token', type: 'varchar', length: 512, nullable: true })
   passwordResetToken: string | null;
 
-  /** Expiracion del token de reset. Tokens sin fecha valida se consideran expirados */
+  /**
+   * Expiracion de la credencial temporal (passwordResetRequired).
+   * No usar para el TTL del token forgot-password (SEC-03).
+   */
   @Column({ name: 'password_reset_expires_at', type: 'timestamptz', nullable: true })
   passwordResetExpiresAt: Date | null;
+
+  /**
+   * Expiracion del token forgot-password (TTL corto, tipicamente 1 h).
+   * Independiente de passwordResetExpiresAt (credencial temporal 24 h).
+   */
+  @Column({ name: 'password_reset_token_expires_at', type: 'timestamptz', nullable: true })
+  passwordResetTokenExpiresAt: Date | null;
 
   /**
    * Contador de intentos fallidos de login.

@@ -1,4 +1,9 @@
 services:
+  # Postgres local. POSTGRES_USER (= DB_USER por defecto: iwana) es el bootstrap
+  # superuser del volumen. SEC-04: roles iwana_app / iwana_migrator se crean en
+  # el primer init (docker/postgres/init). pnpm dev sigue usando DB_USER=iwana
+  # hasta opt-in — ver docs/runbooks/RUNBOOK-DB-LEAST-PRIVILEGE-v1.0.md.
+  # Staging/prod: NUNCA usar el superuser como DB_USER de API/worker.
   postgres:
     image: postgres:18-alpine
     container_name: iwana_postgres_dev
@@ -6,10 +11,17 @@ services:
       POSTGRES_USER: ${DB_USER:-iwana}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
       POSTGRES_DB: ${DB_NAME:-dbiw}
+      # Roles least-privilege (solo primer init del volumen; passwords lab = DB_PASSWORD)
+      DB_APP_USER: ${DB_APP_USER:-iwana_app}
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:-${DB_PASSWORD}}
+      DB_MIGRATOR_USER: ${DB_MIGRATOR_USER:-iwana_migrator}
+      DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:-${DB_PASSWORD}}
     ports:
       - '${DB_PORT:-5433}:5432'
     volumes:
       - iwana_postgres_data_dev:/var/lib/postgresql
+      # Init scripts: solo en datadir vacío. Volúmenes existentes → scripts/db/apply-least-privilege.sql
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-iwana} -d ${DB_NAME:-dbiw}']
       interval: 10s

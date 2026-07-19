@@ -19,11 +19,18 @@ jest.mock('typeorm', () => ({
   })),
 }));
 
-jest.mock('@iwana/db', () => ({
-  Tenant: class Tenant {},
-  isValidSchemaName: jest.fn().mockReturnValue(true),
-  applyTenantMigrationsInOrder: (...args: unknown[]) => mockApplyTenantMigrationsInOrder(...args),
-}));
+jest.mock('@iwana/db', () => {
+  const { resolveMigrationDbCredentials } = jest.requireActual(
+    '../../../../packages/database/src/db-credentials',
+  ) as typeof import('@iwana/db');
+
+  return {
+    Tenant: class Tenant {},
+    isValidSchemaName: jest.fn().mockReturnValue(true),
+    applyTenantMigrationsInOrder: (...args: unknown[]) => mockApplyTenantMigrationsInOrder(...args),
+    resolveMigrationDbCredentials,
+  };
+});
 
 const mockClient = {
   query: jest.fn(),

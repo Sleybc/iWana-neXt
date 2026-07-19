@@ -6,6 +6,7 @@ import { Pool } from 'pg';
 import { DataSource } from 'typeorm';
 import {
   applyTenantMigrationsInOrder,
+  resolveMigrationDbCredentials,
   TENANT_MIGRATIONS,
   Tenant,
   isValidSchemaName,
@@ -63,13 +64,15 @@ export class TenantProvisioningProcessor extends WorkerHost {
     private readonly tenantSeedService: TenantSeedService,
   ) {
     super();
-    // Pool independiente para DDL — no usa el pool de TypeORM
+    // Pool DDL: SEC-04 migrator cuando DB_MIGRATOR_USER está definido;
+    // fallback a DB_USER (compat pnpm dev). Runtime TypeORM del worker sigue en DB_USER.
+    const migrator = resolveMigrationDbCredentials();
     this.pgPool = new Pool({
       host: process.env['DB_HOST'] ?? 'localhost',
       port: parseInt(process.env['DB_PORT'] ?? '5432', 10),
       database: process.env['DB_NAME'] ?? 'iwana',
-      user: process.env['DB_USER'] ?? 'postgres',
-      password: process.env['DB_PASSWORD'] ?? '',
+      user: migrator.username,
+      password: migrator.password,
       max: 3, // Pool pequeño solo para DDL de provisioning
       idleTimeoutMillis: 30000,
     });
@@ -284,13 +287,14 @@ export class TenantProvisioningProcessor extends WorkerHost {
   private async runMigrationsForSchema(schemaName: string): Promise<void> {
     let tenantDs: DataSource | null = null;
     try {
+      const migrator = resolveMigrationDbCredentials();
       tenantDs = new DataSource({
         type: 'postgres',
         host: process.env['DB_HOST'] ?? 'localhost',
         port: parseInt(process.env['DB_PORT'] ?? '5432', 10),
         database: process.env['DB_NAME'] ?? 'iwana',
-        username: process.env['DB_USER'] ?? 'postgres',
-        password: process.env['DB_PASSWORD'] ?? '',
+        username: migrator.username,
+        password: migrator.password,
         schema: schemaName,
         name: `tenant-${schemaName}`,
         migrationsTableName: 'typeorm_migrations',

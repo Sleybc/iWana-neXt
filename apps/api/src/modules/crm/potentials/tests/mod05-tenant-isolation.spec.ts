@@ -33,7 +33,9 @@ function newService(schema: string, tenant: string): PotentialsService {
   mockTenantContextGetOrThrow.mockReturnValue({ tenantId: tenant, schemaName: schema });
   return new PotentialsService(
     {} as DataSource,
-    { getOrThrow: () => '0'.repeat(64) } as unknown as ConfigService,
+    {
+      getOrThrow: () => '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    } as unknown as ConfigService,
     { checkAvailability: jest.fn() } as unknown as CoverageReadPort,
     { getActivePlans: jest.fn(), createSnapshot: jest.fn() } as unknown as PlanCatalogReadPort,
     { log: jest.fn() } as unknown as AuditService,

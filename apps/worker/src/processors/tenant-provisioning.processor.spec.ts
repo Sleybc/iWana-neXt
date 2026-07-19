@@ -19,12 +19,19 @@ jest.mock('typeorm', () => ({
   })),
 }));
 
-jest.mock('@iwana/db', () => ({
-  Tenant: class Tenant {},
-  TENANT_MIGRATIONS: [{ name: '000_initial' }, { name: '001_next' }],
-  isValidSchemaName: jest.fn().mockReturnValue(true),
-  applyTenantMigrationsInOrder: (...args: unknown[]) => mockApplyTenantMigrationsInOrder(...args),
-}));
+jest.mock('@iwana/db', () => {
+  const { resolveMigrationDbCredentials } = jest.requireActual(
+    '../../../../packages/database/src/db-credentials',
+  ) as typeof import('@iwana/db');
+
+  return {
+    Tenant: class Tenant {},
+    TENANT_MIGRATIONS: [{ name: '000_initial' }, { name: '001_next' }],
+    isValidSchemaName: jest.fn().mockReturnValue(true),
+    applyTenantMigrationsInOrder: (...args: unknown[]) => mockApplyTenantMigrationsInOrder(...args),
+    resolveMigrationDbCredentials,
+  };
+});
 
 const mockClient = {
   query: jest.fn(),
@@ -53,8 +60,75 @@ function buildTenantRepository(contactEmail = 'admin@isptest.co') {
 }
 
 describe('TenantProvisioningProcessor', () => {
+  const envKeys = ['DB_USER', 'DB_PASSWORD', 'DB_MIGRATOR_USER', 'DB_MIGRATOR_PASSWORD'] as const;
+  const envSnapshot: Partial<Record<(typeof envKeys)[number], string | undefined>> = {};
+
+  beforeEach(() => {
+    for (const key of envKeys) {
+      envSnapshot[key] = process.env[key];
+    }
+  });
+
   afterEach(() => {
     jest.clearAllMocks();
+    for (const key of envKeys) {
+      const previous = envSnapshot[key];
+      if (previous === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = previous;
+      }
+    }
+  });
+
+  it('usa DB_USER en el pool DDL cuando DB_MIGRATOR_USER no está definido', () => {
+    delete process.env['DB_MIGRATOR_USER'];
+    delete process.env['DB_MIGRATOR_PASSWORD'];
+    process.env['DB_USER'] = 'iwana';
+    process.env['DB_PASSWORD'] = 'dev-pass';
+
+    const dataSource = {
+      getRepository: jest.fn(),
+      createQueryBuilder: jest.fn(),
+    } as unknown as DataSource;
+    const tenantSeedService = {
+      seedInitialAdmin: jest.fn(),
+      seedTaxPresets: jest.fn(),
+    } as unknown as TenantSeedService;
+
+    new TenantProvisioningProcessor(dataSource, tenantSeedService);
+
+    expect(Pool).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user: 'iwana',
+        password: 'dev-pass',
+      }),
+    );
+  });
+
+  it('usa DB_MIGRATOR_USER en el pool DDL cuando está definido', () => {
+    process.env['DB_USER'] = 'iwana_app';
+    process.env['DB_PASSWORD'] = 'app-pass';
+    process.env['DB_MIGRATOR_USER'] = 'iwana_migrator';
+    process.env['DB_MIGRATOR_PASSWORD'] = 'migrator-pass';
+
+    const dataSource = {
+      getRepository: jest.fn(),
+      createQueryBuilder: jest.fn(),
+    } as unknown as DataSource;
+    const tenantSeedService = {
+      seedInitialAdmin: jest.fn(),
+      seedTaxPresets: jest.fn(),
+    } as unknown as TenantSeedService;
+
+    new TenantProvisioningProcessor(dataSource, tenantSeedService);
+
+    expect(Pool).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user: 'iwana_migrator',
+        password: 'migrator-pass',
+      }),
+    );
   });
 
   it('crea schema, ejecuta migraciones, siembra datos iniciales y activa el tenant', async () => {

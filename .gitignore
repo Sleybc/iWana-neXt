@@ -16,6 +16,9 @@ apps/api/storage/
 .env.local
 .env.*
 .env.*.local
+# Plantilla sin secretos (SEC-02 / SEC-04)
+!.env.example
+
 
 # Secretos JWT y certificados — NUNCA versionar
 secrets/*.pem

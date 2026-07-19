@@ -72,8 +72,8 @@ jest.mock('@iwana/db', () => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Clave hex de 64 chars valida para AES-256-GCM (solo para tests — no es PII real) */
-const MOCK_KEY_HEX = '0'.repeat(64);
+/** Clave hex de test (alta entropía sintética). No es secreto de entorno ni PII. */
+const MOCK_KEY_HEX = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
 /** Contexto de tenant generico para todos los tests */
 const MOCK_TENANT_CTX = {
@@ -1214,7 +1214,7 @@ describe('UsersService', () => {
     it('lanza Error cuando el valor cifrado no tiene el formato iv:tag:ciphertext', () => {
       expect(() => {
         (service as any).decryptLegacyValue('solo-dos:partes');
-      }).toThrow('Formato de valor cifrado inválido.');
+      }).toThrow(/Formato de valor cifrado invalido/i);
     });
   });
 

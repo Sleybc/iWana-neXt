@@ -17,6 +17,11 @@ import { Subscriber } from './entities/subscriber.entity';
 import { VatTreatmentService } from './vat-treatment.service';
 import { SubscriberStatusTransitionService } from './subscriber-status-transition.service';
 import { AuditService } from '../../audit/audit.service';
+import {
+  decryptAes256Gcm,
+  encryptAes256Gcm,
+  loadAesGcmKeyPair,
+} from '../../../common/crypto/aes-gcm.util';
 import { ExpedienteRecord } from '../expedientes/entities/expediente-record.entity';
 import { Contract } from '../contracts/entities/contract.entity';
 import {
@@ -87,6 +92,7 @@ const SUBSCRIBER_SECTION_SCHEMAS = {
 @Injectable()
 export class SubscribersService {
   private readonly encryptionKey: Buffer;
+  private readonly encryptionKeyPrevious: Buffer | null;
   private readonly logger = new Logger(SubscribersService.name);
 
   constructor(
@@ -96,9 +102,9 @@ export class SubscribersService {
     private readonly statusTransitionService: SubscriberStatusTransitionService,
     private readonly auditService: AuditService,
   ) {
-    // Reutilizar la misma clave de cifrado que ExpedienteService
-    const keyHex = this.configService.getOrThrow<string>('MFA_ENCRYPTION_KEY');
-    this.encryptionKey = Buffer.from(keyHex, 'hex');
+    const keys = loadAesGcmKeyPair(this.configService);
+    this.encryptionKey = keys.activeKey;
+    this.encryptionKeyPrevious = keys.previousKey;
   }
 
   // ── CRUD ──
@@ -921,26 +927,11 @@ export class SubscribersService {
   // ── Cifrado PII (mismo patrón que ExpedienteService) ──
 
   private encryptValue(plaintext: string): string {
-    const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
-    const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-    const authTag = cipher.getAuthTag();
-    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+    return encryptAes256Gcm(plaintext, this.encryptionKey);
   }
 
   private decryptValue(encrypted: string): string {
-    const parts = encrypted.split(':');
-    if (parts.length !== 3) {
-      throw new Error('Formato de valor cifrado inválido.');
-    }
-
-    const iv = Buffer.from(parts[0]!, 'hex');
-    const authTag = Buffer.from(parts[1]!, 'hex');
-    const ciphertext = Buffer.from(parts[2]!, 'hex');
-    const decipher = crypto.createDecipheriv('aes-256-gcm', this.encryptionKey, iv);
-    decipher.setAuthTag(authTag);
-
-    return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+    return decryptAes256Gcm(encrypted, this.encryptionKey, this.encryptionKeyPrevious);
   }
 
   /**

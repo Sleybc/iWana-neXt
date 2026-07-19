@@ -6,6 +6,7 @@ import { PermissionsGuard } from '../access-control/guards/permissions.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { SkipAudit } from '../audit/decorators/skip-audit.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { UsersService } from './users.service';
 import {
@@ -25,6 +26,8 @@ export class UsersBulkController {
   @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.USERS_MANAGE)
   @HttpCode(HttpStatus.CREATED)
+  // Cada create() ya audita; el cuerpo bulk no debe ir al interceptor (SWEEP-01/05).
+  @SkipAudit()
   @ApiOperation({ summary: 'Crear usuarios en lote' })
   @ApiResponse({ status: 201, description: 'Procesamiento completado (éxito parcial posible).' })
   @ApiResponse({ status: 400, description: 'Payload inválido o sin usuarios.' })

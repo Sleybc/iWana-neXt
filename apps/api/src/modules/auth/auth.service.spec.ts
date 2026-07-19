@@ -117,6 +117,7 @@ function buildUser(overrides: Partial<User> = {}): User {
     lastLoginAt: null,
     passwordResetToken: null,
     passwordResetExpiresAt: null,
+    passwordResetTokenExpiresAt: null,
     passwordResetRequired: false,
     createdAt: new Date('2025-01-01'),
     updatedAt: new Date('2025-01-01'),
@@ -210,7 +211,10 @@ describe('AuthService', () => {
             }),
             // getOrThrow necesario para derivar la clave AES-256-GCM en el constructor de AuthService
             getOrThrow: jest.fn().mockImplementation((key: string) => {
-              if (key === 'MFA_ENCRYPTION_KEY') return 'a'.repeat(64); // 32 bytes hex para tests
+              // Clave de test con entropía no nula (no es secreto real)
+              if (key === 'MFA_ENCRYPTION_KEY') {
+                return '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+              }
               throw new Error(`ConfigService.getOrThrow: clave no mapeada en test: ${key}`);
             }),
           },
@@ -642,6 +646,7 @@ describe('AuthService', () => {
         expect.objectContaining({
           passwordResetRequired: true,
           passwordResetToken: null,
+          passwordResetTokenExpiresAt: null,
           passwordResetExpiresAt: expect.any(Date),
           failedLoginAttempts: 0,
           lockedUntil: null,
@@ -1032,15 +1037,21 @@ describe('AuthService', () => {
 
       await service.forgotPassword({ email: 'test@example.com' });
 
-      // Debe haber actualizado al usuario con el token de reset
+      // Debe haber actualizado al usuario con el token de reset (TTL propio, SEC-03)
       expect(manager.update).toHaveBeenCalledWith(
         User,
         user.id,
         expect.objectContaining({
           passwordResetToken: expect.any(String),
-          passwordResetExpiresAt: expect.any(Date),
+          passwordResetTokenExpiresAt: expect.any(Date),
         }),
       );
+
+      const updatePayload = (manager.update as jest.Mock).mock.calls[0]![2] as Record<
+        string,
+        unknown
+      >;
+      expect(updatePayload).not.toHaveProperty('passwordResetExpiresAt');
 
       // Debe haber llamado a sendMail (fire-and-forget)
       // Nota: el void no garantiza espera, pero el mock se registra igualmente
@@ -1049,6 +1060,37 @@ describe('AuthService', () => {
           to: 'test@example.com',
         }),
       );
+    });
+
+    it('SEC-03: no pisa passwordResetExpiresAt de credencial temporal (+20h)', async () => {
+      const tempExpiresAt = new Date(Date.now() + 20 * 60 * 60 * 1000);
+      const user = buildUser({
+        passwordResetRequired: true,
+        passwordResetExpiresAt: tempExpiresAt,
+      });
+
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      });
+
+      const before = Date.now();
+      await service.forgotPassword({ email: 'test@example.com' });
+      const after = Date.now();
+
+      const updatePayload = (manager.update as jest.Mock).mock.calls[0]![2] as {
+        passwordResetToken: string;
+        passwordResetTokenExpiresAt: Date;
+        passwordResetExpiresAt?: Date;
+      };
+
+      expect(updatePayload.passwordResetExpiresAt).toBeUndefined();
+      expect(user.passwordResetExpiresAt).toEqual(tempExpiresAt);
+
+      const tokenTtlMs = updatePayload.passwordResetTokenExpiresAt.getTime() - before;
+      // TTL ~1h (PASSWORD_RESET_TOKEN_TTL_MS), no 24h de credencial temporal
+      expect(tokenTtlMs).toBeGreaterThanOrEqual(55 * 60 * 1000);
+      expect(tokenTtlMs).toBeLessThanOrEqual(65 * 60 * 1000 + (after - before));
     });
   });
 
@@ -1069,7 +1111,7 @@ describe('AuthService', () => {
     it('lanza UnauthorizedException cuando el token de reset esta expirado', async () => {
       const user = buildUser({
         passwordResetToken: 'token-expirado',
-        passwordResetExpiresAt: new Date(Date.now() - 60_000), // expirado hace 1 minuto
+        passwordResetTokenExpiresAt: new Date(Date.now() - 60_000), // expirado hace 1 minuto
       });
 
       setupRunInTenantSchema({
@@ -1087,7 +1129,7 @@ describe('AuthService', () => {
     it('actualiza la contrasena y revoca refresh tokens cuando el token es valido', async () => {
       const user = buildUser({
         passwordResetToken: 'token-valido-hex',
-        passwordResetExpiresAt: new Date(Date.now() + 30 * 60 * 1000), // expira en 30 min
+        passwordResetTokenExpiresAt: new Date(Date.now() + 30 * 60 * 1000), // expira en 30 min
       });
 
       const { manager } = setupRunInTenantSchema({
@@ -1107,6 +1149,7 @@ describe('AuthService', () => {
         expect.objectContaining({
           passwordHash: expect.any(String),
           passwordResetToken: null,
+          passwordResetTokenExpiresAt: null,
           passwordResetExpiresAt: null,
           passwordResetRequired: false,
           failedLoginAttempts: 0,
@@ -1125,7 +1168,7 @@ describe('AuthService', () => {
     it('envia correo de confirmacion cuando el DTO incluye email', async () => {
       const user = buildUser({
         passwordResetToken: 'token-valido-con-email',
-        passwordResetExpiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        passwordResetTokenExpiresAt: new Date(Date.now() + 30 * 60 * 1000),
       });
 
       setupRunInTenantSchema({
@@ -1400,7 +1443,7 @@ describe('AuthService', () => {
     it('emite audit PASSWORD_RESET_COMPLETED tras reset exitoso', async () => {
       const user = buildUser({
         passwordResetToken: 'token-reset-audit',
-        passwordResetExpiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        passwordResetTokenExpiresAt: new Date(Date.now() + 30 * 60 * 1000),
       });
 
       setupRunInTenantSchema({

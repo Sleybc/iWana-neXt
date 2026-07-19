@@ -18,6 +18,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
+import { SkipAudit } from '../../audit/decorators/skip-audit.decorator';
 import { ZodBodyValidationPipe } from '../pipes/zod-body-validation.pipe';
 import { SubscribersService } from './subscribers.service';
 import { CreateSubscriberDto, CreateSubscriberSchema } from './dto/create-subscriber.dto';
@@ -49,6 +50,8 @@ export class SubscribersController {
    */
   @Post()
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SYSTEM_ADMIN, UserRole.IWANA_SUPPORT)
+  // Audit manual limpio en SubscribersService — evita PII en newValue del interceptor (SWEEP-01).
+  @SkipAudit()
   @ApiOperation({ summary: 'Crear suscriptor' })
   async create(
     @Body(new ZodBodyValidationPipe(CreateSubscriberSchema)) dto: CreateSubscriberDto,
@@ -145,6 +148,7 @@ export class SubscribersController {
    */
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.SALES)
+  @SkipAudit()
   @ApiOperation({ summary: 'Actualizar suscriptor' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -161,6 +165,7 @@ export class SubscribersController {
    */
   @Patch(':id/section/:section')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SYSTEM_ADMIN, UserRole.IWANA_SUPPORT)
+  @SkipAudit()
   @ApiOperation({ summary: 'Actualizar sección del subscriber' })
   async updateSection(
     @Param('id', ParseUUIDPipe) id: string,
@@ -179,6 +184,7 @@ export class SubscribersController {
    */
   @Delete(':id')
   @Roles(UserRole.ADMIN)
+  @SkipAudit()
   @ApiOperation({ summary: 'Eliminar suscriptor (soft delete)' })
   async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     await this.subscribersService.remove(id, user.sub);
@@ -192,6 +198,7 @@ export class SubscribersController {
    */
   @Patch(':id/status')
   @Roles(UserRole.ADMIN, UserRole.SUPPORT)
+  @SkipAudit()
   @ApiOperation({ summary: 'Transición de estado del suscriptor' })
   async transitionStatus(
     @Param('id', ParseUUIDPipe) id: string,

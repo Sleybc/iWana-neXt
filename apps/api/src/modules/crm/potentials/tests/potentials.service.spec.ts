@@ -46,7 +46,11 @@ describe('PotentialsService', () => {
         { provide: DataSource, useValue: {} },
         {
           provide: ConfigService,
-          useValue: { getOrThrow: jest.fn().mockReturnValue('0'.repeat(64)) },
+          useValue: {
+            getOrThrow: jest
+              .fn()
+              .mockReturnValue('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'),
+          },
         },
         { provide: CoverageReadPort, useValue: coverageReadPortMock },
         { provide: PlanCatalogReadPort, useValue: planCatalogReadPortMock },
@@ -76,7 +80,11 @@ describe('PotentialsService', () => {
 
     expect(created.id).toBe('pot-1');
     expect(created.qualified).toBe(false);
-    expect(auditServiceMock.log).toHaveBeenCalled();
+    expect(auditServiceMock.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        newValue: expect.not.objectContaining({ fullName: expect.anything() }),
+      }),
+    );
   });
 
   it('califica un potencial a prospecto solo con cobertura y plan elegible', async () => {

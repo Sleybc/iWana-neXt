@@ -1,13 +1,17 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
-import * as crypto from 'crypto';
 import { DataSource } from 'typeorm';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { AuditAction } from '@iwana/shared';
 import { CoverageReadPort } from '../ports/coverage-read.port';
 import { PlanCatalogReadPort } from '../ports/plan-catalog-read.port';
 import { AuditService } from '../../audit/audit.service';
+import {
+  decryptAes256Gcm,
+  encryptAes256Gcm,
+  loadAesGcmKeyPair,
+} from '../../../common/crypto/aes-gcm.util';
 import { PotentialLead } from './entities/potential-lead.entity';
 import { ProspectCase } from '../prospects/entities/prospect-case.entity';
 import { ConsentRecord } from '../reviews/entities/consent-record.entity';
@@ -20,6 +24,7 @@ import { ProspectResponseDto } from '../prospects/dto/prospect-response.dto';
 @Injectable()
 export class PotentialsService {
   private readonly encryptionKey: Buffer;
+  private readonly encryptionKeyPrevious: Buffer | null;
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
@@ -28,8 +33,9 @@ export class PotentialsService {
     private readonly planCatalogReadPort: PlanCatalogReadPort,
     private readonly auditService: AuditService,
   ) {
-    const keyHex = this.configService.getOrThrow<string>('MFA_ENCRYPTION_KEY');
-    this.encryptionKey = Buffer.from(keyHex, 'hex');
+    const keys = loadAesGcmKeyPair(this.configService);
+    this.encryptionKey = keys.activeKey;
+    this.encryptionKeyPrevious = keys.previousKey;
   }
 
   async create(dto: CreatePotentialDto): Promise<PotentialResponseDto> {
@@ -52,8 +58,8 @@ export class PotentialsService {
       action: AuditAction.CREATE,
       entityType: 'PotentialLead',
       entityId: created.id,
+      // GSEC-04: sin fullName (PII) en audit manual
       newValue: {
-        fullName: created.fullName,
         source: created.source,
         qualified: created.qualified,
       },
@@ -180,20 +186,10 @@ export class PotentialsService {
   }
 
   private encryptValue(plaintext: string): string {
-    const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
-    const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-    const authTag = cipher.getAuthTag();
-    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+    return encryptAes256Gcm(plaintext, this.encryptionKey);
   }
 
   private decryptValue(encrypted: string): string {
-    const parts = encrypted.split(':');
-    const iv = Buffer.from(parts[0]!, 'hex');
-    const authTag = Buffer.from(parts[1]!, 'hex');
-    const ciphertext = Buffer.from(parts[2]!, 'hex');
-    const decipher = crypto.createDecipheriv('aes-256-gcm', this.encryptionKey, iv);
-    decipher.setAuthTag(authTag);
-    return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+    return decryptAes256Gcm(encrypted, this.encryptionKey, this.encryptionKeyPrevious);
   }
 }

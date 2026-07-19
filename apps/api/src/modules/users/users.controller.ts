@@ -31,6 +31,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { SkipAudit } from '../audit/decorators/skip-audit.decorator';
 import { UsersService } from './users.service';
 import {
   AdminChangeUserLoginEmailDto,
@@ -130,6 +131,8 @@ export class UsersController {
   @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.USERS_MANAGE)
   @HttpCode(HttpStatus.CREATED)
+  // Audit manual en UsersService — evita PII/temporaryPassword duplicados (SWEEP-01).
+  @SkipAudit()
   @ApiOperation({ summary: 'Crear usuario en el tenant' })
   @ApiHeader({
     name: 'Idempotency-Key',
@@ -163,6 +166,7 @@ export class UsersController {
 
   @Patch('me')
   @UseGuards(JwtAuthGuard)
+  @SkipAudit()
   @ApiOperation({ summary: 'Actualizar perfil propio' })
   @ApiHeader({
     name: 'Idempotency-Key',
@@ -214,6 +218,7 @@ export class UsersController {
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.USERS_MANAGE)
+  @SkipAudit()
   @ApiOperation({ summary: 'Actualizar estado o rol de un usuario' })
   @ApiHeader({
     name: 'Idempotency-Key',
@@ -246,6 +251,7 @@ export class UsersController {
   @Patch(':id/login-email/admin')
   @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.USERS_MANAGE)
+  @SkipAudit()
   @ApiOperation({ summary: 'Cambiar el email de acceso de un usuario (admin)' })
   @ApiHeader({
     name: 'Idempotency-Key',
@@ -281,6 +287,7 @@ export class UsersController {
    * Requiere contraseña actual para evitar cambios no autorizados sobre una sesión abierta.
    */
   @Patch(':id/login-email')
+  @SkipAudit()
   @ApiOperation({ summary: 'Cambiar el email de acceso del propio usuario' })
   @ApiResponse({ status: 200, description: 'Email de acceso actualizado.' })
   @ApiResponse({ status: 400, description: 'Solo puedes cambiar tu propio email.' })
@@ -301,6 +308,7 @@ export class UsersController {
   @Patch(':id/password')
   @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.USERS_MANAGE)
+  @SkipAudit()
   @ApiOperation({ summary: 'Reiniciar password de usuario' })
   @ApiHeader({
     name: 'Idempotency-Key',
@@ -340,6 +348,7 @@ export class UsersController {
   @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.USERS_MANAGE)
   @HttpCode(HttpStatus.NO_CONTENT)
+  @SkipAudit()
   @ApiOperation({ summary: 'Eliminar (soft delete) un usuario del tenant' })
   @ApiResponse({ status: 204, description: 'Usuario eliminado exitosamente.' })
   @ApiResponse({ status: 400, description: 'No puedes eliminar tu propio usuario.' })

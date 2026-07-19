@@ -58,10 +58,73 @@ export class AuditInterceptor implements NestInterceptor {
     /password|secret|token|credential|apikey|api_?key|private_?key|authorization|otp|qr|seed|recovery|backup/i;
 
   /**
-   * Claves siempre omitidas aunque el patrón no las reconozca.
-   * `email` va cifrado con AES y no debe reproducirse en el registro.
+   * Claves PII / identidad siempre omitidas (SEC-05 + SWEEP), normalizadas a
+   * minúsculas. Además, `isSecretEntry` omite sufijos `*Email` / `*Encrypted`.
    */
-  static readonly ALWAYS_OMITTED_KEYS = new Set(['email']);
+  static readonly ALWAYS_OMITTED_KEYS = new Set([
+    'email',
+    'value',
+    'whatsapp',
+    'nit',
+    'nitdv',
+    'nit_dv',
+    'fullname',
+    'businessname',
+    'business_name',
+    'razonsocial',
+    'razon_social',
+    'firstname',
+    'first_name',
+    'lastname',
+    'last_name',
+    'displayname',
+    'display_name',
+    'legalname',
+    'legal_name',
+    'address',
+    'birthdate',
+    'birth_date',
+    'contactphone',
+    'contact_phone',
+    'contactname',
+    'contact_name',
+    'altcontactphone',
+    'alt_contact_phone',
+    'adminemail',
+    'admin_email',
+    'contactemail',
+    'contact_email',
+    'emailprimary',
+    'email_primary',
+    'emailsecondary',
+    'email_secondary',
+    'documentnumber',
+    'document_number',
+    'nationalid',
+    'national_id',
+    'identification',
+    'identificacion',
+    'cedula',
+    'cédula',
+    'phone',
+    'mobile',
+    'telefono',
+    'teléfono',
+    'celular',
+    'phonenumber',
+    'phone_number',
+    'mobilenumber',
+    'mobile_number',
+    'sitecontactphone',
+    'site_contact_phone',
+    'phoneprimary',
+    'phone_primary',
+    'phonesecondary',
+    'phone_secondary',
+  ]);
+
+  /** Sufijos de clave que indican email o ciphertext PII (case-insensitive). */
+  static readonly PII_KEY_SUFFIX_PATTERN = /(email|encrypted)$/i;
 
   /** Tope de recursión: las respuestas auditadas no anidan más que esto. */
   static readonly MAX_SANITIZE_DEPTH = 5;
@@ -251,12 +314,27 @@ export class AuditInterceptor implements NestInterceptor {
     return result;
   }
 
-  /** ¿Esta pareja clave/valor transporta un secreto? */
+  /**
+   * ¿Esta pareja clave/valor transporta un secreto o PII?
+   * - Secretos: patrón sobre el nombre + valor string.
+   * - PII listada: string o Date (p. ej. birthDate).
+   * - Sufijos *Email / *Encrypted: solo valores string.
+   */
   private static isSecretEntry(key: string, value: unknown): boolean {
-    if (AuditInterceptor.ALWAYS_OMITTED_KEYS.has(key)) {
+    const normalizedKey = key.toLowerCase();
+
+    if (AuditInterceptor.ALWAYS_OMITTED_KEYS.has(normalizedKey)) {
+      return typeof value === 'string' || value instanceof Date;
+    }
+
+    if (typeof value !== 'string') {
+      return false;
+    }
+
+    if (AuditInterceptor.SECRET_KEY_PATTERN.test(key)) {
       return true;
     }
 
-    return typeof value === 'string' && AuditInterceptor.SECRET_KEY_PATTERN.test(key);
+    return AuditInterceptor.PII_KEY_SUFFIX_PATTERN.test(key);
   }
 }

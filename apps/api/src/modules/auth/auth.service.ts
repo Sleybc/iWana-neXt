@@ -37,6 +37,11 @@ import {
 } from './dto/auth.dto';
 import { AuthResponse, MfaSetupResponse } from './interfaces/auth-response.interface';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
+import {
+  decryptAes256Gcm,
+  encryptAes256Gcm,
+  loadAesGcmKeyPair,
+} from '../../common/crypto/aes-gcm.util';
 
 /** Duracion del lockout por intentos fallidos: 15 minutos en segundos */
 const LOCKOUT_DURATION_SECONDS = 15 * 60;
@@ -85,10 +90,10 @@ export class AuthService {
   });
 
   /**
-   * Clave AES-256-GCM de 32 bytes para cifrado simétrico del mfaSecret en DB.
-   * Derivada en el constructor desde la variable de entorno MFA_ENCRYPTION_KEY (64 chars hex).
+   * Clave AES-256-GCM activa (escrituras). Previous solo para descifrado en rotación (SEC-02).
    */
   private readonly mfaEncryptionKey: Buffer;
+  private readonly mfaEncryptionKeyPrevious: Buffer | null;
 
   constructor(
     @InjectRepository(User)
@@ -104,10 +109,9 @@ export class AuthService {
     private readonly auditService: AuditService,
     private readonly mailerService: MailerService,
   ) {
-    // Derivar clave AES-256-GCM de 32 bytes desde el hexadecimal de 64 chars de entorno.
-    // getOrThrow lanza si la variable no esta configurada — fallo rápido en startup.
-    const keyHex = this.configService.getOrThrow<string>('MFA_ENCRYPTION_KEY');
-    this.mfaEncryptionKey = Buffer.from(keyHex, 'hex');
+    const keys = loadAesGcmKeyPair(this.configService);
+    this.mfaEncryptionKey = keys.activeKey;
+    this.mfaEncryptionKeyPrevious = keys.previousKey;
   }
 
   // ---------------------------------------------------------------------------
@@ -587,11 +591,12 @@ export class AuthService {
       if (!user) return; // No revelar si el email existe
 
       const token = crypto.randomBytes(32).toString('hex');
-      const expiresAt = new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MS);
+      const tokenExpiresAt = new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MS);
 
+      // SEC-03: TTL del token forgot-password es independiente de la credencial temporal.
       await qr.manager.update(User, user.id, {
         passwordResetToken: token,
-        passwordResetExpiresAt: expiresAt,
+        passwordResetTokenExpiresAt: tokenExpiresAt,
       });
 
       // Registrar solicitud de reset de contrasena en audit trail
@@ -632,11 +637,11 @@ export class AuthService {
         where: { passwordResetToken: dto.token },
       });
 
-      if (!user || !user.passwordResetExpiresAt) {
+      if (!user || !user.passwordResetTokenExpiresAt) {
         throw new UnauthorizedException('Token de reset invalido o expirado.');
       }
 
-      if (user.passwordResetExpiresAt < new Date()) {
+      if (user.passwordResetTokenExpiresAt < new Date()) {
         throw new UnauthorizedException('Token de reset expirado.');
       }
 
@@ -645,8 +650,9 @@ export class AuthService {
       await qr.manager.update(User, user.id, {
         passwordHash: newHash,
         passwordResetToken: null,
-        passwordResetExpiresAt: null,
+        passwordResetTokenExpiresAt: null,
         passwordResetRequired: false,
+        passwordResetExpiresAt: null,
         failedLoginAttempts: 0,
         lockedUntil: null,
       });
@@ -870,6 +876,7 @@ export class AuthService {
         passwordHash,
         passwordResetRequired: true,
         passwordResetToken: null,
+        passwordResetTokenExpiresAt: null,
         passwordResetExpiresAt: expiresAt,
         failedLoginAttempts: 0,
         lockedUntil: null,
@@ -1083,38 +1090,19 @@ export class AuthService {
     }
   }
 
-  /**   * Cifra un secreto MFA con AES-256-GCM usando la clave derivada al inicio.
-   * Formato de salida: <iv_hex>:<authTag_hex>:<ciphertext_hex>
-   * El IV de 12 bytes es aleatorio por cada cifrado (recomendado NIST SP 800-38D para GCM).
-   */
+  /** Cifra un secreto MFA con la clave activa (AES-256-GCM, iv:tag:ciphertext). */
   private encryptSecret(plaintext: string): string {
-    const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', this.mfaEncryptionKey, iv);
-    const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-    const authTag = cipher.getAuthTag();
-    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+    return encryptAes256Gcm(plaintext, this.mfaEncryptionKey);
   }
 
   /**
-   * Descifra un secreto MFA previamente cifrado con AES-256-GCM.
-   * Espera el formato: <iv_hex>:<authTag_hex>:<ciphertext_hex>
-   * La autenticacion GCM garantiza integridad — lanza si el ciphertext fue alterado.
+   * Descifra un secreto MFA. Intenta clave activa; si falla auth tag y hay PREVIOUS, reintenta.
    */
   private decryptSecret(encrypted: string): string {
-    const parts = encrypted.split(':');
-    if (parts.length !== 3) {
+    if (encrypted.split(':').length !== 3) {
       throw new Error('Formato de mfaSecret cifrado invalido. Se esperaba iv:authTag:ciphertext.');
     }
-    // Los tres elementos existen por la guarda anterior — asercion no-null segura
-    const ivHex = parts[0]!;
-    const authTagHex = parts[1]!;
-    const ciphertextHex = parts[2]!;
-    const iv = Buffer.from(ivHex, 'hex');
-    const authTag = Buffer.from(authTagHex, 'hex');
-    const ciphertext = Buffer.from(ciphertextHex, 'hex');
-    const decipher = crypto.createDecipheriv('aes-256-gcm', this.mfaEncryptionKey, iv);
-    decipher.setAuthTag(authTag);
-    return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+    return decryptAes256Gcm(encrypted, this.mfaEncryptionKey, this.mfaEncryptionKeyPrevious);
   }
 
   /**   * Verifica un codigo TOTP contra el secret del usuario.

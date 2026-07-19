@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { resolve } from 'path';
 import { DataSource, DataSourceOptions, QueryRunner } from 'typeorm';
 
+import { resolveMigrationDbCredentials } from './db-credentials';
 import { AuditLog } from './entities/audit-log.entity';
 import { AccessPermissionCatalog } from './entities/access-permission-catalog.entity';
 import { AccessProfile } from './entities/access-profile.entity';
@@ -82,7 +83,12 @@ function ensureDatabaseEnvLoaded(): void {
 ensureDatabaseEnvLoaded();
 
 /**
- * Opciones de configuracion del DataSource TypeORM.
+ * Opciones de configuracion del DataSource TypeORM (CLI / migraciones).
+ *
+ * SEC-04: username/password via {@link resolveMigrationDbCredentials}
+ * (`DB_MIGRATOR_*` si están definidos; si no, `DB_USER` / `DB_PASSWORD`).
+ * NestJS TypeOrmModule en API/worker NO debe reutilizar estas credenciales:
+ * el runtime construye su propia conexión con `DB_USER` (rol app).
  *
  * MULTI-TENANT: El schema de la conexion no se fija aqui.
  * - Entidades de schema publico: usan schema: 'public' en @Entity() — TypeORM
@@ -96,12 +102,14 @@ ensureDatabaseEnvLoaded();
  *
  * HLD-MOD01-ARQUITECTURA-v1.0 Seccion 2 + ADR-018
  */
+const migrationCredentials = resolveMigrationDbCredentials();
+
 export const dataSourceOptions: DataSourceOptions = {
   type: 'postgres',
   host: process.env['DB_HOST'] ?? 'localhost',
   port: parseInt(process.env['DB_PORT'] ?? '5432', 10),
-  username: process.env['DB_USER'] ?? 'iwana',
-  password: process.env['DB_PASSWORD'] ?? '',
+  username: migrationCredentials.username,
+  password: migrationCredentials.password,
   database: process.env['DB_NAME'] ?? 'iwana',
   // Sin 'schema' aqui: las entidades publicas lo tienen en @Entity(),
   // las de tenant usan search_path por transaccion.

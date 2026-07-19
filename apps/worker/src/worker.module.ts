@@ -95,8 +95,8 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
       ...(workerEnvFilePath ? { envFilePath: workerEnvFilePath } : {}),
     }),
 
-    // La configuracion se construye con ConfigService para evitar leer process.env
-    // antes de que Nest cargue el archivo .env correspondiente del entorno local.
+    // Runtime TypeORM: DB_USER (rol app). DDL de provisioning usa
+    // resolveMigrationDbCredentials() en TenantProvisioningProcessor (SEC-04).
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

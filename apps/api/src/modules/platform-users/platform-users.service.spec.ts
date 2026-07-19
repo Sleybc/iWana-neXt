@@ -39,7 +39,10 @@ function buildPlatformUser(overrides: Partial<PlatformUser> = {}): PlatformUser 
   } as PlatformUser;
 }
 
-function encryptPlatformEmail(plaintext: string, keyHex = '0'.repeat(64)): string {
+function encryptPlatformEmail(
+  plaintext: string,
+  keyHex = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+): string {
   const key = Buffer.from(keyHex, 'hex');
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
@@ -70,7 +73,9 @@ describe('PlatformUsersService', () => {
         {
           provide: ConfigService,
           useValue: {
-            getOrThrow: jest.fn().mockReturnValue('0'.repeat(64)),
+            getOrThrow: jest
+              .fn()
+              .mockReturnValue('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'),
           },
         },
       ],

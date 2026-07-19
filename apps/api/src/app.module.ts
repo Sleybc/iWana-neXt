@@ -34,6 +34,10 @@ import { SearchModule } from './modules/search/search.module';
 import { AssuranceModule } from './modules/assurance/assurance.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { TasksModule } from './modules/tasks/tasks.module';
+import {
+  mfaEncryptionKeyJoiSchema,
+  mfaEncryptionKeyPreviousJoiSchema,
+} from './common/crypto/aes-gcm.util';
 
 const runtimeEnv = process.env['NODE_ENV'];
 const apiDevelopmentLocalEnvPath = resolve(__dirname, '../../../.env.development.local');
@@ -135,6 +139,10 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
           DB_NAME: Joi.string().required(),
           DB_USER: Joi.string().required(),
           DB_PASSWORD: Joi.string().allow('').required(),
+          // SEC-04: opcionales — CLI/migraciones y worker DDL las leen de process.env;
+          // el runtime TypeORM de esta app sigue en DB_USER.
+          DB_MIGRATOR_USER: Joi.string().optional(),
+          DB_MIGRATOR_PASSWORD: Joi.string().allow('').optional(),
           // Redis
           REDIS_HOST: Joi.string().default('localhost'),
           REDIS_PORT: Joi.number().default(6379),
@@ -143,8 +151,11 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
           // Claves JWT RS256 (contenido PEM; usar \\n para saltos en .env)
           JWT_PRIVATE_KEY: Joi.string().required(),
           JWT_PUBLIC_KEY: Joi.string().required(),
-          // Clave AES-256-GCM: 64 caracteres hexadecimales (256 bits)
-          MFA_ENCRYPTION_KEY: Joi.string().length(64).required(),
+          // Clave AES-256-GCM: 64 hex + rechazo de entropía nula (SEC-02 / ADR-058).
+          // Generar con: openssl rand -hex 32 — nunca usar placeholders de ceros.
+          MFA_ENCRYPTION_KEY: mfaEncryptionKeyJoiSchema,
+          // Opcional: clave previa solo para descifrado durante rotación.
+          MFA_ENCRYPTION_KEY_PREVIOUS: mfaEncryptionKeyPreviousJoiSchema,
           // CORS: URI del frontend; en dev admite localhost
           CORS_ORIGIN: Joi.string().default('http://localhost:3001,http://localhost:3002'),
           // Cookie Secure: false para HTTP on-prem; true solo con HTTPS/TLS
@@ -186,6 +197,8 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
     // El dataSourceOptions de @iwana/db lee process.env en tiempo de import (antes
     // que ConfigModule cargue el .env). Por eso se construye el objeto explicitamente
     // usando ConfigService, que ya tiene los valores del .env cargados.
+    // SEC-04: runtime SIEMPRE con DB_USER (rol app). DB_MIGRATOR_* solo aplica
+    // al CLI de @iwana/db y al pool DDL del worker de provisioning.
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

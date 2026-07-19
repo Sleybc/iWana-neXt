@@ -97,7 +97,7 @@ describe('SubscribersService', () => {
 
     it('lanza error con formato de valor cifrado inválido', () => {
       expect(() => (service as any).decryptValue('invalid-format')).toThrow(
-        'Formato de valor cifrado inválido',
+        /Formato de valor cifrado invalido/i,
       );
     });
 

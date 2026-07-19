@@ -20,13 +20,26 @@ openssl rsa -in "${SECRETS_DIR}/jwt-private.pem" -pubout -out "${SECRETS_DIR}/jw
 echo "    ✓ secrets/jwt-private.pem generado"
 echo "    ✓ secrets/jwt-public.pem generado"
 
-echo "==> Generando ENCRYPTION_KEY AES-256-GCM (32 bytes hex)..."
-ENCRYPTION_KEY=$(openssl rand -hex 32)
+echo "==> Generando MFA_ENCRYPTION_KEY AES-256-GCM (32 bytes hex)..."
+MFA_ENCRYPTION_KEY=$(openssl rand -hex 32)
 ENV_LOCAL="$(dirname "$0")/../.env.local"
-echo "ENCRYPTION_KEY=${ENCRYPTION_KEY}" >> "${ENV_LOCAL}"
-echo "    ✓ ENCRYPTION_KEY agregada a .env.local"
+# No escribir si ya hay una clave (evita pisar rotaciones locales).
+if grep -q '^MFA_ENCRYPTION_KEY=.\+' "${ENV_LOCAL}" 2>/dev/null; then
+  echo "    · MFA_ENCRYPTION_KEY ya presente en .env.local — no se sobrescribe"
+  echo "    · Para rotar: docs/runbooks/RUNBOOK-ENCRYPTION-KEY-ROTATION-v1.0.md"
+else
+  {
+    echo ""
+    echo "# Generada por scripts/generate-secrets.sh — NUNCA 64 ceros (SEC-02)"
+    echo "MFA_ENCRYPTION_KEY=${MFA_ENCRYPTION_KEY}"
+    echo "# MFA_ENCRYPTION_KEY_PREVIOUS="
+  } >> "${ENV_LOCAL}"
+  echo "    ✓ MFA_ENCRYPTION_KEY agregada a .env.local"
+fi
 
 echo ""
 echo "==> Listo. Recuerda:"
-echo "    - NUNCA commitear secrets/*.pem ni .env.local"
-echo "    - En produccion, rotar las claves periodicamente"
+echo "    - NUNCA commitear secrets/*.pem ni .env.local / .env*"
+echo "    - Rotación: docs/runbooks/RUNBOOK-ENCRYPTION-KEY-ROTATION-v1.0.md"
+echo "    - En produccion, rotar solo con go CTO (ADR-058)"
+

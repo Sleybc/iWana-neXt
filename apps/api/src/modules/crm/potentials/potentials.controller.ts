@@ -13,6 +13,7 @@ import { UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { SkipAudit } from '../../audit/decorators/skip-audit.decorator';
 import { ZodBodyValidationPipe } from '../pipes/zod-body-validation.pipe';
 import { createPotentialSchema } from '../schemas/create-potential.schema';
 import { qualifyPotentialSchema } from '../schemas/qualify-potential.schema';
@@ -31,6 +32,8 @@ export class PotentialsController {
 
   @Post()
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  // Audit manual limpio en PotentialsService — un solo canal (SWEEP-01).
+  @SkipAudit()
   @ApiOperation({ summary: 'Crear potencial comercial', deprecated: true })
   @UsePipes(new ZodBodyValidationPipe(createPotentialSchema))
   async create(@Body() dto: CreatePotentialDto): Promise<{ data: PotentialResponseDto }> {
@@ -48,6 +51,7 @@ export class PotentialsController {
 
   @Post(':id/qualify')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SYSTEM_ADMIN)
+  @SkipAudit()
   @ApiOperation({ summary: 'Calificar potencial y convertirlo en prospecto', deprecated: true })
   @UsePipes(new ZodBodyValidationPipe(qualifyPotentialSchema))
   async qualify(

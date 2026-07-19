@@ -26,6 +26,7 @@ No cubre cambios de modelo nuevos ni generación de migraciones; cubre ejecució
 - PostgreSQL y Redis deben estar accesibles según el entorno activo. En desarrollo local, el data source intenta resolver primero `.env.development` y, si faltan variables, cae a `.env`; además, `docker compose` usa `.env` para la infraestructura local.
 - No ejecutar migraciones tenant durante incidentes de conectividad inestables.
 - Validar primero el estado de la base si hubo fallos previos de provisioning o migraciones parciales.
+- **SEC-04 (opt-in):** si el entorno usa least privilege, las migraciones deben correr como `iwana_migrator` (`DB_MIGRATOR_USER`), no como `iwana_app`. Ver [RUNBOOK-DB-LEAST-PRIVILEGE-v1.0.md](./RUNBOOK-DB-LEAST-PRIVILEGE-v1.0.md). Por defecto local (`DB_USER=iwana` bootstrap) no cambia.
 
 Comandos de validación rápida:
 

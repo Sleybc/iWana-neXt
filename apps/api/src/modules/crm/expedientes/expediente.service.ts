@@ -26,6 +26,11 @@ import { ContactAttempt } from './entities/contact-attempt.entity';
 import { ConsentRecord } from './entities/consent-record-v2.entity';
 import { CoverageCheck } from './entities/coverage-check.entity';
 import { AuditService } from '../../audit/audit.service';
+import {
+  decryptAes256Gcm,
+  encryptAes256Gcm,
+  loadAesGcmKeyPair,
+} from '../../../common/crypto/aes-gcm.util';
 import { CompletenessCalculator } from './completeness-calculator.service';
 import { CrmActorReadPort } from '../ports/crm-actor-read.port';
 import {
@@ -210,6 +215,7 @@ const DOCUMENT_SUPPORT_PERSON_TYPE_ALIASES: Readonly<
 @Injectable()
 export class ExpedienteService {
   private readonly encryptionKey: Buffer;
+  private readonly encryptionKeyPrevious: Buffer | null;
   private readonly documentSupportDir: string;
   private readonly logger = new Logger(ExpedienteService.name);
 
@@ -222,8 +228,9 @@ export class ExpedienteService {
     private readonly eventEmitter: EventEmitter2,
     private readonly subscribersService: SubscribersService,
   ) {
-    const keyHex = this.configService.getOrThrow<string>('MFA_ENCRYPTION_KEY');
-    this.encryptionKey = Buffer.from(keyHex, 'hex');
+    const keys = loadAesGcmKeyPair(this.configService);
+    this.encryptionKey = keys.activeKey;
+    this.encryptionKeyPrevious = keys.previousKey;
     const configuredDocumentSupportDir = (
       this.configService as ConfigService & { get?: (key: string) => string | undefined }
     ).get?.('EXPEDIENTE_DOCUMENTS_DIR');
@@ -2310,26 +2317,11 @@ export class ExpedienteService {
   }
 
   private encryptValue(plaintext: string): string {
-    const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
-    const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-    const authTag = cipher.getAuthTag();
-    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+    return encryptAes256Gcm(plaintext, this.encryptionKey);
   }
 
   private decryptValue(encrypted: string): string {
-    const parts = encrypted.split(':');
-    if (parts.length !== 3) {
-      throw new Error('Formato de valor cifrado inválido.');
-    }
-
-    const iv = Buffer.from(parts[0]!, 'hex');
-    const authTag = Buffer.from(parts[1]!, 'hex');
-    const ciphertext = Buffer.from(parts[2]!, 'hex');
-    const decipher = crypto.createDecipheriv('aes-256-gcm', this.encryptionKey, iv);
-    decipher.setAuthTag(authTag);
-
-    return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+    return decryptAes256Gcm(encrypted, this.encryptionKey, this.encryptionKeyPrevious);
   }
 
   private looksLikeEncryptedValue(value: string): boolean {

@@ -24,7 +24,7 @@ function makeSanitizer(): Sanitizer {
     (interceptor as unknown as { sanitizeResponseData: Sanitizer }).sanitizeResponseData(data);
 }
 
-/** Recorre el resultado y devuelve toda clave cuyo valor string sea sospechoso. */
+/** Recorre el resultado y devuelve toda clave que el interceptor debería haber omitido. */
 function findSurvivingSecrets(value: unknown, path = '$'): string[] {
   if (value === null || typeof value !== 'object' || value instanceof Date) {
     return [];
@@ -37,11 +37,17 @@ function findSurvivingSecrets(value: unknown, path = '$'): string[] {
   const found: string[] = [];
 
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof item === 'string' && AuditInterceptor.SECRET_KEY_PATTERN.test(key)) {
-      found.push(`${path}.${key}`);
-    }
+    const normalized = key.toLowerCase();
+    const isOmittedKey = AuditInterceptor.ALWAYS_OMITTED_KEYS.has(normalized);
+    const isSecret = typeof item === 'string' && AuditInterceptor.SECRET_KEY_PATTERN.test(key);
+    const isPiiSuffix =
+      typeof item === 'string' && AuditInterceptor.PII_KEY_SUFFIX_PATTERN.test(key);
 
-    if (AuditInterceptor.ALWAYS_OMITTED_KEYS.has(key)) {
+    if (
+      isSecret ||
+      isPiiSuffix ||
+      (isOmittedKey && (typeof item === 'string' || item instanceof Date))
+    ) {
       found.push(`${path}.${key}`);
     }
 
@@ -133,6 +139,51 @@ describe('AuditInterceptor — saneado de la respuesta', () => {
       const result = sanitize({ data: { id: '1', email: 'cifrado==' } });
 
       expect(findSurvivingSecrets(result)).toEqual([]);
+    });
+
+    it('SEC-05/SWEEP: omite PII de CRM e identidad (incl. PartyContact.value)', () => {
+      const result = sanitize({
+        data: {
+          id: 'party-1',
+          documentNumber: 'DOC-FICT-001',
+          phone: '3000000000',
+          mobile: '3000000001',
+          whatsapp: '3000000002',
+          nit: '900000000',
+          nitDv: '1',
+          fullName: 'Persona Ficticia',
+          firstName: 'Persona',
+          lastName: 'Ficticia',
+          displayName: 'Persona F.',
+          legalName: 'Persona Ficticia SAS',
+          businessName: 'Comercio Ficticio',
+          address: 'Calle ficticia 1',
+          birthDate: '1990-01-01',
+          contactPhone: '6010000000',
+          altContactPhone: '6010000001',
+          adminEmail: 'admin@ejemplo.invalid',
+          contactEmail: 'contacto@ejemplo.invalid',
+          emailPrimary: 'primario@ejemplo.invalid',
+          emailSecondary: 'secundario@ejemplo.invalid',
+          emailEncrypted: 'iv:tag:cipher',
+          phoneEncrypted: 'iv:tag:cipher2',
+          value: 'contacto@ejemplo.invalid',
+          status: 'ACTIVE',
+        },
+      });
+
+      expect(findSurvivingSecrets(result)).toEqual([]);
+      const data = (result as { data: Record<string, unknown> }).data;
+      expect(data['id']).toBe('party-1');
+      expect(data['status']).toBe('ACTIVE');
+      expect(data).not.toHaveProperty('value');
+      expect(data).not.toHaveProperty('documentNumber');
+      expect(data).not.toHaveProperty('adminEmail');
+      expect(data).not.toHaveProperty('emailEncrypted');
+      expect(data).not.toHaveProperty('businessName');
+      expect(JSON.stringify(result)).not.toContain('DOC-FICT-001');
+      expect(JSON.stringify(result)).not.toContain('contacto@ejemplo.invalid');
+      expect(JSON.stringify(result)).not.toContain('Comercio Ficticio');
     });
   });
 

@@ -29,7 +29,11 @@ describe('ContactsService', () => {
         { provide: DataSource, useValue: {} },
         {
           provide: ConfigService,
-          useValue: { getOrThrow: jest.fn().mockReturnValue('0'.repeat(64)) },
+          useValue: {
+            getOrThrow: jest
+              .fn()
+              .mockReturnValue('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'),
+          },
         },
       ],
     }).compile();

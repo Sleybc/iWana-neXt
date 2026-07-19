@@ -93,7 +93,11 @@ describe('ExpedienteService', () => {
         { provide: DataSource, useValue: {} },
         {
           provide: ConfigService,
-          useValue: { getOrThrow: jest.fn().mockReturnValue('0'.repeat(64)) },
+          useValue: {
+            getOrThrow: jest
+              .fn()
+              .mockReturnValue('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'),
+          },
         },
         { provide: AuditService, useValue: auditServiceMock },
         { provide: CompletenessCalculator, useValue: completenessCalculatorMock },
@@ -2943,7 +2947,10 @@ function buildExpediente(overrides: Partial<ExpedienteRecord>): ExpedienteRecord
 
 function encryptTestValue(value: string): string {
   const iv = Buffer.alloc(12, 1);
-  const key = Buffer.from('0'.repeat(64), 'hex');
+  const key = Buffer.from(
+    '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    'hex',
+  );
   const cipher = require('crypto').createCipheriv('aes-256-gcm', key, iv);
   const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
   const authTag = cipher.getAuthTag();

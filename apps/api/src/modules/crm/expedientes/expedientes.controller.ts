@@ -24,6 +24,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
+import { SkipAudit } from '../../audit/decorators/skip-audit.decorator';
 import { ZodBodyValidationPipe } from '../pipes/zod-body-validation.pipe';
 import { ExpedienteService } from './expediente.service';
 import { StatusTransitionService } from './status-transition.service';
@@ -78,6 +79,8 @@ export class ExpedientesController {
 
   @Post()
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  // Audit manual limpio en ExpedienteService — evita PII descifrada en interceptor (SWEEP-01/03).
+  @SkipAudit()
   @ApiOperation({ summary: 'Crear expediente con datos mínimos (nombre + canal de adquisición)' })
   async create(
     @Body(new ZodBodyValidationPipe(CreateExpedienteSchema)) dto: CreateExpedienteDto,
@@ -135,6 +138,7 @@ export class ExpedientesController {
 
   @Patch(':id/sections/:section')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @SkipAudit()
   @ApiOperation({ summary: 'Actualizar una sección específica del expediente' })
   async updateSection(
     @Param('id', ParseUUIDPipe) id: string,
@@ -162,6 +166,7 @@ export class ExpedientesController {
 
   @Patch(':id/status')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SYSTEM_ADMIN)
+  @SkipAudit()
   @ApiOperation({ summary: 'Transición de estado del pipeline' })
   async transitionStatus(
     @Param('id', ParseUUIDPipe) id: string,
@@ -206,6 +211,7 @@ export class ExpedientesController {
 
   @Post(':id/reactivate')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SYSTEM_ADMIN)
+  @SkipAudit()
   @ApiOperation({ summary: 'Reactivar expediente descartado' })
   async reactivate(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     const data = await this.expedienteService.reactivate(id, user.sub);
@@ -241,6 +247,7 @@ export class ExpedientesController {
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  @SkipAudit()
   @ApiOperation({ summary: 'Subir o reemplazar un soporte documental del expediente' })
   async uploadDocumentSupport(
     @Param('id', ParseUUIDPipe) id: string,
@@ -261,6 +268,7 @@ export class ExpedientesController {
 
   @Patch(':id/document-supports/:documentKey/:versionId/status')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @SkipAudit()
   @ApiOperation({ summary: 'Actualizar estado de revisión de un soporte documental' })
   async updateDocumentSupportStatus(
     @Param('id', ParseUUIDPipe) id: string,
@@ -285,6 +293,7 @@ export class ExpedientesController {
 
   @Delete(':id/document-supports/:documentKey/:versionId')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @SkipAudit()
   @ApiOperation({ summary: 'Eliminar una versión específica de soporte documental' })
   async deleteDocumentSupport(
     @Param('id', ParseUUIDPipe) id: string,
@@ -319,6 +328,7 @@ export class ExpedientesController {
 
   @Post(':id/contact-attempts')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @SkipAudit()
   @ApiOperation({ summary: 'Registrar intento de contacto del expediente' })
   async createContactAttempt(
     @Param('id', ParseUUIDPipe) id: string,
@@ -346,6 +356,7 @@ export class ExpedientesController {
 
   @Post(':id/consents')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SYSTEM_ADMIN)
+  @SkipAudit()
   @ApiOperation({ summary: 'Registrar consentimiento del expediente' })
   async createConsent(
     @Param('id', ParseUUIDPipe) id: string,
@@ -380,6 +391,7 @@ export class ExpedientesController {
 
   @Patch(':id/consents/:consentId/revoke')
   @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @SkipAudit()
   @ApiOperation({ summary: 'Revocar consentimiento del expediente' })
   async revokeConsent(
     @Param('id', ParseUUIDPipe) id: string,
@@ -393,6 +405,7 @@ export class ExpedientesController {
 
   @Post(':id/coverage-checks')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.TECHNICIAN, UserRole.SYSTEM_ADMIN)
+  @SkipAudit()
   @ApiOperation({ summary: 'Registrar verificación de cobertura del expediente' })
   async createCoverageCheck(
     @Param('id', ParseUUIDPipe) id: string,
@@ -413,6 +426,7 @@ export class ExpedientesController {
 
   @Patch(':id/installation-operational-refs')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @SkipAudit()
   @ApiOperation({ summary: 'Vincular referencias operativas de instalación al expediente' })
   async linkInstallationOperationalRefs(
     @Param('id', ParseUUIDPipe) id: string,

@@ -2,7 +2,8 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
-import { SubscriberStatus } from '@iwana/shared';
+import { AuditAction, SubscriberStatus } from '@iwana/shared';
+import { AuditService } from '../../audit/audit.service';
 import { Subscriber } from './entities/subscriber.entity';
 
 /**
@@ -68,7 +69,10 @@ export interface TransitionResult {
 export class SubscriberStatusTransitionService {
   private readonly logger = new Logger(SubscriberStatusTransitionService.name);
 
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly auditService: AuditService,
+  ) {}
 
   /**
    * Valida si una transición es permitida según la máquina de estados.
@@ -163,6 +167,19 @@ export class SubscriberStatusTransitionService {
     // Persistir cambio de estado
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       await qr.manager.update(Subscriber, { id: subscriberId }, { status: targetStatus });
+    });
+
+    // GSEC-01: audit manual mínimo (handler con @SkipAudit). Sin PII.
+    await this.auditService.log({
+      action: AuditAction.UPDATE,
+      entityType: 'Subscriber',
+      entityId: subscriberId,
+      userId: actorId,
+      newValue: {
+        fromStatus,
+        toStatus: targetStatus,
+        reason,
+      },
     });
 
     this.logger.log(

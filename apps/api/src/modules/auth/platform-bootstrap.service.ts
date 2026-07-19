@@ -6,6 +6,7 @@ import * as crypto from 'crypto';
 import { Repository } from 'typeorm';
 import { PlatformUser } from '@iwana/db';
 import { PlatformRole, UserStatus } from '@iwana/shared';
+import { encryptAes256Gcm, loadAesGcmKeyPair } from '../../common/crypto/aes-gcm.util';
 
 /**
  * Bootstrap opcional del primer superusuario de plataforma.
@@ -23,8 +24,7 @@ export class PlatformBootstrapService implements OnApplicationBootstrap {
     @InjectRepository(PlatformUser)
     private readonly platformUserRepository: Repository<PlatformUser>,
   ) {
-    const keyHex = this.configService.getOrThrow<string>('MFA_ENCRYPTION_KEY');
-    this.encryptionKey = Buffer.from(keyHex, 'hex');
+    this.encryptionKey = loadAesGcmKeyPair(this.configService).activeKey;
   }
 
   async onApplicationBootstrap(): Promise<void> {
@@ -69,10 +69,6 @@ export class PlatformBootstrapService implements OnApplicationBootstrap {
   }
 
   private encryptValue(plaintext: string): string {
-    const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
-    const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-    const authTag = cipher.getAuthTag();
-    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+    return encryptAes256Gcm(plaintext, this.encryptionKey);
   }
 }

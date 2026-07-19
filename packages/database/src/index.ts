@@ -12,6 +12,10 @@
 // Entidades TypeORM
 export * from './entities';
 
+// Credenciales migrator (SEC-04) — CLI / DDL; no usar en runtime TypeORM
+export { resolveMigrationDbCredentials } from './db-credentials';
+export type { DbCredentials } from './db-credentials';
+
 // DataSource y utilidades de schema routing
 export {
   AppDataSource,

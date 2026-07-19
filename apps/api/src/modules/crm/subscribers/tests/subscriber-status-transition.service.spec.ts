@@ -1,7 +1,14 @@
 import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
-import { SubscriberStatus, PersonType, CustomerSegment, DocumentType } from '@iwana/shared';
+import {
+  AuditAction,
+  SubscriberStatus,
+  PersonType,
+  CustomerSegment,
+  DocumentType,
+} from '@iwana/shared';
+import { AuditService } from '../../../audit/audit.service';
 import { SubscriberStatusTransitionService } from '../subscriber-status-transition.service';
 import { Subscriber } from '../entities/subscriber.entity';
 
@@ -23,13 +30,19 @@ jest.mock('@iwana/db', () => {
 
 describe('SubscriberStatusTransitionService', () => {
   let service: SubscriberStatusTransitionService;
+  let auditService: { log: jest.Mock };
 
   beforeEach(async () => {
     jest.clearAllMocks();
     mockTenantContextGetOrThrow.mockReturnValue({ schemaName: 'tenant_test' });
+    auditService = { log: jest.fn().mockResolvedValue(undefined) };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [SubscriberStatusTransitionService, { provide: DataSource, useValue: {} }],
+      providers: [
+        SubscriberStatusTransitionService,
+        { provide: DataSource, useValue: {} },
+        { provide: AuditService, useValue: auditService },
+      ],
     }).compile();
 
     service = module.get<SubscriberStatusTransitionService>(SubscriberStatusTransitionService);
@@ -179,6 +192,7 @@ describe('SubscriberStatusTransitionService', () => {
         toStatus: SubscriberStatus.LEAD,
         reason: null,
       });
+      expect(auditService.log).not.toHaveBeenCalled();
     });
 
     it('lanza BadRequestException si la transición no es permitida', async () => {
@@ -229,6 +243,17 @@ describe('SubscriberStatusTransitionService', () => {
       expect(result.fromStatus).toBe(SubscriberStatus.ACTIVE);
       expect(result.toStatus).toBe(SubscriberStatus.SUSPENDED);
       expect(result.reason).toBe('Mora en pago');
+      expect(auditService.log).toHaveBeenCalledWith({
+        action: AuditAction.UPDATE,
+        entityType: 'Subscriber',
+        entityId: 'sub-1',
+        userId: 'actor-1',
+        newValue: {
+          fromStatus: SubscriberStatus.ACTIVE,
+          toStatus: SubscriberStatus.SUSPENDED,
+          reason: 'Mora en pago',
+        },
+      });
     });
 
     it('permite SUSPENDED → ACTIVE con motivo', async () => {

@@ -27,7 +27,7 @@ describe('TenantSeedService', () => {
   const configService = {
     getOrThrow: jest.fn((key: string) => {
       if (key === 'MFA_ENCRYPTION_KEY') {
-        return '0'.repeat(64);
+        return '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
       }
 
       throw new Error(`Unexpected config key: ${key}`);

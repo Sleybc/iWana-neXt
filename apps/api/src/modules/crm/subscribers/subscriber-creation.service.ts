@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { OnEvent } from '@nestjs/event-emitter';
-import * as crypto from 'crypto';
 import { DataSource } from 'typeorm';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import {
@@ -19,6 +18,7 @@ import { ExpedienteRecord } from '../expedientes/entities/expediente-record.enti
 import { SubscribersService } from './subscribers.service';
 import { SubscriberConvertedEvent } from './events/subscriber-converted.event';
 import { AuditService } from '../../audit/audit.service';
+import { decryptAes256Gcm, loadAesGcmKeyPair } from '../../../common/crypto/aes-gcm.util';
 import { ExpedienteReadyForInstallationEvent } from '../expedientes/events/expediente-pipeline.events';
 import { PartyService } from '../../parties/services/party.service';
 import { PartyRoleService } from '../../parties/services/party-role.service';
@@ -41,6 +41,7 @@ import { IPartyReadPort } from '../../parties/ports/party-read.port';
 @Injectable()
 export class SubscriberCreationService {
   private readonly encryptionKey: Buffer;
+  private readonly encryptionKeyPrevious: Buffer | null;
   private readonly logger = new Logger(SubscriberCreationService.name);
 
   constructor(
@@ -53,9 +54,9 @@ export class SubscriberCreationService {
     private readonly partyRoleService: PartyRoleService,
     private readonly partyReadPort: IPartyReadPort,
   ) {
-    // Reutilizar la misma clave de cifrado que ExpedienteService y SubscribersService
-    const keyHex = this.configService.getOrThrow<string>('MFA_ENCRYPTION_KEY');
-    this.encryptionKey = Buffer.from(keyHex, 'hex');
+    const keys = loadAesGcmKeyPair(this.configService);
+    this.encryptionKey = keys.activeKey;
+    this.encryptionKeyPrevious = keys.previousKey;
   }
 
   @OnEvent('crm.expediente.ready-for-installation', { async: true })
@@ -404,17 +405,6 @@ export class SubscriberCreationService {
    * Formato: iv:authTag:ciphertext (hex)
    */
   private decryptValue(encrypted: string): string {
-    const parts = encrypted.split(':');
-    if (parts.length !== 3) {
-      throw new Error('Formato de valor cifrado inválido.');
-    }
-
-    const iv = Buffer.from(parts[0]!, 'hex');
-    const authTag = Buffer.from(parts[1]!, 'hex');
-    const ciphertext = Buffer.from(parts[2]!, 'hex');
-    const decipher = crypto.createDecipheriv('aes-256-gcm', this.encryptionKey, iv);
-    decipher.setAuthTag(authTag);
-
-    return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+    return decryptAes256Gcm(encrypted, this.encryptionKey, this.encryptionKeyPrevious);
   }
 }

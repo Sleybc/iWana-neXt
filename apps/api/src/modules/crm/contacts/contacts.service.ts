@@ -2,8 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
-import * as crypto from 'crypto';
 import { ConfigService } from '@nestjs/config';
+import { encryptAes256Gcm, loadAesGcmKeyPair } from '../../../common/crypto/aes-gcm.util';
 import { SubscriberContact } from './entities/subscriber-contact.entity';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
@@ -16,8 +16,7 @@ export class ContactsService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
   ) {
-    const keyHex = this.configService.getOrThrow<string>('MFA_ENCRYPTION_KEY');
-    this.encryptionKey = Buffer.from(keyHex, 'hex');
+    this.encryptionKey = loadAesGcmKeyPair(this.configService).activeKey;
   }
 
   async create(subscriberId: string, dto: CreateContactDto): Promise<SubscriberContact> {
@@ -75,10 +74,6 @@ export class ContactsService {
   }
 
   private encryptValue(plaintext: string): string {
-    const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
-    const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-    const authTag = cipher.getAuthTag();
-    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+    return encryptAes256Gcm(plaintext, this.encryptionKey);
   }
 }
