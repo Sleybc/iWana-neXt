@@ -1,6 +1,15 @@
 # ADR-020 — Seed Inicial de Tenant + Credenciales Temporales
 
-> **Estado:** Aprobado
+> ⚠️ **Superado parcialmente por [ADR-057](ADR-057-Credenciales-Iniciales-Por-Tenant.md) (2026-07-19).**
+> Los puntos 1 y 4 de §Decisión —contraseña fija de `TENANT_INITIAL_ADMIN_PASSWORD` y login
+> genérico `admin@iwana.co`— **ya no rigen**: ambos eran constantes compartidas por todo el
+> despliegue. El ADMIN nace ahora bloqueado con un secreto aleatorio que nadie conoce, el email se
+> indica al crear la empresa, y la credencial se emite con `regenerate-admin-credentials`, que la
+> muestra una sola vez. El resto del ADR —bcrypt 12 rondas, `passwordResetRequired`, ventana de
+> 24 h y la regla del punto 7— sigue vigente.
+
+> **Estado:** Superado parcialmente
+> **Estado original:** Aprobado
 > **Fecha:** 2026-03-07
 > **Tipo:** Backend / Operacional / Seguridad
 > **Autores:** AI-ARCH (Architect Software), AI-EM (Engineering Manager)
