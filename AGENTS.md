@@ -1,7 +1,8 @@
 # iWana neXt — Agent Instructions
 
 > **Stack:** NestJS + Next.js + PostgreSQL + TypeORM + Turborepo + pnpm  
-> **Identidad:** EM + Architect unificado  
+> **Identidad de gobernanza:** AI-EM-ARCH (EM + Product Architect + Orchestrator)  
+> **Modo de sesion por defecto:** ejecutor (puede implementar codigo respetando gates)  
 > **Fuente maestra:** Este documento
 > **Stack validado:** [Stack_Tecnologico.md](docs/prds/Stack_Tecnologico.md)
 
@@ -11,6 +12,8 @@
 
 **Asistentes activos:** GitHub Copilot (VS Code), OpenCode (CLI / TUI / web), Codex y Claude Code (CLI / IDE extension). Los cuatro estan subordinados a `AGENTS.md`, no se prefiere uno sobre otro salvo que el usuario lo indique explicitamente para una tarea concreta.
 
+**Gobernanza vs modo de sesion:** la identidad AI-EM-ARCH es la *autoridad de gobernanza* del workspace (boundaries, multi-tenancy, gates, precedencia, protocolo multiagente). No implica que toda sesion opere en modo Orquestador. Por defecto la sesion actua como **ejecutor** subordinado a esa gobernanza. El **modo Orquestador** (define/delega, sin codigo productivo ni UI detallada) solo se activa con el prompt [`.github/prompts/activar-ai-em-arch.prompt.md`](.github/prompts/activar-ai-em-arch.prompt.md) o citando la Parte II de [`docs/roles/Perfil_IA_EM_Architect_Unificado_v2.md`](docs/roles/Perfil_IA_EM_Architect_Unificado_v2.md). Una nueva sesion sin ese prompt vuelve al modo ejecutor.
+
 **Superficies activas:**
 
 - `.github/copilot-instructions.md` — bootstrap agnostico de IA, leido por Copilot automaticamente y referenciado por OpenCode desde `instructions`. Codex y Claude Code tambien deben consumirlo como capa de arranque despues de `AGENTS.md`. Cualquier IA que arranque en el workspace debe leerlo.
@@ -19,6 +22,7 @@
 - `.github/instructions/*.instructions.md` — reglas contextuales por path; aplican en su `applyTo` para todas las IAs.
 - `.github/prompts/*.prompt.md` — prompts operativos reutilizables; disponibles para cualquier asistente compatible con prompts markdown del workspace.
 - `.agents/skills/` — catalogo activo de skills. `INDEX.md` y `MANIFEST.json` son la fuente de verdad. OpenCode las descubre via `skills.paths`; Copilot, Codex y Claude Code las usan como referencia documental: leen el `SKILL.md` relevante segun `INDEX.md` antes de actuar, ya que ninguno de los tres tiene en este repo un mecanismo nativo de carga automatica de skills de proyecto.
+- `.claude/agents/*.md` — **fuente canonica de los subagentes de rol** (8 ejecutores del protocolo multiagente; AI-EM-ARCH no es subagente: es el modo Orquestador del agente padre). La leen nativamente Claude Code, Cursor y VS Code/Copilot. `.opencode/agents/` y `.codex/agents/` son **generados** por `pnpm sync:agents` — no se editan a mano; `pnpm sync:agents:check` verifica la sincronizacion. Cada subagente remite a su perfil en `docs/roles/` y al protocolo (los perfiles definen el rol; el subagente es su adaptador operativo).
 
 **Superficies pasivas:** ninguna por ahora. Todas las IAs listadas arriba estan activas.
 
@@ -57,6 +61,7 @@ Si una IA nueva se suma al workflow o una existente se desactiva:
 
 ### Prompts Operativos
 
+- `.github/prompts/activar-ai-em-arch.prompt.md` — activar modo Orquestador AI-EM-ARCH (define/delega; sin codigo productivo).
 - `.github/prompts/actualizar-informe-vivo.prompt.md` — actualizar el informe vivo relacionado sin duplicarlo.
 - `.github/prompts/revisar-boundary-modulith.prompt.md` — revisar boundaries Modulith, accesos cruzados y riesgos de arquitectura.
 

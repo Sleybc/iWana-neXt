@@ -23,6 +23,8 @@ Si dos artefactos chocan en multi-tenancy, seguridad, boundaries o stack, no sin
 - `.github/prompts/*.prompt.md` — prompts operativos reutilizables, disponibles para cualquier asistente compatible.
 - `.agents/skills/` — catalogo activo de skills; `INDEX.md` y `MANIFEST.json` son la fuente de verdad del catalogo.
 
+**Gobernanza vs modo Orquestador:** la identidad AI-EM-ARCH en `AGENTS.md` es autoridad de gobernanza del workspace, no el modo de sesion por defecto. Por defecto la sesion es **ejecutor**. El modo Orquestador (define/delega, sin codigo productivo) se activa solo con `.github/prompts/activar-ai-em-arch.prompt.md`. No crear catalogos paralelos de roles por cliente (p. ej. no duplicar en `.claude/skills/` ni poner la logica solo en `.cursor/rules/`).
+
 ## Flujo activo
 
 - Usa siempre `pnpm`; no uses `npm` ni `yarn` para flujos del repo.

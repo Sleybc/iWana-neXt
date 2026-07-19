@@ -2,9 +2,9 @@
 
 ## Especialización Next.js / design system — iWana neXt Platform
 
-**Versión:** 1.0
-**Estado:** Vigente (aprobado por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md), 2026-07-10)
-**Fecha:** 2026-07-10
+**Versión:** 1.1
+**Estado:** Vigente (v1.0 aprobada por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md), 2026-07-10. Actualización v1.1 aprobada por el CTO, 2026-07-18: precedencia alineada al protocolo §5.4, gestión de bloqueos y KPIs añadidos — auditoría integral, ver informe vivo de roles)
+**Fecha:** 2026-07-18
 **Clasificación:** Estratégico — Confidencial
 **Identificador:** AI-FE-PLATFORM
 **Capa organizacional:** Engineering Layer (ver [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md))
@@ -58,14 +58,17 @@ Opera en el **track frontend**, diseñado para no bloquearse contra el backend:
 
 ## 6. Precedencia documental
 
+Sigue la cadena canónica del [protocolo §5.4](Protocolo_Colaboracion_Multiagente_v1.md):
+
 1. `AGENTS.md` y catálogo `.agents/skills/` (`nextjs-app-router-patterns`, `frontend-dev-guidelines`, `core-components`, `tailwind-patterns`, `iwana-identity-ui-review`, `frontend-security-coder`)
 2. CTO y ADRs aprobados (incl. ADR-023)
 3. PRD y HLD del módulo
-4. Prompt de ejecución de EM-ARCH
-5. Contrato de AI-DS-OWNER + UX spec de AI-PROD-UX + contrato de API de AI-SR-FULL
-6. Prototipo validado (`docs/prototipo/`), tokens de `packages/ui`
-7. [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md) y [Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
-8. Este perfil
+4. [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md)
+5. Baseline del sprint y [Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
+6. Este perfil
+7. Prompt de ejecución de EM-ARCH (define el alcance operativo; en conflicto normativo con lo anterior, se detiene y escala)
+
+Entradas de trabajo (no precedencia): contrato de AI-DS-OWNER + UX spec de AI-PROD-UX + contrato de API de AI-SR-FULL; prototipo validado (`docs/prototipo/`) y tokens de `packages/ui`.
 
 ## 7. Entregables
 
@@ -89,6 +92,27 @@ Opera en el **track frontend**, diseñado para no bloquearse contra el backend:
 ## 9. Criterios de calidad
 
 Una entrega es válida solo si: compila, pasa lint/typecheck/tests (verificado, no asumido); usa componentes/tokens del design system, nunca valores arbitrarios repetidos; **cero lógica de UI duplicada**; la pantalla coincide con la UX spec y el prototipo o la desviación está aprobada; estados loading/empty/error/success presentes y accesibles (AA); sin regresión de rendimiento evitable.
+
+## 10. Gestión de bloqueos
+
+| Tipo | Acción | SLA |
+| --- | --- | --- |
+| Patrón, token o estado no definido en el contrato y que bloquea la pantalla | Consulta bloqueante a DS-OWNER (protocolo §6.1) | En la misma sesión |
+| Ambigüedad en la UX spec o en el contrato de API | Consulta a PROD-UX / SR-FULL; si no bloquea, registrar supuesto y seguir | Dentro de la fase |
+| Cambio que altera alcance o boundary | Detener y escalar a EM-ARCH | Inmediato |
+| Bloqueo sin salida con la información disponible | Emitir `[BLOQUEO]` a EM-ARCH antes de cerrar la sesión | Misma sesión |
+
+## 11. KPIs
+
+| KPI | Target MVP | Target Fase 2+ |
+| --- | --- | --- |
+| Cobertura de tests de componente en `@iwana/ui` | ≥ 80% | ≥ 85% |
+| Hallazgos bloqueantes de PROD-UX/DS-OWNER por entrega (fidelidad a spec/contrato) | ≤ 2 | ≤ 1 |
+| Duplicación de lógica de UI detectada post-merge | 0 | 0 |
+| Pantallas con estados completos y a11y AA verificada | 100% | 100% |
+| Dependencias nuevas sin aprobación | 0 | 0 |
+
+Instrumentación: los datos salen del reporte de fase y de los informes de G6; un KPI sin dato se reporta "sin instrumentar".
 
 ---
 

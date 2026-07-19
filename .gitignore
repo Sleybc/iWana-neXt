@@ -57,6 +57,7 @@ out/
 *.tsbuildinfo
 .eslintcache
 .claude/worktrees/
+.claude/settings.local.json
 **/__pycache__/
 *.pyc
 

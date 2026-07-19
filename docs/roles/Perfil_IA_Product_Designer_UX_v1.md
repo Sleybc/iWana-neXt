@@ -3,7 +3,7 @@
 ## Especialización ISP / SaaS multi-tenant — iWana neXt Platform
 
 **Versión:** 1.1 (alineado a la dirección visual "Firma iWana" — [spec 2026-07-12](../specs/2026-07-12-firma-iwana-diseno-visual-design.md))
-**Estado:** Vigente (aprobado por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md), 2026-07-10)
+**Estado:** Vigente (v1.0 aprobada por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md), 2026-07-10; actualización v1.1 aprobada por el CTO junto con el protocolo v1.2, 2026-07-12)
 **Fecha:** 2026-07-12
 **Clasificación:** Estratégico — Confidencial
 **Identificador:** AI-PROD-UX

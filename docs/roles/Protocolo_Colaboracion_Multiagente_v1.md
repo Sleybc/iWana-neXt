@@ -1,10 +1,11 @@
 # Protocolo de Colaboración Multiagente — iWana neXt Platform
 
-**Versión:** 1.2
-**Estado:** Vigente (aprobado por ADR-049, 2026-07-10; actualización v1.2 aprobada por CTO, 2026-07-12)
-**Fecha:** 2026-07-12
+**Versión:** 1.3
+**Estado:** Vigente (aprobado por ADR-049, 2026-07-10; v1.2 aprobada por CTO, 2026-07-12; v1.3 aprobada por CTO, 2026-07-18)
+**Fecha:** 2026-07-18
 **Cambio v1.0 → v1.1:** integra el split del Design Layer aprobado — `AI-SR-UI-SYS` se divide en `AI-PROD-UX` (experiencia) + `AI-DS-OWNER` (contrato del design system), y el frontend de `AI-SR-FULL` se extrae a `AI-FE-PLATFORM`. Añade el **modelo de ejecución paralela** (§3bis) y el **carril rápido de UI**. Optimizado para: reducir solapamiento, aumentar autonomía por rol y maximizar ejecución en paralelo.
 **Cambio v1.1 → v1.2:** elimina las referencias residuales a `UI-SYS` (workflow §3, conflictos §5, matriz de consulta §6.1 — reescrita con los roles vigentes, cadencia §8) e incorpora la **dirección visual "Firma iWana"** ([spec 2026-07-12](../specs/2026-07-12-firma-iwana-diseno-visual-design.md)) como entrada obligatoria de la cadena de UI.
+**Cambio v1.2 → v1.3 (auditoría integral):** incorpora **AI-PLAT-OPS** (Platform/DevOps, on-demand) y los roles humanos externos (Legal/regulatorio) a la estructura; añade la doctrina *gobernanza vs modo de sesión*; cierra la auto-aprobación de G1 (review cruzado); suma FE-PLATFORM (y PLAT-OPS si aplica) a la etapa 3; define el **artefacto y el evento de congelación** de los contratos del §3bis; aclara el desempate con Responsible múltiple; reexpresa los SLAs en unidades de sesión; añade los reportes de QA/SEC-ENG a la cadencia §8; y corrige la RACI de datos (DATA-ENG R on-demand en modelo/migraciones de su dominio).
 **Clasificación:** Estratégico — Confidencial
 **Alcance:** Define la matriz RACI, el workflow de colaboración, los artefactos de handoff y los gates de aprobación entre los agentes IA del proyecto. Es la **fuente única** de estas definiciones: los perfiles individuales la referencian y no la duplican.
 
@@ -20,6 +21,7 @@
 | AI-SR-QA | Sr. Dev QA / Testing / Auditor | [Perfil_IA_Sr_Dev_QA_Testing_v1.md](Perfil_IA_Sr_Dev_QA_Testing_v1.md) |
 | AI-SEC-ENG | Security Engineer / AppSec | [Perfil_IA_Security_Engineer_AppSec_v1.md](Perfil_IA_Security_Engineer_AppSec_v1.md) |
 | AI-DATA-ENG | Sr. Data Engineer ISP (on-demand) | [Perfil IA Senior Data Engineer ISP.md](<Perfil IA Senior Data Engineer ISP.md>) |
+| AI-PLAT-OPS | Platform / DevOps Engineer (on-demand) | [Perfil_IA_Platform_Ops_Engineer_v1.md](Perfil_IA_Platform_Ops_Engineer_v1.md) |
 
 > **Sucesión:** `AI-SR-UI-SYS` (Perfil v2) queda como referencia histórica al aprobarse este split; sus responsabilidades se reparten entre `AI-PROD-UX` (experiencia) y `AI-DS-OWNER` (contrato). `AI-SR-FULL` v2 conserva el backend y cede el frontend a `AI-FE-PLATFORM`.
 
@@ -31,6 +33,8 @@
 
 ```text
 CTO Humano (decisión estratégica, presupuesto, ADRs, excepciones)
+  │   [Legal/regulatorio: rol humano externo — toda escalación regulatoria
+  │    o de retención de datos llega al CTO, quien consulta a Legal]
   └── Chief Architect Layer
         AI-EM-ARCH — visión técnica y funcional, roadmap propuesto,
                      aprobaciones de diseño y arquitectura, orquestación
@@ -39,10 +43,15 @@ CTO Humano (decisión estratégica, presupuesto, ADRs, excepciones)
         │     AI-SR-FULL (backend) · AI-FE-PLATFORM (frontend + @iwana/ui)
         │     AI-SR-QA (verificación) · AI-SEC-ENG (seguridad)
         │     AI-DATA-ENG (datos, on-demand)
+        │     AI-PLAT-OPS (plataforma: CI/CD, infra, releases — on-demand)
         └── Design Layer
               AI-PROD-UX (experiencia, flujos, simplificación)
               AI-DS-OWNER (contrato: tokens + API de componentes)
 ```
+
+**Roles que no existen en esta estructura no son destinos de escalación.** Un perfil que necesite escalar algo sin dueño aquí lo escala a AI-EM-ARCH, quien lo resuelve o lo sube al CTO. (Corrige los destinos fantasma "Staff Engineer" y "Architect de Datos" que arrastraban los perfiles v1.)
+
+**Gobernanza vs modo de sesión (multi-IDE):** la gobernanza de AI-EM-ARCH (boundaries, gates, este protocolo) rige **siempre** vía `AGENTS.md`; pero el modo de sesión por defecto de cualquier cliente (Cursor, Copilot, Claude Code, Codex, OpenCode) es **ejecutor** — puede implementar código respetando los gates. El modo Orquestador (con su límite de "no código productivo") solo aplica con activación explícita ([.github/prompts/activar-ai-em-arch.prompt.md](../../.github/prompts/activar-ai-em-arch.prompt.md)). Detalle en el informe vivo de roles §4.
 
 Separación de responsabilidades de la cadena de UI (reduce solapamiento):
 **qué/flujo** = AI-PROD-UX · **con qué/contrato** = AI-DS-OWNER · **cómo/código** = AI-FE-PLATFORM · **datos/servidor** = AI-SR-FULL · **verifica** = AI-SR-QA.
@@ -57,27 +66,33 @@ Reglas estructurales:
 
 R = Responsible (ejecuta) · A = Accountable (responde por el resultado, máximo uno) · C = Consulted · I = Informed.
 
-| Área | CTO | EM-ARCH | SR-FULL | FE-PLAT | PROD-UX | DS-OWNER | SR-QA | SEC-ENG | DATA-ENG |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Roadmap y visión de producto | A | R | C | I | C | I | I | I | I |
-| Arquitectura (boundaries, ADRs, integraciones) | A* | R | C | C | I | I | I | C | C |
-| UX (journeys, flujos, eficiencia de tarea) | I | A | I | C | R | C | C | I | I |
-| UI — contrato del design system (tokens, API de componente, estados) | A* | C | I | C | C | R | I | I | I |
-| UI — implementación (layouts, pantallas, composición) | I | A | I | R | C | C | C | I | I |
-| APIs y contratos | I | A | R | C | I | I | C | C | C |
-| Base de datos y migraciones | I | A | R | I | I | I | I | C | C |
-| Seguridad aplicativa | A* | C | C | C | I | I | I | R | I |
-| Testing (unit/integración) | I | A | R | R | I | I | C | I | I |
-| Testing (E2E, regresión visual y a11y) | I | A | C | C | C | C | R | I | I |
-| Performance (backend y frontend) | I | A | R | R | C | C | C | I | C |
-| Accesibilidad WCAG 2.2 AA | I | A | I | R** | R** | R** | C | I | I |
-| Fidelidad a la Estrella Polar (prototipo ADR-023 + [spec Firma iWana](../specs/2026-07-12-firma-iwana-diseno-visual-design.md)) | I | A | I | C | C | C | R | I | I |
-| Releases a producción | A | R | C | C | I | I | C | C | I |
+| Área | CTO | EM-ARCH | SR-FULL | FE-PLAT | PROD-UX | DS-OWNER | SR-QA | SEC-ENG | DATA-ENG | PLAT-OPS |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Roadmap y visión de producto | A | R | C | I | C | I | I | I | I | I |
+| Arquitectura (boundaries, ADRs, integraciones) | A* | R | C | C | I | I | I | C | C | C |
+| UX (journeys, flujos, eficiencia de tarea) | I | A | I | C | R | C | C | I | I | I |
+| UI — contrato del design system (tokens, API de componente, estados) | A* | C | I | C | C | R | I | I | I | I |
+| UI — implementación (layouts, pantallas, composición) | I | A | I | R | C | C | C | I | I | I |
+| APIs y contratos | I | A | R | C | I | I | C | C | C | I |
+| Base de datos y migraciones | I | A | R | I | I | I | I | C | R*** | C |
+| Seguridad aplicativa | A* | C | C | C | I | I | C | R | I | C |
+| Testing (unit/integración) | I | A | R | R | I | I | C | I | I | I |
+| Testing (E2E, regresión visual y a11y) | I | A | C | C | C | C | R | I | I | C |
+| Performance (backend y frontend) | I | A | R | R | C | C | C | I | C | C |
+| Accesibilidad WCAG 2.2 AA | I | A | I | R** | R** | R** | C | I | I | I |
+| Fidelidad a la Estrella Polar (prototipo ADR-023 + [spec Firma iWana](../specs/2026-07-12-firma-iwana-diseno-visual-design.md)) | I | A | I | C | C | C | R | I | I | I |
+| Infraestructura, CI/CD, backups/DR y observabilidad de plataforma | A* | A | C | C | I | I | C | C | I | R |
+| Releases a producción (gobierno: informe de cierre, go/no-go) | A | R | C | C | I | I | C | C | I | C |
+| Releases a producción (ejecución: despliegue, migraciones, rollback) | A | C | C | I | I | I | I | C | I | R |
 
-\* El CTO es Accountable solo en el nivel de excepción o cambio estratégico (aprobar ADR, excepción de seguridad, cambio de tokens de marca); la operación diaria del área es Accountable de EM-ARCH.
+\* El CTO es Accountable solo en el nivel de excepción o cambio estratégico (aprobar ADR, excepción de seguridad, cambio de tokens de marca, targets RPO/RTO); la operación diaria del área es Accountable de EM-ARCH.
 \** Accesibilidad tiene triple Responsible con frontera clara: **PROD-UX** define los criterios de flujo, **DS-OWNER** garantiza contraste y estados en el contrato de componente, **FE-PLAT** los implementa; SR-QA verifica. Estándar único **WCAG 2.2 AA** (resuelve la contradicción 2.1/2.2 de los perfiles v1).
+\*** DATA-ENG es Responsible del **diseño** del modelo y las migraciones de su dominio (RADIUS, OLT, CDR, ETL, métricas) cuando está activado on-demand; SR-FULL es Responsible de la **implementación** dentro del Modulith y de todo lo demás. (Corrige la contradicción v1.2, donde DATA-ENG era solo C pero su perfil le exigía entregar modelos y migraciones.)
 
-Regla de desempate: si dos agentes con R/C discrepan (p. ej. factibilidad técnica vs especificación UX), decide EM-ARCH en modo Mixto documentando la decisión; si la disputa toca stack, presupuesto, seguridad o identidad de marca global, escala al CTO con opciones y recomendación.
+Reglas de desempate:
+
+1. Si dos agentes con R/C discrepan (p. ej. factibilidad técnica vs especificación UX), decide EM-ARCH en modo Mixto documentando la decisión; si la disputa toca stack, presupuesto, seguridad o identidad de marca global, escala al CTO con opciones y recomendación.
+2. **En áreas con Responsible múltiple** (testing unit/integración, performance, accesibilidad), decide el R de la **superficie afectada**: backend → SR-FULL, frontend/`@iwana/ui` → FE-PLAT, y en accesibilidad según la frontera de \**. Si la disputa cruza superficies, aplica la regla 1 (EM-ARCH).
 
 ## 3. Workflow por módulo o feature
 
@@ -85,9 +100,9 @@ Siete etapas con gates. Ningún gate se auto-aprueba: el aprobador es siempre di
 
 | # | Etapa | Ejecuta | Entradas | Salidas (artefacto + formato) | Gate de salida (aprueba) |
 | --- | --- | --- | --- | --- | --- |
-| 1 | Definición de objetivo | EM-ARCH | Lineamiento CTO, PRD sistema, ADRs, contexto regulatorio | PRD de módulo (10 secciones), HLD, ADRs requeridos, plan de fases | **G1:** CTO (si hay ADR o impacto estratégico) o EM-ARCH |
+| 1 | Definición de objetivo | EM-ARCH | Lineamiento CTO, PRD sistema, ADRs, contexto regulatorio | PRD de módulo (10 secciones), HLD, ADRs requeridos, plan de fases | **G1:** CTO (si hay ADR o impacto estratégico); en el resto de casos, **review cruzado obligatorio** — SR-FULL firma factibilidad preliminar y PROD-UX viabilidad UX antes de pasar a etapa 2 (EM-ARCH no aprueba su propio PRD/HLD en solitario) |
 | 2 | Solución UX/UI | PROD-UX (flujo) + DS-OWNER (contrato) | PRD, HLD, patrones existentes en `apps/*` y `packages/ui`, manual de identidad, [spec Firma iWana](../specs/2026-07-12-firma-iwana-diseno-visual-design.md) | UX spec (PROD-UX: wireframes, user flows, estados, responsive, criterios de accesibilidad) + contrato de componente (DS-OWNER: tokens, API, estados requeridos) | **G2:** EM-ARCH (alcance) — pasa a etapa 3 sin implementar |
-| 3 | Validación de factibilidad | SR-FULL (+ DATA-ENG/SEC-ENG si aplica) | Especificación visual, contratos API borrador | Dictamen de factibilidad: viable / viable con ajustes / inviable, con costo estimado y riesgos técnicos | **G3:** EM-ARCH resuelve ajustes; disputa → regla de desempate |
+| 3 | Validación de factibilidad | SR-FULL (backend) + FE-PLATFORM (UI) (+ DATA-ENG/SEC-ENG/PLAT-OPS si aplica) | Especificación visual, contratos API borrador | Dictámenes de factibilidad: viable / viable con ajustes / inviable, con costo estimado y riesgos técnicos (backend y frontend por separado) | **G3:** EM-ARCH resuelve ajustes; disputa → regla de desempate |
 | 4 | Aprobación de diseño | EM-ARCH | Especificación ajustada + dictamen | Prompt de ejecución por fase (alcance exacto, restricciones, stop/go) | **G4:** EM-ARCH emite; sin prompt de ejecución no hay implementación |
 | 5 | Implementación | SR-FULL (backend) + FE-PLATFORM (frontend) | Prompt de ejecución, PRD, HLD, ADRs, UX spec + contrato de componente | Código + tests (≥80% core) + migraciones reversibles + OpenAPI + reporte de fase | **G5:** gates técnicos (sección 4) + review de segunda capa por EM-ARCH |
 | 6 | Review de experiencia y calidad | PROD-UX + DS-OWNER + SR-QA + SEC-ENG (si aplica) | Entrega implementada, UX spec, contrato de componente, criterios de aceptación, skill `iwana-identity-ui-review` | Informe de hallazgos (bloqueante / importante / deuda aceptada), evidencia E2E, evidencia a11y | **G6:** PROD-UX puede bloquear por ruptura crítica de flujo/a11y; DS-OWNER por violación de contrato o identidad (Firma iWana); QA por criterios de aceptación |
@@ -97,7 +112,7 @@ Reglas del workflow:
 
 - **Handoff explícito:** cada etapa termina con un artefacto nombrado y localizado en `docs/` (`docs/prds/`, `docs/specs/`, `docs/plans/`, `docs/informes/`); un handoff verbal o implícito no cuenta.
 - **Iteración corta permitida:** las etapas 2–3 pueden iterar entre sí sin pasar por EM-ARCH mientras no cambien alcance, contrato ni boundary.
-- **Bloqueos:** cualquier agente bloqueado > 4 h escala a EM-ARCH con el formato `[BLOQUEO]` de su perfil; los bloqueos silenciosos son un anti-patrón de todo el sistema.
+- **Bloqueos (SLA en unidades de sesión):** un agente que no puede resolver un bloqueo dentro de su sesión actual con la información disponible emite `[BLOQUEO]` a EM-ARCH **antes de cerrar la sesión** — nunca asume para "seguir avanzando". Los bloqueos silenciosos son un anti-patrón de todo el sistema. (Los SLAs en horas de versiones anteriores eran una metáfora humana sin significado operativo para agentes que trabajan por sesiones.)
 - **Cambios tardíos:** un cambio de alcance descubierto en etapas 5–7 regresa a la etapa 1 ó 2 según su naturaleza; no se "parchea" en implementación.
 - **Regla de completitud (ADR-016):** no se inicia el módulo N+1 sin cierre del módulo N.
 
@@ -105,12 +120,14 @@ Reglas del workflow:
 
 El workflow de 7 etapas es la secuencia de *gobierno*. Dentro de una fase de implementación, la ejecución **no es secuencial**: se paraleliza en cuatro tracks que corren contra **contratos congelados**, no contra trabajo terminado. Esto es lo que reduce el tiempo de entrega sin sacrificar boundaries.
 
-**Los dos contratos que desbloquean el paralelismo:**
+**Los dos contratos que desbloquean el paralelismo (artefacto + congelación definidos):**
 
-1. **Contrato de componente** (dueño: AI-DS-OWNER) — tokens + API de componente + estados requeridos.
-2. **Contrato de API tipado** (dueño: AI-SR-FULL) — request/response/errores de los endpoints del módulo.
+| Contrato | Dueño | Artefacto (ruta localizable) | Evento de congelación |
+| --- | --- | --- | --- |
+| **Contrato de componente** — tokens + API de componente + estados requeridos | AI-DS-OWNER | Spec de componente/tokens en `docs/specs/` (formato del perfil DS-OWNER §7) | El prompt de ejecución de la fase declara "contrato de componente congelado" citando la ruta y versión de la spec |
+| **Contrato de API tipado** — request/response/errores de los endpoints del módulo | AI-SR-FULL | Tipos/DTOs en `@iwana/shared` + OpenAPI comprometida en el repo | El prompt de ejecución de la fase declara "contrato de API congelado" citando los tipos y la OpenAPI; los **mocks tipados** que consume FE-PLATFORM se derivan de esos tipos, nunca de tipos paralelos |
 
-Ambos se **congelan temprano** (al inicio de la fase). Mientras un contrato no cambie, ningún track se bloquea.
+Ambos se **congelan temprano** (al inicio de la fase). Un contrato sin artefacto localizable y sin declaración de congelación en el prompt de ejecución **no está congelado** — es el contrato verbal que la regla 4 prohíbe. Mientras un contrato no cambie, ningún track se bloquea.
 
 **Tracks concurrentes:**
 
@@ -163,16 +180,17 @@ El workflow de 7 etapas cubre el flujo *planificado*. Esta red cubre lo *no plan
 
 Lee la fila del agente que trabaja; la columna dice a quién consultar según el disparador.
 
-| Consulta ▼ / hacia ► | EM-ARCH | SR-FULL | FE-PLAT | PROD-UX | DS-OWNER | SR-QA | SEC-ENG | DATA-ENG |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **EM-ARCH** | — | Factibilidad/costo técnico backend de una opción de diseño | Factibilidad/costo de implementación frontend | Viabilidad UX de un flujo propuesto | Impacto de un cambio en el contrato del DS | Testabilidad de un criterio de aceptación | Riesgo de seguridad de una decisión arquitectónica | Impacto de datos/integración ISP |
-| **SR-FULL** | Ambigüedad de alcance, contrato o boundary **(B)** | — | Necesidades del frontend sobre el contrato de API (shape, paginación, errores) | Impacto de una restricción técnica en el flujo | Impacto de una restricción técnica en el contrato de componente | Cómo hacer testable un módulo | Manejo de secreto, PII o control de seguridad **(B)** | Contrato de integración de datos (RADIUS/OLT/CDR/ETL) |
-| **FE-PLAT** | Cambio que altera alcance o boundary **(B)** | Contrato de API, mocks tipados, semántica de errores | — | Comportamiento de flujo no definido en la UX spec | Patrón, token o estado no definido en el contrato **(B si bloquea la pantalla)** | Criterios de prueba visual/a11y automatizable | Riesgo de exposición de datos en el cliente | Semántica de métricas a renderizar |
-| **PROD-UX** | Cambio que altera alcance funcional | Factibilidad de datos de un flujo antes de especificarlo | Costo de implementación de un patrón de interacción | — | Patrón/componente/token nuevo que el prototipo o la spec Firma iWana no cubren | Criterios de prueba de experiencia | Si un diseño puede exponer PII en pantalla | Semántica de datos a visualizar (dashboards, métricas) |
-| **DS-OWNER** | Cambio de contrato que arrastra alcance | Impacto backend de un contrato (p. ej. paginación/orden para `DataTable`) | Fricción de implementación de un contrato | Necesidad de experiencia detrás de un patrón solicitado | — | Qué estados y variantes son auditables (regresión visual, a11y) | Implicaciones de seguridad de un patrón (enmascarado, estados readonly) | Semántica de métricas para tokens de gráficas (`--chart-*`) |
-| **SR-QA** | Criterio de aceptación faltante o ambiguo | Entender el código backend bajo prueba | Entender la implementación frontend bajo prueba | Comportamiento de flujo esperado | Estados y variantes esperados de un componente | — | Escenarios de abuso a cubrir **(B en flujos sensibles)** | Datos de prueba de integraciones de datos |
-| **SEC-ENG** | Excepción o impacto arquitectónico de un control | Guía de corrección de un hallazgo backend | Guía de corrección de un hallazgo frontend | Riesgo de UX que induzca error del usuario | Controles visuales del contrato (enmascarado de datos sensibles) | Cobertura de tests de escenarios de abuso | — | Seguridad de pipelines de datos e integraciones OLT/RADIUS |
-| **DATA-ENG** | Alcance/boundary de una integración de datos | Implementación de la integración en el Modulith | Representación de métricas en el cliente | Representación de métricas/datos en UI | Tokens y patrones de visualización de datos | Validación de calidad de datos con tests | Cifrado y controles en flujos de datos | — |
+| Consulta ▼ / hacia ► | EM-ARCH | SR-FULL | FE-PLAT | PROD-UX | DS-OWNER | SR-QA | SEC-ENG | DATA-ENG | PLAT-OPS |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **EM-ARCH** | — | Factibilidad/costo técnico backend de una opción de diseño | Factibilidad/costo de implementación frontend | Viabilidad UX de un flujo propuesto | Impacto de un cambio en el contrato del DS | Testabilidad de un criterio de aceptación | Riesgo de seguridad de una decisión arquitectónica | Impacto de datos/integración ISP | Impacto de infraestructura/despliegue de una decisión |
+| **SR-FULL** | Ambigüedad de alcance, contrato o boundary **(B)** | — | Necesidades del frontend sobre el contrato de API (shape, paginación, errores) | Impacto de una restricción técnica en el flujo | Impacto de una restricción técnica en el contrato de componente | Cómo hacer testable un módulo | Manejo de secreto, PII o control de seguridad **(B)** | Contrato de integración de datos (RADIUS/OLT/CDR/ETL) | Recursos de infraestructura de un módulo (colas, storage, ventana de migración) |
+| **FE-PLAT** | Cambio que altera alcance o boundary **(B)** | Contrato de API, mocks tipados, semántica de errores | — | Comportamiento de flujo no definido en la UX spec | Patrón, token o estado no definido en el contrato **(B si bloquea la pantalla)** | Criterios de prueba visual/a11y automatizable | Riesgo de exposición de datos en el cliente | Semántica de métricas a renderizar | Configuración de build/CI del frontend |
+| **PROD-UX** | Cambio que altera alcance funcional | Factibilidad de datos de un flujo antes de especificarlo | Costo de implementación de un patrón de interacción | — | Patrón/componente/token nuevo que el prototipo o la spec Firma iWana no cubren | Criterios de prueba de experiencia | Si un diseño puede exponer PII en pantalla | Semántica de datos a visualizar (dashboards, métricas) | — |
+| **DS-OWNER** | Cambio de contrato que arrastra alcance | Impacto backend de un contrato (p. ej. paginación/orden para `DataTable`) | Fricción de implementación de un contrato | Necesidad de experiencia detrás de un patrón solicitado | — | Qué estados y variantes son auditables (regresión visual, a11y) | Implicaciones de seguridad de un patrón (enmascarado, estados readonly) | Semántica de métricas para tokens de gráficas (`--chart-*`) | — |
+| **SR-QA** | Criterio de aceptación faltante o ambiguo | Entender el código backend bajo prueba | Entender la implementación frontend bajo prueba | Comportamiento de flujo esperado | Estados y variantes esperados de un componente | — | Escenarios de abuso a cubrir **(B en flujos sensibles)** | Datos de prueba de integraciones de datos | Fallo o flakiness de la infraestructura de tests/CI |
+| **SEC-ENG** | Excepción o impacto arquitectónico de un control | Guía de corrección de un hallazgo backend | Guía de corrección de un hallazgo frontend | Riesgo de UX que induzca error del usuario | Controles visuales del contrato (enmascarado de datos sensibles) | Cobertura de tests de escenarios de abuso | — | Seguridad de pipelines de datos e integraciones OLT/RADIUS | Implementación de controles de infraestructura (TLS, secretos en CI/CD) |
+| **DATA-ENG** | Alcance/boundary de una integración de datos | Implementación de la integración en el Modulith | Representación de métricas en el cliente | Representación de métricas/datos en UI | Tokens y patrones de visualización de datos | Validación de calidad de datos con tests | Cifrado y controles en flujos de datos | — | Ventanas de ejecución y recursos para ETLs/jobs de datos |
+| **PLAT-OPS** | Cambio de topología o alcance de infraestructura **(B)** | Orden de migraciones y healthchecks de un release | Requisitos de build del frontend | — | — | Requisitos de la suite en CI (tiempos, paralelismo) | Control de seguridad a implementar en infraestructura **(B)** | Ventanas y recursos de jobs de datos | — |
 
 **(B) = consulta bloqueante:** el agente no continúa por esa vía hasta recibir respuesta, porque avanzar con un supuesto sobre alcance, boundary, PII o seguridad puede corromper el entregable. Las demás consultas son asíncronas: el agente registra el supuesto, sigue con lo que no depende de la respuesta y ajusta al recibirla.
 
@@ -190,7 +208,7 @@ Bloqueante: Sí/No | Supuesto mientras tanto: {si no es bloqueante}
 Reglas:
 
 1. **La consulta precede al supuesto, no al revés.** Si existe el perfil que sabe, se consulta antes de inventar la respuesta.
-2. **SLA:** consulta bloqueante se atiende con prioridad sobre el trabajo en curso del consultado; consulta asíncrona, dentro de la fase.
+2. **SLA (en unidades de sesión):** consulta bloqueante se atiende con prioridad sobre el trabajo en curso del consultado — en su siguiente sesión activa a más tardar; consulta asíncrona, dentro de la fase.
 3. **Si el consultado no responde a tiempo o la consulta escala a desacuerdo**, deja de ser consulta y entra a la sección 5 (resolución de conflictos) vía EM-ARCH.
 4. **Auto-consulta al catálogo de skills primero:** para el *cómo* dentro del repo (patrón NestJS, App Router, migración, a11y), el agente consulta la skill correspondiente de `.agents/skills/` antes de molestar a otro agente. Los perfiles resuelven el *quién*; las skills, el *cómo*.
 5. **La consulta se registra** en el artefacto de la fase cuando cambia una decisión; una consulta que no altera nada no necesita registro.
@@ -207,10 +225,10 @@ Aplican a todos los agentes, en todo artefacto:
 
 ## 8. Cadencia de sincronización
 
-- **Por fase:** reporte de fase de SR-FULL y FE-PLATFORM → EM-ARCH (formato del perfil).
-- **Por sprint:** informe de sprint de EM-ARCH → CTO (entregables, cobertura, deuda, DORA, blockers, decisiones que requieren CTO).
-- **Por módulo:** informe de cierre con evidencia funcional, de calidad y de despliegue.
-- **Continuo:** hallazgos bloqueantes de PROD-UX, DS-OWNER, SR-QA o SEC-ENG se comunican al detectarse, no al final de la etapa.
+- **Por fase:** reporte de fase de SR-FULL y FE-PLATFORM → EM-ARCH (formato del perfil); reporte de calidad de SR-QA → EM-ARCH (formato del perfil QA §9.2); informe de postura de SEC-ENG → EM-ARCH cuando la fase tocó seguridad, PII o integraciones.
+- **Por sprint:** informe de sprint de EM-ARCH → CTO según la [plantilla instrumentada](../informes/PLANTILLA-INFORME-SPRINT-v1.0.md) (entregables, cobertura, deuda, blockers, decisiones que requieren CTO, tabla de KPIs del protocolo y señales de división de EM-ARCH — cada KPI con dato del sprint y fuente, o marcado "sin instrumentar"; no se estima).
+- **Por módulo:** informe de cierre con evidencia funcional, de calidad y de despliegue; si hubo release, informe de ejecución de PLAT-OPS.
+- **Continuo:** hallazgos bloqueantes de PROD-UX, DS-OWNER, SR-QA, SEC-ENG o PLAT-OPS (pipeline de CI roto) se comunican al detectarse, no al final de la etapa.
 
 ## 9. Mantenimiento de este protocolo
 
