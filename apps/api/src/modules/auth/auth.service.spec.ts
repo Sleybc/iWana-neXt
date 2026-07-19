@@ -656,25 +656,46 @@ describe('AuthService', () => {
       );
     });
 
-    it('retorna la misma respuesta cacheada si llega el mismo Idempotency-Key', async () => {
+    it('no vuelve a rotar si llega el mismo Idempotency-Key: rechaza con 409', async () => {
+      // La idempotencia debe impedir una segunda rotación, no reservir el
+      // secreto. Antes se cacheaba la respuesta entera 24h y la contraseña
+      // quedaba en claro en Redis, recuperable por quien repitiera la clave.
       mockRedis.get.mockResolvedValueOnce(
         JSON.stringify({
-          message: 'Credenciales temporales regeneradas para el ADMIN inicial del tenant.',
           adminEmail: 'admin@isptest.co',
-          temporaryPassword: 'IwN!a9-cachedpass',
           expiresAt: '2026-03-20T00:00:00.000Z',
         }),
       );
 
-      const result = await service.regenerateTenantAdminCredentials({
-        tenantId: 'tenant-uuid-1',
-        schemaName: 'tenant_test',
-        idempotencyKey: 'idem-key-2',
-      });
+      await expect(
+        service.regenerateTenantAdminCredentials({
+          tenantId: 'tenant-uuid-1',
+          schemaName: 'tenant_test',
+          idempotencyKey: 'idem-key-2',
+        }),
+      ).rejects.toThrow(ConflictException);
 
-      expect(result.temporaryPassword).toBe('IwN!a9-cachedpass');
+      // Lo esencial: el reintento no vuelve a tocar la base ni rehashea.
       expect(mockRunInTenantSchema).not.toHaveBeenCalled();
       expect(bcrypt.hash).not.toHaveBeenCalled();
+    });
+
+    it('el rastro de idempotencia no contiene la contraseña', async () => {
+      mockRedis.get.mockResolvedValueOnce(null);
+
+      await service.regenerateTenantAdminCredentials({
+        tenantId: 'tenant-uuid-1',
+        schemaName: 'tenant_test',
+        idempotencyKey: 'idem-key-3',
+      });
+
+      const [, cachedPayload] = mockRedis.set.mock.calls.at(-1) as [string, string];
+
+      expect(cachedPayload).not.toMatch(/IwN!a9-/);
+      expect(JSON.parse(cachedPayload)).toEqual({
+        adminEmail: expect.any(String),
+        expiresAt: expect.any(String),
+      });
     });
   });
 

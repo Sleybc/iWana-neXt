@@ -827,16 +827,28 @@ export class AuthService {
     temporaryPassword: string;
     expiresAt: string;
   }> {
+    // El registro de idempotencia NO guarda la contraseña.
+    //
+    // Antes se cacheaba la respuesta completa 24h, de modo que la credencial
+    // quedaba en claro en Redis y cualquiera que repitiese el `Idempotency-Key`
+    // la recuperaba. Lo que la idempotencia debe garantizar es que un reintento
+    // no rote una segunda vez —dejando dos contraseñas y ambigüedad sobre cuál
+    // quedó aplicada—, no volver a servir el secreto.
+    //
+    // Un reintento recibe ahora 409 con el contexto necesario: la credencial ya
+    // se emitió y solo se mostró una vez. Si se perdió, se regenera con una
+    // clave de idempotencia nueva.
     const cacheKey = `tenant-admin-credentials:${input.tenantId}:${input.idempotencyKey}`;
-    const cachedResponse = await this.redis.get(cacheKey);
+    const alreadyIssued = await this.redis.get(cacheKey);
 
-    if (cachedResponse) {
-      return JSON.parse(cachedResponse) as {
-        message: string;
-        adminEmail: string;
-        temporaryPassword: string;
-        expiresAt: string;
-      };
+    if (alreadyIssued) {
+      const record = JSON.parse(alreadyIssued) as { adminEmail: string; expiresAt: string };
+
+      throw new ConflictException(
+        `Ya se emitieron credenciales para ${record.adminEmail} con esta clave de idempotencia ` +
+          `(vigentes hasta ${record.expiresAt}). La contraseña solo se muestra una vez y no se ` +
+          `conserva. Si se perdió, regenere con una clave de idempotencia nueva.`,
+      );
     }
 
     return runInTenantSchema(this.dataSource, input.schemaName, async (qr) => {
@@ -872,9 +884,10 @@ export class AuthService {
         expiresAt: expiresAt.toISOString(),
       };
 
+      // Solo el rastro no secreto: basta para detectar el reintento y explicarlo.
       await this.redis.set(
         cacheKey,
-        JSON.stringify(response),
+        JSON.stringify({ adminEmail: response.adminEmail, expiresAt: response.expiresAt }),
         'EX',
         TEMPORARY_PASSWORD_TTL_SECONDS,
       );
