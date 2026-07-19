@@ -52,7 +52,21 @@ function ensureDatabaseEnvLoaded(): void {
 
   const workspaceRoot = resolve(__dirname, '..', '..', '..');
 
-  for (const candidate of ['.env.development', '.env']) {
+  // `.env.development.local` va PRIMERO y es deliberado.
+  //
+  // `loadEnvFile` no sobrescribe claves ya presentes en process.env, así que el
+  // orden de esta lista fija la precedencia. Esta función corre en tiempo de
+  // import (línea final del bloque), y `apps/api/src/app.module.ts` importa
+  // `@iwana/db` en su línea 10 — es decir, antes de que el cuerpo del módulo
+  // llame a `preloadDevelopmentLocalEnv`. Al volcar el fichero versionado
+  // completo (no solo las `DB_*` que este comentario promete), cargarlo primero
+  // dejaba el `.local` con precedencia INFERIOR para toda clave compartida: el
+  // override local se ignoraba en silencio.
+  //
+  // Síntoma real que lo destapó: `PLATFORM_SUPER_ADMIN_EMAIL` del `.local` nunca
+  // llegaba a `PlatformBootstrapService`, que seguía viendo el email versionado
+  // y registraba "bootstrap omitido: el usuario ya existe".
+  for (const candidate of ['.env.development.local', '.env.development', '.env']) {
     try {
       loadEnvFile(resolve(workspaceRoot, candidate));
     } catch {

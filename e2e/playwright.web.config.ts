@@ -1,5 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
 
+import { loadWorkspaceEnv } from './load-env';
+
+// Antes de leer cualquier process.env: sin esto las specs que dependen de
+// variables de entorno se saltaban siempre (ver load-env.ts).
+loadWorkspaceEnv();
+
 const chromiumExecutablePath = process.env['PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH'];
 
 export default defineConfig({

@@ -71,6 +71,16 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
     const value = line.slice(separatorIndex + 1).trim();
     const currentValue = process.env[key];
 
+    // Solo rellena huecos y placeholders: no pisa lo que venga del shell o de
+    // CI, que deben conservar la máxima precedencia.
+    //
+    // Ojo: esta función NO es lo que garantiza que `.env.development.local` gane
+    // al `.env.development` versionado. Para cuando se ejecuta, el import de
+    // `@iwana/db` (línea 10) ya volcó el fichero versionado entero vía
+    // `ensureDatabaseEnvLoaded`, de modo que `currentValue` estaría definido y
+    // este guard lo respetaría. La precedencia se fija allí, cargando el
+    // `.local` primero — ver `packages/database/src/data-source.ts`. Esto queda
+    // como red de seguridad para las claves que aquel mecanismo no alcance.
     if (!currentValue || currentValue.startsWith('CHANGE_ME_')) {
       process.env[key] = value;
     }

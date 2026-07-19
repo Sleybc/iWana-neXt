@@ -3,6 +3,12 @@ import { platform } from 'node:os';
 
 import { defineConfig, devices } from '@playwright/test';
 
+import { loadWorkspaceEnv } from './load-env';
+
+// Antes de leer cualquier process.env: sin esto las specs que dependen de
+// variables de entorno se saltaban siempre (ver load-env.ts).
+loadWorkspaceEnv();
+
 const browserOverride = process.env.IWANA_PORTAL_E2E_BROWSER;
 
 function shouldUseSystemChrome(): boolean {
