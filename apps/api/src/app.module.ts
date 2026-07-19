@@ -1,7 +1,7 @@
 import { BullModule } from '@nestjs/bullmq';
 import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
 import * as Joi from 'joi';
@@ -14,6 +14,7 @@ import { UsersModule } from './modules/users/users.module';
 import { ConfigurationModule } from './modules/configuration/configuration.module';
 import { OrganizationModule } from './modules/organization/organization.module';
 import { AccessControlModule } from './modules/access-control/access-control.module';
+import { TenantContextMissingFilter } from './common/filters/tenant-context-missing.filter';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { AuditModule } from './modules/audit/audit.module';
 import { PlatformUsersModule } from './modules/platform-users/platform-users.module';
@@ -307,6 +308,9 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
     // AuditInterceptor registrado globalmente: intercepta todas las operaciones CUD.
     // Enruta segun jwt.type: 'platform' → platform_audit_logs, 'tenant' → <schema>.audit_logs.
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
+    // Convierte la falta de contexto de tenant en 400 en vez del 500 generico
+    // que producia el Error suelto de TenantContext.getOrThrow().
+    { provide: APP_FILTER, useClass: TenantContextMissingFilter },
   ],
 })
 export class AppModule implements NestModule {

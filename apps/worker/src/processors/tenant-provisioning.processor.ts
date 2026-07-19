@@ -101,28 +101,46 @@ export class TenantProvisioningProcessor extends WorkerHost {
       const schemaExists = await this.checkSchemaExists(schemaName);
       if (schemaExists) {
         this.logger.warn(
-          `[provisioning] Schema "${schemaName}" ya existe — verificando status del tenant ${tenantSlug}`,
+          `[provisioning] Schema "${schemaName}" ya existe — verificando estado real del provisioning`,
         );
-        // Si el schema ya existe pero el tenant sigue en PROVISIONING, lo activamos.
-        // Cubre el caso donde el job falló después de crear el schema pero antes de
-        // actualizar el status (worker crash, restart, etc.). Idempotencia garantizada.
-        const existing = await this.dataSource.getRepository(Tenant).findOne({
-          where: { id: tenantId },
-        });
-        if (existing && existing.status !== 'ACTIVE') {
-          await this.dataSource
-            .createQueryBuilder()
-            .update('public.tenants')
-            .set({ status: 'ACTIVE' })
-            .where('id = :id', { id: tenantId })
-            .execute();
-          this.logger.log(
-            `[provisioning] Tenant ${tenantSlug} activado (schema ya existía, status corregido a ACTIVE)`,
+
+        // DEF-08: la mera existencia del schema NO prueba que el tenant este
+        // provisionado. Un schema preexistente (creado a mano, restaurado de un
+        // backup, o dejado a medias por un crash) activaria un tenant vacio o
+        // apuntando a datos ajenos. Solo se considera provisionado si TODAS las
+        // migraciones de tenant estan aplicadas.
+        const migrationsComplete = await this.checkTenantMigrationsComplete(schemaName);
+
+        if (!migrationsComplete) {
+          this.logger.warn(
+            `[provisioning] Schema "${schemaName}" existe pero con migraciones incompletas — ` +
+              `se completara el provisioning antes de activar el tenant ${tenantSlug}`,
           );
+          // No retornamos: el flujo normal es idempotente (CREATE SCHEMA IF NOT
+          // EXISTS + migraciones en orden + seed que omite lo ya existente).
         } else {
-          this.logger.log(`[provisioning] Tenant ${tenantSlug} ya estaba ACTIVE — nada que hacer`);
+          // Schema completo: recuperacion idempotente de un job que fallo despues
+          // de migrar pero antes de actualizar el status (worker crash, restart).
+          const existing = await this.dataSource.getRepository(Tenant).findOne({
+            where: { id: tenantId },
+          });
+          if (existing && existing.status !== 'ACTIVE') {
+            await this.dataSource
+              .createQueryBuilder()
+              .update('public.tenants')
+              .set({ status: 'ACTIVE' })
+              .where('id = :id', { id: tenantId })
+              .execute();
+            this.logger.log(
+              `[provisioning] Tenant ${tenantSlug} activado (schema ya migrado, status corregido a ACTIVE)`,
+            );
+          } else {
+            this.logger.log(
+              `[provisioning] Tenant ${tenantSlug} ya estaba ACTIVE — nada que hacer`,
+            );
+          }
+          return;
         }
-        return;
       }
       const tenant = await this.dataSource.getRepository(Tenant).findOne({
         where: { id: tenantId },
@@ -223,6 +241,44 @@ export class TenantProvisioningProcessor extends WorkerHost {
       [schemaName],
     );
     return (result.rowCount ?? 0) > 0;
+  }
+
+  /**
+   * Verifica que el schema tenga aplicadas TODAS las migraciones de tenant.
+   *
+   * DEF-08: guarda de seguridad antes de activar un tenant sobre un schema
+   * preexistente. Si la tabla de migraciones no existe, o el numero de
+   * migraciones aplicadas es menor al esperado, el schema NO esta provisionado.
+   *
+   * Ante cualquier duda (error de consulta) devuelve false: es preferible
+   * re-ejecutar un provisioning idempotente que activar un tenant incompleto.
+   */
+  private async checkTenantMigrationsComplete(schemaName: string): Promise<boolean> {
+    // schemaName ya paso isValidSchemaName() al inicio de process().
+    try {
+      const result = await this.pgPool.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count
+           FROM information_schema.tables
+          WHERE table_schema = $1 AND table_name = 'typeorm_migrations'`,
+        [schemaName],
+      );
+
+      if (Number(result.rows[0]?.count ?? '0') === 0) {
+        return false;
+      }
+
+      const applied = await this.pgPool.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM "${schemaName}"."typeorm_migrations"`,
+      );
+
+      return Number(applied.rows[0]?.count ?? '0') >= TENANT_MIGRATIONS.length;
+    } catch (error) {
+      this.logger.warn(
+        `[provisioning] No se pudo verificar el estado de migraciones de "${schemaName}": ` +
+          `${(error as Error).message}. Se asume incompleto.`,
+      );
+      return false;
+    }
   }
 
   private async runMigrationsForSchema(schemaName: string): Promise<void> {

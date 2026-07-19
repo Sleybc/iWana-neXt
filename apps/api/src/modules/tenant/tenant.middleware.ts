@@ -11,6 +11,7 @@ import { NextFunction, Request, Response } from 'express';
 import { TenantContext } from '@iwana/db';
 import { TenantStatus } from '@iwana/shared';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { PUBLIC_ROUTES_WITH_TENANT, PUBLIC_ROUTES_WITHOUT_TENANT } from './public-routes';
 import { TenantService } from './tenant.service';
 
 /**
@@ -114,18 +115,37 @@ export class TenantMiddleware implements NestMiddleware {
     return rawSlug?.trim().toLowerCase() ?? '';
   }
 
+  /**
+   * ¿Es una ruta anónima? Cubre los dos estados públicos: las de ámbito
+   * plataforma y las que operan sobre un tenant concreto.
+   *
+   * Se usa para no rechazar con 401 una petición sin JWT que legítimamente no
+   * lo lleva. La clasificación vive en `public-routes.ts` como fuente única, y
+   * `tenant-public-routes.spec.ts` impide que vuelva a divergir de los
+   * `@Public()` reales — antes de 2026-07-19 nunca estuvieron sincronizados.
+   */
   private isPublicRoute(req: Request): boolean {
     const normalizedPath = this.getNormalizedPath(req);
-    return [
-      '/auth/login',
-      '/auth/refresh',
-      '/auth/forgot-password',
-      '/auth/reset-password',
-    ].includes(normalizedPath);
+
+    return (
+      PUBLIC_ROUTES_WITHOUT_TENANT.includes(normalizedPath) ||
+      PUBLIC_ROUTES_WITH_TENANT.includes(normalizedPath)
+    );
   }
 
+  /**
+   * ¿Esta ruta anónima exige `X-Tenant-Slug`?
+   *
+   * Solo las públicas que operan sobre un tenant concreto: su handler resuelve
+   * `TenantContext`, así que sin header no puede atenderse y conviene un 400
+   * explicativo en vez del 500 genérico que saldría de `getOrThrow()`.
+   *
+   * Antes se condicionaba a `method === 'POST'`; se quita porque la exigencia
+   * depende de si el handler necesita tenant, no del verbo. Hoy las seis rutas
+   * de esa lista son POST, así que el comportamiento observable no cambia.
+   */
   private requiresTenantHeader(req: Request): boolean {
-    return req.method === 'POST' && this.isPublicRoute(req);
+    return PUBLIC_ROUTES_WITH_TENANT.includes(this.getNormalizedPath(req));
   }
 
   private getNormalizedPath(req: Request): string {

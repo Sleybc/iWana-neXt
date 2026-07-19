@@ -37,5 +37,9 @@ export type {
 } from './migrations/tenant/revert';
 
 // Contexto de tenant por request (AsyncLocalStorage)
-export { TenantContext } from './tenant-context';
+export {
+  TenantContext,
+  TenantContextMissingError,
+  isTenantContextMissingError,
+} from './tenant-context';
 export type { TenantContextPayload } from './tenant-context';
