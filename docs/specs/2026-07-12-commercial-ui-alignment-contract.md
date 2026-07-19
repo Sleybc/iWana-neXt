@@ -1,7 +1,7 @@
 # Contrato UI — Módulo Comercial (alineación Firma iWana)
 
 **Fecha:** 2026-07-12  
-**Estado:** Aprobado (AI-DS-OWNER, carril rápido + gate G4 para tab Resumen)  
+**Estado:** Cerrado (alineación remanente 2026-07-18 — ver `docs/informes/INFORME-COMMERCIAL-UI-ALIGNMENT-v1.0.md`)  
 **Alcance:** `apps/portal/src/components/commercial/**`  
 **Referencia:** [Firma iWana](2026-07-12-firma-iwana-diseno-visual-design.md), [InventoryClient.tsx](../../apps/portal/src/components/inventory/InventoryClient.tsx)
 

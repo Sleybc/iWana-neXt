@@ -20,6 +20,8 @@ import {
 } from '@iwana/ui';
 import { CatalogItemType, DiscountType } from '@iwana/shared';
 import type { CreateBundleDto } from '@/lib/api-client';
+import { commercialTextareaClassName } from '@/components/commercial/commercial-field-styles';
+import { PortalAlert } from '@/components/shared/portal-ui';
 
 const bundleFormSchema = z
   .object({
@@ -182,16 +184,13 @@ export function CreateBundleModal({
               {...register('discountValue')}
             />
             <div className="md:col-span-2">
-              <label
-                htmlFor="bundle-description"
-                className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-600 dark:text-gray-300"
-              >
-                Descripcion
+              <label htmlFor="bundle-description" className="portal-eyebrow">
+                Descripción
               </label>
               <textarea
                 id="bundle-description"
                 rows={3}
-                className="mt-2 w-full rounded-2xl border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none transition-colors focus:border-iwana-secondary focus:ring-2 focus:ring-iwana-secondary/30 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100"
+                className={`mt-2 ${commercialTextareaClassName}`}
                 placeholder="Incluye internet + router + soporte prioritario"
                 {...register('description')}
               />
@@ -237,23 +236,21 @@ export function CreateBundleModal({
           {errors.validTo && <p className="text-xs text-red-600">{errors.validTo.message}</p>}
 
           <MultiSelect
-            label="Items del combo"
+            label="Ítems del combo"
             options={itemOptions}
             value={selectedItemIds}
             onChange={handleItemsChange}
             placeholder="Selecciona planes, productos o servicios..."
-            searchPlaceholder="Buscar item..."
+            searchPlaceholder="Buscar ítem..."
             disabled={!canEdit || isSubmitting}
             error={errors.itemIds?.message}
           />
 
           {selectedItems.length > 0 && (
             <section className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
-              <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-                Items opcionales
-              </h3>
+              <h3 className="portal-eyebrow">Ítems opcionales</h3>
               <p className="text-xs text-gray-500">
-                Marca los items que el cliente puede excluir al cotizar el combo.
+                Marca los ítems que el cliente puede excluir al cotizar el combo.
               </p>
 
               <div className="grid gap-2 md:grid-cols-2">
@@ -276,16 +273,20 @@ export function CreateBundleModal({
           )}
 
           <section className="rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
-            <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-              Vista operativa
-            </h3>
+            <h3 className="portal-eyebrow">Vista operativa</h3>
             <p className="mt-2 text-sm text-gray-500">
-              El precio final del combo se calcula dinámicamente al cotizar según segmento e items
+              El precio final del combo se calcula dinámicamente al cotizar según segmento e ítems
               opcionales seleccionados.
             </p>
           </section>
 
-          {serverError && <p className="text-sm text-red-600">{serverError}</p>}
+          {serverError && (
+            <PortalAlert
+              variant="error"
+              title="No fue posible crear el combo"
+              description={serverError}
+            />
+          )}
 
           <div className="flex items-center justify-end gap-2">
             <DialogClose asChild>

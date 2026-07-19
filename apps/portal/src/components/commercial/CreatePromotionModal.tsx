@@ -18,6 +18,8 @@ import {
 } from '@iwana/ui';
 import { CatalogItemType, CustomerSegment, DiscountType, PromotionScope } from '@iwana/shared';
 import type { CommercialBundle, CreatePromotionDto } from '@/lib/api-client';
+import { commercialTextareaClassName } from '@/components/commercial/commercial-field-styles';
+import { PortalAlert } from '@/components/shared/portal-ui';
 
 const promotionFormSchema = z
   .object({
@@ -189,17 +191,17 @@ export function CreatePromotionModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Crear promocion</DialogTitle>
+          <DialogTitle>Crear promoción</DialogTitle>
           <DialogDescription>
-            Configura un incentivo temporal con alcance, vigencia y limite de uso opcional.
+            Configura un incentivo temporal con alcance, vigencia y límite de uso opcional.
           </DialogDescription>
         </DialogHeader>
 
         <form className="space-y-5" onSubmit={handleSubmit(submitPromotion)}>
           <div className="grid gap-4 md:grid-cols-2">
-            <Input label="Nombre" placeholder="Promo reconexion abril" {...register('name')} />
+            <Input label="Nombre" placeholder="Promo reconexión abril" {...register('name')} />
             <Input
-              label="Codigo"
+              label="Código"
               placeholder="PROMO25"
               {...register('code', {
                 onChange: (event) => {
@@ -209,16 +211,13 @@ export function CreatePromotionModal({
               })}
             />
             <div className="md:col-span-2">
-              <label
-                htmlFor="promotion-description"
-                className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-600 dark:text-gray-300"
-              >
-                Descripcion
+              <label htmlFor="promotion-description" className="portal-eyebrow">
+                Descripción
               </label>
               <textarea
                 id="promotion-description"
                 rows={3}
-                className="mt-2 w-full rounded-2xl border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none transition-colors focus:border-iwana-secondary focus:ring-2 focus:ring-iwana-secondary/30 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-100"
+                className={`mt-2 ${commercialTextareaClassName}`}
                 placeholder="Beneficio temporal para reactivar cartera"
                 {...register('description')}
               />
@@ -241,12 +240,12 @@ export function CreatePromotionModal({
             />
             <Select id="promotion-scope" label="Alcance" {...register('appliesTo')}>
               <option value={PromotionScope.ALL}>Todo</option>
-              <option value={PromotionScope.ITEM}>Item especifico</option>
-              <option value={PromotionScope.BUNDLE}>Combo especifico</option>
-              <option value={PromotionScope.INSTALLATION}>Instalacion</option>
+              <option value={PromotionScope.ITEM}>Ítem específico</option>
+              <option value={PromotionScope.BUNDLE}>Combo específico</option>
+              <option value={PromotionScope.INSTALLATION}>Instalación</option>
             </Select>
             <Input
-              label="Maximo de usos"
+              label="Máximo de usos"
               type="number"
               min={1}
               step={1}
@@ -279,8 +278,8 @@ export function CreatePromotionModal({
           </div>
 
           {appliesTo === PromotionScope.ITEM && (
-            <Select id="promotion-target-item" label="Item objetivo" {...register('targetItemId')}>
-              <option value="">Selecciona un item</option>
+            <Select id="promotion-target-item" label="Ítem objetivo" {...register('targetItemId')}>
+              <option value="">Selecciona un ítem</option>
               {items.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name} ({getTypeLabel(item.type)})
@@ -307,9 +306,7 @@ export function CreatePromotionModal({
           )}
 
           <section className="space-y-2 rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
-            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-              Segmentos objetivo
-            </p>
+            <p className="portal-eyebrow">Segmentos objetivo</p>
             <div className="grid gap-2 md:grid-cols-2">
               <label className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-dark-border">
                 <input type="checkbox" {...register('segmentResidential')} />
@@ -321,7 +318,7 @@ export function CreatePromotionModal({
               </label>
             </div>
             <p className="text-xs text-gray-500">
-              Si no seleccionas ninguno, la promocion aplica a todos.
+              Si no seleccionas ninguno, la promoción aplica a todos.
             </p>
           </section>
 
@@ -339,7 +336,13 @@ export function CreatePromotionModal({
           {errors.maxUses && <p className="text-xs text-red-600">{errors.maxUses.message}</p>}
           {errors.validTo && <p className="text-xs text-red-600">{errors.validTo.message}</p>}
 
-          {serverError && <p className="text-sm text-red-600">{serverError}</p>}
+          {serverError && (
+            <PortalAlert
+              variant="error"
+              title="No fue posible crear la promoción"
+              description={serverError}
+            />
+          )}
 
           <div className="flex items-center justify-end gap-2">
             <DialogClose asChild>
@@ -348,7 +351,7 @@ export function CreatePromotionModal({
               </Button>
             </DialogClose>
             <Button type="submit" disabled={!canEdit || isSubmitting}>
-              {isSubmitting ? 'Guardando...' : 'Crear promocion'}
+              {isSubmitting ? 'Guardando...' : 'Crear promoción'}
             </Button>
           </div>
         </form>

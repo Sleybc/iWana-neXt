@@ -27,6 +27,7 @@ import {
   portalDataTableCellClassName,
   portalDataTableHeadClassName,
   portalDataTableShellClassName,
+  portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 
 interface PromotionsManagerProps {
@@ -228,7 +229,7 @@ export function PromotionsManager({ canEdit }: PromotionsManagerProps) {
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2/80">
                 {promotions.map((promotion) => (
-                  <tr key={promotion.id}>
+                  <tr key={promotion.id} className={portalTableRowHoverClassName}>
                     <td className={portalDataTableCellClassName}>
                       <p className="font-medium text-gray-800 dark:text-gray-100">
                         {promotion.name}

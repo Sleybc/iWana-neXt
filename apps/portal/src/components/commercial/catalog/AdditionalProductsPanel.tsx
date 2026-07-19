@@ -40,7 +40,10 @@ import {
   portalDataTableHeadClassName,
   portalDataTableShellClassName,
 } from '@/components/shared/portal-ui';
-import { commercialTableRowHoverClassName } from '@/components/commercial/commercial-field-styles';
+import {
+  commercialTableRowHoverClassName,
+  commercialTextareaClassName,
+} from '@/components/commercial/commercial-field-styles';
 
 const PRODUCT_CATEGORY_VALUES = [
   ProductCategory.ENTERTAINMENT,
@@ -437,12 +440,7 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
               Explora la oferta comercial desde una sola vista. La categoría funciona como filtro y
               badge, no como subsección separada.
             </p>
-            <Badge
-              variant="neutral"
-              className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]"
-            >
-              {resultsLabel}
-            </Badge>
+            <Badge variant="neutral">{resultsLabel}</Badge>
           </div>
 
           {categoryTotals.length > 0 && (
@@ -659,14 +657,15 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
                 />
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200">
-                    Descripcion corta
+                  <label htmlFor="product-description" className="portal-eyebrow-muted">
+                    Descripción corta
                   </label>
                   <textarea
+                    id="product-description"
                     {...register('description')}
                     rows={4}
-                    placeholder="Describe brevemente el uso comercial del producto o como se diferencia dentro del catalogo."
-                    className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 shadow-sm transition-colors placeholder:text-gray-400 focus:border-iwana-secondary focus:outline-none focus:ring-2 focus:ring-iwana-secondary/30 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-100 dark:placeholder:text-gray-500"
+                    placeholder="Describe brevemente el uso comercial del producto o cómo se diferencia dentro del catálogo."
+                    className={`mt-2 ${commercialTextareaClassName}`}
                   />
                   {errors.description && (
                     <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>
@@ -677,11 +676,9 @@ export function AdditionalProductsPanel({ canEdit }: AdditionalProductsPanelProp
 
             <section className="space-y-4 rounded-2xl border border-gray-100 p-4 dark:border-dark-border">
               <div>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                  Configuracion comercial
-                </p>
+                <p className="portal-eyebrow">Configuración comercial</p>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Define como se comercializa el producto y si se mantiene disponible para nuevas
+                  Define cómo se comercializa el producto y si se mantiene disponible para nuevas
                   operaciones.
                 </p>
               </div>

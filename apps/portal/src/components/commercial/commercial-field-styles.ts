@@ -1,5 +1,9 @@
 import { cn } from '@iwana/ui';
-import { interactiveFocusClassName, portalTextareaClassName } from '@/components/shared/portal-ui';
+import {
+  interactiveFocusClassName,
+  portalTableRowHoverClassName,
+  portalTextareaClassName,
+} from '@/components/shared/portal-ui';
 
 export const commercialFieldClassName = cn(
   'portal-input-surface w-full px-3 py-2 text-sm text-gray-900 dark:text-white',
@@ -16,5 +20,5 @@ export const commercialSelectTriggerClassName = cn(
 export const commercialTableHeadRowClassName =
   'border-b border-gray-100 bg-iwana-surface-soft dark:border-dark-border dark:bg-dark-surface-3';
 
-export const commercialTableRowHoverClassName =
-  'transition-colors hover:bg-iwana-surface-soft/80 dark:hover:bg-dark-surface-3/80';
+/** Alias del token canónico de portal-ui — no duplicar definición. */
+export { portalTableRowHoverClassName as commercialTableRowHoverClassName };

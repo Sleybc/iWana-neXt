@@ -35,6 +35,7 @@ import {
   portalDataTableCellClassName,
   portalDataTableHeadClassName,
   portalDataTableShellClassName,
+  portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 import { commercialTextareaClassName } from '@/components/commercial/commercial-field-styles';
 
@@ -303,17 +304,17 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2/80">
                 {replacesRules.map((rule) => (
-                  <tr key={rule.id}>
+                  <tr key={rule.id} className={portalTableRowHoverClassName}>
                     <td className={portalDataTableCellClassName}>
                       <span className="font-medium text-gray-800 dark:text-gray-100">
-                        {rule.sourceItem?.name ?? rule.sourceItemId}
+                        {rule.sourceItem?.name ?? 'Ítem no disponible'}
                       </span>
                       <ArrowRight
                         className="mx-2 inline h-3.5 w-3.5 text-gray-400"
                         aria-hidden="true"
                       />
                       <span className="font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
-                        {rule.targetItem?.name ?? rule.targetItemId}
+                        {rule.targetItem?.name ?? 'Ítem no disponible'}
                       </span>
                     </td>
                     <td className={portalDataTableCellClassName}>
@@ -329,10 +330,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
                       )}
                     </td>
                     <td className={portalDataTableCellClassName}>
-                      <Badge
-                        variant={getPortalActiveBadgeVariant(rule.isActive)}
-                        className="rounded-full px-2 py-0.5 text-[11px]"
-                      >
+                      <Badge variant={getPortalActiveBadgeVariant(rule.isActive)}>
                         {rule.isActive ? 'Activo' : 'Inactivo'}
                       </Badge>
                     </td>
@@ -344,7 +342,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
                             variant="secondary"
                             size="sm"
                             onClick={() => handleOpenEdit(rule)}
-                            aria-label={`Editar regla: ${rule.sourceItem?.name ?? rule.sourceItemId}`}
+                            aria-label={`Editar regla: ${rule.sourceItem?.name ?? 'Ítem no disponible'}`}
                           >
                             <Pencil className="h-4 w-4" aria-hidden="true" />
                             Editar
@@ -355,7 +353,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
                             size="sm"
                             disabled={deletingId === rule.id || !rule.isActive}
                             onClick={() => handleDeactivate(rule)}
-                            aria-label={`Desactivar regla: ${rule.sourceItem?.name ?? rule.sourceItemId}`}
+                            aria-label={`Desactivar regla: ${rule.sourceItem?.name ?? 'Ítem no disponible'}`}
                           >
                             <Trash2 className="h-4 w-4" aria-hidden="true" />
                             Desactivar
@@ -415,10 +413,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
             />
 
             <div>
-              <label
-                htmlFor="compat-effective-from"
-                className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500"
-              >
+              <label htmlFor="compat-effective-from" className="mb-1.5 block portal-eyebrow-muted">
                 Vigente desde (opcional)
               </label>
               <DatePicker
@@ -434,10 +429,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
             </div>
 
             <div>
-              <label
-                htmlFor="compat-note"
-                className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500"
-              >
+              <label htmlFor="compat-note" className="mb-1.5 block portal-eyebrow-muted">
                 Nota para el agente (opcional)
               </label>
               <textarea
@@ -456,7 +448,13 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
               <p className="mt-1 text-right text-xs text-gray-400">{createForm.note.length}/2000</p>
             </div>
 
-            {mutationError && <p className="text-sm text-red-600">{mutationError}</p>}
+            {mutationError && (
+              <PortalAlert
+                variant="error"
+                title="No fue posible guardar"
+                description={mutationError}
+              />
+            )}
 
             <div className="flex items-center justify-end gap-2 pt-2">
               <DialogClose asChild>
@@ -495,20 +493,17 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
             {editingRule && (
               <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm dark:border-dark-border dark:bg-dark-surface-3">
                 <span className="font-medium text-gray-700 dark:text-gray-200">
-                  {editingRule.sourceItem?.name ?? editingRule.sourceItemId}
+                  {editingRule.sourceItem?.name ?? 'Ítem no disponible'}
                 </span>
                 <ArrowRight className="mx-2 inline h-3.5 w-3.5 text-gray-400" aria-hidden="true" />
                 <span className="font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400">
-                  {editingRule.targetItem?.name ?? editingRule.targetItemId}
+                  {editingRule.targetItem?.name ?? 'Ítem no disponible'}
                 </span>
               </div>
             )}
 
             <div>
-              <label
-                htmlFor="edit-effective-from"
-                className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500"
-              >
+              <label htmlFor="edit-effective-from" className="mb-1.5 block portal-eyebrow-muted">
                 Vigente desde (opcional)
               </label>
               <DatePicker
@@ -524,10 +519,7 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
             </div>
 
             <div>
-              <label
-                htmlFor="edit-note"
-                className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500"
-              >
+              <label htmlFor="edit-note" className="mb-1.5 block portal-eyebrow-muted">
                 Nota para el agente
               </label>
               <textarea
@@ -555,7 +547,13 @@ export function CompatibilityRulesManager({ canEdit }: CompatibilityRulesManager
               </span>
             </label>
 
-            {mutationError && <p className="text-sm text-red-600">{mutationError}</p>}
+            {mutationError && (
+              <PortalAlert
+                variant="error"
+                title="No fue posible guardar"
+                description={mutationError}
+              />
+            )}
 
             <div className="flex items-center justify-end gap-2 pt-2">
               <DialogClose asChild>

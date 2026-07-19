@@ -5,8 +5,6 @@ import { Plus, Pencil, Trash2, RotateCcw, Lock, HelpCircle } from 'lucide-react'
 import {
   Badge,
   Button,
-  Card,
-  CardContent,
   Dialog,
   DialogClose,
   DialogContent,
@@ -33,7 +31,18 @@ import {
   PortalEmptyState,
   PortalPanel,
   PortalSkeletonBlock,
+  portalDataTableCellClassName,
+  portalDataTableHeadClassName,
+  portalDataTableShellClassName,
+  portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
+import {
+  TAX_CATEGORY_LABELS,
+  TAX_CONTEXT_LABELS,
+  TAX_JURISDICTION_LABELS,
+  TAX_TREATMENT_LABELS,
+  resolveTaxLabel,
+} from '@/components/commercial/commercial-labels';
 
 // ── Tooltip de ayuda reutilizable ─────────────────────────────────────────────
 
@@ -76,33 +85,6 @@ interface FormErrors {
   code?: string;
   name?: string;
 }
-
-const CATEGORY_LABELS: Record<string, string> = {
-  VAT: 'IVA',
-  WITHHOLDING: 'Retención',
-  STAMP: 'Estampilla',
-  MUNICIPAL: 'Municipal',
-  OTHER: 'Otro',
-};
-
-const TREATMENT_LABELS: Record<string, string> = {
-  STANDARD: 'Estándar',
-  EXEMPT: 'Exento',
-  EXCLUDED: 'Excluido',
-  FIXED: 'Fija',
-};
-
-const JURISDICTION_LABELS: Record<string, string> = {
-  NATIONAL: 'Nacional',
-  DEPARTMENT: 'Departamental',
-  MUNICIPAL: 'Municipal',
-};
-
-const CONTEXT_LABELS: Record<string, string> = {
-  SALES: 'Ventas',
-  PURCHASE: 'Compras',
-  BOTH: 'Ambos',
-};
 
 const INITIAL_FORM: TaxDefFormState = {
   category: 'VAT',
@@ -285,76 +267,106 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
           description='Usa "Nueva definición" para registrar impuestos operativos del tenant.'
         />
       ) : (
-        <div className="flex flex-col gap-2">
-          {definitions.map((def) => (
-            <Card key={def.id} className="border border-gray-100 dark:border-dark-border">
-              <CardContent className="flex items-start justify-between gap-3 p-4">
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center gap-2">
-                    {def.origin === 'SYSTEM' && (
-                      <Lock className="h-3.5 w-3.5 text-gray-400" aria-label="Preset del sistema" />
+        <div className={portalDataTableShellClassName}>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-border">
+              <thead className="bg-iwana-surface-soft dark:bg-dark-surface-3">
+                <tr>
+                  <th className={portalDataTableHeadClassName}>Definición</th>
+                  <th className={portalDataTableHeadClassName}>Código</th>
+                  <th className={portalDataTableHeadClassName}>Categoría</th>
+                  <th className={portalDataTableHeadClassName}>Jurisdicción</th>
+                  <th className={portalDataTableHeadClassName}>Tratamiento</th>
+                  <th className={portalDataTableHeadClassName}>Contexto</th>
+                  <th className={portalDataTableHeadClassName}>Tasa</th>
+                  {canEdit && <th className={portalDataTableHeadClassName}>Acciones</th>}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2/80">
+                {definitions.map((def) => (
+                  <tr key={def.id} className={portalTableRowHoverClassName}>
+                    <td className={portalDataTableCellClassName}>
+                      <div className="flex items-center gap-2">
+                        {def.origin === 'SYSTEM' && (
+                          <Lock
+                            className="h-3.5 w-3.5 shrink-0 text-gray-400"
+                            aria-label="Preset del sistema"
+                          />
+                        )}
+                        <div>
+                          <p className="font-medium text-gray-800 dark:text-gray-100">{def.name}</p>
+                          {def.notes && (
+                            <p className="mt-1 max-w-md text-xs text-gray-500 dark:text-gray-400">
+                              {def.notes}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className={portalDataTableCellClassName}>
+                      <span className="font-mono text-xs tabular-nums text-gray-700 dark:text-gray-200">
+                        {def.code}
+                      </span>
+                    </td>
+                    <td className={portalDataTableCellClassName}>
+                      <Badge variant="primary" className="text-xs">
+                        {resolveTaxLabel(TAX_CATEGORY_LABELS, def.category)}
+                      </Badge>
+                    </td>
+                    <td className={portalDataTableCellClassName}>
+                      {resolveTaxLabel(TAX_JURISDICTION_LABELS, def.jurisdictionLevel)}
+                    </td>
+                    <td className={portalDataTableCellClassName}>
+                      {resolveTaxLabel(TAX_TREATMENT_LABELS, def.treatment)}
+                    </td>
+                    <td className={portalDataTableCellClassName}>
+                      {resolveTaxLabel(TAX_CONTEXT_LABELS, def.context)}
+                    </td>
+                    <td className={portalDataTableCellClassName}>
+                      {def.baseRate !== null ? (
+                        <span className="font-mono tabular-nums">{def.baseRate}%</span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                    {canEdit && (
+                      <td className={portalDataTableCellClassName}>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="secondary"
+                            size="icon"
+                            aria-label={`Editar definición tributaria ${def.name}`}
+                            title={`Editar definición tributaria ${def.name}`}
+                            onClick={() => {
+                              setEditTarget(def);
+                              setForm({
+                                name: def.name,
+                                baseRate: def.baseRate ? Number(def.baseRate) : undefined,
+                                treatment: def.treatment,
+                                context: def.context,
+                                notes: def.notes ?? undefined,
+                              });
+                            }}
+                          >
+                            <Pencil className="h-4 w-4" aria-hidden="true" />
+                          </Button>
+                          <Button
+                            variant="softDestructive"
+                            size="icon"
+                            aria-label={`Eliminar definición tributaria ${def.name}`}
+                            title={`Eliminar definición tributaria ${def.name}`}
+                            onClick={() => setDeleteTarget(def)}
+                          >
+                            <Trash2 className="h-4 w-4" aria-hidden="true" />
+                          </Button>
+                        </div>
+                      </td>
                     )}
-                    <span className="text-sm font-medium text-gray-900 dark:text-dark-text-primary">
-                      {def.name}
-                    </span>
-                    <Badge variant="neutral" className="text-xs">
-                      {def.code}
-                    </Badge>
-                    <Badge variant="primary" className="text-xs">
-                      {CATEGORY_LABELS[def.category] ?? def.category}
-                    </Badge>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-                    <span>
-                      {JURISDICTION_LABELS[def.jurisdictionLevel] ?? def.jurisdictionLevel}
-                    </span>
-                    <span>&middot;</span>
-                    <span>Tratamiento: {TREATMENT_LABELS[def.treatment] ?? def.treatment}</span>
-                    <span>&middot;</span>
-                    <span>Contexto: {CONTEXT_LABELS[def.context] ?? def.context}</span>
-                    {def.baseRate !== null && (
-                      <>
-                        <span>&middot;</span>
-                        <span>Tasa base: {def.baseRate}%</span>
-                      </>
-                    )}
-                  </div>
-                  {def.notes && <p className="text-xs text-gray-400">{def.notes}</p>}
-                </div>
-                {canEdit && (
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Button
-                      variant="secondary"
-                      size="icon"
-                      aria-label={`Editar definición tributaria ${def.name}`}
-                      title={`Editar definición tributaria ${def.name}`}
-                      onClick={() => {
-                        setEditTarget(def);
-                        setForm({
-                          name: def.name,
-                          baseRate: def.baseRate ? Number(def.baseRate) : undefined,
-                          treatment: def.treatment,
-                          context: def.context,
-                          notes: def.notes ?? undefined,
-                        });
-                      }}
-                    >
-                      <Pencil className="h-4 w-4" aria-hidden="true" />
-                    </Button>
-                    <Button
-                      variant="softDestructive"
-                      size="icon"
-                      aria-label={`Eliminar definición tributaria ${def.name}`}
-                      title={`Eliminar definición tributaria ${def.name}`}
-                      onClick={() => setDeleteTarget(def)}
-                    >
-                      <Trash2 className="h-4 w-4" aria-hidden="true" />
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -380,9 +392,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
 
           {/* ── Sección 1: Identificación ── */}
           <div className="mt-2 flex flex-col gap-3">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-              Identificación
-            </p>
+            <p className="portal-eyebrow-muted">Identificación</p>
 
             <FormField
               label="Nombre"
@@ -444,16 +454,12 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
 
           {/* ── Sección 2: Configuración fiscal ── */}
           <div className="flex flex-col gap-3">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-              Configuración fiscal
-            </p>
+            <p className="portal-eyebrow-muted">Configuración fiscal</p>
 
             {/* Categoría */}
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-                  Categoría
-                </span>
+                <span className="portal-eyebrow-muted">Categoría</span>
                 <HelpPopover>
                   <p className="font-semibold mb-1">Tipos de categoría</p>
                   <ul className="list-disc pl-4 space-y-1 text-xs">
@@ -496,9 +502,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
             {/* Jurisdicción */}
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-                  Jurisdicción
-                </span>
+                <span className="portal-eyebrow-muted">Jurisdicción</span>
                 <HelpPopover>
                   <p className="font-semibold mb-1">¿Dónde aplica este tributo?</p>
                   <ul className="list-disc pl-4 space-y-1 text-xs">
@@ -549,9 +553,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
             {/* Tratamiento */}
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-                  Tratamiento
-                </span>
+                <span className="portal-eyebrow-muted">Tratamiento</span>
                 <HelpPopover>
                   <p className="font-semibold mb-1">¿Cómo se aplica este tributo?</p>
                   <ul className="list-disc pl-4 space-y-1 text-xs">
@@ -590,9 +592,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
             {/* Contexto */}
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-                  Contexto de aplicación
-                </span>
+                <span className="portal-eyebrow-muted">Contexto de aplicación</span>
                 <HelpPopover>
                   <p className="text-xs">
                     Define si el tributo aplica a facturas de <strong>ventas</strong> (emitidas al
@@ -632,12 +632,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
 
           {/* Error de API */}
           {createError && (
-            <div
-              role="alert"
-              className="rounded-lg bg-red-50 px-4 py-2.5 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400"
-            >
-              {createError}
-            </div>
+            <PortalAlert variant="error" title="No fue posible crear" description={createError} />
           )}
 
           <div className="mt-2 flex justify-end gap-2">
@@ -703,9 +698,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
 
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-                  Tratamiento
-                </span>
+                <span className="portal-eyebrow-muted">Tratamiento</span>
                 <HelpPopover>
                   <ul className="list-disc pl-4 space-y-1 text-xs">
                     <li>
@@ -739,9 +732,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
 
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-                  Contexto de aplicación
-                </span>
+                <span className="portal-eyebrow-muted">Contexto de aplicación</span>
                 <HelpPopover>
                   <p className="text-xs">
                     <strong>Ventas</strong>: facturas emitidas al cliente. <strong>Compras</strong>:
@@ -775,12 +766,7 @@ export function TaxCatalogManager({ canEdit }: TaxCatalogManagerProps) {
           </div>
 
           {editError && (
-            <div
-              role="alert"
-              className="rounded-lg bg-red-50 px-4 py-2.5 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400"
-            >
-              {editError}
-            </div>
+            <PortalAlert variant="error" title="No fue posible guardar" description={editError} />
           )}
 
           <div className="mt-4 flex justify-end gap-2">

@@ -29,6 +29,7 @@ import {
   portalDataTableCellClassName,
   portalDataTableHeadClassName,
   portalDataTableShellClassName,
+  portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 
 interface BundlesManagerProps {
@@ -241,7 +242,7 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white dark:divide-dark-border dark:bg-dark-surface-2/80">
                 {bundles.map((bundle) => (
-                  <tr key={bundle.id}>
+                  <tr key={bundle.id} className={portalTableRowHoverClassName}>
                     <td className={portalDataTableCellClassName}>
                       <p className="font-medium text-gray-800 dark:text-gray-100">{bundle.name}</p>
                       {bundle.description && (
@@ -258,10 +259,7 @@ export function BundlesManager({ canEdit }: BundlesManagerProps) {
                       {formatDateRange(bundle.validFrom, bundle.validTo)}
                     </td>
                     <td className={portalDataTableCellClassName}>
-                      <Badge
-                        variant={getPortalActiveBadgeVariant(bundle.isActive)}
-                        className="rounded-full px-2 py-0.5 text-[11px]"
-                      >
+                      <Badge variant={getPortalActiveBadgeVariant(bundle.isActive)}>
                         {bundle.isActive ? 'Activo' : 'Inactivo'}
                       </Badge>
                     </td>

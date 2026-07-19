@@ -39,6 +39,7 @@ import {
   portalDataTableHeadClassName,
   portalDataTableShellClassName,
 } from '@/components/shared/portal-ui';
+import { commercialTextareaClassName } from '@/components/commercial/commercial-field-styles';
 
 const SERVICE_CHARGE_TYPES = [
   ChargeType.ONE_TIME,
@@ -373,15 +374,10 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
 
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-iwana-surface-soft px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
             <p className="text-sm text-gray-600 dark:text-gray-300">
-              Gestiona servicios del catalogo comercial con una vista operativa para ventas, soporte
-              y facturacion.
+              Gestiona servicios del catálogo comercial con una vista operativa para ventas, soporte
+              y facturación.
             </p>
-            <Badge
-              variant="neutral"
-              className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.18em]"
-            >
-              {resultsLabel}
-            </Badge>
+            <Badge variant="neutral">{resultsLabel}</Badge>
           </div>
 
           {filteredServices.length === 0 ? (
@@ -390,7 +386,7 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
               <div>
                 <p className="font-medium">No hay servicios para los filtros seleccionados.</p>
                 <p className="mt-1">
-                  Ajusta la busqueda, estado o tipo de cobro para recuperar resultados.
+                  Ajusta la búsqueda, estado o tipo de cobro para recuperar resultados.
                 </p>
               </div>
             </div>
@@ -553,14 +549,15 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
                 />
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200">
-                    Descripcion corta
+                  <label htmlFor="service-description" className="portal-eyebrow-muted">
+                    Descripción corta
                   </label>
                   <textarea
+                    id="service-description"
                     {...register('description')}
                     rows={4}
-                    placeholder="Describe el servicio y cuando debe aplicarse en la operacion comercial."
-                    className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 shadow-sm transition-colors placeholder:text-gray-400 focus:border-iwana-secondary focus:outline-none focus:ring-2 focus:ring-iwana-secondary/30 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-100 dark:placeholder:text-gray-500"
+                    placeholder="Describe el servicio y cuándo debe aplicarse en la operación comercial."
+                    className={`mt-2 ${commercialTextareaClassName}`}
                   />
                   {errors.description && (
                     <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>
@@ -571,11 +568,9 @@ export function AdditionalServicesPanel({ canEdit }: AdditionalServicesPanelProp
 
             <section className="space-y-4 rounded-2xl border border-gray-100 p-4 dark:border-dark-border">
               <div>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                  Configuracion comercial
-                </p>
+                <p className="portal-eyebrow">Configuración comercial</p>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Define precio vigente para cotizacion y disponibilidad en nuevas operaciones del
+                  Define precio vigente para cotización y disponibilidad en nuevas operaciones de la
                   empresa.
                 </p>
               </div>

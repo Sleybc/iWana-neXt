@@ -1,42 +1,63 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CircleAlert, FlaskConical } from 'lucide-react';
-import { Badge, Button, Input, Select } from '@iwana/ui';
+import { Badge, Button, Input, Select, cn } from '@iwana/ui';
 import {
   ApiError,
   commercialApi,
   type SimulateTaxDto,
   type TaxApplicationSnapshot,
+  type TaxDefinition,
 } from '@/lib/api-client';
-import { PortalAlert, PortalPanel } from '@/components/shared/portal-ui';
-
-const SEGMENT_LABELS: Record<string, string> = {
-  RESIDENTIAL: 'Residencial',
-  SOHO: 'SOHO',
-  PYME: 'PyME',
-  CORPORATE: 'Corporativo',
-};
-
-const TREATMENT_LABELS: Record<string, string> = {
-  STANDARD: 'Estándar',
-  EXEMPT: 'Exento',
-  EXCLUDED: 'Excluido',
-  FIXED: 'Fija',
-};
+import {
+  PortalAlert,
+  PortalEmptyState,
+  PortalPanel,
+  PortalSkeletonBlock,
+} from '@/components/shared/portal-ui';
+import {
+  commercialFieldClassName,
+  commercialSelectTriggerClassName,
+} from '@/components/commercial/commercial-field-styles';
+import {
+  TAX_SEGMENT_LABELS,
+  TAX_TREATMENT_LABELS,
+  resolveTaxLabel,
+} from '@/components/commercial/commercial-labels';
 
 export function TaxSimulatorPanel() {
   const [segment, setSegment] = useState<SimulateTaxDto['segment']>('RESIDENTIAL');
   const [stratum, setStratum] = useState<string>('');
   const [municipalityCode, setMunicipalityCode] = useState<string>('');
+  const [definitions, setDefinitions] = useState<TaxDefinition[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<TaxApplicationSnapshot[] | null>(null);
+  const [hasSimulated, setHasSimulated] = useState(false);
+
+  useEffect(() => {
+    void commercialApi
+      .listTaxDefinitions({ isActive: true })
+      .then(setDefinitions)
+      .catch(() => {
+        setDefinitions([]);
+      });
+  }, []);
+
+  const resolveDefinitionLabel = (taxDefinitionId: string): string => {
+    const def = definitions.find((item) => item.id === taxDefinitionId);
+    if (!def) {
+      return 'Definición tributaria';
+    }
+    return `${def.name} (${def.code})`;
+  };
 
   const handleSimulate = async () => {
     setLoading(true);
     setError(null);
     setResults(null);
+    setHasSimulated(true);
     try {
       const dto: SimulateTaxDto = {
         segment,
@@ -54,19 +75,21 @@ export function TaxSimulatorPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PortalPanel title="Parámetros de simulación">
+      <PortalPanel
+        eyebrow="Tributación"
+        title="Parámetros de simulación"
+        description="Evalúa qué reglas tributarias aplican según segmento, estrato y municipio."
+      >
         <div className="grid gap-3 sm:grid-cols-3">
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor="tax-simulator-segment"
-              className="text-xs font-medium text-gray-700 dark:text-gray-300"
-            >
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="tax-simulator-segment" className="portal-eyebrow-muted">
               Segmento
             </label>
             <Select
               id="tax-simulator-segment"
               value={segment}
               onChange={(e) => setSegment(e.target.value as SimulateTaxDto['segment'])}
+              className={commercialSelectTriggerClassName}
             >
               <option value="RESIDENTIAL">Residencial</option>
               <option value="SOHO">SOHO</option>
@@ -74,11 +97,8 @@ export function TaxSimulatorPanel() {
               <option value="CORPORATE">Corporativo</option>
             </Select>
           </div>
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor="tax-simulator-stratum"
-              className="text-xs font-medium text-gray-700 dark:text-gray-300"
-            >
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="tax-simulator-stratum" className="portal-eyebrow-muted">
               Estrato (opcional)
             </label>
             <Input
@@ -89,13 +109,11 @@ export function TaxSimulatorPanel() {
               placeholder="1 – 6"
               value={stratum}
               onChange={(e) => setStratum(e.target.value)}
+              className={commercialFieldClassName}
             />
           </div>
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor="tax-simulator-municipality"
-              className="text-xs font-medium text-gray-700 dark:text-gray-300"
-            >
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="tax-simulator-municipality" className="portal-eyebrow-muted">
               Código municipio (opcional)
             </label>
             <Input
@@ -103,6 +121,7 @@ export function TaxSimulatorPanel() {
               placeholder="ej: 11001"
               value={municipalityCode}
               onChange={(e) => setMunicipalityCode(e.target.value)}
+              className={commercialFieldClassName}
             />
           </div>
         </div>
@@ -124,10 +143,19 @@ export function TaxSimulatorPanel() {
         />
       )}
 
-      {results !== null && (
+      {loading && <PortalSkeletonBlock className="h-32" />}
+
+      {!loading && !hasSimulated && (
+        <PortalEmptyState
+          title="Sin simulación aún"
+          description='Configura los parámetros y pulsa "Simular" para ver las reglas aplicables.'
+        />
+      )}
+
+      {!loading && results !== null && (
         <div className="flex flex-col gap-3">
           <p className="text-sm font-semibold text-gray-900 dark:text-white">
-            Resultado — {SEGMENT_LABELS[segment] ?? segment}
+            Resultado — {resolveTaxLabel(TAX_SEGMENT_LABELS, segment)}
             {stratum ? ` · estrato ${stratum}` : ''}
           </p>
 
@@ -141,16 +169,16 @@ export function TaxSimulatorPanel() {
             <div className="flex flex-col gap-2">
               {results.map((snap, index) => (
                 <PortalPanel
-                  key={snap.taxDefinitionId}
+                  key={`${snap.taxDefinitionId}-${snap.ruleId}-${index}`}
                   className={
                     index === 0
                       ? 'border-iwana-secondary-700/30 bg-iwana-surface-soft dark:bg-dark-surface-3'
                       : undefined
                   }
-                  title={`Definición ${snap.taxDefinitionId}`}
+                  title={resolveDefinitionLabel(snap.taxDefinitionId)}
                   actions={
                     index === 0 ? (
-                      <Badge className="bg-iwana-secondary-700 text-xs text-white">
+                      <Badge variant="lime" className="text-xs">
                         Regla ganadora
                       </Badge>
                     ) : undefined
@@ -160,7 +188,7 @@ export function TaxSimulatorPanel() {
                     <span>
                       Tratamiento:{' '}
                       <strong className="text-gray-700 dark:text-gray-200">
-                        {TREATMENT_LABELS[snap.treatment] ?? snap.treatment}
+                        {resolveTaxLabel(TAX_TREATMENT_LABELS, snap.treatment)}
                       </strong>
                     </span>
                     {snap.effectiveRate !== null && (
@@ -168,16 +196,23 @@ export function TaxSimulatorPanel() {
                         <span aria-hidden="true">·</span>
                         <span>
                           Tasa efectiva:{' '}
-                          <strong className="text-gray-700 dark:text-gray-200">
+                          <strong
+                            className={cn(
+                              'font-mono tabular-nums text-gray-700 dark:text-gray-200',
+                            )}
+                          >
                             {snap.effectiveRate}%
                           </strong>
                         </span>
                       </>
                     )}
                     <span aria-hidden="true">·</span>
-                    <span>Regla ID: {snap.ruleId}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>Prioridad: {snap.priorityMatched}</span>
+                    <span>
+                      Prioridad:{' '}
+                      <strong className="font-mono tabular-nums text-gray-700 dark:text-gray-200">
+                        {snap.priorityMatched}
+                      </strong>
+                    </span>
                   </div>
                 </PortalPanel>
               ))}
