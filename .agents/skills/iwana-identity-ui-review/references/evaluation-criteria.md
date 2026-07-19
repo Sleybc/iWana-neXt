@@ -2,6 +2,8 @@
 
 Referencia detallada para el modo review de `iwana-identity-ui-review`. Leer cuando se ejecuta la metodologia completa. Cada criterio incluye el ancla iWana concreta para que el hallazgo sea verificable y no una heuristica generica.
 
+Los valores exactos viven en las referencias hermanas — no los dupliques desde aqui: `tokens.md` (hex, escalas, radios, sombras, dark), `firma-elements.md` (recetas de los 9 elementos de firma y reglas del lima), `component-recipes.md` (primitives y class-tokens reales por patron), `prototype-map.md` (Estrella Polar y reglas TailAdmin), `trends-2026.md` (veredictos de tendencias).
+
 ## 1. Identidad iWana
 
 - **Reconocibilidad sin logo**: radio `rounded-2xl` en superficies principales, sombras suaves (`shadow-iwana*`), Exo 2, paleta primario/lima/neutros. Una pantalla hecha solo con grises de Tailwind y bordes `rounded-md` es un hallazgo de identidad.

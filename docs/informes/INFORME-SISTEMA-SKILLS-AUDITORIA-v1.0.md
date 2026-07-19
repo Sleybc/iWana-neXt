@@ -1,9 +1,9 @@
 # INFORME — Auditoria de Skills del Workspace
 
 **Modo activo:** Mixto
-**Version:** 1.2
+**Version:** 1.3
 **Estado:** Aprobado
-**Fecha:** 2026-07-09
+**Fecha:** 2026-07-09 (v1.3: 2026-07-18 — potencialización v2 de `iwana-identity-ui-review`, ver change-log)
 **Convencion documental:** {TIPO}-{MODULO}-{FASE}-v{VERSION}.md
 
 ## Vinculos de trazabilidad
@@ -624,3 +624,33 @@ La versión previa de `iwana-identity-ui-review` mezclaba guía de diseño y aud
 
 - La skill mantiene su nombre, categoría, prioridad (especializada por necesidad) y posición en INDEX/MANIFEST; no requiere cambios de catálogo.
 - Queda pendiente como evolución futura: corrida de evals comparativas (versión previa vs nueva) sobre 2–3 pantallas reales del portal según el flujo de `skill-creator`.
+
+## Actualización 2026-07-18 — Potencialización v2 de iwana-identity-ui-review (alineación activa)
+
+**Modo:** Mejora de skill existente (aplicando `skill-creator`; aprobada por el CTO con plan explícito)
+
+### Motivación
+
+La v1 potencializada (2026-07-10) era una buena disciplina de **review**, pero débil como herramienta de **alineación activa**: no contenía los valores de la identidad (tokens, elementos de firma, recetas de componentes), no mapeaba los prototipos "Estrella Polar" ni las reglas de TailAdmin (ADR-023), no incorporaba tendencias de diseño con criterio propio, y toda verificación de reglas duras era manual. El objetivo del CTO: que **cada invocación alinee la UI/UX al estilo iWana**, tomando de `ui-ux-pro-max` la riqueza operativa — adaptada al hecho de que iWana tiene un único design system (referencias por dominio + script determinístico, en vez de buscador BM25 + CSVs).
+
+### Cambios ejecutados
+
+- **`SKILL.md` reescrito (258 líneas, <500 de `skill-creator`):** se conserva intacto lo que funcionaba (regla de hierro, modos, metodología de 6 pasos, P0–P3 con puntaje derivado, anti-falsos-positivos, formato de informe, tabla de delegación) y se añade: **playbook de alineación de 6 pasos para modo diseño** (clasificar pantalla → receta → ≥2 elementos de firma → verificar tokens → correr script → checklist de cierre), tabla de referencia rápida priorizada (patrón `ui-ux-pro-max`), guía "cuándo leer qué referencia" (progressive disclosure), sección del script, y description del frontmatter reforzada contra el under-triggering (cubre "alinear al estilo", "se ve genérico", "tendencia", "TailAdmin" sin exigir mencionar iWana).
+- **Cinco referencias nuevas** (todas <300 líneas, verificadas contra el repo real):
+  - `references/tokens.md` — escalas completas con hex exactos de `globals.css`, regla AA del lima (`-700` = `#6A7A1C`, 6.2:1), superficies, dark `dark-surface-*` (ADR-026), radios, sombra dual, y **divergencias conocidas** (`tokens/colors.ts` vs `globals.css`; `--chart-*` aún inexistentes; config vieja del login-prototipo).
+  - `references/firma-elements.md` — los 9 elementos de firma de la spec Firma iWana §3 con receta de clases, reglas semánticas del lima y jerarquía de botones.
+  - `references/component-recipes.md` — 13 recetas por patrón ancladas a primitives reales (`portal-ui.tsx`, `@iwana/ui`) con "usa esto / nunca esto / dónde vive" y regla de promoción.
+  - `references/prototype-map.md` — cadena de traducción prototipo→sistema, qué define cada prototipo, qué tomar de TailAdmin y qué está prohibido copiar (ADR-023), divergencias resueltas.
+  - `references/trends-2026.md` — investigación web 2026-07 (Linear, Attio, Tremor, ecosistema shadcn/TailAdmin) destilada en veredictos **Adoptar/Adaptar/Rechazar** con ancla iWana por tendencia; fechada y revalidable por sprint.
+- **`scripts/audit-ui.mjs` (nuevo):** auditoría mecánica Node sin dependencias de las reglas duras grep-ables — deterministas (`dark:bg-gray-{700-950}`, `tailwind.config.*`, hex de marca sin tokenizar, z-index tipo template) y heurísticas marcadas `[revisar]` (lima sin sufijo AA, `bg-iwana-secondary-50`, degradado fuera de progreso, spinner primario, enum crudo en JSX). Salida `archivo:línea` + resumen, `--json`, exit 1 con deterministas P0/P1 (gate local).
+
+### Verificación
+
+- Script ejecutado sobre el repo real: detecta exactamente los pendientes conocidos de la spec Firma Fase 1.2 (`TasksTable`, `ContractCard`, `ContractDetailDrawer`, `ScheduleCalendar`, `OperationalEventualitiesPanel`, `TaxProfileBlock`, `components/audit/*`) sin falsos P0; heurística del lima afinada para variantes compuestas (`dark:hover:`).
+- Cross-check anti-alucinación: cada token citado en `references/tokens.md` existe textualmente en `globals.css`; `--chart-*` confirmado ausente y documentado como pendiente de Fase 3.
+- Smoke-test del playbook sobre `StockByProductTable.tsx` (pantalla real reciente): compone las recetas correctamente (primitives de `portal-ui`, Badge por severidad, sin enums crudos) y el script da P0:0/P1:0 en el módulo de inventario.
+
+### Estado posterior
+
+- La skill mantiene nombre, categoría y prioridad; INDEX/MANIFEST sin cambios de catálogo.
+- Pendientes de evolución: evals comparativas según `skill-creator` (heredado de la v1), y revalidación por sprint de `references/trends-2026.md`.
