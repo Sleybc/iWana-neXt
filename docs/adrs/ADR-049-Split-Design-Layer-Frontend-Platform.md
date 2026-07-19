@@ -21,12 +21,21 @@ El CTO aprobó el split propuesto en el informe. Este ADR lo formaliza. Las dire
 
 ## Decisión
 
-**Definición canónica — "Estrella Polar" (fuente de verdad de UI).** No es un archivo único con ese nombre; es el **alias operativo del conjunto** formado por:
+**Definición canónica — "Estrella Polar" (fuente de verdad de UI).**
 
-- **`docs/identity/`** — contrato de marca y design system: tokens, colores (azul noche `#17163A`, lima `#A5C330`), tipografía (Exo 2), anatomía de componentes y estados (`Manual de Identidad Iwana.pdf` + `Manual_Implementacion_Identidad_Iwana.md`).
-- **`docs/prototipo/`** — prototipo HTML validado: composición, shell, layout (kit TailAdmin + prototipos propios de iWana).
+> ⚠️ **Enmendada por [ADR-056](ADR-056-Integridad-Base-Normativa-Diseno.md) §3 (2026-07-19).** La definición original era anterior a la [spec Firma iWana](../specs/2026-07-12-firma-iwana-diseno-visual-design.md) (2026-07-12) y no la contemplaba, además de duplicar hex de marca. El texto vigente es el de abajo y prevalece sobre cualquier cita de la versión original.
 
-Ambos gobernados por [ADR-023](ADR-023-Referencia-TailAdmin-Shell-Dashboard.md) y con tokens vivos en `packages/ui`. Cuando cualquier perfil cita "Estrella Polar", se refiere a este conjunto. Reparto de dominio: `docs/identity/` es el **contrato** (dueño AI-DS-OWNER); `docs/prototipo/` es la **composición** (interpreta AI-PROD-UX).
+No es un archivo único con ese nombre; es el **alias operativo** de tres capas con **dominios de autoridad distintos**. No es una jerarquía lineal: cada capa manda sobre una pregunta diferente.
+
+| Capa | Artefacto | Manda sobre |
+| --- | --- | --- |
+| **Código real** | `packages/ui/src/styles/globals.css` → `@iwana/ui` → `portal-ui.tsx` | **Qué existe y con qué valor.** En conflicto sobre un token, mandan los tokens y se documenta la divergencia (spec Firma §8). Nunca se cita un token sin verificarlo aquí |
+| **Spec Firma iWana** | `docs/specs/2026-07-12-firma-iwana-diseno-visual-design.md` | **Qué se debe construir y hacia dónde.** Los 9 elementos de firma, el plan por fases y la síntesis de referentes 2025-2026. Complementa, no reemplaza, al manual de identidad |
+| **Base de identidad** | `docs/identity/` (marca: tokens, tipografía Exo 2, anatomía de componentes y estados) + `docs/prototipo/` (composición, shell, layout — incl. kit TailAdmin y prototipos propios) | **Qué es la marca.** [ADR-023](ADR-023-Referencia-TailAdmin-Shell-Dashboard.md) gobierna qué se toma del prototipo y de TailAdmin |
+
+**Los valores de marca se citan siempre por su token, nunca por hex duplicado en documentos** — el hex vive solo en la fuente de tokens (`globals.css`) y el manual de identidad.
+
+Reparto de dominio: `docs/identity/` es el **contrato** (dueño AI-DS-OWNER); `docs/prototipo/` es la **composición** (interpreta AI-PROD-UX); la spec Firma es **dirección visual vigente** (gobierna AI-EM-ARCH, ejecuta el Design Layer).
 
 Sobre esa base se adopta la siguiente reestructuración del ecosistema de perfiles IA:
 
@@ -84,7 +93,7 @@ Esta decisión se revisará si: el volumen de trabajo de UI no justifica un rol 
 
 - [INFORME-ROLES-REFACTOR-FRONTEND-v2.0.md](../informes/INFORME-ROLES-REFACTOR-FRONTEND-v2.0.md)
 - [Protocolo_Colaboracion_Multiagente_v1.md](../roles/Protocolo_Colaboracion_Multiagente_v1.md) (v1.1)
-- [ADR-021](ADR-021-Perfil-Unificado-EM-Architect.md), [ADR-023](ADR-023-Referencia-TailAdmin-Shell-Dashboard.md)
+- [ADR-021](ADR-021-Perfil-Unificado-EM-Architect.md) (superado), [ADR-023](ADR-023-Referencia-TailAdmin-Shell-Dashboard.md)
 - Perfiles nuevos: [AI-PROD-UX](../roles/Perfil_IA_Product_Designer_UX_v1.md), [AI-DS-OWNER](../roles/Perfil_IA_Design_System_Owner_v1.md), [AI-FE-PLATFORM](../roles/Perfil_IA_Frontend_Platform_Engineer_v1.md)
 
 ---

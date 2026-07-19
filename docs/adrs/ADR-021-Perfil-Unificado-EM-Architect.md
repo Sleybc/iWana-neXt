@@ -1,9 +1,11 @@
 # ADR-021: Adopcion de Perfil Unificado EM + Architect como Fuente Primaria de Gobernanza Tecnico-Operativa
 
-**Estado:** Propuesto  
+**Estado:** Superado  
 **Fecha:** 2026-03-07  
 **Autor:** AI-EM-ARCH  
-**Aprobador Requerido:** CTO Humano
+**Superado por:** [ADR-049](ADR-049-Split-Design-Layer-Frontend-Platform.md) (Aprobado 2026-07-10), que declara vigente el perfil unificado **v2** y el v1 de este ADR como referencia histórica.
+
+> **Nota de estado (ADR-056, 2026-07-19).** Este ADR figuraba como *Propuesto* con 6 citas vivas. **No se aprueba**: su contenido fue sucedido por ADR-049 antes de que llegara a aprobarse. Se marca **Superado** para que ninguna cita lo invoque como norma vigente; la autoridad sobre el perfil EM-ARCH es ADR-049 + `Perfil_IA_EM_Architect_Unificado_v2.md`.
 
 ---
 

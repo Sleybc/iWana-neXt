@@ -215,7 +215,7 @@ export function LoginForm() {
 }
 ```
 
-## Autenticación frontend — Patrón híbrido (ADR-023)
+## Autenticación frontend — Patrón híbrido (sin ADR — decisión de implementación)
 
 El modelo de auth es híbrido:
 

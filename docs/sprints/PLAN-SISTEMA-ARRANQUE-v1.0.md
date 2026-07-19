@@ -26,7 +26,7 @@ Solo puede alterarse por prioridad de negocio o bloqueo técnico justificado, co
 | Manual de Identidad iWana        | ✅ Completo — Design tokens listos                                         |
 | Stack Tecnológico                | ✅ Definido                                                                |
 | ADRs (001-016)                   | ✅ Referenciados en PRD v2.2; no materializados como archivos individuales |
-| docs/adrs/                       | 🟡 Existe, pero solo contiene ADR-021; faltan ADRs operativos del arranque |
+| docs/adrs/                       | 🟡 Existe, pero solo contiene ADR-021 (superado); faltan ADRs operativos del arranque |
 | Framework de Gobernanza Multi-IA | ✅ Definido                                                                |
 | Código fuente                    | ❌ Cero líneas de aplicación materializadas                                |
 | Monorepo Turborepo               | ❌ No materializado                                                        |
@@ -153,7 +153,7 @@ Para cada módulo, el Architect Software emite la definición técnica y el Engi
 ```
 docs/
 ├── adrs/                                                 ← Decisiones de arquitectura, bloqueo y repriorización
-│   ├── ADR-021-Perfil-Unificado-EM-Architect.md         ✅
+│   ├── ADR-021-Perfil-Unificado-EM-Architect.md (superado)  ✅
 │   ├── ADR-022-Politica-Ejecucion-Modular-Por-Fases.md  ✅
 │   └── (pendientes ADRs operativos del arranque)
 ├── archive/                                              ← Vacío actualmente

@@ -5,7 +5,7 @@
 **Modo activo:** Architect
 **Autor:** AI-EM-ARCH
 **Aprobador requerido:** CTO Humano
-**Trazabilidad:** [ADR-021](ADR-021-Perfil-Unificado-EM-Architect.md) · [ADR-016](ADR-016-Cierre-MOD01-Produccion.md) · [docs/prds/Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
+**Trazabilidad:** [ADR-016](ADR-016-Cierre-MOD01-Produccion.md) · [docs/prds/Stack_Tecnologico.md](../prds/Stack_Tecnologico.md) <!-- ADR-021 retirado 2026-07-19 vía ADR-056: boilerplate sin relación sustantiva con storage; además Superado -->
 
 ---
 

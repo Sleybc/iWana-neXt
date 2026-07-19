@@ -1,11 +1,11 @@
 # ADR-023: Referencia TailAdmin para Shell de Dashboard
 
 **Version:** 1.0
-**Estado:** En revision
+**Estado:** Aprobado
 **Fecha:** 2026-03-13
 **Modo activo:** Architect
 **Autor:** AI-EM-ARCH
-**Aprobador:** CTO Humano
+**Aprobado por:** CTO Humano (2026-07-19, vía [ADR-056](ADR-056-Integridad-Base-Normativa-Diseno.md) §1 — sin cambios de contenido; regulariza cuatro meses de vigencia de facto)
 
 ---
 
@@ -130,6 +130,6 @@ La implementacion se ejecuta por fases y queda detallada en:
 
 ## Estado de aprobacion
 
-[ESCALACION AL CTO]
+**APROBADO por CTO Humano — 2026-07-19**, via [ADR-056](ADR-056-Integridad-Base-Normativa-Diseno.md) §1, sin cambios de contenido. La escalacion que figuraba aqui queda satisfecha; este ADR es base definitiva de ejecucion.
 
-Este ADR fija un patron transversal de frontend y debe ser aprobado por CTO Humano antes de declararse como base definitiva de ejecucion.
+> Nota de trazabilidad: este ADR estuvo en "En revision" desde 2026-03-13 mientras era citado como autoridad vigente por ADR-049 (aprobado) y por cuatro perfiles. ADR-056 §1 regulariza cuatro meses de vigencia de facto. La correccion del 2026-07-19 toco inicialmente solo la cabecera y dejo esta seccion contradiciendola; detectado por AI-SR-QA y corregido el mismo dia.

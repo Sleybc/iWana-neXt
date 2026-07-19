@@ -10,7 +10,7 @@
 **Trazabilidad base:** docs/prds/PRD-MOD02-DEFINICION-v1.0.md
 **HLD de referencia:** docs/hlds/HLD-MOD02-ARQUITECTURA-v1.0.md
 **Informe relacionado:** docs/informes/INFORME-MOD02-DEFINICION-v1.0.md
-**ADRs aplicables:** ADR-019, ADR-022, ADR-023, ADR-025, ADR-026
+**ADRs aplicables:** ADR-019, ADR-022, ADR-023, ADR-025 <!-- ADR-026 retirado 2026-07-19 vía ADR-056: es "Pipeline CRM 12→8 estados", ajeno a MOD02; se citaba por error en lugar de ADR-023 (shadcn/ui), ya presente -->
 
 > Nota de alcance: este PRD no redefine el dominio Auth ni crea un nuevo bounded context. Aterriza exclusivamente la capa frontend requerida para operar MOD02 en apps/web y apps/portal sobre la base funcional ya aprobada en el PRD del módulo.
 

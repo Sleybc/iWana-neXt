@@ -11,7 +11,7 @@
 **Trazabilidad base:** docs/prds/PRD_Sistema_ISP_Colombia_v2_2.md
 **PRD heredado:** docs/prds/PRD-MOD01-Auth-Tenant-Audit-v1.0.md
 **HLD heredado:** docs/hlds/HLD-MOD01-ARQUITECTURA-v1.0.md
-**ADRs aplicables:** ADR-016, ADR-017, ADR-018, ADR-019, ADR-020, ADR-022, ADR-023, ADR-025, ADR-026
+**ADRs aplicables:** ADR-016, ADR-017, ADR-018, ADR-019, ADR-020, ADR-022, ADR-023, ADR-025 <!-- ADR-026 retirado 2026-07-19 vía ADR-056: es "Pipeline CRM 12→8 estados", ajeno a MOD02; se citaba por error en lugar de ADR-023 (shadcn/ui), ya presente en esta lista -->
 
 > Nota de gobernanza: este documento separa el alcance operativo del Auth empresarial para una empresa ya creada sobre una base técnica aprobada en MOD01. No reemplaza ni invalida MOD01. Si se decide mover el ownership arquitectónico del bounded context Auth fuera del módulo fundacional, se requiere validación de boundary y ADR adicional antes de aprobar este PRD.
 

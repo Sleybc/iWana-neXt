@@ -153,7 +153,7 @@
 | QA Lead | __________________ | __________________ | __________ |
 | CTO | __________________ | __________________ | __________ |
 
-> **NOTA:** ADR-023 queda en estado "En revision" hasta recibir la firma del CTO. La apertura del siguiente modulo (ADR-016) esta condicionada a este sign-off.
+> **NOTA (actualizada 2026-07-19):** ADR-023 fue **aprobado por el CTO** el 2026-07-19 via [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md), sin cambios de contenido. El sign-off pendiente queda satisfecho. La regla de completitud que condiciona la apertura del siguiente modulo se ancla en **ADR-022** (no en ADR-016 — ver desambiguacion de numeracion en ADR-056).
 
 ---
 

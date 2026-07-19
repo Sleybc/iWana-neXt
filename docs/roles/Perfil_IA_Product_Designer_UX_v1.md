@@ -59,13 +59,16 @@ Opera en el **track UX**, concurrente con backend, design-system y frontend (ver
 
 ## 6. Precedencia documental
 
+Sigue la cadena canónica del [protocolo §5.4](Protocolo_Colaboracion_Multiagente_v1.md), con la casilla de fuentes de diseño introducida por [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md) §4:
+
 1. `AGENTS.md` y catálogo `.agents/skills/` (`iwana-identity-ui-review`, `senior-ui-systems-designer`, `wcag-audit-patterns`, `ui-ux-pro-max`, `system-vocabulary-review`)
-2. CTO y ADRs aprobados (incl. ADR-023)
+2. CTO y ADRs **aprobados** (incl. ADR-023 — aprobado 2026-07-19 vía ADR-056)
 3. PRD y HLD del módulo
-4. [Spec Firma iWana](../specs/2026-07-12-firma-iwana-diseno-visual-design.md) (dirección visual vigente), prototipo validado (`docs/prototipo/`), manual de identidad, tokens de `packages/ui`
+4. **Fuentes de diseño** — "Estrella Polar" en sus tres dominios (ADR-056 §3): tokens reales de `packages/ui/src/styles/globals.css` mandan sobre *qué existe*; [spec Firma iWana](../specs/2026-07-12-firma-iwana-diseno-visual-design.md) sobre *qué construir*; `docs/identity/` + `docs/prototipo/` sobre *qué es la marca*
 5. [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md)
 6. Baseline del sprint y [Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
 7. Este perfil
+8. Prompt de ejecución de EM-ARCH (define el alcance operativo; en conflicto normativo con lo anterior, se detiene y escala)
 
 Regla: si identidad y accesibilidad chocan, prevalece accesibilidad y se documenta.
 

@@ -6,6 +6,8 @@
 > **Autores:** AI-EM-ARCH  
 > **Revisado y aprobado por:** CTO — 2026-03-12
 
+> **⚠️ Desambiguación de numeración (nota de [ADR-056](ADR-056-Integridad-Base-Normativa-Diseno.md), 2026-07-19).** El número 016 estuvo colisionado: `PRD_Sistema_ISP_Colombia_v2_4.md` §14.6 tenía su propia entrada "ADR-016: Estrategia de Construcción Modular Incremental". **Este archivo es el único ADR-016 con autoridad**, y gobierna únicamente el cierre de MOD01 en producción. Las citas de la forma *"regla de completitud (ADR-016)"* que aparecen en PRDs, prompts, perfiles y el protocolo se refieren a la **regla**, no a este cierre: su autoridad es **[ADR-022](ADR-022-Politica-Ejecucion-Modular-Por-Fases.md)** (Aprobado 2026-07-19), como ya declaraba el Contexto de abajo. La entrada del PRD quedó marcada como superada.
+
 ---
 
 ## Contexto
@@ -106,7 +108,7 @@ Informe ejecutivo: [`docs/informes/INFORME-MOD01-SPRINT-01-v1.0.md`](../informes
 ## Referencias
 
 - [ADR-022 Política de Ejecución Modular por Fases](./ADR-022-Politica-Ejecucion-Modular-Por-Fases.md)
-- [ADR-021 Perfil Unificado EM-Architect](./ADR-021-Perfil-Unificado-EM-Architect.md)
+- [ADR-021 Perfil Unificado EM-Architect](./ADR-021-Perfil-Unificado-EM-Architect.md) (superado)
 - [HLD-MOD01-ARQUITECTURA-v1.0](../hlds/HLD-MOD01-ARQUITECTURA-v1.0.md)
 - [PRD-MOD01-DEFINICION-v1.1](../prds/PRD-MOD01-DEFINICION-v1.1.md)
 - [OWASP-ASVS-MOD01-v1.0](../security/OWASP-ASVS-MOD01-v1.0.md)

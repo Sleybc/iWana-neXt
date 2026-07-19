@@ -74,7 +74,7 @@ Plan reciente ejecutado:
 
 Artefactos Fase 06 aprobados:
 
-- `docs/adrs/ADR-042-Calendario-Operativo-Jornadas.md` - Aprobado.
+- `docs/adrs/ADR-042-Calendario-Operativo-Jornadas.md` - **Propuesto** (corregido 2026-07-19 vía ADR-056: este informe lo declaraba "Aprobado" aquí y "pendiente" en las líneas 432, 458 y 481; el archivo dice Propuesto).
 - `docs/specs/2026-05-23-mod00-calendario-operativo-jornadas-design.md` - Actualizado.
 - `docs/plans/2026-05-23-mod00-configuracion-fase-06-calendario-operativo-jornadas.md` - Ejecutado.
 - `docs/prompts/PROMPT-MOD00-CONFIGURACION-FASE-06-v1.0.md` - Ejecutado.
@@ -1521,7 +1521,7 @@ Se realizo una auditoria completa de la pagina `/settings` de `apps/web` bajo el
 | `docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` | Actualizar seccion frontend/UI | Documentar criterio de tabs accesibles y tab General como deuda pendiente de contenido real |
 | `docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md` | Revisar seccion de componentes UI | Verificar que la lista de componentes de @iwana/ui usados este actualizada (Tabs, OtpInput, Dialog) |
 | `docs/quality/CHECKLIST-MOD00-CONFIGURACION-FASE-01-v1.0.md` o nuevo | Crear checklist de revision UI | Agregar criterios de accesibilidad WCAG 2.2 AA para la superficie `apps/web /settings` |
-| ADR nuevo: `ADR-046-Normalizacion-Tokens-Visuales-Settings` | Crear (propuesto, escalar CTO) | Formalizar el uso de tokens de sombra y radio semanticos en `@iwana/ui` vs `form-styles.ts`; incluir decision sobre `CardTitle` con color hardcodeado |
+| ADR nuevo: ~~`ADR-046-Normalizacion-Tokens-Visuales-Settings`~~ ⚠️ **número ya ocupado** — ADR-046 existe y es *"Bounded Context Tasks / Ejecución Operativa"* (Aprobado). Esta propuesta quedó huérfana: si sigue vigente, **renumérese al siguiente libre** y escálese; si no, ciérrese. Detectado 2026-07-19 vía [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md) | Crear (propuesto, escalar CTO) | Formalizar el uso de tokens de sombra y radio semanticos en `@iwana/ui` vs `form-styles.ts`; incluir decision sobre `CardTitle` con color hardcodeado |
 | `INFORME-WEB-SETTINGS-AUDITORIA-UI-v1.0.md` | Crear (recomendado) | Informe de auditoria standalone para trazabilidad, separado del informe vivo del modulo |
 
 **Criterio de cierre de esta entrada:**

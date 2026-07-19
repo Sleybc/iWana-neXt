@@ -116,7 +116,13 @@
      Escala neutra desde #181818 (base) hasta #333333 (hover).
      NORMA: En dark mode usar SIEMPRE estos tokens.
      PROHIBIDO usar dark:bg-gray-{700,800,900,950} en codigo nuevo.
-     Ver: docs/adrs/ADR-026 y AGENTS.md reglas de diseno.
+     Ver: docs/adrs/ADR-056 §2 y AGENTS.md reglas de diseno.
+     (Antes citaba ADR-026, que es "Pipeline CRM 12->8 estados" — cita corregida 2026-07-19.)
+     EMPAREJAMIENTO OBLIGATORIO (ADR-056 §2, ratificado DS-OWNER): estas superficies
+     definen el fondo, no lo que va encima. Texto: #F0F0F0 o iwana-neutral-400+;
+     PROHIBIDO neutral-700 y gray-500/600. Lima: en dark el minimo es
+     iwana-secondary-400 (la regla -700 es exclusiva de claro). Borde que identifica
+     un control: iwana-neutral-600, no dark-border (1.06:1 sobre surface-3).
      ================================================================ */
   --color-dark-surface:   #181818;   /* fondo base: layout, page wrapper */
   --color-dark-surface-2: #222222;   /* elevacion 1: cards, panels, topheader */

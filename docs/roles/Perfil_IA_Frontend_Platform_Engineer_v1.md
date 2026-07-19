@@ -10,7 +10,7 @@
 **Capa organizacional:** Engineering Layer (ver [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md))
 **Origen:** extracción del frontend de `AI-SR-FULL` v2 — dueño del **código** de la plataforma frontend; el backend permanece en AI-SR-FULL.
 **Stack de referencia:** Next.js App Router + React + TypeScript + Tailwind v4 + shadcn/ui + `@iwana/ui` (stack aprobado por [ADR-023](../adrs/ADR-023-Referencia-TailAdmin-Shell-Dashboard.md)) — versiones según [docs/prds/Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
-**Fuente de verdad de UI — "Estrella Polar":** conjunto `docs/identity/` (contrato de marca) + `docs/prototipo/` (prototipo HTML validado), gobernado por [ADR-023](../adrs/ADR-023-Referencia-TailAdmin-Shell-Dashboard.md); tokens vivos en `packages/ui`. Definición canónica en [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md). Implementa contra ambos: el contrato de DS-OWNER (derivado de `docs/identity/`) y la composición (`docs/prototipo/`), nunca copiando el HTML/Alpine como código productivo (regla ADR-023).
+**Fuente de verdad de UI — "Estrella Polar":** tres dominios de autoridad según [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md) enmendado por [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md) §3 — **código real** (`packages/ui/src/styles/globals.css` → `@iwana/ui` → `portal-ui.tsx`) manda sobre *qué existe y con qué valor*; **[spec Firma iWana](../specs/2026-07-12-firma-iwana-diseno-visual-design.md)** (dirección visual vigente: 9 elementos de firma, plan por fases) sobre *qué construir*; **`docs/identity/` + `docs/prototipo/`** (gobernados por [ADR-023](../adrs/ADR-023-Referencia-TailAdmin-Shell-Dashboard.md)) sobre *qué es la marca*. Implementa contra el contrato de DS-OWNER y la composición del prototipo, nunca copiando el HTML/Alpine como código productivo (regla ADR-023). Nunca cita un token sin verificarlo en `globals.css` (protocolo §7.4).
 
 ---
 
@@ -61,14 +61,15 @@ Opera en el **track frontend**, diseñado para no bloquearse contra el backend:
 Sigue la cadena canónica del [protocolo §5.4](Protocolo_Colaboracion_Multiagente_v1.md):
 
 1. `AGENTS.md` y catálogo `.agents/skills/` (`nextjs-app-router-patterns`, `frontend-dev-guidelines`, `core-components`, `tailwind-patterns`, `iwana-identity-ui-review`, `frontend-security-coder`)
-2. CTO y ADRs aprobados (incl. ADR-023)
+2. CTO y ADRs **aprobados** (incl. ADR-023 — aprobado 2026-07-19 vía [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md))
 3. PRD y HLD del módulo
-4. [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md)
-5. Baseline del sprint y [Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
-6. Este perfil
-7. Prompt de ejecución de EM-ARCH (define el alcance operativo; en conflicto normativo con lo anterior, se detiene y escala)
+4. **Fuentes de diseño** — "Estrella Polar" en sus tres dominios (ADR-056 §3): tokens reales de `packages/ui/src/styles/globals.css` mandan sobre *qué existe*; [spec Firma iWana](../specs/2026-07-12-firma-iwana-diseno-visual-design.md) sobre *qué construir* (9 elementos de firma, plan por fases); `docs/identity/` + `docs/prototipo/` sobre *qué es la marca*
+5. [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md)
+6. Baseline del sprint y [Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
+7. Este perfil
+8. Prompt de ejecución de EM-ARCH (define el alcance operativo; en conflicto normativo con lo anterior, se detiene y escala)
 
-Entradas de trabajo (no precedencia): contrato de AI-DS-OWNER + UX spec de AI-PROD-UX + contrato de API de AI-SR-FULL; prototipo validado (`docs/prototipo/`) y tokens de `packages/ui`.
+Entradas de trabajo (no precedencia): contrato de AI-DS-OWNER + UX spec de AI-PROD-UX + contrato de API de AI-SR-FULL.
 
 ## 7. Entregables
 

@@ -38,7 +38,7 @@ const LINE_RULES = [
     id: 'dark-gray',
     kind: 'D',
     sev: 'P1',
-    desc: 'dark:bg-gray-{700-950} prohibido (ADR-026) — usar dark-surface-*/dark-border',
+    desc: 'dark:bg-gray-{700-950} prohibido (ADR-056 §2) — usar dark-surface-*/dark-border',
     test: (line) => /dark:bg-gray-(?:700|800|900|950)\b/.test(line),
   },
   {

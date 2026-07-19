@@ -1,6 +1,27 @@
-# Mapa de la Estrella Polar — prototipos y TailAdmin
+# Mapa de la Estrella Polar — prototipos, TailAdmin y referentes
 
-La "Estrella Polar" visual = `docs/identity/` (contrato de marca) + `docs/prototipo/` (composición validada), gobernada por ADR-023 y traducida a código en `globals.css` → `@iwana/ui` → `portal-ui.tsx`. Esta referencia dice qué aporta cada pieza y qué está prohibido copiar.
+La "Estrella Polar" visual tiene **tres capas con dominios de autoridad distintos**. No es una jerarquía lineal: cada capa manda sobre una pregunta diferente.
+
+| Capa | Qué es | Manda sobre |
+| --- | --- | --- |
+| **Código real** — `globals.css` → `@iwana/ui` → `portal-ui.tsx` | La traducción ejecutada | **Qué existe y con qué valor.** En conflicto con la spec sobre un token, **mandan los tokens** y se documenta la divergencia (spec Firma §8). Nunca cites un token sin verificarlo aquí |
+| **Spec Firma iWana** — `docs/specs/2026-07-12-firma-iwana-diseno-visual-design.md` (Aprobada) | Dirección visual vigente: los 9 elementos de firma, el plan por fases y la síntesis de **referentes 2025-2026** (Linear, Stripe, Attio, shadcn/ui, Tremor, Catalyst, Untitled UI) | **Qué se debe construir y hacia dónde.** Complementa —no reemplaza— al manual de identidad |
+| **Base de identidad** — `docs/identity/` (marca) + `docs/prototipo/` (composición validada, incl. `tailadmin/`) | Paleta, tipografía, personalidad y los patrones de composición que la spec toma como punto de partida | **Qué es la marca.** ADR-023 gobierna qué se toma del prototipo/TailAdmin |
+
+En la práctica: para decidir **si algo existe**, manda el código; para decidir **qué construir**, manda la spec; para decidir **si se siente iWana**, manda la identidad.
+
+Los referentes externos **ya están dentro del canon**, destilados en decisiones concretas por la spec Firma — no se citan como inspiración suelta:
+
+| Referente | Aporte | Ancla en la spec |
+| --- | --- | --- |
+| Linear | "dim the sidebar"; escalas OKLCH de 3 entradas (base/acento/contraste) | Firma #1, §1.1 |
+| Stripe / Tremor | anatomía de KPI card (delta como badge tonal + hueco de sparkline) | §2.1 |
+| Attio / Airtable | side peek desde fila, expandible a página completa | §2.7 |
+| TailAdmin | tabla-en-card, sticky header, shell colapsable | §2.3 (ver §TailAdmin abajo) |
+| shadcn/ui | wrapper `Chart` + theming por `--chart-*` | §3.1 (Fase 3 — tokens aún inexistentes) |
+| Tremor | tracker bars de salud tipo uptime para OLT/nodos | §3.4 (Fase 3) |
+
+Esta referencia dice qué aporta cada pieza de la capa 2 y qué está prohibido copiar. Para el detalle de los elementos de firma ver `firma-elements.md`; para veredictos de tendencias no cubiertas por la spec, `trends-2026.md` (apoyo, no normativo).
 
 ## Cadena de traducción (cómo se lee un prototipo)
 
@@ -49,7 +70,7 @@ Template TailAdmin Free completo (HTML + Alpine.js + Tailwind v4), **sin identid
 | MetricCard con trend badge (pill success/error con flecha) | `partials/metric-group/` → `portalMetricCard*` |
 | Escalas semánticas OKLCH (`success/error/warning-*`) | Adoptadas en `globals.css` |
 | Tabla-en-card, breadcrumb, badges/avatars | Referencia de composición para `portal-ui.tsx` |
-| Dark mode por clase | Adoptado con tokens `dark-surface-*` (ADR-026) |
+| Dark mode por clase | Adoptado con tokens `dark-surface-*` (ADR-056 §2) |
 
 ### Qué está PROHIBIDO copiar (ADR-023 + Firma §5)
 
@@ -68,4 +89,4 @@ Template TailAdmin Free completo (HTML + Alpine.js + Tailwind v4), **sin identid
 | Iconos Phosphor | lucide-react en el portal | código real |
 | Hover lift/scale en cards | micro-elevación solo en accionables, nunca en cards informativas | Firma §6 |
 | `@import` Google Fonts | `next/font` (dirección Fase 1.5) | Firma §6 |
-| Dark `#181818` plano (login) | escala `dark-surface-{1..4}` | ADR-026 |
+| Dark `#181818` plano (login) | escala `dark-surface-{1..4}` | ADR-056 §2 |

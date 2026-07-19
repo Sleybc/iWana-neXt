@@ -1,10 +1,11 @@
 # ADR-042: Calendario operativo y jornadas como seccion federada MOD00
 
 **Version:** 1.0  
-**Estado:** Propuesto  
+**Estado:** Aprobado  
 **Fecha:** 2026-05-23  
 **Modo activo:** Architect  
 **Autor:** AI-EM-ARCH  
+**Aprobado por:** CTO Humano (2026-07-19, vía [ADR-056](ADR-056-Integridad-Base-Normativa-Diseno.md) — sin cambios de contenido; 11 citas y funcionalidad ya entregada en MOD00)  
 **Modulo:** MOD00 Configuracion Control Plane / MOD09 WFM  
 **PRD relacionado:** docs/prds/PRD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md  
 **HLD relacionado:** docs/hlds/HLD-MOD00-CONFIGURACION-CONTROL-PLANE-v1.0.md  

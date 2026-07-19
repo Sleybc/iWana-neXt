@@ -39,7 +39,7 @@
 - PRD del modulo: [docs/prds/PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md](../prds/PRD-MOD03-BRANDING-EMPRESARIAL-v2.0.md) (v2.2)
 - HLD del modulo/configuracion: [docs/hlds/HLD-MOD03-CONFIGURACION-EMPRESA-v1.0.md](../hlds/HLD-MOD03-CONFIGURACION-EMPRESA-v1.0.md)
 - HLD transversal media: [docs/hlds/HLD-TRANSVERSAL-MEDIA-ASSETS-v1.0.md](../hlds/HLD-TRANSVERSAL-MEDIA-ASSETS-v1.0.md)
-- ADRs aplicables: [ADR-034](../adrs/ADR-034-Bounded-Context-Media-Assets.md), [ADR-035](../adrs/ADR-035-Storage-MinIO-StoragePort.md), [ADR-023](../adrs/ADR-023-Referencia-TailAdmin-Shell-Dashboard.md), [ADR-021](../adrs/ADR-021-Perfil-Unificado-EM-Architect.md)
+- ADRs aplicables: [ADR-034](../adrs/ADR-034-Bounded-Context-Media-Assets.md), [ADR-035](../adrs/ADR-035-Storage-MinIO-StoragePort.md), [ADR-023](../adrs/ADR-023-Referencia-TailAdmin-Shell-Dashboard.md) <!-- ADR-021 retirado 2026-07-19 vía ADR-056: es el perfil EM-Architect, sin relación con branding, y está Superado por ADR-049 -->
 - Sprint/plan aplicable: [docs/plans/PLAN-MOD03-BRANDING-EMPRESARIAL-FASE-03-v1.0.md](../plans/PLAN-MOD03-BRANDING-EMPRESARIAL-FASE-03-v1.0.md) (v1.2)
 - Informe vivo: [docs/informes/INFORME-MOD03-BRANDING-EMPRESARIAL-v1.0.md](../informes/INFORME-MOD03-BRANDING-EMPRESARIAL-v1.0.md)
 - Artefactos faltantes detectados: ninguno bloqueante; no se requiere ADR nuevo mientras la metadata viva en `public.tenants` y reutilice `/tenants/me/branding`.

@@ -69,7 +69,7 @@ Escalas OKLCH (heredadas de TailAdmin, para pills/trend badges y estados — exi
 
 **El lima nunca sustituye a `warning`/`error`: urgencia, prioridad alta y alerta usan estas escalas, no `iwana-secondary`.**
 
-## Dark mode (ADR-026 — norma dura)
+## Dark mode (ADR-056 §2 — norma dura; valores en `globals.css` L121-124)
 
 | Token | Valor | Rol |
 | --- | --- | --- |

@@ -1011,7 +1011,7 @@ sequenceDiagram
 | ADR-004 | Soft delete + Audit Log universal: nunca borrar datos de negocio, conservar historial completo      |
 | ADR-012 | i18n es-CO: mensajes de error en español colombiano, timezone America/Bogota, moneda COP            |
 | ADR-017 | Schema provisioning por DDL programático: NO migraciones TypeORM para schemas de tenant             |
-| ADR-018 | Roles de plataforma en schema público: SYSTEM_ADMIN e IWANA_SUPPORT viven en public.platform_users  |
+| _sin ADR_ | Roles de plataforma en schema público: SYSTEM_ADMIN e IWANA_SUPPORT viven en public.platform_users — decisión de implementación. **ADR-018 es "Ciclo de Vida del Tenant" y no menciona `platform_users` ni roles de plataforma** (corregido 2026-07-19 vía ADR-056) |
 | ADR-019 | JWT RS256 con refresh token rotation + familyId para reuse attack detection                         |
 | ADR-020 | Seed inicial por tenant: ADMIN con password temporal + config base + catálogo CO                    |
 | ADR-022 | Política de ejecución modular por fases: ningún módulo N+1 inicia sin cerrar N                      |

@@ -167,7 +167,9 @@ Verificables por cualquier agente; su cumplimiento es condición de G5–G7:
 1. **Desacuerdo técnico dentro del stack aprobado** (patrón, estructura, naming): decide el Responsible del área RACI; el otro agente registra la objeción en el artefacto si persiste.
 2. **Especificación UX vs costo técnico:** SR-FULL o FE-PLATFORM presentan alternativas con costos; PROD-UX defiende el mínimo de experiencia no negociable (accesibilidad, acciones frecuentes visibles) y DS-OWNER el contrato del design system; EM-ARCH decide y documenta.
 3. **Conflicto con ADR, PRD o boundary:** se detiene la ejecución y se escala a EM-ARCH de inmediato; nadie implementa "mientras tanto".
-4. **Conflicto entre perfiles o con este protocolo:** manda la precedencia documental (`AGENTS.md` → CTO/ADRs → PRD → HLD → este protocolo → perfil individual → prompt de ejecución).
+4. **Conflicto entre perfiles o con este protocolo:** manda la precedencia documental (`AGENTS.md` → CTO/ADRs **aprobados** → PRD → HLD → **fuentes de diseño** → este protocolo → perfil individual → prompt de ejecución).
+
+   **Fuentes de diseño** = la "Estrella Polar" según los tres dominios de autoridad de [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md) §3: código real (`globals.css` → `@iwana/ui` → `portal-ui.tsx`) manda sobre *qué existe*; [spec Firma iWana](../specs/2026-07-12-firma-iwana-diseno-visual-design.md) sobre *qué construir*; `docs/identity/` + `docs/prototipo/` sobre *qué es la marca*. Esta casilla solo aplica a conflictos de superficie visual; en lo demás la cadena salta de HLD a este protocolo.
 5. **Dos fuentes contradictorias sobre regulación o stack:** no se sintetiza una respuesta conveniente; se marca "requiere verificación con fuente oficial" y se escala.
 
 ## 6. Red de consulta entre perfiles (soporte entre agentes)
@@ -220,7 +222,17 @@ Aplican a todos los agentes, en todo artefacto:
 1. **Ningún perfil afirma versiones ni hechos de stack por su cuenta**: se validan contra [docs/prds/Stack_Tecnologico.md](../prds/Stack_Tecnologico.md), `AGENTS.md` y el baseline del sprint. Los perfiles solo nombran tecnologías, nunca fijan versiones.
 2. **Ningún agente inventa regulación** (CRC, DIAN, MinTIC, Ley 1581, MinTrabajo): lo no confirmado se marca "requiere verificación con fuente oficial".
 3. **Los patrones no aprobados no son baseline**: CQRS, event sourcing u otros patrones avanzados pueden proponerse **solo vía ADR**; el baseline vigente es Modulith + interfaces tipadas + eventos BullMQ.
-4. **Los agentes citan artefactos reales** (ruta de archivo, ADR, sección de PRD) al justificar decisiones; una afirmación sin fuente citable se declara como supuesto.
+4. **Los agentes citan artefactos reales y verificados.** Antes de citar, se abre el artefacto y se comprueba que **dice lo que se afirma**; que exista no basta. Un ADR solo confiere autoridad si su estado es **Aprobado** — un ADR en revisión o propuesto se cita como propuesta, nunca como norma. Una cita no verificada no confiere autoridad: ante duda, la afirmación se declara supuesto.
+
+   **Gate operativo:** toda cita normativa nueva en un artefacto de fase es verificable por el revisor del gate, y automáticamente por `pnpm audit:adr-citations`. Una cita que no resiste apertura es **defecto bloqueante**, no observación. Origen de la regla: [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md) §5 — la versión anterior exigía que la cita existiera pero no que fuera veraz ni aprobada, y por ese hueco pasaron cuatro defectos normativos de la capa de diseño.
+
+   **Convención de cita histórica (obligatoria).** §7.4 prohíbe invocar como *autoridad* un ADR no aprobado, pero **citar un ADR superado como genealogía es legítimo y frecuente** ("el perfil v2 sucede a v1 de ADR-021 (superado)"). Para que la distinción sea verificable y no quede al juicio del lector:
+
+   > Toda cita de un ADR en estado `Superado`, `Propuesto` o `En revisión` lleva el marcador explícito **`(superado)`**, **`(propuesto)`** o **`(en revisión)`** junto al número. Sin marcador, la cita se interpreta como afirmación de autoridad vigente y el gate la bloquea.
+
+   Regla de escritura complementaria: **no cites un ADR en un bloque de "trazabilidad" o "ADRs aplicables" si no tiene relación sustantiva** con el artefacto. El boilerplate arrastrado por copia fue una de las vías de propagación de los defectos de ADR-056.
+
+   **Cómo describir un negativo.** Afirmar que un ADR *no* cubre X exige haber recorrido **todas** sus secciones, no solo el título y §Decisión: en este repo las decisiones operativas viven en §Consecuencias, §Riesgos y §Plan de migración. Afirmar que sí lo cubre solo exige la sección que lo respalda. Origen: dos falsos hallazgos de la auditoría de ADR-056 (ver su Ampliación, §Segunda pasada).
 5. **Skills del repo como criterio operativo**: para tareas en el workspace, los agentes aplican el catálogo `.agents/skills/` según el dispatch de `AGENTS.md` (p. ej. `iwana-identity-ui-review` para identidad visual, `nestjs-expert` para módulos backend). Los perfiles definen el *rol*; las skills definen el *cómo* dentro del repo.
 
 ## 8. Cadencia de sincronización

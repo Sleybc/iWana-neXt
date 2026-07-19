@@ -11,7 +11,7 @@ Los valores exactos viven en las referencias hermanas — no los dupliques desde
 - **Rol de cada color**: `iwana-primary` comunica estructura, confianza y acciones secundarias importantes; `iwana-secondary` es acento (boton primario, señales de interaccion, avance/exito/completitud). Invertir los roles (secundario como color estructural masivo) diluye la marca. **El lima nunca comunica urgencia, prioridad alta ni alerta** — eso corresponde a las escalas `warning`/`error`. Jerarquia de botones: lima = accion principal de pagina; azul solido = acciones de seccion; ghost/outline = secundarias.
 - **Superficies**: card base blanca; `iwana-surface-soft` para superficies suaves de apoyo (cards de navegacion, fondos de icono, empty states activos); `iwana-secondary-50` solo para acentos de interaccion (tab activa, filtro seleccionado, pill transitoria, hover marcado).
 - **Glassmorphism selectivo**: `.iwana-glass` en overlays, drawers, controles flotantes o botones sobre contenido. Nunca masivo en tablas o formularios.
-- **Dark mode**: solo tokens `dark-surface-{1..4}` y `dark-border{,-2}` (ADR-026). `dark:bg-gray-*` esta prohibido en codigo nuevo.
+- **Dark mode**: solo tokens `dark-surface-{1..4}` y `dark-border{,-2}` (ADR-056 §2; valores en `globals.css` L121-124 — **no** ADR-026). `dark:bg-gray-*` esta prohibido en codigo nuevo.
 - **Microinteracciones**: rapidas (150-300 ms), naturales, nunca bloquean la tarea. Elevacion dramatica (lift/scale agresivos) no corresponde a herramientas operativas.
 
 ## 2. Usabilidad

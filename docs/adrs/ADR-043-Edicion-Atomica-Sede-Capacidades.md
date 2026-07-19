@@ -1,7 +1,7 @@
 # ADR-043: Edicion atomica de sede y capacidades desde modal unificado
 
 **Version:** 1.1  
-**Estado:** Aceptado  
+**Estado:** Aprobado  
 **Fecha:** 2026-05-23  
 **Modo activo:** Architect  
 **Autor:** AI-EM-ARCH  
@@ -104,4 +104,6 @@ Elegida. Es la opcion mas consistente con la intencion del usuario y con el mode
 
 ## Estado de aprobacion
 
-Este ADR queda **Aceptado e implementado**. No requiere cambio de stack ni escalacion por conflicto de ownership, y su cierre incluye el retiro efectivo del endpoint legacy de capacidades tras validar el flujo unificado del portal.
+Este ADR queda **Aprobado e implementado**. No requiere cambio de stack ni escalacion por conflicto de ownership, y su cierre incluye el retiro efectivo del endpoint legacy de capacidades tras validar el flujo unificado del portal.
+
+> Nota de vocabulario (ADR-056, 2026-07-19): la cabecera decia "Aceptado", lexico fuera del vocabulario canonico del protocolo §7.4 (Aprobado / En revision / Propuesto / Superado), lo que hacia indeterminable si confería autoridad. Normalizado a **Aprobado** sin cambio de contenido ni de fecha.

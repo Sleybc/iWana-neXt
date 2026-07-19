@@ -131,7 +131,7 @@ Este módulo no se considera correctamente gobernado si faltan alguno de estos a
 | RF-AUTH-08 | Cambio de contraseña: requiere contraseña actual, invalida todos los refresh tokens al cambiar.                    | MVP       | —             |
 | RF-AUTH-09 | Email de verificación al crear usuario. Usuario no puede operar hasta verificar.                                   | MVP       | —             |
 | RF-AUTH-10 | Política de contraseñas NIST SP 800-63B / OWASP: mínimo 10 chars, mayúscula, minúscula, número, carácter especial. | MVP       | OWASP ASVS L2 |
-| RF-AUTH-11 | JTI blacklist en Redis para revocación inmediata de access tokens en logout.                                       | MVP       | ADR-003       |
+| RF-AUTH-11 | JTI blacklist en Redis para revocación inmediata de access tokens en logout.                                       | MVP       | **ADR-019 §6** |
 
 ### RF-TENANT (Multi-tenant)
 
@@ -144,7 +144,7 @@ Este módulo no se considera correctamente gobernado si faltan alguno de estos a
 | RF-TNT-05 | Ciclo de vida del tenant: PROVISIONING → ACTIVE → SUSPENDED → INACTIVE. Tenant SUSPENDED bloquea acceso (HTTP 403) en TenantMiddleware. | MVP       | ADR-018 |
 | RF-TNT-06 | Configuración por tenant en JSONB: timezone (default: America/Bogota), currency (default: COP), features habilitadas.                   | MVP       | —       |
 | RF-TNT-07 | SYSTEM_ADMIN puede regenerar credenciales temporales del ADMIN de un tenant (`POST /tenants/:id/regenerate-admin-credentials`).         | MVP       | ADR-020 |
-| RF-TNT-08 | Cache de tenant en Redis (TTL 5 min) para evitar query a public.tenants en cada request.                                                | MVP       | ADR-003 |
+| RF-TNT-08 | Cache de tenant en Redis (TTL 5 min) para evitar query a public.tenants en cada request.                                                | MVP       | **ADR-018 §Cache Redis** |
 
 ### RF-RBAC (Control de Acceso)
 

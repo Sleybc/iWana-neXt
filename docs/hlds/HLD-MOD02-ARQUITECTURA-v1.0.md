@@ -350,7 +350,7 @@ type LoginResult =
 | HLD-MOD01 | docs/hlds/HLD-MOD01-ARQUITECTURA-v1.0.md |
 | ADR-019 | JWT RS256 + refresh rotation |
 | ADR-020 | Seed inicial ADMIN por tenant |
-| ADR-023 | Auth híbrida frontend (proxy cookie + AuthProvider) |
-| ADR-025 | react-hook-form + zod para formularios |
-| ADR-026 | shadcn/ui + Radix + Tailwind 4 CSS-first |
+| ADR-023 | shadcn/ui + Radix + Tailwind 4 CSS-first (Referencia TailAdmin para shell de dashboard) |
+| _sin ADR_ | Auth híbrida frontend (proxy cookie + AuthProvider) — decisión de implementación, no normada. [ADR-019](../adrs/ADR-019-JWT-RS256-Refresh-Rotation.md) cubre JWT/cookie httpOnly, **no** el patrón `AuthProvider` |
+| _sin ADR_ | react-hook-form + zod para formularios — decisión de implementación, no normada. Los ADRs que citan Zod lo hacen para validación backend en boundaries HTTP, no como stack de formularios de frontend |
 | Informe de sprint | docs/informes/INFORME-MOD02-SPRINT-01-v1.0.md |

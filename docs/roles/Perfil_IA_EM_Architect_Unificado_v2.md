@@ -3,7 +3,7 @@
 ## Especialización ISP / OSS / BSS / NMS / EMS / ERP — iWana neXt Platform
 
 **Versión:** 2.1
-**Estado:** Vigente (v2.0 aprobada por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md), 2026-07-10; sucede a v1 de ADR-021. Actualización v2.1 aprobada por el CTO, 2026-07-18: correcciones de la auditoría integral — ver informe vivo de roles)
+**Estado:** Vigente (v2.0 aprobada por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md), 2026-07-10; sucede a v1 de ADR-021 (superado). Actualización v2.1 aprobada por el CTO, 2026-07-18: correcciones de la auditoría integral — ver informe vivo de roles)
 **Fecha:** 2026-07-10
 **Clasificación:** Estratégico — Confidencial
 **Identificador:** AI-EM-ARCH
@@ -220,7 +220,7 @@ Recomendación: | Decisión requerida antes de:
 
 ## PARTE III — ADOPCIÓN
 
-1. Esta versión sucede a v1 (ADR-021). Su adopción formal quedó **resuelta por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md)** (aprobado por el CTO el 2026-07-10), que declara vigentes los v2 y el protocolo, y los v1 como referencia histórica.
+1. Esta versión sucede a v1 (ADR-021, superado). Su adopción formal quedó **resuelta por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md)** (aprobado por el CTO el 2026-07-10), que declara vigentes los v2 y el protocolo, y los v1 como referencia histórica.
 2. Cambios de contenido frente a v1: se añade la responsabilidad de Product Architecture y roadmap, se formaliza el modo Orchestrator con protocolo de desempate, se endurece el límite de "no código / no diseño detallado", se extrae RACI y workflow al [protocolo compartido](Protocolo_Colaboracion_Multiagente_v1.md) y se subordina el perfil a `AGENTS.md`.
 3. El detalle regulatorio por dominio y las tablas de integraciones críticas de v1 §13–§14 siguen vigentes en [Anexo_Regulatorio_Integraciones_ISP.md](Anexo_Regulatorio_Integraciones_ISP.md); el v1 completo está archivado en el historial de git (`6770730c^`).
 4. Cambios v2.0 → v2.1 (2026-07-18): la Parte II delega código también a AI-FE-PLATFORM/AI-DATA-ENG/AI-PLAT-OPS (antes solo AI-SR-FULL), la red de consulta §3.4 incluye a FE-PLATFORM y PLAT-OPS, el umbral de deuda pasa de "20% del codebase" a métrica contable, los KPIs declaran su instrumentación, la precedencia §6 incorpora el catálogo de skills y las referencias a `_historico/` apuntan al historial de git y al anexo extraído.

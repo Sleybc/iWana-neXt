@@ -1,9 +1,9 @@
 # ADR-025: Modelo de Dos Dimensiones para Subscriber (personType + customerSegment)
 
-**Estado:** Propuesto  
+**Estado:** Aprobado  
 **Fecha:** 2026-04-16  
 **Autor:** AI-EM-ARCH  
-**Aprobador requerido:** CTO Humano  
+**Aprobado por:** CTO Humano (2026-07-19, vía [ADR-056](ADR-056-Integridad-Base-Normativa-Diseno.md) — sin cambios de contenido; el modelo ya está implementado y tiene 37 citas)  
 **PRD relacionado:** docs/prds/PRD-MOD05-CRM-SUBSCRIBERS-v1.0.md
 
 ---

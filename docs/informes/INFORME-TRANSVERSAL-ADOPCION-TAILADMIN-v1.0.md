@@ -24,7 +24,7 @@ En este corte se ejecuto la FASE-06 de calidad extendida: cobertura E2E para por
 
 | Artefacto                    | Archivo                                                              | Estado      |
 | ---------------------------- | -------------------------------------------------------------------- | ----------- |
-| ADR de adopcion              | `docs/adrs/ADR-023-Referencia-TailAdmin-Shell-Dashboard.md`          | En revision |
+| ADR de adopcion              | `docs/adrs/ADR-023-Referencia-TailAdmin-Shell-Dashboard.md`          | **Aprobado** (CTO, 2026-07-19 via ADR-056) |
 | HLD transversal              | `docs/hlds/HLD-TRANSVERSAL-ADOPCION-TAILADMIN-v1.0.md`               | En revision |
 | Plan por fases               | `docs/sprints/PLAN-TRANSVERSAL-ADOPCION-TAILADMIN-v1.0.md`           | En revision |
 | Prompt arquitectonico origen | `docs/prompts/PROMPT-ARCHITECT-TRANSVERSAL-ADOPCION-TAILADMIN.md`    | Generado    |

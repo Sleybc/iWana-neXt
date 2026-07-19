@@ -1770,6 +1770,8 @@ El orden de creación de módulos lo define el **CTO con ayuda del Engineering M
 
 ## 14.6 ADRs — Decisiones Arquitectónicas
 
+> **⚠️ Espacio de numeración histórico (nota de [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md), 2026-07-19).** Las entradas ADR-001…ADR-016 de esta sección **son un registro propio de este PRD**: no existen como archivo en `docs/adrs/`, no tienen cabecera de estado y **no son los ADR del mismo número** de ese directorio (que empieza en ADR-016 y colisiona). Bajo el protocolo §7.4, una entrada sin estado declarado **no confiere autoridad normativa**: cítese como sección de este PRD (`PRD §14.6 ADR-0NN`), nunca como `docs/adrs/`. Las que siguen vigentes como decisión real están recogidas o superadas por ADRs formales; ver la nota de cada entrada superada.
+
 ### ADR-001: Modulith vs Microservicios _(Confirmado)_
 
 - **Decisión:** Modulith (monolito modular) con NestJS modules como bounded contexts.
@@ -1841,7 +1843,9 @@ El orden de creación de módulos lo define el **CTO con ayuda del Engineering M
 - **Contexto:** ISP usa PPPoE, DHCP/IPoE, IP Fija, MAC Binding y Hotspot.
 - **Decisión:** Strategy Pattern en el módulo de Provisioning. La orden incluye el método y el sistema selecciona la estrategia correcta.
 
-### ADR-016: Estrategia de Construcción Modular Incremental _(Nuevo — v2.1)_
+### ADR-016: Estrategia de Construcción Modular Incremental _(Nuevo — v2.1)_ — ⚠️ SUPERADO
+
+> **Superado por [ADR-022](../adrs/ADR-022-Politica-Ejecucion-Modular-Por-Fases.md) (Aprobado 2026-07-19 vía [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md)).** Este número colisionaba con `docs/adrs/ADR-016-Cierre-MOD01-Produccion.md`, que es un artefacto distinto (el cierre de un módulo concreto, no la regla). **La "regla de completitud" que citan los PRDs, prompts y perfiles se ancla desde ahora en ADR-022**, que la formaliza con estado Aprobado. Esta entrada se conserva por trazabilidad histórica; no confiere autoridad.
 
 - **Decisión:** Cada módulo completo (Backend + Frontend + BD + Tests) antes de pasar al siguiente. Deploy a producción independiente por módulo.
 - **Principios:** No empezar siguiente módulo hasta que anterior esté production-ready; no forzar refactorizaciones destructivas; diseñar para extensibilidad, implementar mínimo viable.
@@ -1868,7 +1872,7 @@ El orden de creación de módulos lo define el **CTO con ayuda del Engineering M
 - **Decisión:** El primer usuario de un tenant se crea con contraseña temporal aleatoria enviada por email. Obligado a cambiarla en el primer login.
 - **Razones:** Evitar credenciales hardcoded; cumplir principio de credenciales de un solo uso.
 
-### ADR-021: Perfil Unificado EM + Architect
+### ADR-021 (superado): Perfil Unificado EM + Architect
 
 - **Decisión:** El rol de Architect y Engineering Manager se unifica en un único perfil para el equipo actual. Responsabilidades: diseño técnico + gobernanza de módulos + code review.
 - **Tipo:** Gobernanza de equipo — no afecta codebase directamente.

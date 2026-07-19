@@ -164,11 +164,14 @@ TypeScript strict en todos los workspaces — 0 errores ✓
 - **PRD actualizado:** No — scaffold no altera PRD maestro
 - **HLD actualizado:** No — scaffold sigue HLD-MOD01-ARQUITECTURA-v1.0 Seccion 7 sin modificaciones
 - **ADR nuevo o referenciado:**
-  - ADR-017: Multi-tenant schema isolation (referenciado en packages/database)
-  - ADR-019: NestJS Modulith (referenciado en apps/api)
-  - ADR-020: BullMQ jobs asincronos (referenciado en apps/worker)
-  - ADR-023: Frontend hybrid auth (referenciado en apps/web/portal — Sprint 1)
-  - ADR-026: shadcn/ui + Radix + CVA (referenciado en packages/ui — Sprint 1)
+  <!-- Bloque remapeado 2026-07-19 vía ADR-056: las 5 líneas se escribieron contra la numeración histórica
+       del PRD §14.6 y nunca se remaparon a docs/adrs/. Cada número estaba corrido respecto de su contenido. -->
+  - _sin ADR vigente_: Multi-tenant schema isolation (referenciado en packages/database) — la decisión es `PRD §14.6 ADR-002`, espacio histórico sin autoridad normativa
+  - _sin ADR vigente_: NestJS Modulith (referenciado en apps/api) — la decisión es `PRD §14.6 ADR-001`, espacio histórico sin autoridad normativa
+  - ADR-017: BullMQ jobs asincronos (referenciado en apps/worker) — *Provisioning de Schema PostgreSQL vía BullMQ Worker*
+  - _sin ADR_: Frontend hybrid auth (referenciado en apps/web/portal — Sprint 1) — decisión de implementación, no normada
+  - ADR-023: shadcn/ui + Radix + CVA (referenciado en packages/ui — Sprint 1)
+
 - **Otros documentos afectados:** Ninguno
 
 ---

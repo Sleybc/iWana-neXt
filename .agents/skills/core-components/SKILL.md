@@ -21,7 +21,7 @@ description: Sistema de componentes y patrones visuales para iWana neXt. Use cua
 
 ### Base del sistema de diseño
 
-- **shadcn/ui + Radix Primitives** — ADR-026: base de composición de componentes
+- **shadcn/ui + Radix Primitives** — ADR-023: base de composición de componentes
 - **CVA (class-variance-authority)** — para variantes de componentes
 - **Tailwind 4 CSS-first** — tokens en `@theme {}` de `globals.css`, sin `tailwind.config.js`
 - **Exportaciones** en `packages/ui/src/index.ts`

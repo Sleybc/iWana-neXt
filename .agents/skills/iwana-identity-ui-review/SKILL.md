@@ -55,7 +55,7 @@ Si este documento y los tokens reales divergen, mandan los tokens reales; docume
 | `references/tokens.md` | Vayas a citar, aplicar o negar un color, radio, sombra, superficie o token dark. Contiene los hex exactos, la regla AA del lima y las divergencias conocidas |
 | `references/firma-elements.md` | Construyas o evalues una pantalla: los 9 elementos de firma con receta de clases, las reglas semanticas del lima y la jerarquia de botones |
 | `references/component-recipes.md` | Construyas cualquier patron (KPI, tabla, panel, tabs, empty, loading, formulario, side peek, shell, auth, timeline): que primitive/class-token real usar y que nunca hacer |
-| `references/prototype-map.md` | Necesites la Estrella Polar: que define cada prototipo, que tomar de TailAdmin y que esta prohibido copiar (ADR-023) |
+| `references/prototype-map.md` | Necesites la Estrella Polar: sus 3 capas de precedencia (spec Firma > identidad/prototipo > codigo real), que referentes externos ya estan en el canon, que define cada prototipo y que esta prohibido copiar de TailAdmin (ADR-023) |
 | `references/trends-2026.md` | Alguien proponga una tendencia ("es lo que hace Linear/Attio", "es tendencia 2026") o evalues un patron nuevo: veredicto Adoptar/Adaptar/Rechazar con ancla |
 | `references/evaluation-criteria.md` | Ejecutes la metodologia completa de review: detalle de las 7 dimensiones |
 
@@ -89,7 +89,7 @@ node .agents/skills/iwana-identity-ui-review/scripts/audit-ui.mjs [rutas...] [--
 # sin rutas: escanea apps/portal/src, apps/web/src y packages/ui/src
 ```
 
-- Reglas **deterministas** (alta confianza, citables directo como evidencia): `dark:bg-gray-{700-950}` (ADR-026), `tailwind.config.*` presente, hex de marca sin tokenizar, z-index tipo `z-9999`.
+- Reglas **deterministas** (alta confianza, citables directo como evidencia): `dark:bg-gray-{700-950}` (ADR-056 §2), `tailwind.config.*` presente, hex de marca sin tokenizar, z-index tipo `z-9999`.
 - Reglas **heuristicas** (el script las marca `[revisar]`): lima sin sufijo AA en texto, `bg-iwana-secondary-50` como posible fondo base, degradado de marca fuera de progreso, spinner como carga primaria, posible enum crudo en JSX. **Un hallazgo heuristico requiere confirmacion manual antes de entrar al informe** (regla anti-falso-positivo 2).
 - Exit code 1 si hay P0/P1 — util como gate local antes de commit.
 
@@ -139,7 +139,7 @@ Estas reglas son mecanicamente comprobables en el codigo (el script cubre las ma
 | Regla | Como detectarla | Severidad base |
 | --- | --- | --- |
 | ⚙ Texto `text-iwana-secondary` (sin sufijo 700+) sobre fondo claro — no pasa AA | grep `text-iwana-secondary[^-]` en superficie clara; usar `iwana-secondary-700` | P1 |
-| ⚙ `dark:bg-gray-{700,800,900,950}` en codigo nuevo — prohibido por ADR-026; usar `dark-surface-*` / `dark-border-*` | grep `dark:bg-gray-(700|800|900|950)` | P1 |
+| ⚙ `dark:bg-gray-{700,800,900,950}` en codigo nuevo — prohibido por ADR-056 §2; usar `dark-surface-*` / `dark-border-*` | grep `dark:bg-gray-(700|800|900|950)` | P1 |
 | ⚙ `tailwind.config.{js,ts}` presente en apps/packages — el sistema es CSS-first por ADR | existencia del archivo | P0 |
 | Interactivo custom sin foco visible — usar `interactiveFocusClassName` o `focus-visible:ring` | elementos clickeables sin `focus-visible:` | P1 |
 | ⚙ Enum crudo o `UPPER_SNAKE_CASE` visible al usuario | render directo de valores de enum | P1 (derivar a `system-vocabulary-review`) |
@@ -189,7 +189,7 @@ Un informe con 5 hallazgos verificados vale mas que uno con 20 especulativos. An
 2. **Verifica contra las fuentes.** Antes de afirmar "no usa el token X" o "deberia usar la utility Y", confirma que X/Y existen en `globals.css` o `portal-ui.tsx` (atajo: `references/tokens.md` y sus divergencias conocidas). Recomendar tokens inexistentes es el falso positivo mas dañino de esta skill. Los hallazgos `[revisar]` del script no entran al informe sin esta confirmacion.
 3. **Una causa raiz, un hallazgo.** Si diez celdas repiten el mismo hex, es un hallazgo con diez ocurrencias, no diez hallazgos.
 4. **No reportes lo que las primitives ya resuelven.** Si la pantalla usa `PortalAlert`, su semantica ARIA ya esta cubierta; no la audites de nuevo.
-5. **Preferencia no es hallazgo.** Si no puedes anclar la observacion a una regla de esta skill, del manual, de un criterio WCAG o de un veredicto de `trends-2026.md`, es una opinion: omitela o marcala como "sugerencia opcional" fuera del conteo de severidad.
+5. **Preferencia no es hallazgo.** Un hallazgo con severidad solo se ancla en fuentes normativas: la spec Firma iWana, un ADR **aprobado**, el manual de identidad, los tokens reales de `globals.css` o un criterio WCAG. `trends-2026.md` **no es normativo**: su seccion A (Ecos de norma) sirve para localizar el artefacto — cita el artefacto, no la tabla; su seccion B (Propuestas DS) se ofrece como "sugerencia opcional" fuera del conteo de severidad. Antes de citar cualquier ancla, abrela y verifica que dice lo que afirmas (ver el caso ADR-026 en la cabecera de `trends-2026.md`).
 6. **Legacy en fases.** Flujos legacy que adoptan identidad por fases no se penalizan por lo pendiente; solo se reporta si introducen patrones **nuevos** contrarios al manual.
 7. **Presupuesto de atencion.** Reporta todos los P0/P1. De P2/P3 incluye solo los de mejor relacion impacto/esfuerzo (tipicamente ≤ 8); el resto se resume en una linea agregada.
 

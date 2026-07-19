@@ -51,7 +51,7 @@ Los tres perfiles v1 son documentos maduros: modos de operación explícitos (EM
 
 ## 3. Pendientes y recomendaciones futuras
 
-1. **Aprobación formal:** ADR corto (o actualización de ADR-021) que declare los v2 + protocolo como fuente primaria y los v1 como superseded. Sin ese ADR, los v1 siguen vigentes.
+1. ~~**Aprobación formal:** ADR corto (o actualización de ADR-021 (superado)) que declare los v2 + protocolo como fuente primaria y los v1 como superseded.~~ **Resuelto:** [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md) (Aprobado 2026-07-10) ya declara vigentes los v2 y el protocolo. **ADR-021 no debe actualizarse** — quedó **Superado** por ADR-049 el 2026-07-19 vía [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md); apoyar una acción en él sería invocar un ADR sin autoridad.
 2. **Actualizar los perfiles no rediseñados:** QA v1, Security v1 y Data Engineer (este último es genérico y con stack drift declarado) deben alinearse al protocolo — al menos añadir la referencia y el estándar WCAG 2.2 AA donde aplique.
 3. **Verificar afirmaciones de stack heredadas:** confirmar contra el código el rol real de Zod en boundaries externos y corregir el perfil que corresponda.
 4. **Métricas del sistema, no solo del rol:** instrumentar los KPIs cruzados (fidelidad a especificación visual, conflictos resueltos sin CTO) en los informes de sprint para que la RACI sea auditable.

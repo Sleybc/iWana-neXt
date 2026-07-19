@@ -1,9 +1,9 @@
 # ADR-022: Politica de Ejecucion Modular por Fases, Repriorizacion Controlada y Cierre en Produccion
 
-**Estado:** Propuesto  
+**Estado:** Aprobado  
 **Fecha:** 2026-03-07  
 **Autor:** AI-EM-ARCH  
-**Aprobador Requerido:** CTO Humano
+**Aprobado por:** CTO Humano (2026-07-19, vía [ADR-056](ADR-056-Integridad-Base-Normativa-Diseno.md) — sin cambios de contenido; regulariza 91 citas y la regla de completitud que gobierna la cadencia de fases del programa)
 
 ---
 
@@ -97,7 +97,7 @@ Mitigaciones:
 ## Relacion con ADRs existentes
 
 - Refuerza ADR-016 sobre completitud modular.
-- Complementa ADR-021 sobre gobernanza tecnico-operativa.
+- Complementa ADR-021 (superado) sobre gobernanza tecnico-operativa.
 - No modifica ADR-001, ADR-002, ADR-013 ni otras decisiones de arquitectura base.
 
 ---
@@ -108,4 +108,4 @@ Mitigaciones:
 - docs/roles/_historico/Perfil_IA_EM_Architect_Unificado_v1.md
 - docs/sprints/PLAN-SISTEMA-ARRANQUE-v1.0.md
 - ADR-016
-- ADR-021
+- ADR-021 (superado)

@@ -407,7 +407,7 @@ Disponibles para contexto adicional:
 - `docs/prds/PRD_Sistema_ISP_Colombia_v2_2.md` — PRD maestro con RF-CRM-01 a RF-CRM-13
 - `docs/hlds/HLD-MOD01-ARQUITECTURA-v1.0.md` — HLD del módulo anterior (referencia de formato y entidades existentes)
 - `docs/prds/PRD-MOD01-DEFINICION-v1.1.md` — PRD del módulo anterior
-- `docs/adrs/ADR-017 a ADR-021` — decisiones vigentes
+- `docs/adrs/ADR-017 a ADR-020` — decisiones vigentes <!-- rango recortado 2026-07-19 vía ADR-056: ADR-021 está Superado por ADR-049 y no es decisión vigente -->
 - `docs/prds/Stack_Tecnologico.md` — versiones actuales del stack
 - `packages/database/src/sql/tenant_template.sql` — template actual del schema de tenant
 - `packages/shared/src/constants/security.constants.ts` — constantes de seguridad (cifrado, hashing)

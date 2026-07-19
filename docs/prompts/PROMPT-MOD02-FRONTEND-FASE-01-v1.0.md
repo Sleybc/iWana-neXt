@@ -47,7 +47,7 @@
 
 - PRD del modulo: docs/prds/PRD-MOD02-DEFINICION-v1.0.md
 - HLD del modulo: docs/hlds/HLD-MOD02-ARQUITECTURA-v1.0.md
-- ADRs aplicables: ADR-019, ADR-022, ADR-023, ADR-025, ADR-026
+- ADRs aplicables: ADR-019, ADR-022, ADR-023, ADR-025 <!-- ADR-026 retirado 2026-07-19 vía ADR-056: es "Pipeline CRM 12→8 estados", ajeno a MOD02; se citaba por error en lugar de ADR-023 (shadcn/ui), ya presente -->
 - Sprint plan aplicable: docs/sprints/PLAN-MOD02-FRONTEND-SPRINT-01-v1.0.md
 - Prompt arquitectonico origen: docs/hlds/HLD-MOD02-FRONTEND-v1.0.md
 - Backlog técnico aplicable: docs/plans/PLAN-MOD02-FRONTEND-BACKLOG-v1.0.md

@@ -9,11 +9,11 @@
 
 ## 1. Contexto y problema
 
-El sistema visual actual tiene cimientos sólidos (escalas de marca 50-950, norma dark `dark-surface-*` de ADR-026, sombras tintadas de azul, primitives operativos, accesibilidad cuidada en `Button`/`PortalAlert`), pero la ejecución es desigual:
+El sistema visual actual tiene cimientos sólidos (escalas de marca 50-950, norma dark `dark-surface-*` — fuente: `packages/ui/src/styles/globals.css` L121-124 [^adr026], sombras tintadas de azul, primitives operativos, accesibilidad cuidada en `Button`/`PortalAlert`), pero la ejecución es desigual:
 
 - **La identidad se queda en el login.** `.iwana-glass`, `.iwana-gradient`, `.iwana-text-gradient` y los pesos Thin de Exo 2 tienen cero usos dentro del dashboard; la marca operativa se reduce a un tinte azul en el ítem de navegación activo y un eyebrow lima.
 - **Patrones duplicados y divergentes:** dos sistemas de KPI card (`dashboard/MetricCard.tsx` vs `SummaryMetricCard` de inventario), page headers y sidebars distintos entre portal y web, 34 archivos con `<table>` de los cuales solo 15 usan el primitive de tabla.
-- **Fugas sistémicas:** `dark:bg-gray-{700-950}` prohibidos por ADR-026 en ~10 módulos; hex `#17163A` hardcodeado incluso dentro de `packages/ui`; flujos de auth secundarios sin tokens ni dark mode; FOUC de tema al cargar.
+- **Fugas sistémicas:** `dark:bg-gray-{700-950}` prohibidos por la norma dark [^adr026] en ~10 módulos; hex `#17163A` hardcodeado incluso dentro de `packages/ui`; flujos de auth secundarios sin tokens ni dark mode; FOUC de tema al cargar.
 - **Piezas ausentes:** ninguna librería de visualización de datos (los dashboards son números estáticos), sin gestión de densidad en tablas, jerarquía tipográfica de solo 2 saltos, empty states genéricos.
 
 Los prototipos aportan las dos mitades de la solución: **TailAdmin** (`docs/prototipo/tailadmin/`) la ingeniería — arquitectura de tokens `@theme` CSS-first, anatomías de card/KPI/tabla/badge/form, escala tipográfica dual, focus ring suave — y los **prototipos propios** (`Login-prototipo.html`, `prototipo_datos_usuario.html`, `prototipo_expediente.html`, `prototipo_secciones_expedientes.html`) la personalidad — sombra dual azulada, barra lima de navegación, degradado azul→lima, par tonal lima accesible, timeline orgánico, gramática de estados de workflow.
@@ -58,7 +58,8 @@ Estos rasgos, combinados, hacen una pantalla reconocible como iWana sin logo:
 | # | Ítem | Detalle |
 | --- | --- | --- |
 | 1.1 | Escalas de marca en OKLCH | Derivar las escalas de `#17163A`/`#A5C330` perceptualmente (modelo de 3 entradas: base, acento, contraste — patrón Linear) para garantizar contraste AA por construcción en claro y oscuro. Base para todo lo demás. |
-| 1.2 | Remediación ADR-026 | Barrido `dark:bg-gray-{700-950}` → `dark-surface-*` (lista: `TasksTable`, `TaxProfileBlock`, `ContractCard`, `ContractDetailDrawer`, `ScheduleCalendar`, `OperationalEventualitiesPanel`, `SubscriberDetailClient`, `NotificationBell` y `components/audit/*` de web). |
+| 1.2 | Remediación de la norma dark [^adr026] | Barrido `dark:bg-gray-{700-950}` → `dark-surface-*` (lista: `TasksTable`, `TaxProfileBlock`, `ContractCard`, `ContractDetailDrawer`, `ScheduleCalendar`, `OperationalEventualitiesPanel`, `SubscriberDetailClient`, `NotificationBell` y `components/audit/*` de web). **Ampliado 2026-07-19 ([ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md) §2):** se fusiona con la deuda de contraste detectada por DS-OWNER — ver ítem 1.2bis. |
+| 1.2bis | **Deuda de contraste en dark** (nueva, prioridad alta) | **(a)** `.portal-input-surface` (`globals.css` L228) combina `dark:border-dark-border` sobre `dark:bg-dark-surface-3` = **1.06:1** — el campo es indistinguible de su contenedor. **Fallo WCAG 1.4.11 en un primitive compartido**; `dark:border-dark-border` aparece **701 veces**. Es el de mayor alcance. **(b)** `dark:text-gray-500` (99×) y `dark:text-gray-600` (13×) fallan AA en las cuatro superficies — doble defecto: contraste **y** token prohibido; se remedian en el mismo barrido que 1.2. **(c)** `text-iwana-secondary-700` sin override dark: **50 ocurrencias** (de 196; las otras 146 sí lo llevan). Parte son iconos `aria-hidden`, exentos; las que son texto real fallan a 3.02:1 (p. ej. `ExpedienteTabsContainer.tsx:54`, tab activo). **(d)** `dark:text-gray-400` (616×) **pasa** AA (4.86:1 peor caso): es violación de token, no de accesibilidad — no urge. Ejecuta AI-FE-PLATFORM. |
 | 1.3 | Hex → tokens | `text-[#17163A]` → `text-iwana-primary`, sombra inline de `Card.tsx` → `shadow-iwana-card`; eliminar la deriva `#F8F8FB` (gana `#F8FAF5` = `iwana-surface-soft`). |
 | 1.4 | FOUC de tema | Script inline en `<head>` que aplica `.dark` antes de la hidratación. |
 | 1.5 | Fuentes | Migrar Exo 2 + JetBrains Mono de `@import` CDN a `next/font`. |
@@ -100,7 +101,7 @@ Estos rasgos, combinados, hacen una pantalla reconocible como iWana sin logo:
 ## 5. Anti-patrones (vigilados por `iwana-identity-ui-review`)
 
 - Glass en superficies de contenido (cards de datos, tablas, formularios); solo overlays, chrome sticky y chips sobre fondo oscuro. Una sola técnica de profundidad: la sombra dual.
-- Neumorfismo; bento grid decorativo (el grid sale de la jerarquía de datos); >12 KPIs por vista; gradientes vibrantes como fondo de datos; micro-animación en cada hover de tabla; "AI-washing" visual.
+- Neumorfismo; **neubrutalismo** (bordes duros, sombra sólida desplazada, color plano saturado — incompatible con la sombra dual como única técnica de profundidad y con las reglas semánticas del lima; ratificado por AI-DS-OWNER 2026-07-19, incorporado por [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md)); bento grid decorativo (el grid sale de la jerarquía de datos); >12 KPIs por vista; gradientes vibrantes como fondo de datos; micro-animación en cada hover de tabla; "AI-washing" visual.
 - Lima como urgencia o fondo base; enums crudos visibles; hex sin tokenizar; `tailwind.config.js` (el sistema es CSS-first por ADR).
 - Del propio TailAdmin, NO copiar: paleta literal (#465FFF/Outfit), expand-on-hover del sidebar por CSS, guerra de z-index (`z-99999`), preloader manual, mecánica Alpine.js.
 
@@ -129,3 +130,7 @@ Estos rasgos, combinados, hacen una pantalla reconocible como iWana sin logo:
 - Skill alineada: `.agents/skills/iwana-identity-ui-review` incorpora esta spec como fuente de verdad y sus reglas semánticas del lima como criterios de review.
 - Protocolo alineado: `docs/roles/Protocolo_Colaboracion_Multiagente_v1.md` v1.2 — esta spec es entrada obligatoria de la etapa 2 (solución UX/UI) y criterio de bloqueo de DS-OWNER en el gate G6.
 - Los ítems que introducen dependencias nuevas (TanStack Table, Recharts, cmdk) requieren su ADR según gobernanza del repo antes de implementarse.
+
+---
+
+[^adr026]: **Errata (2026-07-19, AI-EM-ARCH).** Las versiones anteriores de esta spec citaban **ADR-026** como fuente de la norma dark `dark-surface-*` en §1 (dos veces) y §4 ítem 1.2. La cita es **falsa**: `docs/adrs/ADR-026-Pipeline-CRM-8-Estados.md` es *"Consolidación del Pipeline CRM de 12 a 8 Estados"*, y **ningún ADR del repo menciona `dark-surface`** (verificado por `grep -ril "dark-surface" docs/adrs/` → sin resultados). La norma **es real y vinculante**, pero su única fuente verificable son los tokens `--color-dark-surface{,-2,-3,-4}` y `--color-dark-border{,-2}` en `packages/ui/src/styles/globals.css` L121-124 — coherente con §8: en conflicto mandan los tokens. La norma quedó formalizada por [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md) §2 (aprobado por el CTO el 2026-07-19), que la eleva a norma con ADR tomando los tokens como fuente de valores. La condición de contraste quedó **levantada el 2026-07-19**: DS-OWNER verificó que las cuatro superficies y los dos bordes cumplen y se congelan sin cambios; lo que faltaba eran las **reglas de emparejamiento** (qué puede posarse encima), ahora en ADR-056 §2. La deuda de código derivada está en §4 ítem 1.2bis. Queda **prohibido** citar ADR-026 como autoridad de dark mode; un hallazgo de review que invoque esa cita es inválido.

@@ -5,7 +5,7 @@
 **Modo activo:** Architect
 **Autor:** AI-EM-ARCH
 **Aprobador requerido:** CTO Humano
-**Trazabilidad:** [ADR-035](ADR-035-Storage-MinIO-StoragePort.md) · [ADR-021](ADR-021-Perfil-Unificado-EM-Architect.md) · [ADR-016](ADR-016-Cierre-MOD01-Produccion.md)
+**Trazabilidad:** [ADR-035](ADR-035-Storage-MinIO-StoragePort.md) · [ADR-016](ADR-016-Cierre-MOD01-Produccion.md) <!-- ADR-021 retirado 2026-07-19 vía ADR-056: boilerplate sin relación sustantiva con media assets; además Superado -->
 
 ---
 

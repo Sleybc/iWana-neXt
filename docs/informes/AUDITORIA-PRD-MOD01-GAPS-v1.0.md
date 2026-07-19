@@ -86,7 +86,7 @@ Sin embargo, **el módulo NO puede declararse production-ready** según la Defin
 #### G2-01 — ADR-017, ADR-018, ADR-019, ADR-020 no archivados
 
 - **PRD §10 DoD Documentación:** "ADR-017, ADR-018, ADR-019, ADR-020 archivados en `docs/adrs/`"
-- **Estado actual:** Solo existen como archivos en `docs/adrs/`: ADR-016, ADR-021, ADR-022, ADR-023. Los ADRs 017–020 referenciados en el PRD **no existen como archivos standalone**.
+- **Estado actual:** Solo existen como archivos en `docs/adrs/`: ADR-016, ADR-021 (superado), ADR-022, ADR-023. Los ADRs 017–020 referenciados en el PRD **no existen como archivos standalone**.
 - **Impacto:** Decisiones críticas de arquitectura (provisioning por schema, ciclo de vida de tenant, JWT RS256, seed inicial) sin trazabilidad documental formal.
 - **Acción requerida:** Crear los 4 archivos ADR en `docs/adrs/` con el contenido de las decisiones que ya están implementadas.
 - **Bloquea DoD:** Sí.
@@ -213,7 +213,7 @@ Sin embargo, **el módulo NO puede declararse production-ready** según la Defin
 
 #### G4-05 — Zod schemas frontend no integrados
 
-- **ADR-025 / HLD-MOD01-Frontend-Auth-Zod-Schemas-Spec.md:** Formularios deben usar react-hook-form + Zod.
+- **⚠️ Anclas inválidas (corregido 2026-07-19 vía [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md)):** este gate se apoyaba en **dos referencias inexistentes**. `ADR-025` es *"Modelo de Dos Dimensiones para Subscriber (personType + customerSegment)"* y no dice nada de formularios; `HLD-MOD01-Frontend-Auth-Zod-Schemas-Spec.md` **no existe en el repo** (`find docs -iname "*Zod*"` → sin resultados). El requisito "formularios con react-hook-form + Zod" **no está normado por ningún ADR**: los ADRs que citan Zod lo hacen para validación backend en boundaries HTTP. **Este gate no es exigible como incumplimiento normativo** mientras no exista el artefacto que lo respalde; trátese como intención de ingeniería, y si debe ser vinculante, requiere ADR propio (→ EM-ARCH).
 - **Estado actual:** Los formularios usan react-hook-form pero las validaciones Zod definidas en el HLD no están integradas. Los schemas están especificados en el HLD pero no implementados en código.
 - **Acción requerida:** Implementar schemas Zod en formularios de login, MFA verify, forgot-password, reset-password, change-password según el HLD.
 - **Bloquea DoD:** No directamente, pero impacta la calidad del módulo.
