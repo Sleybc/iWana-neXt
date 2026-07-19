@@ -7,6 +7,13 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * - Extensión segura de stock_location_type (OFFICE_STOCK, NODE_STOCK)
  * - Tipos enum: stock_issue_type, stock_issue_status
  * - Tablas: stock_issues, stock_issue_lines (integridad interna MOD12)
+ *
+ * Ámbito de las guardas: `pg_enum`/`pg_type` son catálogos de toda la base. Sin
+ * filtrar por `typnamespace` estas guardas ven el enum de otro tenant ya migrado
+ * y se saltan el `ALTER TYPE ... ADD VALUE` en un schema donde el valor no está.
+ * Ese fallo es silencioso —la migración no rompe— y aparece en runtime al
+ * insertar el valor ausente. Se filtra por `current_schema()`, que es el schema
+ * sobre el que actúa el ALTER sin calificar.
  */
 export class CreateStockIssues0570000000000 implements MigrationInterface {
   name = 'CreateStockIssues0570000000000';
@@ -20,7 +27,9 @@ export class CreateStockIssues0570000000000 implements MigrationInterface {
           SELECT 1
           FROM pg_enum e
           JOIN pg_type t ON t.oid = e.enumtypid
-          WHERE t.typname = 'stock_location_type' AND e.enumlabel = 'OFFICE_STOCK'
+          WHERE t.typname = 'stock_location_type'
+            AND t.typnamespace = current_schema()::regnamespace
+            AND e.enumlabel = 'OFFICE_STOCK'
         ) THEN
           ALTER TYPE stock_location_type ADD VALUE 'OFFICE_STOCK';
         END IF;
@@ -34,7 +43,9 @@ export class CreateStockIssues0570000000000 implements MigrationInterface {
           SELECT 1
           FROM pg_enum e
           JOIN pg_type t ON t.oid = e.enumtypid
-          WHERE t.typname = 'stock_location_type' AND e.enumlabel = 'NODE_STOCK'
+          WHERE t.typname = 'stock_location_type'
+            AND t.typnamespace = current_schema()::regnamespace
+            AND e.enumlabel = 'NODE_STOCK'
         ) THEN
           ALTER TYPE stock_location_type ADD VALUE 'NODE_STOCK';
         END IF;

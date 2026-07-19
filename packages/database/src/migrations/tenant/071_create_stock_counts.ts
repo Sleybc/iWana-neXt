@@ -6,6 +6,15 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * Incluye:
  * - Enum stock_count_status
  * - Tablas stock_counts y stock_count_lines (integridad interna MOD12)
+ *
+ * Ámbito de la guarda: `pg_type` es un catálogo de toda la base, no del schema.
+ * Sin filtrar por `typnamespace` la guarda ve los tipos de cualquier tenant ya
+ * migrado y concluye "ya existe" en un schema donde el tipo no está, saltándose
+ * el CREATE TYPE y haciendo fallar el CREATE TABLE siguiente con 42704.
+ * Se filtra por `current_schema()` —no por `to_regtype`— porque la pregunta
+ * correcta es si el tipo existe *donde el CREATE lo crearía*, y el CREATE va sin
+ * calificar: aterriza en `current_schema()`. `to_regtype` respondería otra cosa
+ * (si el nombre resuelve en algún punto del search_path).
  */
 export class CreateStockCounts0710000000000 implements MigrationInterface {
   name = 'CreateStockCounts0710000000000';
@@ -14,7 +23,12 @@ export class CreateStockCounts0710000000000 implements MigrationInterface {
     await queryRunner.query(`
       DO $$
       BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'stock_count_status') THEN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_type t
+          WHERE t.typname = 'stock_count_status'
+            AND t.typnamespace = current_schema()::regnamespace
+        ) THEN
           CREATE TYPE stock_count_status AS ENUM (
             'OPEN',
             'COUNTING',
