@@ -11,6 +11,26 @@ on:
     branches: [main]
 
 jobs:
+  # Gate de integridad de citas normativas ADR (protocolo §7.4, ADR-056 propuesta SR-QA #13).
+  # Job propio y no el paso dentro de `ci`: el validador es Node puro sin dependencias,
+  # no necesita pnpm install, build ni PostgreSQL. Separado da señal en segundos en vez
+  # de esperar al pipeline pesado.
+  adr-citations:
+    name: Integridad de citas ADR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+
+      - name: Auditar citas ADR
+        run: node scripts/audit-adr-citations.mjs
+
   ci:
     name: Lint + Typecheck + Build
     runs-on: ubuntu-latest

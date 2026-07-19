@@ -15,6 +15,7 @@
     "dev:free-ports": "node scripts/free-dev-ports.mjs",
     "test:tooling": "node --test scripts/dev.test.mjs scripts/free-dev-ports.test.mjs",
     "dev": "node scripts/dev.mjs",
+    "audit:adr-citations": "node scripts/audit-adr-citations.mjs",
     "sync:agents": "node scripts/sync-agents.mjs",
     "sync:agents:check": "node scripts/sync-agents.mjs --check",
     "lint": "turbo run lint",
