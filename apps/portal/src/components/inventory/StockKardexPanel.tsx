@@ -242,10 +242,12 @@ export function StockKardexPanel({ items, locations }: StockKardexPanelProps) {
                                 {line.itemSku ?? line.itemId} ·{' '}
                                 {line.locationName ?? line.locationId}
                                 {line.lotNumber ? ` · Lote ${line.lotNumber}` : ''} ·{' '}
-                                {formatInventoryQuantity(line.quantity)}
-                                {line.unitCost != null && line.unitCost !== ''
-                                  ? ` · ${INVENTORY_UNIT_COST_LABEL} ${formatInventoryCostOrNone(line.unitCost)}`
-                                  : ''}
+                                <span className="tabular-nums">
+                                  {formatInventoryQuantity(line.quantity)}
+                                  {line.unitCost != null && line.unitCost !== ''
+                                    ? ` · ${INVENTORY_UNIT_COST_LABEL} ${formatInventoryCostOrNone(line.unitCost)}`
+                                    : ''}
+                                </span>
                               </li>
                             ))}
                           </ul>

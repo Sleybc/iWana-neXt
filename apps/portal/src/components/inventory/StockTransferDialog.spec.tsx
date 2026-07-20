@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import {
   InventoryItemKind,
   InventoryTrackingMode,
@@ -79,16 +80,39 @@ function renderDialog(balances: StockBalanceRecord[]) {
 }
 
 describe('StockTransferDialog', () => {
-  it('ofrece el producto cuando queda material disponible tras las reservas', () => {
+  beforeEach(() => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      configurable: true,
+      value: jest.fn().mockImplementation(() => ({
+        matches: true,
+        media: '',
+        onchange: null,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      })),
+    });
+  });
+
+  it('ofrece el producto cuando queda material disponible tras las reservas', async () => {
+    const user = userEvent.setup();
     renderDialog([makeBalance()]);
+
+    await user.click(screen.getByRole('combobox', { name: 'Producto' }));
 
     expect(screen.getByRole('option', { name: 'CAB-01 · Cable drop' })).toBeInTheDocument();
   });
 
-  it('no ofrece productos cuyo material está totalmente reservado', () => {
+  it('no ofrece productos cuyo material está totalmente reservado', async () => {
+    const user = userEvent.setup();
     renderDialog([makeBalance({ quantityOnHand: '10.00', quantityReserved: '10.00' })]);
 
+    await user.click(screen.getByRole('combobox', { name: 'Producto' }));
+
     expect(screen.queryByRole('option', { name: 'CAB-01 · Cable drop' })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: 'Sin productos disponibles para entregar' }),
+    ).toBeInTheDocument();
     expect(screen.getByText('Sin material disponible para salida')).toBeInTheDocument();
   });
 });

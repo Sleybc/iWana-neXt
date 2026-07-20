@@ -46,9 +46,11 @@ describe('InventoryDashboard', () => {
 
     expect(screen.getByText(INVENTORY_ESTIMATED_VALUE_LABEL)).toBeInTheDocument();
     expect(screen.getByText(INVENTORY_ESTIMATED_VALUE_HELP_TEXT)).toBeInTheDocument();
-    expect(
-      screen.getByText((_, element) => element?.textContent === formatInventoryCurrency(2_500_000)),
-    ).toBeInTheDocument();
+    const estimatedValue = screen.getByText(
+      (_, element) => element?.textContent === formatInventoryCurrency(2_500_000),
+    );
+    expect(estimatedValue).toBeInTheDocument();
+    expect(estimatedValue).toHaveClass('tabular-nums');
   });
 
   it('incluye el valor estimado en el breakdown de categorías', () => {

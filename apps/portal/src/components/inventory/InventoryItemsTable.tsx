@@ -264,7 +264,7 @@ export function InventoryItemsTable({
                   <td className={`${cellClass} hidden lg:table-cell`}>
                     {resolveSupplierLabel(item, supplierLabels)}
                   </td>
-                  <td className={`${cellClass} hidden md:table-cell`}>
+                  <td className={`${cellClass} hidden md:table-cell tabular-nums`}>
                     {formatInventoryCostOrNone(item.averageCost)}
                   </td>
                   <td className={`${cellClass} hidden md:table-cell`}>

@@ -132,7 +132,7 @@ function SummaryMetricCard({
       title={description}
     >
       <p className="portal-eyebrow-muted">{eyebrow}</p>
-      <p className="mt-2 text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">
+      <p className="mt-2 text-2xl font-semibold tabular-nums tracking-tight text-gray-900 dark:text-white">
         {value}
       </p>
       <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">{title}</p>
@@ -165,7 +165,7 @@ function BreakdownRow({
         <p className="font-medium text-gray-900 dark:text-white">{primary}</p>
         {secondary ? <p className="text-xs text-gray-500 dark:text-gray-400">{secondary}</p> : null}
       </div>
-      <p className="font-semibold text-iwana-primary dark:text-white">{value}</p>
+      <p className="font-semibold tabular-nums text-iwana-primary dark:text-white">{value}</p>
     </div>
   );
 }

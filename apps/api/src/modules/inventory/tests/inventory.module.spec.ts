@@ -42,6 +42,7 @@ import { SerializedAssetService } from '../services/serialized-asset.service';
 import { StockBalanceService } from '../services/stock-balance.service';
 import { StockIssueService } from '../services/stock-issue.service';
 import { StockLedgerService } from '../services/stock-ledger.service';
+import { InventoryCostingService } from '../services/inventory-costing.service';
 import { StockMovementQueryService } from '../services/stock-movement-query.service';
 import { StockLocationService } from '../services/stock-location.service';
 
@@ -62,6 +63,7 @@ describe('InventoryModule', () => {
         InventoryCategoryService,
         StockLocationService,
         StockLedgerService,
+        InventoryCostingService,
         StockMovementQueryService,
         StockIssueService,
         StockBalanceService,

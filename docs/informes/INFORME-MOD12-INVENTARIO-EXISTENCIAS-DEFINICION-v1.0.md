@@ -9,7 +9,9 @@
 **ADR Fase 4:** docs/adrs/ADR-059-Costeo-Promedio-Movil-Valoracion-Inventario.md (**Aprobado CTO 2026-07-20**)  
 **Spec Fase 4:** docs/specs/2026-07-20-mod12-existencias-costeo-fase04-design.md  
 **Prompt Fase 4:** docs/prompts/PROMPT-MOD12-EXISTENCIAS-COSTEO-FASE-04-v1.0.md (**cerrado — G7 GO**)  
-**Informe Fase 4:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-04-v1.0.md
+**Informe Fase 4:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-04-v1.0.md  
+**Auditoría ejecución PRD:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-AUDITORIA-EJECUCION-v1.0.md  
+**Checklist gates G6/G7:** docs/informes/CHECKLIST-MOD12-INVENTARIO-EXISTENCIAS-GATES-G6-G7-v1.0.md
 **Auditoría G5 F1:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-AUDITORIA-ARCH-v1.0.md
 **Review G6 F1:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-G6-REVIEW-v1.0.md
 **Cierre G7 F1:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-CIERRE-G7-v1.0.md
@@ -100,9 +102,8 @@ Fases 1-2 no requirieron HLD ni ADR (no crean boundary, entidad, migración ni p
 
 ## 6. Próximos pasos
 
-1. Integrar a `main` entregas F4 + remediación UX-H1 3B si aún están solo en working tree.
-2. Deuda P3 opcional: `tabular-nums` en KPI/costos; DoD rebuild `@iwana/db` post-entity.
-3. Roadmap Existencias **completo** — no hay Fase 5 en el PRD vigente.
+1. Roadmap Existencias **completo** — no hay Fase 5 en el PRD vigente.
+2. Mantener el checklist G6/G7 (`CHECKLIST-MOD12-INVENTARIO-EXISTENCIAS-GATES-G6-G7-v1.0.md`) en futuros cierres de fase de otros módulos como referencia normativa.
 
 ## 7. Historial
 
@@ -141,3 +142,5 @@ Fases 1-2 no requirieron HLD ni ADR (no crean boundary, entidad, migración ni p
 | 2026-07-20 | **Fase 4 implementada** (BE+FE) + **G5 GO** (AI-EM-ARCH): Jest 43+9, typecheck limpio tras rebuild `@iwana/db`. Habilita G6. |
 | 2026-07-20 | **G6 F4 GO** (tras remediaciones tabla/drawers + mig 080 aplicada). **G7 GO recomendado** — pendiente CTO. |
 | 2026-07-20 | **CTO confirma G7 Fase 04 (GO producción).** Roadmap Existencias F1–F4 **cerrado**. |
+| 2026-07-20 | **Auditoría ejecución PRD F1–F4:** H1/H2 arnés de test; H3 checklist suite completa. **Remediación:** `InventoryCostingService` en module spec; `StockTransferDialog.spec` abre combobox; checklist G6/G7 emitido. DoD suites restaurado. |
+| 2026-07-20 | **Cierre deuda P3 + RNF-06:** `tabular-nums` en KPI/costos; rebuild `@iwana/db` en checklist DoD; cobertura API inventario **80.27%** statements / **80.51%** lines. Informe auditoría actualizado. |
