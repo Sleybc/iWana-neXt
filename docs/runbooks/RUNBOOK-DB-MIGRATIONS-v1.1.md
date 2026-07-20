@@ -41,7 +41,7 @@ pnpm --filter @iwana/db build
 pnpm dev
 ```
 
-El flujo raíz recomendado ya levanta la infraestructura Docker y luego ejecuta `pnpm db:migrate:all` desde el host antes de arrancar API, web, portal y worker. Usar los comandos de este runbook cuando necesites diagnosticar, repetir o aislar el paso de migraciones fuera del arranque normal.
+El flujo raíz recomendado ya levanta la infraestructura Docker y luego ejecuta `pnpm db:migrate:all` desde el host antes de arrancar API, web, portal y worker. **`db:migrate:all` aplica `pnpm db:apply-least-privilege` al final** (SEC-04: grants + ownership tras DDL). Usar los comandos de este runbook cuando necesites diagnosticar, repetir o aisolar el paso de migraciones fuera del arranque normal.
 
 ---
 
