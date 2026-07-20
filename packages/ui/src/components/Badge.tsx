@@ -12,14 +12,14 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
-        success: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-        warning: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
-        error: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-        info: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+        success: 'bg-success-50 text-success-700 dark:bg-success-500/15 dark:text-success-400',
+        warning: 'bg-warning-50 text-warning-700 dark:bg-warning-500/15 dark:text-warning-400',
+        error: 'bg-error-50 text-error-700 dark:bg-error-500/15 dark:text-error-400',
+        info: 'bg-iwana-primary-100 text-iwana-primary dark:bg-iwana-primary-800/50 dark:text-iwana-primary-200',
         neutral: 'bg-gray-100 text-gray-600 dark:bg-dark-surface-4 dark:text-gray-300',
         primary:
-          'bg-[#EEEEFA] text-[#17163A] dark:bg-iwana-primary-800/50 dark:text-iwana-primary-200',
-        lime: 'bg-[#EAF5CC] text-[#6A7A1C] dark:bg-iwana-secondary-700/20 dark:text-iwana-secondary-400',
+          'bg-iwana-primary-100 text-iwana-primary dark:bg-iwana-primary-800/50 dark:text-iwana-primary-200',
+        lime: 'bg-iwana-secondary-100 text-iwana-secondary-900 dark:bg-iwana-secondary-700/20 dark:text-iwana-secondary-400',
       },
     },
     defaultVariants: {

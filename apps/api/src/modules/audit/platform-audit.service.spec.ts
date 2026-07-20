@@ -26,14 +26,16 @@ function buildMockDataSource(): {
   save: jest.Mock;
   create: jest.Mock;
   findAndCount: jest.Mock;
+  find: jest.Mock;
 } {
   const save = jest.fn().mockResolvedValue({});
   const create = jest.fn().mockImplementation((_entity: unknown, data: unknown) => data);
   const findAndCount = jest.fn().mockResolvedValue([[], 0]);
+  const find = jest.fn().mockResolvedValue([]);
   const dataSource = {
-    getRepository: jest.fn().mockReturnValue({ save, create, findAndCount }),
+    getRepository: jest.fn().mockReturnValue({ save, create, findAndCount, find }),
   } as unknown as DataSource;
-  return { dataSource, save, create, findAndCount };
+  return { dataSource, save, create, findAndCount, find };
 }
 
 const BASE_ENTRY: AuditEntryInput = {
@@ -54,13 +56,15 @@ describe('PlatformAuditService', () => {
   let save: jest.Mock;
   let create: jest.Mock;
   let findAndCount: jest.Mock;
+  let find: jest.Mock;
   let resolver: jest.Mocked<AuditActorResolver>;
 
   beforeEach(async () => {
-    const { dataSource, save: s, create: c, findAndCount: fc } = buildMockDataSource();
+    const { dataSource, save: s, create: c, findAndCount: fc, find: f } = buildMockDataSource();
     save = s;
     create = c;
     findAndCount = fc;
+    find = f;
     resolver = {
       resolveMany: jest.fn().mockResolvedValue(
         new Map([
@@ -223,9 +227,9 @@ describe('PlatformAuditService', () => {
     });
 
     it('aplica filtro de action cuando se provee', async () => {
-      await service.query({ limit: 50, action: 'CREATE' });
+      await service.query({ limit: 50, action: AuditAction.CREATE });
       expect(findAndCount).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ action: 'CREATE' }) }),
+        expect.objectContaining({ where: expect.objectContaining({ action: AuditAction.CREATE }) }),
       );
     });
 
@@ -241,6 +245,94 @@ describe('PlatformAuditService', () => {
       expect(findAndCount).toHaveBeenCalledWith(
         expect.objectContaining({ where: expect.objectContaining({ id: expect.anything() }) }),
       );
+    });
+
+    it('aplica filtro fromDate/toDate cuando se proveen', async () => {
+      await service.query({
+        limit: 50,
+        fromDate: '2026-01-01T00:00:00.000Z',
+        toDate: '2026-06-30T23:59:59.999Z',
+      });
+      expect(findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ createdAt: expect.anything() }),
+        }),
+      );
+    });
+
+    it('aplica solo fromDate cuando toDate no se provee', async () => {
+      await service.query({ limit: 50, fromDate: '2026-01-01T00:00:00.000Z' });
+      expect(findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ createdAt: expect.anything() }),
+        }),
+      );
+    });
+  });
+
+  describe('exportCsv', () => {
+    const mockEntry = {
+      id: 'entry-uuid-1',
+      userId: 'user-uuid-1',
+      action: 'CREATE',
+      entityType: 'PlatformUser',
+      entityId: 'pu-uuid-1',
+      oldValue: null,
+      newValue: null,
+      ipAddress: '10.0.0.1',
+      userAgent: 'Mozilla/5.0',
+      requestId: 'req-1',
+      createdAt: new Date('2026-04-30T12:00:00.000Z'),
+    };
+
+    it('genera CSV con headers en español y actor displayName', async () => {
+      find.mockResolvedValueOnce([mockEntry]);
+
+      const result = await service.exportCsv({ action: AuditAction.CREATE });
+
+      expect(result.truncated).toBe(false);
+      expect(result.rowCount).toBe(1);
+      expect(result.csv).toContain('Fecha');
+      expect(result.csv).toContain('Acción');
+      expect(result.csv).toContain('Admin Plataforma');
+      expect(result.csv).toContain('CREATE');
+      expect(result.csv).not.toContain('Export limitado');
+      expect(find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ action: AuditAction.CREATE }),
+          take: 5001,
+        }),
+      );
+    });
+
+    it('marca truncated y añade comentario cuando hay más de 5000 filas', async () => {
+      const rows = Array.from({ length: 5001 }, (_, i) => ({
+        ...mockEntry,
+        id: `entry-uuid-${i}`,
+      }));
+      find.mockResolvedValueOnce(rows);
+
+      const result = await service.exportCsv({});
+
+      expect(result.truncated).toBe(true);
+      expect(result.rowCount).toBe(5000);
+      expect(result.csv.startsWith('"Export limitado a 5000 registros"')).toBe(true);
+    });
+
+    it('aplica filtros de fecha en export sin cursor', async () => {
+      find.mockResolvedValueOnce([]);
+      await service.exportCsv({
+        fromDate: '2026-01-01T00:00:00.000Z',
+        toDate: '2026-06-30T23:59:59.999Z',
+        cursor: 'should-be-ignored',
+      });
+      expect(find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ createdAt: expect.anything() }),
+        }),
+      );
+      const where = find.mock.calls[0]?.[0]?.where as Record<string, unknown>;
+      expect(where['id']).toBeUndefined();
     });
   });
 });

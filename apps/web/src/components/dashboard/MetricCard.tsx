@@ -72,7 +72,7 @@ export function MetricCard({
         <div className="flex items-start justify-between">
           <div>
             <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{title}</p>
-            <p className="mt-1 text-3xl font-bold text-[#17163A] dark:text-white/90">{value}</p>
+            <p className="mt-1 text-3xl font-bold text-iwana-primary dark:text-white/90">{value}</p>
             {change && <p className="mt-1 text-xs text-gray-500 dark:text-gray-500">{change}</p>}
           </div>
           <div
@@ -89,9 +89,7 @@ export function MetricCard({
               className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${resolveTrendClasses(trend.direction)}`}
             >
               {trendArrow(trend.direction)} {trend.value.toFixed(2)}%
-              {trend.label && (
-                <span className="ml-1 text-current/80">{trend.label}</span>
-              )}
+              {trend.label && <span className="ml-1 text-current/80">{trend.label}</span>}
             </span>
           </div>
         )}

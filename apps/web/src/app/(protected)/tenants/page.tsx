@@ -1,26 +1,107 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@iwana/ui';
-import { Building2, CircleCheckBig, Clock3, ShieldAlert } from 'lucide-react';
+import { Building2, CircleCheckBig, Clock3, ShieldAlert, X } from 'lucide-react';
 import { TenantsTable } from '@/components/dashboard/TenantsTable';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { tenantApi, type TenantListItem } from '@/lib/api-client';
+import { mergeUrlSearchParams, withSearchParams } from '@/lib/merge-url-search-params';
+
+type TenantConfirmAction = {
+  type: 'suspend' | 'activate';
+  id: string;
+};
+
+type TenantStatusFilter =
+  | 'TODAS'
+  | 'ACTIVE'
+  | 'PROVISIONING'
+  | 'PROVISIONING_FAILED'
+  | 'SUSPENDED'
+  | 'INACTIVE'
+  | 'MARKED_FOR_DELETION';
+
+const VALID_STATUS_FILTERS = new Set<TenantStatusFilter>([
+  'TODAS',
+  'ACTIVE',
+  'PROVISIONING',
+  'PROVISIONING_FAILED',
+  'SUSPENDED',
+  'INACTIVE',
+  'MARKED_FOR_DELETION',
+]);
+
+function parseStatusFilter(value: string | null): TenantStatusFilter {
+  if (!value) return 'TODAS';
+  return VALID_STATUS_FILTERS.has(value as TenantStatusFilter)
+    ? (value as TenantStatusFilter)
+    : 'TODAS';
+}
 
 export default function TenantsPage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [tenants, setTenants] = useState<TenantListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search')?.trim() ?? '');
+  const [statusFilter, setStatusFilter] = useState<TenantStatusFilter>(() =>
+    parseStatusFilter(searchParams.get('status')),
+  );
   const [notification, setNotification] = useState<{
     type: 'success' | 'error';
     message: string;
   } | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<TenantConfirmAction | null>(null);
+  const [isConfirmingAction, setIsConfirmingAction] = useState(false);
+  const successDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const showNotification = useCallback((type: 'success' | 'error', message: string) => {
-    setNotification({ type, message });
-    setTimeout(() => setNotification(null), 3000);
+  // Persistencia URL: search + status
+  useEffect(() => {
+    const query = mergeUrlSearchParams(searchParams, {
+      search: searchQuery.trim() || null,
+      status: statusFilter === 'TODAS' ? null : statusFilter,
+    });
+    const current = searchParams.toString();
+    if (query === current) {
+      return;
+    }
+    router.replace(withSearchParams(pathname, query), { scroll: false });
+  }, [pathname, router, searchParams, searchQuery, statusFilter]);
+
+  const clearSuccessDismissTimer = useCallback(() => {
+    if (successDismissTimerRef.current) {
+      clearTimeout(successDismissTimerRef.current);
+      successDismissTimerRef.current = null;
+    }
   }, []);
+
+  const showNotification = useCallback(
+    (type: 'success' | 'error', message: string) => {
+      clearSuccessDismissTimer();
+      setNotification({ type, message });
+      // Éxito: autodescarte; error: persiste hasta cierre manual.
+      if (type === 'success') {
+        successDismissTimerRef.current = setTimeout(() => {
+          setNotification(null);
+          successDismissTimerRef.current = null;
+        }, 3000);
+      }
+    },
+    [clearSuccessDismissTimer],
+  );
+
+  useEffect(() => {
+    return () => {
+      clearSuccessDismissTimer();
+    };
+  }, [clearSuccessDismissTimer]);
 
   const upsertTenantInState = useCallback((tenant: TenantListItem) => {
     setTenants((current) =>
@@ -46,15 +127,8 @@ export default function TenantsPage() {
     loadTenants();
   }, [loadTenants]);
 
-  const handleSuspend = useCallback(
+  const executeSuspend = useCallback(
     async (id: string) => {
-      if (
-        !confirm(
-          '¿Está seguro de que desea suspender esta empresa? Los usuarios no podrán acceder.',
-        )
-      )
-        return;
-
       try {
         await tenantApi.suspend(id);
         await loadTenants();
@@ -67,7 +141,7 @@ export default function TenantsPage() {
     [loadTenants, showNotification],
   );
 
-  const handleActivate = useCallback(
+  const executeActivate = useCallback(
     async (id: string) => {
       try {
         await tenantApi.activate(id);
@@ -80,6 +154,32 @@ export default function TenantsPage() {
     },
     [loadTenants, showNotification],
   );
+
+  const handleSuspend = useCallback((id: string) => {
+    setPendingConfirm({ type: 'suspend', id });
+  }, []);
+
+  const handleActivate = useCallback((id: string) => {
+    setPendingConfirm({ type: 'activate', id });
+  }, []);
+
+  const handleConfirmPending = useCallback(async () => {
+    if (!pendingConfirm) {
+      return;
+    }
+
+    setIsConfirmingAction(true);
+    try {
+      if (pendingConfirm.type === 'suspend') {
+        await executeSuspend(pendingConfirm.id);
+      } else {
+        await executeActivate(pendingConfirm.id);
+      }
+    } finally {
+      setIsConfirmingAction(false);
+      setPendingConfirm(null);
+    }
+  }, [executeActivate, executeSuspend, pendingConfirm]);
 
   const handleRetryProvisioning = useCallback(
     async (id: string) => {
@@ -144,8 +244,7 @@ export default function TenantsPage() {
         value: active,
         detail: 'Operando con acceso disponible',
         icon: CircleCheckBig,
-        tone:
-          'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/25 dark:text-emerald-300',
+        tone: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/25 dark:text-emerald-300',
       },
       {
         label: 'En puesta en marcha',
@@ -166,8 +265,7 @@ export default function TenantsPage() {
         value: tenants.length,
         detail: 'Empresas registradas en plataforma',
         icon: Building2,
-        tone:
-          'bg-iwana-surface-soft text-iwana-primary dark:bg-dark-surface-3 dark:text-white',
+        tone: 'bg-iwana-surface-soft text-iwana-primary dark:bg-dark-surface-3 dark:text-white',
       },
     ] as const;
   }, [tenants]);
@@ -186,25 +284,75 @@ export default function TenantsPage() {
     [tenants],
   );
 
+  const pendingTenantName =
+    pendingConfirm != null
+      ? (tenants.find((tenant) => tenant.id === pendingConfirm.id)?.name ?? 'esta empresa')
+      : '';
+
   return (
     <div className="space-y-6">
       {notification && (
         <div
-          className={`fixed right-4 top-4 z-50 rounded-2xl px-4 py-3 shadow-lg ${
-            notification.type === 'success'
-              ? 'bg-emerald-600 text-white'
-              : 'bg-red-600 text-white'
+          role={notification.type === 'error' ? 'alert' : 'status'}
+          {...(notification.type === 'success' ? { 'aria-live': 'polite' as const } : {})}
+          className={`fixed top-4 right-4 z-50 flex max-w-sm items-start gap-3 rounded-2xl px-4 py-3 shadow-lg ${
+            notification.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
           }`}
         >
-          {notification.message}
+          <p className="flex-1 text-sm leading-5 font-medium">{notification.message}</p>
+          <button
+            type="button"
+            onClick={() => {
+              clearSuccessDismissTimer();
+              setNotification(null);
+            }}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-white/90 transition hover:bg-white/15 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+            aria-label="Cerrar notificación"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
         </div>
       )}
+
+      <ConfirmDialog
+        open={pendingConfirm?.type === 'suspend'}
+        title="Suspender empresa"
+        description={
+          <>
+            Se suspenderá <strong>{pendingTenantName}</strong>. Los usuarios de esa empresa no
+            podrán acceder hasta que se reactive.
+          </>
+        }
+        confirmLabel="Sí, suspender"
+        isConfirming={isConfirmingAction}
+        onConfirm={() => {
+          void handleConfirmPending();
+        }}
+        onCancel={() => setPendingConfirm(null)}
+      />
+
+      <ConfirmDialog
+        open={pendingConfirm?.type === 'activate'}
+        title="Reactivar empresa"
+        description={
+          <>
+            Se reactivará <strong>{pendingTenantName}</strong> y sus usuarios recuperarán el acceso
+            según su estado individual.
+          </>
+        }
+        confirmLabel="Sí, reactivar"
+        isConfirming={isConfirmingAction}
+        onConfirm={() => {
+          void handleConfirmPending();
+        }}
+        onCancel={() => setPendingConfirm(null)}
+      />
 
       <PageHeader
         title="Empresas"
         subtitle="Revisa la puesta en marcha, el estado operativo y los datos base de cada empresa desde un solo directorio."
         actions={
-          <Button asChild>
+          <Button asChild variant="lime">
             <Link href="/tenants/new">Nueva empresa</Link>
           </Button>
         }
@@ -267,6 +415,10 @@ export default function TenantsPage() {
         isLoading={isLoading}
         error={error}
         onRetry={loadTenants}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
         onSuspend={handleSuspend}
         onActivate={handleActivate}
         onRetryProvisioning={handleRetryProvisioning}

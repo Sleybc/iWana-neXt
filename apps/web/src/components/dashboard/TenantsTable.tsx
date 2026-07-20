@@ -27,6 +27,9 @@ type TenantStatus =
 type SortField = 'name' | 'status' | 'updatedAt' | 'createdAt';
 type SortDir = 'asc' | 'desc';
 
+const ALL_STATUSES = 'TODAS' as const;
+type StatusFilterValue = TenantStatus | typeof ALL_STATUSES;
+
 interface Tenant {
   id: string;
   name: string;
@@ -43,6 +46,9 @@ interface TenantsTableProps {
   error?: string | null;
   onRetry?: () => void;
   searchQuery?: string;
+  onSearchChange?: (value: string) => void;
+  statusFilter?: StatusFilterValue;
+  onStatusFilterChange?: (value: StatusFilterValue) => void;
   onSuspend?: (id: string) => void;
   onActivate?: (id: string) => void;
   onRetryProvisioning?: (id: string) => void;
@@ -73,8 +79,6 @@ const statusLabels: Record<TenantStatus, string> = {
   INACTIVE: 'Inactivo',
   MARKED_FOR_DELETION: 'En eliminación',
 };
-
-const ALL_STATUSES = 'TODAS' as const;
 
 const STATUS_FILTER_OPTIONS = [
   { value: ALL_STATUSES, label: 'Todos los estados' },
@@ -156,7 +160,7 @@ function ActionsDropdown({
       <DropdownMenuTrigger
         aria-label="Abrir menú de acciones"
         title="Abrir menú de acciones"
-        className="border border-gray-200 bg-white text-gray-600 shadow-sm hover:bg-gray-50 hover:text-gray-900 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300 dark:hover:bg-dark-surface-4"
+        className="min-h-11 min-w-11 border border-gray-200 bg-white text-gray-600 shadow-sm hover:bg-gray-50 hover:text-gray-900 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300 dark:hover:bg-dark-surface-4"
       >
         <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
       </DropdownMenuTrigger>
@@ -200,20 +204,44 @@ export function TenantsTable({
   error = null,
   onRetry,
   searchQuery = '',
+  onSearchChange,
+  statusFilter: controlledStatus,
+  onStatusFilterChange,
   onSuspend,
   onActivate,
   onRetryProvisioning,
 }: TenantsTableProps) {
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<TenantStatus | typeof ALL_STATUSES>(
-    ALL_STATUSES,
-  );
+  const [internalSearch, setInternalSearch] = useState(searchQuery);
+  const [internalStatus, setInternalStatus] = useState<StatusFilterValue>(ALL_STATUSES);
   const [sortField, setSortField] = useState<SortField>('createdAt');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
+  const search = onSearchChange ? searchQuery : internalSearch;
+  const statusFilter = onStatusFilterChange ? (controlledStatus ?? ALL_STATUSES) : internalStatus;
+
+  const setSearch = (value: string) => {
+    if (onSearchChange) {
+      onSearchChange(value);
+      return;
+    }
+    setInternalSearch(value);
+  };
+
+  const setStatusFilter = (value: StatusFilterValue) => {
+    if (onStatusFilterChange) {
+      onStatusFilterChange(value);
+      return;
+    }
+    setInternalStatus(value);
+  };
+
   useEffect(() => {
-    setSearch(searchQuery);
-  }, [searchQuery]);
+    if (!onSearchChange) {
+      setInternalSearch(searchQuery);
+    }
+  }, [onSearchChange, searchQuery]);
+
+  const hasActiveFilters = Boolean(search.trim()) || statusFilter !== ALL_STATUSES;
 
   /** Alterna ordenamiento: si es el mismo campo, invierte dirección. Si es distinto, inicia asc. */
   const handleSort = (field: SortField) => {
@@ -240,7 +268,8 @@ export function TenantsTable({
         let cmp = 0;
         if (sortField === 'name') cmp = a.name.localeCompare(b.name);
         else if (sortField === 'status') cmp = a.status.localeCompare(b.status);
-        else if (sortField === 'updatedAt') cmp = (a.updatedAt ?? '').localeCompare(b.updatedAt ?? '');
+        else if (sortField === 'updatedAt')
+          cmp = (a.updatedAt ?? '').localeCompare(b.updatedAt ?? '');
         else cmp = a.createdAt.localeCompare(b.createdAt);
         return sortDir === 'asc' ? cmp : -cmp;
       });
@@ -248,12 +277,12 @@ export function TenantsTable({
 
   return (
     <Card>
-      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-0">
+      <CardHeader className="flex flex-col gap-3 pb-0 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <CardTitle>Directorio de empresas</CardTitle>
           <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
-            Revisa estado, contacto principal y cambios recientes antes de entrar a la
-            configuración de cada empresa.
+            Revisa estado, contacto principal y cambios recientes antes de entrar a la configuración
+            de cada empresa.
           </p>
         </div>
 
@@ -265,7 +294,7 @@ export function TenantsTable({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             containerClassName="sm:w-56"
-            className="h-9 rounded-lg bg-gray-50 text-gray-700 dark:text-gray-200"
+            className="min-h-11 rounded-lg bg-gray-50 text-gray-700 dark:text-gray-200"
             startIcon={<Search className="h-4 w-4" />}
           />
 
@@ -275,26 +304,37 @@ export function TenantsTable({
               options={STATUS_FILTER_OPTIONS}
               value={statusFilter}
               aria-label="Filtrar por estado"
-              onChange={(e) =>
-                setStatusFilter(e.target.value as TenantStatus | typeof ALL_STATUSES)
-              }
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilterValue)}
             />
           </div>
+
+          {hasActiveFilters ? (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch('');
+                setStatusFilter(ALL_STATUSES);
+              }}
+              className="inline-flex min-h-11 items-center rounded-lg px-3 text-xs font-medium text-iwana-primary hover:underline"
+            >
+              Limpiar filtro
+            </button>
+          ) : null}
         </div>
       </CardHeader>
 
-      <CardContent className="p-0 mt-4">
+      <CardContent className="mt-4 p-0">
         <div className="px-6 pb-6">
-          <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+          <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-dark-border">
             <div className="overflow-x-auto">
               <table className="w-full text-sm" aria-label="Lista de empresas">
                 <thead>
-                  <tr className="border-b border-gray-100 dark:border-dark-border bg-gray-50 dark:bg-dark-surface-3">
+                  <tr className="border-b border-gray-100 bg-gray-50 dark:border-dark-border dark:bg-dark-surface-3">
                     <th className="px-6 py-3 text-left">
                       <button
                         type="button"
                         onClick={() => handleSort('name')}
-                        className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                        className="inline-flex min-h-11 items-center gap-1 text-xs font-medium tracking-wider text-gray-500 uppercase hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                       >
                         Empresa <SortIcon field="name" sortField={sortField} sortDir={sortDir} />
                       </button>
@@ -303,7 +343,7 @@ export function TenantsTable({
                       <button
                         type="button"
                         onClick={() => handleSort('status')}
-                        className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                        className="inline-flex min-h-11 items-center gap-1 text-xs font-medium tracking-wider text-gray-500 uppercase hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                       >
                         Estado <SortIcon field="status" sortField={sortField} sortDir={sortDir} />
                       </button>
@@ -312,7 +352,7 @@ export function TenantsTable({
                       <button
                         type="button"
                         onClick={() => handleSort('updatedAt')}
-                        className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                        className="inline-flex min-h-11 items-center gap-1 text-xs font-medium tracking-wider text-gray-500 uppercase hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                       >
                         Última actualización{' '}
                         <SortIcon field="updatedAt" sortField={sortField} sortDir={sortDir} />
@@ -322,27 +362,42 @@ export function TenantsTable({
                       <button
                         type="button"
                         onClick={() => handleSort('createdAt')}
-                        className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                        className="inline-flex min-h-11 items-center gap-1 text-xs font-medium tracking-wider text-gray-500 uppercase hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                       >
                         Fecha creación{' '}
                         <SortIcon field="createdAt" sortField={sortField} sortDir={sortDir} />
                       </button>
                     </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">
+                    <th className="px-6 py-3 text-right text-xs font-medium tracking-wider text-gray-500 uppercase dark:text-gray-400">
                       Acciones
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
                   {isLoading ? (
-                    <tr>
-                      <td
-                        colSpan={5}
-                        className="px-6 py-10 text-center text-sm text-gray-400 dark:text-gray-500"
-                      >
-                        Cargando directorio de empresas...
-                      </td>
-                    </tr>
+                    Array.from({ length: 5 }).map((_, rowIndex) => (
+                      <tr key={`skeleton-${rowIndex}`} className="animate-pulse">
+                        <td className="px-6 py-4">
+                          <div className="space-y-2">
+                            <div className="h-4 w-40 rounded bg-gray-200 dark:bg-dark-surface-4" />
+                            <div className="h-3 w-48 rounded bg-gray-100 dark:bg-dark-surface-3" />
+                            <div className="h-3 w-24 rounded bg-gray-100 dark:bg-dark-surface-3" />
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="h-5 w-20 rounded-full bg-gray-200 dark:bg-dark-surface-4" />
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="h-4 w-24 rounded bg-gray-200 dark:bg-dark-surface-4" />
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="h-4 w-24 rounded bg-gray-200 dark:bg-dark-surface-4" />
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="ml-auto h-9 w-9 rounded-lg bg-gray-200 dark:bg-dark-surface-4" />
+                        </td>
+                      </tr>
+                    ))
                   ) : error ? (
                     <tr>
                       <td
@@ -356,7 +411,7 @@ export function TenantsTable({
                             onClick={onRetry}
                             variant="link"
                             size="sm"
-                            className="mt-2"
+                            className="mt-2 min-h-11"
                           >
                             Reintentar
                           </Button>
@@ -365,19 +420,26 @@ export function TenantsTable({
                     </tr>
                   ) : filtered.length === 0 ? (
                     <tr>
-                      <td
-                        colSpan={5}
-                        className="px-6 py-10 text-center text-sm text-gray-400 dark:text-gray-500"
-                      >
-                        No encontramos empresas con estos filtros. Ajusta la búsqueda o cambia el
-                        estado para continuar.
+                      <td colSpan={5} className="px-6 py-12 text-center">
+                        <div className="mx-auto flex max-w-md flex-col items-center gap-1">
+                          <p className="text-sm font-medium text-iwana-primary dark:text-white">
+                            {hasActiveFilters
+                              ? 'Sin empresas con estos filtros'
+                              : 'Aún no hay empresas registradas'}
+                          </p>
+                          <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
+                            {hasActiveFilters
+                              ? 'Ajusta la búsqueda o el estado, o limpia el filtro para ver todo el directorio.'
+                              : 'Cuando registres la primera empresa, aparecerá aquí con su estado operativo.'}
+                          </p>
+                        </div>
                       </td>
                     </tr>
                   ) : (
                     filtered.map((tenant) => (
                       <tr
                         key={tenant.id}
-                        className="hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors"
+                        className="transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.03]"
                       >
                         {/* Columna Empresa: nombre principal + slug en gris debajo */}
                         <td className="px-6 py-4">
@@ -387,7 +449,7 @@ export function TenantsTable({
                           <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                             {tenant.contactEmail || 'Sin contacto principal registrado'}
                           </div>
-                          <div className="mt-1 font-mono text-[11px] text-gray-400 dark:text-gray-500">
+                          <div className="mt-1 font-mono text-[11px] text-gray-500 dark:text-gray-400">
                             {tenant.slug}
                           </div>
                         </td>
@@ -425,7 +487,7 @@ export function TenantsTable({
         </div>
 
         {filtered.length > 0 && (
-          <div className="px-6 py-3 border-t border-gray-100 dark:border-dark-border">
+          <div className="border-t border-gray-100 px-6 py-3 dark:border-dark-border">
             <p className="text-xs text-gray-600 dark:text-gray-400">
               Mostrando {filtered.length} de {tenants.length} empresas en el directorio
             </p>

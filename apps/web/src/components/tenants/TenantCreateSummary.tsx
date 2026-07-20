@@ -198,7 +198,7 @@ export function TenantCreateSummary({
                         className={`h-3.5 w-3.5 shrink-0 rounded-full border-2 ${
                           section.required
                             ? 'border-red-300 dark:border-red-700'
-                            : 'border-gray-200 dark:border-gray-700'
+                            : 'border-gray-200 dark:border-dark-border-2'
                         }`}
                       />
                     )}

@@ -8,15 +8,19 @@ import { cn } from '../lib/utils';
 
 /**
  * Componente Button del sistema de diseño iWana neXt.
- * Variantes: primary, secondary, ghost, destructive, link.
- * ADR-026: shadcn/ui + CVA.
+ * Variantes: lime (CTA de página, Firma iWana), primary (acción de sección),
+ * secondary/outline/ghost, destructive, link.
+ * ADR-026: shadcn/ui + CVA. Spec Firma: lima = acción principal de página;
+ * azul sólido = acciones de sección (no se invierte `primary` por compatibilidad).
  */
 const buttonVariants = cva(
   'inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:pointer-events-none disabled:cursor-not-allowed dark:focus-visible:ring-offset-dark-surface-2 [&_svg]:pointer-events-none [&_svg]:shrink-0',
   {
     variants: {
       variant: {
-        // Light: azul noche (#17163A) con texto blanco.
+        // CTA de página — lima AA: fondo secondary-700 + texto blanco (patrón portal).
+        lime: 'rounded-full bg-iwana-secondary-700 text-white shadow-sm hover:bg-iwana-secondary-700/90 focus-visible:ring-iwana-secondary-700 active:bg-iwana-secondary-800 disabled:bg-gray-200 disabled:text-gray-500 dark:bg-iwana-secondary dark:text-iwana-primary dark:hover:bg-iwana-secondary-400 dark:focus-visible:ring-iwana-secondary dark:disabled:bg-dark-surface-3 dark:disabled:text-gray-500',
+        // Light: azul noche (#17163A) con texto blanco — acciones de sección.
         // Dark: violeta medio (#534FD4, primary-400) con texto blanco — contraste 3.8:1 sobre #222 (WCAG AA para componentes UI).
         primary:
           'rounded-full bg-iwana-primary text-white shadow-sm hover:bg-iwana-primary-600 focus-visible:ring-iwana-primary active:bg-iwana-primary-800 disabled:bg-gray-200 disabled:text-gray-500 dark:bg-iwana-primary-400 dark:hover:bg-iwana-primary-300 dark:active:bg-iwana-primary-500 dark:disabled:bg-dark-surface-3 dark:disabled:text-gray-500',

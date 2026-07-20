@@ -75,7 +75,7 @@ export function severityClasses(severity: Severity): { dot: string; badge: strin
     default:
       return {
         dot: 'bg-gray-300 dark:bg-gray-600',
-        badge: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+        badge: 'bg-gray-100 text-gray-600 dark:bg-dark-surface-3 dark:text-gray-400',
       };
   }
 }

@@ -2,6 +2,17 @@ import '@testing-library/jest-dom';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import AuditLogsPage from './page';
 
+let searchParamsMock = new URLSearchParams();
+const replaceMock = jest.fn();
+
+jest.mock('next/navigation', () => ({
+  useSearchParams: () => searchParamsMock,
+  usePathname: () => '/audit-logs',
+  useRouter: () => ({
+    replace: replaceMock,
+  }),
+}));
+
 type Deferred<T> = {
   promise: Promise<T>;
   resolve: (value: T) => void;
@@ -84,11 +95,25 @@ jest.mock('@/components/audit/AuditLogsTable', () => ({
     externalFilters,
     entries,
     isLoading,
+    actionFilter,
+    dateFrom,
+    dateTo,
+    onActionFilterChange,
+    onDateFromChange,
+    onDateToChange,
+    onExportCsv,
   }: {
     companyName?: string;
     externalFilters?: { actionSet?: string[]; severity?: string };
     entries: Array<unknown>;
     isLoading: boolean;
+    actionFilter?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    onActionFilterChange?: (value: string) => void;
+    onDateFromChange?: (value: string) => void;
+    onDateToChange?: (value: string) => void;
+    onExportCsv?: () => Promise<{ truncated: boolean } | void> | { truncated: boolean } | void;
   }) => (
     <section data-testid={companyName ? 'tenant-table' : 'platform-table'}>
       <p>{companyName ? `Tabla de ${companyName}` : 'Tabla de plataforma'}</p>
@@ -97,6 +122,29 @@ jest.mock('@/components/audit/AuditLogsTable', () => ({
         Filtros externos:{' '}
         {externalFilters?.actionSet?.join(',') ?? externalFilters?.severity ?? 'ninguno'}
       </p>
+      <p>
+        Filtros barra: {actionFilter || 'ninguno'}|{dateFrom || ''}|{dateTo || ''}
+      </p>
+      {onActionFilterChange ? (
+        <button type="button" onClick={() => onActionFilterChange('CREATE')}>
+          Filtrar acción {companyName ? 'tenant' : 'platform'}
+        </button>
+      ) : null}
+      {onDateFromChange ? (
+        <button type="button" onClick={() => onDateFromChange('2026-01-01')}>
+          Filtrar desde {companyName ? 'tenant' : 'platform'}
+        </button>
+      ) : null}
+      {onDateToChange ? (
+        <button type="button" onClick={() => onDateToChange('2026-01-31')}>
+          Filtrar hasta {companyName ? 'tenant' : 'platform'}
+        </button>
+      ) : null}
+      {onExportCsv ? (
+        <button type="button" onClick={() => void onExportCsv()}>
+          Exportar {companyName ? 'tenant' : 'platform'}
+        </button>
+      ) : null}
     </section>
   ),
 }));
@@ -138,6 +186,8 @@ type AuditApiResponse = {
 const tenantListMock = jest.fn();
 const platformAuditListMock = jest.fn();
 const auditListMock = jest.fn();
+const platformAuditExportMock = jest.fn();
+const auditExportMock = jest.fn();
 
 jest.mock('@/lib/api-client', () => ({
   ApiError: class ApiError extends Error {},
@@ -146,15 +196,18 @@ jest.mock('@/lib/api-client', () => ({
   },
   platformAuditApi: {
     list: (...args: unknown[]) => platformAuditListMock(...args),
+    exportCsv: (...args: unknown[]) => platformAuditExportMock(...args),
   },
   auditApi: {
     list: (...args: unknown[]) => auditListMock(...args),
+    exportCsv: (...args: unknown[]) => auditExportMock(...args),
   },
 }));
 
 describe('AuditLogsPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    searchParamsMock = new URLSearchParams();
   });
 
   it('limpia filtros y resumen previo al cambiar de empresa', async () => {
@@ -249,7 +302,9 @@ describe('AuditLogsPage', () => {
     expect(screen.queryByText('Filtro activo desde el resumen.')).not.toBeInTheDocument();
     expect(screen.getByText('Resumen de Empresa Dos')).toBeInTheDocument();
     expect(screen.getByText('Cargando resumen')).toBeInTheDocument();
-    expect(within(screen.getByTestId('tenant-table')).getByText('Filtros externos: ninguno')).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('tenant-table')).getByText('Filtros externos: ninguno'),
+    ).toBeInTheDocument();
 
     tenantTwoSummary.resolve({
       data: [
@@ -274,5 +329,68 @@ describe('AuditLogsPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Entradas resumen: 1')).toBeInTheDocument();
     });
+  });
+
+  it('envía action/fromDate/toDate al listar y exporta vía endpoint server-side', async () => {
+    tenantListMock.mockResolvedValue([
+      {
+        id: 'tenant-1',
+        name: 'Empresa Uno',
+        slug: 'empresa-uno',
+        status: 'ACTIVE',
+      },
+    ]);
+
+    platformAuditListMock.mockResolvedValue({ data: [], nextCursor: null });
+    auditListMock.mockResolvedValue({ data: [], nextCursor: null });
+    platformAuditExportMock.mockResolvedValue({
+      blob: new Blob(['csv']),
+      truncated: true,
+      filename: 'platform-audit-logs-2026-07-20.csv',
+    });
+
+    const createObjectURL = jest.fn(() => 'blob:mock');
+    const revokeObjectURL = jest.fn();
+    Object.defineProperty(URL, 'createObjectURL', { writable: true, value: createObjectURL });
+    Object.defineProperty(URL, 'revokeObjectURL', { writable: true, value: revokeObjectURL });
+    jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+
+    render(<AuditLogsPage />);
+
+    await screen.findByText('Tabla de plataforma');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filtrar acción platform' }));
+
+    await waitFor(() => {
+      expect(platformAuditListMock).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'CREATE', limit: 50 }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filtrar desde platform' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Filtrar hasta platform' }));
+
+    await waitFor(() => {
+      expect(platformAuditListMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'CREATE',
+          fromDate: expect.stringMatching(/^2026-01-01T/),
+          toDate: expect.stringMatching(/^2026-01-31T/),
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Exportar platform' }));
+
+    await waitFor(() => {
+      expect(platformAuditExportMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'CREATE',
+          fromDate: expect.stringMatching(/^2026-01-01T/),
+          toDate: expect.stringMatching(/^2026-01-31T/),
+        }),
+      );
+    });
+    expect(createObjectURL).toHaveBeenCalled();
   });
 });

@@ -21,6 +21,7 @@ import {
   TabsList,
   TabsTrigger,
 } from '@iwana/ui';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { ApiError, tenantApi, type TenantListItem } from '@/lib/api-client';
 import {
   COMPANY_TYPE_OPTIONS,
@@ -90,6 +91,8 @@ export function TenantSettingsForm({ tenantId }: { tenantId: string }) {
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [tenantName, setTenantName] = useState<string>('');
   const [tenantStatus, setTenantStatus] = useState<string>('');
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [tenant, setTenant] = useState<TenantListItem | null>(null);
 
   const settingsForm = useForm<SettingsFormValues>({
@@ -209,31 +212,19 @@ export function TenantSettingsForm({ tenantId }: { tenantId: string }) {
   };
 
   const handleDelete = async () => {
-    const warningMessage = `
-⚠️ ADVERTENCIA: Esta acción es IRREVERSIBLE
-
-Al eliminar la empresa "${tenantName}" se eliminarán:
-- Todos los datos de la empresa
-- Todos los usuarios y sus credenciales
-- Todos los registros de facturación
-- Todos los histórico de operaciones
-- El schema completo de base de datos
-
-Esta acción no se puede deshacer. ¿Está absolutamente seguro?
-    `.trim();
-
-    if (!confirm(warningMessage)) return;
-    if (!confirm('¿CONFIRMAR ELIMINACIÓN?\n\nEsta acción es permanente y no se puede deshacer.'))
-      return;
-
     setError(null);
     setSuccess(null);
+    setIsDeleting(true);
 
     try {
       await tenantApi.delete(tenantId);
+      setDeleteConfirmOpen(false);
       router.push('/tenants');
     } catch (err) {
+      setDeleteConfirmOpen(false);
       setError(err instanceof ApiError ? err.message : 'No fue posible eliminar la empresa.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -649,7 +640,7 @@ Esta acción no se puede deshacer. ¿Está absolutamente seguro?
               type="button"
               variant="destructive"
               size="lg"
-              onClick={handleDelete}
+              onClick={() => setDeleteConfirmOpen(true)}
               className="w-full md:w-auto"
             >
               Eliminar empresa permanentemente
@@ -657,6 +648,30 @@ Esta acción no se puede deshacer. ¿Está absolutamente seguro?
           </div>
         </TabsContent>
       </Tabs>
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="Eliminar empresa"
+        description={
+          <>
+            Esta acción es irreversible. Se eliminará la empresa <strong>{tenantName}</strong> y
+            todos sus datos asociados: usuarios y credenciales, facturación, histórico operativo y
+            el schema completo de base de datos.
+          </>
+        }
+        confirmationText={tenantName}
+        confirmationLabel={
+          <>
+            Para confirmar, escribe el nombre de la empresa: <strong>{tenantName}</strong>
+          </>
+        }
+        confirmLabel="Sí, eliminar empresa"
+        isConfirming={isDeleting}
+        onConfirm={() => {
+          void handleDelete();
+        }}
+        onCancel={() => setDeleteConfirmOpen(false)}
+      />
     </div>
   );
 }

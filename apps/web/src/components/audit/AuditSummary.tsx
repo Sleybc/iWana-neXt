@@ -134,12 +134,12 @@ function DeltaBadge({ current, previous }: { current: number; previous: number }
 /** Skeleton de tarjeta durante carga */
 function CardSkeleton() {
   return (
-    <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-dark-surface-2 p-4 space-y-3 animate-pulse">
-      <div className="h-4 w-24 bg-gray-200 dark:bg-gray-700 rounded" />
-      <div className="h-8 w-16 bg-gray-200 dark:bg-gray-700 rounded" />
+    <div className="rounded-xl border border-gray-200 dark:border-dark-border-2 bg-white dark:bg-dark-surface-2 p-4 space-y-3 animate-pulse">
+      <div className="h-4 w-24 bg-gray-200 dark:bg-dark-surface-4 rounded" />
+      <div className="h-8 w-16 bg-gray-200 dark:bg-dark-surface-4 rounded" />
       <div className="space-y-1.5">
-        <div className="h-3 w-full bg-gray-100 dark:bg-gray-800 rounded" />
-        <div className="h-3 w-3/4 bg-gray-100 dark:bg-gray-800 rounded" />
+        <div className="h-3 w-full bg-gray-100 dark:bg-dark-surface-3 rounded" />
+        <div className="h-3 w-3/4 bg-gray-100 dark:bg-dark-surface-3 rounded" />
       </div>
     </div>
   );
@@ -170,7 +170,7 @@ function SummaryCard({
   accentClass: string;
 }) {
   return (
-    <div className="flex flex-col rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-dark-surface-2 p-4 gap-2">
+    <div className="flex flex-col rounded-xl border border-gray-200 dark:border-dark-border-2 bg-white dark:bg-dark-surface-2 p-4 gap-2">
       {/* Cabecera */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -367,7 +367,7 @@ export function AuditSummary({
       {/* Control de ventana temporal */}
       <div className="flex items-center gap-2">
         <span className="text-xs text-gray-500 dark:text-gray-400">Resumen:</span>
-        <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-xs">
+        <div className="flex rounded-lg border border-gray-200 dark:border-dark-border-2 overflow-hidden text-xs">
           {(['24h', '7d'] as const).map((w) => (
             <button
               key={w}

@@ -101,7 +101,7 @@ export function MfaVerifyForm() {
               ? '[&::-webkit-progress-value]:bg-red-500 [&::-moz-progress-bar]:bg-red-500'
               : secondsLeft <= 10
                 ? '[&::-webkit-progress-value]:bg-amber-500 [&::-moz-progress-bar]:bg-amber-500'
-                : '[&::-webkit-progress-value]:bg-[#6A7A1C] [&::-moz-progress-bar]:bg-[#6A7A1C] dark:[&::-webkit-progress-value]:bg-[#A5C330] dark:[&::-moz-progress-bar]:bg-[#A5C330]'
+                : '[&::-webkit-progress-value]:bg-iwana-secondary-700 [&::-moz-progress-bar]:bg-iwana-secondary-700 dark:[&::-webkit-progress-value]:bg-iwana-secondary dark:[&::-moz-progress-bar]:bg-iwana-secondary'
           }`}
           value={secondsLeft}
           max={TOTP_INTERVAL}

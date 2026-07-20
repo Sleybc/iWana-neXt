@@ -12,6 +12,14 @@ jest.mock('next/link', () => ({
   ),
 }));
 
+jest.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => '/tenants',
+  useRouter: () => ({
+    replace: jest.fn(),
+  }),
+}));
+
 jest.mock('@iwana/ui', () => ({
   Button: ({
     children,
@@ -20,9 +28,7 @@ jest.mock('@iwana/ui', () => ({
   }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
     children?: React.ReactNode;
     asChild?: boolean;
-  }) => (
-    <button {...props}>{children}</button>
-  ),
+  }) => <button {...props}>{children}</button>,
 }));
 
 jest.mock('@/components/layout/PageHeader', () => ({
@@ -32,6 +38,10 @@ jest.mock('@/components/layout/PageHeader', () => ({
       {subtitle ? <p>{subtitle}</p> : null}
     </header>
   ),
+}));
+
+jest.mock('@/components/shared/ConfirmDialog', () => ({
+  ConfirmDialog: () => null,
 }));
 
 jest.mock('@/components/dashboard/TenantsTable', () => ({

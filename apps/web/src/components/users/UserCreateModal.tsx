@@ -12,7 +12,16 @@ import { useEffect, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { Button, Select } from '@iwana/ui';
+import {
+  Button,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  Select,
+} from '@iwana/ui';
 import { ApiError, usersApi, type CreateUserPayload, type UserListItem } from '@/lib/api-client';
 import { WEB_USER_ROLE_OPTIONS } from '@/lib/user-labels';
 import {
@@ -44,9 +53,6 @@ const createUserSchema = z.object({
 });
 
 type CreateUserFormValues = z.infer<typeof createUserSchema>;
-
-const MODAL_PANEL_CLASS =
-  'w-full max-w-2xl overflow-y-auto rounded-[28px] border border-gray-100 bg-white p-5 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2 dark:shadow-none max-h-[90vh] sm:p-6';
 
 const accordionTriggerClass =
   'flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition hover:bg-white/70 dark:hover:bg-dark-surface-2/80';
@@ -148,35 +154,42 @@ export function UserCreateModal({
     onClose();
   };
 
+  /**
+   * Cierre unificado (botón, Escape o clic fuera vía Dialog).
+   * Si hay contraseña temporal en pantalla, el cierre equivale a "Entendido":
+   * se propaga onCreated para no perder el refresco de la lista.
+   */
+  const handleRequestClose = () => {
+    if (createdResult) {
+      handleConfirmTempPassword();
+      return;
+    }
+    onClose();
+  };
+
   return (
-    <div
-      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="user-create-modal-title"
-    >
-      <div className={MODAL_PANEL_CLASS}>
-        <div className="flex items-start justify-between gap-4 border-b border-gray-100 pb-4 dark:border-dark-border">
+    <Dialog open={open} onOpenChange={(next) => !next && handleRequestClose()}>
+      <DialogContent className="max-w-2xl p-5 sm:p-6">
+        <DialogHeader className="mb-0 flex flex-row items-start justify-between gap-4 space-y-0 border-b border-gray-100 pb-4 dark:border-dark-border">
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-iwana-secondary-700 dark:text-iwana-secondary-400">
               <BadgePlus className="h-4 w-4" aria-hidden="true" />
               <span>Operación de plataforma</span>
             </div>
-            <h3
-              id="user-create-modal-title"
-              className="mt-2 text-xl font-semibold text-iwana-primary dark:text-white"
-            >
+            <DialogTitle className="mt-2 text-xl font-semibold text-iwana-primary dark:text-white">
               Crear usuario
-            </h3>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            </DialogTitle>
+            <DialogDescription className="mt-1">
               Registra un nuevo operador de plataforma y define si usará contraseña temporal o una
               credencial asignada manualmente.
-            </p>
+            </DialogDescription>
           </div>
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cerrar
-          </Button>
-        </div>
+          <DialogClose asChild>
+            <Button type="button" variant="secondary">
+              Cerrar
+            </Button>
+          </DialogClose>
+        </DialogHeader>
 
         {/* ── Pantalla de éxito con contraseña temporal ─────────────── */}
         {createdResult ? (
@@ -471,7 +484,7 @@ export function UserCreateModal({
             </form>
           </>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

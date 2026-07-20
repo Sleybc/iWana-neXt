@@ -8,6 +8,10 @@ const usersTableSpy = jest.fn();
 
 jest.mock('next/navigation', () => ({
   useSearchParams: () => searchParamsMock,
+  usePathname: () => '/users',
+  useRouter: () => ({
+    replace: jest.fn(),
+  }),
 }));
 
 jest.mock('@iwana/ui', () => ({
@@ -147,7 +151,9 @@ describe('UsersPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Error al cargar usuarios: Servicio temporalmente no disponible.',
     );
-    expect(screen.getByText('No pudimos mostrar los usuarios de Empresa Demo.')).toBeInTheDocument();
+    expect(
+      screen.getByText('No pudimos mostrar los usuarios de Empresa Demo.'),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
 

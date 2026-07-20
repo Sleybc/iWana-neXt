@@ -204,7 +204,7 @@ function wait(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-async function request<T>(path: string, options?: RequestOptions): Promise<T> {
+async function authorizeAndFetch(path: string, options?: RequestOptions): Promise<Response> {
   const token = getStoredAccessToken();
   const headers = new Headers(options?.headers);
   const isFormDataBody = typeof FormData !== 'undefined' && options?.body instanceof FormData;
@@ -226,7 +226,7 @@ async function request<T>(path: string, options?: RequestOptions): Promise<T> {
   if (res.status === 401 && !options?.skipAuth && !options?.skipRefreshRetry) {
     try {
       const renewedToken = await refreshAccessToken();
-      return request<T>(path, {
+      return authorizeAndFetch(path, {
         ...options,
         headers: {
           ...Object.fromEntries(headers.entries()),
@@ -244,18 +244,21 @@ async function request<T>(path: string, options?: RequestOptions): Promise<T> {
         const loginUrl = `/auth/login?next=${encodeURIComponent(nextPath)}&reason=session-expired`;
         window.location.replace(loginUrl);
 
-        // Devolvemos una promesa pendiente para evitar que React muestre
-        // un overlay de runtime mientras se completa la redirección.
-        return new Promise<T>(() => {
+        // Promesa pendiente: evita overlay de runtime mientras redirige al login.
+        return new Promise<Response>(() => {
           // Intencionalmente vacío.
         });
       }
 
-      // El refresh falló: re-lanzamos para que el llamador reciba un error claro
-      // en vez de caer en el bloque `if (!res.ok)` de la respuesta original.
       throw refreshError;
     }
   }
+
+  return res;
+}
+
+async function request<T>(path: string, options?: RequestOptions): Promise<T> {
+  const res = await authorizeAndFetch(path, options);
 
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
@@ -272,6 +275,45 @@ async function request<T>(path: string, options?: RequestOptions): Promise<T> {
 
   const body = await res.json();
   return unwrapApiResponse<T>(body);
+}
+
+/** Respuesta binaria (CSV, etc.) con lectura de headers de exportación. */
+export interface BlobDownloadResult {
+  blob: Blob;
+  truncated: boolean;
+  filename: string | null;
+}
+
+function parseContentDispositionFilename(header: string | null): string | null {
+  if (!header) return null;
+  const utfMatch = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (utfMatch?.[1]) {
+    try {
+      return decodeURIComponent(utfMatch[1].trim());
+    } catch {
+      return utfMatch[1].trim();
+    }
+  }
+  const plainMatch = /filename="?([^";]+)"?/i.exec(header);
+  return plainMatch?.[1]?.trim() ?? null;
+}
+
+async function requestBlob(path: string, options?: RequestOptions): Promise<BlobDownloadResult> {
+  const res = await authorizeAndFetch(path, options);
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    throw new ApiError(
+      res.status,
+      typeof body['code'] === 'string' ? body['code'] : 'UNKNOWN',
+      normalizeApiErrorMessage(body) || 'Error del servidor',
+    );
+  }
+
+  const truncated = res.headers.get('X-Export-Truncated')?.toLowerCase() === 'true';
+  const filename = parseContentDispositionFilename(res.headers.get('Content-Disposition'));
+  const blob = await res.blob();
+  return { blob, truncated, filename };
 }
 
 export interface PlatformLoginResponse {
@@ -982,9 +1024,19 @@ export interface AuditLogQueryParams {
   limit?: number;
   entityType?: string;
   action?: string;
+  /** ISO 8601 → query `fromDate` */
   from?: string;
+  fromDate?: string;
+  /** ISO 8601 → query `toDate` */
   to?: string;
+  toDate?: string;
 }
+
+/** Filtros de export CSV (sin cursor/limit; máx. 5000 filas en servidor). */
+export type AuditCsvExportParams = Pick<
+  AuditLogQueryParams,
+  'action' | 'entityType' | 'from' | 'fromDate' | 'to' | 'toDate'
+>;
 
 export interface AuditLogListResponse<TEntry> {
   data: TEntry[];
@@ -992,31 +1044,49 @@ export interface AuditLogListResponse<TEntry> {
   total: number;
 }
 
+function appendAuditFilterParams(
+  searchParams: URLSearchParams,
+  params?: AuditLogQueryParams | AuditCsvExportParams,
+): void {
+  if (!params) return;
+  if ('limit' in params && params.limit !== undefined) {
+    searchParams.set('limit', String(params.limit));
+  }
+  if ('cursor' in params && params.cursor) {
+    searchParams.set('cursor', params.cursor);
+  }
+  if (params.entityType) {
+    searchParams.set('entityType', params.entityType);
+  }
+  if (params.action) {
+    searchParams.set('action', params.action);
+  }
+  const fromDate = params.fromDate ?? params.from;
+  const toDate = params.toDate ?? params.to;
+  if (fromDate) {
+    searchParams.set('fromDate', fromDate);
+  }
+  if (toDate) {
+    searchParams.set('toDate', toDate);
+  }
+}
+
 // API de audit logs — solo lectura (append-only por diseño)
 export const auditApi = {
   list: (params?: AuditLogQueryParams, tenantSlug?: string) => {
     const searchParams = new URLSearchParams();
-    if (params?.limit !== undefined) {
-      searchParams.set('limit', String(params.limit));
-    }
-    if (params?.cursor) {
-      searchParams.set('cursor', params.cursor);
-    }
-    if (params?.entityType) {
-      searchParams.set('entityType', params.entityType);
-    }
-    if (params?.action) {
-      searchParams.set('action', params.action);
-    }
-    if (params?.from) {
-      searchParams.set('fromDate', params.from);
-    }
-    if (params?.to) {
-      searchParams.set('toDate', params.to);
-    }
-
+    appendAuditFilterParams(searchParams, params);
     const query = searchParams.toString();
     return request<AuditLogListResponse<AuditLogEntry>>(`/audit-logs${query ? `?${query}` : ''}`, {
+      headers: tenantSlug ? { 'X-Tenant-Slug': tenantSlug } : {},
+    });
+  },
+
+  exportCsv: (params?: AuditCsvExportParams, tenantSlug?: string) => {
+    const searchParams = new URLSearchParams();
+    appendAuditFilterParams(searchParams, params);
+    const query = searchParams.toString();
+    return requestBlob(`/audit-logs/export${query ? `?${query}` : ''}`, {
       headers: tenantSlug ? { 'X-Tenant-Slug': tenantSlug } : {},
     });
   },
@@ -1039,12 +1109,9 @@ export interface PlatformAuditLogEntry {
 }
 
 export const platformAuditApi = {
-  list: (params?: { cursor?: string; limit?: number; action?: string; entityType?: string }) => {
+  list: (params?: AuditLogQueryParams) => {
     const searchParams = new URLSearchParams();
-    if (params?.limit !== undefined) searchParams.set('limit', String(params.limit));
-    if (params?.cursor) searchParams.set('cursor', params.cursor);
-    if (params?.action) searchParams.set('action', params.action);
-    if (params?.entityType) searchParams.set('entityType', params.entityType);
+    appendAuditFilterParams(searchParams, params);
     const query = searchParams.toString();
 
     return request<AuditLogListResponse<PlatformAuditLogEntry>>(
@@ -1053,6 +1120,13 @@ export const platformAuditApi = {
         skipRefreshRetry: false,
       },
     );
+  },
+
+  exportCsv: (params?: AuditCsvExportParams) => {
+    const searchParams = new URLSearchParams();
+    appendAuditFilterParams(searchParams, params);
+    const query = searchParams.toString();
+    return requestBlob(`/platform-audit-logs/export${query ? `?${query}` : ''}`);
   },
 };
 

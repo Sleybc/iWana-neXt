@@ -51,7 +51,7 @@ function actionBadgeClass(action: string): string {
   if (action === 'DELETE') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
   if (AUTH_ACTIONS.has(action))
     return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
-  return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
+  return 'bg-gray-100 text-gray-700 dark:bg-dark-surface-3 dark:text-gray-300';
 }
 
 /**
@@ -170,7 +170,7 @@ export function AuditRowBasic({ entry, expanded, onToggle, companyName }: AuditR
                 >
                   {actionLabel(entry.action)}
                 </span>
-                <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-gray-600 dark:bg-dark-surface-3 dark:text-gray-400">
                   {entityLabel(entry.entityType)}
                 </span>
 

@@ -152,13 +152,23 @@ export function NotificationBell() {
   }, [open]);
 
   const count = notifications.length;
-  const alertCount = notifications.filter(
-    (notification) => notification.tone === 'error' || notification.tone === 'warning',
-  ).length;
-  const tone = useMemo(
-    () => (alertCount > 0 ? 'text-iwana-secondary-700 dark:text-iwana-secondary' : ''),
-    [alertCount],
-  );
+  // Peor tono presente entre las notificaciones — define la señal de alerta de la campana.
+  // Urgencia usa escalas semánticas warning/error; el lima queda reservado a avance/acción.
+  const worstAlertTone = useMemo<'error' | 'warning' | null>(() => {
+    if (notifications.some((notification) => notification.tone === 'error')) {
+      return 'error';
+    }
+    if (notifications.some((notification) => notification.tone === 'warning')) {
+      return 'warning';
+    }
+    return null;
+  }, [notifications]);
+  const iconTone =
+    worstAlertTone === 'error'
+      ? 'text-error-600 dark:text-error-400'
+      : worstAlertTone === 'warning'
+        ? 'text-warning-600 dark:text-warning-400'
+        : '';
 
   return (
     <div className="relative">
@@ -166,29 +176,33 @@ export function NotificationBell() {
         ref={triggerRef}
         type="button"
         aria-label="Notificaciones"
-        aria-haspopup="dialog"
+        aria-haspopup="true"
         aria-expanded={open}
         aria-controls="notifications-menu"
         onClick={() => setOpen((current) => !current)}
-        className="relative flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
+        className="relative flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-surface-4 dark:hover:text-white"
       >
-        {alertCount > 0 && (
-          <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-iwana-secondary" />
+        {worstAlertTone && (
+          <span
+            className={cn(
+              'absolute top-1 right-1 h-2 w-2 rounded-full',
+              worstAlertTone === 'error' ? 'bg-error-500' : 'bg-warning-500',
+            )}
+          />
         )}
-        <Bell className={cn('w-5 h-5', tone)} />
+        <Bell className={cn('w-5 h-5', iconTone)} />
       </button>
 
       <div
         id="notifications-menu"
         ref={dropdownRef}
-        role="dialog"
         aria-label="Notificaciones operativas"
         className={cn(
-          'absolute right-0 mt-3 w-80 rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800',
+          'absolute right-0 mt-3 w-80 rounded-xl border border-gray-200 bg-white shadow-lg dark:border-dark-border-2 dark:bg-dark-surface-3',
           open ? 'block' : 'hidden',
         )}
       >
-        <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-700">
+        <div className="border-b border-gray-100 px-4 py-3 dark:border-dark-border-2">
           <p className="text-sm font-semibold text-gray-800 dark:text-white">
             Notificaciones operativas
           </p>
@@ -208,7 +222,7 @@ export function NotificationBell() {
                 {notification.href ? (
                   <Link
                     href={notification.href}
-                    className="flex gap-3 rounded-lg px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="flex gap-3 rounded-lg px-3 py-2 hover:bg-gray-100 dark:hover:bg-dark-surface-4"
                     onClick={() => setOpen(false)}
                   >
                     <span

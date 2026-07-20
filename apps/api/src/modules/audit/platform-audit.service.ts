@@ -5,6 +5,13 @@ import { PlatformAuditLog } from '@iwana/db';
 import { AuditEntryInput } from './interfaces/audit-entry.interface';
 import { AuditActorResolver } from './audit-actor.resolver';
 import { AuditLogResponseDto, PlatformAuditLogListResponseDto } from './dto/audit-log-response.dto';
+import { QueryPlatformAuditLogsDto } from './dto/query-platform-audit-logs.dto';
+import {
+  AUDIT_EXPORT_MAX_ROWS,
+  AuditCsvExportResult,
+  buildAuditCsv,
+  buildCreatedAtFilter,
+} from './helpers/audit-export.helper';
 
 /**
  * Servicio de audit trail para operaciones de plataforma.
@@ -61,24 +68,12 @@ export class PlatformAuditService {
   /**
    * Consulta platform_audit_logs con filtros opcionales y paginación cursor-based.
    * Sin dependencia de TenantContext — opera siempre sobre el schema público.
+   * Soporta fromDate/toDate (ISO) en paridad con AuditQueryService.
    */
-  async query(
-    params: {
-      limit?: number;
-      cursor?: string;
-      action?: string;
-      entityType?: string;
-      userId?: string;
-    } = {},
-  ): Promise<PlatformAuditLogListResponseDto> {
-    const limit = params.limit ?? 50;
+  async query(dto: QueryPlatformAuditLogsDto = {}): Promise<PlatformAuditLogListResponseDto> {
+    const limit = dto.limit ?? 50;
     const repo = this.dataSource.getRepository(PlatformAuditLog);
-
-    const where: Record<string, unknown> = {};
-    if (params.action) where['action'] = params.action;
-    if (params.entityType) where['entityType'] = params.entityType;
-    if (params.userId) where['userId'] = params.userId;
-    if (params.cursor) where['id'] = LessThan(params.cursor);
+    const where = this.buildWhere(dto);
 
     const [data, total] = await repo.findAndCount({
       where,
@@ -99,6 +94,72 @@ export class PlatformAuditService {
       nextCursor,
       total,
     };
+  }
+
+  /**
+   * Export CSV sync con los mismos filtros que `query` (sin cursor/limit).
+   * Máximo {@link AUDIT_EXPORT_MAX_ROWS} filas; `truncated=true` si hay más.
+   */
+  async exportCsv(dto: QueryPlatformAuditLogsDto = {}): Promise<AuditCsvExportResult> {
+    const repo = this.dataSource.getRepository(PlatformAuditLog);
+    const where = this.buildWhere(dto, { includeCursor: false });
+
+    const data = await repo.find({
+      where,
+      order: { createdAt: 'DESC', id: 'DESC' },
+      take: AUDIT_EXPORT_MAX_ROWS + 1,
+    });
+
+    const truncated = data.length > AUDIT_EXPORT_MAX_ROWS;
+    const rows = truncated ? data.slice(0, AUDIT_EXPORT_MAX_ROWS) : data;
+    const actors = await this.auditActorResolver.resolveMany(
+      rows.map((entry) => entry.userId),
+      { source: 'platform' },
+    );
+
+    const csv = buildAuditCsv(
+      rows.map((entry) => ({
+        createdAt: entry.createdAt,
+        action: entry.action,
+        entityType: entry.entityType,
+        entityId: entry.entityId,
+        actorLabel: this.resolveActorLabel(entry.userId, actors),
+        ipAddress: entry.ipAddress,
+        requestId: entry.requestId,
+      })),
+      { truncated, maxRows: AUDIT_EXPORT_MAX_ROWS },
+    );
+
+    return { csv, truncated, rowCount: rows.length };
+  }
+
+  private buildWhere(
+    dto: QueryPlatformAuditLogsDto,
+    options: { includeCursor?: boolean } = {},
+  ): Record<string, unknown> {
+    const includeCursor = options.includeCursor !== false;
+    const where: Record<string, unknown> = {};
+
+    if (dto.action) where['action'] = dto.action;
+    if (dto.entityType) where['entityType'] = dto.entityType;
+    if (dto.userId) where['userId'] = dto.userId;
+
+    const createdAt = buildCreatedAtFilter(dto.fromDate, dto.toDate);
+    if (createdAt) where['createdAt'] = createdAt;
+
+    if (includeCursor && dto.cursor) where['id'] = LessThan(dto.cursor);
+
+    return where;
+  }
+
+  private resolveActorLabel(
+    userId: string | null,
+    actors: Map<string, AuditLogResponseDto['actor']>,
+  ): string {
+    if (!userId) {
+      return this.auditActorResolver.systemActor().displayName;
+    }
+    return actors.get(userId)?.displayName ?? userId;
   }
 
   private toResponseDto(

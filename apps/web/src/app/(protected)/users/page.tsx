@@ -1,6 +1,6 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@iwana/ui';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -9,9 +9,12 @@ import { UserCreateModal } from '@/components/users/UserCreateModal';
 import { UserManagementModal } from '@/components/users/UserManagementModal';
 import { UsersTable } from '@/components/users/UsersTable';
 import { tenantApi, type TenantListItem, type UserListItem, usersApi } from '@/lib/api-client';
+import { mergeUrlSearchParams, withSearchParams } from '@/lib/merge-url-search-params';
 import { PLATFORM_UI_COPY, getPlatformUsersSubtitle } from '@/lib/platform-ui-copy';
 
 export default function UsersPage() {
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [tenants, setTenants] = useState<TenantListItem[]>([]);
   const [tenantSlug, setTenantSlug] = useState('');
@@ -30,6 +33,8 @@ export default function UsersPage() {
 
   const requestedTenantSlug = searchParams.get('tenant')?.trim() ?? '';
   const requestedSearch = searchParams.get('search')?.trim() ?? '';
+  const requestedStatus = searchParams.get('status')?.trim() ?? '';
+  const requestedRole = searchParams.get('role')?.trim() ?? '';
   const requestedUserId = searchParams.get('openUser')?.trim() ?? '';
 
   useEffect(() => {
@@ -53,6 +58,35 @@ export default function UsersPage() {
     void loadTenants();
   }, [requestedTenantSlug]);
 
+  // Persistencia URL: tenant (+ conserva search/status/role/openUser)
+  useEffect(() => {
+    if (!tenantSlug) {
+      return;
+    }
+
+    const query = mergeUrlSearchParams(searchParams, {
+      tenant: tenantSlug,
+      search: requestedSearch || null,
+      status: requestedStatus || null,
+      role: requestedRole || null,
+      openUser: requestedUserId || null,
+    });
+    const current = searchParams.toString();
+    if (query === current) {
+      return;
+    }
+    router.replace(withSearchParams(pathname, query), { scroll: false });
+  }, [
+    pathname,
+    requestedRole,
+    requestedSearch,
+    requestedStatus,
+    requestedUserId,
+    router,
+    searchParams,
+    tenantSlug,
+  ]);
+
   const loadUsers = useCallback(async () => {
     if (!tenantSlug) {
       setUsers([]);
@@ -64,9 +98,19 @@ export default function UsersPage() {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const params = cursor
-        ? { cursor, limit: 20, ...(requestedSearch ? { search: requestedSearch } : {}) }
-        : { limit: 20, ...(requestedSearch ? { search: requestedSearch } : {}) };
+      const params: {
+        cursor?: string;
+        limit: number;
+        search?: string;
+        status?: string;
+        role?: string;
+      } = {
+        limit: 20,
+        ...(cursor ? { cursor } : {}),
+        ...(requestedSearch ? { search: requestedSearch } : {}),
+        ...(requestedStatus ? { status: requestedStatus } : {}),
+        ...(requestedRole ? { role: requestedRole } : {}),
+      };
       const response = await usersApi.list(tenantSlug, params);
       setUsers(response.data ?? []);
       setTotalUsers(response.meta?.total ?? 0);
@@ -80,7 +124,7 @@ export default function UsersPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [tenantSlug, cursor, refreshKey, requestedSearch]);
+  }, [tenantSlug, cursor, refreshKey, requestedSearch, requestedStatus, requestedRole]);
 
   useEffect(() => {
     void loadUsers();
@@ -123,7 +167,7 @@ export default function UsersPage() {
       };
     }
 
-    if (requestedSearch) {
+    if (requestedSearch || requestedStatus || requestedRole) {
       return {
         title: `No encontramos usuarios en ${selectedTenantName}.`,
         description: 'Revisa el criterio de búsqueda o crea un usuario interno para continuar.',
@@ -134,7 +178,15 @@ export default function UsersPage() {
       title: `Aún no hay usuarios internos en ${selectedTenantName}.`,
       description: 'Crea el primer usuario interno para empezar a gestionar accesos.',
     };
-  }, [loadError, requestedSearch, selectedTenantName, tenantSlug, tenants.length]);
+  }, [
+    loadError,
+    requestedRole,
+    requestedSearch,
+    requestedStatus,
+    selectedTenantName,
+    tenantSlug,
+    tenants.length,
+  ]);
 
   return (
     <div className="space-y-6">
@@ -156,7 +208,12 @@ export default function UsersPage() {
           ariaLabel={PLATFORM_UI_COPY.shared.selectTenant}
         />
 
-        <Button type="button" onClick={() => setOpenCreateModal(true)} disabled={!tenantSlug}>
+        <Button
+          type="button"
+          variant="lime"
+          onClick={() => setOpenCreateModal(true)}
+          disabled={!tenantSlug}
+        >
           {PLATFORM_UI_COPY.users.createAction}
         </Button>
       </div>
@@ -170,7 +227,7 @@ export default function UsersPage() {
           <strong>Error al cargar usuarios:</strong> {loadError}
           <button
             type="button"
-            className="ml-3 underline hover:no-underline"
+            className="ml-3 inline-flex min-h-11 items-center underline hover:no-underline"
             onClick={() => setRefreshKey((k) => k + 1)}
           >
             Reintentar

@@ -4,13 +4,10 @@ import { Type } from 'class-transformer';
 import { AuditAction } from '@iwana/shared';
 
 /**
- * DTO de filtros para consulta de audit logs del tenant.
- * Todos los campos son opcionales — sin filtros retorna los ultimos registros.
- *
- * HLD-MOD01-ARQUITECTURA-v1.0 Seccion 4 (GET /api/v1/audit-logs)
+ * DTO de filtros para consulta de platform_audit_logs.
+ * Paridad con QueryAuditLogsDto (fromDate/toDate ISO) — RF-AUD-03 / Fase WEB-UIUX-04.
  */
-export class QueryAuditLogsDto {
-  /** Cursor UUID para paginacion (id del ultimo registro de la pagina anterior) */
+export class QueryPlatformAuditLogsDto {
   @ApiPropertyOptional({
     format: 'uuid',
     description: 'Cursor UUID para paginación (id del último registro de la página anterior)',
@@ -19,7 +16,6 @@ export class QueryAuditLogsDto {
   @IsUUID()
   cursor?: string;
 
-  /** Limite de registros por pagina (default 50, max 100) */
   @ApiPropertyOptional({
     minimum: 1,
     maximum: 100,
@@ -32,37 +28,27 @@ export class QueryAuditLogsDto {
   @Max(100)
   limit?: number = 50;
 
-  /** Filtrar por accion */
   @ApiPropertyOptional({ enum: AuditAction, description: 'Filtrar por acción de auditoría' })
   @IsOptional()
   @IsEnum(AuditAction)
   action?: AuditAction;
 
-  /** Filtrar por tipo de entidad. Ejemplo: 'User', 'Subscriber' */
   @ApiPropertyOptional({
-    example: 'User',
-    description: 'Filtrar por tipo de entidad (ej. User, Subscriber)',
+    example: 'Tenant',
+    description: 'Filtrar por tipo de entidad (ej. Tenant, PlatformUser)',
   })
   @IsOptional()
   @IsString()
   entityType?: string;
 
-  /** Filtrar por ID de entidad especifica */
-  @ApiPropertyOptional({ description: 'Filtrar por ID de entidad específica' })
-  @IsOptional()
-  @IsString()
-  entityId?: string;
-
-  /** Filtrar por usuario que realizo la accion */
   @ApiPropertyOptional({
     format: 'uuid',
-    description: 'Filtrar por usuario que realizó la acción',
+    description: 'Filtrar por usuario de plataforma que realizó la acción',
   })
   @IsOptional()
   @IsUUID()
   userId?: string;
 
-  /** Fecha inicial del rango (ISO 8601) */
   @ApiPropertyOptional({
     example: '2026-01-01T00:00:00.000Z',
     description: 'Fecha inicial del rango (ISO 8601, inclusiva)',
@@ -71,7 +57,6 @@ export class QueryAuditLogsDto {
   @IsISO8601()
   fromDate?: string;
 
-  /** Fecha final del rango (ISO 8601) */
   @ApiPropertyOptional({
     example: '2026-12-31T23:59:59.999Z',
     description: 'Fecha final del rango (ISO 8601, inclusiva)',

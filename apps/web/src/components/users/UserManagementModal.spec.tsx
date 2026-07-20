@@ -35,6 +35,64 @@ jest.mock('@iwana/ui', () => {
         </select>
       );
     }),
+    Input: ReactLib.forwardRef<HTMLInputElement, Record<string, unknown>>(function MockInput(
+      { id, label, ...props },
+      ref,
+    ) {
+      return (
+        <div>
+          {label ? (
+            <label htmlFor={id as string | undefined}>{label as React.ReactNode}</label>
+          ) : null}
+          <input id={id as string | undefined} ref={ref} {...props} />
+        </div>
+      );
+    }),
+    Dialog: ({
+      open,
+      children,
+    }: {
+      open?: boolean;
+      children: React.ReactNode;
+      onOpenChange?: (open: boolean) => void;
+    }) => (open ? <div data-testid="dialog-root">{children}</div> : null),
+    DialogContent: ({ children }: { children: React.ReactNode }) => (
+      <div role="dialog" aria-modal="true">
+        {children}
+      </div>
+    ),
+    DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+    DialogTitle: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => (
+      <h2 {...props}>{children}</h2>
+    ),
+    DialogDescription: ({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) => (
+      <p {...props}>{children}</p>
+    ),
+    DialogClose: ({
+      children,
+      asChild,
+      onClick,
+    }: {
+      children: React.ReactNode;
+      asChild?: boolean;
+      onClick?: React.MouseEventHandler;
+    }) => {
+      if (asChild && ReactLib.isValidElement(children)) {
+        const child = children as React.ReactElement<{ onClick?: React.MouseEventHandler }>;
+        return ReactLib.cloneElement(child, {
+          onClick: (event: React.MouseEvent) => {
+            child.props.onClick?.(event);
+            onClick?.(event);
+          },
+        });
+      }
+
+      return (
+        <button type="button" onClick={onClick}>
+          {children}
+        </button>
+      );
+    },
   };
 });
 
@@ -151,7 +209,7 @@ describe('UserManagementModal', () => {
     expect(onSaved).toHaveBeenCalledWith(updatedUser);
   });
 
-  it('genera contraseña temporal y la muestra en el modal', async () => {
+  it('genera contraseña temporal tras confirmar y la muestra en el modal', async () => {
     const onSaved = jest.fn();
     usersApiMock.resetPassword.mockResolvedValue({
       temporaryPassword: 'temp1234567890abcdef',
@@ -171,6 +229,9 @@ describe('UserManagementModal', () => {
 
     await screen.findByLabelText('Correo de acceso');
     fireEvent.click(screen.getByRole('button', { name: 'Generar contraseña temporal' }));
+    expect(usersApiMock.resetPassword).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sí, generar contraseña' }));
 
     await waitFor(() => {
       expect(usersApiMock.resetPassword).toHaveBeenCalledWith(
@@ -192,7 +253,27 @@ describe('UserManagementModal', () => {
     );
   });
 
-  it('elimina el usuario y propaga el cierre al padre', async () => {
+  it('al cancelar la generación de contraseña no llama a la API', async () => {
+    render(
+      <UserManagementModal
+        open
+        tenantSlug="acme"
+        tenantName="Acme"
+        user={baseUser as never}
+        onClose={jest.fn()}
+        onSaved={jest.fn()}
+        onDeleted={jest.fn()}
+      />,
+    );
+
+    await screen.findByLabelText('Correo de acceso');
+    fireEvent.click(screen.getByRole('button', { name: 'Generar contraseña temporal' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    expect(usersApiMock.resetPassword).not.toHaveBeenCalled();
+  });
+
+  it('elimina el usuario tras confirmar y propaga el cierre al padre', async () => {
     const onDeleted = jest.fn();
     const onClose = jest.fn();
     usersApiMock.remove.mockResolvedValue(undefined as never);
@@ -211,6 +292,9 @@ describe('UserManagementModal', () => {
 
     await screen.findByLabelText('Correo de acceso');
     fireEvent.click(screen.getByRole('button', { name: 'Eliminar usuario' }));
+    expect(usersApiMock.remove).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sí, eliminar usuario' }));
 
     await waitFor(() => {
       expect(usersApiMock.remove).toHaveBeenCalledWith('acme', baseUser.id);
@@ -218,5 +302,28 @@ describe('UserManagementModal', () => {
 
     expect(onDeleted).toHaveBeenCalledWith(baseUser.id);
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('al cancelar la eliminación no llama a la API', async () => {
+    const onDeleted = jest.fn();
+
+    render(
+      <UserManagementModal
+        open
+        tenantSlug="acme"
+        tenantName="Acme"
+        user={baseUser as never}
+        onClose={jest.fn()}
+        onSaved={jest.fn()}
+        onDeleted={onDeleted}
+      />,
+    );
+
+    await screen.findByLabelText('Correo de acceso');
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar usuario' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    expect(usersApiMock.remove).not.toHaveBeenCalled();
+    expect(onDeleted).not.toHaveBeenCalled();
   });
 });

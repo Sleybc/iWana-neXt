@@ -1,10 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, LessThan, MoreThanOrEqual } from 'typeorm';
+import { DataSource, LessThan } from 'typeorm';
 import { AuditLog, runInTenantSchema, TenantContext } from '@iwana/db';
 import { QueryAuditLogsDto } from './dto/query-audit-logs.dto';
 import { AuditActorResolver } from './audit-actor.resolver';
 import { AuditLogListResponseDto, AuditLogResponseDto } from './dto/audit-log-response.dto';
+import {
+  AUDIT_EXPORT_MAX_ROWS,
+  AuditCsvExportResult,
+  buildAuditCsv,
+  buildCreatedAtFilter,
+} from './helpers/audit-export.helper';
 
 /**
  * Servicio de consulta de audit logs del tenant.
@@ -35,21 +41,7 @@ export class AuditQueryService {
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const repo = qr.manager.getRepository(AuditLog);
-
-      // Construir clausulas where dinamicamente
-      const where: Record<string, any> = {};
-
-      if (dto.action) where['action'] = dto.action;
-      if (dto.entityType) where['entityType'] = dto.entityType;
-      if (dto.entityId) where['entityId'] = dto.entityId;
-      if (dto.userId) where['userId'] = dto.userId;
-      if (dto.fromDate) where['createdAt'] = MoreThanOrEqual(new Date(dto.fromDate));
-      if (dto.toDate) {
-        // Si ya hay fromDate, sobreescribir con objeto Between no disponible directamente;
-        // por simplicidad, aplicamos LessThan en una segunda query si solo hay toDate
-        if (!dto.fromDate) where['createdAt'] = LessThan(new Date(dto.toDate));
-      }
-      if (dto.cursor) where['id'] = LessThan(dto.cursor);
+      const where = this.buildWhere(dto);
 
       const [data, total] = await repo.findAndCount({
         where,
@@ -71,6 +63,77 @@ export class AuditQueryService {
         total,
       };
     });
+  }
+
+  /**
+   * Export CSV sync con los mismos filtros que `query` (sin cursor/limit).
+   * Máximo {@link AUDIT_EXPORT_MAX_ROWS} filas; `truncated=true` si hay más.
+   */
+  async exportCsv(dto: QueryAuditLogsDto): Promise<AuditCsvExportResult> {
+    const { schemaName } = TenantContext.getOrThrow();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const repo = qr.manager.getRepository(AuditLog);
+      const where = this.buildWhere(dto, { includeCursor: false });
+
+      const data = await repo.find({
+        where,
+        order: { createdAt: 'DESC', id: 'DESC' },
+        take: AUDIT_EXPORT_MAX_ROWS + 1,
+      });
+
+      const truncated = data.length > AUDIT_EXPORT_MAX_ROWS;
+      const rows = truncated ? data.slice(0, AUDIT_EXPORT_MAX_ROWS) : data;
+      const actors = await this.auditActorResolver.resolveMany(
+        rows.map((entry) => entry.userId),
+        { source: 'tenant', queryRunner: qr },
+      );
+
+      const csv = buildAuditCsv(
+        rows.map((entry) => ({
+          createdAt: entry.createdAt,
+          action: entry.action,
+          entityType: entry.entityType,
+          entityId: entry.entityId,
+          actorLabel: this.resolveActorLabel(entry.userId, actors),
+          ipAddress: entry.ipAddress,
+          requestId: entry.requestId,
+        })),
+        { truncated, maxRows: AUDIT_EXPORT_MAX_ROWS },
+      );
+
+      return { csv, truncated, rowCount: rows.length };
+    });
+  }
+
+  private buildWhere(
+    dto: QueryAuditLogsDto,
+    options: { includeCursor?: boolean } = {},
+  ): Record<string, unknown> {
+    const includeCursor = options.includeCursor !== false;
+    const where: Record<string, unknown> = {};
+
+    if (dto.action) where['action'] = dto.action;
+    if (dto.entityType) where['entityType'] = dto.entityType;
+    if (dto.entityId) where['entityId'] = dto.entityId;
+    if (dto.userId) where['userId'] = dto.userId;
+
+    const createdAt = buildCreatedAtFilter(dto.fromDate, dto.toDate);
+    if (createdAt) where['createdAt'] = createdAt;
+
+    if (includeCursor && dto.cursor) where['id'] = LessThan(dto.cursor);
+
+    return where;
+  }
+
+  private resolveActorLabel(
+    userId: string | null,
+    actors: Map<string, AuditLogResponseDto['actor']>,
+  ): string {
+    if (!userId) {
+      return this.auditActorResolver.systemActor().displayName;
+    }
+    return actors.get(userId)?.displayName ?? userId;
   }
 
   private toResponseDto(

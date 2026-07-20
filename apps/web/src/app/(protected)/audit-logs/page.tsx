@@ -2,6 +2,7 @@
 
 // Página de registros de auditoría — resumen operativo + tabla con modo Básico/Técnico
 import { ApiError } from '@/lib/api-client';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { PlatformTenantPicker } from '@/components/shared/PlatformTenantPicker';
@@ -13,13 +14,38 @@ import {
   auditApi,
   platformAuditApi,
   tenantApi,
+  type AuditCsvExportParams,
   type AuditLogEntry,
+  type AuditLogQueryParams,
   type TenantListItem,
 } from '@/lib/api-client';
+import { mergeUrlSearchParams, withSearchParams } from '@/lib/merge-url-search-params';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 
 const PAGE_LIMIT = 50;
 const SUMMARY_LIMIT = 200;
+
+/** YYYY-MM-DD → ISO UTC inicio/fin de día calendario (alineado a ejemplos OpenAPI). */
+function localDateToIsoStart(value: string): string | undefined {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  return `${value}T00:00:00.000Z`;
+}
+
+function localDateToIsoEnd(value: string): string | undefined {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  return `${value}T23:59:59.999Z`;
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 100);
+}
+
+type ViewMode = 'basic' | 'technical';
 
 type BaseAuditEntry = Pick<
   AuditLogEntry,
@@ -36,6 +62,10 @@ type BaseAuditEntry = Pick<
   | 'newValue'
   | 'createdAt'
 >;
+
+function parseViewMode(value: string | null): ViewMode {
+  return value === 'technical' ? 'technical' : 'basic';
+}
 
 function useAuditTable(initialEntries: BaseAuditEntry[] = []) {
   const [entries, setEntries] = useState<BaseAuditEntry[]>(initialEntries);
@@ -104,11 +134,20 @@ function useAuditTable(initialEntries: BaseAuditEntry[] = []) {
 }
 
 export default function AuditLogsPage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [tenants, setTenants] = useState<TenantListItem[]>([]);
-  const [tenantSlug, setTenantSlug] = useState('');
+  const [tenantSlug, setTenantSlug] = useState(() => searchParams.get('tenant')?.trim() ?? '');
 
   // Modo de vista compartido entre ambas tablas
-  const [viewMode, setViewMode] = useState<'basic' | 'technical'>('basic');
+  const [viewMode, setViewMode] = useState<ViewMode>(() => parseViewMode(searchParams.get('view')));
+
+  // Filtros de barra (compartidos; persistidos en URL)
+  const [actionFilter, setActionFilter] = useState(() => searchParams.get('action')?.trim() ?? '');
+  const [dateFrom, setDateFrom] = useState(() => searchParams.get('from')?.trim() ?? '');
+  const [dateTo, setDateTo] = useState(() => searchParams.get('to')?.trim() ?? '');
 
   // Ventana temporal para resúmenes
   const [summaryWindow, setSummaryWindow] = useState<'24h' | '7d'>('24h');
@@ -130,6 +169,22 @@ export default function AuditLogsPage() {
   const platformTable = useAuditTable();
   const tenantTable = useAuditTable();
 
+  // Persistencia URL: tenant, view, action, from, to
+  useEffect(() => {
+    const query = mergeUrlSearchParams(searchParams, {
+      tenant: tenantSlug || null,
+      view: viewMode === 'technical' ? 'technical' : null,
+      action: actionFilter || null,
+      from: dateFrom || null,
+      to: dateTo || null,
+    });
+    const current = searchParams.toString();
+    if (query === current) {
+      return;
+    }
+    router.replace(withSearchParams(pathname, query), { scroll: false });
+  }, [actionFilter, dateFrom, dateTo, pathname, router, searchParams, tenantSlug, viewMode]);
+
   // Carga lista de tenants activos
   useEffect(() => {
     const loadTenants = async () => {
@@ -137,26 +192,56 @@ export default function AuditLogsPage() {
         const list = await tenantApi.list({ limit: 100, offset: 0 });
         const active = list.filter((item) => item.status === 'ACTIVE');
         setTenants(active);
-        if (active[0]) setTenantSlug(active[0].slug);
+        const requestedSlug = searchParams.get('tenant')?.trim() ?? '';
+        const fromUrl = active.find((item) => item.slug === requestedSlug);
+        setTenantSlug((current) => {
+          if (current && active.some((item) => item.slug === current)) {
+            return current;
+          }
+          return fromUrl?.slug ?? active[0]?.slug ?? '';
+        });
       } catch {
         // Si no hay tenants accesibles, queda vacío
       }
     };
     void loadTenants();
+    // Solo al montar / hidratación inicial desde URL
   }, []);
 
-  // Carga datos para la tabla de plataforma (paginada)
+  const buildServerListParams = useCallback(
+    (cursor?: string): AuditLogQueryParams => {
+      const params: AuditLogQueryParams = { limit: PAGE_LIMIT };
+      if (cursor) params.cursor = cursor;
+      if (actionFilter) params.action = actionFilter;
+      const fromDate = localDateToIsoStart(dateFrom);
+      const toDate = localDateToIsoEnd(dateTo);
+      if (fromDate) params.fromDate = fromDate;
+      if (toDate) params.toDate = toDate;
+      return params;
+    },
+    [actionFilter, dateFrom, dateTo],
+  );
+
+  const buildExportParams = useCallback((): AuditCsvExportParams => {
+    const params: AuditCsvExportParams = {};
+    if (actionFilter) params.action = actionFilter;
+    const fromDate = localDateToIsoStart(dateFrom);
+    const toDate = localDateToIsoEnd(dateTo);
+    if (fromDate) params.fromDate = fromDate;
+    if (toDate) params.toDate = toDate;
+    return params;
+  }, [actionFilter, dateFrom, dateTo]);
+
+  // Carga datos para la tabla de plataforma (paginada, filtros server-side)
   useEffect(() => {
     const fetchPlatform = () => {
-      const params: { limit: number; cursor?: string } = { limit: PAGE_LIMIT };
-      if (platformTable.cursor) params.cursor = platformTable.cursor;
-      return platformAuditApi.list(params).then((r) => ({
+      return platformAuditApi.list(buildServerListParams(platformTable.cursor)).then((r) => ({
         data: r.data as BaseAuditEntry[],
         nextCursor: r.nextCursor,
       }));
     };
     void platformTable.loadEntries(fetchPlatform);
-  }, [platformTable.cursor]);
+  }, [platformTable.cursor, buildServerListParams]);
 
   // Carga datos para el resumen de plataforma (limit=200, sin cursor)
   useEffect(() => {
@@ -174,19 +259,17 @@ export default function AuditLogsPage() {
     void loadPlatformSummary();
   }, []);
 
-  // Carga datos para la tabla de tenant (paginada)
+  // Carga datos para la tabla de tenant (paginada, filtros server-side)
   useEffect(() => {
     if (!tenantSlug) return;
     const fetchTenant = () => {
-      const params: { limit: number; cursor?: string } = { limit: PAGE_LIMIT };
-      if (tenantTable.cursor) params.cursor = tenantTable.cursor;
-      return auditApi.list(params, tenantSlug).then((r) => ({
+      return auditApi.list(buildServerListParams(tenantTable.cursor), tenantSlug).then((r) => ({
         data: r.data as BaseAuditEntry[],
         nextCursor: r.nextCursor,
       }));
     };
     void tenantTable.loadEntries(fetchTenant);
-  }, [tenantSlug, tenantTable.cursor]);
+  }, [tenantSlug, tenantTable.cursor, buildServerListParams]);
 
   // Carga datos para el resumen de tenant (limit=200, sin cursor)
   useEffect(() => {
@@ -206,6 +289,28 @@ export default function AuditLogsPage() {
     void loadTenantSummary();
   }, [tenantSlug]);
 
+  const resetTablePagination = () => {
+    platformTable.reset();
+    tenantTable.reset();
+    setPlatformPageIndex(1);
+    setTenantPageIndex(1);
+  };
+
+  const handleActionFilterChange = (value: string) => {
+    setActionFilter(value);
+    resetTablePagination();
+  };
+
+  const handleDateFromChange = (value: string) => {
+    setDateFrom(value);
+    resetTablePagination();
+  };
+
+  const handleDateToChange = (value: string) => {
+    setDateTo(value);
+    resetTablePagination();
+  };
+
   const handleTenantChange = (slug: string) => {
     setTenantSlug(slug);
     tenantTable.reset();
@@ -214,6 +319,27 @@ export default function AuditLogsPage() {
     setTenantSummaryEntries([]);
     setTenantFilters(undefined);
     setTenantPageIndex(1);
+  };
+
+  const handlePlatformExportCsv = async () => {
+    const result = await platformAuditApi.exportCsv(buildExportParams());
+    downloadBlob(
+      result.blob,
+      result.filename ?? `platform-audit-logs-${new Date().toISOString().slice(0, 10)}.csv`,
+    );
+    return { truncated: result.truncated };
+  };
+
+  const handleTenantExportCsv = async () => {
+    if (!tenantSlug) {
+      throw new Error('Selecciona una empresa para exportar.');
+    }
+    const result = await auditApi.exportCsv(buildExportParams(), tenantSlug);
+    downloadBlob(
+      result.blob,
+      result.filename ?? `audit-logs-${new Date().toISOString().slice(0, 10)}.csv`,
+    );
+    return { truncated: result.truncated };
   };
 
   const handlePlatformNext = () => {
@@ -256,6 +382,15 @@ export default function AuditLogsPage() {
 
   const selectedTenantName = tenants.find((t) => t.slug === tenantSlug)?.name;
 
+  const sharedFilterProps = {
+    actionFilter,
+    dateFrom,
+    dateTo,
+    onActionFilterChange: handleActionFilterChange,
+    onDateFromChange: handleDateFromChange,
+    onDateToChange: handleDateToChange,
+  };
+
   return (
     <div className="space-y-10">
       <PageHeader title={PLATFORM_UI_COPY.audit.title} subtitle={PLATFORM_UI_COPY.audit.subtitle} />
@@ -264,11 +399,11 @@ export default function AuditLogsPage() {
       <section aria-labelledby="platform-audit-heading">
         <h2
           id="platform-audit-heading"
-          className="text-lg font-bold text-[#181818] dark:text-white mb-1"
+          className="mb-1 text-lg font-bold text-iwana-primary dark:text-white"
         >
           {PLATFORM_UI_COPY.audit.platformSectionTitle}
         </h2>
-        <p className="text-sm text-slate-500 mb-4">
+        <p className="mb-4 text-sm text-slate-500">
           {PLATFORM_UI_COPY.audit.platformSectionSubtitle}
         </p>
 
@@ -285,12 +420,14 @@ export default function AuditLogsPage() {
 
         {/* Indicador de filtro activo + limpieza */}
         {platformFilters && (
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-xs text-gray-500">Filtro activo desde el resumen.</span>
+          <div className="mb-3 flex items-center gap-2">
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              Filtro activo desde el resumen.
+            </span>
             <button
               type="button"
               onClick={() => setPlatformFilters(undefined)}
-              className="text-xs font-medium text-iwana-primary hover:underline"
+              className="inline-flex min-h-11 items-center rounded-lg px-2 text-xs font-medium text-iwana-primary hover:underline"
             >
               Limpiar filtro
             </button>
@@ -314,15 +451,17 @@ export default function AuditLogsPage() {
           onViewModeChange={setViewMode}
           externalFilters={platformFilters}
           pageIndex={platformPageIndex}
+          onExportCsv={handlePlatformExportCsv}
+          {...sharedFilterProps}
         />
       </section>
 
       {/* --- Sección: Auditoría por Empresa --- */}
       <section aria-labelledby="tenant-audit-heading">
-        <div className="flex flex-wrap items-center gap-3 mb-1">
+        <div className="mb-1 flex flex-wrap items-center gap-3">
           <h2
             id="tenant-audit-heading"
-            className="text-lg font-bold text-[#181818] dark:text-white"
+            className="text-lg font-bold text-iwana-primary dark:text-white"
           >
             {PLATFORM_UI_COPY.audit.tenantSectionTitle}
           </h2>
@@ -333,7 +472,7 @@ export default function AuditLogsPage() {
             ariaLabel={PLATFORM_UI_COPY.shared.selectTenant}
           />
         </div>
-        <p className="text-sm text-slate-500 mb-4">
+        <p className="mb-4 text-sm text-slate-500">
           {PLATFORM_UI_COPY.audit.tenantSectionSubtitle}
         </p>
 
@@ -351,12 +490,14 @@ export default function AuditLogsPage() {
         )}
 
         {tenantFilters && (
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-xs text-gray-500">Filtro activo desde el resumen.</span>
+          <div className="mb-3 flex items-center gap-2">
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              Filtro activo desde el resumen.
+            </span>
             <button
               type="button"
               onClick={() => setTenantFilters(undefined)}
-              className="text-xs font-medium text-iwana-primary hover:underline"
+              className="inline-flex min-h-11 items-center rounded-lg px-2 text-xs font-medium text-iwana-primary hover:underline"
             >
               Limpiar filtro
             </button>
@@ -381,6 +522,8 @@ export default function AuditLogsPage() {
           externalFilters={tenantFilters}
           companyName={selectedTenantName}
           pageIndex={tenantPageIndex}
+          onExportCsv={handleTenantExportCsv}
+          {...sharedFilterProps}
         />
       </section>
     </div>

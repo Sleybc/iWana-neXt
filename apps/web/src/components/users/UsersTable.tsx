@@ -1,6 +1,15 @@
 'use client';
 
-import { Button, Card, CardContent, CardHeader, CardTitle, cn } from '@iwana/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  cn,
+  type BadgeProps,
+} from '@iwana/ui';
 import { ChevronLeft, ChevronRight, KeyRound, Shield, ShieldOff, UserCog } from 'lucide-react';
 import type { UserListItem } from '@/lib/api-client';
 import { getWebUserRoleLabel, getWebUserStatusLabel } from '@/lib/user-labels';
@@ -15,48 +24,46 @@ const TABLE_HEADERS = [
   { id: 'actions', label: 'Acciones', className: 'w-[120px] text-right' },
 ] as const;
 
-/** Retorna las clases pill para el badge de rol */
-function roleBadgeClasses(role: string): string {
-  const base =
-    'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset';
+type BadgeVariant = NonNullable<BadgeProps['variant']>;
+
+/** Mapea el rol del usuario a la variante semántica del Badge del DS */
+function roleBadgeVariant(role: string): BadgeVariant {
   switch (role) {
     case 'ADMIN':
-      return `${base} bg-iwana-primary-50 text-iwana-primary-700 ring-iwana-primary-100 dark:bg-iwana-primary-500/15 dark:text-iwana-primary-300 dark:ring-iwana-primary-500/20`;
+      return 'primary';
     case 'NOC':
-      return `${base} bg-blue-50 text-blue-700 ring-blue-100 dark:bg-blue-500/15 dark:text-blue-400 dark:ring-blue-500/20`;
+      return 'info';
     case 'SUPPORT':
-      return `${base} bg-gray-100 text-gray-600 ring-gray-200 dark:bg-white/[0.03] dark:text-gray-400 dark:ring-dark-border-2`;
+      return 'neutral';
     case 'TECHNICIAN':
-      return `${base} bg-yellow-50 text-yellow-700 ring-yellow-100 dark:bg-yellow-500/15 dark:text-yellow-400 dark:ring-yellow-500/20`;
+      return 'warning';
     case 'SALES':
-      return `${base} bg-green-50 text-green-700 ring-green-100 dark:bg-green-500/15 dark:text-green-400 dark:ring-green-500/20`;
+      return 'success';
     case 'ACCOUNTANT':
-      return `${base} bg-purple-50 text-purple-700 ring-purple-100 dark:bg-purple-500/15 dark:text-purple-400 dark:ring-purple-500/20`;
+      return 'info';
     case 'HR':
-      return `${base} bg-pink-50 text-pink-700 ring-pink-100 dark:bg-pink-500/15 dark:text-pink-400 dark:ring-pink-500/20`;
+      return 'lime';
     case 'SUBSCRIBER':
-      return `${base} bg-gray-100 text-gray-500 ring-gray-200`;
+      return 'neutral';
     default:
-      return `${base} bg-gray-100 text-gray-500 ring-gray-200 dark:bg-white/[0.03] dark:text-gray-400 dark:ring-dark-border-2`;
+      return 'neutral';
   }
 }
 
-/** Retorna las clases pill para el badge de estado */
-function statusBadgeClasses(status: string): string {
-  const base =
-    'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset';
+/** Mapea el estado del usuario a la variante semántica del Badge del DS */
+function statusBadgeVariant(status: string): BadgeVariant {
   switch (status) {
     case 'ACTIVE':
-      return `${base} bg-success-50 text-success-700 ring-success-100 dark:bg-success-500/15 dark:text-success-400 dark:ring-success-500/20`;
+      return 'success';
     case 'SUSPENDED':
-      return `${base} bg-error-50 text-error-700 ring-error-100 dark:bg-error-500/15 dark:text-error-400 dark:ring-error-500/20`;
+      return 'error';
     case 'PENDING':
     case 'PENDING_VERIFICATION':
-      return `${base} bg-warning-50 text-warning-700 ring-warning-100 dark:bg-warning-500/15 dark:text-warning-400 dark:ring-warning-500/20`;
+      return 'warning';
     case 'INACTIVE':
-      return `${base} bg-gray-100 text-gray-600 ring-gray-200 dark:bg-white/[0.03] dark:text-gray-400 dark:ring-dark-border-2`;
+      return 'neutral';
     default:
-      return `${base} bg-gray-100 text-gray-500 ring-gray-200 dark:bg-white/[0.03] dark:text-gray-400 dark:ring-dark-border-2`;
+      return 'neutral';
   }
 }
 
@@ -106,17 +113,10 @@ function SecurityIndicator({
   const Icon = enabled ? EnabledIcon : DisabledIcon;
 
   return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset',
-        enabled
-          ? 'bg-success-50 text-success-700 ring-success-100 dark:bg-success-500/15 dark:text-success-400 dark:ring-success-500/20'
-          : 'bg-gray-50 text-gray-500 ring-gray-200 dark:bg-white/[0.03] dark:text-gray-400 dark:ring-dark-border-2',
-      )}
-    >
+    <Badge variant={enabled ? 'success' : 'neutral'} className="gap-1.5 py-1">
       <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       {enabled ? enabledLabel : disabledLabel}
-    </span>
+    </Badge>
   );
 }
 
@@ -153,7 +153,10 @@ function EmptyStateRow({
       <td colSpan={colSpan} className="px-6 py-12 text-center">
         <div className="mx-auto flex max-w-md flex-col items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-iwana-surface-soft ring-1 ring-inset ring-iwana-primary-100 dark:bg-dark-surface-3 dark:ring-dark-border-2">
-            <UserCog className="h-5 w-5 text-iwana-secondary-700 dark:text-iwana-secondary" aria-hidden="true" />
+            <UserCog
+              className="h-5 w-5 text-iwana-secondary-700 dark:text-iwana-secondary"
+              aria-hidden="true"
+            />
           </div>
           <div className="space-y-1">
             <p className="text-sm font-medium text-iwana-primary dark:text-white">{title}</p>
@@ -208,7 +211,7 @@ export function UsersTable({
 
       <CardContent className="mt-4 p-0">
         <div className="px-6 pb-6">
-          <div className="overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-800">
+          <div className="overflow-hidden rounded-2xl border border-gray-200 dark:border-dark-border">
             <div className="overflow-x-auto">
               <table className="w-full text-sm" aria-label="Listado de usuarios internos">
                 <thead>
@@ -216,14 +219,37 @@ export function UsersTable({
                 </thead>
                 <tbody className="divide-y divide-gray-50 bg-white dark:divide-dark-border dark:bg-dark-surface-2">
                   {isLoading ? (
-                    <tr>
-                      <td
-                        colSpan={TABLE_HEADERS.length}
-                        className="px-6 py-12 text-center text-sm text-gray-500 dark:text-gray-400"
-                      >
-                        Cargando usuarios internos...
-                      </td>
-                    </tr>
+                    Array.from({ length: 5 }).map((_, rowIndex) => (
+                      <tr key={`user-skeleton-${rowIndex}`} className="animate-pulse">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 shrink-0 rounded-2xl bg-gray-200 dark:bg-dark-surface-4" />
+                            <div className="flex-1 space-y-2">
+                              <div className="h-4 w-40 rounded bg-gray-200 dark:bg-dark-surface-4" />
+                              <div className="h-3 w-48 rounded bg-gray-100 dark:bg-dark-surface-3" />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="h-5 w-16 rounded-full bg-gray-200 dark:bg-dark-surface-4" />
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="h-5 w-16 rounded-full bg-gray-200 dark:bg-dark-surface-4" />
+                        </td>
+                        <td className="hidden px-6 py-4 md:table-cell">
+                          <div className="h-5 w-20 rounded-full bg-gray-100 dark:bg-dark-surface-3" />
+                        </td>
+                        <td className="hidden px-6 py-4 lg:table-cell">
+                          <div className="h-4 w-16 rounded bg-gray-100 dark:bg-dark-surface-3" />
+                        </td>
+                        <td className="hidden px-6 py-4 sm:table-cell">
+                          <div className="h-4 w-28 rounded bg-gray-100 dark:bg-dark-surface-3" />
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="ml-auto h-9 w-24 rounded-xl bg-gray-200 dark:bg-dark-surface-4" />
+                        </td>
+                      </tr>
+                    ))
                   ) : visibleCount === 0 ? (
                     <EmptyStateRow
                       colSpan={TABLE_HEADERS.length}
@@ -256,15 +282,15 @@ export function UsersTable({
                         </td>
 
                         <td className="px-6 py-4">
-                          <span className={roleBadgeClasses(user.role)}>
+                          <Badge variant={roleBadgeVariant(user.role)}>
                             {getWebUserRoleLabel(user.role)}
-                          </span>
+                          </Badge>
                         </td>
 
                         <td className="px-6 py-4">
-                          <span className={statusBadgeClasses(user.status)}>
+                          <Badge variant={statusBadgeVariant(user.status)}>
                             {getWebUserStatusLabel(user.status)}
-                          </span>
+                          </Badge>
                         </td>
 
                         <td className="hidden px-6 py-4 md:table-cell">
@@ -279,10 +305,10 @@ export function UsersTable({
 
                         <td className="hidden px-6 py-4 lg:table-cell">
                           {user.passwordResetRequired ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-warning-50 px-2.5 py-1 text-xs font-medium text-warning-700 ring-1 ring-inset ring-warning-100 dark:bg-warning-500/15 dark:text-warning-400 dark:ring-warning-500/20">
+                            <Badge variant="warning" className="gap-1.5 py-1">
                               <KeyRound className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                               Pendiente
-                            </span>
+                            </Badge>
                           ) : (
                             <span className="text-sm text-gray-500 dark:text-gray-400">Al día</span>
                           )}
@@ -324,7 +350,7 @@ export function UsersTable({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-9 rounded-xl"
+                className="min-h-11 rounded-xl"
                 onClick={onPrev}
                 disabled={!hasPrevPage || isLoading}
               >
@@ -335,7 +361,7 @@ export function UsersTable({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-9 rounded-xl"
+                className="min-h-11 rounded-xl"
                 onClick={onNext}
                 disabled={!hasNextPage || isLoading}
               >

@@ -53,7 +53,7 @@ function actionBadgeClass(action: string): string {
   if (action === 'DELETE') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
   if (AUTH_ACTIONS.has(action))
     return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
-  return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
+  return 'bg-gray-100 text-gray-700 dark:bg-dark-surface-3 dark:text-gray-300';
 }
 
 function CopyableMeta({ value, label = 'Copiar ID' }: { value: string | null; label?: string }) {

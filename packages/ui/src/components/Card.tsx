@@ -16,7 +16,7 @@ const Card = React.forwardRef<
     className={cn(
       'rounded-2xl',
       variant === 'default' &&
-        'bg-white shadow-[0_1px_3px_0_rgba(23,22,58,0.1),0_1px_2px_0_rgba(23,22,58,0.06)] dark:bg-dark-surface-2 dark:shadow-none dark:border dark:border-dark-border',
+        'bg-white shadow-iwana-card dark:bg-dark-surface-2 dark:shadow-none dark:border dark:border-dark-border',
       variant === 'glass' && 'bg-white/10 backdrop-blur-md border border-white/20',
       className,
     )}
@@ -37,7 +37,7 @@ const CardTitle = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HT
     <h3
       ref={ref}
       className={cn(
-        'text-lg font-semibold leading-none tracking-tight text-[#17163A] dark:text-white/90',
+        'text-lg font-semibold leading-none tracking-tight text-iwana-primary dark:text-white/90',
         className,
       )}
       {...props}

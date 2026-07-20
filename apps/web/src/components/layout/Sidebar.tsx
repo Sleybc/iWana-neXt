@@ -147,7 +147,7 @@ export const Sidebar = ({
       ref={sidebar}
       aria-label="Navegación principal"
       className={cn(
-        'fixed left-0 top-0 z-[9999] flex h-screen flex-col overflow-y-hidden',
+        'fixed left-0 top-0 z-40 flex h-screen flex-col overflow-y-hidden',
         'border-r border-transparent bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/85 dark:border-transparent dark:bg-dark-surface-2/95',
         'transition-all duration-200 ease-linear',
         'lg:static lg:translate-x-0',
