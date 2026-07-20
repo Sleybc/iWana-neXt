@@ -9,7 +9,7 @@ import { AuditAction } from '@iwana/shared';
  * del codigo de negocio (excepto skip con @SkipAudit).
  *
  * APPEND-ONLY: sin UpdateDateColumn, sin DeleteDateColumn.
- * La RLS en PostgreSQL refuerza esto: REVOKE DELETE, REVOKE UPDATE.
+ * Inmutabilidad en PostgreSQL: trigger `reject_audit_mutation()` (migración 075).
  * Retencion minima 7 anios (Ley 1581/2012 + CRC).
  *
  * HLD-MOD01-ARQUITECTURA-v1.0 Seccion 1 (@iwana/audit)

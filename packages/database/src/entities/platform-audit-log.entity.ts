@@ -8,7 +8,7 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 
  * usuarios de plataforma y configuraciones globales).
  *
  * APPEND-ONLY: sin UpdateDateColumn, sin DeleteDateColumn.
- * La RLS en PostgreSQL refuerza esto: REVOKE DELETE, REVOKE UPDATE.
+ * Inmutabilidad en PostgreSQL: trigger `reject_audit_mutation()` (migración 014).
  * Retencion minima 7 anios (Ley 1581/2012 + CRC).
  *
  * HLD-MOD01-ARQUITECTURA-v1.0 Seccion 3 (Modelo de Datos)

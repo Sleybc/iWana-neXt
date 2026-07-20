@@ -4,15 +4,15 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * Migración 000: schema inicial del tenant.
  *
  * `up()` crea estructura, no transforma datos: seis tablas con sus índices,
- * PK/UNIQUE inline, y sobre `audit_logs` además RLS + política `audit_logs_no_mutate`
- * + REVOKE de DELETE/UPDATE a PUBLIC. No crea tipos ENUM, ni funciones, ni triggers,
- * ni el propio schema (eso lo hace el provisioning antes de invocar las migraciones).
+ * PK/UNIQUE inline. `audit_logs` se crea sin RLS: la inmutabilidad append-only
+ * la instala la migración 075 vía trigger `reject_audit_mutation()`. No crea tipos
+ * ENUM, ni funciones, ni triggers, ni el propio schema (eso lo hace el provisioning
+ * antes de invocar las migraciones).
  *
  * Reversibilidad: al no haber transformación de datos no hay nada que respaldar —
  * revertir es soltar la estructura. `down()` elimina exactamente esas seis tablas en
- * orden inverso de creación. Índices, constraints, la política RLS y los privilegios
- * revocados son dependientes de sus tablas y desaparecen con el DROP TABLE: no
- * requieren sentencias propias.
+ * orden inverso de creación. Índices y constraints son dependientes de sus tablas y
+ * desaparecen con el DROP TABLE: no requieren sentencias propias.
  *
  * Ninguna migración posterior declara una FK contra estas seis tablas (verificado
  * sobre las 74 migraciones tenant), así que el orden inverso basta y no hace falta
@@ -142,14 +142,6 @@ export class InitialTenantSchema1700000000000 implements MigrationInterface {
     await queryRunner.query(`CREATE INDEX idx_al_entity ON audit_logs(entity_type, entity_id)`);
     await queryRunner.query(`CREATE INDEX idx_al_user_created ON audit_logs(user_id, created_at)`);
     await queryRunner.query(`CREATE INDEX idx_al_action_tenant ON audit_logs(action, tenant_id)`);
-
-    await queryRunner.query(`ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY`);
-    await queryRunner.query(`DROP POLICY IF EXISTS audit_logs_no_mutate ON audit_logs`);
-    await queryRunner.query(
-      `CREATE POLICY audit_logs_no_mutate ON audit_logs AS RESTRICTIVE FOR ALL TO PUBLIC USING (TRUE)`,
-    );
-    await queryRunner.query(`REVOKE DELETE ON audit_logs FROM PUBLIC`);
-    await queryRunner.query(`REVOKE UPDATE ON audit_logs FROM PUBLIC`);
 
     await queryRunner.query(`
       CREATE TABLE commercial_nodes (

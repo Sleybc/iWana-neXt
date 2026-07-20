@@ -18,7 +18,7 @@ import { AuditEntryInput } from './interfaces/audit-entry.interface';
  * SEGURIDAD:
  * - oldValue/newValue deben ser sanitizados por el caller: sin passwordHash,
  *   sin mfaSecret, sin campos cifrados, sin PII en texto plano.
- * - La tabla audit_logs tiene RLS: REVOKE DELETE, REVOKE UPDATE (tenant_template.sql).
+ * - Inmutabilidad append-only: trigger PostgreSQL `reject_audit_mutation()` (migr. 075).
  *
  * HLD-MOD01-ARQUITECTURA-v1.0 Seccion 1 (@iwana/audit)
  * Ley 1581/2012: retencion minima 7 anios.

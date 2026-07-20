@@ -133,7 +133,18 @@ describe('Migración 000 — InitialTenantSchema', () => {
       expect(fake.queries.join(' ')).not.toMatch(/CREATE\s+SCHEMA/i);
     });
 
-    it('los índices y la política RLS cuelgan de tablas que down() elimina', async () => {
+    it('up() no crea RLS, políticas ni triggers: inmutabilidad llega en migraciones posteriores', async () => {
+      const fake = createFakeQueryRunner();
+
+      await migration.up(fake.runner);
+
+      const all = fake.queries.join(' ');
+      expect(all).not.toMatch(/ROW LEVEL SECURITY/i);
+      expect(all).not.toMatch(/CREATE POLICY/i);
+      expect(all).not.toMatch(/REVOKE (DELETE|UPDATE)/i);
+    });
+
+    it('los índices cuelgan de tablas que down() elimina', async () => {
       const fake = createFakeQueryRunner();
 
       await migration.up(fake.runner);
@@ -144,11 +155,6 @@ describe('Migración 000 — InitialTenantSchema', () => {
 
       expect(indexTargets.length).toBeGreaterThan(0);
       indexTargets.forEach((t) => expect(EXPECTED_DROP_ORDER).toContain(t));
-
-      const policyTarget = fake.queries
-        .map((q) => q.match(/CREATE POLICY \w+ ON (\w+)/)?.[1])
-        .find(Boolean);
-      expect(policyTarget).toBe('audit_logs');
     });
   });
 

@@ -2,9 +2,9 @@
 
 **Tipo:** Runbook operativo  
 **Módulo:** TRANSVERSAL — Base de datos / auditoría  
-**Versión:** 1.2  
+**Versión:** 1.3  
 **Fecha:** 2026-07-19  
-**Autor:** AI-PLAT-OPS  
+**Autor:** AI-PLAT-OPS (+ AI-SR-FULL: bloque `$owner$` DDL)  
 **Referencias:** migraciones `014` / `075` (inmutabilidad audit) · INFORME remediación SEC-04 · INFORME PLAT-OPS ejecución SEC-02/04 v1.5  
 **Gate:** implementación de plataforma; **no** auto-aprueba G-SEC (revisión AI-SEC-ENG)
 
@@ -40,7 +40,7 @@ Variables alineadas al repo: `DB_USER` / `DB_PASSWORD` son las credenciales del 
 | --- | --- |
 | `docker/postgres/init/01-create-roles.sh` | Crea roles en **primer** init del volumen Postgres; default privileges bootstrap → app/migrator en `public` (incluye ledger futuro). |
 | `docker/postgres/init/02-audit-least-privilege.sql` | Event trigger de reasignación de ownership de tablas audit. |
-| `scripts/db/apply-least-privilege.sql` | Idempotente para volúmenes **ya** inicializados: audit + DML negocio + **ledger** `typeorm_migrations`. |
+| `scripts/db/apply-least-privilege.sql` | Idempotente para volúmenes **ya** inicializados: audit + **ownership DDL** (tablas/secuencias/enums → migrator) + DML negocio + ledger `typeorm_migrations`. |
 | `scripts/db/apply-least-privilege.sh` | Wrapper: modo Docker (default) o host (`LEAST_PRIVILEGE_MODE=host`; CI). |
 | `scripts/db/verify-app-cannot-drop-audit-trigger.sql` | Prueba de que `iwana_app` no puede dropear el trigger. |
 | `scripts/db/verify-app-cannot-drop-audit-trigger.sh` | Wrapper verify (Docker o host). **Exit ≠ 0 = FAIL** (gate CI). |
@@ -97,12 +97,22 @@ Volumen local ya existente (creado con bootstrap `iwana`):
 # 1) Asegurar contenedor sano
 docker compose ps postgres
 
-# 2) Aplicar roles + ownership audit (idempotente)
+# 2) Aplicar roles + ownership audit + ownership DDL (idempotente)
 #    Sustituye contraseñas via variables del entorno del contenedor o -v de psql.
 docker exec -i iwana_postgres_dev \
   psql -U "${DB_BOOTSTRAP_USER:-iwana}" -d "${DB_NAME:-dbiw}" \
   < scripts/db/apply-least-privilege.sql
 ```
+
+**Síntoma típico si saltas este paso** (con `DB_MIGRATOR_USER=iwana_migrator` ya en `.env`):
+
+```text
+Migration "AddTenantAdminEmail…" failed, error: must be owner of table tenants
+# o en tenant:
+permission denied for schema tenant_…
+```
+
+Causa: tablas/schemas siguen owned by `iwana`; el migrator tiene GRANT pero no ownership. Re-aplica el SQL de arriba y vuelve a `pnpm db:migrate:all`.
 
 El script usa por defecto:
 
@@ -137,15 +147,28 @@ DB_MIGRATOR_USER=iwana_migrator DB_MIGRATOR_PASSWORD=<pass> pnpm db:migrate:all
 pnpm db:migrate:all
 ```
 
+### Ownership DDL de tablas de negocio (v1.3)
+
+En PostgreSQL, `GRANT` (aunque sea `ALL`) **no** autoriza `ALTER TABLE` / `ALTER TYPE`: hace falta ser **owner** (o superuser). Si el volumen nació con bootstrap `iwana` y luego activas `DB_MIGRATOR_USER=iwana_migrator`, las migraciones TypeORM fallan con `must be owner of table tenants` (u otra tabla pública/tenant).
+
+`apply-least-privilege.sql` (bloque `$owner$`, 2026-07-19) reasigna a `iwana_migrator`:
+
+- todas las tablas en `public` y `tenant_%`;
+- secuencias;
+- tipos enum (`ALTER TYPE` en migraciones tenant);
+- ownership de schemas `tenant_%` + `GRANT USAGE, CREATE` al migrator (USAGE solo no alcanza para `CREATE TABLE`).
+
+Es idempotente y debe correr **como bootstrap** antes de `pnpm db:migrate:all` en volúmenes ya inicializados. Una migración TypeORM **no** puede cerrar este hueco: el migrator no puede robarse el ownership de objetos ajenos.
+
 ### Ledger `typeorm_migrations` (v1.1)
 
-El owner del ledger suele ser el bootstrap (`iwana`). `apply-least-privilege.sql` (bloque `$ledger$`) otorga a `iwana_migrator`:
+Tras el bloque `$owner$`, el ledger queda owned by `iwana_migrator`. El bloque `$ledger$` además otorga DML explícito (útil si el apply se corrió en una revisión anterior sin `$owner$`):
 
 - `SELECT, INSERT, UPDATE, DELETE` sobre `*.typeorm_migrations` en `public` y en cada schema que tenga la tabla (p. ej. `tenant_%`).
 - `USAGE, SELECT, UPDATE` sobre la secuencia asociada (`pg_get_serial_sequence(..., 'id')`).
 - `ALTER DEFAULT PRIVILEGES` del bootstrap → migrator en `public` + `tenant_%` (tablas/secuencias futuras).
 
-Sin ese grant, `pnpm --filter @iwana/db migration:show|run` con `DB_MIGRATOR_USER` falla con `42501` sobre `typeorm_migrations`. Tras apply, un `migration:show` / `migration:run` no-op debe completar sin permission denied.
+Sin ese grant (y sin ownership), `pnpm --filter @iwana/db migration:show|run` con `DB_MIGRATOR_USER` falla con `42501` sobre `typeorm_migrations` o con `must be owner` en DDL. Tras apply, un `migration:show` / `migration:run` no-op debe completar sin permission denied.
 
 PgBouncer local (`edoburu/pgbouncer`) hoy autentica el `DB_USER` del compose. Las apps del monorepo apuntan por defecto al puerto directo de Postgres (`DB_PORT`, p. ej. 5433), no al pool — el split de roles no exige multi-user en pgbouncer para el flujo `pnpm dev` actual. Si más adelante el runtime pasa por 6433 con varios roles, montar `userlist.txt` generado (nunca commitear passwords).
 
@@ -188,7 +211,9 @@ DROP TRIGGER trg_platform_audit_logs_immutable ON public.platform_audit_logs;
 3. Revoca privilegios destructivos al rol app; grant `SELECT, INSERT`.
 4. Si `iwana_migrator` no existe → no-op (NOTICE), no falla CI.
 
-El SQL de ops sigue siendo la fuente para **crear** roles en lab; la migración evita deriva de ownership.
+**Ownership DDL de negocio (SR-FULL, 2026-07-19): hecho en ops SQL.** Bloque `$owner$` en `apply-least-privilege.sql` — no cabe en una migración TypeORM (el migrator no puede `ALTER OWNER` de objetos ajenos). Cierra el fallo `must be owner of table tenants` / `permission denied for schema tenant_*` en volúmenes bootstrap-owned.
+
+El SQL de ops sigue siendo la fuente para **crear** roles en lab; la migración 015 evita deriva de ownership **solo** en audit.
 
 ---
 

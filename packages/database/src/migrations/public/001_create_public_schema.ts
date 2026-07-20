@@ -123,21 +123,8 @@ export class CreatePublicSchema1741766400000 implements MigrationInterface {
       `CREATE INDEX "idx_pal_action_created" ON "public"."platform_audit_logs" ("action", "created_at")`,
     );
 
-    // RLS: prevenir DELETE y UPDATE en platform_audit_logs
-    await queryRunner.query(
-      `ALTER TABLE "public"."platform_audit_logs" ENABLE ROW LEVEL SECURITY`,
-    );
-    await queryRunner.query(`
-      CREATE POLICY "pal_insert_only"
-        ON "public"."platform_audit_logs"
-        AS RESTRICTIVE
-        FOR ALL
-        TO PUBLIC
-        USING (TRUE)
-    `);
-    // Revocar privilegios destructivos del role de la aplicacion
-    // (el nombre del role de app se configura via DB_APP_ROLE env var)
-    // Las sentencias REVOKE son idempotentes si el role no tiene el privilegio.
+    // Inmutabilidad append-only: migración 014 instala trigger reject_audit_mutation().
+    // Sin RLS en bootstrap — RLS ENABLE sin políticas bloquea INSERT bajo SEC-04.
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

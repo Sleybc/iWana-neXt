@@ -86,6 +86,10 @@ export class EnforceAuditImmutability0750000000000 implements MigrationInterface
     // dejar dos mecanismos donde solo uno actúa.
     await queryRunner.query(`DROP POLICY IF EXISTS audit_logs_no_mutate ON audit_logs`);
 
+    // Misma trampa que la pública 014: RLS ENABLE sin políticas + owner migrator
+    // bloquea INSERT del runtime. La inmutabilidad queda en el trigger.
+    await queryRunner.query(`ALTER TABLE audit_logs DISABLE ROW LEVEL SECURITY`);
+
     await queryRunner.query(`DROP TRIGGER IF EXISTS trg_audit_logs_immutable ON audit_logs`);
 
     await queryRunner.query(`

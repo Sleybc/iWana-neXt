@@ -39,7 +39,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * 2. El `REVOKE` de privilegios destructivos que el comentario anuncia **no
  *    existe como sentencia**: son tres líneas de comentario que además
  *    mencionan una variable `DB_APP_ROLE` inexistente en el repo.
- * 3. RLS estaba `ENABLE` pero no `FORCE`, y la aplicación conecta como **dueña**
+ * 3. RLS estaba `ENABLE` pero no `FORCE`, y la aplicación conectaba como **dueña**
  *    de la tabla. Los dueños saltan RLS no forzada incondicionalmente.
  *
  * El resultado: un docstring prometía una garantía que nadie tenía, y alguien
@@ -52,6 +52,10 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * garantía repartida entre política y flag, y un `ALTER TABLE` posterior puede
  * desactivarla sin ruido. Un trigger `BEFORE UPDATE OR DELETE` que lanza
  * excepción es explícito, funciona con cualquier rol y aparece en el error.
+ *
+ * Tras retirar la política hay que `DISABLE ROW LEVEL SECURITY`: dejar RLS
+ * ENABLE sin políticas deniega INSERT a cualquier rol que no sea owner
+ * (p. ej. `iwana_app` tras SEC-04).
  *
  * ### La escotilla, y por qué existe
  *
@@ -93,6 +97,11 @@ export class EnforcePlatformAuditImmutability1784419203000 implements MigrationI
     await queryRunner.query(
       `DROP POLICY IF EXISTS "pal_insert_only" ON public.platform_audit_logs`,
     );
+
+    // RLS ENABLE sin políticas deniega todo a no-owners. Con SEC-04 el owner es
+    // iwana_migrator y el runtime (iwana_app) debe poder INSERT; la inmutabilidad
+    // queda en el trigger, no en RLS.
+    await queryRunner.query(`ALTER TABLE public.platform_audit_logs DISABLE ROW LEVEL SECURITY`);
 
     await queryRunner.query(`
       DROP TRIGGER IF EXISTS trg_platform_audit_logs_immutable ON public.platform_audit_logs

@@ -8,6 +8,10 @@
 -- passwords distintos ANTES de correr la parte de ownership, o ajusta los
 -- \set de abajo.
 --
+-- Incluye (orden): roles → event trigger audit → ownership audit → ownership
+-- DDL de negocio (tablas/secuencias/enums/schemas tenant → migrator) → DML
+-- app → ledger typeorm_migrations.
+--
 -- No imprime secretos. No toca datos de negocio.
 
 \set ON_ERROR_STOP on
@@ -126,6 +130,9 @@ BEGIN
       'GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE public.platform_audit_logs TO %I',
       migrator
     );
+    -- 014/075 dejan RLS ENABLE sin políticas; con owner ≠ runtime eso deniega
+    -- INSERT. La inmutabilidad es el trigger, no RLS.
+    EXECUTE 'ALTER TABLE public.platform_audit_logs DISABLE ROW LEVEL SECURITY';
   END IF;
 
   FOR r IN
@@ -150,12 +157,97 @@ BEGIN
       r.schema_name,
       migrator
     );
+    EXECUTE format(
+      'ALTER TABLE %I.audit_logs DISABLE ROW LEVEL SECURITY',
+      r.schema_name
+    );
     -- USAGE en schema tenant para que la app pueda INSERT en audit
     EXECUTE format('GRANT USAGE ON SCHEMA %I TO %I', r.schema_name, app);
     EXECUTE format('GRANT USAGE ON SCHEMA %I TO %I', r.schema_name, migrator);
   END LOOP;
 END
 $body$;
+
+-- Ownership de schema objects → migrator (DDL).
+-- GRANT ALL no alcanza: en PostgreSQL ALTER TABLE / ALTER TYPE / CREATE INDEX
+-- sobre objetos ajenos exige ser owner (o superuser). Volúmenes inicializados
+-- con bootstrap (iwana) dejan tablas/enums owned by iwana; entonces
+-- migration:run con DB_MIGRATOR_USER=iwana_migrator falla con
+-- `must be owner of table …` (caso típico: public.tenants en 013+).
+-- Idempotente: solo reasigna si el owner actual ≠ migrator.
+DO $owner$
+DECLARE
+  r record;
+  migrator text := 'iwana_migrator';
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = migrator) THEN
+    RAISE EXCEPTION 'rol % ausente', migrator;
+  END IF;
+
+  FOR r IN
+    SELECT n.nspname AS schema_name, c.relname AS rel_name
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_roles o ON o.oid = c.relowner
+    WHERE c.relkind = 'r'
+      AND (n.nspname = 'public' OR n.nspname LIKE 'tenant\_%' ESCAPE '\')
+      AND o.rolname IS DISTINCT FROM migrator
+  LOOP
+    EXECUTE format(
+      'ALTER TABLE %I.%I OWNER TO %I',
+      r.schema_name,
+      r.rel_name,
+      migrator
+    );
+  END LOOP;
+
+  FOR r IN
+    SELECT n.nspname AS schema_name, c.relname AS rel_name
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_roles o ON o.oid = c.relowner
+    WHERE c.relkind = 'S'
+      AND (n.nspname = 'public' OR n.nspname LIKE 'tenant\_%' ESCAPE '\')
+      AND o.rolname IS DISTINCT FROM migrator
+  LOOP
+    EXECUTE format(
+      'ALTER SEQUENCE %I.%I OWNER TO %I',
+      r.schema_name,
+      r.rel_name,
+      migrator
+    );
+  END LOOP;
+
+  FOR r IN
+    SELECT n.nspname AS schema_name, t.typname AS typ_name
+    FROM pg_type t
+    JOIN pg_namespace n ON n.oid = t.typnamespace
+    JOIN pg_roles o ON o.oid = t.typowner
+    WHERE t.typtype = 'e'
+      AND (n.nspname = 'public' OR n.nspname LIKE 'tenant\_%' ESCAPE '\')
+      AND o.rolname IS DISTINCT FROM migrator
+  LOOP
+    EXECUTE format(
+      'ALTER TYPE %I.%I OWNER TO %I',
+      r.schema_name,
+      r.typ_name,
+      migrator
+    );
+  END LOOP;
+
+  -- Schemas tenant: CREATE TABLE / ALTER TYPE en migraciones exige CREATE
+  -- (USAGE solo no basta). Ownership del schema evita deriva a bootstrap.
+  FOR r IN
+    SELECT n.nspname AS schema_name
+    FROM pg_namespace n
+    JOIN pg_roles o ON o.oid = n.nspowner
+    WHERE n.nspname LIKE 'tenant\_%' ESCAPE '\'
+      AND o.rolname IS DISTINCT FROM migrator
+  LOOP
+    EXECUTE format('ALTER SCHEMA %I OWNER TO %I', r.schema_name, migrator);
+  END LOOP;
+END
+$owner$;
 
 -- DML de negocio (runbook): iwana_app lee/escribe tablas operativas.
 -- Tablas existentes suelen ser owned by bootstrap (iwana); sin esto el runtime
@@ -178,7 +270,13 @@ BEGIN
        OR n.nspname LIKE 'tenant\_%' ESCAPE '\'
   LOOP
     EXECUTE format('GRANT USAGE ON SCHEMA %I TO %I', r.schema_name, app);
-    EXECUTE format('GRANT USAGE ON SCHEMA %I TO %I', r.schema_name, migrator);
+    -- Migrator necesita CREATE en schemas tenant para DDL (CREATE TABLE IF NOT
+    -- EXISTS del ledger, nuevas tablas/enums). App: solo USAGE.
+    EXECUTE format(
+      'GRANT USAGE, CREATE ON SCHEMA %I TO %I',
+      r.schema_name,
+      migrator
+    );
 
     EXECUTE format(
       'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA %I TO %I',
