@@ -38,15 +38,16 @@ function findSurvivingSecrets(value: unknown, path = '$'): string[] {
 
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
     const normalized = key.toLowerCase();
+    const isNeverOmitted = AuditInterceptor.NEVER_OMITTED_KEYS.has(normalized);
     const isOmittedKey = AuditInterceptor.ALWAYS_OMITTED_KEYS.has(normalized);
     const isSecret = typeof item === 'string' && AuditInterceptor.SECRET_KEY_PATTERN.test(key);
-    const isPiiSuffix =
-      typeof item === 'string' && AuditInterceptor.PII_KEY_SUFFIX_PATTERN.test(key);
+    const isPiiSuffix = typeof item === 'string' && AuditInterceptor.matchesPiiSuffix(key);
 
     if (
-      isSecret ||
-      isPiiSuffix ||
-      (isOmittedKey && (typeof item === 'string' || item instanceof Date))
+      !isNeverOmitted &&
+      (isSecret ||
+        isPiiSuffix ||
+        (isOmittedKey && (typeof item === 'string' || item instanceof Date)))
     ) {
       found.push(`${path}.${key}`);
     }
@@ -187,7 +188,114 @@ describe('AuditInterceptor — saneado de la respuesta', () => {
     });
   });
 
+  describe('hueco SEC-05: PII que el patrón antiguo dejaba pasar', () => {
+    // Asimetría real hallada en `tenant_iwana.audit_logs`: en el MISMO DTO,
+    // `purchasingContactEmail` se omitía y `purchasingContactPhone` se
+    // guardaba en claro, con forma de teléfono.
+    it('omite phone y email del mismo DTO, sin asimetría', () => {
+      const result = sanitize({
+        data: {
+          id: 'sup-1',
+          purchasingContactEmail: 'compras@ejemplo.invalid',
+          purchasingContactPhone: '6010000000',
+          purchasingContactName: 'Persona Ficticia',
+        },
+      });
+
+      const data = (result as { data: Record<string, unknown> }).data;
+      expect(data).toEqual({ id: 'sup-1' });
+    });
+
+    it.each([
+      'primaryPhone',
+      'siteContactPhone',
+      'installationAddress',
+      'serviceAddress',
+      'fiscalAddress',
+      'supplierNit',
+      'holderDocumentNumber',
+      'altContactName',
+      'siteContactName',
+      'technicianName',
+      'uploadedByName',
+      'directedToName',
+      'personName',
+      'customerDisplayName',
+      'expedienteFullName',
+      'fiscalName',
+      'suggestedPartyName',
+    ])('omite %s', (key) => {
+      const result = sanitize({ data: { [key]: 'valor-ficticio' } });
+
+      expect(Object.keys((result as { data: object }).data)).toEqual([]);
+    });
+  });
+
   describe('fidelidad del registro', () => {
+    // Estas claves son el motivo de que el sufijo `name$` a secas se descartara:
+    // un barrido ciego las habría vaciado. `schemaName` en particular es lo que
+    // permite trazar qué tenant se aprovisionó.
+    it.each([
+      ['schemaName', 'tenant_demo'],
+      ['categoryName', 'Routers'],
+      ['fileName', 'contrato.pdf'],
+      ['productName', 'Plan 300 megas'],
+      ['taxName', 'IVA 19'],
+      ['queueName', 'tenant-provisioning'],
+      ['typeName', 'stock_count_status'],
+      ['columnName', 'mfa_secret'],
+      ['siteName', 'Nodo Norte'],
+      ['entityName', 'ExpedienteRecord'],
+    ])('conserva %s: es dato de negocio, no PII', (key, value) => {
+      const result = sanitize({ data: { [key]: value } });
+
+      expect((result as { data: Record<string, unknown> }).data[key]).toBe(value);
+    });
+
+    it('conserva unit y sus derivados: "unit" termina en "nit" pero no es un NIT', () => {
+      const result = sanitize({
+        data: { unit: 'METRO', measurementUnit: 'KM', businessUnit: 'Norte' },
+      });
+
+      expect((result as { data: unknown }).data).toEqual({
+        unit: 'METRO',
+        measurementUnit: 'KM',
+        businessUnit: 'Norte',
+      });
+    });
+
+    it('conserva las direcciones técnicas: identifican una máquina, no un domicilio', () => {
+      const result = sanitize({
+        data: { ipAddress: '10.0.0.1', macAddress: 'AA:BB:CC:DD:EE:FF', remoteAddress: '10.0.0.2' },
+      });
+
+      expect((result as { data: unknown }).data).toEqual({
+        ipAddress: '10.0.0.1',
+        macAddress: 'AA:BB:CC:DD:EE:FF',
+        remoteAddress: '10.0.0.2',
+      });
+    });
+
+    it('conserva actorName: es el sujeto del asiento y el timeline lo lee de vuelta', () => {
+      const result = sanitize({ data: { actorName: 'Operador Ficticio', userId: 'u-1' } });
+
+      expect((result as { data: Record<string, unknown> }).data).toEqual({
+        actorName: 'Operador Ficticio',
+        userId: 'u-1',
+      });
+    });
+
+    it('conserva piiaAccess: su valor es el nombre del campo, no el dato', () => {
+      const result = sanitize({
+        data: { piiaAccess: 'documentNumber', source: 'findById' },
+      });
+
+      expect((result as { data: Record<string, unknown> }).data).toEqual({
+        piiaAccess: 'documentNumber',
+        source: 'findById',
+      });
+    });
+
     it('conserva passwordResetRequired: es booleano, no un secreto', () => {
       const result = sanitize({
         data: { passwordResetRequired: true, passwordResetExpiresAt: new Date(0) },

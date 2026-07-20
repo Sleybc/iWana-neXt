@@ -1,5 +1,5 @@
 # .github/workflows/ci.yml
-# CI pipeline iWana neXt — Lint + Typecheck + Build
+# CI pipeline iWana neXt — Lint + Typecheck + Build + least-privilege gate (SEC-04 / GSEC-N1)
 # Ejecuta en push y PR a main
 
 name: CI
@@ -35,20 +35,34 @@ jobs:
     name: Lint + Typecheck + Build
     runs-on: ubuntu-latest
 
+    # Ephemeral CI DB only — passwords are disposable lab values, not production secrets.
+    # GSEC-N1: POSTGRES_USER (bootstrap) ≠ DB_APP_USER / DB_MIGRATOR_USER / DB_USER.
     env:
-      PGPASSWORD: test
+      LEAST_PRIVILEGE_MODE: host
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: test
+      DB_BOOTSTRAP_USER: iwana
+      DB_BOOTSTRAP_PASSWORD: ci-bootstrap
+      DB_USER: iwana_app
+      DB_PASSWORD: ci-app
+      DB_APP_USER: iwana_app
+      DB_APP_PASSWORD: ci-app
+      DB_MIGRATOR_USER: iwana_migrator
+      DB_MIGRATOR_PASSWORD: ci-migrator
 
     services:
       postgres:
         image: postgres:18-alpine
         env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
+          # Bootstrap superuser — NEVER iwana_app (GSEC-N1 / SEC-04)
+          POSTGRES_USER: iwana
+          POSTGRES_PASSWORD: ci-bootstrap
           POSTGRES_DB: test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U iwana -d test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -95,33 +109,51 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Check pending migrations (public)
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+
+      - name: Apply least-privilege roles (pre-migrate)
+        shell: bash
+        run: bash scripts/db/apply-least-privilege.sh
+
+      - name: Run public migrations (migrator)
+        run: pnpm --filter @iwana/db migration:run
+
+      - name: Re-apply least-privilege (post-migrate ownership)
+        shell: bash
+        run: bash scripts/db/apply-least-privilege.sh
+
+      - name: Check no pending public migrations
         run: |
           OUTPUT=$(pnpm --filter @iwana/db migration:show 2>&1 || true)
           echo "$OUTPUT"
           if echo "$OUTPUT" | grep -E "pending|not run"; then
-            echo "❌ Pending migrations detected in public schema"
+            echo "❌ Pending migrations remain in public schema after migration:run"
             exit 1
           fi
           echo "✅ No pending migrations"
 
-      - name: Run public migrations (test)
-        env:
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_USER: test
-          DB_PASSWORD: test
-          DB_NAME: test
-        run: pnpm --filter @iwana/db migration:run
-
-      - name: Run tenant migrations (test)
-        env:
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_USER: test
-          DB_PASSWORD: test
-          DB_NAME: test
+      - name: Run tenant migrations (migrator)
+        shell: bash
         run: |
-          psql -h localhost -U test -d test -c "CREATE SCHEMA tenant_test;"
-          psql -h localhost -U test -d test -c "INSERT INTO public.tenants (id, slug, schema_name, status) VALUES (gen_random_uuid(), 'test', 'tenant_test', 'ACTIVE');"
+          PGPASSWORD="${DB_MIGRATOR_PASSWORD}" psql -h "${DB_HOST}" -p "${DB_PORT}" \
+            -U "${DB_MIGRATOR_USER}" -d "${DB_NAME}" \
+            -v ON_ERROR_STOP=1 \
+            -c "CREATE SCHEMA IF NOT EXISTS tenant_test;"
+          PGPASSWORD="${DB_MIGRATOR_PASSWORD}" psql -h "${DB_HOST}" -p "${DB_PORT}" \
+            -U "${DB_MIGRATOR_USER}" -d "${DB_NAME}" \
+            -v ON_ERROR_STOP=1 \
+            -c "INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email) VALUES (gen_random_uuid(), 'CI Test Tenant', 'test', 'tenant_test', 'ACTIVE', 'ci-tenant@example.invalid');"
           pnpm --filter @iwana/db migration:tenant:run
+
+      - name: Re-apply least-privilege (tenant audit)
+        shell: bash
+        run: bash scripts/db/apply-least-privilege.sh
+
+      - name: Verify app cannot DROP audit trigger (SEC-04 gate)
+        shell: bash
+        run: |
+          # Gate: exit ≠ 0 si iwana_app puede DROP TRIGGER o ownership es incorrecto
+          bash scripts/db/verify-app-cannot-drop-audit-trigger.sh

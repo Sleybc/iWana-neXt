@@ -20,14 +20,35 @@
  * Ejecutar:
  *   TENANT_MIGRATIONS_REAL_DB=1 pnpm --filter @iwana/api test -- tenant-migrations-second-schema.spec.ts --coverage=false
  *
- * Sin la variable la suite se omite. Opera sobre una base desechable
- * (`dbiw_migguard_test`) que crea y elimina; nunca toca `dbiw` ni `tenant_iwana`.
+ * Sin la variable la suite se omite.
+ *
+ * ### Por qué schemas desechables y no una base desechable
+ *
+ * La versión anterior creaba y borraba la base `dbiw_migguard_test`. Eso exige
+ * CREATEDB, y **ningún rol de la aplicación lo tiene ni debe tenerlo**:
+ * `scripts/db/apply-least-privilege.sql` crea `iwana_app` e `iwana_migrator`
+ * explícitamente como `NOCREATEDB` (SEC-04). Desde que el lab aplica least
+ * privilege, los 7 tests fallaban en `beforeAll` con
+ * `permission denied to create database` — el guardián llevaba inoperable desde
+ * entonces. Cambiar a `DB_MIGRATOR_*` no lo arregla: el migrator tampoco tiene
+ * CREATEDB.
+ *
+ * Se opera por tanto sobre schemas desechables dentro de la base configurada,
+ * que solo requiere `CREATE ON DATABASE` — el privilegio que SEC-04 sí concede
+ * al migrator porque es justo lo que hace el provisioning en producción. Además
+ * es más fiel: dar de alta un segundo tenant crea un schema en la base
+ * existente, no una base nueva.
+ *
+ * Los schemas (`tenant_guard_first` / `tenant_guard_second`) se eliminan con
+ * CASCADE antes y después de la suite. Nunca se lee ni se escribe
+ * `tenant_iwana` ni ningún otro schema de negocio.
  */
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import { Client } from 'pg';
 import { DataSource } from 'typeorm';
 
+import { resolveMigrationDbCredentials } from '../../../../../packages/database/src/db-credentials';
 import {
   TENANT_MIGRATIONS,
   applyTenantMigrationsInOrder,
@@ -78,9 +99,10 @@ function loadWorkspaceEnv(): void {
 loadWorkspaceEnv();
 
 const REAL_DB = process.env.TENANT_MIGRATIONS_REAL_DB === '1';
-const TEST_DB = 'dbiw_migguard_test';
+const TEST_DB = process.env.DB_NAME ?? 'dbiw';
 const FIRST_SCHEMA = 'tenant_guard_first';
 const SECOND_SCHEMA = 'tenant_guard_second';
+const DISPOSABLE_SCHEMAS = [FIRST_SCHEMA, SECOND_SCHEMA];
 
 /** Enums que las guardas con alcance cruzado ponían en riesgo, con su contenido esperado. */
 const EXPECTED_ENUMS: Record<string, string[]> = {
@@ -112,11 +134,15 @@ const EXPECTED_ENUMS: Record<string, string[]> = {
 };
 
 function connectionConfig() {
+  // DDL ⇒ credenciales de migración (SEC-04), no las del rol de aplicación:
+  // `iwana_app` no puede crear schemas ni tablas.
+  const credentials = resolveMigrationDbCredentials();
+
   return {
     host: process.env.DB_HOST ?? 'localhost',
     port: Number(process.env.DB_PORT ?? 5433),
-    user: process.env.DB_USER ?? 'iwana',
-    password: process.env.DB_PASSWORD ?? '',
+    user: credentials.username,
+    password: credentials.password,
   };
 }
 
@@ -131,6 +157,17 @@ async function queryOn(database: string, sql: string): Promise<Array<Record<stri
   }
 }
 
+/**
+ * Solo elimina los dos schemas de esta suite. El nombre está fijado como
+ * constante y nunca proviene de entrada: no hay forma de que alcance
+ * `tenant_iwana` ni ningún otro schema de negocio.
+ */
+async function dropDisposableSchemas(): Promise<void> {
+  for (const schema of DISPOSABLE_SCHEMAS) {
+    await queryOn(TEST_DB, `DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+  }
+}
+
 const describeReal = REAL_DB ? describe : describe.skip;
 
 describeReal('Alta de un segundo tenant — migraciones tenant con dos schemas conviviendo', () => {
@@ -139,8 +176,8 @@ describeReal('Alta de un segundo tenant — migraciones tenant con dos schemas c
   jest.setTimeout(300_000);
 
   beforeAll(async () => {
-    await queryOn('postgres', `DROP DATABASE IF EXISTS ${TEST_DB}`);
-    await queryOn('postgres', `CREATE DATABASE ${TEST_DB}`);
+    // Defensivo: una ejecución anterior interrumpida pudo dejarlos atrás.
+    await dropDisposableSchemas();
 
     const config = connectionConfig();
     base = new DataSource({
@@ -157,7 +194,7 @@ describeReal('Alta de un segundo tenant — migraciones tenant con dos schemas c
     await base.initialize();
 
     // El provisioning crea el schema antes de invocar las migraciones (ver 000).
-    for (const schema of [FIRST_SCHEMA, SECOND_SCHEMA]) {
+    for (const schema of DISPOSABLE_SCHEMAS) {
       await queryOn(TEST_DB, `CREATE SCHEMA IF NOT EXISTS ${schema}`);
     }
   });
@@ -166,7 +203,7 @@ describeReal('Alta de un segundo tenant — migraciones tenant con dos schemas c
     if (base?.isInitialized) {
       await base.destroy();
     }
-    await queryOn('postgres', `DROP DATABASE IF EXISTS ${TEST_DB}`);
+    await dropDisposableSchemas();
   });
 
   async function migrate(schema: string): Promise<void> {

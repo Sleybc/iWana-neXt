@@ -102,11 +102,43 @@ Para **este ciclo G-SEC**, denylist en Parties **es suficiente**: el interceptor
 
 | Hecho | Evaluación |
 | --- | --- |
-| Default `DB_USER=iwana` / `POSTGRES_USER` bootstrap | **Confirmado** (`docker-compose.yml`, `data-source.ts`) |
+| Default `DB_USER=iwana` / `POSTGRES_USER` bootstrap | **Obsoleto (2026-07-19)** — era cierto al redactar esta revisión, ya no. `.env` usa `DB_USER=iwana_app` y el bootstrap se desacopló a `DB_BOOTSTRAP_USER` (GSEC-N1, ver §3.3.1) |
 | Roles creados ≠ roles usados | Runbook lo dice explícitamente (“compat” vs “SEC-04 estricto”) |
 | Staging/prod sin opt-in | **SEC-04 sigue abierto** — compromiso de API = superuser de volumen puede DROP TRIGGER |
 
 **Conclusión AppSec:** los artefactos **no** dan falsa sensación *si* se lee el runbook; el riesgo es operativo (alguien asume “init = cerrado”). Exigir checklist prod: `DB_USER=iwana_app` + migraciones como migrator + verify PASS. **No** tratar merge de SQL/docs como cierre de SEC-04 en prod.
+
+### 3.3.1 GSEC-N1 — la propia prescripción de §C.1 autoinvertía el control (corregido 2026-07-19)
+
+**Defecto.** `docker-compose.yml` derivaba el superusuario de bootstrap del mismo
+valor que el rol de aplicación: `POSTGRES_USER: ${DB_USER:-iwana}`. Cuando la
+remediación SEC-04 puso `DB_USER=iwana_app` en `.env`, en **cualquier datadir vacío**
+(máquina nueva, CI, `docker compose down -v`) el entrypoint de Postgres creaba
+`iwana_app` como **superusuario de bootstrap**. El init `01-create-roles.sh` sólo
+comprobaba existencia (`WHERE NOT EXISTS ... pg_roles`), veía el rol ya creado, se
+saltaba el `NOSUPERUSER` y reportaba `OK`. Resultado: SEC-04 anulado en silencio
+—sin error ni warning— y sólo detectable corriendo `verify-app-cannot-drop-audit-trigger.sh`.
+
+Reproducido sobre volumen limpio: `iwana_app` quedaba `rolsuper=t`, y como tal
+ejecutaba `DROP EVENT TRIGGER trg_reassign_audit_owner` con éxito.
+
+**Corrección.**
+
+1. `docker-compose.yml` → `POSTGRES_USER: ${DB_BOOTSTRAP_USER:-iwana}`. El bootstrap
+   ya no puede acoplarse al rol de aplicación por editar `DB_USER`.
+2. `01-create-roles.sh` falla en duro (exit 1, el contenedor no arranca) si
+   `POSTGRES_USER` coincide con `DB_APP_USER` o `DB_MIGRATOR_USER`.
+3. La guarda del init ya **no depende de la existencia del rol**: tras crear los
+   roles verifica `rolsuper OR rolcreaterole OR rolbypassrls` y aborta si alguno
+   está elevado. Un rol preexistente deja de asumirse correcto.
+4. `scripts/db/apply-least-privilege.sh` y `verify-app-cannot-drop-audit-trigger.sh`
+   toman el bootstrap de `DB_BOOTSTRAP_USER`, no de `DB_USER`.
+
+**Lección de proceso.** Esta revisión prescribía `DB_USER=iwana_app` (§C.1) como
+condición de cierre sin advertir que ese mismo ajuste disparaba el defecto: un
+control cuya activación lo desactiva. La verificación por lectura de piezas
+aisladas no lo veía — hizo falta arrancar sobre un datadir vacío. Todo cambio de
+identidad de base de datos se valida con bootstrap desde cero, no por inspección.
 
 ### 3.4 Residual `DB_MIGRATOR_USER` no cableado en TypeORM/CLI
 
@@ -279,7 +311,7 @@ Cerrar GSEC-03 (cableado) **no** cierra GSEC-02 / SEC-04 en prod. Sin opt-in el 
 | ADR-058 | **Aprobado** |
 | Rotación / recifrado / purge git | **Go** según runbook (dry-run → recifrado → retirar PREVIOUS; purge solo tras rotar entornos vivos) |
 | SEC-05 Legal (ARCO vs audit 7 años) | **Opción A** — pseudonimizar PII en escritura de audit; remediación ARCO vía `iwana.audit_maintenance` en migración revisable |
-| SEC-04 staging/prod | **Obligatorio** `DB_USER=iwana_app` + migraciones con `DB_MIGRATOR_*` + `apply`/`verify` PASS antes de declarar entorno endurecido |
+| SEC-04 staging/prod | **Obligatorio** `DB_USER=iwana_app` + `DB_BOOTSTRAP_USER` **distinto** de `DB_APP_USER`/`DB_MIGRATOR_USER` + migraciones con `DB_MIGRATOR_*` + `apply`/`verify` PASS antes de declarar entorno endurecido. **Aviso GSEC-N1:** aplicar `DB_USER=iwana_app` sin `DB_BOOTSTRAP_USER` en un datadir vacío autoinvierte el control (ver §3.3.1) |
 
 ### C.2 Veredicto actualizado
 
@@ -291,3 +323,55 @@ Cerrar GSEC-03 (cableado) **no** cierra GSEC-02 / SEC-04 en prod. Sin opt-in el 
 | ¿Ejecución ops pendiente? | Sí — PLAT-OPS ejecuta runbooks bajo este go; no bloquea merge del paquete |
 
 — AI-EM-ARCH
+
+---
+
+## Addendum D — Re-verify post PLAT-OPS v1.3 + SR-FULL mig. 016/077 (2026-07-19)
+
+| Campo | Valor |
+| --- | --- |
+| **ID addendum** | SECURITY-REVIEW-TRANSVERSAL-REMEDIACION-GSEC-v1.0-ADD-D |
+| **Fecha** | 2026-07-19 |
+| **Autor** | AI-SEC-ENG (solo lectura) |
+| **Alcance** | Confirmar 016/077 (SET LOCAL, redact≠delete, idempotencia); coherencia SEC-04 runtime `iwana_app` sin reabrir; gap CLI migrator/grants |
+| **Estado documento (este cierre)** | **GO** |
+
+### D.1 Migraciones 016 (public) / 077 (tenant)
+
+| Control | Resultado |
+| --- | --- |
+| `SET LOCAL iwana.audit_maintenance = 'on'` | **OK** (misma transacción; escotilla 014/075) |
+| Redacta, no borra filas | **OK** (criterio 012 + Legal A / Addendum C) |
+| Idempotencia (`IS DISTINCT FROM` redact) | **OK** |
+| Registro en runner / public glob | **OK** |
+| Conteo lab ~22 vs falso positivo ~53 (`changedFields`) | **Aceptado** (documentado en cabeceras 016/077; sin PII en este addendum) |
+
+### D.2 SEC-04 — no reabrir
+
+| Afirmación | Resultado |
+| --- | --- |
+| Lab PLAT-OPS v1.3: apply + verify PASS + runtime `iwana_app` | **Cerrado lab** (no se reabre) |
+| `apply-least-privilege.sql`: DML negocio + re-endurecer audit | **Coherente** |
+| Prod on-prem | Sigue checklist operador / NO-GO remoto (fuera de este cierre) |
+
+### D.3 Residual P1 — CLI migrator sin grants ledger
+
+| ID | Sev | Tema | Bloquea este cierre? | Dueño |
+| --- | --- | --- | --- | --- |
+| **GSEC-08** | P1 | CLI/tenant migrator: grants ledger `typeorm_migrations` (+ seq) a `iwana_migrator` | **Cerrado** (PLAT-OPS apply `$ledger$` + lab `migration:run` EXIT 0, 2026-07-19) | PLAT-OPS |
+
+### D.4 Veredicto para AI-EM-ARCH
+
+| Pregunta | Respuesta |
+| --- | --- |
+| ¿GO este cierre (redacción residual + no reabrir SEC-04)? | **GO** |
+| ¿Nuevo P0? | **No** |
+| ¿GSEC-08 bloquea merge/redacción? | **No** — **cerrado** (D.5) |
+| ¿ADR aprobado aquí? | **No** (fuera de alcance SEC-ENG) |
+| ¿Este agente implementó? | **No** |
+
+### D.5 Cierre GSEC-08 (PLAT-OPS, 2026-07-19)
+
+`apply-least-privilege.sql` bloque `$ledger$`: GRANT sobre `*.typeorm_migrations` + secuencia a `iwana_migrator`; default privileges bootstrap → migrator. Lab: `migration:show`/`run` con `DB_MIGRATOR_USER` **EXIT 0**, sin 42501. Informe PLAT-OPS **v1.4**. **GSEC-08 cerrado.**
+
+— AI-SEC-ENG / AI-EM-ARCH (registro D.5)

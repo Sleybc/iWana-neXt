@@ -157,4 +157,173 @@ BEGIN
 END
 $body$;
 
+-- DML de negocio (runbook): iwana_app lee/escribe tablas operativas.
+-- Tablas existentes suelen ser owned by bootstrap (iwana); sin esto el runtime
+-- con DB_USER=iwana_app falla (42501). Tras el GRANT amplio se re-endurece audit.
+DO $dml$
+DECLARE
+  r record;
+  app text := 'iwana_app';
+  migrator text := 'iwana_migrator';
+  bootstrap text := current_user;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = app) THEN
+    RAISE EXCEPTION 'rol % ausente', app;
+  END IF;
+
+  FOR r IN
+    SELECT n.nspname AS schema_name
+    FROM pg_namespace n
+    WHERE n.nspname = 'public'
+       OR n.nspname LIKE 'tenant\_%' ESCAPE '\'
+  LOOP
+    EXECUTE format('GRANT USAGE ON SCHEMA %I TO %I', r.schema_name, app);
+    EXECUTE format('GRANT USAGE ON SCHEMA %I TO %I', r.schema_name, migrator);
+
+    EXECUTE format(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA %I TO %I',
+      r.schema_name,
+      app
+    );
+    EXECUTE format(
+      'GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA %I TO %I',
+      r.schema_name,
+      migrator
+    );
+    EXECUTE format(
+      'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA %I TO %I',
+      r.schema_name,
+      app
+    );
+    EXECUTE format(
+      'GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA %I TO %I',
+      r.schema_name,
+      migrator
+    );
+
+    -- Futuro: objetos creados por migrator / bootstrap heredan DML a la app
+    EXECUTE format(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I',
+      migrator,
+      r.schema_name,
+      app
+    );
+    EXECUTE format(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT USAGE, SELECT ON SEQUENCES TO %I',
+      migrator,
+      r.schema_name,
+      app
+    );
+    IF bootstrap IS DISTINCT FROM migrator THEN
+      EXECUTE format(
+        'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I',
+        bootstrap,
+        r.schema_name,
+        app
+      );
+      EXECUTE format(
+        'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT USAGE, SELECT ON SEQUENCES TO %I',
+        bootstrap,
+        r.schema_name,
+        app
+      );
+    END IF;
+  END LOOP;
+
+  -- Re-endurecer audit (SELECT/INSERT only; sin UPDATE/DELETE/TRIGGER)
+  IF to_regclass('public.platform_audit_logs') IS NOT NULL THEN
+    EXECUTE format('REVOKE ALL ON TABLE public.platform_audit_logs FROM %I', app);
+    EXECUTE format(
+      'GRANT SELECT, INSERT ON TABLE public.platform_audit_logs TO %I',
+      app
+    );
+  END IF;
+
+  FOR r IN
+    SELECT n.nspname AS schema_name
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.relkind = 'r'
+      AND c.relname = 'audit_logs'
+      AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+  LOOP
+    EXECUTE format('REVOKE ALL ON TABLE %I.audit_logs FROM %I', r.schema_name, app);
+    EXECUTE format(
+      'GRANT SELECT, INSERT ON TABLE %I.audit_logs TO %I',
+      r.schema_name,
+      app
+    );
+  END LOOP;
+END
+$dml$;
+
+-- Ledger TypeORM: owner suele ser bootstrap (iwana). Sin DML explícito,
+-- migration:run/show con DB_MIGRATOR_* falla 42501 si la tabla nació después
+-- del GRANT ALL TABLES (default privileges previos solo daban a iwana_app).
+-- Cubre public + cada schema con typeorm_migrations (tenant_* u otros).
+DO $ledger$
+DECLARE
+  r record;
+  seq_reg text;
+  migrator text := 'iwana_migrator';
+  bootstrap text := current_user;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = migrator) THEN
+    RAISE EXCEPTION 'rol % ausente', migrator;
+  END IF;
+
+  FOR r IN
+    SELECT n.nspname AS schema_name
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.relkind = 'r'
+      AND c.relname = 'typeorm_migrations'
+      AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+  LOOP
+    EXECUTE format('GRANT USAGE ON SCHEMA %I TO %I', r.schema_name, migrator);
+    EXECUTE format(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %I.typeorm_migrations TO %I',
+      r.schema_name,
+      migrator
+    );
+
+    seq_reg := pg_get_serial_sequence(
+      format('%I.%I', r.schema_name, 'typeorm_migrations'),
+      'id'
+    );
+    IF seq_reg IS NOT NULL THEN
+      EXECUTE format(
+        'GRANT USAGE, SELECT, UPDATE ON SEQUENCE %s TO %I',
+        seq_reg,
+        migrator
+      );
+    END IF;
+  END LOOP;
+
+  -- Futuro: tablas/secuencias creadas por bootstrap → DML al migrator
+  -- (evita 42501 en typeorm_migrations tras migration:run como iwana).
+  FOR r IN
+    SELECT n.nspname AS schema_name
+    FROM pg_namespace n
+    WHERE n.nspname = 'public'
+       OR n.nspname LIKE 'tenant\_%' ESCAPE '\'
+  LOOP
+    IF bootstrap IS DISTINCT FROM migrator THEN
+      EXECUTE format(
+        'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I',
+        bootstrap,
+        r.schema_name,
+        migrator
+      );
+      EXECUTE format(
+        'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO %I',
+        bootstrap,
+        r.schema_name,
+        migrator
+      );
+    END IF;
+  END LOOP;
+END
+$ledger$;
+
 \echo 'SEC-04 apply-least-privilege: OK (revisar ownership con verify script)'

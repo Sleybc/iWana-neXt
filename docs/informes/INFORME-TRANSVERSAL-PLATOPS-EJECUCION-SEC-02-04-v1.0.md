@@ -2,11 +2,11 @@
 
 **Tipo:** INFORME  
 **Módulo:** TRANSVERSAL — Plataforma / ops  
-**Versión:** 1.2  
+**Versión:** 1.5  
 **Fecha:** 2026-07-19  
 **Autor:** AI-PLAT-OPS  
-**Go:** CTO ADR-058 + ops (2026-07-19) · Usuario: cerrar staging/prod + purge git  
-**Ámbito:** lab/dev local = **staging surrogate**; prod on-prem `10.0.0.2:8080`; purge historial git ejecutado  
+**Go:** CTO ADR-058 + ops (2026-07-19) · Usuario: cerrar SEC-04 en runtime lab · Handoff SR-FULL ledger migrator · EM-ARCH: gate CI least-privilege (GSEC-N1)  
+**Ámbito:** lab/dev local = **staging surrogate**; prod on-prem `10.0.0.2:8080`; purge historial git ejecutado; **CI GHA** gate SEC-04
 
 **Referencias:**  
 [`RUNBOOK-DB-LEAST-PRIVILEGE-v1.0.md`](../runbooks/RUNBOOK-DB-LEAST-PRIVILEGE-v1.0.md) ·  
@@ -20,7 +20,8 @@
 
 | Frente | Veredicto | Evidencia breve |
 | --- | --- | --- |
-| **Staging** (lab Docker endurecido = surrogate) | **GO / CERRADO** | SEC-04 verify re-PASS; rotación MFA lab ya GO (v1.1); opt-in estricto documentado sin romper `pnpm dev` |
+| **Staging** (lab Docker endurecido = surrogate) | **GO / CERRADO** | SEC-04 **runtime** = `DB_USER=iwana_app` (v1.3); verify PASS; health `db=ok`; sesiones Nest = `iwana_app`; ledger migrator **GO** (v1.4) |
+| **CI GHA** (gate least-privilege) | **GO diseño / listo en working tree** (v1.5) | Opción A: bootstrap `iwana` ≠ app; apply + migrate migrator + verify; job falla si DROP TRIGGER por app (§2.5) |
 | **Producción** (`http://10.0.0.2:8080`) | **NO-GO ejecución remota** | Health timeout 5 s → unreachable; sin SSH/credenciales en sesión; checklist operador §9 |
 | **Purge git** | **GO** | `git filter-repo --path .env.development --invert-paths`; path log vacío; literales clave débil = 0; force-push ramas contaminadas |
 
@@ -30,14 +31,17 @@
 
 | Control | Resultado | Notas |
 | --- | --- | --- |
-| SEC-04 least-privilege apply | **OK** | `apply-least-privilege.sql` vía `docker exec` (contenedor `iwana_postgres_dev` healthy) |
+| SEC-04 least-privilege apply | **OK** | `apply-least-privilege.sql` vía `docker exec` (incluye DML de negocio + re-endurecer audit; v1.3) |
 | SEC-04 verify DROP TRIGGER | **PASS** (re-verificado 2026-07-19) | `iwana_app` → `42501` / must be owner; owner `platform_audit_logs` = `iwana_migrator` |
+| SEC-04 runtime Nest | **CERRADO lab** (v1.3) | `.env` / `.env.development` → `DB_USER=iwana_app`; API/worker reiniciados; `pg_stat_activity` = `iwana_app` |
+| SEC-04 ledger `typeorm_migrations` | **GO** (v1.4) | Grant explícito + default privileges; `migration:show`/`run` con `DB_MIGRATOR_USER` sin 42501 |
+| SEC-04 gate CI (GSEC-N1) | **GO diseño** (v1.5) | Workflow: bootstrap ≠ app; verify exit ≠ 0 falla job; ver §2.5 |
 | Rotación MFA (pasos 0–7) | **GO lab completada** | CLI SR-FULL; dry-run limpio → apply → verify PASS → PREVIOUS retirado |
 | Purge historial git | **GO** (v1.2) | Ver §8 |
 | Staging | **CERRADO** (surrogate = lab) | Ver §5 |
 | Prod on-prem | **NO-GO remoto** | Ver §9 |
 
-**GO lab:** SEC-04 PASS + rotación MFA lab cerrada (criterio: dry-run limpio + apply + verify PASS + PREVIOUS retirado).
+**GO lab:** SEC-04 verify PASS + **runtime** `iwana_app` + rotación MFA lab cerrada.
 
 ---
 
@@ -87,12 +91,12 @@ Comprobación de ownership (metadatos, sin secretos):
 
 **Re-verify staging (2026-07-19, pasada cierre):** contenedor `Up … (healthy)`; mismo NOTICE PASS; ownership sin cambio.
 
-### 2.3 Trade-off `pnpm dev` (no forzado) — opt-in staging
+### 2.3 Runtime lab — **CERRADO** (opt-in aplicado 2026-07-19, v1.3)
 
-Compose / `.env.example` siguen con **compat por defecto**: `DB_USER=iwana` (bootstrap).  
-**No se fuerza** `iwana_app` en el default de compose: eso rompería `pnpm dev` en volúmenes legacy.
+Compose / `.env.example` siguen con **compat por defecto** versionado: `DB_USER=iwana` (bootstrap).  
+**No se fuerza** `iwana_app` en el default de compose para otros clones.
 
-Modo SEC-04 estricto = **opt-in** en `.env` **no versionado** (staging/lab endurecido o prod):
+**Lab local (esta máquina):** opt-in aplicado en `.env` y `.env.development` **no versionados**:
 
 ```dotenv
 # Runtime API/worker
@@ -106,9 +110,67 @@ DB_APP_USER=iwana_app
 DB_APP_PASSWORD=<secret_app>
 ```
 
-Tras opt-in: `pnpm db:migrate:all` con `DB_MIGRATOR_*`; runtime Nest TypeORM con `DB_USER=iwana_app`.
+| Check | Resultado |
+| --- | --- |
+| Verify DROP TRIGGER | **PASS** `42501` |
+| Health `GET /api/v1/health` | **200** `{"status":"ok","db":"ok","redis":"ok",...}` |
+| Sesiones Nest en Postgres | `usename=iwana_app` (idle ×2); bootstrap `iwana` solo en `psql` ops |
+| Audit UPDATE por app | **denegado** (`has_table_privilege(...UPDATE)=f`) |
+| `platform_users` SELECT por app | **ok** |
 
-**Staging = lab endurecido listo:** apply+verify PASS en Docker local; rotación MFA lab GO; checklist estricto documentado como opt-in. No hay stack staging separado en el monorepo (único `docker-compose.yml`).
+**Gap cerrado en apply (v1.3):** el SQL previo solo endurecía audit; sin `GRANT` DML en tablas owned by bootstrap el Nest con `iwana_app` fallaba (`permission denied for table platform_users`). `scripts/db/apply-least-privilege.sql` ahora otorga DML de negocio en `public` + `tenant_%`, `ALTER DEFAULT PRIVILEGES` para migrator/bootstrap, y re-endurece audit a `SELECT, INSERT`.
+
+**Caveat compose:** con `DB_USER=iwana_app` en `.env` local, un *recreate* de Postgres en volumen **vacío** usaría `POSTGRES_USER=iwana_app`. Este lab ya tiene volumen inicializado con bootstrap `iwana` — no recrear datadir sin fijar bootstrap aparte. `.env.example` / default compose intactos para otros clones.
+
+**Staging = lab endurecido:** apply+verify+runtime PASS; rotación MFA lab GO. No hay stack staging separado (único `docker-compose.yml`).
+
+### 2.4 Ledger `typeorm_migrations` para `iwana_migrator` — **GO** (v1.4)
+
+**Problema (handoff SR-FULL):** con `DB_MIGRATOR_*`, TypeORM lee/escribe el ledger owned by bootstrap; sin grant explícito (o si la tabla nació después del `GRANT ALL TABLES`) → `42501`.
+
+**Cambio ops:**
+
+| Artefacto | Cambio |
+| --- | --- |
+| `scripts/db/apply-least-privilege.sql` | Bloque `$ledger$`: `GRANT SELECT,INSERT,UPDATE,DELETE` + secuencia; `ALTER DEFAULT PRIVILEGES` bootstrap → migrator en `public` + `tenant_%` |
+| `docker/postgres/init/01-create-roles.sh` | Default privileges bootstrap → app/migrator en `public` (volúmenes nuevos) |
+| `docker/postgres/init/02-audit-least-privilege.sql` | Comentario de trazabilidad al ledger |
+| Runbook least-privilege | v1.1 — sección ledger |
+
+**Re-apply lab** (`iwana_postgres_dev`, 2026-07-19): `SEC-04 apply-least-privilege: OK`; `ledger_ok=t` / `seq_ok=t` en `public` y `tenant_iwana`.
+
+**Verificación CLI (sin secretos en log):**
+
+| Check | Resultado |
+| --- | --- |
+| `DB_MIGRATOR_USER=iwana_migrator` + `pnpm --filter @iwana/db migration:show` | **EXIT 0** — 16 migraciones públicas `[X]` (incl. 016) |
+| `migration:run` (mismo env) | **EXIT 0** — `No migrations are pending` (sin 42501) |
+| `SET ROLE iwana_migrator; SELECT count(*) FROM public.typeorm_migrations` | **OK** (16 filas) |
+
+**Stop/go handoff:** **GO** — migrator puede leer/escribir el ledger.
+
+### 2.5 Gate CI least-privilege (GSEC-N1) — **GO diseño** (v1.5)
+
+**Problema:** el job `ci` usaba `POSTGRES_USER: test` + `DB_USER: test` acoplados y no montaba `docker/postgres/init/`, así que la guarda least-privilege **nunca** corría en CI (deuda P0 de gate documentada por EM-ARCH / SEC-ENG §3.3.1).
+
+**Decisión:** **opción A** — service container + script post-ready en el runner (sin imagen custom ni job compose dedicado). Justificación: estable en GHA, reutiliza `apply-least-privilege.sql` / verify, no introduce secretos ni topología nueva (ADR no requerido).
+
+| Cambio | Detalle (sin secretos) |
+| --- | --- |
+| Service Postgres | `POSTGRES_USER=iwana` (bootstrap) ≠ `iwana_app` / `iwana_migrator` |
+| Env job | `DB_MIGRATOR_*` para migraciones; `DB_USER=iwana_app` (runtime model) |
+| Scripts | `apply-least-privilege.sh` / `verify-*.sh` soportan modo **host** (`LEAST_PRIVILEGE_MODE=host`) además de Docker (default lab) |
+| Gate | paso `Verify app cannot DROP audit trigger` → `bash scripts/db/verify-app-cannot-drop-audit-trigger.sh` |
+| Criterio fallo | exit ≠ 0 (FAIL si app es owner, puede DROP, o falta trigger/rol) |
+| Job intacto | `adr-citations` sin Postgres |
+
+**Flujo DB CI:** install `postgresql-client` → apply → `migration:run` (migrator) → re-apply → check no pending → tenant schema + `migration:tenant:run` → re-apply → **verify**.
+
+**Evidencia de diseño (esta sesión):** working tree listo; no force-push; no commit (orquestador). Validación local GHA no ejecutada (host agente Windows); sintaxis YAML/scripts revisada. Primera corrida verde en GitHub Actions es la evidencia runtime del gate.
+
+**Riesgos residuales:** +tiempo job (apt + 3× apply + verify); flake si healthcheck Postgres lento (retries existentes); divergencia local (init entrypoint) vs CI (apply post-ready) — mismo SQL canónico.
+
+**Stop/go:** **GO** si verify falla con app=superuser/owner y pasa con roles correctos; **STOP** no aplica (sin imagen privada ni secrets nuevos).
 
 ---
 
@@ -256,13 +318,14 @@ DB: `AppDataSource` + `resolveMigrationDbCredentials` (`DB_MIGRATOR_*` preferido
 | --- | --- |
 | Roles `iwana_app` / `iwana_migrator` creados (apply) | **OK** |
 | Verify DROP TRIGGER PASS | **OK** (re-verify) |
-| Opt-in estricto documentado (`DB_USER=iwana_app` + `DB_MIGRATOR_*`) | **OK** — no forzado en default `pnpm dev` |
+| Opt-in estricto en env lab (`DB_USER=iwana_app` + `DB_MIGRATOR_*`) | **OK** — aplicado en `.env` / `.env.development` (no versionado); default `.env.example` intacto |
+| Runtime Nest API/worker con `iwana_app` | **OK** (v1.3) — health + `pg_stat_activity` |
+| DML de negocio + audit endurecido en apply | **OK** (v1.3) |
 | Rotación MFA lab (dry-run → apply → verify → PREVIOUS out) | **OK** |
-| Default compose intacto (compat) | **OK** |
-| Staging checklist operativo | **CERRADO** 2026-07-19 |
+| Default compose / `.env.example` intactos (compat clones) | **OK** |
+| Staging checklist operativo | **CERRADO** 2026-07-19 (runtime v1.3) |
 
 Checklist estricto residual (solo si el operador activa opt-in en un entorno “staging” físico futuro): mismos pasos §9 (prod), sobre ese host.
-
 ---
 
 ## 6. Checklist prod (plantilla; ejecución remota NO-GO)
@@ -407,7 +470,10 @@ Referencia de topología: plan archive MOD01 → único `docker-compose.yml` on-
 2. ~~**PLAT-OPS:** rotación lab pasos 4–7.~~ **Hecho** (§3.4).  
 3. ~~**Staging surrogate + SEC-04 re-verify.**~~ **Cerrado** (§5).  
 4. ~~**Purge git.**~~ **GO** (§8).  
-5. **Operador en `10.0.0.2`:** ejecutar §9 cuando el host sea reachable + backup OK.  
-6. **AI-SEC-ENG:** re-review G-SEC con evidencia lab + purge (este informe **no** auto-aprueba G-SEC adicional).  
-7. Opcional lab: `pnpm dev` + smoke MFA/PII lectura.  
-8. Avisar a desarrolladores: **re-clonar** tras purge.
+5. ~~**SEC-04 runtime lab (`DB_USER=iwana_app`).~~ **Cerrado** (§2.3, v1.3).  
+6. ~~**Ledger `typeorm_migrations` → `iwana_migrator`.~~ **GO** (§2.4, v1.4).  
+7. **Operador en `10.0.0.2`:** ejecutar §9 cuando el host sea reachable + backup OK.  
+8. **AI-SEC-ENG:** re-review G-SEC con evidencia lab + purge + runtime (este informe **no** auto-aprueba G-SEC adicional).  
+9. Opcional lab: smoke MFA/PII lectura con el stack ya en `iwana_app`.  
+10. Avisar a desarrolladores: **re-clonar** tras purge; opt-in SEC-04 requiere re-apply (DML + ledger) si el volumen es legacy.
+11. ~~**CI gate least-privilege (GSEC-N1).**~~ **Diseño GO / working tree** (v1.5 §2.5) — confirmar verde en primera corrida GHA tras merge.

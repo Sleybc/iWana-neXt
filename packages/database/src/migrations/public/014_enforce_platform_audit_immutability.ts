@@ -1,6 +1,31 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 /**
+ * NO REVERTIR EL TIMESTAMP DE ESTA CLASE (renumerada 2026-07-19).
+ *
+ * Esta migracion nacio con el sufijo `1700000000014`, MENOR que el de las
+ * migraciones 001-011 (`1741766400000`..`1746164800000`).
+ * TypeORM ordena la cadena por el timestamp del NOMBRE DE CLASE, no por el del
+ * fichero ni por el prefijo numerico del nombre de archivo. Sobre una base
+ * limpia las 012-016 corrian ANTES de `CreatePublicSchema1741766400000` y
+ * `pnpm --filter @iwana/db migration:run` fallaba con
+ * `relation "public.platform_audit_logs" does not exist`.
+ *
+ * En `dbiw` no se notaba porque 001-011 ya estaban aplicadas: el defecto
+ * solo aparece en CI limpio, en el bootstrap de staging/prod y en cualquier
+ * entorno nuevo — es decir, justo en el camino documentado.
+ *
+ * El sufijo actual (`17844192xx000`, 2026-07-19) es DELIBERADO y debe
+ * quedar por encima del maximo de la cadena previa. Bajarlo reintroduce el fallo.
+ * Las cinco migraciones renumeradas son idempotentes, condicion necesaria para
+ * renumerar: las bases que ya las tenian registradas con el nombre viejo las
+ * vuelven a ejecutar como si fueran nuevas.
+ *
+ * La cadena tenant no sufre esto: `tenant/runner.ts` usa un array ordenado
+ * explicito en vez de delegar el orden en el timestamp.
+ */
+
+/**
  * Migración 014: hace `platform_audit_logs` realmente inmutable.
  *
  * `001_create_public_schema.ts` afirmaba en sus comentarios que la tabla es
@@ -41,8 +66,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * No es un agujero: es la diferencia entre una mutación deliberada y trazable y
  * una accidental.
  */
-export class EnforcePlatformAuditImmutability1700000000014 implements MigrationInterface {
-  name = 'EnforcePlatformAuditImmutability1700000000014';
+export class EnforcePlatformAuditImmutability1784419203000 implements MigrationInterface {
+  name = 'EnforcePlatformAuditImmutability1784419203000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

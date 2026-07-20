@@ -58,7 +58,7 @@ function ensureCliEnvLoaded(): void {
   }
 }
 
-type CliFlags = {
+export type CliFlags = {
   apply: boolean;
   verifyActiveOnly: boolean;
   schema?: string | undefined;
@@ -66,7 +66,7 @@ type CliFlags = {
   help: boolean;
 };
 
-function parseArgs(argv: string[]): CliFlags {
+export function parseArgs(argv: string[]): CliFlags {
   const flags: CliFlags = {
     apply: false,
     verifyActiveOnly: false,
@@ -130,7 +130,7 @@ ${REENCRYPT_INVENTORY_GAPS.map((g) => `  - ${g}`).join('\n')}
 `);
 }
 
-function resolveMode(flags: CliFlags): ReencryptMode {
+export function resolveMode(flags: CliFlags): ReencryptMode {
   if (flags.verifyActiveOnly) {
     return 'verify-active-only';
   }
@@ -140,7 +140,7 @@ function resolveMode(flags: CliFlags): ReencryptMode {
   return 'dry-run';
 }
 
-function loadKeys(): { activeKey: Buffer; previousKey: Buffer | null } {
+export function loadKeys(): { activeKey: Buffer; previousKey: Buffer | null } {
   const activeHex = process.env['MFA_ENCRYPTION_KEY']?.trim();
   if (!activeHex || activeHex.length !== 64 || isWeakMfaEncryptionKeyHex(activeHex)) {
     throw new Error(
@@ -235,4 +235,9 @@ async function main(): Promise<void> {
   process.exit(exitCode);
 }
 
-void main();
+// Solo se autoejecuta como entrypoint (`node dist/cli/reencrypt-aes.js`).
+// Sin esta guarda, importar el módulo desde un test lanzaba el recifrado real
+// contra la base configurada y terminaba el proceso con `process.exit`.
+if (require.main === module) {
+  void main();
+}

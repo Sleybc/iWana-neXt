@@ -34,6 +34,8 @@ import { AddStockBalanceReservationCheck0730000000000 } from './073_add_stock_ba
 import { RedactLeakedTemporaryPasswords0740000000000 } from './074_redact_leaked_temporary_passwords';
 import { EnforceAuditImmutability0750000000000 } from './075_enforce_audit_immutability';
 import { AddPasswordResetTokenExpiresAt0760000000000 } from './076_add_password_reset_token_expires_at';
+import { RedactResidualAuditPii0770000000000 } from './077_redact_residual_audit_pii';
+import { RedactAuditPiiSuffixGap0780000000000 } from './078_redact_audit_pii_suffix_gap';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
 import { CreateExpedienteRecords1700000000001 } from './001_create_expediente_records';
@@ -145,6 +147,8 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   RedactLeakedTemporaryPasswords0740000000000,
   EnforceAuditImmutability0750000000000,
   AddPasswordResetTokenExpiresAt0760000000000,
+  RedactResidualAuditPii0770000000000,
+  RedactAuditPiiSuffixGap0780000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

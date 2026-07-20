@@ -4,6 +4,8 @@
 --
 -- Roles esperados: iwana_app, iwana_migrator (01-create-roles.sh).
 -- Owner objetivo de audit: iwana_migrator.
+-- Ledger typeorm_migrations: grants en 01 (default privileges) + apply-least-privilege.sql
+-- (bloque $ledger$ explícito en public y schemas tenant).
 
 CREATE OR REPLACE FUNCTION public.iwana_reassign_audit_table_owner()
 RETURNS event_trigger

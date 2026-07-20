@@ -15,8 +15,8 @@
 | --- | --- | --- | --- | --- |
 | SEC-02 | Crítica | Fail-fast + ADR-058 rotación/recifrado (go CTO) | SR-FULL · PLAT-OPS | **Lab+staging GO** · purge **GO** · prod on-prem **NO-GO remoto** (checklist operador) |
 | SEC-03 | Alta | Separar TTL token forgot-password del TTL credencial temporal | SR-FULL | **Cerrado** (mig. 076) |
-| SEC-04 | Media | Least-privilege; staging/prod con `iwana_app` obligatorio | PLAT-OPS · SR-FULL | **Cerrado** (código+015; checklist prod) |
-| SEC-05 | Media | Redactar PII en audit; ARCO = opción A (CTO) | SR-FULL · SEC-ENG | **Cerrado** |
+| SEC-04 | Media | Least-privilege; staging/prod con `iwana_app` obligatorio | PLAT-OPS · SR-FULL | **Runtime lab GO** (`iwana_app`) · prod checklist |
+| SEC-05 | Media | Redactar PII en audit; ARCO = opción A (CTO) | SR-FULL · SEC-ENG | **Cerrado** (016/077 lab; G-SEC Add. D **GO**) |
 | Barrido | Alta | SWEEP + GSEC-01…07 | SEC-ENG · SR-FULL | **GO** (Add. A+B+C) |
 
 ---
@@ -142,7 +142,7 @@ Evidencia completa: [`INFORME-TRANSVERSAL-PLATOPS-EJECUCION-SEC-02-04-v1.0.md`](
 
 ## 5. Gates
 
-- G-SEC: **GO** — [`SECURITY-REVIEW-TRANSVERSAL-REMEDIACION-GSEC-v1.0.md`](../security/SECURITY-REVIEW-TRANSVERSAL-REMEDIACION-GSEC-v1.0.md) Addendum A+B+C.
+- G-SEC: **GO** — [`SECURITY-REVIEW-TRANSVERSAL-REMEDIACION-GSEC-v1.0.md`](../security/SECURITY-REVIEW-TRANSVERSAL-REMEDIACION-GSEC-v1.0.md) Addendum A+B+C+D. **GSEC-08 cerrado** (grants ledger migrator; PLAT-OPS v1.4).
 - G-OPS: go CTO registrado; staging surrogate + purge **cerrados**; prod on-prem pendiente de operador en host (§9 informe PLAT-OPS).
 - G-QA: tests unitarios del interceptor + auth forgot/reset/temp password; sin PII real en fixtures.
 

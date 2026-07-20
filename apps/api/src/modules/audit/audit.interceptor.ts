@@ -121,10 +121,88 @@ export class AuditInterceptor implements NestInterceptor {
     'phone_primary',
     'phonesecondary',
     'phone_secondary',
+    // Altas explícitas: PII real cuyo sufijo no está cualificado por persona y
+    // que un patrón genérico solo alcanzaría a costa de falsos positivos.
+    // `customerDisplayName`/`expedienteFullName` terminan en `display_name` /
+    // `full_name`, sufijos que comparten con campos no personales.
+    'customerdisplayname',
+    'customer_display_name',
+    'expedientefullname',
+    'expediente_full_name',
+    'fiscalname',
+    'fiscal_name',
+    'suggestedpartyname',
+    'suggested_party_name',
   ]);
 
-  /** Sufijos de clave que indican email o ciphertext PII (case-insensitive). */
-  static readonly PII_KEY_SUFFIX_PATTERN = /(email|encrypted)$/i;
+  /**
+   * Claves que **nunca** se omiten, aunque algún patrón futuro las empareje.
+   *
+   * - `actorName`: es el *sujeto* del asiento, no PII de un titular de datos.
+   *   Un audit log existe para registrar quién hizo qué; la identidad del
+   *   operador en ejercicio profesional es el registro mismo. Además `userId`
+   *   se guarda al lado, así que redactarlo no aporta privacidad —la persona
+   *   sigue identificada— y sí degrada la bitácora: `expediente.service.ts`
+   *   lo lee de vuelta para pintar el actor en el timeline del expediente.
+   * - `piiaAccess`: su valor es el *nombre* del campo accedido
+   *   (p. ej. `'documentNumber'`), nunca su contenido. `expediente.service.ts`
+   *   lo lee para distinguir un acceso PII de una edición de sección. Omitirlo
+   *   rompería ese filtro sin proteger ningún dato.
+   *
+   * Es la frontera de esta política: se protege la PII de los **titulares de
+   * datos**, no la identidad de quien opera el sistema ni los nombres de campo.
+   */
+  static readonly NEVER_OMITTED_KEYS = new Set(['actorname', 'piiaaccess']);
+
+  /**
+   * Direcciones técnicas: identifican una máquina, no un domicilio. `ipAddress`
+   * es además columna propia del audit y su omisión rompería la trazabilidad.
+   */
+  static readonly TECHNICAL_ADDRESS_PATTERN = /(^|_)(ip|mac|remote)_address$/;
+
+  /**
+   * Sufijos de clave que denotan PII de un titular de datos.
+   *
+   * **Se evalúa sobre la clave normalizada a snake_case** (ver
+   * {@link normalizePiiKey}), no sobre la clave cruda. Eso da un límite de
+   * token real y es lo que evita los falsos positivos que hundirían la
+   * fidelidad del registro:
+   * - `unit` NO empareja `nit` (en crudo, `/nit$/i` sí lo hace).
+   * - `fileName`, `schemaName`, `categoryName`, `queueName`, `typeName` NO
+   *   emparejan: `name` a secas no está en la lista. Un `name$` ciego habría
+   *   redactado `schemaName` en `platform_audit_logs`, que es justo lo que
+   *   permite trazar qué tenant se aprovisionó.
+   *
+   * Por eso los nombres solo se omiten **cualificados por persona**
+   * (`purchasingContactName`, `technicianName`, …) y nunca por el sufijo
+   * `name` suelto. Lo que no encaje en un sufijo va a
+   * {@link ALWAYS_OMITTED_KEYS} como alta explícita.
+   */
+  static readonly PII_KEY_SUFFIX_PATTERN =
+    /(^|_)(email|encrypted|phone|document_number|nit|address|(contact|person|customer|holder|owner|subscriber|responsible|technician|uploaded_by|directed_to)_name)$/;
+
+  /** `purchasingContactPhone` → `purchasing_contact_phone`. */
+  static normalizePiiKey(key: string): string {
+    return key
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+      .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+      .toLowerCase();
+  }
+
+  /** ¿La clave denota PII de un titular de datos, por sufijo normalizado? */
+  static matchesPiiSuffix(key: string): boolean {
+    if (AuditInterceptor.NEVER_OMITTED_KEYS.has(key.toLowerCase())) {
+      return false;
+    }
+
+    const normalized = AuditInterceptor.normalizePiiKey(key);
+
+    if (AuditInterceptor.TECHNICAL_ADDRESS_PATTERN.test(normalized)) {
+      return false;
+    }
+
+    return AuditInterceptor.PII_KEY_SUFFIX_PATTERN.test(normalized);
+  }
 
   /** Tope de recursión: las respuestas auditadas no anidan más que esto. */
   static readonly MAX_SANITIZE_DEPTH = 5;
@@ -323,6 +401,11 @@ export class AuditInterceptor implements NestInterceptor {
   private static isSecretEntry(key: string, value: unknown): boolean {
     const normalizedKey = key.toLowerCase();
 
+    // Gana sobre todo lo demás: ver NEVER_OMITTED_KEYS.
+    if (AuditInterceptor.NEVER_OMITTED_KEYS.has(normalizedKey)) {
+      return false;
+    }
+
     if (AuditInterceptor.ALWAYS_OMITTED_KEYS.has(normalizedKey)) {
       return typeof value === 'string' || value instanceof Date;
     }
@@ -335,6 +418,6 @@ export class AuditInterceptor implements NestInterceptor {
       return true;
     }
 
-    return AuditInterceptor.PII_KEY_SUFFIX_PATTERN.test(key);
+    return AuditInterceptor.matchesPiiSuffix(key);
   }
 }
