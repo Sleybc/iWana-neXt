@@ -6,6 +6,7 @@ import {
   StockIssueType,
   StockLocationType,
 } from '@iwana/shared';
+import { STOCK_COMMITTED_NEXT_STEP_TEXT } from './inventory-labels';
 import { StockIssueComposer } from './StockIssueComposer';
 
 const baseItem = {
@@ -134,6 +135,29 @@ describe('StockIssueComposer', () => {
         ],
       }),
     );
+  });
+
+  it('appends next-step guidance when create fails with a remote stock error', () => {
+    render(
+      <StockIssueComposer
+        items={[baseItem as any]}
+        balances={[balances[0]!]}
+        locations={[baseLocation, mobileLocation] as any}
+        destinationOptions={
+          new Map([[StockLocationType.MOBILE_TECHNICIAN, [mobileLocation] as any]]) as any
+        }
+        error="No hay suficiente material disponible: hay cantidad comprometida por salidas abiertas."
+        onSubmit={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText('No se pudo crear la salida')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'No hay suficiente material disponible: hay cantidad comprometida por salidas abiertas.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(STOCK_COMMITTED_NEXT_STEP_TEXT)).toBeInTheDocument();
   });
 
   it('shows stock suggestions and warns when quantity exceeds available balance', async () => {

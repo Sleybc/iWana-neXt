@@ -21,6 +21,7 @@ import {
   CreateModeMobileStepIndicator,
 } from '@/components/shared/portal-ui';
 import {
+  STOCK_COMMITTED_NEXT_STEP_TEXT,
   formatInventoryQuantity,
   getStockIssueTypeHelperLabel,
   getStockIssueTypeLabel,
@@ -745,7 +746,16 @@ export function StockIssueComposer({
         <PortalAlert
           variant="error"
           title={isEditMode ? 'No se pudo guardar la salida' : 'No se pudo crear la salida'}
-          description={validationError ?? error ?? ''}
+          description={
+            validationError ? (
+              validationError
+            ) : (
+              <>
+                <p>{error}</p>
+                <p className="mt-1">{STOCK_COMMITTED_NEXT_STEP_TEXT}</p>
+              </>
+            )
+          }
         />
       ) : null}
 
