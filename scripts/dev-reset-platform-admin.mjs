@@ -1,0 +1,92 @@
+#!/usr/bin/env node
+/**
+ * Sincroniza la contraseña del superadmin de plataforma con PLATFORM_SUPER_ADMIN_* (solo dev local).
+ * Útil tras reset de DB cuando bootstrap omitió al usuario existente con hash desactualizado.
+ */
+import { readFileSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+function loadEnv(relativePath) {
+  const path = join(root, relativePath);
+  if (!existsSync(path)) return;
+  for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let value = trimmed.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (!(key in process.env)) process.env[key] = value;
+  }
+}
+
+loadEnv('.env.development.local');
+loadEnv('.env.development');
+
+const email = process.env.PLATFORM_SUPER_ADMIN_EMAIL?.trim();
+const password = process.env.PLATFORM_SUPER_ADMIN_PASSWORD?.trim();
+
+if (!email || !password) {
+  console.error('dev-reset-platform-admin: faltan PLATFORM_SUPER_ADMIN_* en env de desarrollo');
+  process.exit(1);
+}
+
+const emailHash = createHash('sha256').update(email.toLowerCase().trim()).digest('hex');
+
+const hashResult = spawnSync(
+  process.execPath,
+  [
+    '-e',
+    "const bcrypt=require('bcryptjs'); bcrypt.hash(process.argv[1],12).then(h=>process.stdout.write(h));",
+    password,
+  ],
+  {
+    cwd: join(root, 'apps', 'api'),
+    encoding: 'utf8',
+    shell: false,
+  },
+);
+
+if (hashResult.status !== 0 || !hashResult.stdout?.trim()) {
+  console.error(hashResult.stderr || 'No se pudo generar password_hash');
+  process.exit(hashResult.status ?? 1);
+}
+
+const passwordHash = hashResult.stdout.trim();
+
+const dbUser = process.env.DB_USER ?? 'iwana';
+const dbName = process.env.DB_NAME ?? 'iwana_dev';
+const container = process.env.IWANA_POSTGRES_CONTAINER ?? 'iwana-postgres';
+
+const sql = `UPDATE public.platform_users SET password_hash = '${passwordHash.replace(/'/g, "''")}' WHERE email_hash = '${emailHash}';`;
+
+const result = spawnSync(
+  'docker',
+  ['exec', container, 'psql', '-U', dbUser, '-d', dbName, '-c', sql],
+  { encoding: 'utf8', shell: process.platform === 'win32' },
+);
+
+if (result.status !== 0) {
+  console.error(result.stderr || result.stdout || 'docker exec falló');
+  process.exit(result.status ?? 1);
+}
+
+console.log(
+  JSON.stringify({
+    ok: true,
+    action: 'password_synced',
+    emailHashPrefix: emailHash.slice(0, 12),
+    rowsHint: (result.stdout ?? '').trim(),
+  }),
+);
