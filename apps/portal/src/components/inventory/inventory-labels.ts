@@ -700,3 +700,56 @@ export const STOCK_RESERVED_HELP_TEXT =
 /** Próximo paso accionable cuando el material comprometido bloquea una operación. */
 export const STOCK_COMMITTED_NEXT_STEP_TEXT =
   'Para liberar material, despacha o cancela las salidas abiertas que lo tienen reservado.';
+
+/** Vocabulario canónico de costeo (ADR-059 / D-F4-9). Nunca «móvil», «medio» ni averageCost crudo. */
+export const INVENTORY_AVERAGE_COST_LABEL = 'Costo promedio';
+export const INVENTORY_LAST_PURCHASE_COST_LABEL = 'Último costo de compra';
+export const INVENTORY_UNIT_COST_LABEL = 'Costo unitario';
+export const INVENTORY_STANDARD_COST_LABEL = 'Costo estándar';
+export const INVENTORY_ESTIMATED_VALUE_LABEL = 'Valor estimado de inventario';
+export const INVENTORY_NO_COST_LABEL = 'Sin costo';
+
+/** Ayuda del costo promedio en detalle/form de ítem. */
+export const INVENTORY_AVERAGE_COST_HELP_TEXT =
+  'Se actualiza al recibir compras. Es la referencia para valorar existencias y registrar el costo en salidas.';
+
+/** Nota de transparencia del KPI de valoración (F2 + F4). */
+export const INVENTORY_ESTIMATED_VALUE_HELP_TEXT =
+  'Basado en el costo promedio de cada producto. Estimación operativa, no contable ni fiscal.';
+
+type InventoryCostFields = {
+  averageCost?: string | null;
+  lastPurchaseCost?: string | null;
+  standardCost?: string | null;
+  baseCost?: string | null;
+};
+
+/**
+ * Cadena de valoración D-F4-8: averageCost → lastPurchaseCost → standardCost → baseCost.
+ * Devuelve el primer valor > 0, o null si no hay costo usable.
+ */
+export function resolveInventoryValuationUnitCost(item: InventoryCostFields): string | null {
+  const chain = [item.averageCost, item.lastPurchaseCost, item.standardCost, item.baseCost];
+  for (const value of chain) {
+    if (value == null || value === '') {
+      continue;
+    }
+    const numeric = Number.parseFloat(value);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return value;
+    }
+  }
+  return null;
+}
+
+/** Formatea un costo o muestra «Sin costo» cuando es nulo/0. */
+export function formatInventoryCostOrNone(value: string | number | null | undefined): string {
+  if (value == null || value === '') {
+    return INVENTORY_NO_COST_LABEL;
+  }
+  const numeric = typeof value === 'number' ? value : Number.parseFloat(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return INVENTORY_NO_COST_LABEL;
+  }
+  return formatInventoryCurrency(numeric);
+}

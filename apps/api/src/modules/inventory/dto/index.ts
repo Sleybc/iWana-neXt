@@ -122,6 +122,7 @@ const inventoryItemMasterFields = {
   purchaseToBaseUomFactor: positiveNumber.optional().nullable(),
   standardCost: nonNegativeNumber.optional().default(0),
   lastPurchaseCost: nonNegativeNumber.optional().nullable(),
+  averageCost: nonNegativeNumber.optional().default(0),
   reorderPoint: nonNegativeNumber.optional().default(0),
   targetStock: nonNegativeNumber.optional().default(0),
   minimumOrderQty: positiveNumber.optional().nullable(),
@@ -220,6 +221,7 @@ export const UpdateInventoryItemSchema = refineInventoryItemMaster(
       purchaseToBaseUomFactor: positiveNumber.optional().nullable(),
       standardCost: nonNegativeNumber.optional(),
       lastPurchaseCost: nonNegativeNumber.optional().nullable(),
+      averageCost: nonNegativeNumber.optional(),
       reorderPoint: nonNegativeNumber.optional(),
       targetStock: nonNegativeNumber.optional(),
       minimumOrderQty: positiveNumber.optional().nullable(),
@@ -475,6 +477,14 @@ export class CreateInventoryItemDto {
   @ApiPropertyOptional()
   @Allow()
   lastPurchaseCost?: number | null;
+
+  @ApiPropertyOptional({
+    default: 0,
+    description:
+      'Costo promedio móvil del ítem (valoración operativa). Se actualiza en recepción; no es claim fiscal.',
+  })
+  @Allow()
+  averageCost?: number;
 
   @ApiPropertyOptional({ default: 0 })
   @Allow()

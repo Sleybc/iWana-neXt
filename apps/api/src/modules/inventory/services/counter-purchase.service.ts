@@ -21,6 +21,7 @@ import {
 import { CreateCounterPurchaseInput, CreateCounterPurchaseSchema } from '../dto';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { acquireIdempotencyTransactionLock } from './inventory-postgres.util';
+import { InventoryCostingService } from './inventory-costing.service';
 import { SerializedAssetService } from './serialized-asset.service';
 import { StockLedgerService } from './stock-ledger.service';
 
@@ -70,6 +71,7 @@ export class CounterPurchaseService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly stockLedgerService: StockLedgerService,
     private readonly serializedAssetService: SerializedAssetService,
+    private readonly inventoryCostingService: InventoryCostingService,
   ) {}
 
   async record(input: CreateCounterPurchaseInput, actor: JwtPayload) {
@@ -220,6 +222,16 @@ export class CounterPurchaseService {
             });
           }
         }
+
+        await this.inventoryCostingService.applyReceiptCostingWithManager(
+          manager,
+          tenantId,
+          movementLines.map((line) => ({
+            itemId: line.itemId,
+            unitCost: line.unitCost ?? 0,
+            quantity: line.quantity,
+          })),
+        );
 
         const result = await this.stockLedgerService.recordMovementWithManager(
           manager,

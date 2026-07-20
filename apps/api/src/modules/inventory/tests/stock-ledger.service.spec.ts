@@ -31,6 +31,12 @@ jest.mock('@iwana/db', () => ({
 }));
 
 describe('StockLedgerService', () => {
+  const inventoryCostingServiceMock = {
+    resolveSealedUnitCostWithManager: jest.fn().mockResolvedValue(null),
+    applyReceiptCostingWithManager: jest.fn().mockResolvedValue(undefined),
+    sumOnHandWithManager: jest.fn().mockResolvedValue(0),
+  };
+
   const actor: JwtPayload = {
     sub: 'support-001',
     email: 'support@example.test',
@@ -98,6 +104,7 @@ describe('StockLedgerService', () => {
       stockBalanceService as never,
       serializedAssetService as never,
       assetLifecycleService as never,
+      inventoryCostingServiceMock as never,
     );
 
     await expect(
@@ -137,6 +144,7 @@ describe('StockLedgerService', () => {
         transitionAssetWithManager: jest.fn(),
       } as never,
       { recordWithManager: jest.fn() } as never,
+      inventoryCostingServiceMock as never,
     );
 
     const result = await service.recordMovementWithManager(
@@ -184,6 +192,7 @@ describe('StockLedgerService', () => {
         transitionAssetWithManager: jest.fn(),
       } as never,
       { recordWithManager: jest.fn() } as never,
+      inventoryCostingServiceMock as never,
     );
 
     const result = await service.recordMovementWithManager(
@@ -202,6 +211,120 @@ describe('StockLedgerService', () => {
     expect(result.lines).toEqual([expect.objectContaining({ movementId: 'mov-010' })]);
     expect(stockBalanceService.applyDeltaWithManager).toHaveBeenCalledTimes(1);
     expect(manager.save).toHaveBeenCalledTimes(2);
+    expect(inventoryCostingServiceMock.resolveSealedUnitCostWithManager).toHaveBeenCalledWith(
+      manager,
+      'tenant-001',
+      'item-001',
+      expect.any(Map),
+    );
+  });
+
+  it('sella unitCost en salidas cuando el costing resuelve avg > 0 (CA-F4-03)', async () => {
+    inventoryCostingServiceMock.resolveSealedUnitCostWithManager.mockResolvedValueOnce(25);
+
+    const manager = {
+      findOne: jest.fn().mockResolvedValue(null),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue({ movementNumber: 'MOV-000020' }),
+      }),
+      create: jest.fn((_entity, payload) => payload),
+      save: jest
+        .fn()
+        .mockImplementationOnce(async (_entity, payload) => ({ id: 'mov-020', ...payload }))
+        .mockImplementationOnce(async (_entity, payload) => ({ id: 'line-020', ...payload })),
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      find: jest.fn().mockResolvedValue([]),
+    };
+
+    const service = new StockLedgerService(
+      {} as DataSource,
+      withAvailability({ applyDeltaWithManager: jest.fn().mockResolvedValue(undefined) }) as never,
+      {
+        resolveForMovementWithManager: jest.fn(),
+        transitionAssetWithManager: jest.fn(),
+      } as never,
+      { recordWithManager: jest.fn() } as never,
+      inventoryCostingServiceMock as never,
+    );
+
+    const result = await service.recordMovementWithManager(
+      manager as never,
+      'tenant-001',
+      {
+        origin: StockMovementOrigin.SALE,
+        originContext: 'inventory.sale',
+        idempotencyKey: 'seal-outbound',
+        lines: [{ itemId: 'item-001', locationId: 'loc-001', quantity: -2 }],
+      },
+      actor,
+    );
+
+    expect(result.lines[0]).toEqual(
+      expect.objectContaining({
+        unitCost: '25.00',
+        quantity: '-2.00',
+      }),
+    );
+  });
+
+  it('ajuste negativo sella unitCost y no invoca applyReceiptCosting (CA-F4-04)', async () => {
+    inventoryCostingServiceMock.resolveSealedUnitCostWithManager.mockResolvedValueOnce(18.5);
+
+    const manager = {
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce({
+          id: 'item-001',
+          trackingMode: InventoryTrackingMode.CONSUMABLE,
+        })
+        .mockResolvedValueOnce({ id: 'loc-001' })
+        .mockResolvedValueOnce(null),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue({ movementNumber: 'MOV-000021' }),
+      }),
+      create: jest.fn((_entity, payload) => payload),
+      save: jest
+        .fn()
+        .mockImplementationOnce(async (_entity, payload) => ({ id: 'mov-021', ...payload }))
+        .mockImplementationOnce(async (_entity, payload) => ({ id: 'line-021', ...payload })),
+      find: jest.fn().mockResolvedValue([]),
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+    };
+
+    (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+      work({ manager } as never),
+    );
+
+    const service = new StockLedgerService(
+      {} as DataSource,
+      withAvailability({ applyDeltaWithManager: jest.fn().mockResolvedValue({}) }) as never,
+      {
+        resolveForMovementWithManager: jest.fn(),
+        transitionAssetWithManager: jest.fn(),
+      } as never,
+      { recordWithManager: jest.fn() } as never,
+      inventoryCostingServiceMock as never,
+    );
+
+    const result = await service.recordAdjustment(
+      {
+        itemId: 'item-001',
+        locationId: 'loc-001',
+        quantityDelta: -1,
+        reason: StockAdjustmentReason.LOSS,
+        idempotencyKey: 'adj-seal-001',
+      },
+      actor,
+    );
+
+    expect(result.lines[0]).toEqual(expect.objectContaining({ unitCost: '18.50' }));
+    expect(inventoryCostingServiceMock.applyReceiptCostingWithManager).not.toHaveBeenCalled();
   });
 
   it('does not assign technician custody when a serialized transfer goes to quarantine', async () => {
@@ -267,6 +390,7 @@ describe('StockLedgerService', () => {
       stockBalanceService as never,
       serializedAssetService as never,
       assetLifecycleService as never,
+      inventoryCostingServiceMock as never,
     );
 
     await service.transfer(
@@ -334,6 +458,7 @@ describe('StockLedgerService', () => {
         transitionAssetWithManager: jest.fn(),
       } as never,
       { recordWithManager: jest.fn() } as never,
+      inventoryCostingServiceMock as never,
     );
 
     await expect(
@@ -393,6 +518,7 @@ describe('StockLedgerService', () => {
         transitionAssetWithManager: jest.fn(),
       } as never,
       { recordWithManager: jest.fn() } as never,
+      inventoryCostingServiceMock as never,
     );
 
     await expect(
@@ -462,6 +588,7 @@ describe('StockLedgerService', () => {
         transitionAssetWithManager: jest.fn(),
       } as never,
       { recordWithManager: jest.fn() } as never,
+      inventoryCostingServiceMock as never,
     );
 
     await expect(
@@ -539,6 +666,7 @@ describe('StockLedgerService', () => {
       withAvailability({ applyDeltaWithManager: jest.fn() }) as unknown as never,
       serializedAssetService as never,
       { recordWithManager: jest.fn() } as never,
+      inventoryCostingServiceMock as never,
     );
 
     await expect(
@@ -618,6 +746,7 @@ describe('StockLedgerService', () => {
       stockBalanceService as never,
       serializedAssetService as never,
       assetLifecycleService as never,
+      inventoryCostingServiceMock as never,
     );
 
     await service.recordReturn(
@@ -693,6 +822,7 @@ describe('StockLedgerService', () => {
         transitionAssetWithManager: jest.fn(),
       } as never,
       { recordWithManager: jest.fn() } as never,
+      inventoryCostingServiceMock as never,
       customerSiteLocationResolver as never,
     );
 
@@ -792,6 +922,7 @@ describe('StockLedgerService', () => {
         transitionAssetWithManager: jest.fn(),
       } as never,
       { recordWithManager: jest.fn() } as never,
+      inventoryCostingServiceMock as never,
     );
 
     const result = await service.recordExecutionOrderMovement(
@@ -871,6 +1002,7 @@ describe('StockLedgerService', () => {
         transitionAssetWithManager: jest.fn(),
       } as never,
       { recordWithManager: jest.fn() } as never,
+      inventoryCostingServiceMock as never,
     );
 
     const result = await service.recordExecutionOrderMovement(
@@ -958,6 +1090,7 @@ describe('StockLedgerService', () => {
           transitionAssetWithManager: jest.fn(),
         } as never,
         { recordWithManager: jest.fn() } as never,
+        inventoryCostingServiceMock as never,
       );
 
       const result = await service.recordAdjustment(
@@ -1021,6 +1154,7 @@ describe('StockLedgerService', () => {
           transitionAssetWithManager: jest.fn(),
         } as never,
         { recordWithManager: jest.fn() } as never,
+        inventoryCostingServiceMock as never,
       );
 
       await service.recordAdjustment(
@@ -1061,6 +1195,7 @@ describe('StockLedgerService', () => {
           transitionAssetWithManager: jest.fn(),
         } as never,
         { recordWithManager: jest.fn() } as never,
+        inventoryCostingServiceMock as never,
       );
 
       await expect(
@@ -1110,6 +1245,7 @@ describe('StockLedgerService', () => {
           transitionAssetWithManager: jest.fn(),
         } as never,
         { recordWithManager: jest.fn() } as never,
+        inventoryCostingServiceMock as never,
       );
 
       const result = await service.recordAdjustment(

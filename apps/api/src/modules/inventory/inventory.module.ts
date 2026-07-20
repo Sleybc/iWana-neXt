@@ -62,6 +62,7 @@ import { StockMovementQueryService } from './services/stock-movement-query.servi
 import { StockIssueService } from './services/stock-issue.service';
 import { CycleCountService } from './services/cycle-count.service';
 import { CounterPurchaseService } from './services/counter-purchase.service';
+import { InventoryCostingService } from './services/inventory-costing.service';
 import { RfqPdfService } from './services/rfq-pdf.service';
 import { RfqService } from './services/rfq.service';
 import { StockLocationService } from './services/stock-location.service';
@@ -109,6 +110,7 @@ import { SupplierProfileService } from './services/supplier-profile.service';
     StockLocationService,
     CustomerSiteLocationResolver,
     StockLedgerService,
+    InventoryCostingService,
     StockMovementQueryService,
     StockIssueService,
     CycleCountService,
@@ -152,6 +154,7 @@ import { SupplierProfileService } from './services/supplier-profile.service';
     StockLocationService,
     CustomerSiteLocationResolver,
     StockLedgerService,
+    InventoryCostingService,
     StockIssueService,
     CycleCountService,
     StockBalanceService,

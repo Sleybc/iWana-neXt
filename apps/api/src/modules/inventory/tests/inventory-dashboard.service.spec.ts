@@ -32,11 +32,12 @@ describe('InventoryDashboardService', () => {
     jest.clearAllMocks();
   });
 
-  it('calcula estimatedTotalValue y estimatedValue por categoría con costo D-F2-4', async () => {
+  it('calcula estimatedTotalValue priorizando averageCost (D-F4-8)', async () => {
     const items = [
       {
         id: 'item-001',
         categoryId: 'cat-001',
+        averageCost: '12.00',
         lastPurchaseCost: '10.00',
         standardCost: '8.00',
         baseCost: '5.00',
@@ -44,6 +45,7 @@ describe('InventoryDashboardService', () => {
       {
         id: 'item-002',
         categoryId: 'cat-002',
+        averageCost: '0.00',
         lastPurchaseCost: null,
         standardCost: null as unknown as string,
         baseCost: '4.00',
@@ -51,6 +53,7 @@ describe('InventoryDashboardService', () => {
       {
         id: 'item-003',
         categoryId: 'cat-002',
+        averageCost: '0.00',
         lastPurchaseCost: null,
         standardCost: '0.00',
         baseCost: '9.00',
@@ -100,21 +103,21 @@ describe('InventoryDashboardService', () => {
     const service = new InventoryDashboardService({} as DataSource);
     const summary = await service.getSummary();
 
-    // item-001: 3 * 10 = 30; item-002: 2 * 4 = 8 (standardCost null → baseCost);
-    // item-003: 1 * 0 = 0 (standardCost '0.00' gana por ??, no cae a baseCost)
-    expect(summary.estimatedTotalValue).toBe(38);
+    // item-001: 3 * 12 = 36 (averageCost); item-002: 2 * 4 = 8 (cae a baseCost);
+    // item-003: 1 * 9 = 9 (avg/standard en 0 → baseCost; semántica || D-F4-8)
+    expect(summary.estimatedTotalValue).toBe(53);
     expect(summary.totalOnHand).toBe(6);
     expect(summary.balancesByCategory).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           categoryId: 'cat-001',
           totalOnHand: 3,
-          estimatedValue: 30,
+          estimatedValue: 36,
         }),
         expect.objectContaining({
           categoryId: 'cat-002',
           totalOnHand: 3,
-          estimatedValue: 8,
+          estimatedValue: 17,
         }),
       ]),
     );

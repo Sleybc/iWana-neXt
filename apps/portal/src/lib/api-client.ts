@@ -5710,7 +5710,10 @@ export interface InventoryDashboardSummary {
   serializedAssetsCount: number;
   balancesCount: number;
   totalOnHand: number;
-  /** Valor estimado del inventario (Σ onHand × costo unitario D-F2-4). */
+  /**
+   * Valor estimado del inventario (Σ onHand × costo unitario).
+   * Semántica F4: prioriza averageCost → lastPurchaseCost → standardCost → baseCost (D-F4-8).
+   */
   estimatedTotalValue: number;
   balancesByLocation: InventoryBalanceByLocationSummary[];
   balancesByCategory: InventoryBalanceByCategorySummary[];
@@ -5732,7 +5735,10 @@ export interface InventoryBalanceByCategorySummary {
   categoryName: string;
   totalOnHand: number;
   uniqueItems: number;
-  /** Valor estimado de la categoría (Σ onHand × costo unitario D-F2-4). */
+  /**
+   * Valor estimado de la categoría (Σ onHand × costo unitario).
+   * Semántica F4: prioriza averageCost en la cadena D-F4-8.
+   */
   estimatedValue: number;
 }
 
@@ -5794,6 +5800,8 @@ export interface InventoryItemRecord {
   purchaseToBaseUomFactor: string | null;
   standardCost: string;
   lastPurchaseCost: string | null;
+  /** Costo promedio móvil por ítem (ADR-059). Numeric as string. */
+  averageCost: string;
   reorderPoint: string;
   targetStock: string;
   minimumOrderQty: string | null;
@@ -6348,6 +6356,8 @@ export interface CreateInventoryItemDto {
   purchaseToBaseUomFactor?: number | null;
   standardCost?: number;
   lastPurchaseCost?: number | null;
+  /** Costo promedio (contrato F4). En UI se muestra en lectura; el backend lo actualiza en recepción. */
+  averageCost?: number;
   reorderPoint?: number;
   targetStock?: number;
   minimumOrderQty?: number | null;

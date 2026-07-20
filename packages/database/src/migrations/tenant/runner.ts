@@ -36,6 +36,7 @@ import { EnforceAuditImmutability0750000000000 } from './075_enforce_audit_immut
 import { AddPasswordResetTokenExpiresAt0760000000000 } from './076_add_password_reset_token_expires_at';
 import { RedactResidualAuditPii0770000000000 } from './077_redact_residual_audit_pii';
 import { RedactAuditPiiSuffixGap0780000000000 } from './078_redact_audit_pii_suffix_gap';
+import { AddInventoryItemAverageCost0800000000000 } from './080_add_inventory_item_average_cost';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
 import { CreateExpedienteRecords1700000000001 } from './001_create_expediente_records';
@@ -149,6 +150,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   AddPasswordResetTokenExpiresAt0760000000000,
   RedactResidualAuditPii0770000000000,
   RedactAuditPiiSuffixGap0780000000000,
+  AddInventoryItemAverageCost0800000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

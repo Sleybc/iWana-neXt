@@ -118,6 +118,9 @@ export class InventoryItem {
   @Column({ name: 'last_purchase_cost', type: 'numeric', precision: 14, scale: 2, nullable: true })
   lastPurchaseCost: string | null;
 
+  @Column({ name: 'average_cost', type: 'numeric', precision: 14, scale: 2, default: 0 })
+  averageCost: string;
+
   @Column({ name: 'reorder_point', type: 'numeric', precision: 12, scale: 2, default: 0 })
   reorderPoint: string;
 

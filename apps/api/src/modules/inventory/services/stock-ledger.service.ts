@@ -33,6 +33,7 @@ import {
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { AssetLifecycleService } from './asset-lifecycle.service';
 import { CustomerSiteLocationResolver } from './customer-site-location.resolver';
+import { InventoryCostingService } from './inventory-costing.service';
 import { SerializedAssetService } from './serialized-asset.service';
 import { StockBalanceService, formatInsufficientAvailableMessage } from './stock-balance.service';
 
@@ -160,6 +161,7 @@ export class StockLedgerService {
     private readonly stockBalanceService: StockBalanceService,
     private readonly serializedAssetService: SerializedAssetService,
     private readonly assetLifecycleService: AssetLifecycleService,
+    private readonly inventoryCostingService: InventoryCostingService,
     @Optional()
     private readonly customerSiteLocationResolver?: CustomerSiteLocationResolver,
   ) {}
@@ -217,10 +219,21 @@ export class StockLedgerService {
     );
 
     const lines: StockMovementLine[] = [];
+    const sealedCostCache = new Map<string, number | null>();
 
     for (const lineInput of input.lines) {
       if (lineInput.quantity === 0) {
         throw new BadRequestException('Las líneas del movimiento no pueden tener cantidad cero.');
+      }
+
+      let unitCost = lineInput.unitCost;
+      if (unitCost === undefined || unitCost === null) {
+        unitCost = await this.inventoryCostingService.resolveSealedUnitCostWithManager(
+          manager,
+          tenantId,
+          lineInput.itemId,
+          sealedCostCache,
+        );
       }
 
       const line = await manager.save(
@@ -233,7 +246,7 @@ export class StockLedgerService {
           lotId: lineInput.lotId ?? null,
           serializedAssetId: lineInput.serializedAssetId ?? null,
           quantity: toQuantity(lineInput.quantity),
-          unitCost: lineInput.unitCost != null ? lineInput.unitCost.toFixed(2) : null,
+          unitCost: unitCost != null ? unitCost.toFixed(2) : null,
         }),
       );
 

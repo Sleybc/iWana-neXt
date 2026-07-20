@@ -150,6 +150,7 @@ const actor: JwtPayload = {
         transitionAssetWithManager: jest.fn(),
       } as never,
       { recordWithManager: jest.fn() } as never,
+      { resolveSealedUnitCostWithManager: jest.fn().mockResolvedValue(null) } as never,
     );
     issueService = new StockIssueService(dataSource, ledgerService, balanceService);
 

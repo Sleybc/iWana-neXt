@@ -42,11 +42,11 @@ La brecha no es de modelo sino de **consulta y operación**: el tenant no tiene 
 
 | Fase | Alcance | Estado |
 | --- | --- | --- |
-| **Fase 1 — Kardex, ajustes y vista Existencias** | `GET /inventory/movements` (+ detalle), `POST /inventory/adjustments`, pestaña Existencias con subvistas Por producto / Por bodega / Kardex, drawer de detalle por ítem, diálogo de ajuste; pestaña Bodegas reducida a gestión de bodegas | Aprobada para ejecución |
+| **Fase 1 — Kardex, ajustes y vista Existencias** | `GET /inventory/movements` (+ detalle), `POST /inventory/adjustments`, pestaña Existencias con subvistas Por producto / Por bodega / Kardex, drawer de detalle por ítem, diálogo de ajuste; pestaña Bodegas reducida a gestión de bodegas | **Cerrada** — G7 GO (`1e0e1368` + `609861ef`); ver cierre G7 F1 |
 | **Fase 2 — Reorden y valor básico** | Ítems bajo `reorderPoint` → generación de solicitud de compra prellenada (conexión con purchasing existente); indicadores básicos de valor de inventario | **Cerrada** — G7 GO confirmado CTO 2026-07-18 (`33cd6ecd`) |
-| **Fase 3A — Conteo físico / inventario cíclico** | Documento de conteo (congelar esperado, contar, ver diferencias → cierre que reconcilia el saldo contra lo contado vía ledger). Aditivo, no toca rutas existentes. Ver [ADR-054](../adrs/ADR-054-Conteo-Fisico-Inventario-Ciclico.md) y [spec 3A](../specs/2026-07-18-mod12-existencias-conteo-fisico-fase03A-design.md) | **Ejecutable** — ADR-054 aprobado CTO 2026-07-18 + G7 F2 cerrado |
-| **Fase 3B — Reservas efectivas** | Activar `quantityReserved` en el ciclo de salidas; migrar validaciones de disponible (`onHand → onHand − reserved`) en despacho/transferencia y el guardado anti-negativo. Ver [ADR-055](adrs/ADR-055-Reservas-Efectivas-Disponible-Comprometido.md) y [spec 3B](../specs/2026-07-18-mod12-existencias-reservas-fase03B-design.md) | **Ejecutable** — contrato §7 congelado; ADR-055 aprobado por CTO 2026-07-18 y 3A cerrada con G7 GO (ADR-016 satisfecho) |
-| **Fase 4 — Costeo y valoración** | Costo promedio móvil (actualizar `lastPurchaseCost` y costo promedio en recepción, costear salidas), valoración de inventario y reportes | Planificada |
+| **Fase 3A — Conteo físico / inventario cíclico** | Documento de conteo (congelar esperado, contar, ver diferencias → cierre que reconcilia el saldo contra lo contado vía ledger). Aditivo, no toca rutas existentes. Ver [ADR-054](../adrs/ADR-054-Conteo-Fisico-Inventario-Ciclico.md) y [spec 3A](../specs/2026-07-18-mod12-existencias-conteo-fisico-fase03A-design.md) | **Cerrada** — G7 GO (`1de09b62`); ADR-054 aprobado CTO |
+| **Fase 3B — Reservas efectivas** | Activar `quantityReserved` en el ciclo de salidas; migrar validaciones de disponible (`onHand → onHand − reserved`) en despacho/transferencia y el guardado anti-negativo. Ver [ADR-055](adrs/ADR-055-Reservas-Efectivas-Disponible-Comprometido.md) y [spec 3B](../specs/2026-07-18-mod12-existencias-reservas-fase03B-design.md) | **Cerrada** — G7 GO confirmado CTO 2026-07-20 (`d5f72cd1`, `635c2a4d`) |
+| **Fase 4 — Costeo y valoración** | Costo promedio móvil (actualizar `lastPurchaseCost` y costo promedio en recepción, costear salidas), valoración de inventario y reportes | **Cerrada** — G7 GO confirmado CTO 2026-07-20 (mig 080) |
 
 **Split de Fase 3 (decisión CTO 2026-07-18):** la verificación de factibilidad mostró asimetría de riesgo — conteos aditivo/limpio vs. reservas que modifican el guardado anti-negativo del despacho (riesgo de sobre-venta). Se dividió en 3A (conteos, esta definición) y 3B (reservas, gate propio con ADR propio).
 
@@ -185,7 +185,26 @@ Documento de conteo (`stock_counts` + `stock_count_lines`, migración tenant 071
 
 Migración tenant **072** de reconciliación (recalcula `quantity_reserved` desde salidas abiertas; idempotente; `down()` → `reserved = 0`). Sin columnas nuevas.
 
-Fase 4 (costeo): contrato se congela en su propia definición.
+### Fase 4 (contrato congelado 2026-07-20 al aprobar ADR-059)
+
+Costeo promedio móvil por ítem. Detalle en [ADR-059](../adrs/ADR-059-Costeo-Promedio-Movil-Valoracion-Inventario.md) y [spec 04](../specs/2026-07-20-mod12-existencias-costeo-fase04-design.md).
+
+| Cambio | Roles | Propósito |
+| --- | --- | --- |
+| Migración tenant **080** | — | Columna `inventory_items.average_cost` + backfill |
+| Recepción OC / compra mostrador | (vigentes) | Actualizan `lastPurchaseCost` + recalculan `averageCost` en la misma TX |
+| Salidas / ajustes / transferencias / cierre conteo | (vigentes) | Sellan `unitCost` con promedio (sin endpoints nuevos) |
+| Shape ítem + dashboard / replenishment | (vigentes) | Exponen / priorizan `averageCost` en valoración |
+
+**Fuera de MVP F4:** FIFO, promedio por bodega, DIAN/asientos, recosteo histórico, reportes exportables.
+
+Shape adicional en ítem:
+
+```ts
+averageCost: string; // numeric as string, patrón vigente
+```
+
+Cadena de valoración: `averageCost || lastPurchaseCost || standardCost || baseCost`.
 
 ## 8. Criterios de aceptacion
 

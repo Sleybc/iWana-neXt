@@ -288,6 +288,7 @@ describe('Purchasing flow integration (tenant-aware mock)', () => {
       purchasingService,
       stockLedgerServiceMock as never,
       serializedAssetServiceMock as never,
+      { applyReceiptCostingWithManager: jest.fn().mockResolvedValue(undefined) } as never,
     );
 
     const createdRequest = await purchasingService.createPurchaseRequest(

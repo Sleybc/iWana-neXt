@@ -1639,6 +1639,7 @@ describe('GoodsReceiptService', () => {
       purchasingServiceMock as never,
       stockLedgerServiceMock as never,
       serializedAssetServiceMock as never,
+      { applyReceiptCostingWithManager: jest.fn().mockResolvedValue(undefined) } as never,
     );
 
     const result = await service.receivePurchaseOrder(
@@ -1728,6 +1729,7 @@ describe('GoodsReceiptService', () => {
       purchasingServiceMock as never,
       stockLedgerServiceMock as never,
       serializedAssetServiceMock as never,
+      { applyReceiptCostingWithManager: jest.fn().mockResolvedValue(undefined) } as never,
     );
 
     await expect(

@@ -22,9 +22,11 @@ import {
 } from '@/components/shared/portal-ui';
 import {
   formatInventoryDate,
+  formatInventoryCostOrNone,
   formatInventoryQuantity,
   getStockAdjustmentReasonLabel,
   getStockMovementOriginLabel,
+  INVENTORY_UNIT_COST_LABEL,
   STOCK_MOVEMENT_ORIGIN_LABELS,
 } from './inventory-labels';
 import {
@@ -241,6 +243,9 @@ export function StockKardexPanel({ items, locations }: StockKardexPanelProps) {
                                 {line.locationName ?? line.locationId}
                                 {line.lotNumber ? ` · Lote ${line.lotNumber}` : ''} ·{' '}
                                 {formatInventoryQuantity(line.quantity)}
+                                {line.unitCost != null && line.unitCost !== ''
+                                  ? ` · ${INVENTORY_UNIT_COST_LABEL} ${formatInventoryCostOrNone(line.unitCost)}`
+                                  : ''}
                               </li>
                             ))}
                           </ul>

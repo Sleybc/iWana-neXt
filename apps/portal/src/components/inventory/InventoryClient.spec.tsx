@@ -238,6 +238,7 @@ function buildCatalogItem(overrides: Partial<InventoryItemRecord> = {}): Invento
     purchaseToBaseUomFactor: '10',
     standardCost: '118000',
     lastPurchaseCost: '115000',
+    averageCost: '116500',
     reorderPoint: '5',
     targetStock: '20',
     minimumOrderQty: '10',

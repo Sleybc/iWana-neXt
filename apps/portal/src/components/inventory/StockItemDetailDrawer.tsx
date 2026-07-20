@@ -16,15 +16,21 @@ import {
   portalDataTableCellClassName,
   portalDataTableHeadClassName,
 } from '@/components/shared/portal-ui';
+import { InventoryMetaItem } from './InventoryMetaItem';
 import {
   STOCK_AVAILABLE_LABEL,
   STOCK_ON_HAND_LABEL,
   STOCK_RESERVED_HELP_TEXT,
   STOCK_RESERVED_LABEL,
+  formatInventoryCostOrNone,
   formatInventoryDate,
   formatInventoryQuantity,
   getStockBalanceConditionLabel,
   getStockMovementOriginLabel,
+  INVENTORY_AVERAGE_COST_HELP_TEXT,
+  INVENTORY_AVERAGE_COST_LABEL,
+  INVENTORY_LAST_PURCHASE_COST_LABEL,
+  INVENTORY_UNIT_COST_LABEL,
 } from './inventory-labels';
 import { getAvailableQtyFromBalance } from './stock-issue-balance-utils';
 import { isStockAdjustableItem } from './stock-overview';
@@ -159,6 +165,21 @@ export function StockItemDetailDrawer({
           />
         ) : null}
 
+        <section className="space-y-3">
+          <h3 className="text-sm font-semibold text-iwana-secondary-900">Costos</h3>
+          <dl className="grid gap-3 sm:grid-cols-2">
+            <InventoryMetaItem
+              label={INVENTORY_AVERAGE_COST_LABEL}
+              value={formatInventoryCostOrNone(item.averageCost)}
+            />
+            <InventoryMetaItem
+              label={INVENTORY_LAST_PURCHASE_COST_LABEL}
+              value={formatInventoryCostOrNone(item.lastPurchaseCost)}
+            />
+          </dl>
+          <p className="text-xs text-iwana-secondary-700">{INVENTORY_AVERAGE_COST_HELP_TEXT}</p>
+        </section>
+
         <section className="space-y-2">
           <h3 className="text-sm font-semibold text-iwana-secondary-900">Saldos por bodega</h3>
           {itemBalances.length === 0 ? (
@@ -246,6 +267,18 @@ export function StockItemDetailDrawer({
                   <p className="text-sm text-iwana-secondary-700">
                     {getStockMovementOriginLabel(movement.origin)}
                   </p>
+                  {movement.lines.some((line) => line.unitCost != null && line.unitCost !== '') ? (
+                    <ul className="mt-1 space-y-0.5 text-xs text-iwana-secondary-700">
+                      {movement.lines.map((line) =>
+                        line.unitCost != null && line.unitCost !== '' ? (
+                          <li key={line.id}>
+                            {INVENTORY_UNIT_COST_LABEL}: {formatInventoryCostOrNone(line.unitCost)}
+                            {line.itemSku ? ` · ${line.itemSku}` : ''}
+                          </li>
+                        ) : null,
+                      )}
+                    </ul>
+                  ) : null}
                 </li>
               ))}
             </ul>

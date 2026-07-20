@@ -49,6 +49,7 @@ function buildItem(
     lastPurchaseCost: string | null;
     standardCost: string;
     baseCost: string;
+    averageCost: string;
   }> = {},
 ) {
   return {
@@ -68,6 +69,7 @@ function buildItem(
     lastPurchaseCost: '10.00',
     standardCost: '8.00',
     baseCost: '5.00',
+    averageCost: '0.00',
     ...overrides,
   };
 }
@@ -270,7 +272,7 @@ describe('ReplenishmentService', () => {
     expect(rounded[0]?.suggestedQty).toBe('50.00');
   });
 
-  it('usa fallback de costo D-F2-4 y nullifica label si efectivo es 0', async () => {
+  it('usa fallback de costo D-F4-8 (averageCost primero) y nullifica si efectivo es 0', async () => {
     mockTenantData({
       items: [
         buildItem({
@@ -308,6 +310,26 @@ describe('ReplenishmentService', () => {
     expect(standardFallback[0]).toMatchObject({
       estimatedUnitCost: '12.50',
       estimatedLineValue: '250.00',
+    });
+
+    mockTenantData({
+      items: [
+        buildItem({
+          averageCost: '22.00',
+          lastPurchaseCost: '10.00',
+          standardCost: '12.50',
+          baseCost: '1.00',
+          reorderPoint: '10.00',
+          targetStock: '20.00',
+        }),
+      ],
+      balances: [{ itemId: 'item-001', quantityOnHand: '0.00', quantityReserved: '0.00' }],
+    });
+
+    const avgPriority = await service.listSuggestions();
+    expect(avgPriority[0]).toMatchObject({
+      estimatedUnitCost: '22.00',
+      estimatedLineValue: '440.00',
     });
   });
 

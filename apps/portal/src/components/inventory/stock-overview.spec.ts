@@ -40,6 +40,7 @@ function makeItem(overrides: Partial<InventoryItemRecord> = {}): InventoryItemRe
     purchaseToBaseUomFactor: null,
     standardCost: '0',
     lastPurchaseCost: null,
+    averageCost: '0',
     reorderPoint: '10',
     targetStock: '20',
     minimumOrderQty: '1',

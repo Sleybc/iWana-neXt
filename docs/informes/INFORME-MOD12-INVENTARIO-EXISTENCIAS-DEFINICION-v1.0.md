@@ -2,7 +2,14 @@
 
 **Version:** 1.0
 **Fecha:** 2026-07-18
-**Estado:** ✅ Fase 1 — G7 GO (pendiente CTO F1); ✅ Fase 2 — **G7 GO confirmado por CTO** (`33cd6ecd`); ✅ Fase 3A — **G7 GO** (`1de09b62`); 🟡 Fase 3B — **G5 + EV-1 cerrado, pendiente G6/G7** — ver `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-03B-v1.0.md`
+**Estado:** ✅ Fase 1–4 **cerradas** (G7; F4 confirmado CTO 2026-07-20) — roadmap Existencias completo  
+**Auditoría G5 F4:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-04-AUDITORIA-ARCH-v1.0.md (**G5 GO**)  
+**Review G6 F4:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-04-G6-REVIEW-v1.0.md (**G6 GO**)  
+**Cierre G7 F4:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-04-CIERRE-G7-v1.0.md (**G7 GO confirmado CTO 2026-07-20**)  
+**ADR Fase 4:** docs/adrs/ADR-059-Costeo-Promedio-Movil-Valoracion-Inventario.md (**Aprobado CTO 2026-07-20**)  
+**Spec Fase 4:** docs/specs/2026-07-20-mod12-existencias-costeo-fase04-design.md  
+**Prompt Fase 4:** docs/prompts/PROMPT-MOD12-EXISTENCIAS-COSTEO-FASE-04-v1.0.md (**cerrado — G7 GO**)  
+**Informe Fase 4:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-04-v1.0.md
 **Auditoría G5 F1:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-AUDITORIA-ARCH-v1.0.md
 **Review G6 F1:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-G6-REVIEW-v1.0.md
 **Cierre G7 F1:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-CIERRE-G7-v1.0.md
@@ -17,6 +24,12 @@
 **Spec Fase 3B:** docs/specs/2026-07-18-mod12-existencias-reservas-fase03B-design.md
 **Prompt Fase 3B:** docs/prompts/PROMPT-MOD12-EXISTENCIAS-RESERVAS-FASE-03B-v1.0.md (**ejecutable**)
 **Auditoría G5 F3B:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-03B-AUDITORIA-ARCH-v1.0.md (**G5 GO** — condición EV-1 para G7)
+**Prompt G6 F3B:** docs/prompts/PROMPT-MOD12-EXISTENCIAS-RESERVAS-G6-FASE-03B-v1.0.md
+**Review G6 F3B:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-03B-G6-REVIEW-v1.0.md (**G6 GO**)
+**Cierre G7 F3B:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-03B-CIERRE-G7-v1.0.md (**G7 GO confirmado CTO 2026-07-20**)
+**Prompt Fase 4:** docs/prompts/PROMPT-MOD12-EXISTENCIAS-COSTEO-FASE-04-v1.0.md (**EJECUTABLE**)
+**Informe Fase 4:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-04-v1.0.md
+**Auditoría G5 F4:** docs/informes/INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-04-AUDITORIA-ARCH-v1.0.md (**G5 GO**)
 **Spec Fase 3A:** docs/specs/2026-07-18-mod12-existencias-conteo-fisico-fase03A-design.md
 **Prompt Fase 3A:** docs/prompts/PROMPT-MOD12-EXISTENCIAS-CONTEO-FISICO-FASE-03A-v1.0.md (**cerrado — G7 GO**)
 **Modo activo:** Product Architect + Orchestrator
@@ -72,11 +85,11 @@ Fases 1-2 no requirieron HLD ni ADR (no crean boundary, entidad, migración ni p
 
 | Fase | Alcance | Estado |
 | --- | --- | --- |
-| 1 | Kardex consultable, ajustes con razón tipificada, pestaña Existencias (Por producto / Por bodega / Kardex), Bodegas reducida | **Cerrada (G7 GO)** — pendiente confirmación CTO F1; ver `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-CIERRE-G7-v1.0.md` |
+| 1 | Kardex consultable, ajustes con razón tipificada, pestaña Existencias (Por producto / Por bodega / Kardex), Bodegas reducida | **Cerrada (G7 GO)** — `1e0e1368` + `609861ef`; ver `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-01-CIERRE-G7-v1.0.md` |
 | 2 | Reposición sugerida (anti doble pedido) → composer de compras prellenado; valor estimado en Resumen | **Cerrada — G7 GO confirmado CTO 2026-07-18** (`33cd6ecd`); ver `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-02-CIERRE-G7-v1.0.md` |
 | 3A | Conteo físico / inventario cíclico (documento → congelar → contar → cierre reconcilia saldo vía ledger) | **Cerrada — G7 GO + verificación independiente AI-EM-ARCH** (2026-07-18); ver addendum en cierre G7 F3A |
-| 3B | Reservas efectivas (`quantityReserved` en ciclo de salidas; validaciones de disponible; cierra la sobre-venta) | **G5 GO + EV-1 cerrado** (informe 03B v1.1); pendiente G6 y G7 independiente; ver auditoría ARCH + `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-03B-v1.0.md` |
-| 4 | Costeo promedio móvil, valoración y reportes | Planificada |
+| 3B | Reservas efectivas (`quantityReserved` en ciclo de salidas; validaciones de disponible; cierra la sobre-venta) | **Cerrada — G7 GO confirmado CTO 2026-07-20** (`d5f72cd1`/`635c2a4d`); ver cierre G7 F3B |
+| 4 | Costeo promedio móvil, valoración y reportes | **Cerrada — G7 GO confirmado CTO 2026-07-20** (mig 080) |
 
 ## 5. Riesgos vigentes
 
@@ -87,10 +100,9 @@ Fases 1-2 no requirieron HLD ni ADR (no crean boundary, entidad, migración ni p
 
 ## 6. Próximos pasos
 
-1. **G6 Fase 3B** (PROD-UX / DS-OWNER / SR-QA): EV-1 ya cerrada por el ejecutor (migración real + smoke TX Nest 2/2 + Playwright Reservas 4/4). G6 se centra en review de experiencia/identidad/a11y.
-2. **G7 Fase 3B** (AI-EM-ARCH): verificación independiente (aprobador ≠ productor) sobre EV-1 + ADR-055; habilita **Fase 4** (costeo).
-3. **CTO (opcional pendiente):** confirmar explícitamente G7 de Fase 1 si aún no quedó registrado aparte.
-4. Deuda F3A aceptada: `window.confirm` y foco al crear conteo (pulido).
+1. Integrar a `main` entregas F4 + remediación UX-H1 3B si aún están solo en working tree.
+2. Deuda P3 opcional: `tabular-nums` en KPI/costos; DoD rebuild `@iwana/db` post-entity.
+3. Roadmap Existencias **completo** — no hay Fase 5 en el PRD vigente.
 
 ## 7. Historial
 
@@ -119,3 +131,13 @@ Fases 1-2 no requirieron HLD ni ADR (no crean boundary, entidad, migración ni p
 | 2026-07-18 | **Auditoría G7 independiente (AI-EM-ARCH):** el cierre previo se produjo en sesión del ejecutor (subagentes abortados); AI-EM-ARCH ejecuta la verificación independiente (aprobador ≠ productor). Releídos servicio/controller/migración/entidades; **verificado el registro de `StockCount`/`StockCountLine` en runtime** (autoLoadEntities + forFeature, no en data-source explícito); gates re-ejecutados por el auditor: **API 245/245, portal 232/232, lint y typecheck limpios**. Deuda F1/F2 `canAdjust` resuelta. **GO confirmado** (addendum en cierre G7 F3A). |
 | 2026-07-18 | **Fase 3B implementada (AI-SR-FULL + FE-PLATFORM):** motor `reservedDelta` + invariante; ciclo reserva en `StockIssue`; validaciones a disponible; migración 072; matriz Por bodega corregida. Gates: API inventory **256/256**, portal inventory **234/234**, lint/typecheck PASS. Subagente FE abortó por límite API (consolidado en sesión). Informe `INFORME-MOD12-INVENTARIO-EXISTENCIAS-FASE-03B-v1.0.md` → pendiente G6/G7. |
 | 2026-07-18 | **EV-1 Fase 3B cerrado (condición G6/G7):** migración 072 verificada en DB real (UP×2 idempotente + DOWN + re-UP → `EV1_MIG_OK`); smoke transaccional Nest/TypeORM **2/2** (`EV1_REAL_DB=1`); Playwright Reservas **4/4**. Informe 03B v1.1. **No auto-G7** — falta verificación independiente EM-ARCH. |
+| 2026-07-20 | **CTO autoriza continuación** del ciclo G6→G7 Fase 3B. AI-EM-ARCH sincroniza drift PRD §2 / informe vivo y emite prompt G6. Fase 4 sigue en STOP (ADR-022). |
+| 2026-07-20 | **G6 Fase 3B GO:** PROD-UX/DS-OWNER/SR-QA; remediación UX-H1 (next-step en StockIssueComposer) por FE-PLATFORM; Jest composer 4/4. Condición Playwright Reservas + traza 073 → G7. |
+| 2026-07-20 | **Cierre G7 Fase 3B (AI-EM-ARCH):** re-run independiente — Playwright Reservas **4/4**, EV-1 TX **3/3**, Jest balance/issue **28/28**, UX-H1 y mig 073 verificados. **Recomendación: GO a producción**, pendiente CTO. Habilita definición Fase 4. |
+| 2026-07-20 | **CTO confirma G7 Fase 3B (GO producción).** Se abre definición Fase 4 (costeo / valoración). |
+| 2026-07-20 | **Definición Fase 4 emitida (AI-EM-ARCH):** ADR-059 (Propuesto) + spec + prompt NO ejecutable; factibilidad SR-FULL (avg por ítem, mig 080). Pendiente: viabilidad PROD-UX G1 + aprobación CTO del ADR. |
+| 2026-07-20 | **G1 Fase 4:** PROD-UX **viable con ajustes** (vocabulario «Costo promedio»; KPI sigue «Valor estimado…» + nota; sin pantalla nueva). Factibilidad SR-FULL OK. **Pendiente solo: CTO aprueba ADR-059** → luego prompt EJECUTABLE. |
+| 2026-07-20 | **CTO aprueba ADR-059.** Prompt F4 marcado **EJECUTABLE**; fase en ejecución (SR-FULL + FE-PLATFORM). |
+| 2026-07-20 | **Fase 4 implementada** (BE+FE) + **G5 GO** (AI-EM-ARCH): Jest 43+9, typecheck limpio tras rebuild `@iwana/db`. Habilita G6. |
+| 2026-07-20 | **G6 F4 GO** (tras remediaciones tabla/drawers + mig 080 aplicada). **G7 GO recomendado** — pendiente CTO. |
+| 2026-07-20 | **CTO confirma G7 Fase 04 (GO producción).** Roadmap Existencias F1–F4 **cerrado**. |

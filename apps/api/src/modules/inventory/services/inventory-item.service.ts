@@ -83,6 +83,7 @@ export interface InventoryItemResponse {
   purchaseToBaseUomFactor: string | null;
   standardCost: string;
   lastPurchaseCost: string | null;
+  averageCost: string;
   reorderPoint: string;
   targetStock: string;
   minimumOrderQty: string | null;
@@ -150,6 +151,7 @@ function mapItemToResponse(
     purchaseToBaseUomFactor: item.purchaseToBaseUomFactor,
     standardCost: item.standardCost,
     lastPurchaseCost: item.lastPurchaseCost,
+    averageCost: item.averageCost,
     reorderPoint: item.reorderPoint,
     targetStock: item.targetStock,
     minimumOrderQty: item.minimumOrderQty,
@@ -211,6 +213,11 @@ function mapCreateInputToEntity(
       validated.lastPurchaseCost === null || validated.lastPurchaseCost === undefined
         ? null
         : formatMoney(validated.lastPurchaseCost),
+    averageCost: formatMoney(
+      validated.averageCost !== undefined && validated.averageCost !== null
+        ? validated.averageCost
+        : (validated.lastPurchaseCost ?? validated.standardCost ?? validated.baseCost ?? 0),
+    ),
     reorderPoint: formatMoney(validated.reorderPoint),
     targetStock: formatMoney(validated.targetStock),
     minimumOrderQty:
@@ -270,6 +277,9 @@ function mapUpdateInputToEntity(
   if (validated.lastPurchaseCost !== undefined) {
     patch.lastPurchaseCost =
       validated.lastPurchaseCost === null ? null : formatMoney(validated.lastPurchaseCost);
+  }
+  if (validated.averageCost !== undefined) {
+    patch.averageCost = formatMoney(validated.averageCost);
   }
   if (validated.reorderPoint !== undefined)
     patch.reorderPoint = formatMoney(validated.reorderPoint);

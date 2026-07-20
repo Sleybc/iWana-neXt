@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Input, Select } from '@iwana/ui';
 import {
   InventoryCategoryStatus,
@@ -21,11 +21,17 @@ import {
 import { PortalDiscardChangesDialog } from '@/components/shared/PortalDiscardChangesDialog';
 import { useDiscardChangesGuard } from '@/components/shared/use-discard-changes-guard';
 import { usePortalSideDrawerA11y } from '@/components/shared/use-portal-side-drawer-a11y';
+import { InventoryMetaItem } from './InventoryMetaItem';
 import {
+  formatInventoryCostOrNone,
   getInventoryItemKindLabel,
   getInventoryItemStatusBadgeVariant,
   getInventoryItemStatusLabel,
   getInventoryTrackingModeLabel,
+  INVENTORY_AVERAGE_COST_HELP_TEXT,
+  INVENTORY_AVERAGE_COST_LABEL,
+  INVENTORY_LAST_PURCHASE_COST_LABEL,
+  INVENTORY_STANDARD_COST_LABEL,
 } from './inventory-labels';
 
 interface CatalogFormState {
@@ -91,15 +97,6 @@ function buildPayload(form: CatalogFormState): UpdateInventoryItemDto {
 
 function catalogFormSignature(state: CatalogFormState): string {
   return JSON.stringify(state);
-}
-
-function CatalogMetaItem({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-gray-100 bg-iwana-surface-soft px-4 py-3 dark:border-dark-border dark:bg-dark-surface-3">
-      <dt className="portal-eyebrow-muted">{label}</dt>
-      <dd className="mt-1 text-sm font-medium text-gray-900 dark:text-white">{value}</dd>
-    </div>
-  );
 }
 
 interface InventoryCatalogDrawerProps {
@@ -251,14 +248,32 @@ export function InventoryCatalogDrawer({
           ) : null}
 
           <dl className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <CatalogMetaItem label="Tipo" value={getInventoryItemKindLabel(form.itemKind)} />
-            <CatalogMetaItem label="Categoría" value={categoryLabel} />
-            <CatalogMetaItem
+            <InventoryMetaItem label="Tipo" value={getInventoryItemKindLabel(form.itemKind)} />
+            <InventoryMetaItem label="Categoría" value={categoryLabel} />
+            <InventoryMetaItem
               label="Control de material"
               value={getInventoryTrackingModeLabel(form.trackingMode)}
             />
-            <CatalogMetaItem label="Estado" value={getInventoryItemStatusLabel(form.status)} />
+            <InventoryMetaItem label="Estado" value={getInventoryItemStatusLabel(form.status)} />
           </dl>
+
+          <section className="mb-5 space-y-3">
+            <PortalSectionHeader title="Costos" description={INVENTORY_AVERAGE_COST_HELP_TEXT} />
+            <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <InventoryMetaItem
+                label={INVENTORY_AVERAGE_COST_LABEL}
+                value={formatInventoryCostOrNone(item.averageCost)}
+              />
+              <InventoryMetaItem
+                label={INVENTORY_LAST_PURCHASE_COST_LABEL}
+                value={formatInventoryCostOrNone(item.lastPurchaseCost)}
+              />
+              <InventoryMetaItem
+                label={INVENTORY_STANDARD_COST_LABEL}
+                value={formatInventoryCostOrNone(item.standardCost)}
+              />
+            </dl>
+          </section>
 
           <div className="space-y-4">
             <PortalSectionHeader

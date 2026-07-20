@@ -2,7 +2,11 @@ import { render, screen } from '@testing-library/react';
 import { InventoryResponsibleType, SerializedAssetStatus } from '@iwana/shared';
 import type { InventoryDashboardSummary } from '@/lib/api-client';
 import { InventoryDashboard } from './InventoryDashboard';
-import { formatInventoryCurrency } from './inventory-labels';
+import {
+  formatInventoryCurrency,
+  INVENTORY_ESTIMATED_VALUE_HELP_TEXT,
+  INVENTORY_ESTIMATED_VALUE_LABEL,
+} from './inventory-labels';
 
 const summary: InventoryDashboardSummary = {
   itemsCount: 3,
@@ -37,10 +41,11 @@ const summary: InventoryDashboardSummary = {
 };
 
 describe('InventoryDashboard', () => {
-  it('muestra la tarjeta de valor estimado de inventario', () => {
+  it('muestra la tarjeta de valor estimado de inventario (CA-F4-05)', () => {
     render(<InventoryDashboard summary={summary} />);
 
-    expect(screen.getByText('Valor estimado de inventario')).toBeInTheDocument();
+    expect(screen.getByText(INVENTORY_ESTIMATED_VALUE_LABEL)).toBeInTheDocument();
+    expect(screen.getByText(INVENTORY_ESTIMATED_VALUE_HELP_TEXT)).toBeInTheDocument();
     expect(
       screen.getByText((_, element) => element?.textContent === formatInventoryCurrency(2_500_000)),
     ).toBeInTheDocument();

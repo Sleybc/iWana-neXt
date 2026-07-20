@@ -14,11 +14,13 @@ import {
 } from '@/components/shared/portal-ui';
 import {
   formatInventoryCurrency,
+  formatInventoryCostOrNone,
   formatInventoryQuantity,
   getInventoryItemKindLabel,
   getInventoryItemStatusBadgeVariant,
   getInventoryItemStatusLabel,
   getInventoryTrackingModeLabel,
+  INVENTORY_AVERAGE_COST_LABEL,
 } from './inventory-labels';
 
 interface InventoryItemsTableProps {
@@ -50,15 +52,6 @@ function resolveSupplierLabel(
   }
 
   return supplierLabels?.[item.preferredSupplierRefId] ?? 'Proveedor asignado';
-}
-
-function resolveReferenceCost(item: InventoryItemRecord): string {
-  const standard = Number.parseFloat(item.standardCost || '0');
-  if (standard > 0) {
-    return formatInventoryCurrency(item.standardCost);
-  }
-
-  return formatInventoryCurrency(item.baseCost);
 }
 
 function stopRowActivation(event: MouseEvent | KeyboardEvent) {
@@ -153,7 +146,7 @@ export function InventoryItemsTable({
                   Proveedor sugerido
                 </th>
                 <th scope="col" className={`${tableHeadClass} hidden md:table-cell`}>
-                  Costo estimado
+                  {INVENTORY_AVERAGE_COST_LABEL}
                 </th>
                 <th scope="col" className={`${tableHeadClass} hidden md:table-cell`}>
                   Nivel de reposición
@@ -272,7 +265,7 @@ export function InventoryItemsTable({
                     {resolveSupplierLabel(item, supplierLabels)}
                   </td>
                   <td className={`${cellClass} hidden md:table-cell`}>
-                    {resolveReferenceCost(item)}
+                    {formatInventoryCostOrNone(item.averageCost)}
                   </td>
                   <td className={`${cellClass} hidden md:table-cell`}>
                     {formatInventoryQuantity(item.reorderPoint)}

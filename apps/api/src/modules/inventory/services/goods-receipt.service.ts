@@ -25,6 +25,7 @@ import {
 import { ReceivePurchaseOrderInput, ReceivePurchaseOrderSchema } from '../dto';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { PurchasingService } from './purchasing.service';
+import { InventoryCostingService } from './inventory-costing.service';
 import { SerializedAssetService } from './serialized-asset.service';
 import { StockLedgerService } from './stock-ledger.service';
 
@@ -54,6 +55,7 @@ export class GoodsReceiptService {
     private readonly purchasingService: PurchasingService,
     private readonly stockLedgerService: StockLedgerService,
     private readonly serializedAssetService: SerializedAssetService,
+    private readonly inventoryCostingService: InventoryCostingService,
   ) {}
 
   async receivePurchaseOrder(
@@ -257,6 +259,18 @@ export class GoodsReceiptService {
               await manager.save(PurchaseRequestLine, requestLine);
             }
           }
+        }
+
+        if (movementLines.length > 0) {
+          await this.inventoryCostingService.applyReceiptCostingWithManager(
+            manager,
+            tenantId,
+            movementLines.map((line) => ({
+              itemId: line.itemId,
+              unitCost: line.unitCost ?? 0,
+              quantity: line.quantity,
+            })),
+          );
         }
 
         const movement =

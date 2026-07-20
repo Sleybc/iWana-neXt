@@ -1,7 +1,9 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { StockMovementOrigin } from '@iwana/shared';
 import { inventoryApi } from '@/lib/api-client';
 import { StockKardexPanel } from './StockKardexPanel';
+import { formatInventoryCostOrNone, INVENTORY_UNIT_COST_LABEL } from './inventory-labels';
 
 jest.mock('@/lib/api-client', () => {
   const actual = jest.requireActual('@/lib/api-client');
@@ -63,5 +65,62 @@ describe('StockKardexPanel', () => {
       expect(screen.getByText('MOV-000001')).toBeInTheDocument();
     });
     expect(listMovementsMock).toHaveBeenCalled();
+  });
+
+  it('muestra costo unitario en líneas de salida cuando viene poblado (CA-F4-05)', async () => {
+    const user = userEvent.setup();
+    listMovementsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'mov-out-001',
+          movementNumber: 'MOV-000042',
+          origin: StockMovementOrigin.SALE,
+          originContext: 'inventory.sale',
+          originRefId: null,
+          adjustmentReason: null,
+          notes: null,
+          actorUserId: null,
+          isReversal: false,
+          createdAt: '2026-07-02T10:00:00.000Z',
+          lines: [
+            {
+              id: 'line-out-001',
+              itemId: 'item-001',
+              itemName: 'Cable',
+              itemSku: 'CAB-01',
+              locationId: 'loc-001',
+              locationName: 'Central',
+              lotId: null,
+              lotNumber: null,
+              serializedAssetId: null,
+              quantity: '-2.00',
+              unitCost: '116500.00',
+            },
+          ],
+        },
+      ],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+
+    render(<StockKardexPanel items={[]} locations={[]} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('MOV-000042')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText('Expandir líneas'));
+
+    const expectedCost = formatInventoryCostOrNone('116500.00');
+    expect(
+      screen.getByText((_, element) => {
+        if (element?.tagName !== 'LI') {
+          return false;
+        }
+        const text = element.textContent ?? '';
+        return text.includes(INVENTORY_UNIT_COST_LABEL) && text.includes(expectedCost);
+      }),
+    ).toBeInTheDocument();
   });
 });

@@ -52,6 +52,10 @@ const ITEM_CONSUMABLE_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const ITEM_SERIALIZED_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 
 describe('CounterPurchaseService', () => {
+  const inventoryCostingServiceMock = {
+    applyReceiptCostingWithManager: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     (TenantContext.getOrThrow as jest.Mock).mockReturnValue({
@@ -152,6 +156,7 @@ describe('CounterPurchaseService', () => {
       {} as DataSource,
       stockLedgerServiceMock as never,
       serializedAssetServiceMock as never,
+      inventoryCostingServiceMock as never,
     );
 
     const result = await service.record(
@@ -187,6 +192,11 @@ describe('CounterPurchaseService', () => {
       }),
       actor,
     );
+    expect(inventoryCostingServiceMock.applyReceiptCostingWithManager).toHaveBeenCalledWith(
+      manager,
+      'tenant-001',
+      [expect.objectContaining({ itemId: ITEM_CONSUMABLE_ID, unitCost: 1200, quantity: 5 })],
+    );
   });
 
   it('returns an existing movement before creating lots or assets on idempotent retry', async () => {
@@ -210,6 +220,7 @@ describe('CounterPurchaseService', () => {
       {} as DataSource,
       stockLedgerServiceMock as never,
       serializedAssetServiceMock as never,
+      inventoryCostingServiceMock as never,
     );
 
     const result = await service.record(
@@ -286,6 +297,7 @@ describe('CounterPurchaseService', () => {
       {} as DataSource,
       stockLedgerServiceMock as never,
       serializedAssetServiceMock as never,
+      inventoryCostingServiceMock as never,
     );
 
     await service.record(
@@ -344,6 +356,7 @@ describe('CounterPurchaseService', () => {
       {} as DataSource,
       stockLedgerServiceMock as never,
       serializedAssetServiceMock as never,
+      inventoryCostingServiceMock as never,
     );
 
     const payload: CreateCounterPurchaseInput = {
@@ -392,6 +405,7 @@ describe('CounterPurchaseService', () => {
       {} as DataSource,
       stockLedgerServiceMock as never,
       { normalizeSerial: jest.fn(), createReceivedAssetWithManager: jest.fn() } as never,
+      inventoryCostingServiceMock as never,
     );
 
     await service.record(
@@ -424,7 +438,12 @@ describe('CounterPurchaseService', () => {
       work({ manager }),
     );
 
-    const service = new CounterPurchaseService({} as DataSource, {} as never, {} as never);
+    const service = new CounterPurchaseService(
+      {} as DataSource,
+      {} as never,
+      {} as never,
+      inventoryCostingServiceMock as never,
+    );
 
     await expect(
       service.record(
@@ -476,7 +495,12 @@ describe('CounterPurchaseService', () => {
       work({ manager }),
     );
 
-    const service = new CounterPurchaseService({} as DataSource, {} as never, {} as never);
+    const service = new CounterPurchaseService(
+      {} as DataSource,
+      {} as never,
+      {} as never,
+      inventoryCostingServiceMock as never,
+    );
 
     await expect(
       service.record(

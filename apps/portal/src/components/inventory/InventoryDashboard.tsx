@@ -16,6 +16,8 @@ import {
   formatInventoryQuantity,
   getInventoryResponsibleTypeLabel,
   getSerializedAssetStatusLabel,
+  INVENTORY_ESTIMATED_VALUE_HELP_TEXT,
+  INVENTORY_ESTIMATED_VALUE_LABEL,
 } from './inventory-labels';
 
 interface InventoryDashboardProps {
@@ -83,8 +85,8 @@ const KPI_ITEMS: ReadonlyArray<{
   {
     key: 'estimatedTotalValue',
     eyebrow: 'Valor',
-    title: 'Valor estimado de inventario',
-    description: 'Estimación a costo unitario de referencia.',
+    title: INVENTORY_ESTIMATED_VALUE_LABEL,
+    description: INVENTORY_ESTIMATED_VALUE_HELP_TEXT,
     accent: 'primary',
     emphasized: true,
     format: 'currency',
@@ -127,6 +129,7 @@ function SummaryMetricCard({
         'min-h-[148px]',
         portalMetricCardAccentClassName(accent, { emphasized }),
       )}
+      title={description}
     >
       <p className="portal-eyebrow-muted">{eyebrow}</p>
       <p className="mt-2 text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">

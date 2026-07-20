@@ -12,6 +12,7 @@ import {
 } from '@iwana/db';
 import { InventoryItemStatus, PurchaseOrderStatus, PurchaseRequestLineStatus } from '@iwana/shared';
 import { SupplierPartyPort } from '../ports/supplier-party.port';
+import { resolveValuationUnitCost } from './inventory-costing.service';
 
 export type ReplenishmentCriticality = 'out' | 'below-minimum' | 'below-reorder';
 
@@ -61,8 +62,7 @@ function toQuantity(value: number): string {
 }
 
 function resolveUnitCost(item: InventoryItem): number {
-  const raw = item.lastPurchaseCost ?? item.standardCost ?? item.baseCost;
-  return toNumeric(raw);
+  return resolveValuationUnitCost(item);
 }
 
 function ceilToMultiple(value: number, multiple: number): number {

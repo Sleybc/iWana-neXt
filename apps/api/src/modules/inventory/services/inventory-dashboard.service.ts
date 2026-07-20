@@ -10,18 +10,10 @@ import {
   TenantContext,
   runInTenantSchema,
 } from '@iwana/db';
+import { resolveValuationUnitCost } from './inventory-costing.service';
 
 function resolveUnitCost(item: InventoryItem): number {
-  const raw = item.lastPurchaseCost ?? item.standardCost ?? item.baseCost;
-  if (typeof raw === 'number') {
-    return raw;
-  }
-
-  if (raw === null || raw === undefined || raw === '') {
-    return 0;
-  }
-
-  return Number.parseFloat(raw);
+  return resolveValuationUnitCost(item);
 }
 
 @Injectable()
