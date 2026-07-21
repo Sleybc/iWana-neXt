@@ -1,7 +1,7 @@
 # PRD — MOD12 Inventario / Submódulo Bajas con aprobación
 
 **Version:** 1.0  
-**Estado:** ✅ **MVP cerrado** — G5 GO H3 (2026-07-21); G6/G7 pendientes  
+**Estado:** ✅ **MVP cerrado** — G5+G6+G7 GO recomendado (2026-07-21)  
 **Fecha:** 2026-07-21  
 **Modo activo:** Product Architect + Orchestrator  
 **Autor:** AI-EM-ARCH  
@@ -156,13 +156,13 @@ Añadir columnas operativas faltantes para congelar el payload hasta la aprobaci
 
 ## 10. Criterios de aceptación (MVP)
 
-- [ ] Crear solicitud no modifica `stock_balances`.
-- [ ] Aprobar solicitud crea exactamente un movimiento `WRITE_OFF` y documento `COMPLETED` con `stock_movement_id`.
-- [ ] Rechazar no crea movimiento.
-- [ ] Aprobador = solicitante → `400`.
-- [ ] Baja aprobada de activo en comodato con `LOST` cierra comodato (regresión EV-1 / unit tests).
-- [ ] Tests unitarios + integración tenant-aware; E2E portal solicitud→aprobación.
-- [ ] OpenAPI actualizado; informe de fase `INFORME-MOD12-BAJAS-APROBACION-FASE-H3-v1.0.md`.
+- [x] Crear solicitud no modifica `stock_balances`.
+- [x] Aprobar solicitud crea exactamente un movimiento `WRITE_OFF` y documento `COMPLETED` con `stock_movement_id`.
+- [x] Rechazar no crea movimiento.
+- [x] Aprobador = solicitante → `400`.
+- [x] Baja aprobada de activo en comodato con `LOST` cierra comodato (regresión EV-1 / unit tests).
+- [x] Tests unitarios + integración tenant-aware; E2E portal solicitud→aprobación.
+- [x] OpenAPI actualizado; informe de fase `INFORME-MOD12-BAJAS-APROBACION-FASE-H3-v1.0.md`.
 
 ## 11. Riesgos y mitigaciones
 

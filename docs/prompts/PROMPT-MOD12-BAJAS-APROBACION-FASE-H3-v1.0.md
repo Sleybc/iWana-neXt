@@ -1,6 +1,6 @@
 # PROMPT — MOD12 Inventario — Bajas con aprobación — Fase H3
 
-> **Estado: CERRADO (G5+G6 GO 2026-07-21) — G7 pendiente.**
+> **Estado: CERRADO (G5+G6+G7 GO recomendado 2026-07-21).**
 
 ## Vínculos de trazabilidad
 

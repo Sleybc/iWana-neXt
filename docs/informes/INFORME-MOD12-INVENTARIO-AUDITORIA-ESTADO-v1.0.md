@@ -1,6 +1,6 @@
 # Informe vivo — MOD12 Inventario / SCM — Auditoría de estado del módulo
 
-**Version:** 1.2
+**Version:** 1.3
 **Fecha:** 2026-07-21
 **Estado:** Vigente — índice único de estado de MOD12
 **Modo activo:** Architect + EM (auditoría) + Product Architect (definición de fase siguiente)
@@ -17,11 +17,11 @@
 
 El CTO solicitó auditar MOD12 Inventario para determinar qué falta construir. La auditoría se ejecutó **contra código, no contra informes previos**: cada estado de esta tabla tiene ruta y línea verificable.
 
-Conclusión: **tres submódulos con roadmap propio están cerrados** — **Compras**, **Existencias** (F1–F4, G7 GO CTO 2026-07-20) y **Activos y comodato** (Fases 5A + 5B, **recomendación técnica GO — auditoría CTO independiente 2026-07-21**). El sistema **ya responde** las cuatro preguntas del PRD padre §1 vía ficha 360 y bandeja de comodatos.
+Conclusión: **cuatro submódulos con roadmap propio están cerrados** — **Compras**, **Existencias** (F1–F4, G7 GO CTO 2026-07-20), **Activos y comodato** (Fases 5A + 5B, **recomendación técnica GO — auditoría CTO independiente 2026-07-21**) y **Bajas con aprobación** (H3, **recomendación técnica GO — G7 2026-07-21**). El sistema **ya responde** las cuatro preguntas del PRD padre §1 vía ficha 360 y bandeja de comodatos.
 
-> **Submódulo Activos y comodato — CERRADO (recomendación técnica GO, auditoría CTO 2026-07-21).**
-> Informes: [`INFORME-MOD12-ACTIVOS-FICHA-360-FASE-05A-v1.0.md`](INFORME-MOD12-ACTIVOS-FICHA-360-FASE-05A-v1.0.md) · [`INFORME-MOD12-COMODATO-FASE-05B-v1.0.md`](INFORME-MOD12-COMODATO-FASE-05B-v1.0.md) · G5/G6/G7 en `INFORME-MOD12-ACTIVOS-COMODATO-FASE-05-*`.
-> **Hueco abierto de MOD12 — H4** (vida útil + `StockLow`). **H3 cerrado** 2026-07-21. **H5** (pestañas legacy) después de H4.
+> **Submódulo Bajas con aprobación — CERRADO (recomendación técnica GO, G7 2026-07-21).**
+> Informes: [`INFORME-MOD12-BAJAS-APROBACION-FASE-H3-v1.0.md`](INFORME-MOD12-BAJAS-APROBACION-FASE-H3-v1.0.md) · G5/G6/G7 en `INFORME-MOD12-BAJAS-APROBACION-FASE-H3-*`.
+> **Hueco abierto de MOD12 — H4** (vida útil + `StockLow`). **H5** (pestañas legacy) después de H4.
 
 > ~~**Fase siguiente: MOD12 Fase 5A — Ficha 360 del activo.**~~
 
@@ -37,9 +37,9 @@ Conclusión: **tres submódulos con roadmap propio están cerrados** — **Compr
 | **H6** | **No existe informe de cierre de MOD12 como módulo.** Hay cierres por fase de Compras y de Existencias; ninguno del módulo. ADR-016 (regla de completitud) exige cerrar N antes de abrir N+1. | `docs/informes/` | Gobierno | Media |
 | **H7** | RF-INV-24 (evaluación de proveedores) y RF-INV-25 (IPAM/VLAN/QoS) siguen **fuera de alcance declarado** en el propio PRD (Fase 2). No son deuda: son alcance diferido. | PRD-MOD12-INVENTARIO-SCM §2 y §4 | RF-INV-24, RF-INV-25 | Informativo |
 
-### Nota de control interno sobre H3
+### Nota de control interno sobre H3 (histórica)
 
-H3 no es solo funcionalidad faltante: es un **agujero de control interno** y el **único hallazgo de severidad Alta que permanece abierto** tras cerrar Activos y comodato (H1/H2). La baja de inventario es la única operación que destruye valor sin contraparte, y hoy se ejecuta sin documento, sin aprobador y sin estado — aunque el movimiento en ledger, el motivo y el actor sí quedan registrados. Si MOD12 sale a producción antes de cerrar H3, debe declararse como **deuda alta aceptada** en el informe de cierre de módulo, con el mitigante vigente (ledger inmutable + `platform_audit_logs` vía `AuditInterceptor`, con actor y motivo).
+H3 era un **agujero de control interno** — la baja de inventario se ejecutaba sin documento ni aprobador. **Cerrado 2026-07-21** con `WriteOffService`, migración 082 y flujo portal solicitud→aprobación. Bajas pre-H3 permanecen solo en ledger (sin backfill).
 
 ## 3. Trazabilidad RF-INV-01…25 contra código
 
@@ -73,7 +73,7 @@ Leyenda: ✅ construido · 🟡 parcial · ❌ no construido · ⏸️ fuera de 
 | RF-INV-24 | Evaluación de proveedores | ⏸️ | Fase 2 del PRD padre |
 | RF-INV-25 | IPAM / VLAN / QoS | ⏸️ | Fase 2 del PRD padre |
 
-**Cobertura MVP:** 20 de 22 requisitos MVP construidos (91 %), 2 parciales (RF-INV-18 alertas → H4; RF-INV-19 aprobación bajas → **H3, único Alto abierto**). Evento venta RF-INV-14 pendiente (se agrupa con H4).
+**Cobertura MVP:** 21 de 22 requisitos MVP construidos (95 %), 1 parcial (RF-INV-18 alertas → H4). RF-INV-19 ✅ (H3 cerrado). Evento venta RF-INV-14 pendiente (se agrupa con H4).
 
 ## 4. Submódulos cerrados (índice)
 
@@ -85,6 +85,7 @@ Leyenda: ✅ construido · 🟡 parcial · ❌ no construido · ⏸️ fuera de 
 | Bodegas y salidas | CRUD de ubicaciones, topes de custodia móvil, `StockIssue` con despacho idempotente | `INFORME-MOD12-INVENTARIO-SCM-FASE-01-v1.0.md` §8 y §10 |
 | Existencias | F1 kardex + ajustes · F2 reposición + valor · F3A conteo físico · F3B reservas efectivas · F4 costeo promedio móvil | `INFORME-MOD12-INVENTARIO-EXISTENCIAS-DEFINICION-v1.0.md`; ADR-054, ADR-055, ADR-059; G7 GO CTO 2026-07-20 |
 | Activos y comodato | F5A ficha 360 · F5B comodato transaccional + bandeja | `INFORME-MOD12-ACTIVOS-FICHA-360-FASE-05A-v1.0.md`, `INFORME-MOD12-COMODATO-FASE-05B-v1.0.md`, `INFORME-MOD12-ACTIVOS-COMODATO-FASE-05-CIERRE-G7-v1.0.md`; sin ADR nuevo |
+| Bajas con aprobación | H3 documento + approve/reject + portal | `INFORME-MOD12-BAJAS-APROBACION-FASE-H3-v1.0.md`, `INFORME-MOD12-BAJAS-APROBACION-FASE-H3-CIERRE-G7-v1.0.md`; migración 082 |
 
 ## 5. Backlog priorizado
 
@@ -100,7 +101,7 @@ Leyenda: ✅ construido · 🟡 parcial · ❌ no construido · ⏸️ fuera de 
 ## 6. Impacto declarado (perfil AI-EM-ARCH §8)
 
 - **Multi-tenant:** sin cambio de estrategia. Todo el trabajo pendiente vive en schema tenant y se resuelve con los helpers vigentes (`runInTenantSchema`, `SET LOCAL search_path` por transacción). Las rutas nuevas exigen prueba de aislamiento (patrón `supplier-profile.isolation.spec.ts`).
-- **Seguridad:** H3 es el único hallazgo con impacto de control interno (baja sin aprobación). El resto no altera la superficie de autenticación ni el RBAC vigente. La ficha 360 amplía la superficie de **lectura** de un activo: se mantiene ADMIN/NOC/SUPPORT, coherente con `GET /assets/:id` actual.
+- **Seguridad:** H3 cerrado — bajas con aprobación de segundo usuario. El resto no altera la superficie de autenticación ni el RBAC vigente.
 - **Privacidad (Ley 1581):** el comodato referencia al suscriptor por UUID opaco. MOD12 **no** resuelve ni almacena nombre, documento ni dirección del cliente: esa resolución es de CRM. La bandeja de comodatos muestra referencia y etiqueta mínima. Sin PII en logs ni fixtures.
 - **Escala:** la ficha 360 compone varias consultas por activo. A escala objetivo (miles de tenants, cientos de miles de activos) el riesgo es el timeline del ledger por activo: exige paginación de servidor y apoyo en índices existentes; se fija en el spec de diseño.
 - **Regulación:** sin impacto regulatorio directo. La baja de inventario tiene efecto contable/fiscal potencial (DIAN) que **no** se declara cubierto — requiere verificación con fuente oficial cuando se aborde H3.
@@ -113,8 +114,8 @@ Leyenda: ✅ construido · 🟡 parcial · ❌ no construido · ⏸️ fuera de 
 | PRD del submódulo Activos y comodato | `docs/prds/PRD-MOD12-ACTIVOS-COMODATO-v1.0.md` | MVP cerrado — G7 GO recomendado |
 | Prompt Fase 5A | `docs/prompts/PROMPT-MOD12-ACTIVOS-FICHA-360-FASE-05A-v1.0.md` | **CERRADO** |
 | Prompt Fase 5B | `docs/prompts/PROMPT-MOD12-COMODATO-FASE-05B-v1.0.md` | **CERRADO** |
-| PRD H3 — Bajas con aprobación | `docs/prds/PRD-MOD12-BAJAS-APROBACION-v1.0.md` | Emitido — **EJECUTABLE** |
-| Prompt H3 | `docs/prompts/PROMPT-MOD12-BAJAS-APROBACION-FASE-H3-v1.0.md` | **EJECUTABLE** |
+| PRD H3 — Bajas con aprobación | `docs/prds/PRD-MOD12-BAJAS-APROBACION-v1.0.md` | MVP cerrado — G7 GO recomendado |
+| Prompt H3 | `docs/prompts/PROMPT-MOD12-BAJAS-APROBACION-FASE-H3-v1.0.md` | **CERRADO** |
 | Spec H3 | `docs/specs/2026-07-21-mod12-bajas-aprobacion-fase-h3-design.md` | Congelada |
 
 ## 8. Historial
@@ -125,3 +126,4 @@ Leyenda: ✅ construido · 🟡 parcial · ❌ no construido · ⏸️ fuera de 
 | 2026-07-21 | **Addendum** — Fases 5A + 5B ejecutadas; H1/H2 cerrados; RF-INV-12/13/20 ✅; G5/G6 GO; recomendación técnica GO G7; informe maestro actualizado. |
 | 2026-07-21 | **v1.1** — Priorización explícita post-cierre Activos/comodato: **H3** = único Alto abierto y siguiente fase (control interno, no funcionalidad); **H4** y **H5** en orden posterior. Remediación B1–B3 (tests write-off, RF-ACT-09, G7 v1.4). |
 | 2026-07-21 | **v1.2** — H3 ejecutado; RF-INV-19 ✅; H3 cerrado; siguiente hueco **H4**. |
+| 2026-07-21 | **v1.3** — G7 GO recomendado H3; migración 082 aplicada; PRD/prompt H3 cerrados; cobertura MVP 95 %. |

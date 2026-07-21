@@ -2,7 +2,7 @@
 
 **Version:** 1.0  
 **Fecha:** 2026-07-21  
-**Estado:** ✅ Entrega completa — **G5 GO** · **G6 GO** · G7 pendiente  
+**Estado:** ✅ Entrega completa — **G5 GO** · **G6 GO** · **G7 GO recomendado**  
 **Modo activo:** Ejecución multiagente (AI-SR-FULL + AI-FE-PLATFORM)  
 **Orquestador:** AI-EM-ARCH  
 **PRD:** `docs/prds/PRD-MOD12-BAJAS-APROBACION-v1.0.md`  
@@ -44,8 +44,8 @@ Implementada la fase **H3** — cierre del hallazgo Alto **RF-INV-19**: las baja
 | RF | Estado |
 | --- | --- |
 | RF-WO-01 … RF-WO-10 | ✅ Implementados según PRD |
-| RF-INV-19 (PRD padre) | ✅ Construido (pendiente G7 formal) |
-| H3 (auditoría MOD12) | ✅ Cerrado funcionalmente |
+| RF-INV-19 (PRD padre) | ✅ Construido |
+| H3 (auditoría MOD12) | ✅ Cerrado — G7 GO recomendado |
 
 ---
 
@@ -69,7 +69,7 @@ Implementada la fase **H3** — cierre del hallazgo Alto **RF-INV-19**: las baja
 | --- | --- |
 | G5 ARCH | **GO** |
 | G6 UX/DS/QA | **GO** — [`…G6-REVIEW…`](INFORME-MOD12-BAJAS-APROBACION-FASE-H3-G6-REVIEW-v1.0.md) |
-| G7 EM-ARCH | Pendiente recomendación técnica |
+| G7 EM-ARCH | **GO recomendado** — [`…CIERRE-G7…`](INFORME-MOD12-BAJAS-APROBACION-FASE-H3-CIERRE-G7-v1.0.md) |
 
 ---
 
@@ -83,4 +83,4 @@ pnpm --filter @iwana/portal test -- InventoryClient              → 31/31
 npx playwright test … -g "solicita baja" (portal)                → 1/1
 ```
 
-Aplicar migración en entorno local: `pnpm db:migrate:all`
+Migración 082 aplicada: `pnpm db:migrate:all` → tenant_iwana OK (2026-07-21)
