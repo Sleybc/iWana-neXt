@@ -2,7 +2,7 @@
 
 **Version:** 1.0  
 **Fecha:** 2026-07-21  
-**Estado:** ✅ Entrega completa (BE + FE) — **G5 GO** · G6/G7 pendientes  
+**Estado:** ✅ Entrega completa — **G5 GO** · **G6 GO** · G7 pendiente  
 **Modo activo:** Ejecución multiagente (AI-SR-FULL + AI-FE-PLATFORM)  
 **Orquestador:** AI-EM-ARCH  
 **PRD:** `docs/prds/PRD-MOD12-BAJAS-APROBACION-v1.0.md`  
@@ -59,7 +59,7 @@ Implementada la fase **H3** — cierre del hallazgo Alto **RF-INV-19**: las baja
 
 - Sin backfill de bajas pre-H3 (solo ledger histórico) — D-H3-09
 - Sin adjuntos en object storage — solo `notes`
-- E2E Playwright pendiente G6
+- E2E Playwright ✅ (`portal-inventory-scm.spec.ts`)
 
 ---
 
@@ -68,8 +68,8 @@ Implementada la fase **H3** — cierre del hallazgo Alto **RF-INV-19**: las baja
 | Gate | Veredicto |
 | --- | --- |
 | G5 ARCH | **GO** |
-| G6 UX/DS/QA | Pendiente |
-| G7 EM-ARCH | Pendiente |
+| G6 UX/DS/QA | **GO** — [`…G6-REVIEW…`](INFORME-MOD12-BAJAS-APROBACION-FASE-H3-G6-REVIEW-v1.0.md) |
+| G7 EM-ARCH | Pendiente recomendación técnica |
 
 ---
 
@@ -80,6 +80,7 @@ pnpm --filter @iwana/db build                                    → OK
 pnpm --filter @iwana/api test -- write-off                       → 9/9
 pnpm --filter @iwana/api test -- src/modules/inventory           → 317 passed
 pnpm --filter @iwana/portal test -- InventoryClient              → 31/31
+npx playwright test … -g "solicita baja" (portal)                → 1/1
 ```
 
 Aplicar migración en entorno local: `pnpm db:migrate:all`

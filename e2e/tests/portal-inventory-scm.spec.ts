@@ -39,6 +39,7 @@ function resolveNextLocationCodeInMock(existingCodes: string[], type: string): s
 
 const MOCK_TENANT_SLUG = 'tenant-inventory-demo';
 const NOC_USER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const ADMIN_USER_ID = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 const ITEM_ID = 'item-001';
 const ITEM_CONSUMABLE_ID = 'item-002';
 const CAT_CPE_ID = 'cat-cpe-001';
@@ -57,11 +58,12 @@ const EXECUTION_ORDER_REF_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const LOC_CUSTOMER = 'loc-customer-001';
 
 function buildToken(role: 'NOC' | 'ADMIN' = 'NOC'): string {
+  const sub = role === 'ADMIN' ? ADMIN_USER_ID : NOC_USER_ID;
   return (
     'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.' +
     btoa(
       JSON.stringify({
-        sub: NOC_USER_ID,
+        sub,
         email: role === 'ADMIN' ? 'hash-admin' : 'hash-noc',
         role,
         tenantId: 'tenant-inventory-001',
@@ -188,6 +190,7 @@ type InventoryMockState = {
   supplierCreateCount: number;
   serializedAssets: Array<Record<string, unknown>>;
   loans: Array<Record<string, unknown>>;
+  writeOffs: Array<Record<string, unknown>>;
 };
 
 function buildCategory(overrides: Record<string, unknown> = {}) {
@@ -612,12 +615,70 @@ function buildTenantUsersList() {
   return [
     buildTenantUser(),
     buildTenantUser({
+      id: ADMIN_USER_ID,
+      firstName: 'Admin',
+      lastName: 'Inventario',
+      email: 'admin@inventory.local',
+      role: 'ADMIN',
+      isOperationalResource: false,
+      jobTitle: 'Administrador',
+    }),
+    buildTenantUser({
       id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
       firstName: 'Ana',
       lastName: 'Pérez',
       email: 'ana.perez@inventory.local',
     }),
   ];
+}
+
+function resolveMockActorUserId(
+  request: { headers: () => Record<string, string> },
+  sessionRole: 'NOC' | 'ADMIN',
+): string {
+  const authHeader = request.headers()['authorization'];
+  if (authHeader?.startsWith('Bearer ')) {
+    try {
+      const payloadPart = authHeader.slice(7).split('.')[1];
+      if (payloadPart) {
+        const payload = JSON.parse(atob(payloadPart)) as { sub?: string };
+        if (payload.sub) {
+          return payload.sub;
+        }
+      }
+    } catch {
+      // fallback below
+    }
+  }
+
+  return sessionRole === 'ADMIN' ? ADMIN_USER_ID : NOC_USER_ID;
+}
+
+function mapWriteOffRecord(state: InventoryMockState, writeOff: Record<string, unknown>) {
+  const location = state.locations.find((entry) => entry.id === writeOff.locationId);
+  const item = writeOff.itemId
+    ? state.catalogItems.find((entry) => entry.id === writeOff.itemId)
+    : null;
+  const asset = writeOff.serializedAssetId
+    ? state.serializedAssets.find((entry) => entry.id === writeOff.serializedAssetId)
+    : null;
+  const movement = writeOff.stockMovementId
+    ? state.movements.find((entry) => entry.id === writeOff.stockMovementId)
+    : null;
+
+  return {
+    ...writeOff,
+    location: location ? { id: location.id, name: location.name, code: location.code } : null,
+    item: item ? { id: item.id, sku: item.sku, name: item.name } : null,
+    serializedAsset: asset
+      ? {
+          id: asset.id,
+          serialNumber: asset.serialNumber,
+          inventoryItemId: asset.inventoryItemId,
+        }
+      : null,
+    movement: movement ? { id: movement.id, movementNumber: movement.movementNumber } : null,
+  };
 }
 
 function buildSupplierProfile(overrides: Record<string, unknown> = {}) {
@@ -760,6 +821,7 @@ function createInventoryMockState(): InventoryMockState {
     supplierCreateCount: 0,
     serializedAssets: [buildSerializedAsset()],
     loans: [],
+    writeOffs: [],
   };
 }
 
@@ -830,17 +892,34 @@ async function setupInventoryMocks(
     }
 
     if (pathname.endsWith('/auth/me') && method === 'GET') {
+      const actorId = resolveMockActorUserId(request, sessionRole);
+      const authHeader = request.headers()['authorization'];
+      let role: 'NOC' | 'ADMIN' = sessionRole;
+      if (authHeader?.startsWith('Bearer ')) {
+        try {
+          const payloadPart = authHeader.slice(7).split('.')[1];
+          if (payloadPart) {
+            const payload = JSON.parse(atob(payloadPart)) as { role?: 'NOC' | 'ADMIN' };
+            if (payload.role) {
+              role = payload.role;
+            }
+          }
+        } catch {
+          // keep sessionRole fallback
+        }
+      }
+
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           data: {
-            sub: NOC_USER_ID,
-            email: sessionRole === 'ADMIN' ? 'hash-admin' : 'hash-noc',
-            role: sessionRole,
+            sub: actorId,
+            email: role === 'ADMIN' ? 'hash-admin' : 'hash-noc',
+            role,
             tenantId: 'tenant-inventory-001',
             schemaName: 'tenant_inventory_001',
-            jti: sessionRole === 'ADMIN' ? 'jti-admin-inventory' : 'jti-noc-inventory',
+            jti: role === 'ADMIN' ? 'jti-admin-inventory' : 'jti-noc-inventory',
             type: 'tenant',
           },
         }),
@@ -2662,6 +2741,229 @@ async function setupInventoryMocks(
       return;
     }
 
+    if (pathname.endsWith('/inventory/write-offs') && method === 'GET') {
+      const status = url.searchParams.get('status');
+      const itemId = url.searchParams.get('itemId');
+      const serializedAssetId = url.searchParams.get('serializedAssetId');
+      const reason = url.searchParams.get('reason');
+      let rows = [...state.writeOffs];
+
+      if (status) {
+        rows = rows.filter((entry) => entry.status === status);
+      }
+      if (itemId) {
+        rows = rows.filter((entry) => entry.itemId === itemId);
+      }
+      if (serializedAssetId) {
+        rows = rows.filter((entry) => entry.serializedAssetId === serializedAssetId);
+      }
+      if (reason) {
+        rows = rows.filter((entry) => entry.reason === reason);
+      }
+
+      const page = Number.parseInt(url.searchParams.get('page') ?? '1', 10);
+      const limit = Number.parseInt(url.searchParams.get('limit') ?? '50', 10);
+      const offset = (page - 1) * limit;
+      const slice = rows.slice(offset, offset + limit);
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: slice.map((entry) => mapWriteOffRecord(state, entry)),
+          total: rows.length,
+          page,
+          limit,
+        }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/inventory/write-offs') && method === 'POST') {
+      const body = request.postDataJSON() as {
+        serializedAssetId?: string | null;
+        itemId?: string | null;
+        locationId?: string | null;
+        quantity?: number;
+        reason?: string;
+        notes?: string | null;
+        idempotencyKey?: string | null;
+      };
+      const actorId = resolveMockActorUserId(request, sessionRole);
+      const writeOffId = `wo-${String(state.writeOffs.length + 1).padStart(3, '0')}`;
+      const writeOff = {
+        id: writeOffId,
+        tenantId: 'tenant-inventory-001',
+        serializedAssetId: body.serializedAssetId ?? null,
+        itemId: body.itemId ?? null,
+        locationId: body.locationId,
+        quantity: String(body.quantity ?? 1),
+        reason: body.reason ?? 'DAMAGED',
+        status: 'PENDING_APPROVAL',
+        requestedByUserId: actorId,
+        approvedByUserId: null,
+        approvedAt: null,
+        rejectedByUserId: null,
+        rejectedAt: null,
+        rejectionNotes: null,
+        stockMovementId: null,
+        notes: body.notes ?? null,
+        idempotencyKey: body.idempotencyKey ?? null,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      };
+
+      state.writeOffs.push(writeOff);
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify(mapWriteOffRecord(state, writeOff)),
+      });
+      return;
+    }
+
+    const writeOffIdMatch = pathname.match(/\/inventory\/write-offs\/([^/]+)$/);
+    if (writeOffIdMatch && method === 'GET') {
+      const writeOff = state.writeOffs.find((entry) => entry.id === writeOffIdMatch[1]);
+      if (!writeOff) {
+        await route.fulfill({ status: 404, body: JSON.stringify({ message: 'Not found' }) });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(mapWriteOffRecord(state, writeOff)),
+      });
+      return;
+    }
+
+    const writeOffApproveMatch = pathname.match(/\/inventory\/write-offs\/([^/]+)\/approve$/);
+    if (writeOffApproveMatch && method === 'POST') {
+      const writeOff = state.writeOffs.find((entry) => entry.id === writeOffApproveMatch[1]);
+      if (!writeOff) {
+        await route.fulfill({ status: 404, body: JSON.stringify({ message: 'Not found' }) });
+        return;
+      }
+
+      const actorId = resolveMockActorUserId(request, sessionRole);
+
+      if (writeOff.status === 'COMPLETED') {
+        const movement = state.movements.find((entry) => entry.id === writeOff.stockMovementId);
+        await route.fulfill({
+          status: 201,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            writeOff: mapWriteOffRecord(state, writeOff),
+            movementResult: {
+              movement: movement ?? { id: writeOff.stockMovementId, movementNumber: 'MOV-000000' },
+              lines: [],
+            },
+          }),
+        });
+        return;
+      }
+
+      if (writeOff.status !== 'PENDING_APPROVAL') {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'La solicitud no está pendiente de aprobación.' }),
+        });
+        return;
+      }
+
+      if (writeOff.requestedByUserId === actorId) {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            message: 'El aprobador debe ser distinto del solicitante.',
+          }),
+        });
+        return;
+      }
+
+      const quantity = Number.parseFloat(String(writeOff.quantity ?? '1'));
+      const balance = state.balances.find(
+        (entry) => entry.itemId === writeOff.itemId && entry.locationId === writeOff.locationId,
+      );
+      if (balance) {
+        balance.quantityOnHand = String(
+          Math.max(0, Number.parseFloat(String(balance.quantityOnHand ?? '0')) - quantity),
+        );
+      }
+
+      const movementId = `mov-wo-${state.movements.length + 1}`;
+      const movementNumber = `MOV-${String(200 + state.movements.length).padStart(6, '0')}`;
+      state.movements.push({
+        id: movementId,
+        movementNumber,
+        origin: 'WRITE_OFF',
+        originContext: 'inventory.write-off',
+        originRefId: writeOff.serializedAssetId ?? writeOff.itemId,
+        adjustmentReason: null,
+        notes: writeOff.notes,
+        actorUserId: actorId,
+        isReversal: false,
+        createdAt: nowIso(),
+        lines: [],
+      });
+
+      writeOff.status = 'COMPLETED';
+      writeOff.approvedByUserId = actorId;
+      writeOff.approvedAt = nowIso();
+      writeOff.stockMovementId = movementId;
+      writeOff.updatedAt = nowIso();
+
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          writeOff: mapWriteOffRecord(state, writeOff),
+          movementResult: {
+            movement: { id: movementId, movementNumber },
+            lines: [],
+          },
+        }),
+      });
+      return;
+    }
+
+    const writeOffRejectMatch = pathname.match(/\/inventory\/write-offs\/([^/]+)\/reject$/);
+    if (writeOffRejectMatch && method === 'POST') {
+      const writeOff = state.writeOffs.find((entry) => entry.id === writeOffRejectMatch[1]);
+      if (!writeOff) {
+        await route.fulfill({ status: 404, body: JSON.stringify({ message: 'Not found' }) });
+        return;
+      }
+
+      const actorId = resolveMockActorUserId(request, sessionRole);
+      if (writeOff.requestedByUserId === actorId) {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            message: 'El aprobador debe ser distinto del solicitante.',
+          }),
+        });
+        return;
+      }
+
+      const body = request.postDataJSON() as { rejectionNotes?: string | null };
+      writeOff.status = 'REJECTED';
+      writeOff.rejectedByUserId = actorId;
+      writeOff.rejectedAt = nowIso();
+      writeOff.rejectionNotes = body.rejectionNotes ?? null;
+      writeOff.updatedAt = nowIso();
+
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify(mapWriteOffRecord(state, writeOff)),
+      });
+      return;
+    }
+
     if (pathname.endsWith('/inventory/counts') && method === 'GET') {
       const status = url.searchParams.get('status');
       const locationId = url.searchParams.get('locationId');
@@ -3074,6 +3376,47 @@ test.describe('Portal Inventario / SCM', () => {
     await main.getByTestId('asset-loans-panel').getByRole('button', { name: 'Actualizar' }).click();
 
     await expect(loansPanel.getByRole('cell', { name: 'Cerrado' })).toBeVisible();
+  });
+
+  test('solicita baja de consumible y la aprueba un segundo usuario', async ({ page }) => {
+    const state = (page as unknown as { inventoryMockState: InventoryMockState })
+      .inventoryMockState;
+
+    await page.goto('/dashboard/inventory');
+    const main = page.locator('main');
+
+    await main.getByRole('tab', { name: 'Bajas' }).click();
+    await expect(main.getByRole('heading', { name: 'Solicitar baja' })).toBeVisible();
+
+    await main.getByLabel('Producto').selectOption(ITEM_CONSUMABLE_ID);
+    await main.getByLabel('Ubicación').selectOption(LOC_MAIN);
+    await main.getByLabel('Cantidad').fill('2');
+    await main.getByLabel('Motivo').selectOption('DAMAGED');
+    await main.getByRole('button', { name: 'Solicitar baja' }).click();
+
+    await expect(main.getByText('Solicitud registrada — pendiente de aprobación')).toBeVisible();
+    expect(state.writeOffs).toHaveLength(1);
+    expect(state.writeOffs[0]?.status).toBe('PENDING_APPROVAL');
+
+    const writeOffId = String(state.writeOffs[0]?.id);
+    const panel = main.getByTestId('write-offs-panel');
+    await expect(panel.getByTestId(`write-off-pending-row-${writeOffId}`)).toBeVisible();
+
+    await seedPortalSession(page, { role: 'ADMIN' });
+    await page.goto('/dashboard/inventory');
+    const adminMain = page.locator('main');
+    await adminMain.getByRole('tab', { name: 'Bajas' }).click();
+
+    const adminPanel = adminMain.getByTestId('write-offs-panel');
+    await adminPanel
+      .getByTestId(`write-off-pending-row-${writeOffId}`)
+      .getByRole('button', { name: 'Aprobar' })
+      .click();
+    await expect(adminMain.getByText(/Baja aprobada/i)).toBeVisible();
+    expect(state.writeOffs[0]?.status).toBe('COMPLETED');
+
+    await adminPanel.getByTestId('write-offs-history-status-filter').selectOption('COMPLETED');
+    await expect(adminPanel.getByTestId(`write-off-history-row-${writeOffId}`)).toBeVisible();
   });
 
   test('crea salida a técnico y despacha generando movimiento', async ({ page }) => {
