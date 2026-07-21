@@ -1,6 +1,6 @@
 # Informe vivo — MOD12 Inventario / SCM — Auditoría de estado del módulo
 
-**Version:** 1.0
+**Version:** 1.1
 **Fecha:** 2026-07-21
 **Estado:** Vigente — índice único de estado de MOD12
 **Modo activo:** Architect + EM (auditoría) + Product Architect (definición de fase siguiente)
@@ -17,11 +17,11 @@
 
 El CTO solicitó auditar MOD12 Inventario para determinar qué falta construir. La auditoría se ejecutó **contra código, no contra informes previos**: cada estado de esta tabla tiene ruta y línea verificable.
 
-Conclusión: **tres submódulos con roadmap propio están cerrados** — **Compras**, **Existencias** (F1–F4, G7 GO CTO 2026-07-20) y **Activos y comodato** (Fases 5A + 5B, **G7 GO CTO 2026-07-21**). El sistema **ya responde** las cuatro preguntas del PRD padre §1 vía ficha 360 y bandeja de comodatos.
+Conclusión: **tres submódulos con roadmap propio están cerrados** — **Compras**, **Existencias** (F1–F4, G7 GO CTO 2026-07-20) y **Activos y comodato** (Fases 5A + 5B, **recomendación técnica GO — auditoría CTO independiente 2026-07-21**). El sistema **ya responde** las cuatro preguntas del PRD padre §1 vía ficha 360 y bandeja de comodatos.
 
-> **Submódulo Activos y comodato — CERRADO (G7 GO CTO 2026-07-21).**
+> **Submódulo Activos y comodato — CERRADO (recomendación técnica GO, auditoría CTO 2026-07-21).**
 > Informes: [`INFORME-MOD12-ACTIVOS-FICHA-360-FASE-05A-v1.0.md`](INFORME-MOD12-ACTIVOS-FICHA-360-FASE-05A-v1.0.md) · [`INFORME-MOD12-COMODATO-FASE-05B-v1.0.md`](INFORME-MOD12-COMODATO-FASE-05B-v1.0.md) · G5/G6/G7 en `INFORME-MOD12-ACTIVOS-COMODATO-FASE-05-*`.
-> **Fase siguiente sugerida:** H3 (bajas con aprobación) o H4 (alertas vida útil) según priorización CTO.
+> **Hueco abierto de MOD12 — H3 (único hallazgo Alto pendiente).** Las bajas siguen aplicándose al ledger sin documento ni aprobación; `inventory_write_offs` existe pero **no se escribe**. Es **control interno**, no funcionalidad faltante: el flujo opera, pero destruye valor sin contraparte ni workflow de aprobación. **H4** (vida útil + `StockLow`) y **H5** (pestañas legacy) van **después**.
 
 > ~~**Fase siguiente: MOD12 Fase 5A — Ficha 360 del activo.**~~
 
@@ -31,7 +31,7 @@ Conclusión: **tres submódulos con roadmap propio están cerrados** — **Compr
 | --- | --- | --- | --- | --- |
 | **H1** | ~~La ficha 360 del activo no existe.~~ **CERRADO (5A, 2026-07-21).** `GET /inventory/assets/:id` devuelve `SerializedAssetDetailRecord` compuesto. | `serialized-asset.service.ts` · informe 5A | RF-INV-20 | ~~Alta~~ **Cerrado** |
 | **H2** | ~~El comodato no tiene registro propio.~~ **CERRADO (5B, 2026-07-21).** `AssetLoanService` escribe/lee `asset_loan_assignments`; bandeja portal; cierre en retorno/baja. | `asset-loan.service.ts` · informe 5B | RF-INV-12, RF-INV-13 | ~~Alta~~ **Cerrado** |
-| **H3** | **Las bajas se aplican sin aprobación.** `inventory_write_offs` está registrada pero **nunca se escribe**: `recordWriteOff` afecta el ledger de inmediato. `WriteOffStatus` define `REQUESTED / PENDING_APPROVAL / APPROVED / REJECTED / COMPLETED` sin ninguna transición ni endpoint que las use. Hoy un ADMIN puede retirar inventario del ledger por «pérdida» sin que nadie apruebe ni quede el documento de baja. | `services/stock-ledger.service.ts:822`; `packages/shared/src/enums/inventory/write-off-status.enum.ts`; entidad sin repositorio consumidor | RF-INV-19 | **Alta** |
+| **H3** | **Las bajas se aplican sin aprobación** — **único hallazgo Alto abierto.** `inventory_write_offs` está registrada pero **nunca se escribe**: `recordWriteOff` afecta el ledger de inmediato. `WriteOffStatus` define `REQUESTED / PENDING_APPROVAL / APPROVED / REJECTED / COMPLETED` sin ninguna transición ni endpoint que las use. Hoy un ADMIN puede retirar inventario del ledger por «pérdida» sin que nadie apruebe ni quede el documento de baja. **Clasificación:** control interno (RF-INV-19), no gap funcional del flujo de baja. | `services/stock-ledger.service.ts:822`; `packages/shared/src/enums/inventory/write-off-status.enum.ts`; entidad registrada en módulo sin repositorio consumidor | RF-INV-19 | **Alta** — **abierto** |
 | **H4** | **La vida útil no calcula nada y `StockLow` no existe.** `usefulLifeMonths` / `warrantyUntil` se persisten y se muestran en el drawer, pero no hay umbral, alerta ni consulta de activos próximos a fin de vida. `StockLow` no aparece en ningún archivo del repositorio: la cobertura real es el *pull* de `GET /inventory/replenishment/suggestions` (Existencias F2), no un evento de dominio. `INVENTORY_EVENTS` solo emite eventos de catálogo (ítems y categorías); ningún movimiento de stock emite evento. | `services/asset-lifecycle.service.ts` (solo registra y lista); `events/inventory.events.ts`; grep `StockLow` → 0 resultados | RF-INV-18, RF-INV-22 | Media |
 | **H5** | **Deuda UX en pestañas legacy.** `Movimientos` (venta / consumo interno / retorno) y `Bajas` conservan formularios con `<select>` nativos, fuera del patrón composer/PortalPanel adoptado por Compras, Salidas y Existencias. `InventoryClient.tsx` acumula 2.784 líneas y 11 pestañas de primer nivel. | `apps/portal/src/components/inventory/InventoryClient.tsx:2201-2500` | RNF (consistencia UI), RF-INV-14/15/16 | Media |
 | **H6** | **No existe informe de cierre de MOD12 como módulo.** Hay cierres por fase de Compras y de Existencias; ninguno del módulo. ADR-016 (regla de completitud) exige cerrar N antes de abrir N+1. | `docs/informes/` | Gobierno | Media |
@@ -39,7 +39,7 @@ Conclusión: **tres submódulos con roadmap propio están cerrados** — **Compr
 
 ### Nota de control interno sobre H3
 
-H3 no es solo funcionalidad faltante: es un **agujero de control interno**. La baja de inventario es la única operación que destruye valor sin contraparte, y hoy se ejecuta sin documento, sin aprobador y sin estado. Si MOD12 sale a producción antes de cerrar H3, debe declararse como **deuda alta aceptada** en el informe de cierre de módulo, con el mitigante vigente (queda en el ledger inmutable y en `platform_audit_logs` vía `AuditInterceptor`, con actor y motivo).
+H3 no es solo funcionalidad faltante: es un **agujero de control interno** y el **único hallazgo de severidad Alta que permanece abierto** tras cerrar Activos y comodato (H1/H2). La baja de inventario es la única operación que destruye valor sin contraparte, y hoy se ejecuta sin documento, sin aprobador y sin estado — aunque el movimiento en ledger, el motivo y el actor sí quedan registrados. Si MOD12 sale a producción antes de cerrar H3, debe declararse como **deuda alta aceptada** en el informe de cierre de módulo, con el mitigante vigente (ledger inmutable + `platform_audit_logs` vía `AuditInterceptor`, con actor y motivo).
 
 ## 3. Trazabilidad RF-INV-01…25 contra código
 
@@ -73,7 +73,7 @@ Leyenda: ✅ construido · 🟡 parcial · ❌ no construido · ⏸️ fuera de 
 | RF-INV-24 | Evaluación de proveedores | ⏸️ | Fase 2 del PRD padre |
 | RF-INV-25 | IPAM / VLAN / QoS | ⏸️ | Fase 2 del PRD padre |
 
-**Cobertura MVP:** 20 de 22 requisitos MVP construidos (91 %), 2 parciales (RF-INV-18 alertas, RF-INV-19 aprobación bajas). Pendientes concentrados en **control y alertas** (H3, H4) y evento venta RF-INV-14.
+**Cobertura MVP:** 20 de 22 requisitos MVP construidos (91 %), 2 parciales (RF-INV-18 alertas → H4; RF-INV-19 aprobación bajas → **H3, único Alto abierto**). Evento venta RF-INV-14 pendiente (se agrupa con H4).
 
 ## 4. Submódulos cerrados (índice)
 
@@ -91,9 +91,9 @@ Leyenda: ✅ construido · 🟡 parcial · ❌ no construido · ⏸️ fuera de 
 | Orden | Trabajo | Hallazgos | Justificación de la prioridad |
 | --- | --- | --- | --- |
 | ~~**1**~~ | ~~Fase 5A + 5B~~ | ~~H1, H2~~ | **Cerrado 2026-07-21** |
-| **1** | Bajas con aprobación | H3 | Control interno. Requiere máquina de estados sobre `inventory_write_offs` y separar solicitud de aplicación al ledger. |
-| 2 | Vida útil + alertas + eventos de dominio de stock | H4, RF-INV-14 | Cierra el «cuánto le queda» del PRD y habilita integración futura con Billing/ERP. |
-| 3 | Deuda UX de pestañas legacy | H5 | Consistencia de producto; carril rápido DS-OWNER. |
+| **1** | **Bajas con aprobación (H3)** | H3 | **Siguiente fase de MOD12.** Control interno — máquina de estados sobre `inventory_write_offs`; separar solicitud de aplicación al ledger. Único hallazgo Alto abierto. |
+| 2 | Vida útil + alertas + eventos de dominio de stock | H4, RF-INV-14 | Después de H3. Cierra el «cuánto le queda» del PRD y habilita integración futura con Billing/ERP. |
+| 3 | Deuda UX de pestañas legacy | H5 | Después de H4. Consistencia de producto; carril rápido DS-OWNER. |
 | 4 | Informe de cierre de MOD12 | H6 | Al cerrar H3/H4 según priorización CTO. |
 | — | Evaluación de proveedores, IPAM | H7 | Fase 2 del PRD padre; sin acción hasta repriorización del CTO. |
 
@@ -113,11 +113,15 @@ Leyenda: ✅ construido · 🟡 parcial · ❌ no construido · ⏸️ fuera de 
 | PRD del submódulo Activos y comodato | `docs/prds/PRD-MOD12-ACTIVOS-COMODATO-v1.0.md` | MVP cerrado — G7 GO recomendado |
 | Prompt Fase 5A | `docs/prompts/PROMPT-MOD12-ACTIVOS-FICHA-360-FASE-05A-v1.0.md` | **CERRADO** |
 | Prompt Fase 5B | `docs/prompts/PROMPT-MOD12-COMODATO-FASE-05B-v1.0.md` | **CERRADO** |
-| G5/G6/G7 Activos y comodato | `docs/informes/INFORME-MOD12-ACTIVOS-COMODATO-FASE-05-*` | G5 GO · G6 GO · G7 GO recomendado |
+| PRD H3 — Bajas con aprobación | `docs/prds/PRD-MOD12-BAJAS-APROBACION-v1.0.md` | Emitido — **EJECUTABLE** |
+| Prompt H3 | `docs/prompts/PROMPT-MOD12-BAJAS-APROBACION-FASE-H3-v1.0.md` | **EJECUTABLE** |
+| Spec H3 | `docs/specs/2026-07-21-mod12-bajas-aprobacion-fase-h3-design.md` | Congelada |
 
 ## 8. Historial
 
 | Fecha | Cambio |
 | --- | --- |
 | 2026-07-21 | v1.0 — auditoría de estado de MOD12 contra código; hallazgos H1–H7; mapa RF-INV-01…25; backlog priorizado; decisión del CTO: siguiente fase = Ficha 360 + comodato. Emitidos PRD, spec y prompts 5A/5B. |
-| 2026-07-21 | **Addendum** — Fases 5A + 5B ejecutadas; H1/H2 cerrados; RF-INV-12/13/20 ✅; G5/G6 GO; G7 GO recomendado; informe maestro actualizado. |
+| 2026-07-21 | **Addendum** — Fases 5A + 5B ejecutadas; H1/H2 cerrados; RF-INV-12/13/20 ✅; G5/G6 GO; recomendación técnica GO G7; informe maestro actualizado. |
+| 2026-07-21 | **v1.1** — Priorización explícita post-cierre Activos/comodato: **H3** = único Alto abierto y siguiente fase (control interno, no funcionalidad); **H4** y **H5** en orden posterior. Remediación B1–B3 (tests write-off, RF-ACT-09, G7 v1.4). |
+| 2026-07-21 | **v1.1 addendum** — Emitidos PRD, spec y prompt **H3 Bajas con aprobación** (`PRD-MOD12-BAJAS-APROBACION-v1.0.md`, `PROMPT-MOD12-BAJAS-APROBACION-FASE-H3-v1.0.md`). |

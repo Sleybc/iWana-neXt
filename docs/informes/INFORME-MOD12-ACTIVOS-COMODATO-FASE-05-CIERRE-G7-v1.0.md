@@ -1,11 +1,12 @@
 # Informe — MOD12 Activos y comodato Fases 05A + 05B — Cierre G7 (re-verificación CTO)
 
-**Version:** 1.3  
+**Version:** 1.4  
 **Fecha:** 2026-07-21  
-**Estado:** ✅ **G7 — GO APROBADO POR CTO** (submódulo Activos y comodato MVP cerrado)  
-**Modo activo:** Re-verificación independiente post-auditoría CTO (precedente Fase 3A)  
+**Estado:** ✅ **G7 — Recomendación técnica GO** (auditoría CTO independiente; 5A + 5B)  
+**Modo activo:** Re-verificación independiente post-entrega (precedente Fase 3A)  
 **Responsable:** AI-EM-ARCH (auditor ≠ productor de la sesión original)  
-**Aprobador final:** CTO Humano — **GO formal 2026-07-21**
+**Auditoría:** CTO — veredicto técnico **GO para 5A y 5B** (2026-07-21), con evidencia reproducible verificada de forma independiente  
+**Nota de rol:** este informe **no sustituye** una firma formal de gate CTO en gobernanza multiagente; registra la **recomendación técnica** del auditor.  
 **Cadena:** G5 → `…FASE-05-G5-AUDITORIA-ARCH…` · G6 → `…FASE-05-G6-REVIEW…`  
 **PRD:** `docs/prds/PRD-MOD12-ACTIVOS-COMODATO-v1.0.md` · ADR-048 · Spec D-F5
 
@@ -13,45 +14,37 @@
 
 ## 1. Resumen ejecutivo
 
-Re-verificación G7 solicitada tras auditoría CTO que detectó tres hallazgos (A1–A3). La emisión original de G5/G6/G7 el mismo día que el código tenía separación productor/aprobador **nominal**; **este informe v1.1 es la verificación independiente** con evidencia reproducible.
+Re-verificación G7 solicitada tras auditoría CTO que detectó tres hallazgos bloqueantes (A1–A3). La emisión original de G5/G6/G7 el mismo día que el código tenía separación productor/aprobador **nominal**; **este informe documenta la verificación independiente** con evidencia reproducible.
 
-| Fase | Veredicto G7 (post-remediación) |
+| Fase | Veredicto (auditoría CTO) |
 | --- | --- |
 | **5A — Ficha 360** | **GO** |
-| **5B — Comodato** | **GO** (condición EV-1 cumplida) |
+| **5B — Comodato** | **GO** (EV-1 cumplido) |
 
-**Recomendación consolidada: GO** para cierre MVP RF-ACT-01…12. **Confirmado por CTO (2026-07-21).** RF-ACT-13 permanece fase futura con gate ADR.
+**Recomendación consolidada: GO** para cierre MVP RF-ACT-01…12. RF-ACT-13 permanece fase futura con gate ADR.
+
+Post-merge (2026-07-21), el auditor registró **tres hallazgos menores B1–B3** (ninguno bloqueante); remediación documentada en §10.
 
 ---
 
-## 2. Hallazgos CTO y remediación
+## 2. Hallazgos CTO (A1–A3) y remediación
 
 | ID | Severidad | Hallazgo | Remediación | Evidencia |
 | --- | --- | --- | --- | --- |
-| **A1** | Media (funcional) | `resolvePurchaseOrigin` descartaba OC/recepción/costo si faltaba fila en `supplier_profiles` (OCs anteriores a migración 064) | Perfil solo enriquece `supplierDisplayName`; la sección ya no depende del perfil | `serialized-asset.service.ts` · test `returns purchase origin without supplier profile when OC chain resolves (A1)` |
-| **A2** | Media (QA) | E2E comodato verificaba mock propio; sin smoke transaccional real del ciclo 5B | Suite EV-1 `asset-loan.transactional.ev1.spec.ts` contra PostgreSQL real (patrón Fase 3B) | `EV1_REAL_DB=1` → **3/3 passed** (2026-07-21) |
-| **A3** | Media (gobierno) | G5/G6/G7 auto-aprobados en misma sesión productora | Re-verificación independiente documentada en v1.1; veredicto condicionado hasta EV-1 verde | Este informe |
+| **A1** | Media (funcional) | `resolvePurchaseOrigin` descartaba OC/recepción/costo si faltaba fila en `supplier_profiles` | Perfil solo enriquece `supplierDisplayName` | test A1 en `serialized-asset-detail.service.spec.ts` |
+| **A2** | Media (QA) | E2E comodato verificaba mock propio; sin smoke transaccional real | Suite EV-1 contra PostgreSQL real | `EV1_REAL_DB=1` → **3/3** |
+| **A3** | Media (gobierno) | G5/G6/G7 auto-aprobados en misma sesión productora | Re-verificación independiente documentada | Este informe |
 
-**Corrección colateral EV-1:** bajas con motivo `LOST`/`STOLEN` transicionan a `SerializedAssetStatus.LOST` (HLD MOD12), habilitando cierre de comodato en baja desde `INSTALLED_COMODATO` — `stock-ledger.service.ts` (`resolveWriteOffAssetStatus`).
+**Corrección colateral EV-1:** bajas `LOST`/`STOLEN` → estado `LOST` (HLD MOD12) — `resolveWriteOffAssetStatus` en `stock-ledger.service.ts`.
 
 ---
 
 ## 3. EV-1 comodato transaccional (A2)
 
-Suite: `apps/api/src/modules/inventory/tests/asset-loan.transactional.ev1.spec.ts`
-
 ```text
 EV1_REAL_DB=1 pnpm --filter @iwana/api test -- asset-loan.transactional.ev1.spec.ts --coverage=false
 → 3 passed (2026-07-21)
 ```
-
-| Caso | Invariante verificado |
-| --- | --- |
-| Alta en OT + idempotencia + cierre en retorno | `asset_loan_assignments` escrito/cerrado en DB real; replay mismo `idempotencyKey` no duplica |
-| Cierre en baja con comodato abierto | `removed_at` poblado tras `recordWriteOff` (motivo LOST) |
-| Retorno sin comodato abierto (D-F5-13) | Operación no falla; conteo de comodatos = 0 |
-
-**Nota sobre E2E portal:** el spec `portal-inventory-scm.spec.ts` (comodato) valida **cableado UI** con `page.route`; no sustituye EV-1. Ambos complementarios.
 
 ---
 
@@ -64,21 +57,18 @@ EV1_REAL_DB=1 pnpm --filter @iwana/api test -- asset-loan.transactional.ev1.spec
 | Comodato alta/cierre misma TX ledger | ✅ + EV-1 |
 | Idempotencia `stockMovementId` | ✅ + EV-1 |
 | `GET /inventory/loans` + aislamiento tenant | ✅ |
-| Sin DDL / sin ADR nuevo | ✅ |
 | Drawer 360 + bandeja Comodatos | ✅ |
-| Refs opacas / sin PII suscriptor | ✅ |
 
 ---
 
-## 5. Gates re-ejecutados (auditor G7 v1.1)
+## 5. Gates re-ejecutados
 
 | Gate | Resultado |
 | --- | --- |
-| EV-1 comodato (DB real) | ✅ **3/3** passed |
-| Jest API `serialized-asset-detail` + `stock-ledger` | ✅ **32/32** passed |
-| Jest API `src/modules/inventory` (sesión original) | ✅ **303/303** passed (3 skipped) |
-| Jest portal `src/components/inventory` | ✅ **266/266** passed |
-| E2E ficha 360 + comodato (UI) | ✅ **2/2** passed |
+| EV-1 comodato (DB real) | ✅ **3/3** |
+| Jest API inventario | ✅ **303/303** (3 skipped) |
+| Jest portal inventario | ✅ **266/266** |
+| E2E ficha 360 + comodato (UI) | ✅ **2/2** |
 
 ---
 
@@ -86,12 +76,10 @@ EV1_REAL_DB=1 pnpm --filter @iwana/api test -- asset-loan.transactional.ev1.spec
 
 | Gate | Veredicto | Fecha | Notas |
 | --- | --- | --- | --- |
-| G4 (prompts emitidos) | GO | 2026-07-21 | — |
-| G5 ARCH | GO | 2026-07-21 | Sesión original; no re-auditado en v1.1 |
-| G6 UX/DS/QA | GO | 2026-07-21 | E2E UI; EV-1 añadido post-A2 |
-| G7 EM-ARCH v1.0 | GO nominal | 2026-07-21 | **Supersedido** por v1.1 |
-| **G7 EM-ARCH v1.2** | **GO recomendado** | 2026-07-21 | Deuda G5-05A/B cerrada (migración 081) |
-| **G7 CTO** | **GO APROBADO** | 2026-07-21 | Cierre formal submódulo Activos y comodato |
+| G5 ARCH | GO | 2026-07-21 | — |
+| G6 UX/DS/QA | GO | 2026-07-21 | — |
+| G7 EM-ARCH | GO recomendado | 2026-07-21 | Re-verificación post A1–A3 |
+| **Auditoría CTO (técnica)** | **GO 5A + 5B** | 2026-07-21 | Recomendación, no firma formal de gate |
 
 ---
 
@@ -99,31 +87,38 @@ EV1_REAL_DB=1 pnpm --filter @iwana/api test -- asset-loan.transactional.ev1.spec
 
 | ID | Estado | Nota |
 | --- | --- | --- |
-| G5-05A-01 | ✅ **Cerrado** | Migración 081: `asset_lifecycle_events.stock_movement_id` + enlace UI «Ver movimiento» |
-| G5-05A-02 | ✅ **Cerrado** | `SerializedAssetDetailResponseDto` + `@ApiOkResponse` en `GET /inventory/assets/:id` |
-| G5-05B-01 | ✅ **Cerrado** | Índice único parcial `uq_asset_loan_assignments_tenant_movement` (migración 081) |
-| G5-05B-04 | Aceptada | Sin backfill comodatos históricos (decisión PRD §9) |
-| G6-P2-01 | Aceptada | 11 E2E compras/RFQ preexistentes — fase Compras, no 5A/5B |
-| H3/H4/H5 | Fases propias | Bajas con aprobación, alertas vida útil, tabs legacy |
+| G5-05A-01 … G5-05B-01 | ✅ Cerrado | Migración 081 |
+| G5-05B-04 | Aceptada | Sin backfill histórico |
+| G6-P2-01 | Aceptada | E2E compras/RFQ ajenos |
+| H3 | **Abierto — siguiente fase MOD12** | Bajas con aprobación; único hallazgo Alto pendiente; control interno (`inventory_write_offs` sin escribir) |
+| H4 | Fase propia (después de H3) | Vida útil + alertas + `StockLow` / eventos de dominio |
+| H5 | Fase propia (después de H4) | Pestañas legacy Movimientos/Bajas |
 
 ---
 
-## 8. Decisión
+## 8. Decisión (recomendación técnica)
 
 | Pregunta | Respuesta |
 | --- | --- |
-| ¿GO producción 5A? | **Sí** (A1 corregido) |
-| ¿GO producción 5B? | **Sí** (EV-1 verde) |
-| ¿Submódulo Activos y comodato MVP? | **Completo** (RF-ACT-01…12) |
-| ¿ADR nuevo requerido? | **No** |
-
-**Decisión CTO (2026-07-21): GO G7 v1.3** — submódulo Activos y comodato **MVP cerrado** en `main`.
+| ¿GO 5A? | **Sí** |
+| ¿GO 5B? | **Sí** |
+| ¿Submódulo MVP? | **Completo** (RF-ACT-01…12) |
 
 ---
 
 ## 9. Post-cierre (ejecutado)
 
-1. ✅ `INFORME-MOD12-INVENTARIO-AUDITORIA-ESTADO-v1.0.md` — H1/H2 **cerrados**.
-2. ✅ Prompts 5A/5B → **CERRADOS**.
-3. ✅ PRD submódulo → **Aprobado / MVP cerrado**.
-4. ✅ Commit + push a `main` (2026-07-21).
+1. ✅ Informe auditoría MOD12 — H1/H2 cerrados.
+2. ✅ Prompts 5A/5B — CERRADOS.
+3. ✅ PRD submódulo — MVP cerrado.
+4. ✅ Commit `f47295a1` en `main` (2026-07-21).
+
+---
+
+## 10. Hallazgos menores post-merge (B1–B3, 2026-07-21)
+
+| ID | Severidad | Hallazgo | Remediación |
+| --- | --- | --- | --- |
+| **B1** | Baja | `resolveWriteOffAssetStatus` cambia semántica (`LOST`/`STOLEN` → `LOST`); solo cubierto por EV-1 skipped en CI | Unit tests en `stock-ledger.service.spec.ts` (LOST vs WRITTEN_OFF) |
+| **B2** | Info | Baja directa por daño/obsolescencia desde comodato instalado rechazada; retorno previo requerido | Salvedad en RF-ACT-09 (PRD) |
+| **B3** | Cosmético | Versión informe inconsistente; `ev1-db-probe.mjs` sin commitear | Informe v1.4 unificado; script eliminado |

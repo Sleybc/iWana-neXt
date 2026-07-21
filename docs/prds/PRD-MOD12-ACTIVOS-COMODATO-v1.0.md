@@ -1,7 +1,7 @@
 # PRD — MOD12 Inventario / Submódulo Activos y comodato
 
 **Version:** 1.0
-**Estado:** ✅ **Aprobado / MVP cerrado** (G7 CTO GO 2026-07-21)
+**Estado:** ✅ **MVP cerrado** — recomendación técnica GO (auditoría CTO independiente, 2026-07-21)
 **Fecha:** 2026-07-21
 **Modo activo:** Product Architect + Orchestrator
 **Autor:** AI-EM-ARCH
@@ -88,7 +88,7 @@ La brecha, igual que en Existencias, **no es de modelo sino de consulta y de cie
 | RF-ACT-06 | La ficha muestra el custodio actual: tipo de responsable, ubicación y, cuando el activo está en cliente, la referencia de suscriptor — nunca datos personales. | 5A | MVP |
 | RF-ACT-07 | Un activo sin historia (recién creado) muestra estados vacíos explicativos, no errores ni secciones en blanco. | 5A | MVP |
 | RF-ACT-08 | La instalación en cliente desde OT crea un registro de comodato con suscriptor, contrato (si viene), fecha de instalación, OT y movimiento de origen, en la misma transacción del ledger. | 5B | MVP |
-| RF-ACT-09 | El retorno o la baja de un activo en comodato cierra el comodato abierto (`removed_at`) en la misma transacción. | 5B | MVP |
+| RF-ACT-09 | El retorno o la baja de un activo en comodato cierra el comodato abierto (`removed_at`) en la misma transacción. **Salvedad (B2):** desde `INSTALLED_COMODATO`, la baja directa solo cierra comodato con motivo `LOST` o `STOLEN` (estado terminal `LOST`, HLD MOD12); motivos como `DAMAGED` u `OBSOLETE` exigen retorno previo porque la máquina de estados no permite `WRITTEN_OFF` desde comodato instalado. | 5B | MVP |
 | RF-ACT-10 | `GET /inventory/loans` lista comodatos con filtros por estado (abierto/cerrado), suscriptor, contrato y activo, paginado. | 5B | MVP |
 | RF-ACT-11 | La creación y el cierre del comodato son idempotentes respecto del movimiento de ledger que los origina. | 5B | MVP |
 | RF-ACT-12 | La bandeja de comodatos del portal permite ver los equipos en poder de clientes y abrir la ficha 360 de cada uno. | 5B | MVP |

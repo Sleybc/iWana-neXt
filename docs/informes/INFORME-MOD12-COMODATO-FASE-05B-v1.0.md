@@ -108,7 +108,7 @@ Cubre: alta en OT, idempotencia por movimiento, cierre en retorno, cierre en baj
 | --- | --- | --- |
 | **G5** — Auditoría ARCH | AI-EM-ARCH | **GO** — [`…G5-AUDITORIA-ARCH…`](INFORME-MOD12-ACTIVOS-COMODATO-FASE-05-G5-AUDITORIA-ARCH-v1.0.md) |
 | **G6** — UX / DS / QA | PROD-UX, DS-OWNER, SR-QA | **GO** — [`…G6-REVIEW…`](INFORME-MOD12-ACTIVOS-COMODATO-FASE-05-G6-REVIEW-v1.0.md) |
-| **G7** — Cierre CTO | CTO | **GO APROBADO** — [`…CIERRE-G7…`](INFORME-MOD12-ACTIVOS-COMODATO-FASE-05-CIERRE-G7-v1.0.md) (2026-07-21) |
+| **G7** — Cierre EM-ARCH | AI-EM-ARCH | **Recomendación técnica GO** — [`…CIERRE-G7…`](INFORME-MOD12-ACTIVOS-COMODATO-FASE-05-CIERRE-G7-v1.0.md) (auditoría CTO independiente 2026-07-21) |
 
 ---
 

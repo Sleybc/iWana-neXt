@@ -1,6 +1,6 @@
 # PROMPT — MOD12 Activos y comodato — Comodato con ciclo de vida — Fase 05B
 
-> **Estado: CERRADO (G7 GO CTO 2026-07-21).**
+> **Estado: CERRADO (recomendación técnica GO — auditoría CTO independiente 2026-07-21).**
 
 > ~~**Estado: Emitido (G4) — NO EJECUTABLE.**~~
 
