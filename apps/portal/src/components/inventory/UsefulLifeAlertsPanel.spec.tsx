@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { inventoryApi, type UsefulLifeAlertRecord } from '@/lib/api-client';
 import { UsefulLifeAlertsPanel } from './UsefulLifeAlertsPanel';
-import { getUsefulLifeStatusLabel } from './inventory-labels';
+import { getUsefulLifeStatusLabel, USEFUL_LIFE_STATUS_LABELS } from './inventory-labels';
 
 jest.mock('@/lib/api-client', () => {
   const actual = jest.requireActual('@/lib/api-client');
@@ -94,6 +95,7 @@ describe('UsefulLifeAlertsPanel · Fase H4', () => {
   });
 
   it('filtra por estado y expone CTA de reposición', async () => {
+    const user = userEvent.setup();
     const onNavigateToReplenishment = jest.fn();
     listUsefulLifeAlertsMock.mockResolvedValue({
       data: [buildAlert({ status: 'vencida', monthsRemaining: -1 })],
@@ -113,9 +115,11 @@ describe('UsefulLifeAlertsPanel · Fase H4', () => {
       expect(screen.getByTestId('useful-life-alerts-panel')).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByTestId('useful-life-alerts-status-filter'), {
-      target: { value: 'vencida' },
-    });
+    expect(screen.getByTestId('useful-life-alerts-status-filter')).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: 'Estado' }));
+    await user.click(
+      await screen.findByRole('option', { name: USEFUL_LIFE_STATUS_LABELS.vencida }),
+    );
 
     await waitFor(() => {
       expect(listUsefulLifeAlertsMock).toHaveBeenCalledWith({

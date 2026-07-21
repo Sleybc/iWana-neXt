@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Badge, Button } from '@iwana/ui';
+import { Badge, Button, Select } from '@iwana/ui';
 import {
   ApiError,
   inventoryApi,
@@ -32,8 +32,11 @@ interface UsefulLifeAlertsPanelProps {
 
 const DEFAULT_PAGE_SIZE = 20;
 
-const fieldClassName =
-  'portal-input-surface w-full max-w-xs px-3 py-2 text-sm text-gray-900 dark:text-white';
+const STATUS_FILTER_OPTIONS: Array<{ value: UsefulLifeAlertStatusFilter; label: string }> = [
+  { value: 'all', label: 'Por vencer y vencida' },
+  { value: 'por-vencer', label: USEFUL_LIFE_STATUS_LABELS['por-vencer'] },
+  { value: 'vencida', label: USEFUL_LIFE_STATUS_LABELS.vencida },
+];
 
 function mapInventoryError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -108,21 +111,17 @@ export function UsefulLifeAlertsPanel({
   return (
     <div className="space-y-4" data-testid="useful-life-alerts-panel">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <label className="space-y-1 text-sm">
-          <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">Estado</span>
-          <select
+        <div className="w-full max-w-xs">
+          <Select
+            label="Estado"
             value={statusFilter}
             onChange={(event) =>
               handleStatusFilterChange(event.target.value as UsefulLifeAlertStatusFilter)
             }
-            className={fieldClassName}
+            options={STATUS_FILTER_OPTIONS}
             data-testid="useful-life-alerts-status-filter"
-          >
-            <option value="all">Por vencer y vencida</option>
-            <option value="por-vencer">{USEFUL_LIFE_STATUS_LABELS['por-vencer']}</option>
-            <option value="vencida">{USEFUL_LIFE_STATUS_LABELS.vencida}</option>
-          </select>
-        </label>
+          />
+        </div>
         <div className="flex flex-wrap gap-2">
           {onNavigateToReplenishment ? (
             <Button

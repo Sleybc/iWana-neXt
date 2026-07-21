@@ -1,6 +1,6 @@
 # Informe vivo — MOD12 Inventario / SCM — Auditoría de estado del módulo
 
-**Version:** 1.5
+**Version:** 1.6
 **Fecha:** 2026-07-21
 **Estado:** Vigente — índice único de estado de MOD12
 **Modo activo:** Architect + EM (auditoría) + Product Architect (definición de fase siguiente)
@@ -17,11 +17,11 @@
 
 El CTO solicitó auditar MOD12 Inventario para determinar qué falta construir. La auditoría se ejecutó **contra código, no contra informes previos**: cada estado de esta tabla tiene ruta y línea verificable.
 
-Conclusión: **cinco submódulos con roadmap propio están cerrados** — **Compras**, **Existencias**, **Activos y comodato**, **Bajas con aprobación** (H3) y **Vida útil / StockLow / eventos** (H4, **recomendación técnica GO — G7 2026-07-21**).
+Conclusión: **seis frentes de roadmap cerrados** — Compras, Existencias, Activos/comodato, Bajas (H3), Vida útil/StockLow (H4) y **UX pestañas legacy (H5, recomendación técnica GO — G7 2026-07-21)**.
 
-> **Submódulo Vida útil / StockLow / eventos — CERRADO (recomendación técnica GO, G7 2026-07-21).**
-> Informes: [`INFORME-MOD12-VIDA-UTIL-STOCKLOW-FASE-H4-v1.0.md`](INFORME-MOD12-VIDA-UTIL-STOCKLOW-FASE-H4-v1.0.md) · G5/G6/G7 en `INFORME-MOD12-VIDA-UTIL-STOCKLOW-FASE-H4-*`.
-> **Hueco abierto de MOD12 — H5** (pestañas legacy Movimientos/Bajas). **H6** (informe cierre módulo) después.
+> **Fase H5 — UX pestañas legacy — CERRADA (recomendación técnica GO, G7 2026-07-21).**
+> Informes: [`INFORME-MOD12-UX-LEGACY-PESTANAS-FASE-H5-v1.0.md`](INFORME-MOD12-UX-LEGACY-PESTANAS-FASE-H5-v1.0.md) · G5/G6/G7 en `INFORME-MOD12-UX-LEGACY-PESTANAS-FASE-H5-*`.
+> **Hueco abierto de MOD12 — H6** (informe de cierre de módulo).
 
 ## 2. Hallazgos
 
@@ -31,7 +31,7 @@ Conclusión: **cinco submódulos con roadmap propio están cerrados** — **Comp
 | **H2** | ~~El comodato no tiene registro propio.~~ **CERRADO (5B, 2026-07-21).** `AssetLoanService` escribe/lee `asset_loan_assignments`; bandeja portal; cierre en retorno/baja. | `asset-loan.service.ts` · informe 5B | RF-INV-12, RF-INV-13 | ~~Alta~~ **Cerrado** |
 | **H3** | ~~Las bajas se aplican sin aprobación~~ **CERRADO (H3, 2026-07-21).** `WriteOffService` persiste documento; ledger solo en `approve`. | `write-off.service.ts` · migración 082 · informe H3 | RF-INV-19 | ~~Alta~~ **Cerrado** |
 | **H4** | ~~La vida útil no calcula nada y `StockLow` no existe.~~ **CERRADO (H4, 2026-07-21).** Endpoint + panel alertas; `inventory.stock-low` + `inventory.asset-sold`; listener log. | publisher + `UsefulLifeAlertsPanel` · informe H4 | RF-INV-14, RF-INV-18, RF-INV-22 | ~~Media~~ **Cerrado** |
-| **H5** | **Deuda UX en pestañas legacy.** `Movimientos` (venta / consumo interno / retorno) y `Bajas` conservan formularios con `<select>` nativos, fuera del patrón composer/PortalPanel adoptado por Compras, Salidas y Existencias. `InventoryClient.tsx` acumula 2.784 líneas y 11 pestañas de primer nivel. | `apps/portal/src/components/inventory/InventoryClient.tsx:2201-2500` | RNF (consistencia UI), RF-INV-14/15/16 | Media |
+| **H5** | ~~Deuda UX pestañas legacy.~~ **CERRADO (H5, 2026-07-21).** `MovementsWorkspace` + solicitar baja en `WriteOffsPanel`; cero `<select>` nativos en inventory/. | `MovementsWorkspace.tsx` · informe H5 | RNF | ~~Media~~ **Cerrado** |
 | **H6** | **No existe informe de cierre de MOD12 como módulo.** Hay cierres por fase de Compras y de Existencias; ninguno del módulo. ADR-016 (regla de completitud) exige cerrar N antes de abrir N+1. | `docs/informes/` | Gobierno | Media |
 | **H7** | RF-INV-24 (evaluación de proveedores) y RF-INV-25 (IPAM/VLAN/QoS) siguen **fuera de alcance declarado** en el propio PRD (Fase 2). No son deuda: son alcance diferido. | PRD-MOD12-INVENTARIO-SCM §2 y §4 | RF-INV-24, RF-INV-25 | Informativo |
 
@@ -93,8 +93,8 @@ Leyenda: ✅ construido · 🟡 parcial · ❌ no construido · ⏸️ fuera de 
 | ~~**1**~~ | ~~Fase 5A + 5B~~ | ~~H1, H2~~ | **Cerrado 2026-07-21** |
 | ~~**1**~~ | ~~**Bajas con aprobación (H3)**~~ | ~~H3~~ | **Cerrado 2026-07-21** |
 | ~~**1**~~ | ~~**Vida útil + StockLow + eventos (H4)**~~ | ~~H4~~ | **Cerrado 2026-07-21** |
-| **1** | Deuda UX de pestañas legacy | H5 | **Siguiente fase MOD12** |
-| 2 | Informe de cierre de MOD12 | H6 | Tras H5 o según priorización CTO |
+| ~~**1**~~ | ~~Deuda UX de pestañas legacy~~ | ~~H5~~ | **Cerrado 2026-07-21** |
+| **1** | Informe de cierre de MOD12 | H6 | **Siguiente** |
 | — | Evaluación de proveedores, IPAM | H7 | Fase 2 del PRD padre; sin acción hasta repriorización del CTO. |
 
 ## 6. Impacto declarado (perfil AI-EM-ARCH §8)
@@ -119,6 +119,9 @@ Leyenda: ✅ construido · 🟡 parcial · ❌ no construido · ⏸️ fuera de 
 | PRD H4 — Vida útil / StockLow / eventos | `docs/prds/PRD-MOD12-VIDA-UTIL-STOCKLOW-v1.0.md` | MVP cerrado — G7 GO recomendado |
 | Prompt H4 | `docs/prompts/PROMPT-MOD12-VIDA-UTIL-STOCKLOW-FASE-H4-v1.0.md` | **CERRADO** |
 | Spec H4 | `docs/specs/2026-07-21-mod12-vida-util-stocklow-fase-h4-design.md` | Congelada — aprobado CTO |
+| PRD H5 — UX pestañas legacy | `docs/prds/PRD-MOD12-UX-LEGACY-PESTANAS-v1.0.md` | MVP cerrado — G7 GO recomendado |
+| Prompt H5 | `docs/prompts/PROMPT-MOD12-UX-LEGACY-PESTANAS-FASE-H5-v1.0.md` | **CERRADO** |
+| Spec H5 | `docs/specs/2026-07-21-mod12-ux-legacy-pestanas-fase-h5-design.md` | Congelada |
 
 ## 8. Historial
 
@@ -131,3 +134,4 @@ Leyenda: ✅ construido · 🟡 parcial · ❌ no construido · ⏸️ fuera de 
 | 2026-07-21 | **v1.3** — G7 GO recomendado H3; migración 082 aplicada; PRD/prompt H3 cerrados; cobertura MVP 95 %. |
 | 2026-07-21 | **v1.4** — Emitidos PRD/spec/prompt H4 (umbrales C, vida útil A, eventos B); fase **EJECUTABLE**. |
 | 2026-07-21 | **v1.5** — H4 G5+G6+G7 GO recomendado; RF-INV-14/18/22 ✅; cobertura MVP 100 % alcance; siguiente **H5**. |
+| 2026-07-21 | **v1.6** — H5 cerrado (MovementsWorkspace + WriteOffs form + cero select nativos); siguiente **H6**. |

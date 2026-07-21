@@ -1,8 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { WriteOffStatus } from '@iwana/shared';
-import { Button } from '@iwana/ui';
+import { WriteOffReason, WriteOffStatus } from '@iwana/shared';
+import { Button, cn, Input, Select } from '@iwana/ui';
 import type {
   InventoryItemRecord,
   InventoryWriteOffRecord,
@@ -10,6 +10,7 @@ import type {
   StockLocationRecord,
 } from '@/lib/api-client';
 import {
+  interactiveFocusClassName,
   PortalAlert,
   PortalEmptyState,
   PortalPanel,
@@ -24,10 +25,20 @@ import {
   formatInventoryQuantity,
   getWriteOffReasonLabel,
   getWriteOffStatusLabel,
+  WRITE_OFF_REASON_LABELS,
   WRITE_OFF_STATUS_LABELS,
 } from './inventory-labels';
 
 export type WriteOffHistoryStatusFilter = WriteOffStatus | 'all';
+
+export interface WriteOffRequestFormState {
+  itemId: string;
+  serializedAssetId: string;
+  locationId: string;
+  quantity: string;
+  reason: WriteOffReason;
+  notes: string;
+}
 
 interface WriteOffsPanelProps {
   pending: InventoryWriteOffRecord[];
@@ -37,6 +48,12 @@ interface WriteOffsPanelProps {
   items: InventoryItemRecord[];
   assets: SerializedAssetRecord[];
   locations: StockLocationRecord[];
+  requestForm: WriteOffRequestFormState;
+  onRequestFormChange: (next: WriteOffRequestFormState) => void;
+  isSubmittingRequest: boolean;
+  requestError: string | null;
+  requestSuccess: string | null;
+  onSubmitRequest: () => void;
   userLabelById: Map<string, string>;
   currentUserId?: string;
   isLoadingPending: boolean;
@@ -52,8 +69,10 @@ interface WriteOffsPanelProps {
   onOpenMovement: (stockMovementId: string) => void;
 }
 
-const fieldClassName =
-  'portal-input-surface w-full max-w-xs px-3 py-2 text-sm text-gray-900 dark:text-white';
+const requestFieldClassName = cn(
+  'portal-input-surface w-full px-3 py-2 text-sm text-gray-900 dark:text-white',
+  interactiveFocusClassName,
+);
 
 function resolveSubjectLabel(
   writeOff: InventoryWriteOffRecord,
@@ -110,6 +129,12 @@ export function WriteOffsPanel({
   items,
   assets,
   locations,
+  requestForm,
+  onRequestFormChange,
+  isSubmittingRequest,
+  requestError,
+  requestSuccess,
+  onSubmitRequest,
   userLabelById,
   currentUserId,
   isLoadingPending,
@@ -126,6 +151,37 @@ export function WriteOffsPanel({
 }: WriteOffsPanelProps) {
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectionNotes, setRejectionNotes] = useState('');
+
+  const itemSelectOptions = useMemo(
+    () => [
+      { value: '', label: 'Selecciona un producto' },
+      ...items.map((item) => ({
+        value: item.id,
+        label: `${item.sku} · ${item.name}`,
+      })),
+    ],
+    [items],
+  );
+
+  const locationSelectOptions = useMemo(
+    () => [
+      { value: '', label: 'Selecciona una bodega' },
+      ...locations.map((location) => ({
+        value: location.id,
+        label: `${location.code} · ${location.name}`,
+      })),
+    ],
+    [locations],
+  );
+
+  const writeOffReasonOptions = useMemo(
+    () =>
+      (Object.keys(WRITE_OFF_REASON_LABELS) as WriteOffReason[]).map((reason) => ({
+        value: reason,
+        label: getWriteOffReasonLabel(reason),
+      })),
+    [],
+  );
 
   const pendingCountLabel = useMemo(() => {
     if (pending.length === 0) {
@@ -152,6 +208,98 @@ export function WriteOffsPanel({
 
   return (
     <div className="space-y-6" data-testid="write-offs-panel">
+      <PortalPanel
+        eyebrow="Bajas"
+        title="Solicitar baja"
+        description="Registra una solicitud de salida definitiva por daño, pérdida u obsolescencia. Un segundo usuario debe aprobarla antes de afectar el inventario."
+      >
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <Select
+            label="Producto"
+            value={requestForm.itemId}
+            onChange={(event) =>
+              onRequestFormChange({ ...requestForm, itemId: event.target.value })
+            }
+            options={itemSelectOptions}
+          />
+          <Input
+            label="Equipo con serial (opcional)"
+            value={requestForm.serializedAssetId}
+            onChange={(event) =>
+              onRequestFormChange({
+                ...requestForm,
+                serializedAssetId: event.target.value,
+              })
+            }
+          />
+          <Select
+            label="Ubicación"
+            value={requestForm.locationId}
+            onChange={(event) =>
+              onRequestFormChange({ ...requestForm, locationId: event.target.value })
+            }
+            options={locationSelectOptions}
+          />
+          <Input
+            label="Cantidad"
+            type="number"
+            min="0"
+            step="0.01"
+            value={requestForm.quantity}
+            onChange={(event) =>
+              onRequestFormChange({ ...requestForm, quantity: event.target.value })
+            }
+          />
+          <Select
+            label="Motivo"
+            value={requestForm.reason}
+            onChange={(event) =>
+              onRequestFormChange({
+                ...requestForm,
+                reason: event.target.value as WriteOffReason,
+              })
+            }
+            options={writeOffReasonOptions}
+          />
+          <label className="space-y-1 text-sm xl:col-span-3">
+            <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">Notas</span>
+            <textarea
+              rows={3}
+              value={requestForm.notes}
+              onChange={(event) =>
+                onRequestFormChange({ ...requestForm, notes: event.target.value })
+              }
+              className={requestFieldClassName}
+            />
+          </label>
+        </div>
+
+        {requestSuccess ? (
+          <PortalAlert variant="success" title="Solicitud enviada" description={requestSuccess} />
+        ) : null}
+
+        {requestError ? (
+          <PortalAlert
+            variant="error"
+            title="No fue posible registrar la solicitud"
+            description={requestError}
+          />
+        ) : null}
+
+        <div className="mt-4 flex justify-end">
+          <Button
+            type="button"
+            loading={isSubmittingRequest}
+            disabled={
+              !requestForm.locationId || (!requestForm.itemId && !requestForm.serializedAssetId)
+            }
+            onClick={onSubmitRequest}
+          >
+            Solicitar baja
+          </Button>
+        </div>
+      </PortalPanel>
+
       <PortalPanel
         eyebrow="Aprobación"
         title="Pendientes de aprobación"
@@ -308,23 +456,15 @@ export function WriteOffsPanel({
         description="Consulta el estado de las solicitudes y accede al movimiento cuando esté completada."
       >
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-          <label className="space-y-1 text-sm">
-            <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">Estado</span>
-            <select
-              value={historyStatusFilter}
-              onChange={(event) =>
-                onHistoryStatusFilterChange(event.target.value as WriteOffHistoryStatusFilter)
-              }
-              className={fieldClassName}
-              data-testid="write-offs-history-status-filter"
-            >
-              {HISTORY_STATUS_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <Select
+            label="Estado"
+            value={historyStatusFilter}
+            onChange={(event) =>
+              onHistoryStatusFilterChange(event.target.value as WriteOffHistoryStatusFilter)
+            }
+            options={HISTORY_STATUS_OPTIONS}
+            data-testid="write-offs-history-status-filter"
+          />
           <Button type="button" size="sm" variant="secondary" onClick={onRefreshHistory}>
             Actualizar
           </Button>

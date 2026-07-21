@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { AssetLoanRecord, InventoryItemRecord, SerializedAssetRecord } from '@/lib/api-client';
 import { AssetLoansPanel } from './AssetLoansPanel';
-import { formatInventoryOpaqueRef } from './inventory-labels';
+import { ASSET_LOAN_STATUS_LABELS, formatInventoryOpaqueRef } from './inventory-labels';
 
 const SUBSCRIBER_REF = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
 const CONTRACT_REF = 'b2c3d4e5-f6a7-8901-bcde-f12345678901';
@@ -86,5 +87,30 @@ describe('AssetLoansPanel · bandeja comodatos Fase 05B', () => {
     );
 
     expect(screen.getByText('Sin comodatos registrados')).toBeInTheDocument();
+  });
+
+  it('filtra por estado con Select de @iwana/ui', async () => {
+    const user = userEvent.setup();
+    const onStatusFilterChange = jest.fn();
+
+    render(
+      <AssetLoansPanel
+        loans={mockLoans}
+        assets={mockAssets}
+        items={mockItems}
+        isLoading={false}
+        error={null}
+        statusFilter="all"
+        onStatusFilterChange={onStatusFilterChange}
+        onOpenAssetDetail={jest.fn()}
+        onRefresh={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('asset-loans-status-filter')).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: 'Estado' }));
+    await user.click(await screen.findByRole('option', { name: ASSET_LOAN_STATUS_LABELS.cerrado }));
+
+    expect(onStatusFilterChange).toHaveBeenCalledWith('cerrado');
   });
 });

@@ -3446,10 +3446,18 @@ test.describe('Portal Inventario / SCM', () => {
     await main.getByRole('tab', { name: 'Bajas' }).click();
     await expect(main.getByRole('heading', { name: 'Solicitar baja' })).toBeVisible();
 
-    await main.getByLabel('Producto').selectOption(ITEM_CONSUMABLE_ID);
-    await main.getByLabel('Ubicación').selectOption(LOC_MAIN);
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Producto' }),
+      'CAB-DROP · Cable drop',
+    );
+    await selectComboboxOption(
+      page,
+      main.getByRole('combobox', { name: 'Ubicación' }),
+      'BOD-01 · Bodega principal',
+    );
     await main.getByLabel('Cantidad').fill('2');
-    await main.getByLabel('Motivo').selectOption('DAMAGED');
+    await selectComboboxOption(page, main.getByRole('combobox', { name: 'Motivo' }), 'Daño');
     await main.getByRole('button', { name: 'Solicitar baja' }).click();
 
     await expect(main.getByText('Solicitud registrada — pendiente de aprobación')).toBeVisible();
@@ -3473,7 +3481,11 @@ test.describe('Portal Inventario / SCM', () => {
     await expect(adminMain.getByText(/Baja aprobada/i)).toBeVisible();
     expect(state.writeOffs[0]?.status).toBe('COMPLETED');
 
-    await adminPanel.getByTestId('write-offs-history-status-filter').selectOption('COMPLETED');
+    await selectComboboxOption(
+      page,
+      adminPanel.getByRole('combobox', { name: 'Estado' }),
+      'Completada',
+    );
     await expect(adminPanel.getByTestId(`write-off-history-row-${writeOffId}`)).toBeVisible();
   });
 

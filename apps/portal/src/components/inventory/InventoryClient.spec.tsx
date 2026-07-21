@@ -1089,9 +1089,12 @@ describe('InventoryClient', () => {
 
     await user.click(screen.getByRole('tab', { name: 'Movimientos' }));
 
-    const statusSelect = await screen.findByLabelText('Estado del activo al llegar');
-    expect(statusSelect).toHaveValue(SerializedAssetStatus.IN_TRANSIT);
-    expect(screen.getByRole('option', { name: 'En tránsito' })).toBeInTheDocument();
+    const statusSelect = await screen.findByRole('combobox', {
+      name: 'Estado del activo al llegar',
+    });
+    expect(statusSelect).toHaveTextContent('En tránsito');
+    await user.click(statusSelect);
+    expect(await screen.findByRole('option', { name: 'En tránsito' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'En pruebas' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Disponible' })).not.toBeInTheDocument();
   });
@@ -1759,8 +1762,10 @@ describe('InventoryClient', () => {
       expect(screen.getByRole('button', { name: 'Solicitar baja' })).toBeInTheDocument();
     });
 
-    await user.selectOptions(screen.getByLabelText('Producto'), 'item-1');
-    await user.selectOptions(screen.getByLabelText('Ubicación'), 'loc-1');
+    await user.click(screen.getByRole('combobox', { name: 'Producto' }));
+    await user.click(await screen.findByRole('option', { name: /ONT-001/ }));
+    await user.click(screen.getByRole('combobox', { name: 'Ubicación' }));
+    await user.click(await screen.findByRole('option', { name: /BOD-01/ }));
     await user.click(screen.getByRole('button', { name: 'Solicitar baja' }));
 
     await waitFor(() => {

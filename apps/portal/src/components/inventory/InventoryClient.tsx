@@ -116,6 +116,7 @@ import { StockWorkspace, type StockSubview } from './StockWorkspace';
 
 import { StockIssuesWorkspace } from './StockIssuesWorkspace';
 import { StockCountsWorkspace } from './StockCountsWorkspace';
+import { MovementsWorkspace } from './MovementsWorkspace';
 import { WriteOffsPanel, type WriteOffHistoryStatusFilter } from './WriteOffsPanel';
 import type { StockKardexFilters } from './stock-kardex-filters';
 import {
@@ -133,8 +134,6 @@ import {
   formatInventoryDate,
   formatInventoryQuantity,
   getSerializedAssetStatusLabel,
-  getWriteOffReasonLabel,
-  WRITE_OFF_REASON_LABELS,
 } from './inventory-labels';
 import { buildStockOverviewRows } from './stock-overview';
 import { type CatalogFilters, EMPTY_CATALOG_FILTERS } from './catalog-filters';
@@ -163,16 +162,6 @@ const ASSET_DETAIL_QUERY_DEFAULTS = {
 } as const;
 
 type CatalogSubView = 'products' | 'categories';
-
-const fieldClassName = cn(
-  'portal-input-surface w-full px-3 py-2 text-sm text-gray-900 dark:text-white',
-  interactiveFocusClassName,
-);
-
-const RETURN_TARGET_STATUSES = [
-  SerializedAssetStatus.IN_TRANSIT,
-  SerializedAssetStatus.IN_TESTING,
-] as const;
 
 function resolveLocationCustodyFilter(value: string | null): LocationMatrixCustodyFilter {
   return value === 'mobile' ? 'mobile' : 'all';
@@ -2463,376 +2452,21 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         </TabsContent>
 
         <TabsContent value="movements" className="space-y-6">
-          <div className="grid gap-6 xl:grid-cols-2">
-            <PortalPanel
-              eyebrow="Venta"
-              title="Registrar venta"
-              description="Descuenta unidades desde una bodega y asocia la salida a una referencia comercial."
-            >
-              <div className="grid gap-4">
-                <label className="space-y-1 text-sm">
-                  <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                    Producto
-                  </span>
-                  <select
-                    value={saleForm.itemId}
-                    onChange={(event) =>
-                      setSaleForm((current) => ({ ...current, itemId: event.target.value }))
-                    }
-                    className={fieldClassName}
-                  >
-                    <option value="">Selecciona un producto</option>
-                    {items.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.sku} · {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="space-y-1 text-sm">
-                  <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                    Ubicación
-                  </span>
-                  <select
-                    value={saleForm.locationId}
-                    onChange={(event) =>
-                      setSaleForm((current) => ({ ...current, locationId: event.target.value }))
-                    }
-                    className={fieldClassName}
-                  >
-                    <option value="">Selecciona una bodega</option>
-                    {locations.map((location) => (
-                      <option key={location.id} value={location.id}>
-                        {location.code} · {location.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <Input
-                  label="Cantidad"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={saleForm.quantity}
-                  onChange={(event) =>
-                    setSaleForm((current) => ({ ...current, quantity: event.target.value }))
-                  }
-                />
-                <Input
-                  label="Referencia comercial"
-                  value={saleForm.commercialRefId}
-                  onChange={(event) =>
-                    setSaleForm((current) => ({ ...current, commercialRefId: event.target.value }))
-                  }
-                />
-                <Input
-                  label="Serial (opcional)"
-                  value={saleForm.serialNumber}
-                  onChange={(event) =>
-                    setSaleForm((current) => ({ ...current, serialNumber: event.target.value }))
-                  }
-                />
-                <label className="space-y-1 text-sm">
-                  <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                    Notas
-                  </span>
-                  <textarea
-                    rows={3}
-                    value={saleForm.notes}
-                    onChange={(event) =>
-                      setSaleForm((current) => ({ ...current, notes: event.target.value }))
-                    }
-                    className={fieldClassName}
-                  />
-                </label>
-                <Button
-                  type="button"
-                  loading={isSubmittingMovement}
-                  disabled={!saleForm.itemId || !saleForm.locationId || !saleForm.commercialRefId}
-                  onClick={() => void handleSale()}
-                >
-                  Registrar venta
-                </Button>
-              </div>
-            </PortalPanel>
-
-            <PortalPanel
-              eyebrow="Devolución"
-              title="Recibir devolución"
-              description="Registra material o activo devuelto por un técnico o cliente y muévelo a la bodega que corresponda."
-            >
-              <div className="grid gap-4">
-                <label className="space-y-1 text-sm">
-                  <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                    Producto
-                  </span>
-                  <select
-                    value={returnForm.itemId}
-                    onChange={(event) =>
-                      setReturnForm((current) => ({ ...current, itemId: event.target.value }))
-                    }
-                    className={fieldClassName}
-                  >
-                    <option value="">Selecciona un producto</option>
-                    {items.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.sku} · {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="space-y-1 text-sm">
-                  <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                    Bodega de origen
-                  </span>
-                  <select
-                    value={returnForm.sourceLocationId}
-                    onChange={(event) =>
-                      setReturnForm((current) => ({
-                        ...current,
-                        sourceLocationId: event.target.value,
-                      }))
-                    }
-                    className={fieldClassName}
-                  >
-                    <option value="">Selecciona una bodega</option>
-                    {locations.map((location) => (
-                      <option key={location.id} value={location.id}>
-                        {location.code} · {location.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="space-y-1 text-sm">
-                  <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                    Bodega de destino
-                  </span>
-                  <select
-                    value={returnForm.destinationLocationId}
-                    onChange={(event) =>
-                      setReturnForm((current) => ({
-                        ...current,
-                        destinationLocationId: event.target.value,
-                      }))
-                    }
-                    className={fieldClassName}
-                  >
-                    <option value="">Selecciona una bodega</option>
-                    {locations.map((location) => (
-                      <option key={location.id} value={location.id}>
-                        {location.code} · {location.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <Input
-                  label="Cantidad"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={returnForm.quantity}
-                  onChange={(event) =>
-                    setReturnForm((current) => ({ ...current, quantity: event.target.value }))
-                  }
-                />
-                <Input
-                  label="Serial (opcional)"
-                  value={returnForm.serialNumber}
-                  onChange={(event) =>
-                    setReturnForm((current) => ({ ...current, serialNumber: event.target.value }))
-                  }
-                />
-                <label className="space-y-1 text-sm">
-                  <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                    Estado del activo al llegar
-                  </span>
-                  <select
-                    value={returnForm.targetStatus}
-                    onChange={(event) =>
-                      setReturnForm((current) => ({
-                        ...current,
-                        targetStatus: event.target.value as SerializedAssetStatus,
-                      }))
-                    }
-                    className={fieldClassName}
-                  >
-                    {RETURN_TARGET_STATUSES.map((status) => (
-                      <option key={status} value={status}>
-                        {getSerializedAssetStatusLabel(status)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="space-y-1 text-sm">
-                  <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                    Notas
-                  </span>
-                  <textarea
-                    rows={3}
-                    value={returnForm.notes}
-                    onChange={(event) =>
-                      setReturnForm((current) => ({ ...current, notes: event.target.value }))
-                    }
-                    className={fieldClassName}
-                  />
-                </label>
-                <Button
-                  type="button"
-                  loading={isSubmittingMovement}
-                  disabled={
-                    !returnForm.itemId ||
-                    !returnForm.sourceLocationId ||
-                    !returnForm.destinationLocationId
-                  }
-                  onClick={() => void handleReturn()}
-                >
-                  Registrar retorno
-                </Button>
-              </div>
-            </PortalPanel>
-          </div>
-
-          {movementError && (
-            <PortalAlert
-              variant="error"
-              title="No fue posible registrar el movimiento"
-              description={movementError}
-            />
-          )}
+          <MovementsWorkspace
+            items={items}
+            locations={locations}
+            saleForm={saleForm}
+            onSaleFormChange={setSaleForm}
+            returnForm={returnForm}
+            onReturnFormChange={setReturnForm}
+            isSubmittingMovement={isSubmittingMovement}
+            movementError={movementError}
+            onSale={() => void handleSale()}
+            onReturn={() => void handleReturn()}
+          />
         </TabsContent>
 
         <TabsContent value="writeoffs" className="space-y-6">
-          <PortalPanel
-            eyebrow="Bajas"
-            title="Solicitar baja"
-            description="Registra una solicitud de salida definitiva por daño, pérdida u obsolescencia. Un segundo usuario debe aprobarla antes de afectar el inventario."
-          >
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Producto
-                </span>
-                <select
-                  value={writeOffForm.itemId}
-                  onChange={(event) =>
-                    setWriteOffForm((current) => ({ ...current, itemId: event.target.value }))
-                  }
-                  className={fieldClassName}
-                >
-                  <option value="">Selecciona un producto</option>
-                  {items.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.sku} · {item.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <Input
-                label="Equipo con serial (opcional)"
-                value={writeOffForm.serializedAssetId}
-                onChange={(event) =>
-                  setWriteOffForm((current) => ({
-                    ...current,
-                    serializedAssetId: event.target.value,
-                  }))
-                }
-              />
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Ubicación
-                </span>
-                <select
-                  value={writeOffForm.locationId}
-                  onChange={(event) =>
-                    setWriteOffForm((current) => ({ ...current, locationId: event.target.value }))
-                  }
-                  className={fieldClassName}
-                >
-                  <option value="">Selecciona una bodega</option>
-                  {locations.map((location) => (
-                    <option key={location.id} value={location.id}>
-                      {location.code} · {location.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <Input
-                label="Cantidad"
-                type="number"
-                min="0"
-                step="0.01"
-                value={writeOffForm.quantity}
-                onChange={(event) =>
-                  setWriteOffForm((current) => ({ ...current, quantity: event.target.value }))
-                }
-              />
-              <label className="space-y-1 text-sm">
-                <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Motivo
-                </span>
-                <select
-                  value={writeOffForm.reason}
-                  onChange={(event) =>
-                    setWriteOffForm((current) => ({
-                      ...current,
-                      reason: event.target.value as WriteOffReason,
-                    }))
-                  }
-                  className={fieldClassName}
-                >
-                  {Object.keys(WRITE_OFF_REASON_LABELS).map((reason) => (
-                    <option key={reason} value={reason}>
-                      {getWriteOffReasonLabel(reason as WriteOffReason)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="space-y-1 text-sm xl:col-span-3">
-                <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                  Notas
-                </span>
-                <textarea
-                  rows={3}
-                  value={writeOffForm.notes}
-                  onChange={(event) =>
-                    setWriteOffForm((current) => ({ ...current, notes: event.target.value }))
-                  }
-                  className={fieldClassName}
-                />
-              </label>
-            </div>
-
-            {writeOffSuccess && (
-              <PortalAlert
-                variant="success"
-                title="Solicitud enviada"
-                description={writeOffSuccess}
-              />
-            )}
-
-            {writeOffError && (
-              <PortalAlert
-                variant="error"
-                title="No fue posible registrar la solicitud"
-                description={writeOffError}
-              />
-            )}
-
-            <div className="mt-4 flex justify-end">
-              <Button
-                type="button"
-                loading={isSubmittingWriteOff}
-                disabled={
-                  !writeOffForm.locationId ||
-                  (!writeOffForm.itemId && !writeOffForm.serializedAssetId)
-                }
-                onClick={() => void handleWriteOff()}
-              >
-                Solicitar baja
-              </Button>
-            </div>
-          </PortalPanel>
-
           <WriteOffsPanel
             pending={pendingWriteOffs}
             history={historyWriteOffs}
@@ -2841,6 +2475,12 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             items={items}
             assets={assets}
             locations={locations}
+            requestForm={writeOffForm}
+            onRequestFormChange={setWriteOffForm}
+            isSubmittingRequest={isSubmittingWriteOff}
+            requestError={writeOffError}
+            requestSuccess={writeOffSuccess}
+            onSubmitRequest={() => void handleWriteOff()}
             userLabelById={userLabelById}
             {...(user?.id ? { currentUserId: user.id } : {})}
             isLoadingPending={isLoadingPendingWriteOffs}

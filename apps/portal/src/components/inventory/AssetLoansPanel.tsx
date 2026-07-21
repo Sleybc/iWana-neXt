@@ -1,6 +1,6 @@
 'use client';
 
-import { Button } from '@iwana/ui';
+import { Button, Select } from '@iwana/ui';
 import type {
   AssetLoanRecord,
   AssetLoanStatus,
@@ -16,6 +16,7 @@ import {
   portalDataTableShellClassName,
 } from '@/components/shared/portal-ui';
 import {
+  ASSET_LOAN_STATUS_LABELS,
   formatInventoryOpaqueRef,
   formatInventoryDateTime,
   getAssetLoanStatusLabel,
@@ -35,8 +36,11 @@ interface AssetLoansPanelProps {
   onRefresh: () => void;
 }
 
-const fieldClassName =
-  'portal-input-surface w-full max-w-xs px-3 py-2 text-sm text-gray-900 dark:text-white';
+const STATUS_FILTER_OPTIONS: Array<{ value: AssetLoanStatusFilter; label: string }> = [
+  { value: 'all', label: 'Todos' },
+  { value: 'abierto', label: ASSET_LOAN_STATUS_LABELS.abierto },
+  { value: 'cerrado', label: ASSET_LOAN_STATUS_LABELS.cerrado },
+];
 
 function resolveAssetLabel(
   loan: AssetLoanRecord,
@@ -64,19 +68,15 @@ export function AssetLoansPanel({
   return (
     <div className="space-y-4" data-testid="asset-loans-panel">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <label className="space-y-1 text-sm">
-          <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">Estado</span>
-          <select
+        <div className="w-full max-w-xs">
+          <Select
+            label="Estado"
             value={statusFilter}
             onChange={(event) => onStatusFilterChange(event.target.value as AssetLoanStatusFilter)}
-            className={fieldClassName}
+            options={STATUS_FILTER_OPTIONS}
             data-testid="asset-loans-status-filter"
-          >
-            <option value="all">Todos</option>
-            <option value="abierto">Abierto</option>
-            <option value="cerrado">Cerrado</option>
-          </select>
-        </label>
+          />
+        </div>
         <Button type="button" size="sm" variant="secondary" onClick={onRefresh}>
           Actualizar
         </Button>
