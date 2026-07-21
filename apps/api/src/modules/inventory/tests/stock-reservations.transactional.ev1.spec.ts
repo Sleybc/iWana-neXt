@@ -152,8 +152,15 @@ const actor: JwtPayload = {
       { recordWithManager: jest.fn() } as never,
       { resolveSealedUnitCostWithManager: jest.fn().mockResolvedValue(null) } as never,
       { openLoanWithManager: jest.fn(), closeOpenLoanWithManager: jest.fn() } as never,
+      {
+        captureItemSnapshots: jest.fn().mockResolvedValue(new Map()),
+        publishAfterCommittedMovement: jest.fn(),
+      } as never,
     );
-    issueService = new StockIssueService(dataSource, ledgerService, balanceService);
+    issueService = new StockIssueService(dataSource, ledgerService, balanceService, {
+      captureItemSnapshots: jest.fn().mockResolvedValue(new Map()),
+      publishAfterCommittedMovement: jest.fn(),
+    } as never);
 
     await runInTenantSchema(dataSource, schemaName, async (qr) => {
       const main = await qr.manager.findOne(StockLocation, {

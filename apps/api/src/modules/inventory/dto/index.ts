@@ -691,6 +691,32 @@ export class GetSerializedAssetDetailQueryDto {
   movementsLimit?: number;
 }
 
+export const ListUsefulLifeAlertsQuerySchema = z.object({
+  /** Si se omite, incluye `por-vencer` y `vencida` (filtro «all» del portal). */
+  status: z.enum(['por-vencer', 'vencida']).optional(),
+  page: z.coerce.number().int().min(1).optional().default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).optional().default(20),
+});
+
+export type ListUsefulLifeAlertsQueryInput = z.infer<typeof ListUsefulLifeAlertsQuerySchema>;
+
+export class ListUsefulLifeAlertsQueryDto {
+  @ApiPropertyOptional({
+    enum: ['por-vencer', 'vencida'],
+    description: 'Estado de alerta; omitir para por vencer y vencida',
+  })
+  @Allow()
+  status?: 'por-vencer' | 'vencida';
+
+  @ApiPropertyOptional({ default: 1, minimum: 1 })
+  @Allow()
+  page?: number;
+
+  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
+  @Allow()
+  pageSize?: number;
+}
+
 export const ListStockBalancesQuerySchema = z.object({
   itemId: z.string().trim().min(1).max(160).optional(),
   locationId: z.string().trim().min(1).max(160).optional(),

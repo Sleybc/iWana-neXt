@@ -1,6 +1,6 @@
 # Informe vivo — MOD12 Inventario / SCM — Auditoría de estado del módulo
 
-**Version:** 1.3
+**Version:** 1.4
 **Fecha:** 2026-07-21
 **Estado:** Vigente — índice único de estado de MOD12
 **Modo activo:** Architect + EM (auditoría) + Product Architect (definición de fase siguiente)
@@ -21,7 +21,7 @@ Conclusión: **cuatro submódulos con roadmap propio están cerrados** — **Com
 
 > **Submódulo Bajas con aprobación — CERRADO (recomendación técnica GO, G7 2026-07-21).**
 > Informes: [`INFORME-MOD12-BAJAS-APROBACION-FASE-H3-v1.0.md`](INFORME-MOD12-BAJAS-APROBACION-FASE-H3-v1.0.md) · G5/G6/G7 en `INFORME-MOD12-BAJAS-APROBACION-FASE-H3-*`.
-> **Hueco abierto de MOD12 — H4** (vida útil + `StockLow`). **H5** (pestañas legacy) después de H4.
+> **Hueco abierto de MOD12 — H4** (vida útil + `StockLow` + eventos). PRD/spec/prompt **EJECUTABLES**. **H5** (pestañas legacy) después de H4.
 
 > ~~**Fase siguiente: MOD12 Fase 5A — Ficha 360 del activo.**~~
 
@@ -117,6 +117,9 @@ Leyenda: ✅ construido · 🟡 parcial · ❌ no construido · ⏸️ fuera de 
 | PRD H3 — Bajas con aprobación | `docs/prds/PRD-MOD12-BAJAS-APROBACION-v1.0.md` | MVP cerrado — G7 GO recomendado |
 | Prompt H3 | `docs/prompts/PROMPT-MOD12-BAJAS-APROBACION-FASE-H3-v1.0.md` | **CERRADO** |
 | Spec H3 | `docs/specs/2026-07-21-mod12-bajas-aprobacion-fase-h3-design.md` | Congelada |
+| PRD H4 — Vida útil / StockLow / eventos | `docs/prds/PRD-MOD12-VIDA-UTIL-STOCKLOW-v1.0.md` | Emitido — **EJECUTABLE** |
+| Prompt H4 | `docs/prompts/PROMPT-MOD12-VIDA-UTIL-STOCKLOW-FASE-H4-v1.0.md` | **EJECUTABLE** |
+| Spec H4 | `docs/specs/2026-07-21-mod12-vida-util-stocklow-fase-h4-design.md` | Congelada (review usuario) |
 
 ## 8. Historial
 
@@ -127,3 +130,4 @@ Leyenda: ✅ construido · 🟡 parcial · ❌ no construido · ⏸️ fuera de 
 | 2026-07-21 | **v1.1** — Priorización explícita post-cierre Activos/comodato: **H3** = único Alto abierto y siguiente fase (control interno, no funcionalidad); **H4** y **H5** en orden posterior. Remediación B1–B3 (tests write-off, RF-ACT-09, G7 v1.4). |
 | 2026-07-21 | **v1.2** — H3 ejecutado; RF-INV-19 ✅; H3 cerrado; siguiente hueco **H4**. |
 | 2026-07-21 | **v1.3** — G7 GO recomendado H3; migración 082 aplicada; PRD/prompt H3 cerrados; cobertura MVP 95 %. |
+| 2026-07-21 | **v1.4** — Emitidos PRD/spec/prompt H4 (umbrales C, vida útil A, eventos B); fase **EJECUTABLE**. |

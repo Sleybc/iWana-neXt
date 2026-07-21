@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, In } from 'typeorm';
 import {
   GoodsReceipt,
   InventoryCategory,
@@ -28,10 +28,13 @@ import {
   GetSerializedAssetDetailQuerySchema,
   ListSerializedAssetsQueryInput,
   ListSerializedAssetsQuerySchema,
+  ListUsefulLifeAlertsQueryInput,
+  ListUsefulLifeAlertsQuerySchema,
 } from '../dto';
 import {
   SerializedAssetDetailRecord,
   SerializedAssetPurchaseOrigin,
+  UsefulLifeStatus,
 } from '../types/serialized-asset-detail.types';
 import { SupplierPartyPort } from '../ports/supplier-party.port';
 import { AssetLifecycleService } from './asset-lifecycle.service';
@@ -149,6 +152,97 @@ export class SerializedAssetService {
       }
 
       return qb.getMany();
+    });
+  }
+
+  /**
+   * Lista alertas de vida útil (pull on-read, sin materializar) — D-H4-06.
+   * Excluye `sin-dato` y `vigente`; filtra por `por-vencer` | `vencida`.
+   */
+  async listUsefulLifeAlerts(query: ListUsefulLifeAlertsQueryInput): Promise<{
+    data: Array<{
+      id: string;
+      inventoryItemId: string;
+      serialNumber: string | null;
+      assetTag: string | null;
+      currentStatus: SerializedAssetStatus;
+      sku: string | null;
+      itemName: string | null;
+      status: Extract<UsefulLifeStatus, 'por-vencer' | 'vencida'>;
+      monthsRemaining: number | null;
+      monthsTotal: number | null;
+      purchaseDate: string | null;
+      warrantyUntil: string | null;
+    }>;
+    total: number;
+    page: number;
+    pageSize: number;
+    /** Alias de pageSize para clientes que usan `limit`. */
+    limit: number;
+  }> {
+    const validated = ListUsefulLifeAlertsQuerySchema.parse(query);
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const allowedStatuses: Array<Extract<UsefulLifeStatus, 'por-vencer' | 'vencida'>> =
+      validated.status ? [validated.status] : ['por-vencer', 'vencida'];
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const assets = await qr.manager.find(SerializedAsset, {
+        where: { tenantId },
+        order: { updatedAt: 'DESC' },
+      });
+
+      const itemIds = [...new Set(assets.map((asset) => asset.inventoryItemId))];
+      const items =
+        itemIds.length === 0
+          ? []
+          : await qr.manager.find(InventoryItem, {
+              where: { tenantId, id: In(itemIds) },
+            });
+      const itemById = new Map(items.map((item) => [item.id, item]));
+
+      const alerts = assets
+        .map((asset) => {
+          const usefulLife = calculateUsefulLife({
+            usefulLifeMonths: asset.usefulLifeMonths,
+            purchaseDate: asset.purchaseDate,
+            warrantyUntil: asset.warrantyUntil,
+          });
+          if (usefulLife.status !== 'por-vencer' && usefulLife.status !== 'vencida') {
+            return null;
+          }
+          if (!allowedStatuses.includes(usefulLife.status)) {
+            return null;
+          }
+
+          const item = itemById.get(asset.inventoryItemId) ?? null;
+          return {
+            id: asset.id,
+            inventoryItemId: asset.inventoryItemId,
+            serialNumber: asset.serialNumber,
+            assetTag: asset.assetTag,
+            currentStatus: asset.currentStatus,
+            sku: item?.sku ?? null,
+            itemName: item?.name ?? null,
+            status: usefulLife.status,
+            monthsRemaining: usefulLife.monthsRemaining,
+            monthsTotal: usefulLife.monthsTotal,
+            purchaseDate: asset.purchaseDate,
+            warrantyUntil: usefulLife.warrantyUntil,
+          };
+        })
+        .filter((row): row is NonNullable<typeof row> => row != null);
+
+      const total = alerts.length;
+      const start = (validated.page - 1) * validated.pageSize;
+      const data = alerts.slice(start, start + validated.pageSize);
+
+      return {
+        data,
+        total,
+        page: validated.page,
+        pageSize: validated.pageSize,
+        limit: validated.pageSize,
+      };
     });
   }
 

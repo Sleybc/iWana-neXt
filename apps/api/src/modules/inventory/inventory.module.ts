@@ -69,6 +69,8 @@ import { RfqService } from './services/rfq.service';
 import { StockLocationService } from './services/stock-location.service';
 import { WriteOffService } from './services/write-off.service';
 import { SupplierProfileService } from './services/supplier-profile.service';
+import { InventoryDomainEventPublisher } from './services/inventory-domain-event-publisher.service';
+import { InventoryDomainEventsListener } from './listeners/inventory-domain-events.listener';
 
 @Module({
   imports: [
@@ -131,6 +133,8 @@ import { SupplierProfileService } from './services/supplier-profile.service';
     ReplenishmentService,
     SupplierProfileService,
     WriteOffService,
+    InventoryDomainEventPublisher,
+    InventoryDomainEventsListener,
     InventoryMovementPortAdapter,
     CommercialProductReferencePortAdapter,
     SupplierPartyPortAdapter,
@@ -174,6 +178,7 @@ import { SupplierProfileService } from './services/supplier-profile.service';
     ReplenishmentService,
     SupplierProfileService,
     WriteOffService,
+    InventoryDomainEventPublisher,
     InventoryMovementPortAdapter,
     CommercialProductReferencePortAdapter,
     SupplierPartyPortAdapter,

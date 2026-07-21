@@ -1626,11 +1626,16 @@ describe('GoodsReceiptService', () => {
       recordMovementWithManager: jest.fn().mockResolvedValue({
         movement: { id: 'mov-001', origin: StockMovementOrigin.PURCHASE_RECEIPT },
         lines: [{ id: 'line-001' }],
+        created: true,
       }),
     };
     const serializedAssetServiceMock = {
       normalizeSerial: jest.fn((serial: string) => serial.trim().toUpperCase()),
       createReceivedAssetWithManager: jest.fn(),
+    };
+    const domainEventPublisherMock = {
+      captureItemSnapshots: jest.fn().mockResolvedValue(new Map()),
+      publishAfterCommittedMovement: jest.fn(),
     };
 
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
@@ -1640,6 +1645,7 @@ describe('GoodsReceiptService', () => {
       stockLedgerServiceMock as never,
       serializedAssetServiceMock as never,
       { applyReceiptCostingWithManager: jest.fn().mockResolvedValue(undefined) } as never,
+      domainEventPublisherMock as never,
     );
 
     const result = await service.receivePurchaseOrder(
@@ -1722,6 +1728,10 @@ describe('GoodsReceiptService', () => {
       normalizeSerial: jest.fn((serial: string) => serial.trim().toUpperCase()),
       createReceivedAssetWithManager: jest.fn(),
     };
+    const domainEventPublisherMock = {
+      captureItemSnapshots: jest.fn().mockResolvedValue(new Map()),
+      publishAfterCommittedMovement: jest.fn(),
+    };
 
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
     const service = new GoodsReceiptService(
@@ -1730,6 +1740,7 @@ describe('GoodsReceiptService', () => {
       stockLedgerServiceMock as never,
       serializedAssetServiceMock as never,
       { applyReceiptCostingWithManager: jest.fn().mockResolvedValue(undefined) } as never,
+      domainEventPublisherMock as never,
     );
 
     await expect(

@@ -60,6 +60,10 @@ const approver: JwtPayload = {
 
 describe('WriteOffService', () => {
   let stockLedgerService: jest.Mocked<Pick<StockLedgerService, 'recordWriteOffWithManager'>>;
+  let domainEventPublisher: {
+    captureItemSnapshots: jest.Mock;
+    publishAfterCommittedMovement: jest.Mock;
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -71,12 +75,21 @@ describe('WriteOffService', () => {
       recordWriteOffWithManager: jest.fn().mockResolvedValue({
         movement: { id: 'mov-001', movementNumber: 'MOV-000300' },
         lines: [{ id: 'line-001' }],
+        created: true,
       }),
+    };
+    domainEventPublisher = {
+      captureItemSnapshots: jest.fn().mockResolvedValue(new Map()),
+      publishAfterCommittedMovement: jest.fn(),
     };
   });
 
   function createService(dataSource: DataSource = {} as DataSource): WriteOffService {
-    return new WriteOffService(dataSource, stockLedgerService as unknown as StockLedgerService);
+    return new WriteOffService(
+      dataSource,
+      stockLedgerService as unknown as StockLedgerService,
+      domainEventPublisher as never,
+    );
   }
 
   function buildPendingWriteOff(overrides: Partial<InventoryWriteOff> = {}): InventoryWriteOff {

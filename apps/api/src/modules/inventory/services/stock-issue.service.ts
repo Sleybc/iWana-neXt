@@ -26,6 +26,7 @@ import {
 } from '../dto';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { StockBalanceService, formatInsufficientAvailableMessage } from './stock-balance.service';
+import { InventoryDomainEventPublisher } from './inventory-domain-event-publisher.service';
 import { StockLedgerService } from './stock-ledger.service';
 
 export type StockIssueDetail = StockIssue & { lines: StockIssueLine[] };
@@ -36,6 +37,7 @@ export class StockIssueService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly stockLedgerService: StockLedgerService,
     private readonly stockBalanceService: StockBalanceService,
+    private readonly domainEventPublisher: InventoryDomainEventPublisher,
   ) {}
 
   private toNumeric(value: string | number | null | undefined): number {
@@ -433,118 +435,119 @@ export class StockIssueService {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = DispatchStockIssueSchema.parse(input);
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.transaction(async (manager) => {
-        const issue = await manager.findOne(StockIssue, { where: { id, tenantId } });
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const previewLines = await qr.manager.find(StockIssueLine, {
+        where: { issueId: id, tenantId },
+        order: { createdAt: 'ASC' },
+      });
+      const itemIds = [...new Set(previewLines.map((line) => line.itemId))];
+      const beforeByItem = await this.domainEventPublisher.captureItemSnapshots(
+        qr.manager,
+        tenantId,
+        itemIds,
+      );
 
-        if (!issue) {
-          throw new NotFoundException('La salida solicitada no existe.');
-        }
+      type DispatchTxResult = {
+        detail: StockIssueDetail & { stockMovementId: string };
+        movementResult: Awaited<
+          ReturnType<StockLedgerService['recordStockIssueSaleWithManager']>
+        > | null;
+      };
 
-        if (issue.stockMovementId) {
-          const existingLines = await manager.find(StockIssueLine, {
+      const dispatched = await qr.manager.transaction(
+        async (manager): Promise<DispatchTxResult> => {
+          const issue = await manager.findOne(StockIssue, { where: { id, tenantId } });
+
+          if (!issue) {
+            throw new NotFoundException('La salida solicitada no existe.');
+          }
+
+          if (issue.stockMovementId) {
+            const existingLines = await manager.find(StockIssueLine, {
+              where: { issueId: id, tenantId },
+              order: { createdAt: 'ASC' },
+            });
+            return {
+              detail: { ...issue, lines: existingLines, stockMovementId: issue.stockMovementId },
+              movementResult: null,
+            };
+          }
+
+          if (
+            issue.status === StockIssueStatus.CANCELLED ||
+            issue.status === StockIssueStatus.DISPATCHED ||
+            issue.status === StockIssueStatus.RECEIVED
+          ) {
+            throw new BadRequestException('No se puede despachar una salida en estado terminal.');
+          }
+
+          const issueLines = await manager.find(StockIssueLine, {
             where: { issueId: id, tenantId },
             order: { createdAt: 'ASC' },
           });
-          return { ...issue, lines: existingLines, stockMovementId: issue.stockMovementId };
-        }
 
-        if (
-          issue.status === StockIssueStatus.CANCELLED ||
-          issue.status === StockIssueStatus.DISPATCHED ||
-          issue.status === StockIssueStatus.RECEIVED
-        ) {
-          throw new BadRequestException('No se puede despachar una salida en estado terminal.');
-        }
-
-        const issueLines = await manager.find(StockIssueLine, {
-          where: { issueId: id, tenantId },
-          order: { createdAt: 'ASC' },
-        });
-
-        if (issueLines.length === 0) {
-          throw new BadRequestException('La salida debe incluir al menos una línea.');
-        }
-
-        const sourceLocation = await this.resolveLocation(
-          manager,
-          tenantId,
-          issue.sourceLocationId,
-        );
-        this.assertSourceIsMainWarehouse(sourceLocation);
-        const destinationLocation = issue.destinationLocationId
-          ? await this.resolveLocation(manager, tenantId, issue.destinationLocationId)
-          : null;
-
-        this.assertDistinctLocations(sourceLocation, destinationLocation);
-        this.assertDestinationTypeForDispatch(issue.type, destinationLocation);
-
-        for (const line of issueLines) {
-          const requestedQty = this.toNumeric(line.requestedQty);
-
-          if (line.serializedAssetId && requestedQty !== 1) {
-            throw new BadRequestException(
-              'Las líneas con activo serializado deben solicitar cantidad 1.',
-            );
+          if (issueLines.length === 0) {
+            throw new BadRequestException('La salida debe incluir al menos una línea.');
           }
 
-          // Libera la reserva propia antes del ledger para que no bloquee su despacho (D-F3B-5/6).
-          await this.releaseLineQuantity(manager, tenantId, sourceLocation.id, line);
-        }
+          const sourceLocation = await this.resolveLocation(
+            manager,
+            tenantId,
+            issue.sourceLocationId,
+          );
+          this.assertSourceIsMainWarehouse(sourceLocation);
+          const destinationLocation = issue.destinationLocationId
+            ? await this.resolveLocation(manager, tenantId, issue.destinationLocationId)
+            : null;
 
-        for (const line of issueLines) {
-          const quantity = line.serializedAssetId ? 1 : this.toNumeric(line.requestedQty);
-          const availability = await this.getAvailability(manager, tenantId, {
-            itemId: line.itemId,
-            locationId: sourceLocation.id,
-            lotId: line.lotId ?? null,
-            condition: line.condition ?? StockBalanceCondition.NEW,
-          });
+          this.assertDistinctLocations(sourceLocation, destinationLocation);
+          this.assertDestinationTypeForDispatch(issue.type, destinationLocation);
 
-          if (availability.available < quantity) {
-            throw new BadRequestException(
-              formatInsufficientAvailableMessage(availability.onHand, availability.reserved),
-            );
+          for (const line of issueLines) {
+            const requestedQty = this.toNumeric(line.requestedQty);
+
+            if (line.serializedAssetId && requestedQty !== 1) {
+              throw new BadRequestException(
+                'Las líneas con activo serializado deben solicitar cantidad 1.',
+              );
+            }
+
+            // Libera la reserva propia antes del ledger para que no bloquee su despacho (D-F3B-5/6).
+            await this.releaseLineQuantity(manager, tenantId, sourceLocation.id, line);
           }
-        }
 
-        const idempotencyKey = `stock-issue:${issue.id}`;
-        const originRefId =
-          issue.commercialRefId ??
-          issue.originRefId ??
-          issue.costCenter ??
-          issue.destinationRefId ??
-          issue.id;
+          for (const line of issueLines) {
+            const quantity = line.serializedAssetId ? 1 : this.toNumeric(line.requestedQty);
+            const availability = await this.getAvailability(manager, tenantId, {
+              itemId: line.itemId,
+              locationId: sourceLocation.id,
+              lotId: line.lotId ?? null,
+              condition: line.condition ?? StockBalanceCondition.NEW,
+            });
 
-        const movement =
-          issue.type === StockIssueType.SALE_DISPATCH
-            ? await this.stockLedgerService.recordStockIssueSaleWithManager(
-                manager,
-                tenantId,
-                {
-                  locationId: sourceLocation.id,
-                  commercialRefId: issue.commercialRefId ?? issue.originRefId ?? originRefId,
-                  idempotencyKey,
-                  notes: validated.handoffNotes ?? validated.handoffMethod,
-                  lines: issueLines.map((line) => ({
-                    itemId: line.itemId,
-                    quantity: line.serializedAssetId ? 1 : this.toNumeric(line.requestedQty),
-                    lotId: line.lotId ?? null,
-                    serializedAssetId: line.serializedAssetId ?? null,
-                    serialNumber: null,
-                    condition: line.condition ?? StockBalanceCondition.NEW,
-                  })),
-                },
-                actor,
-              )
-            : issue.type === StockIssueType.INTERNAL_CONSUMPTION
-              ? await this.stockLedgerService.recordStockIssueInternalConsumptionWithManager(
+            if (availability.available < quantity) {
+              throw new BadRequestException(
+                formatInsufficientAvailableMessage(availability.onHand, availability.reserved),
+              );
+            }
+          }
+
+          const idempotencyKey = `stock-issue:${issue.id}`;
+          const originRefId =
+            issue.commercialRefId ??
+            issue.originRefId ??
+            issue.costCenter ??
+            issue.destinationRefId ??
+            issue.id;
+
+          const movement =
+            issue.type === StockIssueType.SALE_DISPATCH
+              ? await this.stockLedgerService.recordStockIssueSaleWithManager(
                   manager,
                   tenantId,
                   {
                     locationId: sourceLocation.id,
-                    costCenterRefId: issue.costCenter ?? originRefId,
-                    reason: issue.reason ?? 'Consumo interno',
+                    commercialRefId: issue.commercialRefId ?? issue.originRefId ?? originRefId,
                     idempotencyKey,
                     notes: validated.handoffNotes ?? validated.handoffMethod,
                     lines: issueLines.map((line) => ({
@@ -558,60 +561,104 @@ export class StockIssueService {
                   },
                   actor,
                 )
-              : await this.stockLedgerService.recordStockIssueTransferWithManager(
-                  manager,
-                  tenantId,
-                  {
-                    sourceLocationId: sourceLocation.id,
-                    destinationLocationId: destinationLocation!.id,
-                    idempotencyKey,
-                    originRefId,
-                    handoffReference: validated.handoffMethod,
-                    handoffNotes: validated.handoffNotes ?? null,
-                    notes: null,
-                    lines: issueLines.map((line) => ({
-                      itemId: line.itemId,
-                      quantity: line.serializedAssetId ? 1 : this.toNumeric(line.requestedQty),
-                      lotId: line.lotId ?? null,
-                      serializedAssetId: line.serializedAssetId ?? null,
-                      serialNumber: null,
-                      condition: line.condition ?? StockBalanceCondition.NEW,
-                    })),
-                  },
-                  actor,
-                );
+              : issue.type === StockIssueType.INTERNAL_CONSUMPTION
+                ? await this.stockLedgerService.recordStockIssueInternalConsumptionWithManager(
+                    manager,
+                    tenantId,
+                    {
+                      locationId: sourceLocation.id,
+                      costCenterRefId: issue.costCenter ?? originRefId,
+                      reason: issue.reason ?? 'Consumo interno',
+                      idempotencyKey,
+                      notes: validated.handoffNotes ?? validated.handoffMethod,
+                      lines: issueLines.map((line) => ({
+                        itemId: line.itemId,
+                        quantity: line.serializedAssetId ? 1 : this.toNumeric(line.requestedQty),
+                        lotId: line.lotId ?? null,
+                        serializedAssetId: line.serializedAssetId ?? null,
+                        serialNumber: null,
+                        condition: line.condition ?? StockBalanceCondition.NEW,
+                      })),
+                    },
+                    actor,
+                  )
+                : await this.stockLedgerService.recordStockIssueTransferWithManager(
+                    manager,
+                    tenantId,
+                    {
+                      sourceLocationId: sourceLocation.id,
+                      destinationLocationId: destinationLocation!.id,
+                      idempotencyKey,
+                      originRefId,
+                      handoffReference: validated.handoffMethod,
+                      handoffNotes: validated.handoffNotes ?? null,
+                      notes: null,
+                      lines: issueLines.map((line) => ({
+                        itemId: line.itemId,
+                        quantity: line.serializedAssetId ? 1 : this.toNumeric(line.requestedQty),
+                        lotId: line.lotId ?? null,
+                        serializedAssetId: line.serializedAssetId ?? null,
+                        serialNumber: null,
+                        condition: line.condition ?? StockBalanceCondition.NEW,
+                      })),
+                    },
+                    actor,
+                  );
 
-        issue.status = StockIssueStatus.DISPATCHED;
-        issue.dispatchedByUserId = actor.sub;
-        issue.handoffMethod = validated.handoffMethod;
-        issue.handoffNotes = validated.handoffNotes ?? null;
-        issue.handoffAttachments = validated.handoffAttachments ?? [];
-        issue.stockMovementId = movement.movement.id;
-        issue.closedAt = new Date();
+          issue.status = StockIssueStatus.DISPATCHED;
+          issue.dispatchedByUserId = actor.sub;
+          issue.handoffMethod = validated.handoffMethod;
+          issue.handoffNotes = validated.handoffNotes ?? null;
+          issue.handoffAttachments = validated.handoffAttachments ?? [];
+          issue.stockMovementId = movement.movement.id;
+          issue.closedAt = new Date();
 
-        const savedIssue = await manager.save(StockIssue, issue);
+          const savedIssue = await manager.save(StockIssue, issue);
 
-        await manager.save(
-          StockIssueLine,
-          issueLines.map((line) => {
-            const requestedQty = this.toNumeric(line.requestedQty);
-            const quantity = line.serializedAssetId ? 1 : requestedQty;
-            return { ...line, dispatchedQty: quantity.toFixed(2) };
-          }),
+          await manager.save(
+            StockIssueLine,
+            issueLines.map((line) => {
+              const requestedQty = this.toNumeric(line.requestedQty);
+              const quantity = line.serializedAssetId ? 1 : requestedQty;
+              return { ...line, dispatchedQty: quantity.toFixed(2) };
+            }),
+          );
+
+          const finalLines = await manager.find(StockIssueLine, {
+            where: { issueId: id, tenantId },
+            order: { createdAt: 'ASC' },
+          });
+
+          return {
+            detail: {
+              ...savedIssue,
+              lines: finalLines,
+              stockMovementId: savedIssue.stockMovementId!,
+            },
+            movementResult: movement,
+          };
+        },
+      );
+
+      if (dispatched.movementResult) {
+        const afterByItem = await this.domainEventPublisher.captureItemSnapshots(
+          qr.manager,
+          tenantId,
+          itemIds,
         );
-
-        const finalLines = await manager.find(StockIssueLine, {
-          where: { issueId: id, tenantId },
-          order: { createdAt: 'ASC' },
+        this.domainEventPublisher.publishAfterCommittedMovement({
+          tenantId,
+          actorUserId: actor.sub,
+          beforeByItem,
+          afterByItem,
+          movement: dispatched.movementResult.movement,
+          lines: dispatched.movementResult.lines,
+          created: dispatched.movementResult.created,
         });
+      }
 
-        return {
-          ...savedIssue,
-          lines: finalLines,
-          stockMovementId: savedIssue.stockMovementId!,
-        };
-      }),
-    );
+      return dispatched.detail;
+    });
   }
 
   async update(

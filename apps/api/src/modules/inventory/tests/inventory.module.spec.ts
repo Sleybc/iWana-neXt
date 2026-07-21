@@ -47,6 +47,8 @@ import { InventoryCostingService } from '../services/inventory-costing.service';
 import { StockMovementQueryService } from '../services/stock-movement-query.service';
 import { StockLocationService } from '../services/stock-location.service';
 import { WriteOffService } from '../services/write-off.service';
+import { InventoryDomainEventPublisher } from '../services/inventory-domain-event-publisher.service';
+import { InventoryDomainEventsListener } from '../listeners/inventory-domain-events.listener';
 
 describe('InventoryModule', () => {
   it('should compile the inventory module', async () => {
@@ -84,6 +86,8 @@ describe('InventoryModule', () => {
         InventoryDashboardService,
         ReplenishmentService,
         CycleCountService,
+        InventoryDomainEventPublisher,
+        InventoryDomainEventsListener,
         InventoryMovementPortAdapter,
         CommercialProductReferencePortAdapter,
         SupplierPartyPortAdapter,

@@ -1231,6 +1231,43 @@ async function setupInventoryMocks(
       return;
     }
 
+    if (/^\/api\/v\d+\/inventory\/assets\/useful-life-alerts$/.test(pathname) && method === 'GET') {
+      const statusFilter = url.searchParams.get('status');
+      const pageParam = Number.parseInt(url.searchParams.get('page') ?? '1', 10);
+      const pageSizeParam = Number.parseInt(url.searchParams.get('pageSize') ?? '20', 10);
+      const alerts = state.serializedAssets
+        .map((asset) => {
+          const monthsRemaining = 2;
+          const status = monthsRemaining <= 0 ? 'vencida' : 'por-vencer';
+          return {
+            id: asset.id,
+            serialNumber: asset.serialNumber,
+            assetTag: asset.assetTag,
+            sku: 'ONT-HG8245',
+            itemName: 'ONT Huawei HG8245',
+            status,
+            monthsRemaining,
+            monthsTotal: asset.usefulLifeMonths,
+            purchaseDate: asset.purchaseDate,
+            warrantyUntil: asset.warrantyUntil,
+          };
+        })
+        .filter((alert) => !statusFilter || alert.status === statusFilter);
+      const start = Math.max(0, (pageParam - 1) * pageSizeParam);
+      const data = alerts.slice(start, start + pageSizeParam);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data,
+          total: alerts.length,
+          page: pageParam,
+          limit: pageSizeParam,
+        }),
+      });
+      return;
+    }
+
     if (/^\/api\/v\d+\/inventory\/assets\/[^/]+$/.test(pathname) && method === 'GET') {
       const assetId = pathname.split('/').pop() ?? ASSET_ID;
       const asset =
@@ -3310,6 +3347,23 @@ test.describe('Portal Inventario / SCM', () => {
       'Proveedor Demo',
     );
     await expect(drawer.getByTestId('asset-detail-section-lifecycle')).toContainText('Recepción');
+  });
+
+  test('muestra panel de vida útil bajo Activos con alerta y ficha 360', async ({ page }) => {
+    await page.goto('/dashboard/inventory');
+    const main = page.locator('main');
+
+    await main.getByRole('tab', { name: 'Activos' }).click();
+    await main.getByRole('tab', { name: 'Vida útil' }).click();
+
+    const panel = main.getByTestId('useful-life-alerts-panel');
+    await expect(panel).toBeVisible();
+    await expect(panel.getByText('Por vencer')).toBeVisible();
+    await expect(panel.getByText(/ONT-HG8245/)).toBeVisible();
+
+    await panel.getByRole('button', { name: 'Ver ficha 360' }).click();
+    const drawer = page.getByTestId('serialized-asset-detail-drawer');
+    await expect(drawer.getByRole('heading', { name: 'Ficha 360 del activo' })).toBeVisible();
   });
 
   test('instala vía OT, muestra comodato abierto y lo cierra al retornar', async ({ page }) => {

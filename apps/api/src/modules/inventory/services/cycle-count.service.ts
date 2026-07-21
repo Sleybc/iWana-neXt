@@ -25,6 +25,10 @@ import {
   UpdateStockCountSchema,
 } from '../dto';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
+import {
+  InventoryDomainEventPublisher,
+  type ItemStockThresholdSnapshot,
+} from './inventory-domain-event-publisher.service';
 import { StockLedgerService } from './stock-ledger.service';
 
 export type StockCountLineView = StockCountLine & {
@@ -40,6 +44,7 @@ export class CycleCountService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly stockLedgerService: StockLedgerService,
+    private readonly domainEventPublisher: InventoryDomainEventPublisher,
   ) {}
 
   private toNumeric(value: string | number | null | undefined): number {
@@ -338,8 +343,16 @@ export class CycleCountService {
   async close(id: string, actor: JwtPayload): Promise<StockCountDetail> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.transaction(async (manager) => {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      let itemIds: string[] = [];
+      let beforeByItem = new Map<string, ItemStockThresholdSnapshot>();
+
+      type CloseTxResult = {
+        detail: StockCountDetail;
+        movementResult: Awaited<ReturnType<StockLedgerService['recordMovementWithManager']>> | null;
+      };
+
+      const closed = await qr.manager.transaction(async (manager): Promise<CloseTxResult> => {
         const count = await manager.findOne(StockCount, { where: { id, tenantId } });
         if (!count) {
           throw new NotFoundException('El conteo solicitado no existe.');
@@ -355,8 +368,11 @@ export class CycleCountService {
             order: { createdAt: 'ASC' },
           });
           return {
-            ...count,
-            lines: lines.map((line) => this.mapLine(line)),
+            detail: {
+              ...count,
+              lines: lines.map((line) => this.mapLine(line)),
+            },
+            movementResult: null,
           };
         }
 
@@ -399,8 +415,15 @@ export class CycleCountService {
         }
 
         let stockMovementId: string | null = count.stockMovementId;
+        let movementResult: CloseTxResult['movementResult'] = null;
         if (movementLines.length > 0) {
-          const result = await this.stockLedgerService.recordMovementWithManager(
+          itemIds = [...new Set(movementLines.map((line) => line.itemId))];
+          beforeByItem = await this.domainEventPublisher.captureItemSnapshots(
+            manager,
+            tenantId,
+            itemIds,
+          );
+          movementResult = await this.stockLedgerService.recordMovementWithManager(
             manager,
             tenantId,
             {
@@ -413,7 +436,7 @@ export class CycleCountService {
             },
             actor,
           );
-          stockMovementId = result.movement.id;
+          stockMovementId = movementResult.movement.id;
         }
 
         count.status = StockCountStatus.CLOSED;
@@ -423,11 +446,33 @@ export class CycleCountService {
         await manager.save(StockCount, count);
 
         return {
-          ...count,
-          lines: lines.map((line) => this.mapLine(line)),
+          detail: {
+            ...count,
+            lines: lines.map((line) => this.mapLine(line)),
+          },
+          movementResult,
         };
-      }),
-    );
+      });
+
+      if (closed.movementResult?.created && itemIds.length > 0) {
+        const afterByItem = await this.domainEventPublisher.captureItemSnapshots(
+          qr.manager,
+          tenantId,
+          itemIds,
+        );
+        this.domainEventPublisher.publishAfterCommittedMovement({
+          tenantId,
+          actorUserId: actor.sub,
+          beforeByItem,
+          afterByItem,
+          movement: closed.movementResult.movement,
+          lines: closed.movementResult.lines,
+          created: closed.movementResult.created,
+        });
+      }
+
+      return closed.detail;
+    });
   }
 
   async cancel(id: string, _actor: JwtPayload): Promise<StockCountDetail> {

@@ -112,7 +112,7 @@ import type { AssetLoanStatusFilter } from './AssetLoansPanel';
 import { StockLocationFormDialog } from './StockLocationFormDialog';
 import { type LocationMatrixCustodyFilter } from './StockLocationsMatrix';
 import { StockLocationsPanel } from './StockLocationsPanel';
-import { StockWorkspace } from './StockWorkspace';
+import { StockWorkspace, type StockSubview } from './StockWorkspace';
 
 import { StockIssuesWorkspace } from './StockIssuesWorkspace';
 import { StockCountsWorkspace } from './StockCountsWorkspace';
@@ -261,6 +261,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const [isLoadingMoreAssetLifecycle, setIsLoadingMoreAssetLifecycle] = useState(false);
   const [isLoadingMoreAssetMovements, setIsLoadingMoreAssetMovements] = useState(false);
   const [assetsSubview, setAssetsSubview] = useState<AssetsSubview>('list');
+  const [stockSubviewPrefill, setStockSubviewPrefill] = useState<StockSubview | null>(null);
   const [loans, setLoans] = useState<AssetLoanRecord[]>([]);
   const [isLoadingLoans, setIsLoadingLoans] = useState(false);
   const [loansError, setLoansError] = useState<string | null>(null);
@@ -419,6 +420,12 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   );
   const userLabelById = useMemo(() => buildUserLabelMap(tenantUsers), [tenantUsers]);
   const stockKardexInitial = useMemo(() => {
+    if (stockSubviewPrefill) {
+      return {
+        initialSubview: stockSubviewPrefill,
+      };
+    }
+
     if (stockKardexPrefill) {
       return {
         initialSubview: 'kardex' as const,
@@ -434,7 +441,12 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     }
 
     return {};
-  }, [kardexAssetIdFromUrl, stockKardexPrefill]);
+  }, [kardexAssetIdFromUrl, stockKardexPrefill, stockSubviewPrefill]);
+
+  const navigateToReplenishment = useCallback(() => {
+    setStockSubviewPrefill('replenishment');
+    setActiveTab('stock');
+  }, []);
 
   // Resumen y «Por producto» deben coincidir: ambos usan el disponible canónico
   // (existencia − reservado) que calcula buildStockOverviewRows.
@@ -582,6 +594,14 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
 
     void loadLoans();
   }, [activeTab, assetsSubview, loadLoans]);
+
+  useEffect(() => {
+    if (activeTab === 'stock' || !stockSubviewPrefill) {
+      return;
+    }
+
+    setStockSubviewPrefill(null);
+  }, [activeTab, stockSubviewPrefill]);
 
   useEffect(() => {
     if (activeTab !== 'writeoffs') {
@@ -2004,6 +2024,17 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
               eyebrow="Abastecimiento"
               title="Productos bajo mínimo"
               description={`Productos cuyo disponible ya llegó al mínimo definido para reponer. ${STOCK_RESERVED_HELP_TEXT}`}
+              actions={
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={navigateToReplenishment}
+                  data-testid="summary-replenishment-cta"
+                >
+                  Ver reposición
+                </Button>
+              }
             >
               {isLoading ? (
                 <PortalSkeletonBlock className="h-48" />
@@ -2427,6 +2458,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
             onLoanStatusFilterChange={setLoanStatusFilter}
             onOpenAssetDetail={(assetId) => void openAssetDetail(assetId)}
             onRefreshLoans={() => void loadLoans()}
+            onNavigateToReplenishment={navigateToReplenishment}
           />
         </TabsContent>
 

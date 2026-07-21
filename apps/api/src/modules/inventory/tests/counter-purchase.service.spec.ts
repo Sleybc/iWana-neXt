@@ -55,9 +55,14 @@ describe('CounterPurchaseService', () => {
   const inventoryCostingServiceMock = {
     applyReceiptCostingWithManager: jest.fn().mockResolvedValue(undefined),
   };
+  const domainEventPublisherMock = {
+    captureItemSnapshots: jest.fn().mockResolvedValue(new Map()),
+    publishAfterCommittedMovement: jest.fn(),
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
+    domainEventPublisherMock.captureItemSnapshots.mockResolvedValue(new Map());
     (TenantContext.getOrThrow as jest.Mock).mockReturnValue({
       tenantId: 'tenant-001',
       schemaName: 'tenant_001',
@@ -141,6 +146,7 @@ describe('CounterPurchaseService', () => {
           origin: StockMovementOrigin.COUNTER_PURCHASE,
         },
         lines: [{ id: 'line-001', quantity: '5.00' }],
+        created: true,
       }),
     };
     const serializedAssetServiceMock = {
@@ -157,6 +163,7 @@ describe('CounterPurchaseService', () => {
       stockLedgerServiceMock as never,
       serializedAssetServiceMock as never,
       inventoryCostingServiceMock as never,
+      domainEventPublisherMock as never,
     );
 
     const result = await service.record(
@@ -221,6 +228,7 @@ describe('CounterPurchaseService', () => {
       stockLedgerServiceMock as never,
       serializedAssetServiceMock as never,
       inventoryCostingServiceMock as never,
+      domainEventPublisherMock as never,
     );
 
     const result = await service.record(
@@ -279,6 +287,7 @@ describe('CounterPurchaseService', () => {
       recordMovementWithManager: jest.fn().mockResolvedValue({
         movement: { id: 'mov-002', movementNumber: 'MOV-000011' },
         lines: [{ id: 'line-002' }, { id: 'line-003' }],
+        created: true,
       }),
     };
     const serializedAssetServiceMock = {
@@ -298,6 +307,7 @@ describe('CounterPurchaseService', () => {
       stockLedgerServiceMock as never,
       serializedAssetServiceMock as never,
       inventoryCostingServiceMock as never,
+      domainEventPublisherMock as never,
     );
 
     await service.record(
@@ -341,6 +351,7 @@ describe('CounterPurchaseService', () => {
       recordMovementWithManager: jest.fn().mockResolvedValue({
         movement: { id: 'mov-003', movementNumber: 'MOV-000012' },
         lines: [{ id: 'line-004' }],
+        created: true,
       }),
     };
     const serializedAssetServiceMock = {
@@ -357,6 +368,7 @@ describe('CounterPurchaseService', () => {
       stockLedgerServiceMock as never,
       serializedAssetServiceMock as never,
       inventoryCostingServiceMock as never,
+      domainEventPublisherMock as never,
     );
 
     const payload: CreateCounterPurchaseInput = {
@@ -406,6 +418,7 @@ describe('CounterPurchaseService', () => {
       stockLedgerServiceMock as never,
       { normalizeSerial: jest.fn(), createReceivedAssetWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
+      domainEventPublisherMock as never,
     );
 
     await service.record(
@@ -443,6 +456,7 @@ describe('CounterPurchaseService', () => {
       {} as never,
       {} as never,
       inventoryCostingServiceMock as never,
+      domainEventPublisherMock as never,
     );
 
     await expect(
@@ -500,6 +514,7 @@ describe('CounterPurchaseService', () => {
       {} as never,
       {} as never,
       inventoryCostingServiceMock as never,
+      domainEventPublisherMock as never,
     );
 
     await expect(

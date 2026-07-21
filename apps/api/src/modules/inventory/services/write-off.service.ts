@@ -21,6 +21,10 @@ import {
   WriteOffAssetSchema,
 } from '../dto';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
+import {
+  InventoryDomainEventPublisher,
+  type ItemStockThresholdSnapshot,
+} from './inventory-domain-event-publisher.service';
 import { StockLedgerService, StockMovementResult } from './stock-ledger.service';
 
 const TERMINAL_WRITE_OFF_STATUSES = [WriteOffStatus.COMPLETED, WriteOffStatus.REJECTED];
@@ -76,6 +80,7 @@ export class WriteOffService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly stockLedgerService: StockLedgerService,
+    private readonly domainEventPublisher: InventoryDomainEventPublisher,
   ) {}
 
   private toQuantity(value: number): string {
@@ -180,7 +185,7 @@ export class WriteOffService {
       order: { createdAt: 'ASC' },
     });
 
-    return { movement, lines };
+    return { movement, lines, created: false };
   }
 
   async createRequest(input: WriteOffAssetInput, actor: JwtPayload): Promise<WriteOffDetail> {
@@ -319,8 +324,12 @@ export class WriteOffService {
   async approve(id: string, actor: JwtPayload): Promise<WriteOffApproveResult> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      withTransaction(qr.manager, async (manager) => {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      let itemIds: string[] = [];
+      let beforeByItem = new Map<string, ItemStockThresholdSnapshot>();
+      let shouldPublish = false;
+
+      const result = await withTransaction(qr.manager, async (manager) => {
         const writeOff = await manager
           .createQueryBuilder(InventoryWriteOff, 'writeOff')
           .setLock('pessimistic_write')
@@ -355,10 +364,27 @@ export class WriteOffService {
 
         this.assertApproverDistinct(writeOff.requestedByUserId, actor);
 
+        const ledgerInput = this.buildLedgerInput(writeOff);
+        if (writeOff.itemId) {
+          itemIds = [writeOff.itemId];
+        } else if (writeOff.serializedAssetId) {
+          const asset = await manager.findOne(SerializedAsset, {
+            where: { id: writeOff.serializedAssetId, tenantId },
+          });
+          itemIds = asset?.inventoryItemId ? [asset.inventoryItemId] : [];
+        } else {
+          itemIds = [];
+        }
+        beforeByItem = await this.domainEventPublisher.captureItemSnapshots(
+          manager,
+          tenantId,
+          itemIds,
+        );
+
         const movementResult = await this.stockLedgerService.recordWriteOffWithManager(
           manager,
           tenantId,
-          this.buildLedgerInput(writeOff),
+          ledgerInput,
           actor,
         );
 
@@ -368,13 +394,33 @@ export class WriteOffService {
         writeOff.stockMovementId = movementResult.movement.id;
 
         const saved = await manager.save(InventoryWriteOff, writeOff);
+        shouldPublish = movementResult.created;
 
         return {
           writeOff: await this.enrichWriteOff(manager, tenantId, saved),
           movementResult,
         };
-      }),
-    );
+      });
+
+      if (shouldPublish && itemIds.length > 0) {
+        const afterByItem = await this.domainEventPublisher.captureItemSnapshots(
+          qr.manager,
+          tenantId,
+          itemIds,
+        );
+        this.domainEventPublisher.publishAfterCommittedMovement({
+          tenantId,
+          actorUserId: actor.sub,
+          beforeByItem,
+          afterByItem,
+          movement: result.movementResult.movement,
+          lines: result.movementResult.lines,
+          created: result.movementResult.created,
+        });
+      }
+
+      return result;
+    });
   }
 
   async reject(id: string, input: RejectWriteOffInput, actor: JwtPayload): Promise<WriteOffDetail> {

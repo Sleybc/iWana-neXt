@@ -277,6 +277,7 @@ describe('Purchasing flow integration (tenant-aware mock)', () => {
       recordMovementWithManager: jest.fn().mockResolvedValue({
         movement: { id: 'mov-001', origin: StockMovementOrigin.PURCHASE_RECEIPT },
         lines: [{ id: 'mov-line-001' }],
+        created: true,
       }),
     };
     const serializedAssetServiceMock = {
@@ -289,6 +290,10 @@ describe('Purchasing flow integration (tenant-aware mock)', () => {
       stockLedgerServiceMock as never,
       serializedAssetServiceMock as never,
       { applyReceiptCostingWithManager: jest.fn().mockResolvedValue(undefined) } as never,
+      {
+        captureItemSnapshots: jest.fn().mockResolvedValue(new Map()),
+        publishAfterCommittedMovement: jest.fn(),
+      } as never,
     );
 
     const createdRequest = await purchasingService.createPurchaseRequest(

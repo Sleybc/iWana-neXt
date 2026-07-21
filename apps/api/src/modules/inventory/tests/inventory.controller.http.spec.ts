@@ -183,6 +183,12 @@ describe('InventoryController HTTP', () => {
   const serializedAssetServiceMock = {
     list: jest.fn().mockResolvedValue([]),
     getById: jest.fn().mockResolvedValue({ id: 'asset-001' }),
+    listUsefulLifeAlerts: jest.fn().mockResolvedValue({
+      data: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+    }),
   };
   const stockBalanceServiceMock = {
     list: jest.fn().mockResolvedValue([]),

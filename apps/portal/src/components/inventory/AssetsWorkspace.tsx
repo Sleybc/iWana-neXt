@@ -16,8 +16,9 @@ import {
 } from '@/components/shared/portal-ui';
 import { formatInventoryDate, getSerializedAssetStatusLabel } from './inventory-labels';
 import { AssetLoansPanel, type AssetLoanStatusFilter } from './AssetLoansPanel';
+import { UsefulLifeAlertsPanel } from './UsefulLifeAlertsPanel';
 
-export type AssetsSubview = 'list' | 'loans';
+export type AssetsSubview = 'list' | 'loans' | 'useful-life';
 
 interface AssetsWorkspaceProps {
   assets: SerializedAssetRecord[];
@@ -33,6 +34,7 @@ interface AssetsWorkspaceProps {
   onLoanStatusFilterChange: (status: AssetLoanStatusFilter) => void;
   onOpenAssetDetail: (assetId: string) => void;
   onRefreshLoans: () => void;
+  onNavigateToReplenishment?: () => void;
 }
 
 export function AssetsWorkspace({
@@ -49,6 +51,7 @@ export function AssetsWorkspace({
   onLoanStatusFilterChange,
   onOpenAssetDetail,
   onRefreshLoans,
+  onNavigateToReplenishment,
 }: AssetsWorkspaceProps) {
   const itemMap = new Map(items.map((item) => [item.id, item]));
   const locationMap = new Map(locations.map((location) => [location.id, location]));
@@ -69,6 +72,9 @@ export function AssetsWorkspace({
           </TabsTrigger>
           <TabsTrigger value="loans" className={portalModuleTabTriggerClassName}>
             Comodatos
+          </TabsTrigger>
+          <TabsTrigger value="useful-life" className={portalModuleTabTriggerClassName}>
+            Vida útil
           </TabsTrigger>
         </TabsList>
 
@@ -154,6 +160,13 @@ export function AssetsWorkspace({
             onStatusFilterChange={onLoanStatusFilterChange}
             onOpenAssetDetail={onOpenAssetDetail}
             onRefresh={onRefreshLoans}
+          />
+        </TabsContent>
+
+        <TabsContent value="useful-life" className="space-y-4">
+          <UsefulLifeAlertsPanel
+            onOpenAssetDetail={onOpenAssetDetail}
+            {...(onNavigateToReplenishment ? { onNavigateToReplenishment } : {})}
           />
         </TabsContent>
       </Tabs>

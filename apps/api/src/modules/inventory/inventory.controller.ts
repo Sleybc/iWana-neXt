@@ -63,6 +63,8 @@ import {
   ListSerializedAssetsQuerySchema,
   GetSerializedAssetDetailQueryDto,
   GetSerializedAssetDetailQuerySchema,
+  ListUsefulLifeAlertsQueryDto,
+  ListUsefulLifeAlertsQuerySchema,
   ListStockBalancesQueryDto,
   ListStockBalancesQuerySchema,
   ListStockIssuesQueryDto,
@@ -280,6 +282,22 @@ export class InventoryController {
     query: ListSerializedAssetsQueryDto,
   ) {
     return this.serializedAssetService.list(ListSerializedAssetsQuerySchema.parse(query));
+  }
+
+  @Get('assets/useful-life-alerts')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({
+    summary: 'Listar alertas de vida útil de activos',
+    description:
+      'Devuelve activos con vida útil por vencer o vencida. Cálculo on-read sin tabla materializada.',
+  })
+  listUsefulLifeAlerts(
+    @Query(new ZodValidationPipe(ListUsefulLifeAlertsQuerySchema))
+    query: ListUsefulLifeAlertsQueryDto,
+  ) {
+    return this.serializedAssetService.listUsefulLifeAlerts(
+      ListUsefulLifeAlertsQuerySchema.parse(query),
+    );
   }
 
   @Get('assets/:id')

@@ -5992,6 +5992,36 @@ export interface GetSerializedAssetParams {
   movementsLimit?: number;
 }
 
+/** Estados incluidos en el listado de alertas de vida útil (excluye `sin-dato` y `vigente`). */
+export type UsefulLifeAlertStatus = Extract<UsefulLifeStatus, 'por-vencer' | 'vencida'>;
+
+export interface UsefulLifeAlertRecord {
+  id: string;
+  serialNumber: string | null;
+  assetTag: string | null;
+  sku: string | null;
+  itemName: string | null;
+  status: UsefulLifeAlertStatus;
+  monthsRemaining: number | null;
+  monthsTotal: number | null;
+  purchaseDate: string | null;
+  warrantyUntil: string | null;
+}
+
+export interface PaginatedUsefulLifeAlerts {
+  data: UsefulLifeAlertRecord[];
+  total: number;
+  page: number;
+  pageSize: number;
+  limit: number;
+}
+
+export interface ListUsefulLifeAlertsParams {
+  status?: UsefulLifeAlertStatus;
+  page?: number;
+  pageSize?: number;
+}
+
 export interface StockBalanceRecord {
   id: string;
   tenantId: string;
@@ -6700,7 +6730,7 @@ async function normalizeWriteOffApproveResponse(
     };
   }
 
-  return normalizeWriteOffRecord(payload);
+  return normalizeWriteOffRecord(payload as WriteOffApiDetail);
 }
 
 export interface StockIssueLineInputDto {
@@ -7153,6 +7183,17 @@ export const inventoryApi = {
         lifecycleLimit: params?.lifecycleLimit != null ? String(params.lifecycleLimit) : undefined,
         movementsPage: params?.movementsPage != null ? String(params.movementsPage) : undefined,
         movementsLimit: params?.movementsLimit != null ? String(params.movementsLimit) : undefined,
+      })}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  listUsefulLifeAlerts: (params?: ListUsefulLifeAlertsParams, tenantSlug?: string) =>
+    request<PaginatedUsefulLifeAlerts>(
+      `/inventory/assets/useful-life-alerts${buildInventoryQuery({
+        status: params?.status,
+        page: params?.page != null ? String(params.page) : undefined,
+        pageSize: params?.pageSize != null ? String(params.pageSize) : undefined,
       })}`,
       { returnFullResponse: true },
       tenantSlug,

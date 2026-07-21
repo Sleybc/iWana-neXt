@@ -36,6 +36,8 @@ import { AssetLifecycleService } from './asset-lifecycle.service';
 import { AssetLoanService } from './asset-loan.service';
 import { CustomerSiteLocationResolver } from './customer-site-location.resolver';
 import { InventoryCostingService } from './inventory-costing.service';
+import { InventoryDomainEventPublisher } from './inventory-domain-event-publisher.service';
+import type { ItemStockThresholdSnapshot } from './inventory-domain-event-publisher.service';
 import { SerializedAssetService } from './serialized-asset.service';
 import { StockBalanceService, formatInsufficientAvailableMessage } from './stock-balance.service';
 
@@ -90,6 +92,8 @@ export interface RecordStockMovementInput {
 export interface StockMovementResult {
   movement: StockMovement;
   lines: StockMovementLine[];
+  /** `true` si el movimiento se persistió en esta llamada (no replay de idempotencia). */
+  created: boolean;
 }
 
 export interface StockIssueTransferLineInput {
@@ -173,21 +177,69 @@ export class StockLedgerService {
     private readonly assetLifecycleService: AssetLifecycleService,
     private readonly inventoryCostingService: InventoryCostingService,
     private readonly assetLoanService: AssetLoanService,
+    private readonly domainEventPublisher: InventoryDomainEventPublisher,
     @Optional()
     private readonly customerSiteLocationResolver?: CustomerSiteLocationResolver,
   ) {}
+
+  /**
+   * Captura umbrales, ejecuta trabajo post-commit y emite eventos de dominio (D-H4-02/04).
+   * Debe llamarse solo cuando la TX ya cerró (o al final del callback de runInTenantSchema tras withTransaction).
+   */
+  private async publishDomainEventsAfterCommit(
+    manager: EntityManager,
+    tenantId: string,
+    actorUserId: string,
+    itemIds: string[],
+    beforeByItem: Map<string, ItemStockThresholdSnapshot>,
+    result: StockMovementResult,
+  ): Promise<void> {
+    const afterByItem = await this.domainEventPublisher.captureItemSnapshots(
+      manager,
+      tenantId,
+      itemIds,
+    );
+
+    this.domainEventPublisher.publishAfterCommittedMovement({
+      tenantId,
+      actorUserId,
+      beforeByItem,
+      afterByItem,
+      movement: result.movement,
+      lines: result.lines,
+      created: result.created,
+    });
+  }
 
   async recordMovement(
     input: RecordStockMovementInput,
     actor: JwtPayload,
   ): Promise<StockMovementResult> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const itemIds = [...new Set(input.lines.map((line) => line.itemId))];
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      withTransaction(qr.manager, (manager) =>
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const beforeByItem = await this.domainEventPublisher.captureItemSnapshots(
+        qr.manager,
+        tenantId,
+        itemIds,
+      );
+
+      const result = await withTransaction(qr.manager, (manager) =>
         this.recordMovementWithManager(manager, tenantId, input, actor),
-      ),
-    );
+      );
+
+      await this.publishDomainEventsAfterCommit(
+        qr.manager,
+        tenantId,
+        actor.sub,
+        itemIds,
+        beforeByItem,
+        result,
+      );
+
+      return result;
+    });
   }
 
   async recordMovementWithManager(
@@ -209,7 +261,7 @@ export class StockLedgerService {
         where: { tenantId, movementId: existing.id },
         order: { createdAt: 'ASC' },
       });
-      return { movement: existing, lines };
+      return { movement: existing, lines, created: false };
     }
 
     const movementNumber = await this.generateMovementNumber(manager, tenantId);
@@ -315,14 +367,21 @@ export class StockLedgerService {
       });
     }
 
-    return { movement, lines };
+    return { movement, lines, created: true };
   }
 
   async transfer(input: TransferStockInput, actor: JwtPayload): Promise<StockMovementResult> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const itemIds = [input.itemId];
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      withTransaction(qr.manager, async (manager) => {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const beforeByItem = await this.domainEventPublisher.captureItemSnapshots(
+        qr.manager,
+        tenantId,
+        itemIds,
+      );
+
+      const result = await withTransaction(qr.manager, async (manager) => {
         const quantity = input.serializedAssetId || input.serialNumber ? 1 : input.quantity;
 
         if (!input.handoffReference?.trim()) {
@@ -404,8 +463,19 @@ export class StockLedgerService {
           },
           actor,
         );
-      }),
-    );
+      });
+
+      await this.publishDomainEventsAfterCommit(
+        qr.manager,
+        tenantId,
+        actor.sub,
+        itemIds,
+        beforeByItem,
+        result,
+      );
+
+      return result;
+    });
   }
 
   async recordStockIssueTransferWithManager(
@@ -625,9 +695,16 @@ export class StockLedgerService {
   ): Promise<StockMovementResult> {
     const quantity = input.serialNumber ? 1 : input.quantity;
     const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const itemIds = [input.itemId];
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      withTransaction(qr.manager, async (manager) => {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const beforeByItem = await this.domainEventPublisher.captureItemSnapshots(
+        qr.manager,
+        tenantId,
+        itemIds,
+      );
+
+      const result = await withTransaction(qr.manager, async (manager) => {
         const customerSiteLocationId = await this.resolveExecutionOrderCustomerSiteLocation(
           manager,
           tenantId,
@@ -644,7 +721,7 @@ export class StockLedgerService {
           mainWarehouseLocationId,
         });
 
-        const result = await this.recordMovementWithManager(
+        const movementResult = await this.recordMovementWithManager(
           manager,
           tenantId,
           {
@@ -710,14 +787,25 @@ export class StockLedgerService {
               contractRefId: input.contractRefId ?? null,
               installedAt: new Date(),
               executionOrderRefId: input.executionOrderId,
-              stockMovementId: result.movement.id,
+              stockMovementId: movementResult.movement.id,
             });
           }
         }
 
-        return result;
-      }),
-    );
+        return movementResult;
+      });
+
+      await this.publishDomainEventsAfterCommit(
+        qr.manager,
+        tenantId,
+        actor.sub,
+        itemIds,
+        beforeByItem,
+        result,
+      );
+
+      return result;
+    });
   }
 
   async recordSale(input: SaleMovementInput, actor: JwtPayload): Promise<StockMovementResult> {
@@ -809,10 +897,17 @@ export class StockLedgerService {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const quantity = input.serializedAssetId || input.serialNumber ? 1 : input.quantity;
     const keepsAssetInTransit = input.targetStatus === SerializedAssetStatus.IN_TRANSIT;
+    const itemIds = [input.itemId];
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      withTransaction(qr.manager, async (manager) => {
-        const result = await this.recordMovementWithManager(
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const beforeByItem = await this.domainEventPublisher.captureItemSnapshots(
+        qr.manager,
+        tenantId,
+        itemIds,
+      );
+
+      const result = await withTransaction(qr.manager, async (manager) => {
+        const movementResult = await this.recordMovementWithManager(
           manager,
           tenantId,
           {
@@ -884,9 +979,20 @@ export class StockLedgerService {
           }
         }
 
-        return result;
-      }),
-    );
+        return movementResult;
+      });
+
+      await this.publishDomainEventsAfterCommit(
+        qr.manager,
+        tenantId,
+        actor.sub,
+        itemIds,
+        beforeByItem,
+        result,
+      );
+
+      return result;
+    });
   }
 
   async recordWriteOffWithManager(
@@ -954,12 +1060,30 @@ export class StockLedgerService {
 
   async recordWriteOff(input: WriteOffAssetInput, actor: JwtPayload): Promise<StockMovementResult> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const itemIds = input.itemId ? [input.itemId] : [];
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      withTransaction(qr.manager, async (manager) =>
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const beforeByItem = await this.domainEventPublisher.captureItemSnapshots(
+        qr.manager,
+        tenantId,
+        itemIds,
+      );
+
+      const result = await withTransaction(qr.manager, async (manager) =>
         this.recordWriteOffWithManager(manager, tenantId, input, actor),
-      ),
-    );
+      );
+
+      await this.publishDomainEventsAfterCommit(
+        qr.manager,
+        tenantId,
+        actor.sub,
+        itemIds,
+        beforeByItem,
+        result,
+      );
+
+      return result;
+    });
   }
 
   async recordAdjustment(
@@ -967,9 +1091,16 @@ export class StockLedgerService {
     actor: JwtPayload,
   ): Promise<StockMovementResult> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const itemIds = [input.itemId];
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      withTransaction(qr.manager, async (manager) => {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const beforeByItem = await this.domainEventPublisher.captureItemSnapshots(
+        qr.manager,
+        tenantId,
+        itemIds,
+      );
+
+      const result = await withTransaction(qr.manager, async (manager) => {
         const item = await manager.findOne(InventoryItem, {
           where: { id: input.itemId, tenantId },
         });
@@ -1010,8 +1141,19 @@ export class StockLedgerService {
           },
           actor,
         );
-      }),
-    );
+      });
+
+      await this.publishDomainEventsAfterCommit(
+        qr.manager,
+        tenantId,
+        actor.sub,
+        itemIds,
+        beforeByItem,
+        result,
+      );
+
+      return result;
+    });
   }
 
   private async findLocation(

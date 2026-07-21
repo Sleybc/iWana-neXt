@@ -58,7 +58,16 @@ function createService(
   ledger: unknown = {},
   balanceService: StockBalanceService = createStockBalanceServiceMock(),
 ) {
-  return new StockIssueService({} as DataSource, ledger as never, balanceService);
+  const domainEventPublisher = {
+    captureItemSnapshots: jest.fn().mockResolvedValue(new Map()),
+    publishAfterCommittedMovement: jest.fn(),
+  };
+  return new StockIssueService(
+    {} as DataSource,
+    ledger as never,
+    balanceService,
+    domainEventPublisher as never,
+  );
 }
 
 describe('StockIssueService', () => {
@@ -722,7 +731,7 @@ describe('StockIssueService', () => {
       recordStockIssueTransferWithManager: jest.fn(),
       recordStockIssueSaleWithManager: jest
         .fn()
-        .mockResolvedValue({ movement: { id: 'mov-002' }, lines: [] }),
+        .mockResolvedValue({ movement: { id: 'mov-002' }, lines: [], created: true }),
       recordStockIssueInternalConsumptionWithManager: jest.fn(),
     };
 

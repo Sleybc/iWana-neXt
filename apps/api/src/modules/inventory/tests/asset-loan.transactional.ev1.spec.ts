@@ -187,6 +187,10 @@ function nextEv1Uuid(): string {
       assetLifecycleService,
       inventoryCostingService,
       assetLoanService,
+      {
+        captureItemSnapshots: jest.fn().mockResolvedValue(new Map()),
+        publishAfterCommittedMovement: jest.fn(),
+      } as never,
       customerSiteResolver,
     );
 

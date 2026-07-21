@@ -48,6 +48,10 @@ describe('CycleCountService', () => {
   const stockLedgerService = {
     recordMovementWithManager: jest.fn(),
   };
+  const domainEventPublisher = {
+    captureItemSnapshots: jest.fn().mockResolvedValue(new Map()),
+    publishAfterCommittedMovement: jest.fn(),
+  };
 
   let service: CycleCountService;
 
@@ -56,8 +60,14 @@ describe('CycleCountService', () => {
     stockLedgerService.recordMovementWithManager.mockResolvedValue({
       movement: { id: 'mov-1', movementNumber: 'MOV-000001' },
       lines: [],
+      created: true,
     });
-    service = new CycleCountService({} as DataSource, stockLedgerService as never);
+    domainEventPublisher.captureItemSnapshots.mockResolvedValue(new Map());
+    service = new CycleCountService(
+      {} as DataSource,
+      stockLedgerService as never,
+      domainEventPublisher as never,
+    );
   });
 
   function buildCreateManager(options?: {

@@ -122,6 +122,7 @@ jest.mock('@/lib/api-client', () => ({
     listAssets: jest.fn(),
     listBalances: jest.fn(),
     getAsset: jest.fn(),
+    listUsefulLifeAlerts: jest.fn(),
     listLoans: jest.fn(),
     transfer: jest.fn(),
     sale: jest.fn(),
@@ -502,7 +503,14 @@ describe('InventoryClient', () => {
       updatedAt: '2026-06-26T12:00:00.000Z',
     });
     inventoryApiMock.listAssets.mockResolvedValue([]);
+    inventoryApiMock.listUsefulLifeAlerts.mockResolvedValue({
+      data: [],
+      total: 0,
+      page: 1,
+      limit: 20,
+    });
     inventoryApiMock.listLoans.mockResolvedValue({ data: [], total: 0, page: 1, limit: 50 });
+    inventoryApiMock.listReplenishmentSuggestions.mockResolvedValue([]);
     inventoryApiMock.listIssues.mockResolvedValue([]);
     inventoryApiMock.listCounts.mockResolvedValue([]);
     inventoryApiMock.listBalances.mockResolvedValue([
@@ -1806,6 +1814,71 @@ describe('InventoryClient', () => {
     await waitFor(() => {
       expect(screen.getByTestId('write-off-history-row-wo-2')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Ver MOV-000005' })).toBeInTheDocument();
+    });
+  });
+
+  it('abre subvista Vida útil bajo Activos y enlaza a reposición F2', async () => {
+    inventoryApiMock.listUsefulLifeAlerts.mockResolvedValue({
+      data: [
+        {
+          id: 'asset-ul-1',
+          serialNumber: 'SN-UL-001',
+          assetTag: null,
+          sku: 'ONT-01',
+          itemName: 'ONT WiFi 6',
+          status: 'por-vencer',
+          monthsRemaining: 2,
+          monthsTotal: 36,
+          purchaseDate: '2023-07-01',
+          warrantyUntil: null,
+        },
+      ],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+
+    const user = userEvent.setup();
+    render(<InventoryClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('tab', { name: 'Activos' }));
+    await user.click(screen.getByRole('tab', { name: 'Vida útil' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('useful-life-alerts-panel')).toBeInTheDocument();
+      expect(screen.getByText('ONT-01 · SN-UL-001')).toBeInTheDocument();
+      expect(
+        within(screen.getByTestId('useful-life-alert-row-asset-ul-1')).getByText('Por vencer'),
+      ).toBeInTheDocument();
+    });
+
+    expect(inventoryApiMock.listUsefulLifeAlerts).toHaveBeenCalled();
+
+    await user.click(screen.getByTestId('useful-life-alerts-replenishment-cta'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: 'Existencias', selected: true })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Reposición', selected: true })).toBeInTheDocument();
+    });
+  });
+
+  it('enlaza stock bajo del resumen a la subvista de reposición', async () => {
+    const user = userEvent.setup();
+    render(<InventoryClient />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('summary-replenishment-cta')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('summary-replenishment-cta'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: 'Existencias', selected: true })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Reposición', selected: true })).toBeInTheDocument();
     });
   });
 });

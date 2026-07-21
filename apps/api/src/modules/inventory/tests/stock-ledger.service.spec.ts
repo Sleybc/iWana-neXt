@@ -43,6 +43,13 @@ describe('StockLedgerService', () => {
     closeOpenLoanWithManager: jest.fn().mockResolvedValue(null),
   };
 
+  const domainEventPublisherMock = {
+    captureItemSnapshots: jest.fn().mockResolvedValue(new Map()),
+    publishAfterCommittedMovement: jest.fn(),
+    emitStockLowCrossings: jest.fn(),
+    emitAssetSoldForMovement: jest.fn(),
+  };
+
   function createStockLedgerService(
     dataSource: DataSource,
     stockBalanceService: unknown,
@@ -57,6 +64,7 @@ describe('StockLedgerService', () => {
       assetLifecycleService as never,
       inventoryCostingServiceMock as never,
       assetLoanServiceMock as never,
+      domainEventPublisherMock as never,
       customerSiteLocationResolver as never,
     );
   }
@@ -130,6 +138,7 @@ describe('StockLedgerService', () => {
       assetLifecycleService as never,
       inventoryCostingServiceMock as never,
       assetLoanServiceMock as never,
+      domainEventPublisherMock as never,
     );
 
     await expect(
@@ -171,6 +180,7 @@ describe('StockLedgerService', () => {
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
       assetLoanServiceMock as never,
+      domainEventPublisherMock as never,
     );
 
     const result = await service.recordMovementWithManager(
@@ -220,6 +230,7 @@ describe('StockLedgerService', () => {
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
       assetLoanServiceMock as never,
+      domainEventPublisherMock as never,
     );
 
     const result = await service.recordMovementWithManager(
@@ -276,6 +287,7 @@ describe('StockLedgerService', () => {
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
       assetLoanServiceMock as never,
+      domainEventPublisherMock as never,
     );
 
     const result = await service.recordMovementWithManager(
@@ -339,6 +351,7 @@ describe('StockLedgerService', () => {
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
       assetLoanServiceMock as never,
+      domainEventPublisherMock as never,
     );
 
     const result = await service.recordAdjustment(
@@ -421,6 +434,7 @@ describe('StockLedgerService', () => {
       assetLifecycleService as never,
       inventoryCostingServiceMock as never,
       assetLoanServiceMock as never,
+      domainEventPublisherMock as never,
     );
 
     await service.transfer(
@@ -490,6 +504,7 @@ describe('StockLedgerService', () => {
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
       assetLoanServiceMock as never,
+      domainEventPublisherMock as never,
     );
 
     await expect(
@@ -551,6 +566,7 @@ describe('StockLedgerService', () => {
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
       assetLoanServiceMock as never,
+      domainEventPublisherMock as never,
     );
 
     await expect(
@@ -622,6 +638,7 @@ describe('StockLedgerService', () => {
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
       assetLoanServiceMock as never,
+      domainEventPublisherMock as never,
     );
 
     await expect(
@@ -701,6 +718,7 @@ describe('StockLedgerService', () => {
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
       assetLoanServiceMock as never,
+      domainEventPublisherMock as never,
     );
 
     await expect(
@@ -782,6 +800,7 @@ describe('StockLedgerService', () => {
       assetLifecycleService as never,
       inventoryCostingServiceMock as never,
       assetLoanServiceMock as never,
+      domainEventPublisherMock as never,
     );
 
     await service.recordReturn(
@@ -859,6 +878,7 @@ describe('StockLedgerService', () => {
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
       assetLoanServiceMock as never,
+      domainEventPublisherMock as never,
       customerSiteLocationResolver as never,
     );
 
@@ -960,6 +980,7 @@ describe('StockLedgerService', () => {
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
       assetLoanServiceMock as never,
+      domainEventPublisherMock as never,
     );
 
     const result = await service.recordExecutionOrderMovement(
@@ -1041,6 +1062,7 @@ describe('StockLedgerService', () => {
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
       assetLoanServiceMock as never,
+      domainEventPublisherMock as never,
     );
 
     const result = await service.recordExecutionOrderMovement(
@@ -1130,6 +1152,7 @@ describe('StockLedgerService', () => {
         { recordWithManager: jest.fn() } as never,
         inventoryCostingServiceMock as never,
         assetLoanServiceMock as never,
+        domainEventPublisherMock as never,
       );
 
       const result = await service.recordAdjustment(
@@ -1195,6 +1218,7 @@ describe('StockLedgerService', () => {
         { recordWithManager: jest.fn() } as never,
         inventoryCostingServiceMock as never,
         assetLoanServiceMock as never,
+        domainEventPublisherMock as never,
       );
 
       await service.recordAdjustment(
@@ -1237,6 +1261,7 @@ describe('StockLedgerService', () => {
         { recordWithManager: jest.fn() } as never,
         inventoryCostingServiceMock as never,
         assetLoanServiceMock as never,
+        domainEventPublisherMock as never,
       );
 
       await expect(
@@ -1288,6 +1313,7 @@ describe('StockLedgerService', () => {
         { recordWithManager: jest.fn() } as never,
         inventoryCostingServiceMock as never,
         assetLoanServiceMock as never,
+        domainEventPublisherMock as never,
       );
 
       const result = await service.recordAdjustment(

@@ -22,6 +22,10 @@ import { CreateCounterPurchaseInput, CreateCounterPurchaseSchema } from '../dto'
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { acquireIdempotencyTransactionLock } from './inventory-postgres.util';
 import { InventoryCostingService } from './inventory-costing.service';
+import {
+  InventoryDomainEventPublisher,
+  type ItemStockThresholdSnapshot,
+} from './inventory-domain-event-publisher.service';
 import { SerializedAssetService } from './serialized-asset.service';
 import { StockLedgerService } from './stock-ledger.service';
 
@@ -72,14 +76,24 @@ export class CounterPurchaseService {
     private readonly stockLedgerService: StockLedgerService,
     private readonly serializedAssetService: SerializedAssetService,
     private readonly inventoryCostingService: InventoryCostingService,
+    private readonly domainEventPublisher: InventoryDomainEventPublisher,
   ) {}
 
   async record(input: CreateCounterPurchaseInput, actor: JwtPayload) {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = CreateCounterPurchaseSchema.parse(input);
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      withTransaction(qr.manager, async (manager) => {
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      let itemIds: string[] = [];
+      let beforeByItem = new Map<string, ItemStockThresholdSnapshot>();
+
+      type RecordTxResult = {
+        movement: StockMovement;
+        lines: StockMovementLine[];
+        movementResult: Awaited<ReturnType<StockLedgerService['recordMovementWithManager']>> | null;
+      };
+
+      const result = await withTransaction(qr.manager, async (manager): Promise<RecordTxResult> => {
         const destinationLocation = await manager.findOne(StockLocation, {
           where: { id: validated.destinationLocationId, tenantId },
         });
@@ -108,6 +122,7 @@ export class CounterPurchaseService {
           return {
             movement: existingMovement,
             lines: existingLines,
+            movementResult: null,
           };
         }
 
@@ -233,7 +248,14 @@ export class CounterPurchaseService {
           })),
         );
 
-        const result = await this.stockLedgerService.recordMovementWithManager(
+        itemIds = [...new Set(movementLines.map((line) => line.itemId))];
+        beforeByItem = await this.domainEventPublisher.captureItemSnapshots(
+          manager,
+          tenantId,
+          itemIds,
+        );
+
+        const movementResult = await this.stockLedgerService.recordMovementWithManager(
           manager,
           tenantId,
           {
@@ -249,10 +271,33 @@ export class CounterPurchaseService {
         );
 
         return {
-          movement: result.movement,
-          lines: result.lines,
+          movement: movementResult.movement,
+          lines: movementResult.lines,
+          movementResult,
         };
-      }),
-    );
+      });
+
+      if (result.movementResult?.created && itemIds.length > 0) {
+        const afterByItem = await this.domainEventPublisher.captureItemSnapshots(
+          qr.manager,
+          tenantId,
+          itemIds,
+        );
+        this.domainEventPublisher.publishAfterCommittedMovement({
+          tenantId,
+          actorUserId: actor.sub,
+          beforeByItem,
+          afterByItem,
+          movement: result.movementResult.movement,
+          lines: result.movementResult.lines,
+          created: result.movementResult.created,
+        });
+      }
+
+      return {
+        movement: result.movement,
+        lines: result.lines,
+      };
+    });
   }
 }

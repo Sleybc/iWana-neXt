@@ -149,6 +149,17 @@ describe('InventoryController Swagger', () => {
     expect(listMovements?.parameters?.length).toBeGreaterThan(0);
   });
 
+  it('documenta alertas de vida útil', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('Swagger Inventory Test').setVersion('1.0').build(),
+    );
+
+    const alerts = document.paths['/inventory/assets/useful-life-alerts']?.get;
+    expect(alerts).toBeDefined();
+    expect(alerts?.summary).toBe('Listar alertas de vida útil de activos');
+  });
+
   it('documenta listado de comodatos', () => {
     const document = SwaggerModule.createDocument(
       app,
