@@ -16,6 +16,18 @@ export * from './entities';
 export { resolveMigrationDbCredentials } from './db-credentials';
 export type { DbCredentials } from './db-credentials';
 
+// Grants post-DDL de provisioning (SEC-04) — schema tenant → rol app
+export {
+  assertPgRoleName,
+  buildTenantSchemaAppGrantsSql,
+  grantTenantSchemaAppPrivileges,
+  resolveAppDbRole,
+} from './tenant-schema-app-grants';
+export type {
+  GrantTenantSchemaAppPrivilegesOptions,
+  SqlQueryable,
+} from './tenant-schema-app-grants';
+
 // DataSource y utilidades de schema routing
 export {
   AppDataSource,

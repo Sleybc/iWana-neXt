@@ -10,6 +10,7 @@ jest.mock('@nestjs/typeorm', () => ({
 }));
 
 const mockApplyTenantMigrationsInOrder = jest.fn().mockResolvedValue(undefined);
+const mockGrantTenantSchemaAppPrivileges = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('typeorm', () => ({
   DataSource: jest.fn().mockImplementation(() => ({
@@ -29,7 +30,11 @@ jest.mock('@iwana/db', () => {
     TENANT_MIGRATIONS: [{ name: '000_initial' }, { name: '001_next' }],
     isValidSchemaName: jest.fn().mockReturnValue(true),
     applyTenantMigrationsInOrder: (...args: unknown[]) => mockApplyTenantMigrationsInOrder(...args),
+    grantTenantSchemaAppPrivileges: (...args: unknown[]) =>
+      mockGrantTenantSchemaAppPrivileges(...args),
     resolveMigrationDbCredentials,
+    resolveAppDbRole: () =>
+      (process.env['DB_APP_USER'] ?? process.env['DB_USER'] ?? 'iwana_app').trim(),
   };
 });
 
@@ -67,6 +72,8 @@ describe('TenantProvisioningProcessor', () => {
     for (const key of envKeys) {
       envSnapshot[key] = process.env[key];
     }
+    mockGrantTenantSchemaAppPrivileges.mockResolvedValue(undefined);
+    mockApplyTenantMigrationsInOrder.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -131,8 +138,11 @@ describe('TenantProvisioningProcessor', () => {
     );
   });
 
-  it('crea schema, ejecuta migraciones, siembra datos iniciales y activa el tenant', async () => {
-    mockPool.query.mockResolvedValueOnce({ rowCount: 0 }).mockResolvedValueOnce({ rowCount: 0 });
+  it('crea schema, ejecuta migraciones, otorga grants SEC-04, siembra y activa el tenant', async () => {
+    process.env['DB_USER'] = 'iwana_app';
+    process.env['DB_MIGRATOR_USER'] = 'iwana_migrator';
+    process.env['DB_MIGRATOR_PASSWORD'] = 'migrator-pass';
+    mockPool.query.mockResolvedValue({ rowCount: 0 });
 
     const tenantRepository = buildTenantRepository();
     const updateBuilder = {
@@ -164,6 +174,11 @@ describe('TenantProvisioningProcessor', () => {
     expect(mockPool.connect).toHaveBeenCalledTimes(1);
     expect(mockClient.query).toHaveBeenCalledWith('CREATE SCHEMA IF NOT EXISTS "tenant_isp_test"');
     expect(mockApplyTenantMigrationsInOrder).toHaveBeenCalledTimes(1);
+    expect(mockGrantTenantSchemaAppPrivileges).toHaveBeenCalledWith(
+      mockPool,
+      'tenant_isp_test',
+      expect.objectContaining({ appRole: 'iwana_app', migratorRole: 'iwana_migrator' }),
+    );
     expect(DataSource).toHaveBeenCalledWith(
       expect.objectContaining({
         schema: 'tenant_isp_test',
@@ -171,11 +186,14 @@ describe('TenantProvisioningProcessor', () => {
       }),
     );
     const migrationsCallOrder = mockApplyTenantMigrationsInOrder.mock.invocationCallOrder[0];
+    const grantCallOrder = mockGrantTenantSchemaAppPrivileges.mock.invocationCallOrder[0];
     const seedAdminCallOrder = (tenantSeedService.seedInitialAdmin as jest.Mock).mock
       .invocationCallOrder[0];
     expect(migrationsCallOrder).toBeDefined();
+    expect(grantCallOrder).toBeDefined();
     expect(seedAdminCallOrder).toBeDefined();
-    expect(migrationsCallOrder as number).toBeLessThan(seedAdminCallOrder as number);
+    expect(migrationsCallOrder as number).toBeLessThan(grantCallOrder as number);
+    expect(grantCallOrder as number).toBeLessThan(seedAdminCallOrder as number);
     expect(tenantSeedService.seedInitialAdmin).toHaveBeenCalledWith({
       tenantId: 'tenant-uuid-1',
       tenantSlug: 'isp-test',
@@ -184,6 +202,45 @@ describe('TenantProvisioningProcessor', () => {
     expect(tenantSeedService.seedTaxPresets).toHaveBeenCalledWith('tenant_isp_test');
     expect(updateBuilder.execute).toHaveBeenCalledTimes(1);
     expect(mockClient.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('aborta el provisioning si falla el GRANT SEC-04 (no siembra a ciegas)', async () => {
+    process.env['DB_USER'] = 'iwana_app';
+    process.env['DB_MIGRATOR_USER'] = 'iwana_migrator';
+    mockPool.query.mockResolvedValue({ rowCount: 0 });
+    mockGrantTenantSchemaAppPrivileges.mockRejectedValueOnce(new Error('rol app ausente'));
+
+    const tenantRepository = buildTenantRepository();
+    const updateBuilder = {
+      update: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue(undefined),
+    };
+    const dataSource = {
+      getRepository: jest.fn().mockReturnValue(tenantRepository),
+      createQueryBuilder: jest.fn().mockReturnValue(updateBuilder),
+    } as unknown as DataSource;
+    const tenantSeedService = {
+      seedInitialAdmin: jest.fn(),
+      seedTaxPresets: jest.fn(),
+    } as unknown as TenantSeedService;
+
+    const processor = new TenantProvisioningProcessor(dataSource, tenantSeedService);
+
+    await expect(
+      processor.process({
+        data: {
+          tenantId: 'tenant-uuid-1',
+          schemaName: 'tenant_isp_test',
+          tenantSlug: 'isp-test',
+        },
+      } as never),
+    ).rejects.toThrow('rol app ausente');
+
+    expect(tenantSeedService.seedInitialAdmin).not.toHaveBeenCalled();
+    expect(tenantSeedService.seedTaxPresets).not.toHaveBeenCalled();
+    expect(updateBuilder.set).toHaveBeenCalledWith({ status: 'PROVISIONING_FAILED' });
   });
 
   // DEF-08: un schema preexistente no prueba que el tenant este provisionado.
@@ -195,7 +252,9 @@ describe('TenantProvisioningProcessor', () => {
       // checkSchemaExists -> el schema YA existe
       .mockResolvedValueOnce({ rowCount: 1, rows: [{ schema_name: 'tenant_isp_test' }] })
       // checkTenantMigrationsComplete -> la tabla typeorm_migrations no existe
-      .mockResolvedValueOnce({ rowCount: 1, rows: [{ count: '0' }] });
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ count: '0' }] })
+      // releaseTenantLock (+ cualquier query residual)
+      .mockResolvedValue({ rowCount: 0 });
 
     const tenantRepository = {
       findOne: jest.fn().mockResolvedValue({
@@ -230,8 +289,9 @@ describe('TenantProvisioningProcessor', () => {
       },
     } as never);
 
-    // El tenant no puede quedar ACTIVE sin haber migrado y sembrado el schema.
+    // El tenant no puede quedar ACTIVE sin haber migrado, otorgado grants y sembrado.
     expect(mockApplyTenantMigrationsInOrder).toHaveBeenCalledTimes(1);
+    expect(mockGrantTenantSchemaAppPrivileges).toHaveBeenCalledTimes(1);
     expect(tenantSeedService.seedInitialAdmin).toHaveBeenCalledWith({
       tenantId: 'tenant-uuid-1',
       tenantSlug: 'isp-test',
@@ -239,10 +299,12 @@ describe('TenantProvisioningProcessor', () => {
     });
     expect(tenantSeedService.seedTaxPresets).toHaveBeenCalledWith('tenant_isp_test');
 
-    // Y la activacion debe ocurrir DESPUES de migrar, no antes.
+    // Y la activacion debe ocurrir DESPUES de migrar + GRANT, no antes.
     const migrationsOrder = mockApplyTenantMigrationsInOrder.mock.invocationCallOrder[0] as number;
+    const grantOrder = mockGrantTenantSchemaAppPrivileges.mock.invocationCallOrder[0] as number;
     const activationOrder = updateBuilder.execute.mock.invocationCallOrder[0] as number;
-    expect(migrationsOrder).toBeLessThan(activationOrder);
+    expect(migrationsOrder).toBeLessThan(grantOrder);
+    expect(grantOrder).toBeLessThan(activationOrder);
   });
 
   // DEF-08: un schema ya migrado por completo si permite la recuperacion
@@ -254,7 +316,8 @@ describe('TenantProvisioningProcessor', () => {
       // typeorm_migrations existe
       .mockResolvedValueOnce({ rowCount: 1, rows: [{ count: '1' }] })
       // ...con todas las migraciones aplicadas (mock TENANT_MIGRATIONS = 2)
-      .mockResolvedValueOnce({ rowCount: 1, rows: [{ count: '2' }] });
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ count: '2' }] })
+      .mockResolvedValue({ rowCount: 0 });
 
     const tenantRepository = {
       findOne: jest.fn().mockResolvedValue({
@@ -290,6 +353,8 @@ describe('TenantProvisioningProcessor', () => {
     } as never);
 
     expect(mockApplyTenantMigrationsInOrder).not.toHaveBeenCalled();
+    expect(mockGrantTenantSchemaAppPrivileges).toHaveBeenCalledTimes(1);
+    expect(tenantSeedService.seedInitialAdmin).not.toHaveBeenCalled();
     expect(updateBuilder.set).toHaveBeenCalledWith({ status: 'ACTIVE' });
   });
 

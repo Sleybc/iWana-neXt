@@ -19,6 +19,8 @@ jest.mock('typeorm', () => ({
   })),
 }));
 
+const mockGrantTenantSchemaAppPrivileges = jest.fn().mockResolvedValue(undefined);
+
 jest.mock('@iwana/db', () => {
   const { resolveMigrationDbCredentials } = jest.requireActual(
     '../../../../packages/database/src/db-credentials',
@@ -26,9 +28,14 @@ jest.mock('@iwana/db', () => {
 
   return {
     Tenant: class Tenant {},
+    TENANT_MIGRATIONS: [{ name: '000_initial' }, { name: '001_next' }],
     isValidSchemaName: jest.fn().mockReturnValue(true),
     applyTenantMigrationsInOrder: (...args: unknown[]) => mockApplyTenantMigrationsInOrder(...args),
+    grantTenantSchemaAppPrivileges: (...args: unknown[]) =>
+      mockGrantTenantSchemaAppPrivileges(...args),
     resolveMigrationDbCredentials,
+    resolveAppDbRole: () =>
+      (process.env['DB_APP_USER'] ?? process.env['DB_USER'] ?? 'iwana_app').trim(),
   };
 });
 

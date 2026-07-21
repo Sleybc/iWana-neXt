@@ -204,6 +204,8 @@ DROP TRIGGER trg_platform_audit_logs_immutable ON public.platform_audit_logs;
 
 **Cableado de credenciales (SR-FULL, 2026-07-19): hecho.** Ver `resolveMigrationDbCredentials` en `packages/database/src/db-credentials.ts`.
 
+**Grants en provisioning de tenant (SR-FULL, 2026-07-20): hecho.** Tras `CREATE SCHEMA` + migraciones, `TenantProvisioningProcessor` llama a `grantTenantSchemaAppPrivileges` (`packages/database/src/tenant-schema-app-grants.ts`) **antes** del seed. Replica el bloque DML + harden de `audit_logs` de este runbook **solo** para el schema nuevo (no reejecuta el script bootstrap global). Sin este paso, `iwana_app` no ve `users` (`relation "users" does not exist`) porque PostgreSQL omite schemas sin `USAGE` del `search_path`.
+
 **Migración pública 015 (2026-07-19): hecho.** `packages/database/src/migrations/public/015_audit_owner_least_privilege.ts`:
 
 1. Asume roles ya creados por ops.

@@ -11,7 +11,9 @@
 
 ## Descripción del Proceso
 
-Cuando se crea un tenant via `POST /api/v1/tenants`, el API responde HTTP 201 con el tenant en estado `PROVISIONING`. El worker `@iwana/worker` consume el job de la cola `tenant-provisioning` (BullMQ sobre Redis), crea el schema del tenant, ejecuta la migración base y las migraciones tenant registradas, realiza el seed del ADMIN inicial y actualiza el estado a `ACTIVE`.
+Cuando se crea un tenant via `POST /api/v1/tenants`, el API responde HTTP 201 con el tenant en estado `PROVISIONING`. El worker `@iwana/worker` consume el job de la cola `tenant-provisioning` (BullMQ sobre Redis), crea el schema del tenant, ejecuta las migraciones tenant (rol migrator), **otorga privilegios SEC-04 al rol app** (`GRANT USAGE` + DML; endurece `audit_logs`), realiza el seed del ADMIN inicial (rol app) y actualiza el estado a `ACTIVE`.
+
+Orden obligatorio: `CREATE SCHEMA` → migraciones (migrator) → **GRANT** → seed (app). Un fallo de GRANT aborta el provisioning (no se siembra a ciegas). Ver [RUNBOOK-DB-LEAST-PRIVILEGE-v1.0.md](./RUNBOOK-DB-LEAST-PRIVILEGE-v1.0.md).
 
 Este runbook cubre los procedimientos operativos cuando el proceso falla o queda en estado inconsistente.
 
@@ -35,6 +37,8 @@ El tenant aparece con `status: PROVISIONING_FAILED` en `GET /api/v1/tenants/:id`
 | `schemaName` con formato inválido | `UnrecoverableError: Invalid schema name` — no genera reintentos |
 | Tenant no encontrado en DB al consumir el job | `UnrecoverableError: Tenant not found` — no genera reintentos |
 | DDL parcialmente ejecutado (schema corrupto) | `Error: relation "users" already exists` o similar en el template SQL |
+| Gap SEC-04: app sin `USAGE` en schema nuevo (pre-fix) | `relation "users" does not exist` en `TenantSeedService` tras migraciones OK |
+| Fallo al otorgar privilegios app post-DDL | `rol app … ausente` / error en `grantTenantSchemaAppPrivileges` |
 | Timeout de conexión PostgreSQL | `Error: Connection terminated unexpectedly` |
 | Redis no disponible (imposible ACK al worker) | Job queda en `active` sin mover a `completed` o `failed` |
 

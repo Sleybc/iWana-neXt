@@ -6,6 +6,8 @@ import { Pool } from 'pg';
 import { DataSource } from 'typeorm';
 import {
   applyTenantMigrationsInOrder,
+  grantTenantSchemaAppPrivileges,
+  resolveAppDbRole,
   resolveMigrationDbCredentials,
   TENANT_MIGRATIONS,
   Tenant,
@@ -29,9 +31,10 @@ import { TenantSeedService } from '../services/tenant-seed.service';
  * 1. Validar el schemaName del payload (previene SQL injection en DDL).
  * 2. Crear el schema PostgreSQL con CREATE SCHEMA IF NOT EXISTS via pg.Pool.
  * 3. Ejecutar migraciones TypeORM de tenant (runMigrationsForSchema) para crear tablas.
- * 4. Ejecutar TenantSeedService.seedInitialAdmin para sembrar el admin del tenant.
- * 5. Actualizar tenant.status → ACTIVE en el schema PUBLIC via TypeORM.
- * 6. En caso de fallo: actualizar tenant.status → PROVISIONING_FAILED.
+ * 4. Otorgar privilegios SEC-04 al rol app (USAGE/DML) antes del seed.
+ * 5. Ejecutar TenantSeedService.seedInitialAdmin para sembrar el admin del tenant.
+ * 6. Actualizar tenant.status → ACTIVE en el schema PUBLIC via TypeORM.
+ * 7. En caso de fallo: actualizar tenant.status → PROVISIONING_FAILED.
  *
  * SEGURIDAD:
  * - schemaName DEBE pasar isValidSchemaName() antes de la interpolacion.
@@ -123,6 +126,8 @@ export class TenantProvisioningProcessor extends WorkerHost {
         } else {
           // Schema completo: recuperacion idempotente de un job que fallo despues
           // de migrar pero antes de actualizar el status (worker crash, restart).
+          // Reaplicar grants SEC-04 por si el fallo ocurrió tras DDL y antes del GRANT.
+          await this.grantAppSchemaPrivileges(schemaName);
           const existing = await this.dataSource.getRepository(Tenant).findOne({
             where: { id: tenantId },
           });
@@ -168,6 +173,10 @@ export class TenantProvisioningProcessor extends WorkerHost {
 
       await this.runMigrationsForSchema(schemaName);
       this.logger.log(`[provisioning] Migraciones ejecutadas para schema "${schemaName}"`);
+
+      // SEC-04: DDL como migrator; seed/runtime como app. Sin USAGE el search_path
+      // omite el schema y el seed falla con "relation users does not exist".
+      await this.grantAppSchemaPrivileges(schemaName);
 
       await this.tenantSeedService.seedInitialAdmin({
         tenantId,
@@ -309,6 +318,22 @@ export class TenantProvisioningProcessor extends WorkerHost {
         await tenantDs.destroy();
       }
     }
+  }
+
+  /**
+   * Otorga privilegios del contrato SEC-04 al rol app sobre el schema tenant.
+   * Fallo aquí aborta el provisioning (no se siembra a ciegas).
+   */
+  private async grantAppSchemaPrivileges(schemaName: string): Promise<void> {
+    const appRole = resolveAppDbRole();
+    const migratorRole = resolveMigrationDbCredentials().username;
+    await grantTenantSchemaAppPrivileges(this.pgPool, schemaName, {
+      appRole,
+      migratorRole,
+    });
+    this.logger.log(
+      `[provisioning] Privilegios SEC-04 otorgados en "${schemaName}" (app=${appRole}, migrator=${migratorRole})`,
+    );
   }
 
   private async rollbackProvisioning(
