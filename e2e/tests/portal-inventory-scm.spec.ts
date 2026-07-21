@@ -1262,6 +1262,7 @@ async function setupInventoryMocks(
           data,
           total: alerts.length,
           page: pageParam,
+          pageSize: pageSizeParam,
           limit: pageSizeParam,
         }),
       });
@@ -3358,8 +3359,11 @@ test.describe('Portal Inventario / SCM', () => {
 
     const panel = main.getByTestId('useful-life-alerts-panel');
     await expect(panel).toBeVisible();
-    await expect(panel.getByText('Por vencer')).toBeVisible();
+    await expect(panel.getByTestId(/useful-life-alert-row-/)).toBeVisible();
     await expect(panel.getByText(/ONT-HG8245/)).toBeVisible();
+    await expect(
+      panel.getByTestId(/useful-life-alert-row-/).getByText('Por vencer', { exact: true }),
+    ).toBeVisible();
 
     await panel.getByRole('button', { name: 'Ver ficha 360' }).click();
     const drawer = page.getByTestId('serialized-asset-detail-drawer');

@@ -1,6 +1,6 @@
 # Informe vivo — MOD12 Inventario / SCM — Auditoría de estado del módulo
 
-**Version:** 1.4
+**Version:** 1.5
 **Fecha:** 2026-07-21
 **Estado:** Vigente — índice único de estado de MOD12
 **Modo activo:** Architect + EM (auditoría) + Product Architect (definición de fase siguiente)
@@ -17,13 +17,11 @@
 
 El CTO solicitó auditar MOD12 Inventario para determinar qué falta construir. La auditoría se ejecutó **contra código, no contra informes previos**: cada estado de esta tabla tiene ruta y línea verificable.
 
-Conclusión: **cuatro submódulos con roadmap propio están cerrados** — **Compras**, **Existencias** (F1–F4, G7 GO CTO 2026-07-20), **Activos y comodato** (Fases 5A + 5B, **recomendación técnica GO — auditoría CTO independiente 2026-07-21**) y **Bajas con aprobación** (H3, **recomendación técnica GO — G7 2026-07-21**). El sistema **ya responde** las cuatro preguntas del PRD padre §1 vía ficha 360 y bandeja de comodatos.
+Conclusión: **cinco submódulos con roadmap propio están cerrados** — **Compras**, **Existencias**, **Activos y comodato**, **Bajas con aprobación** (H3) y **Vida útil / StockLow / eventos** (H4, **recomendación técnica GO — G7 2026-07-21**).
 
-> **Submódulo Bajas con aprobación — CERRADO (recomendación técnica GO, G7 2026-07-21).**
-> Informes: [`INFORME-MOD12-BAJAS-APROBACION-FASE-H3-v1.0.md`](INFORME-MOD12-BAJAS-APROBACION-FASE-H3-v1.0.md) · G5/G6/G7 en `INFORME-MOD12-BAJAS-APROBACION-FASE-H3-*`.
-> **Hueco abierto de MOD12 — H4** (vida útil + `StockLow` + eventos). PRD/spec/prompt **EJECUTABLES**. **H5** (pestañas legacy) después de H4.
-
-> ~~**Fase siguiente: MOD12 Fase 5A — Ficha 360 del activo.**~~
+> **Submódulo Vida útil / StockLow / eventos — CERRADO (recomendación técnica GO, G7 2026-07-21).**
+> Informes: [`INFORME-MOD12-VIDA-UTIL-STOCKLOW-FASE-H4-v1.0.md`](INFORME-MOD12-VIDA-UTIL-STOCKLOW-FASE-H4-v1.0.md) · G5/G6/G7 en `INFORME-MOD12-VIDA-UTIL-STOCKLOW-FASE-H4-*`.
+> **Hueco abierto de MOD12 — H5** (pestañas legacy Movimientos/Bajas). **H6** (informe cierre módulo) después.
 
 ## 2. Hallazgos
 
@@ -32,7 +30,7 @@ Conclusión: **cuatro submódulos con roadmap propio están cerrados** — **Com
 | **H1** | ~~La ficha 360 del activo no existe.~~ **CERRADO (5A, 2026-07-21).** `GET /inventory/assets/:id` devuelve `SerializedAssetDetailRecord` compuesto. | `serialized-asset.service.ts` · informe 5A | RF-INV-20 | ~~Alta~~ **Cerrado** |
 | **H2** | ~~El comodato no tiene registro propio.~~ **CERRADO (5B, 2026-07-21).** `AssetLoanService` escribe/lee `asset_loan_assignments`; bandeja portal; cierre en retorno/baja. | `asset-loan.service.ts` · informe 5B | RF-INV-12, RF-INV-13 | ~~Alta~~ **Cerrado** |
 | **H3** | ~~Las bajas se aplican sin aprobación~~ **CERRADO (H3, 2026-07-21).** `WriteOffService` persiste documento; ledger solo en `approve`. | `write-off.service.ts` · migración 082 · informe H3 | RF-INV-19 | ~~Alta~~ **Cerrado** |
-| **H4** | **La vida útil no calcula nada y `StockLow` no existe.** `usefulLifeMonths` / `warrantyUntil` se persisten y se muestran en el drawer, pero no hay umbral, alerta ni consulta de activos próximos a fin de vida. `StockLow` no aparece en ningún archivo del repositorio: la cobertura real es el *pull* de `GET /inventory/replenishment/suggestions` (Existencias F2), no un evento de dominio. `INVENTORY_EVENTS` solo emite eventos de catálogo (ítems y categorías); ningún movimiento de stock emite evento. | `services/asset-lifecycle.service.ts` (solo registra y lista); `events/inventory.events.ts`; grep `StockLow` → 0 resultados | RF-INV-18, RF-INV-22 | Media |
+| **H4** | ~~La vida útil no calcula nada y `StockLow` no existe.~~ **CERRADO (H4, 2026-07-21).** Endpoint + panel alertas; `inventory.stock-low` + `inventory.asset-sold`; listener log. | publisher + `UsefulLifeAlertsPanel` · informe H4 | RF-INV-14, RF-INV-18, RF-INV-22 | ~~Media~~ **Cerrado** |
 | **H5** | **Deuda UX en pestañas legacy.** `Movimientos` (venta / consumo interno / retorno) y `Bajas` conservan formularios con `<select>` nativos, fuera del patrón composer/PortalPanel adoptado por Compras, Salidas y Existencias. `InventoryClient.tsx` acumula 2.784 líneas y 11 pestañas de primer nivel. | `apps/portal/src/components/inventory/InventoryClient.tsx:2201-2500` | RNF (consistencia UI), RF-INV-14/15/16 | Media |
 | **H6** | **No existe informe de cierre de MOD12 como módulo.** Hay cierres por fase de Compras y de Existencias; ninguno del módulo. ADR-016 (regla de completitud) exige cerrar N antes de abrir N+1. | `docs/informes/` | Gobierno | Media |
 | **H7** | RF-INV-24 (evaluación de proveedores) y RF-INV-25 (IPAM/VLAN/QoS) siguen **fuera de alcance declarado** en el propio PRD (Fase 2). No son deuda: son alcance diferido. | PRD-MOD12-INVENTARIO-SCM §2 y §4 | RF-INV-24, RF-INV-25 | Informativo |
@@ -60,20 +58,20 @@ Leyenda: ✅ construido · 🟡 parcial · ❌ no construido · ⏸️ fuera de 
 | RF-INV-11 | Topes por técnico/cuadrilla | ✅ | validación de `maxCapacity` en destino móvil (DT-INV-08 resuelto) |
 | RF-INV-12 | Instalación en cliente como comodato | ✅ | `asset-loan.service.ts` + hook OT `INSTALLED_AT_CUSTOMER` (5B) |
 | RF-INV-13 | Comodato vinculado a suscriptor/contrato | ✅ | `asset_loan_assignments`; `GET /inventory/loans` (5B) |
-| RF-INV-14 | Salida por venta con referencia comercial y evento | 🟡 | Movimiento `SALE` ✅; **evento de dominio para Billing/ERP ❌** (`events/inventory.events.ts` solo cubre catálogo) |
+| RF-INV-14 | Salida por venta con referencia comercial y evento | ✅ | Movimiento `SALE` + `inventory.asset-sold` (H4); consumidor Billing diferido |
 | RF-INV-15 | Consumo interno con centro de costo | ✅ | `POST /inventory/movements/internal-consumption` |
 | RF-INV-16 | Retiro de cliente y tránsito | ✅ | `POST /inventory/returns` con `IN_TRANSIT` / `IN_TESTING` |
 | RF-INV-17 | Clasificación del retorno | ✅ | `RETURN_TARGET_STATUSES`; `stock-ledger.service.ts` (transición de activo) |
-| RF-INV-18 | Vida útil operativa con alertas por umbral | 🟡 | Estado derivado en ficha 360 (5A); **sin alertas/jobs** → H4 |
+| RF-INV-18 | Vida útil operativa con alertas por umbral | ✅ | Endpoint + panel (H4); jobs/notificaciones fuera de MVP |
 | RF-INV-19 | Baja con motivo, evidencia, actor y **aprobación** | ✅ | Documento + approve → ledger (H3) |
 | RF-INV-20 | Ficha 360 del activo | ✅ | `SerializedAssetDetailRecord` (5A) |
 | RF-INV-21 | Dashboard por bodega/técnico/cliente/categoría/estado | ✅ | `inventory-dashboard.service.ts` (segmentación por tipo de responsable; nombre legible diferido por boundary, decisión vigente en informe SCM F01 §8.6) |
-| RF-INV-22 | Emitir `StockLow` bajo mínimo | 🟡 | Cubierto por *pull* (`GET /inventory/replenishment/suggestions`, F2); **evento push inexistente** → H4 |
+| RF-INV-22 | Emitir `StockLow` bajo mínimo | ✅ | `inventory.stock-low` (`below-minimum` / `below-reorder`) + pull F2 |
 | RF-INV-23 | Conteo físico y conciliación | ✅ | Existencias F3A: `cycle-count.service.ts`, mig. 071, ADR-054 |
 | RF-INV-24 | Evaluación de proveedores | ⏸️ | Fase 2 del PRD padre |
 | RF-INV-25 | IPAM / VLAN / QoS | ⏸️ | Fase 2 del PRD padre |
 
-**Cobertura MVP:** 21 de 22 requisitos MVP construidos (95 %), 1 parcial (RF-INV-18 alertas → H4). RF-INV-19 ✅ (H3 cerrado). Evento venta RF-INV-14 pendiente (se agrupa con H4).
+**Cobertura MVP:** 22 de 22 requisitos MVP construidos (100 %) en alcance declarado. Consumidor Billing/ERP y notificaciones push quedan fuera de H4 (publisher listo).
 
 ## 4. Submódulos cerrados (índice)
 
@@ -86,16 +84,17 @@ Leyenda: ✅ construido · 🟡 parcial · ❌ no construido · ⏸️ fuera de 
 | Existencias | F1 kardex + ajustes · F2 reposición + valor · F3A conteo físico · F3B reservas efectivas · F4 costeo promedio móvil | `INFORME-MOD12-INVENTARIO-EXISTENCIAS-DEFINICION-v1.0.md`; ADR-054, ADR-055, ADR-059; G7 GO CTO 2026-07-20 |
 | Activos y comodato | F5A ficha 360 · F5B comodato transaccional + bandeja | `INFORME-MOD12-ACTIVOS-FICHA-360-FASE-05A-v1.0.md`, `INFORME-MOD12-COMODATO-FASE-05B-v1.0.md`, `INFORME-MOD12-ACTIVOS-COMODATO-FASE-05-CIERRE-G7-v1.0.md`; sin ADR nuevo |
 | Bajas con aprobación | H3 documento + approve/reject + portal | `INFORME-MOD12-BAJAS-APROBACION-FASE-H3-v1.0.md`, `INFORME-MOD12-BAJAS-APROBACION-FASE-H3-CIERRE-G7-v1.0.md`; migración 082 |
+| Vida útil / StockLow / eventos | H4 alertas + publisher + panel | `INFORME-MOD12-VIDA-UTIL-STOCKLOW-FASE-H4-v1.0.md`, `INFORME-MOD12-VIDA-UTIL-STOCKLOW-FASE-H4-CIERRE-G7-v1.0.md` |
 
 ## 5. Backlog priorizado
 
 | Orden | Trabajo | Hallazgos | Justificación de la prioridad |
 | --- | --- | --- | --- |
 | ~~**1**~~ | ~~Fase 5A + 5B~~ | ~~H1, H2~~ | **Cerrado 2026-07-21** |
-| **1** | **Vida útil + alertas + eventos de dominio** | H4, RF-INV-14 | **Siguiente fase MOD12** (post H3) |
-| 2 | Deuda UX de pestañas legacy | H5 | Después de H4 |
 | ~~**1**~~ | ~~**Bajas con aprobación (H3)**~~ | ~~H3~~ | **Cerrado 2026-07-21** |
-| 4 | Informe de cierre de MOD12 | H6 | Al cerrar H3/H4 según priorización CTO. |
+| ~~**1**~~ | ~~**Vida útil + StockLow + eventos (H4)**~~ | ~~H4~~ | **Cerrado 2026-07-21** |
+| **1** | Deuda UX de pestañas legacy | H5 | **Siguiente fase MOD12** |
+| 2 | Informe de cierre de MOD12 | H6 | Tras H5 o según priorización CTO |
 | — | Evaluación de proveedores, IPAM | H7 | Fase 2 del PRD padre; sin acción hasta repriorización del CTO. |
 
 ## 6. Impacto declarado (perfil AI-EM-ARCH §8)
@@ -117,9 +116,9 @@ Leyenda: ✅ construido · 🟡 parcial · ❌ no construido · ⏸️ fuera de 
 | PRD H3 — Bajas con aprobación | `docs/prds/PRD-MOD12-BAJAS-APROBACION-v1.0.md` | MVP cerrado — G7 GO recomendado |
 | Prompt H3 | `docs/prompts/PROMPT-MOD12-BAJAS-APROBACION-FASE-H3-v1.0.md` | **CERRADO** |
 | Spec H3 | `docs/specs/2026-07-21-mod12-bajas-aprobacion-fase-h3-design.md` | Congelada |
-| PRD H4 — Vida útil / StockLow / eventos | `docs/prds/PRD-MOD12-VIDA-UTIL-STOCKLOW-v1.0.md` | Emitido — **EJECUTABLE** |
-| Prompt H4 | `docs/prompts/PROMPT-MOD12-VIDA-UTIL-STOCKLOW-FASE-H4-v1.0.md` | **EJECUTABLE** |
-| Spec H4 | `docs/specs/2026-07-21-mod12-vida-util-stocklow-fase-h4-design.md` | Congelada (review usuario) |
+| PRD H4 — Vida útil / StockLow / eventos | `docs/prds/PRD-MOD12-VIDA-UTIL-STOCKLOW-v1.0.md` | MVP cerrado — G7 GO recomendado |
+| Prompt H4 | `docs/prompts/PROMPT-MOD12-VIDA-UTIL-STOCKLOW-FASE-H4-v1.0.md` | **CERRADO** |
+| Spec H4 | `docs/specs/2026-07-21-mod12-vida-util-stocklow-fase-h4-design.md` | Congelada — aprobado CTO |
 
 ## 8. Historial
 
@@ -131,3 +130,4 @@ Leyenda: ✅ construido · 🟡 parcial · ❌ no construido · ⏸️ fuera de 
 | 2026-07-21 | **v1.2** — H3 ejecutado; RF-INV-19 ✅; H3 cerrado; siguiente hueco **H4**. |
 | 2026-07-21 | **v1.3** — G7 GO recomendado H3; migración 082 aplicada; PRD/prompt H3 cerrados; cobertura MVP 95 %. |
 | 2026-07-21 | **v1.4** — Emitidos PRD/spec/prompt H4 (umbrales C, vida útil A, eventos B); fase **EJECUTABLE**. |
+| 2026-07-21 | **v1.5** — H4 G5+G6+G7 GO recomendado; RF-INV-14/18/22 ✅; cobertura MVP 100 % alcance; siguiente **H5**. |

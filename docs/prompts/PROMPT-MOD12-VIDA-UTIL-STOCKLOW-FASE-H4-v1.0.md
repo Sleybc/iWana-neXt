@@ -1,6 +1,6 @@
 # PROMPT — MOD12 Inventario — Vida útil + StockLow + eventos — Fase H4
 
-> **Estado: EN EJECUCIÓN / entrega BE+FE — G5 GO; G6/G7 pendientes.**
+> **Estado: CERRADO (G5+G6+G7 GO recomendado 2026-07-21).**
 
 ## Vínculos de trazabilidad
 

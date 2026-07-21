@@ -1,7 +1,7 @@
 # PRD — MOD12 Inventario / Submódulo Vida útil, StockLow y eventos de dominio
 
 **Version:** 1.0  
-**Estado:** ✅ Emitido — **EJECUTABLE** (diseño aprobado 2026-07-21)  
+**Estado:** ✅ **MVP cerrado** — G5+G6+G7 GO recomendado (2026-07-21)  
 **Fecha:** 2026-07-21  
 **Modo activo:** Product Architect + Orchestrator  
 **Autor:** AI-EM-ARCH  
@@ -101,12 +101,12 @@ Purchasing vive dentro del mismo módulo inventory; no hay puerto consumidor. El
 
 ## 6. Criterios de aceptación (MVP)
 
-- [ ] Endpoint useful-life-alerts filtra correctamente `por-vencer` / `vencida`.
-- [ ] Cruzar mínimo emite `below-minimum`; cruzar reorder emite `below-reorder`.
-- [ ] Ya bajo umbral + movimiento → no re-emite ese nivel.
-- [ ] SALE emite `asset-sold`; listener loguea.
-- [ ] Portal: panel vida útil + enlace F2; tests + E2E smoke.
-- [ ] OpenAPI actualizado; informe de fase H4.
+- [x] Endpoint useful-life-alerts filtra correctamente `por-vencer` / `vencida`.
+- [x] Cruzar mínimo emite `below-minimum`; cruzar reorder emite `below-reorder`.
+- [x] Ya bajo umbral + movimiento → no re-emite ese nivel.
+- [x] SALE emite `asset-sold`; listener loguea.
+- [x] Portal: panel vida útil + enlace F2; tests + E2E smoke.
+- [x] OpenAPI actualizado; informe de fase H4.
 
 ## 7. Riesgos y mitigaciones
 

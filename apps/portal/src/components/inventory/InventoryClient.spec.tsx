@@ -507,6 +507,7 @@ describe('InventoryClient', () => {
       data: [],
       total: 0,
       page: 1,
+      pageSize: 20,
       limit: 20,
     });
     inventoryApiMock.listLoans.mockResolvedValue({ data: [], total: 0, page: 1, limit: 50 });
@@ -1835,6 +1836,7 @@ describe('InventoryClient', () => {
       ],
       total: 1,
       page: 1,
+      pageSize: 20,
       limit: 20,
     });
 
