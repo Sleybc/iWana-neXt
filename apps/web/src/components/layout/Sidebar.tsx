@@ -81,12 +81,18 @@ const NavItems = ({ desktopCollapsed }: NavItemsProps) => {
                     className={cn(
                       'group flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition-colors duration-150',
                       isActive
-                        ? 'bg-iwana-surface-soft text-iwana-primary shadow-[var(--shadow-iwana-card)] ring-1 ring-inset ring-iwana-primary-100 dark:bg-dark-surface-3 dark:text-white dark:ring-dark-border-2'
+                        ? 'relative bg-iwana-surface-soft text-iwana-primary shadow-[var(--shadow-iwana-card)] ring-1 ring-inset ring-iwana-primary-100 dark:bg-dark-surface-3 dark:text-white dark:ring-dark-border-2'
                         : 'text-gray-600 hover:bg-iwana-surface-soft hover:text-iwana-primary dark:text-gray-400 dark:hover:bg-dark-surface-3 dark:hover:text-gray-100',
                       desktopCollapsed && 'lg:justify-center lg:px-2',
                     )}
                     aria-current={isActive ? 'page' : undefined}
                   >
+                    {isActive && (
+                      <span
+                        aria-hidden="true"
+                        className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-iwana-secondary dark:bg-iwana-secondary-400"
+                      />
+                    )}
                     <Icon
                       aria-hidden
                       className={cn(

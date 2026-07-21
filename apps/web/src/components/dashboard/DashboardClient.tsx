@@ -2,11 +2,11 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { Button } from '@iwana/ui';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Button, SkeletonBlock } from '@iwana/ui';
 import { ArrowRight } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { TenantsTable } from '@/components/dashboard/TenantsTable';
+import { TenantsTable, type StatusFilterValue } from '@/components/dashboard/TenantsTable';
 import { PanelCard } from '@/components/dashboard/PanelCard';
 import { SystemStatusPanel } from '@/components/dashboard/SystemStatusPanel';
 import {
@@ -19,6 +19,13 @@ import {
   type TenantListItem,
 } from '@/lib/api-client';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
+
+const DIRECTORY_STATUS_BY_LABEL: Record<string, StatusFilterValue> = {
+  Activas: 'ACTIVE',
+  'En configuración': 'PROVISIONING',
+  'Con error': 'PROVISIONING_FAILED',
+  Suspendidas: 'SUSPENDED',
+};
 
 function formatRelativeDate(value: string): string {
   const date = new Date(value);
@@ -70,20 +77,30 @@ function mapOperationalError(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function humanizeToken(value: string): string {
+  const normalized = value.toLowerCase().replace(/_/g, ' ').trim();
+  if (!normalized) {
+    return value;
+  }
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
 function describeAuditEntry(entry: PlatformAuditLogEntry): string {
   const actorName = entry.actor?.displayName?.trim() || 'Equipo de plataforma';
-  const action = entry.action.toLowerCase().replace(/_/g, ' ');
+  const actionKey = entry.action.toLowerCase() as keyof typeof PLATFORM_UI_COPY.audit.actionLabels;
+  const action = PLATFORM_UI_COPY.audit.actionLabels[actionKey] ?? humanizeToken(entry.action);
+  const entityKey =
+    entry.entityType.toLowerCase() as keyof typeof PLATFORM_UI_COPY.audit.entityTypeLabels;
   const entity =
-    entry.entityType === 'tenant'
-      ? 'empresa'
-      : entry.entityType === 'user'
-        ? 'usuario'
-        : entry.entityType.toLowerCase().replace(/_/g, ' ');
+    PLATFORM_UI_COPY.audit.entityTypeLabels[entityKey] ??
+    entry.entityType.toLowerCase().replace(/_/g, ' ');
 
   return `${actorName} · ${action} en ${entity}`;
 }
 
 export function DashboardClient() {
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [tenants, setTenants] = useState<TenantListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -92,6 +109,7 @@ export function DashboardClient() {
   const [auditError, setAuditError] = useState<string | null>(null);
   const [health, setHealth] = useState<HealthStatusResponse | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>('TODAS');
 
   const loadTenants = useCallback(async () => {
     setIsLoading(true);
@@ -167,21 +185,34 @@ export function DashboardClient() {
     };
   }, [tenants]);
 
-  const globalQuery = useMemo(
-    () => searchParams.get('q')?.trim().toLowerCase() ?? '',
-    [searchParams],
+  const globalQuery = searchParams.get('q') ?? '';
+
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      const trimmed = value.trim();
+      if (trimmed) {
+        params.set('q', value);
+      } else {
+        params.delete('q');
+      }
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams],
   );
 
   const visibleTenants = useMemo(() => {
-    if (!globalQuery) {
+    const q = globalQuery.trim().toLowerCase();
+    if (!q) {
       return tenants;
     }
 
     return tenants.filter((tenant) => {
       return (
-        tenant.name.toLowerCase().includes(globalQuery) ||
-        tenant.slug.toLowerCase().includes(globalQuery) ||
-        tenant.status.toLowerCase().includes(globalQuery)
+        tenant.name.toLowerCase().includes(q) ||
+        tenant.slug.toLowerCase().includes(q) ||
+        tenant.status.toLowerCase().includes(q)
       );
     });
   }, [tenants, globalQuery]);
@@ -195,7 +226,7 @@ export function DashboardClient() {
 
   const tableRows = useMemo(
     () =>
-      visibleTenants.map((tenant) => ({
+      tenants.map((tenant) => ({
         id: tenant.id,
         name: tenant.name,
         slug: tenant.slug,
@@ -204,11 +235,19 @@ export function DashboardClient() {
         updatedAt: tenant.updatedAt,
         createdAt: tenant.createdAt,
       })),
-    [visibleTenants],
+    [tenants],
   );
 
   const healthIndicators = useMemo(() => {
     return [
+      {
+        label: 'Atención operativa',
+        status: summary.attention > 0 ? 'warning' : 'ok',
+        detail:
+          summary.attention > 0
+            ? `${summary.attention} empresas requieren revisión.`
+            : 'Sin alertas principales en empresas.',
+      },
       {
         label: 'API de plataforma',
         status: error ? 'warning' : health?.status === 'ok' ? 'ok' : health ? 'warning' : 'unknown',
@@ -218,7 +257,7 @@ export function DashboardClient() {
             ? 'Disponible para el equipo interno.'
             : health
               ? 'Disponible con validaciones pendientes.'
-              : healthError ?? 'Pendiente de integración.',
+              : (healthError ?? 'Pendiente de integración.'),
       },
       {
         label: 'Base de datos',
@@ -249,14 +288,6 @@ export function DashboardClient() {
                 ? 'No disponible.'
                 : 'Sin lectura directa todavía.',
       },
-      {
-        label: 'Atención operativa',
-        status: summary.attention > 0 ? 'warning' : 'ok',
-        detail:
-          summary.attention > 0
-            ? `${summary.attention} empresas requieren revisión.`
-            : 'Sin alertas principales en empresas.',
-      },
     ] as const;
   }, [error, health, healthError, summary.attention, summary.provisioning, summary.total]);
 
@@ -264,7 +295,14 @@ export function DashboardClient() {
     ? health.status === 'ok'
       ? 'API, base de datos y Redis responden correctamente.'
       : 'La plataforma responde, pero hay servicios que requieren seguimiento.'
-    : healthError ?? 'Salud de plataforma pendiente de integración.';
+    : (healthError ?? 'Salud de plataforma pendiente de integración.');
+
+  const handleDirectoryRowClick = (rowLabel: string) => {
+    const nextStatus = DIRECTORY_STATUS_BY_LABEL[rowLabel];
+    if (nextStatus) {
+      setStatusFilter(nextStatus);
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -291,35 +329,51 @@ export function DashboardClient() {
           <div className="xl:col-span-8 flex flex-col gap-6">
             <section
               aria-label="Resumen operativo del día"
-              className="rounded-2xl border border-gray-200 bg-iwana-surface-soft/70 p-5 shadow-sm dark:border-dark-border dark:bg-dark-surface-2"
+              aria-busy={isLoading}
+              className="rounded-2xl border border-gray-200 bg-iwana-surface-soft/70 p-5 shadow-iwana dark:border-dark-border dark:bg-dark-surface-2"
             >
               <p className="portal-eyebrow">Resumen operativo</p>
               <div className="mt-2 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div className="max-w-3xl">
-                  <h2 className="text-xl font-semibold text-iwana-primary dark:text-white">
-                    {summary.active} empresas activas y {summary.attention} en seguimiento directo
-                  </h2>
+                  {isLoading ? (
+                    <div>
+                      <span className="sr-only">Cargando resumen operativo...</span>
+                      <SkeletonBlock className="h-7 w-72 rounded-lg bg-gray-200" />
+                    </div>
+                  ) : (
+                    <h2 className="text-xl font-semibold text-iwana-primary dark:text-white">
+                      {summary.active} empresas activas y {summary.attention} en seguimiento directo
+                    </h2>
+                  )}
                   <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
                     Usa esta portada para priorizar altas pendientes, revisar empresas con alertas y
                     entrar rápido al historial cuando cambie algo importante.
                   </p>
                 </div>
                 <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-                  <div className="rounded-2xl border border-white/80 bg-white px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
+                  <div className="rounded-2xl border border-white/80 bg-white px-4 py-3 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-3">
                     <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
                       Empresas visibles
                     </p>
-                    <p className="mt-1 text-lg font-semibold text-iwana-primary dark:text-white">
-                      {visibleTenants.length}
-                    </p>
+                    {isLoading ? (
+                      <SkeletonBlock className="mt-1 h-7 w-12 rounded-lg bg-gray-200" />
+                    ) : (
+                      <p className="mt-1 text-lg font-semibold text-iwana-primary dark:text-white">
+                        {visibleTenants.length}
+                      </p>
+                    )}
                   </div>
-                  <div className="rounded-2xl border border-white/80 bg-white px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3">
+                  <div className="rounded-2xl border border-white/80 bg-white px-4 py-3 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-3">
                     <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
                       Cambios esta semana
                     </p>
-                    <p className="mt-1 text-lg font-semibold text-iwana-primary dark:text-white">
-                      {summary.updatedLast7Days}
-                    </p>
+                    {isLoading ? (
+                      <SkeletonBlock className="mt-1 h-7 w-12 rounded-lg bg-gray-200" />
+                    ) : (
+                      <p className="mt-1 text-lg font-semibold text-iwana-primary dark:text-white">
+                        {summary.updatedLast7Days}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -332,6 +386,9 @@ export function DashboardClient() {
                 error={error}
                 onRetry={loadTenants}
                 searchQuery={globalQuery}
+                onSearchChange={handleSearchChange}
+                statusFilter={statusFilter}
+                onStatusFilterChange={setStatusFilter}
               />
             </section>
           </div>
@@ -341,18 +398,22 @@ export function DashboardClient() {
               title="Salud de plataforma"
               summary={healthSummary}
               lastCheckedAt={health?.timestamp ?? null}
+              isLoading={isLoading}
               indicators={healthIndicators.map((indicator) => ({ ...indicator }))}
             />
 
             <PanelCard
               title="Actividad reciente"
               columnHeaders={{ label: 'Evento', value: 'Hace' }}
+              isLoading={isLoading}
               rows={
-                auditError
-                  ? [{ label: auditError, value: '—' }]
-                  : recentRows.length > 0
-                    ? recentRows
-                    : [{ label: 'Aún no hay cambios recientes para mostrar.', value: '—' }]
+                isLoading
+                  ? []
+                  : auditError
+                    ? [{ label: auditError, value: '—' }]
+                    : recentRows.length > 0
+                      ? recentRows
+                      : [{ label: 'Aún no hay cambios recientes para mostrar.', value: '—' }]
               }
               footerLabel="Abrir historial completo"
               footerHref="/audit-logs"
@@ -361,21 +422,23 @@ export function DashboardClient() {
             <PanelCard
               title="Directorio por estado"
               columnHeaders={{ label: 'Estado', value: 'Cantidad' }}
+              isLoading={isLoading}
+              onRowClick={handleDirectoryRowClick}
               rows={[
                 {
                   label: 'Activas',
                   value: summary.active,
-                  valueClassName: 'text-green-700 dark:text-green-400',
+                  valueClassName: 'text-success-700 dark:text-success-400',
                 },
                 {
                   label: 'En configuración',
                   value: summary.provisioning,
-                  valueClassName: 'text-amber-700 dark:text-amber-400',
+                  valueClassName: 'text-warning-700 dark:text-warning-400',
                 },
                 {
                   label: 'Con error',
                   value: summary.failed,
-                  valueClassName: 'text-red-600 dark:text-red-400',
+                  valueClassName: 'text-error-600 dark:text-error-400',
                 },
                 { label: 'Suspendidas', value: summary.suspended },
               ]}

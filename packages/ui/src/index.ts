@@ -15,6 +15,9 @@ export * from './tokens';
 
 // Utilidades
 export * from './lib/utils';
+export { interactiveFocusClassName } from './focus';
+export { SkeletonBlock } from './skeleton';
+export type { SkeletonBlockProps } from './skeleton';
 
 // Componentes
 export * from './components/Button';

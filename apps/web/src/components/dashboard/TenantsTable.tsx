@@ -13,8 +13,11 @@ import {
   DropdownMenuTrigger,
   Input,
   Select,
+  cn,
+  interactiveFocusClassName,
 } from '@iwana/ui';
 import { Search, ChevronUp, ChevronDown, ChevronsUpDown, MoreHorizontal } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 type TenantStatus =
@@ -28,7 +31,7 @@ type SortField = 'name' | 'status' | 'updatedAt' | 'createdAt';
 type SortDir = 'asc' | 'desc';
 
 const ALL_STATUSES = 'TODAS' as const;
-type StatusFilterValue = TenantStatus | typeof ALL_STATUSES;
+export type StatusFilterValue = TenantStatus | typeof ALL_STATUSES;
 
 interface Tenant {
   id: string;
@@ -160,7 +163,10 @@ function ActionsDropdown({
       <DropdownMenuTrigger
         aria-label="Abrir menú de acciones"
         title="Abrir menú de acciones"
-        className="min-h-11 min-w-11 border border-gray-200 bg-white text-gray-600 shadow-sm hover:bg-gray-50 hover:text-gray-900 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300 dark:hover:bg-dark-surface-4"
+        className={cn(
+          'min-h-11 min-w-11 border border-gray-200 bg-white text-gray-600 shadow-iwana-card hover:bg-gray-50 hover:text-gray-900 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-300 dark:hover:bg-dark-surface-4',
+          interactiveFocusClassName,
+        )}
       >
         <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
       </DropdownMenuTrigger>
@@ -211,6 +217,7 @@ export function TenantsTable({
   onActivate,
   onRetryProvisioning,
 }: TenantsTableProps) {
+  const router = useRouter();
   const [internalSearch, setInternalSearch] = useState(searchQuery);
   const [internalStatus, setInternalStatus] = useState<StatusFilterValue>(ALL_STATUSES);
   const [sortField, setSortField] = useState<SortField>('createdAt');
@@ -253,6 +260,10 @@ export function TenantsTable({
     }
   };
 
+  const openTenantSettings = (tenantId: string) => {
+    router.push(`/tenants/${tenantId}/settings`);
+  };
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return tenants
@@ -274,6 +285,11 @@ export function TenantsTable({
         return sortDir === 'asc' ? cmp : -cmp;
       });
   }, [search, statusFilter, sortField, sortDir, tenants]);
+
+  const sortButtonClassName = cn(
+    'inline-flex min-h-11 items-center gap-1 text-xs font-medium tracking-wider text-gray-500 uppercase hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200',
+    interactiveFocusClassName,
+  );
 
   return (
     <Card>
@@ -315,7 +331,10 @@ export function TenantsTable({
                 setSearch('');
                 setStatusFilter(ALL_STATUSES);
               }}
-              className="inline-flex min-h-11 items-center rounded-lg px-3 text-xs font-medium text-iwana-primary hover:underline"
+              className={cn(
+                'inline-flex min-h-11 items-center rounded-lg px-3 text-xs font-medium text-iwana-primary hover:underline',
+                interactiveFocusClassName,
+              )}
             >
               Limpiar filtro
             </button>
@@ -334,7 +353,7 @@ export function TenantsTable({
                       <button
                         type="button"
                         onClick={() => handleSort('name')}
-                        className="inline-flex min-h-11 items-center gap-1 text-xs font-medium tracking-wider text-gray-500 uppercase hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                        className={sortButtonClassName}
                       >
                         Empresa <SortIcon field="name" sortField={sortField} sortDir={sortDir} />
                       </button>
@@ -343,7 +362,7 @@ export function TenantsTable({
                       <button
                         type="button"
                         onClick={() => handleSort('status')}
-                        className="inline-flex min-h-11 items-center gap-1 text-xs font-medium tracking-wider text-gray-500 uppercase hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                        className={sortButtonClassName}
                       >
                         Estado <SortIcon field="status" sortField={sortField} sortDir={sortDir} />
                       </button>
@@ -352,7 +371,7 @@ export function TenantsTable({
                       <button
                         type="button"
                         onClick={() => handleSort('updatedAt')}
-                        className="inline-flex min-h-11 items-center gap-1 text-xs font-medium tracking-wider text-gray-500 uppercase hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                        className={sortButtonClassName}
                       >
                         Última actualización{' '}
                         <SortIcon field="updatedAt" sortField={sortField} sortDir={sortDir} />
@@ -362,7 +381,7 @@ export function TenantsTable({
                       <button
                         type="button"
                         onClick={() => handleSort('createdAt')}
-                        className="inline-flex min-h-11 items-center gap-1 text-xs font-medium tracking-wider text-gray-500 uppercase hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                        className={sortButtonClassName}
                       >
                         Fecha creación{' '}
                         <SortIcon field="createdAt" sortField={sortField} sortDir={sortDir} />
@@ -421,17 +440,24 @@ export function TenantsTable({
                   ) : filtered.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-6 py-12 text-center">
-                        <div className="mx-auto flex max-w-md flex-col items-center gap-1">
-                          <p className="text-sm font-medium text-iwana-primary dark:text-white">
-                            {hasActiveFilters
-                              ? 'Sin empresas con estos filtros'
-                              : 'Aún no hay empresas registradas'}
-                          </p>
-                          <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
-                            {hasActiveFilters
-                              ? 'Ajusta la búsqueda o el estado, o limpia el filtro para ver todo el directorio.'
-                              : 'Cuando registres la primera empresa, aparecerá aquí con su estado operativo.'}
-                          </p>
+                        <div className="mx-auto flex max-w-md flex-col items-center gap-3">
+                          <div className="flex flex-col items-center gap-1">
+                            <p className="text-sm font-medium text-iwana-primary dark:text-white">
+                              {hasActiveFilters
+                                ? 'Sin empresas con estos filtros'
+                                : 'Aún no hay empresas registradas'}
+                            </p>
+                            <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
+                              {hasActiveFilters
+                                ? 'Ajusta la búsqueda o el estado, o limpia el filtro para ver todo el directorio.'
+                                : 'Cuando registres la primera empresa, aparecerá aquí con su estado operativo.'}
+                            </p>
+                          </div>
+                          {!hasActiveFilters && (
+                            <Button asChild size="sm" variant="secondary">
+                              <Link href="/tenants/new">Registrar primera empresa</Link>
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -441,34 +467,53 @@ export function TenantsTable({
                         key={tenant.id}
                         className="transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.03]"
                       >
-                        {/* Columna Empresa: nombre principal + slug en gris debajo */}
+                        {/* Columna Empresa: cell-link primario (teclado + clic) */}
                         <td className="px-6 py-4">
-                          <div className="font-medium text-iwana-primary dark:text-white">
-                            {tenant.name}
-                          </div>
-                          <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                            {tenant.contactEmail || 'Sin contacto principal registrado'}
-                          </div>
-                          <div className="mt-1 font-mono text-[11px] text-gray-500 dark:text-gray-400">
-                            {tenant.slug}
-                          </div>
+                          <button
+                            type="button"
+                            className={cn(
+                              'block w-full cursor-pointer rounded-lg text-left',
+                              interactiveFocusClassName,
+                            )}
+                            aria-label={`Ver detalle de ${tenant.name}`}
+                            onClick={() => openTenantSettings(tenant.id)}
+                          >
+                            <div className="font-medium text-iwana-primary dark:text-white">
+                              {tenant.name}
+                            </div>
+                            <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                              {tenant.contactEmail || 'Sin contacto principal registrado'}
+                            </div>
+                            <div className="mt-1 font-mono text-[11px] text-gray-500 dark:text-gray-400">
+                              {tenant.slug}
+                            </div>
+                          </button>
                         </td>
 
-                        <td className="px-6 py-4">
+                        <td
+                          className="cursor-pointer px-6 py-4"
+                          onClick={() => openTenantSettings(tenant.id)}
+                        >
                           <span className={statusPillClasses[tenant.status]}>
                             {statusLabels[tenant.status]}
                           </span>
                         </td>
 
-                        <td className="px-6 py-4 text-gray-500 dark:text-gray-400">
+                        <td
+                          className="cursor-pointer px-6 py-4 text-gray-500 dark:text-gray-400"
+                          onClick={() => openTenantSettings(tenant.id)}
+                        >
                           {formatTableDate(tenant.updatedAt)}
                         </td>
 
-                        <td className="px-6 py-4 text-gray-500 dark:text-gray-400">
+                        <td
+                          className="cursor-pointer px-6 py-4 text-gray-500 dark:text-gray-400"
+                          onClick={() => openTenantSettings(tenant.id)}
+                        >
                           {formatTableDate(tenant.createdAt)}
                         </td>
 
-                        <td className="px-6 py-4 text-right">
+                        <td className="cursor-default px-6 py-4 text-right">
                           <ActionsDropdown
                             tenantId={tenant.id}
                             tenantStatus={tenant.status}

@@ -6,6 +6,11 @@ let searchParamsMock = new URLSearchParams();
 
 jest.mock('next/navigation', () => ({
   useSearchParams: () => searchParamsMock,
+  usePathname: () => '/dashboard',
+  useRouter: () => ({
+    replace: jest.fn(),
+    push: jest.fn(),
+  }),
 }));
 
 jest.mock('@/components/layout/PageHeader', () => ({
@@ -32,20 +37,32 @@ jest.mock('@/components/dashboard/TenantsTable', () => ({
     error,
     searchQuery,
   }: {
-    tenants: Array<{ name: string }>;
+    tenants: Array<{ name: string; slug?: string; status?: string }>;
     error?: string | null;
     searchQuery?: string;
-  }) => (
-    <section>
-      <p>Tabla empresas</p>
-      <p>Filtro global: {searchQuery ?? ''}</p>
-      <p>Total visible: {tenants.length}</p>
-      {tenants.map((tenant) => (
-        <p key={tenant.name}>{tenant.name}</p>
-      ))}
-      {error ? <p>{error}</p> : null}
-    </section>
-  ),
+  }) => {
+    const q = (searchQuery ?? '').trim().toLowerCase();
+    const visible = q
+      ? tenants.filter(
+          (tenant) =>
+            tenant.name.toLowerCase().includes(q) ||
+            (tenant.slug ?? '').toLowerCase().includes(q) ||
+            (tenant.status ?? '').toLowerCase().includes(q),
+        )
+      : tenants;
+
+    return (
+      <section>
+        <p>Tabla empresas</p>
+        <p>Filtro global: {searchQuery ?? ''}</p>
+        <p>Total visible: {visible.length}</p>
+        {visible.map((tenant) => (
+          <p key={tenant.name}>{tenant.name}</p>
+        ))}
+        {error ? <p>{error}</p> : null}
+      </section>
+    );
+  },
 }));
 
 jest.mock('@/components/dashboard/SystemStatusPanel', () => ({
@@ -94,6 +111,17 @@ jest.mock('@/lib/platform-ui-copy', () => ({
   PLATFORM_UI_COPY: {
     dashboard: {
       title: 'Centro de control',
+    },
+    audit: {
+      actionLabels: {
+        create: 'Creación',
+        update: 'Actualización',
+        delete: 'Eliminación',
+      },
+      entityTypeLabels: {
+        tenant: 'empresa',
+        user: 'usuario',
+      },
     },
   },
 }));
@@ -206,9 +234,15 @@ describe('DashboardClient', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('Actividad reciente')).toBeInTheDocument();
     expect(screen.getByText('Directorio por estado')).toBeInTheDocument();
-    expect(screen.getByText(/María Admin · update en empresa/i)).toBeInTheDocument();
+    expect(screen.getByText(/María Admin · Actualización en empresa/i)).toBeInTheDocument();
     expect(screen.queryByText('Puestas en marcha')).not.toBeInTheDocument();
-    expect(screen.queryByText('Atención operativa')).not.toBeInTheDocument();
+
+    const healthSection = screen.getByText('Salud de plataforma').closest('section');
+    expect(healthSection).toBeTruthy();
+    const healthLines = Array.from(healthSection!.querySelectorAll('p'))
+      .map((node) => node.textContent ?? '')
+      .filter((text) => text.includes(':'));
+    expect(healthLines[0]).toMatch(/^Atención operativa:/);
   });
 
   it('muestra degradación parcial cuando fallan directorio, salud y auditoría', async () => {
@@ -230,6 +264,8 @@ describe('DashboardClient', () => {
       screen.getByText('No pudimos validar API, base de datos y Redis en este momento.'),
     ).toBeInTheDocument();
     expect(screen.getByText(/No pudimos cargar la actividad reciente\./)).toBeInTheDocument();
-    expect(screen.getByText('API de plataforma: No pudimos cargar el directorio principal.')).toBeInTheDocument();
+    expect(
+      screen.getByText('API de plataforma: No pudimos cargar el directorio principal.'),
+    ).toBeInTheDocument();
   });
 });

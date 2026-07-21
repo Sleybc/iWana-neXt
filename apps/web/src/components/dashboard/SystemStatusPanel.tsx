@@ -1,5 +1,5 @@
 // apps/web/src/components/dashboard/SystemStatusPanel.tsx
-import { cn } from '@iwana/ui';
+import { cn, SkeletonBlock } from '@iwana/ui';
 
 type StatusLevel = 'ok' | 'warning' | 'error' | 'unknown';
 
@@ -14,26 +14,28 @@ interface SystemStatusPanelProps {
   title?: string;
   summary?: string;
   lastCheckedAt?: string | null;
+  isLoading?: boolean;
   className?: string;
 }
 
 const statusStyles: Record<StatusLevel, { dot: string; text: string; bg: string }> = {
   ok: {
-    dot: 'bg-emerald-500',
-    text: 'text-emerald-700 dark:text-emerald-400',
-    bg: 'bg-emerald-50 dark:bg-emerald-950/25',
+    dot: 'bg-success-500',
+    text: 'text-success-700 dark:text-success-400',
+    bg: 'bg-success-50 dark:bg-dark-surface-3/30',
   },
   warning: {
-    dot: 'bg-amber-500',
-    text: 'text-amber-700 dark:text-amber-400',
-    bg: 'bg-amber-50 dark:bg-amber-950/25',
+    dot: 'bg-warning-500',
+    text: 'text-warning-700 dark:text-warning-400',
+    bg: 'bg-warning-50 dark:bg-dark-surface-3/30',
   },
   error: {
-    dot: 'bg-red-500',
-    text: 'text-red-700 dark:text-red-400',
-    bg: 'bg-red-50 dark:bg-red-950/25',
+    dot: 'bg-error-500',
+    text: 'text-error-700 dark:text-error-400',
+    bg: 'bg-error-50 dark:bg-dark-surface-3/30',
   },
   unknown: {
+    // Sin token DS para estado indeterminado — gray genérico aceptado en Fase-1
     dot: 'bg-gray-400 dark:bg-gray-500',
     text: 'text-gray-600 dark:text-gray-400',
     bg: 'bg-gray-50 dark:bg-dark-surface-3/80',
@@ -68,12 +70,13 @@ export function SystemStatusPanel({
   title = 'Salud de plataforma',
   summary,
   lastCheckedAt,
+  isLoading = false,
   className,
 }: SystemStatusPanelProps) {
   return (
     <div
       className={cn(
-        'rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-dark-border dark:bg-dark-surface-2',
+        'rounded-2xl border border-gray-200 bg-white p-5 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2',
         className,
       )}
     >
@@ -96,30 +99,37 @@ export function SystemStatusPanel({
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {indicators.map((ind, idx) => {
-          const styles = statusStyles[ind.status];
-          return (
-            <div key={idx} className={cn('rounded-2xl border border-transparent p-3', styles.bg)}>
-              <div className="flex items-center gap-2">
-                <span
-                  className={cn('h-2.5 w-2.5 shrink-0 rounded-full', styles.dot)}
-                  aria-hidden="true"
-                />
-                <span className={cn('text-xs font-medium', styles.text)}>
-                  {statusLabel[ind.status]}
-                </span>
-              </div>
-              <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
-                {ind.label}
-              </p>
-              {ind.detail && (
-                <p className="mt-1 text-xs leading-5 text-gray-600 dark:text-gray-300">
-                  {ind.detail}
-                </p>
-              )}
-            </div>
-          );
-        })}
+        {isLoading
+          ? Array.from({ length: 4 }).map((_, idx) => (
+              <SkeletonBlock key={`status-skeleton-${idx}`} className="h-20 w-full bg-gray-200" />
+            ))
+          : indicators.map((ind, idx) => {
+              const styles = statusStyles[ind.status];
+              return (
+                <div
+                  key={idx}
+                  className={cn('rounded-2xl border border-transparent p-3', styles.bg)}
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn('h-2.5 w-2.5 shrink-0 rounded-full', styles.dot)}
+                      aria-hidden="true"
+                    />
+                    <span className={cn('text-xs font-medium', styles.text)}>
+                      {statusLabel[ind.status]}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
+                    {ind.label}
+                  </p>
+                  {ind.detail && (
+                    <p className="mt-1 text-xs leading-5 text-gray-600 dark:text-gray-300">
+                      {ind.detail}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
       </div>
     </div>
   );

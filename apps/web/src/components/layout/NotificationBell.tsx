@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Bell } from 'lucide-react';
 import { tenantApi, type TenantListItem } from '@/lib/api-client';
-import { cn } from '@iwana/ui';
+import { cn, interactiveFocusClassName } from '@iwana/ui';
 
 type NotificationTone = 'error' | 'warning' | 'info' | 'success';
 
@@ -43,11 +43,12 @@ const TONE_PRIORITY: Record<NotificationTone, number> = {
   success: 1,
 };
 
+// info no tiene escala info-* en globals.css; se usa azul de marca (token DS existente).
 const toneClasses: Record<NotificationTone, string> = {
-  error: 'bg-red-500',
-  warning: 'bg-amber-500',
-  info: 'bg-sky-500',
-  success: 'bg-emerald-500',
+  error: 'bg-error-500',
+  warning: 'bg-warning-500',
+  info: 'bg-iwana-primary',
+  success: 'bg-success-500',
 };
 
 function formatUpdatedAt(value: string): string {
@@ -180,7 +181,10 @@ export function NotificationBell() {
         aria-expanded={open}
         aria-controls="notifications-menu"
         onClick={() => setOpen((current) => !current)}
-        className="relative flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-surface-4 dark:hover:text-white"
+        className={cn(
+          'relative flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:border-dark-border-2 dark:bg-dark-surface-3 dark:text-gray-400 dark:hover:bg-dark-surface-4 dark:hover:text-white',
+          interactiveFocusClassName,
+        )}
       >
         {worstAlertTone && (
           <span
@@ -198,7 +202,7 @@ export function NotificationBell() {
         ref={dropdownRef}
         aria-label="Notificaciones operativas"
         className={cn(
-          'absolute right-0 mt-3 w-80 rounded-xl border border-gray-200 bg-white shadow-lg dark:border-dark-border-2 dark:bg-dark-surface-3',
+          'absolute right-0 mt-3 w-80 rounded-xl border border-gray-200 bg-white shadow-iwana-lg dark:border-dark-border-2 dark:bg-dark-surface-3',
           open ? 'block' : 'hidden',
         )}
       >

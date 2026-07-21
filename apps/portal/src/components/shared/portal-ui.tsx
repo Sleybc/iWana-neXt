@@ -1,9 +1,8 @@
 import type { ComponentType, ReactNode } from 'react';
 import { AlertTriangle, CheckCircle2, CircleAlert, Info, Search } from 'lucide-react';
-import { Button, Input, cn } from '@iwana/ui';
+import { Button, Input, SkeletonBlock, cn, interactiveFocusClassName } from '@iwana/ui';
 
-export const interactiveFocusClassName =
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-dark-surface-2';
+export { interactiveFocusClassName };
 
 export const portalTextareaClassName = cn(
   'portal-input-surface min-h-24 w-full px-3 py-2 text-sm text-gray-900 dark:text-white',
@@ -387,12 +386,7 @@ export function PortalEmptyState({
 }
 
 export function PortalSkeletonBlock({ className }: PortalSkeletonBlockProps) {
-  return (
-    <div
-      aria-hidden="true"
-      className={cn('animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3', className)}
-    />
-  );
+  return <SkeletonBlock className={className} />;
 }
 
 /** Footer sticky compartido en flujos create-mode (compras, salidas, recepciones). */

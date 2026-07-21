@@ -54,4 +54,25 @@ describe('Tabla de empresas de plataforma', () => {
 
     expect(pushMock).toHaveBeenCalledWith('/tenants/tenant-1/settings');
   });
+
+  it('navega al detalle al hacer clic en la fila y no propaga desde el menú', () => {
+    render(<TenantsTable tenants={tenants} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalle de Acme ISP' }));
+    expect(pushMock).toHaveBeenCalledWith('/tenants/tenant-1/settings');
+
+    pushMock.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir menú de acciones' }));
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('muestra empty de primera vez con CTA para registrar empresa', () => {
+    render(<TenantsTable tenants={[]} />);
+
+    expect(screen.getByText('Aún no hay empresas registradas')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Registrar primera empresa' })).toHaveAttribute(
+      'href',
+      '/tenants/new',
+    );
+  });
 });

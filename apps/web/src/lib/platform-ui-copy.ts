@@ -37,6 +37,23 @@ export const PLATFORM_UI_COPY = {
       'Sigue cambios realizados por administradores sobre empresas, usuarios y configuracion de plataforma.',
     tenantSectionTitle: 'Auditoria por empresa',
     tenantSectionSubtitle: 'Revisa cambios realizados dentro de la empresa seleccionada.',
+    actionLabels: {
+      create: 'Creación',
+      update: 'Actualización',
+      delete: 'Eliminación',
+      suspend: 'Suspensión',
+      activate: 'Reactivación',
+      login: 'Inicio de sesión',
+      logout: 'Cierre de sesión',
+      provision: 'Puesta en marcha',
+      retry: 'Reintento',
+    },
+    entityTypeLabels: {
+      tenant: 'empresa',
+      user: 'usuario',
+      settings: 'configuración',
+      platform: 'plataforma',
+    },
   },
   shared: {
     selectTenant: 'Seleccionar empresa',
