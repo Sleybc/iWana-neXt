@@ -17,6 +17,7 @@ describe('stock-kardex-filters', () => {
       origin: StockMovementOrigin.ADJUSTMENT as const,
       itemId: 'item-001',
       locationId: 'loc-001',
+      serializedAssetId: 'asset-001',
       dateFrom: '2026-07-01',
       dateTo: '2026-07-18',
     };
@@ -27,6 +28,7 @@ describe('stock-kardex-filters', () => {
       origin: StockMovementOrigin.ADJUSTMENT,
       itemId: 'item-001',
       locationId: 'loc-001',
+      serializedAssetId: 'asset-001',
       dateFrom: '2026-07-01',
       dateTo: '2026-07-18',
       page: 2,

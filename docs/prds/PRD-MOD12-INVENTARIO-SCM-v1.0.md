@@ -293,6 +293,8 @@ Base purchasing: `/api/v1/purchasing`
 
 ## 10. Definition of Done
 
+<!-- Nota de trazabilidad (2026-07-21): el DoD original se conserva sin cambios; el estado real de cumplimiento está en el anexo T al final de este documento. -->
+
 - ADR-048 aprobado o autorizado para ejecucion controlada.
 - PRD, HLD, prompt y plan de implementacion alineados.
 - Migraciones tenant reversibles.
@@ -303,3 +305,33 @@ Base purchasing: `/api/v1/purchasing`
 - UI portal en espanol, sin enums crudos.
 - Logs sin PII ni secretos.
 - Informe de fase y checklist de calidad creados.
+
+---
+
+## Anexo T — Trazabilidad de ejecucion (2026-07-21)
+
+Anexo agregado por AI-EM-ARCH tras la auditoria de estado del modulo. **No modifica el alcance aprobado**: solo registra el estado real verificado contra codigo y apunta al documento que hace de indice.
+
+**Indice unico de estado de MOD12:** [INFORME-MOD12-INVENTARIO-AUDITORIA-ESTADO-v1.0.md](../informes/INFORME-MOD12-INVENTARIO-AUDITORIA-ESTADO-v1.0.md) — contiene el mapa completo RF-INV-01…25 contra codigo, los hallazgos H1–H7 con evidencia y el backlog priorizado.
+
+Resumen al 2026-07-21: **17 de 22 requisitos MVP construidos, 5 parciales, 1 no construido**; RF-INV-24 y RF-INV-25 siguen fuera de alcance declarado (Fase 2).
+
+| Requisito | Estado | Tratamiento |
+| --- | --- | --- |
+| RF-INV-12, RF-INV-13 (comodato) | Parcial — la tabla `asset_loan_assignments` existe y nadie la escribe | Submodulo Activos y comodato, **Fase 5B** |
+| RF-INV-20 (ficha 360) | No construido — `GET /assets/:id` devuelve la fila cruda | Submodulo Activos y comodato, **Fase 5A** (en ejecucion) |
+| RF-INV-19 (baja con aprobacion) | Parcial — `inventory_write_offs` nunca se escribe; sin aprobacion | Fase propia, prioridad 2 del backlog |
+| RF-INV-18, RF-INV-22 (vida util, `StockLow`) | Parcial — campos sin calculo; evento inexistente | Fase propia, prioridad 3 del backlog |
+| RF-INV-14 (evento de venta para Billing/ERP) | Parcial — movimiento `SALE` si, evento de dominio no | Se resuelve con la fase de eventos (prioridad 3) |
+| RF-INV-23 (conteo fisico) | Construido | Existencias Fase 3A (ADR-054) |
+| Resto de RF MVP | Construido | Ver informe de auditoria |
+
+**Submodulos con roadmap propio derivados de este PRD:**
+
+| Submodulo | PRD | Estado |
+| --- | --- | --- |
+| Catalogo maestro de articulos | [PRD-MOD12-CATALOGO-MAESTRO-ARTICULOS-v1.0.md](PRD-MOD12-CATALOGO-MAESTRO-ARTICULOS-v1.0.md) | Cerrado |
+| Proveedores | [PRD-MOD12-PROVEEDORES-v1.0.md](PRD-MOD12-PROVEEDORES-v1.0.md) | Cerrado |
+| Compras | [workspace hibrido](PRD-MOD12-COMPRAS-WORKSPACE-HIBRIDO-v1.0.md) + [cierre de flujo](PRD-MOD12-COMPRAS-CIERRE-FLUJO-v1.0.md) | Cerrado |
+| Existencias (stock) | [PRD-MOD12-INVENTARIO-EXISTENCIAS-v1.0.md](PRD-MOD12-INVENTARIO-EXISTENCIAS-v1.0.md) | Cerrado (F1–F4) |
+| Activos y comodato | [PRD-MOD12-ACTIVOS-COMODATO-v1.0.md](PRD-MOD12-ACTIVOS-COMODATO-v1.0.md) | **Abierto — Fase 5A ejecutable** |

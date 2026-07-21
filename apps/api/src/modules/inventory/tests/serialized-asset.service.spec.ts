@@ -1,7 +1,11 @@
 import { ConflictException, BadRequestException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { InventoryResponsibleType, SerializedAssetStatus } from '@iwana/shared';
+import { AssetLifecycleService } from '../services/asset-lifecycle.service';
+import { AssetLoanService } from '../services/asset-loan.service';
+import { SupplierPartyPort } from '../ports/supplier-party.port';
 import { SerializedAssetService } from '../services/serialized-asset.service';
+import { StockMovementQueryService } from '../services/stock-movement-query.service';
 
 jest.mock('@iwana/db', () => ({
   SerializedAsset: class SerializedAsset {},
@@ -19,7 +23,13 @@ describe('SerializedAssetService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new SerializedAssetService({} as DataSource);
+    service = new SerializedAssetService(
+      {} as DataSource,
+      { listPaginatedForAsset: jest.fn() } as unknown as AssetLifecycleService,
+      { list: jest.fn() } as unknown as StockMovementQueryService,
+      { getSupplierSummary: jest.fn() } as unknown as SupplierPartyPort,
+      { listForAsset: jest.fn() } as unknown as AssetLoanService,
+    );
   });
 
   it('normalizes serial numbers using trim and uppercase', () => {

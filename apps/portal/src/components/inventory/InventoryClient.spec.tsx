@@ -119,6 +119,7 @@ jest.mock('@/lib/api-client', () => ({
     listAssets: jest.fn(),
     listBalances: jest.fn(),
     getAsset: jest.fn(),
+    listLoans: jest.fn(),
     transfer: jest.fn(),
     sale: jest.fn(),
     registerReturn: jest.fn(),
@@ -465,6 +466,7 @@ describe('InventoryClient', () => {
       updatedAt: '2026-06-26T12:00:00.000Z',
     });
     inventoryApiMock.listAssets.mockResolvedValue([]);
+    inventoryApiMock.listLoans.mockResolvedValue({ data: [], total: 0, page: 1, limit: 50 });
     inventoryApiMock.listIssues.mockResolvedValue([]);
     inventoryApiMock.listCounts.mockResolvedValue([]);
     inventoryApiMock.listBalances.mockResolvedValue([

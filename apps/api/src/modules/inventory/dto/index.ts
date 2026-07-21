@@ -647,6 +647,49 @@ export class ListSerializedAssetsQueryDto {
   serialNumber?: string;
 }
 
+export const GetSerializedAssetDetailQuerySchema = z.object({
+  lifecyclePage: z.coerce.number().int().min(1).optional().default(1),
+  lifecycleLimit: z.coerce.number().int().min(1).max(100).optional().default(20),
+  movementsPage: z.coerce.number().int().min(1).optional().default(1),
+  movementsLimit: z.coerce.number().int().min(1).max(100).optional().default(20),
+});
+
+export type GetSerializedAssetDetailQueryInput = z.infer<
+  typeof GetSerializedAssetDetailQuerySchema
+>;
+
+export class GetSerializedAssetDetailQueryDto {
+  @ApiPropertyOptional({
+    default: 1,
+    minimum: 1,
+    description: 'Página del timeline de ciclo de vida',
+  })
+  @Allow()
+  lifecyclePage?: number;
+
+  @ApiPropertyOptional({
+    default: 20,
+    minimum: 1,
+    maximum: 100,
+    description: 'Límite del timeline de ciclo de vida',
+  })
+  @Allow()
+  lifecycleLimit?: number;
+
+  @ApiPropertyOptional({ default: 1, minimum: 1, description: 'Página de movimientos del activo' })
+  @Allow()
+  movementsPage?: number;
+
+  @ApiPropertyOptional({
+    default: 20,
+    minimum: 1,
+    maximum: 100,
+    description: 'Límite de movimientos del activo',
+  })
+  @Allow()
+  movementsLimit?: number;
+}
+
 export const ListStockBalancesQuerySchema = z.object({
   itemId: z.string().trim().min(1).max(160).optional(),
   locationId: z.string().trim().min(1).max(160).optional(),
@@ -1754,6 +1797,7 @@ export const ExecutionOrderMovementSchema = z.object({
   serialNumber: optionalTrimmedString(160),
   customerSiteLocationId: optionalTrimmedString(160),
   subscriberId: optionalTrimmedString(160),
+  contractRefId: optionalUuidLike(),
   action: z.nativeEnum(ExecutionOrderItemAction),
   finalDisposition: z.nativeEnum(InventoryDisposition),
   idempotencyKey: optionalTrimmedString(160),
@@ -1789,6 +1833,10 @@ export class ExecutionOrderMovementDto {
   @ApiPropertyOptional()
   @Allow()
   subscriberId?: string | null;
+
+  @ApiPropertyOptional()
+  @Allow()
+  contractRefId?: string | null;
 
   @ApiProperty({ enum: ExecutionOrderItemAction })
   @Allow()
@@ -2335,6 +2383,49 @@ export const ListSuppliersQuerySchema = z.object({
 
 export type ListSuppliersQueryInput = z.infer<typeof ListSuppliersQuerySchema>;
 
+export const ListLoansQuerySchema = z.object({
+  status: z.enum(['abierto', 'cerrado']).optional(),
+  subscriberRefId: z.string().uuid().optional(),
+  contractRefId: z.string().uuid().optional(),
+  serializedAssetId: z.string().uuid().optional(),
+  page: z.preprocess(
+    (value) => (value === '' || value === null ? undefined : value),
+    z.coerce.number().int().min(1).optional().default(1),
+  ),
+  limit: z.preprocess(
+    (value) => (value === '' || value === null ? undefined : value),
+    z.coerce.number().int().min(1).max(100).optional().default(20),
+  ),
+});
+
+export type ListLoansQueryInput = z.infer<typeof ListLoansQuerySchema>;
+
+export class ListLoansQueryDto {
+  @ApiPropertyOptional({ enum: ['abierto', 'cerrado'] })
+  @Allow()
+  status?: 'abierto' | 'cerrado';
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @Allow()
+  subscriberRefId?: string;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @Allow()
+  contractRefId?: string;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @Allow()
+  serializedAssetId?: string;
+
+  @ApiPropertyOptional({ default: 1, minimum: 1 })
+  @Allow()
+  page?: number;
+
+  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
+  @Allow()
+  limit?: number;
+}
+
 export class ListSuppliersQueryDto {
   @ApiPropertyOptional({ enum: SupplierProfileStatus })
   @Allow()
@@ -2356,6 +2447,7 @@ export class ListSuppliersQueryDto {
 export const ListStockMovementsQuerySchema = z.object({
   itemId: z.string().uuid().optional(),
   locationId: z.string().uuid().optional(),
+  serializedAssetId: z.string().uuid().optional(),
   origin: z.nativeEnum(StockMovementOrigin).optional(),
   dateFrom: z.coerce.date().optional(),
   dateTo: z.coerce.date().optional(),
@@ -2387,6 +2479,13 @@ export class ListStockMovementsQueryDto {
   @ApiPropertyOptional({ format: 'uuid' })
   @Allow()
   locationId?: string;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Filtra movimientos cuyas líneas tocan el activo serializado',
+  })
+  @Allow()
+  serializedAssetId?: string;
 
   @ApiPropertyOptional({ enum: StockMovementOrigin })
   @Allow()

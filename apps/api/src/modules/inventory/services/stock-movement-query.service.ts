@@ -50,7 +50,8 @@ export class StockMovementQueryService {
   ): Promise<{ data: StockMovementKardexRecord[]; total: number; page: number; limit: number }> {
     const validated = ListStockMovementsQuerySchema.parse(query);
     const { tenantId, schemaName } = TenantContext.getOrThrow();
-    const { itemId, locationId, origin, dateFrom, dateTo, search, page, limit } = validated;
+    const { itemId, locationId, serializedAssetId, origin, dateFrom, dateTo, search, page, limit } =
+      validated;
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
@@ -78,6 +79,18 @@ export class StockMovementQueryService {
               AND line.location_id = :locationId
           )`,
           { locationId },
+        );
+      }
+
+      if (serializedAssetId) {
+        qb.andWhere(
+          `EXISTS (
+            SELECT 1 FROM stock_movement_lines line
+            WHERE line.movement_id = movement.id
+              AND line.tenant_id = :tenantId
+              AND line.serialized_asset_id = :serializedAssetId
+          )`,
+          { serializedAssetId },
         );
       }
 

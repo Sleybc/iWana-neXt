@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  AssetLifecycleEventType,
   GoodsReceiptStatus,
   InventoryItemCategory,
   InventoryItemKind,
@@ -408,6 +409,92 @@ export function getSerializedAssetStatusLabel(value: SerializedAssetStatus): str
   return resolveLabel(value, SERIALIZED_ASSET_STATUS_LABELS);
 }
 
+export const ASSET_LIFECYCLE_EVENT_TYPE_LABELS: Record<AssetLifecycleEventType, string> = {
+  [AssetLifecycleEventType.RECEIVED]: 'Recepción',
+  [AssetLifecycleEventType.TRANSFERRED]: 'Transferencia',
+  [AssetLifecycleEventType.INSTALLED]: 'Instalación',
+  [AssetLifecycleEventType.RETURNED]: 'Retorno',
+  [AssetLifecycleEventType.REPAIRED]: 'Reparación',
+  [AssetLifecycleEventType.REFURBISHED]: 'Reacondicionamiento',
+  [AssetLifecycleEventType.SOLD]: 'Venta',
+  [AssetLifecycleEventType.CONSUMED]: 'Consumo interno',
+  [AssetLifecycleEventType.WRITTEN_OFF]: 'Baja',
+  [AssetLifecycleEventType.STATUS_CHANGED]: 'Cambio de estado',
+};
+
+export type UsefulLifeStatusLabel = 'sin-dato' | 'vigente' | 'por-vencer' | 'vencida';
+
+export const USEFUL_LIFE_STATUS_LABELS: Record<UsefulLifeStatusLabel, string> = {
+  'sin-dato': 'Sin dato',
+  vigente: 'Vigente',
+  'por-vencer': 'Por vencer',
+  vencida: 'Vencida',
+};
+
+export type AssetLoanStatusLabel = 'abierto' | 'cerrado';
+
+export const ASSET_LOAN_STATUS_LABELS: Record<AssetLoanStatusLabel, string> = {
+  abierto: 'Abierto',
+  cerrado: 'Cerrado',
+};
+
+export const INVENTORY_OPAQUE_REF_TYPE_LABELS = {
+  subscriber: 'Suscriptor',
+  contract: 'Contrato',
+  technician: 'Técnico',
+  executionOrder: 'Orden de trabajo',
+  actor: 'Usuario',
+} as const;
+
+export type InventoryOpaqueRefType = keyof typeof INVENTORY_OPAQUE_REF_TYPE_LABELS;
+
+export function formatInventoryOpaqueRef(
+  type: InventoryOpaqueRefType,
+  refId: string | null | undefined,
+): string {
+  const label = INVENTORY_OPAQUE_REF_TYPE_LABELS[type];
+  const normalized = refId?.trim();
+  if (!normalized) {
+    return `${label} · sin referencia`;
+  }
+
+  const compact = normalized.replace(/-/g, '');
+  if (compact.length <= 8) {
+    return `${label} · ${compact.toLowerCase()}`;
+  }
+
+  const abbreviated = `${compact.slice(0, 4).toLowerCase()}…${compact.slice(-4).toLowerCase()}`;
+  return `${label} · ${abbreviated}`;
+}
+
+export function getAssetLifecycleEventTypeLabel(value: AssetLifecycleEventType): string {
+  return resolveLabel(value, ASSET_LIFECYCLE_EVENT_TYPE_LABELS);
+}
+
+export function getUsefulLifeStatusLabel(value: UsefulLifeStatusLabel): string {
+  return resolveLabel(value, USEFUL_LIFE_STATUS_LABELS);
+}
+
+export function getAssetLoanStatusLabel(value: AssetLoanStatusLabel): string {
+  return resolveLabel(value, ASSET_LOAN_STATUS_LABELS);
+}
+
+export function getWarrantyCoverageLabel(warrantyUntil: string | null | undefined): string {
+  if (!warrantyUntil?.trim()) {
+    return 'Sin fecha de garantía';
+  }
+
+  const end = new Date(warrantyUntil);
+  if (Number.isNaN(end.getTime())) {
+    return 'Sin fecha de garantía';
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  return end >= today ? 'Garantía vigente' : 'Garantía vencida';
+}
+
 export function getPurchaseRequestStatusLabel(value: PurchaseRequestStatus): string {
   return resolveLabel(value, PURCHASE_REQUEST_STATUS_LABELS);
 }
@@ -594,6 +681,21 @@ export function formatInventoryQuantity(value: string | number | null | undefine
 }
 
 export type PurchaseBadgeVariant = 'neutral' | 'primary' | 'warning' | 'error' | 'success' | 'info';
+
+export function getUsefulLifeStatusBadgeVariant(
+  value: UsefulLifeStatusLabel,
+): PurchaseBadgeVariant {
+  switch (value) {
+    case 'vigente':
+      return 'success';
+    case 'por-vencer':
+      return 'warning';
+    case 'vencida':
+      return 'error';
+    default:
+      return 'neutral';
+  }
+}
 
 export const PURCHASE_REQUEST_STATUS_VARIANTS: Record<PurchaseRequestStatus, PurchaseBadgeVariant> =
   {

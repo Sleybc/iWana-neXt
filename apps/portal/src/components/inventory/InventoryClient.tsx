@@ -65,6 +65,8 @@ import {
   type ReceivePurchaseOrderDto,
   type RejectPurchaseRequestDto,
   type SerializedAssetRecord,
+  type SerializedAssetDetailRecord,
+  type AssetLoanRecord,
   type StockBalanceRecord,
   type StockLocationRecord,
   type StockMovementResultRecord,
@@ -102,6 +104,8 @@ import type { PurchaseComposerInitialValues } from './PurchaseRequestComposer';
 import { SuppliersPanel } from './SuppliersPanel';
 import { SupplierFormDrawer } from './SupplierFormDrawer';
 import { SerializedAssetDetailDrawer } from './SerializedAssetDetailDrawer';
+import { AssetsWorkspace, type AssetsSubview } from './AssetsWorkspace';
+import type { AssetLoanStatusFilter } from './AssetLoansPanel';
 import { StockLocationFormDialog } from './StockLocationFormDialog';
 import { type LocationMatrixCustodyFilter } from './StockLocationsMatrix';
 import { StockLocationsPanel } from './StockLocationsPanel';
@@ -143,6 +147,15 @@ export type InventoryTab =
   | 'assets'
   | 'movements'
   | 'writeoffs';
+
+const ASSET_DETAIL_SECTION_LIMIT = 20;
+
+const ASSET_DETAIL_QUERY_DEFAULTS = {
+  lifecyclePage: 1,
+  lifecycleLimit: ASSET_DETAIL_SECTION_LIMIT,
+  movementsPage: 1,
+  movementsLimit: ASSET_DETAIL_SECTION_LIMIT,
+} as const;
 
 type CatalogSubView = 'products' | 'categories';
 
@@ -208,6 +221,10 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const kardexAssetIdFromUrl = useMemo(
+    () => searchParams.get('serializedAssetId')?.trim() ?? '',
+    [searchParams],
+  );
   const { user } = useAuth();
   const canAdjustStock = user?.role === UserRole.ADMIN;
   const [activeTab, setActiveTab] = useState<InventoryTab>(resolveInventoryTab(initialTab));
@@ -232,9 +249,17 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   const [locationSubmitError, setLocationSubmitError] = useState<string | null>(null);
   const [isSubmittingLocation, setIsSubmittingLocation] = useState(false);
 
-  const [assetDetail, setAssetDetail] = useState<SerializedAssetRecord | null>(null);
+  const [assetDetail, setAssetDetail] = useState<SerializedAssetDetailRecord | null>(null);
+  const [assetDetailTargetId, setAssetDetailTargetId] = useState<string | null>(null);
   const [assetDetailError, setAssetDetailError] = useState<string | null>(null);
   const [isLoadingAsset, setIsLoadingAsset] = useState(false);
+  const [isLoadingMoreAssetLifecycle, setIsLoadingMoreAssetLifecycle] = useState(false);
+  const [isLoadingMoreAssetMovements, setIsLoadingMoreAssetMovements] = useState(false);
+  const [assetsSubview, setAssetsSubview] = useState<AssetsSubview>('list');
+  const [loans, setLoans] = useState<AssetLoanRecord[]>([]);
+  const [isLoadingLoans, setIsLoadingLoans] = useState(false);
+  const [loansError, setLoansError] = useState<string | null>(null);
+  const [loanStatusFilter, setLoanStatusFilter] = useState<AssetLoanStatusFilter>('all');
   const [createRequestError, setCreateRequestError] = useState<string | null>(null);
   const [pendingComposerPrefill, setPendingComposerPrefill] =
     useState<PurchaseComposerInitialValues | null>(null);
@@ -452,9 +477,35 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     }
   }, []);
 
+  const loadLoans = useCallback(async () => {
+    setIsLoadingLoans(true);
+    setLoansError(null);
+    try {
+      const response = await inventoryApi.listLoans({
+        ...(loanStatusFilter !== 'all' ? { status: loanStatusFilter } : {}),
+        page: 1,
+        limit: 50,
+      });
+      setLoans(response.data);
+    } catch (loadError) {
+      setLoansError(mapInventoryError(loadError));
+      setLoans([]);
+    } finally {
+      setIsLoadingLoans(false);
+    }
+  }, [loanStatusFilter]);
+
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (activeTab !== 'assets' || assetsSubview !== 'loans') {
+      return;
+    }
+
+    void loadLoans();
+  }, [activeTab, assetsSubview, loadLoans]);
 
   useEffect(() => {
     const tabFromUrl = searchParams.get('tab');
@@ -489,6 +540,14 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         : { ...current, commercialReferenceId: commercialRefFromUrl },
     );
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!kardexAssetIdFromUrl) {
+      return;
+    }
+
+    setActiveTab('stock');
+  }, [kardexAssetIdFromUrl]);
 
   useEffect(() => {
     const tabFromUrl = searchParams.get('tab');
@@ -1119,18 +1178,106 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   }
 
   async function openAssetDetail(assetId: string) {
+    setAssetDetailTargetId(assetId);
     setAssetDetailError(null);
     setIsLoadingAsset(true);
     try {
-      const asset = await inventoryApi.getAsset(assetId);
+      const asset = await inventoryApi.getAsset(assetId, ASSET_DETAIL_QUERY_DEFAULTS);
       setAssetDetail(asset);
     } catch (detailError) {
       setAssetDetailError(mapInventoryError(detailError));
       setAssetDetail(null);
+      setAssetDetailTargetId(null);
     } finally {
       setIsLoadingAsset(false);
     }
   }
+
+  async function loadMoreAssetLifecycle() {
+    if (!assetDetail) {
+      return;
+    }
+
+    setIsLoadingMoreAssetLifecycle(true);
+    try {
+      const nextPage = assetDetail.lifecycle.page + 1;
+      const next = await inventoryApi.getAsset(assetDetail.id, {
+        ...ASSET_DETAIL_QUERY_DEFAULTS,
+        lifecyclePage: nextPage,
+        lifecycleLimit: assetDetail.lifecycle.limit,
+        movementsPage: 1,
+        movementsLimit: assetDetail.movements.limit,
+      });
+      setAssetDetail((current) => {
+        if (!current || current.id !== next.id) {
+          return current;
+        }
+
+        return {
+          ...next,
+          lifecycle: {
+            ...next.lifecycle,
+            data: [...current.lifecycle.data, ...next.lifecycle.data],
+          },
+          movements: current.movements,
+        };
+      });
+    } catch (detailError) {
+      setAssetDetailError(mapInventoryError(detailError));
+    } finally {
+      setIsLoadingMoreAssetLifecycle(false);
+    }
+  }
+
+  async function loadMoreAssetMovements() {
+    if (!assetDetail) {
+      return;
+    }
+
+    setIsLoadingMoreAssetMovements(true);
+    try {
+      const nextPage = assetDetail.movements.page + 1;
+      const next = await inventoryApi.getAsset(assetDetail.id, {
+        ...ASSET_DETAIL_QUERY_DEFAULTS,
+        lifecyclePage: 1,
+        lifecycleLimit: assetDetail.lifecycle.limit,
+        movementsPage: nextPage,
+        movementsLimit: assetDetail.movements.limit,
+      });
+      setAssetDetail((current) => {
+        if (!current || current.id !== next.id) {
+          return current;
+        }
+
+        return {
+          ...next,
+          lifecycle: current.lifecycle,
+          movements: {
+            ...next.movements,
+            data: [...current.movements.data, ...next.movements.data],
+          },
+        };
+      });
+    } catch (detailError) {
+      setAssetDetailError(mapInventoryError(detailError));
+    } finally {
+      setIsLoadingMoreAssetMovements(false);
+    }
+  }
+
+  const handleOpenAssetKardex = useCallback(
+    (assetId: string) => {
+      setAssetDetail(null);
+      setAssetDetailTargetId(null);
+      setActiveTab('stock');
+      const nextSearchParams = new URLSearchParams(searchParams.toString());
+      nextSearchParams.set('tab', 'stock');
+      nextSearchParams.set('serializedAssetId', assetId);
+      const nextQuery = nextSearchParams.toString();
+      router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
 
   async function handleCreateRequest(payload: CreatePurchaseRequestDto) {
     setIsSubmittingRequest(true);
@@ -1643,7 +1790,6 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
           description={assetDetailError}
         />
       )}
-      {isLoadingAsset && <PortalSkeletonBlock className="h-24" />}
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList aria-label="Secciones de inventario" className={portalModuleTabsShellClassName}>
@@ -2044,6 +2190,12 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
               userLabelById={userLabelById}
               custodyFilter={locationCustodyFilter}
               canAdjust={canAdjustStock}
+              {...(kardexAssetIdFromUrl
+                ? {
+                    initialSubview: 'kardex' as const,
+                    initialKardexFilters: { serializedAssetId: kardexAssetIdFromUrl },
+                  }
+                : {})}
               onCustodyFilterChange={handleLocationCustodyFilterChange}
               onAdjustmentRegistered={(movementNumber) => {
                 setMovementNotice(`Ajuste registrado: ${movementNumber}`);
@@ -2121,81 +2273,21 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         </TabsContent>
 
         <TabsContent value="assets" className="space-y-6">
-          <PortalPanel
-            eyebrow="Activos"
-            title="Activos con serial"
-            description="Equipos identificados por serial para soporte, mantenimiento y comodato."
-          >
-            {isLoading ? (
-              <PortalSkeletonBlock className="h-72" />
-            ) : assets.length === 0 ? (
-              <PortalEmptyState
-                title="Sin activos con serial"
-                description="Recibe una compra o registra equipos con serial para verlos aquí."
-              />
-            ) : (
-              <div className={portalDataTableShellClassName}>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-border">
-                    <thead className="bg-gray-50 dark:bg-dark-surface-2">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                          Serial
-                        </th>
-                        <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                          Producto
-                        </th>
-                        <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                          Estado
-                        </th>
-                        <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                          Ubicación
-                        </th>
-                        <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                          Compra
-                        </th>
-                        <th className="px-4 py-3 text-left font-medium text-iwana-secondary-700 dark:text-gray-200">
-                          Acción
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
-                      {assets.map((asset) => (
-                        <tr key={asset.id}>
-                          <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-300">
-                            {asset.serialNumber ?? asset.assetTag ?? 'Sin serial'}
-                          </td>
-                          <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                            {itemMap.get(asset.inventoryItemId)?.name ?? 'Producto no encontrado'}
-                          </td>
-                          <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                            {getSerializedAssetStatusLabel(asset.currentStatus)}
-                          </td>
-                          <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                            {locationMap.get(asset.currentLocationId ?? '')?.name ??
-                              'Sin ubicación'}
-                          </td>
-                          <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                            {formatInventoryDate(asset.purchaseDate)}
-                          </td>
-                          <td className="px-4 py-3">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => void openAssetDetail(asset.id)}
-                            >
-                              Ver detalle
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </PortalPanel>
+          <AssetsWorkspace
+            assets={assets}
+            items={items}
+            locations={locations}
+            loans={loans}
+            isLoading={isLoading}
+            isLoadingLoans={isLoadingLoans}
+            loansError={loansError}
+            loanStatusFilter={loanStatusFilter}
+            initialSubview={assetsSubview}
+            onSubviewChange={setAssetsSubview}
+            onLoanStatusFilterChange={setLoanStatusFilter}
+            onOpenAssetDetail={(assetId) => void openAssetDetail(assetId)}
+            onRefreshLoans={() => void loadLoans()}
+          />
         </TabsContent>
 
         <TabsContent value="movements" className="space-y-6">
@@ -2578,11 +2670,18 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
       />
 
       <SerializedAssetDetailDrawer
-        open={Boolean(assetDetail)}
-        asset={assetDetail}
-        item={itemMap.get(assetDetail?.inventoryItemId ?? '') ?? null}
-        location={locationMap.get(assetDetail?.currentLocationId ?? '') ?? null}
-        onClose={() => setAssetDetail(null)}
+        open={Boolean(assetDetailTargetId)}
+        detail={assetDetail}
+        isLoading={isLoadingAsset}
+        isLoadingMoreLifecycle={isLoadingMoreAssetLifecycle}
+        isLoadingMoreMovements={isLoadingMoreAssetMovements}
+        onClose={() => {
+          setAssetDetail(null);
+          setAssetDetailTargetId(null);
+        }}
+        onLoadMoreLifecycle={() => void loadMoreAssetLifecycle()}
+        onLoadMoreMovements={() => void loadMoreAssetMovements()}
+        onOpenKardex={handleOpenAssetKardex}
       />
 
       <InventoryCreateProductDialog

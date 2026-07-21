@@ -15,6 +15,7 @@ import { StockItemDetailDrawer } from './StockItemDetailDrawer';
 import { StockKardexPanel } from './StockKardexPanel';
 import { StockLocationsMatrix, type LocationMatrixCustodyFilter } from './StockLocationsMatrix';
 import { StockReplenishmentPanel } from './StockReplenishmentPanel';
+import type { StockKardexFilters } from './stock-kardex-filters';
 
 export type StockSubview = 'by-product' | 'by-location' | 'kardex' | 'replenishment';
 
@@ -25,6 +26,8 @@ interface StockWorkspaceProps {
   userLabelById?: Map<string, string>;
   custodyFilter?: LocationMatrixCustodyFilter;
   canAdjust?: boolean;
+  initialSubview?: StockSubview;
+  initialKardexFilters?: Partial<StockKardexFilters>;
   onCustodyFilterChange?: (filter: LocationMatrixCustodyFilter) => void;
   onAdjustmentRegistered: (movementNumber: string) => void;
   onGeneratePurchaseRequest?: (values: PurchaseComposerInitialValues) => void;
@@ -37,15 +40,23 @@ export function StockWorkspace({
   userLabelById,
   custodyFilter = 'all',
   canAdjust = false,
+  initialSubview,
+  initialKardexFilters,
   onCustodyFilterChange,
   onAdjustmentRegistered,
   onGeneratePurchaseRequest,
 }: StockWorkspaceProps) {
-  const [subview, setSubview] = useState<StockSubview>(() =>
-    custodyFilter === 'mobile' ? 'by-location' : 'by-product',
+  const [subview, setSubview] = useState<StockSubview>(
+    () => initialSubview ?? (custodyFilter === 'mobile' ? 'by-location' : 'by-product'),
   );
   const [detailItemId, setDetailItemId] = useState<string | null>(null);
   const [adjustItemId, setAdjustItemId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialSubview) {
+      setSubview(initialSubview);
+    }
+  }, [initialSubview]);
 
   useEffect(() => {
     if (custodyFilter === 'mobile') {
@@ -99,7 +110,11 @@ export function StockWorkspace({
         </TabsContent>
 
         <TabsContent value="kardex" className="space-y-4">
-          <StockKardexPanel items={items} locations={locations} />
+          <StockKardexPanel
+            items={items}
+            locations={locations}
+            {...(initialKardexFilters ? { initialFilters: initialKardexFilters } : {})}
+          />
         </TabsContent>
 
         <TabsContent value="replenishment" className="space-y-4">

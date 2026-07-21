@@ -14,6 +14,7 @@ import { StockLocationService } from './services/stock-location.service';
 import { InventoryController } from './inventory.controller';
 import { ReplenishmentService } from './services/replenishment.service';
 import { CycleCountService } from './services/cycle-count.service';
+import { AssetLoanService } from './services/asset-loan.service';
 
 function getRequestSchema(
   operation: Record<string, unknown> | undefined,
@@ -45,6 +46,7 @@ describe('InventoryController Swagger', () => {
         { provide: InventoryDashboardService, useValue: {} },
         { provide: ReplenishmentService, useValue: {} },
         { provide: CycleCountService, useValue: {} },
+        { provide: AssetLoanService, useValue: {} },
       ],
     }).compile();
 
@@ -125,5 +127,35 @@ describe('InventoryController Swagger', () => {
     expect(document.paths['/inventory/counts/{id}/cancel']?.post?.summary).toBe(
       'Cancelar conteo físico sin efecto en stock',
     );
+  });
+
+  it('documenta ficha 360 de activo y filtro serializedAssetId en kardex', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('Swagger Inventory Test').setVersion('1.0').build(),
+    );
+
+    const getAsset = document.paths['/inventory/assets/{id}']?.get;
+    const listMovements = document.paths['/inventory/movements']?.get;
+    const getAssetResponse = getAsset?.responses?.['200'] as
+      | { content?: Record<string, { schema?: unknown }> }
+      | undefined;
+
+    expect(getAsset?.summary).toBe('Obtener ficha 360 de activo serializado');
+    expect(getAsset?.parameters?.length).toBeGreaterThan(0);
+    expect(getAssetResponse?.content?.['application/json']?.schema).toBeDefined();
+    expect(listMovements?.parameters?.length).toBeGreaterThan(0);
+  });
+
+  it('documenta listado de comodatos', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('Swagger Inventory Test').setVersion('1.0').build(),
+    );
+
+    const listLoans = document.paths['/inventory/loans']?.get;
+
+    expect(listLoans?.summary).toBe('Listar comodatos de activos');
+    expect(listLoans?.parameters?.length).toBeGreaterThan(0);
   });
 });

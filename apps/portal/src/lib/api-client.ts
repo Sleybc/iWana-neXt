@@ -67,6 +67,7 @@ import {
   DocumentTypeParty,
   PartyContactType,
   PartyType,
+  AssetLifecycleEventType,
   SerializedAssetStatus,
   SupplierProfileStatus,
   StockAdjustmentReason,
@@ -5881,6 +5882,115 @@ export interface SerializedAssetRecord {
   updatedAt: string;
 }
 
+export type UsefulLifeStatus = 'sin-dato' | 'vigente' | 'por-vencer' | 'vencida';
+
+export type AssetLoanStatus = 'abierto' | 'cerrado';
+
+export interface SerializedAssetDetailItemRecord {
+  id: string;
+  sku: string;
+  name: string;
+  categoryName: string | null;
+}
+
+export interface SerializedAssetDetailLocationRecord {
+  id: string;
+  code: string;
+  name: string;
+  type: StockLocationType;
+}
+
+export interface SerializedAssetPurchaseOriginRecord {
+  purchaseOrderId: string | null;
+  purchaseOrderNumber: string | null;
+  goodsReceiptId: string | null;
+  receivedAt: string | null;
+  supplierPartyRefId: string | null;
+  supplierDisplayName: string | null;
+  unitCost: string | null;
+}
+
+export interface SerializedAssetUsefulLifeRecord {
+  monthsTotal: number | null;
+  monthsElapsed: number | null;
+  monthsRemaining: number | null;
+  warrantyUntil: string | null;
+  status: UsefulLifeStatus;
+}
+
+export interface AssetLifecycleEventRecord {
+  id: string;
+  eventType: AssetLifecycleEventType;
+  fromStatus: SerializedAssetStatus | null;
+  toStatus: SerializedAssetStatus | null;
+  locationId: string | null;
+  locationName: string | null;
+  responsibleRefId: string | null;
+  actorUserId: string | null;
+  notes: string | null;
+  occurredAt: string;
+  stockMovementId: string | null;
+}
+
+export interface AssetLoanRecord {
+  id: string;
+  serializedAssetId: string;
+  subscriberRefId: string;
+  contractRefId: string | null;
+  installedAt: string;
+  removedAt: string | null;
+  executionOrderRefId: string | null;
+  stockMovementId: string | null;
+  status: AssetLoanStatus;
+}
+
+export interface PaginatedAssetLoans {
+  data: AssetLoanRecord[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface ListAssetLoansParams {
+  status?: AssetLoanStatus;
+  subscriberRefId?: string;
+  contractRefId?: string;
+  serializedAssetId?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface PaginatedAssetLifecycleEvents {
+  data: AssetLifecycleEventRecord[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface PaginatedAssetMovements {
+  data: StockMovementKardexRecord[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface SerializedAssetDetailRecord extends SerializedAssetRecord {
+  item: SerializedAssetDetailItemRecord | null;
+  currentLocation: SerializedAssetDetailLocationRecord | null;
+  purchaseOrigin: SerializedAssetPurchaseOriginRecord | null;
+  usefulLife: SerializedAssetUsefulLifeRecord;
+  lifecycle: PaginatedAssetLifecycleEvents;
+  movements: PaginatedAssetMovements;
+  loans: { data: AssetLoanRecord[]; total: number };
+}
+
+export interface GetSerializedAssetParams {
+  lifecyclePage?: number;
+  lifecycleLimit?: number;
+  movementsPage?: number;
+  movementsLimit?: number;
+}
+
 export interface StockBalanceRecord {
   id: string;
   tenantId: string;
@@ -5967,6 +6077,7 @@ export interface PaginatedStockMovements {
 export interface ListStockMovementsParams {
   itemId?: string;
   locationId?: string;
+  serializedAssetId?: string;
   origin?: StockMovementOrigin;
   dateFrom?: string;
   dateTo?: string;
@@ -6949,9 +7060,28 @@ export const inventoryApi = {
       tenantSlug,
     ),
 
-  getAsset: (id: string, tenantSlug?: string) =>
-    request<SerializedAssetRecord>(
-      `/inventory/assets/${id}`,
+  getAsset: (id: string, params?: GetSerializedAssetParams, tenantSlug?: string) =>
+    request<SerializedAssetDetailRecord>(
+      `/inventory/assets/${id}${buildInventoryQuery({
+        lifecyclePage: params?.lifecyclePage != null ? String(params.lifecyclePage) : undefined,
+        lifecycleLimit: params?.lifecycleLimit != null ? String(params.lifecycleLimit) : undefined,
+        movementsPage: params?.movementsPage != null ? String(params.movementsPage) : undefined,
+        movementsLimit: params?.movementsLimit != null ? String(params.movementsLimit) : undefined,
+      })}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  listLoans: (params?: ListAssetLoansParams, tenantSlug?: string) =>
+    request<PaginatedAssetLoans>(
+      `/inventory/loans${buildInventoryQuery({
+        status: params?.status,
+        subscriberRefId: params?.subscriberRefId,
+        contractRefId: params?.contractRefId,
+        serializedAssetId: params?.serializedAssetId,
+        page: params?.page != null ? String(params.page) : undefined,
+        limit: params?.limit != null ? String(params.limit) : undefined,
+      })}`,
       { returnFullResponse: true },
       tenantSlug,
     ),
@@ -6972,6 +7102,7 @@ export const inventoryApi = {
       `/inventory/movements${buildInventoryQuery({
         itemId: params?.itemId,
         locationId: params?.locationId,
+        serializedAssetId: params?.serializedAssetId,
         origin: params?.origin,
         dateFrom: params?.dateFrom,
         dateTo: params?.dateTo,

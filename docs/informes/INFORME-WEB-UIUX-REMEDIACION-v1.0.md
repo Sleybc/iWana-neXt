@@ -113,3 +113,51 @@
 | Aprobadores pendientes | Ninguno para este plan |
 
 **Recomendación AI-EM-ARCH:** plan WEB-UIUX-REMEDIACION **cerrado**. Mergeable tras revisión humana habitual.
+
+---
+
+## 7. Verificación independiente de cierre (gate G7 — AI-EM-ARCH)
+
+**Fecha:** 2026-07-20 · **Modo:** EM + Orchestrator · **Naturaleza:** verificación de segunda capa sobre el auto-reporte de fase 05. El aprobador (AI-EM-ARCH) no es productor de ningún artefacto de las fases 01–05. Evidencia recogida contra el árbol de trabajo real (commits `261b5aa8` + `f8600082`), no contra el reporte de los ejecutores.
+
+### 7.1 Barrido mecánico (`audit-ui.mjs apps/web/src`)
+
+| Métrica | Review inicial | Post-remediación (verificado) |
+| --- | --- | --- |
+| P0 | 1 | 0 |
+| P1 | 6 (+18 deterministas script) | **0 reales** (2 residuales = falsos positivos ya dictaminados) |
+| P2 | 15 | **0 reales** (1 residual = chip de icono, dictaminado) |
+| Deterministas `dark-gray` / `z-war` / `brand-hex` | 31 | **0** |
+
+Los 3 hallazgos residuales del script (`lime-text-aa` en `PlatformAuthExperience.tsx:98,104`, `lime-50-surface` en `AuditSummary.tsx:452`, 3 `spinner-primary`) son los mismos falsos positivos confirmados en el review original (lima sobre panel oscuro de auth con contraste AA; chip de icono; spinners no primarios). No son deuda.
+
+### 7.2 Criterios grep-ables (todas las fases) — 0 = PASS
+
+- `dark:(bg|border)-gray-(700|800|900|950)` en `apps/web/src` → **0** (CA-101).
+- `confirm(` nativo → **0** (CA-202).
+- Hex de marca en `app/auth` + `components/auth` → **0**; en todo `apps/web/src` → **0** (CA-301).
+- `z-[999+]` → **0**.
+- `role="dialog"` manual + `MODAL_PANEL_CLASS` en `components/users` → solo 1 ocurrencia, en el **mock de test** (`UserManagementModal.spec.tsx:60`), no en producción (CA-203 PASS).
+- `bg-slate-50` en `layout.tsx` → **0**.
+
+### 7.3 P0/P1 de comportamiento (no grep-ables) — confirmados en código
+
+- **P0 confirmación destructiva:** `ConfirmDialog` cableado a "Eliminar usuario" y "Generar contraseña temporal" (`UserManagementModal.tsx:683,700`) y a eliminación de empresa con **confirmación tipada** por nombre (`TenantSettingsForm.tsx:652,665`).
+- **P1 campana:** `NotificationBell.tsx` usa `bg-error-500`/`bg-warning-500` y `text-error-600`/`text-warning-400` según `worstAlertTone`; lima retirado como señal de alerta.
+- **P1 responsive:** tabla técnica de auditoría con `overflow-x-auto` (`AuditLogsTable.tsx:292`); trigger de búsqueda mobile con estado `mobileSearchOpen`, foco gestionado y overlay (`TopHeader.tsx`).
+- **P1 fiabilidad de datos:** fase 04 movió list + export CSV a server-side (`fromDate`/`toDate`, `GET …/export`, header `X-Export-Truncated`); el aviso de "solo esta página" persiste correctamente solo para el resumen (que sigue siendo muestral por diseño).
+- **Variante lima de `Button`:** añadida como `variant="lime"` (`Button.tsx:22`) sin invertir `primary` — resuelve la divergencia spec↔código sin escalado CTO.
+
+### 7.4 Gates de calidad (ejecutados por AI-EM-ARCH)
+
+| Gate | Resultado |
+| --- | --- |
+| `pnpm --filter @iwana/web typecheck` | **Verde** |
+| `pnpm --filter @iwana/web lint` | **Verde** |
+| `pnpm --filter @iwana/web test` | **19 suites / 76 tests PASS** |
+
+### 7.5 Veredicto de verificación
+
+**GO confirmado.** La verificación independiente reproduce el cierre reportado: P0 y los 6 P1 del review están cerrados en código, los criterios de aceptación grep-ables dan 0, y los gates de calidad (typecheck, lint, 76 tests) están en verde. **Puntaje del skill post-remediación: 100/100** (0 hallazgos reales tras descartar falsos positivos ya dictaminados). Sin deuda crítica ni alta abierta atribuible a este plan. Queda como backlog opcional no bloqueante: query `actions` multi-valor en el API de auditoría y la adopción gradual de CTAs `primary`→`lime` en el resto del monorepo.
+
+Siguiente paso acordado con el CTO humano: **afinamiento de diseño** sobre la base ya alineada (fase de pulido fino, no de remediación).

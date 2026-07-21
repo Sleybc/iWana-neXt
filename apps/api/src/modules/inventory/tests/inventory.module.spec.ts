@@ -24,6 +24,7 @@ import {
   InventoryMovementPortAdapter,
 } from '../ports/inventory-movement.port';
 import { AssetLifecycleService } from '../services/asset-lifecycle.service';
+import { AssetLoanService } from '../services/asset-loan.service';
 import { GoodsReceiptService } from '../services/goods-receipt.service';
 import { CounterPurchaseService } from '../services/counter-purchase.service';
 import { RfqPdfService } from '../services/rfq-pdf.service';
@@ -77,6 +78,7 @@ describe('InventoryModule', () => {
         RfqPdfService,
         SupplierProfileService,
         AssetLifecycleService,
+        AssetLoanService,
         InventoryDashboardService,
         ReplenishmentService,
         CycleCountService,

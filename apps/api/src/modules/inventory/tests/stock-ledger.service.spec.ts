@@ -11,6 +11,7 @@ import {
   StockLocationType,
   StockMovementOrigin,
   UserRole,
+  WriteOffReason,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { StockLedgerService } from '../services/stock-ledger.service';
@@ -36,6 +37,29 @@ describe('StockLedgerService', () => {
     applyReceiptCostingWithManager: jest.fn().mockResolvedValue(undefined),
     sumOnHandWithManager: jest.fn().mockResolvedValue(0),
   };
+
+  const assetLoanServiceMock = {
+    openLoanWithManager: jest.fn().mockResolvedValue(undefined),
+    closeOpenLoanWithManager: jest.fn().mockResolvedValue(null),
+  };
+
+  function createStockLedgerService(
+    dataSource: DataSource,
+    stockBalanceService: unknown,
+    serializedAssetService: unknown,
+    assetLifecycleService: unknown,
+    customerSiteLocationResolver?: unknown,
+  ): StockLedgerService {
+    return new StockLedgerService(
+      dataSource,
+      stockBalanceService as never,
+      serializedAssetService as never,
+      assetLifecycleService as never,
+      inventoryCostingServiceMock as never,
+      assetLoanServiceMock as never,
+      customerSiteLocationResolver as never,
+    );
+  }
 
   const actor: JwtPayload = {
     sub: 'support-001',
@@ -105,6 +129,7 @@ describe('StockLedgerService', () => {
       serializedAssetService as never,
       assetLifecycleService as never,
       inventoryCostingServiceMock as never,
+      assetLoanServiceMock as never,
     );
 
     await expect(
@@ -145,6 +170,7 @@ describe('StockLedgerService', () => {
       } as never,
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
+      assetLoanServiceMock as never,
     );
 
     const result = await service.recordMovementWithManager(
@@ -193,6 +219,7 @@ describe('StockLedgerService', () => {
       } as never,
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
+      assetLoanServiceMock as never,
     );
 
     const result = await service.recordMovementWithManager(
@@ -248,6 +275,7 @@ describe('StockLedgerService', () => {
       } as never,
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
+      assetLoanServiceMock as never,
     );
 
     const result = await service.recordMovementWithManager(
@@ -310,6 +338,7 @@ describe('StockLedgerService', () => {
       } as never,
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
+      assetLoanServiceMock as never,
     );
 
     const result = await service.recordAdjustment(
@@ -391,6 +420,7 @@ describe('StockLedgerService', () => {
       serializedAssetService as never,
       assetLifecycleService as never,
       inventoryCostingServiceMock as never,
+      assetLoanServiceMock as never,
     );
 
     await service.transfer(
@@ -459,6 +489,7 @@ describe('StockLedgerService', () => {
       } as never,
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
+      assetLoanServiceMock as never,
     );
 
     await expect(
@@ -519,6 +550,7 @@ describe('StockLedgerService', () => {
       } as never,
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
+      assetLoanServiceMock as never,
     );
 
     await expect(
@@ -589,6 +621,7 @@ describe('StockLedgerService', () => {
       } as never,
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
+      assetLoanServiceMock as never,
     );
 
     await expect(
@@ -667,6 +700,7 @@ describe('StockLedgerService', () => {
       serializedAssetService as never,
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
+      assetLoanServiceMock as never,
     );
 
     await expect(
@@ -747,6 +781,7 @@ describe('StockLedgerService', () => {
       serializedAssetService as never,
       assetLifecycleService as never,
       inventoryCostingServiceMock as never,
+      assetLoanServiceMock as never,
     );
 
     await service.recordReturn(
@@ -823,6 +858,7 @@ describe('StockLedgerService', () => {
       } as never,
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
+      assetLoanServiceMock as never,
       customerSiteLocationResolver as never,
     );
 
@@ -923,6 +959,7 @@ describe('StockLedgerService', () => {
       } as never,
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
+      assetLoanServiceMock as never,
     );
 
     const result = await service.recordExecutionOrderMovement(
@@ -1003,6 +1040,7 @@ describe('StockLedgerService', () => {
       } as never,
       { recordWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
+      assetLoanServiceMock as never,
     );
 
     const result = await service.recordExecutionOrderMovement(
@@ -1091,6 +1129,7 @@ describe('StockLedgerService', () => {
         } as never,
         { recordWithManager: jest.fn() } as never,
         inventoryCostingServiceMock as never,
+        assetLoanServiceMock as never,
       );
 
       const result = await service.recordAdjustment(
@@ -1155,6 +1194,7 @@ describe('StockLedgerService', () => {
         } as never,
         { recordWithManager: jest.fn() } as never,
         inventoryCostingServiceMock as never,
+        assetLoanServiceMock as never,
       );
 
       await service.recordAdjustment(
@@ -1196,6 +1236,7 @@ describe('StockLedgerService', () => {
         } as never,
         { recordWithManager: jest.fn() } as never,
         inventoryCostingServiceMock as never,
+        assetLoanServiceMock as never,
       );
 
       await expect(
@@ -1246,6 +1287,7 @@ describe('StockLedgerService', () => {
         } as never,
         { recordWithManager: jest.fn() } as never,
         inventoryCostingServiceMock as never,
+        assetLoanServiceMock as never,
       );
 
       const result = await service.recordAdjustment(
@@ -1261,6 +1303,334 @@ describe('StockLedgerService', () => {
 
       expect(result.movement).toBe(existingMovement);
       expect(manager.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('comodato con ciclo de vida', () => {
+    function mockTransitionedAsset(id = 'asset-loan-001') {
+      return {
+        id,
+        currentStatus: SerializedAssetStatus.INSTALLED_COMODATO,
+        currentLocationId: 'loc-customer-site',
+        currentResponsibleRefId: null,
+      };
+    }
+
+    beforeEach(() => {
+      assetLoanServiceMock.openLoanWithManager.mockClear();
+      assetLoanServiceMock.closeOpenLoanWithManager.mockClear();
+    });
+
+    it('abre comodato al instalar activo serializado en cliente desde OT', async () => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(null),
+        find: jest.fn().mockResolvedValue([]),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue({ movementNumber: 'MOV-000200' }),
+        }),
+        create: jest.fn((_entity, payload) => payload),
+        save: jest.fn().mockImplementation(async (_entity, payload) => {
+          if ('movementNumber' in payload) {
+            return { id: 'mov-loan-open', ...payload };
+          }
+          return { id: `line-${payload.locationId}`, ...payload };
+        }),
+        transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      };
+      const serializedAssetService = {
+        resolveForMovementWithManager: jest
+          .fn()
+          .mockResolvedValueOnce({
+            id: 'asset-loan-001',
+            currentStatus: SerializedAssetStatus.ASSIGNED_TO_TECHNICIAN,
+          })
+          .mockResolvedValueOnce({ id: 'asset-loan-001' }),
+        transitionAssetWithManager: jest.fn().mockResolvedValue(mockTransitionedAsset()),
+      };
+      const customerSiteLocationResolver = {
+        resolveOrCreateWithManager: jest.fn().mockResolvedValue('loc-customer-site'),
+      };
+
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_dataSource, _schemaName, work) =>
+        work({ manager }),
+      );
+
+      const service = createStockLedgerService(
+        {} as DataSource,
+        withAvailability({ applyDeltaWithManager: jest.fn().mockResolvedValue(undefined) }),
+        serializedAssetService,
+        { recordWithManager: jest.fn() },
+        customerSiteLocationResolver,
+      );
+
+      await service.recordExecutionOrderMovement(
+        {
+          executionOrderId: 'eo-loan-001',
+          itemId: 'item-001',
+          technicianCustodyId: 'loc-technician',
+          quantity: 1,
+          serialNumber: 'SN-LOAN-001',
+          action: ExecutionOrderItemAction.INSTALL,
+          finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
+          subscriberId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          contractRefId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        },
+        actor,
+      );
+
+      expect(assetLoanServiceMock.openLoanWithManager).toHaveBeenCalledWith(
+        manager,
+        expect.objectContaining({
+          tenantId: 'tenant-001',
+          serializedAssetId: 'asset-loan-001',
+          subscriberRefId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          contractRefId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          executionOrderRefId: 'eo-loan-001',
+          stockMovementId: 'mov-loan-open',
+        }),
+      );
+    });
+
+    it('reutiliza comodato existente cuando el movimiento es idempotente', async () => {
+      const existingMovement = {
+        id: 'mov-existing-loan',
+        tenantId: 'tenant-001',
+        idempotencyKey: 'eo-idempotent',
+      };
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(existingMovement),
+        find: jest.fn().mockResolvedValue([]),
+        transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      };
+      const serializedAssetService = {
+        resolveForMovementWithManager: jest.fn().mockResolvedValue({ id: 'asset-loan-001' }),
+        transitionAssetWithManager: jest.fn(),
+      };
+      const customerSiteLocationResolver = {
+        resolveOrCreateWithManager: jest.fn().mockResolvedValue('loc-customer-site'),
+      };
+
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_dataSource, _schemaName, work) =>
+        work({ manager }),
+      );
+
+      const service = createStockLedgerService(
+        {} as DataSource,
+        withAvailability({ applyDeltaWithManager: jest.fn() }),
+        serializedAssetService,
+        { recordWithManager: jest.fn() },
+        customerSiteLocationResolver,
+      );
+
+      await service.recordExecutionOrderMovement(
+        {
+          executionOrderId: 'eo-loan-001',
+          itemId: 'item-001',
+          technicianCustodyId: 'loc-technician',
+          quantity: 1,
+          serialNumber: 'SN-LOAN-001',
+          action: ExecutionOrderItemAction.INSTALL,
+          finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
+          subscriberId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          idempotencyKey: 'eo-idempotent',
+        },
+        actor,
+      );
+
+      expect(assetLoanServiceMock.openLoanWithManager).toHaveBeenCalledWith(
+        manager,
+        expect.objectContaining({ stockMovementId: 'mov-existing-loan' }),
+      );
+    });
+
+    it('cierra comodato abierto al retornar activo serializado', async () => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(null),
+        find: jest.fn().mockResolvedValue([]),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue({ movementNumber: 'MOV-000201' }),
+        }),
+        create: jest.fn((_entity, payload) => payload),
+        save: jest.fn().mockImplementation(async (_entity, payload) => {
+          if ('movementNumber' in payload) {
+            return { id: 'mov-return', ...payload };
+          }
+          return { id: `line-${payload.locationId}`, ...payload };
+        }),
+        transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      };
+      const serializedAssetService = {
+        resolveForMovementWithManager: jest
+          .fn()
+          .mockResolvedValueOnce({
+            id: 'asset-loan-001',
+            currentStatus: SerializedAssetStatus.IN_TESTING,
+          })
+          .mockResolvedValueOnce(mockTransitionedAsset()),
+        transitionAssetWithManager: jest.fn().mockResolvedValue(mockTransitionedAsset()),
+      };
+
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_dataSource, _schemaName, work) =>
+        work({ manager }),
+      );
+
+      const service = createStockLedgerService(
+        {} as DataSource,
+        withAvailability({ applyDeltaWithManager: jest.fn().mockResolvedValue(undefined) }),
+        serializedAssetService,
+        { recordWithManager: jest.fn() },
+      );
+
+      await service.recordReturn(
+        {
+          itemId: 'item-001',
+          sourceLocationId: 'loc-customer',
+          destinationLocationId: 'loc-warehouse',
+          quantity: 1,
+          serializedAssetId: 'asset-loan-001',
+          targetStatus: SerializedAssetStatus.IN_TESTING,
+        },
+        actor,
+      );
+
+      expect(assetLoanServiceMock.closeOpenLoanWithManager).toHaveBeenCalledWith(
+        manager,
+        expect.objectContaining({
+          tenantId: 'tenant-001',
+          serializedAssetId: 'asset-loan-001',
+          removedAt: expect.any(Date),
+        }),
+      );
+    });
+
+    it('cierra comodato abierto al dar de baja activo serializado', async () => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(null),
+        find: jest.fn().mockResolvedValue([]),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue({ movementNumber: 'MOV-000202' }),
+        }),
+        create: jest.fn((_entity, payload) => payload),
+        save: jest.fn().mockImplementation(async (_entity, payload) => {
+          if ('movementNumber' in payload) {
+            return { id: 'mov-writeoff', ...payload };
+          }
+          return { id: 'line-writeoff', ...payload };
+        }),
+        transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      };
+      const serializedAssetService = {
+        resolveForMovementWithManager: jest.fn().mockResolvedValue({
+          id: 'asset-loan-001',
+          currentStatus: SerializedAssetStatus.INSTALLED_COMODATO,
+        }),
+        transitionAssetWithManager: jest.fn().mockResolvedValue({
+          id: 'asset-loan-001',
+          currentStatus: SerializedAssetStatus.WRITTEN_OFF,
+          currentLocationId: null,
+          currentResponsibleRefId: null,
+        }),
+      };
+
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_dataSource, _schemaName, work) =>
+        work({ manager }),
+      );
+
+      const service = createStockLedgerService(
+        {} as DataSource,
+        withAvailability({ applyDeltaWithManager: jest.fn().mockResolvedValue(undefined) }),
+        serializedAssetService,
+        { recordWithManager: jest.fn() },
+      );
+
+      await service.recordWriteOff(
+        {
+          itemId: 'item-001',
+          locationId: 'loc-customer',
+          serializedAssetId: 'asset-loan-001',
+          quantity: 1,
+          reason: WriteOffReason.DAMAGED,
+        },
+        actor,
+      );
+
+      expect(assetLoanServiceMock.closeOpenLoanWithManager).toHaveBeenCalledWith(
+        manager,
+        expect.objectContaining({
+          tenantId: 'tenant-001',
+          serializedAssetId: 'asset-loan-001',
+        }),
+      );
+    });
+
+    it('retorno sin comodato abierto no falla', async () => {
+      assetLoanServiceMock.closeOpenLoanWithManager.mockResolvedValue(null);
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(null),
+        find: jest.fn().mockResolvedValue([]),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue({ movementNumber: 'MOV-000203' }),
+        }),
+        create: jest.fn((_entity, payload) => payload),
+        save: jest.fn().mockImplementation(async (_entity, payload) => {
+          if ('movementNumber' in payload) {
+            return { id: 'mov-return-no-loan', ...payload };
+          }
+          return { id: `line-${payload.locationId}`, ...payload };
+        }),
+        transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      };
+      const serializedAssetService = {
+        resolveForMovementWithManager: jest
+          .fn()
+          .mockResolvedValueOnce({
+            id: 'asset-loan-001',
+            currentStatus: SerializedAssetStatus.IN_TESTING,
+          })
+          .mockResolvedValueOnce(mockTransitionedAsset()),
+        transitionAssetWithManager: jest.fn().mockResolvedValue(mockTransitionedAsset()),
+      };
+
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_dataSource, _schemaName, work) =>
+        work({ manager }),
+      );
+
+      const service = createStockLedgerService(
+        {} as DataSource,
+        withAvailability({ applyDeltaWithManager: jest.fn().mockResolvedValue(undefined) }),
+        serializedAssetService,
+        { recordWithManager: jest.fn() },
+      );
+
+      await expect(
+        service.recordReturn(
+          {
+            itemId: 'item-001',
+            sourceLocationId: 'loc-customer',
+            destinationLocationId: 'loc-warehouse',
+            quantity: 1,
+            serializedAssetId: 'asset-loan-001',
+            targetStatus: SerializedAssetStatus.IN_TESTING,
+          },
+          actor,
+        ),
+      ).resolves.toEqual(
+        expect.objectContaining({
+          movement: expect.objectContaining({ id: 'mov-return-no-loan' }),
+        }),
+      );
     });
   });
 });

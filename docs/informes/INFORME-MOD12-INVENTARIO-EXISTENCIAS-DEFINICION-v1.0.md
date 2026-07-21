@@ -102,7 +102,7 @@ Fases 1-2 no requirieron HLD ni ADR (no crean boundary, entidad, migración ni p
 
 ## 6. Próximos pasos
 
-1. Roadmap Existencias **completo** — no hay Fase 5 en el PRD vigente.
+1. Roadmap **del submódulo Existencias** completo — no hay Fase 5 en este PRD. **MOD12 como módulo sigue abierto:** la auditoría de estado del 2026-07-21 identificó los huecos pendientes del PRD padre y abrió el submódulo **Activos y comodato**. Ver [INFORME-MOD12-INVENTARIO-AUDITORIA-ESTADO-v1.0.md](INFORME-MOD12-INVENTARIO-AUDITORIA-ESTADO-v1.0.md), que es el índice único de estado de MOD12, y [PRD-MOD12-ACTIVOS-COMODATO-v1.0.md](../prds/PRD-MOD12-ACTIVOS-COMODATO-v1.0.md).
 2. Mantener el checklist G6/G7 (`CHECKLIST-MOD12-INVENTARIO-EXISTENCIAS-GATES-G6-G7-v1.0.md`) en futuros cierres de fase de otros módulos como referencia normativa.
 
 ## 7. Historial
@@ -143,4 +143,5 @@ Fases 1-2 no requirieron HLD ni ADR (no crean boundary, entidad, migración ni p
 | 2026-07-20 | **G6 F4 GO** (tras remediaciones tabla/drawers + mig 080 aplicada). **G7 GO recomendado** — pendiente CTO. |
 | 2026-07-20 | **CTO confirma G7 Fase 04 (GO producción).** Roadmap Existencias F1–F4 **cerrado**. |
 | 2026-07-20 | **Auditoría ejecución PRD F1–F4:** H1/H2 arnés de test; H3 checklist suite completa. **Remediación:** `InventoryCostingService` en module spec; `StockTransferDialog.spec` abre combobox; checklist G6/G7 emitido. DoD suites restaurado. |
+| 2026-07-21 | **Auditoría de estado de MOD12 (AI-EM-ARCH):** verificada contra código; Existencias confirmado cerrado F1–F4. Se corrige §6: el roadmap completo es el **de Existencias**, no el del módulo. Abierto el submódulo Activos y comodato (PRD + spec + prompts 5A/5B); siguiente fase **5A Ficha 360**. |
 | 2026-07-20 | **Cierre deuda P3 + RNF-06:** `tabular-nums` en KPI/costos; rebuild `@iwana/db` en checklist DoD; cobertura API inventario **80.27%** statements / **80.51%** lines. Informe auditoría actualizado. |

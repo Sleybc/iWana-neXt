@@ -36,6 +36,7 @@ import { StockLedgerService } from '../services/stock-ledger.service';
 import { StockMovementQueryService } from '../services/stock-movement-query.service';
 import { StockLocationService } from '../services/stock-location.service';
 import { StockIssueService } from '../services/stock-issue.service';
+import { AssetLoanService } from '../services/asset-loan.service';
 import { CounterPurchaseService } from '../services/counter-purchase.service';
 import { RfqPdfService } from '../services/rfq-pdf.service';
 import { ReplenishmentService } from '../services/replenishment.service';
@@ -298,6 +299,7 @@ describe('InventoryController HTTP', () => {
         { provide: InventoryDashboardService, useValue: inventoryDashboardServiceMock },
         { provide: ReplenishmentService, useValue: replenishmentServiceMock },
         { provide: CycleCountService, useValue: cycleCountServiceMock },
+        { provide: AssetLoanService, useValue: { list: jest.fn() } },
         { provide: PurchasingService, useValue: purchasingServiceMock },
         { provide: PurchasingQueryService, useValue: purchasingQueryServiceMock },
         { provide: GoodsReceiptService, useValue: goodsReceiptServiceMock },

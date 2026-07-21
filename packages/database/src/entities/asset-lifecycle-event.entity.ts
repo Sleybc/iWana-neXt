@@ -58,6 +58,9 @@ export class AssetLifecycleEvent {
   @Column({ name: 'actor_user_id', type: 'uuid', nullable: true })
   actorUserId: string | null;
 
+  @Column({ name: 'stock_movement_id', type: 'uuid', nullable: true })
+  stockMovementId: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

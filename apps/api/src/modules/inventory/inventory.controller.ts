@@ -11,7 +11,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@iwana/shared';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -57,8 +57,12 @@ import {
   SuggestInventoryCategoryPrefixResponseDto,
   ListInventoryItemsQueryDto,
   ListInventoryItemsQuerySchema,
+  ListLoansQueryDto,
+  ListLoansQuerySchema,
   ListSerializedAssetsQueryDto,
   ListSerializedAssetsQuerySchema,
+  GetSerializedAssetDetailQueryDto,
+  GetSerializedAssetDetailQuerySchema,
   ListStockBalancesQueryDto,
   ListStockBalancesQuerySchema,
   ListStockIssuesQueryDto,
@@ -84,7 +88,9 @@ import {
   WriteOffAssetDto,
   WriteOffAssetSchema,
 } from './dto';
+import { SerializedAssetDetailResponseDto } from './dto/serialized-asset-detail-response.dto';
 import { InventoryDashboardService } from './services/inventory-dashboard.service';
+import { AssetLoanService } from './services/asset-loan.service';
 import { InventoryCategoryService } from './services/inventory-category.service';
 import { InventoryItemService } from './services/inventory-item.service';
 import { ReplenishmentService } from './services/replenishment.service';
@@ -115,6 +121,7 @@ export class InventoryController {
     private readonly inventoryDashboardService: InventoryDashboardService,
     private readonly replenishmentService: ReplenishmentService,
     private readonly cycleCountService: CycleCountService,
+    private readonly assetLoanService: AssetLoanService,
   ) {}
 
   @Get('items')
@@ -269,9 +276,32 @@ export class InventoryController {
 
   @Get('assets/:id')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Obtener detalle de activo serializado' })
-  getAsset(@Param('id', ParseUUIDPipe) id: string) {
-    return this.serializedAssetService.getById(id);
+  @ApiOperation({
+    summary: 'Obtener ficha 360 de activo serializado',
+    description:
+      'Devuelve el activo con secciones compuestas: ítem, ubicación, origen de compra, vida útil, ciclo de vida, movimientos y comodatos.',
+  })
+  @ApiOkResponse({ type: SerializedAssetDetailResponseDto })
+  getAsset(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodValidationPipe(GetSerializedAssetDetailQuerySchema))
+    query: GetSerializedAssetDetailQueryDto,
+  ) {
+    return this.serializedAssetService.getById(
+      id,
+      GetSerializedAssetDetailQuerySchema.parse(query),
+    );
+  }
+
+  @Get('loans')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({
+    summary: 'Listar comodatos de activos',
+    description:
+      'Lista comodatos abiertos o cerrados con filtros por suscriptor, contrato y activo serializado.',
+  })
+  listLoans(@Query(new ZodValidationPipe(ListLoansQuerySchema)) query: ListLoansQueryDto) {
+    return this.assetLoanService.list(ListLoansQuerySchema.parse(query));
   }
 
   @Get('balances')

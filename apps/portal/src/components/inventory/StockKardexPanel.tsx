@@ -39,10 +39,14 @@ import {
 interface StockKardexPanelProps {
   items: InventoryItemRecord[];
   locations: StockLocationRecord[];
+  initialFilters?: Partial<StockKardexFilters>;
 }
 
-export function StockKardexPanel({ items, locations }: StockKardexPanelProps) {
-  const [filters, setFilters] = useState<StockKardexFilters>(EMPTY_STOCK_KARDEX_FILTERS);
+export function StockKardexPanel({ items, locations, initialFilters }: StockKardexPanelProps) {
+  const [filters, setFilters] = useState<StockKardexFilters>(() => ({
+    ...EMPTY_STOCK_KARDEX_FILTERS,
+    ...initialFilters,
+  }));
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
   const [total, setTotal] = useState(0);

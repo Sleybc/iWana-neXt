@@ -6,6 +6,7 @@ export interface StockKardexFilters {
   origin: 'all' | StockMovementOrigin;
   itemId: string;
   locationId: string;
+  serializedAssetId: string;
   dateFrom: string;
   dateTo: string;
 }
@@ -15,6 +16,7 @@ export const EMPTY_STOCK_KARDEX_FILTERS: StockKardexFilters = {
   origin: 'all',
   itemId: '',
   locationId: '',
+  serializedAssetId: '',
   dateFrom: '',
   dateTo: '',
 };
@@ -25,6 +27,7 @@ export function hasActiveStockKardexFilters(filters: StockKardexFilters): boolea
     filters.origin !== 'all' ||
     filters.itemId.trim().length > 0 ||
     filters.locationId.trim().length > 0 ||
+    filters.serializedAssetId.trim().length > 0 ||
     filters.dateFrom.trim().length > 0 ||
     filters.dateTo.trim().length > 0
   );
@@ -56,6 +59,11 @@ export function buildListMovementsParams(
   const locationId = filters.locationId.trim();
   if (locationId) {
     params.locationId = locationId;
+  }
+
+  const serializedAssetId = filters.serializedAssetId.trim();
+  if (serializedAssetId) {
+    params.serializedAssetId = serializedAssetId;
   }
 
   const dateFrom = filters.dateFrom.trim();

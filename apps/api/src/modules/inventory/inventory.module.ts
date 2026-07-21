@@ -46,6 +46,7 @@ import { TenantContactPortAdapter } from './ports/tenant-contact.adapter';
 import { InventoryController } from './inventory.controller';
 import { PurchasingController } from './purchasing.controller';
 import { AssetLifecycleService } from './services/asset-lifecycle.service';
+import { AssetLoanService } from './services/asset-loan.service';
 import { CustomerSiteLocationResolver } from './services/customer-site-location.resolver';
 import { GoodsReceiptService } from './services/goods-receipt.service';
 import { InventoryCategoryService } from './services/inventory-category.service';
@@ -124,6 +125,7 @@ import { SupplierProfileService } from './services/supplier-profile.service';
     RfqService,
     RfqPdfService,
     AssetLifecycleService,
+    AssetLoanService,
     InventoryDashboardService,
     ReplenishmentService,
     SupplierProfileService,
@@ -165,6 +167,7 @@ import { SupplierProfileService } from './services/supplier-profile.service';
     GoodsReceiptService,
     CounterPurchaseService,
     AssetLifecycleService,
+    AssetLoanService,
     InventoryDashboardService,
     ReplenishmentService,
     SupplierProfileService,

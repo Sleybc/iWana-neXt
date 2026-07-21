@@ -6,9 +6,38 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
-import { SerializedAsset, TenantContext, runInTenantSchema } from '@iwana/db';
-import { InventoryResponsibleType, SerializedAssetStatus } from '@iwana/shared';
-import { ListSerializedAssetsQueryInput, ListSerializedAssetsQuerySchema } from '../dto';
+import {
+  GoodsReceipt,
+  InventoryCategory,
+  InventoryItem,
+  PurchaseOrder,
+  SerializedAsset,
+  StockLocation,
+  StockMovement,
+  StockMovementLine,
+  TenantContext,
+  runInTenantSchema,
+} from '@iwana/db';
+import {
+  InventoryResponsibleType,
+  SerializedAssetStatus,
+  StockMovementOrigin,
+} from '@iwana/shared';
+import {
+  GetSerializedAssetDetailQueryInput,
+  GetSerializedAssetDetailQuerySchema,
+  ListSerializedAssetsQueryInput,
+  ListSerializedAssetsQuerySchema,
+} from '../dto';
+import {
+  SerializedAssetDetailRecord,
+  SerializedAssetPurchaseOrigin,
+} from '../types/serialized-asset-detail.types';
+import { SupplierPartyPort } from '../ports/supplier-party.port';
+import { AssetLifecycleService } from './asset-lifecycle.service';
+import { AssetLoanService } from './asset-loan.service';
+import { calculateUsefulLife } from './serialized-asset-useful-life.util';
+import { StockMovementQueryService } from './stock-movement-query.service';
 
 interface CreateReceivedAssetInput {
   tenantId: string;
@@ -81,7 +110,13 @@ const ALLOWED_STATUS_TRANSITIONS: Record<SerializedAssetStatus, SerializedAssetS
 
 @Injectable()
 export class SerializedAssetService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly assetLifecycleService: AssetLifecycleService,
+    private readonly stockMovementQueryService: StockMovementQueryService,
+    private readonly supplierPartyPort: SupplierPartyPort,
+    private readonly assetLoanService: AssetLoanService,
+  ) {}
 
   async list(query: ListSerializedAssetsQueryInput): Promise<SerializedAsset[]> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
@@ -117,16 +152,60 @@ export class SerializedAssetService {
     });
   }
 
-  async getById(id: string): Promise<SerializedAsset> {
+  async getById(
+    id: string,
+    query?: GetSerializedAssetDetailQueryInput,
+  ): Promise<SerializedAssetDetailRecord> {
+    const validated = GetSerializedAssetDetailQuerySchema.parse(query ?? {});
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+    const detail = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const asset = await qr.manager.findOne(SerializedAsset, { where: { id, tenantId } });
       if (!asset) {
         throw new NotFoundException('Activo serializado no encontrado.');
       }
-      return asset;
+
+      const [item, currentLocation, purchaseOrigin, loans] = await Promise.all([
+        this.resolveItemSummary(qr.manager, tenantId, asset.inventoryItemId),
+        asset.currentLocationId
+          ? this.resolveLocationSummary(qr.manager, tenantId, asset.currentLocationId)
+          : Promise.resolve(null),
+        this.resolvePurchaseOrigin(qr.manager, tenantId, asset),
+        this.assetLoanService.listForAsset(qr.manager, tenantId, id),
+      ]);
+
+      return {
+        ...this.toDetailRoot(asset),
+        item,
+        currentLocation,
+        purchaseOrigin,
+        usefulLife: calculateUsefulLife({
+          usefulLifeMonths: asset.usefulLifeMonths,
+          purchaseDate: asset.purchaseDate,
+          warrantyUntil: asset.warrantyUntil,
+        }),
+        loans,
+      };
     });
+
+    const [lifecycle, movements] = await Promise.all([
+      this.assetLifecycleService.listPaginatedForAsset(
+        id,
+        validated.lifecyclePage,
+        validated.lifecycleLimit,
+      ),
+      this.stockMovementQueryService.list({
+        serializedAssetId: id,
+        page: validated.movementsPage,
+        limit: validated.movementsLimit,
+      }),
+    ]);
+
+    return {
+      ...detail,
+      lifecycle,
+      movements,
+    };
   }
 
   normalizeSerial(serialNumber: string): string {
@@ -249,6 +328,151 @@ export class SerializedAssetService {
     }
 
     return manager.save(SerializedAsset, asset);
+  }
+
+  private toDetailRoot(
+    asset: SerializedAsset,
+  ): Omit<
+    SerializedAssetDetailRecord,
+    | 'item'
+    | 'currentLocation'
+    | 'purchaseOrigin'
+    | 'usefulLife'
+    | 'lifecycle'
+    | 'movements'
+    | 'loans'
+  > {
+    return {
+      id: asset.id,
+      inventoryItemId: asset.inventoryItemId,
+      serialNumber: asset.serialNumber,
+      macAddress: asset.macAddress,
+      assetTag: asset.assetTag,
+      currentStatus: asset.currentStatus,
+      currentLocationId: asset.currentLocationId,
+      currentResponsibleType: asset.currentResponsibleType,
+      currentResponsibleRefId: asset.currentResponsibleRefId,
+      subscriberRefId: asset.subscriberRefId,
+      contractRefId: asset.contractRefId,
+      purchaseOrderRef: asset.purchaseOrderRef,
+      purchaseDate: asset.purchaseDate,
+      usefulLifeMonths: asset.usefulLifeMonths,
+      warrantyUntil: asset.warrantyUntil,
+      createdAt: asset.createdAt,
+      updatedAt: asset.updatedAt,
+    };
+  }
+
+  private async resolveItemSummary(
+    manager: EntityManager,
+    tenantId: string,
+    inventoryItemId: string,
+  ) {
+    const item = await manager.findOne(InventoryItem, {
+      where: { id: inventoryItemId, tenantId },
+      relations: ['inventoryCategory'],
+    });
+
+    if (!item) {
+      return null;
+    }
+
+    const category =
+      item.inventoryCategory ??
+      (await manager.findOne(InventoryCategory, { where: { id: item.categoryId, tenantId } }));
+
+    return {
+      id: item.id,
+      sku: item.sku,
+      name: item.name,
+      categoryName: category?.name ?? null,
+    };
+  }
+
+  private async resolveLocationSummary(
+    manager: EntityManager,
+    tenantId: string,
+    locationId: string,
+  ) {
+    const location = await manager.findOne(StockLocation, {
+      where: { id: locationId, tenantId },
+    });
+
+    if (!location) {
+      return null;
+    }
+
+    return {
+      id: location.id,
+      code: location.code,
+      name: location.name,
+      type: location.type,
+    };
+  }
+
+  private async resolvePurchaseOrigin(
+    manager: EntityManager,
+    tenantId: string,
+    asset: SerializedAsset,
+  ): Promise<SerializedAssetPurchaseOrigin | null> {
+    if (!asset.purchaseOrderRef) {
+      return null;
+    }
+
+    const purchaseOrder = await manager.findOne(PurchaseOrder, {
+      where: { tenantId, orderNumber: asset.purchaseOrderRef },
+    });
+
+    if (!purchaseOrder) {
+      return null;
+    }
+
+    const receiptLine = await manager
+      .createQueryBuilder(StockMovementLine, 'line')
+      .innerJoin(
+        StockMovement,
+        'movement',
+        'movement.id = line.movement_id AND movement.tenant_id = line.tenant_id',
+      )
+      .where('line.tenant_id = :tenantId', { tenantId })
+      .andWhere('line.serialized_asset_id = :serializedAssetId', { serializedAssetId: asset.id })
+      .andWhere('movement.origin = :origin', { origin: StockMovementOrigin.PURCHASE_RECEIPT })
+      .orderBy('movement.created_at', 'ASC')
+      .getOne();
+
+    if (!receiptLine) {
+      return null;
+    }
+
+    const movement = await manager.findOne(StockMovement, {
+      where: { id: receiptLine.movementId, tenantId },
+    });
+
+    if (!movement?.originRefId) {
+      return null;
+    }
+
+    const goodsReceipt = await manager.findOne(GoodsReceipt, {
+      where: { id: movement.originRefId, tenantId },
+    });
+
+    if (!goodsReceipt || goodsReceipt.purchaseOrderId !== purchaseOrder.id) {
+      return null;
+    }
+
+    const supplierSummary = await this.supplierPartyPort.getSupplierSummary(
+      purchaseOrder.partyRefId,
+    );
+
+    return {
+      purchaseOrderId: purchaseOrder.id,
+      purchaseOrderNumber: purchaseOrder.orderNumber,
+      goodsReceiptId: goodsReceipt.id,
+      receivedAt: goodsReceipt.receivedAt,
+      supplierPartyRefId: purchaseOrder.partyRefId,
+      supplierDisplayName: supplierSummary?.displayName ?? null,
+      unitCost: receiptLine.unitCost,
+    };
   }
 
   private assertStatusTransition(

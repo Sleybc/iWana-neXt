@@ -20,6 +20,7 @@ import {
   StockBalanceCondition,
   StockLocationType,
   StockMovementOrigin,
+  WriteOffReason,
 } from '@iwana/shared';
 import {
   CreateStockAdjustmentInput,
@@ -32,6 +33,7 @@ import {
 } from '../dto';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { AssetLifecycleService } from './asset-lifecycle.service';
+import { AssetLoanService } from './asset-loan.service';
 import { CustomerSiteLocationResolver } from './customer-site-location.resolver';
 import { InventoryCostingService } from './inventory-costing.service';
 import { SerializedAssetService } from './serialized-asset.service';
@@ -41,6 +43,14 @@ const MOBILE_TRANSFER_LOCATION_TYPES = new Set<StockLocationType>([
   StockLocationType.MOBILE_TECHNICIAN,
   StockLocationType.MOBILE_CREW,
 ]);
+
+function resolveWriteOffAssetStatus(reason: WriteOffReason): SerializedAssetStatus {
+  if (reason === WriteOffReason.LOST || reason === WriteOffReason.STOLEN) {
+    return SerializedAssetStatus.LOST;
+  }
+
+  return SerializedAssetStatus.WRITTEN_OFF;
+}
 
 export interface StockLedgerLineInput {
   itemId: string;
@@ -162,6 +172,7 @@ export class StockLedgerService {
     private readonly serializedAssetService: SerializedAssetService,
     private readonly assetLifecycleService: AssetLifecycleService,
     private readonly inventoryCostingService: InventoryCostingService,
+    private readonly assetLoanService: AssetLoanService,
     @Optional()
     private readonly customerSiteLocationResolver?: CustomerSiteLocationResolver,
   ) {}
@@ -300,6 +311,7 @@ export class StockLedgerService {
         responsibleRefId: updatedAsset.currentResponsibleRefId,
         notes: input.notes ?? null,
         actorUserId: actor.sub,
+        stockMovementId: movement.id,
       });
     }
 
@@ -632,7 +644,7 @@ export class StockLedgerService {
           mainWarehouseLocationId,
         });
 
-        return this.recordMovementWithManager(
+        const result = await this.recordMovementWithManager(
           manager,
           tenantId,
           {
@@ -667,6 +679,10 @@ export class StockLedgerService {
                         input.finalDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER
                           ? (input.subscriberId ?? null)
                           : null,
+                      contractRefId:
+                        input.finalDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER
+                          ? (input.contractRefId ?? null)
+                          : null,
                       eventType: AssetLifecycleEventType.INSTALLED,
                     },
                   ]
@@ -674,6 +690,32 @@ export class StockLedgerService {
           },
           actor,
         );
+
+        if (
+          input.finalDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER &&
+          input.serialNumber != null &&
+          input.subscriberId
+        ) {
+          const asset = await this.serializedAssetService.resolveForMovementWithManager(
+            manager,
+            tenantId,
+            { serialNumber: input.serialNumber },
+          );
+
+          if (asset) {
+            await this.assetLoanService.openLoanWithManager(manager, {
+              tenantId,
+              serializedAssetId: asset.id,
+              subscriberRefId: input.subscriberId,
+              contractRefId: input.contractRefId ?? null,
+              installedAt: new Date(),
+              executionOrderRefId: input.executionOrderId,
+              stockMovementId: result.movement.id,
+            });
+          }
+        }
+
+        return result;
       }),
     );
   }
@@ -764,100 +806,150 @@ export class StockLedgerService {
   }
 
   async recordReturn(input: ReturnAssetInput, actor: JwtPayload): Promise<StockMovementResult> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
     const quantity = input.serializedAssetId || input.serialNumber ? 1 : input.quantity;
     const keepsAssetInTransit = input.targetStatus === SerializedAssetStatus.IN_TRANSIT;
 
-    return this.recordMovement(
-      {
-        origin: StockMovementOrigin.RETURN,
-        originContext: 'inventory.return',
-        originRefId: input.serializedAssetId ?? input.serialNumber ?? input.itemId,
-        idempotencyKey:
-          input.idempotencyKey?.trim() ??
-          `return:${input.sourceLocationId}:${input.destinationLocationId}:${input.serializedAssetId ?? input.serialNumber ?? input.itemId}`,
-        notes: input.notes ?? null,
-        lines: [
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      withTransaction(qr.manager, async (manager) => {
+        const result = await this.recordMovementWithManager(
+          manager,
+          tenantId,
           {
-            itemId: input.itemId,
-            locationId: input.sourceLocationId,
-            quantity: -quantity,
-            lotId: input.lotId ?? null,
-            serializedAssetId: input.serializedAssetId ?? null,
-            serialNumber: input.serialNumber ?? null,
+            origin: StockMovementOrigin.RETURN,
+            originContext: 'inventory.return',
+            originRefId: input.serializedAssetId ?? input.serialNumber ?? input.itemId,
+            idempotencyKey:
+              input.idempotencyKey?.trim() ??
+              `return:${input.sourceLocationId}:${input.destinationLocationId}:${input.serializedAssetId ?? input.serialNumber ?? input.itemId}`,
+            notes: input.notes ?? null,
+            lines: [
+              {
+                itemId: input.itemId,
+                locationId: input.sourceLocationId,
+                quantity: -quantity,
+                lotId: input.lotId ?? null,
+                serializedAssetId: input.serializedAssetId ?? null,
+                serialNumber: input.serialNumber ?? null,
+              },
+              ...(keepsAssetInTransit
+                ? []
+                : [
+                    {
+                      itemId: input.itemId,
+                      locationId: input.destinationLocationId,
+                      quantity,
+                      lotId: input.lotId ?? null,
+                      serializedAssetId: input.serializedAssetId ?? null,
+                      serialNumber: input.serialNumber ?? null,
+                    },
+                  ]),
+            ],
+            assetTransitions:
+              input.serializedAssetId || input.serialNumber
+                ? [
+                    {
+                      serializedAssetId: input.serializedAssetId ?? null,
+                      serialNumber: input.serialNumber ?? null,
+                      toStatus: input.targetStatus,
+                      currentLocationId: keepsAssetInTransit ? null : input.destinationLocationId,
+                      currentResponsibleType: keepsAssetInTransit
+                        ? InventoryResponsibleType.NONE
+                        : InventoryResponsibleType.WAREHOUSE,
+                      currentResponsibleRefId: null,
+                      eventType: AssetLifecycleEventType.RETURNED,
+                    },
+                  ]
+                : [],
           },
-          ...(keepsAssetInTransit
-            ? []
-            : [
-                {
-                  itemId: input.itemId,
-                  locationId: input.destinationLocationId,
-                  quantity,
-                  lotId: input.lotId ?? null,
-                  serializedAssetId: input.serializedAssetId ?? null,
-                  serialNumber: input.serialNumber ?? null,
-                },
-              ]),
-        ],
-        assetTransitions:
-          input.serializedAssetId || input.serialNumber
-            ? [
-                {
-                  serializedAssetId: input.serializedAssetId ?? null,
-                  serialNumber: input.serialNumber ?? null,
-                  toStatus: input.targetStatus,
-                  currentLocationId: keepsAssetInTransit ? null : input.destinationLocationId,
-                  currentResponsibleType: keepsAssetInTransit
-                    ? InventoryResponsibleType.NONE
-                    : InventoryResponsibleType.WAREHOUSE,
-                  currentResponsibleRefId: null,
-                  eventType: AssetLifecycleEventType.RETURNED,
-                },
-              ]
-            : [],
-      },
-      actor,
+          actor,
+        );
+
+        if (input.serializedAssetId || input.serialNumber) {
+          const asset = await this.serializedAssetService.resolveForMovementWithManager(
+            manager,
+            tenantId,
+            {
+              serializedAssetId: input.serializedAssetId,
+              serialNumber: input.serialNumber,
+            },
+          );
+
+          if (asset) {
+            await this.assetLoanService.closeOpenLoanWithManager(manager, {
+              tenantId,
+              serializedAssetId: asset.id,
+              removedAt: new Date(),
+            });
+          }
+        }
+
+        return result;
+      }),
     );
   }
 
   async recordWriteOff(input: WriteOffAssetInput, actor: JwtPayload): Promise<StockMovementResult> {
-    if (!input.locationId) {
+    const locationId = input.locationId;
+    if (!locationId) {
       throw new BadRequestException('La baja requiere locationId para afectar el balance.');
     }
 
-    return this.recordMovement(
-      {
-        origin: StockMovementOrigin.WRITE_OFF,
-        originContext: 'inventory.write-off',
-        originRefId: input.serializedAssetId ?? input.itemId ?? null,
-        idempotencyKey:
-          input.idempotencyKey?.trim() ??
-          `writeoff:${input.serializedAssetId ?? input.itemId}:${input.reason}:${input.locationId}`,
-        notes: input.notes ?? null,
-        lines: input.itemId
-          ? [
-              {
-                itemId: input.itemId,
-                locationId: input.locationId,
-                quantity: -(input.serializedAssetId ? 1 : input.quantity),
-                serializedAssetId: input.serializedAssetId ?? null,
-              },
-            ]
-          : [],
-        assetTransitions:
-          input.serializedAssetId != null
-            ? [
-                {
-                  serializedAssetId: input.serializedAssetId,
-                  toStatus: SerializedAssetStatus.WRITTEN_OFF,
-                  currentLocationId: null,
-                  currentResponsibleType: InventoryResponsibleType.NONE,
-                  currentResponsibleRefId: null,
-                  eventType: AssetLifecycleEventType.WRITTEN_OFF,
-                },
-              ]
-            : [],
-      },
-      actor,
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      withTransaction(qr.manager, async (manager) => {
+        const result = await this.recordMovementWithManager(
+          manager,
+          tenantId,
+          {
+            origin: StockMovementOrigin.WRITE_OFF,
+            originContext: 'inventory.write-off',
+            originRefId: input.serializedAssetId ?? input.itemId ?? null,
+            idempotencyKey:
+              input.idempotencyKey?.trim() ??
+              `writeoff:${input.serializedAssetId ?? input.itemId}:${input.reason}:${locationId}`,
+            notes: input.notes ?? null,
+            lines: input.itemId
+              ? [
+                  {
+                    itemId: input.itemId,
+                    locationId,
+                    quantity: -(input.serializedAssetId ? 1 : input.quantity),
+                    serializedAssetId: input.serializedAssetId ?? null,
+                  },
+                ]
+              : [],
+            assetTransitions:
+              input.serializedAssetId != null
+                ? [
+                    {
+                      serializedAssetId: input.serializedAssetId,
+                      toStatus: resolveWriteOffAssetStatus(input.reason),
+                      currentLocationId: null,
+                      currentResponsibleType: InventoryResponsibleType.NONE,
+                      currentResponsibleRefId: null,
+                      eventType:
+                        resolveWriteOffAssetStatus(input.reason) === SerializedAssetStatus.LOST
+                          ? AssetLifecycleEventType.STATUS_CHANGED
+                          : AssetLifecycleEventType.WRITTEN_OFF,
+                    },
+                  ]
+                : [],
+          },
+          actor,
+        );
+
+        if (input.serializedAssetId != null) {
+          await this.assetLoanService.closeOpenLoanWithManager(manager, {
+            tenantId,
+            serializedAssetId: input.serializedAssetId,
+            removedAt: new Date(),
+          });
+        }
+
+        return result;
+      }),
     );
   }
 

@@ -165,4 +165,35 @@ describe('StockMovementQueryService', () => {
     expect(firstLine.itemSku).toBe('ONU-01');
     expect(firstLine.unitCost).toBe('10.00');
   });
+
+  it('filters movements by serializedAssetId using EXISTS on lines', async () => {
+    const serializedAssetId = '11111111-1111-4111-8111-111111111111';
+    const qb = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getCount: jest.fn().mockResolvedValue(0),
+      getMany: jest.fn().mockResolvedValue([]),
+    };
+    const manager = {
+      createQueryBuilder: jest.fn().mockReturnValue(qb),
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn(),
+    };
+
+    runInTenantSchemaMock.mockImplementation(async (_ds, _schema, work) =>
+      work({ manager } as never),
+    );
+
+    const service = new StockMovementQueryService({} as DataSource);
+    await service.list({ serializedAssetId, page: 1, limit: 20 });
+
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining('serialized_asset_id = :serializedAssetId'),
+      { serializedAssetId },
+    );
+  });
 });

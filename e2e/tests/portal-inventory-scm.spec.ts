@@ -50,6 +50,11 @@ const MOBILE_RESPONSIBLE_NAME = 'Carlos Garzón';
 const PR_SEED_ID = 'pr-seed-001';
 const PARTY_REUSE_ID = 'party-reuse-001';
 const REUSE_DOCUMENT_NUMBER = '900123456';
+const ASSET_ID = 'asset-001';
+const SUBSCRIBER_REF_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const CONTRACT_REF_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const EXECUTION_ORDER_REF_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+const LOC_CUSTOMER = 'loc-customer-001';
 
 function buildToken(role: 'NOC' | 'ADMIN' = 'NOC'): string {
   return (
@@ -181,6 +186,8 @@ type InventoryMockState = {
   movements: Array<Record<string, unknown>>;
   supplierProfiles: Array<Record<string, unknown>>;
   supplierCreateCount: number;
+  serializedAssets: Array<Record<string, unknown>>;
+  loans: Array<Record<string, unknown>>;
 };
 
 function buildCategory(overrides: Record<string, unknown> = {}) {
@@ -294,6 +301,125 @@ function buildRfqDetail(state: InventoryMockState, purchaseRequestId: string) {
         displayName: resolveSupplierDisplayName(state, String(invitation.partyRefId)),
       })),
   };
+}
+
+function buildSerializedAsset(overrides: Record<string, unknown> = {}) {
+  return {
+    id: ASSET_ID,
+    tenantId: 'tenant-inventory-001',
+    inventoryItemId: ITEM_ID,
+    serialNumber: 'SN-001',
+    normalizedSerialNumber: 'SN-001',
+    macAddress: 'AA:BB:CC:DD:EE:01',
+    normalizedMacAddress: 'AA:BB:CC:DD:EE:01',
+    assetTag: null,
+    currentStatus: 'AVAILABLE',
+    currentLocationId: LOC_MAIN,
+    currentResponsibleType: 'WAREHOUSE',
+    currentResponsibleRefId: LOC_MAIN,
+    subscriberRefId: null,
+    contractRefId: null,
+    purchaseOrderRef: null,
+    purchaseDate: null,
+    usefulLifeMonths: 36,
+    warrantyUntil: null,
+    createdAt: nowIso(-1000),
+    updatedAt: nowIso(-1000),
+    ...overrides,
+  };
+}
+
+function listLoansForMockState(
+  state: InventoryMockState,
+  filters: {
+    status?: string | null;
+    subscriberRefId?: string | null;
+    contractRefId?: string | null;
+    serializedAssetId?: string | null;
+    page?: number;
+    limit?: number;
+  },
+) {
+  let filtered = [...state.loans];
+  if (filters.status) {
+    filtered = filtered.filter((loan) => loan.status === filters.status);
+  }
+  if (filters.subscriberRefId) {
+    filtered = filtered.filter((loan) => loan.subscriberRefId === filters.subscriberRefId);
+  }
+  if (filters.contractRefId) {
+    filtered = filtered.filter((loan) => loan.contractRefId === filters.contractRefId);
+  }
+  if (filters.serializedAssetId) {
+    filtered = filtered.filter((loan) => loan.serializedAssetId === filters.serializedAssetId);
+  }
+
+  const page = filters.page ?? 1;
+  const limit = filters.limit ?? 20;
+  const offset = (page - 1) * limit;
+
+  return {
+    data: filtered.slice(offset, offset + limit),
+    total: filtered.length,
+    page,
+    limit,
+  };
+}
+
+function openLoanFromExecutionOrderMock(
+  state: InventoryMockState,
+  input: {
+    executionOrderId: string;
+    itemId: string;
+    serialNumber?: string | null;
+    subscriberId?: string | null;
+    contractRefId?: string | null;
+  },
+) {
+  const asset = state.serializedAssets.find(
+    (entry) =>
+      entry.inventoryItemId === input.itemId &&
+      (input.serialNumber ? entry.serialNumber === input.serialNumber : true),
+  );
+  if (!asset) {
+    return null;
+  }
+
+  const movementId = `mov-eo-${String(state.loans.length + 1).padStart(3, '0')}`;
+  const loanId = `loan-${String(state.loans.length + 1).padStart(3, '0')}`;
+  const installedAt = nowIso();
+
+  state.loans.push({
+    id: loanId,
+    serializedAssetId: String(asset.id),
+    subscriberRefId: input.subscriberId ?? SUBSCRIBER_REF_ID,
+    contractRefId: input.contractRefId ?? CONTRACT_REF_ID,
+    installedAt,
+    removedAt: null,
+    executionOrderRefId: input.executionOrderId,
+    stockMovementId: movementId,
+    status: 'abierto',
+  });
+
+  asset.currentStatus = 'INSTALLED_COMODATO';
+  asset.currentLocationId = LOC_CUSTOMER;
+  asset.subscriberRefId = input.subscriberId ?? SUBSCRIBER_REF_ID;
+  asset.contractRefId = input.contractRefId ?? CONTRACT_REF_ID;
+  asset.updatedAt = installedAt;
+
+  return { movementId, loanId };
+}
+
+function closeOpenLoanForAssetMock(state: InventoryMockState, serializedAssetId: string) {
+  const openLoan = state.loans.find(
+    (loan) => loan.serializedAssetId === serializedAssetId && loan.status === 'abierto',
+  );
+  if (!openLoan) {
+    return;
+  }
+
+  openLoan.removedAt = nowIso();
+  openLoan.status = 'cerrado';
 }
 
 function buildLocation(overrides: Record<string, unknown> = {}) {
@@ -569,6 +695,16 @@ function createInventoryMockState(): InventoryMockState {
         createdAt: nowIso(-2400),
         updatedAt: nowIso(-2400),
       }),
+      buildLocation({
+        id: LOC_CUSTOMER,
+        code: 'CLI-01',
+        name: 'Sitio cliente',
+        type: 'CUSTOMER_SITE',
+        responsibleRefId: null,
+        maxCapacity: null,
+        createdAt: nowIso(-2300),
+        updatedAt: nowIso(-2300),
+      }),
     ],
     balances: [
       buildBalance(),
@@ -622,6 +758,8 @@ function createInventoryMockState(): InventoryMockState {
     ],
     supplierProfiles: [buildSupplierProfile()],
     supplierCreateCount: 0,
+    serializedAssets: [buildSerializedAsset()],
+    loans: [],
   };
 }
 
@@ -1014,34 +1152,104 @@ async function setupInventoryMocks(
       return;
     }
 
+    if (/^\/api\/v\d+\/inventory\/assets\/[^/]+$/.test(pathname) && method === 'GET') {
+      const assetId = pathname.split('/').pop() ?? ASSET_ID;
+      const asset =
+        state.serializedAssets.find((entry) => entry.id === assetId) ?? buildSerializedAsset();
+      const assetLoans = state.loans.filter((loan) => loan.serializedAssetId === assetId);
+      const location =
+        state.locations.find((entry) => entry.id === asset.currentLocationId) ?? state.locations[0];
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...asset,
+          item: {
+            id: ITEM_ID,
+            sku: 'ONT-HG8245',
+            name: 'ONT Huawei HG8245',
+            categoryName: 'CPE',
+          },
+          currentLocation: location
+            ? {
+                id: location.id,
+                code: location.code,
+                name: location.name,
+                type: location.type,
+              }
+            : null,
+          purchaseOrigin: {
+            purchaseOrderId: 'po-001',
+            purchaseOrderNumber: 'OC-0001',
+            goodsReceiptId: 'gr-001',
+            receivedAt: nowIso(-2000),
+            supplierPartyRefId: 'supplier-001',
+            supplierDisplayName: 'Proveedor Demo',
+            unitCost: '120000',
+          },
+          usefulLife: {
+            monthsTotal: 36,
+            monthsElapsed: 6,
+            monthsRemaining: 30,
+            warrantyUntil: null,
+            status: 'vigente',
+          },
+          lifecycle: {
+            data: [
+              {
+                id: 'evt-001',
+                eventType: 'RECEIVED',
+                fromStatus: 'IN_RECEIVING',
+                toStatus: 'AVAILABLE',
+                locationId: LOC_MAIN,
+                locationName: 'Bodega principal',
+                responsibleRefId: null,
+                actorUserId: null,
+                notes: null,
+                occurredAt: nowIso(-2000),
+              },
+            ],
+            total: 1,
+            page: 1,
+            limit: 20,
+          },
+          movements: {
+            data: state.movements.slice(0, 1),
+            total: state.movements.length,
+            page: 1,
+            limit: 20,
+          },
+          loans: { data: assetLoans, total: assetLoans.length },
+        }),
+      });
+      return;
+    }
+
     if (pathname.endsWith('/inventory/assets') && method === 'GET') {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            id: 'asset-001',
-            tenantId: 'tenant-inventory-001',
-            inventoryItemId: ITEM_ID,
-            serialNumber: 'SN-001',
-            normalizedSerialNumber: 'SN-001',
-            macAddress: 'AA:BB:CC:DD:EE:01',
-            normalizedMacAddress: 'AA:BB:CC:DD:EE:01',
-            assetTag: null,
-            currentStatus: 'AVAILABLE',
-            currentLocationId: LOC_MAIN,
-            currentResponsibleType: 'WAREHOUSE',
-            currentResponsibleRefId: LOC_MAIN,
-            subscriberRefId: null,
-            contractRefId: null,
-            purchaseOrderRef: null,
-            purchaseDate: null,
-            usefulLifeMonths: 36,
-            warrantyUntil: null,
-            createdAt: nowIso(-1000),
-            updatedAt: nowIso(-1000),
-          },
-        ]),
+        body: JSON.stringify(state.serializedAssets),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/inventory/loans') && method === 'GET') {
+      const pageParam = Number.parseInt(url.searchParams.get('page') ?? '1', 10);
+      const limitParam = Number.parseInt(url.searchParams.get('limit') ?? '20', 10);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(
+          listLoansForMockState(state, {
+            status: url.searchParams.get('status'),
+            subscriberRefId: url.searchParams.get('subscriberRefId'),
+            contractRefId: url.searchParams.get('contractRefId'),
+            serializedAssetId: url.searchParams.get('serializedAssetId'),
+            page: pageParam,
+            limit: limitParam,
+          }),
+        ),
       });
       return;
     }
@@ -1058,6 +1266,7 @@ async function setupInventoryMocks(
     if (pathname.endsWith('/inventory/movements') && method === 'GET') {
       const itemId = url.searchParams.get('itemId');
       const locationId = url.searchParams.get('locationId');
+      const serializedAssetId = url.searchParams.get('serializedAssetId');
       const origin = url.searchParams.get('origin');
       const search = url.searchParams.get('search');
       const pageParam = Number.parseInt(url.searchParams.get('page') ?? '1', 10);
@@ -1073,6 +1282,13 @@ async function setupInventoryMocks(
         filtered = filtered.filter((movement) =>
           (movement.lines as Array<Record<string, unknown>>).some(
             (line) => line.locationId === locationId,
+          ),
+        );
+      }
+      if (serializedAssetId) {
+        filtered = filtered.filter((movement) =>
+          (movement.lines as Array<Record<string, unknown>>).some(
+            (line) => line.serializedAssetId === serializedAssetId,
           ),
         );
       }
@@ -2382,7 +2598,54 @@ async function setupInventoryMocks(
       return;
     }
 
+    if (pathname.endsWith('/inventory/movements/execution-order') && method === 'POST') {
+      const body = request.postDataJSON() as {
+        executionOrderId: string;
+        itemId: string;
+        serialNumber?: string | null;
+        subscriberId?: string | null;
+        contractRefId?: string | null;
+        finalDisposition?: string;
+      };
+
+      if (body.finalDisposition === 'INSTALLED_AT_CUSTOMER') {
+        openLoanFromExecutionOrderMock(state, body);
+      }
+
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          movement: {
+            id: 'mov-eo-install',
+            movementNumber: 'MOV-000050',
+            origin: 'EXECUTION_ORDER',
+          },
+          lines: [],
+        }),
+      });
+      return;
+    }
+
     if (pathname.endsWith('/inventory/returns') && method === 'POST') {
+      const body = request.postDataJSON() as {
+        serialNumber?: string | null;
+        itemId?: string;
+      };
+      const asset = state.serializedAssets.find(
+        (entry) =>
+          entry.inventoryItemId === body.itemId &&
+          (body.serialNumber ? entry.serialNumber === body.serialNumber : true),
+      );
+      if (asset) {
+        closeOpenLoanForAssetMock(state, String(asset.id));
+        asset.currentStatus = 'AVAILABLE';
+        asset.currentLocationId = LOC_MAIN;
+        asset.subscriberRefId = null;
+        asset.contractRefId = null;
+        asset.updatedAt = nowIso();
+      }
+
       state.returnCount += 1;
       await route.fulfill({
         status: 201,
@@ -2727,6 +2990,90 @@ test.describe('Portal Inventario / SCM', () => {
     await main.getByRole('tab', { name: 'Activos' }).click();
     await expect(main.getByText('SN-001')).toBeVisible();
     await expect(main.getByText('Disponible')).toBeVisible();
+  });
+
+  test('abre ficha 360 del activo con timeline y origen de compra', async ({ page }) => {
+    await page.goto('/dashboard/inventory');
+    const main = page.locator('main');
+
+    await main.getByRole('tab', { name: 'Activos' }).click();
+    await main.getByRole('button', { name: 'Ver detalle' }).click();
+
+    const drawer = page.getByTestId('serialized-asset-detail-drawer');
+    await expect(drawer.getByRole('heading', { name: 'Ficha 360 del activo' })).toBeVisible();
+    await expect(drawer.getByTestId('asset-detail-section-purchase-origin')).toContainText(
+      'OC-0001',
+    );
+    await expect(drawer.getByTestId('asset-detail-section-purchase-origin')).toContainText(
+      'Proveedor Demo',
+    );
+    await expect(drawer.getByTestId('asset-detail-section-lifecycle')).toContainText('Recepción');
+  });
+
+  test('instala vía OT, muestra comodato abierto y lo cierra al retornar', async ({ page }) => {
+    const state = (page as unknown as { inventoryMockState: InventoryMockState })
+      .inventoryMockState;
+
+    await page.evaluate(
+      async ({ executionOrderId, itemId, serialNumber, subscriberId, contractRefId }) => {
+        const token = window.localStorage.getItem('iwana.portal.access-token');
+        const slug = window.localStorage.getItem('iwana.portal.tenant-slug');
+        await fetch('/api/v1/inventory/movements/execution-order', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+            'X-Tenant-Slug': slug ?? '',
+          },
+          body: JSON.stringify({
+            executionOrderId,
+            itemId,
+            technicianCustodyId: 'loc-002',
+            quantity: 1,
+            serialNumber,
+            subscriberId,
+            contractRefId,
+            action: 'INSTALL',
+            finalDisposition: 'INSTALLED_AT_CUSTOMER',
+          }),
+        });
+      },
+      {
+        executionOrderId: EXECUTION_ORDER_REF_ID,
+        itemId: ITEM_ID,
+        serialNumber: 'SN-001',
+        subscriberId: SUBSCRIBER_REF_ID,
+        contractRefId: CONTRACT_REF_ID,
+      },
+    );
+
+    expect(state.loans.some((loan) => loan.status === 'abierto')).toBe(true);
+
+    await page.goto('/dashboard/inventory');
+    const main = page.locator('main');
+
+    await main.getByRole('tab', { name: 'Activos' }).click();
+    await main.getByRole('tab', { name: 'Comodatos' }).click();
+
+    const loansPanel = main.getByTestId('asset-loans-panel');
+    await expect(loansPanel.getByRole('cell', { name: 'Abierto' })).toBeVisible();
+    await expect(loansPanel.getByText('ONT-HG8245 · SN-001')).toBeVisible();
+
+    await main.getByRole('tab', { name: 'Movimientos' }).click();
+    await main.getByLabel('Producto').nth(1).selectOption(ITEM_ID);
+    await main.getByLabel('Bodega de origen').selectOption(LOC_CUSTOMER);
+    await main.getByLabel('Bodega de destino').selectOption(LOC_MAIN);
+    await main.getByLabel('Serial (opcional)').nth(1).fill('SN-001');
+    await main.getByRole('button', { name: 'Registrar retorno' }).click();
+
+    await expect(main.getByText(/Devolución registrada/i)).toBeVisible();
+    expect(state.loans.some((loan) => loan.status === 'cerrado')).toBe(true);
+
+    await main.getByRole('tab', { name: 'Activos' }).click();
+    await main.getByRole('tab', { name: 'Comodatos' }).click();
+    await main.getByTestId('asset-loans-panel').getByRole('button', { name: 'Actualizar' }).click();
+
+    await expect(loansPanel.getByRole('cell', { name: 'Cerrado' })).toBeVisible();
   });
 
   test('crea salida a técnico y despacha generando movimiento', async ({ page }) => {

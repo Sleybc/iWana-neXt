@@ -151,6 +151,7 @@ const actor: JwtPayload = {
       } as never,
       { recordWithManager: jest.fn() } as never,
       { resolveSealedUnitCostWithManager: jest.fn().mockResolvedValue(null) } as never,
+      { openLoanWithManager: jest.fn(), closeOpenLoanWithManager: jest.fn() } as never,
     );
     issueService = new StockIssueService(dataSource, ledgerService, balanceService);
 

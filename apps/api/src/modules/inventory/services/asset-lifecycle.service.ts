@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager } from 'typeorm';
-import { AssetLifecycleEvent, TenantContext, runInTenantSchema } from '@iwana/db';
+import { DataSource, EntityManager, In } from 'typeorm';
+import { AssetLifecycleEvent, StockLocation, TenantContext, runInTenantSchema } from '@iwana/db';
 import { AssetLifecycleEventType, SerializedAssetStatus } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
+import { AssetLifecycleEventRecord } from '../types/serialized-asset-detail.types';
 
 interface RecordAssetLifecycleInput {
   tenantId: string;
@@ -15,6 +16,7 @@ interface RecordAssetLifecycleInput {
   responsibleRefId?: string | null;
   notes?: string | null;
   actorUserId?: string | null;
+  stockMovementId?: string | null;
 }
 
 @Injectable()
@@ -30,6 +32,65 @@ export class AssetLifecycleService {
         order: { createdAt: 'ASC' },
       }),
     );
+  }
+
+  async listPaginatedForAsset(
+    serializedAssetId: string,
+    page: number,
+    limit: number,
+  ): Promise<{ data: AssetLifecycleEventRecord[]; total: number; page: number; limit: number }> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const qb = qr.manager
+        .createQueryBuilder(AssetLifecycleEvent, 'event')
+        .where('event.tenant_id = :tenantId', { tenantId })
+        .andWhere('event.serialized_asset_id = :serializedAssetId', { serializedAssetId })
+        .orderBy('event.created_at', 'DESC');
+
+      const total = await qb.getCount();
+      const events = await qb
+        .skip((page - 1) * limit)
+        .take(limit)
+        .getMany();
+
+      const locationIds = [
+        ...new Set(events.map((event) => event.locationId).filter((id): id is string => !!id)),
+      ];
+      const locations =
+        locationIds.length > 0
+          ? await qr.manager.find(StockLocation, {
+              where: { tenantId, id: In(locationIds) },
+            })
+          : [];
+      const locationNameById = new Map(locations.map((location) => [location.id, location.name]));
+
+      return {
+        data: events.map((event) => this.toRecord(event, locationNameById)),
+        total,
+        page,
+        limit,
+      };
+    });
+  }
+
+  private toRecord(
+    event: AssetLifecycleEvent,
+    locationNameById: Map<string, string>,
+  ): AssetLifecycleEventRecord {
+    return {
+      id: event.id,
+      eventType: event.eventType,
+      fromStatus: event.fromStatus,
+      toStatus: event.toStatus,
+      locationId: event.locationId,
+      locationName: event.locationId ? (locationNameById.get(event.locationId) ?? null) : null,
+      responsibleRefId: event.responsibleRefId,
+      actorUserId: event.actorUserId,
+      notes: event.notes,
+      occurredAt: event.createdAt,
+      stockMovementId: event.stockMovementId,
+    };
   }
 
   async recordWithManager(
@@ -48,6 +109,7 @@ export class AssetLifecycleService {
         responsibleRefId: input.responsibleRefId ?? null,
         notes: input.notes ?? null,
         actorUserId: input.actorUserId ?? null,
+        stockMovementId: input.stockMovementId ?? null,
       }),
     );
   }
