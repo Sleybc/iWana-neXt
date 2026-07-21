@@ -1,6 +1,6 @@
 # PROMPT — MOD12 Inventario — Bajas con aprobación — Fase H3
 
-> **Estado: Emitido (G4) — EJECUTABLE** (post cierre Activos/comodato 5A+5B; H3 = único Alto abierto)
+> **Estado: EN EJECUCIÓN / ENTREGA COMPLETA** — G5 GO 2026-07-21; G6/G7 pendientes.
 
 ## Vínculos de trazabilidad
 

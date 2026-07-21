@@ -1,7 +1,7 @@
 # PRD — MOD12 Inventario / Submódulo Bajas con aprobación
 
 **Version:** 1.0  
-**Estado:** Emitido — **EJECUTABLE** (post cierre Activos/comodato 5A+5B)  
+**Estado:** ✅ **MVP cerrado** — G5 GO H3 (2026-07-21); G6/G7 pendientes  
 **Fecha:** 2026-07-21  
 **Modo activo:** Product Architect + Orchestrator  
 **Autor:** AI-EM-ARCH  

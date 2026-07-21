@@ -20,6 +20,7 @@ import { StockIssueService } from '../services/stock-issue.service';
 import { StockLedgerService } from '../services/stock-ledger.service';
 import { StockLocationService } from '../services/stock-location.service';
 import { StockMovementQueryService } from '../services/stock-movement-query.service';
+import { WriteOffService } from '../services/write-off.service';
 
 jest.mock('../../auth/guards/jwt-auth.guard', () => ({
   JwtAuthGuard: class JwtAuthGuard {
@@ -93,6 +94,7 @@ describe('Counter purchase HTTP integration', () => {
         { provide: ReplenishmentService, useValue: {} },
         { provide: CycleCountService, useValue: {} },
         { provide: AssetLoanService, useValue: {} },
+        { provide: WriteOffService, useValue: {} },
         { provide: CounterPurchaseService, useValue: counterPurchaseServiceMock },
         JwtAuthGuard,
         RolesGuard,

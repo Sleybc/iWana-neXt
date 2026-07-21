@@ -67,6 +67,7 @@ import { InventoryCostingService } from './services/inventory-costing.service';
 import { RfqPdfService } from './services/rfq-pdf.service';
 import { RfqService } from './services/rfq.service';
 import { StockLocationService } from './services/stock-location.service';
+import { WriteOffService } from './services/write-off.service';
 import { SupplierProfileService } from './services/supplier-profile.service';
 
 @Module({
@@ -129,6 +130,7 @@ import { SupplierProfileService } from './services/supplier-profile.service';
     InventoryDashboardService,
     ReplenishmentService,
     SupplierProfileService,
+    WriteOffService,
     InventoryMovementPortAdapter,
     CommercialProductReferencePortAdapter,
     SupplierPartyPortAdapter,
@@ -171,6 +173,7 @@ import { SupplierProfileService } from './services/supplier-profile.service';
     InventoryDashboardService,
     ReplenishmentService,
     SupplierProfileService,
+    WriteOffService,
     InventoryMovementPortAdapter,
     CommercialProductReferencePortAdapter,
     SupplierPartyPortAdapter,

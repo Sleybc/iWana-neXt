@@ -87,6 +87,12 @@ import {
   UpdateStockLocationSchema,
   WriteOffAssetDto,
   WriteOffAssetSchema,
+  ListWriteOffsQueryDto,
+  ListWriteOffsQuerySchema,
+  ApproveWriteOffDto,
+  ApproveWriteOffSchema,
+  RejectWriteOffDto,
+  RejectWriteOffSchema,
 } from './dto';
 import { SerializedAssetDetailResponseDto } from './dto/serialized-asset-detail-response.dto';
 import { InventoryDashboardService } from './services/inventory-dashboard.service';
@@ -102,6 +108,7 @@ import { StockLocationService } from './services/stock-location.service';
 import { StockIssueService } from './services/stock-issue.service';
 import { CounterPurchaseService } from './services/counter-purchase.service';
 import { CycleCountService } from './services/cycle-count.service';
+import { WriteOffService } from './services/write-off.service';
 
 @ApiTags('inventory')
 @ApiBearerAuth('access-token')
@@ -122,6 +129,7 @@ export class InventoryController {
     private readonly replenishmentService: ReplenishmentService,
     private readonly cycleCountService: CycleCountService,
     private readonly assetLoanService: AssetLoanService,
+    private readonly writeOffService: WriteOffService,
   ) {}
 
   @Get('items')
@@ -474,12 +482,51 @@ export class InventoryController {
 
   @Post('write-offs')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
-  @ApiOperation({ summary: 'Registrar baja de inventario o activo' })
-  writeOff(
+  @ApiOperation({ summary: 'Solicitar baja de inventario o activo (pendiente de aprobación)' })
+  createWriteOffRequest(
     @Body(new ZodValidationPipe(WriteOffAssetSchema)) body: WriteOffAssetDto,
     @CurrentUser() actor: JwtPayload,
   ) {
-    return this.stockLedgerService.recordWriteOff(WriteOffAssetSchema.parse(body), actor);
+    return this.writeOffService.createRequest(WriteOffAssetSchema.parse(body), actor);
+  }
+
+  @Get('write-offs')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Listar solicitudes y documentos de baja' })
+  listWriteOffs(
+    @Query(new ZodValidationPipe(ListWriteOffsQuerySchema)) query: ListWriteOffsQueryDto,
+  ) {
+    return this.writeOffService.list(ListWriteOffsQuerySchema.parse(query));
+  }
+
+  @Get('write-offs/:id')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Obtener detalle de solicitud o documento de baja' })
+  getWriteOff(@Param('id', ParseUUIDPipe) id: string) {
+    return this.writeOffService.getById(id);
+  }
+
+  @Post('write-offs/:id/approve')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Aprobar solicitud de baja y aplicar al ledger' })
+  approveWriteOff(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(ApproveWriteOffSchema)) body: ApproveWriteOffDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    void body;
+    return this.writeOffService.approve(id, actor);
+  }
+
+  @Post('write-offs/:id/reject')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @ApiOperation({ summary: 'Rechazar solicitud de baja' })
+  rejectWriteOff(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(RejectWriteOffSchema)) body: RejectWriteOffDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.writeOffService.reject(id, RejectWriteOffSchema.parse(body), actor);
   }
 
   @Post('counter-purchases')

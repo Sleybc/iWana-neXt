@@ -23,6 +23,8 @@ import {
   SupplierProfileStatus,
   UserRole,
   WriteOffReason,
+  WriteOffStatus,
+  StockMovementOrigin,
 } from '@iwana/shared';
 import { useAuth } from '@/components/auth/AuthProvider';
 import {
@@ -70,6 +72,7 @@ import {
   type StockBalanceRecord,
   type StockLocationRecord,
   type StockMovementResultRecord,
+  type InventoryWriteOffRecord,
   type SupplierProfileRecord,
   type UpdateStockLocationDto,
   type UpdateInventoryItemDto,
@@ -113,6 +116,8 @@ import { StockWorkspace } from './StockWorkspace';
 
 import { StockIssuesWorkspace } from './StockIssuesWorkspace';
 import { StockCountsWorkspace } from './StockCountsWorkspace';
+import { WriteOffsPanel, type WriteOffHistoryStatusFilter } from './WriteOffsPanel';
+import type { StockKardexFilters } from './stock-kardex-filters';
 import {
   buildTakenCodePrefixSet,
   isValidCategoryCodePrefix,
@@ -324,6 +329,20 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   });
   const [movementError, setMovementError] = useState<string | null>(null);
   const [writeOffError, setWriteOffError] = useState<string | null>(null);
+  const [writeOffSuccess, setWriteOffSuccess] = useState<string | null>(null);
+  const [pendingWriteOffs, setPendingWriteOffs] = useState<InventoryWriteOffRecord[]>([]);
+  const [historyWriteOffs, setHistoryWriteOffs] = useState<InventoryWriteOffRecord[]>([]);
+  const [writeOffHistoryStatusFilter, setWriteOffHistoryStatusFilter] =
+    useState<WriteOffHistoryStatusFilter>('all');
+  const [isLoadingPendingWriteOffs, setIsLoadingPendingWriteOffs] = useState(false);
+  const [isLoadingHistoryWriteOffs, setIsLoadingHistoryWriteOffs] = useState(false);
+  const [pendingWriteOffsError, setPendingWriteOffsError] = useState<string | null>(null);
+  const [historyWriteOffsError, setHistoryWriteOffsError] = useState<string | null>(null);
+  const [writeOffActionError, setWriteOffActionError] = useState<string | null>(null);
+  const [processingWriteOffId, setProcessingWriteOffId] = useState<string | null>(null);
+  const [stockKardexPrefill, setStockKardexPrefill] = useState<Partial<StockKardexFilters> | null>(
+    null,
+  );
   const [catalogOptions, setCatalogOptions] = useState<InventoryCatalogOptionRecord[]>([]);
   const [catalogOptionsError, setCatalogOptionsError] = useState<string | null>(null);
   const [catalogItems, setCatalogItems] = useState<InventoryItemRecord[]>([]);
@@ -399,6 +418,23 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     [locations],
   );
   const userLabelById = useMemo(() => buildUserLabelMap(tenantUsers), [tenantUsers]);
+  const stockKardexInitial = useMemo(() => {
+    if (stockKardexPrefill) {
+      return {
+        initialSubview: 'kardex' as const,
+        initialKardexFilters: stockKardexPrefill,
+      };
+    }
+
+    if (kardexAssetIdFromUrl) {
+      return {
+        initialSubview: 'kardex' as const,
+        initialKardexFilters: { serializedAssetId: kardexAssetIdFromUrl },
+      };
+    }
+
+    return {};
+  }, [kardexAssetIdFromUrl, stockKardexPrefill]);
 
   // Resumen y «Por producto» deben coincidir: ambos usan el disponible canónico
   // (existencia − reservado) que calcula buildStockOverviewRows.
@@ -495,6 +531,46 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
     }
   }, [loanStatusFilter]);
 
+  const loadPendingWriteOffs = useCallback(async () => {
+    setIsLoadingPendingWriteOffs(true);
+    setPendingWriteOffsError(null);
+    try {
+      const response = await inventoryApi.writeOffs.list({
+        status: WriteOffStatus.PENDING_APPROVAL,
+        page: 1,
+        limit: 50,
+      });
+      setPendingWriteOffs(response.data);
+    } catch (loadError) {
+      setPendingWriteOffsError(mapInventoryError(loadError));
+      setPendingWriteOffs([]);
+    } finally {
+      setIsLoadingPendingWriteOffs(false);
+    }
+  }, []);
+
+  const loadHistoryWriteOffs = useCallback(async () => {
+    setIsLoadingHistoryWriteOffs(true);
+    setHistoryWriteOffsError(null);
+    try {
+      const response = await inventoryApi.writeOffs.list({
+        ...(writeOffHistoryStatusFilter !== 'all' ? { status: writeOffHistoryStatusFilter } : {}),
+        page: 1,
+        limit: 50,
+      });
+      setHistoryWriteOffs(response.data);
+    } catch (loadError) {
+      setHistoryWriteOffsError(mapInventoryError(loadError));
+      setHistoryWriteOffs([]);
+    } finally {
+      setIsLoadingHistoryWriteOffs(false);
+    }
+  }, [writeOffHistoryStatusFilter]);
+
+  const loadWriteOffs = useCallback(async () => {
+    await Promise.all([loadPendingWriteOffs(), loadHistoryWriteOffs()]);
+  }, [loadHistoryWriteOffs, loadPendingWriteOffs]);
+
   useEffect(() => {
     void loadData();
   }, [loadData]);
@@ -506,6 +582,22 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
 
     void loadLoans();
   }, [activeTab, assetsSubview, loadLoans]);
+
+  useEffect(() => {
+    if (activeTab !== 'writeoffs') {
+      return;
+    }
+
+    void loadWriteOffs();
+  }, [activeTab, loadWriteOffs]);
+
+  useEffect(() => {
+    if (activeTab !== 'writeoffs') {
+      return;
+    }
+
+    void loadHistoryWriteOffs();
+  }, [activeTab, loadHistoryWriteOffs, writeOffHistoryStatusFilter]);
 
   useEffect(() => {
     const tabFromUrl = searchParams.get('tab');
@@ -1732,8 +1824,9 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
   async function handleWriteOff() {
     setIsSubmittingWriteOff(true);
     setWriteOffError(null);
+    setWriteOffSuccess(null);
     try {
-      const result = await inventoryApi.writeOff({
+      await inventoryApi.writeOff({
         itemId: writeOffForm.itemId || null,
         serializedAssetId: writeOffForm.serializedAssetId || null,
         locationId: writeOffForm.locationId || null,
@@ -1741,9 +1834,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         reason: writeOffForm.reason,
         notes: writeOffForm.notes.trim() || null,
       });
-      setMovementNotice(
-        `Baja registrada. Número de movimiento: ${result.movement.movementNumber}.`,
-      );
+      setWriteOffSuccess('Solicitud registrada — pendiente de aprobación');
       setWriteOffForm({
         itemId: '',
         serializedAssetId: '',
@@ -1752,13 +1843,67 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         reason: WriteOffReason.DAMAGED,
         notes: '',
       });
-      await loadData(true);
+      await loadWriteOffs();
     } catch (submitError) {
       setWriteOffError(mapInventoryError(submitError));
     } finally {
       setIsSubmittingWriteOff(false);
     }
   }
+
+  async function handleApproveWriteOff(writeOffId: string) {
+    setProcessingWriteOffId(writeOffId);
+    setWriteOffActionError(null);
+    try {
+      const result = await inventoryApi.writeOffs.approve(writeOffId);
+      setMovementNotice(
+        result.movementNumber
+          ? `Baja aprobada. Número de movimiento: ${result.movementNumber}.`
+          : 'Baja aprobada y aplicada al inventario.',
+      );
+      await Promise.all([loadWriteOffs(), loadData(true)]);
+    } catch (submitError) {
+      setWriteOffActionError(mapInventoryError(submitError));
+    } finally {
+      setProcessingWriteOffId(null);
+    }
+  }
+
+  async function handleRejectWriteOff(writeOffId: string, rejectionNotes?: string | null) {
+    setProcessingWriteOffId(writeOffId);
+    setWriteOffActionError(null);
+    try {
+      await inventoryApi.writeOffs.reject(writeOffId, {
+        rejectionNotes: rejectionNotes ?? null,
+      });
+      setMovementNotice('Solicitud de baja rechazada.');
+      await loadWriteOffs();
+    } catch (submitError) {
+      setWriteOffActionError(mapInventoryError(submitError));
+    } finally {
+      setProcessingWriteOffId(null);
+    }
+  }
+
+  const handleOpenWriteOffMovement = useCallback(
+    async (stockMovementId: string) => {
+      try {
+        const movement = await inventoryApi.getMovement(stockMovementId);
+        setStockKardexPrefill({
+          search: movement.movementNumber,
+          origin: StockMovementOrigin.WRITE_OFF,
+        });
+        setActiveTab('stock');
+        const nextSearchParams = new URLSearchParams(searchParams.toString());
+        nextSearchParams.set('tab', 'stock');
+        const nextQuery = nextSearchParams.toString();
+        router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+      } catch (submitError) {
+        setWriteOffActionError(mapInventoryError(submitError));
+      }
+    },
+    [pathname, router, searchParams],
+  );
 
   return (
     <div className="space-y-6">
@@ -2190,12 +2335,7 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
               userLabelById={userLabelById}
               custodyFilter={locationCustodyFilter}
               canAdjust={canAdjustStock}
-              {...(kardexAssetIdFromUrl
-                ? {
-                    initialSubview: 'kardex' as const,
-                    initialKardexFilters: { serializedAssetId: kardexAssetIdFromUrl },
-                  }
-                : {})}
+              {...stockKardexInitial}
               onCustodyFilterChange={handleLocationCustodyFilterChange}
               onAdjustmentRegistered={(movementNumber) => {
                 setMovementNotice(`Ajuste registrado: ${movementNumber}`);
@@ -2532,8 +2672,8 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
         <TabsContent value="writeoffs" className="space-y-6">
           <PortalPanel
             eyebrow="Bajas"
-            title="Registrar baja definitiva"
-            description="Registra una salida definitiva por daño, pérdida u obsolescencia."
+            title="Solicitar baja"
+            description="Registra una solicitud de salida definitiva por daño, pérdida u obsolescencia. Un segundo usuario debe aprobarla antes de afectar el inventario."
           >
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <label className="space-y-1 text-sm">
@@ -2630,10 +2770,18 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
               </label>
             </div>
 
+            {writeOffSuccess && (
+              <PortalAlert
+                variant="success"
+                title="Solicitud enviada"
+                description={writeOffSuccess}
+              />
+            )}
+
             {writeOffError && (
               <PortalAlert
                 variant="error"
-                title="No fue posible registrar la baja"
+                title="No fue posible registrar la solicitud"
                 description={writeOffError}
               />
             )}
@@ -2648,10 +2796,35 @@ export function InventoryClient({ initialTab }: InventoryClientProps) {
                 }
                 onClick={() => void handleWriteOff()}
               >
-                Registrar baja
+                Solicitar baja
               </Button>
             </div>
           </PortalPanel>
+
+          <WriteOffsPanel
+            pending={pendingWriteOffs}
+            history={historyWriteOffs}
+            historyStatusFilter={writeOffHistoryStatusFilter}
+            onHistoryStatusFilterChange={setWriteOffHistoryStatusFilter}
+            items={items}
+            assets={assets}
+            locations={locations}
+            userLabelById={userLabelById}
+            {...(user?.id ? { currentUserId: user.id } : {})}
+            isLoadingPending={isLoadingPendingWriteOffs}
+            isLoadingHistory={isLoadingHistoryWriteOffs}
+            pendingError={pendingWriteOffsError}
+            historyError={historyWriteOffsError}
+            actionError={writeOffActionError}
+            processingWriteOffId={processingWriteOffId}
+            onRefreshPending={() => void loadPendingWriteOffs()}
+            onRefreshHistory={() => void loadHistoryWriteOffs()}
+            onApprove={(writeOffId) => void handleApproveWriteOff(writeOffId)}
+            onReject={(writeOffId, rejectionNotes) =>
+              void handleRejectWriteOff(writeOffId, rejectionNotes)
+            }
+            onOpenMovement={(stockMovementId) => void handleOpenWriteOffMovement(stockMovementId)}
+          />
         </TabsContent>
       </Tabs>
 

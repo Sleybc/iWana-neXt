@@ -26,6 +26,7 @@ import {
   StockLocationType,
   StockMovementOrigin,
   WriteOffReason,
+  WriteOffStatus,
   PartyType,
   DocumentTypeParty,
   PartyContactType,
@@ -2660,3 +2661,74 @@ export class ListStockCountsQueryDto {
   @Allow()
   locationId?: string;
 }
+
+export const ListWriteOffsQuerySchema = z.object({
+  status: z.nativeEnum(WriteOffStatus).optional(),
+  reason: z.nativeEnum(WriteOffReason).optional(),
+  itemId: z.string().uuid().optional(),
+  serializedAssetId: z.string().uuid().optional(),
+  createdFrom: z.string().datetime({ offset: true }).optional(),
+  createdTo: z.string().datetime({ offset: true }).optional(),
+  page: z.preprocess(
+    (value) => (value === '' || value === null ? undefined : value),
+    z.coerce.number().int().min(1).optional().default(1),
+  ),
+  limit: z.preprocess(
+    (value) => (value === '' || value === null ? undefined : value),
+    z.coerce.number().int().min(1).max(100).optional().default(20),
+  ),
+});
+
+export type ListWriteOffsQueryInput = z.infer<typeof ListWriteOffsQuerySchema>;
+
+export class ListWriteOffsQueryDto {
+  @ApiPropertyOptional({ enum: WriteOffStatus })
+  @Allow()
+  status?: WriteOffStatus;
+
+  @ApiPropertyOptional({ enum: WriteOffReason })
+  @Allow()
+  reason?: WriteOffReason;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @Allow()
+  itemId?: string;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @Allow()
+  serializedAssetId?: string;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  @Allow()
+  createdFrom?: string;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  @Allow()
+  createdTo?: string;
+
+  @ApiPropertyOptional({ default: 1, minimum: 1 })
+  @Allow()
+  page?: number;
+
+  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
+  @Allow()
+  limit?: number;
+}
+
+export const RejectWriteOffSchema = z.object({
+  notes: optionalTrimmedString(4000),
+});
+
+export type RejectWriteOffInput = z.infer<typeof RejectWriteOffSchema>;
+
+export class RejectWriteOffDto {
+  @ApiPropertyOptional({ maxLength: 4000 })
+  @Allow()
+  notes?: string | null;
+}
+
+export const ApproveWriteOffSchema = z.object({});
+
+export type ApproveWriteOffInput = z.infer<typeof ApproveWriteOffSchema>;
+
+export class ApproveWriteOffDto {}

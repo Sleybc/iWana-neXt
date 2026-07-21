@@ -15,6 +15,7 @@ import { InventoryController } from './inventory.controller';
 import { ReplenishmentService } from './services/replenishment.service';
 import { CycleCountService } from './services/cycle-count.service';
 import { AssetLoanService } from './services/asset-loan.service';
+import { WriteOffService } from './services/write-off.service';
 
 function getRequestSchema(
   operation: Record<string, unknown> | undefined,
@@ -47,6 +48,7 @@ describe('InventoryController Swagger', () => {
         { provide: ReplenishmentService, useValue: {} },
         { provide: CycleCountService, useValue: {} },
         { provide: AssetLoanService, useValue: {} },
+        { provide: WriteOffService, useValue: {} },
       ],
     }).compile();
 

@@ -46,6 +46,7 @@ import { StockLedgerService } from '../services/stock-ledger.service';
 import { InventoryCostingService } from '../services/inventory-costing.service';
 import { StockMovementQueryService } from '../services/stock-movement-query.service';
 import { StockLocationService } from '../services/stock-location.service';
+import { WriteOffService } from '../services/write-off.service';
 
 describe('InventoryModule', () => {
   it('should compile the inventory module', async () => {
@@ -79,6 +80,7 @@ describe('InventoryModule', () => {
         SupplierProfileService,
         AssetLifecycleService,
         AssetLoanService,
+        WriteOffService,
         InventoryDashboardService,
         ReplenishmentService,
         CycleCountService,

@@ -19,6 +19,8 @@ import {
   StockLocationType,
   StockMovementOrigin,
   UserRole,
+  WriteOffReason,
+  WriteOffStatus,
 } from '@iwana/shared';
 import {
   ApiError,
@@ -35,6 +37,7 @@ import {
   formatInventoryCurrency,
   getInventoryItemCategoryLabel,
   getPurchaseRequestStatusLabel,
+  getWriteOffReasonLabel,
 } from './inventory-labels';
 
 const MOBILE_RESPONSIBLE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -124,6 +127,12 @@ jest.mock('@/lib/api-client', () => ({
     sale: jest.fn(),
     registerReturn: jest.fn(),
     writeOff: jest.fn(),
+    writeOffs: {
+      list: jest.fn(),
+      get: jest.fn(),
+      approve: jest.fn(),
+      reject: jest.fn(),
+    },
     listMovements: jest.fn(),
     listReplenishmentSuggestions: jest.fn(),
     getMovement: jest.fn(),
@@ -211,6 +220,33 @@ const MOCK_TENANT_USERS: InternalUser[] = [
     email: 'ana.perez@local',
   }),
 ];
+
+function buildWriteOffRecord(
+  overrides: Partial<import('@/lib/api-client').InventoryWriteOffRecord> = {},
+): import('@/lib/api-client').InventoryWriteOffRecord {
+  return {
+    id: 'wo-1',
+    tenantId: 'tenant-1',
+    serializedAssetId: null,
+    itemId: 'item-1',
+    locationId: 'loc-1',
+    quantity: '1',
+    reason: WriteOffReason.DAMAGED,
+    status: WriteOffStatus.PENDING_APPROVAL,
+    requestedByUserId: 'user-other',
+    approvedByUserId: null,
+    approvedAt: null,
+    rejectedByUserId: null,
+    rejectedAt: null,
+    rejectionNotes: null,
+    stockMovementId: null,
+    notes: null,
+    idempotencyKey: null,
+    createdAt: '2026-06-25T12:00:00.000Z',
+    updatedAt: '2026-06-25T12:00:00.000Z',
+    ...overrides,
+  };
+}
 
 function buildCatalogItem(overrides: Partial<InventoryItemRecord> = {}): InventoryItemRecord {
   return {
@@ -738,24 +774,54 @@ describe('InventoryClient', () => {
       },
       lines: [],
     });
-    inventoryApiMock.writeOff.mockResolvedValue({
-      movement: {
-        id: 'mov-5',
-        tenantId: 'tenant-1',
-        movementNumber: 'MOV-000005',
-        origin: StockMovementOrigin.WRITE_OFF,
-        originContext: 'inventory.write-off',
-        originRefId: 'item-1',
-        idempotencyKey: 'writeoff',
-        notes: null,
-        actorUserId: 'user-1',
-        reversedByMovementId: null,
-        isReversal: false,
-        createdAt: '2026-06-25T12:00:00.000Z',
-        updatedAt: '2026-06-25T12:00:00.000Z',
+    inventoryApiMock.writeOff.mockResolvedValue(
+      buildWriteOffRecord({ status: WriteOffStatus.PENDING_APPROVAL }),
+    );
+    (inventoryApiMock.writeOffs.list as jest.Mock).mockImplementation(
+      async (params?: { status?: WriteOffStatus }) => {
+        if (params?.status === WriteOffStatus.PENDING_APPROVAL) {
+          return {
+            data: [buildWriteOffRecord()],
+            total: 1,
+            page: 1,
+            limit: 50,
+          };
+        }
+
+        return {
+          data: [
+            buildWriteOffRecord({
+              id: 'wo-2',
+              status: WriteOffStatus.COMPLETED,
+              stockMovementId: 'mov-5',
+              movementNumber: 'MOV-000005',
+              approvedByUserId: 'user-admin',
+              approvedAt: '2026-06-26T12:00:00.000Z',
+            }),
+          ],
+          total: 1,
+          page: 1,
+          limit: 50,
+        };
       },
-      lines: [],
-    });
+    );
+    (inventoryApiMock.writeOffs.approve as jest.Mock).mockResolvedValue(
+      buildWriteOffRecord({
+        status: WriteOffStatus.COMPLETED,
+        stockMovementId: 'mov-5',
+        movementNumber: 'MOV-000005',
+        approvedByUserId: 'user-admin',
+        approvedAt: '2026-06-26T12:00:00.000Z',
+      }),
+    );
+    (inventoryApiMock.writeOffs.reject as jest.Mock).mockResolvedValue(
+      buildWriteOffRecord({
+        status: WriteOffStatus.REJECTED,
+        rejectedByUserId: 'user-admin',
+        rejectedAt: '2026-06-26T12:00:00.000Z',
+        rejectionNotes: 'Stock insuficiente',
+      }),
+    );
   });
 
   it('expone etiquetas amigables para enums del módulo', () => {
@@ -764,6 +830,7 @@ describe('InventoryClient', () => {
       'Pendiente de cotizaciones',
     );
     expect(formatInventoryCurrency('120000')).toContain('$');
+    expect(getWriteOffReasonLabel(WriteOffReason.DAMAGED)).toBe('Daño');
   });
 
   it('renderiza el dashboard y el workspace de compras', async () => {
@@ -1650,5 +1717,95 @@ describe('InventoryClient', () => {
     expect(updatePayload).not.toHaveProperty('preferredSupplierRefId');
     expect(updatePayload).not.toHaveProperty('inventoryControlled');
     expect(updatePayload).not.toHaveProperty('assetControlled');
+  });
+
+  it('renderiza la pestaña Bajas con solicitud y bandeja de aprobación', async () => {
+    render(<InventoryClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Bajas' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Solicitar baja' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Solicitar baja' })).toBeInTheDocument();
+      expect(screen.getByText('Pendientes de aprobación')).toBeInTheDocument();
+      expect(screen.getByTestId('write-off-pending-row-wo-1')).toBeInTheDocument();
+    });
+  });
+
+  it('registra una solicitud de baja sin aplicar movimiento inmediato', async () => {
+    const user = userEvent.setup();
+    render(<InventoryClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Bajas' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Solicitar baja' })).toBeInTheDocument();
+    });
+
+    await user.selectOptions(screen.getByLabelText('Producto'), 'item-1');
+    await user.selectOptions(screen.getByLabelText('Ubicación'), 'loc-1');
+    await user.click(screen.getByRole('button', { name: 'Solicitar baja' }));
+
+    await waitFor(() => {
+      expect(inventoryApiMock.writeOff).toHaveBeenCalledWith(
+        expect.objectContaining({
+          itemId: 'item-1',
+          locationId: 'loc-1',
+          reason: WriteOffReason.DAMAGED,
+        }),
+      );
+      expect(
+        screen.getByText('Solicitud registrada — pendiente de aprobación'),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('permite aprobar una baja pendiente de otro usuario', async () => {
+    const user = userEvent.setup();
+    render(<InventoryClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Bajas' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('write-off-pending-row-wo-1')).toBeInTheDocument();
+    });
+
+    await user.click(
+      within(screen.getByTestId('write-off-pending-row-wo-1')).getByRole('button', {
+        name: 'Aprobar',
+      }),
+    );
+
+    await waitFor(() => {
+      expect(inventoryApiMock.writeOffs.approve).toHaveBeenCalledWith('wo-1');
+      expect(screen.getByText(/Baja aprobada/)).toBeInTheDocument();
+    });
+  });
+
+  it('muestra historial con enlace al movimiento cuando la baja está completada', async () => {
+    render(<InventoryClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Bajas' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('write-off-history-row-wo-2')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Ver MOV-000005' })).toBeInTheDocument();
+    });
   });
 });

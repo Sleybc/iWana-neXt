@@ -889,67 +889,76 @@ export class StockLedgerService {
     );
   }
 
-  async recordWriteOff(input: WriteOffAssetInput, actor: JwtPayload): Promise<StockMovementResult> {
+  async recordWriteOffWithManager(
+    manager: EntityManager,
+    tenantId: string,
+    input: WriteOffAssetInput,
+    actor: JwtPayload,
+  ): Promise<StockMovementResult> {
     const locationId = input.locationId;
     if (!locationId) {
       throw new BadRequestException('La baja requiere locationId para afectar el balance.');
     }
 
+    const result = await this.recordMovementWithManager(
+      manager,
+      tenantId,
+      {
+        origin: StockMovementOrigin.WRITE_OFF,
+        originContext: 'inventory.write-off',
+        originRefId: input.serializedAssetId ?? input.itemId ?? null,
+        idempotencyKey:
+          input.idempotencyKey?.trim() ??
+          `writeoff:${input.serializedAssetId ?? input.itemId}:${input.reason}:${locationId}`,
+        notes: input.notes ?? null,
+        lines: input.itemId
+          ? [
+              {
+                itemId: input.itemId,
+                locationId,
+                quantity: -(input.serializedAssetId ? 1 : input.quantity),
+                serializedAssetId: input.serializedAssetId ?? null,
+              },
+            ]
+          : [],
+        assetTransitions:
+          input.serializedAssetId != null
+            ? [
+                {
+                  serializedAssetId: input.serializedAssetId,
+                  toStatus: resolveWriteOffAssetStatus(input.reason),
+                  currentLocationId: null,
+                  currentResponsibleType: InventoryResponsibleType.NONE,
+                  currentResponsibleRefId: null,
+                  eventType:
+                    resolveWriteOffAssetStatus(input.reason) === SerializedAssetStatus.LOST
+                      ? AssetLifecycleEventType.STATUS_CHANGED
+                      : AssetLifecycleEventType.WRITTEN_OFF,
+                },
+              ]
+            : [],
+      },
+      actor,
+    );
+
+    if (input.serializedAssetId != null) {
+      await this.assetLoanService.closeOpenLoanWithManager(manager, {
+        tenantId,
+        serializedAssetId: input.serializedAssetId,
+        removedAt: new Date(),
+      });
+    }
+
+    return result;
+  }
+
+  async recordWriteOff(input: WriteOffAssetInput, actor: JwtPayload): Promise<StockMovementResult> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      withTransaction(qr.manager, async (manager) => {
-        const result = await this.recordMovementWithManager(
-          manager,
-          tenantId,
-          {
-            origin: StockMovementOrigin.WRITE_OFF,
-            originContext: 'inventory.write-off',
-            originRefId: input.serializedAssetId ?? input.itemId ?? null,
-            idempotencyKey:
-              input.idempotencyKey?.trim() ??
-              `writeoff:${input.serializedAssetId ?? input.itemId}:${input.reason}:${locationId}`,
-            notes: input.notes ?? null,
-            lines: input.itemId
-              ? [
-                  {
-                    itemId: input.itemId,
-                    locationId,
-                    quantity: -(input.serializedAssetId ? 1 : input.quantity),
-                    serializedAssetId: input.serializedAssetId ?? null,
-                  },
-                ]
-              : [],
-            assetTransitions:
-              input.serializedAssetId != null
-                ? [
-                    {
-                      serializedAssetId: input.serializedAssetId,
-                      toStatus: resolveWriteOffAssetStatus(input.reason),
-                      currentLocationId: null,
-                      currentResponsibleType: InventoryResponsibleType.NONE,
-                      currentResponsibleRefId: null,
-                      eventType:
-                        resolveWriteOffAssetStatus(input.reason) === SerializedAssetStatus.LOST
-                          ? AssetLifecycleEventType.STATUS_CHANGED
-                          : AssetLifecycleEventType.WRITTEN_OFF,
-                    },
-                  ]
-                : [],
-          },
-          actor,
-        );
-
-        if (input.serializedAssetId != null) {
-          await this.assetLoanService.closeOpenLoanWithManager(manager, {
-            tenantId,
-            serializedAssetId: input.serializedAssetId,
-            removedAt: new Date(),
-          });
-        }
-
-        return result;
-      }),
+      withTransaction(qr.manager, async (manager) =>
+        this.recordWriteOffWithManager(manager, tenantId, input, actor),
+      ),
     );
   }
 

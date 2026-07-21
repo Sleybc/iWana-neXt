@@ -93,6 +93,7 @@ import {
   WorkOrderSourceContext,
   WorkOrderStatus,
   WriteOffReason,
+  WriteOffStatus,
   UserRole,
 } from '@iwana/shared';
 import { persistTenantSlug, resolveTenantSlug } from './tenant-resolution';
@@ -6617,6 +6618,91 @@ export interface WriteOffAssetDto {
   idempotencyKey?: string | null;
 }
 
+export interface InventoryWriteOffRecord {
+  id: string;
+  tenantId: string;
+  serializedAssetId: string | null;
+  itemId: string | null;
+  locationId: string;
+  quantity: string;
+  reason: WriteOffReason;
+  status: WriteOffStatus;
+  requestedByUserId: string;
+  approvedByUserId: string | null;
+  approvedAt: string | null;
+  rejectedByUserId: string | null;
+  rejectedAt: string | null;
+  rejectionNotes: string | null;
+  stockMovementId: string | null;
+  notes: string | null;
+  idempotencyKey: string | null;
+  createdAt: string;
+  updatedAt: string;
+  movementNumber?: string | null;
+}
+
+export interface PaginatedWriteOffs {
+  data: InventoryWriteOffRecord[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface ListWriteOffsParams {
+  status?: WriteOffStatus;
+  reason?: WriteOffReason;
+  itemId?: string;
+  serializedAssetId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface RejectWriteOffDto {
+  rejectionNotes?: string | null;
+}
+
+type WriteOffApiDetail = InventoryWriteOffRecord & {
+  movement?: { id: string; movementNumber: string } | null;
+  location?: unknown;
+  item?: unknown;
+  serializedAsset?: unknown;
+};
+
+type WriteOffApproveApiResponse = {
+  writeOff: WriteOffApiDetail;
+  movementResult?: { movement?: { movementNumber?: string | null } };
+};
+
+function normalizeWriteOffRecord(payload: WriteOffApiDetail): InventoryWriteOffRecord {
+  const { movement, location, item, serializedAsset, ...rest } = payload;
+  void location;
+  void item;
+  void serializedAsset;
+
+  return {
+    ...rest,
+    quantity: String(rest.quantity),
+    movementNumber: rest.movementNumber ?? movement?.movementNumber ?? null,
+  };
+}
+
+async function normalizeWriteOffApproveResponse(
+  payload: WriteOffApproveApiResponse | WriteOffApiDetail,
+): Promise<InventoryWriteOffRecord> {
+  if ('writeOff' in payload && payload.writeOff) {
+    const normalized = normalizeWriteOffRecord(payload.writeOff);
+    return {
+      ...normalized,
+      movementNumber:
+        normalized.movementNumber ?? payload.movementResult?.movement?.movementNumber ?? null,
+    };
+  }
+
+  return normalizeWriteOffRecord(payload);
+}
+
 export interface StockIssueLineInputDto {
   itemId: string;
   requestedQty: number;
@@ -7163,12 +7249,65 @@ export const inventoryApi = {
       tenantSlug,
     ),
 
-  writeOff: (dto: WriteOffAssetDto, tenantSlug?: string) =>
-    request<StockMovementResultRecord>(
-      '/inventory/write-offs',
-      { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
-      tenantSlug,
+  writeOff: async (dto: WriteOffAssetDto, tenantSlug?: string) =>
+    normalizeWriteOffRecord(
+      await request<WriteOffApiDetail>(
+        '/inventory/write-offs',
+        { method: 'POST', body: JSON.stringify(dto), returnFullResponse: true },
+        tenantSlug,
+      ),
     ),
+
+  writeOffs: {
+    list: async (params?: ListWriteOffsParams, tenantSlug?: string) => {
+      const response = await request<PaginatedWriteOffs & { data: WriteOffApiDetail[] }>(
+        `/inventory/write-offs${buildInventoryQuery({
+          status: params?.status,
+          reason: params?.reason,
+          itemId: params?.itemId,
+          serializedAssetId: params?.serializedAssetId,
+          dateFrom: params?.dateFrom,
+          dateTo: params?.dateTo,
+          page: params?.page != null ? String(params.page) : undefined,
+          limit: params?.limit != null ? String(params.limit) : undefined,
+        })}`,
+        { returnFullResponse: true },
+        tenantSlug,
+      );
+
+      return {
+        ...response,
+        data: response.data.map(normalizeWriteOffRecord),
+      };
+    },
+
+    get: async (id: string, tenantSlug?: string) =>
+      normalizeWriteOffRecord(
+        await request<WriteOffApiDetail>(
+          `/inventory/write-offs/${id}`,
+          { returnFullResponse: true },
+          tenantSlug,
+        ),
+      ),
+
+    approve: async (id: string, tenantSlug?: string) =>
+      normalizeWriteOffApproveResponse(
+        await request<WriteOffApproveApiResponse>(
+          `/inventory/write-offs/${id}/approve`,
+          { method: 'POST', body: JSON.stringify({}), returnFullResponse: true },
+          tenantSlug,
+        ),
+      ),
+
+    reject: async (id: string, dto?: RejectWriteOffDto, tenantSlug?: string) =>
+      normalizeWriteOffRecord(
+        await request<WriteOffApiDetail>(
+          `/inventory/write-offs/${id}/reject`,
+          { method: 'POST', body: JSON.stringify(dto ?? {}), returnFullResponse: true },
+          tenantSlug,
+        ),
+      ),
+  },
 
   createCounterPurchase: (dto: CreateCounterPurchaseDto, tenantSlug?: string) =>
     request<StockMovementResultRecord>(

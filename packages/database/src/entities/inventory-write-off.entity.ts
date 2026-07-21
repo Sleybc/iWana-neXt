@@ -24,6 +24,15 @@ export class InventoryWriteOff {
   @Column({ name: 'item_id', type: 'uuid', nullable: true })
   itemId: string | null;
 
+  @Column({ name: 'location_id', type: 'uuid' })
+  locationId: string;
+
+  @Column({ type: 'numeric', precision: 18, scale: 4, default: 1 })
+  quantity: string;
+
+  @Column({ name: 'idempotency_key', type: 'varchar', length: 160, nullable: true })
+  idempotencyKey: string | null;
+
   @Column({
     type: 'enum',
     enum: WriteOffReason,
@@ -53,6 +62,15 @@ export class InventoryWriteOff {
 
   @Column({ type: 'text', nullable: true })
   notes: string | null;
+
+  @Column({ name: 'rejected_by_user_id', type: 'uuid', nullable: true })
+  rejectedByUserId: string | null;
+
+  @Column({ name: 'rejected_at', type: 'timestamptz', nullable: true })
+  rejectedAt: Date | null;
+
+  @Column({ name: 'rejection_notes', type: 'text', nullable: true })
+  rejectionNotes: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

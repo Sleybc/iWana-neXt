@@ -43,6 +43,7 @@ import { ReplenishmentService } from '../services/replenishment.service';
 import { CycleCountService } from '../services/cycle-count.service';
 import { SupplierProfileService } from '../services/supplier-profile.service';
 import { RfqService } from '../services/rfq.service';
+import { WriteOffService } from '../services/write-off.service';
 
 jest.mock('../../auth/guards/jwt-auth.guard', () => ({
   JwtAuthGuard: class JwtAuthGuard {
@@ -283,6 +284,19 @@ describe('InventoryController HTTP', () => {
     cancel: jest.fn().mockResolvedValue({ id: 'issue-001', status: 'CANCELLED' }),
     dispatch: jest.fn().mockResolvedValue({ id: 'issue-001', status: 'DISPATCHED' }),
   };
+  const writeOffServiceMock = {
+    createRequest: jest.fn().mockResolvedValue({
+      id: 'wo-001',
+      status: 'PENDING_APPROVAL',
+    }),
+    list: jest.fn().mockResolvedValue({ data: [], total: 0, page: 1, limit: 20 }),
+    getById: jest.fn().mockResolvedValue({ id: 'wo-001', status: 'PENDING_APPROVAL' }),
+    approve: jest.fn().mockResolvedValue({
+      writeOff: { id: 'wo-001', status: 'COMPLETED', stockMovementId: 'mov-006' },
+      movementResult: { movement: { id: 'mov-006' }, lines: [] },
+    }),
+    reject: jest.fn().mockResolvedValue({ id: 'wo-001', status: 'REJECTED' }),
+  };
 
   beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -299,6 +313,7 @@ describe('InventoryController HTTP', () => {
         { provide: InventoryDashboardService, useValue: inventoryDashboardServiceMock },
         { provide: ReplenishmentService, useValue: replenishmentServiceMock },
         { provide: CycleCountService, useValue: cycleCountServiceMock },
+        { provide: WriteOffService, useValue: writeOffServiceMock },
         { provide: AssetLoanService, useValue: { list: jest.fn() } },
         { provide: PurchasingService, useValue: purchasingServiceMock },
         { provide: PurchasingQueryService, useValue: purchasingQueryServiceMock },
@@ -910,6 +925,51 @@ describe('InventoryController HTTP', () => {
         .expect(201);
 
       expect(cycleCountServiceMock.close).toHaveBeenCalledWith(countId, expect.any(Object));
+    });
+  });
+
+  describe('write-offs', () => {
+    const locationId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const itemId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+
+    it('crea solicitud pendiente sin invocar ledger directo', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/inventory/write-offs')
+        .set('Authorization', 'Bearer support-token')
+        .send({
+          itemId,
+          locationId,
+          quantity: 2,
+          reason: 'DAMAGED',
+        })
+        .expect(201);
+
+      expect(writeOffServiceMock.createRequest).toHaveBeenCalled();
+      expect(stockLedgerServiceMock.recordWriteOff).not.toHaveBeenCalled();
+    });
+
+    it('permite listar y aprobar solicitudes de baja', async () => {
+      const writeOffId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+
+      await request(app.getHttpServer())
+        .get('/api/v1/inventory/write-offs')
+        .set('Authorization', 'Bearer support-token')
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .get(`/api/v1/inventory/write-offs/${writeOffId}`)
+        .set('Authorization', 'Bearer support-token')
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/inventory/write-offs/${writeOffId}/approve`)
+        .set('Authorization', 'Bearer admin-token')
+        .send({})
+        .expect(201);
+
+      expect(writeOffServiceMock.list).toHaveBeenCalled();
+      expect(writeOffServiceMock.getById).toHaveBeenCalledWith(writeOffId);
+      expect(writeOffServiceMock.approve).toHaveBeenCalledWith(writeOffId, expect.any(Object));
     });
   });
 });
