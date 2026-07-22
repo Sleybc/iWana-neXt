@@ -49,6 +49,18 @@ const TENANT_B = {
   tenantSlug: 'beta',
 };
 
+/** Registro autoritativo tenantId → (schemaName, slug), como `public.tenants`. */
+const TENANTS_REGISTRADOS = new Map<string, { id: string; schemaName: string; slug: string }>([
+  [
+    TENANT_A.tenantId,
+    { id: TENANT_A.tenantId, schemaName: TENANT_A.schemaName, slug: TENANT_A.tenantSlug },
+  ],
+  [
+    TENANT_B.tenantId,
+    { id: TENANT_B.tenantId, schemaName: TENANT_B.schemaName, slug: TENANT_B.tenantSlug },
+  ],
+]);
+
 const ACTOR_ID = 'usr-00000000-0000-4000-a000-000000000099';
 const IDEMPOTENCY_KEY = 'lote-2026-07-22-001';
 
@@ -63,13 +75,19 @@ interface FakeJob {
   getState: () => Promise<JobState>;
 }
 
-/** Doble de Redis con estado real: el claim one-time depende de que persista. */
+/**
+ * Doble de Redis con estado real: el claim one-time depende de que persista.
+ *
+ * Honra `NX` porque la marca de reclamo atómica (Ola F, D-1) depende de esa
+ * semántica; un doble que siempre devuelve `OK` haría pasar un `SET NX` roto.
+ */
 class FakeRedis {
   readonly store = new Map<string, string>();
 
   get = jest.fn(async (key: string): Promise<string | null> => this.store.get(key) ?? null);
 
-  set = jest.fn(async (key: string, value: string): Promise<string> => {
+  set = jest.fn(async (key: string, value: string, ...rest: unknown[]): Promise<string | null> => {
+    if (rest.includes('NX') && this.store.has(key)) return null;
     this.store.set(key, value);
     return 'OK';
   });
@@ -225,6 +243,10 @@ describe('UsersService — flujo asincrono de bulkCreate (Ola E)', () => {
             getPrincipalAdminUserId: jest.fn().mockResolvedValue(null),
             setPrincipalAdminUserId: jest.fn(),
             updateTenantSelfProfile: jest.fn(),
+            // El job verifica que el schema del payload sea de verdad el del
+            // tenant antes de escribir (Ola F, D-5): este es el registro
+            // autoritativo contra el que se contrasta.
+            findById: jest.fn(async (id: string) => TENANTS_REGISTRADOS.get(id) ?? null),
           },
         },
         {
@@ -666,7 +688,15 @@ describe('UsersService — flujo asincrono de bulkCreate (Ola E)', () => {
 
       await TenantContext.run(TENANT_B, () => service.executeBulkCreateJob(payload, JOB_ID));
 
-      expect([...redis.store.keys()]).toEqual([`users:bulk-result:${TENANT_A.tenantId}:${JOB_ID}`]);
+      // La asercion original enumeraba el keyspace completo con `toEqual`. El
+      // job escribe ahora tambien rastros de idempotencia por fila (Ola F, D-2),
+      // igualmente namespaced por tenant, asi que se conserva el invariante
+      // —todo lo escrito cuelga del tenant del payload— reforzandolo: ninguna
+      // clave puede mencionar al tenant ambiente.
+      const claves = [...redis.store.keys()];
+      expect(claves).toContain(`users:bulk-result:${TENANT_A.tenantId}:${JOB_ID}`);
+      expect(claves.every((k) => k.includes(TENANT_A.tenantId))).toBe(true);
+      expect(claves.some((k) => k.includes(TENANT_B.tenantId))).toBe(false);
     });
 
     it('no deja contexto de tenant residual tras terminar', async () => {

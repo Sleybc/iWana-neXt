@@ -36,9 +36,17 @@ export interface UsersBulkCreateJobPayload {
   users: UsersBulkCreateJobUserItem[];
 }
 
+/**
+ * Respuesta al aceptar (o reconocer) un lote.
+ *
+ * `failed` es un estado real y alcanzable: un reenvío con la misma
+ * Idempotency-Key sobre un job que agotó sus reintentos devuelve el desenlace
+ * de aquella petición, que fue un fallo. El contrato debe poder expresarlo para
+ * que esta ruta y `GET /users/bulk/jobs/:jobId` no se contradigan (Ola F, D-3).
+ */
 export interface UsersBulkCreateAcceptedResponse {
   jobId: string;
-  status: Extract<UsersBulkJobStatus, 'queued' | 'active' | 'completed'>;
+  status: Extract<UsersBulkJobStatus, 'queued' | 'active' | 'completed' | 'failed'>;
 }
 
 export interface UsersBulkCreateSucceededItem {

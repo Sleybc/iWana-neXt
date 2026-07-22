@@ -599,15 +599,10 @@ export class UsersService {
         const existing = await this.usersBulkCreateQueue.getJob(lookup.record.jobId);
         if (existing) {
           const state = await existing.getState();
-          const status =
-            state === 'completed'
-              ? 'completed'
-              : state === 'active' || state === 'waiting' || state === 'delayed'
-                ? state === 'active'
-                  ? 'active'
-                  : 'queued'
-                : 'queued';
-          return { jobId: lookup.record.jobId, status };
+          return {
+            jobId: lookup.record.jobId,
+            status: this.mapAcceptedJobStatus(state),
+          };
         }
       }
     }
@@ -670,12 +665,19 @@ export class UsersService {
     else if (state === 'active') status = 'active';
     else if (state === 'waiting' || state === 'delayed') status = 'queued';
 
+    // La marca atomica es la autoridad: sobrevive a una reescritura del store
+    // (p. ej. un reintento del job), que antes des-reclamaba credenciales ya
+    // entregadas al devolver el flag a `false`.
+    const reclamado =
+      (store?.credentialsClaimed ?? false) ||
+      (await this.isBulkCredentialsClaimed(tenantId, jobId));
+
     const response: UsersBulkJobStatusResponse = {
       jobId,
       status,
       summary: store?.summary ?? null,
       failed: store?.failed ?? [],
-      credentialsClaimed: store?.credentialsClaimed ?? false,
+      credentialsClaimed: reclamado,
     };
     if (state === 'failed') {
       response.errorMessage = String(job.failedReason ?? 'Error en la importación');
@@ -704,7 +706,12 @@ export class UsersService {
       throw new NotFoundException('Resultado de importación no disponible.');
     }
 
-    if (store.credentialsClaimed) {
+    // D-1: quien revela lo decide `SET NX`, no el flag del store. El
+    // read-modify-write anterior dejaba pasar dos peticiones concurrentes —
+    // ambas leian `credentialsClaimed: false` y ambas devolvian los secretos.
+    const revelar = await this.tryMarkBulkCredentialsClaimed(tenantId, jobId);
+
+    if (!revelar) {
       return {
         jobId,
         status: 'completed',
@@ -733,13 +740,36 @@ export class UsersService {
    * `createdAt` se lee del registro persistido.
    */
   async executeBulkCreateJob(payload: UsersBulkCreateJobPayload, jobId: string): Promise<void> {
-    return TenantContext.run(
+    // D-5: unico camino de escritura del modulo que no pasa por TenantMiddleware,
+    // asi que valida por si mismo el contexto que recibe ANTES de tocar nada.
+    const contexto = await this.resolveBulkJobContext(payload);
+    if (!contexto) {
+      await this.writeBulkResultStore(payload.tenantId, jobId, {
+        summary: { total: payload.users.length, succeeded: 0, failed: payload.users.length },
+        succeeded: [],
+        failed: payload.users.map((item, index) => ({
+          rowIndex: index + 1,
+          email: item.email,
+          // Motivo generico a proposito: el detalle del schema no viaja al cliente.
+          reason: 'No fue posible validar el contexto del tenant para esta importacion.',
+        })),
+        credentialsClaimed: false,
+      });
+      return;
+    }
+
+    // D-2: el reintento parte del resultado del intento anterior — las filas ya
+    // creadas se reconocen por idempotencia y conservan su contrasena temporal,
+    // que no es recuperable de la base (solo se persiste el hash).
+    const previo = await this.readBulkResultStore(payload.tenantId, jobId);
+    const passwordsPrevias = new Map(
+      (previo?.succeeded ?? [])
+        .filter((fila) => Boolean(fila.temporaryPassword))
+        .map((fila) => [fila.email, fila.temporaryPassword]),
+    );
+
+    return TenantContext.run(contexto, async () => {
       {
-        tenantId: payload.tenantId,
-        schemaName: payload.schemaName,
-        tenantSlug: payload.tenantSlug,
-      },
-      async () => {
         const succeeded: UsersBulkCreateSucceededItem[] = [];
         const failed: UsersBulkCreateFailedItem[] = [];
 
@@ -763,31 +793,34 @@ export class UsersService {
               dto.isOperationalResource = item.isOperationalResource;
             }
 
-            const result = await this.create(dto, payload.actorUserId, payload.ipAddress);
+            const result = await this.create(
+              dto,
+              payload.actorUserId,
+              payload.ipAddress,
+              // D-2: idempotencia POR FILA. Sin ella, un reintento reportaba como
+              // duplicadas las filas que el intento anterior si creo — y sus
+              // contrasenas temporales quedaban irrecuperables.
+              this.buildBulkRowIdempotencyKey(payload.idempotencyKey, rowIndex),
+            );
 
             succeeded.push({
               email: item.email,
               firstName: item.firstName ?? null,
               lastName: item.lastName ?? null,
               role: item.role,
-              temporaryPassword: result.temporaryPassword ?? '',
+              // En un replay idempotente `create` no reemite contrasena: se
+              // arrastra la del intento previo.
+              temporaryPassword: result.temporaryPassword ?? passwordsPrevias.get(item.email) ?? '',
               createdAt:
                 result.createdAt instanceof Date
                   ? result.createdAt.toISOString()
                   : String(result.createdAt),
             });
           } catch (error: unknown) {
-            const reason =
-              error instanceof ConflictException
-                ? 'El email ya existe en este tenant.'
-                : error instanceof Error
-                  ? error.message
-                  : 'Error desconocido al crear el usuario.';
-
             failed.push({
               rowIndex,
               email: item.email,
-              reason,
+              reason: this.describeBulkRowFailure(error),
             });
           }
         }
@@ -800,12 +833,14 @@ export class UsersService {
           },
           succeeded,
           failed,
-          credentialsClaimed: false,
+          // Un reintento reescribe el store; no puede des-reclamar credenciales
+          // que ya se entregaron.
+          credentialsClaimed: previo?.credentialsClaimed ?? false,
         };
 
         await this.writeBulkResultStore(payload.tenantId, jobId, store);
-      },
-    );
+      }
+    });
   }
 
   /**
@@ -1474,8 +1509,118 @@ export class UsersService {
     } as User;
   }
 
+  /**
+   * Estado que se anuncia al aceptar (o reconocer) un lote.
+   *
+   * D-3: el mapeo anterior colapsaba en `queued` todo lo que no fuera
+   * `completed`/`active`, asi que un lote que agoto sus reintentos se anunciaba
+   * como encolado. Como el jobId es determinista, BullMQ deduplicaba y no habia
+   * nada que esperar: el cliente polleaba para siempre un job en `failed`.
+   */
+  private mapAcceptedJobStatus(state: string): UsersBulkCreateAcceptedResponse['status'] {
+    if (state === 'completed') return 'completed';
+    if (state === 'failed') return 'failed';
+    if (state === 'active') return 'active';
+    return 'queued';
+  }
+
+  /** Clave de idempotencia por fila del lote (D-2). Estable entre reintentos. */
+  private buildBulkRowIdempotencyKey(batchKey: string, rowIndex: number): string {
+    return `bulk:${batchKey}:${rowIndex}`;
+  }
+
+  /**
+   * Motivo accionable para el operador (D-4).
+   *
+   * Los errores de negocio ya vienen redactados y se conservan. Cualquier otro
+   * se resume: antes se propagaba `error.message` literal al cliente, y un
+   * schema invalido devolvia por HTTP el nombre del schema y la regla interna
+   * de aislamiento.
+   */
+  private describeBulkRowFailure(error: unknown): string {
+    if (error instanceof ConflictException) {
+      return 'El email ya existe en este tenant.';
+    }
+
+    if (
+      error instanceof BadRequestException ||
+      error instanceof ForbiddenException ||
+      error instanceof NotFoundException
+    ) {
+      return error.message;
+    }
+
+    if (error instanceof Error) {
+      this.logger.error(`Fallo inesperado al crear usuario en lote: ${error.message}`);
+    }
+
+    return 'Error desconocido al crear el usuario.';
+  }
+
+  /**
+   * Contexto autoritativo del job (D-5).
+   *
+   * El payload llega de la cola, no de `TenantMiddleware`. `isValidSchemaName`
+   * solo exige el prefijo `tenant_`, asi que no verificaba que el schema fuese
+   * de verdad el del tenant: un payload con el tenantId de A y el schema de B
+   * habria escrito los usuarios en B guardando el resultado —con credenciales—
+   * bajo la clave de A. El slug tambien se toma del registro, no del payload.
+   *
+   * Fail-closed: si el registro no confirma el par, no se escribe nada.
+   */
+  private async resolveBulkJobContext(
+    payload: UsersBulkCreateJobPayload,
+  ): Promise<{ tenantId: string; schemaName: string; tenantSlug: string } | null> {
+    try {
+      const tenant = await this.tenantService.findById(payload.tenantId);
+      if (!tenant || tenant.schemaName !== payload.schemaName) {
+        this.logger.error(
+          `Contexto de job bulk incoherente para tenant ${payload.tenantId}: el schema del payload no corresponde al registro.`,
+        );
+        return null;
+      }
+
+      return {
+        tenantId: tenant.id,
+        schemaName: tenant.schemaName,
+        tenantSlug: tenant.slug,
+      };
+    } catch (error: unknown) {
+      const detalle = error instanceof Error ? error.message : String(error);
+      this.logger.error(`No fue posible resolver el contexto del job bulk: ${detalle}`);
+      return null;
+    }
+  }
+
   private bulkResultCacheKey(tenantId: string, jobId: string): string {
     return `users:bulk-result:${tenantId}:${jobId}`;
+  }
+
+  /** Clave dedicada de la marca de reclamo one-time, independiente del store. */
+  private bulkClaimCacheKey(tenantId: string, jobId: string): string {
+    return `users:bulk-claim:${tenantId}:${jobId}`;
+  }
+
+  /**
+   * Marca el reclamo de forma atomica (D-1).
+   *
+   * `SET NX` resuelve en un solo viaje quien revela las credenciales: devuelve
+   * `false` a cualquier llamada posterior o concurrente. Vive en su propia clave
+   * para que reescribir el store —un reintento del job— no la borre.
+   */
+  private async tryMarkBulkCredentialsClaimed(tenantId: string, jobId: string): Promise<boolean> {
+    const result = await this.redis.set(
+      this.bulkClaimCacheKey(tenantId, jobId),
+      '1',
+      'EX',
+      BULK_RESULT_TTL_SECONDS,
+      'NX',
+    );
+    return result === 'OK';
+  }
+
+  private async isBulkCredentialsClaimed(tenantId: string, jobId: string): Promise<boolean> {
+    return (await this.redis.get(this.bulkClaimCacheKey(tenantId, jobId))) !== null;
   }
 
   private async readBulkResultStore(
