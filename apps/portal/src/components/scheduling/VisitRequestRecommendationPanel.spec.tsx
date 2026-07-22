@@ -141,9 +141,15 @@ function buildPanelProps(
   };
 }
 
+// El panel rechaza franjas anteriores al momento actual (isScheduleStartInPast),
+// por lo que la fecha fija de los fixtures debe evaluarse contra un "ahora" determinista.
+const SYSTEM_TIME = new Date('2026-07-10T08:00:00');
+
 describe('VisitRequestRecommendationPanel - agenda manual', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useFakeTimers();
+    jest.setSystemTime(SYSTEM_TIME);
     useOperatingWindowMock.mockReturnValue({
       operatingWindow: {
         status: 'OPEN',
@@ -155,6 +161,10 @@ describe('VisitRequestRecommendationPanel - agenda manual', () => {
       isLoadingOperatingWindow: false,
       operatingWindowError: null,
     });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('prioriza el flujo por recomendaciones antes de abrir la salida manual', async () => {

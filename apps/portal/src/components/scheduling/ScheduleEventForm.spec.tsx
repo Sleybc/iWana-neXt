@@ -161,9 +161,15 @@ function fillRequiredFields() {
   });
 }
 
+// El formulario rechaza franjas anteriores al momento actual (isScheduleStartInPast),
+// por lo que la fecha fija de los fixtures debe evaluarse contra un "ahora" determinista.
+const SYSTEM_TIME = new Date('2026-07-10T08:00:00');
+
 describe('ScheduleEventForm', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useFakeTimers();
+    jest.setSystemTime(SYSTEM_TIME);
     useOperatingWindowMock.mockReturnValue({
       operatingWindow: {
         status: 'OPEN',
@@ -175,6 +181,10 @@ describe('ScheduleEventForm', () => {
       isLoadingOperatingWindow: false,
       operatingWindowError: null,
     });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('valida campos requeridos antes de enviar', async () => {
