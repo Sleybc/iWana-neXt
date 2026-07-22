@@ -6,6 +6,8 @@
  *
  * Variables: DATABASE_URL o DB_* estándar del monorepo.
  * Siembra ≥50k usuarios sintéticos en un schema de bench y mide latencia p50/p95.
+ * Al terminar hace DROP SCHEMA CASCADE (schema huérfano, no registrado en public.tenants).
+ * KEEP_BENCH_SCHEMA=1 conserva el schema para inspección manual.
  */
 import pg from 'pg';
 import { performance } from 'node:perf_hooks';
@@ -156,6 +158,17 @@ async function main() {
     console.log(
       `${q.padEnd(12)} | ${b.ms.toFixed(1).padStart(9)} | ${a.ms.toFixed(1).padStart(8)} | ${String(b.n).padStart(8)} | ${String(a.n).padStart(7)}`,
     );
+  }
+
+  const keep = env('KEEP_BENCH_SCHEMA', '') === '1';
+  if (keep) {
+    console.log(
+      `\nKEEP_BENCH_SCHEMA=1 → se conserva ${schema} (huérfano; no está en public.tenants)`,
+    );
+  } else {
+    await client.query(`RESET search_path`);
+    await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+    console.log(`\nLimpieza: DROP SCHEMA ${schema} CASCADE`);
   }
 
   await client.end();

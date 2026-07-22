@@ -132,7 +132,7 @@ La revisión 1.0 bloqueó el cierre con la cobertura en 66.2 % / 56.1 %. El huec
 
 - `isScheduleStartInPast` no tiene tests propios pese a ser una regla de negocio activa.
 - **Riesgo sistémico:** el patrón *fecha absoluta en fixture + validación contra `new Date()`* volverá a romper otras suites del portal cuando crucen su umbral. Estas tres llevaban rojo seis días sin que nadie lo notara. Merece un helper compartido de "ahora fijado".
-- `tenant_bench_h05`: schema huérfano con 50.000 filas sintéticas en la BD de desarrollo, no registrado en `public.tenants` — por eso el runner no lo alcanza y no tiene el CHECK de `085`.
+- `tenant_bench_h05`: schema huérfano de bench H-05 — **eliminado 2026-07-22** (`DROP SCHEMA … CASCADE`). Recreable con `scripts/mod04-h05-search-bench.mjs` (ahora limpia al terminar).
 
 ## 8. Decisiones de arquitectura emitidas
 
@@ -164,4 +164,4 @@ MOD04 queda **cerrado sin condiciones** por decisión del CTO del 2026-07-22, co
 
 **Deuda al cierre: 0 críticas · 0 altas · 2 medias · 2 bajas**, ninguna sin dueño. La Regla de Completitud (ADR-016) queda levantada: el módulo N+1 puede iniciarse.
 
-**Pendiente operativo, no bloqueante:** eliminar el schema huérfano `tenant_bench_h05` de la base de desarrollo (§7).
+**Pendiente operativo de §7 (schema `tenant_bench_h05`):** resuelto 2026-07-22 — schema eliminado; solo queda `tenant_iwana` bajo el patrón `tenant_*`.

@@ -81,3 +81,9 @@ SELECT COUNT(*) FROM users WHERE deleted_at IS NULL AND (email ILIKE '%soporte%'
 \echo === TIMING after trgm ===
 SET enable_bitmapscan = on; SET enable_indexscan = on;
 SELECT COUNT(*) FROM users WHERE deleted_at IS NULL AND (email ILIKE '%soporte%' OR coalesce(first_name,'') ILIKE '%soporte%' OR coalesce(last_name,'') ILIKE '%soporte%' OR coalesce(job_title,'') ILIKE '%soporte%' OR email % 'soporte' OR coalesce(job_title,'') % 'soporte');
+
+-- Schema de bench: huérfano (no en public.tenants). Se elimina al terminar para no ensuciar scans H-14.
+-- Para conservar tras medir, usar el .mjs con KEEP_BENCH_SCHEMA=1 en lugar de este .sql.
+\echo === CLEANUP ===
+RESET search_path;
+DROP SCHEMA IF EXISTS tenant_bench_h05 CASCADE;

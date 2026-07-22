@@ -105,7 +105,7 @@ El portal pasó de 145/3 a 148/148.
 3. **`isScheduleStartInPast` sin tests** — una regla de negocio que tumbó tres suites por efecto colateral no está cubierta en positivo (ajena a MOD04).
 4. **Fixtures con fecha absoluta** — riesgo sistémico en el portal: el patrón "fecha hardcodeada + validación contra `new Date()`" volverá a explotar en otras suites cuando crucen el umbral. Merece un helper compartido de "ahora fijado" (ajeno a MOD04).
 
-**Pendiente operativo:** `tenant_bench_h05`, schema de benchmark huérfano con 50.000 filas sintéticas en la BD de desarrollo, no registrado en `public.tenants` — por eso el runner no lo alcanza y no tiene el CHECK de `085`. Recreable con `scripts/mod04-h05-search-bench.mjs`. Requiere ejecución manual del operador.
+**Pendiente operativo:** `tenant_bench_h05` — **resuelto 2026-07-22** (`DROP SCHEMA … CASCADE`). El script de bench ahora elimina el schema al terminar (salvo `KEEP_BENCH_SCHEMA=1`).
 
 ## 10. Trazabilidad
 
