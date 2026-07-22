@@ -43,9 +43,11 @@ export * from './dto/pagination.dto';
 export * from './constants/platform-roles';
 export * from './constants/queue-names';
 export * from './constants/search-job-names';
+export * from './constants/users-bulk-job-names';
 
 // Contratos de payload entre procesos (API productor / Worker consumidor)
 export * from './contracts/queue-payloads';
+export * from './contracts/users-bulk-create.contract';
 
 // Operations
 export * from './operations/task-type-to-wfm-work-type';

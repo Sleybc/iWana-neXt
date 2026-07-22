@@ -5,8 +5,8 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { CheckCircle2, Copy, UserPlus, X } from 'lucide-react';
-import { type AccessPermissionKey, DocumentType, UserRole } from '@iwana/shared';
+import { AlertTriangle, CheckCircle2, Copy, UserPlus, X } from 'lucide-react';
+import { type AccessPermissionKey, TENANT_ASSIGNABLE_ROLES, UserRole } from '@iwana/shared';
 import {
   Dialog,
   DialogContent,
@@ -20,9 +20,10 @@ import type {
   AccessProfileView,
   CreateInternalUserDto,
 } from '@/lib/api-client';
-import { getPortalUserRoleLabel, PORTAL_TENANT_ASSIGNABLE_ROLES } from '@/lib/user-labels';
+import { getPortalUserRoleLabel } from '@/lib/user-labels';
 import { PortalAlert } from '@/components/shared/portal-ui';
 import { CompanyRolesAssignmentSection } from './CompanyRolesAssignmentSection';
+import { UserProfileFields } from './UserProfileFields';
 
 const createUserSchema = z.object({
   email: z.string().trim().email('Ingresa un correo valido.'),
@@ -46,6 +47,15 @@ function getDefaultOperationalResource(role: string | UserRole | ''): boolean {
 const selectClass = [
   'h-10 rounded-lg border-gray-300 bg-white shadow-none',
   'dark:bg-dark-surface-3',
+].join(' ');
+
+const createInputClass = [
+  'flex h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm',
+  'text-gray-900 placeholder:text-gray-400 transition-colors',
+  'focus:outline-none focus:ring-2 focus:ring-iwana-primary focus:border-transparent',
+  'disabled:cursor-not-allowed disabled:opacity-50',
+  'dark:border-dark-border dark:bg-dark-surface-3 dark:text-white',
+  'dark:placeholder:text-gray-500 dark:focus:ring-iwana-primary',
 ].join(' ');
 
 interface CreateUserModalProps {
@@ -254,6 +264,14 @@ export function CreateUserModal({
 
         {showSuccess && tempPassword ? (
           <div className="space-y-4">
+            {serverError ? (
+              <PortalAlert
+                variant="error"
+                title="Asignación de roles incompleta"
+                description={serverError}
+                icon={AlertTriangle}
+              />
+            ) : null}
             <PortalAlert
               variant="success"
               title="Usuario creado"
@@ -378,7 +396,7 @@ export function CreateUserModal({
                   className={selectClass}
                 >
                   <option value="">Selecciona una categoría base</option>
-                  {PORTAL_TENANT_ASSIGNABLE_ROLES.map((role) => (
+                  {TENANT_ASSIGNABLE_ROLES.map((role) => (
                     <option key={role} value={role}>
                       {getPortalUserRoleLabel(role)}
                     </option>
@@ -405,167 +423,17 @@ export function CreateUserModal({
                 />
               </div>
 
-              <div>
-                <label
-                  htmlFor="create-jobTitle"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-                >
-                  Cargo
-                </label>
-                <input
-                  id="create-jobTitle"
-                  type="text"
-                  disabled={isSubmitting}
-                  {...register('jobTitle')}
-                  className="flex h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-iwana-primary focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-500 dark:focus:ring-iwana-primary"
-                />
-              </div>
-
-              {/*
-                Campos en 2 columnas: nombre y apellido
-              */}
-              <div>
-                <label
-                  htmlFor="create-firstName"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-                >
-                  Nombre
-                </label>
-                <input
-                  id="create-firstName"
-                  type="text"
-                  disabled={isSubmitting}
-                  {...register('firstName')}
-                  className="flex h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-iwana-primary focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-500 dark:focus:ring-iwana-primary"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="create-lastName"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-                >
-                  Apellido
-                </label>
-                <input
-                  id="create-lastName"
-                  type="text"
-                  disabled={isSubmitting}
-                  {...register('lastName')}
-                  className="flex h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-iwana-primary focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-500 dark:focus:ring-iwana-primary"
-                />
-              </div>
-
-              {/*
-                Campos en 2 columnas: telefono y tipo de documento
-              */}
-              <div>
-                <label
-                  htmlFor="create-phone"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-                >
-                  Telefono
-                </label>
-                <input
-                  id="create-phone"
-                  type="tel"
-                  placeholder="3001234567"
-                  disabled={isSubmitting}
-                  {...register('phone')}
-                  className="flex h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-iwana-primary focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-500 dark:focus:ring-iwana-primary"
-                />
-                {errors.phone && (
-                  <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-                    {errors.phone.message}
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label
-                  htmlFor="create-documentType"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-                >
-                  Tipo de documento
-                </label>
-                <Select
-                  id="create-documentType"
-                  disabled={isSubmitting}
-                  {...register('documentType')}
-                  aria-label="Tipo de documento"
-                  className={selectClass}
-                >
-                  <option value="">Selecciona</option>
-                  {Object.values(DocumentType).map((dt) => (
-                    <option key={dt} value={dt}>
-                      {dt}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-
-              {/*
-                Numero de documento: ancho completo (campo largo y puede crecer)
-              */}
-              <div className="col-span-full">
-                <label
-                  htmlFor="create-documentNumber"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-                >
-                  Numero de documento
-                </label>
-                <input
-                  id="create-documentNumber"
-                  type="text"
-                  placeholder="123456789"
-                  disabled={isSubmitting}
-                  {...register('documentNumber')}
-                  className="flex h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-iwana-primary focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-500 dark:focus:ring-iwana-primary"
-                />
-                {errors.documentNumber && (
-                  <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-                    {errors.documentNumber.message}
-                  </p>
-                )}
-              </div>
-
-              {/*
-                MFA: ancho completo
-              */}
-              <div className="col-span-full">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    disabled={isSubmitting}
-                    {...register('mfaRequired')}
-                    className="h-4 w-4 rounded border-gray-300 text-iwana-primary focus:ring-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:focus:ring-iwana-primary"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">
-                    Requerir autenticacion de dos factores (MFA)
-                  </span>
-                </label>
-              </div>
-
-              <div className="col-span-full rounded-2xl border border-gray-200 bg-gray-50/80 p-4 dark:border-dark-border dark:bg-dark-surface-3/70">
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    disabled={isSubmitting}
-                    {...register('isOperationalResource')}
-                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-iwana-primary focus:ring-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:focus:ring-iwana-primary"
-                  />
-                  <span className="space-y-1">
-                    <span className="block text-sm font-medium text-gray-800 dark:text-gray-100">
-                      Disponible para despacho operativo
-                    </span>
-                    <span className="block text-sm text-gray-600 dark:text-gray-300">
-                      Si lo activas, esta persona podrá aparecer en agenda diaria, capacidad visible
-                      y recomendaciones operativas. Si lo desactivas, seguirá disponible para agenda
-                      general.
-                    </span>
-                  </span>
-                </label>
-              </div>
+              <UserProfileFields
+                idPrefix="create"
+                register={register}
+                errors={errors}
+                isSubmitting={isSubmitting}
+                inputClassName={createInputClass}
+                selectClassName={selectClass}
+                documentNumberFullWidth={true}
+                phonePlaceholder="3001234567"
+                operationalResourceDescription="Si lo activas, esta persona podrá aparecer en agenda diaria, capacidad visible y recomendaciones operativas. Si lo desactivas, seguirá disponible para agenda general."
+              />
             </div>
 
             {serverError && (

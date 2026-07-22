@@ -30,6 +30,7 @@ import {
   decryptAes256Gcm,
   encryptAes256Gcm,
   loadAesGcmKeyPair,
+  looksLikeEncryptedAesGcm,
 } from '../../../common/crypto/aes-gcm.util';
 import { CompletenessCalculator } from './completeness-calculator.service';
 import { CrmActorReadPort } from '../ports/crm-actor-read.port';
@@ -1747,7 +1748,7 @@ export class ExpedienteService {
   }
 
   private getComparableEncryptedValue(value: string): string {
-    if (!this.looksLikeEncryptedValue(value)) {
+    if (!looksLikeEncryptedAesGcm(value)) {
       return value;
     }
 
@@ -2322,24 +2323,6 @@ export class ExpedienteService {
 
   private decryptValue(encrypted: string): string {
     return decryptAes256Gcm(encrypted, this.encryptionKey, this.encryptionKeyPrevious);
-  }
-
-  private looksLikeEncryptedValue(value: string): boolean {
-    const parts = value.split(':');
-    if (parts.length !== 3) {
-      return false;
-    }
-
-    const [iv, authTag, ciphertext] = parts;
-    const isHex = (segment: string, expectedLength?: number) => {
-      if (!segment || (expectedLength && segment.length !== expectedLength)) {
-        return false;
-      }
-
-      return /^[0-9a-f]+$/i.test(segment) && segment.length % 2 === 0;
-    };
-
-    return isHex(iv ?? '', 24) && isHex(authTag ?? '', 32) && isHex(ciphertext ?? '');
   }
 
   private async syncCompleteness(expedienteId: string, schemaName: string): Promise<void> {

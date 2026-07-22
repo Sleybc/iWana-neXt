@@ -2,13 +2,16 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
+import Redis from 'ioredis';
 import { DataSource, FindOptionsWhere, MoreThan } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { User } from '@iwana/db';
@@ -17,29 +20,60 @@ import {
   AuditAction,
   DocumentType,
   isTenantAssignableRole,
+  USERS_BULK_CREATE_JOB,
+  USERS_BULK_CREATE_QUEUE,
   UserRole,
   UserStatus,
+  type UsersBulkCreateAcceptedResponse,
+  type UsersBulkCreateFailedItem,
+  type UsersBulkCreateJobPayload,
+  type UsersBulkCreateSucceededItem,
+  type UsersBulkJobResultResponse,
+  type UsersBulkJobStatusResponse,
 } from '@iwana/shared';
 import { AuditService } from '../audit/audit.service';
-import { decryptAes256Gcm, loadAesGcmKeyPair } from '../../common/crypto/aes-gcm.util';
+import { hashEmail } from '../../common/crypto/hash-email.util';
+import { REDIS_CLIENT } from '../redis/redis.module';
 import { SearchQueueService } from '../search/search-queue.service';
 import { TenantService } from '../tenant/tenant.service';
 import {
   AdminChangeUserLoginEmailDto,
   ChangeUserLoginEmailDto,
   CreateUserDto,
-  ResetPasswordDto,
   UpdateProfileDto,
   UpdateUserDto,
   UserResponseDto,
 } from './dto/user.dto';
-import type { BulkCreateUserItem, BulkCreateUsersResponse } from './dto/bulk-create-users.dto';
+import type { BulkCreateUserItem } from './dto/bulk-create-users.dto';
 
 /** Iteraciones bcrypt para hashes de password de usuarios creados por admin */
 const BCRYPT_ROUNDS = 12;
 
 /** Longitud del password temporal en bytes (16 bytes → 32 chars hex) */
 const TEMP_PASSWORD_BYTES = 16;
+
+/** TTL de rastros de Idempotency-Key en Redis (24 h), alineado a auth. */
+const IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60;
+
+/** TTL del resultado one-time de bulk (credenciales temporales). */
+const BULK_RESULT_TTL_SECONDS = 24 * 60 * 60;
+
+/** Umbral de similitud trigram (typos leves; p. ej. lilina↔liliana). */
+const TRGM_SIMILARITY_THRESHOLD = 0.35;
+
+interface IdempotencyRecord {
+  fingerprint: string;
+  userId?: string;
+  issued?: boolean;
+  jobId?: string;
+}
+
+interface BulkResultStore {
+  summary: { total: number; succeeded: number; failed: number };
+  succeeded: UsersBulkCreateSucceededItem[];
+  failed: UsersBulkCreateFailedItem[];
+  credentialsClaimed: boolean;
+}
 
 export interface SearchIndexUserRecord {
   id: string;
@@ -82,21 +116,59 @@ export interface SearchIndexUserRecord {
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
 
-  /** Clave AES-256-GCM activa (+ previous opcional) para lectura legacy. */
-  private readonly encryptionKey: Buffer;
-  private readonly encryptionKeyPrevious: Buffer | null;
-
   constructor(
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly auditService: AuditService,
-    private readonly configService: ConfigService,
     private readonly tenantService: TenantService,
     private readonly searchQueueService: SearchQueueService,
-  ) {
-    const keys = loadAesGcmKeyPair(this.configService);
-    this.encryptionKey = keys.activeKey;
-    this.encryptionKeyPrevious = keys.previousKey;
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    @InjectQueue(USERS_BULK_CREATE_QUEUE)
+    private readonly usersBulkCreateQueue: Queue<UsersBulkCreateJobPayload>,
+  ) {}
+
+  private assertCanReadUser(id: string, actorUserId: string, actorRole: string): void {
+    if (actorRole !== UserRole.ADMIN && actorRole !== UserRole.SYSTEM_ADMIN && actorUserId !== id) {
+      throw new ForbiddenException('No tienes permisos para ver este usuario.');
+    }
+  }
+
+  private fingerprintPayload(payload: unknown): string {
+    return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+  }
+
+  private buildIdempotencyCacheKey(
+    scope: string,
+    tenantId: string,
+    idempotencyKey: string,
+  ): string {
+    return `users:${scope}:${tenantId}:${idempotencyKey}`;
+  }
+
+  private async readIdempotencyRecord(
+    scope: string,
+    idempotencyKey: string,
+  ): Promise<{ cacheKey: string; record: IdempotencyRecord | null }> {
+    const { tenantId } = TenantContext.getOrThrow();
+    const cacheKey = this.buildIdempotencyCacheKey(scope, tenantId, idempotencyKey.trim());
+    const raw = await this.redis.get(cacheKey);
+    if (!raw) {
+      return { cacheKey, record: null };
+    }
+
+    return { cacheKey, record: JSON.parse(raw) as IdempotencyRecord };
+  }
+
+  private async writeIdempotencyRecord(cacheKey: string, record: IdempotencyRecord): Promise<void> {
+    await this.redis.set(cacheKey, JSON.stringify(record), 'EX', IDEMPOTENCY_TTL_SECONDS);
+  }
+
+  private assertSameIdempotencyFingerprint(record: IdempotencyRecord, fingerprint: string): void {
+    if (record.fingerprint !== fingerprint) {
+      throw new ConflictException(
+        'La Idempotency-Key ya se uso con un payload distinto. Use una clave nueva.',
+      );
+    }
   }
 
   private getDefaultOperationalResource(role: UserRole): boolean {
@@ -179,8 +251,15 @@ export class UsersService {
   }
 
   /**
-   * Lista usuarios del tenant con paginacion cursor-based.
-   * Filtra por status y/o role si se proveen.
+   * Lista usuarios del tenant con paginación cursor-based.
+   *
+   * Semántica estable (FE-01 / H-05):
+   * - `total` = tamaño del conjunto filtrado (status/role/search), sin cursor.
+   * - `nextCursor` = id del último ítem de la página si hay más tras el filtro.
+   * - El cursor se aplica **después** del filtro (nunca antes).
+   *
+   * Con `search`, la coincidencia ocurre en PostgreSQL (`pg_trgm` + ILIKE),
+   * no en memoria Node (ADR-062).
    */
   async findAll(params: {
     cursor?: string;
@@ -190,47 +269,94 @@ export class UsersService {
     search?: string;
   }): Promise<{ data: UserResponseDto[]; meta: { nextCursor: string | null; total: number } }> {
     const { schemaName } = TenantContext.getOrThrow();
-    const limit = Math.min(params.limit ?? 50, 100);
+    const requested = params.limit ?? 50;
+    const limit =
+      Number.isFinite(requested) && requested > 0 ? Math.min(Math.floor(requested), 100) : 50;
+
+    const normalizedSearch = this.normalizeSearchValue(params.search ?? '');
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const where: FindOptionsWhere<User> = {};
-      if (params.cursor) where.id = MoreThan(params.cursor);
-      if (params.status) where.status = params.status;
-      if (params.role) where.role = params.role;
+      if (!normalizedSearch) {
+        const where: FindOptionsWhere<User> = {};
+        if (params.cursor) where.id = MoreThan(params.cursor);
+        if (params.status) where.status = params.status;
+        if (params.role) where.role = params.role;
 
-      if (params.search) {
-        // firstName/lastName pueden existir en formato legacy cifrado.
-        // ILIKE sobre la columna no encuentra texto plano, por lo que la
-        // busqueda se resuelve sobre los DTOs ya decodificados.
         const users = await qr.manager.find(User, {
           where,
           order: { id: 'ASC' },
+          take: limit + 1,
         });
 
-        const filteredUsers = users
-          .map((user) => this.toDto(user))
-          .filter((user) => this.matchesUserSearch(user, params.search ?? ''));
+        const totalWhere: FindOptionsWhere<User> = {};
+        if (params.status) totalWhere.status = params.status;
+        if (params.role) totalWhere.role = params.role;
+        const total = await qr.manager.count(User, { where: totalWhere });
 
-        const hasNext = filteredUsers.length > limit;
-        const items = hasNext ? filteredUsers.slice(0, limit) : filteredUsers;
+        const hasNext = users.length > limit;
+        const items = hasNext ? users.slice(0, limit) : users;
 
         return {
-          data: items,
+          data: items.map((u) => this.toDto(u)),
           meta: {
             nextCursor: hasNext ? (items[items.length - 1]?.id ?? null) : null,
-            total: filteredUsers.length,
+            total,
           },
         };
       }
 
-      const users = await qr.manager.find(User, {
-        where,
-        order: { id: 'ASC' },
-        take: limit + 1,
-      });
+      await qr.query(`SELECT set_config('pg_trgm.similarity_threshold', $1, true)`, [
+        String(TRGM_SIMILARITY_THRESHOLD),
+      ]);
 
-      const total = await qr.manager.count(User, { where });
+      const filterClauses: string[] = ['deleted_at IS NULL'];
+      const filterParams: unknown[] = [];
 
+      if (params.status) {
+        filterParams.push(params.status);
+        filterClauses.push(`status = $${filterParams.length}`);
+      }
+      if (params.role) {
+        filterParams.push(params.role);
+        filterClauses.push(`role = $${filterParams.length}`);
+      }
+
+      filterParams.push(normalizedSearch);
+      const qIdx = filterParams.length;
+      filterParams.push(`%${this.escapeLikePattern(normalizedSearch)}%`);
+      const likeIdx = filterParams.length;
+
+      filterClauses.push(`(
+        email ILIKE $${likeIdx} ESCAPE '\\'
+        OR coalesce(first_name, '') ILIKE $${likeIdx} ESCAPE '\\'
+        OR coalesce(last_name, '') ILIKE $${likeIdx} ESCAPE '\\'
+        OR coalesce(job_title, '') ILIKE $${likeIdx} ESCAPE '\\'
+        OR email % $${qIdx}
+        OR coalesce(first_name, '') % $${qIdx}
+        OR coalesce(last_name, '') % $${qIdx}
+        OR coalesce(job_title, '') % $${qIdx}
+        OR (coalesce(first_name, '') || ' ' || coalesce(last_name, '')) % $${qIdx}
+      )`);
+
+      const filterSql = filterClauses.join(' AND ');
+
+      const countRows = (await qr.query(
+        `SELECT COUNT(*)::int AS total FROM users WHERE ${filterSql}`,
+        filterParams,
+      )) as Array<{ total: number }>;
+      const total = countRows[0]?.total ?? 0;
+
+      const pageParams = [...filterParams];
+      let pageSql = `SELECT * FROM users WHERE ${filterSql}`;
+      if (params.cursor) {
+        pageParams.push(params.cursor);
+        pageSql += ` AND id > $${pageParams.length}`;
+      }
+      pageParams.push(limit + 1);
+      pageSql += ` ORDER BY id ASC LIMIT $${pageParams.length}`;
+
+      const rows = (await qr.query(pageSql, pageParams)) as Array<Record<string, unknown>>;
+      const users = rows.map((row) => this.mapUserRow(row));
       const hasNext = users.length > limit;
       const items = hasNext ? users.slice(0, limit) : users;
 
@@ -247,15 +373,15 @@ export class UsersService {
   /**
    * Obtiene un usuario del tenant por UUID.
    * Lanza NotFoundException si no existe o fue eliminado (soft delete).
+   * Cuando se proveen actorUserId/actorRole (ruta HTTP), aplica autorizacion de
+   * negocio (H-08): ADMIN/SYSTEM_ADMIN o el propio usuario. Callers internos
+   * del modulith pueden omitir el actor.
    */
-  async findOne(id: string): Promise<UserResponseDto> {
-    const { schemaName } = TenantContext.getOrThrow();
-
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const user = await qr.manager.findOne(User, { where: { id } });
-      if (!user) throw new NotFoundException(`Usuario ${id} no encontrado.`);
-      return this.toDto(user);
-    });
+  async findOne(id: string, actorUserId?: string, actorRole?: string): Promise<UserResponseDto> {
+    if (actorUserId !== undefined && actorRole !== undefined) {
+      this.assertCanReadUser(id, actorUserId, actorRole);
+    }
+    return this.findUserDtoById(id);
   }
 
   /**
@@ -264,22 +390,49 @@ export class UsersService {
    * - El email se almacena en texto plano y se indexa por unique + emailHash derivado.
    * - Si no se provee password, se genera uno temporal y se activa passwordResetRequired.
    * - Lanza ConflictException si ya existe un usuario con ese email en el tenant.
-   * - Idempotente por Idempotency-Key (el caller debe pasarla como paramero separado para
-   *   cache; aqui solo se verifica unicidad por emailHash).
+   * - Idempotente por Idempotency-Key (Redis): mismo key + mismo payload no duplica;
+   *   el password temporal solo se devuelve en la primera respuesta (no se cachea).
    */
   async create(
     dto: CreateUserDto,
-    ipAddress?: string,
+    actorUserId: string,
+    ipAddress: string = 'unknown',
+    idempotencyKey?: string,
   ): Promise<UserResponseDto & { temporaryPassword?: string }> {
-    const { schemaName } = TenantContext.getOrThrow();
-    // Obtener tenantId desde TenantContext
-    const { tenantId } = TenantContext.getOrThrow();
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
 
     // Frontera de roles: ningun rol de plataforma puede entrar por aqui (H-01).
     this.assertTenantAssignableRole(dto.role);
 
+    const fingerprint = this.fingerprintPayload({
+      email: dto.email.toLowerCase().trim(),
+      role: dto.role,
+      firstName: dto.firstName ?? null,
+      lastName: dto.lastName ?? null,
+      phone: dto.phone ?? null,
+      jobTitle: dto.jobTitle ?? null,
+      documentType: dto.documentType ?? null,
+      documentNumber: dto.documentNumber ?? null,
+      mfaRequired: dto.mfaRequired ?? null,
+      isOperationalResource: dto.isOperationalResource ?? null,
+      hasPassword: Boolean(dto.password),
+    });
+
+    let cacheKey: string | null = null;
+    if (idempotencyKey?.trim()) {
+      const lookup = await this.readIdempotencyRecord('create', idempotencyKey);
+      cacheKey = lookup.cacheKey;
+      if (lookup.record) {
+        this.assertSameIdempotencyFingerprint(lookup.record, fingerprint);
+        if (lookup.record.userId) {
+          // Reintento: misma clave, mismo payload — devolver el usuario ya creado.
+          return this.findUserDtoById(lookup.record.userId);
+        }
+      }
+    }
+
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const emailHash = this.hashEmail(dto.email);
+      const emailHash = hashEmail(dto.email);
 
       const normalizedEmail = dto.email.toLowerCase().trim();
       const existing = await qr.manager.findOne(User, {
@@ -340,109 +493,319 @@ export class UsersService {
         await qr.manager.save(User, user);
       }
 
-      // Audit trail — no incluir el email cifrado ni el hash como newValue (contiene PII cifrada)
-      void this.auditService.log({
-        action: AuditAction.CREATE,
-        entityType: 'User',
-        entityId: user.id,
-        userId: user.id,
-        newValue: {
-          role: user.role,
-          status: user.status,
-          tenantId: user.tenantId,
-          isOperationalResource: user.isOperationalResource,
-        },
-        ipAddress: ipAddress ?? null,
-      });
+      // Audit trail — actor real (H-02); sin PII en newValue.
+      this.fireAndForget(
+        this.auditService.log({
+          action: AuditAction.CREATE,
+          entityType: 'User',
+          entityId: user.id,
+          userId: actorUserId,
+          newValue: {
+            role: user.role,
+            status: user.status,
+            tenantId: user.tenantId,
+            isOperationalResource: user.isOperationalResource,
+          },
+          ipAddress: ipAddress || null,
+        }),
+        'auditoria create usuario',
+      );
+
+      if (cacheKey) {
+        await this.writeIdempotencyRecord(cacheKey, {
+          fingerprint,
+          userId: user.id,
+        });
+      }
 
       const dto_result = this.toDto(user);
-      void this.searchQueueService.enqueueUserUpsert(user.tenantId, user.id);
+      this.fireAndForget(
+        this.searchQueueService.enqueueUserUpsert(user.tenantId, user.id),
+        'cola de busqueda upsert usuario',
+      );
       return temporaryPassword ? { ...dto_result, temporaryPassword } : dto_result;
     });
   }
 
   /**
-   * Crea usuarios en lote.
+   * Encola alta masiva de usuarios (D-3=A / H-06).
    *
-   * Itera sobre cada item y llama a `create()` individualmente, recolectando
-   * exitos y errores sin interrumpir el batch. Cada `create()` usa su propia
-   * transaccion via runInTenantSchema, por lo que un fallo no revierte los anteriores.
-   *
-   * @returns Resumen con exitos (password temporal incluido) y fallos con causa.
+   * Devuelve de inmediato el identificador de trabajo. El worker procesa con
+   * tenant explícito en el payload (ALS no propaga). Las contraseñas temporales
+   * solo se entregan vía `claimBulkJobResult` (one-time).
    */
-  async bulkCreate(users: BulkCreateUserItem[]): Promise<BulkCreateUsersResponse> {
-    const succeeded: BulkCreateUsersResponse['succeeded'] = [];
-    const failed: BulkCreateUsersResponse['failed'] = [];
+  async bulkCreate(
+    users: BulkCreateUserItem[],
+    actorUserId: string,
+    ipAddress: string = 'unknown',
+    idempotencyKey?: string,
+  ): Promise<UsersBulkCreateAcceptedResponse> {
+    if (!idempotencyKey?.trim()) {
+      throw new BadRequestException('El header Idempotency-Key es obligatorio.');
+    }
 
-    for (let i = 0; i < users.length; i++) {
-      const item = users[i]!;
-      const rowIndex = i + 1;
+    const { schemaName, tenantId, tenantSlug } = TenantContext.getOrThrow();
+    const key = idempotencyKey.trim();
+    const fingerprint = this.fingerprintPayload({
+      users: users.map((u) => ({
+        email: u.email.toLowerCase().trim(),
+        role: u.role,
+        firstName: u.firstName ?? null,
+        lastName: u.lastName ?? null,
+        phone: u.phone ?? null,
+        jobTitle: u.jobTitle ?? null,
+        documentType: u.documentType ?? null,
+        documentNumber: u.documentNumber ?? null,
+        isOperationalResource: u.isOperationalResource ?? null,
+      })),
+    });
 
-      try {
-        const dto = new CreateUserDto();
-        dto.email = item.email;
-        dto.role = item.role;
-        if (item.firstName !== undefined) dto.firstName = item.firstName;
-        if (item.lastName !== undefined) dto.lastName = item.lastName;
-        if (item.phone !== undefined) dto.phone = item.phone;
-        if (item.jobTitle !== undefined) dto.jobTitle = item.jobTitle;
-        if (item.documentType !== undefined) dto.documentType = item.documentType;
-        if (item.documentNumber !== undefined) dto.documentNumber = item.documentNumber;
-        if (item.isOperationalResource !== undefined)
-          dto.isOperationalResource = item.isOperationalResource;
-
-        const result = await this.create(dto);
-
-        succeeded.push({
-          email: item.email,
-          firstName: item.firstName ?? null,
-          lastName: item.lastName ?? null,
-          role: item.role,
-          temporaryPassword: result.temporaryPassword ?? '',
-          createdAt: new Date().toISOString(),
-        });
-      } catch (error: unknown) {
-        const reason =
-          error instanceof ConflictException
-            ? 'El email ya existe en este tenant.'
-            : error instanceof Error
-              ? error.message
-              : 'Error desconocido al crear el usuario.';
-
-        failed.push({
-          rowIndex,
-          email: item.email,
-          reason,
-        });
+    const lookup = await this.readIdempotencyRecord('bulk-create', key);
+    if (lookup.record) {
+      this.assertSameIdempotencyFingerprint(lookup.record, fingerprint);
+      if (lookup.record.jobId) {
+        const existing = await this.usersBulkCreateQueue.getJob(lookup.record.jobId);
+        if (existing) {
+          const state = await existing.getState();
+          const status =
+            state === 'completed'
+              ? 'completed'
+              : state === 'active' || state === 'waiting' || state === 'delayed'
+                ? state === 'active'
+                  ? 'active'
+                  : 'queued'
+                : 'queued';
+          return { jobId: lookup.record.jobId, status };
+        }
       }
     }
 
-    return {
-      summary: {
-        total: users.length,
-        succeeded: succeeded.length,
-        failed: failed.length,
-      },
-      succeeded,
-      failed,
+    const payload: UsersBulkCreateJobPayload = {
+      tenantId,
+      schemaName,
+      tenantSlug: tenantSlug ?? schemaName.replace(/^tenant_/, ''),
+      actorUserId,
+      ipAddress: ipAddress || 'unknown',
+      idempotencyKey: key,
+      users: users.map((u) => {
+        const item: UsersBulkCreateJobPayload['users'][number] = {
+          email: u.email,
+          role: u.role,
+        };
+        if (u.firstName !== undefined) item.firstName = u.firstName;
+        if (u.lastName !== undefined) item.lastName = u.lastName;
+        if (u.phone !== undefined) item.phone = u.phone;
+        if (u.jobTitle !== undefined) item.jobTitle = u.jobTitle;
+        if (u.documentType !== undefined) item.documentType = u.documentType;
+        if (u.documentNumber !== undefined) item.documentNumber = u.documentNumber;
+        if (u.isOperationalResource !== undefined) {
+          item.isOperationalResource = u.isOperationalResource;
+        }
+        return item;
+      }),
     };
+
+    const job = await this.usersBulkCreateQueue.add(USERS_BULK_CREATE_JOB, payload, {
+      jobId: `users-bulk-${tenantId}-${key}`,
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 2000 },
+      removeOnComplete: { age: BULK_RESULT_TTL_SECONDS },
+      removeOnFail: { age: BULK_RESULT_TTL_SECONDS },
+    });
+
+    const jobId = String(job.id);
+    await this.writeIdempotencyRecord(lookup.cacheKey, { fingerprint, jobId });
+
+    return { jobId, status: 'queued' };
+  }
+
+  /**
+   * Estado del job de bulk sin secretos (UX: progreso / resumen).
+   */
+  async getBulkJobStatus(jobId: string): Promise<UsersBulkJobStatusResponse> {
+    const { tenantId } = TenantContext.getOrThrow();
+    const job = await this.usersBulkCreateQueue.getJob(jobId);
+    if (!job || job.data.tenantId !== tenantId) {
+      throw new NotFoundException('Importación no encontrada.');
+    }
+
+    const state = await job.getState();
+    const store = await this.readBulkResultStore(tenantId, jobId);
+
+    let status: UsersBulkJobStatusResponse['status'] = 'unknown';
+    if (state === 'completed') status = 'completed';
+    else if (state === 'failed') status = 'failed';
+    else if (state === 'active') status = 'active';
+    else if (state === 'waiting' || state === 'delayed') status = 'queued';
+
+    const response: UsersBulkJobStatusResponse = {
+      jobId,
+      status,
+      summary: store?.summary ?? null,
+      failed: store?.failed ?? [],
+      credentialsClaimed: store?.credentialsClaimed ?? false,
+    };
+    if (state === 'failed') {
+      response.errorMessage = String(job.failedReason ?? 'Error en la importación');
+    }
+    return response;
+  }
+
+  /**
+   * Reclama el resultado one-time con contraseñas temporales (UX §2).
+   * Una sola revelación; reintentos posteriores omiten `temporaryPassword`.
+   */
+  async claimBulkJobResult(jobId: string): Promise<UsersBulkJobResultResponse> {
+    const { tenantId } = TenantContext.getOrThrow();
+    const job = await this.usersBulkCreateQueue.getJob(jobId);
+    if (!job || job.data.tenantId !== tenantId) {
+      throw new NotFoundException('Importación no encontrada.');
+    }
+
+    const state = await job.getState();
+    if (state !== 'completed') {
+      throw new BadRequestException('La importación aún no ha terminado.');
+    }
+
+    const store = await this.readBulkResultStore(tenantId, jobId);
+    if (!store) {
+      throw new NotFoundException('Resultado de importación no disponible.');
+    }
+
+    if (store.credentialsClaimed) {
+      return {
+        jobId,
+        status: 'completed',
+        summary: store.summary,
+        succeeded: store.succeeded.map(({ temporaryPassword: _tp, ...rest }) => rest),
+        failed: store.failed,
+        credentialsClaimed: true,
+      };
+    }
+
+    store.credentialsClaimed = true;
+    await this.writeBulkResultStore(tenantId, jobId, store);
+
+    return {
+      jobId,
+      status: 'completed',
+      summary: store.summary,
+      succeeded: store.succeeded,
+      failed: store.failed,
+      credentialsClaimed: true,
+    };
+  }
+
+  /**
+   * Ejecuta el lote (invocado por el worker con tenant explícito).
+   * `createdAt` se lee del registro persistido.
+   */
+  async executeBulkCreateJob(payload: UsersBulkCreateJobPayload, jobId: string): Promise<void> {
+    return TenantContext.run(
+      {
+        tenantId: payload.tenantId,
+        schemaName: payload.schemaName,
+        tenantSlug: payload.tenantSlug,
+      },
+      async () => {
+        const succeeded: UsersBulkCreateSucceededItem[] = [];
+        const failed: UsersBulkCreateFailedItem[] = [];
+
+        for (let i = 0; i < payload.users.length; i++) {
+          const item = payload.users[i]!;
+          const rowIndex = i + 1;
+
+          try {
+            const dto = new CreateUserDto();
+            dto.email = item.email;
+            dto.role = item.role as UserRole;
+            if (item.firstName !== undefined) dto.firstName = item.firstName;
+            if (item.lastName !== undefined) dto.lastName = item.lastName;
+            if (item.phone !== undefined) dto.phone = item.phone;
+            if (item.jobTitle !== undefined) dto.jobTitle = item.jobTitle;
+            if (item.documentType !== undefined) {
+              dto.documentType = item.documentType as DocumentType;
+            }
+            if (item.documentNumber !== undefined) dto.documentNumber = item.documentNumber;
+            if (item.isOperationalResource !== undefined) {
+              dto.isOperationalResource = item.isOperationalResource;
+            }
+
+            const result = await this.create(dto, payload.actorUserId, payload.ipAddress);
+
+            succeeded.push({
+              email: item.email,
+              firstName: item.firstName ?? null,
+              lastName: item.lastName ?? null,
+              role: item.role,
+              temporaryPassword: result.temporaryPassword ?? '',
+              createdAt:
+                result.createdAt instanceof Date
+                  ? result.createdAt.toISOString()
+                  : String(result.createdAt),
+            });
+          } catch (error: unknown) {
+            const reason =
+              error instanceof ConflictException
+                ? 'El email ya existe en este tenant.'
+                : error instanceof Error
+                  ? error.message
+                  : 'Error desconocido al crear el usuario.';
+
+            failed.push({
+              rowIndex,
+              email: item.email,
+              reason,
+            });
+          }
+        }
+
+        const store: BulkResultStore = {
+          summary: {
+            total: payload.users.length,
+            succeeded: succeeded.length,
+            failed: failed.length,
+          },
+          succeeded,
+          failed,
+          credentialsClaimed: false,
+        };
+
+        await this.writeBulkResultStore(payload.tenantId, jobId, store);
+      },
+    );
   }
 
   /**
    * Actualiza status y/o rol del usuario.
    * Registra oldValue/newValue en el audit trail.
+   * Idempotente por Idempotency-Key cuando se provee.
    */
   async update(
     id: string,
     dto: UpdateUserDto,
     actorUserId: string,
     actorRole: string,
+    idempotencyKey?: string,
   ): Promise<UserResponseDto> {
     const { schemaName } = TenantContext.getOrThrow();
 
     // Frontera de roles: la escalada empezaba en un PATCH con role SYSTEM_ADMIN (H-01).
     if (dto.role !== undefined) {
       this.assertTenantAssignableRole(dto.role);
+    }
+
+    const fingerprint = this.fingerprintPayload({ id, ...dto });
+    let cacheKey: string | null = null;
+    if (idempotencyKey?.trim()) {
+      const lookup = await this.readIdempotencyRecord('update', idempotencyKey);
+      cacheKey = lookup.cacheKey;
+      if (lookup.record) {
+        this.assertSameIdempotencyFingerprint(lookup.record, fingerprint);
+        if (lookup.record.userId) {
+          return this.findUserDtoById(lookup.record.userId);
+        }
+      }
     }
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
@@ -481,20 +844,30 @@ export class UsersService {
 
       await qr.manager.save(User, user);
 
-      void this.auditService.log({
-        action: AuditAction.UPDATE,
-        entityType: 'User',
-        entityId: id,
-        userId: actorUserId,
-        oldValue,
-        newValue: {
-          status: user.status,
-          role: user.role,
-          isOperationalResource: user.isOperationalResource,
-        },
-      });
+      this.fireAndForget(
+        this.auditService.log({
+          action: AuditAction.UPDATE,
+          entityType: 'User',
+          entityId: id,
+          userId: actorUserId,
+          oldValue,
+          newValue: {
+            status: user.status,
+            role: user.role,
+            isOperationalResource: user.isOperationalResource,
+          },
+        }),
+        'auditoria update usuario',
+      );
 
-      void this.searchQueueService.enqueueUserUpsert(user.tenantId, user.id);
+      if (cacheKey) {
+        await this.writeIdempotencyRecord(cacheKey, { fingerprint, userId: user.id });
+      }
+
+      this.fireAndForget(
+        this.searchQueueService.enqueueUserUpsert(user.tenantId, user.id),
+        'cola de busqueda upsert usuario',
+      );
       return this.toDto(user);
     });
   }
@@ -527,9 +900,10 @@ export class UsersService {
       }
 
       const normalizedEmail = dto.email.toLowerCase().trim();
-      const nextEmailHash = this.hashEmail(normalizedEmail);
+      const previousEmailHash = user.emailHash;
+      const nextEmailHash = hashEmail(normalizedEmail);
 
-      if (nextEmailHash !== user.emailHash) {
+      if (nextEmailHash !== previousEmailHash) {
         const existingUser = await qr.manager.findOne(User, {
           where: { email: normalizedEmail },
           withDeleted: false,
@@ -562,14 +936,20 @@ export class UsersService {
         entityType: 'UserLoginEmail',
         entityId: user.id,
         userId: actorUserId,
-        oldValue: { loginEmailChanged: false },
+        oldValue: {
+          previousEmailHash,
+        },
         newValue: {
-          loginEmailChanged: true,
+          nextEmailHash,
+          loginEmailChanged: nextEmailHash !== previousEmailHash,
           companyContactEmailSynced: shouldUpdateTenantContactEmail,
         },
       });
 
-      void this.searchQueueService.enqueueUserUpsert(user.tenantId, user.id);
+      this.fireAndForget(
+        this.searchQueueService.enqueueUserUpsert(user.tenantId, user.id),
+        'cola de busqueda upsert usuario',
+      );
       return this.toDto(user);
     });
   }
@@ -577,14 +957,33 @@ export class UsersService {
   /**
    * Cambia el email de acceso de un usuario por acción administrativa.
    * No requiere contraseña actual, pero mantiene controles RBAC y auditoría.
+   * Idempotente por Idempotency-Key cuando se provee.
    */
   async changeLoginEmailAsAdmin(
     id: string,
     dto: AdminChangeUserLoginEmailDto,
     actorUserId: string,
     actorRole: UserRole,
+    idempotencyKey?: string,
   ): Promise<UserResponseDto> {
     const { schemaName } = TenantContext.getOrThrow();
+
+    const fingerprint = this.fingerprintPayload({
+      id,
+      email: dto.email.toLowerCase().trim(),
+      syncCompanyContactEmail: dto.syncCompanyContactEmail ?? true,
+    });
+    let cacheKey: string | null = null;
+    if (idempotencyKey?.trim()) {
+      const lookup = await this.readIdempotencyRecord('login-email-admin', idempotencyKey);
+      cacheKey = lookup.cacheKey;
+      if (lookup.record) {
+        this.assertSameIdempotencyFingerprint(lookup.record, fingerprint);
+        if (lookup.record.userId) {
+          return this.findUserDtoById(lookup.record.userId);
+        }
+      }
+    }
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const user = await qr.manager.findOne(User, { where: { id } });
@@ -599,8 +998,9 @@ export class UsersService {
       }
 
       const normalizedEmail = dto.email.toLowerCase().trim();
-      const nextEmailHash = this.hashEmail(normalizedEmail);
-      const emailChanged = nextEmailHash !== user.emailHash;
+      const previousEmailHash = user.emailHash;
+      const nextEmailHash = hashEmail(normalizedEmail);
+      const emailChanged = nextEmailHash !== previousEmailHash;
 
       if (emailChanged) {
         const existingUser = await qr.manager.findOne(User, {
@@ -636,14 +1036,24 @@ export class UsersService {
         entityType: 'UserLoginEmailAdmin',
         entityId: user.id,
         userId: actorUserId,
-        oldValue: { loginEmailChanged: false },
+        oldValue: {
+          previousEmailHash,
+        },
         newValue: {
+          nextEmailHash,
           loginEmailChanged: emailChanged,
           companyContactEmailSynced: shouldUpdateTenantContactEmail,
         },
       });
 
-      void this.searchQueueService.enqueueUserUpsert(user.tenantId, user.id);
+      if (cacheKey) {
+        await this.writeIdempotencyRecord(cacheKey, { fingerprint, userId: user.id });
+      }
+
+      this.fireAndForget(
+        this.searchQueueService.enqueueUserUpsert(user.tenantId, user.id),
+        'cola de busqueda upsert usuario',
+      );
       return this.toDto(user);
     });
   }
@@ -672,14 +1082,20 @@ export class UsersService {
       // Soft delete via softRemove — establece deletedAt
       await qr.manager.softRemove(User, user);
 
-      void this.auditService.log({
-        action: AuditAction.DELETE,
-        entityType: 'User',
-        entityId: id,
-        userId: actorUserId,
-      });
+      this.fireAndForget(
+        this.auditService.log({
+          action: AuditAction.DELETE,
+          entityType: 'User',
+          entityId: id,
+          userId: actorUserId,
+        }),
+        'auditoria delete usuario',
+      );
 
-      void this.searchQueueService.enqueueUserDelete(id);
+      this.fireAndForget(
+        this.searchQueueService.enqueueUserDelete(id),
+        'cola de busqueda delete usuario',
+      );
     });
   }
 
@@ -690,8 +1106,26 @@ export class UsersService {
     actorRole: UserRole,
     ipAddress: string,
     password?: string,
+    idempotencyKey?: string,
   ): Promise<{ temporaryPassword: string }> {
     const { schemaName } = TenantContext.getOrThrow();
+
+    const fingerprint = this.fingerprintPayload({
+      id,
+      hasPassword: Boolean(password),
+    });
+
+    if (idempotencyKey?.trim()) {
+      const lookup = await this.readIdempotencyRecord('reset-password', idempotencyKey);
+      if (lookup.record) {
+        this.assertSameIdempotencyFingerprint(lookup.record, fingerprint);
+        // Misma clave que auth: no se re-sirve la contraseña temporal.
+        throw new ConflictException(
+          'Ya se emitio una contraseña temporal con esta clave de idempotencia. ' +
+            'La contraseña solo se muestra una vez. Si se perdio, use una clave nueva.',
+        );
+      }
+    }
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const user = await qr.manager.findOne(User, { where: { id } });
@@ -708,13 +1142,30 @@ export class UsersService {
       user.passwordResetRequired = true;
       await qr.manager.save(User, user);
 
-      void this.auditService.log({
-        action: AuditAction.PASSWORD_CHANGED,
-        entityType: 'UserPasswordReset',
-        entityId: user.id,
-        userId: actorId,
-        ipAddress,
-      });
+      this.fireAndForget(
+        this.auditService.log({
+          action: AuditAction.PASSWORD_CHANGED,
+          entityType: 'UserPasswordReset',
+          entityId: user.id,
+          userId: actorId,
+          ipAddress,
+        }),
+        'auditoria reset password usuario',
+      );
+
+      if (idempotencyKey?.trim()) {
+        const { tenantId } = TenantContext.getOrThrow();
+        const cacheKey = this.buildIdempotencyCacheKey(
+          'reset-password',
+          tenantId,
+          idempotencyKey.trim(),
+        );
+        await this.writeIdempotencyRecord(cacheKey, {
+          fingerprint,
+          userId: user.id,
+          issued: true,
+        });
+      }
 
       return { temporaryPassword };
     });
@@ -722,7 +1173,7 @@ export class UsersService {
 
   /** Retorna el perfil del usuario autenticado. */
   async findMe(actorId: string): Promise<UserResponseDto> {
-    return this.findOne(actorId);
+    return this.findUserDtoById(actorId);
   }
 
   /**
@@ -792,13 +1243,16 @@ export class UsersService {
 
       await qr.manager.save(User, user);
 
-      void this.auditService.log({
-        action: AuditAction.UPDATE,
-        entityType: 'UserProfile',
-        entityId: user.id,
-        userId: actorId,
-        ipAddress,
-      });
+      this.fireAndForget(
+        this.auditService.log({
+          action: AuditAction.UPDATE,
+          entityType: 'UserProfile',
+          entityId: user.id,
+          userId: actorId,
+          ipAddress,
+        }),
+        'auditoria update perfil propio',
+      );
 
       return this.toDto(user);
     });
@@ -808,20 +1262,26 @@ export class UsersService {
   // Helpers privados
   // ---------------------------------------------------------------------------
 
+  /** Carga un usuario por id sin re-evaluar autorizacion (uso interno / findMe). */
+  private async findUserDtoById(id: string): Promise<UserResponseDto> {
+    const { schemaName } = TenantContext.getOrThrow();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const user = await qr.manager.findOne(User, { where: { id } });
+      if (!user) throw new NotFoundException(`Usuario ${id} no encontrado.`);
+      return this.toDto(user);
+    });
+  }
+
   /**
    * Convierte entidad User a DTO publico.
-   * Tolera datos legacy cifrados solo en lectura durante la transición.
+   * Perfil en texto plano (H-14: sin ruta de descifrado legacy).
    * documentNumber se devuelve para edicion en portal interno autenticado.
    */
   private toDto(user: User): UserResponseDto {
-    const decodedEmail = this.decodeLegacyValue(user.email);
-
     return {
       id: user.id,
-      // Compatibilidad temporal: algunos tenants pueden mantener email legacy cifrado.
-      // Se intenta descifrar para exponer siempre el email usable en portal/admin.
-      // Si falla el descifrado, se conserva el valor original para no romper el contrato.
-      email: decodedEmail ?? user.email,
+      email: user.email,
       role: user.role as UserRole,
       status: user.status as UserStatus,
       tenantId: user.tenantId,
@@ -834,51 +1294,24 @@ export class UsersService {
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
       deletedAt: user.deletedAt ?? null,
-      // Compatibilidad hacia atrás: algunos tenants pueden tener nombres legados
-      // en texto plano o con cifrado inválido. El endpoint no debe caer por eso.
-      firstName: this.decodeLegacyValue(user.firstName),
-      lastName: this.decodeLegacyValue(user.lastName),
+      firstName: user.firstName ?? null,
+      lastName: user.lastName ?? null,
       phone: user.phone ?? null,
       jobTitle: user.jobTitle ?? null,
       documentType: (user.documentType as DocumentType) ?? null,
       avatarUrl: user.avatarUrl ?? null,
-      // Compatibilidad temporal: documentNumber puede venir legacy cifrado.
-      // Se intenta descifrar para mostrar valor editable en UI interna.
-      documentNumber: this.decodeLegacyValue(user.documentNumber),
+      documentNumber: user.documentNumber ?? null,
     };
   }
 
-  /** SHA-256 del email normalizado — para compatibilidad transversal. */
-  private hashEmail(email: string): string {
-    return crypto.createHash('sha256').update(email.toLowerCase().trim()).digest('hex');
-  }
-
-  private matchesUserSearch(
-    user: Pick<UserResponseDto, 'firstName' | 'lastName' | 'email' | 'jobTitle'>,
-    rawSearch: string,
-  ): boolean {
-    const query = this.normalizeSearchValue(rawSearch);
-    if (!query) {
-      return true;
-    }
-
-    const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ');
-    const candidates = [fullName, user.firstName, user.lastName, user.email, user.jobTitle]
-      .map((value) => this.normalizeSearchValue(value))
-      .filter((value) => value.length > 0);
-
-    return candidates.some((candidate) => {
-      if (candidate.includes(query)) {
-        return true;
-      }
-
-      return candidate
-        .split(' ')
-        .some(
-          (token) =>
-            token.startsWith(query) ||
-            (query.length >= 4 && this.levenshteinDistance(token, query) <= 1),
-        );
+  /**
+   * Fire-and-forget con registro visible de fallo (H-13).
+   * No interrumpe la petición; solo deja de silenciar el rechazo.
+   * Promise.resolve tolera callers/mocks que no retornan una Promise.
+   */
+  private fireAndForget(task: PromiseLike<unknown> | unknown, context: string): void {
+    void Promise.resolve(task).catch((err: unknown) => {
+      this.logger.warn(`Fallo en ${context}: ${String(err)}`);
     });
   }
 
@@ -891,88 +1324,98 @@ export class UsersService {
       .replace(/\s+/g, ' ');
   }
 
-  private levenshteinDistance(left: string, right: string): number {
-    if (left === right) {
-      return 0;
-    }
+  private escapeLikePattern(value: string): string {
+    return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+  }
 
-    if (!left.length) {
-      return right.length;
-    }
+  private mapUserRow(row: Record<string, unknown>): User {
+    return {
+      id: String(row['id']),
+      email: String(row['email']),
+      emailHash: String(row['email_hash'] ?? row['emailHash'] ?? ''),
+      passwordHash: String(row['password_hash'] ?? row['passwordHash'] ?? ''),
+      role: row['role'] as UserRole,
+      status: row['status'] as UserStatus,
+      tenantId: String(row['tenant_id'] ?? row['tenantId'] ?? ''),
+      mfaEnabled: Boolean(row['mfa_enabled'] ?? row['mfaEnabled']),
+      mfaSecret: (row['mfa_secret'] ?? row['mfaSecret'] ?? null) as string | null,
+      mfaRequired: Boolean(row['mfa_required'] ?? row['mfaRequired']),
+      isOperationalResource: Boolean(
+        row['is_operational_resource'] ?? row['isOperationalResource'],
+      ),
+      passwordResetRequired: Boolean(
+        row['password_reset_required'] ?? row['passwordResetRequired'],
+      ),
+      passwordResetToken: (row['password_reset_token'] ?? row['passwordResetToken'] ?? null) as
+        | string
+        | null,
+      passwordResetTokenExpiresAt: (row['password_reset_token_expires_at'] ??
+        row['passwordResetTokenExpiresAt'] ??
+        null) as Date | null,
+      passwordResetExpiresAt: (row['password_reset_expires_at'] ??
+        row['passwordResetExpiresAt'] ??
+        null) as Date | null,
+      failedLoginAttempts: Number(row['failed_login_attempts'] ?? row['failedLoginAttempts'] ?? 0),
+      lockedUntil: (row['locked_until'] ?? row['lockedUntil'] ?? null) as Date | null,
+      lastLoginAt: (row['last_login_at'] ?? row['lastLoginAt'] ?? null) as Date | null,
+      emailVerified: Boolean(row['email_verified'] ?? row['emailVerified']),
+      emailVerificationToken: (row['email_verification_token'] ??
+        row['emailVerificationToken'] ??
+        null) as string | null,
+      firstName: (row['first_name'] ?? row['firstName'] ?? null) as string | null,
+      lastName: (row['last_name'] ?? row['lastName'] ?? null) as string | null,
+      phone: (row['phone'] ?? null) as string | null,
+      jobTitle: (row['job_title'] ?? row['jobTitle'] ?? null) as string | null,
+      documentType: (row['document_type'] ?? row['documentType'] ?? null) as DocumentType | null,
+      documentNumber: (row['document_number'] ?? row['documentNumber'] ?? null) as string | null,
+      avatarUrl: (row['avatar_url'] ?? row['avatarUrl'] ?? null) as string | null,
+      createdAt: new Date(String(row['created_at'] ?? row['createdAt'])),
+      updatedAt: new Date(String(row['updated_at'] ?? row['updatedAt'])),
+      deletedAt: (row['deleted_at'] ?? row['deletedAt'] ?? null) as Date | null,
+    } as User;
+  }
 
-    if (!right.length) {
-      return left.length;
-    }
+  private bulkResultCacheKey(tenantId: string, jobId: string): string {
+    return `users:bulk-result:${tenantId}:${jobId}`;
+  }
 
-    const previousRow = Array.from({ length: right.length + 1 }, (_, index) => index);
+  private async readBulkResultStore(
+    tenantId: string,
+    jobId: string,
+  ): Promise<BulkResultStore | null> {
+    const raw = await this.redis.get(this.bulkResultCacheKey(tenantId, jobId));
+    if (!raw) return null;
+    return JSON.parse(raw) as BulkResultStore;
+  }
 
-    for (let leftIndex = 0; leftIndex < left.length; leftIndex += 1) {
-      let previousDiagonal = previousRow[0] ?? 0;
-      previousRow[0] = leftIndex + 1;
-
-      for (let rightIndex = 0; rightIndex < right.length; rightIndex += 1) {
-        const currentValue = previousRow[rightIndex + 1] ?? 0;
-        const substitutionCost = left[leftIndex] === right[rightIndex] ? 0 : 1;
-
-        previousRow[rightIndex + 1] = Math.min(
-          (previousRow[rightIndex] ?? 0) + 1,
-          currentValue + 1,
-          previousDiagonal + substitutionCost,
-        );
-
-        previousDiagonal = currentValue;
-      }
-    }
-
-    return previousRow[right.length] ?? 0;
+  private async writeBulkResultStore(
+    tenantId: string,
+    jobId: string,
+    store: BulkResultStore,
+  ): Promise<void> {
+    await this.redis.set(
+      this.bulkResultCacheKey(tenantId, jobId),
+      JSON.stringify(store),
+      'EX',
+      BULK_RESULT_TTL_SECONDS,
+    );
   }
 
   /**
-   * TODO: eliminar tras confirmar que no quedan datos cifrados legacy en perfil.
-   * Tolera texto plano y valores legacy AES-256-GCM sin romper el endpoint.
+   * Regla explícita de «administrador principal» (H-12 / MOD04 Ola C):
+   *
+   * El ADMIN principal del tenant es el usuario con rol `UserRole.ADMIN`
+   * activo (sin soft-delete) de **menor `createdAt`** (el más antiguo).
+   *
+   * Efectos actuales:
+   * - Al cambiar su login email (self o admin) con sync activo, se actualiza
+   *   `public.tenants.contact_email`.
+   *
+   * Riesgo residual: si ese usuario se elimina, el principal cambia en silencio
+   * al siguiente ADMIN más antiguo. **Propuesta de modelo (no mergeada):**
+   * atributo explícito `tenants.principal_admin_user_id` (o flag en `users`)
+   * con transferencia controlada — requiere GO EM-ARCH / ADR; no decidir aquí.
    */
-  private decodeLegacyValue(value: string | null): string | null {
-    if (!value) {
-      return null;
-    }
-
-    if (!this.looksLikeEncryptedValue(value)) {
-      return value;
-    }
-
-    try {
-      return this.decryptLegacyValue(value);
-    } catch {
-      this.logger.warn(
-        'Se detectó un campo de perfil con cifrado inválido o incompatible. Se omitirá en la respuesta.',
-      );
-      return null;
-    }
-  }
-
-  /** Descifra únicamente valores legacy AES-256-GCM (activa, luego previous). */
-  private decryptLegacyValue(encrypted: string): string {
-    return decryptAes256Gcm(encrypted, this.encryptionKey, this.encryptionKeyPrevious);
-  }
-
-  private looksLikeEncryptedValue(value: string): boolean {
-    const parts = value.split(':');
-    if (parts.length !== 3) {
-      return false;
-    }
-
-    const [iv, authTag, ciphertext] = parts;
-    const isHex = (segment: string, expectedLength?: number) => {
-      if (!segment || (expectedLength && segment.length !== expectedLength)) {
-        return false;
-      }
-
-      return /^[0-9a-f]+$/i.test(segment) && segment.length % 2 === 0;
-    };
-
-    return isHex(iv ?? '', 24) && isHex(authTag ?? '', 32) && isHex(ciphertext ?? '');
-  }
-
   private async isPrincipalAdminUser(
     manager: import('typeorm').EntityManager,
     userId: string,

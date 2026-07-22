@@ -21,6 +21,7 @@ import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { DataSource } from 'typeorm';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { AuditService } from '../audit/audit.service';
+import { hashEmail } from '../../common/crypto/hash-email.util';
 import { MailerService } from '../mailer/mailer.service';
 import { emailVerificationTemplate } from '../mailer/templates/email-verification.template';
 import { forgotPasswordTemplate } from '../mailer/templates/forgot-password.template';
@@ -130,7 +131,7 @@ export class AuthService {
     _ipAddress?: string,
     _userAgent?: string,
   ): Promise<AuthResponse> {
-    const emailHash = this.hashEmail(dto.email);
+    const emailHash = hashEmail(dto.email);
 
     const user = await this.platformUserRepository.findOne({
       where: { emailHash },
@@ -209,7 +210,7 @@ export class AuthService {
     const { schemaName } = TenantContext.getOrThrow();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const emailHash = this.hashEmail(dto.email);
+      const emailHash = hashEmail(dto.email);
 
       // Buscar usuario por hash para evitar busqueda por PII en texto plano
       const user = await qr.manager.findOne(User, {
@@ -585,7 +586,7 @@ export class AuthService {
   async forgotPassword(dto: ForgotPasswordDto): Promise<void> {
     const { schemaName } = TenantContext.getOrThrow();
 
-    const emailHash = this.hashEmail(dto.email);
+    const emailHash = hashEmail(dto.email);
 
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const user = await qr.manager.findOne(User, { where: { emailHash } });
@@ -787,7 +788,7 @@ export class AuthService {
   async resendVerificationEmail(dto: ResendVerificationDto, schemaName: string): Promise<void> {
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       // Buscar por hash del email (nunca por email plano — PII protegida)
-      const emailHash = this.hashEmail(dto.email);
+      const emailHash = hashEmail(dto.email);
       const user = await qr.manager.findOne(User, {
         where: { emailHash, emailVerified: false },
       });
@@ -1035,14 +1036,6 @@ export class AuthService {
     }
 
     await manager.update(User, user.id, updates);
-  }
-
-  /**
-   * Genera hash SHA-256 del email en minusculas.
-   * Se usa para busquedas por email sin exponer el valor plano en indices.
-   */
-  private hashEmail(email: string): string {
-    return crypto.createHash('sha256').update(email.toLowerCase().trim()).digest('hex');
   }
 
   /**

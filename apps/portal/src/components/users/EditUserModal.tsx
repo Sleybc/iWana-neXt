@@ -1,12 +1,17 @@
 // apps/portal/src/components/users/EditUserModal.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { CheckCircle2, Copy, PencilLine, ShieldAlert, X } from 'lucide-react';
-import { type AccessPermissionKey, DocumentType, UserRole } from '@iwana/shared';
+import {
+  type AccessPermissionKey,
+  PLATFORM_ONLY_ROLES,
+  TENANT_ASSIGNABLE_ROLES,
+  UserRole,
+} from '@iwana/shared';
 import {
   Dialog,
   DialogContent,
@@ -23,15 +28,15 @@ import {
   type UpdateInternalUserDto,
   ApiError,
 } from '@/lib/api-client';
+import { ensureIdempotencyKey } from '@/lib/idempotency-key';
 import {
   getPortalUserRoleLabel,
   getPortalUserStatusLabel,
-  PORTAL_PLATFORM_ROLES,
-  PORTAL_TENANT_ASSIGNABLE_ROLES,
   PORTAL_USER_STATUSES,
 } from '@/lib/user-labels';
 import { PortalAlert } from '@/components/shared/portal-ui';
 import { CompanyRolesAssignmentSection } from './CompanyRolesAssignmentSection';
+import { UserProfileFields } from './UserProfileFields';
 
 const editUserSchema = z.object({
   email: z.string().trim().email('Ingresa un correo valido.'),
@@ -121,6 +126,8 @@ export function EditUserModal({
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [resetPasswordError, setResetPasswordError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const resetPasswordIdempotencyKeyRef = useRef<string | null>(null);
+  const changeEmailIdempotencyKeyRef = useRef<string | null>(null);
 
   const {
     register,
@@ -146,6 +153,16 @@ export function EditUserModal({
     },
   });
 
+  const clearIdempotencyKeys = () => {
+    resetPasswordIdempotencyKeyRef.current = null;
+    changeEmailIdempotencyKeyRef.current = null;
+  };
+
+  const handleClose = () => {
+    clearIdempotencyKeys();
+    onClose();
+  };
+
   useEffect(() => {
     if (isOpen) {
       reset({
@@ -169,6 +186,8 @@ export function EditUserModal({
       setResetPasswordError(null);
       setCopied(false);
       setSelectedCompanyRoleIds(initialCompanyRoleIds);
+      resetPasswordIdempotencyKeyRef.current = null;
+      changeEmailIdempotencyKeyRef.current = null;
     }
   }, [initialCompanyRoleIds, isOpen, user, reset]);
 
@@ -259,7 +278,7 @@ export function EditUserModal({
     }
 
     if (Object.keys(dto).length === 0 && !companyRolesChanged) {
-      onClose();
+      handleClose();
       return;
     }
 
@@ -278,9 +297,10 @@ export function EditUserModal({
     if (email === user.email) return;
     setEmailError(null);
     setIsSavingEmail(true);
+    const idempotencyKey = ensureIdempotencyKey(changeEmailIdempotencyKeyRef);
     try {
-      // El admin cambia el email sin necesidad de contraseña propia
-      await usersApi.changeEmail(user.id, { email });
+      await usersApi.changeLoginEmailAsAdmin(user.id, { email }, idempotencyKey);
+      changeEmailIdempotencyKeyRef.current = null;
       onEmailChanged?.();
     } catch (err: unknown) {
       setEmailError(mapError(err));
@@ -293,11 +313,13 @@ export function EditUserModal({
     setResetPasswordError(null);
     setResetPasswordResult(null);
     setIsResettingPassword(true);
+    const idempotencyKey = ensureIdempotencyKey(resetPasswordIdempotencyKeyRef);
     try {
       const result = await usersApi.resetPassword(user.id, {
         password: resetPasswordText || undefined,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey,
       });
+      resetPasswordIdempotencyKeyRef.current = null;
       setResetPasswordResult(result.temporaryPassword);
       setResetPasswordText('');
     } catch (err: unknown) {
@@ -318,7 +340,7 @@ export function EditUserModal({
   if (!isOpen) return null;
 
   const isAdmin = user.role === UserRole.ADMIN || user.role === UserRole.SYSTEM_ADMIN;
-  const hasPlatformRole = PORTAL_PLATFORM_ROLES.has(user.role as UserRole);
+  const hasPlatformRole = PLATFORM_ONLY_ROLES.has(user.role);
   const isProtectedRole = isAdmin || hasPlatformRole;
 
   return (
@@ -326,7 +348,7 @@ export function EditUserModal({
       open={isOpen}
       onOpenChange={(open) => {
         if (!open) {
-          onClose();
+          handleClose();
         }
       }}
     >
@@ -341,7 +363,7 @@ export function EditUserModal({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="flex h-10 w-10 items-center justify-center rounded-2xl text-gray-400 transition-colors hover:bg-iwana-surface-soft hover:text-gray-700 dark:hover:bg-dark-surface-3 dark:hover:text-gray-200"
             aria-label="Cerrar"
           >
@@ -523,10 +545,10 @@ export function EditUserModal({
                     isProtectedRole ? 'No puedes cambiar el rol de usuarios protegidos' : undefined
                   }
                 >
-                  {PORTAL_PLATFORM_ROLES.has(user.role as UserRole) && (
+                  {PLATFORM_ONLY_ROLES.has(user.role) && (
                     <option value={user.role}>{getPortalUserRoleLabel(user.role)}</option>
                   )}
-                  {PORTAL_TENANT_ASSIGNABLE_ROLES.map((role) => (
+                  {TENANT_ASSIGNABLE_ROLES.map((role) => (
                     <option key={role} value={role}>
                       {getPortalUserRoleLabel(role)}
                     </option>
@@ -553,161 +575,15 @@ export function EditUserModal({
                 />
               </div>
 
-              {/*
-              Cargo y nombre en 2 columnas
-            */}
-              <div>
-                <label
-                  htmlFor="edit-jobTitle"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-                >
-                  Cargo
-                </label>
-                <input
-                  id="edit-jobTitle"
-                  type="text"
-                  disabled={isSubmitting}
-                  {...register('jobTitle')}
-                  className={inputClass}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-firstName"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-                >
-                  Nombre
-                </label>
-                <input
-                  id="edit-firstName"
-                  type="text"
-                  disabled={isSubmitting}
-                  {...register('firstName')}
-                  className={inputClass}
-                />
-              </div>
-
-              {/*
-              Apellido y telefono en 2 columnas
-            */}
-              <div>
-                <label
-                  htmlFor="edit-lastName"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-                >
-                  Apellido
-                </label>
-                <input
-                  id="edit-lastName"
-                  type="text"
-                  disabled={isSubmitting}
-                  {...register('lastName')}
-                  className={inputClass}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-phone"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-                >
-                  Telefono
-                </label>
-                <input
-                  id="edit-phone"
-                  type="tel"
-                  disabled={isSubmitting}
-                  {...register('phone')}
-                  className={inputClass}
-                />
-                {errors.phone && (
-                  <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-                    {errors.phone.message}
-                  </p>
-                )}
-              </div>
-
-              {/*
-              Tipo de documento y numero de documento en 2 columnas
-            */}
-              <div>
-                <label
-                  htmlFor="edit-documentType"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-                >
-                  Tipo de documento
-                </label>
-                <Select
-                  id="edit-documentType"
-                  disabled={isSubmitting}
-                  {...register('documentType')}
-                  aria-label="Tipo de documento"
-                  className={selectClass}
-                >
-                  <option value="">Selecciona</option>
-                  {Object.values(DocumentType).map((dt) => (
-                    <option key={dt} value={dt}>
-                      {dt}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-documentNumber"
-                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
-                >
-                  Numero de documento
-                </label>
-                <input
-                  id="edit-documentNumber"
-                  type="text"
-                  placeholder="123456789"
-                  disabled={isSubmitting}
-                  {...register('documentNumber')}
-                  className={inputClass}
-                />
-              </div>
-
-              {/*
-                MFA: ancho completo
-              */}
-              <div className="col-span-full">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    disabled={isSubmitting}
-                    {...register('mfaRequired')}
-                    className="h-4 w-4 rounded border-gray-300 text-iwana-primary focus:ring-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:focus:ring-iwana-primary"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">
-                    Requerir autenticacion de dos factores (MFA)
-                  </span>
-                </label>
-              </div>
-
-              <div className="col-span-full rounded-2xl border border-gray-200 bg-gray-50/80 p-4 dark:border-dark-border dark:bg-dark-surface-3/70">
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    disabled={isSubmitting}
-                    {...register('isOperationalResource')}
-                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-iwana-primary focus:ring-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:focus:ring-iwana-primary"
-                  />
-                  <span className="space-y-1">
-                    <span className="block text-sm font-medium text-gray-800 dark:text-gray-100">
-                      Disponible para despacho operativo
-                    </span>
-                    <span className="block text-sm text-gray-600 dark:text-gray-300">
-                      Controla si esta persona aparece en agenda diaria, capacidad visible y
-                      recomendaciones operativas. Aunque esté desactivado, seguirá disponible para
-                      agenda general.
-                    </span>
-                  </span>
-                </label>
-              </div>
+              <UserProfileFields
+                idPrefix="edit"
+                register={register}
+                errors={errors}
+                isSubmitting={isSubmitting}
+                inputClassName={inputClass}
+                selectClassName={selectClass}
+                operationalResourceDescription="Controla si esta persona aparece en agenda diaria, capacidad visible y recomendaciones operativas. Aunque esté desactivado, seguirá disponible para agenda general."
+              />
             </div>
           </section>
 
@@ -834,7 +710,7 @@ export function EditUserModal({
           <div className="flex items-center justify-end gap-3 pt-2">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               disabled={isSubmitting}
               className="inline-flex items-center justify-center rounded-2xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-4"
             >

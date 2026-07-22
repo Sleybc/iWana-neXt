@@ -23,3 +23,6 @@ export const SEARCH_INDEX_QUEUE = 'search-index';
 
 /** Cola de despacho a campo originada desde Service Assurance */
 export const ASSURANCE_FIELD_SERVICE_QUEUE = 'assurance-field-service';
+
+/** Cola de alta masiva de usuarios de tenant (MOD04 Ola C / H-06) */
+export const USERS_BULK_CREATE_QUEUE = 'users-bulk-create';

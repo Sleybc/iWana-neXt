@@ -7,6 +7,63 @@ import {
 } from '@iwana/shared';
 import { EditUserModal } from './EditUserModal';
 
+const changeLoginEmailAsAdminMock = jest.fn();
+const resetPasswordMock = jest.fn();
+
+jest.mock('@/lib/api-client', () => {
+  class ApiError extends Error {
+    status: number;
+    constructor(message: string, status: number) {
+      super(message);
+      this.status = status;
+    }
+  }
+
+  return {
+    ApiError,
+    usersApi: {
+      changeLoginEmailAsAdmin: (...args: unknown[]) => changeLoginEmailAsAdminMock(...args),
+      resetPassword: (...args: unknown[]) => resetPasswordMock(...args),
+    },
+  };
+});
+
+const baseUser = {
+  id: 'user-1',
+  email: 'tecnico@empresa.com',
+  role: UserRole.TECHNICIAN,
+  status: 'ACTIVE',
+  tenantId: 'tenant-1',
+  mfaEnabled: false,
+  mfaRequired: false,
+  isOperationalResource: true,
+  emailVerified: true,
+  passwordResetRequired: false,
+  lastLoginAt: null,
+  createdAt: '2026-05-25T00:00:00.000Z',
+  updatedAt: '2026-05-25T00:00:00.000Z',
+  deletedAt: null,
+  firstName: 'Tania',
+  lastName: 'Tecnica',
+  phone: null,
+  jobTitle: 'Tecnica',
+  documentType: null,
+  documentNumber: null,
+  avatarUrl: null,
+} as const;
+
+const defaultModalProps = {
+  isOpen: true,
+  user: baseUser,
+  onClose: jest.fn(),
+  onSubmit: jest.fn().mockResolvedValue(undefined),
+  isSubmitting: false,
+  error: null,
+  accessCatalog: null,
+  availableProfiles: [] as never[],
+  initialCompanyRoleIds: [] as string[],
+};
+
 const compatibilityMatrix: Record<UserRole, AccessPermissionKey[]> = {
   [UserRole.ADMIN]: [],
   [UserRole.NOC]: [],
@@ -25,6 +82,21 @@ const compatibilityMatrix: Record<UserRole, AccessPermissionKey[]> = {
 };
 
 describe('EditUserModal', () => {
+  beforeEach(() => {
+    changeLoginEmailAsAdminMock.mockReset();
+    resetPasswordMock.mockReset();
+    let uuidSeq = 0;
+    Object.defineProperty(globalThis, 'crypto', {
+      value: {
+        randomUUID: () => {
+          uuidSeq += 1;
+          return `22222222-2222-4222-8222-22222222222${uuidSeq}`;
+        },
+      },
+      configurable: true,
+    });
+  });
+
   it('should render separate sections for profile data and credentials', async () => {
     render(
       <EditUserModal
@@ -296,5 +368,78 @@ describe('EditUserModal', () => {
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith({ isOperationalResource: false }, []);
     });
+  });
+
+  it('G5 FE-02: reutiliza Idempotency-Key en reintentos de reset password', async () => {
+    resetPasswordMock
+      .mockRejectedValueOnce(new Error('fallo transitorio'))
+      .mockResolvedValueOnce({ temporaryPassword: 'tmp-pass-1' });
+
+    render(<EditUserModal {...defaultModalProps} />);
+
+    await screen.findByRole('dialog', { name: 'Editar usuario' });
+    const passwordResetButton = screen.getAllByRole('button', { name: 'Restablecer' })[1];
+    fireEvent.click(passwordResetButton!);
+
+    await waitFor(() => {
+      expect(resetPasswordMock).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Restablecer' })[1]!);
+
+    await waitFor(() => {
+      expect(resetPasswordMock).toHaveBeenCalledTimes(2);
+    });
+
+    const firstKey = (resetPasswordMock.mock.calls[0]?.[1] as { idempotencyKey?: string })
+      ?.idempotencyKey;
+    const secondKey = (resetPasswordMock.mock.calls[1]?.[1] as { idempotencyKey?: string })
+      ?.idempotencyKey;
+    expect(firstKey).toBe('22222222-2222-4222-8222-222222222221');
+    expect(secondKey).toBe(firstKey);
+  });
+
+  it('G5: guarda email admin vía changeLoginEmailAsAdmin y reutiliza Idempotency-Key', async () => {
+    const onEmailChanged = jest.fn();
+    changeLoginEmailAsAdminMock
+      .mockRejectedValueOnce(new Error('fallo transitorio'))
+      .mockResolvedValueOnce({ ...baseUser, email: 'nuevo@empresa.com' });
+
+    render(<EditUserModal {...defaultModalProps} onEmailChanged={onEmailChanged} />);
+
+    await screen.findByRole('dialog', { name: 'Editar usuario' });
+
+    const emailInput = screen.getByDisplayValue('tecnico@empresa.com');
+    fireEvent.change(emailInput, { target: { value: 'nuevo@empresa.com' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Restablecer' })[0]!);
+
+    expect(await screen.findByText(/confirmar restablecimiento de email/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar restablecimiento' }));
+
+    await waitFor(() => {
+      expect(changeLoginEmailAsAdminMock).toHaveBeenCalledTimes(1);
+    });
+
+    // Reintento de la misma intención: volver a abrir confirmación y guardar
+    fireEvent.click(screen.getAllByRole('button', { name: 'Restablecer' })[0]!);
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar restablecimiento' }));
+
+    await waitFor(() => {
+      expect(changeLoginEmailAsAdminMock).toHaveBeenCalledTimes(2);
+    });
+
+    expect(changeLoginEmailAsAdminMock).toHaveBeenNthCalledWith(
+      1,
+      'user-1',
+      { email: 'nuevo@empresa.com' },
+      '22222222-2222-4222-8222-222222222221',
+    );
+    expect(changeLoginEmailAsAdminMock).toHaveBeenNthCalledWith(
+      2,
+      'user-1',
+      { email: 'nuevo@empresa.com' },
+      '22222222-2222-4222-8222-222222222221',
+    );
+    expect(onEmailChanged).toHaveBeenCalledTimes(1);
   });
 });

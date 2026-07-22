@@ -179,7 +179,7 @@ describe('UsersController HTTP', () => {
           return [];
         }
 
-        return [AccessPermissionKey.USERS_MANAGE];
+        return [AccessPermissionKey.USERS_MANAGE, AccessPermissionKey.USERS_READ];
       },
     );
   });
@@ -194,6 +194,20 @@ describe('UsersController HTTP', () => {
       .expect(({ body }) => {
         expect(body.data.meta.total).toBe(0);
       });
+  });
+
+  it('H-07: GET /api/v1/users exige USERS_READ', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/users')
+      .set('Authorization', 'Bearer restricted-admin-token')
+      .expect(403);
+  });
+
+  it('H-16: GET /api/v1/users?limit=abc retorna 400', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/users?limit=abc')
+      .set('Authorization', 'Bearer admin-token')
+      .expect(400);
   });
 
   it('GET /api/v1/users propaga filtros status, role y search', async () => {
@@ -234,11 +248,19 @@ describe('UsersController HTTP', () => {
       .post('/api/v1/users')
       .set('Authorization', 'Bearer admin-token')
       .set('Idempotency-Key', 'idem-1')
+      .set('X-Forwarded-For', '198.51.100.10')
       .send({ email: 'usuario@empresa.com', role: UserRole.NOC })
       .expect(201)
       .expect(({ body }) => {
         expect(body.data.temporaryPassword).toBeDefined();
       });
+
+    expect(usersServiceMock.create).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'usuario@empresa.com', role: UserRole.NOC }),
+      'usr-admin',
+      '198.51.100.10',
+      'idem-1',
+    );
   });
 
   it('POST /api/v1/users retorna 403 cuando ADMIN no tiene users.manage', async () => {
@@ -342,6 +364,19 @@ describe('UsersController HTTP', () => {
       .get('/api/v1/users/00000000-0000-4000-a000-000000000001')
       .set('Authorization', 'Bearer admin-token')
       .expect(200);
+
+    expect(usersServiceMock.findOne).toHaveBeenCalledWith(
+      '00000000-0000-4000-a000-000000000001',
+      'usr-admin',
+      UserRole.ADMIN,
+    );
+  });
+
+  it('H-07: GET /api/v1/users/:id exige USERS_READ', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/users/00000000-0000-4000-a000-000000000001')
+      .set('Authorization', 'Bearer restricted-admin-token')
+      .expect(403);
   });
 
   it('PATCH /api/v1/users/:id retorna 200 con actualización', async () => {
@@ -355,12 +390,16 @@ describe('UsersController HTTP', () => {
       .expect(200);
   });
 
-  it('PATCH /api/v1/users/:id/login-email retorna 400 si el actor intenta cambiar un id distinto al suyo', async () => {
+  it('PATCH /api/v1/users/:id/login-email retorna 403 si el actor intenta cambiar un id distinto al suyo', async () => {
+    usersServiceMock.changeLoginEmail.mockRejectedValue(
+      new ForbiddenException('Solo puedes cambiar tu propio email de acceso.'),
+    );
+
     await request(app.getHttpServer())
-      .patch('/api/v1/users/usr-admin/login-email')
+      .patch('/api/v1/users/00000000-0000-4000-a000-000000000099/login-email')
       .set('Authorization', 'Bearer admin-token')
       .send({ email: 'nuevo@empresa.com', currentPassword: 'Passw0rd!Segura' })
-      .expect(400);
+      .expect(403);
   });
 
   it('PATCH /api/v1/users/:id/login-email/admin retorna 200 en cambio administrativo exitoso', async () => {

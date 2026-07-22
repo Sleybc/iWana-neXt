@@ -95,6 +95,9 @@ import {
   WriteOffReason,
   WriteOffStatus,
   UserRole,
+  type UsersBulkCreateAcceptedResponse,
+  type UsersBulkJobResultResponse,
+  type UsersBulkJobStatusResponse,
 } from '@iwana/shared';
 import { persistTenantSlug, resolveTenantSlug } from './tenant-resolution';
 
@@ -3634,26 +3637,14 @@ export interface CreateInternalUserDto {
   isOperationalResource?: boolean;
 }
 
-export interface BulkCreateUsersApiResponse {
-  summary: {
-    total: number;
-    succeeded: number;
-    failed: number;
-  };
-  succeeded: Array<{
-    email: string;
-    firstName: string | null;
-    lastName: string | null;
-    role: string;
-    temporaryPassword: string;
-    createdAt: string;
-  }>;
-  failed: Array<{
-    rowIndex: number;
-    email: string;
-    reason: string;
-  }>;
-}
+/** @deprecated Preferir tipos de `@iwana/shared` (contrato async Ola C). */
+export type BulkCreateUsersApiResponse = UsersBulkJobResultResponse;
+
+export type {
+  UsersBulkCreateAcceptedResponse,
+  UsersBulkJobResultResponse,
+  UsersBulkJobStatusResponse,
+};
 
 export interface OrganizationSiteSummary {
   id: string;
@@ -4068,13 +4059,34 @@ export const usersApi = {
       tenantSlug,
     ),
 
-  bulkCreate: (users: CreateInternalUserDto[], tenantSlug?: string) =>
-    request<BulkCreateUsersApiResponse>(
+  /**
+   * Encola importación masiva (H-06 / Ola C). Respuesta 202 sin secretos.
+   * Credenciales solo vía `claimBulkJobResult`.
+   */
+  bulkCreate: (users: CreateInternalUserDto[], idempotencyKey: string, tenantSlug?: string) =>
+    request<UsersBulkCreateAcceptedResponse>(
       '/users/bulk',
       {
         method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({ users }),
+        // Body crudo sin envelope { data } (mismo precedente H-11).
+        returnFullResponse: true,
       },
+      tenantSlug,
+    ),
+
+  getBulkJobStatus: (jobId: string, tenantSlug?: string) =>
+    request<UsersBulkJobStatusResponse>(
+      `/users/bulk/jobs/${encodeURIComponent(jobId)}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  claimBulkJobResult: (jobId: string, tenantSlug?: string) =>
+    request<UsersBulkJobResultResponse>(
+      `/users/bulk/jobs/${encodeURIComponent(jobId)}/result`,
+      { method: 'POST', returnFullResponse: true },
       tenantSlug,
     ),
 
@@ -4117,7 +4129,7 @@ export const usersApi = {
 
   /**
    * Cambia el email de login de un usuario.
-   * El admin puede cambiar sin contrase?a propia; el self-service requiere currentPassword.
+   * Self-service: requiere actor === id y, en flujo propio, currentPassword.
    * Ruta: PATCH /users/:id/login-email
    */
   changeEmail: (
@@ -4130,6 +4142,26 @@ export const usersApi = {
       {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dto),
+      },
+      tenantSlug,
+    ),
+
+  /**
+   * Cambia el email de login de otro usuario (acción administrativa).
+   * Requiere Idempotency-Key. Ruta: PATCH /users/:id/login-email/admin
+   */
+  changeLoginEmailAsAdmin: (
+    id: string,
+    dto: { email: string; syncCompanyContactEmail?: boolean },
+    idempotencyKey: string,
+    tenantSlug?: string,
+  ) =>
+    request<InternalUser>(
+      `/users/${encodeURIComponent(id)}/login-email/admin`,
+      {
+        method: 'PATCH',
+        headers: { 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify(dto),
       },
       tenantSlug,

@@ -1,4 +1,4 @@
-import { UserRole, UserStatus } from '@iwana/shared';
+import { TENANT_ASSIGNABLE_ROLES, UserRole, UserStatus } from '@iwana/shared';
 import { portalActiveBadgeVariant } from '@/lib/portal-status-badge-rules';
 import { getSystemBaseRoleLabel } from './system-vocabulary';
 
@@ -35,14 +35,8 @@ export const PORTAL_USER_STATUS_VARIANTS: Record<UserStatus, BadgeVariant> = {
   [UserStatus.INACTIVE]: 'neutral',
 };
 
-export const PORTAL_PLATFORM_ROLES = new Set<UserRole>([
-  UserRole.SYSTEM_ADMIN,
-  UserRole.IWANA_SUPPORT,
-]);
-
-export const PORTAL_TENANT_ASSIGNABLE_ROLES = Object.values(UserRole).filter(
-  (role) => !PORTAL_PLATFORM_ROLES.has(role),
-);
+/** Roles asignables en tenant: canónico en `@iwana/shared` (FE-05). */
+export { TENANT_ASSIGNABLE_ROLES as PORTAL_TENANT_ASSIGNABLE_ROLES };
 
 export const PORTAL_USER_STATUSES = Object.values(UserStatus);
 
@@ -73,7 +67,7 @@ export const PORTAL_USER_STATUS_FILTER_OPTIONS = [
 
 export const PORTAL_TENANT_ROLE_FILTER_OPTIONS = [
   { value: '', label: 'Todos' },
-  ...PORTAL_TENANT_ASSIGNABLE_ROLES.map((role) => ({
+  ...TENANT_ASSIGNABLE_ROLES.map((role) => ({
     value: role,
     label: getPortalUserRoleLabel(role),
   })),

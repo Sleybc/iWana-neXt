@@ -3,12 +3,20 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { AlertTriangle, CheckCircle2, ShieldAlert } from 'lucide-react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@iwana/ui';
+import { AlertTriangle, CheckCircle2, Copy, Plus, ShieldAlert, Upload } from 'lucide-react';
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@iwana/ui';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { UsersTable } from './UsersTable';
 import { CreateUserModal } from './CreateUserModal';
 import { BulkImportUsersModal } from './BulkImportUsersModal';
+import { readActiveBulkJobId } from './bulk-import-job-storage';
 import { EditUserModal } from './EditUserModal';
 import { DeleteUserDialog } from './DeleteUserDialog';
 import { ResetPasswordDialog } from './ResetPasswordDialog';
@@ -24,60 +32,87 @@ import {
   type UsersPaginationMeta,
   ApiError,
 } from '@/lib/api-client';
+import { ensureIdempotencyKey } from '@/lib/idempotency-key';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { UserRole } from '@iwana/shared';
 import { PortalAlert } from '@/components/shared/portal-ui';
+import {
+  buildUsersListParams,
+  emptyUsersQuery,
+  USERS_PAGE_SIZE,
+  type UsersQueryState,
+} from './users-query';
 
-const PAGE_SIZE = 20;
+const PARTIAL_CREATE_PROFILES_ERROR =
+  'El usuario se creó, pero no se pudieron asignar los roles de empresa. Reintenta solo la asignación desde editar usuario; no vuelvas a crearlo.';
+
+const PARTIAL_EDIT_PROFILES_ERROR =
+  'El usuario se actualizó, pero no se pudieron asignar los roles de empresa. Reintenta solo la asignación de roles; no hace falta volver a editar el resto de datos.';
+
+const GENERIC_OPERATION_ERROR = 'No fue posible completar la operación. Intenta de nuevo.';
+
+/** Status HTTP cuyos mensajes de API son seguros para mostrar al usuario (FE-16). */
+const USER_FACING_API_STATUSES = new Set([400, 409, 422]);
 
 function mapError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 401) return 'Tu sesión expiró. Inicia sesión nuevamente.';
     if (error.status === 403) return 'No tienes permisos para gestionar usuarios.';
-    if (error.status === 409) return error.message;
-    return error.message;
+    if (USER_FACING_API_STATUSES.has(error.status)) return error.message;
+    return GENERIC_OPERATION_ERROR;
   }
-  return 'No fue posible completar la operación. Intenta de nuevo.';
+  return GENERIC_OPERATION_ERROR;
 }
 
-interface UsersClientProps {
-  initialUsers?: InternalUser[];
-  initialMeta?: UsersPaginationMeta;
-}
-
-export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
+export function UsersClient() {
   const searchParams = useSearchParams();
   const { user } = useAuth();
   const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SYSTEM_ADMIN;
 
-  const [users, setUsers] = useState<InternalUser[]>(initialUsers ?? []);
-  const [meta, setMeta] = useState<UsersPaginationMeta | null>(initialMeta ?? null);
+  const [users, setUsers] = useState<InternalUser[]>([]);
+  const [meta, setMeta] = useState<UsersPaginationMeta | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [filters, setFilters] = useState<ListUsersParams>({ limit: PAGE_SIZE });
+  /** Única fuente de verdad de criterios enviados al servidor (+ limit/cursor en listParams). */
+  const [query, setQuery] = useState<UsersQueryState>(emptyUsersQuery);
+  const [listParams, setListParams] = useState<ListUsersParams>({ limit: USERS_PAGE_SIZE });
+  /** Texto del input de búsqueda (inmediato); se sincroniza a `query.search` con debounce. */
+  const [searchDraft, setSearchDraft] = useState('');
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
+  const [activeBulkJobId, setActiveBulkJobId] = useState<string | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<InternalUser | null>(null);
+  const [preparingEditUserId, setPreparingEditUserId] = useState<string | null>(null);
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [newUserEmail, setNewUserEmail] = useState<string | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState<'ok' | 'error' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [accessCatalog, setAccessCatalog] = useState<AccessPermissionsCatalog | null>(null);
   const [availableProfiles, setAvailableProfiles] = useState<AccessProfileView[]>([]);
   const [selectedUserCompanyRoleIds, setSelectedUserCompanyRoleIds] = useState<string[]>([]);
 
-  /** Texto ingresado por el usuario en el input de búsqueda (sin debounce) */
-  const [searchValue, setSearchValue] = useState('');
-  /** Timer id para el debounce del input de búsqueda */
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queryRef = useRef(query);
+  queryRef.current = query;
+
+  /** FE-02: una clave por intención (abrir modal / primer submit); se reutiliza en reintentos. */
+  const createIdempotencyKeyRef = useRef<string | null>(null);
+  const editIdempotencyKeyRef = useRef<string | null>(null);
+  const resetPasswordIdempotencyKeyRef = useRef<string | null>(null);
+
   const searchParam = searchParams.get('search')?.trim() ?? '';
+
+  useEffect(() => {
+    setActiveBulkJobId(readActiveBulkJobId());
+  }, []);
 
   // append=true cuando el usuario pulsa "Cargar más"; en ese caso se concatenan los
   // resultados al final de la lista en lugar de reemplazarla.
@@ -88,7 +123,7 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
       const result = await usersApi.list(params);
       setUsers((prev) => (append ? [...prev, ...result.data] : result.data));
       setMeta(result.meta);
-      setFilters(params);
+      setListParams(params);
     } catch (err: unknown) {
       setError(mapError(err));
     } finally {
@@ -96,18 +131,31 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
     }
   }, []);
 
+  const applyQueryPatch = useCallback(
+    (patch: Partial<UsersQueryState>) => {
+      const { nextQuery, params } = buildUsersListParams(queryRef.current, patch, USERS_PAGE_SIZE);
+      setQuery(nextQuery);
+      if (patch.search !== undefined) {
+        setSearchDraft(patch.search);
+      }
+      void loadUsers(params);
+    },
+    [loadUsers],
+  );
+
   useEffect(() => {
     if (!isAdmin) {
       return;
     }
 
-    setSearchValue(searchParam);
-    const nextFilters: ListUsersParams = { limit: PAGE_SIZE };
-    if (searchParam) {
-      nextFilters.search = searchParam;
-    }
-
-    void loadUsers(nextFilters);
+    setSearchDraft(searchParam);
+    const { nextQuery, params } = buildUsersListParams(
+      emptyUsersQuery(),
+      { search: searchParam },
+      USERS_PAGE_SIZE,
+    );
+    setQuery(nextQuery);
+    void loadUsers(params);
   }, [isAdmin, loadUsers, searchParam]);
 
   useEffect(() => {
@@ -139,29 +187,47 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
     };
   }, [isAdmin]);
 
-  const handleFilterChange = (newFilters: ListUsersParams) => {
-    void loadUsers({ ...newFilters, limit: PAGE_SIZE });
-  };
+  /** FE-09: cancelar debounce pendiente al desmontar. */
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, []);
 
   const handleLoadMore = () => {
     if (meta?.nextCursor) {
-      // Se pasa append=true para concatenar la siguiente página sin descartar la actual
-      void loadUsers({ ...filters, cursor: meta.nextCursor }, true);
+      void loadUsers({ ...listParams, cursor: meta.nextCursor }, true);
     }
   };
 
   /**
    * Actualiza el valor del input de búsqueda y dispara una nueva carga con debounce de 300ms.
-   * Se cancela el timer anterior antes de crear uno nuevo para evitar peticiones redundantes.
+   * Preserva status y role (FE-01).
    */
   const handleSearchChange = (value: string) => {
-    setSearchValue(value);
+    setSearchDraft(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      const newFilters: ListUsersParams = { limit: PAGE_SIZE };
-      if (value) newFilters.search = value;
-      void loadUsers(newFilters);
+      applyQueryPatch({ search: value });
     }, 300);
+  };
+
+  const handleStatusChange = (value: string) => {
+    applyQueryPatch({ status: value });
+  };
+
+  const handleRoleChange = (value: string) => {
+    applyQueryPatch({ role: value });
+  };
+
+  const handleClearFilters = () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setSearchDraft('');
+    const { nextQuery, params } = buildUsersListParams(emptyUsersQuery(), {}, USERS_PAGE_SIZE);
+    setQuery(nextQuery);
+    void loadUsers(params);
   };
 
   const handleCreate = async (dto: CreateInternalUserDto, companyRoleIds: string[]) => {
@@ -170,19 +236,30 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
     setTempPassword(null);
     setNewUserEmail(null);
     setIsSubmitting(true);
+    const idempotencyKey = ensureIdempotencyKey(createIdempotencyKeyRef);
     try {
-      const result = await usersApi.create(dto, crypto.randomUUID());
+      const result = await usersApi.create(dto, idempotencyKey);
+      let profilesFailed = false;
       if (companyRoleIds.length > 0) {
-        await accessControlApi.replaceUserProfiles(result.id, { profileIds: companyRoleIds });
+        try {
+          await accessControlApi.replaceUserProfiles(result.id, { profileIds: companyRoleIds });
+        } catch {
+          profilesFailed = true;
+          setActionError(PARTIAL_CREATE_PROFILES_ERROR);
+        }
       }
+
       setNewUserEmail(dto.email);
+      createIdempotencyKeyRef.current = null;
+
       if ('temporaryPassword' in result && result.temporaryPassword) {
         setTempPassword(result.temporaryPassword);
-        void loadUsers({ limit: PAGE_SIZE });
-      } else {
+      } else if (!profilesFailed) {
         setIsCreateOpen(false);
-        void loadUsers({ limit: PAGE_SIZE });
       }
+
+      const { params } = buildUsersListParams(queryRef.current, {}, USERS_PAGE_SIZE);
+      void loadUsers(params);
     } catch (err: unknown) {
       setActionError(mapError(err));
     } finally {
@@ -202,17 +279,28 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
       const companyRolesChanged =
         normalizedInitialCompanyRoleIds.join('|') !== normalizedNextCompanyRoleIds.join('|');
 
+      let userUpdated = false;
       if (Object.keys(dto).length > 0) {
-        await usersApi.update(userId, dto, crypto.randomUUID());
+        const idempotencyKey = ensureIdempotencyKey(editIdempotencyKeyRef);
+        await usersApi.update(userId, dto, idempotencyKey);
+        userUpdated = true;
       }
+
       if (companyRolesChanged) {
-        await accessControlApi.replaceUserProfiles(userId, { profileIds: companyRoleIds });
+        try {
+          await accessControlApi.replaceUserProfiles(userId, { profileIds: companyRoleIds });
+        } catch (err: unknown) {
+          setActionError(userUpdated ? PARTIAL_EDIT_PROFILES_ERROR : mapError(err));
+          return;
+        }
       }
+
+      editIdempotencyKeyRef.current = null;
       setActionSuccess('Usuario actualizado correctamente.');
       setIsEditOpen(false);
       setSelectedUser(null);
       setSelectedUserCompanyRoleIds([]);
-      void loadUsers(filters);
+      void loadUsers(listParams);
     } catch (err: unknown) {
       setActionError(mapError(err));
     } finally {
@@ -230,7 +318,7 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
       setActionSuccess('Usuario eliminado correctamente.');
       setIsDeleteOpen(false);
       setSelectedUser(null);
-      void loadUsers(filters);
+      void loadUsers(listParams);
     } catch (err: unknown) {
       setActionError(mapError(err));
     } finally {
@@ -246,10 +334,12 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
     if (!selectedUser) return;
     setActionError(null);
     setIsSubmitting(true);
+    const idempotencyKey = ensureIdempotencyKey(resetPasswordIdempotencyKeyRef);
     try {
       const result = await usersApi.resetPassword(selectedUser.id, {
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey,
       });
+      resetPasswordIdempotencyKeyRef.current = null;
       setTempPassword(result.temporaryPassword);
       setNewUserEmail(selectedUser.email);
       setIsResetPasswordOpen(false);
@@ -260,18 +350,32 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
     }
   };
 
+  const openCreate = () => {
+    setActionError(null);
+    setActionSuccess(null);
+    setTempPassword(null);
+    setNewUserEmail(null);
+    createIdempotencyKeyRef.current = crypto.randomUUID();
+    setIsCreateOpen(true);
+  };
+
+  /** FE-11: feedback inmediato en el botón Editar mientras cargan permisos. */
   const openEdit = async (userToEdit: InternalUser) => {
+    setPreparingEditUserId(userToEdit.id);
     setSelectedUser(userToEdit);
     setActionError(null);
     setActionSuccess(null);
     setTempPassword(null);
     setNewUserEmail(null);
+    editIdempotencyKeyRef.current = crypto.randomUUID();
     try {
       const summary = await accessControlApi.getEffectivePermissions(userToEdit.id);
       setSelectedUserCompanyRoleIds(summary.profileSources.map((source) => source.profileId));
     } catch (err: unknown) {
       setActionError(mapError(err));
       setSelectedUserCompanyRoleIds([]);
+    } finally {
+      setPreparingEditUserId(null);
     }
     setIsEditOpen(true);
   };
@@ -295,6 +399,7 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
     setActionSuccess(null);
     setTempPassword(null);
     setNewUserEmail(null);
+    resetPasswordIdempotencyKeyRef.current = crypto.randomUUID();
     setIsResetPasswordOpen(true);
   };
 
@@ -308,11 +413,26 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
     setTempPassword(null);
     setNewUserEmail(null);
     setSelectedUserCompanyRoleIds([]);
+    setPreparingEditUserId(null);
+    editIdempotencyKeyRef.current = null;
+    resetPasswordIdempotencyKeyRef.current = null;
   };
 
   const dismissTempPassword = () => {
     setTempPassword(null);
     setNewUserEmail(null);
+    setCopyFeedback(null);
+  };
+
+  const handleCopyTempPassword = async () => {
+    if (!tempPassword) return;
+    setCopyFeedback(null);
+    try {
+      await navigator.clipboard.writeText(tempPassword);
+      setCopyFeedback('ok');
+    } catch {
+      setCopyFeedback('error');
+    }
   };
 
   if (!isAdmin) {
@@ -336,35 +456,14 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
         subtitle={`${meta?.total ?? 0} usuario${(meta?.total ?? 0) !== 1 ? 's' : ''} en total`}
         actions={
           <>
-            <button
-              type="button"
-              onClick={() => {
-                setActionError(null);
-                setActionSuccess(null);
-                setTempPassword(null);
-                setNewUserEmail(null);
-                setIsCreateOpen(true);
-              }}
-              className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-iwana-primary px-4 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-iwana-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 dark:bg-iwana-primary-400 dark:hover:bg-iwana-primary-300"
-            >
-              <svg
-                className="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
+            <Button type="button" variant="lime" size="default" onClick={openCreate}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
               Nuevo usuario
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="outline"
+              size="default"
               onClick={() => {
                 setActionError(null);
                 setActionSuccess(null);
@@ -372,29 +471,39 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
                 setNewUserEmail(null);
                 setIsBulkImportOpen(true);
               }}
-              className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-all duration-200 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-200 dark:hover:bg-dark-surface-3"
             >
-              <svg
-                className="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
-                />
-              </svg>
+              <Upload className="h-4 w-4" aria-hidden="true" />
               Importar CSV
-            </button>
+            </Button>
           </>
         }
       />
 
       <div className="space-y-4">
+        {activeBulkJobId && !isBulkImportOpen && (
+          <PortalAlert
+            variant="info"
+            title="Importación de usuarios en curso"
+            description="La importación sigue en segundo plano. Puedes ver el estado o el resultado cuando termine."
+            action={
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setActionError(null);
+                  setActionSuccess(null);
+                  setTempPassword(null);
+                  setNewUserEmail(null);
+                  setIsBulkImportOpen(true);
+                }}
+              >
+                Ver estado
+              </Button>
+            }
+          />
+        )}
+
         {actionSuccess && !actionError && !tempPassword && (
           <PortalAlert
             variant="success"
@@ -412,7 +521,7 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
             action={
               <button
                 type="button"
-                onClick={() => void loadUsers(filters)}
+                onClick={() => void loadUsers(listParams)}
                 className="text-sm font-medium text-red-700 underline decoration-red-300 underline-offset-4 hover:no-underline dark:text-red-300"
               >
                 Reintentar
@@ -429,17 +538,26 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
           onEdit={openEdit}
           onDelete={openDelete}
           onResetPassword={openResetPassword}
-          onFilterChange={handleFilterChange}
           onLoadMore={handleLoadMore}
-          searchValue={searchValue}
+          searchValue={searchDraft}
+          statusFilter={query.status}
+          roleFilter={query.role}
           onSearchChange={handleSearchChange}
+          onStatusChange={handleStatusChange}
+          onRoleChange={handleRoleChange}
+          onClearFilters={handleClearFilters}
           currentUserId={user?.id}
+          currentUserRole={user?.role}
+          preparingEditUserId={preparingEditUserId}
         />
       </div>
 
       <CreateUserModal
         isOpen={isCreateOpen}
-        onClose={() => setIsCreateOpen(false)}
+        onClose={() => {
+          setIsCreateOpen(false);
+          createIdempotencyKeyRef.current = null;
+        }}
         onSubmit={handleCreate}
         isSubmitting={isSubmitting}
         error={actionError}
@@ -453,7 +571,12 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
       <BulkImportUsersModal
         isOpen={isBulkImportOpen}
         onClose={() => setIsBulkImportOpen(false)}
-        onSuccess={() => void loadUsers({ limit: PAGE_SIZE })}
+        resumeJobId={activeBulkJobId}
+        onActiveJobChange={setActiveBulkJobId}
+        onSuccess={() => {
+          const { params } = buildUsersListParams(queryRef.current, {}, USERS_PAGE_SIZE);
+          void loadUsers(params);
+        }}
       />
 
       {/* Modal de contraseña temporal tras reset desde la tabla */}
@@ -472,36 +595,36 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
               <code className="flex-1 break-all font-mono text-sm text-gray-900 dark:text-white select-all">
                 {tempPassword}
               </code>
-              <button
+              <Button
                 type="button"
-                onClick={() => void navigator.clipboard.writeText(tempPassword)}
-                className="shrink-0 rounded-xl p-1.5 text-gray-500 transition-colors hover:bg-white dark:hover:bg-dark-surface-4"
+                variant="ghost"
+                size="icon"
+                onClick={() => void handleCopyTempPassword()}
+                className="shrink-0"
                 aria-label="Copiar contraseña temporal"
                 title="Copiar"
               >
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                  />
-                </svg>
-              </button>
+                <Copy className="h-4 w-4" aria-hidden="true" />
+              </Button>
             </div>
-            <button
+            {copyFeedback === 'ok' && (
+              <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-400" role="status">
+                Contraseña copiada al portapapeles.
+              </p>
+            )}
+            {copyFeedback === 'error' && (
+              <p className="mt-2 text-xs text-red-600 dark:text-red-400" role="alert">
+                No se pudo copiar. Selecciona el texto y cópialo manualmente.
+              </p>
+            )}
+            <Button
               type="button"
+              variant="primary"
+              className="mt-4 w-full rounded-2xl"
               onClick={dismissTempPassword}
-              className="mt-4 w-full rounded-2xl bg-iwana-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-iwana-primary-600"
             >
               Entendido
-            </button>
+            </Button>
           </DialogContent>
         </Dialog>
       )}
@@ -513,7 +636,7 @@ export function UsersClient({ initialUsers, initialMeta }: UsersClientProps) {
             user={selectedUser}
             onClose={closeModals}
             onSubmit={handleEdit}
-            onEmailChanged={() => void loadUsers(filters)}
+            onEmailChanged={() => void loadUsers(listParams)}
             isSubmitting={isSubmitting}
             error={actionError}
             accessCatalog={accessCatalog}

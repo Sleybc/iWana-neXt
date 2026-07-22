@@ -15,6 +15,11 @@
  * de modo que un job fallido conserva su contenido indefinidamente).
  */
 
+export type {
+  UsersBulkCreateJobPayload,
+  UsersBulkCreateJobUserItem,
+} from './users-bulk-create.contract';
+
 /** Payload del job de provisioning de un tenant nuevo. */
 export interface ProvisioningJobPayload {
   tenantId: string;

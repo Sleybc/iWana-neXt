@@ -17,11 +17,12 @@
  */
 
 import { ForbiddenException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { getQueueToken } from '@nestjs/bullmq';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
-import { UserRole, UserStatus } from '@iwana/shared';
+import { UserRole, UserStatus, USERS_BULK_CREATE_QUEUE } from '@iwana/shared';
 import { AuditService } from '../../audit/audit.service';
+import { REDIS_CLIENT } from '../../redis/redis.module';
 import { SearchQueueService } from '../../search/search-queue.service';
 import { TenantService } from '../../tenant/tenant.service';
 import { CreateUserDto, UpdateUserDto } from '../dto/user.dto';
@@ -43,13 +44,27 @@ jest.mock('@iwana/db', () => {
       getOrThrow: () => ({
         tenantId: 'ten-00000000-0000-4000-a000-000000000001',
         schemaName: 'tenant_test',
+        tenantSlug: 'test',
       }),
     },
   };
 });
 
-/** Clave hex sintetica de test. No es secreto de entorno ni PII. */
-const MOCK_KEY_HEX = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+/** Actor administrativo generico — no es PII real */
+const ACTOR_ID = 'usr-00000000-0000-4000-a000-000000000099';
+
+const redisProvider = {
+  provide: REDIS_CLIENT,
+  useValue: { get: jest.fn().mockResolvedValue(null), set: jest.fn().mockResolvedValue('OK') },
+};
+
+const bulkQueueProvider = {
+  provide: getQueueToken(USERS_BULK_CREATE_QUEUE),
+  useValue: {
+    add: jest.fn().mockResolvedValue({ id: 'job-bulk-1' }),
+    getJob: jest.fn().mockResolvedValue(null),
+  },
+};
 
 /** Campos que la resurreccion NO debe heredar de la vida anterior del registro. */
 const CREDENCIALES_DE_RECUPERACION = [
@@ -151,10 +166,8 @@ describe('UsersService.create() — resurreccion de un usuario soft-deleted', ()
           provide: SearchQueueService,
           useValue: { enqueueUserUpsert: jest.fn(), enqueueUserDelete: jest.fn() },
         },
-        {
-          provide: ConfigService,
-          useValue: { getOrThrow: jest.fn().mockReturnValue(MOCK_KEY_HEX) },
-        },
+        redisProvider,
+        bulkQueueProvider,
       ],
     }).compile();
 
@@ -166,7 +179,7 @@ describe('UsersService.create() — resurreccion de un usuario soft-deleted', ()
     async (campo) => {
       const manager = setupManager(buildSoftDeletedUser());
 
-      await service.create(buildCreateDto());
+      await service.create(buildCreateDto(), ACTOR_ID);
 
       const persistido = manager.save.mock.calls[0]?.[1] as Record<string, unknown>;
       expect(persistido[campo]).toBeNull();
@@ -176,7 +189,7 @@ describe('UsersService.create() — resurreccion de un usuario soft-deleted', ()
   it('restaura el registro y lo deja sin marca de borrado', async () => {
     const manager = setupManager(buildSoftDeletedUser());
 
-    await service.create(buildCreateDto());
+    await service.create(buildCreateDto(), ACTOR_ID);
 
     expect(manager.restore).toHaveBeenCalledTimes(1);
     const persistido = manager.save.mock.calls[0]?.[1] as Record<string, unknown>;
@@ -187,14 +200,14 @@ describe('UsersService.create() — resurreccion de un usuario soft-deleted', ()
     const dto = buildCreateDto({ firstName: 'Ana', lastName: 'Perez' });
 
     const managerResurreccion = setupManager(buildSoftDeletedUser());
-    await service.create(dto);
+    await service.create(dto, ACTOR_ID);
     const resucitado = { ...(managerResurreccion.save.mock.calls[0]?.[1] as object) } as Record<
       string,
       unknown
     >;
 
     const managerAlta = setupManager(null);
-    await service.create(dto);
+    await service.create(dto, ACTOR_ID);
     const nuevo = { ...(managerAlta.save.mock.calls[0]?.[1] as object) } as Record<string, unknown>;
 
     // Lo unico que sobrevive a una resurreccion: identidad y marcas de TypeORM.
@@ -213,7 +226,7 @@ describe('UsersService.create() — resurreccion de un usuario soft-deleted', ()
   it('el usuario resucitado sin password explicito no arrastra una credencial temporal vencida', async () => {
     const manager = setupManager(buildSoftDeletedUser());
 
-    await service.create(buildCreateDto());
+    await service.create(buildCreateDto(), ACTOR_ID);
 
     const persistido = manager.save.mock.calls[0]?.[1] as Record<string, unknown>;
     // passwordResetRequired sin expiracion vencida = puede iniciar sesion con la temporal.
@@ -238,10 +251,8 @@ describe('UsersService — allowlist de roles asignables desde el tenant (H-01)'
           provide: SearchQueueService,
           useValue: { enqueueUserUpsert: jest.fn(), enqueueUserDelete: jest.fn() },
         },
-        {
-          provide: ConfigService,
-          useValue: { getOrThrow: jest.fn().mockReturnValue(MOCK_KEY_HEX) },
-        },
+        redisProvider,
+        bulkQueueProvider,
       ],
     }).compile();
 
@@ -253,7 +264,9 @@ describe('UsersService — allowlist de roles asignables desde el tenant (H-01)'
     async (role) => {
       setupManager(null);
 
-      await expect(service.create(buildCreateDto({ role }))).rejects.toThrow(ForbiddenException);
+      await expect(service.create(buildCreateDto({ role }), ACTOR_ID)).rejects.toThrow(
+        ForbiddenException,
+      );
     },
   );
 
@@ -290,7 +303,7 @@ describe('UsersService — allowlist de roles asignables desde el tenant (H-01)'
   it('sigue admitiendo un rol legitimo de tenant', async () => {
     const manager = setupManager(null);
 
-    await service.create(buildCreateDto({ role: UserRole.NOC }));
+    await service.create(buildCreateDto({ role: UserRole.NOC }), ACTOR_ID);
 
     expect(manager.save).toHaveBeenCalledTimes(1);
   });

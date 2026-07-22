@@ -10,6 +10,7 @@ import {
   cn,
   type BadgeProps,
 } from '@iwana/ui';
+import { UserRole } from '@iwana/shared';
 import { ChevronLeft, ChevronRight, KeyRound, Shield, ShieldOff, UserCog } from 'lucide-react';
 import type { UserListItem } from '@/lib/api-client';
 import { getWebUserRoleLabel, getWebUserStatusLabel } from '@/lib/user-labels';
@@ -29,21 +30,21 @@ type BadgeVariant = NonNullable<BadgeProps['variant']>;
 /** Mapea el rol del usuario a la variante semántica del Badge del DS */
 function roleBadgeVariant(role: string): BadgeVariant {
   switch (role) {
-    case 'ADMIN':
+    case UserRole.ADMIN:
       return 'primary';
-    case 'NOC':
+    case UserRole.NOC:
       return 'info';
-    case 'SUPPORT':
+    case UserRole.SUPPORT:
       return 'neutral';
-    case 'TECHNICIAN':
+    case UserRole.TECHNICIAN:
       return 'warning';
-    case 'SALES':
+    case UserRole.SALES:
       return 'success';
-    case 'ACCOUNTANT':
+    case UserRole.ACCOUNTANT:
       return 'info';
-    case 'HR':
+    case UserRole.HR:
       return 'lime';
-    case 'SUBSCRIBER':
+    case UserRole.SUBSCRIBER:
       return 'neutral';
     default:
       return 'neutral';
@@ -214,6 +215,9 @@ export function UsersTable({
           <div className="overflow-hidden rounded-2xl border border-gray-200 dark:border-dark-border">
             <div className="overflow-x-auto">
               <table className="w-full text-sm" aria-label="Listado de usuarios internos">
+                <caption className="sr-only">
+                  Usuarios internos con rol, estado de seguridad y acciones de gestión
+                </caption>
                 <thead>
                   <TableHeaderRow />
                 </thead>

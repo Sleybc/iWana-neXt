@@ -2,11 +2,11 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
-import * as crypto from 'crypto';
 import { Repository } from 'typeorm';
 import { PlatformUser } from '@iwana/db';
 import { PlatformRole, UserStatus } from '@iwana/shared';
 import { encryptAes256Gcm, loadAesGcmKeyPair } from '../../common/crypto/aes-gcm.util';
+import { hashEmail } from '../../common/crypto/hash-email.util';
 
 /**
  * Bootstrap opcional del primer superusuario de plataforma.
@@ -35,7 +35,7 @@ export class PlatformBootstrapService implements OnApplicationBootstrap {
       return;
     }
 
-    const emailHash = this.hashEmail(email);
+    const emailHash = hashEmail(email);
     const existingUser = await this.platformUserRepository.findOne({
       where: { emailHash },
       withDeleted: false,
@@ -62,10 +62,6 @@ export class PlatformBootstrapService implements OnApplicationBootstrap {
 
     await this.platformUserRepository.save(superAdmin);
     this.logger.log('Bootstrap de superusuario de plataforma completado.');
-  }
-
-  private hashEmail(email: string): string {
-    return crypto.createHash('sha256').update(email.toLowerCase().trim()).digest('hex');
   }
 
   private encryptValue(plaintext: string): string {

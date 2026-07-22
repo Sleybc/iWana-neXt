@@ -1,23 +1,33 @@
 'use client';
 
-import { useCallback, useId, useRef, useState } from 'react';
-import { Download, Upload, X, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { AlertTriangle, CheckCircle2, Copy, Download, Loader2, Upload, X } from 'lucide-react';
 import { parse } from 'csv-parse/browser/esm/sync';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@iwana/ui';
-import { DocumentType, UserRole } from '@iwana/shared';
 import {
-  usersApi,
-  type CreateInternalUserDto,
-  type BulkCreateUsersApiResponse,
-  ApiError,
-} from '@/lib/api-client';
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@iwana/ui';
+import {
+  DocumentType,
+  UserRole,
+  type UsersBulkJobResultResponse,
+  type UsersBulkJobStatusResponse,
+} from '@iwana/shared';
+import { usersApi, type CreateInternalUserDto, ApiError } from '@/lib/api-client';
+import { ensureIdempotencyKey } from '@/lib/idempotency-key';
+import { getPortalUserRoleLabel } from '@/lib/user-labels';
 import { PortalAlert } from '@/components/shared/portal-ui';
+import { readActiveBulkJobId, writeActiveBulkJobId } from './bulk-import-job-storage';
 
 const MAX_FILE_SIZE_BYTES = 1_048_576; // 1MB
 const MAX_USERS = 100;
+const POLL_INTERVAL_MS = 2000;
 
 const VALID_ROLES = Object.values(UserRole) as string[];
-
 const VALID_DOCUMENT_TYPES = Object.values(DocumentType) as string[];
 
 interface ParsedRow {
@@ -41,7 +51,15 @@ interface BulkImportUsersModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  /** Notifica al listado para mostrar/ocultar el banner de progreso. */
+  onActiveJobChange?: (jobId: string | null) => void;
+  /** Job en curso al reabrir desde el banner. */
+  resumeJobId?: string | null;
 }
+
+type Step = 'upload' | 'preview' | 'progress' | 'credentials' | 'failure' | 'claimed';
+
+type ConfirmCloseMode = 'progress' | 'secrets' | null;
 
 function downloadTemplate() {
   const headers = 'email,role,firstName,lastName,phone,jobTitle,documentType,documentNumber';
@@ -58,6 +76,33 @@ function downloadTemplate() {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+function downloadCredentialsCsv(items: UsersBulkJobResultResponse['succeeded']): void {
+  const header = 'email,role,temporaryPassword';
+  const lines = items.map((item) => {
+    const email = escapeCsv(item.email);
+    const role = escapeCsv(getPortalUserRoleLabel(item.role));
+    const password = escapeCsv(item.temporaryPassword ?? '');
+    return `${email},${role},${password}`;
+  });
+  const content = `${header}\n${lines.join('\n')}`;
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'credenciales-temporales-usuarios.csv';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function escapeCsv(value: string): string {
+  if (/[",\n\r]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
 }
 
 function validateRow(row: ParsedRow): ValidatedRow {
@@ -122,31 +167,221 @@ function mapToDto(row: ParsedRow): CreateInternalUserDto {
   return dto;
 }
 
-type Step = 'upload' | 'preview' | 'processing' | 'result';
+function clearSecrets(result: UsersBulkJobResultResponse | null): void {
+  if (!result) return;
+  for (const item of result.succeeded) {
+    if ('temporaryPassword' in item) {
+      delete item.temporaryPassword;
+    }
+  }
+}
 
-export function BulkImportUsersModal({ isOpen, onClose, onSuccess }: BulkImportUsersModalProps) {
+export function BulkImportUsersModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  onActiveJobChange,
+  resumeJobId = null,
+}: BulkImportUsersModalProps) {
   const [step, setStep] = useState<Step>('upload');
   const [rows, setRows] = useState<ValidatedRow[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
-  const [result, setResult] = useState<BulkCreateUsersApiResponse | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const inputId = useId();
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [statusSnapshot, setStatusSnapshot] = useState<UsersBulkJobStatusResponse | null>(null);
+  const [claimResult, setClaimResult] = useState<UsersBulkJobResultResponse | null>(null);
+  const [secretsSaved, setSecretsSaved] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState<'ok' | 'error' | null>(null);
+  const [confirmClose, setConfirmClose] = useState<ConfirmCloseMode>(null);
   const [dragOver, setDragOver] = useState(false);
 
-  const resetState = useCallback(() => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputId = useId();
+  const idempotencyKeyRef = useRef<string | null>(null);
+  const claimingRef = useRef(false);
+  const pollAbortRef = useRef(false);
+
+  const notifyJob = useCallback(
+    (id: string | null) => {
+      writeActiveBulkJobId(id);
+      onActiveJobChange?.(id);
+    },
+    [onActiveJobChange],
+  );
+
+  const resetLocalState = useCallback(() => {
     setStep('upload');
     setRows([]);
     setFileError(null);
-    setResult(null);
     setActionError(null);
+    setStatusError(null);
+    setIsSubmitting(false);
+    setJobId(null);
+    setStatusSnapshot(null);
+    setClaimResult((prev) => {
+      clearSecrets(prev);
+      return null;
+    });
+    setSecretsSaved(false);
+    setCopyFeedback(null);
+    setConfirmClose(null);
     setDragOver(false);
+    idempotencyKeyRef.current = null;
+    claimingRef.current = false;
   }, []);
 
-  const handleClose = () => {
-    resetState();
+  const finishAndClose = useCallback(() => {
+    notifyJob(null);
+    resetLocalState();
     onClose();
-  };
+  }, [notifyJob, onClose, resetLocalState]);
+
+  const requestClose = useCallback(() => {
+    if (step === 'progress') {
+      // Cerrar la vista no cancela el job: se conserva en sessionStorage + banner.
+      setConfirmClose('progress');
+      return;
+    }
+    if (
+      step === 'credentials' &&
+      claimResult &&
+      claimResult.summary.succeeded > 0 &&
+      !secretsSaved
+    ) {
+      setConfirmClose('secrets');
+      return;
+    }
+    if (step === 'credentials' || step === 'failure' || step === 'claimed') {
+      notifyJob(null);
+    }
+    resetLocalState();
+    onClose();
+  }, [claimResult, notifyJob, onClose, resetLocalState, secretsSaved, step]);
+
+  const dismissToBackground = useCallback(() => {
+    setConfirmClose(null);
+    onClose();
+  }, [onClose]);
+
+  const handleSettleClaim = useCallback(
+    async (status: UsersBulkJobStatusResponse) => {
+      if (claimingRef.current) return;
+      claimingRef.current = true;
+      setStatusSnapshot(status);
+
+      const succeeded = status.summary?.succeeded ?? 0;
+
+      if (status.status === 'failed') {
+        setStatusError(
+          status.errorMessage?.trim() ||
+            'No se importaron usuarios. Revisa los errores y vuelve a intentar.',
+        );
+        setStep('failure');
+        notifyJob(null);
+        claimingRef.current = false;
+        return;
+      }
+
+      if (status.status !== 'completed') {
+        claimingRef.current = false;
+        return;
+      }
+
+      if (succeeded === 0) {
+        setStatusSnapshot(status);
+        setStep('failure');
+        notifyJob(null);
+        onSuccess();
+        claimingRef.current = false;
+        return;
+      }
+
+      if (status.credentialsClaimed) {
+        setStep('claimed');
+        notifyJob(null);
+        onSuccess();
+        claimingRef.current = false;
+        return;
+      }
+
+      try {
+        const result = await usersApi.claimBulkJobResult(status.jobId);
+        setClaimResult(result);
+        setStep('credentials');
+        notifyJob(null);
+        onSuccess();
+      } catch (error: unknown) {
+        if (error instanceof ApiError && (error.status === 404 || error.status === 400)) {
+          // Resultado ya reclamado o no disponible: resumen sin secretos.
+          setStep('claimed');
+          notifyJob(null);
+          onSuccess();
+        } else {
+          setStatusError('No pudimos consultar el estado. Reintentar.');
+          setStep('progress');
+          claimingRef.current = false;
+          return;
+        }
+      }
+      claimingRef.current = false;
+    },
+    [notifyJob, onSuccess],
+  );
+
+  // Reanudar job al abrir desde banner / sessionStorage.
+  useEffect(() => {
+    if (!isOpen) return;
+    if (step === 'credentials' || step === 'failure' || step === 'claimed' || step === 'preview') {
+      return;
+    }
+
+    const stored = resumeJobId ?? readActiveBulkJobId();
+    if (!stored) return;
+    if (jobId === stored && step === 'progress') return;
+
+    setJobId(stored);
+    setStep('progress');
+    setActionError(null);
+    setStatusError(null);
+    claimingRef.current = false;
+  }, [isOpen, resumeJobId, jobId, step]);
+
+  // Polling de estado mientras el modal está abierto en progreso.
+  useEffect(() => {
+    if (!isOpen || step !== 'progress' || !jobId) return;
+
+    pollAbortRef.current = false;
+    let cancelled = false;
+
+    const tick = async () => {
+      try {
+        const status = await usersApi.getBulkJobStatus(jobId);
+        if (cancelled || pollAbortRef.current) return;
+        setStatusError(null);
+        setStatusSnapshot(status);
+
+        if (status.status === 'completed' || status.status === 'failed') {
+          await handleSettleClaim(status);
+        }
+      } catch {
+        if (cancelled || pollAbortRef.current) return;
+        setStatusError('No pudimos consultar el estado. Reintentar.');
+      }
+    };
+
+    void tick();
+    const timer = window.setInterval(() => {
+      void tick();
+    }, POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      pollAbortRef.current = true;
+      window.clearInterval(timer);
+    };
+  }, [handleSettleClaim, isOpen, jobId, step]);
 
   const handleFile = useCallback((file: File) => {
     setFileError(null);
@@ -207,7 +442,7 @@ export function BulkImportUsersModal({ isOpen, onClose, onSuccess }: BulkImportU
         }
 
         const parsed: ParsedRow[] = dataRows.map((row, i) => ({
-          rowIndex: i + 2, // +2 porque headers son fila 1, datos empiezan en fila 2
+          rowIndex: i + 2,
           email: (row[emailIndex] ?? '').trim(),
           role: (row[roleIndex] ?? '').trim(),
           firstName: (row[firstNameIndex] ?? '').trim(),
@@ -262,52 +497,191 @@ export function BulkImportUsersModal({ isOpen, onClose, onSuccess }: BulkImportU
     const validRows = rows.filter((r) => r.isValid);
     if (validRows.length === 0) return;
 
-    setStep('processing');
+    setIsSubmitting(true);
     setActionError(null);
+    setStatusError(null);
 
     try {
+      const key = ensureIdempotencyKey(idempotencyKeyRef);
       const dtos = validRows.map(mapToDto);
-      const response = await usersApi.bulkCreate(dtos);
-      setResult(response);
-      setStep('result');
-      if (response.summary.succeeded > 0) {
-        onSuccess();
+      const accepted = await usersApi.bulkCreate(dtos, key);
+      setJobId(accepted.jobId);
+      notifyJob(accepted.jobId);
+      setStep('progress');
+      claimingRef.current = false;
+
+      if (accepted.status === 'completed') {
+        const status = await usersApi.getBulkJobStatus(accepted.jobId);
+        await handleSettleClaim(status);
       }
     } catch (error: unknown) {
       setStep('preview');
       if (error instanceof ApiError) {
-        setActionError(error.message);
+        setActionError(
+          error.status === 409
+            ? 'Esta importación ya está en curso.'
+            : 'No pudimos iniciar la importación. Intenta de nuevo en unos minutos.',
+        );
       } else {
-        setActionError('No fue posible completar la importación. Intenta de nuevo.');
+        setActionError('No pudimos iniciar la importación. Intenta de nuevo en unos minutos.');
       }
+    } finally {
+      setIsSubmitting(false);
     }
+  };
+
+  const handleRetryStatus = () => {
+    setStatusError(null);
+    // El effect de polling reintentará en el próximo tick; forzamos uno inmediato.
+    if (jobId) {
+      void usersApi
+        .getBulkJobStatus(jobId)
+        .then((status) => {
+          setStatusSnapshot(status);
+          if (status.status === 'completed' || status.status === 'failed') {
+            return handleSettleClaim(status);
+          }
+          return undefined;
+        })
+        .catch(() => {
+          setStatusError('No pudimos consultar el estado. Reintentar.');
+        });
+    }
+  };
+
+  const handleRetryFromFailure = () => {
+    notifyJob(null);
+    setJobId(null);
+    setStatusSnapshot(null);
+    clearSecrets(claimResult);
+    setClaimResult(null);
+    idempotencyKeyRef.current = null;
+    setStep('upload');
+    setRows([]);
+    setActionError(null);
+    setStatusError(null);
+    setFileError(null);
+  };
+
+  const handleCopyAll = async () => {
+    if (!claimResult) return;
+    const text = claimResult.succeeded
+      .map(
+        (item) =>
+          `${item.email}\t${item.temporaryPassword ?? ''}\t${getPortalUserRoleLabel(item.role)}`,
+      )
+      .join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyFeedback('ok');
+      setSecretsSaved(true);
+    } catch {
+      setCopyFeedback('error');
+    }
+  };
+
+  const handleCopyRow = async (password: string) => {
+    try {
+      await navigator.clipboard.writeText(password);
+      setCopyFeedback('ok');
+      setSecretsSaved(true);
+    } catch {
+      setCopyFeedback('error');
+    }
+  };
+
+  const handleDownloadCredentials = () => {
+    if (!claimResult) return;
+    downloadCredentialsCsv(claimResult.succeeded);
+    setSecretsSaved(true);
   };
 
   const validCount = rows.filter((r) => r.isValid).length;
   const invalidCount = rows.length - validCount;
 
+  const outcomeKind: 'success' | 'partial' | null = claimResult
+    ? claimResult.summary.failed > 0
+      ? 'partial'
+      : 'success'
+    : null;
+
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) requestClose();
+      }}
+    >
       <DialogContent aria-labelledby="bulk-import-title" className="max-w-2xl">
         <DialogHeader className="mb-4 flex flex-row items-start justify-between gap-4 space-y-0">
           <div className="min-w-0 flex-1">
             <p className="portal-eyebrow">Gestión de accesos</p>
             <DialogTitle id="bulk-import-title">Importar usuarios desde CSV</DialogTitle>
-            <DialogDescription>
-              Carga un archivo CSV con los datos de los usuarios y revísalos antes de confirmar.
-            </DialogDescription>
+            {step === 'upload' || step === 'preview' ? (
+              <DialogDescription>
+                Carga un archivo CSV con los datos de los usuarios y revísalos antes de confirmar.
+              </DialogDescription>
+            ) : null}
           </div>
           <button
             type="button"
-            onClick={handleClose}
-            className="mt-1 shrink-0 rounded-xl p-2 text-gray-500 hover:bg-gray-100 transition-colors dark:hover:bg-dark-surface-3"
+            onClick={requestClose}
+            className="mt-1 shrink-0 rounded-xl p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:hover:bg-dark-surface-3"
             aria-label="Cerrar"
           >
             <X className="h-4 w-4" />
           </button>
         </DialogHeader>
 
-        {actionError && step !== 'result' && (
+        {confirmClose === 'progress' && (
+          <PortalAlert
+            variant="info"
+            title="Importación en curso"
+            description="La importación sigue en segundo plano. Podrás ver el resultado al volver a este panel."
+            className="mb-4"
+            action={
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setConfirmClose(null)}
+                >
+                  Seguir aquí
+                </Button>
+                <Button type="button" variant="lime" size="sm" onClick={dismissToBackground}>
+                  Entendido
+                </Button>
+              </div>
+            }
+          />
+        )}
+
+        {confirmClose === 'secrets' && (
+          <PortalAlert
+            variant="warning"
+            title="Contraseñas temporales"
+            description="¿Ya guardaste las contraseñas temporales? No podrás verlas de nuevo."
+            className="mb-4"
+            action={
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setConfirmClose(null)}
+                >
+                  Seguir aquí
+                </Button>
+                <Button type="button" variant="lime" size="sm" onClick={finishAndClose}>
+                  Ya las guardé
+                </Button>
+              </div>
+            }
+          />
+        )}
+
+        {actionError && step === 'preview' && (
           <PortalAlert
             variant="error"
             title="Error"
@@ -319,14 +693,10 @@ export function BulkImportUsersModal({ isOpen, onClose, onSuccess }: BulkImportU
 
         {step === 'upload' && (
           <div className="space-y-4">
-            <button
-              type="button"
-              onClick={downloadTemplate}
-              className="inline-flex items-center gap-2 text-sm font-medium text-iwana-secondary-700 hover:text-iwana-secondary-800 transition-colors dark:text-iwana-secondary-400 dark:hover:text-iwana-secondary-300"
-            >
-              <Download className="h-4 w-4" />
+            <Button type="button" variant="outline" size="sm" onClick={downloadTemplate}>
+              <Download className="h-4 w-4" aria-hidden="true" />
               Descargar plantilla CSV
-            </button>
+            </Button>
 
             <div
               onDrop={handleDrop}
@@ -338,13 +708,10 @@ export function BulkImportUsersModal({ isOpen, onClose, onSuccess }: BulkImportU
                   : 'border-gray-200 hover:border-iwana-secondary/50 dark:border-dark-border'
               }`}
             >
-              <Upload className="h-8 w-8 text-gray-400" />
+              <Upload className="h-8 w-8 text-gray-400" aria-hidden="true" />
               <div className="text-center">
                 <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                  Arrastra tu archivo CSV aquí
-                </p>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  o haz clic para seleccionarlo
+                  Arrastra un CSV o selecciona un archivo para importar hasta {MAX_USERS} usuarios.
                 </p>
                 <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
                   Máximo {MAX_USERS} usuarios · 1 MB · columnas requeridas: email, role
@@ -360,8 +727,8 @@ export function BulkImportUsersModal({ isOpen, onClose, onSuccess }: BulkImportU
                 aria-label="Seleccionar archivo CSV"
               />
               <label htmlFor={inputId}>
-                <span className="inline-flex items-center gap-2 rounded-xl bg-iwana-primary px-4 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-iwana-primary-600 cursor-pointer">
-                  <Upload className="h-4 w-4" />
+                <span className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-iwana-primary px-4 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-iwana-primary-600">
+                  <Upload className="h-4 w-4" aria-hidden="true" />
                   Seleccionar archivo
                 </span>
               </label>
@@ -386,12 +753,12 @@ export function BulkImportUsersModal({ isOpen, onClose, onSuccess }: BulkImportU
                   {rows.length} registros encontrados
                 </span>
                 <span className="inline-flex items-center gap-1 text-green-700 dark:text-green-400">
-                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
                   {validCount} válidos
                 </span>
                 {invalidCount > 0 && (
                   <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400">
-                    <AlertTriangle className="h-3.5 w-3.5" />
+                    <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
                     {invalidCount} con errores
                   </span>
                 )}
@@ -399,29 +766,38 @@ export function BulkImportUsersModal({ isOpen, onClose, onSuccess }: BulkImportU
               <button
                 type="button"
                 onClick={() => setStep('upload')}
-                className="text-sm font-medium text-iwana-secondary-700 hover:text-iwana-secondary-800 transition-colors dark:text-iwana-secondary-400"
+                className="text-sm font-medium text-iwana-secondary-700 transition-colors hover:text-iwana-secondary-800 dark:text-iwana-secondary-400"
               >
                 Volver atrás
               </button>
             </div>
 
+            {validCount === 0 && (
+              <PortalAlert
+                variant="warning"
+                title="Sin filas válidas"
+                description="No hay filas válidas para importar. Corrige el archivo o descarga la plantilla."
+                icon={AlertTriangle}
+              />
+            )}
+
             <div className="max-h-80 overflow-auto rounded-2xl border border-gray-200 dark:border-dark-border">
               <table className="w-full text-left text-sm">
                 <thead className="sticky top-0 bg-gray-50 dark:bg-dark-surface-3">
                   <tr>
-                    <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
                       Fila
                     </th>
-                    <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
                       Email
                     </th>
-                    <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
                       Rol
                     </th>
-                    <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
                       Nombre
                     </th>
-                    <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
                       Estado
                     </th>
                   </tr>
@@ -436,10 +812,10 @@ export function BulkImportUsersModal({ isOpen, onClose, onSuccess }: BulkImportU
                           : 'bg-red-50 dark:bg-red-900/10'
                       }
                     >
-                      <td className="px-3 py-2 text-gray-500 dark:text-gray-400 font-mono text-xs">
+                      <td className="px-3 py-2 font-mono text-xs text-gray-500 dark:text-gray-400">
                         {row.rowIndex}
                       </td>
-                      <td className="px-3 py-2 text-gray-900 dark:text-white max-w-[180px] truncate">
+                      <td className="max-w-[180px] truncate px-3 py-2 text-gray-900 dark:text-white">
                         {row.email || '—'}
                       </td>
                       <td className="px-3 py-2">
@@ -450,24 +826,24 @@ export function BulkImportUsersModal({ isOpen, onClose, onSuccess }: BulkImportU
                               : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                           }`}
                         >
-                          {row.role || '—'}
+                          {row.role ? getPortalUserRoleLabel(row.role) : '—'}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-gray-900 dark:text-white max-w-[150px] truncate">
+                      <td className="max-w-[150px] truncate px-3 py-2 text-gray-900 dark:text-white">
                         {[row.firstName, row.lastName].filter(Boolean).join(' ') || '—'}
                       </td>
                       <td className="px-3 py-2">
                         {row.isValid ? (
-                          <span className="inline-flex items-center gap-1 text-green-700 dark:text-green-400 text-xs font-medium">
-                            <CheckCircle2 className="h-3.5 w-3.5" />
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-400">
+                            <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
                             Válido
                           </span>
                         ) : (
                           <span
-                            className="inline-flex items-center gap-1 text-red-600 dark:text-red-400 text-xs font-medium"
+                            className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400"
                             title={row.errors.join(' · ')}
                           >
-                            <AlertTriangle className="h-3.5 w-3.5" />
+                            <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
                             {row.errors[0]}
                           </span>
                         )}
@@ -479,150 +855,287 @@ export function BulkImportUsersModal({ isOpen, onClose, onSuccess }: BulkImportU
             </div>
 
             <div className="flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setStep('upload')}
-                className="rounded-xl px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors dark:text-gray-400 dark:hover:text-gray-200"
-              >
+              <Button type="button" variant="outline" onClick={() => setStep('upload')}>
                 Cancelar
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                onClick={handleImport}
-                disabled={validCount === 0}
-                className="inline-flex items-center gap-2 rounded-xl bg-iwana-primary px-4 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-iwana-primary-600 disabled:pointer-events-none disabled:opacity-50"
+                variant="lime"
+                onClick={() => void handleImport()}
+                disabled={validCount === 0 || isSubmitting}
               >
-                Importar {validCount} usuario{validCount !== 1 ? 's' : ''}
-              </button>
+                {isSubmitting
+                  ? 'Enviando…'
+                  : `Importar ${validCount} usuario${validCount !== 1 ? 's' : ''}`}
+              </Button>
             </div>
           </div>
         )}
 
-        {step === 'processing' && (
-          <div className="flex flex-col items-center justify-center gap-4 py-8">
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-iwana-primary" />
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Importando {validCount} usuario{validCount !== 1 ? 's' : ''}...
-            </p>
+        {step === 'progress' && (
+          <div className="space-y-4" role="status" aria-live="polite">
+            <div>
+              <p className="text-base font-semibold text-gray-900 dark:text-white">
+                Importación en curso
+              </p>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                Estamos creando los usuarios. Puedes cerrar este panel; te avisaremos cuando
+                termine.
+              </p>
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
+              <div className="mb-3 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                <Loader2 className="h-4 w-4 animate-spin text-iwana-primary" aria-hidden="true" />
+                Procesando lote
+                {statusSnapshot?.summary
+                  ? ` · ${statusSnapshot.summary.succeeded} de ${statusSnapshot.summary.total}`
+                  : null}
+              </div>
+              <div
+                className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-surface-2"
+                aria-hidden="true"
+              >
+                <div className="h-full w-1/3 animate-pulse rounded-full bg-iwana-primary" />
+              </div>
+            </div>
+
+            {statusError && (
+              <PortalAlert
+                variant="error"
+                title="Estado no disponible"
+                description={statusError}
+                icon={AlertTriangle}
+                action={
+                  <Button type="button" variant="outline" size="sm" onClick={handleRetryStatus}>
+                    Reintentar
+                  </Button>
+                }
+              />
+            )}
           </div>
         )}
 
-        {step === 'result' && result && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
+        {step === 'credentials' && claimResult && (
+          <div className="space-y-4" role="status" aria-live="polite">
+            <div className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                <CheckCircle2 className="h-5 w-5" />
+                <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
               </div>
               <div>
                 <p className="font-semibold text-gray-900 dark:text-white">
-                  Importación completada
+                  {outcomeKind === 'partial' ? 'Importación parcial' : 'Usuarios importados'}
                 </p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {result.summary.succeeded} creado{result.summary.succeeded !== 1 ? 's' : ''}
-                  {result.summary.failed > 0 &&
-                    ` · ${result.summary.failed} fallido${result.summary.failed !== 1 ? 's' : ''}`}
+                  {outcomeKind === 'partial'
+                    ? `Se crearon ${claimResult.summary.succeeded} de ${claimResult.summary.total} usuarios. Revisa los que fallaron y guarda las contraseñas de los creados.`
+                    : `Se crearon ${claimResult.summary.succeeded} usuarios. Guarda las contraseñas temporales ahora; no podrás verlas de nuevo.`}
                 </p>
               </div>
             </div>
 
-            {result.succeeded.length > 0 && (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Usuarios creados ({result.succeeded.length})
+            <PortalAlert
+              variant="warning"
+              title="Entrega única"
+              description="Estas contraseñas solo se muestran una vez. El usuario deberá cambiarlas en el próximo inicio de sesión."
+            />
+
+            <div>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Credenciales temporales ({claimResult.succeeded.length})
                 </p>
-                <div className="max-h-40 overflow-auto rounded-2xl border border-gray-200 dark:border-dark-border">
-                  <table className="w-full text-left text-sm">
-                    <thead className="sticky top-0 bg-gray-50 dark:bg-dark-surface-3">
-                      <tr>
-                        <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                          Email
-                        </th>
-                        <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                          Nombre
-                        </th>
-                        <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                          Contraseña temporal
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
-                      {result.succeeded.map((item) => (
-                        <tr key={item.email} className="bg-white dark:bg-dark-surface-2">
-                          <td className="px-3 py-2 text-gray-900 dark:text-white max-w-[180px] truncate">
-                            {item.email}
-                          </td>
-                          <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
-                            {[item.firstName, item.lastName].filter(Boolean).join(' ') || '—'}
-                          </td>
-                          <td className="px-3 py-2">
-                            {item.temporaryPassword ? (
-                              <code className="break-all font-mono text-xs text-gray-900 dark:text-white select-all">
-                                {item.temporaryPassword}
-                              </code>
-                            ) : (
-                              <span className="text-gray-400 dark:text-gray-500 text-xs">
-                                Proporcionada por el usuario
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void handleCopyAll()}
+                  >
+                    <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                    Copiar todas
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="lime"
+                    size="sm"
+                    onClick={handleDownloadCredentials}
+                  >
+                    <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                    Descargar credenciales
+                  </Button>
                 </div>
               </div>
-            )}
-
-            {result.failed.length > 0 && (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Errores ({result.failed.length})
+              <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                Guárdalo en un lugar seguro. No lo subas al sistema ni lo compartas por canales
+                inseguros.
+              </p>
+              {copyFeedback === 'ok' && (
+                <p className="mb-2 text-xs font-medium text-green-700 dark:text-green-400">
+                  Contraseñas copiadas al portapapeles.
                 </p>
-                <div className="max-h-40 overflow-auto rounded-2xl border border-gray-200 dark:border-dark-border">
-                  <table className="w-full text-left text-sm">
-                    <thead className="sticky top-0 bg-red-50 dark:bg-red-900/10">
-                      <tr>
-                        <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                          Fila
-                        </th>
-                        <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                          Email
-                        </th>
-                        <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                          Causa
-                        </th>
+              )}
+              {copyFeedback === 'error' && (
+                <p className="mb-2 text-xs font-medium text-red-600 dark:text-red-400">
+                  No se pudo copiar. Usa la descarga o selecciona el texto.
+                </p>
+              )}
+              <div className="max-h-48 overflow-auto rounded-2xl border border-gray-200 dark:border-dark-border">
+                <table className="w-full text-left text-sm">
+                  <thead className="sticky top-0 bg-gray-50 dark:bg-dark-surface-3">
+                    <tr>
+                      <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                        Email
+                      </th>
+                      <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                        Rol
+                      </th>
+                      <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                        Contraseña temporal
+                      </th>
+                      <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                        <span className="sr-only">Acciones</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
+                    {claimResult.succeeded.map((item) => (
+                      <tr key={item.email} className="bg-white dark:bg-dark-surface-2">
+                        <td className="max-w-[160px] truncate px-3 py-2 text-gray-900 dark:text-white">
+                          {item.email}
+                        </td>
+                        <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
+                          {getPortalUserRoleLabel(item.role)}
+                        </td>
+                        <td className="px-3 py-2">
+                          {item.temporaryPassword ? (
+                            <code className="select-all break-all font-mono text-xs text-gray-900 dark:text-white">
+                              {item.temporaryPassword}
+                            </code>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          {item.temporaryPassword ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              aria-label={`Copiar contraseña de ${item.email}`}
+                              onClick={() => void handleCopyRow(item.temporaryPassword ?? '')}
+                            >
+                              <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                              Copiar
+                            </Button>
+                          ) : null}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
-                      {result.failed.map((item, i) => (
-                        <tr key={i} className="bg-red-50/50 dark:bg-red-900/5">
-                          <td className="px-3 py-2 text-gray-500 dark:text-gray-400 font-mono text-xs">
-                            {item.rowIndex}
-                          </td>
-                          <td className="px-3 py-2 text-gray-900 dark:text-white max-w-[180px] truncate">
-                            {item.email}
-                          </td>
-                          <td className="px-3 py-2 text-sm text-red-700 dark:text-red-400">
-                            {item.reason}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            )}
+            </div>
 
-            <button
-              type="button"
-              onClick={handleClose}
-              className="w-full rounded-2xl bg-iwana-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-iwana-primary-600"
-            >
+            {claimResult.failed.length > 0 && <FailedRowsTable failed={claimResult.failed} />}
+
+            <Button type="button" variant="lime" className="w-full" onClick={requestClose}>
               Entendido
-            </button>
+            </Button>
+          </div>
+        )}
+
+        {step === 'failure' && (
+          <div className="space-y-4" role="status" aria-live="polite">
+            <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50/90 p-4 dark:border-red-900/70 dark:bg-red-950/30">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
+                <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div>
+                <p className="font-semibold text-red-900 dark:text-red-100">
+                  No se importaron usuarios
+                </p>
+                <p className="text-sm text-red-700 dark:text-red-200/90">
+                  {statusError ?? 'Ningún usuario se creó. Revisa los errores y vuelve a intentar.'}
+                </p>
+              </div>
+            </div>
+
+            {(statusSnapshot?.failed?.length ?? 0) > 0 && (
+              <FailedRowsTable failed={statusSnapshot!.failed} />
+            )}
+
+            <Button
+              type="button"
+              variant="lime"
+              className="w-full"
+              onClick={handleRetryFromFailure}
+            >
+              Volver a intentar
+            </Button>
+          </div>
+        )}
+
+        {step === 'claimed' && (
+          <div className="space-y-4" role="status" aria-live="polite">
+            <PortalAlert
+              variant="info"
+              title="Importación completada"
+              description="Esta importación ya se completó. Las contraseñas temporales no están disponibles."
+            />
+            {(statusSnapshot?.failed?.length ?? 0) > 0 && (
+              <FailedRowsTable failed={statusSnapshot!.failed} />
+            )}
+            <Button type="button" variant="lime" className="w-full" onClick={finishAndClose}>
+              Entendido
+            </Button>
           </div>
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function FailedRowsTable({
+  failed,
+}: {
+  failed: Array<{ rowIndex: number; email: string; reason: string }>;
+}) {
+  return (
+    <div>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+        No se pudieron crear ({failed.length})
+      </p>
+      <div className="max-h-40 overflow-auto rounded-2xl border border-gray-200 dark:border-dark-border">
+        <table className="w-full text-left text-sm">
+          <thead className="sticky top-0 bg-red-50 dark:bg-red-900/10">
+            <tr>
+              <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Fila
+              </th>
+              <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Email
+              </th>
+              <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Causa
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
+            {failed.map((item, i) => (
+              <tr key={`${item.rowIndex}-${i}`} className="bg-red-50/50 dark:bg-red-900/5">
+                <td className="px-3 py-2 font-mono text-xs text-gray-500 dark:text-gray-400">
+                  {item.rowIndex}
+                </td>
+                <td className="max-w-[180px] truncate px-3 py-2 text-gray-900 dark:text-white">
+                  {item.email}
+                </td>
+                <td className="px-3 py-2 text-sm text-red-700 dark:text-red-400">{item.reason}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

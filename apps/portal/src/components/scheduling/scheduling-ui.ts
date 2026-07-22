@@ -1,5 +1,6 @@
 import type { BadgeProps } from '@iwana/ui';
 import {
+  PLATFORM_ONLY_ROLES,
   ScheduleEventStatus,
   TechnicianAvailabilityType,
   UserRole,
@@ -16,7 +17,7 @@ import type {
   WfmWorkOrder,
 } from '@/lib/api-client';
 import { formatExpedienteDisplayRef, formatExpedienteShortLabel } from '@/lib/expediente-labels';
-import { getPortalUserRoleLabel, PORTAL_PLATFORM_ROLES } from '@/lib/user-labels';
+import { getPortalUserRoleLabel } from '@/lib/user-labels';
 
 export type SchedulingView = 'day' | 'week' | 'month' | 'list';
 
@@ -459,7 +460,7 @@ export function canManageScheduling(role: string | null | undefined): boolean {
 
 export function filterSchedulableUsers(users: InternalUser[]): InternalUser[] {
   return users
-    .filter((user) => !PORTAL_PLATFORM_ROLES.has(user.role as UserRole))
+    .filter((user) => !PLATFORM_ONLY_ROLES.has(user.role))
     .filter((user) => user.status === 'ACTIVE')
     .filter((user) => !user.deletedAt)
     .sort((left, right) =>

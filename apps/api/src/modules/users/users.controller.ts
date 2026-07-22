@@ -8,7 +8,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
-  ParseEnumPipe,
+  ParseIntPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -50,9 +50,9 @@ import {
  * pertenecer al tenant resuelto por TenantMiddleware.
  *
  * Accesos:
- * - CRUD completo: TENANT_ADMIN (role del tenant)
- * - GET /:id: cualquier usuario autenticado (el servicio verifica si es propio)
- * - PATCH /:id: TENANT_ADMIN o el propio usuario
+ * - CRUD completo: TENANT_ADMIN (role del tenant) + permisos de acceso
+ * - GET /me y PATCH /me: cualquier usuario autenticado (perfil propio)
+ * - Autorizacion de negocio vive en UsersService (H-08)
  *
  * HLD-MOD01-ARQUITECTURA-v1.0 — Endpoints 11-15
  */
@@ -65,10 +65,16 @@ export class UsersController {
 
   /**
    * Lista usuarios del tenant con paginacion cursor-based.
-   * Solo accesible para administradores del tenant.
+   * Solo accesible para administradores del tenant con USERS_READ.
+   *
+   * Contrato HTTP (H-11): el servicio ya devuelve `{ data, meta }`. El controlador
+   * aplica el envelope estándar `{ data: T }` → cuerpo `{ data: { data, meta } }`.
+   * Los clientes (portal/web) desenvuelven una sola vez y consumen `{ data, meta }`.
+   * No aplanar: es el estándar de facto del módulo users + ApiEnvelope del FE.
    */
   @Get()
   @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.USERS_READ)
   @ApiOperation({ summary: 'Listar usuarios del tenant (paginacion cursor-based)' })
   @ApiQuery({
     name: 'cursor',
@@ -78,7 +84,7 @@ export class UsersController {
   @ApiQuery({
     name: 'limit',
     required: false,
-    description: 'Cantidad maxima de elementos (max 100)',
+    description: 'Cantidad maxima de elementos (entero 1-100; default 50)',
     type: Number,
   })
   @ApiQuery({
@@ -92,14 +98,17 @@ export class UsersController {
     name: 'search',
     required: false,
     type: String,
-    description: 'Busqueda ILIKE en email, firstName, lastName y jobTitle',
+    description:
+      'Búsqueda en PostgreSQL (pg_trgm + ILIKE) sobre email, first_name, last_name y job_title. ' +
+      'total/nextCursor se calculan sobre el conjunto ya filtrado; el cursor aplica después del filtro (ADR-062).',
   })
   @ApiResponse({ status: 200, description: 'Listado paginado de usuarios.' })
+  @ApiResponse({ status: 400, description: 'Parametro limit invalido.' })
   @ApiResponse({ status: 401, description: 'Token invalido o expirado.' })
-  @ApiResponse({ status: 403, description: 'Sin permisos de administrador.' })
+  @ApiResponse({ status: 403, description: 'Sin permisos de administrador o USERS_READ.' })
   async findAll(
     @Query('cursor') cursor?: string,
-    @Query('limit') limit?: string,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
     @Query('status') status?: UserStatus,
     @Query('role') role?: UserRole,
     @Query('search') search?: string,
@@ -114,7 +123,7 @@ export class UsersController {
       search?: string;
     } = {};
     if (cursor) params.cursor = cursor;
-    if (limit) params.limit = parseInt(limit, 10);
+    if (limit !== undefined) params.limit = limit;
     if (status) params.status = status;
     if (role) params.role = role;
     if (search) params.search = search;
@@ -124,7 +133,7 @@ export class UsersController {
 
   /**
    * Crea un nuevo usuario en el tenant.
-   * El header Idempotency-Key es obligatorio para evitar duplicados en reintentos.
+   * El header Idempotency-Key es obligatorio y se usa para deduplicar reintentos.
    * Si no se provee password, se genera uno temporal y se retorna en la respuesta.
    */
   @Post()
@@ -143,16 +152,26 @@ export class UsersController {
   @ApiResponse({ status: 400, description: 'Datos invalidos o Idempotency-Key faltante.' })
   @ApiResponse({ status: 401, description: 'Token invalido o expirado.' })
   @ApiResponse({ status: 403, description: 'Sin permisos de administrador.' })
-  @ApiResponse({ status: 409, description: 'Ya existe un usuario con ese email en el tenant.' })
+  @ApiResponse({
+    status: 409,
+    description: 'Email duplicado o Idempotency-Key reutilizada con otro payload.',
+  })
   async create(
     @Body() createUserDto: CreateUserDto,
+    @CurrentUser() actor: JwtPayload,
     @Headers('idempotency-key') idempotencyKey?: string,
+    @Headers('x-forwarded-for') ipAddress?: string,
   ): Promise<{ data: UserResponseDto & { temporaryPassword?: string } }> {
     if (!idempotencyKey?.trim()) {
       throw new BadRequestException('El header Idempotency-Key es obligatorio.');
     }
 
-    const user = await this.usersService.create(createUserDto);
+    const user = await this.usersService.create(
+      createUserDto,
+      actor.sub,
+      ipAddress || 'unknown',
+      idempotencyKey.trim(),
+    );
     return { data: user };
   }
 
@@ -189,10 +208,12 @@ export class UsersController {
 
   /**
    * Obtiene un usuario por UUID.
-   * Los administradores pueden consultar cualquier usuario del tenant.
-   * Un usuario no-admin solo puede consultar su propio perfil (verificado en el servicio).
+   * Requiere rol ADMIN/SYSTEM_ADMIN y permiso USERS_READ.
+   * La autorizacion de negocio adicional vive en el servicio (H-08).
    */
   @Get(':id')
+  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.USERS_READ)
   @ApiOperation({ summary: 'Obtener usuario del tenant por UUID' })
   @ApiResponse({ status: 200, description: 'Usuario encontrado.' })
   @ApiResponse({ status: 401, description: 'Token invalido o expirado.' })
@@ -202,18 +223,13 @@ export class UsersController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: JwtPayload,
   ): Promise<{ data: UserResponseDto }> {
-    // El servicio verifica si el requester puede ver el usuario solicitado
-    // (admin puede ver cualquiera; no-admin solo el propio)
-    if (user.role !== UserRole.ADMIN && user.role !== UserRole.SYSTEM_ADMIN && user.sub !== id) {
-      throw new BadRequestException('No tienes permisos para ver este usuario.');
-    }
-    const result = await this.usersService.findOne(id);
+    const result = await this.usersService.findOne(id, user.sub, user.role);
     return { data: result };
   }
 
   /**
    * Actualiza status y/o rol del usuario.
-   * El header Idempotency-Key es obligatorio para reintentos seguros.
+   * El header Idempotency-Key es obligatorio y se usa para deduplicar reintentos.
    */
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
@@ -230,6 +246,10 @@ export class UsersController {
   @ApiResponse({ status: 401, description: 'Token invalido o expirado.' })
   @ApiResponse({ status: 403, description: 'Sin permisos para modificar este usuario.' })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado.' })
+  @ApiResponse({
+    status: 409,
+    description: 'Idempotency-Key reutilizada con otro payload.',
+  })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateUserDto: UpdateUserDto,
@@ -240,7 +260,13 @@ export class UsersController {
       throw new BadRequestException('El header Idempotency-Key es obligatorio.');
     }
 
-    const result = await this.usersService.update(id, updateUserDto, actor.sub, actor.role);
+    const result = await this.usersService.update(
+      id,
+      updateUserDto,
+      actor.sub,
+      actor.role,
+      idempotencyKey.trim(),
+    );
     return { data: result };
   }
 
@@ -261,7 +287,10 @@ export class UsersController {
   @ApiResponse({ status: 200, description: 'Email de acceso actualizado.' })
   @ApiResponse({ status: 400, description: 'Datos invalidos o Idempotency-Key faltante.' })
   @ApiResponse({ status: 403, description: 'Sin permisos para modificar este usuario.' })
-  @ApiResponse({ status: 409, description: 'El nuevo email ya está en uso.' })
+  @ApiResponse({
+    status: 409,
+    description: 'El nuevo email ya está en uso o Idempotency-Key reutilizada con otro payload.',
+  })
   async changeLoginEmailAsAdmin(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AdminChangeUserLoginEmailDto,
@@ -277,6 +306,7 @@ export class UsersController {
       dto,
       actor.sub,
       actor.role as UserRole,
+      idempotencyKey.trim(),
     );
 
     return { data: result };
@@ -285,22 +315,20 @@ export class UsersController {
   /**
    * Cambia el email de acceso del propio usuario autenticado.
    * Requiere contraseña actual para evitar cambios no autorizados sobre una sesión abierta.
+   * La regla de ownership vive en el servicio (H-08) → 403 si el actor no es el dueño.
    */
   @Patch(':id/login-email')
   @SkipAudit()
   @ApiOperation({ summary: 'Cambiar el email de acceso del propio usuario' })
   @ApiResponse({ status: 200, description: 'Email de acceso actualizado.' })
-  @ApiResponse({ status: 400, description: 'Solo puedes cambiar tu propio email.' })
+  @ApiResponse({ status: 400, description: 'Contraseña actual invalida u otros datos invalidos.' })
+  @ApiResponse({ status: 403, description: 'Solo puedes cambiar tu propio email de acceso.' })
   @ApiResponse({ status: 409, description: 'El nuevo email ya está en uso.' })
   async changeLoginEmail(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ChangeUserLoginEmailDto,
     @CurrentUser() actor: JwtPayload,
   ): Promise<{ data: UserResponseDto }> {
-    if (actor.sub !== id) {
-      throw new BadRequestException('Solo puedes cambiar tu propio email de acceso.');
-    }
-
     const result = await this.usersService.changeLoginEmail(id, dto, actor.sub);
     return { data: result };
   }
@@ -316,7 +344,12 @@ export class UsersController {
     required: true,
   })
   @ApiResponse({ status: 200, description: 'Password reiniciado exitosamente.' })
+  @ApiResponse({ status: 400, description: 'Idempotency-Key faltante.' })
   @ApiResponse({ status: 403, description: 'No puedes reiniciar a un SYSTEM_ADMIN.' })
+  @ApiResponse({
+    status: 409,
+    description: 'Idempotency-Key ya usada (la contraseña temporal solo se muestra una vez).',
+  })
   async resetPassword(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() actor: JwtPayload,
@@ -335,6 +368,7 @@ export class UsersController {
         actor.role as UserRole,
         ipAddress || 'unknown',
         dto?.password,
+        idempotencyKey.trim(),
       ),
     };
   }
@@ -343,6 +377,11 @@ export class UsersController {
    * Elimina (soft delete) un usuario del tenant.
    * Solo TENANT_ADMIN puede eliminar. No puede eliminar a otro TENANT_ADMIN (RF-RBAC-04).
    * No puede eliminarse a si mismo.
+   *
+   * RF-RBAC-04 (formulacion unica):
+   * 1. No self-delete → BadRequest.
+   * 2. Si target.role === ADMIN y actorRole !== SYSTEM_ADMIN → Forbidden.
+   * 3. SYSTEM_ADMIN (actor) sí puede eliminar ADMIN.
    */
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)

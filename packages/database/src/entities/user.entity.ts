@@ -161,7 +161,8 @@ export class User {
   /**
    * Número de documento en texto plano.
    * PII sensible — Ley 1581 habeas data.
-   * NUNCA se retorna en DTOs públicos; solo se persiste.
+   * Se expone de forma controlada en UserResponseDto para gestión interna
+   * del tenant y perfil propio autenticado.
    */
   @Column({ name: 'document_number', type: 'varchar', length: 30, nullable: true })
   documentNumber: string | null;

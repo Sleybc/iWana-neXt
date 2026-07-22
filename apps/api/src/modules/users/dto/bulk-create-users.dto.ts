@@ -1,23 +1,29 @@
 import { z } from 'zod';
 import { DocumentType, isTenantAssignableRole, UserRole } from '@iwana/shared';
+import { USER_FIELD_MAX, USER_PHONE_E164_PATTERN } from './user-field-constraints';
 
+/**
+ * Esquema Zod de bulkCreate — mismos límites que CreateUserDto (class-validator).
+ * No migrar a class-validator en esta ola (decisión EM-ARCH H-10).
+ */
 export const BulkCreateUserItemSchema = z.object({
-  email: z.string().email('Email inválido').max(255),
+  email: z.string().email('Email inválido').max(USER_FIELD_MAX.email),
   // Los roles de plataforma no son asignables desde el CRUD del tenant (H-01).
   role: z
     .nativeEnum(UserRole, { errorMap: () => ({ message: 'Rol inválido' }) })
     .refine(isTenantAssignableRole, {
       message: 'El rol indicado no puede asignarse a un usuario del tenant.',
     }),
-  firstName: z.string().max(100).optional(),
-  lastName: z.string().max(100).optional(),
+  firstName: z.string().max(USER_FIELD_MAX.firstName).optional(),
+  lastName: z.string().max(USER_FIELD_MAX.lastName).optional(),
   phone: z
     .string()
-    .regex(/^\+\d{7,15}$/, 'Teléfono debe estar en formato E.164 (ej: +573001234567)')
+    .max(USER_FIELD_MAX.phone)
+    .regex(USER_PHONE_E164_PATTERN, 'Teléfono debe estar en formato E.164 (ej: +573001234567)')
     .optional(),
-  jobTitle: z.string().max(150).optional(),
+  jobTitle: z.string().max(USER_FIELD_MAX.jobTitle).optional(),
   documentType: z.nativeEnum(DocumentType).optional(),
-  documentNumber: z.string().max(30).optional(),
+  documentNumber: z.string().max(USER_FIELD_MAX.documentNumber).optional(),
   isOperationalResource: z.boolean().optional(),
 });
 

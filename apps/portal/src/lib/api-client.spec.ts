@@ -123,3 +123,96 @@ describe('api-client auth refresh handling', () => {
     ).toHaveLength(1);
   });
 });
+
+describe('usersApi.bulkCreate', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    window.localStorage.clear();
+  });
+
+  it('acepta el lote async (202) con Idempotency-Key y sin secretos', async () => {
+    const accepted = {
+      jobId: 'job-abc',
+      status: 'queued',
+    };
+
+    const fetchMock = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/users/bulk')) {
+        expect(new Headers(init?.headers).get('Idempotency-Key')).toBe('idem-bulk-1');
+        expect(init?.method).toBe('POST');
+        return createJsonResponse(202, accepted);
+      }
+      throw new Error(`Unexpected fetch call: ${url}`);
+    });
+
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { persistAccessToken, usersApi } = await import('./api-client');
+    persistAccessToken('access-token');
+
+    const response = await usersApi.bulkCreate(
+      [{ email: 'nuevo@empresa.com', role: 'NOC' }],
+      'idem-bulk-1',
+      'isp-demo',
+    );
+
+    expect(response).toEqual(accepted);
+    expect(response.jobId).toBe('job-abc');
+  });
+
+  it('consulta estado y reclama resultado one-time sin envelope', async () => {
+    const statusBody = {
+      jobId: 'job-abc',
+      status: 'completed',
+      summary: { total: 1, succeeded: 1, failed: 0 },
+      failed: [],
+      credentialsClaimed: false,
+    };
+    const claimBody = {
+      ...statusBody,
+      status: 'completed',
+      succeeded: [
+        {
+          email: 'nuevo@empresa.com',
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+          role: 'NOC',
+          temporaryPassword: 'Temp-1234!',
+          createdAt: '2026-07-22T12:00:00.000Z',
+        },
+      ],
+      credentialsClaimed: true,
+    };
+
+    const fetchMock = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/users/bulk/jobs/job-abc')) {
+        return createJsonResponse(200, statusBody);
+      }
+      if (url.endsWith('/users/bulk/jobs/job-abc/result')) {
+        expect(init?.method).toBe('POST');
+        return createJsonResponse(200, claimBody);
+      }
+      throw new Error(`Unexpected fetch call: ${url}`);
+    });
+
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { persistAccessToken, usersApi } = await import('./api-client');
+    persistAccessToken('access-token');
+
+    const status = await usersApi.getBulkJobStatus('job-abc', 'isp-demo');
+    expect(status.credentialsClaimed).toBe(false);
+    expect(status).not.toHaveProperty('succeeded');
+
+    const claimed = await usersApi.claimBulkJobResult('job-abc', 'isp-demo');
+    expect(claimed.succeeded[0]?.temporaryPassword).toBe('Temp-1234!');
+    expect(claimed.credentialsClaimed).toBe(true);
+  });
+});

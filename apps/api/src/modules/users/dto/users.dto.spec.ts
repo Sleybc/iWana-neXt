@@ -6,6 +6,7 @@ import {
   CreateUserDto,
   ResetPasswordDto,
   UpdateProfileDto,
+  UpdateUserDto,
 } from './user.dto';
 
 describe('Users DTO validation', () => {
@@ -95,6 +96,24 @@ describe('Users DTO validation', () => {
       const dto = plainToInstance(UpdateProfileDto, { avatarUrl: 'no-es-url' });
       const errors = await validate(dto);
       expect(errors.some((error) => error.property === 'avatarUrl')).toBe(true);
+    });
+  });
+
+  describe('UpdateUserDto / UpdateProfileDto (H-10 consolidacion)', () => {
+    it('rechaza phone mayor a 20 caracteres en UpdateUserDto', async () => {
+      const dto = plainToInstance(UpdateUserDto, {
+        phone: `+${'1'.repeat(20)}`,
+      });
+      const errors = await validate(dto);
+      expect(errors.some((error) => error.property === 'phone')).toBe(true);
+    });
+
+    it('rechaza phone mayor a 20 caracteres en UpdateProfileDto', async () => {
+      const dto = plainToInstance(UpdateProfileDto, {
+        phone: `+${'1'.repeat(20)}`,
+      });
+      const errors = await validate(dto);
+      expect(errors.some((error) => error.property === 'phone')).toBe(true);
     });
   });
 });

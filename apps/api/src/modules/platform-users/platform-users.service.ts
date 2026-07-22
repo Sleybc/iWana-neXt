@@ -8,7 +8,6 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
-import * as crypto from 'crypto';
 import { PlatformUser } from '@iwana/db';
 import { AuditAction, PlatformRole, UserStatus } from '@iwana/shared';
 import { Repository } from 'typeorm';
@@ -17,7 +16,9 @@ import {
   decryptAes256Gcm,
   encryptAes256Gcm,
   loadAesGcmKeyPair,
+  looksLikeEncryptedAesGcm,
 } from '../../common/crypto/aes-gcm.util';
+import { hashEmail } from '../../common/crypto/hash-email.util';
 import { PlatformUserResponseDto } from './dto/platform-user-response.dto';
 import { CreatePlatformUserBootstrapDto } from './dto/create-platform-user-bootstrap.dto';
 import {
@@ -146,7 +147,7 @@ export class PlatformUsersService {
     }
 
     const normalizedEmail = dto.email.toLowerCase().trim();
-    const nextEmailHash = this.hashEmail(normalizedEmail);
+    const nextEmailHash = hashEmail(normalizedEmail);
 
     if (nextEmailHash === user.emailHash) {
       throw new BadRequestException('Ingresa un correo de acceso diferente al actual.');
@@ -231,7 +232,7 @@ export class PlatformUsersService {
       throw new BadRequestException('Las contraseñas no coinciden.');
     }
 
-    const emailHash = this.hashEmail(dto.email);
+    const emailHash = hashEmail(dto.email);
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
     const user = this.platformUserRepo.create({
@@ -277,16 +278,12 @@ export class PlatformUsersService {
     };
   }
 
-  private hashEmail(email: string): string {
-    return crypto.createHash('sha256').update(email.toLowerCase().trim()).digest('hex');
-  }
-
   private encryptValue(plaintext: string): string {
     return encryptAes256Gcm(plaintext, this.encryptionKey);
   }
 
   private decodeStoredValue(value: string): string {
-    if (!this.looksLikeEncryptedValue(value)) {
+    if (!looksLikeEncryptedAesGcm(value)) {
       return value;
     }
 
@@ -302,24 +299,6 @@ export class PlatformUsersService {
 
   private decryptStoredValue(encrypted: string): string {
     return decryptAes256Gcm(encrypted, this.encryptionKey, this.encryptionKeyPrevious);
-  }
-
-  private looksLikeEncryptedValue(value: string): boolean {
-    const parts = value.split(':');
-    if (parts.length !== 3) {
-      return false;
-    }
-
-    const [iv, authTag, ciphertext] = parts;
-    const isHex = (segment: string, expectedLength?: number) => {
-      if (!segment || (expectedLength && segment.length !== expectedLength)) {
-        return false;
-      }
-
-      return /^[0-9a-f]+$/i.test(segment) && segment.length % 2 === 0;
-    };
-
-    return isHex(iv ?? '', 24) && isHex(authTag ?? '', 32) && isHex(ciphertext ?? '');
   }
 
   private assertValidTimezone(timezone: string): void {
