@@ -10,6 +10,7 @@ import { PlatformRole } from '@iwana/shared';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { PlatformOnlyGuard } from '../auth/guards/platform-only.guard';
 import { GlobalSearchQueryDto } from './dto/global-search-query.dto';
 import {
   GlobalSearchRebuildResponseDto,
@@ -18,7 +19,7 @@ import {
 import { SearchService } from './search.service';
 
 @Controller('search')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PlatformOnlyGuard)
 @ApiTags('search')
 @ApiBearerAuth('access-token')
 export class SearchController {

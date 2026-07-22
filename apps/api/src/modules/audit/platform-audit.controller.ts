@@ -4,6 +4,7 @@ import type { Response } from 'express';
 import { PlatformAuditService } from './platform-audit.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { PlatformOnlyGuard } from '../auth/guards/platform-only.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { SkipAudit } from './decorators/skip-audit.decorator';
 import { PlatformRole } from '@iwana/shared';
@@ -12,7 +13,7 @@ import { QueryPlatformAuditLogsDto } from './dto/query-platform-audit-logs.dto';
 import { AUDIT_EXPORT_TRUNCATED_HEADER } from './helpers/audit-export.helper';
 
 @Controller('platform-audit-logs')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PlatformOnlyGuard)
 @Roles(PlatformRole.SYSTEM_ADMIN, PlatformRole.IWANA_SUPPORT)
 @SkipAudit()
 @ApiTags('platform-audit-logs')

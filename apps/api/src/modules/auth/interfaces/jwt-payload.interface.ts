@@ -28,6 +28,12 @@ export interface JwtPayload {
    * Ausente o undefined = token completo sin restricciones de ruta.
    */
   scope?: 'mfa-setup';
+  /**
+   * Emisor y audiencia. Diferencian criptograficamente los tokens de plataforma
+   * de los de tenant (ver auth.constants.ts). Los emite @nestjs/jwt al firmar.
+   */
+  iss?: string;
+  aud?: string | string[];
   iat?: number;
   exp?: number;
 }

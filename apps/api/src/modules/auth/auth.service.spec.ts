@@ -30,7 +30,9 @@ import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { PlatformUser, RefreshToken, User } from '@iwana/db';
 import { UserRole, UserStatus } from '@iwana/shared';
+import { createHash } from 'crypto';
 import { AuthService } from './auth.service';
+import { JWT_CLAIMS_BY_TOKEN_TYPE } from './auth.constants';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { AuditService } from '../audit/audit.service';
 import { MailerService } from '../mailer/mailer.service';
@@ -1539,6 +1541,154 @@ describe('AuthService', () => {
       const calls = (auditService.log as jest.Mock).mock.calls as Array<[{ action: string }]>;
       const updateCalls = calls.filter(([args]) => args.action === 'UPDATE');
       expect(updateCalls).toHaveLength(0);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // H-04 — ciclo de vida del token de reset
+  // ---------------------------------------------------------------------------
+
+  describe('ciclo de vida del token de reset (H-04)', () => {
+    /** Simula la columna `password_reset_token`, que ahora guarda solo el hash. */
+    function findOneByStoredToken(storedToken: string | null): jest.Mock {
+      return jest.fn().mockImplementation(async (_entity: unknown, options: unknown) => {
+        const where = (options as { where?: { passwordResetToken?: string } }).where;
+        if (!where?.passwordResetToken || where.passwordResetToken !== storedToken) {
+          return null;
+        }
+        return buildUser({
+          passwordResetToken: storedToken,
+          passwordResetTokenExpiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        });
+      });
+    }
+
+    it('forgotPassword persiste el hash, nunca el token en claro', async () => {
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(buildUser()),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      });
+
+      const mailerService = (service as unknown as { mailerService: { sendMail: jest.Mock } })
+        .mailerService;
+
+      await service.forgotPassword({ email: 'test@example.com' });
+
+      const persistido = (manager.update as jest.Mock).mock.calls[0]![2] as {
+        passwordResetToken: string;
+      };
+      const enlace = (mailerService.sendMail as jest.Mock).mock.calls[0]![0] as { html?: string };
+      const tokenEnClaro = /token=([a-f0-9]{64})/.exec(enlace.html ?? '')?.[1];
+
+      expect(tokenEnClaro).toBeDefined();
+      expect(persistido.passwordResetToken).not.toBe(tokenEnClaro);
+      expect(persistido.passwordResetToken).toBe(
+        createHash('sha256').update(tokenEnClaro!).digest('hex'),
+      );
+    });
+
+    it('canjea el token en claro contra el hash almacenado', async () => {
+      const tokenEnClaro = 'a'.repeat(64);
+      const hashAlmacenado = createHash('sha256').update(tokenEnClaro).digest('hex');
+
+      setupRunInTenantSchema({
+        findOne: findOneByStoredToken(hashAlmacenado),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      });
+
+      await expect(
+        service.resetPassword({ token: tokenEnClaro, newPassword: 'NuevoPass1!' }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('rechaza el token emitido antes de que el registro fuera recreado', async () => {
+      const tokenDeLaVidaAnterior = 'b'.repeat(64);
+
+      // Estado tras la recreacion: `UsersService.create()` deja la columna a null.
+      setupRunInTenantSchema({
+        findOne: findOneByStoredToken(null),
+      });
+
+      await expect(
+        service.resetPassword({ token: tokenDeLaVidaAnterior, newPassword: 'NuevoPass1!' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('el usuario resucitado sin password explicito puede iniciar sesion con su temporal', async () => {
+      // Estado exacto que produce `UsersService.create()` en la rama de resurreccion:
+      // credencial temporal obligatoria y SIN expiracion heredada.
+      const user = buildUser({
+        status: UserStatus.ACTIVE,
+        passwordResetRequired: true,
+        passwordResetExpiresAt: null,
+        passwordResetToken: null,
+        passwordResetTokenExpiresAt: null,
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+        save: jest.fn().mockResolvedValue({}),
+        create: jest.fn().mockImplementation((_, partial) => partial),
+      });
+
+      const result = await service.login({
+        email: 'resucitado@empresa-demo.test',
+        password: 'TemporalGenerada1!',
+      });
+
+      expect(result.accessToken).toBe('mock.jwt.token');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // H-01 — separacion criptografica de audiencias
+  // ---------------------------------------------------------------------------
+
+  describe('separacion de audiencias en la firma (H-01)', () => {
+    it('el token de tenant se firma con el emisor y la audiencia de tenant', async () => {
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(buildUser()),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+        save: jest.fn().mockResolvedValue({}),
+        create: jest.fn().mockImplementation((_, partial) => partial),
+      });
+
+      await service.login({ email: 'test@example.com', password: 'Passw0rd!' });
+
+      expect(jwtService.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'tenant' }),
+        expect.objectContaining({
+          issuer: JWT_CLAIMS_BY_TOKEN_TYPE.tenant.issuer,
+          audience: JWT_CLAIMS_BY_TOKEN_TYPE.tenant.audience,
+        }),
+      );
+    });
+
+    it('el token de plataforma usa un emisor y una audiencia distintos', () => {
+      const platformUser = {
+        id: 'platform-uuid',
+        emailHash: 'hash-plataforma',
+        role: 'SYSTEM_ADMIN',
+      } as unknown as PlatformUser;
+
+      service.signPlatformToken(platformUser);
+
+      expect(jwtService.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'platform' }),
+        expect.objectContaining({
+          issuer: JWT_CLAIMS_BY_TOKEN_TYPE.platform.issuer,
+          audience: JWT_CLAIMS_BY_TOKEN_TYPE.platform.audience,
+        }),
+      );
+      expect(JWT_CLAIMS_BY_TOKEN_TYPE.platform.issuer).not.toBe(
+        JWT_CLAIMS_BY_TOKEN_TYPE.tenant.issuer,
+      );
+      expect(JWT_CLAIMS_BY_TOKEN_TYPE.platform.audience).not.toBe(
+        JWT_CLAIMS_BY_TOKEN_TYPE.tenant.audience,
+      );
     });
   });
 });

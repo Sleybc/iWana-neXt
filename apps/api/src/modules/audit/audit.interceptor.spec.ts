@@ -453,4 +453,53 @@ describe('AuditInterceptor', () => {
 
     expect(auditService.log).not.toHaveBeenCalled();
   });
+
+  // --------------------------------------------------------------------------
+  // Punto ciego cerrado: CUD autenticado sin destino de auditoria resoluble
+  // --------------------------------------------------------------------------
+
+  describe('peticion CUD autenticada sin destino de auditoria resoluble', () => {
+    it('registra la anomalia en platform_audit_logs en vez de descartarla', async () => {
+      mockTenantContextGet.mockReturnValue(undefined); // Sin TenantContext
+      const ctx = buildMockContext({
+        method: 'POST',
+        // Token de tenant en una superficie sin TenantContext: el caso que hizo
+        // intrazable la escalada de privilegio.
+        user: { sub: 'usr-tenant-1', type: 'tenant' },
+      });
+      const reflector = buildReflector();
+      const interceptor = new AuditInterceptor(
+        auditService as unknown as AuditService,
+        platformAuditService as unknown as PlatformAuditService,
+        reflector,
+      );
+
+      const result$ = interceptor.intercept(ctx, { handle: () => of({ data: { id: 'e9' } }) });
+      await lastValueFrom(result$);
+
+      expect(auditService.log).not.toHaveBeenCalled();
+      expect(platformAuditService.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityType: expect.stringContaining('ANOMALIA_AUDITORIA'),
+          userId: 'usr-tenant-1',
+        }),
+      );
+    });
+
+    it('no registra anomalia cuando la peticion es anonima', async () => {
+      mockTenantContextGet.mockReturnValue(undefined);
+      const ctx = buildMockContext({ method: 'POST' }); // Sin user
+      const reflector = buildReflector();
+      const interceptor = new AuditInterceptor(
+        auditService as unknown as AuditService,
+        platformAuditService as unknown as PlatformAuditService,
+        reflector,
+      );
+
+      const result$ = interceptor.intercept(ctx, { handle: () => of({}) });
+      await lastValueFrom(result$);
+
+      expect(platformAuditService.log).not.toHaveBeenCalled();
+    });
+  });
 });

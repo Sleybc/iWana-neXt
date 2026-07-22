@@ -16,6 +16,7 @@ import { Public } from '../auth/decorators/public.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { PlatformOnlyGuard } from '../auth/guards/platform-only.guard';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { PlatformUser } from '@iwana/db';
 import { CreatePlatformUserBootstrapDto } from './dto/create-platform-user-bootstrap.dto';
@@ -28,7 +29,7 @@ import {
 import { PlatformUsersService } from './platform-users.service';
 
 @Controller('platform-users')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PlatformOnlyGuard)
 @ApiTags('platform-users')
 @ApiBearerAuth('access-token')
 export class PlatformUsersController {

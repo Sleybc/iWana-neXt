@@ -13,7 +13,13 @@ import { DataSource, FindOptionsWhere, MoreThan } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { User } from '@iwana/db';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
-import { DocumentType, UserRole, UserStatus, AuditAction } from '@iwana/shared';
+import {
+  AuditAction,
+  DocumentType,
+  isTenantAssignableRole,
+  UserRole,
+  UserStatus,
+} from '@iwana/shared';
 import { AuditService } from '../audit/audit.service';
 import { decryptAes256Gcm, loadAesGcmKeyPair } from '../../common/crypto/aes-gcm.util';
 import { SearchQueueService } from '../search/search-queue.service';
@@ -95,6 +101,81 @@ export class UsersService {
 
   private getDefaultOperationalResource(role: UserRole): boolean {
     return role === UserRole.TECHNICIAN || role === UserRole.CONTRACTOR;
+  }
+
+  /**
+   * Frontera de asignacion de roles del CRUD de tenant (H-01).
+   *
+   * `SYSTEM_ADMIN` e `IWANA_SUPPORT` son miembros de `UserRole` por deuda
+   * historica, pero son roles de plataforma. Asignarlos a un usuario de tenant
+   * era el primer eslabon de la escalada de privilegio. La validacion se repite
+   * aqui —y no solo en el DTO— porque `bulkCreate` entra por un schema Zod
+   * distinto y porque un servicio no debe confiar en que su unico llamador sea
+   * el controlador.
+   */
+  private assertTenantAssignableRole(role: UserRole): void {
+    if (!isTenantAssignableRole(role)) {
+      throw new ForbiddenException('El rol indicado no puede asignarse a un usuario del tenant.');
+    }
+  }
+
+  /**
+   * Estado inicial completo de un usuario recien dado de alta.
+   *
+   * FUENTE UNICA para las dos ramas de `create()`: alta nueva y resurreccion de
+   * un usuario soft-deleted. Antes eran dos bloques copiados a mano y la rama de
+   * resurreccion olvidaba `passwordResetToken`, `passwordResetTokenExpiresAt` y
+   * `passwordResetExpiresAt` (H-04): un token de reset emitido en la vida
+   * anterior del registro seguia siendo canjeable tras recrear la cuenta, y el
+   * `passwordResetExpiresAt` heredado —ya vencido— dejaba al usuario resucitado
+   * sin poder iniciar sesion con su contrasena temporal.
+   *
+   * El objeto cubre TODAS las columnas de `User` salvo las gestionadas por
+   * TypeORM. Lo que sobrevive a una resurreccion es, por tanto, una lista
+   * explicita y corta: `id`, `createdAt`, `updatedAt` y `deletedAt` (que la
+   * propia rama limpia). Cualquier columna nueva de `User` que no se anada aqui
+   * rompera el typecheck en vez de filtrarse en silencio.
+   */
+  private buildInitialUserState(params: {
+    dto: CreateUserDto;
+    normalizedEmail: string;
+    emailHash: string;
+    passwordHash: string;
+    tenantId: string;
+    isOperationalResource: boolean;
+  }): Omit<User, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'> {
+    const { dto, normalizedEmail, emailHash, passwordHash, tenantId, isOperationalResource } =
+      params;
+
+    return {
+      email: normalizedEmail,
+      emailHash,
+      passwordHash,
+      role: dto.role,
+      status: UserStatus.PENDING_VERIFICATION,
+      tenantId,
+      mfaEnabled: false,
+      mfaSecret: null,
+      mfaRequired: dto.mfaRequired ?? false,
+      isOperationalResource,
+      passwordResetRequired: !dto.password,
+      // Credenciales de recuperacion: siempre en blanco en un alta.
+      passwordResetToken: null,
+      passwordResetTokenExpiresAt: null,
+      passwordResetExpiresAt: null,
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+      lastLoginAt: null,
+      emailVerified: false,
+      emailVerificationToken: null,
+      firstName: dto.firstName?.trim() ?? null,
+      lastName: dto.lastName?.trim() ?? null,
+      phone: dto.phone ?? null,
+      jobTitle: dto.jobTitle ?? null,
+      documentType: dto.documentType ?? null,
+      documentNumber: dto.documentNumber?.trim() ?? null,
+      avatarUrl: dto.avatarUrl ?? null,
+    };
   }
 
   /**
@@ -194,6 +275,9 @@ export class UsersService {
     // Obtener tenantId desde TenantContext
     const { tenantId } = TenantContext.getOrThrow();
 
+    // Frontera de roles: ningun rol de plataforma puede entrar por aqui (H-01).
+    this.assertTenantAssignableRole(dto.role);
+
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const emailHash = this.hashEmail(dto.email);
 
@@ -222,6 +306,16 @@ export class UsersService {
       const isOperationalResource =
         dto.isOperationalResource ?? this.getDefaultOperationalResource(dto.role);
 
+      // Fuente unica del estado inicial — comun a alta nueva y a resurreccion (H-04).
+      const initialState = this.buildInitialUserState({
+        dto,
+        normalizedEmail,
+        emailHash,
+        passwordHash,
+        tenantId,
+        isOperationalResource,
+      });
+
       if (existing?.deletedAt) {
         /**
          * El usuario fue eliminado (soft delete) pero el email_hash tiene unique constraint
@@ -230,6 +324,7 @@ export class UsersService {
          * nuevos datos, como si fuera un usuario completamente nuevo.
          */
         await qr.manager.restore(User, { id: existing.id });
+        Object.assign(existing, initialState);
         /**
          * CRÍTICO: limpiar deletedAt en el objeto en memoria ANTES de save().
          * restore() limpia deleted_at en la BD, pero el objeto TypeScript todavía
@@ -237,58 +332,11 @@ export class UsersService {
          * antiguo a la BD y el usuario queda soft-deleted inmediatamente otra vez.
          */
         existing.deletedAt = null;
-        existing.email = normalizedEmail;
-        existing.emailHash = emailHash;
-        existing.passwordHash = passwordHash;
-        existing.role = dto.role;
-        existing.status = UserStatus.PENDING_VERIFICATION;
-        existing.tenantId = tenantId;
-        existing.mfaEnabled = false;
-        existing.mfaSecret = null;
-        existing.passwordResetRequired = !dto.password;
-        existing.failedLoginAttempts = 0;
-        existing.lockedUntil = null;
-        existing.lastLoginAt = null;
-        existing.emailVerified = false;
-        existing.emailVerificationToken = null;
-        existing.firstName = dto.firstName?.trim() ?? null;
-        existing.lastName = dto.lastName?.trim() ?? null;
-        existing.phone = dto.phone ?? null;
-        existing.jobTitle = dto.jobTitle ?? null;
-        existing.documentType = dto.documentType ?? null;
-        existing.documentNumber = dto.documentNumber?.trim() ?? null;
-        existing.avatarUrl = dto.avatarUrl ?? null;
-        existing.mfaRequired = dto.mfaRequired ?? false;
-        existing.isOperationalResource = isOperationalResource;
         await qr.manager.save(User, existing);
         user = existing;
       } else {
         // Usuario nuevo — insertar registro fresco
-        user = qr.manager.create(User, {
-          email: normalizedEmail,
-          emailHash,
-          passwordHash,
-          role: dto.role,
-          status: UserStatus.PENDING_VERIFICATION,
-          tenantId,
-          mfaEnabled: false,
-          mfaSecret: null,
-          passwordResetRequired: !dto.password,
-          failedLoginAttempts: 0,
-          lockedUntil: null,
-          lastLoginAt: null,
-          emailVerified: false,
-          emailVerificationToken: null,
-          firstName: dto.firstName?.trim() ?? null,
-          lastName: dto.lastName?.trim() ?? null,
-          phone: dto.phone ?? null,
-          jobTitle: dto.jobTitle ?? null,
-          documentType: dto.documentType ?? null,
-          documentNumber: dto.documentNumber?.trim() ?? null,
-          avatarUrl: dto.avatarUrl ?? null,
-          mfaRequired: dto.mfaRequired ?? false,
-          isOperationalResource,
-        });
+        user = qr.manager.create(User, initialState);
         await qr.manager.save(User, user);
       }
 
@@ -391,6 +439,11 @@ export class UsersService {
     actorRole: string,
   ): Promise<UserResponseDto> {
     const { schemaName } = TenantContext.getOrThrow();
+
+    // Frontera de roles: la escalada empezaba en un PATCH con role SYSTEM_ADMIN (H-01).
+    if (dto.role !== undefined) {
+      this.assertTenantAssignableRole(dto.role);
+    }
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const user = await qr.manager.findOne(User, { where: { id } });

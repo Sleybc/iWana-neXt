@@ -40,6 +40,7 @@ export * from './interfaces/assurance-field-service-request.interface';
 export * from './dto/pagination.dto';
 
 // Constants
+export * from './constants/platform-roles';
 export * from './constants/queue-names';
 export * from './constants/search-job-names';
 

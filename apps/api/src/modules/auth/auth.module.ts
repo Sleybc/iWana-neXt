@@ -4,11 +4,13 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PlatformUser, RefreshToken, User } from '@iwana/db';
+import { JWT_ACCEPTED_AUDIENCES, JWT_ACCEPTED_ISSUERS } from './auth.constants';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { AbacGuard } from './guards/abac.guard';
+import { PlatformOnlyGuard } from './guards/platform-only.guard';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { AuditModule } from '../audit/audit.module';
 import { PlatformBootstrapService } from './platform-bootstrap.service';
@@ -42,13 +44,16 @@ import { PlatformBootstrapService } from './platform-bootstrap.service';
         // Las claves PEM pueden venir con \n literales en el .env — se normaliza aqui
         privateKey: config.getOrThrow<string>('JWT_PRIVATE_KEY').replace(/\\n/g, '\n'),
         publicKey: config.getOrThrow<string>('JWT_PUBLIC_KEY').replace(/\\n/g, '\n'),
+        // Sin `issuer` por defecto en signOptions: cada emision declara el suyo
+        // segun el tipo de token (ver auth.constants.ts). La verificacion acepta
+        // los dos emisores/audiencias y JwtStrategy exige la coherencia con `type`.
         signOptions: {
           algorithm: 'RS256',
-          issuer: config.get<string>('JWT_ISSUER', 'iwana-next'),
         },
         verifyOptions: {
           algorithms: ['RS256'],
-          issuer: config.get<string>('JWT_ISSUER', 'iwana-next'),
+          issuer: JWT_ACCEPTED_ISSUERS,
+          audience: JWT_ACCEPTED_AUDIENCES,
         },
       }),
     }),
@@ -66,6 +71,7 @@ import { PlatformBootstrapService } from './platform-bootstrap.service';
     JwtAuthGuard,
     RolesGuard,
     AbacGuard,
+    PlatformOnlyGuard,
     PlatformBootstrapService,
   ],
   exports: [
@@ -73,6 +79,7 @@ import { PlatformBootstrapService } from './platform-bootstrap.service';
     JwtAuthGuard,
     RolesGuard,
     AbacGuard,
+    PlatformOnlyGuard,
     JwtModule,
     // Decoradores son funciones puras — no se exportan como providers
   ],

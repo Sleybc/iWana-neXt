@@ -1,9 +1,14 @@
 import { z } from 'zod';
-import { DocumentType, UserRole } from '@iwana/shared';
+import { DocumentType, isTenantAssignableRole, UserRole } from '@iwana/shared';
 
 export const BulkCreateUserItemSchema = z.object({
   email: z.string().email('Email inválido').max(255),
-  role: z.nativeEnum(UserRole, { errorMap: () => ({ message: 'Rol inválido' }) }),
+  // Los roles de plataforma no son asignables desde el CRUD del tenant (H-01).
+  role: z
+    .nativeEnum(UserRole, { errorMap: () => ({ message: 'Rol inválido' }) })
+    .refine(isTenantAssignableRole, {
+      message: 'El rol indicado no puede asignarse a un usuario del tenant.',
+    }),
   firstName: z.string().max(100).optional(),
   lastName: z.string().max(100).optional(),
   phone: z

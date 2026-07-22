@@ -35,6 +35,7 @@ import {
   ResendVerificationDto,
   ResetPasswordDto,
 } from './dto/auth.dto';
+import { JWT_CLAIMS_BY_TOKEN_TYPE } from './auth.constants';
 import { AuthResponse, MfaSetupResponse } from './interfaces/auth-response.interface';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import {
@@ -594,8 +595,10 @@ export class AuthService {
       const tokenExpiresAt = new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MS);
 
       // SEC-03: TTL del token forgot-password es independiente de la credencial temporal.
+      // Se persiste solo el hash SHA-256, en paridad con el refresh token: el valor
+      // en claro existe unicamente en memoria y en el enlace enviado por correo.
       await qr.manager.update(User, user.id, {
-        passwordResetToken: token,
+        passwordResetToken: this.hashToken(token),
         passwordResetTokenExpiresAt: tokenExpiresAt,
       });
 
@@ -633,8 +636,9 @@ export class AuthService {
     const { schemaName } = TenantContext.getOrThrow();
 
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      // El token viaja en claro en el enlace; en BD solo existe su hash.
       const user = await qr.manager.findOne(User, {
-        where: { passwordResetToken: dto.token },
+        where: { passwordResetToken: this.hashToken(dto.token) },
       });
 
       if (!user || !user.passwordResetTokenExpiresAt) {
@@ -934,6 +938,9 @@ export class AuthService {
     const accessToken = this.jwtService.sign(payload, {
       expiresIn: `${ACCESS_TOKEN_TTL_SECONDS}s`,
       algorithm: 'RS256',
+      // Audiencia de tenant: un token emitido aqui no verifica como token de plataforma.
+      issuer: JWT_CLAIMS_BY_TOKEN_TYPE.tenant.issuer,
+      audience: JWT_CLAIMS_BY_TOKEN_TYPE.tenant.audience,
     });
 
     return { accessToken, jti };
@@ -957,6 +964,9 @@ export class AuthService {
     const accessToken = this.jwtService.sign(payload, {
       expiresIn: `${ACCESS_TOKEN_TTL_SECONDS}s`,
       algorithm: 'RS256',
+      // Audiencia de plataforma: solo estos tokens verifican en la consola de plataforma.
+      issuer: JWT_CLAIMS_BY_TOKEN_TYPE.platform.issuer,
+      audience: JWT_CLAIMS_BY_TOKEN_TYPE.platform.audience,
     });
 
     return { accessToken, jti };

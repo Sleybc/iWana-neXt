@@ -238,10 +238,11 @@ export class AuditInterceptor implements NestInterceptor {
     // Determinar contexto de audit:
     // - Usuario de plataforma → PlatformAuditService (public.platform_audit_logs)
     // - Usuario de tenant con TenantContext → AuditService (<schema>.audit_logs)
-    // - Sin contexto identificable → omitir silenciosamente
+    // - Peticion autenticada sin destino resoluble → anomalia en platform_audit_logs
+    // - Peticion anonima sin TenantContext → se omite (nada que trazar)
     const tenantCtx = TenantContext.get();
 
-    if (!isPlatformUser && !tenantCtx) return next.handle();
+    if (!isPlatformUser && !tenantCtx && !user) return next.handle();
 
     // Nombre de entidad desde decorador o clase del controlador
     const entityType =
@@ -300,6 +301,26 @@ export class AuditInterceptor implements NestInterceptor {
               ...entryBase,
               tenantId: tenantCtx.tenantId,
               schemaName: tenantCtx.schemaName,
+            });
+          } else {
+            // Punto ciego cerrado (H-01): una peticion CUD autenticada cuyo destino
+            // de auditoria no es resoluble (token de tenant sin TenantContext, p. ej.
+            // en rutas excluidas del TenantMiddleware) se descartaba en silencio, y
+            // eso fue lo que hizo intrazable la escalada. Ahora queda como anomalia
+            // en public.platform_audit_logs.
+            this.logger.warn(
+              `Operacion ${method} auditada sin destino resoluble ` +
+                `[entity=${entityType} tokenType=${user?.type ?? 'desconocido'}]`,
+            );
+            void this.platformAuditService.log({
+              ...entryBase,
+              entityType: `ANOMALIA_AUDITORIA:${entityType}`,
+              newValue: {
+                motivo: 'Peticion autenticada sin contexto de auditoria resoluble',
+                tokenType: user?.type ?? null,
+                metodo: method,
+                controlador: context.getClass().name,
+              },
             });
           }
         },

@@ -2,6 +2,7 @@ import {
   IsBoolean,
   IsEmail,
   IsEnum,
+  IsIn,
   IsOptional,
   IsString,
   IsUrl,
@@ -10,7 +11,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, ApiSchema } from '@nestjs/swagger';
-import { DocumentType, UserRole, UserStatus } from '@iwana/shared';
+import { DocumentType, TENANT_ASSIGNABLE_ROLES, UserRole, UserStatus } from '@iwana/shared';
 
 /**
  * DTO para crear un usuario dentro del tenant.
@@ -26,8 +27,17 @@ export class CreateUserDto {
   @MaxLength(255)
   email: string;
 
-  @ApiProperty({ enum: UserRole, description: 'Rol del usuario en el tenant' })
-  @IsEnum(UserRole)
+  /**
+   * Rol del usuario dentro del tenant.
+   *
+   * Los roles de plataforma (SYSTEM_ADMIN, IWANA_SUPPORT) no son asignables
+   * desde aqui: siguen siendo miembros de `UserRole` por compatibilidad, pero
+   * `TENANT_ASSIGNABLE_ROLES` es la frontera efectiva (H-01).
+   */
+  @ApiProperty({ enum: TENANT_ASSIGNABLE_ROLES, description: 'Rol del usuario en el tenant' })
+  @IsIn(TENANT_ASSIGNABLE_ROLES, {
+    message: 'El rol indicado no puede asignarse a un usuario del tenant.',
+  })
   role: UserRole;
 
   @ApiPropertyOptional({
@@ -121,9 +131,12 @@ export class UpdateUserDto {
   @IsEnum(UserStatus)
   status?: UserStatus;
 
-  @ApiPropertyOptional({ enum: UserRole, description: 'Nuevo rol del usuario' })
+  /** Nuevo rol del usuario. Los roles de plataforma no son asignables (H-01). */
+  @ApiPropertyOptional({ enum: TENANT_ASSIGNABLE_ROLES, description: 'Nuevo rol del usuario' })
   @IsOptional()
-  @IsEnum(UserRole)
+  @IsIn(TENANT_ASSIGNABLE_ROLES, {
+    message: 'El rol indicado no puede asignarse a un usuario del tenant.',
+  })
   role?: UserRole;
 
   // ── Perfil personal (todos opcionales) ──────────────────────────────────────

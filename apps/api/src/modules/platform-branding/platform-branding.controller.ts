@@ -29,6 +29,7 @@ import { Public } from '../auth/decorators/public.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { PlatformOnlyGuard } from '../auth/guards/platform-only.guard';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { SkipAudit } from '../audit/decorators/skip-audit.decorator';
 import { MediaAssetResponseDto } from '../media/dto/media-asset-response.dto';
@@ -41,7 +42,7 @@ import {
 import { PlatformBrandingService } from './platform-branding.service';
 
 @Controller('platform/branding')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PlatformOnlyGuard)
 @SkipAudit()
 @ApiTags('platform-branding')
 @ApiBearerAuth('access-token')
