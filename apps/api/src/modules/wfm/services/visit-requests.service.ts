@@ -10,6 +10,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import { runInTenantSchema, ScheduleEvent, TenantContext, VisitRequest } from '@iwana/db';
 import {
+  isPlatformOnlyRole,
   ScheduleEventStatus,
   UserStatus,
   UserRole,
@@ -960,8 +961,9 @@ export class VisitRequestsService {
     return (
       user.status === UserStatus.ACTIVE &&
       user.deletedAt === null &&
-      user.role !== UserRole.SYSTEM_ADMIN &&
-      user.role !== UserRole.IWANA_SUPPORT
+      // Frontera de procedencia (ADR-061 §4): la fila puede ser anterior al
+      // estrechamiento del dominio, asi que se comprueba el literal persistido.
+      !isPlatformOnlyRole(user.role)
     );
   }
 

@@ -19,7 +19,9 @@ import { runInTenantSchema, TenantContext } from '@iwana/db';
 import {
   AuditAction,
   DocumentType,
+  isPlatformOnlyRole,
   isTenantAssignableRole,
+  PlatformRole,
   USERS_BULK_CREATE_JOB,
   USERS_BULK_CREATE_QUEUE,
   UserRole,
@@ -128,7 +130,11 @@ export class UsersService {
   ) {}
 
   private assertCanReadUser(id: string, actorUserId: string, actorRole: string): void {
-    if (actorRole !== UserRole.ADMIN && actorRole !== UserRole.SYSTEM_ADMIN && actorUserId !== id) {
+    if (
+      actorRole !== UserRole.ADMIN &&
+      actorRole !== PlatformRole.SYSTEM_ADMIN &&
+      actorUserId !== id
+    ) {
       throw new ForbiddenException('No tienes permisos para ver este usuario.');
     }
   }
@@ -176,14 +182,35 @@ export class UsersService {
   }
 
   /**
-   * Frontera de asignacion de roles del CRUD de tenant (H-01).
+   * Ningun usuario cuyo rol PERSISTIDO sea de plataforma es administrable desde
+   * el CRUD del tenant, salvo por un actor de plataforma.
    *
-   * `SYSTEM_ADMIN` e `IWANA_SUPPORT` son miembros de `UserRole` por deuda
-   * historica, pero son roles de plataforma. Asignarlos a un usuario de tenant
-   * era el primer eslabon de la escalada de privilegio. La validacion se repite
-   * aqui —y no solo en el DTO— porque `bulkCreate` entra por un schema Zod
-   * distinto y porque un servicio no debe confiar en que su unico llamador sea
-   * el controlador.
+   * Tras ADR-061 §4 ese estado ya no deberia existir: `UserRole` no contiene los
+   * roles de plataforma y la migracion tenant 085 anade el CHECK equivalente en
+   * la columna. La comprobacion se conserva —y se unifica aqui— porque opera
+   * sobre el literal leido de la base, no sobre el tipo: un schema creado fuera
+   * del runner de migraciones no tiene el CHECK.
+   *
+   * Sustituye a tres comprobaciones que solo miraban `SYSTEM_ADMIN` y dejaban
+   * `IWANA_SUPPORT` sin cubrir.
+   */
+  private assertTargetIsNotPlatformUser(targetRole: string, actorRole: string): void {
+    if (isPlatformOnlyRole(targetRole) && !isPlatformOnlyRole(actorRole)) {
+      throw new ForbiddenException(
+        'No tienes permisos para administrar a un usuario con rol de plataforma.',
+      );
+    }
+  }
+
+  /**
+   * Frontera de asignacion de roles del CRUD de tenant (H-01 / ADR-061 §4).
+   *
+   * Tras sacar los roles de plataforma de `UserRole`, el tipo ya impide el
+   * estado invalido en el camino tipado. La validacion se conserva —y no solo
+   * en el DTO— porque `bulkCreate` entra por un schema Zod distinto, porque un
+   * servicio no debe confiar en que su unico llamador sea el controlador, y
+   * porque `isTenantAssignableRole` comprueba pertenencia positiva: rechaza
+   * cualquier literal desconocido, no solo los dos roles de plataforma de hoy.
    */
   private assertTenantAssignableRole(role: UserRole): void {
     if (!isTenantAssignableRole(role)) {
@@ -268,12 +295,17 @@ export class UsersService {
     role?: UserRole;
     search?: string;
   }): Promise<{ data: UserResponseDto[]; meta: { nextCursor: string | null; total: number } }> {
-    const { schemaName } = TenantContext.getOrThrow();
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
     const requested = params.limit ?? 50;
     const limit =
       Number.isFinite(requested) && requested > 0 ? Math.min(Math.floor(requested), 100) : 50;
 
     const normalizedSearch = this.normalizeSearchValue(params.search ?? '');
+
+    // Designacion de admin principal (ADR-063): una sola lectura para toda la
+    // pagina. Vive en `public.tenants`, fuera del schema del tenant, asi que se
+    // resuelve antes de entrar en `runInTenantSchema`.
+    const principalAdminUserId = await this.tenantService.getPrincipalAdminUserId(tenantId);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       if (!normalizedSearch) {
@@ -297,7 +329,7 @@ export class UsersService {
         const items = hasNext ? users.slice(0, limit) : users;
 
         return {
-          data: items.map((u) => this.toDto(u)),
+          data: items.map((u) => this.toDto(u, principalAdminUserId)),
           meta: {
             nextCursor: hasNext ? (items[items.length - 1]?.id ?? null) : null,
             total,
@@ -361,7 +393,7 @@ export class UsersService {
       const items = hasNext ? users.slice(0, limit) : users;
 
       return {
-        data: items.map((u) => this.toDto(u)),
+        data: items.map((u) => this.toDto(u, principalAdminUserId)),
         meta: {
           nextCursor: hasNext ? (items[items.length - 1]?.id ?? null) : null,
           total,
@@ -815,7 +847,7 @@ export class UsersService {
       // Un usuario no-ADMIN solo puede actualizar su propio perfil
       if (
         actorRole !== UserRole.ADMIN &&
-        actorRole !== UserRole.SYSTEM_ADMIN &&
+        actorRole !== PlatformRole.SYSTEM_ADMIN &&
         actorUserId !== id
       ) {
         throw new ForbiddenException('No tienes permisos para actualizar este usuario.');
@@ -920,7 +952,7 @@ export class UsersService {
 
       const shouldSyncContactEmail = dto.syncCompanyContactEmail !== false;
       const shouldUpdateTenantContactEmail = shouldSyncContactEmail
-        ? await this.isPrincipalAdminUser(qr.manager, user.id)
+        ? await this.isPrincipalAdminUser(user.tenantId, user.id)
         : false;
 
       if (shouldUpdateTenantContactEmail) {
@@ -991,11 +1023,11 @@ export class UsersService {
         throw new NotFoundException(`Usuario ${id} no encontrado.`);
       }
 
-      if (user.role === UserRole.SYSTEM_ADMIN && actorRole !== UserRole.SYSTEM_ADMIN) {
-        throw new ForbiddenException(
-          'No tienes permisos para cambiar el email de un SYSTEM_ADMIN.',
-        );
-      }
+      // Defensa en profundidad tras ADR-061 §4: el dominio de `users.role` ya no
+      // admite roles de plataforma (enum + CHECK de la migracion tenant 085),
+      // pero la comprobacion se hace sobre el literal persistido para cubrir un
+      // schema que no haya pasado por el runner.
+      this.assertTargetIsNotPlatformUser(user.role, actorRole);
 
       const normalizedEmail = dto.email.toLowerCase().trim();
       const previousEmailHash = user.emailHash;
@@ -1020,7 +1052,7 @@ export class UsersService {
       const shouldSyncContactEmail = dto.syncCompanyContactEmail !== false;
       const shouldUpdateTenantContactEmail =
         shouldSyncContactEmail && emailChanged
-          ? await this.isPrincipalAdminUser(qr.manager, user.id)
+          ? await this.isPrincipalAdminUser(user.tenantId, user.id)
           : false;
 
       if (shouldUpdateTenantContactEmail) {
@@ -1060,8 +1092,15 @@ export class UsersService {
 
   /**
    * Soft delete de usuario.
-   * RF-RBAC-04: un ADMIN de tenant no puede eliminar a otro ADMIN del mismo tenant.
-   * SYSTEM_ADMIN puede eliminar cualquier usuario (incluidos ADMINs).
+   *
+   * RF-RBAC-04: un ADMIN de tenant no puede eliminar a otro ADMIN del mismo
+   * tenant; un SYSTEM_ADMIN de plataforma sí (incluidos ADMINs).
+   *
+   * ADR-063: el administrador principal designado NO puede eliminarse mientras
+   * lo sea — ni siquiera por un SYSTEM_ADMIN. Hay que transferir la designación
+   * primero (`transferPrincipalAdmin`). El modo de fallo que motivó el ADR es
+   * exactamente que el borrado moviera el principal en silencio; permitir el
+   * borrado y reasignar aquí lo reintroduciría por otra vía.
    */
   async remove(id: string, actorUserId: string, actorRole: string): Promise<void> {
     const { schemaName } = TenantContext.getOrThrow();
@@ -1074,9 +1113,21 @@ export class UsersService {
         throw new BadRequestException('No puedes eliminar tu propio usuario.');
       }
 
+      // Defensa en profundidad tras ADR-061 §4 — ver `assertTargetIsNotPlatformUser`.
+      // Antes esta regla solo miraba `role === ADMIN`, asi que un objetivo con
+      // rol de plataforma persistido no quedaba protegido en absoluto.
+      this.assertTargetIsNotPlatformUser(user.role, actorRole);
+
       // RF-RBAC-04: solo aplica para ADMIN de tenant — SYSTEM_ADMIN puede eliminar ADMINs
-      if (user.role === UserRole.ADMIN && actorRole !== UserRole.SYSTEM_ADMIN) {
+      if (user.role === UserRole.ADMIN && actorRole !== PlatformRole.SYSTEM_ADMIN) {
         throw new ForbiddenException('No es posible eliminar a otro administrador del tenant.');
+      }
+
+      if (await this.isPrincipalAdminUser(user.tenantId, user.id)) {
+        throw new ConflictException(
+          'No es posible eliminar al administrador principal de la empresa. ' +
+            'Designa primero a otro administrador principal.',
+        );
       }
 
       // Soft delete via softRemove — establece deletedAt
@@ -1097,6 +1148,50 @@ export class UsersService {
         'cola de busqueda delete usuario',
       );
     });
+  }
+
+  /**
+   * Transfiere la designación de administrador principal del tenant (ADR-063).
+   *
+   * Es la ÚNICA vía por la que el principal cambia. Deliberadamente explícita y
+   * auditada: la alternativa —dejar que un borrado la moviera— es el modo de
+   * fallo que el ADR corrige.
+   *
+   * Validaciones que pertenecen a este módulo (dueño de `users`): el sucesor
+   * existe en el schema del tenant, está activo, no tiene soft-delete y es
+   * `UserRole.ADMIN`. La persistencia y el asiento de auditoría los hace
+   * `TenantService`, dueño de `public.tenants`.
+   */
+  async transferPrincipalAdmin(
+    newPrincipalUserId: string,
+    actorUserId: string,
+  ): Promise<UserResponseDto> {
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+
+    const successor = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const user = await qr.manager.findOne(User, { where: { id: newPrincipalUserId } });
+      if (!user) {
+        throw new NotFoundException(`Usuario ${newPrincipalUserId} no encontrado.`);
+      }
+
+      if (user.deletedAt !== null || user.status !== UserStatus.ACTIVE) {
+        throw new BadRequestException(
+          'El administrador principal debe ser un usuario activo de la empresa.',
+        );
+      }
+
+      if (user.role !== UserRole.ADMIN) {
+        throw new BadRequestException(
+          'Solo un usuario con rol de administrador puede ser administrador principal.',
+        );
+      }
+
+      return user;
+    });
+
+    await this.tenantService.setPrincipalAdminUserId(tenantId, successor.id, actorUserId);
+
+    return this.toDto(successor);
   }
 
   /** Reinicia el password de un usuario por acción administrativa. */
@@ -1133,9 +1228,8 @@ export class UsersService {
         throw new NotFoundException(`Usuario ${id} no encontrado.`);
       }
 
-      if (user.role === UserRole.SYSTEM_ADMIN && actorRole !== UserRole.SYSTEM_ADMIN) {
-        throw new ForbiddenException('No puedes reiniciar la contraseña de un SYSTEM_ADMIN.');
-      }
+      // Defensa en profundidad tras ADR-061 §4 — ver `assertTargetIsNotPlatformUser`.
+      this.assertTargetIsNotPlatformUser(user.role, actorRole);
 
       const temporaryPassword = password ?? crypto.randomBytes(TEMP_PASSWORD_BYTES).toString('hex');
       user.passwordHash = await bcrypt.hash(temporaryPassword, BCRYPT_ROUNDS);
@@ -1264,12 +1358,14 @@ export class UsersService {
 
   /** Carga un usuario por id sin re-evaluar autorizacion (uso interno / findMe). */
   private async findUserDtoById(id: string): Promise<UserResponseDto> {
-    const { schemaName } = TenantContext.getOrThrow();
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+
+    const principalAdminUserId = await this.tenantService.getPrincipalAdminUserId(tenantId);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const user = await qr.manager.findOne(User, { where: { id } });
       if (!user) throw new NotFoundException(`Usuario ${id} no encontrado.`);
-      return this.toDto(user);
+      return this.toDto(user, principalAdminUserId);
     });
   }
 
@@ -1278,8 +1374,11 @@ export class UsersService {
    * Perfil en texto plano (H-14: sin ruta de descifrado legacy).
    * documentNumber se devuelve para edicion en portal interno autenticado.
    */
-  private toDto(user: User): UserResponseDto {
+  private toDto(user: User, principalAdminUserId?: string | null): UserResponseDto {
     return {
+      ...(principalAdminUserId !== undefined
+        ? { isPrincipalAdmin: principalAdminUserId === user.id }
+        : {}),
       id: user.id,
       email: user.email,
       role: user.role as UserRole,
@@ -1402,30 +1501,20 @@ export class UsersService {
   }
 
   /**
-   * Regla explícita de «administrador principal» (H-12 / MOD04 Ola C):
+   * ¿Es este usuario el administrador principal del tenant? (ADR-063)
    *
-   * El ADMIN principal del tenant es el usuario con rol `UserRole.ADMIN`
-   * activo (sin soft-delete) de **menor `createdAt`** (el más antiguo).
+   * Lee el atributo explícito `public.tenants.principal_admin_user_id` a través
+   * de `TenantService` — la tabla es del boundary del módulo de tenant, no de
+   * este. Antes la regla se **derivaba** («el ADMIN activo más antiguo por
+   * `createdAt`»), y por eso el principal cambiaba en silencio cuando se
+   * eliminaba a ese usuario. Ese modo de fallo es el que motivó el ADR.
    *
-   * Efectos actuales:
-   * - Al cambiar su login email (self o admin) con sync activo, se actualiza
-   *   `public.tenants.contact_email`.
-   *
-   * Riesgo residual: si ese usuario se elimina, el principal cambia en silencio
-   * al siguiente ADMIN más antiguo. **Propuesta de modelo (no mergeada):**
-   * atributo explícito `tenants.principal_admin_user_id` (o flag en `users`)
-   * con transferencia controlada — requiere GO EM-ARCH / ADR; no decidir aquí.
+   * Un tenant sin designación devuelve `false` para todos: la regla derivada
+   * tampoco señalaba a nadie cuando no había ADMIN activo.
    */
-  private async isPrincipalAdminUser(
-    manager: import('typeorm').EntityManager,
-    userId: string,
-  ): Promise<boolean> {
-    const principalAdmin = await manager.findOne(User, {
-      where: { role: UserRole.ADMIN },
-      order: { createdAt: 'ASC' },
-      withDeleted: false,
-    });
+  private async isPrincipalAdminUser(tenantId: string, userId: string): Promise<boolean> {
+    const principalAdminUserId = await this.tenantService.getPrincipalAdminUserId(tenantId);
 
-    return principalAdmin?.id === userId;
+    return principalAdminUserId !== null && principalAdminUserId === userId;
   }
 }

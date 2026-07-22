@@ -2,7 +2,7 @@
 'use client';
 
 import type { InternalUser, UsersPaginationMeta } from '@/lib/api-client';
-import { UserRole } from '@iwana/shared';
+import { isPlatformOnlyRole, UserRole } from '@iwana/shared';
 import {
   Pencil,
   Trash2,
@@ -226,18 +226,15 @@ export function UsersTable({
             )}
 
             {users.map((user) => {
-              const deleteAllowed = canDeleteUser({
+              const deleteRuleParams = {
                 targetId: user.id,
                 targetRole: user.role,
+                targetIsPrincipalAdmin: user.isPrincipalAdmin,
                 actorUserId: currentUserId,
                 actorRole: currentUserRole,
-              });
-              const deleteBlockedReason = getDeleteUserBlockedReason({
-                targetId: user.id,
-                targetRole: user.role,
-                actorUserId: currentUserId,
-                actorRole: currentUserRole,
-              });
+              };
+              const deleteAllowed = canDeleteUser(deleteRuleParams);
+              const deleteBlockedReason = getDeleteUserBlockedReason(deleteRuleParams);
               const isPreparingEdit = preparingEditUserId === user.id;
 
               return (
@@ -256,7 +253,7 @@ export function UsersTable({
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-1">
                       <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
-                        {(user.role === UserRole.ADMIN || user.role === UserRole.SYSTEM_ADMIN) && (
+                        {(user.role === UserRole.ADMIN || isPlatformOnlyRole(user.role)) && (
                           <ShieldCheck
                             className="h-3.5 w-3.5 text-iwana-primary dark:text-iwana-primary-400"
                             aria-hidden="true"

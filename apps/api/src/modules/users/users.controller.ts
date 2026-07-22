@@ -12,6 +12,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -23,7 +24,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { AccessPermissionKey, UserRole, UserStatus } from '@iwana/shared';
+import { PlatformRole, AccessPermissionKey, UserRole, UserStatus } from '@iwana/shared';
 import { Permissions } from '../access-control/decorators/permissions.decorator';
 import { PermissionsGuard } from '../access-control/guards/permissions.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -73,7 +74,7 @@ export class UsersController {
    * No aplanar: es el estándar de facto del módulo users + ApiEnvelope del FE.
    */
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.USERS_READ)
   @ApiOperation({ summary: 'Listar usuarios del tenant (paginacion cursor-based)' })
   @ApiQuery({
@@ -137,7 +138,7 @@ export class UsersController {
    * Si no se provee password, se genera uno temporal y se retorna en la respuesta.
    */
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.USERS_MANAGE)
   @HttpCode(HttpStatus.CREATED)
   // Audit manual en UsersService — evita PII/temporaryPassword duplicados (SWEEP-01).
@@ -212,7 +213,7 @@ export class UsersController {
    * La autorizacion de negocio adicional vive en el servicio (H-08).
    */
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.USERS_READ)
   @ApiOperation({ summary: 'Obtener usuario del tenant por UUID' })
   @ApiResponse({ status: 200, description: 'Usuario encontrado.' })
@@ -232,7 +233,7 @@ export class UsersController {
    * El header Idempotency-Key es obligatorio y se usa para deduplicar reintentos.
    */
   @Patch(':id')
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.USERS_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Actualizar estado o rol de un usuario' })
@@ -275,7 +276,7 @@ export class UsersController {
    * Requiere Idempotency-Key para soportar reintentos seguros en la UI.
    */
   @Patch(':id/login-email/admin')
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.USERS_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Cambiar el email de acceso de un usuario (admin)' })
@@ -334,7 +335,7 @@ export class UsersController {
   }
 
   @Patch(':id/password')
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.USERS_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Reiniciar password de usuario' })
@@ -380,11 +381,14 @@ export class UsersController {
    *
    * RF-RBAC-04 (formulacion unica):
    * 1. No self-delete → BadRequest.
-   * 2. Si target.role === ADMIN y actorRole !== SYSTEM_ADMIN → Forbidden.
-   * 3. SYSTEM_ADMIN (actor) sí puede eliminar ADMIN.
+   * 2. Si target tiene rol de plataforma persistido y el actor no → Forbidden.
+   * 3. Si target.role === ADMIN y actorRole !== SYSTEM_ADMIN → Forbidden.
+   * 4. SYSTEM_ADMIN (actor) sí puede eliminar ADMIN.
+   * 5. ADR-063: si target es el administrador principal designado → Conflict,
+   *    sea quien sea el actor. Hay que transferir la designación primero.
    */
   @Delete(':id')
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.USERS_MANAGE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @SkipAudit()
@@ -397,10 +401,39 @@ export class UsersController {
     description: 'No se puede eliminar a otro administrador del tenant.',
   })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado.' })
+  @ApiResponse({
+    status: 409,
+    description: 'El usuario es el administrador principal; transfiera la designación primero.',
+  })
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() actor: JwtPayload,
   ): Promise<void> {
     await this.usersService.remove(id, actor.sub, actor.role);
+  }
+
+  /**
+   * Designa al administrador principal de la empresa (ADR-063).
+   *
+   * Única vía por la que cambia el principal: operación explícita y auditada,
+   * nunca efecto colateral de un borrado.
+   */
+  @Put(':id/principal-admin')
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.USERS_MANAGE)
+  @ApiOperation({ summary: 'Designar administrador principal de la empresa' })
+  @ApiResponse({ status: 200, description: 'Administrador principal designado.' })
+  @ApiResponse({
+    status: 400,
+    description: 'El usuario no está activo o no tiene rol de administrador.',
+  })
+  @ApiResponse({ status: 401, description: 'Token invalido o expirado.' })
+  @ApiResponse({ status: 403, description: 'Sin permisos para designar.' })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado.' })
+  async setPrincipalAdmin(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() actor: JwtPayload,
+  ): Promise<{ data: UserResponseDto }> {
+    return { data: await this.usersService.transferPrincipalAdmin(id, actor.sub) };
   }
 }

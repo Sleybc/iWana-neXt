@@ -1,5 +1,4 @@
 import * as bcrypt from 'bcryptjs';
-import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { User, runInTenantSchema } from '@iwana/db';
 import { UserRole, UserStatus } from '@iwana/shared';
@@ -24,18 +23,11 @@ jest.mock('@iwana/db', () => {
 
 describe('TenantSeedService', () => {
   let service: TenantSeedService;
-  const configService = {
-    getOrThrow: jest.fn((key: string) => {
-      if (key === 'MFA_ENCRYPTION_KEY') {
-        return '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
-      }
 
-      throw new Error(`Unexpected config key: ${key}`);
-    }),
-  } as unknown as ConfigService;
-
+  // Sin ConfigService: el seed dejo de cifrar el email del ADMIN (H-14) y ya no
+  // necesita `MFA_ENCRYPTION_KEY`.
   beforeEach(() => {
-    service = new TenantSeedService({} as DataSource, configService);
+    service = new TenantSeedService({} as DataSource);
   });
 
   afterEach(() => {
@@ -45,8 +37,12 @@ describe('TenantSeedService', () => {
   it('crea el ADMIN inicial con contraseña fija hasheada e idempotencia de primer seed', async () => {
     const manager = {
       findOne: jest.fn().mockResolvedValue(null),
-      create: jest.fn().mockImplementation((_: unknown, partial: unknown) => partial),
+      create: jest.fn().mockImplementation((_: unknown, partial: Record<string, unknown>) => ({
+        id: 'usr-seed-1',
+        ...partial,
+      })),
       save: jest.fn().mockResolvedValue(undefined),
+      query: jest.fn().mockResolvedValue([]),
     };
 
     mockRunInTenantSchema.mockImplementation(
@@ -95,7 +91,8 @@ describe('TenantSeedService', () => {
     expect(manager.create).toHaveBeenCalledWith(
       User,
       expect.objectContaining({
-        email: expect.any(String),
+        // H-14: texto plano, no criptograma AES-256-GCM.
+        email: SEED_ADMIN_EMAIL,
         passwordHash: '$2b$12$seeded_hash',
         role: UserRole.ADMIN,
         status: UserStatus.ACTIVE,
@@ -105,6 +102,12 @@ describe('TenantSeedService', () => {
       }),
     );
     expect(manager.save).toHaveBeenCalledWith(User, expect.any(Object));
+
+    // ADR-063: el primer ADMIN queda designado administrador principal.
+    expect(manager.query).toHaveBeenCalledWith(expect.stringContaining('principal_admin_user_id'), [
+      'usr-seed-1',
+      'tenant-uuid-1',
+    ]);
 
     const [, createdUser] = manager.create.mock.calls[0] as [unknown, { emailHash: string }];
     expect(createdUser.emailHash).toBe(
@@ -117,6 +120,7 @@ describe('TenantSeedService', () => {
       findOne: jest.fn().mockResolvedValue({ id: 'existing-admin' }),
       create: jest.fn(),
       save: jest.fn(),
+      query: jest.fn().mockResolvedValue([]),
     };
 
     mockRunInTenantSchema.mockImplementation(

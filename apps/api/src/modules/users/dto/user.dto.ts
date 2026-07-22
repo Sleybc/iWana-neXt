@@ -307,4 +307,15 @@ export class UserResponseDto {
 
   @ApiPropertyOptional({ nullable: true })
   documentNumber: string | null;
+
+  /**
+   * ¿Es el administrador principal designado de la empresa? (ADR-063)
+   *
+   * Solo se puebla en las rutas de lectura (`findAll` / `findOne`), que son las
+   * que resuelven la designación contra `public.tenants`. En las respuestas de
+   * escritura llega `undefined`: ausencia de dato, no un `false` que la UI
+   * pudiera confundir con «no lo es».
+   */
+  @ApiPropertyOptional({ description: 'Administrador principal designado de la empresa' })
+  isPrincipalAdmin?: boolean;
 }

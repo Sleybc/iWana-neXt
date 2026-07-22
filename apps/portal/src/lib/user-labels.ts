@@ -1,10 +1,10 @@
-import { TENANT_ASSIGNABLE_ROLES, UserRole, UserStatus } from '@iwana/shared';
+import { PlatformRole, TENANT_ASSIGNABLE_ROLES, UserRole, UserStatus } from '@iwana/shared';
 import { portalActiveBadgeVariant } from '@/lib/portal-status-badge-rules';
 import { getSystemBaseRoleLabel } from './system-vocabulary';
 
 type BadgeVariant = 'success' | 'warning' | 'error' | 'info' | 'neutral' | 'lime';
 
-export const PORTAL_USER_ROLE_LABELS: Record<UserRole, string> = {
+export const PORTAL_USER_ROLE_LABELS: Record<UserRole | PlatformRole, string> = {
   [UserRole.ADMIN]: 'Administrador',
   [UserRole.NOC]: 'Monitoreo operativo',
   [UserRole.SUPPORT]: 'Soporte inicial',
@@ -17,8 +17,8 @@ export const PORTAL_USER_ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.PARTNER]: 'Aliado',
   [UserRole.AUDITOR]: 'Auditor',
   [UserRole.INVESTOR]: 'Inversionista',
-  [UserRole.SYSTEM_ADMIN]: 'Administrador de plataforma',
-  [UserRole.IWANA_SUPPORT]: 'Soporte iWana',
+  [PlatformRole.SYSTEM_ADMIN]: 'Administrador de plataforma',
+  [PlatformRole.IWANA_SUPPORT]: 'Soporte iWana',
 };
 
 export const PORTAL_USER_STATUS_LABELS: Record<UserStatus, string> = {

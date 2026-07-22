@@ -12,7 +12,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { PersonType, CustomerSegment, SubscriberStatus, UserRole } from '@iwana/shared';
+import {
+  PlatformRole,
+  PersonType,
+  CustomerSegment,
+  SubscriberStatus,
+  UserRole,
+} from '@iwana/shared';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -28,6 +34,14 @@ import {
   TransitionSubscriberStatusDto,
   TransitionSubscriberStatusSchema,
 } from './dto/transition-subscriber-status.dto';
+
+/**
+ * Roles administrativos habilitados para el alta manual fuera de flujo.
+ *
+ * Se compara contra `JwtPayload.role`, que es un `string`: tras ADR-061 §4 los
+ * dos roles provienen de enums distintos, asi que el tipo comun es el literal.
+ */
+const ADMINISTRATIVE_ROLES: readonly string[] = [UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN];
 
 type SubscriberWithDecryptedFields = Subscriber & {
   documentNumber?: string | null;
@@ -49,7 +63,7 @@ export class SubscribersController {
    * Roles: ADMIN, SALES
    */
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SYSTEM_ADMIN, UserRole.IWANA_SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.SALES, PlatformRole.SYSTEM_ADMIN, PlatformRole.IWANA_SUPPORT)
   // Audit manual limpio en SubscribersService — evita PII en newValue del interceptor (SWEEP-01).
   @SkipAudit()
   @ApiOperation({ summary: 'Crear suscriptor' })
@@ -58,10 +72,7 @@ export class SubscribersController {
     @CurrentUser() user: JwtPayload,
   ) {
     const isManualOverride = Boolean(dto.manualOverrideReason?.trim());
-    if (
-      isManualOverride &&
-      ![UserRole.ADMIN, UserRole.SYSTEM_ADMIN].includes(user.role as UserRole)
-    ) {
+    if (isManualOverride && !ADMINISTRATIVE_ROLES.includes(user.role)) {
       throw new ForbiddenException(
         'La creación manual fuera de flujo automático requiere rol administrativo.',
       );
@@ -164,7 +175,7 @@ export class SubscribersController {
    * Guardado parcial por sección para la vista 360°.
    */
   @Patch(':id/section/:section')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SYSTEM_ADMIN, UserRole.IWANA_SUPPORT)
+  @Roles(UserRole.ADMIN, UserRole.SALES, PlatformRole.SYSTEM_ADMIN, PlatformRole.IWANA_SUPPORT)
   @SkipAudit()
   @ApiOperation({ summary: 'Actualizar sección del subscriber' })
   async updateSection(

@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { UserRole, CustomerSegment } from '@iwana/shared';
+import { PlatformRole, UserRole, CustomerSegment } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -31,7 +31,7 @@ export class BundleController {
     UserRole.SALES,
     UserRole.SUPPORT,
     UserRole.ACCOUNTANT,
-    UserRole.SYSTEM_ADMIN,
+    PlatformRole.SYSTEM_ADMIN,
   )
   @ApiOperation({ summary: 'Listar bundles activos del tenant' })
   async findAll() {
@@ -45,7 +45,7 @@ export class BundleController {
     UserRole.SALES,
     UserRole.SUPPORT,
     UserRole.ACCOUNTANT,
-    UserRole.SYSTEM_ADMIN,
+    PlatformRole.SYSTEM_ADMIN,
   )
   @ApiOperation({ summary: 'Obtener bundle por ID' })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
@@ -54,7 +54,7 @@ export class BundleController {
   }
 
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Crear bundle comercial' })
   @ApiResponse({ status: 201, description: 'Bundle creado' })
   @ApiResponse({ status: 400, description: 'Mínimo 2 ítems requeridos o ítems no activos' })
@@ -64,7 +64,7 @@ export class BundleController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Actualizar bundle' })
   async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateBundleDto) {
     const data = await this.bundleService.update(id, dto);
@@ -72,7 +72,7 @@ export class BundleController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Desactivar bundle' })
   async deactivate(@Param('id', ParseUUIDPipe) id: string) {
     await this.bundleService.deactivate(id);
@@ -80,7 +80,7 @@ export class BundleController {
   }
 
   @Get(':id/price')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Calcular precio dinámico del bundle para un segmento' })
   @ApiQuery({ name: 'segment', enum: CustomerSegment, required: true })
   @ApiQuery({

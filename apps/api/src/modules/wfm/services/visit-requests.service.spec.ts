@@ -10,6 +10,7 @@ import { WorkOrdersService } from './work-orders.service';
 import { ExpedienteService } from '../../crm/expedientes/expediente.service';
 import { ExecutionOrdersService } from '../../tasks/services/execution-orders.service';
 import {
+  PlatformRole,
   UserRole,
   VisitRequestStatus,
   WorkOrderPriority,
@@ -553,7 +554,7 @@ describe('VisitRequestsService', () => {
         }),
         buildUserResponse({
           id: 'platform-001',
-          role: UserRole.IWANA_SUPPORT,
+          role: PlatformRole.IWANA_SUPPORT,
           isOperationalResource: true,
         }),
       ],

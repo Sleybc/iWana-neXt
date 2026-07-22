@@ -17,10 +17,12 @@ import { JwtPayload } from '../interfaces/jwt-payload.interface';
  * - Si el rol del usuario no esta en la lista → HTTP 403 Forbidden.
  *
  * FRONTERA DE TIPO DE TOKEN (H-01):
- * `PlatformRole.SYSTEM_ADMIN` y `UserRole.SYSTEM_ADMIN` son el mismo literal
- * `'SYSTEM_ADMIN'`, asi que comparar solo el string permitia que un token de
+ * `PlatformRole` y `UserRole` compartian los literales `'SYSTEM_ADMIN'` e
+ * `'IWANA_SUPPORT'`, asi que comparar solo el string permitia que un token de
  * tenant con `role: 'SYSTEM_ADMIN'` satisficiera un `@Roles(PlatformRole.…)` y
- * alcanzara la consola de plataforma. Ahora, ademas de coincidir el rol, la
+ * alcanzara la consola de plataforma. ADR-061 §4 los saco de `UserRole`, pero
+ * eso solo separa los TIPOS: el claim `role` que llega aqui es un `string` y no
+ * arrastra su enum de origen. Por eso, ademas de coincidir el rol, la
  * procedencia debe coincidir con el tipo de token:
  * - rol de plataforma (`PLATFORM_ONLY_ROLES`) → exige `jwt.type === 'platform'`
  * - rol de tenant → exige `jwt.type === 'tenant'`

@@ -20,7 +20,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
-import { UserRole, UserStatus, USERS_BULK_CREATE_QUEUE } from '@iwana/shared';
+import { PlatformRole, UserRole, UserStatus, USERS_BULK_CREATE_QUEUE } from '@iwana/shared';
 import { AuditService } from '../../audit/audit.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import { SearchQueueService } from '../../search/search-queue.service';
@@ -259,39 +259,37 @@ describe('UsersService — allowlist de roles asignables desde el tenant (H-01)'
     service = module.get<UsersService>(UsersService);
   });
 
-  it.each([UserRole.SYSTEM_ADMIN, UserRole.IWANA_SUPPORT])(
-    'create() rechaza el rol de plataforma %s',
-    async (role) => {
-      setupManager(null);
+  // Tras ADR-061 §4 los roles de plataforma ya no son miembros de `UserRole`, asi
+  // que el tipo por si solo impide construir el DTO invalido. El invariante que
+  // interesa es el de tiempo de ejecucion: un payload que trae ese literal —por
+  // JSON crudo, por un cliente antiguo— sigue siendo rechazado. De ahi el cast.
+  const PLATFORM_ROLES_AS_USER_ROLE = [
+    PlatformRole.SYSTEM_ADMIN,
+    PlatformRole.IWANA_SUPPORT,
+  ] as unknown as UserRole[];
 
-      await expect(service.create(buildCreateDto({ role }), ACTOR_ID)).rejects.toThrow(
-        ForbiddenException,
-      );
-    },
-  );
+  it.each(PLATFORM_ROLES_AS_USER_ROLE)('create() rechaza el rol de plataforma %s', async (role) => {
+    setupManager(null);
 
-  it.each([UserRole.SYSTEM_ADMIN, UserRole.IWANA_SUPPORT])(
-    'update() rechaza escalar a %s',
-    async (role) => {
-      setupManager(null);
-      const dto = new UpdateUserDto();
-      dto.role = role;
+    await expect(service.create(buildCreateDto({ role }), ACTOR_ID)).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
 
-      await expect(
-        service.update(
-          'usr-00000000-0000-4000-a000-000000000001',
-          dto,
-          'actor-uuid',
-          UserRole.ADMIN,
-        ),
-      ).rejects.toThrow(ForbiddenException);
-    },
-  );
+  it.each(PLATFORM_ROLES_AS_USER_ROLE)('update() rechaza escalar a %s', async (role) => {
+    setupManager(null);
+    const dto = new UpdateUserDto();
+    dto.role = role;
+
+    await expect(
+      service.update('usr-00000000-0000-4000-a000-000000000001', dto, 'actor-uuid', UserRole.ADMIN),
+    ).rejects.toThrow(ForbiddenException);
+  });
 
   it('update() no toca la base de datos cuando el rol esta prohibido', async () => {
     const manager = setupManager(null);
     const dto = new UpdateUserDto();
-    dto.role = UserRole.SYSTEM_ADMIN;
+    dto.role = PlatformRole.SYSTEM_ADMIN as unknown as UserRole;
 
     await expect(
       service.update('usr-00000000-0000-4000-a000-000000000001', dto, 'actor-uuid', UserRole.ADMIN),

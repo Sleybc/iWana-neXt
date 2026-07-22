@@ -48,8 +48,6 @@ describe('buildCompanyRolePreview', () => {
         [UserRole.PARTNER]: [],
         [UserRole.AUDITOR]: [],
         [UserRole.INVESTOR]: [],
-        [UserRole.SYSTEM_ADMIN]: [],
-        [UserRole.IWANA_SUPPORT]: [],
       },
     });
 

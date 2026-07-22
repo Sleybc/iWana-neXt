@@ -13,7 +13,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@iwana/shared';
+import { PlatformRole, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -34,7 +34,7 @@ export class ContractsController {
   // ── Endpoints anidados bajo /crm/subscribers/:subscriberId ─────────────────
 
   @Post('crm/subscribers/:subscriberId/contracts')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Crear servicio contratado para un suscriptor (estado DRAFT)' })
   async createForSubscriber(
     @Param('subscriberId', ParseUUIDPipe) subscriberId: string,
@@ -45,7 +45,7 @@ export class ContractsController {
   }
 
   @Get('crm/subscribers/:subscriberId/contracts')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar servicios contratados de un suscriptor' })
   async findAllBySubscriber(
     @Param('subscriberId', ParseUUIDPipe) subscriberId: string,
@@ -55,7 +55,7 @@ export class ContractsController {
   }
 
   @Post('crm/subscribers/:subscriberId/contracts/from-expediente')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({
     summary: 'Crear contrato DRAFT a partir del interés comercial en el expediente',
   })
@@ -70,7 +70,7 @@ export class ContractsController {
   // ── Endpoints de recurso /crm/contracts ────────────────────────────────────
 
   @Post('crm/contracts')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Crear contrato (uso directo sin subscriber en path)' })
   async create(@Body() dto: CreateContractDto): Promise<{ data: Contract }> {
     const data = await this.contractsService.create(dto);
@@ -78,7 +78,7 @@ export class ContractsController {
   }
 
   @Get('crm/contracts')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar contratos con filtros opcionales' })
   @ApiQuery({ name: 'status', required: false, enum: ContractStatus })
   @ApiQuery({ name: 'planId', required: false })
@@ -95,7 +95,7 @@ export class ContractsController {
   }
 
   @Get('crm/contracts/:id')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Consultar contrato por id' })
   async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: Contract }> {
     const data = await this.contractsService.findOne(id);
@@ -103,7 +103,7 @@ export class ContractsController {
   }
 
   @Patch('crm/contracts/:id')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Actualizar datos del contrato (no cambia estado)' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -114,7 +114,7 @@ export class ContractsController {
   }
 
   @Delete('crm/contracts/:id')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Eliminar contrato (solo en estado DRAFT)' })
   async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
@@ -124,7 +124,7 @@ export class ContractsController {
   // ── Transiciones de estado ──────────────────────────────────────────────────
 
   @Post('crm/contracts/:id/activate')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Activar contrato (DRAFT → ACTIVE — firma del cliente)' })
   async activate(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: Contract }> {
@@ -133,7 +133,7 @@ export class ContractsController {
   }
 
   @Post('crm/contracts/:id/suspend')
-  @Roles(UserRole.ADMIN, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Suspender contrato (ACTIVE → SUSPENDED)' })
   async suspend(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: Contract }> {
@@ -142,7 +142,7 @@ export class ContractsController {
   }
 
   @Post('crm/contracts/:id/reactivate')
-  @Roles(UserRole.ADMIN, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reactivar contrato (SUSPENDED → ACTIVE)' })
   async reactivate(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: Contract }> {
@@ -151,7 +151,7 @@ export class ContractsController {
   }
 
   @Post('crm/contracts/:id/terminate')
-  @Roles(UserRole.ADMIN, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Terminar contrato (ACTIVE | SUSPENDED → TERMINATED)' })
   async terminate(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: Contract }> {
@@ -160,7 +160,7 @@ export class ContractsController {
   }
 
   @Post('crm/contracts/:id/archive')
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Archivar contrato (SUSPENDED | TERMINATED → ARCHIVED)' })
   async archive(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: Contract }> {

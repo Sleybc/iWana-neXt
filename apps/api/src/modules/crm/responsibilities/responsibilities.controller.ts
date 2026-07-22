@@ -9,7 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@iwana/shared';
+import { PlatformRole, UserRole } from '@iwana/shared';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -33,7 +33,7 @@ export class ResponsibilitiesController {
     UserRole.SUPPORT,
     UserRole.TECHNICIAN,
     UserRole.PARTNER,
-    UserRole.SYSTEM_ADMIN,
+    PlatformRole.SYSTEM_ADMIN,
   )
   @ApiOperation({ summary: 'Obtener responsable operativo actual del expediente' })
   async getResponsibility(@Param('id', ParseUUIDPipe) id: string) {
@@ -48,7 +48,7 @@ export class ResponsibilitiesController {
     UserRole.SUPPORT,
     UserRole.TECHNICIAN,
     UserRole.PARTNER,
-    UserRole.SYSTEM_ADMIN,
+    PlatformRole.SYSTEM_ADMIN,
   )
   @ApiOperation({ summary: 'Reasignar responsable operativo del expediente' })
   async updateResponsibility(
@@ -67,7 +67,7 @@ export class ResponsibilitiesController {
     UserRole.SUPPORT,
     UserRole.TECHNICIAN,
     UserRole.PARTNER,
-    UserRole.SYSTEM_ADMIN,
+    PlatformRole.SYSTEM_ADMIN,
   )
   @ApiOperation({ summary: 'Obtener historial operativo de reasignaciones del expediente' })
   async getResponsibilityHistory(

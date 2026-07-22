@@ -1,15 +1,15 @@
-# ADR-063 (borrador) — Admin principal explícito en modelo de datos (MOD04 H-12)
+# ADR-063 — Admin principal explícito en modelo de datos (MOD04 H-12)
 
-**Estado:** Propuesto — pendiente CTO (recomendación EM-ARCH: opción B)  
+**Estado:** Aprobado  
 **Fecha:** 2026-07-22  
 **Autor:** AI-DATA-ENG  
+**Aprobado por:** CTO Humano (2026-07-22)  
 **Origen:** [PROMPT-MOD04-OLA-C-v1.0](../prompts/PROMPT-MOD04-OLA-C-v1.0.md) H-12  
-**No mergear sin aprobación CTO.** Este ADR **no** se implementa en Ola C (G5 cerrado 2026-07-22 con regla documentada en código).
+**Implementación:** habilitada — Ola D.
 
 ### Decisión EM-ARCH (2026-07-22)
 
-**Recomendación:** opción **B** (`public.tenants.principal_admin_user_id`), alineada a DATA-ENG.  
-**No aprueba** el ADR (reservado al CTO). Ola C permanece cerrada sin este cambio de modelo.
+**Recomendación:** opción **B** (`public.tenants.principal_admin_user_id`), alineada a DATA-ENG. Ratificada por el CTO el mismo día.
 
 ---
 
@@ -47,12 +47,12 @@ Ola C documentó la regla en código (JSDoc) **sin** cambiar el modelo — corre
 
 **Índice:** `principal_admin_user_id` no requiere índice de búsqueda caliente; opcional B-tree si hay lookups frecuentes.
 
-## Fuera de alcance Ola C
+## Condiciones de implementación (Ola D)
 
-- No emitir migración hasta GO.
-- SR-FULL no mergea el atributo; solo la regla documentada.
-- SEC-ENG debe revisar: el UUID de user en public no es PII, pero la transferencia de principal es control de privilegio.
+- El backfill usa la regla actual (ADMIN activo más antiguo por `createdAt`) para no alterar qué usuario es principal hoy en ningún tenant.
+- La **transferencia de principal es una operación explícita con auditoría**, nunca un efecto colateral de un soft-delete. Eliminar al principal actual debe fallar mientras no se designe sucesor: el modo de fallo que motivó este ADR es precisamente el cambio silencioso.
+- SEC-ENG debe revisar la transferencia: el UUID en `public` no es PII, pero designar principal es control de privilegio.
 
 ## Decisión
 
-_Pendiente CTO / EM-ARCH._
+**Opción B aprobada** por el CTO el 2026-07-22: `public.tenants.principal_admin_user_id`, con migración de backfill y operación de transferencia auditada.

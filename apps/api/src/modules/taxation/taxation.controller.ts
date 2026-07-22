@@ -16,7 +16,7 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '@iwana/shared';
+import { PlatformRole, UserRole } from '@iwana/shared';
 import { TaxDefinitionService } from './services/tax-definition.service';
 import {
   CreateTaxDefinitionInput,
@@ -51,7 +51,7 @@ export class TaxationController {
    * Por defecto excluye inactivas; usar `isActive=false` para incluirlas.
    */
   @Get('definitions')
-  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar definiciones tributarias del tenant con filtros' })
   @ApiResponse({ status: 200, description: 'Lista de definiciones tributarias.' })
   @ApiResponse({ status: 401, description: 'Token inválido o expirado.' })
@@ -65,7 +65,7 @@ export class TaxationController {
    * Obtiene una definición tributaria por ID.
    */
   @Get('definitions/:id')
-  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Obtener definición tributaria por ID' })
   @ApiResponse({ status: 200, description: 'Definición tributaria encontrada.' })
   @ApiResponse({ status: 401, description: 'Token inválido o expirado.' })
@@ -81,7 +81,7 @@ export class TaxationController {
    * Valida unicidad del código (case-insensitive, normalizado a UPPER).
    */
   @Post('definitions')
-  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Crear definición tributaria personalizada (origen CUSTOM)' })
   @ApiResponse({ status: 201, description: 'Definición tributaria creada exitosamente.' })
@@ -97,7 +97,7 @@ export class TaxationController {
    * Actualiza una definición tributaria existente.
    */
   @Patch('definitions/:id')
-  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Actualizar definición tributaria' })
   @ApiResponse({ status: 200, description: 'Definición tributaria actualizada exitosamente.' })
   @ApiResponse({ status: 400, description: 'Datos inválidos.' })
@@ -120,7 +120,7 @@ export class TaxationController {
    * Solo roles con autoridad máxima (ADMIN, SYSTEM_ADMIN).
    */
   @Delete('definitions/:id')
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Eliminar definición tributaria' })
   @ApiResponse({ status: 200, description: 'Definición tributaria desactivada exitosamente.' })
   @ApiResponse({ status: 401, description: 'Token inválido o expirado.' })

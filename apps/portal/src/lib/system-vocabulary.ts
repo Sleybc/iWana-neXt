@@ -1,6 +1,13 @@
-import { UserRole } from '@iwana/shared';
+import { PlatformRole, UserRole } from '@iwana/shared';
 
-const SYSTEM_BASE_ROLE_LABELS: Record<UserRole, string> = {
+/**
+ * Etiquetas de todos los roles del sistema.
+ *
+ * Cubre los dos dominios (`UserRole` de tenant y `PlatformRole` de plataforma):
+ * el portal puede recibir cualquiera de los dos literales en `user.role`, y tras
+ * ADR-061 §4 ya no existe un enum unico que los contenga a ambos.
+ */
+const SYSTEM_BASE_ROLE_LABELS: Record<UserRole | PlatformRole, string> = {
   [UserRole.ADMIN]: 'Administrador',
   [UserRole.NOC]: 'Monitoreo operativo',
   [UserRole.SUPPORT]: 'Soporte inicial',
@@ -13,8 +20,8 @@ const SYSTEM_BASE_ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.PARTNER]: 'Aliado',
   [UserRole.AUDITOR]: 'Auditor',
   [UserRole.INVESTOR]: 'Inversionista',
-  [UserRole.SYSTEM_ADMIN]: 'Administrador de plataforma',
-  [UserRole.IWANA_SUPPORT]: 'Soporte iWana',
+  [PlatformRole.SYSTEM_ADMIN]: 'Administrador de plataforma',
+  [PlatformRole.IWANA_SUPPORT]: 'Soporte iWana',
 };
 
 const SYSTEM_TEMPLATE_PROFILE_NAMES: Partial<Record<UserRole, string>> = {

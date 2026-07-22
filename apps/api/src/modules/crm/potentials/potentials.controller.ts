@@ -9,7 +9,7 @@ import {
   UsePipes,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@iwana/shared';
+import { PlatformRole, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -31,7 +31,7 @@ export class PotentialsController {
   constructor(private readonly potentialsService: PotentialsService) {}
 
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   // Audit manual limpio en PotentialsService — un solo canal (SWEEP-01).
   @SkipAudit()
   @ApiOperation({ summary: 'Crear potencial comercial', deprecated: true })
@@ -42,7 +42,7 @@ export class PotentialsController {
   }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar potenciales comerciales', deprecated: true })
   async findAll(): Promise<{ data: PotentialResponseDto[] }> {
     const data = await this.potentialsService.findAll();
@@ -50,7 +50,7 @@ export class PotentialsController {
   }
 
   @Post(':id/qualify')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, PlatformRole.SYSTEM_ADMIN)
   @SkipAudit()
   @ApiOperation({ summary: 'Calificar potencial y convertirlo en prospecto', deprecated: true })
   @UsePipes(new ZodBodyValidationPipe(qualifyPotentialSchema))

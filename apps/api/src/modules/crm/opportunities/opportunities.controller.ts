@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@iwana/shared';
+import { PlatformRole, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -28,7 +28,7 @@ export class OpportunitiesController {
   constructor(private readonly opportunitiesService: OpportunitiesService) {}
 
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Crear oportunidad comercial' })
   async create(@Body() dto: CreateOpportunityDto): Promise<{ data: Opportunity }> {
     const data = await this.opportunitiesService.create(dto);
@@ -36,7 +36,7 @@ export class OpportunitiesController {
   }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar oportunidades comerciales' })
   @ApiQuery({ name: 'stage', required: false, enum: OpportunityStage })
   async findAll(@Query('stage') stage?: OpportunityStage): Promise<{ data: Opportunity[] }> {
@@ -50,7 +50,7 @@ export class OpportunitiesController {
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Consultar oportunidad por id' })
   async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: Opportunity }> {
     const data = await this.opportunitiesService.findOne(id);
@@ -58,7 +58,7 @@ export class OpportunitiesController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Actualizar oportunidad comercial' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,

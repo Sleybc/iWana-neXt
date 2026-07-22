@@ -339,8 +339,8 @@ export function EditUserModal({
 
   if (!isOpen) return null;
 
-  const isAdmin = user.role === UserRole.ADMIN || user.role === UserRole.SYSTEM_ADMIN;
   const hasPlatformRole = PLATFORM_ONLY_ROLES.has(user.role);
+  const isAdmin = user.role === UserRole.ADMIN || hasPlatformRole;
   const isProtectedRole = isAdmin || hasPlatformRole;
 
   return (

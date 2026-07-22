@@ -9,7 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@iwana/shared';
+import { PlatformRole, UserRole } from '@iwana/shared';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -28,7 +28,7 @@ export class AttributionsController {
   constructor(private readonly attributionsService: AttributionsService) {}
 
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Crear o reatribuir originador comercial del expediente' })
   async create(
     @Param('id', ParseUUIDPipe) expedienteId: string,
@@ -40,7 +40,13 @@ export class AttributionsController {
   }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.PARTNER, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.SALES,
+    UserRole.PARTNER,
+    UserRole.SUPPORT,
+    PlatformRole.SYSTEM_ADMIN,
+  )
   @ApiOperation({ summary: 'Obtener atribución activa del expediente' })
   async getCurrent(@Param('id', ParseUUIDPipe) expedienteId: string) {
     const data = await this.attributionsService.getCurrentAttribution(expedienteId);
@@ -48,19 +54,29 @@ export class AttributionsController {
   }
 
   @Delete()
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Revocar atribución activa del expediente' })
   async revoke(
     @Param('id', ParseUUIDPipe) expedienteId: string,
     @Body(new ZodBodyValidationPipe(RevokeAttributionSchema)) dto: RevokeAttributionDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    const data = await this.attributionsService.revokeAttribution(expedienteId, dto.reason, user.sub);
+    const data = await this.attributionsService.revokeAttribution(
+      expedienteId,
+      dto.reason,
+      user.sub,
+    );
     return { data };
   }
 
   @Get('history')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.PARTNER, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.SALES,
+    UserRole.PARTNER,
+    UserRole.SUPPORT,
+    PlatformRole.SYSTEM_ADMIN,
+  )
   @ApiOperation({ summary: 'Obtener historial de atribuciones del expediente' })
   async getHistory(@Param('id', ParseUUIDPipe) expedienteId: string) {
     const data = await this.attributionsService.getAttributionHistory(expedienteId);

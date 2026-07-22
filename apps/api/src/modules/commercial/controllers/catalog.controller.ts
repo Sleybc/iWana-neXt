@@ -12,7 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@iwana/shared';
+import { PlatformRole, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -47,7 +47,7 @@ export class CatalogController {
     UserRole.SUPPORT,
     UserRole.NOC,
     UserRole.ACCOUNTANT,
-    UserRole.SYSTEM_ADMIN,
+    PlatformRole.SYSTEM_ADMIN,
   )
   @ApiOperation({ summary: 'Listar ítems del catálogo con filtros y paginación' })
   @ApiResponse({ status: 200, description: 'Lista paginada de ítems' })
@@ -63,7 +63,7 @@ export class CatalogController {
     UserRole.SUPPORT,
     UserRole.NOC,
     UserRole.ACCOUNTANT,
-    UserRole.SYSTEM_ADMIN,
+    PlatformRole.SYSTEM_ADMIN,
   )
   @ApiOperation({ summary: 'Obtener ítem del catálogo por ID' })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
@@ -72,7 +72,7 @@ export class CatalogController {
   }
 
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Crear ítem en el catálogo (plan, producto o servicio)' })
   @ApiResponse({ status: 201, description: 'Ítem creado exitosamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos o campos de detalle faltantes' })
@@ -82,7 +82,7 @@ export class CatalogController {
   }
 
   @Post('plans')
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Crear plan comercial' })
   async createPlan(@Body() dto: CreatePlanCatalogItemDto) {
     const data = await this.catalogService.create({ ...dto, type: CatalogItemType.PLAN });
@@ -90,7 +90,7 @@ export class CatalogController {
   }
 
   @Post('products')
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Crear producto comercial' })
   async createProduct(@Body() dto: CreateProductCatalogItemDto) {
     const data = await this.catalogService.create({ ...dto, type: CatalogItemType.PRODUCT });
@@ -98,7 +98,7 @@ export class CatalogController {
   }
 
   @Post('services')
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Crear servicio comercial adicional' })
   async createService(@Body() dto: CreateServiceCatalogItemDto) {
     const data = await this.catalogService.create({ ...dto, type: CatalogItemType.SERVICE });
@@ -106,7 +106,7 @@ export class CatalogController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Actualizar ítem del catálogo' })
   async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateCatalogItemDto) {
     const data = await this.catalogService.update(id, dto);
@@ -114,7 +114,7 @@ export class CatalogController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Eliminar ítem del catálogo (soft delete)' })
   async remove(@Param('id', ParseUUIDPipe) id: string) {
     await this.catalogService.remove(id);
@@ -124,7 +124,7 @@ export class CatalogController {
   // ─── Precios SCD ─────────────────────────────────────────────────────────
 
   @Get(':id/prices')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Historial de precios de un ítem' })
   async getPriceHistory(@Param('id', ParseUUIDPipe) id: string) {
     const data = await this.priceHistoryService.getPriceHistory(id);
@@ -132,7 +132,7 @@ export class CatalogController {
   }
 
   @Get(':id/price')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Precio vigente de un ítem para un segmento' })
   async getCurrentPrice(
     @Param('id', ParseUUIDPipe) id: string,
@@ -143,7 +143,7 @@ export class CatalogController {
   }
 
   @Post(':id/prices')
-  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Registrar nuevo precio (SCD Tipo 2)' })
   @ApiResponse({ status: 201, description: 'Precio creado y anterior cerrado atómicamente' })
   @ApiResponse({ status: 409, description: 'Precio idéntico ya vigente' })

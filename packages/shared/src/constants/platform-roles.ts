@@ -2,20 +2,24 @@ import { PlatformRole } from '../enums/platform-role.enum';
 import { UserRole } from '../enums/user-role.enum';
 
 /**
- * Frontera de procedencia de roles.
+ * Frontera de procedencia de roles (ADR-061 §2 y §4).
  *
- * `PlatformRole` y `UserRole` comparten los literales `SYSTEM_ADMIN` e
- * `IWANA_SUPPORT`, asi que en tiempo de ejecucion un rol es solo un string y
- * NO es posible deducir de que enum provino. Este conjunto es la unica fuente
- * de verdad que declara, explicitamente, que roles solo pueden ejercerse con
- * un token de plataforma (`jwt.type === 'platform'`).
+ * Tras ADR-061 §4 los dos dominios ya NO comparten literales a nivel de tipo:
+ * `SYSTEM_ADMIN` e `IWANA_SUPPORT` salieron de `UserRole` y viven solo en
+ * `PlatformRole`. Aun asi estos conjuntos siguen siendo necesarios, y por la
+ * razon original: **en tiempo de ejecucion un rol es solo un string**. El claim
+ * `role` de un JWT (`JwtPayload.role: string`), una fila de base de datos o un
+ * payload externo no arrastran su enum de origen, asi que la separacion de tipos
+ * no puede comprobarse en el limite. Este modulo es donde se comprueba.
+ */
+
+/**
+ * Roles que solo pueden ejercerse con un token de plataforma
+ * (`jwt.type === 'platform'`).
  *
- * Se deriva de los valores de `PlatformRole` para que no pueda desincronizarse
- * si el enum crece.
- *
- * Consumido por `RolesGuard` (apps/api) para exigir el tipo de token correcto
- * y por `UsersService` para impedir que el CRUD de un tenant asigne un rol de
- * plataforma a un usuario de tenant.
+ * Se deriva de `PlatformRole` para que no pueda desincronizarse si el enum crece.
+ * Consumido por `RolesGuard` (frontera token↔rol), `AccessControlService` y
+ * `VisitRequestsService`.
  */
 export const PLATFORM_ONLY_ROLES: ReadonlySet<string> = new Set<string>(
   Object.values(PlatformRole),
@@ -29,16 +33,23 @@ export function isPlatformOnlyRole(role: string): boolean {
 /**
  * Roles que el CRUD de usuarios de un tenant puede asignar.
  *
- * Es `UserRole` menos los roles de plataforma. Que `SYSTEM_ADMIN` e
- * `IWANA_SUPPORT` sigan siendo miembros de `UserRole` es deuda estructural
- * conocida: sacarlos del enum exige migracion de datos y ADR aprobado. Hasta
- * entonces, esta lista es la frontera que impide asignarlos desde el tenant.
+ * Desde ADR-061 §4 equivale a `UserRole` completo: el enum ya no contiene roles
+ * de plataforma que hubiera que restar. Se conserva como constante con nombre
+ * propio porque es el vocabulario del contrato (`@IsIn` de `CreateUserDto`, enum
+ * de OpenAPI, selects del portal), y porque el nombre declara la intencion —
+ * «asignable desde un tenant» — que un `Object.values(UserRole)` desnudo no.
  */
-export const TENANT_ASSIGNABLE_ROLES: readonly UserRole[] = Object.values(UserRole).filter(
-  (role) => !isPlatformOnlyRole(role),
-);
+export const TENANT_ASSIGNABLE_ROLES: readonly UserRole[] = Object.values(UserRole);
 
-/** ¿El rol puede asignarse a un usuario desde el modulo de usuarios del tenant? */
+const TENANT_ASSIGNABLE_ROLE_SET: ReadonlySet<string> = new Set<string>(TENANT_ASSIGNABLE_ROLES);
+
+/**
+ * ¿El rol puede asignarse a un usuario desde el modulo de usuarios del tenant?
+ *
+ * Comprueba pertenencia positiva a `UserRole`, no solo ausencia de
+ * `PLATFORM_ONLY_ROLES`: la entrada es `string` y un valor desconocido —un rol
+ * de plataforma futuro, una cadena arbitraria— debe rechazarse por defecto.
+ */
 export function isTenantAssignableRole(role: string): boolean {
-  return !isPlatformOnlyRole(role);
+  return TENANT_ASSIGNABLE_ROLE_SET.has(role);
 }

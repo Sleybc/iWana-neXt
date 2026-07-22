@@ -9,7 +9,7 @@ import {
   UsePipes,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@iwana/shared';
+import { PlatformRole, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -29,7 +29,7 @@ export class ProspectsController {
   constructor(private readonly prospectsService: ProspectsService) {}
 
   @Post(':id/schedule-installation')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Programar instalacion de prospecto', deprecated: true })
   @UsePipes(new ZodBodyValidationPipe(scheduleInstallationSchema))
   async scheduleInstallation(
@@ -41,7 +41,7 @@ export class ProspectsController {
   }
 
   @Patch(':id/reschedule')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Reprogramar instalacion o visita tecnica', deprecated: true })
   @UsePipes(new ZodBodyValidationPipe(rescheduleInstallationSchema))
   async rescheduleInstallation(

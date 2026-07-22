@@ -1,6 +1,6 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@iwana/shared';
+import { PlatformRole, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -20,7 +20,7 @@ export class CommercialDashboardController {
     UserRole.SUPPORT,
     UserRole.NOC,
     UserRole.ACCOUNTANT,
-    UserRole.SYSTEM_ADMIN,
+    PlatformRole.SYSTEM_ADMIN,
   )
   @ApiOperation({ summary: 'Obtener KPIs del dashboard comercial' })
   getSummary() {

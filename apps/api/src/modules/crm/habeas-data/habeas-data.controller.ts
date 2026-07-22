@@ -9,7 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@iwana/shared';
+import { PlatformRole, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -27,7 +27,7 @@ export class HabeasDataController {
   constructor(private readonly habeasDataService: HabeasDataService) {}
 
   @Post('subscribers/:subscriberId/habeas-data/consent')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Registrar consentimiento Habeas Data de suscriptor' })
   @ApiResponse({ status: 201 })
   async createConsent(
@@ -39,7 +39,7 @@ export class HabeasDataController {
   }
 
   @Get('subscribers/:subscriberId/habeas-data/consents')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar historial de consentimientos del suscriptor' })
   async listConsents(
     @Param('subscriberId', ParseUUIDPipe) subscriberId: string,
@@ -49,7 +49,7 @@ export class HabeasDataController {
   }
 
   @Post('subscribers/:subscriberId/habeas-data/arco')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Crear solicitud ARCO para suscriptor' })
   async createArcoRequest(
     @Param('subscriberId', ParseUUIDPipe) subscriberId: string,
@@ -60,7 +60,7 @@ export class HabeasDataController {
   }
 
   @Get('subscribers/:subscriberId/habeas-data/arco')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar solicitudes ARCO del suscriptor' })
   async listArcoRequests(
     @Param('subscriberId', ParseUUIDPipe) subscriberId: string,
@@ -70,7 +70,7 @@ export class HabeasDataController {
   }
 
   @Patch('habeas-data/arco/:requestId')
-  @Roles(UserRole.ADMIN, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Actualizar estado de solicitud ARCO' })
   async patchArcoStatus(
     @Param('requestId', ParseUUIDPipe) requestId: string,

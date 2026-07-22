@@ -77,8 +77,6 @@ const compatibilityMatrix: Record<UserRole, AccessPermissionKey[]> = {
   [UserRole.PARTNER]: [],
   [UserRole.AUDITOR]: [],
   [UserRole.INVESTOR]: [],
-  [UserRole.SYSTEM_ADMIN]: [],
-  [UserRole.IWANA_SUPPORT]: [],
 };
 
 describe('EditUserModal', () => {

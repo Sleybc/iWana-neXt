@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { ComponentProps } from 'react';
-import { UserRole, UserStatus } from '@iwana/shared';
+import { PlatformRole, UserRole, UserStatus } from '@iwana/shared';
 import { UsersTable } from './UsersTable';
 
 const baseUser = {
@@ -153,7 +153,7 @@ describe('UsersTable', () => {
         onRoleChange={jest.fn()}
         onClearFilters={jest.fn()}
         currentUserId="sys-1"
-        currentUserRole={UserRole.SYSTEM_ADMIN}
+        currentUserRole={PlatformRole.SYSTEM_ADMIN}
       />,
     );
 

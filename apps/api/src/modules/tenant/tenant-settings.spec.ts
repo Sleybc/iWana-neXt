@@ -19,6 +19,7 @@ function buildTenant(overrides: Partial<Tenant> = {}): Tenant {
     settings: {},
     contactEmail: 'ops@example.test',
     adminEmail: null,
+    principalAdminUserId: null,
     maxSubscribers: 100,
     // Campos de empresa (todos null por defecto)
     legalName: null,

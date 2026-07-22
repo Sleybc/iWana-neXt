@@ -29,6 +29,7 @@ function buildTenant(overrides: Partial<Tenant> = {}): Tenant {
     settings: { timezone: 'America/Bogota', currency: 'COP' },
     contactEmail: 'admin@isptest.co',
     adminEmail: null,
+    principalAdminUserId: null,
     maxSubscribers: 100,
     // Campos de datos de empresa (nullable)
     legalName: null,

@@ -16,7 +16,7 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { UserRole } from '@iwana/shared';
+import { PlatformRole, UserRole } from '@iwana/shared';
 import { SubscriberTaxProfileService } from './subscriber-tax-profile.service';
 import { SaveTaxAssignmentsDto } from './dto/save-tax-assignments.dto';
 import { UpsertTaxAssignmentDto } from './dto/upsert-tax-assignment.dto';
@@ -50,7 +50,7 @@ export class SubscriberTaxController {
    * Usado por Suscriptor 360 y por el flujo de configuración de facturación.
    */
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Obtener perfil tributario del suscriptor (Suscriptor 360)' })
   @ApiResponse({ status: 200, description: 'Perfil tributario del suscriptor.' })
   @ApiResponse({ status: 401, description: 'Token inválido o expirado.' })
@@ -68,7 +68,7 @@ export class SubscriberTaxController {
    * El área de facturación usa este endpoint para confirmar o ajustar el checklist.
    */
   @Put('assignments')
-  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Guardar asignaciones tributarias del suscriptor (bulk upsert)' })
   @ApiResponse({ status: 200, description: 'Asignaciones guardadas.' })
@@ -94,7 +94,7 @@ export class SubscriberTaxController {
    * Permite confirmar o ajustar manualmente un tributo específico.
    */
   @Patch('assignments/:assignmentId')
-  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Actualizar una asignación tributaria individual del suscriptor' })
   @ApiResponse({ status: 200, description: 'Asignación actualizada.' })
   @ApiResponse({ status: 400, description: 'Datos inválidos.' })
@@ -122,7 +122,7 @@ export class SubscriberTaxController {
    * Solo actualiza la asignación IVA si está en estado SUGGESTED; no sobreescribe confirmadas.
    */
   @Post('suggest-vat')
-  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Recalcular sugerencia IVA por estrato para el suscriptor' })
   @ApiResponse({ status: 200, description: 'Sugerencia IVA actualizada.' })

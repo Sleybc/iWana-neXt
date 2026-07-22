@@ -1,11 +1,11 @@
 # ADR-061: Frontera de audiencias JWT y procedencia de roles plataforma/tenant
 
 **Versión:** 1.0
-**Estado:** Propuesto
+**Estado:** Aprobado
 **Fecha:** 2026-07-22
 **Modo activo:** Architect
 **Autor:** AI-EM-ARCH
-**Aprobado por:** — pendiente CTO Humano
+**Aprobado por:** CTO Humano (2026-07-22) — incluye §4, que queda habilitado para implementación
 **Hallazgo origen:** H-01 (crítica) — auditoría MOD04 Usuarios Internos, revisión AppSec 2026-07-22 (AI-SEC-ENG)
 
 ---
@@ -58,7 +58,7 @@ En tiempo de ejecución un rol es solo un string; su enum de origen no es recupe
 
 `SYSTEM_ADMIN` e `IWANA_SUPPORT` dejan de ser asignables desde el módulo de usuarios de tenant, validado **en el DTO y en el servicio**. La duplicación es deliberada: `bulkCreate` entra por un validador Zod distinto, y un servicio no debe confiar en su único llamador de hoy.
 
-### 4. Salida de los roles de plataforma del enum `UserRole` (PENDIENTE — requiere aprobación)
+### 4. Salida de los roles de plataforma del enum `UserRole` (APROBADO 2026-07-22 — habilitado para implementación)
 
 Los puntos 1–3 son defensa perimetral eficaz para el vector reportado, pero **la columna `users.role` sigue admitiendo los valores a nivel de tipo**. Cualquier escritura futura que no pase por `UsersService` puede reintroducir el estado inválido; `RolesGuard` seguiría negando el acceso, pero el dato sucio existiría.
 
@@ -68,7 +68,7 @@ La corrección estructural es retirar `SYSTEM_ADMIN` e `IWANA_SUPPORT` de `UserR
 - Revisión de las ~200 rutas que declaran `@Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)` — patrón que hoy mezcla ambos dominios en un mismo decorador.
 - Consolidación de la tercera copia de la regla en `access-control.service.ts`.
 
-**Esta parte no se ejecuta sin aprobación del CTO.** Se documenta aquí para que la deuda quede trazada y no se pierda.
+**Aprobada por el CTO el 2026-07-22.** Se ejecuta con la condición de que la migración verifique previamente la ausencia de filas con esos roles en todos los schemas de tenant y aborte si las encuentra: estrechar el dominio sobre datos sucios rompería el login de esos usuarios sin aviso.
 
 ## Impacto
 
@@ -94,7 +94,9 @@ La corrección estructural es retirar `SYSTEM_ADMIN` e `IWANA_SUPPORT` de `UserR
 
 **Positivas:** el invariante queda fijado por tests que leen la metadata real de las rutas vía `Reflector`, de modo que una ruta de plataforma nueva entra automáticamente en la regresión. El modo de fallo por olvido queda eliminado, no solo la instancia.
 
-**Negativas:** la deuda del punto 4 permanece abierta. Mientras exista, el modelo de roles sigue admitiendo un estado que la aplicación rechaza — una divergencia entre lo que el tipo permite y lo que el sistema acepta, que es exactamente el tipo de ambigüedad que originó H-01.
+**Negativas:** el CHECK que impone el dominio de roles en la base (migración tenant `085`) enumera `UserRole` en positivo, así que **un rol de tenant nuevo exige su propia migración**; si se añade al enum sin migrar, las escrituras fallan con `23514`. Es el precio de declarar el dominio en la base en vez de solo en el tipo, y está cubierto por test, no por el compilador.
+
+**Cierre del punto 4 (Ola D, 2026-07-22):** implementado. `SYSTEM_ADMIN` e `IWANA_SUPPORT` salieron de `UserRole`; la migración `085` verifica y **aborta** ante filas fuera de dominio antes de emitir el `ALTER`, sin filtrar por `deleted_at`. Al consolidar la regla aparecieron dos divergencias que nadie había visto: las comprobaciones de `remove()`, `changeLoginEmailAsAdmin()` y `resetPassword()` solo contemplaban `SYSTEM_ADMIN`, dejando **`IWANA_SUPPORT` sin proteger** en las tres. Unificadas en `assertTargetIsNotPlatformUser`.
 
 ## Requiere CTO
 

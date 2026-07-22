@@ -19,6 +19,7 @@ import {
   AccessPermissionCatalogVersion,
   AccessPermissionKey,
   AuditAction,
+  isPlatformOnlyRole,
   UserRole,
 } from '@iwana/shared';
 import { DataSource, EntityManager, In } from 'typeorm';
@@ -432,7 +433,10 @@ export class AccessControlService {
         throw new NotFoundException(`Usuario ${userId} no encontrado.`);
       }
 
-      if (user.role === UserRole.SYSTEM_ADMIN || user.role === UserRole.IWANA_SUPPORT) {
+      // Tercera copia de la frontera de procedencia (ADR-061 §4): la fila puede
+      // ser anterior al estrechamiento del dominio, asi que se comprueba el
+      // literal persistido, no el tipo.
+      if (isPlatformOnlyRole(user.role)) {
         throw new ForbiddenException({
           code: 'PLATFORM_ROLE_NOT_TENANT_ASSIGNABLE',
           message: 'No se pueden asignar perfiles tenant a roles de plataforma.',
@@ -682,7 +686,7 @@ export class AccessControlService {
   }
 
   private ensureRoleAllowedForTenantProfiles(role: UserRole): void {
-    if (role === UserRole.SYSTEM_ADMIN || role === UserRole.IWANA_SUPPORT) {
+    if (isPlatformOnlyRole(role)) {
       throw new ForbiddenException({
         code: 'PLATFORM_ROLE_NOT_TENANT_ASSIGNABLE',
         message: 'No se pueden usar roles de plataforma en perfiles tenant.',

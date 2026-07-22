@@ -33,6 +33,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  PlatformRole,
   UserRole,
   UserStatus,
   AuditAction,
@@ -187,7 +188,11 @@ function setupRunInTenantSchema(
 describe('UsersService', () => {
   let service: UsersService;
   let auditServiceMock: { log: jest.Mock };
-  let tenantServiceMock: { updateTenantSelfProfile: jest.Mock };
+  let tenantServiceMock: {
+    updateTenantSelfProfile: jest.Mock;
+    getPrincipalAdminUserId: jest.Mock;
+    setPrincipalAdminUserId: jest.Mock;
+  };
   let searchQueueServiceMock: { enqueueUserUpsert: jest.Mock; enqueueUserDelete: jest.Mock };
   let redisMock: { get: jest.Mock; set: jest.Mock };
   let bulkQueueMock: {
@@ -201,7 +206,12 @@ describe('UsersService', () => {
     mockTenantContextGetOrThrow.mockReturnValue(MOCK_TENANT_CTX);
 
     auditServiceMock = { log: jest.fn() };
-    tenantServiceMock = { updateTenantSelfProfile: jest.fn() };
+    tenantServiceMock = {
+      updateTenantSelfProfile: jest.fn(),
+      // ADR-063: sin designacion por defecto — ningun usuario es principal.
+      getPrincipalAdminUserId: jest.fn().mockResolvedValue(null),
+      setPrincipalAdminUserId: jest.fn(),
+    };
     searchQueueServiceMock = {
       enqueueUserUpsert: jest.fn(),
       enqueueUserDelete: jest.fn(),
@@ -394,7 +404,10 @@ describe('UsersService', () => {
     });
 
     it('rechaza cuando ADMIN intenta resetear a SYSTEM_ADMIN', async () => {
-      const targetUser = buildUserEntity({ id: 'usr-platform', role: UserRole.SYSTEM_ADMIN });
+      const targetUser = buildUserEntity({
+        id: 'usr-platform',
+        role: PlatformRole.SYSTEM_ADMIN as unknown as UserRole,
+      });
       setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(targetUser) });
 
       await expect(
@@ -504,6 +517,7 @@ describe('UsersService', () => {
           .mockResolvedValueOnce(entity),
       });
       (bcrypt.compare as unknown as jest.Mock).mockImplementation(async () => true);
+      tenantServiceMock.getPrincipalAdminUserId.mockResolvedValue(actorId);
 
       const result = await service.changeLoginEmail(
         actorId,
@@ -607,6 +621,7 @@ describe('UsersService', () => {
           .mockResolvedValueOnce(null)
           .mockResolvedValueOnce(targetUser),
       });
+      tenantServiceMock.getPrincipalAdminUserId.mockResolvedValue('usr-admin-principal');
 
       const result = await service.changeLoginEmailAsAdmin(
         'usr-admin-principal',
@@ -632,7 +647,10 @@ describe('UsersService', () => {
     });
 
     it('rechaza cuando ADMIN intenta cambiar email de SYSTEM_ADMIN', async () => {
-      const targetUser = buildUserEntity({ id: 'usr-platform', role: UserRole.SYSTEM_ADMIN });
+      const targetUser = buildUserEntity({
+        id: 'usr-platform',
+        role: PlatformRole.SYSTEM_ADMIN as unknown as UserRole,
+      });
       setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(targetUser) });
 
       await expect(
@@ -1296,7 +1314,7 @@ describe('UsersService', () => {
       const otherAdmin = buildUserEntity({ id: TARGET_ID, role: UserRole.ADMIN });
       const mgr = setupRunInTenantSchema({ findOne: jest.fn().mockResolvedValue(otherAdmin) });
 
-      await service.remove(TARGET_ID, ADMIN_ID, UserRole.SYSTEM_ADMIN);
+      await service.remove(TARGET_ID, ADMIN_ID, PlatformRole.SYSTEM_ADMIN);
 
       expect(mgr.softRemove).toHaveBeenCalledWith(expect.anything(), otherAdmin);
     });

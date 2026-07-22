@@ -3283,6 +3283,13 @@ export interface InternalUser {
   documentType: string | null;
   documentNumber: string | null;
   avatarUrl: string | null;
+  /**
+   * ¿Es el administrador principal designado de la empresa? (ADR-063)
+   *
+   * Solo llega en las rutas de lectura. `undefined` significa «la respuesta no
+   * trae el dato», no «no lo es»: la UI no debe interpretarlo como `false`.
+   */
+  isPrincipalAdmin?: boolean | undefined;
 }
 
 export type GlobalSearchItemType = 'module' | 'user' | 'subscriber' | 'expediente';

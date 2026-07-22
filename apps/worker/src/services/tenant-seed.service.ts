@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { DataSource } from 'typeorm';
@@ -39,15 +38,11 @@ export interface TenantSeedInput {
 @Injectable()
 export class TenantSeedService {
   private readonly logger = new Logger(TenantSeedService.name);
-  private readonly encryptionKey: Buffer;
 
-  constructor(
-    private readonly dataSource: DataSource,
-    private readonly configService: ConfigService,
-  ) {
-    const keyHex = this.configService.getOrThrow<string>('MFA_ENCRYPTION_KEY');
-    this.encryptionKey = Buffer.from(keyHex, 'hex');
-  }
+  // Sin `MFA_ENCRYPTION_KEY`: el seed ya no cifra ningun campo del ADMIN inicial
+  // (H-14). El unico dato cifrado que queda en `users` es `mfa_secret`, que este
+  // servicio no escribe.
+  constructor(private readonly dataSource: DataSource) {}
 
   async seedInitialAdmin(input: TenantSeedInput): Promise<{ created: boolean }> {
     return runInTenantSchema(this.dataSource, input.schemaName, async (qr) => {
@@ -77,7 +72,10 @@ export class TenantSeedService {
       const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12);
 
       const adminUser = qr.manager.create(User, {
-        email: this.encryptValue(adminEmail),
+        // Texto plano (H-14). La ruta de descifrado legacy de `UsersService` se
+        // retiro; seguir cifrando aqui dejaba a cada tenant recien provisionado
+        // con un `users.email` que la API devolvia como criptograma.
+        email: adminEmail,
         emailHash,
         passwordHash,
         role: UserRole.ADMIN,
@@ -96,6 +94,17 @@ export class TenantSeedService {
       });
 
       await qr.manager.save(User, adminUser);
+
+      // ADR-063: el primer ADMIN queda designado como administrador principal.
+      // Sin esto la columna nacería NULL en todo tenant provisionado tras la
+      // migración 019 y la designación solo existiría en los tenants del backfill.
+      await qr.manager.query(
+        `UPDATE public.tenants
+            SET principal_admin_user_id = $1
+          WHERE id = $2
+            AND principal_admin_user_id IS NULL`,
+        [adminUser.id, input.tenantId],
+      );
 
       this.logger.log(
         `Seed inicial completado para tenant ${input.tenantSlug}: ADMIN creado en schema ${input.schemaName}.`,
@@ -151,14 +160,6 @@ export class TenantSeedService {
 
   private hashEmail(email: string): string {
     return crypto.createHash('sha256').update(email.toLowerCase().trim()).digest('hex');
-  }
-
-  private encryptValue(plaintext: string): string {
-    const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
-    const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-    const authTag = cipher.getAuthTag();
-    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
   }
 
   // `validateBootstrapPassword` se retiró junto con la contraseña compartida:

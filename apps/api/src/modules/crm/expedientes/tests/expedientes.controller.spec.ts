@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  PlatformRole,
   AcquisitionChannel,
   ContactChannel,
   ContactResult,
@@ -100,7 +101,7 @@ describe('ExpedientesController', () => {
         UserRole.NOC,
         UserRole.SALES,
         UserRole.SUPPORT,
-        UserRole.SYSTEM_ADMIN,
+        PlatformRole.SYSTEM_ADMIN,
       ]),
     );
   });

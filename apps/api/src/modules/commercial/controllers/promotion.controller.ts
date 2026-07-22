@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@iwana/shared';
+import { PlatformRole, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -32,7 +32,7 @@ export class PromotionController {
     UserRole.SALES,
     UserRole.SUPPORT,
     UserRole.ACCOUNTANT,
-    UserRole.SYSTEM_ADMIN,
+    PlatformRole.SYSTEM_ADMIN,
   )
   @ApiOperation({ summary: 'Listar promociones activas del tenant' })
   async findAll() {
@@ -46,7 +46,7 @@ export class PromotionController {
     UserRole.SALES,
     UserRole.SUPPORT,
     UserRole.ACCOUNTANT,
-    UserRole.SYSTEM_ADMIN,
+    PlatformRole.SYSTEM_ADMIN,
   )
   @ApiOperation({ summary: 'Obtener promoción por ID' })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
@@ -55,7 +55,7 @@ export class PromotionController {
   }
 
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Crear promoción comercial' })
   @ApiResponse({ status: 201, description: 'Promoción creada' })
   @ApiResponse({ status: 409, description: 'Código de promoción ya existe en el tenant' })
@@ -65,7 +65,7 @@ export class PromotionController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Actualizar promoción' })
   async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePromotionDto) {
     const data = await this.promotionService.update(id, dto);
@@ -73,7 +73,7 @@ export class PromotionController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Desactivar promoción' })
   async deactivate(@Param('id', ParseUUIDPipe) id: string) {
     await this.promotionService.deactivate(id);

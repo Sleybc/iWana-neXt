@@ -1308,6 +1308,67 @@ export class TenantService {
     return dto;
   }
 
+  /**
+   * Administrador principal designado del tenant (ADR-063), o `null` si aún no
+   * hay ninguno.
+   *
+   * Lee siempre contra la base y no contra la caché de tenant: la designación es
+   * un control de privilegio y una lectura obsoleta decidiría mal quién puede
+   * ser eliminado.
+   */
+  async getPrincipalAdminUserId(tenantId: string): Promise<string | null> {
+    const tenant = await this.tenantRepo.findOne({
+      where: { id: tenantId },
+      select: { id: true, principalAdminUserId: true },
+    });
+
+    if (!tenant) {
+      throw new NotFoundException(`Tenant con id "${tenantId}" no encontrado.`);
+    }
+
+    return tenant.principalAdminUserId;
+  }
+
+  /**
+   * Designa el administrador principal del tenant (ADR-063).
+   *
+   * Operación explícita y auditada — nunca un efecto colateral. El módulo de
+   * usuarios es quien valida que `userId` sea un ADMIN activo de este tenant:
+   * la tabla `users` vive en su schema y es su boundary, no el de este módulo.
+   * Aquí se persiste la designación y se deja el asiento de auditoría.
+   */
+  async setPrincipalAdminUserId(
+    tenantId: string,
+    userId: string,
+    actorUserId?: string,
+  ): Promise<void> {
+    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new NotFoundException(`Tenant con id "${tenantId}" no encontrado.`);
+    }
+
+    const previousPrincipalAdminUserId = tenant.principalAdminUserId;
+    if (previousPrincipalAdminUserId === userId) {
+      return;
+    }
+
+    tenant.principalAdminUserId = userId;
+    const saved = await this.tenantRepo.save(tenant);
+    await this.invalidateTenantCache(saved.id, saved.slug);
+    await this.cacheTenant(saved);
+
+    await this.auditService.log({
+      tenantId: saved.id,
+      schemaName: saved.schemaName,
+      userId: actorUserId ?? null,
+      action: AuditAction.UPDATE,
+      entityType: 'TenantPrincipalAdmin',
+      entityId: saved.id,
+      oldValue: { principalAdminUserId: previousPrincipalAdminUserId },
+      newValue: { principalAdminUserId: userId },
+    });
+  }
+
   /** Busca un tenant por su slug — usado en TenantMiddleware */
   async findBySlug(slug: string): Promise<Tenant | null> {
     const cachedTenant = await this.getCachedTenant(this.buildSlugCacheKey(slug));

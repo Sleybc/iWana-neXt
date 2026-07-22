@@ -292,8 +292,6 @@ export const ROLE_ASSIGNABLE_PERMISSION_MATRIX: Record<UserRole, AccessPermissio
     AccessPermissionKey.ACCESS_PROFILES_READ,
   ],
   [UserRole.INVESTOR]: [],
-  [UserRole.SYSTEM_ADMIN]: [],
-  [UserRole.IWANA_SUPPORT]: [],
 };
 
 export const MOD00_ACCESS_V1_SYSTEM_ROLE_TEMPLATES: SystemRoleTemplateDefinition[] = [

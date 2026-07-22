@@ -12,7 +12,7 @@
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@iwana/shared';
+import { PlatformRole, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -33,7 +33,7 @@ export class TaxController {
   // ─── Reglas tributarias (listado para TaxApplicationRulesManager) ────────
 
   @Get('tax-rules')
-  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar reglas tributarias del tenant' })
   async findAllRules() {
     const data = await this.taxApplicationService.listRules();
@@ -43,7 +43,7 @@ export class TaxController {
   // ─── Simulador ────────────────────────────────────────────────────────────
 
   @Post('tax/simulate')
-  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SALES, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SALES, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({
     summary: 'Simulador tributario: explica qué impuestos aplican a un cliente y qué regla ganó',
   })
@@ -60,7 +60,7 @@ export class TaxController {
   // ─── Aplicaciones tributarias (tabla puente) ─────────────────────────────
 
   @Get('tax-rule-applications')
-  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar aplicaciones tributarias (tabla puente reglas ↔ catálogo)' })
   async listApplications() {
     const data = await this.taxApplicationService.listApplications();
@@ -68,7 +68,7 @@ export class TaxController {
   }
 
   @Post('tax-rule-applications')
-  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Crear aplicación tributaria (vincular regla con definición)' })
   async createApplication(@Body() dto: CreateTaxRuleApplicationDto) {
     const data = await this.taxApplicationService.createApplication(dto);
@@ -76,7 +76,7 @@ export class TaxController {
   }
 
   @Patch('tax-rule-applications/:id')
-  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Actualizar aplicación tributaria' })
   async updateApplication(
     @Param('id', ParseUUIDPipe) id: string,
@@ -87,7 +87,7 @@ export class TaxController {
   }
 
   @Delete('tax-rule-applications/:id')
-  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Eliminar aplicación tributaria' })
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteApplication(@Param('id', ParseUUIDPipe) id: string) {

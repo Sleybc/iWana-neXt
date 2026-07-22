@@ -16,7 +16,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { UserRole, ExpedienteStatus } from '@iwana/shared';
+import { PlatformRole, UserRole, ExpedienteStatus } from '@iwana/shared';
 import { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
@@ -58,6 +58,14 @@ import {
   LinkInstallationOperationalRefsSchema,
 } from './dto/link-installation-operational-refs.dto';
 
+/**
+ * Roles administrativos que pueden ver la IP registrada en un consentimiento.
+ *
+ * Se compara contra `JwtPayload.role`, que es un `string`: tras ADR-061 §4 los
+ * dos roles provienen de enums distintos, asi que el tipo comun es el literal.
+ */
+const ADMINISTRATIVE_ROLES: readonly string[] = [UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN];
+
 interface UploadedDocumentFile {
   originalname: string;
   mimetype: string;
@@ -78,7 +86,7 @@ export class ExpedientesController {
   ) {}
 
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   // Audit manual limpio en ExpedienteService — evita PII descifrada en interceptor (SWEEP-01/03).
   @SkipAudit()
   @ApiOperation({ summary: 'Crear expediente con datos mínimos (nombre + canal de adquisición)' })
@@ -91,7 +99,7 @@ export class ExpedientesController {
   }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar expedientes con filtros' })
   async findAll(
     @Query('status') status?: string,
@@ -119,7 +127,7 @@ export class ExpedientesController {
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Obtener expediente por ID con relaciones' })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     const data = await this.expedienteService.findById(id);
@@ -137,7 +145,7 @@ export class ExpedientesController {
   }
 
   @Patch(':id/sections/:section')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @SkipAudit()
   @ApiOperation({ summary: 'Actualizar una sección específica del expediente' })
   async updateSection(
@@ -165,7 +173,7 @@ export class ExpedientesController {
   }
 
   @Patch(':id/status')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, PlatformRole.SYSTEM_ADMIN)
   @SkipAudit()
   @ApiOperation({ summary: 'Transición de estado del pipeline' })
   async transitionStatus(
@@ -210,7 +218,7 @@ export class ExpedientesController {
   }
 
   @Post(':id/reactivate')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, PlatformRole.SYSTEM_ADMIN)
   @SkipAudit()
   @ApiOperation({ summary: 'Reactivar expediente descartado' })
   async reactivate(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
@@ -219,7 +227,7 @@ export class ExpedientesController {
   }
 
   @Get(':id/timeline')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Obtener timeline cronológico del expediente' })
   async getTimeline(@Param('id', ParseUUIDPipe) id: string) {
     const timeline = await this.expedienteService.getTimelineSummary(id);
@@ -233,7 +241,7 @@ export class ExpedientesController {
   }
 
   @Get(':id/document-supports')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar soportes documentales del expediente' })
   async getDocumentSupports(
     @Param('id', ParseUUIDPipe) id: string,
@@ -244,7 +252,7 @@ export class ExpedientesController {
   }
 
   @Post(':id/document-supports/:documentKey/upload')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
   @SkipAudit()
@@ -267,7 +275,7 @@ export class ExpedientesController {
   }
 
   @Patch(':id/document-supports/:documentKey/:versionId/status')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @SkipAudit()
   @ApiOperation({ summary: 'Actualizar estado de revisión de un soporte documental' })
   async updateDocumentSupportStatus(
@@ -292,7 +300,7 @@ export class ExpedientesController {
   }
 
   @Delete(':id/document-supports/:documentKey/:versionId')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @SkipAudit()
   @ApiOperation({ summary: 'Eliminar una versión específica de soporte documental' })
   async deleteDocumentSupport(
@@ -313,7 +321,7 @@ export class ExpedientesController {
   }
 
   @Get(':id/document-supports/:documentKey/:versionId/file')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Descargar una versión específica de soporte documental' })
   async getDocumentSupportFile(
     @Param('id', ParseUUIDPipe) id: string,
@@ -327,7 +335,7 @@ export class ExpedientesController {
   }
 
   @Post(':id/contact-attempts')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @SkipAudit()
   @ApiOperation({ summary: 'Registrar intento de contacto del expediente' })
   async createContactAttempt(
@@ -340,7 +348,7 @@ export class ExpedientesController {
   }
 
   @Get(':id/contact-attempts')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar intentos de contacto del expediente' })
   async listContactAttempts(
     @Param('id', ParseUUIDPipe) id: string,
@@ -355,7 +363,7 @@ export class ExpedientesController {
   }
 
   @Post(':id/consents')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, PlatformRole.SYSTEM_ADMIN)
   @SkipAudit()
   @ApiOperation({ summary: 'Registrar consentimiento del expediente' })
   async createConsent(
@@ -374,13 +382,11 @@ export class ExpedientesController {
   }
 
   @Get(':id/consents')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar consentimientos del expediente' })
   async listConsents(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     const data = await this.expedienteService.listConsents(id);
-    const canViewIpAddress = [UserRole.ADMIN, UserRole.SYSTEM_ADMIN].includes(
-      user.role as UserRole,
-    );
+    const canViewIpAddress = ADMINISTRATIVE_ROLES.includes(user.role);
     return {
       data: data.map((consent) => ({
         ...consent,
@@ -390,7 +396,7 @@ export class ExpedientesController {
   }
 
   @Patch(':id/consents/:consentId/revoke')
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @SkipAudit()
   @ApiOperation({ summary: 'Revocar consentimiento del expediente' })
   async revokeConsent(
@@ -404,7 +410,7 @@ export class ExpedientesController {
   }
 
   @Post(':id/coverage-checks')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.TECHNICIAN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.TECHNICIAN, PlatformRole.SYSTEM_ADMIN)
   @SkipAudit()
   @ApiOperation({ summary: 'Registrar verificación de cobertura del expediente' })
   async createCoverageCheck(
@@ -417,7 +423,7 @@ export class ExpedientesController {
   }
 
   @Get(':id/coverage-checks')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.TECHNICIAN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.TECHNICIAN, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar verificaciones de cobertura del expediente' })
   async listCoverageChecks(@Param('id', ParseUUIDPipe) id: string) {
     const data = await this.expedienteService.listCoverageChecks(id);
@@ -425,7 +431,7 @@ export class ExpedientesController {
   }
 
   @Patch(':id/installation-operational-refs')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @SkipAudit()
   @ApiOperation({ summary: 'Vincular referencias operativas de instalación al expediente' })
   async linkInstallationOperationalRefs(
@@ -447,7 +453,7 @@ export class PipelineController {
   constructor(private readonly expedienteService: ExpedienteService) {}
 
   @Get('summary')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Resumen del pipeline por estado' })
   async getSummary() {
     return this.expedienteService.getPipelineSummary();

@@ -19,7 +19,9 @@ export class AttributionsService {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const expediente = await qr.manager.findOne(ExpedienteRecord, { where: { id: expedienteId } });
+      const expediente = await qr.manager.findOne(ExpedienteRecord, {
+        where: { id: expedienteId },
+      });
       if (!expediente) {
         throw new NotFoundException(`Expediente ${expedienteId} no encontrado`);
       }
@@ -123,11 +125,15 @@ export class AttributionsService {
   private async resolveActorIdentity(
     qr: QueryRunner,
     actorId: string,
-  ): Promise<{ actorName: string; actorRole: UserRole }> {
+  ): Promise<{ actorName: string; actorRole: UserRole | PlatformRole }> {
     const tenantUser = await qr.manager.findOne(User, { where: { id: actorId } });
     if (tenantUser) {
       return {
-        actorName: this.formatActorName(tenantUser.firstName, tenantUser.lastName, tenantUser.email),
+        actorName: this.formatActorName(
+          tenantUser.firstName,
+          tenantUser.lastName,
+          tenantUser.email,
+        ),
         actorRole: tenantUser.role,
       };
     }
@@ -135,8 +141,15 @@ export class AttributionsService {
     const platformUser = await qr.manager.findOne(PlatformUser, { where: { id: actorId } });
     if (platformUser) {
       return {
-        actorName: this.formatActorName(platformUser.firstName, platformUser.lastName, platformUser.email),
-        actorRole: this.mapPlatformRoleToUserRole(platformUser.role),
+        actorName: this.formatActorName(
+          platformUser.firstName,
+          platformUser.lastName,
+          platformUser.email,
+        ),
+        // `sales_attributions.actor_role` es un VARCHAR de traza: registra el rol
+        // real del actor. Tras ADR-061 §4 un rol de plataforma ya no tiene
+        // equivalente en `UserRole`, y traducirlo seria falsear la traza.
+        actorRole: platformUser.role,
       };
     }
 
@@ -147,15 +160,11 @@ export class AttributionsService {
     });
   }
 
-  private mapPlatformRoleToUserRole(role: PlatformRole): UserRole {
-    if (role === PlatformRole.SYSTEM_ADMIN) {
-      return UserRole.SYSTEM_ADMIN;
-    }
-
-    return UserRole.IWANA_SUPPORT;
-  }
-
-  private formatActorName(firstName?: string | null, lastName?: string | null, email?: string): string {
+  private formatActorName(
+    firstName?: string | null,
+    lastName?: string | null,
+    email?: string,
+  ): string {
     const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
     return fullName || email || 'Usuario sin nombre';
   }

@@ -1,13 +1,14 @@
 import { ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { AccessPermissionKey, UserRole } from '@iwana/shared';
+import { PlatformRole, AccessPermissionKey, UserRole } from '@iwana/shared';
 import { PermissionsGuard } from './permissions.guard';
 import { EffectivePermissionsService } from '../services/effective-permissions.service';
 
 function buildExecutionContext(
   user?: {
     sub: string;
-    role: UserRole;
+    // Los dos dominios de rol (ADR-061 §4): el guard lee el literal del JWT.
+    role: UserRole | PlatformRole;
     type?: 'tenant' | 'platform';
   },
   requestOverrides?: { params?: Record<string, string>; body?: Record<string, unknown> },
@@ -98,7 +99,7 @@ describe('PermissionsGuard', () => {
       guard.canActivate(
         buildExecutionContext({
           sub: 'usr-platform',
-          role: UserRole.SYSTEM_ADMIN,
+          role: PlatformRole.SYSTEM_ADMIN,
           type: 'platform',
         }),
       ),

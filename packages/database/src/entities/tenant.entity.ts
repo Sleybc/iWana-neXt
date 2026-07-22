@@ -76,6 +76,21 @@ export class Tenant {
   @Column({ name: 'admin_email', length: 255, nullable: true, type: 'varchar' })
   adminEmail: string | null;
 
+  /**
+   * Administrador principal del tenant (ADR-063).
+   *
+   * FK lógica a `<schema_name>.users.id`; no es FK referencial porque la columna
+   * vive en `public` y el usuario en el schema del tenant.
+   *
+   * Antes era una regla derivada («el ADMIN activo más antiguo»), que cambiaba
+   * en silencio al eliminarse ese usuario. Ahora es una designación explícita:
+   * solo la mueve una transferencia auditada, nunca un soft-delete.
+   *
+   * NULL mientras el tenant no tenga ADMIN activo (p. ej. en PROVISIONING).
+   */
+  @Column({ name: 'principal_admin_user_id', nullable: true, type: 'uuid' })
+  principalAdminUserId: string | null;
+
   /** Limite de suscriptores contratado. null = sin limite; 0 = bloqueado */
   @Column({ name: 'max_subscribers', nullable: true, type: 'integer' })
   maxSubscribers: number | null;

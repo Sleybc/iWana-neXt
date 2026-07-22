@@ -9,7 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@iwana/shared';
+import { PlatformRole, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -26,7 +26,7 @@ export class QuotesController {
   constructor(private readonly quotesService: QuotesService) {}
 
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Crear cotizacion comercial' })
   async create(@Body() dto: CreateQuoteDto): Promise<{ data: Quote }> {
     const data = await this.quotesService.create(dto);
@@ -34,7 +34,7 @@ export class QuotesController {
   }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Listar cotizaciones comerciales' })
   async findAll(): Promise<{ data: Quote[] }> {
     const data = await this.quotesService.findAll();
@@ -42,7 +42,7 @@ export class QuotesController {
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Consultar cotizacion por id' })
   async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: Quote }> {
     const data = await this.quotesService.findOne(id);
@@ -50,7 +50,7 @@ export class QuotesController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Actualizar cotizacion comercial' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -61,7 +61,7 @@ export class QuotesController {
   }
 
   @Post(':id/accept')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SALES, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Aceptar cotizacion y marcarla como aprobada' })
   async accept(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: Quote }> {
     const data = await this.quotesService.accept(id);

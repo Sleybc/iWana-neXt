@@ -7,7 +7,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { SkipAudit } from './decorators/skip-audit.decorator';
-import { UserRole } from '@iwana/shared';
+import { PlatformRole, UserRole } from '@iwana/shared';
 import { AuditLogListResponseDto } from './dto/audit-log-response.dto';
 import { AUDIT_EXPORT_TRUNCATED_HEADER } from './helpers/audit-export.helper';
 
@@ -25,7 +25,7 @@ import { AUDIT_EXPORT_TRUNCATED_HEADER } from './helpers/audit-export.helper';
  */
 @Controller('audit-logs')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+@Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
 @SkipAudit()
 @ApiTags('audit-logs')
 @ApiBearerAuth('access-token')

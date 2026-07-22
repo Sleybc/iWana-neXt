@@ -34,7 +34,7 @@ import {
 } from '@/lib/api-client';
 import { ensureIdempotencyKey } from '@/lib/idempotency-key';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { UserRole } from '@iwana/shared';
+import { isPlatformOnlyRole, UserRole } from '@iwana/shared';
 import { PortalAlert } from '@/components/shared/portal-ui';
 import {
   buildUsersListParams,
@@ -67,7 +67,10 @@ function mapError(error: unknown): string {
 export function UsersClient() {
   const searchParams = useSearchParams();
   const { user } = useAuth();
-  const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SYSTEM_ADMIN;
+  // `user !== null` primero: TypeScript usa esta condicion con alias para
+  // estrechar `user` en el JSX de abajo. Sin ella, `user?.id` vuelve a ser
+  // `string | undefined` y rompe `exactOptionalPropertyTypes`.
+  const isAdmin = user !== null && (user.role === UserRole.ADMIN || isPlatformOnlyRole(user.role));
 
   const [users, setUsers] = useState<InternalUser[]>([]);
   const [meta, setMeta] = useState<UsersPaginationMeta | null>(null);

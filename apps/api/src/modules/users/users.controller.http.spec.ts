@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-import { AccessPermissionKey, UserRole, UserStatus } from '@iwana/shared';
+import { PlatformRole, AccessPermissionKey, UserRole, UserStatus } from '@iwana/shared';
 import { PermissionsGuard } from '../access-control/guards/permissions.guard';
 import { EffectivePermissionsService } from '../access-control/services/effective-permissions.service';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
@@ -69,7 +69,7 @@ jest.mock('../auth/guards/jwt-auth.guard', () => ({
         request.user = {
           sub: 'usr-system-admin',
           email: 'hash-system-admin',
-          role: UserRole.SYSTEM_ADMIN,
+          role: PlatformRole.SYSTEM_ADMIN,
           tenantId: null,
           schemaName: null,
           jti: 'jti-system-admin',

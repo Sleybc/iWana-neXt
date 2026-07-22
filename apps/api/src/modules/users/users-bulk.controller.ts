@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
+  PlatformRole,
   AccessPermissionKey,
   UserRole,
   type UsersBulkCreateAcceptedResponse,
@@ -46,7 +47,7 @@ export class UsersBulkController {
    * Sin envelope `{ data }` (H-11 — mismo precedente del bulk síncrono).
    */
   @Post('bulk')
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.USERS_MANAGE)
   @HttpCode(HttpStatus.ACCEPTED)
   @SkipAudit()
@@ -84,7 +85,7 @@ export class UsersBulkController {
   }
 
   @Get('bulk/jobs/:jobId')
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.USERS_MANAGE)
   @ApiOperation({ summary: 'Estado de importación masiva (sin contraseñas)' })
   @ApiResponse({ status: 200, description: 'Estado del job.' })
@@ -94,7 +95,7 @@ export class UsersBulkController {
   }
 
   @Post('bulk/jobs/:jobId/result')
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.USERS_MANAGE)
   @HttpCode(HttpStatus.OK)
   @SkipAudit()

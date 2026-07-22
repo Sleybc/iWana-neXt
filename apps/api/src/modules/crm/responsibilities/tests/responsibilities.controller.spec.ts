@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { UserRole } from '@iwana/shared';
+import { PlatformRole, UserRole } from '@iwana/shared';
 import { ResponsibilitiesController } from '../responsibilities.controller';
 import { ResponsibilitiesService } from '../responsibilities.service';
 
@@ -115,7 +115,7 @@ describe('ResponsibilitiesController', () => {
       UserRole.SUPPORT,
       UserRole.TECHNICIAN,
       UserRole.PARTNER,
-      UserRole.SYSTEM_ADMIN,
+      PlatformRole.SYSTEM_ADMIN,
     ];
 
     const controllerPrototype = Object.getOwnPropertyDescriptors(
